@@ -127,25 +127,20 @@ let currentSceneIndex = -1;
 
 function glassMaterial(color) {
   return new THREE.MeshPhysicalMaterial({
-    color,
-    roughness: 0.05,
+    color: 0xffffff,
+    roughness: 0.0,
     metalness: 0.0,
     clearcoat: 1.0,
-    clearcoatRoughness: 0.02,
-    transparent: true,
-    opacity: 1.0,
-    envMapIntensity: 2.5,
+    clearcoatRoughness: 0.0,
+    envMapIntensity: 1.0,
     reflectivity: 1.0,
-    ior: 2.0,
-    thickness: 3.0,
-    transmission: 0.85,
+    ior: 1.45,
+    thickness: 4.0,
+    transmission: 1.0,
     specularIntensity: 1.0,
     specularColor: new THREE.Color(0xffffff),
     attenuationColor: new THREE.Color(color),
-    attenuationDistance: 0.8,
-    sheen: 0.4,
-    sheenColor: new THREE.Color(color),
-    sheenRoughness: 0.15,
+    attenuationDistance: 0.5,
   });
 }
 
