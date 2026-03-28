@@ -6,7 +6,8 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #0d1117; overflow: hidden; font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif; height: 100vh; }
-  canvas { width: 100%; height: 100%; display: block; }
+  canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+  canvas:active { cursor: grabbing; }
   #header { position: absolute; top: 16px; left: 20px; z-index: 10; pointer-events: none; }
   #header .card { background: rgba(15,23,42,0.55); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 18px; }
   #header h1 { font-size: 1.4rem; font-weight: 700; color: #fff; }
@@ -18,7 +19,6 @@
   #stats .label { font-size: 0.6rem; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 2px; }
   #badge { position: absolute; bottom: 20px; right: 24px; z-index: 10; display: flex; align-items: center; gap: 8px; background: rgba(15,23,42,0.45); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 16px; }
   #badge .rendered { color: rgba(255,255,255,0.45); font-size: 0.65rem; }
-  #status { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: rgba(255,255,255,0.5); font-size: 0.8rem; z-index: 5; }
 </style>
 </head>
 <body>
@@ -33,97 +33,13 @@
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7v10l10 5 10-5V7L12 2z" stroke="#60a5fa" stroke-width="1.6" fill="rgba(96,165,250,0.1)"/><path d="M12 22V12M2 7l10 5 10-5" stroke="#60a5fa" stroke-width="1.6"/></svg>
   <span style="color:rgba(255,255,255,0.85);font-weight:600;font-size:0.75rem;">SceneView</span>
 </div>
-<div id="status">Loading SceneView...</div>
+
 <canvas id="viewer"></canvas>
 
 <script src="js/filament/filament.js"></script>
 <script src="js/sceneview.js"></script>
 <script>
-const MODEL_URL = 'models/atlanta-office.glb';
-
-Filament.init([MODEL_URL], function() {
-  document.getElementById('status').style.display = 'none';
-  try {
-    const canvas = document.getElementById('viewer');
-    canvas.width = canvas.clientWidth * devicePixelRatio;
-    canvas.height = canvas.clientHeight * devicePixelRatio;
-
-    const engine = Filament.Engine.create(canvas);
-    const scene = engine.createScene();
-    const renderer = engine.createRenderer();
-    const cam = engine.createCamera(Filament.EntityManager.get().create());
-    const view = engine.createView();
-    const sc = engine.createSwapChain();
-
-    view.setCamera(cam);
-    view.setScene(scene);
-    view.setViewport([0, 0, canvas.width, canvas.height]);
-    renderer.setClearOptions({ clearColor: [0.05, 0.06, 0.09, 1.0], clear: true });
-    cam.setProjectionFov(40, canvas.width / canvas.height, 0.1, 200, Filament.Camera$Fov.VERTICAL);
-
-    // Lights
-    const sun = Filament.EntityManager.get().create();
-    Filament.LightManager.Builder(Filament.LightManager$Type.SUN)
-      .color([0.98, 0.92, 0.89]).intensity(100000).direction([0.6, -1, -0.8])
-      .sunAngularRadius(1.9).sunHaloSize(10).sunHaloFalloff(80)
-      .build(engine, sun);
-    scene.addEntity(sun);
-
-    const fill = Filament.EntityManager.get().create();
-    Filament.LightManager.Builder(Filament.LightManager$Type.DIRECTIONAL)
-      .color([0.5, 0.6, 0.8]).intensity(25000).direction([-0.5, 0.5, 1])
-      .build(engine, fill);
-    scene.addEntity(fill);
-
-    // Load IBL (image-based lighting)
-    const iblUrl = 'models/environments/courtyard_1k.hdr';
-    // Use KTX IBL if available, otherwise skip
-    try {
-      // SceneView auto-loads IBL
-    } catch(e) {}
-
-    // Load model
-    const loader = engine.createAssetLoader();
-    const asset = loader.createAsset(Filament.assets[MODEL_URL]);
-    if (asset) {
-      asset.loadResources();
-      scene.addEntity(asset.getRoot());
-      scene.addEntities(asset.getRenderableEntities());
-    }
-
-    // Camera orbit
-    let angle = 0;
-    const orbitR = 12;
-    const startTime = performance.now() / 1000;
-
-    function render() {
-      const t = performance.now() / 1000 - startTime;
-      angle += 0.004;
-      const h = 4 + Math.sin(t * 0.15) * 1.0;
-      cam.lookAt(
-        [Math.sin(angle) * orbitR, h, Math.cos(angle) * orbitR],
-        [0, 2, 0],
-        [0, 1, 0]
-      );
-      if (renderer.beginFrame(sc)) { renderer.render(sc, view); renderer.endFrame(); }
-      engine.execute();
-      requestAnimationFrame(render);
-    }
-    render();
-
-    // Resize
-    window.addEventListener('resize', () => {
-      canvas.width = canvas.clientWidth * devicePixelRatio;
-      canvas.height = canvas.clientHeight * devicePixelRatio;
-      view.setViewport([0, 0, canvas.width, canvas.height]);
-      cam.setProjectionFov(40, canvas.width / canvas.height, 0.1, 200, Filament.Camera$Fov.VERTICAL);
-    });
-
-  } catch(e) {
-    document.getElementById('status').textContent = 'Error: ' + e.message;
-    console.error(e);
-  }
-});
+SceneView.modelViewer("viewer", "models/atlanta-office.glb");
 </script>
 </body>
 </html>
