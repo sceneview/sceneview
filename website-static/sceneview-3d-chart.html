@@ -251,23 +251,18 @@ function buildScene(sceneData) {
     bar.userData = d;
     group.add(bar);
 
-    // Glow
-    const glow = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.8, 1.8),
-      new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.08, side: THREE.DoubleSide })
-    );
-    glow.rotation.x = -Math.PI / 2;
-    glow.position.y = 0.006;
-    group.add(glow);
-
-    // Value label
+    // Value label with dark pill
     const vc = document.createElement('canvas');
     vc.width = 200; vc.height = 56;
     const vx = vc.getContext('2d');
-    vx.fillStyle = '#f1f5f9';
-    vx.font = '700 28px -apple-system, SF Pro Display, sans-serif';
+    const valText = sceneData.prefix + d.value + sceneData.suffix;
+    vx.font = '700 26px -apple-system, SF Pro Display, sans-serif';
+    const tw = vx.measureText(valText).width;
+    vx.fillStyle = 'rgba(15,23,42,0.7)';
+    vx.beginPath(); vx.roundRect((200-tw-24)/2, 8, tw+24, 36, 10); vx.fill();
+    vx.fillStyle = '#ffffff';
     vx.textAlign = 'center';
-    vx.fillText(sceneData.prefix + d.value + sceneData.suffix, 100, 36);
+    vx.fillText(valText, 100, 34);
     const valSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(vc), transparent: true, opacity: 0 }));
     valSprite.position.y = targetH + 0.5;
     valSprite.scale.set(2.0, 0.6, 1);
@@ -311,32 +306,6 @@ function buildScene(sceneData) {
     scene.add(group);
   });
 
-  // Trend line
-  if (sceneData.bars.length >= 3) {
-    const trendGroup = new THREE.Group();
-    trendGroup.userData.isTrend = true;
-    const maxVal = Math.max(...sceneData.bars.map(b => b.value));
-    const pts = sceneData.bars.map((d, i) => {
-      const h = (d.value / maxVal) * 4.0;
-      return new THREE.Vector3(offset + i * spacing, h, 0);
-    });
-    const curve = new THREE.CatmullRomCurve3(pts);
-    trendGroup.add(new THREE.Mesh(
-      new THREE.TubeGeometry(curve, 32, 0.02, 6, false),
-      new THREE.MeshPhysicalMaterial({ color: 0x3b82f6, roughness: 0.2, metalness: 0.3, transparent: true, opacity: 0, emissive: 0x3b82f6, emissiveIntensity: 0.3 })
-    ));
-    sceneData.bars.forEach((d, i) => {
-      const h = (d.value / maxVal) * 4.0;
-      const sp = new THREE.Mesh(
-        new THREE.SphereGeometry(0.06, 16, 16),
-        new THREE.MeshPhysicalMaterial({ color: 0xffffff, emissive: d.color, emissiveIntensity: 0.5, transparent: true, opacity: 0 })
-      );
-      sp.position.set(offset + i * spacing, h, 0);
-      trendGroup.add(sp);
-    });
-    scene.add(trendGroup);
-    currentBars.trendGroup = trendGroup;
-  }
 }
 
 function smoothstep(a, b, t) {
@@ -435,16 +404,6 @@ function animate() {
       b.group.scale.y = 1 + Math.sin(elapsed * 1.2 + i * 0.9) * 0.005;
     }
   });
-
-  // Trend line
-  if (currentBars.trendGroup) {
-    const tT = smoothstep(1.5, 2.5, sceneTime);
-    const exitStart = SCENE_DURATION - 0.8;
-    const exitT = smoothstep(exitStart, exitStart + 0.6, sceneTime);
-    currentBars.trendGroup.traverse(o => {
-      if (o.material && o !== currentBars.trendGroup) o.material.opacity = tT * 0.6 * (1 - exitT);
-    });
-  }
 
   renderer.render(scene, camera);
 }
