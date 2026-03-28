@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SceneView Garden — 3D Postcard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a1a0f; overflow: hidden; font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif; }
+  canvas { display: block; }
+  #loading { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0a1a0f; transition: opacity 1.2s; }
+  #loading.fade { opacity: 0; pointer-events: none; }
+  #loading .spinner { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #6ee7b7; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading p { color: rgba(255,255,255,0.5); font-size: 0.8rem; margin-top: 16px; }
+  #postcard { position: absolute; top: 20px; right: 20px; z-index: 10; pointer-events: none; opacity: 0; transition: opacity 2s; }
+  #postcard.visible { opacity: 1; }
+  #postcard .card { background: rgba(255,250,240,0.88); backdrop-filter: blur(16px); border: 1px solid rgba(0,0,0,0.06); border-radius: 14px; padding: 18px 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); }
+  #postcard .msg { font-size: 1.4rem; font-weight: 400; color: #1a1a2e; font-style: italic; }
+  #postcard .sub { font-size: 0.75rem; color: #6b7280; margin-top: 6px; font-style: italic; }
+  #badge { position: absolute; bottom: 20px; right: 24px; z-index: 10; display: flex; align-items: center; gap: 8px; background: rgba(10,26,15,0.45); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 16px; }
+  #badge .rendered { color: rgba(255,255,255,0.45); font-size: 0.65rem; }
+</style>
+</head>
+<body>
+<div id="loading"><div class="spinner"></div><p>Loading garden...</p></div>
+<div id="postcard"><div class="card">
+  <div class="msg">"Sorry I work too much"</div>
+  <div class="sub">with love C.M.R.</div>
+</div></div>
+<div id="badge">
+  <span class="rendered">Rendered by</span>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7v10l10 5 10-5V7L12 2z" stroke="#6ee7b7" stroke-width="1.6" fill="rgba(110,231,183,0.1)"/><path d="M12 22V12M2 7l10 5 10-5" stroke="#6ee7b7" stroke-width="1.6"/></svg>
+  <span style="color:rgba(255,255,255,0.85);font-weight:600;font-size:0.75rem;">SceneView</span>
+</div>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+let scene, camera, renderer, startTime = 0;
+const flowers = [], fireflies = [];
+
+async function init() {
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 200);
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  document.body.appendChild(renderer.domElement);
+
+  // HDR
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+  try {
+    const hdr = await new Promise((r, e) => new RGBELoader().load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/suburban_garden_1k.hdr', r, undefined, e));
+    const env = pmrem.fromEquirectangular(hdr).texture;
+    scene.background = env; scene.environment = env; hdr.dispose();
+  } catch(e) { scene.background = new THREE.Color(0x87ceeb); }
+  pmrem.dispose();
+
+  // Fog
+  scene.fog = new THREE.Fog(0xc8dbb0, 15, 40);
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0xfff5e0, 0.4));
+  const sun = new THREE.DirectionalLight(0xfff0d0, 1.0);
+  sun.position.set(5, 12, 6); sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048); sun.shadow.radius = 6;
+  sun.shadow.camera.near = 0.5; sun.shadow.camera.far = 40;
+  sun.shadow.camera.left = -10; sun.shadow.camera.right = 10;
+  sun.shadow.camera.top = 10; sun.shadow.camera.bottom = -4;
+  scene.add(sun);
+
+  // Globe ground
+  const globe = new THREE.Mesh(
+    new THREE.SphereGeometry(30, 64, 64, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x4a7a3a, roughness: 0.8, metalness: 0.0 })
+  );
+  globe.position.y = -30; globe.receiveShadow = true; scene.add(globe);
+
+  // Trees
+  const treePositions = [[0, 0, -2], [-3, 0, 1], [2.5, 0, 2], [-1.5, 0, -3.5], [3.5, 0, -1]];
+  treePositions.forEach(([x, _, z]) => {
+    const h = 2 + Math.random() * 2;
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.18, h * 0.5, 8),
+      new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.9 })
+    );
+    trunk.position.set(x, h * 0.25, z); trunk.castShadow = true; scene.add(trunk);
+    for (let j = 0; j < 3; j++) {
+      const crown = new THREE.Mesh(
+        new THREE.SphereGeometry(0.7 - j * 0.15, 8, 8),
+        new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.28 + Math.random() * 0.06, 0.6, 0.35 + j * 0.05), roughness: 0.7 })
+      );
+      crown.position.set(x, h * 0.5 + j * 0.5 + 0.3, z); crown.castShadow = true; scene.add(crown);
+    }
+  });
+
+  // Flowers
+  const flowerColors = [0xf9a8d4, 0xf472b6, 0xc4b5fd, 0x8b5cf6, 0xfbbf24, 0xfcd34d, 0xef4444, 0xfda4af, 0x60a5fa, 0xf87171, 0xa78bfa, 0xfde68a];
+  for (let i = 0; i < 40; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 0.5 + Math.random() * 4;
+    const x = Math.cos(angle) * dist, z = Math.sin(angle) * dist;
+    const color = flowerColors[Math.floor(Math.random() * flowerColors.length)];
+    const stemH = 0.3 + Math.random() * 0.4;
+    const stem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.015, 0.02, stemH, 4),
+      new THREE.MeshStandardMaterial({ color: 0x4a7a3a })
+    );
+    stem.position.set(x, stemH / 2, z); scene.add(stem);
+    const petals = Math.floor(5 + Math.random() * 3);
+    const flowerGroup = new THREE.Group();
+    flowerGroup.position.set(x, stemH, z);
+    for (let p = 0; p < petals; p++) {
+      const petal = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 6, 6),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.1 })
+      );
+      const pa = (p / petals) * Math.PI * 2;
+      petal.position.set(Math.cos(pa) * 0.08, 0, Math.sin(pa) * 0.08);
+      petal.scale.set(1, 0.4, 1);
+      flowerGroup.add(petal);
+    }
+    const center = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 6, 6),
+      new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.2 })
+    );
+    flowerGroup.add(center);
+    scene.add(flowerGroup);
+    flowers.push({ group: flowerGroup, phase: Math.random() * Math.PI * 2 });
+  }
+
+  // Mushrooms
+  for (let i = 0; i < 6; i++) {
+    const a = Math.random() * Math.PI * 2, d = 1 + Math.random() * 3;
+    const x = Math.cos(a) * d, z = Math.sin(a) * d;
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.15, 6), new THREE.MeshStandardMaterial({ color: 0xfaf5ef }));
+    stem.position.set(x, 0.075, z); scene.add(stem);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xdc2626 }));
+    cap.position.set(x, 0.15, z); scene.add(cap);
+  }
+
+  // Glass orb
+  const orb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 32, 32),
+    new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0, metalness: 0, transmission: 0.95, ior: 1.8, thickness: 3, clearcoat: 1, envMapIntensity: 2.0 })
+  );
+  orb.position.set(0, 0.6, 0); orb.castShadow = true; scene.add(orb);
+  const glow = new THREE.PointLight(0x6ee7b7, 0.5, 4);
+  glow.position.set(0, 0.6, 0); scene.add(glow);
+
+  // Stones
+  for (let i = 0; i < 5; i++) {
+    const a = Math.random() * Math.PI * 2, d = 1.5 + Math.random() * 3;
+    const stone = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.1 + Math.random() * 0.1, 0),
+      new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.9 })
+    );
+    stone.position.set(Math.cos(a) * d, 0.08, Math.sin(a) * d);
+    stone.rotation.set(Math.random(), Math.random(), Math.random());
+    scene.add(stone);
+  }
+
+  // Butterfly
+  const bfGroup = new THREE.Group();
+  const wingMat = new THREE.MeshPhysicalMaterial({ color: 0xf9a8d4, roughness: 0.3, metalness: 0.1, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+  const wingL = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.1), wingMat);
+  wingL.position.x = -0.08; bfGroup.add(wingL);
+  const wingR = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.1), wingMat);
+  wingR.position.x = 0.08; bfGroup.add(wingR);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.1, 4), new THREE.MeshStandardMaterial({ color: 0x1a1a2e }));
+  body.rotation.z = Math.PI / 2; bfGroup.add(body);
+  bfGroup.position.y = 1.5; scene.add(bfGroup);
+
+  // Fireflies
+  const ffMat = new THREE.SpriteMaterial({ color: 0xfde68a, transparent: true, opacity: 0.8 });
+  for (let i = 0; i < 20; i++) {
+    const sprite = new THREE.Sprite(ffMat.clone());
+    sprite.scale.set(0.04, 0.04, 1);
+    sprite.position.set((Math.random() - 0.5) * 8, 0.5 + Math.random() * 3, (Math.random() - 0.5) * 8);
+    scene.add(sprite);
+    fireflies.push({ sprite, phase: Math.random() * Math.PI * 2, baseY: sprite.position.y });
+  }
+
+  // Load GLB flower
+  try {
+    const gltf = await new Promise((r, e) => new GLTFLoader().load('https://modelviewer.dev/shared-assets/models/Flower.glb', r, undefined, e));
+    const m = gltf.scene; m.scale.setScalar(0.8); m.position.set(0.8, 0, 0.5); scene.add(m);
+  } catch(e) {}
+
+  document.getElementById('loading').classList.add('fade');
+  setTimeout(() => document.getElementById('postcard').classList.add('visible'), 2000);
+
+  addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+  startTime = performance.now() / 1000;
+  animate();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = performance.now() / 1000 - startTime;
+
+  // Camera: descend from above into the garden, then orbit
+  const introT = Math.min(1, t / 6);
+  const ease = introT * introT * (3 - 2 * introT);
+  const camH = 8 - 6.2 * ease;
+  const orbitSpeed = 0.08 + 0.12 * ease;
+  const angle = t * orbitSpeed;
+  const radius = 5 + 2 * (1 - ease);
+  camera.position.set(Math.sin(angle) * radius, camH, Math.cos(angle) * radius);
+  camera.lookAt(0, 0.8 + (1 - ease) * 2, 0);
+
+  // Flower sway
+  flowers.forEach(f => { f.group.rotation.z = Math.sin(t * 1.5 + f.phase) * 0.08; });
+
+  // Butterfly path
+  const bx = Math.sin(t * 0.5) * 1.5, bz = Math.cos(t * 0.7) * 1.5;
+  const scene3d = scene.children.find(c => c.children && c.children.length === 3 && c.children[2]?.geometry?.type === 'CylinderGeometry');
+  if (scene3d) {
+    scene3d.position.set(bx, 1.2 + Math.sin(t * 2) * 0.3, bz);
+    scene3d.children[0].rotation.y = Math.sin(t * 8) * 0.6;
+    scene3d.children[1].rotation.y = -Math.sin(t * 8) * 0.6;
+  }
+
+  // Fireflies
+  fireflies.forEach(f => {
+    f.sprite.material.opacity = 0.3 + Math.sin(t * 3 + f.phase) * 0.5;
+    f.sprite.position.y = f.baseY + Math.sin(t * 0.5 + f.phase) * 0.3;
+    f.sprite.position.x += Math.sin(t * 0.3 + f.phase) * 0.002;
+  });
+
+  renderer.render(scene, camera);
+}
+init();
+</script>
+</body>
+</html>

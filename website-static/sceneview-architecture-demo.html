@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Meridian Properties | SceneView Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a14; overflow: hidden; font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif; }
+  canvas { display: block; }
+  #loading { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0a0a14; transition: opacity 1.2s; }
+  #loading.fade { opacity: 0; pointer-events: none; }
+  #loading .spinner { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #60a5fa; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading p { color: rgba(255,255,255,0.5); font-size: 0.8rem; margin-top: 16px; }
+  #header { position: absolute; top: 16px; left: 20px; z-index: 10; pointer-events: none; }
+  #header .card { background: rgba(15,23,42,0.55); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 18px; }
+  #header h1 { font-size: 1.4rem; font-weight: 700; color: #fff; }
+  #header p { font-size: 0.8rem; color: rgba(255,255,255,0.5); margin-top: 3px; }
+  #stats { position: absolute; bottom: 20px; left: 24px; z-index: 10; display: flex; background: rgba(15,23,42,0.55); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; overflow: hidden; opacity: 0; transition: opacity 1s; }
+  #stats.visible { opacity: 1; }
+  #stats .stat { padding: 10px 20px; text-align: center; border-right: 1px solid rgba(255,255,255,0.06); }
+  #stats .stat:last-child { border-right: none; }
+  #stats .val { font-size: 1.2rem; font-weight: 700; color: #fff; }
+  #stats .label { font-size: 0.6rem; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 2px; }
+  #badge { position: absolute; bottom: 20px; right: 24px; z-index: 10; display: flex; align-items: center; gap: 8px; background: rgba(15,23,42,0.45); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 16px; }
+  #badge .rendered { color: rgba(255,255,255,0.45); font-size: 0.65rem; }
+</style>
+</head>
+<body>
+<div id="loading"><div class="spinner"></div><p>Loading 3D model...</p></div>
+<div id="header"><div class="card"><h1>Meridian Properties</h1><p>Downtown Development Project</p></div></div>
+<div id="stats">
+  <div class="stat"><div class="val">12</div><div class="label">Units</div></div>
+  <div class="stat"><div class="val">45,000</div><div class="label">Sq Ft</div></div>
+  <div class="stat"><div class="val">$28M</div><div class="label">Valuation</div></div>
+</div>
+<div id="badge">
+  <span class="rendered">Rendered by</span>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7v10l10 5 10-5V7L12 2z" stroke="#60a5fa" stroke-width="1.6" fill="rgba(96,165,250,0.1)"/><path d="M12 22V12M2 7l10 5 10-5" stroke="#60a5fa" stroke-width="1.6"/></svg>
+  <span style="color:rgba(255,255,255,0.85);font-weight:600;font-size:0.75rem;">SceneView</span>
+</div>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+let scene,camera,renderer,st=0;
+async function init(){
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(40,innerWidth/innerHeight,0.1,200);
+  renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;
+  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace=THREE.SRGBColorSpace;document.body.appendChild(renderer.domElement);
+  const pm=new THREE.PMREMGenerator(renderer);pm.compileEquirectangularShader();
+  try{const h=await new Promise((r,e)=>new RGBELoader().load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/docklands_02_1k.hdr',r,undefined,e));const ev=pm.fromEquirectangular(h).texture;scene.background=ev;scene.environment=ev;h.dispose();}catch(e){scene.background=new THREE.Color(0x0a0a14);}
+  pm.dispose();
+  scene.add(new THREE.AmbientLight(0xc0d0e8,0.3));
+  const s=new THREE.DirectionalLight(0xfff0e0,0.8);s.position.set(5,15,8);s.castShadow=true;
+  s.shadow.mapSize.set(2048,2048);s.shadow.camera.near=0.5;s.shadow.camera.far=50;
+  s.shadow.camera.left=-15;s.shadow.camera.right=15;s.shadow.camera.top=15;s.shadow.camera.bottom=-5;
+  s.shadow.radius=6;scene.add(s);
+  const g=new THREE.Mesh(new THREE.SphereGeometry(30,64,64,0,Math.PI*2,0,Math.PI/2),new THREE.MeshPhysicalMaterial({color:0x1a2030,roughness:0.2,metalness:0.5,envMapIntensity:0.8,clearcoat:0.6}));
+  g.position.y=-30;g.receiveShadow=true;scene.add(g);
+  try{const gl=await new Promise((r,e)=>new GLTFLoader().load('/models/atlanta-office.glb',r,undefined,e));const m=gl.scene;const b=new THREE.Box3().setFromObject(m);const c=b.getCenter(new THREE.Vector3());const sz=b.getSize(new THREE.Vector3());const sc=7/Math.max(sz.x,sz.y,sz.z);m.scale.setScalar(sc);m.position.x=-c.x*sc;m.position.z=-c.z*sc;m.position.y=-b.min.y*sc;m.traverse(ch=>{if(ch.isMesh){ch.castShadow=true;ch.receiveShadow=true;}});scene.add(m);}catch(e){console.error(e);}
+  document.getElementById('loading').classList.add('fade');
+  setTimeout(()=>document.getElementById('stats').classList.add('visible'),1500);
+  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+  st=performance.now()/1000;animate();
+}
+function l(a,b,t){return a+(b-a)*t;}
+function ss(a,b,t){t=Math.max(0,Math.min(1,(t-a)/(b-a)));return t*t*(3-2*t);}
+function animate(){
+  requestAnimationFrame(animate);const t=performance.now()/1000-st;
+  let cx,cy,cz,ly,fv;
+  if(t<4){const p=ss(0,4,t);const a=l(-0.3,0.4,p);cx=Math.sin(a)*l(35,12,p);cz=Math.cos(a)*l(35,12,p);cy=l(18,6,p);ly=l(4,3,p);fv=l(55,42,p);}
+  else if(t<8){const p=ss(4,8,t);const a=0.4+p*Math.PI*1.5;cx=Math.sin(a)*l(12,10,p);cz=Math.cos(a)*l(12,10,p);cy=l(6,5,p)+Math.sin(p*Math.PI)*0.8;ly=3.1;fv=41;}
+  else if(t<12){const p=ss(8,12,t);const a=0.4+Math.PI*1.5+p*0.8;cx=Math.sin(a)*l(10,5.5,p);cz=Math.cos(a)*l(10,5.5,p);cy=l(5,2,p);ly=l(3.1,1.5,p);fv=l(41,50,p);}
+  else if(t<16){const p=ss(12,16,t);const a=0.4+Math.PI*1.5+0.8+p*0.6;cx=Math.sin(a)*l(5.5,7,p);cz=Math.cos(a)*l(5.5,7,p);cy=l(2,9,p);ly=l(1.5,4.5,p);fv=l(50,38,p);}
+  else if(t<20){const p=ss(16,20,t);const a=0.4+Math.PI*1.5+1.4+p*0.5;cx=Math.sin(a)*l(7,14,p);cz=Math.cos(a)*l(7,14,p);cy=l(9,10,p);ly=l(4.5,2.8,p);fv=40;}
+  else{const o=t-20;const a=0.4+Math.PI*1.5+1.9+o*0.3;const r=14+Math.sin(o*0.06)*1.5;cx=Math.sin(a)*r;cz=Math.cos(a)*r;cy=10+Math.sin(o*0.1)*1.5;ly=2.8+Math.sin(o*0.08)*0.5;fv=40;}
+  camera.position.set(cx,cy,cz);camera.lookAt(0,ly,0);camera.rotateZ(Math.sin(t*0.15)*0.015);
+  camera.fov=fv;camera.updateProjectionMatrix();renderer.render(scene,camera);
+}
+init();
+</script>
+</body>
+</html>
