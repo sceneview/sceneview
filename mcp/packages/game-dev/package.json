@@ -1,0 +1,77 @@
+{
+  "name": "game-dev-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for game development with SceneView — character viewers, level editors, physics, particle effects, 3D inventories, and ready-to-use game assets for Android indie games.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "sceneview",
+    "game-dev",
+    "gamedev",
+    "game-development",
+    "indie-game",
+    "unity",
+    "unreal",
+    "3d",
+    "character-viewer",
+    "level-editor",
+    "physics",
+    "particles",
+    "inventory",
+    "android",
+    "jetpack-compose",
+    "kotlin",
+    "claude",
+    "ai"
+  ],
+  "license": "Apache-2.0",
+  "author": "SceneView (https://github.com/sceneview)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sceneview/sceneview.git",
+    "directory": "mcp/packages/game-dev"
+  },
+  "homepage": "https://github.com/sceneview/sceneview/tree/main/mcp/packages/game-dev#readme",
+  "bugs": {
+    "url": "https://github.com/sceneview/sceneview/issues"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "game-dev-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "!dist/**/*.test.js",
+    "!dist/**/__fixtures__/**",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.28.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.0"
+  },
+  "overrides": {
+    "picomatch": ">=4.0.4"
+  },
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/sceneview"
+    }
+  ]
+}

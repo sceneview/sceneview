@@ -1,0 +1,75 @@
+{
+  "name": "interior-design-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for interior design with SceneView — room planning, furniture placement, material library, lighting design, AR furniture preview, and room tours for Android home design apps.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "sceneview",
+    "interior-design",
+    "home-design",
+    "architecture",
+    "furnishing",
+    "furniture",
+    "houzz",
+    "room-planner",
+    "ar",
+    "lighting",
+    "materials",
+    "android",
+    "jetpack-compose",
+    "kotlin",
+    "claude",
+    "ai"
+  ],
+  "license": "Apache-2.0",
+  "author": "SceneView (https://github.com/sceneview)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sceneview/sceneview.git",
+    "directory": "mcp/packages/interior-design"
+  },
+  "homepage": "https://github.com/sceneview/sceneview/tree/main/mcp/packages/interior-design#readme",
+  "bugs": {
+    "url": "https://github.com/sceneview/sceneview/issues"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "interior-design-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "!dist/**/*.test.js",
+    "!dist/**/__fixtures__/**",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.28.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.0"
+  },
+  "overrides": {
+    "picomatch": ">=4.0.4"
+  },
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/sceneview"
+    }
+  ]
+}
