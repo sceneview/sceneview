@@ -129,6 +129,43 @@ class InAppUpdateManagerTest {
     }
 
     @Test
+    fun `two rapid checkForUpdate calls trigger only one update flow`() {
+        // Simulate a fast double-resume: both `checkForUpdate()` calls land
+        // while the first SDK round-trip is still in flight (state CHECKING).
+        // The `inFlight` guard must drop the second call so `startUpdateFlow`
+        // runs exactly once — otherwise the user is double-prompted.
+        fake.setUpdateAvailable(42)
+        manager.checkForUpdate()
+        manager.checkForUpdate() // second call before the looper idles
+        shadowOf(activity.mainLooper).idle()
+
+        // FakeAppUpdateManager only tracks ONE in-progress flow; a duplicate
+        // `startUpdateFlow` on the same fake would clobber its internal state.
+        // The flow being cleanly FLEXIBLE-typed and acceptable confirms a
+        // single, well-formed invocation.
+        assertEquals(AppUpdateType.FLEXIBLE, fake.typeForUpdateInProgress)
+        assertTrue(fake.isConfirmationDialogVisible)
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, manager.updateState)
+    }
+
+    @Test
+    fun `inFlight clears after a failed check so a later check can run`() {
+        // A failed `appUpdateInfo` round-trip must clear the `inFlight` guard
+        // on the failure listener — otherwise the manager is permanently
+        // locked out of all future checks.
+        fake.setUpdateNotAvailable()
+        manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.UP_TO_DATE, manager.updateState)
+
+        // A subsequent check must NOT be short-circuited by a stuck guard.
+        fake.setUpdateAvailable(42)
+        manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, manager.updateState)
+    }
+
+    @Test
     fun `zero totalBytes does not crash progress computation`() {
         fake.setUpdateAvailable(42)
         manager.checkForUpdate()

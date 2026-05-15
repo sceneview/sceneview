@@ -5,6 +5,10 @@ import SwiftUI
 import UIKit
 #endif
 
+#if os(macOS)
+import AppKit
+#endif
+
 /// Checks the App Store for a newer version of the SceneView demo on every
 /// `ScenePhase.active` transition and surfaces a banner inviting the user to
 /// open the App Store update sheet.
@@ -98,11 +102,15 @@ final class AppStoreUpdater: ObservableObject {
     }
 
     /// Open the App Store product page so the user can tap "UPDATE".
-    /// `itms-apps://` opens directly inside the App Store app (no browser bounce).
+    /// On iOS `itms-apps://` opens directly inside the App Store app (no
+    /// browser bounce); on macOS `macappstore://` opens the Mac App Store app.
     func openAppStore() {
         #if canImport(UIKit) && os(iOS)
         guard let url = URL(string: "itms-apps://itunes.apple.com/app/id\(Self.appStoreId)") else { return }
         UIApplication.shared.open(url)
+        #elseif os(macOS)
+        guard let url = URL(string: "macappstore://itunes.apple.com/app/id\(Self.appStoreId)") else { return }
+        NSWorkspace.shared.open(url)
         #endif
     }
 
@@ -127,8 +135,14 @@ final class AppStoreUpdater: ObservableObject {
 
     private func shouldCheck() -> Bool {
         if isSnoozed { return false }
-        let last = defaults.double(forKey: Self.lastCheckKey)
-        return now().timeIntervalSince1970 - last >= Self.throttle
+        let nowEpoch = now().timeIntervalSince1970
+        // Clamp `last` against the current time: if the system clock rolled
+        // backward (or `lastCheckAt` was somehow stamped in the future),
+        // `now - last` would be negative and stay below the throttle forever,
+        // hard-locking out all future checks. A future `lastCheckAt` is itself
+        // the bug — clamping to `nowEpoch` repairs it on read.
+        let last = min(defaults.double(forKey: Self.lastCheckKey), nowEpoch)
+        return nowEpoch - last >= Self.throttle
     }
 
     private struct LookupResult {

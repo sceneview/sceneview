@@ -174,4 +174,5 @@ Point the camera at a flat surface, wait for plane detection, then tap to place 
 - **Try geometry** — Add shapes with `GeometryNode.cube(...)`, `GeometryNode.sphere(...)`, and `GeometryNode.cylinder(...)`.
 - **Add physics** — Use `PhysicsNode.dynamic(entity)` to make objects fall with gravity.
 - **Build for visionOS** — The same `SceneView` API works in immersive spaces on Apple Vision Pro.
+- **Need a custom 3D model?** — See the [Blender pipeline](recipes/blender-pipeline.md) for authoring a model in Blender and converting it to `.usdz`.
 - **Explore the Android SDK** — See the [Android Quickstart](quickstart.md) for the Compose equivalent of every API shown here.

@@ -65,6 +65,14 @@ class InAppUpdateManager(
 
     private var listenerRegistered = false
 
+    // Re-entrancy guard: a fast double-resume can land two `checkForUpdate()`
+    // calls back-to-back while the first SDK round-trip is still in flight
+    // (state is still CHECKING / AVAILABLE, not yet DOWNLOADING). Without this
+    // flag both calls would reach `startUpdateFlow`, double-prompting the user.
+    // Set on entry, cleared on BOTH the success AND failure listener so a
+    // network failure can't permanently lock out future checks.
+    private var inFlight = false
+
     private val installStateListener: InstallStateUpdatedListener = InstallStateUpdatedListener { state ->
         when (state.installStatus()) {
             InstallStatus.DOWNLOADING -> {
@@ -104,9 +112,17 @@ class InAppUpdateManager(
             || updateState == UpdateState.READY_TO_INSTALL
         ) return
 
+        // Re-entrancy guard for the CHECKING / AVAILABLE window: those states
+        // aren't covered by the early-return above, so a second `onResume`
+        // arriving before the SDK round-trip resolves would issue a parallel
+        // `appUpdateInfo` request and a duplicate `startUpdateFlow`.
+        if (inFlight) return
+        inFlight = true
+
         updateState = UpdateState.CHECKING
         appUpdateManager.appUpdateInfo
             .addOnSuccessListener { info ->
+                inFlight = false
                 if (info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE
                     && info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE)
                 ) {
@@ -117,6 +133,7 @@ class InAppUpdateManager(
                 }
             }
             .addOnFailureListener {
+                inFlight = false
                 updateState = UpdateState.IDLE
             }
     }

@@ -60,6 +60,7 @@ nav:
     - Nodes Reference: nodes.md
     - Recipes:
       - Overview: recipes.md
+      - Blender asset pipeline: recipes/blender-pipeline.md
       - Sketchfab streaming: recipes/sketchfab-streaming.md
       - Demo settings sheet: recipes/demo-settings-sheet.md
     - FAQ: faq.md

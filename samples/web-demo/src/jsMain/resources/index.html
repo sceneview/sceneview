@@ -912,6 +912,9 @@
             instance.setQuality('medium');
             loadingOverlay.classList.add('hidden');
             console.log('SceneView Web Demo initialized — v4.3.5');
+            // Engine init complete — surface any update snackbar deferred
+            // while the loading overlay was still covering the viewport.
+            flushPendingUpdateSnackbar();
           })
           .catch(function(err) {
             console.error('SceneView init failed:', err);
@@ -1470,12 +1473,35 @@
         return 0;
       }
 
+      // Pending version to surface once the engine has finished initializing.
+      // The update snackbar (z-index 60) sits BELOW the loading overlay
+      // (z-index 100), so showing it while the overlay is still up would
+      // hide it behind the spinner. Gate on `loading-overlay.hidden` and
+      // defer if the version check resolves before engine init completes.
+      var pendingUpdateVersion = null;
+
       function showUpdateSnackbar(version) {
         var snack = document.getElementById('update-snackbar');
         var versionLabel = document.getElementById('update-snackbar-version');
         if (!snack) return;
+        var overlay = document.getElementById('loading-overlay');
+        if (overlay && !overlay.classList.contains('hidden')) {
+          // Engine still initializing — defer until the overlay is hidden so
+          // the snackbar isn't stranded behind the loading spinner.
+          pendingUpdateVersion = version;
+          return;
+        }
         if (versionLabel) versionLabel.textContent = 'v' + version + ' is ready — reload to load it.';
         snack.classList.add('visible');
+      }
+
+      // Called by the init path once the loading overlay is hidden — flushes
+      // any update snackbar deferred while the engine was still booting.
+      function flushPendingUpdateSnackbar() {
+        if (pendingUpdateVersion == null) return;
+        var version = pendingUpdateVersion;
+        pendingUpdateVersion = null;
+        showUpdateSnackbar(version);
       }
 
       function hideUpdateSnackbar() {

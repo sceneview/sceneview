@@ -181,10 +181,19 @@ function isNewer(latest: string, current: string): boolean {
   return false;
 }
 
+// Height of the App header (paddingVertical 14 + title ~18 + subtitle ~12 +
+// hairline border). The banner is absolutely positioned within the
+// `SafeAreaView` content area — which already excludes the status bar — so a
+// fixed offset of HEADER_HEIGHT drops it cleanly below the header instead of
+// overlapping the "SceneView / React Native Demo" title. `react-native-safe-
+// area-context` is not a dependency of this demo, so a measured constant is
+// the minimal fix here (vs. pulling in a new package for one inset).
+const HEADER_HEIGHT = 58;
+
 const styles = StyleSheet.create({
   banner: {
     position: 'absolute',
-    top: 0,
+    top: HEADER_HEIGHT,
     left: 12,
     right: 12,
     marginTop: 12,

@@ -192,6 +192,35 @@ final class AppStoreUpdaterTests: XCTestCase {
         XCTAssertEqual(StubURLProtocol.responses.count, 0, "Single lookup expected — got 2")
     }
 
+    func testCheck_clockRollbackDoesNotHardLockChecks() async throws {
+        // Regression for #1249: if the system clock rolls backward, a
+        // `lastCheckAt` stamped in the (now-)future makes `now - last`
+        // negative — which is always below the throttle, so `shouldCheck()`
+        // would short-circuit every future check forever. The `min(last, now)`
+        // clamp on read repairs this.
+        let body = #"{"results":[{"version":"9.9.9","bundleId":"io.github.sceneview.demo","releaseNotes":null}]}"#
+        StubURLProtocol.responses = [(200, Data(body.utf8))]
+
+        let defaults = Self.makeDefaults()
+        // First check happens "today".
+        let today = Date()
+        let firstPass = makeUpdater(now: today, defaults: defaults)
+        await firstPass.checkForUpdate()
+        // `lastCheckAt` is now stamped at `today`.
+
+        // The clock rolls back one full day — `lastCheckAt` is now in the
+        // future relative to the new "now".
+        let yesterday = today.addingTimeInterval(-24 * 60 * 60)
+        let rolledBack = makeUpdater(now: yesterday, defaults: defaults)
+        await rolledBack.checkForUpdate()
+
+        // The check must have run despite the future `lastCheckAt`: the queued
+        // response was consumed.
+        XCTAssertEqual(StubURLProtocol.responses.count, 0,
+                       "Clock rollback must not hard-lock update checks")
+        XCTAssertTrue(rolledBack.state.isUpdateAvailable)
+    }
+
     func testSnooze_hidesBannerForOneWeek() async throws {
         let body = #"{"results":[{"version":"9.9.9","bundleId":"io.github.sceneview.demo","releaseNotes":null}]}"#
         StubURLProtocol.responses = [(200, Data(body.utf8))]

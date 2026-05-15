@@ -214,6 +214,12 @@ environmentLoader.createKtxEnvironment("environments/studio.ktx")
 materialLoader.createColorInstance(Color.Red)
 ```
 
+### Custom 3D content
+
+Authoring your own model? See the [Blender pipeline recipe](recipes/blender-pipeline.md):
+export `.glb` from Blender for Android (native), or convert `.glb` → `.usdz` via Reality
+Converter + Reality Composer Pro for Apple platforms.
+
 ---
 
 ## Threading Rules

@@ -135,6 +135,7 @@ That is a production-quality, physically-based 3D viewer in under 30 lines of co
 
 - **Add HDR lighting** — Download a `.hdr` environment map and pass it via `rememberEnvironment(environmentLoader) { environmentLoader.createHDREnvironment("environments/sky_2k.hdr") ?: createEnvironment(environmentLoader) }` to the `environment` parameter of `SceneView`.
 - **Try AR** — Follow the [AR Compose codelab](codelabs/codelab-ar-compose.md) to place models in the real world using `ARSceneView`.
+- **Need a custom 3D model?** — See the [Blender pipeline](recipes/blender-pipeline.md) for authoring a model in Blender and exporting `.glb` for SceneView.
 - **Explore the samples** — The [samples page](samples.md) covers model animation, camera manipulation, cloud anchors, and more.
 - **Browse the API** — Read [`llms.txt`](https://github.com/sceneview/sceneview/blob/main/llms.txt) — the AI-first machine-readable reference covering every composable, node type, and loader.
 - **Building for Apple platforms?** — See the [Apple Quickstart](quickstart-ios.md) for iOS, macOS, and visionOS setup with SwiftUI and RealityKit.

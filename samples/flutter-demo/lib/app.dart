@@ -177,7 +177,7 @@ class _UpdateBanner extends StatelessWidget {
                           ? 'Version ${updater.availableVersion} is ready.'
                           : 'A newer build is ready.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: colors.onSecondaryContainer.withOpacity(0.8),
+                            color: colors.onSecondaryContainer.withValues(alpha: 0.8),
                           ),
                     ),
                   ],
