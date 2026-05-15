@@ -643,4 +643,44 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       destructiveHint: false,
     },
   },
+  {
+    name: "search_android_docs",
+    description:
+      "Searches Google's stock Android documentation knowledge base (~4 800 entries: Jetpack Compose, Camera2, ARCore SDK, Kotlin APIs, platform guides) and returns matching entries with their `kb://...` URIs. Use this to cross-reference stock Android APIs with SceneView code — e.g. \"how does LazyColumn paging work\", \"Camera2 capture session\", \"ARCore Config options\". Then call `fetch_android_doc` with a returned URI to read the full entry. Requires Google's `android` CLI on the MCP host's PATH (an optional runtime dependency — sceneview-mcp works without it); if the CLI is absent the tool returns clear install instructions instead of crashing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Free-text search query, e.g. \"LazyColumn paging\", \"Camera2 capture session\", \"ARCore anchors\".",
+        },
+      },
+      required: ["query"],
+    },
+    annotations: {
+      readOnlyHint: true,
+      openWorldHint: true,
+      destructiveHint: false,
+    },
+  },
+  {
+    name: "fetch_android_doc",
+    description:
+      "Fetches the full text of a single stock Android documentation entry by its knowledge-base URI (`kb://...`), as returned by `search_android_docs`. Use this after `search_android_docs` to read a complete guide or API reference. Requires Google's `android` CLI on the MCP host's PATH (an optional runtime dependency); if the CLI is absent the tool returns clear install instructions instead of crashing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        uri: {
+          type: "string",
+          description: "The knowledge-base URI to fetch, e.g. \"kb://compose/lists/lazy-column\". A bare path with no scheme is tolerated and normalised to kb://.",
+        },
+      },
+      required: ["uri"],
+    },
+    annotations: {
+      readOnlyHint: true,
+      openWorldHint: true,
+      destructiveHint: false,
+    },
+  },
 ];
