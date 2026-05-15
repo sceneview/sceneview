@@ -65,9 +65,9 @@ enum class DemoStatus {
 /**
  * One entry in the curated demo list shown on the Samples tab.
  *
- * String content is referenced through Android resources so locale flips
- * (English / French today, more locales tomorrow) take effect at runtime
- * without re-shipping. Closes #1099 / #955.
+ * String content is referenced through Android resources to keep literals
+ * out of code and defined in a single place. The sample app is English-only
+ * by design — see #1294. Closes #1099 / #955.
  *
  * @param id          Stable identifier used by the deep-link router
  *                    (`sceneview://demo/<id>`) and as a Compose key.
@@ -92,9 +92,9 @@ data class DemoEntry(
 )
 
 /**
- * Stable category keys. NEVER translate these strings — they are map keys
- * and registry filters. Use [categoryDisplayNameRes] to obtain the locale-
- * specific header label.
+ * Stable category keys — they are map keys and registry filters, never
+ * shown to the user. Use [categoryDisplayNameRes] to obtain the display
+ * header label.
  */
 object DemoCategory {
     const val BASICS_3D = "3D Basics"
@@ -116,9 +116,9 @@ val DEMO_CATEGORIES = listOf(
 )
 
 /**
- * Maps a stable category key to its localized display-name resource ID.
+ * Maps a stable category key to its display-name resource ID.
  * Unknown keys fall back to [R.string.category_3d] (safe default — never
- * surfaces a raw key like "3D Basics" on the FR locale).
+ * surfaces a raw key like "3D Basics" to the user).
  */
 @StringRes
 fun categoryDisplayNameRes(category: String): Int = when (category) {
