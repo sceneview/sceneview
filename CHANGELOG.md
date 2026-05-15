@@ -2,6 +2,10 @@
 
 ## Unreleased — iOS skybox renders + true-orbit camera + iOS Stage 2 demo parity + Cloud Anchor docs hotfix + `sceneview-swift` mirror retired
 
+### Fixed — AR recording resolution ([#1065](https://github.com/sceneview/sceneview/issues/1065))
+
+- **`ARRecorder` no longer records at ARCore's low-res 640×480 default.** ARCore writes the CPU image stream into the MP4, whose stock default is the device's *lowest*-resolution camera config. `ARSceneView`'s `sessionCameraConfig` now defaults to the new `highestResolutionCameraConfig` selector (highest-resolution BACK-facing, 30 FPS config), so every AR scene — and every recording — runs at full camera resolution without opt-in. `ARRecorder.start(...)` also gains an optional `recordingResolution: Size?` parameter to request a specific resolution explicitly. `Closes #1065`.
+
 ### Fixed — iOS rendering
 
 - **`SceneEnvironment.showSkybox = true` now actually paints the HDR as the scene background ([PR #1215](https://github.com/sceneview/sceneview/pull/1215), ported from [@radcli14](https://github.com/radcli14)'s [sceneview-swift#1](https://github.com/sceneview/sceneview-swift/pull/1))** — `SceneView` previously loaded the HDR and applied it as IBL via `ImageBasedLightComponent`, but never assigned it to `RealityViewContent.environment`, so the scene rendered against the default neutral void regardless of which environment preset was selected. The new path caches the loaded `EnvironmentResource` in a `@State` and applies it via `content.environment = .skybox(resource)` in the `RealityView.update:` closure with a diff guard against the last applied resource (no per-frame ARC churn). The `.task(id:)` keys on `(name, showSkybox)` so toggling the flag on the same env re-runs the loader, and clears the cached resource at the start of every task tick so cross-env transitions don't show stale skyboxes under a new IBL.

@@ -1,5 +1,8 @@
 package io.github.sceneview.ar.recording
 
+import android.util.Size
+import com.google.ar.core.CameraConfig
+import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.PlaybackStatus
 import com.google.ar.core.RecordingConfig
 import com.google.ar.core.Session
@@ -39,7 +42,13 @@ import java.nio.file.Files
  * Closes [sceneview/sceneview#875](https://github.com/sceneview/sceneview/issues/875).
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(shadows = [ARRecorderTest.ShadowRecordingConfig::class], manifest = Config.NONE)
+@Config(
+    shadows = [
+        ARRecorderTest.ShadowRecordingConfig::class,
+        ARRecorderTest.ShadowCameraConfigFilter::class,
+    ],
+    manifest = Config.NONE,
+)
 class ARRecorderTest {
 
     // ── Shared fixtures ──────────────────────────────────────────────────────
@@ -451,14 +460,107 @@ class ARRecorderTest {
         assertEquals(true, ShadowRecordingConfig.lastInstance!!.autoStopOnPause)
     }
 
+    // ── recordingResolution camera-config selection (#1065) ──────────────────
+
+    @Test
+    fun `start without recordingResolution leaves the camera config untouched`() {
+        // The 640x480 default bug stays only because nothing overrode the config —
+        // start() must not touch it when no resolution is requested.
+        val recorder = ARRecorder()
+        val session = FakeSession(
+            supportedCameraConfigs = listOf(fakeCameraConfig(1920, 1080)),
+        )
+        recorder.attach(session)
+
+        assertTrue(recorder.start(outFile, recordingResolution = null))
+
+        assertNull("setCameraConfig must not be called", session.lastSetCameraConfig)
+    }
+
+    @Test
+    fun `start with recordingResolution selects the matching high-res camera config`() {
+        // Mirrors the #1065 acceptance: a 1080p request on a Pixel-class config list must
+        // escape ARCore's low-res 640x480 default and apply the 1920x1080 config.
+        val recorder = ARRecorder()
+        val session = FakeSession(
+            supportedCameraConfigs = listOf(
+                fakeCameraConfig(640, 480),
+                fakeCameraConfig(1280, 720),
+                fakeCameraConfig(1920, 1080),
+            ),
+        )
+        recorder.attach(session)
+
+        assertTrue(recorder.start(outFile, recordingResolution = Size(1920, 1080)))
+
+        val applied = session.lastSetCameraConfig
+        assertNotNull("a camera config should have been applied", applied)
+        assertEquals(1920, applied!!.imageSize.width)
+        assertEquals(1080, applied.imageSize.height)
+        // The recording still actually starts.
+        assertEquals(ARRecorder.State.RECORDING, recorder.state)
+        assertEquals(1, session.startRecordingCount)
+    }
+
+    @Test
+    fun `start with recordingResolution on the explicit-session overload threads the value through`() {
+        val recorder = ARRecorder()
+        val session = FakeSession(
+            supportedCameraConfigs = listOf(
+                fakeCameraConfig(640, 480),
+                fakeCameraConfig(1920, 1080),
+            ),
+        )
+
+        assertTrue(recorder.start(session, outFile, recordingResolution = Size(1920, 1080)))
+
+        assertEquals(1920, session.lastSetCameraConfig!!.imageSize.width)
+    }
+
+    @Test
+    fun `start with recordingResolution still records when the device exposes no camera configs`() {
+        // Degenerate device — getSupportedCameraConfigs returns empty. The recorder must
+        // NOT crash and must still start recording with ARCore's existing config.
+        val recorder = ARRecorder()
+        val session = FakeSession(supportedCameraConfigs = emptyList())
+        recorder.attach(session)
+
+        assertTrue(recorder.start(outFile, recordingResolution = Size(1920, 1080)))
+
+        assertNull("no config to apply — setCameraConfig must not be called", session.lastSetCameraConfig)
+        assertEquals(ARRecorder.State.RECORDING, recorder.state)
+    }
+
+    @Test
+    fun `start with recordingResolution survives getSupportedCameraConfigs throwing`() {
+        // A JNI-backed query can throw on a session in an odd state — the recording must
+        // still proceed rather than abort.
+        val recorder = ARRecorder()
+        val session = FakeSession(getSupportedCameraConfigsThrows = true)
+        recorder.attach(session)
+
+        assertTrue(recorder.start(outFile, recordingResolution = Size(1920, 1080)))
+
+        assertNull(session.lastSetCameraConfig)
+        assertEquals(ARRecorder.State.RECORDING, recorder.state)
+    }
+
     // ── Test doubles ─────────────────────────────────────────────────────────
+
+    /** [CameraConfig] test double — stubs only the image size the selector reads. */
+    private class FakeCameraConfig(private val size: Size) : CameraConfig() {
+        override fun getImageSize(): Size = size
+    }
+
+    private fun fakeCameraConfig(width: Int, height: Int): CameraConfig =
+        FakeCameraConfig(Size(width, height))
 
     /**
      * Hand-rolled [Session] subclass for unit tests.
      *
      * `Session` declares a `protected Session()` no-arg constructor specifically so subclasses
      * can be created in tests without going through the JNI-backed `Session(Context)` path.
-     * We only override the three methods [ARRecorder] actually calls.
+     * We only override the methods [ARRecorder] actually calls.
      */
     private class FakeSession(
         private val playbackStatus: PlaybackStatus = PlaybackStatus.NONE,
@@ -469,6 +571,10 @@ class ARRecorderTest {
          */
         private val failOnStartRecordingFromCall: Int? = null,
         private val stopRecordingException: Lazy<RecordingFailedException>? = null,
+        /** Configs returned by [getSupportedCameraConfigs] — empty simulates a degenerate device. */
+        private val supportedCameraConfigs: List<CameraConfig> = emptyList(),
+        /** When true, [getSupportedCameraConfigs] throws — simulates a JNI failure. */
+        private val getSupportedCameraConfigsThrows: Boolean = false,
     ) : Session() {
 
         var startRecordingCount: Int = 0
@@ -476,6 +582,9 @@ class ARRecorderTest {
         var stopRecordingCount: Int = 0
             private set
         var lastConfig: RecordingConfig? = null
+            private set
+        /** The last config passed to [setCameraConfig], or `null` if it was never called. */
+        var lastSetCameraConfig: CameraConfig? = null
             private set
 
         override fun getPlaybackStatus(): PlaybackStatus = playbackStatus
@@ -494,6 +603,50 @@ class ARRecorderTest {
             stopRecordingCount += 1
             stopRecordingException?.let { throw it.value }
         }
+
+        override fun getSupportedCameraConfigs(filter: CameraConfigFilter?): List<CameraConfig> {
+            if (getSupportedCameraConfigsThrows) {
+                throw IllegalStateException("simulated getSupportedCameraConfigs failure")
+            }
+            return supportedCameraConfigs
+        }
+
+        override fun setCameraConfig(cameraConfig: CameraConfig?) {
+            lastSetCameraConfig = cameraConfig
+        }
+    }
+
+    /**
+     * Robolectric shadow for [CameraConfigFilter].
+     *
+     * Its `CameraConfigFilter(Session)` constructor and the chained `setFacingDirection` /
+     * `setTargetFps` setters are JNI-backed (`nativeCreateCameraConfigFilter`, …). The shadow
+     * replaces the constructor with a no-op and returns `this` from the fluent setters so the
+     * [ARRecorder] code path can build a filter in pure JVM. The filter content itself is
+     * irrelevant to the test — [FakeSession.getSupportedCameraConfigs] returns a fixed list.
+     */
+    @Implements(CameraConfigFilter::class)
+    class ShadowCameraConfigFilter {
+
+        @RealObject
+        @JvmField
+        var realFilter: CameraConfigFilter? = null
+
+        @Suppress("unused")
+        @Implementation
+        fun __constructor__(session: Session) {
+            // No-op — neutralises nativeCreateCameraConfigFilter.
+        }
+
+        @Implementation
+        fun setFacingDirection(
+            direction: CameraConfig.FacingDirection?,
+        ): CameraConfigFilter = realFilter!!
+
+        @Implementation
+        fun setTargetFps(
+            targetFps: java.util.EnumSet<CameraConfig.TargetFps>?,
+        ): CameraConfigFilter = realFilter!!
     }
 
     /**

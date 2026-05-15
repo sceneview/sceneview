@@ -46,6 +46,7 @@ import com.google.android.filament.Renderer
 import com.google.android.filament.Scene
 import com.google.android.filament.View
 import com.google.ar.core.CameraConfig
+import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
@@ -89,6 +90,7 @@ import io.github.sceneview.safeDestroyEnvironment
 import io.github.sceneview.safeDestroyIndirectLight
 import kotlinx.coroutines.delay
 import java.io.File
+import java.util.EnumSet
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -146,7 +148,12 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 Useful for record-replay debugging, deterministic AR tests, and
  *                                 sharing reproducers between developers without needing the
  *                                 original device or location.
- * @param sessionCameraConfig      Override for the ARCore camera configuration.
+ * @param sessionCameraConfig      Selects the ARCore [CameraConfig] for the session. Defaults to
+ *                                 [highestResolutionCameraConfig], which picks the highest-resolution
+ *                                 BACK-facing 30 FPS config the device exposes — so [ARRecorder]
+ *                                 recordings capture at full camera resolution instead of ARCore's
+ *                                 low-res 640×480 CPU-stream default (#1065). Pass `null` to keep
+ *                                 ARCore's stock default config.
  * @param sessionConfiguration     Callback to configure the ARCore [Session] and [Config].
  *                                 SceneView pre-sets `config.lightEstimationMode = ENVIRONMENTAL_HDR`
  *                                 (replacing ARCore's `AMBIENT_INTENSITY` default) BEFORE invoking
@@ -247,10 +254,15 @@ fun ARSceneView(
      */
     playbackDataset: File? = null,
     /**
-     * Sets the camera config to use.
-     * The config must be one returned by [Session.getSupportedCameraConfigs].
+     * Selects the camera config to use. The returned config must be one returned by
+     * [Session.getSupportedCameraConfigs].
+     *
+     * Defaults to [highestResolutionCameraConfig] so every AR scene — and in particular every
+     * [ARRecorder] recording — runs at the device's full back-camera resolution rather than
+     * ARCore's low-res 640×480 CPU-stream default ([#1065](https://github.com/sceneview/sceneview/issues/1065)).
+     * Pass `null` to keep ARCore's stock default config, or supply a custom selector.
      */
-    sessionCameraConfig: ((Session) -> CameraConfig)? = null,
+    sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
     /**
      * Configures the session and verifies that the enabled features in the specified session
      * config are supported with the currently set camera config.
@@ -865,6 +877,36 @@ private fun onARFrame(
     onSessionUpdatedRef.get()?.invoke(session, frame)
 }
 
+// ── Camera config selection ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Picks the highest-resolution BACK-facing, 30 FPS [CameraConfig] the [session] exposes.
+ *
+ * This is the default value of [ARSceneView]'s `sessionCameraConfig`. ARCore's stock default
+ * camera config is the **lowest** CPU-image resolution the device supports (often 640×480 on
+ * Pixel-class devices) — fine for the tracking pipeline, but it means [ARRecorder] recordings,
+ * which write the CPU image stream into the MP4, were capped at 640×480 regardless of the
+ * physical camera ([#1065](https://github.com/sceneview/sceneview/issues/1065)). Selecting the
+ * highest-resolution config makes every AR scene — and every recording — run at full camera
+ * resolution without per-demo opt-in.
+ *
+ * Falls back to the session's current [CameraConfig][Session.getCameraConfig] when ARCore
+ * exposes no matching config (degenerate device) or when [Session.getSupportedCameraConfigs]
+ * throws — the call must never crash session creation.
+ *
+ * @param session The ARCore [Session] being configured.
+ * @return The chosen [CameraConfig]; never throws.
+ */
+fun highestResolutionCameraConfig(session: Session): CameraConfig =
+    runCatching {
+        val filter = CameraConfigFilter(session)
+            .setFacingDirection(CameraConfig.FacingDirection.BACK)
+            .setTargetFps(EnumSet.of(CameraConfig.TargetFps.TARGET_FPS_30))
+        session.getSupportedCameraConfigs(filter).maxByOrNull {
+            it.imageSize.width.toLong() * it.imageSize.height.toLong()
+        }
+    }.getOrNull() ?: session.cameraConfig
+
 // ── Remember helpers ──────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -1020,7 +1062,7 @@ fun ARScene(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     sessionFeatures: Set<Session.Feature> = setOf(),
     playbackDataset: File? = null,
-    sessionCameraConfig: ((Session) -> CameraConfig)? = null,
+    sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     planeRenderer: Boolean = true,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),

@@ -111,7 +111,7 @@ fun ARSceneView(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     sessionFeatures: Set<Session.Feature> = setOf(),
     playbackDataset: File? = null,                 // Replay an MP4 recorded via ARRecorder. See "AR Recording & Playback".
-    sessionCameraConfig: ((Session) -> CameraConfig)? = null,
+    sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,  // Picks the highest-res 30fps BACK config so ARRecorder records at full resolution (#1065). Pass null for ARCore's stock default.
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     planeRenderer: Boolean = true,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
@@ -1510,6 +1510,8 @@ fun ARRecord() {
 ```
 
 `ARRecorder.state`, `recorder.errorMessage`, and `recorder.recordingFile` are all `MutableState`-backed under the hood — read them from a `@Composable` and Compose recomposes / `LaunchedEffect` re-keys when they change. The composable auto-stops on dispose. After `stop()`, `recorder.recordingFile` keeps pointing at the last MP4 so the caller can list / share / replay it.
+
+`ARRecorder.start(file, recordingRotation = null, recordingResolution = null)` — ARCore writes the **CPU image stream** into the MP4, whose stock default is the device's *lowest*-resolution config (often 640×480 on Pixels). `ARSceneView`'s `sessionCameraConfig` now defaults to `highestResolutionCameraConfig`, so every recording captures at the full back-camera resolution without opt-in. To force a specific size, pass `recorder.start(file, recordingResolution = android.util.Size(1920, 1080))` — the recorder applies the closest supported BACK-facing, 30 FPS `CameraConfig` before recording starts.
 
 ### Auto-stop after N seconds
 

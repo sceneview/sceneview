@@ -117,6 +117,7 @@ The same MP4 can be replayed with the Rerun debug bridge attached, giving you a 
 - **Emulator: playback works, recording does not.** ARCore Recording requires a real camera + IMU.
 - **Same device class.** Playback works best on the device that recorded it, or a similar one. Heavily different sensor sets (e.g. phone → tablet) may degrade tracking.
 - **MP4 file size.** Tens of MB per minute depending on resolution. Store under `getExternalFilesDir("ar-recordings")` (no permission required, app-private).
+- **Recording resolution.** ARCore writes the CPU image stream into the MP4; its default config is the device's *lowest* resolution (often 640×480 on Pixels). `ARSceneView` now defaults `sessionCameraConfig` to `highestResolutionCameraConfig`, so recordings capture at the full back-camera resolution out of the box. To force a specific size, pass `recorder.start(file, recordingResolution = Size(1920, 1080))` — the recorder picks the closest supported BACK-facing 30 FPS config.
 - **Switching live ↔ playback** requires a full `ARSceneView` recreation — wrap in `key(playbackDataset) { ARSceneView(...) }`.
 - **Recording while in playback mode is rejected.** `ARRecorder.start()` returns `false` and surfaces an error message if the session is currently bound to a playback dataset.
 

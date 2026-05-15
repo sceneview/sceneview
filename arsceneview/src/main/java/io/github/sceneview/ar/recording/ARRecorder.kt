@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
+import android.util.Size
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -14,12 +15,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.google.ar.core.CameraConfig
+import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.PlaybackStatus
 import com.google.ar.core.RecordingConfig
 import com.google.ar.core.Session
 import com.google.ar.core.exceptions.RecordingFailedException
 import java.io.File
 import java.io.FileNotFoundException
+import java.util.EnumSet
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -154,26 +158,37 @@ public class ARRecorder {
      * Recording cannot run while the session is in playback mode — if it is, this returns
      * `false` and transitions to [State.ERROR].
      *
-     * @param file              Absolute path of the destination MP4. Passed to
-     *                          [RecordingConfig.setMp4DatasetFilePath] (no scoped-storage /
-     *                          [android.net.Uri] wrapping needed).
-     * @param recordingRotation Optional [android.view.Display] rotation (`Surface.ROTATION_0` …
-     *                          `Surface.ROTATION_270`) so the MP4 plays back upright when
-     *                          captured in landscape. Pass the current display rotation from
-     *                          the calling context. Default `null` keeps ARCore's default of 0.
+     * @param file               Absolute path of the destination MP4. Passed to
+     *                           [RecordingConfig.setMp4DatasetFilePath] (no scoped-storage /
+     *                           [android.net.Uri] wrapping needed).
+     * @param recordingRotation  Optional [android.view.Display] rotation (`Surface.ROTATION_0` …
+     *                           `Surface.ROTATION_270`) so the MP4 plays back upright when
+     *                           captured in landscape. Pass the current display rotation from
+     *                           the calling context. Default `null` keeps ARCore's default of 0.
+     * @param recordingResolution Optional target CPU-image resolution for the recording. ARCore
+     *                           writes the **CPU image stream** into the MP4, whose default is
+     *                           the lowest-resolution config the device exposes (often 640×480 on
+     *                           Pixels). Pass e.g. `Size(1920, 1080)` to record at 1080p — the
+     *                           recorder picks the supported BACK-facing, 30 FPS [CameraConfig]
+     *                           whose pixel count is closest to the request. `null` (default)
+     *                           leaves the session's existing camera config untouched. See #1065.
      *
      * Returns `true` if recording started, `false` if no session is attached, the session is
      * in playback mode, or ARCore refused the start. On failure, [state] is set to
      * [State.ERROR] and [errorMessage] holds the reason.
      */
-    public fun start(file: File, recordingRotation: Int? = null): Boolean {
+    public fun start(
+        file: File,
+        recordingRotation: Int? = null,
+        recordingResolution: Size? = null,
+    ): Boolean {
         val session = sessionRef.get()
         if (session == null) {
             _errorMessage = "no AR session attached — call recordFrame(session) first"
             _state = State.ERROR
             return false
         }
-        return startInternal(session, file, recordingRotation)
+        return startInternal(session, file, recordingRotation, recordingResolution)
     }
 
     /**
@@ -183,13 +198,26 @@ public class ARRecorder {
      * [io.github.sceneview.ar.rerun.RerunBridge.logFrame] which also takes the session per
      * call. Once a session is published this way, every subsequent [stop] uses the same
      * reference until [detach] is called or a new session is published.
+     *
+     * @param recordingResolution Optional target CPU-image resolution — see the [start] overload
+     *                            above. `null` (default) keeps the session's camera config as-is.
      */
-    public fun start(session: Session, file: File, recordingRotation: Int? = null): Boolean {
+    public fun start(
+        session: Session,
+        file: File,
+        recordingRotation: Int? = null,
+        recordingResolution: Size? = null,
+    ): Boolean {
         sessionRef.set(session)
-        return startInternal(session, file, recordingRotation)
+        return startInternal(session, file, recordingRotation, recordingResolution)
     }
 
-    private fun startInternal(session: Session, file: File, recordingRotation: Int?): Boolean {
+    private fun startInternal(
+        session: Session,
+        file: File,
+        recordingRotation: Int?,
+        recordingResolution: Size?,
+    ): Boolean {
         // Recording is only allowed when the session is NOT in playback mode. PlaybackStatus
         // values: NONE (no playback dataset bound — recordable), OK / FINISHED / IO_ERROR
         // (playback active or terminated — never recordable).
@@ -200,6 +228,16 @@ public class ARRecorder {
         }
         return try {
             file.parentFile?.mkdirs()
+            // ARCore writes the CPU image stream into the MP4 — its default is the
+            // lowest-resolution config the device exposes (often 640×480 on Pixels, #1065).
+            // When the caller asked for a specific resolution, swap in the closest-matching
+            // BACK-facing 30 FPS camera config BEFORE startRecording(). ARCore mandates the
+            // camera config be applied while the session is configured (which it is here —
+            // the session has been created and configured by ARSceneView); applying it just
+            // before startRecording() is the valid window.
+            recordingResolution?.let { requested ->
+                selectCameraConfig(session, requested)?.let { session.cameraConfig = it }
+            }
             val config = RecordingConfig(session)
                 .setMp4DatasetFilePath(file.absolutePath)
                 .setAutoStopOnPause(true)
@@ -256,12 +294,57 @@ public class ARRecorder {
         }
     }
 
+    /**
+     * Query the [session] for its supported BACK-facing, 30 FPS camera configs and pick the
+     * one whose CPU image size best matches [requested]. Returns `null` if ARCore exposes no
+     * matching config (degenerate device) so the caller leaves the existing config untouched.
+     *
+     * Wrapped in `runCatching` because [Session.getSupportedCameraConfigs] is JNI-backed and
+     * can throw on a session that is not in a queryable state — a failure here must never
+     * abort the recording, it just falls back to ARCore's default config.
+     */
+    private fun selectCameraConfig(session: Session, requested: Size): CameraConfig? =
+        runCatching {
+            val filter = CameraConfigFilter(session)
+                .setFacingDirection(CameraConfig.FacingDirection.BACK)
+                .setTargetFps(EnumSet.of(CameraConfig.TargetFps.TARGET_FPS_30))
+            pickCameraConfig(session.getSupportedCameraConfigs(filter), requested)
+        }.getOrNull()
+
     private fun logWarning(msg: String) {
         try { Log.w(TAG, msg) } catch (_: RuntimeException) { /* unit test stub */ }
     }
 
     public companion object {
         private const val TAG = "ARRecorder"
+
+        /**
+         * Pick the [CameraConfig] from [configs] whose CPU [image size][CameraConfig.getImageSize]
+         * is the closest match to [requested] (smallest absolute pixel-count difference). Ties are
+         * broken towards the higher-resolution config, and a config exactly matching [requested]
+         * always wins.
+         *
+         * Pure function — no ARCore session interaction — so the selection logic is unit-testable
+         * against a mocked [Session.getSupportedCameraConfigs] result. Returns `null` for an empty
+         * list so callers can leave the session's camera config untouched on a degenerate device.
+         *
+         * @see selectCameraConfig
+         */
+        @JvmStatic
+        public fun pickCameraConfig(configs: List<CameraConfig>, requested: Size): CameraConfig? {
+            if (configs.isEmpty()) return null
+            val targetPixels = requested.width.toLong() * requested.height.toLong()
+            return configs.minWithOrNull(
+                compareBy<CameraConfig> { config ->
+                    val size = config.imageSize
+                    val pixels = size.width.toLong() * size.height.toLong()
+                    kotlin.math.abs(pixels - targetPixels)
+                }.thenByDescending { config ->
+                    val size = config.imageSize
+                    size.width.toLong() * size.height.toLong()
+                },
+            )
+        }
 
         /**
          * Copy a recorded MP4 from app-private storage into the public **Downloads** collection
