@@ -382,10 +382,23 @@ data class OrbitState(val yaw: Float, val radius: Float, val yHeight: Float) {
  */
 class HeroOrbitCameraManipulator(
     private val yawProvider: () -> Float,
-    private val radius: Float,
+    private val radiusProvider: () -> Float,
     private val yHeight: Float,
     private val target: Position,
 ) : io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator {
+
+    /**
+     * Convenience constructor for a fixed orbit [radius]. The auto-fit overload
+     * ([rememberAutoFitHeroOrbitCameraManipulator]) passes a dynamic [radiusProvider] instead so
+     * the orbit distance adapts to the displayed model's intrinsic size (#1439).
+     */
+    constructor(
+        yawProvider: () -> Float,
+        radius: Float,
+        yHeight: Float,
+        target: Position,
+    ) : this(yawProvider, { radius }, yHeight, target)
+
     private var fallback: io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator? =
         null
     private var viewportW = 1
@@ -395,6 +408,7 @@ class HeroOrbitCameraManipulator(
 
     private fun currentEye(): Position {
         val rad = Math.toRadians(yawProvider().toDouble()).toFloat()
+        val radius = radiusProvider()
         return Position(
             x = sin(rad) * radius + target.x,
             y = target.y + yHeight,
