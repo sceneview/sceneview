@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- `rememberPausableHeroYaw` gained an opt-in `idleResumeMillis` parameter: after the user stops interacting with the viewport, the hero auto-rotation gently resumes once the idle timeout elapses. Each gesture restarts the countdown, so the spin only comes back when interaction has truly stopped. Demos that omit the parameter keep the original pause-forever behaviour. Wired into the View Node demo. (#1440)

@@ -70,11 +70,13 @@ fun ViewNodeDemo(onBack: () -> Unit) {
     // back card (at rotation+180°) reveals itself — makes the "Compose-in-3D" story
     // unmistakable instead of looking like a flat HUD sticker. `trigger = true`
     // because the ViewNode itself needs no asset load — the animation can run
-    // immediately. Pauses on first gesture so users can grab and inspect the cards.
+    // immediately. Pauses on gesture so users can grab and inspect the cards, then
+    // gently resumes the spin once they've been idle for 3 s (#1440).
     val (heroYaw, onHeroGesture) = rememberPausableHeroYaw(
         trigger = true,
         durationMillis = 14_000,
         staticYaw = 20f,
+        idleResumeMillis = 3_000L,
     )
 
     val gestureListener = rememberOnGestureListener(

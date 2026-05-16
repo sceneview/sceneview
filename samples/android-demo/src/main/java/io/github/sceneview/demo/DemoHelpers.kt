@@ -223,6 +223,22 @@ fun rememberAutoOrbit(
  * ```
  *
  * Or just call `onUserGesture()` from `onTouchEvent` for the broadest coverage.
+ *
+ * ### Idle-resume (opt-in)
+ *
+ * Pass a non-null [idleResumeMillis] to make the rotation *gently resume* once the
+ * user has been idle for that long, instead of staying paused forever. Each gesture
+ * restarts the idle countdown, so the rotation only comes back when the user has
+ * truly stopped interacting. Demos that don't pass it keep the original
+ * pause-forever behaviour, so existing callers are unaffected.
+ *
+ * ```kotlin
+ * // Resume the hero spin 3 s after the last gesture.
+ * val (yaw, onUserGesture) = rememberPausableHeroYaw(
+ *     trigger = modelInstance != null,
+ *     idleResumeMillis = 3_000L,
+ * )
+ * ```
  */
 data class HeroYawController(val yaw: Float, val onUserGesture: () -> Unit)
 
@@ -231,10 +247,28 @@ fun rememberPausableHeroYaw(
     trigger: Boolean,
     durationMillis: Int = 20_000,
     staticYaw: Float = 45f,
+    idleResumeMillis: Long? = null,
 ): HeroYawController {
     val pausedState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val paused = pausedState.value
     val anim = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
+    // Bumped on every gesture; the idle-resume effect keys off it so each new
+    // gesture cancels the in-flight countdown and starts a fresh one.
+    val gestureTick = androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+
+    // Opt-in: when idle-resume is enabled, wait out the idle window after the last
+    // gesture, then lift the pause. Keyed on gestureTick so a gesture mid-countdown
+    // restarts the timer; the coroutine is cancelled cleanly by Compose on each
+    // re-key (and on dispose / qaMode toggle), so no timer ever leaks.
+    if (idleResumeMillis != null) {
+        androidx.compose.runtime.LaunchedEffect(gestureTick.intValue, DemoSettings.qaMode) {
+            if (pausedState.value && !DemoSettings.qaMode) {
+                kotlinx.coroutines.delay(idleResumeMillis)
+                pausedState.value = false
+            }
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(trigger, DemoSettings.qaMode, paused) {
         if (trigger && !DemoSettings.qaMode && !paused) {
             // Resume from current yaw if previously paused — no snap.
@@ -262,7 +296,14 @@ fun rememberPausableHeroYaw(
         }
     }
     val yaw = if (DemoSettings.qaMode) staticYaw else anim.value
-    return HeroYawController(yaw = yaw, onUserGesture = { pausedState.value = true })
+    return HeroYawController(
+        yaw = yaw,
+        onUserGesture = {
+            pausedState.value = true
+            // Restart the idle countdown (no-op when idle-resume is disabled).
+            gestureTick.intValue++
+        },
+    )
 }
 
 /**
