@@ -17,6 +17,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,13 +64,13 @@ import kotlin.math.roundToInt
  * - **Reset Position** — recreates the model at its default transform.
  *
  * Two on-screen overlays:
- * 1. Top-center pill: the active gesture mode — "Editing" (per-node touch on
+ * 1. Top-start pill: the active gesture mode — "Editing" (per-node touch on
  *    the editable model) or "Moving camera" (touch on empty space, falling
  *    through to the camera manipulator).
- * 2. Top-end card: live transform of the helmet (X/Y/Z position + Euler rotation),
- *    updated every frame by polling the node's [position] and [rotation] from a
- *    [LaunchedEffect] tied to a frame counter. Lets the user see the numerical
- *    effect of their gesture in real time.
+ * 2. Top-end card ([LiveTransformOverlay]): live transform of the helmet (X/Y/Z
+ *    position + Euler rotation), polled every frame from the node. The two
+ *    overlays sit on opposite horizontal anchors so a wide gesture-mode label
+ *    can never overlap the transform readout.
  *
  * Gesture isolation: when a touch lands on the editable helmet, the camera
  * orbit/pan/zoom manipulator is skipped for the duration of that touch (handled
@@ -103,44 +104,18 @@ fun GestureEditingDemo(onBack: () -> Unit) {
     // Live transform tracking — we hold a reference to the active ModelNode so the
     // overlay can poll its position/rotation each frame. The reference is reset
     // whenever the node is recreated (via [resetKey]).
+    //
+    // The 60 Hz transform poll that drives the overlay deliberately lives inside the
+    // separate [LiveTransformOverlay] composable, NOT here. Polling writes Compose
+    // state, and if that state were read in this function's body it would recompose
+    // GestureEditingDemo — and therefore the SceneView call — 60 times a second.
+    // SceneScope.ModelNode re-applies its declared `position`/`rotation` on every
+    // recomposition (via a SideEffect), so a frame-rate recomposition would reset the
+    // helmet's transform every ~16 ms, reverting any gesture-driven rotation before
+    // the user ever sees it. That was the "gestures do nothing" bug: isolating the
+    // poll keeps the recomposition scoped to the overlay and leaves gesture
+    // transforms intact.
     val modelNodeRef = remember { mutableStateOf<ModelNode?>(null) }
-    var liveX by remember { mutableStateOf(0f) }
-    var liveY by remember { mutableStateOf(0f) }
-    var liveZ by remember { mutableStateOf(0f) }
-    var liveRX by remember { mutableStateOf(0f) }
-    var liveRY by remember { mutableStateOf(0f) }
-    var liveRZ by remember { mutableStateOf(0f) }
-
-    // Frame-poll the node's transform — Filament does NOT route Compose state, so
-    // gesture-driven mutations to position/rotation never trigger recomposition.
-    // We instead snapshot the values on a 60 Hz tick and compare; the overlay only
-    // recomposes when something actually changed past a small threshold (avoids
-    // burning composition on floating-point noise). Restarted whenever [resetKey]
-    // changes — the node is recreated then, so the previous reference is stale.
-    LaunchedEffect(resetKey) {
-        // Wait for the node to be created and for its ref to be populated by the
-        // ModelNode `apply` block — async model load means we hit this before
-        // the ref is ready on first composition.
-        while (true) {
-            val node = modelNodeRef.value
-            if (node != null) {
-                val p = node.position
-                val r = node.rotation
-                // Snap thresholds: 0.5 mm for position, 0.1° for rotation. Small
-                // enough to feel real-time, big enough to avoid a recomposition
-                // every frame from FP jitter.
-                if (abs(p.x - liveX) > 0.0005f) liveX = p.x
-                if (abs(p.y - liveY) > 0.0005f) liveY = p.y
-                if (abs(p.z - liveZ) > 0.0005f) liveZ = p.z
-                if (abs(r.x - liveRX) > 0.1f) liveRX = r.x
-                if (abs(r.y - liveRY) > 0.1f) liveRY = r.y
-                if (abs(r.z - liveRZ) > 0.1f) liveRZ = r.z
-            }
-            // ~16 ms = 60 Hz. Compose's withFrameNanos would be ideal but adds
-            // complexity for a debug overlay; a plain delay is fine here.
-            kotlinx.coroutines.delay(16)
-        }
-    }
 
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
@@ -349,13 +324,18 @@ fun GestureEditingDemo(onBack: () -> Unit) {
             }
         }
 
-        // On-screen indicator: small pill at the top center showing what the
-        // current gesture is doing. Hidden when no gesture is active.
+        // On-screen indicator: small pill showing what the current gesture is doing.
+        // Hidden when no gesture is active. Anchored to the TOP-START corner — the
+        // live-transform card owns the TOP-END corner. The pill used to sit at
+        // Alignment.TopCenter and visually collided with the readout card once the
+        // card grew wide enough (the "Moving camera" label overlapping the pos/rot
+        // text). Separate horizontal anchors guarantee they can never overlap
+        // regardless of label width.
         gestureMode?.let { label ->
             Surface(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 8.dp),
+                    .align(Alignment.TopStart)
+                    .padding(8.dp),
                 color = Color.Black.copy(alpha = 0.7f),
                 contentColor = Color.White,
                 tonalElevation = 4.dp,
@@ -369,30 +349,90 @@ fun GestureEditingDemo(onBack: () -> Unit) {
             }
         }
 
-        // Live-transform readout — top-end corner. Polls the node every ~16 ms
-        // and only updates when values actually change past a small threshold.
-        Surface(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp),
-            color = Color.Black.copy(alpha = 0.7f),
-            contentColor = Color.White,
-            tonalElevation = 4.dp,
-            shape = MaterialTheme.shapes.small
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = "pos  X %+.2f  Y %+.2f  Z %+.2f".format(liveX, liveY, liveZ),
-                    style = MaterialTheme.typography.labelSmall
-                )
-                Text(
-                    text = "rot  X %+.0f°  Y %+.0f°  Z %+.0f°".format(liveRX, liveRY, liveRZ),
-                    style = MaterialTheme.typography.labelSmall
-                )
+        // Live-transform readout — top-end corner, in its own composable so the
+        // 60 Hz transform poll recomposes only this overlay, never the SceneView.
+        LiveTransformOverlay(
+            modelNodeRef = modelNodeRef,
+            resetKey = resetKey,
+            modifier = Modifier.align(Alignment.TopEnd)
+        )
+    }
+}
+
+/**
+ * Top-end overlay showing the live position/rotation of the edited helmet.
+ *
+ * Polls the node's transform on a 60 Hz tick. Crucially this lives in its **own**
+ * composable: the polled values are Compose state, and were they read inside
+ * [GestureEditingDemo]'s body the whole demo — including the `SceneView` call —
+ * would recompose every frame. `SceneScope.ModelNode` re-applies its declared
+ * transform on each recomposition, so a frame-rate recomposition would silently
+ * revert every gesture-driven rotation. Scoping the poll here keeps the
+ * recomposition isolated to this overlay and leaves the gesture transforms intact.
+ */
+@Composable
+private fun LiveTransformOverlay(
+    modelNodeRef: MutableState<ModelNode?>,
+    resetKey: Int,
+    modifier: Modifier = Modifier
+) {
+    var liveX by remember { mutableStateOf(0f) }
+    var liveY by remember { mutableStateOf(0f) }
+    var liveZ by remember { mutableStateOf(0f) }
+    var liveRX by remember { mutableStateOf(0f) }
+    var liveRY by remember { mutableStateOf(0f) }
+    var liveRZ by remember { mutableStateOf(0f) }
+
+    // Frame-poll the node's transform — Filament does NOT route Compose state, so
+    // gesture-driven mutations to position/rotation never trigger recomposition.
+    // We snapshot the values on a 60 Hz tick and compare; this overlay only
+    // recomposes when something actually changed past a small threshold (avoids
+    // burning composition on floating-point noise). Restarted whenever [resetKey]
+    // changes — the node is recreated then, so the previous reference is stale.
+    LaunchedEffect(resetKey) {
+        // Wait for the node to be created and for its ref to be populated by the
+        // ModelNode `apply` block — async model load means we hit this before
+        // the ref is ready on first composition.
+        while (true) {
+            val node = modelNodeRef.value
+            if (node != null) {
+                val p = node.position
+                val r = node.rotation
+                // Snap thresholds: 0.5 mm for position, 0.1° for rotation. Small
+                // enough to feel real-time, big enough to avoid a recomposition
+                // every frame from FP jitter.
+                if (abs(p.x - liveX) > 0.0005f) liveX = p.x
+                if (abs(p.y - liveY) > 0.0005f) liveY = p.y
+                if (abs(p.z - liveZ) > 0.0005f) liveZ = p.z
+                if (abs(r.x - liveRX) > 0.1f) liveRX = r.x
+                if (abs(r.y - liveRY) > 0.1f) liveRY = r.y
+                if (abs(r.z - liveRZ) > 0.1f) liveRZ = r.z
             }
+            // ~16 ms = 60 Hz. Compose's withFrameNanos would be ideal but adds
+            // complexity for a debug overlay; a plain delay is fine here.
+            kotlinx.coroutines.delay(16)
+        }
+    }
+
+    Surface(
+        modifier = modifier.padding(8.dp),
+        color = Color.Black.copy(alpha = 0.7f),
+        contentColor = Color.White,
+        tonalElevation = 4.dp,
+        shape = MaterialTheme.shapes.small
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = "pos  X %+.2f  Y %+.2f  Z %+.2f".format(liveX, liveY, liveZ),
+                style = MaterialTheme.typography.labelSmall
+            )
+            Text(
+                text = "rot  X %+.0f°  Y %+.0f°  Z %+.0f°".format(liveRX, liveRY, liveRZ),
+                style = MaterialTheme.typography.labelSmall
+            )
         }
     }
 }
