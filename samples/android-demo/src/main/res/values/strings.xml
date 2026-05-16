@@ -228,6 +228,11 @@
     <string name="demo_shape_subtitle">Extrude 2D polygons into 3D meshes</string>
     <string name="demo_reflection_probes_title">Reflection Probes</string>
     <string name="demo_reflection_probes_subtitle">Local cubemap reflections</string>
+    <string name="demo_texture_streaming_title">Material Streaming</string>
+    <string name="demo_texture_streaming_subtitle">Swap a model\'s material live from downloaded packs</string>
+    <string name="demo_texture_streaming_section">Material Pack</string>
+    <string name="demo_texture_streaming_downloading">Downloading %1$s…</string>
+    <string name="demo_texture_streaming_applied">Applied: %1$s</string>
     <string name="demo_secondary_camera_title">Secondary Camera (PiP)</string>
     <string name="demo_secondary_camera_subtitle">Picture-in-picture camera view</string>
     <string name="demo_secondary_camera_chip_section">PiP Camera Angle</string>

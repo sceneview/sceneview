@@ -126,6 +126,14 @@ import io.github.sceneview.node.findActivity
  *                              separate parameters, never DSL children, so they are unaffected.
  *                              Mirrors the iOS `autoCenterContent` feature (#1026). Pass `false`
  *                              for scenes with intentional off-centre placement.
+ * @param autoFitContent        When `true`, the library moves [cameraNode] once — on the first
+ *                              frame the content's union bounding box is non-empty — so the
+ *                              content fills the viewport regardless of the model's intrinsic
+ *                              size ([#1439]). Only applies when [cameraManipulator] is `null`
+ *                              (a manipulator owns the camera transform every frame and would
+ *                              fight the static fit). Default `false`. For manipulator-driven
+ *                              demos use [CameraNode.fitDistanceForContent] to seed the orbit
+ *                              radius instead.
  * @param renderer              Filament [Renderer]. Use [rememberRenderer].
  * @param scene                 Filament [Scene] graph, shareable across views. Use [rememberScene].
  * @param environment           IBL + skybox environment. Use [rememberEnvironment].
@@ -197,6 +205,19 @@ fun SceneView(
      * strict per-node placement semantics for scenes with intentional off-centre composition.
      */
     autoCenterContent: Boolean = true,
+    /**
+     * When `true`, [cameraNode] is moved once — on the first frame the DSL [content]'s union
+     * bounding box is non-empty — so the content fills the viewport regardless of the model's
+     * intrinsic size ([#1439]). The auto-fit distance is computed from the content's bounding
+     * sphere and the camera's focal-length-derived field-of-view, so a 5 cm model and a 5 m
+     * model are both framed comfortably without per-scene `scaleToUnits` tuning.
+     *
+     * Only takes effect when [cameraManipulator] is `null` — a manipulator owns the camera
+     * transform on every frame and would immediately overwrite the static fit. For
+     * manipulator-driven scenes, read [CameraNode.fitDistanceForContent] and seed your
+     * manipulator's orbit radius with it instead. Default `false`.
+     */
+    autoFitContent: Boolean = false,
     /**
      * A [Renderer] instance represents an operating system's window.
      * Typically, applications create a [Renderer] per window.
@@ -348,6 +369,9 @@ fun SceneView(
 
     val contentRoot = remember(engine) { Node(engine) }
     val autoCenterState = remember { SceneAutoCenterState() }
+    // Library-level auto-fit framing (#1439). One-shot like auto-center: moves the camera so the
+    // content fills the viewport, then becomes a no-op so the user's zoom / pan is never fought.
+    val autoFitState = remember { SceneAutoFitState() }
 
     DisposableEffect(autoCenterContent, contentRoot) {
         if (autoCenterContent) {
@@ -379,6 +403,9 @@ fun SceneView(
                 (prevNodes - newNodes.toSet()).forEach { nodeManager.removeNode(it) }
                 (newNodes - prevNodes.toSet()).forEach { nodeManager.addNode(it) }
             }
+            // Content changed — re-run the one-shot auto-fit framing (#1439) regardless of the
+            // auto-center mode so newly loaded models get re-framed.
+            autoFitState.reset()
             prevNodes = newNodes
             childNodesRef.set(newNodes)
         }
@@ -510,6 +537,8 @@ fun SceneView(
     // frame loop without restarting it (the loop's LaunchedEffect is keyed on engine/renderer/
     // view/scene only).
     val currentAutoCenterContent = rememberUpdatedState(autoCenterContent)
+    // Same for `autoFitContent` (#1439) — toggling it at runtime is picked up by the frame loop.
+    val currentAutoFitContent = rememberUpdatedState(autoFitContent)
 
     LaunchedEffect(engine, renderer, view, scene) {
         while (true) {
@@ -528,6 +557,19 @@ fun SceneView(
                     // main render thread — Filament transform / renderable reads require it.
                     if (currentAutoCenterContent.value) {
                         autoCenterState.maybeCenter(contentRoot)
+                    }
+
+                    // Library-level auto-fit framing (#1439). One-shot, same lifecycle as the
+                    // auto-center pass. Skipped while a camera manipulator is active — the
+                    // manipulator's `getTransform()` below overwrites the camera every frame, so
+                    // a static fit would never survive. Manipulator-driven scenes seed their
+                    // orbit radius from `CameraNode.fitDistanceForContent` instead.
+                    if (currentAutoFitContent.value && currentCameraManipulator.value == null) {
+                        if (currentAutoCenterContent.value) {
+                            autoFitState.maybeFit(cameraNode, contentRoot)
+                        } else {
+                            autoFitState.maybeFit(cameraNode, childNodesRef.get())
+                        }
                     }
 
                     currentCameraManipulator.value?.let { manipulator ->
