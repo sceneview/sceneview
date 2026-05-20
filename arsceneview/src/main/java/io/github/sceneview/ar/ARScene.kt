@@ -60,6 +60,7 @@ import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
+import io.github.sceneview.ar.node.DepthMeshNode
 import io.github.sceneview.ar.node.PoseNode
 import io.github.sceneview.ar.scene.PlaneRenderer
 import io.github.sceneview.collision.CollisionSystem
@@ -911,6 +912,7 @@ private fun onARFrame(
     arPlaneRenderer.update(session, frame)
 
     childNodes.filterIsInstance<PoseNode>().forEach { it.update(session, frame) }
+    childNodes.filterIsInstance<DepthMeshNode>().forEach { it.update(session, frame) }
 
     val newTrackingFailure = if (!isCameraTracking) {
         camera.trackingFailureReason.takeIf { it != TrackingFailureReason.NONE }

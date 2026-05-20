@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
+import com.google.android.filament.RenderableManager
 import com.google.ar.core.Anchor
 import com.google.ar.core.AugmentedFace
 import com.google.ar.core.AugmentedImage
@@ -36,6 +37,9 @@ import io.github.sceneview.ar.node.AnchorNode as AnchorNodeImpl
 import io.github.sceneview.ar.node.AugmentedFaceNode as AugmentedFaceNodeImpl
 import io.github.sceneview.ar.node.AugmentedImageNode as AugmentedImageNodeImpl
 import io.github.sceneview.ar.node.CloudAnchorNode as CloudAnchorNodeImpl
+import io.github.sceneview.ar.node.DepthMeshNode as DepthMeshNodeImpl
+import io.github.sceneview.ar.node.DepthMeshSnapshot
+import io.github.sceneview.ar.physics.DepthCollider
 import io.github.sceneview.ar.node.HitResultNode as HitResultNodeImpl
 import io.github.sceneview.ar.node.PoseNode as PoseNodeImpl
 import io.github.sceneview.ar.node.RooftopAnchorNode as RooftopAnchorNodeImpl
@@ -695,5 +699,201 @@ class ARSceneScope internal constructor(
     ) {
         val attached = remember(node) { node.apply(apply) }
         NodeLifecycle(attached, content)
+    }
+
+    // ── DepthMeshNode ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Creates and remembers a [DepthMeshNodeImpl] that reifies the live ARCore environment depth
+     * image as a renderable Filament mesh, with edge-discontinuity culling so triangles do not
+     * stretch across depth jumps.
+     *
+     * The returned node is the SceneView equivalent of Google's
+     * [arcore-depth-lab](https://github.com/googlesamples/arcore-depth-lab) `ScreenSpaceDepthMesh`.
+     * Drop it inside an [ARSceneView] content block to let virtual objects cast shadows onto the
+     * real world, to carry a scan/pulse material over real geometry, or to provide the geometry
+     * for a depth-driven physics collider ([#1713](https://github.com/sceneview/sceneview/issues/1713)).
+     *
+     * Requires the session depth mode set to [com.google.ar.core.Config.DepthMode.AUTOMATIC] or
+     * [com.google.ar.core.Config.DepthMode.RAW_DEPTH_ONLY] — without it the mesh stays empty.
+     *
+     * ```kotlin
+     * ARSceneView(
+     *     sessionConfiguration = { _, config ->
+     *         config.depthMode = Config.DepthMode.AUTOMATIC
+     *     }
+     * ) {
+     *     val depthMesh = rememberDepthMesh()                 // 5 Hz refresh
+     *     DepthMeshNode(depthMesh)                            // adds it to the scene
+     * }
+     * ```
+     *
+     * @param refreshIntervalMs    Minimum interval, in ms, between two mesh rebuilds (default 200 ms).
+     * @param stride               Pixel stride between depth samples used as vertices (default 4).
+     *                             Higher = coarser mesh, faster rebuild.
+     * @param edgeThresholdMeters  Depth-jump threshold above which the spanning triangle is culled
+     *                             (default 0.10 m).
+     * @param materialInstance     Optional material applied to the mesh. Defaults to Filament's
+     *                             basic material. A transparent shadow-receiver material is a
+     *                             common choice.
+     * @param onMeshRebuilt        Invoked on each rebuild with the freshly-computed
+     *                             [DepthMeshSnapshot]. Use this to feed a downstream consumer
+     *                             (physics collider, point-cloud exporter, debug overlay).
+     */
+    @Composable
+    fun rememberDepthMesh(
+        refreshIntervalMs: Long = DepthMeshNodeImpl.DEFAULT_REFRESH_INTERVAL_MS,
+        stride: Int = io.github.sceneview.ar.arcore.DEFAULT_DEPTH_MESH_STRIDE,
+        edgeThresholdMeters: Float =
+            io.github.sceneview.ar.arcore.DEFAULT_DEPTH_EDGE_THRESHOLD_METERS,
+        materialInstance: MaterialInstance? = null,
+        builder: RenderableManager.Builder.() -> Unit = {},
+        onMeshRebuilt: ((DepthMeshSnapshot) -> Unit)? = null,
+    ): DepthMeshNodeImpl {
+        val node = remember(engine) {
+            DepthMeshNodeImpl(
+                engine = engine,
+                refreshIntervalMs = refreshIntervalMs,
+                stride = stride,
+                edgeThresholdMeters = edgeThresholdMeters,
+                materialInstance = materialInstance,
+                builder = builder,
+                onMeshRebuilt = onMeshRebuilt,
+            )
+        }
+        // Keep the live params in sync so a recomposition with new arguments rebinds without
+        // recreating the underlying Filament buffers.
+        SideEffect {
+            node.refreshIntervalMs = refreshIntervalMs
+            node.stride = stride
+            node.edgeThresholdMeters = edgeThresholdMeters
+            node.onMeshRebuilt = onMeshRebuilt
+        }
+        DisposableEffect(node) {
+            onDispose {
+                // Detaches the node from its parent and frees the entity + owned buffers. The
+                // base ARSceneScope's nodeRemover already removes it from Filament's scene; this
+                // covers the case where the caller held the node outside the composition.
+                node.destroy()
+            }
+        }
+        return node
+    }
+
+    /**
+     * Adds a [DepthMeshNodeImpl] returned by [rememberDepthMesh] to the AR scene.
+     *
+     * Splitting the factory ([rememberDepthMesh]) from the scene-attach composable lets the
+     * caller hold the node reference (to read [DepthMeshNodeImpl.latestSnapshot] for downstream
+     * consumers like the #1713 physics collider) while still benefiting from the standard
+     * lifecycle attach/detach.
+     *
+     * @param node      The depth mesh node returned by [rememberDepthMesh].
+     * @param apply     Imperative configuration applied once on first composition.
+     * @param content   Optional child nodes declared in a [NodeScope].
+     */
+    @Composable
+    fun DepthMeshNode(
+        node: DepthMeshNodeImpl,
+        apply: DepthMeshNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null,
+    ) {
+        val attached = remember(node) { node.apply(apply) }
+        NodeLifecycle(attached, content)
+    }
+
+    // ── DepthCollider ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Creates and remembers a [DepthCollider] (#1713) — a static physics collider built from the
+     * live ARCore environment depth mesh.
+     *
+     * Virtual rigid bodies driven by [io.github.sceneview.node.PhysicsNode] can pass this collider
+     * as their `floorProvider` to bounce off the **real** floor, table or wall instead of the
+     * default static `floorY` plane. The collider is the SceneView equivalent of Google's
+     * [arcore-depth-lab](https://github.com/googlesamples/arcore-depth-lab) `Collider` scene.
+     *
+     * Under the hood the collider is a thin wrapper over a hidden [DepthMeshNodeImpl] (same
+     * primitive as [rememberDepthMesh]): each rebuild's vertex/index buffers are converted to
+     * world-space triangles once, then per-frame, per-body lookups are cheap point-vs-triangle
+     * math. Edge-discontinuity culling is inherited from the mesh — the collider does not stretch
+     * "curtain" surfaces across depth jumps. The hidden mesh is **not rendered** (it carries no
+     * material instance and is filtered out of all layer masks); set [renderMesh] to `true` if
+     * you also want a visible depth surface (e.g. for debugging or shadow-receiver overlays).
+     *
+     * Requires the session depth mode set to [com.google.ar.core.Config.DepthMode.AUTOMATIC] or
+     * [com.google.ar.core.Config.DepthMode.RAW_DEPTH_ONLY]. Without it the collider stays empty
+     * and [io.github.sceneview.node.PhysicsBody] falls back to its static floor.
+     *
+     * ```kotlin
+     * ARSceneView(
+     *     sessionConfiguration = { _, config ->
+     *         config.depthMode = Config.DepthMode.AUTOMATIC
+     *     }
+     * ) {
+     *     val depthCollider = rememberDepthCollider(refreshIntervalMs = 200L)
+     *     PhysicsNode(
+     *         node = ballNode,
+     *         restitution = 0.7f,
+     *         radius = 0.05f,
+     *         floorProvider = depthCollider,
+     *     )
+     * }
+     * ```
+     *
+     * @param refreshIntervalMs    Minimum interval, in ms, between two mesh rebuilds (default 200
+     *                             ms = 5 Hz). Acceptance from #1713: "rebuild cost measured;
+     *                             refresh interval keeps the frame budget green".
+     * @param stride               Pixel stride between depth samples used as vertices. Default is
+     *                             the same as [rememberDepthMesh].
+     * @param edgeThresholdMeters  Depth-jump threshold above which the spanning triangle is culled.
+     *                             Default matches the rendered depth mesh.
+     * @param renderMesh           When `true`, the underlying [DepthMeshNodeImpl] is also rendered
+     *                             (useful when you want to debug the collider visually, or to layer
+     *                             a shadow-receiver material on top of the same geometry). When
+     *                             `false` (default) the collider operates invisibly.
+     */
+    @Composable
+    fun rememberDepthCollider(
+        refreshIntervalMs: Long = DepthMeshNodeImpl.DEFAULT_REFRESH_INTERVAL_MS,
+        stride: Int = io.github.sceneview.ar.arcore.DEFAULT_DEPTH_MESH_STRIDE,
+        edgeThresholdMeters: Float =
+            io.github.sceneview.ar.arcore.DEFAULT_DEPTH_EDGE_THRESHOLD_METERS,
+        renderMesh: Boolean = false,
+    ): DepthCollider {
+        // Reuse rememberDepthMesh so the mesh node is fully lifecycle-managed by the existing
+        // path (DisposableEffect destroys it on leave, ARScene's per-frame `update` call already
+        // walks `childNodes.filterIsInstance<DepthMeshNode>()`).
+        val meshNode = rememberDepthMesh(
+            refreshIntervalMs = refreshIntervalMs,
+            stride = stride,
+            edgeThresholdMeters = edgeThresholdMeters,
+        )
+
+        val collider = remember(meshNode) { DepthCollider(meshNode) }
+
+        // Attach the mesh node to the scene so ARScene's per-frame iteration picks it up. When
+        // the caller doesn't want a visible mesh (default), apply a no-render layer so Filament
+        // skips rasterising it but the AR frame thread still feeds it depth images. With layer
+        // 0xFE we keep the renderable in the scene (so update() still fires) but exclude it from
+        // both the default and IBL layers — the AR scene view's view layer masks all use the
+        // lower nibble.
+        DepthMeshNode(
+            node = meshNode,
+            apply = {
+                if (!renderMesh) {
+                    // Layer-mask trick: setLayerMask doesn't exist on the node itself but the
+                    // underlying RenderableManager does. The next rebuild will overwrite the
+                    // bounding box, but the layer mask survives because it's set via the
+                    // renderable instance.
+                    renderableManager.setLayerMask(renderableInstance, 0xFF, 0x00)
+                }
+            },
+        )
+
+        DisposableEffect(collider) {
+            onDispose { collider.destroy() }
+        }
+        return collider
     }
 }
