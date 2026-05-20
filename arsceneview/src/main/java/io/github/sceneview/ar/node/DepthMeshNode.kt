@@ -94,7 +94,13 @@ open class DepthMeshNode(
     primitiveType = PrimitiveType.TRIANGLES,
     vertexBuffer = createInitialVertexBuffer(engine),
     indexBuffer = createInitialIndexBuffer(engine),
-    boundingBox = Box(0f, 0f, 0f, 0f, 0f, 0f),
+    // Degenerate but non-empty AABB so Filament's precondition (#1783) passes before the first
+    // valid depth frame populates the real bounds. A zero-sized box at the origin trips the
+    // "AABB can't be empty, unless culling is disabled and the object is not a shadow caster/
+    // receiver" check and SIGABRTs the process. A 1 mm half-extent is small enough to be a no-op
+    // visually + for culling, large enough to satisfy Filament's `halfExtent > 0` precondition.
+    // See [computeAabb] which clamps the initial zero-positions case to the same value.
+    boundingBox = Box(0f, 0f, 0f, DEGENERATE_AABB_HALF_EXTENT_M, DEGENERATE_AABB_HALF_EXTENT_M, DEGENERATE_AABB_HALF_EXTENT_M),
     materialInstance = materialInstance,
     builder = builder,
 ) {
@@ -300,6 +306,17 @@ open class DepthMeshNode(
         /** Initial capacity of the index buffer — 6 indices per quad for the same stride-4 grid. */
         private const val INITIAL_INDEX_CAPACITY: Int = 6 * 1024
 
+        /**
+         * Half-extent (metres) for the degenerate AABB used before the first real depth frame.
+         *
+         * Filament SIGABRTs with `Precondition: AABB can't be empty, unless culling is disabled
+         * and the object is not a shadow caster/receiver` when the renderable's bounding box has
+         * any zero-half-extent and the renderable has culling enabled (the default) or casts /
+         * receives shadows. We pre-populate a 1 mm cube at the origin so the precondition passes
+         * even before [update] has run with valid camera tracking + depth data — see #1783.
+         */
+        internal const val DEGENERATE_AABB_HALF_EXTENT_M: Float = 1e-3f
+
         private fun createInitialVertexBuffer(engine: Engine): VertexBuffer =
             VertexBuffer.Builder()
                 .bufferCount(1)
@@ -366,7 +383,13 @@ data class DepthMeshSnapshot(
 
 /** Computes an axis-aligned bounding box from a flat-packed `xyz` array. */
 private fun computeAabb(positions: FloatArray): Box {
-    if (positions.isEmpty()) return Box(0f, 0f, 0f, 0f, 0f, 0f)
+    // Same precondition guard as the initial AABB — Filament rejects empty boxes (#1783).
+    if (positions.isEmpty()) return Box(
+        0f, 0f, 0f,
+        DepthMeshNode.DEGENERATE_AABB_HALF_EXTENT_M,
+        DepthMeshNode.DEGENERATE_AABB_HALF_EXTENT_M,
+        DepthMeshNode.DEGENERATE_AABB_HALF_EXTENT_M,
+    )
     var minX = Float.POSITIVE_INFINITY
     var minY = Float.POSITIVE_INFINITY
     var minZ = Float.POSITIVE_INFINITY
