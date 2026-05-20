@@ -250,6 +250,42 @@ ARSceneView(
 
 When `sceneUnderstanding` is non-null, its four flags override the individual ones on every recomposition. When null, the individual flags retain their pre-#1767 defaults verbatim.
 
+### ARFogNode — environment-aware AR fog (v4.10.0+, #1717)
+
+`ARFogNode` (`io.github.sceneview.ar.node.ARFogNode`) blends the live camera passthrough toward a fog colour using the ARCore depth image, so distant real-world geometry fades into a coloured haze while near surfaces stay crisp. It applies to the **real world** — pair it with a `FogNode` to fog **virtual** geometry consistently.
+
+Inspired by ARCore Depth Lab's *AR Fog* sample. Opt-in, off by default; collapses to a no-op when `enabled = false` (no shader cost).
+
+```kotlin
+ARSceneView(
+    cameraStream = rememberARCameraStream(materialLoader, creator = {
+        createARCameraStream(materialLoader).apply { isDepthOcclusionEnabled = true }
+    }),
+    sessionConfiguration = { _, config ->
+        config.depthMode = Config.DepthMode.AUTOMATIC
+    },
+) {
+    ARFogNode(
+        cameraStream = cameraStream,
+        density = 0.08f,          // 1/m, range [0, 1]
+        start = 0.5f,             // metres — closer than this stays crisp
+        end = 6.0f,               // metres — fully fogged past this distance
+        color = Color(0xFFCCDDFF),
+        enabled = true,
+    )
+    // Match the same haze on virtual geometry:
+    FogNode(view = view, density = 0.08f, color = Color(0xFFCCDDFF))
+}
+```
+
+**Requirements:**
+- `Config.DepthMode.AUTOMATIC` (or `RAW_DEPTH_ONLY`) and `cameraStream.isDepthOcclusionEnabled = true`. Without depth pixels the per-pixel fog factor has nothing to drive it.
+- Devices without Depth API support fall back to virtual-only `FogNode` cleanly — surface that to your user with `session.isDepthModeSupported(...)`.
+
+**Parameter parity with `FogNode`:** `density`, `color`, `enabled` carry the same meaning as the virtual `FogNode` defaults so the same numbers fog both real and virtual content visually. `start`/`end` are AR-only — Filament's volumetric fog (`FogNode`) bakes them differently.
+
+**Shader formula** (pure-Kotlin reference: `computeARFogFactor`): `factor = 1 - exp(-density * max(depth - start, 0))`, clamped to `[0, 1]`. Depth pixels with `depth_mm == 0` (ARCore "no depth available") produce `factor = 0` so the camera passthrough stays crisp on regions the depth API can't see.
+
 ---
 
 ## SceneScope — Node DSL
@@ -3066,6 +3102,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-depth-of-field` — AR Depth of Field. Tap to focus — real-world bokeh blur.
 - `ar-depth-visualization` — Depth Visualization. False-color depth map with camera↔depth blend.
 - `ar-face` — Augmented Faces. Face mesh tracking and overlays.
+- `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
 - `ar-image` — Image Tracking. Detect and track reference images.
 - `ar-image-stabilization` — Image Stabilization (EIS). EIS for smoother AR camera feed.
 - `ar-instant-placement` — Instant Placement. Place models before plane detection converges.
