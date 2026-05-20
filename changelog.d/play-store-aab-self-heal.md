@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Play Store deploy now self-heals a corrupt release AAB.** A truncated or zero-byte App Bundle from a flaky CI runner (which silently cost the v4.6.0 and v4.6.1 store releases, [#1412](https://github.com/sceneview/sceneview/issues/1412)/[#1415](https://github.com/sceneview/sceneview/issues/1415)) used to sail past gradle's exit 0 and only blow up at upload. The `Build release AAB` step now verifies the artifact is a readable zip and rebuilds once from clean before aborting, so a transient I/O flake no longer loses a release.

@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- CI workflow hygiene: a detekt static-analysis step is wired into the `lint` job (advisory for now — detekt 1.23.8 registers no tasks on the current Kotlin 2.3 toolchain, so the step reports without gating PRs pending a detekt upgrade and baseline), `docs.yml` artifact action versions are aligned, the `quality-gate` job restores Gradle wrapper validation, and a stale Node-version comment in `telemetry-ci.yml` is corrected (#1699, #1702, #1703, #1708).

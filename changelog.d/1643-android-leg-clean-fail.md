@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Device QA runs no longer show `cancelled` when only the advisory android/ar emulator leg is flaky ([#1643](https://github.com/sceneview/sceneview/issues/1643)).** The emulator-leg `script:` blocks bounded `adb wait-for-device` and `device-qa.sh` with internal `timeout`s. A flaky CI emulator now produces a clean step **failure** (absorbed by `continue-on-error`) instead of letting the job run to `timeout-minutes` — a timed-out job ends `cancelled`, and a cancelled job drags the whole run conclusion red even when web/build/the other legs passed.

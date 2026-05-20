@@ -2,12 +2,12 @@
 
 SceneView is a declarative 3D and AR SDK for Android (Jetpack Compose, Filament, ARCore) and Apple platforms — iOS, macOS, visionOS (SwiftUI, RealityKit, ARKit) — with shared core logic via Kotlin Multiplatform. Each platform uses its native renderer: Filament on Android, RealityKit on Apple.
 
-**Android — Maven artifacts (version 4.10.0):**
-- 3D only: `io.github.sceneview:sceneview:4.10.0`
-- AR + 3D: `io.github.sceneview:arsceneview:4.10.0`
+**Android — Maven artifacts (version 4.11.0):**
+- 3D only: `io.github.sceneview:sceneview:4.11.0`
+- AR + 3D: `io.github.sceneview:arsceneview:4.11.0`
 
 **Apple (iOS 18+ / macOS 15+ / visionOS 2+) — Swift Package:**
-- `https://github.com/sceneview/sceneview.git` (from: "4.10.0")
+- `https://github.com/sceneview/sceneview.git` (from: "4.11.0")
 
 **Min SDK:** 24 | **Target SDK:** 36 | **Kotlin:** 2.3.21 | **Compose BOM compatible**
 
@@ -23,8 +23,8 @@ is also archived under `/api/sceneview/<version>/`.
 ### build.gradle (app module)
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.10.0")   // 3D only
-    implementation("io.github.sceneview:arsceneview:4.10.0") // AR (includes sceneview)
+    implementation("io.github.sceneview:sceneview:4.11.0")   // 3D only
+    implementation("io.github.sceneview:arsceneview:4.11.0") // AR (includes sceneview)
 }
 ```
 
@@ -2418,7 +2418,7 @@ React Native (Turbo Module / Fabric), KMP Compose iOS (UIKitView).
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.10.0")
+    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.0")
 ]
 ```
 
@@ -2606,13 +2606,14 @@ Full canonical reference in `docs/docs/cheatsheet-ios.md`. Three buckets:
 
 ### Deprecated on iOS (v4.0.10+ — compile-warning, no-op runtime)
 
-These three APIs ship as `@available(*, deprecated, message: …)` factories and silently no-op when called. Migrate to the alternative listed.
+These APIs ship as `@available(*, deprecated, message: …)` factories and silently no-op when called. Migrate to the alternative listed.
 
 | Deprecated | Why iOS can't | Replacement |
 |---|---|---|
 | `CameraNode.depthOfField(...)` | `PerspectiveCameraComponent` has no DOF | Custom Metal post-process (out of scope) |
 | `CameraNode.exposure(_:)` | `PerspectiveCameraComponent` has no `exposureCompensation` (verified Xcode 26.x build, #1019) | `ARSceneView(cameraExposure:)` (AR) or `.renderQuality(_:)` IBL tune (3D) |
 | `LightNode.shadowColor(_:)` | `DirectionalLightComponent.Shadow` has no `color` property | `.castsShadow(_:)` + `.shadowMaximumDistance(_:)` |
+| `FogNode.heightBased(...)` / `FogNode.heightFalloff` | `UnlitMaterial` cannot vary opacity by world height; no per-view fog API in RealityKit (#1380) | `FogNode.exponential(density:color:)` |
 
 ### Android-only — no port planned or pending
 
@@ -2631,7 +2632,7 @@ Same public API name on both platforms; the iOS render path differs but the fact
 
 | Symbol | Android renderer | iOS approximation |
 |---|---|---|
-| `FogNode.linear / .exponential / .heightBased` | Filament fog modes | Translucent-sphere shader |
+| `FogNode.linear / .exponential` | Filament fog modes | Translucent-sphere shader (`.heightBased` is deprecated on iOS — see #1380) |
 | `ReflectionProbeNode.box(...) / .sphere(...)` | Volumetric Filament probe | Unbounded `ImageBasedLightReceiverComponent` (volume scope is best-effort) |
 | `CustomMaterial.subsurface(...)` | Filament SSS | PBR `metallic` + `roughness` tuning |
 
@@ -2654,7 +2655,7 @@ DynamicSkyNode(timeOfDay: 14, turbidity: 3, sunIntensity: 1200)
 ```swift
 FogNode.linear(start: 1.0, end: 20.0).color(.cool)
 FogNode.exponential(density: 0.15)
-FogNode.heightBased(density: 0.1, height: 1.0)
+// FogNode.heightBased(...) is deprecated on iOS (RealityKit parity gap, #1380) — use .exponential instead
 ```
 
 **ReflectionProbeNode** — local environment reflections:
@@ -3161,7 +3162,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.10.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.0")
 ```
 
 Import: `import SceneViewSwift`
@@ -3768,7 +3769,7 @@ Install:
 ```yaml
 # pubspec.yaml
 dependencies:
-  sceneview_flutter: ^4.10.0
+  sceneview_flutter: ^4.11.0
 ```
 
 Widgets: `SceneView` (3D), `ARSceneView` (AR).
