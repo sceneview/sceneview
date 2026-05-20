@@ -278,6 +278,8 @@
     <string name="demo_ar_orbital_subtitle">Models orbit around you in a personal solar system</string>
     <string name="demo_ar_depth_visualization_title">Depth Visualization</string>
     <string name="demo_ar_depth_visualization_subtitle">False-color depth map with camera↔depth blend</string>
+    <string name="demo_ar_depth_collider_title">Depth Collider</string>
+    <string name="demo_ar_depth_collider_subtitle">Virtual balls bounce off the real floor / table (depth-driven physics)</string>
 
     <!-- Demo placeholder -->
     <string name="demo_coming_soon">Coming soon</string>
