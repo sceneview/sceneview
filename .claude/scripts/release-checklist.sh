@@ -228,7 +228,13 @@ echo ""
 echo -e "${CYAN}--- Essential Files ---${NC}"
 
 for f in llms.txt README.md CLAUDE.md CHANGELOG.md LICENSE CONTRIBUTING.md SECURITY.md; do
-    [ -f "$f" ] && check "$f exists" "PASS" "" || check "$f exists" "FAIL" "Missing"
+    # GitHub also looks under .github/ for community-health files (SECURITY.md,
+    # CONTRIBUTING.md, CODE_OF_CONDUCT.md) — treat that location as equivalent.
+    if [ -f "$f" ] || [ -f ".github/$f" ]; then
+        check "$f exists" "PASS" ""
+    else
+        check "$f exists" "FAIL" "Missing"
+    fi
 done
 echo ""
 
