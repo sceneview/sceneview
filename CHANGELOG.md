@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+## v4.11.0 — 2026-05-20
+
+### Added
+
+- Android demo: added a `cameraDistance` zoom deep-link parameter — a `--ef camera_distance <f>` intent extra and a `sceneview://demo/<id>?cameraDistance=<f>` query parameter that override the 3D hero-orbit camera distance. This lets the Maestro device-QA flows exercise 3D camera zoom, which Maestro cannot do by pinch; `.maestro/android/flows/demo.yaml` now captures a near + far framing for `model-viewer`. Invalid or out-of-range values fall back to the demo's default framing (#1571).
+- `Frame.hitTestDepth(xPx, yPx)` raycasts the ARCore depth image and returns a `DepthHitResult` (world position, camera-facing surface normal, distance) — placement onto *any* real-world surface, not just detected planes, inspired by [arcore-depth-lab](https://github.com/googlesamples/arcore-depth-lab)'s "Oriented Reticle" (#1712).
+- New cinematic turntable camera: `applyCinematicOrbit(cameraNode, timeSeconds)` drives a slow, eased "hero shot" orbit around the content — long lens, gentle downward tilt and a soft vertical bob. Three feel presets are provided (`CinematicCameraProfile.HeroProduct`, `SlowCinematic`, `NeutralWeb`); `CinematicCameraProfile.Default` is the contemplative `SlowCinematic` profile. Pairs with `SceneView(autoCenterContent = true, cameraManipulator = null)` for a one-call cinematic showcase.
+- Remote files loaded over http(s) — glTF/GLB models, KTX environments, textures — are now cached on disk by the new `FileCache`. The first load downloads and persists the bytes; every later load reuses the cached file, so there are no repeated downloads and assets stay available offline. Caching is wired transparently into `FileLoader.loadFileBuffer`, with `Context.fileCacheDir` / `Context.clearFileCache()` to inspect or reclaim it, and `FileCache.enabled` to opt out.
+
+### Changed
+
+- `validate-demo-assets.sh` now cross-checks every asset physically bundled under the demo asset roots against `assets/catalog.json` and fails CI if a bundled asset is undeclared, making catalog drift a build failure instead of a manual discovery (#1666).
+- CI workflow hygiene: a detekt static-analysis step is wired into the `lint` job (advisory for now — detekt 1.23.8 registers no tasks on the current Kotlin 2.3 toolchain, so the step reports without gating PRs pending a detekt upgrade and baseline), `docs.yml` artifact action versions are aligned, the `quality-gate` job restores Gradle wrapper validation, and a stale Node-version comment in `telemetry-ci.yml` is corrected (#1699, #1702, #1703, #1708).
+
+### Fixed
+
+- Samples cleanup: dropped the stale "Coming in v1.1" version label from the iOS demo's coming-soon placeholders (now a plain "Coming soon" badge), and documented that AR demos intentionally skip the 3D first-frame loading scrim (#1361).
+- **Device QA runs no longer show `cancelled` when only the advisory android/ar emulator leg is flaky ([#1643](https://github.com/sceneview/sceneview/issues/1643)).** The emulator-leg `script:` blocks bounded `adb wait-for-device` and `device-qa.sh` with internal `timeout`s. A flaky CI emulator now produces a clean step **failure** (absorbed by `continue-on-error`) instead of letting the job run to `timeout-minutes` — a timed-out job ends `cancelled`, and a cancelled job drags the whole run conclusion red even when web/build/the other legs passed.
+- Release device-QA gate is now deterministic and non-blocking — it dispatches its own uncancellable Device QA run, waits with a hard timeout, treats web+ar as required and android as advisory, and proceeds-with-warning on timeout, so a flaky harness can never block a release indefinitely (#1683).
+`PhysicsNode` no longer clobbers or destroys the caller's existing `Node.onFrame` callback — it now saves the prior callback, chain-calls it each frame, and restores it on dispose (#1694).
+- Web: glTF animations now play instead of freezing at t=0, `OrbitCameraController.dispose()` detaches its DOM listeners, and `SceneView.destroy()` releases leaked `LightManager` components (#1697, #1698, #1700).
+Android TV demo: D-pad controls now work on launch — the root `Box` is `focusable()` and requests focus on first composition so key events reach the `onKeyEvent` handler.
+- PhysicsDemo: each falling body now gets its own `ModelInstance` spawned from a shared `Model`, so every streamed crash-test mesh renders instead of only one (#1706).
+- VideoDemo no longer auto-plays the video if the user tapped Pause before the player became ready — the prepared callback now honours the user's desired playback state (#1707).
+- **Play Store deploy now self-heals a corrupt release AAB.** A truncated or zero-byte App Bundle from a flaky CI runner (which silently cost the v4.6.0 and v4.6.1 store releases, [#1412](https://github.com/sceneview/sceneview/issues/1412)/[#1415](https://github.com/sceneview/sceneview/issues/1415)) used to sail past gradle's exit 0 and only blow up at upload. The `Build release AAB` step now verifies the artifact is a readable zip and rebuilds once from clean before aborting, so a transient I/O flake no longer loses a release.
+`SceneView` no longer triggers "Modifying state during view update" Xcode runtime warnings — `appliedMainSlot`, `appliedFillSlot`, and `appliedSkyboxResource` are now held in a private reference-type cache class rather than individual `@State` properties, so mutations inside `RealityView.update:` are invisible to SwiftUI's state-change detection.
+
+### Tests
+
+- Android demo: wired the 12 live-only AR demos to honour `DemoSettings.arPendingPlaybackFile`. A new shared `rememberArPlaybackDataset()` helper resolves the `--es ar_playback_file <path>` deep-link extra (set by the autonomous AR replay device-QA harness) into the `ARSceneView(playbackDataset = …)` parameter. Previously only `ar-record-playback` consumed the extra, so the harness could only grade the other AR demos `alive`; they can now graduate to `replayed` with frame-indexed assertions. When the extra is absent — i.e. every normal launch — the helper returns `null` and the demos behave exactly as before, so there is no live-AR regression for real users (#1576).
+
+### Docs
+
+- Corrected stale version references that the v4.10.0 release left behind — the docs landing-page "Latest Release" stat, `llms-full.txt`'s SceneView version line, the iOS deployment-target docs (now iOS 18 / macOS 15 / visionOS 2), the SwiftUI codelabs' SPM version rule, and an overstated web-demo changelog entry — and hardened `sync-versions.sh` to scan these files so future releases bump them automatically (#1693).
+- Refreshed the stale `ROADMAP.md` (was pinned at v4.0.9) to v4.10.0 and resolved the `CLAUDE.md` ↔ `sync-versions.sh` contradiction over `mcp/package.json` — the Version Location Map now documents `sceneview-mcp` as an independent npm version track that must NOT be synced to the SDK `VERSION_NAME` (#1701, #1705).
+
 ## v4.10.0 — 2026-05-17
 
 ### Added
