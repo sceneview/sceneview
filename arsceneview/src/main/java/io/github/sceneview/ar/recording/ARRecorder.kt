@@ -196,11 +196,28 @@ public class ARRecorder {
         // RecordingStatus.IO_ERROR would only be observable via the next stopRecording() call
         // throwing, which is too late to alert the user (#1770).
         if (_state == State.RECORDING) {
-            val status = runCatching { session.recordingStatus }.getOrNull()
+            // Narrow the catch to ARCore's documented JNI failure modes (#1845): we swallow
+            // a runtime failure of the JNI-backed getter (`Session.getRecordingStatus` can
+            // throw if the native handle is closed concurrently) but never an Error — those
+            // signal a process-wide problem the recorder cannot recover from.
+            val status: com.google.ar.core.RecordingStatus? = try {
+                session.recordingStatus
+            } catch (e: RuntimeException) {
+                null
+            }
             if (status == com.google.ar.core.RecordingStatus.IO_ERROR) {
-                _errorMessage = "Recording I/O error — disk full, storage detached, or " +
-                    "permission revoked. ARCore reported RecordingStatus.IO_ERROR."
-                _state = State.IO_ERROR
+                // Write order matters (#1845): the previous code wrote [_errorMessage] first
+                // then [_state], so a UI-thread reader that observed the writes individually
+                // could see `state == RECORDING` paired with a non-null [errorMessage] — an
+                // impossible pair per the public contract. Swap: write [_state] last AFTER
+                // [_errorMessage] is fully populated, then guard the pair behind a single
+                // [Snapshot.withMutableSnapshot] commit so Compose observers see the pair
+                // atomically and never observe the in-between state.
+                androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+                    _errorMessage = "Recording I/O error — disk full, storage detached, or " +
+                        "permission revoked. ARCore reported RecordingStatus.IO_ERROR."
+                    _state = State.IO_ERROR
+                }
             }
         }
     }
@@ -235,11 +252,23 @@ public class ARRecorder {
      * next recording session. The handle is safe to retain across recordings — re-registering
      * the same UUID/MIME pair is idempotent.
      *
+     * **Bounded to [MAX_PENDING_TRACKS] entries (#1845).** A caller that accidentally wires
+     * `addTrack(UUID.randomUUID(), …)` into a recomposing block would otherwise leak handle
+     * entries indefinitely — idempotent dedup is keyed on UUID equality, but unique UUIDs
+     * bypass the check. Past the limit, [addTrack] raises [IllegalStateException] so the leak
+     * surfaces at the call site instead of as a confusing native error at [start]. Use
+     * [clearTracks] to drop registered tracks between recordings if your app needs a flexible
+     * track schema. The default cap of 64 is well above ARCore's practical limit (the MP4 box
+     * carries each track in its own sample-description entry — adding hundreds is a sign of
+     * a programming error, not a legitimate use case).
+     *
      * @param uuid The UUID that identifies this track. Must be unique within a recording.
      *   Re-use the same UUID on the playback side via `Frame.getUpdatedTrackData(uuid)`.
      * @param mimeType MP4 sample-description MIME type. Common choices:
      *   `"application/text"` for UTF-8 JSON, `"application/octet-stream"` for binary blobs.
      * @return A [TrackHandle] to pass to [recordTrack].
+     * @throws IllegalStateException if more than [MAX_PENDING_TRACKS] distinct UUIDs have been
+     *   registered without an intervening [clearTracks] or [stop] call.
      */
     public fun addTrack(uuid: UUID, mimeType: String): TrackHandle {
         val handle = TrackHandle(uuid, mimeType)
@@ -247,9 +276,35 @@ public class ARRecorder {
         // only one entry — avoids native-side duplicate-key errors when the user accidentally
         // wires addTrack into a recomposing block.
         pendingTracks.updateAndGet { current ->
-            if (current.any { it.uuid == uuid }) current else current + handle
+            when {
+                current.any { it.uuid == uuid } -> current
+                current.size >= MAX_PENDING_TRACKS -> throw IllegalStateException(
+                    "ARRecorder.addTrack: refusing to register more than $MAX_PENDING_TRACKS " +
+                        "custom data tracks (#1845). Likely cause: addTrack(UUID.randomUUID(), …) " +
+                        "wired into a recomposing block — every recomposition leaks a new " +
+                        "TrackHandle. Call clearTracks() between recordings or hoist the UUID " +
+                        "out of the composition."
+                )
+                else -> current + handle
+            }
         }
         return handle
+    }
+
+    /**
+     * Drop every track previously registered via [addTrack] (#1845).
+     *
+     * Use between recordings when the track schema changes (e.g. a new ML model with a
+     * different annotation MIME type) — without this, the next recording would carry both
+     * the stale and the new tracks, and old [TrackHandle] instances would still be considered
+     * "owned" by the recorder. Also useful in tests to reset state between runs.
+     *
+     * Has no effect on the underlying ARCore session — only the in-memory registry is
+     * cleared. Existing recordings in progress are unaffected; the call is safe to make at
+     * any [state]. Idempotent.
+     */
+    public fun clearTracks() {
+        pendingTracks.set(emptyList())
     }
 
     /**
@@ -276,6 +331,17 @@ public class ARRecorder {
         data: ByteBuffer,
     ): Boolean {
         if (_state != State.RECORDING) return false
+        // Handle ownership validation (#1845): the docstring promises a no-op when the handle
+        // was not registered via [addTrack], but the implementation previously skipped this
+        // check and forwarded the call to ARCore. ARCore raises an opaque error for an
+        // unknown UUID — and worse, on a cross-recorder reuse (caller passes a [TrackHandle]
+        // produced by a different [ARRecorder] instance) the write would land in whichever
+        // recorder happened to be active. Validate that the UUID is in this recorder's
+        // [pendingTracks] before issuing the JNI call.
+        if (pendingTracks.get().none { it.uuid == handle.uuid }) {
+            logWarning("recordTrack(${handle.uuid}) skipped — track not registered via addTrack")
+            return false
+        }
         return try {
             frame.recordTrackData(handle.uuid, data)
             true
@@ -488,17 +554,21 @@ public class ARRecorder {
      * one whose CPU image size best matches [requested]. Returns `null` if ARCore exposes no
      * matching config (degenerate device) so the caller leaves the existing config untouched.
      *
-     * Wrapped in `runCatching` because [Session.getSupportedCameraConfigs] is JNI-backed and
-     * can throw on a session that is not in a queryable state — a failure here must never
-     * abort the recording, it just falls back to ARCore's default config.
+     * The catch is narrowed to [RuntimeException] (#1845) so JVM [Error]s — OOM, stack
+     * overflow, native crash — propagate; the runtime failure mode we want to absorb is a
+     * JNI-backed [Session.getSupportedCameraConfigs] throwing on a session in an odd state,
+     * which is always a [RuntimeException] in ARCore. A failure here must never abort the
+     * recording — it just falls back to ARCore's default config.
      */
     private fun selectCameraConfig(session: Session, requested: Size): CameraConfig? =
-        runCatching {
+        try {
             val filter = CameraConfigFilter(session)
                 .setFacingDirection(CameraConfig.FacingDirection.BACK)
                 .setTargetFps(EnumSet.of(CameraConfig.TargetFps.TARGET_FPS_30))
             pickCameraConfig(session.getSupportedCameraConfigs(filter), requested)
-        }.getOrNull()
+        } catch (e: RuntimeException) {
+            null
+        }
 
     private fun logWarning(msg: String) {
         try { Log.w(TAG, msg) } catch (_: RuntimeException) { /* unit test stub */ }
@@ -506,6 +576,23 @@ public class ARRecorder {
 
     public companion object {
         private const val TAG = "ARRecorder"
+
+        /**
+         * Maximum number of custom data tracks the recorder will accept before refusing further
+         * [addTrack] calls (#1845).
+         *
+         * The cap exists to make a leaky-recomposition pattern observable at the call site:
+         * a `addTrack(UUID.randomUUID(), …)` wired into a Composable block would otherwise
+         * accumulate one new handle per recomposition. The MP4 sample-description box could
+         * hold thousands, but a SceneView recording with that many channels is invariably a
+         * programming error — see Google's recording-with-extra-data flow at
+         * [https://developers.google.com/ar/develop/java/recording-and-playback].
+         *
+         * `64` is comfortably above any legitimate use case (typically 1-5 tracks for
+         * detections / ground truth / sensor packets) and well below ARCore's own resource
+         * ceiling.
+         */
+        public const val MAX_PENDING_TRACKS: Int = 64
 
         /**
          * Convert an `android.view.Display` rotation — a [Surface.ROTATION_0] … [Surface.ROTATION_270]
@@ -714,7 +801,14 @@ public fun rememberARPlaybackStatus(session: Session?): androidx.compose.runtime
         }
         while (true) {
             androidx.compose.runtime.withFrameNanos { _ ->
-                val current = runCatching { session.playbackStatus }.getOrNull() ?: PlaybackStatus.NONE
+                // Narrow the catch to ARCore JNI failures (#1845): the only documented failure
+                // mode of [Session.getPlaybackStatus] is a runtime exception when the session
+                // is closed concurrently. Errors propagate unchanged.
+                val current: PlaybackStatus = try {
+                    session.playbackStatus
+                } catch (e: RuntimeException) {
+                    PlaybackStatus.NONE
+                }
                 if (statusState.value != current) statusState.value = current
             }
         }

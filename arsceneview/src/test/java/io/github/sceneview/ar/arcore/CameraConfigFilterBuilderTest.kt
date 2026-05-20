@@ -81,4 +81,46 @@ class CameraConfigFilterBuilderTest {
             selector.let { "(Session) -> CameraConfig" }
         )
     }
+
+    // ── Item 2 from #1845: empty targetFps surfaces at build time, not as a silent fallback ──
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `cameraConfigFilter rejects empty targetFps eagerly`() {
+        // Before #1845, an empty `targetFps` was wrapped in EnumSet.copyOf at session-creation
+        // time and the resulting IllegalArgumentException was swallowed by the surrounding
+        // runCatching — the caller silently received the session's default cameraConfig
+        // back, which on an Augmented Faces session is FRONT-facing. A developer requesting
+        // a back-only filter would receive the front camera with no signal. The fix raises
+        // IllegalArgumentException at builder time so the misuse is observed where it lives.
+        cameraConfigFilter {
+            facing = CameraConfig.FacingDirection.BACK
+            targetFps = emptySet()
+        }
+    }
+
+    @Test
+    fun `cameraConfigFilter accepts a null targetFps (no filter on that axis)`() {
+        // `null` means "don't restrict on this axis" — both 30 and 60 FPS configs are
+        // eligible. Must NOT trip the empty-set guard.
+        val selector: (com.google.ar.core.Session) -> CameraConfig = cameraConfigFilter {
+            facing = CameraConfig.FacingDirection.BACK
+            targetFps = null
+        }
+        // Lambda type assignment compiles; the runtime path needs a live Session (JNI-only).
+        assertEquals(
+            "(Session) -> CameraConfig",
+            selector.let { "(Session) -> CameraConfig" }
+        )
+    }
+
+    @Test
+    fun `cameraConfigFilter accepts a singleton targetFps`() {
+        val selector: (com.google.ar.core.Session) -> CameraConfig = cameraConfigFilter {
+            targetFps = setOf(CameraConfig.TargetFps.TARGET_FPS_60)
+        }
+        assertEquals(
+            "(Session) -> CameraConfig",
+            selector.let { "(Session) -> CameraConfig" }
+        )
+    }
 }
