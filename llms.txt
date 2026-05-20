@@ -981,6 +981,17 @@ cloudAnchorNode.host(session, ttlDays = 7) { cloudAnchorId, state ->
         ))
     }
 }
+
+// host / resolve return the underlying ARCore Future — cancel pending requests on dispose
+// to avoid running the network round-trip (and accruing Google Cloud billing) after the
+// user has navigated away. (#1768)
+val future: HostCloudAnchorFuture = cloudAnchorNode.host(session, ttlDays = 1)
+DisposableEffect(cloudAnchorNode) { onDispose { future.cancel() } }
+
+val resolveFuture: ResolveCloudAnchorFuture = CloudAnchorNode.resolve(
+    engine, session, cloudAnchorId
+) { state, node -> /* ... */ }
+DisposableEffect(cloudAnchorId) { onDispose { resolveFuture.cancel() } }
 ```
 
 **Persistence — `ttlDays`.** `CloudAnchorNode.host(session, ttlDays = 1)` accepts any value in `CloudAnchorNode.TTL_DAYS_RANGE` (= `1..365`, inclusive). Values outside this range throw `IllegalArgumentException`. Pick a short ttl for ephemeral collaborative sessions, a longer one (e.g. 7..30) for "leave behind" multi-day experiences.

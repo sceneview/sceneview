@@ -968,6 +968,17 @@ a few thousand points or the UI thread chokes — Depth Lab's `RAW_DEPTH_ONLY` r
     apply: CloudAnchorNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null
 )
+
+// host / resolve return the underlying ARCore Future — cancel pending requests on dispose
+// to avoid running the network round-trip (and accruing Google Cloud billing) after the
+// user has navigated away. (#1768)
+val future: HostCloudAnchorFuture = cloudAnchorNode.host(session, ttlDays = 1)
+DisposableEffect(cloudAnchorNode) { onDispose { future.cancel() } }
+
+val resolveFuture: ResolveCloudAnchorFuture = CloudAnchorNode.resolve(
+    engine, session, cloudAnchorId
+) { state, node -> /* ... */ }
+DisposableEffect(cloudAnchorId) { onDispose { resolveFuture.cancel() } }
 ```
 
 ### TrackableNode — generic trackable
