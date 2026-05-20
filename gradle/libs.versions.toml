@@ -68,7 +68,15 @@ robolectric = "4.16.1"
 roborazzi = "1.61.0"
 
 # Code Quality
-detekt = "1.23.8"
+# detekt 2.0.0-alpha.0 (Sep 2025) is the first release built against Kotlin 2.x
+# (compiler-embeddable 2.2.10) and successfully registers tasks on the current
+# Kotlin 2.3.21 + Gradle 8.14.5 toolchain. detekt 1.23.8 silently no-ops its
+# task registration on Kotlin 2.3.x (see #1740). Later 2.0.0 alphas require
+# Gradle 9.x which would force an AGP / Compose Compiler chain upgrade.
+# IMPORTANT: detekt 2.x uses NEW plugin id "dev.detekt" + NEW artifact
+# coordinates "dev.detekt:detekt-gradle-plugin" (renamed from
+# io.gitlab.arturbosch.detekt).
+detekt = "2.0.0-alpha.0"
 
 [libraries]
 # AndroidX Core
@@ -150,7 +158,8 @@ android-gradlePlugin = { group = "com.android.tools.build", name = "gradle", ver
 publish-gradlePlugin = { module = "com.vanniktech:gradle-maven-publish-plugin", version.ref = "mavenPublish" }
 
 # Code Quality
-detekt-gradlePlugin = { group = "io.gitlab.arturbosch.detekt", name = "detekt-gradle-plugin", version.ref = "detekt" }
+# detekt 2.x uses dev.detekt:detekt-gradle-plugin (renamed from io.gitlab.arturbosch.detekt:detekt-gradle-plugin).
+detekt-gradlePlugin = { group = "dev.detekt", name = "detekt-gradle-plugin", version.ref = "detekt" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -162,5 +171,5 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 publish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
-detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+detekt = { id = "dev.detekt", version.ref = "detekt" }
 roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }

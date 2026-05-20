@@ -1,30 +1,43 @@
 # Detekt configuration for SceneView
 # Builds upon the default config — only overrides are listed here.
+#
+# This file targets detekt 2.x property names. Several property names changed
+# from 1.23.x (e.g. functionThreshold -> allowedFunctionParameters,
+# threshold -> allowedComplexity / allowedLines, UnusedPrivateMember split into
+# UnusedPrivateClass / UnusedPrivateFunction / UnusedPrivateProperty).
+# See #1740.
 
 complexity:
   LongParameterList:
     # Compose functions and Filament builders legitimately have many parameters
-    functionThreshold: 12
-    constructorThreshold: 12
+    allowedFunctionParameters: 12
+    allowedConstructorParameters: 12
     ignoreAnnotated:
       - 'Composable'
   TooManyFunctions:
     # Node types and scope objects expose many public functions by design
-    thresholdInFiles: 25
-    thresholdInClasses: 25
-    thresholdInInterfaces: 25
+    allowedFunctionsPerFile: 25
+    allowedFunctionsPerClass: 25
+    allowedFunctionsPerInterface: 25
+    allowedFunctionsPerObject: 25
+    allowedFunctionsPerEnum: 25
   LargeClass:
-    threshold: 800
+    allowedLines: 800
   CyclomaticComplexMethod:
-    threshold: 25
+    allowedComplexity: 25
 
 style:
   MagicNumber:
     # 3D code is full of legitimate numeric constants (coordinates, angles, etc.)
     active: false
-  UnusedPrivateMember:
+  # UnusedPrivateMember was split in detekt 2.x; we keep all three sub-rules
+  # active with the same _.*|serialVersionUID exemption that the 1.x config had.
+  UnusedPrivateFunction:
     active: true
-    allowedNames: '(_.*|serialVersionUID)'
+    allowedNames: '_.*'
+  UnusedPrivateProperty:
+    active: true
+    allowedNames: '_.*|serialVersionUID|ignored|expected'
   MaxLineLength:
     maxLineLength: 120
     excludeCommentStatements: true

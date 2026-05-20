@@ -1,0 +1,134 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:CameraGestureDetector.kt:CameraGestureDetector$(event.pointerCount != 1 &amp;&amp; currentGesture == Gesture.ORBIT) || (event.pointerCount != 2 &amp;&amp; currentGesture == Gesture.PAN) || (event.pointerCount != 2 &amp;&amp; currentGesture == Gesture.ZOOM)</ID>
+    <ID>ConstructorParameterNaming:SceneScope.kt:SceneScope$internal val _nodes: SnapshotStateList&lt;NodeImpl></ID>
+    <ID>CyclomaticComplexMethod:Scene.kt:@Composable fun SceneView( modifier: Modifier = Modifier, /** * Selects whether the backing surface is SurfaceView-based ([SurfaceType.Surface], renders * behind Compose, best performance) or TextureView-based ([SurfaceType.TextureSurface], * renders inline, supports alpha blending). */ surfaceType: SurfaceType = SurfaceType.Surface, /** * Provide your own instance if you want to share Filament resources between multiple views. */ engine: Engine = rememberEngine(), /** * Consumes a blob of glTF 2.0 content (either JSON or GLB) and produces a [Model] object, * which is a bundle of Filament textures, vertex buffers, index buffers, etc. */ modelLoader: ModelLoader = rememberModelLoader(engine), /** * A Filament Material defines the visual appearance of an object. * Materials function as templates from which [MaterialInstance]s can be spawned. */ materialLoader: MaterialLoader = rememberMaterialLoader(engine), /** * Utility for decoding an HDR file or consuming KTX1 files and producing Filament textures, * IBLs, and sky boxes. */ environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine), /** * Encompasses all the state needed for rendering a [Scene]. * [View] instances are heavy objects that internally cache a lot of data needed for rendering. */ view: View = rememberView(engine), /** * Controls whether the render target is opaque or not. Default `true`. */ isOpaque: Boolean = true, /** * One-line rendering quality preset applied to [view]. Default [RenderQuality.Default] matches * the out-of-the-box `SceneView` settings. Use [RenderQuality.Cinematic] for hero shots on * capable devices, or [RenderQuality.Performance] on low-end Android or AR backgrounds where * the GPU budget is constrained. Individual [view] settings can still be tweaked after the * preset is applied. */ renderQuality: RenderQuality = RenderQuality.Default, /** * When `true` (default), all DSL [content] nodes are parented to an intermediate content-root * node which is translated once — on the first frame the content's union bounding box is * non-empty — so the content centroid lands at the orbit pivot and renders centred. Mirrors * the iOS library-level `autoCenterContent` feature (#1026 / PR #1038). Pass `false` to keep * strict per-node placement semantics for scenes with intentional off-centre composition. */ autoCenterContent: Boolean = true, /** * When `true`, the library moves [cameraNode] each frame the DSL [content]'s union bounds * materially change so the content fills the viewport — regardless of the model's intrinsic * glTF size, no per-model `scaleToUnits` tuning (#1439). The auto-fit pass latches once the * content's union diagonal has settled across consecutive frames, then leaves the camera alone * so the user's zoom / pan is never fought. An async model that finishes loading after a * sibling already framed still triggers a re-frame. Default `false` so callers that position * [cameraNode] explicitly keep full control — opt in for model-viewer style scenes. */ autoFitContent: Boolean = false, /** * A [Renderer] instance represents an operating system's window. * Typically, applications create a [Renderer] per window. */ renderer: Renderer = rememberRenderer(engine), /** * Provide your own instance if you want to share [Node]s' scene between multiple views. */ scene: Scene = rememberScene(engine), /** * Defines the lighting environment and the skybox of the scene. */ environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque), /** * Always add a direct light source since it is required for shadowing. * We highly recommend adding an [IndirectLight] as well. */ mainLightNode: LightNode? = rememberMainLightNode(engine), /** * Optional secondary "fill" directional light that softens the shadows produced by * [mainLightNode]. Default mirrors iOS RealityKit's two-light setup (main + fill at 30%). * Pass `null` for a single-light scene. */ fillLightNode: LightNode? = rememberFillLightNode(engine), /** * Represents a virtual camera, which determines the perspective through which the scene is * viewed. */ cameraNode: CameraNode = rememberCameraNode(engine), /** * Physics system to handle collision between nodes, hit testing on nodes, etc. */ collisionSystem: CollisionSystem = rememberCollisionSystem(view), /** * Helper that enables camera interaction similar to sketchfab or Google Maps. */ cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator( cameraNode.worldPosition ), /** * Used for [SceneScope.ViewNode] composables — manages the off-screen window attachment. * Obtain with [rememberViewNodeManager]. */ viewNodeWindowManager: ViewNode.WindowManager? = null, /** * The listener invoked for all gesture detector callbacks. */ onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(), onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null, activity: ComponentActivity? = LocalContext.current as? ComponentActivity, lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle, /** * Invoked once per frame immediately before the scene is updated and rendered. */ onFrame: ((frameTimeNanos: Long) -> Unit)? = null, /** * Declare scene nodes using the [SceneScope] DSL. */ content: (@Composable SceneScope.() -> Unit)? = null )</ID>
+    <ID>EmptyFunctionBlock:CameraGestureDetector.kt:CameraGestureDetector.DefaultCameraManipulator${}</ID>
+    <ID>EmptyFunctionBlock:CameraGestureDetector.kt:FovZoomCameraManipulator${}</ID>
+    <ID>EmptyFunctionBlock:GestureDetector.kt:GestureDetector.SimpleOnGestureListener${}</ID>
+    <ID>FunctionNaming:Math.kt:fun Box(center: Position, halfExtent: Size)</ID>
+    <ID>LargeClass:SceneScope.kt:SceneScope</ID>
+    <ID>LongMethod:Cone.kt:Cone.Companion$fun getVertices(radius: Float, height: Float, center: Position, sideCount: Int)</ID>
+    <ID>LongMethod:Cylinder.kt:Cylinder.Companion$fun getVertices(radius: Float, height: Float, center: Position, sideCount: Int)</ID>
+    <ID>LongMethod:NoTangentsGlbContractTest.kt:NoTangentsGlbContractTest$private fun buildNoTangentsGlb(): ByteBuffer</ID>
+    <ID>LongMethod:Scene.kt:@Composable fun SceneView( modifier: Modifier = Modifier, /** * Selects whether the backing surface is SurfaceView-based ([SurfaceType.Surface], renders * behind Compose, best performance) or TextureView-based ([SurfaceType.TextureSurface], * renders inline, supports alpha blending). */ surfaceType: SurfaceType = SurfaceType.Surface, /** * Provide your own instance if you want to share Filament resources between multiple views. */ engine: Engine = rememberEngine(), /** * Consumes a blob of glTF 2.0 content (either JSON or GLB) and produces a [Model] object, * which is a bundle of Filament textures, vertex buffers, index buffers, etc. */ modelLoader: ModelLoader = rememberModelLoader(engine), /** * A Filament Material defines the visual appearance of an object. * Materials function as templates from which [MaterialInstance]s can be spawned. */ materialLoader: MaterialLoader = rememberMaterialLoader(engine), /** * Utility for decoding an HDR file or consuming KTX1 files and producing Filament textures, * IBLs, and sky boxes. */ environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine), /** * Encompasses all the state needed for rendering a [Scene]. * [View] instances are heavy objects that internally cache a lot of data needed for rendering. */ view: View = rememberView(engine), /** * Controls whether the render target is opaque or not. Default `true`. */ isOpaque: Boolean = true, /** * One-line rendering quality preset applied to [view]. Default [RenderQuality.Default] matches * the out-of-the-box `SceneView` settings. Use [RenderQuality.Cinematic] for hero shots on * capable devices, or [RenderQuality.Performance] on low-end Android or AR backgrounds where * the GPU budget is constrained. Individual [view] settings can still be tweaked after the * preset is applied. */ renderQuality: RenderQuality = RenderQuality.Default, /** * When `true` (default), all DSL [content] nodes are parented to an intermediate content-root * node which is translated once — on the first frame the content's union bounding box is * non-empty — so the content centroid lands at the orbit pivot and renders centred. Mirrors * the iOS library-level `autoCenterContent` feature (#1026 / PR #1038). Pass `false` to keep * strict per-node placement semantics for scenes with intentional off-centre composition. */ autoCenterContent: Boolean = true, /** * When `true`, the library moves [cameraNode] each frame the DSL [content]'s union bounds * materially change so the content fills the viewport — regardless of the model's intrinsic * glTF size, no per-model `scaleToUnits` tuning (#1439). The auto-fit pass latches once the * content's union diagonal has settled across consecutive frames, then leaves the camera alone * so the user's zoom / pan is never fought. An async model that finishes loading after a * sibling already framed still triggers a re-frame. Default `false` so callers that position * [cameraNode] explicitly keep full control — opt in for model-viewer style scenes. */ autoFitContent: Boolean = false, /** * A [Renderer] instance represents an operating system's window. * Typically, applications create a [Renderer] per window. */ renderer: Renderer = rememberRenderer(engine), /** * Provide your own instance if you want to share [Node]s' scene between multiple views. */ scene: Scene = rememberScene(engine), /** * Defines the lighting environment and the skybox of the scene. */ environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque), /** * Always add a direct light source since it is required for shadowing. * We highly recommend adding an [IndirectLight] as well. */ mainLightNode: LightNode? = rememberMainLightNode(engine), /** * Optional secondary "fill" directional light that softens the shadows produced by * [mainLightNode]. Default mirrors iOS RealityKit's two-light setup (main + fill at 30%). * Pass `null` for a single-light scene. */ fillLightNode: LightNode? = rememberFillLightNode(engine), /** * Represents a virtual camera, which determines the perspective through which the scene is * viewed. */ cameraNode: CameraNode = rememberCameraNode(engine), /** * Physics system to handle collision between nodes, hit testing on nodes, etc. */ collisionSystem: CollisionSystem = rememberCollisionSystem(view), /** * Helper that enables camera interaction similar to sketchfab or Google Maps. */ cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator( cameraNode.worldPosition ), /** * Used for [SceneScope.ViewNode] composables — manages the off-screen window attachment. * Obtain with [rememberViewNodeManager]. */ viewNodeWindowManager: ViewNode.WindowManager? = null, /** * The listener invoked for all gesture detector callbacks. */ onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(), onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null, activity: ComponentActivity? = LocalContext.current as? ComponentActivity, lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle, /** * Invoked once per frame immediately before the scene is updated and rendered. */ onFrame: ((frameTimeNanos: Long) -> Unit)? = null, /** * Declare scene nodes using the [SceneScope] DSL. */ content: (@Composable SceneScope.() -> Unit)? = null )</ID>
+    <ID>LoopWithTooManyJumpStatements:CollisionSystem.kt:CollisionSystem$for</ID>
+    <ID>LoopWithTooManyJumpStatements:EngineDestroyQueue.kt:DeferredDestroyQueue$while</ID>
+    <ID>MatchingDeclarationName:AnimationState.kt:ModelAnimationState</ID>
+    <ID>MatchingDeclarationName:CinematicCamera.kt:CinematicCameraProfile</ID>
+    <ID>MatchingDeclarationName:DebugOverlay.kt:DebugStats</ID>
+    <ID>MatchingDeclarationName:File.kt:FileLoader</ID>
+    <ID>MatchingDeclarationName:PhysicsNode.kt:PhysicsBody</ID>
+    <ID>MatchingDeclarationName:SceneInspector.kt:NodeSnapshot</ID>
+    <ID>MaxLineLength:File.kt:FileLoader$context.resources.openRawResource(uri.pathSegments.lastOrNull()?.toIntOrNull() ?: throw IllegalArgumentException("Invalid resource URI: $uri"))</ID>
+    <ID>MaxLineLength:ModelAnimation.kt:ModelAnimation.Companion$val</ID>
+    <ID>MaxLineLength:ModelAnimator.kt:ModelAnimator.Companion$fun</ID>
+    <ID>MaxLineLength:ModelAnimator.kt:ModelAnimator.Companion$propertyValuesHolders[i] = PropertyValuesHolder.ofAnimationTime(animations[i], 0f, animations[i].getDuration())</ID>
+    <ID>MaxLineLength:ModelAnimator.kt:ModelAnimator.Companion$return ofPropertyValuesHolder(model, animation, PropertyValuesHolder.ofAnimationFraction(animation, *fractions))</ID>
+    <ID>MaxLineLength:ModelAnimator.kt:ModelAnimator.PropertyValuesHolder.AnimationProperty$val resolved = getAnimationByName(model, animationName ?: throw IllegalArgumentException("Animation name is null"))</ID>
+    <ID>MaxLineLength:ModelAnimator.kt:ModelAnimator.PropertyValuesHolder.Companion$fun</ID>
+    <ID>MaxLineLength:ModelAnimator.kt:ModelAnimator.PropertyValuesHolder.Companion$return android.animation.PropertyValuesHolder.ofFloat(AnimationProperty(animation, ModelAnimation.FRACTION_POSITION), *fractions)</ID>
+    <ID>MaxLineLength:ModelAnimator.kt:ModelAnimator.PropertyValuesHolder.Companion$return android.animation.PropertyValuesHolder.ofFloat(AnimationProperty(animation, ModelAnimation.TIME_POSITION), *times)</ID>
+    <ID>MaxLineLength:ModelAnimator.kt:ModelAnimator.PropertyValuesHolder.Companion$return android.animation.PropertyValuesHolder.ofFloat(AnimationProperty(animationName, ModelAnimation.FRACTION_POSITION), *fractions)</ID>
+    <ID>MaxLineLength:ModelAnimator.kt:ModelAnimator.PropertyValuesHolder.Companion$return android.animation.PropertyValuesHolder.ofFloat(AnimationProperty(animationName, ModelAnimation.TIME_POSITION), *times)</ID>
+    <ID>MaxLineLength:ModelAnimator.kt:ModelAnimator.PropertyValuesHolder.Companion$return android.animation.PropertyValuesHolder.ofInt(AnimationProperty(animation, ModelAnimation.FRAME_POSITION), *frames)</ID>
+    <ID>MaxLineLength:ModelAnimator.kt:ModelAnimator.PropertyValuesHolder.Companion$return android.animation.PropertyValuesHolder.ofInt(AnimationProperty(animationName, ModelAnimation.FRAME_POSITION), *frames)</ID>
+    <ID>MaxLineLength:Scene.kt:@Deprecated("Use SceneView instead", ReplaceWith("SceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, view, isOpaque, renderer, scene, environment, mainLightNode, cameraNode, collisionSystem, cameraManipulator, viewNodeWindowManager, onGestureListener, onTouchEvent, activity, lifecycle, onFrame, content)"))</ID>
+    <ID>MaxLineLength:SceneScope.kt:SceneScope$val prevCapsuleGeometry = remember { mutableStateOf(listOf&lt;Any?>(radius, height, center, capStacks, sideSlices)) }</ID>
+    <ID>MaxLineLength:SceneScope.kt:SceneScope$val prevShapeGeometry = remember { mutableStateOf(listOf&lt;Any?>(polygonPath, polygonHoles, delaunayPoints, normal, uvScale, color)) }</ID>
+    <ID>MaxLineLength:SceneScope.kt:SceneScope$val prevTorusGeometry = remember { mutableStateOf(listOf&lt;Any?>(majorRadius, minorRadius, center, majorSegments, minorSegments)) }</ID>
+    <ID>MaxLineLength:SurfaceMirrorer.kt:SurfaceMirrorer$if</ID>
+    <ID>MayBeConstant:Capsule.kt:Capsule.Companion$val DEFAULT_CAP_STACKS = 8</ID>
+    <ID>MayBeConstant:Capsule.kt:Capsule.Companion$val DEFAULT_HEIGHT = 2.0f</ID>
+    <ID>MayBeConstant:Capsule.kt:Capsule.Companion$val DEFAULT_RADIUS = 0.5f</ID>
+    <ID>MayBeConstant:Capsule.kt:Capsule.Companion$val DEFAULT_SIDE_SLICES = 24</ID>
+    <ID>MayBeConstant:Cone.kt:Cone.Companion$val DEFAULT_HEIGHT = 2.0f</ID>
+    <ID>MayBeConstant:Cone.kt:Cone.Companion$val DEFAULT_RADIUS = 1.0f</ID>
+    <ID>MayBeConstant:Cone.kt:Cone.Companion$val DEFAULT_SIDE_COUNT = 24</ID>
+    <ID>MayBeConstant:Cylinder.kt:Cylinder.Companion$val DEFAULT_HEIGHT = 2.0f</ID>
+    <ID>MayBeConstant:Cylinder.kt:Cylinder.Companion$val DEFAULT_RADIUS = 1.0f</ID>
+    <ID>MayBeConstant:Cylinder.kt:Cylinder.Companion$val DEFAULT_SIDE_COUNT = 24</ID>
+    <ID>MayBeConstant:SceneFactories.kt:val DEFAULT_FILL_LIGHT_INTENSITY = DEFAULT_FILL_LIGHT_COLOR_INTENSITY</ID>
+    <ID>MayBeConstant:SceneFactories.kt:val DEFAULT_MAIN_LIGHT_INTENSITY = DEFAULT_MAIN_LIGHT_COLOR_INTENSITY</ID>
+    <ID>MayBeConstant:Sphere.kt:Sphere.Companion$val DEFAULT_RADIUS = 1.0f</ID>
+    <ID>MayBeConstant:Sphere.kt:Sphere.Companion$val DEFAULT_SLICES = 24</ID>
+    <ID>MayBeConstant:Sphere.kt:Sphere.Companion$val DEFAULT_STACKS = 24</ID>
+    <ID>MayBeConstant:Torus.kt:Torus.Companion$val DEFAULT_MAJOR_RADIUS = 1.0f</ID>
+    <ID>MayBeConstant:Torus.kt:Torus.Companion$val DEFAULT_MAJOR_SEGMENTS = 32</ID>
+    <ID>MayBeConstant:Torus.kt:Torus.Companion$val DEFAULT_MINOR_RADIUS = 0.3f</ID>
+    <ID>MayBeConstant:Torus.kt:Torus.Companion$val DEFAULT_MINOR_SEGMENTS = 16</ID>
+    <ID>NewLineAtEndOfFile:Camera.kt:io.github.sceneview.utils.Camera.kt</ID>
+    <ID>NewLineAtEndOfFile:CameraComponent.kt:io.github.sceneview.components.CameraComponent.kt</ID>
+    <ID>NewLineAtEndOfFile:CameraGestureDetector.kt:io.github.sceneview.gesture.CameraGestureDetector.kt</ID>
+    <ID>NewLineAtEndOfFile:CameraManipulator.kt:io.github.sceneview.gesture.CameraManipulator.kt</ID>
+    <ID>NewLineAtEndOfFile:CollisionSystem.kt:io.github.sceneview.collision.CollisionSystem.kt</ID>
+    <ID>NewLineAtEndOfFile:Component.kt:io.github.sceneview.components.Component.kt</ID>
+    <ID>NewLineAtEndOfFile:Cube.kt:io.github.sceneview.geometries.Cube.kt</ID>
+    <ID>NewLineAtEndOfFile:CubeNode.kt:io.github.sceneview.node.CubeNode.kt</ID>
+    <ID>NewLineAtEndOfFile:Cylinder.kt:io.github.sceneview.geometries.Cylinder.kt</ID>
+    <ID>NewLineAtEndOfFile:CylinderNode.kt:io.github.sceneview.node.CylinderNode.kt</ID>
+    <ID>NewLineAtEndOfFile:Engine.kt:io.github.sceneview.Engine.kt</ID>
+    <ID>NewLineAtEndOfFile:Environment.kt:io.github.sceneview.environment.Environment.kt</ID>
+    <ID>NewLineAtEndOfFile:EnvironmentLoader.kt:io.github.sceneview.loaders.EnvironmentLoader.kt</ID>
+    <ID>NewLineAtEndOfFile:GeometryNode.kt:io.github.sceneview.node.GeometryNode.kt</ID>
+    <ID>NewLineAtEndOfFile:GestureDetector.kt:io.github.sceneview.gesture.GestureDetector.kt</ID>
+    <ID>NewLineAtEndOfFile:HitResult.kt:io.github.sceneview.collision.HitResult.kt</ID>
+    <ID>NewLineAtEndOfFile:IBLPrefilter.kt:io.github.sceneview.environment.IBLPrefilter.kt</ID>
+    <ID>NewLineAtEndOfFile:ImageNode.kt:io.github.sceneview.node.ImageNode.kt</ID>
+    <ID>NewLineAtEndOfFile:ImageTexture.kt:io.github.sceneview.texture.ImageTexture.kt</ID>
+    <ID>NewLineAtEndOfFile:LightComponent.kt:io.github.sceneview.components.LightComponent.kt</ID>
+    <ID>NewLineAtEndOfFile:LightManager.kt:io.github.sceneview.managers.LightManager.kt</ID>
+    <ID>NewLineAtEndOfFile:LightNode.kt:io.github.sceneview.node.LightNode.kt</ID>
+    <ID>NewLineAtEndOfFile:MaterialInstance.kt:io.github.sceneview.material.MaterialInstance.kt</ID>
+    <ID>NewLineAtEndOfFile:MeshNode.kt:io.github.sceneview.node.MeshNode.kt</ID>
+    <ID>NewLineAtEndOfFile:Model.kt:io.github.sceneview.model.Model.kt</ID>
+    <ID>NewLineAtEndOfFile:ModelInstance.kt:io.github.sceneview.model.ModelInstance.kt</ID>
+    <ID>NewLineAtEndOfFile:ModelLoader.kt:io.github.sceneview.loaders.ModelLoader.kt</ID>
+    <ID>NewLineAtEndOfFile:ModelNode.kt:io.github.sceneview.node.ModelNode.kt</ID>
+    <ID>NewLineAtEndOfFile:OpenGL.kt:io.github.sceneview.utils.OpenGL.kt</ID>
+    <ID>NewLineAtEndOfFile:Plane.kt:io.github.sceneview.geometries.Plane.kt</ID>
+    <ID>NewLineAtEndOfFile:PlaneNode.kt:io.github.sceneview.node.PlaneNode.kt</ID>
+    <ID>NewLineAtEndOfFile:RenderableManager.kt:io.github.sceneview.managers.RenderableManager.kt</ID>
+    <ID>NewLineAtEndOfFile:RenderableNode.kt:io.github.sceneview.node.RenderableNode.kt</ID>
+    <ID>NewLineAtEndOfFile:RotateGestureDetector.kt:io.github.sceneview.gesture.RotateGestureDetector.kt</ID>
+    <ID>NewLineAtEndOfFile:ScaleGestureDetector.kt:io.github.sceneview.gesture.ScaleGestureDetector.kt</ID>
+    <ID>NewLineAtEndOfFile:Shape.kt:io.github.sceneview.geometries.Shape.kt</ID>
+    <ID>NewLineAtEndOfFile:ShapeNode.kt:io.github.sceneview.node.ShapeNode.kt</ID>
+    <ID>NewLineAtEndOfFile:Sphere.kt:io.github.sceneview.geometries.Sphere.kt</ID>
+    <ID>NewLineAtEndOfFile:SphereNode.kt:io.github.sceneview.node.SphereNode.kt</ID>
+    <ID>NewLineAtEndOfFile:Texture.kt:io.github.sceneview.texture.Texture.kt</ID>
+    <ID>NewLineAtEndOfFile:TextureSampler.kt:io.github.sceneview.texture.TextureSampler.kt</ID>
+    <ID>NewLineAtEndOfFile:TransformManager.kt:io.github.sceneview.managers.TransformManager.kt</ID>
+    <ID>NewLineAtEndOfFile:Transition.kt:io.github.sceneview.animation.Transition.kt</ID>
+    <ID>NewLineAtEndOfFile:VectorConverters.kt:io.github.sceneview.animation.VectorConverters.kt</ID>
+    <ID>NewLineAtEndOfFile:VideoMaterial.kt:io.github.sceneview.material.VideoMaterial.kt</ID>
+    <ID>NewLineAtEndOfFile:VideoTexture.kt:io.github.sceneview.texture.VideoTexture.kt</ID>
+    <ID>ReturnCount:CameraFraming.kt:SceneAutoFitState$fun maybeFit( cameraNode: CameraNode, contentRoots: List&lt;Node>, padding: Float = DEFAULT_FRAMING_PADDING ): Boolean</ID>
+    <ID>ReturnCount:CameraGestureDetector.kt:CameraGestureDetector$fun onTouchEvent(event: MotionEvent)</ID>
+    <ID>TooManyFunctions:Engine.kt:io.github.sceneview.Engine.kt</ID>
+    <ID>TooManyFunctions:Node.kt:Node : OnGestureListenerOnDoubleTapListenerOnContextClickListenerOnMoveListenerOnRotateListenerOnScaleListenerTransformProvider</ID>
+    <ID>TooManyFunctions:SceneScope.kt:SceneScope</ID>
+    <ID>TooManyFunctions:UbershaderInstance.kt:io.github.sceneview.material.UbershaderInstance.kt</ID>
+    <ID>TopLevelPropertyNaming:Geometry.kt:private const val kColorSize = 4 // r, g, b, a</ID>
+    <ID>TopLevelPropertyNaming:Geometry.kt:private const val kPositionSize = 3 // x, y, z</ID>
+    <ID>TopLevelPropertyNaming:Geometry.kt:private const val kTangentSize = 4 // Quaternion: x, y, z, w</ID>
+    <ID>TopLevelPropertyNaming:Geometry.kt:private const val kUVSize = 2 // x, y</ID>
+    <ID>TopLevelPropertyNaming:MaterialInstance.kt:const val kMaterialDefaultMetallic = 0.0f</ID>
+    <ID>TopLevelPropertyNaming:MaterialInstance.kt:const val kMaterialDefaultReflectance = 0.5f</ID>
+    <ID>TopLevelPropertyNaming:MaterialInstance.kt:const val kMaterialDefaultRoughness = 0.4f</ID>
+    <ID>TopLevelPropertyNaming:MaterialLoader.kt:private const val kMaterialsAssetFolder = "materials"</ID>
+    <ID>TopLevelPropertyNaming:MoveGestureDetector.kt:private const val kMinDragDistance = 1000f</ID>
+    <ID>TopLevelPropertyNaming:RotateGestureDetector.kt:/** * This value is the threshold ratio between our previous combined pressure and the current combined * pressure. We will only fire an onRotate event if the computed ratio between the current and * previous event pressures is greater than this value. When pressure decreases rapidly between * events the position values can often be imprecise, as it usually indicates that the user is in * the process of lifting a pointer off of the device. Its value was tuned experimentally. */ private const val kPressureThreshold = 0.67f</ID>
+    <ID>UnusedParameter:ReflectionProbeNode.kt:priority: Int = 0</ID>
+    <ID>UnusedParameter:Scene.kt:activity: ComponentActivity? = LocalContext.current as? ComponentActivity</ID>
+    <ID>UtilityClassWithPublicConstructor:ModelAnimation.kt:ModelAnimation$PropertyValuesHolder</ID>
+    <ID>VariableNaming:DebugOverlay.kt:DebugStats$internal var _fps = mutableFloatStateOf(0f)</ID>
+    <ID>VariableNaming:DebugOverlay.kt:DebugStats$internal var _fpsAccumulator = mutableFloatStateOf(0f)</ID>
+    <ID>VariableNaming:DebugOverlay.kt:DebugStats$internal var _frameCount = mutableIntStateOf(0)</ID>
+    <ID>VariableNaming:DebugOverlay.kt:DebugStats$internal var _frameTimeMs = mutableFloatStateOf(0f)</ID>
+    <ID>VariableNaming:DebugOverlay.kt:DebugStats$internal var _lastFrameNanos = mutableLongStateOf(0L)</ID>
+    <ID>VariableNaming:DebugOverlay.kt:DebugStats$internal var _nodeCount = mutableIntStateOf(0)</ID>
+  </CurrentIssues>
+</SmellBaseline>
