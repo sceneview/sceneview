@@ -1,8 +1,6 @@
 package io.github.sceneview.ar.physics
 
-import io.github.sceneview.math.Position
 import io.github.sceneview.math.Transform
-import io.github.sceneview.math.times
 import kotlin.math.max
 import kotlin.math.min
 
@@ -32,17 +30,33 @@ internal fun transformPositionsToWorld(
 ): FloatArray {
     val out = FloatArray(positionsCameraSpace.size)
     val vertexCount = positionsCameraSpace.size / 3
+    // Inline the 4×4 × (x,y,z,1) matrix multiply directly into the output FloatArray (#1810).
+    // The previous `worldTransform * Position(x, y, z)` shape allocated 2 small objects per vertex
+    // — a `Float4` for the homogeneous extension and a `Float3` for the post-divide result. At
+    // ~920 vertices per rebuild × 5 Hz this added up to ~9k transient allocs/sec on the render
+    // thread. Reading the `Float4x4` columns once + a straight per-vertex matrix-vector multiply
+    // produces the same numbers with zero allocation.
+    //
+    // `Float4x4` from `dev.romainguy.kotlin.math` is column-major:
+    //   column 0 = (x.x, x.y, x.z, x.w)  // first basis vector
+    //   column 1 = (y.x, y.y, y.z, y.w)
+    //   column 2 = (z.x, z.y, z.z, z.w)
+    //   column 3 = (translation.x, translation.y, translation.z, translation.w)
+    val m00 = worldTransform.x.x; val m10 = worldTransform.x.y; val m20 = worldTransform.x.z
+    val m01 = worldTransform.y.x; val m11 = worldTransform.y.y; val m21 = worldTransform.y.z
+    val m02 = worldTransform.z.x; val m12 = worldTransform.z.y; val m22 = worldTransform.z.z
+    val m03 = worldTransform.w.x; val m13 = worldTransform.w.y; val m23 = worldTransform.w.z
     var i = 0
     while (i < vertexCount) {
         val base = i * 3
-        val world = worldTransform * Position(
-            positionsCameraSpace[base],
-            positionsCameraSpace[base + 1],
-            positionsCameraSpace[base + 2],
-        )
-        out[base] = world.x
-        out[base + 1] = world.y
-        out[base + 2] = world.z
+        val x = positionsCameraSpace[base]
+        val y = positionsCameraSpace[base + 1]
+        val z = positionsCameraSpace[base + 2]
+        // (x,y,z,1) is the homogeneous extension. The bottom row of a TRS-transform is (0,0,0,1)
+        // so the perspective divide is unconditionally 1 — we drop it for the inner loop.
+        out[base] = m00 * x + m01 * y + m02 * z + m03
+        out[base + 1] = m10 * x + m11 * y + m12 * z + m13
+        out[base + 2] = m20 * x + m21 * y + m22 * z + m23
         i++
     }
     return out

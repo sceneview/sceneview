@@ -8,6 +8,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -117,6 +118,13 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                     SceneViewColors.Ramp4[0],
                 )
 
+                // Per-frame collection of active sphere node refs so the demo can feed the
+                // collider's region-cull fast path (#1810). Snapshot-stateless plain list; the
+                // demo replaces the `nodeRefs` collection on every recomposition, but the
+                // collider's `setBodiesRegion` consumer reads from a transient FloatArray we
+                // build on each onFrame tick.
+                val activeBallNodes = remember { mutableListOf<SphereNode>() }
+
                 for (i in 0 until ballCount) {
                     // Spawn at the scene origin + a small column above so multiple drops don't
                     // pile up at a single XY.
@@ -129,7 +137,20 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                         radius = 0.05f,
                         materialInstance = ballMaterial,
                         position = Position(x = xOffset, y = startY, z = zOffset),
-                        apply = { nodeRef = this },
+                        apply = {
+                            nodeRef = this
+                            activeBallNodes += this
+                            onFrame = {
+                                // Drive the depth collider's region-cull fast path once per
+                                // frame (#1810). The KDoc-documented region cull was previously
+                                // bypassed in this demo so the collider was testing every
+                                // triangle (~540k tri-tests/sec with 5 balls × 1800 triangles ×
+                                // 60 fps). Re-publishing the body centres + a generous radius
+                                // padding shrinks the per-frame triangle list to just those
+                                // overlapping the ball cluster's AABB.
+                                publishCollisionRegion(activeBallNodes, depthCollider)
+                            }
+                        },
                     )
                     nodeRef?.let { node ->
                         PhysicsNode(
@@ -143,7 +164,40 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                         )
                     }
                 }
+                // Reset the list on each recomposition — the per-node `apply` block above is the
+                // single source of truth for who's active this composition pass.
+                DisposableEffect(ballCount) {
+                    onDispose { activeBallNodes.clear() }
+                }
             }
         }
     }
+}
+
+/**
+ * Publishes the current ball centres to the [DepthCollider] for per-frame region culling
+ * (#1810). Allocates one short [FloatArray] per call — small (3 × ballCount floats), all on
+ * the render thread, and unavoidable given [DepthCollider.setBodiesRegion]'s flat-packed
+ * interface. A future optimisation would expose an overload taking a reusable scratch array.
+ */
+private fun publishCollisionRegion(
+    nodes: List<SphereNode>,
+    collider: DepthCollider,
+) {
+    if (nodes.isEmpty()) {
+        collider.setBodiesRegion(null, padding = 0.15f)
+        return
+    }
+    val centres = FloatArray(nodes.size * 3)
+    var i = 0
+    for (n in nodes) {
+        val p = n.worldPosition
+        centres[i] = p.x
+        centres[i + 1] = p.y
+        centres[i + 2] = p.z
+        i += 3
+    }
+    // padding 0.15 m ≈ 3 × the ball radius + frame-to-frame travel headroom; matches the
+    // DepthCollider KDoc's example value for a 5 cm radius body.
+    collider.setBodiesRegion(centres, padding = 0.15f)
 }

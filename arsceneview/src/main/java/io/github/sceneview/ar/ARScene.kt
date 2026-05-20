@@ -961,8 +961,14 @@ private fun onARFrame(
 
     arPlaneRenderer.update(session, frame)
 
-    childNodes.filterIsInstance<PoseNode>().forEach { it.update(session, frame) }
-    childNodes.filterIsInstance<DepthMeshNode>().forEach { it.update(session, frame) }
+    // Single-pass dispatch (#1810): the previous `filterIsInstance<PoseNode>().forEach { }` +
+    // `filterIsInstance<DepthMeshNode>().forEach { }` allocated two fresh ArrayLists every frame
+    // (~240 list allocations/sec at 60 fps on the render thread). A single `for` loop with a
+    // `when` type-check is zero-allocation and walks the child list once.
+    for (n in childNodes) when (n) {
+        is PoseNode -> n.update(session, frame)
+        is DepthMeshNode -> n.update(session, frame)
+    }
 
     val newTrackingFailure = if (!isCameraTracking) {
         camera.trackingFailureReason.takeIf { it != TrackingFailureReason.NONE }

@@ -118,6 +118,12 @@ class PhysicsBody(
      * Advance the simulation by [frameTimeNanos] nanoseconds from [prevFrameTimeNanos].
      *
      * Call this from a [Node.onFrame] lambda or from a [Scene] `onFrame` block.
+     *
+     * Allocation profile (#1810): the velocity / position math is integrated as plain `Float`
+     * triples and bundled into the `velocity` / `node.position` [Position]s **exactly twice**
+     * per call — once for the post-gravity-and-bounce velocity, once for the post-integration
+     * position. The previous shape allocated 3-4 fresh `Position` objects per body per frame;
+     * at 5 balls × 60 fps that was 1200 transient `Position` allocs/sec on the render thread.
      */
     fun step(frameTimeNanos: Long, prevFrameTimeNanos: Long?) {
         if (isAsleep) return
@@ -126,44 +132,44 @@ class PhysicsBody(
         // Clamp dt to avoid huge jumps after e.g. a GC pause or first frame.
         val safeDt = dt.coerceIn(0f, 0.05f)
 
-        // Apply gravity to vertical velocity.
-        velocity = Position(
-            x = velocity.x,
-            y = velocity.y + GRAVITY * safeDt,
-            z = velocity.z
-        )
+        // Read the current velocity once into plain Floats — avoids 3 property-getter calls per
+        // axis below and lets us mutate in place before the single Position commit.
+        val curVel = velocity
+        var vx = curVel.x
+        var vy = curVel.y + GRAVITY * safeDt
+        var vz = curVel.z
 
-        // Integrate position.
+        // Integrate position into a Float triple — defer the single Position alloc until after
+        // the floor-collision clamp.
         val pos = node.position
-        var newPos = Position(
-            x = pos.x + velocity.x * safeDt,
-            y = pos.y + velocity.y * safeDt,
-            z = pos.z + velocity.z * safeDt
-        )
+        val nx = pos.x + vx * safeDt
+        var ny = pos.y + vy * safeDt
+        val nz = pos.z + vz * safeDt
 
         // Floor collision: the bottom of the sphere is at (centre.y - radius). When a dynamic
         // floor provider is attached (typically a depth-mesh collider, #1713), ask it for the
         // surface Y under the body's current XZ — that's how virtual rigid bodies bounce off the
         // real floor / table / wall in AR. Falls back to the static `floorY` plane when the
         // provider has no answer (mesh not ready, body over a depth hole, etc.).
-        val surfaceY = floorProvider?.floorYAt(newPos.x, newPos.y, newPos.z, radius) ?: floorY
+        val surfaceY = floorProvider?.floorYAt(nx, ny, nz, radius) ?: floorY
         val contactY = surfaceY + radius
-        if (newPos.y < contactY) {
-            newPos = Position(newPos.x, contactY, newPos.z)
-            val reboundVy = -velocity.y * restitution
-            velocity = Position(velocity.x, reboundVy, velocity.z)
+        if (ny < contactY) {
+            ny = contactY
+            vy = -vy * restitution
 
             // Put the body to sleep when the rebound speed is negligible. Only allow sleep on
             // the **static** floor: the depth mesh refreshes 5× a second and an "asleep" body
             // on a wobbly mesh would freeze in mid-air the moment its supporting triangles get
             // edge-culled. A body resting on real geometry stays awake and re-evaluates.
-            if (kotlin.math.abs(reboundVy) < SLEEP_THRESHOLD && floorProvider == null) {
-                velocity = Position(velocity.x, 0f, velocity.z)
+            if (kotlin.math.abs(vy) < SLEEP_THRESHOLD && floorProvider == null) {
+                vy = 0f
                 isAsleep = true
             }
         }
 
-        node.position = newPos
+        // Commit: exactly one Position alloc for velocity + one for node position.
+        velocity = Position(vx, vy, vz)
+        node.position = Position(nx, ny, nz)
     }
 }
 
