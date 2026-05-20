@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **CI: `quality-gate.sh` now blocks llms.txt mirror drift ([#1847](https://github.com/sceneview/sceneview/issues/1847)).** The drift detectors for `docs/docs/llms.txt` and the MCP bundle `mcp/src/generated/llms-txt.ts` used to live only in `sync-versions.sh`, which is not called by the PR-blocking gate. A new dedicated `check-llms-drift.sh` is wired into `quality-gate.sh` so any divergence from root `llms.txt` (e.g. the `DepthHitResultNode` drift that landed via #1822) fails the gate instead of silently sitting on `main`.
