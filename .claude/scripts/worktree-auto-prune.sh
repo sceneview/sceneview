@@ -15,8 +15,15 @@
 #   - ABORTS if `origin/main` cannot be refreshed via `git fetch` (silent
 #     staleness is the #1 cause of false ahead=0 → spurious deletion of
 #     unmerged work). Pass --allow-stale to opt back into local refs.
-#   - With --check-active-sessions, also skips worktrees whose path appears
-#     in any running `claude*` process command line.
+#     In --allow-stale mode, `ahead=0` alone is no longer sufficient —
+#     candidates additionally require a MERGED PR signal (via `gh`) so
+#     that a locally-advanced origin/main can't sneak through.
+#   - Skips worktrees that have a live `claude`/`node` process with cwd
+#     inside them. cwd (via `lsof -F n -d cwd`) is the authoritative
+#     signal — argv-based heuristics get polluted by shell wrappers
+#     that inject candidate paths into every process command line.
+#     The scan is re-run right before the destructive loop to close the
+#     prompt-window race. Pass --no-check-active-sessions to disable.
 #   - Uses plain `git worktree remove` (fails safe on dirty/locked trees),
 #     never `--force`.
 #   - Defaults to interactive prompt; --yes for non-interactive; --dry-run
@@ -25,7 +32,7 @@
 # Usage:
 #   bash .claude/scripts/worktree-auto-prune.sh --dry-run --keep "$(git rev-parse --show-toplevel)"
 #   bash .claude/scripts/worktree-auto-prune.sh --yes  --keep "$PATH_A" --keep "$PATH_B"
-#   bash .claude/scripts/worktree-auto-prune.sh --yes  --check-active-sessions
+#   bash .claude/scripts/worktree-auto-prune.sh --yes  --no-check-active-sessions
 #   bash .claude/scripts/worktree-auto-prune.sh --yes  --allow-stale   # offline
 #
 # Tracking: https://github.com/sceneview/sceneview/issues/1242
@@ -40,7 +47,10 @@ DRY_RUN=false
 ASSUME_YES=false
 KEEP_PATHS=()
 ALLOW_STALE=false
-CHECK_ACTIVE_SESSIONS=false
+# Active-session guard is on by default — the PR (#1830) that introduced
+# it was filed because a worktree was deleted out from under an active
+# session. Opting out via --no-check-active-sessions is supported.
+CHECK_ACTIVE_SESSIONS=true
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -48,10 +58,11 @@ while [ $# -gt 0 ]; do
         --yes)     ASSUME_YES=true; shift ;;
         --keep)    KEEP_PATHS+=("${2:-}"); shift 2 ;;
         --keep=*)  KEEP_PATHS+=("${1#--keep=}"); shift ;;
-        --allow-stale)           ALLOW_STALE=true; shift ;;
-        --check-active-sessions) CHECK_ACTIVE_SESSIONS=true; shift ;;
+        --allow-stale)              ALLOW_STALE=true; shift ;;
+        --check-active-sessions)    CHECK_ACTIVE_SESSIONS=true; shift ;;
+        --no-check-active-sessions) CHECK_ACTIVE_SESSIONS=false; shift ;;
         -h|--help)
-            sed -n '2,33p' "$0"
+            sed -n '2,39p' "$0"
             exit 0
             ;;
         *)
@@ -76,15 +87,25 @@ if [ -z "$GIT_COMMON_DIR" ]; then
     echo -e "${RED}Not inside a git repo.${NC}" >&2
     exit 1
 fi
-# git-common-dir may be relative — normalise to absolute.
-GIT_COMMON_DIR="$(cd "$GIT_COMMON_DIR" && pwd)"
+# git-common-dir may be relative — normalise to absolute. `pwd -P`
+# resolves symlinks so it matches what `git worktree list --porcelain`
+# returns (canonical paths).
+GIT_COMMON_DIR="$(cd "$GIT_COMMON_DIR" && pwd -P)"
 REPO_ROOT="$(dirname "$GIT_COMMON_DIR")"
 
-# Normalise each --keep path to an absolute path.
+# Normalise each --keep path to an absolute, symlink-resolved path so the
+# string compare in is_kept matches what `git worktree list --porcelain`
+# returns. A typo or non-existent path is fatal — better an error here
+# than a worktree deleted because the operator's protective intent
+# silently no-op'd.
 KEEP_ABS=()
 for kp in "${KEEP_PATHS[@]:-}"; do
     [ -z "$kp" ] && continue
-    KEEP_ABS+=("$(cd "$kp" 2>/dev/null && pwd || echo "$kp")")
+    if ! abs=$(cd "$kp" 2>/dev/null && pwd -P); then
+        echo -e "${RED}Error: --keep path does not exist or is not accessible: $kp${NC}" >&2
+        exit 1
+    fi
+    KEEP_ABS+=("$abs")
 done
 
 # is_kept <path> — true if the path matches any --keep argument.
@@ -112,16 +133,36 @@ pr_is_merged() {
     [ "$state" = "MERGED" ]
 }
 
-# is_active_session <path> — true if any active claude-related process
-# has its cwd inside <path>. We look at cwd (via `lsof -d cwd`) rather
-# than argv because shell wrappers/eval-strings (Claude Code's harness,
-# pgrep -a fallbacks, etc.) inject candidate paths into argv even for
-# uninvolved processes, producing massive false positives. cwd is the
-# authoritative signal: a session that's actually working in worktree X
-# has X as cwd.
+# refresh_active_cwds — populate ACTIVE_CWDS with the cwd of every running
+# `node` or `claude` process. Re-runnable. cwd is the authoritative signal
+# (a session actually working in worktree X has X as cwd); argv-based
+# heuristics get polluted by shell wrappers that inject candidate paths
+# into every process command line.
 #
-# ACTIVE_CWDS is pre-computed once below when --check-active-sessions
-# is set; this function just iterates the cached list.
+# `lsof -F n` is machine-readable: each record is `n<path>` on its own
+# line, so paths containing spaces survive intact (an `awk $NF` parse
+# would split them).
+refresh_active_cwds() {
+    ACTIVE_CWDS=()
+    [ "$CHECK_ACTIVE_SESSIONS" = "true" ] || return 0
+    if ! command -v lsof >/dev/null 2>&1; then
+        echo -e "${YELLOW}Warning: lsof not found — active-session check disabled.${NC}"
+        CHECK_ACTIVE_SESSIONS=false
+        return 0
+    fi
+    local cwd
+    while IFS= read -r cwd; do
+        [ -n "$cwd" ] && ACTIVE_CWDS+=("$cwd")
+    done < <(
+        {
+            lsof -F n -d cwd -a -c node   2>/dev/null
+            lsof -F n -d cwd -a -c claude 2>/dev/null
+        } | awk '/^n\// {print substr($0, 2)}' | sort -u
+    )
+}
+
+# is_active_session <path> — true if any cwd in ACTIVE_CWDS is equal to
+# or descended from <path>.
 is_active_session() {
     local p="$1" cwd
     for cwd in "${ACTIVE_CWDS[@]:-}"; do
@@ -161,7 +202,8 @@ if ! git fetch --quiet origin main 2>/dev/null; then
         echo -e "${RED}Error: couldn't fetch origin/main.${NC}" >&2
         echo "  A stale origin/main can make worktrees with unmerged work" >&2
         echo "  look like ahead=0 and be wrongly removed." >&2
-        echo "  Re-run with --allow-stale to use local refs anyway." >&2
+        echo "  Check your network / VPN / GitHub auth, or re-run offline:" >&2
+        echo "    bash .claude/scripts/worktree-auto-prune.sh --allow-stale ..." >&2
         exit 1
     fi
 fi
@@ -172,26 +214,11 @@ SKIPPED_KEEP=()
 SKIPPED_DIRTY=()
 SKIPPED_ACTIVE=()
 
-# Pre-compute the cwd of every running claude/node process exactly once.
-# Used by is_active_session when --check-active-sessions is set.
+# Pre-compute the cwd of every running claude/node process for the
+# candidate-evaluation pass. Re-scanned again right before the
+# destructive loop to close the prompt-window race.
 ACTIVE_CWDS=()
-if [ "$CHECK_ACTIVE_SESSIONS" = "true" ]; then
-    if command -v lsof >/dev/null 2>&1; then
-        # `lsof -d cwd -a -c <name>` prints one line per matching process
-        # with the cwd in the last column. We scan both `node` (Claude Code
-        # CLI is a Node binary) and `claude` (dedicated binaries).
-        while IFS= read -r cwd; do
-            [ -n "$cwd" ] && ACTIVE_CWDS+=("$cwd")
-        done < <(
-            {
-                lsof -d cwd -a -c node   2>/dev/null
-                lsof -d cwd -a -c claude 2>/dev/null
-            } | awk '$NF ~ /^\// {print $NF}' | sort -u
-        )
-    else
-        echo -e "${YELLOW}Warning: lsof not found — --check-active-sessions disabled.${NC}"
-    fi
-fi
+refresh_active_cwds
 
 # Iterate worktrees registered with git (avoids stale dirs that aren't
 # real worktrees, and respects locked-state).
@@ -217,15 +244,26 @@ while IFS= read -r line; do
                         # is mid-work. NEVER prune; data-loss risk (#1278).
                         elif [ -n "$(git -C "$current_path" status --porcelain 2>/dev/null)" ]; then
                             SKIPPED_DIRTY+=("$current_path (${current_branch:-detached} — uncommitted changes)")
-                        # Active-session guard (opt-in via --check-active-sessions):
-                        # a worktree path showing up in a live claude process is
-                        # almost certainly mid-work even if currently clean.
+                        # A clean tree can still be mid-work (test runner,
+                        # IDE indexing, agent paused on input) — cwd of a
+                        # live node/claude process is the truth.
                         elif [ "$CHECK_ACTIVE_SESSIONS" = "true" ] && is_active_session "$current_path"; then
-                            SKIPPED_ACTIVE+=("$current_path (${current_branch:-detached} — active claude process)")
+                            SKIPPED_ACTIVE+=("$current_path (${current_branch:-detached} — active claude session)")
                         elif [ -n "${current_branch:-}" ]; then
                             # ahead-count: commits in branch not yet on origin/main
                             ahead=$(git rev-list --count "origin/main..$current_branch" 2>/dev/null || echo "unknown")
-                            if [ "$ahead" = "0" ]; then
+                            if [ "$ahead" = "0" ] && [ "$ALLOW_STALE" = "true" ]; then
+                                # Local origin/main can be artificially ahead
+                                # (manual update-ref, prior bad fetch). In
+                                # --allow-stale mode, require an explicit
+                                # merged-PR signal before reclaiming on a
+                                # bare ahead=0.
+                                if pr_is_merged "$current_branch"; then
+                                    CANDIDATES+=("$current_path|$current_branch|PR merged (stale-mode)")
+                                else
+                                    SKIPPED_UNMERGED+=("$current_path ($current_branch, ahead=0 — no merged-PR signal under --allow-stale)")
+                                fi
+                            elif [ "$ahead" = "0" ]; then
                                 CANDIDATES+=("$current_path|$current_branch|ahead=0")
                             elif pr_is_merged "$current_branch"; then
                                 # Squash-merge case: commits stay distinct
@@ -272,6 +310,7 @@ fi
 if [ "${#SKIPPED_ACTIVE[@]}" -gt 0 ]; then
     echo ""
     echo -e "${YELLOW}--- Skipped (active claude session — DO NOT delete) ---${NC}"
+    echo "  (Disable with --no-check-active-sessions if you're sure.)"
     for entry in "${SKIPPED_ACTIVE[@]}"; do
         echo "  $entry"
     done
@@ -315,10 +354,23 @@ if [ "$ASSUME_YES" != "true" ]; then
     esac
 fi
 
+# Race-recheck: a new session may have started in a candidate during
+# the prompt or between the initial scan and now. Re-run the cwd scan
+# and re-filter; anything newly-active is dropped from this pass.
+refresh_active_cwds
+
 REMOVED=0
 FAILED=0
+SKIPPED_RACE=0
 for entry in "${CANDIDATES[@]}"; do
     path="${entry%%|*}"
+    rest="${entry#*|}"
+    branch="${rest%%|*}"
+    if [ "$CHECK_ACTIVE_SESSIONS" = "true" ] && is_active_session "$path"; then
+        SKIPPED_RACE=$((SKIPPED_RACE + 1))
+        echo -e "  ${YELLOW}skipped${NC} $path ($branch — active claude session detected after prompt)"
+        continue
+    fi
     # Plain `git worktree remove` (no --force): it fails safe on a dirty
     # or locked tree. A locked-but-clean worktree is unlocked first, then
     # removed plainly — the dirty check above already gated data safety.
@@ -339,3 +391,4 @@ echo ""
 echo -e "${GREEN}=== Summary ===${NC}"
 echo "  Removed: $REMOVED"
 echo "  Failed:  $FAILED"
+[ "$SKIPPED_RACE" -gt 0 ] && echo "  Skipped (race-recheck active): $SKIPPED_RACE"
