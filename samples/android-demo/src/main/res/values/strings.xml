@@ -278,6 +278,8 @@
     <string name="demo_ar_orbital_subtitle">Models orbit around you in a personal solar system</string>
     <string name="demo_ar_depth_visualization_title">Depth Visualization</string>
     <string name="demo_ar_depth_visualization_subtitle">False-color depth map with camera↔depth blend</string>
+    <string name="demo_ar_raw_depth_cloud_title">Raw Depth Point Cloud</string>
+    <string name="demo_ar_raw_depth_cloud_subtitle">Confidence-filtered point cloud from raw depth</string>
 
     <!-- Demo placeholder -->
     <string name="demo_coming_soon">Coming soon</string>

@@ -999,6 +999,42 @@ LaunchedEffect(Unit) {
 }
 ```
 
+### Raw depth point cloud — confidence-filtered visualization
+
+`Config.DepthMode.RAW_DEPTH_ONLY` exposes raw per-pixel depth **plus** a companion
+single-channel **confidence image** (`Frame.acquireRawDepthConfidenceImage()` — 0 = unreliable,
+255 = high confidence). Combining the two yields a "what does the device actually see" cloud
+that you can filter to drop noise at object edges. See the `ar-raw-depth-point-cloud` demo
+for the canonical implementation in the sample app: it acquires both images per frame, walks
+the raw-depth buffer at a configurable sub-sample stride, drops every pixel below the
+confidence threshold, false-colors the survivors with a warm-near / cool-far ramp, and
+renders them as a screen-space cloud over the live camera feed using a Compose `Canvas`. A
+`Slider` exposes the confidence threshold so the user can watch the noise drop out in real
+time.
+
+```kotlin
+onSessionUpdated = { _, frame ->
+    val depthImage = runCatching { frame.acquireRawDepthImage16Bits() }.getOrNull()
+    val confidenceImage = runCatching { frame.acquireRawDepthConfidenceImage() }.getOrNull()
+    if (depthImage != null && confidenceImage != null) {
+        try {
+            // depthImage.planes[0] is Y_16 (LE); confidenceImage.planes[0] is 1-byte/pixel.
+            // Filter, colorize, and feed to a Compose Canvas overlay or a Filament POINTS mesh.
+        } finally {
+            depthImage.close()
+            confidenceImage.close()
+        }
+    }
+}
+```
+
+Notes: `acquireRawDepthImage16Bits()` may return `null` for the first few frames after a
+session start (depth is computed asynchronously) — handle it. Raw depth typically runs at
+`~160×120`, which is already ~19 200 candidate points per frame — sub-sample with a stride of
+2 or 3, and cap the cloud to a few thousand points so a Compose `Canvas` redraw stays under
+the 16 ms frame budget at 60 fps. Always show an explicit "depth not supported" banner when
+`Session.isDepthModeSupported(...)` is false — never leave the user staring at a black screen.
+
 ### AugmentedImageNode — image tracking
 ```kotlin
 @Composable fun AugmentedImageNode(

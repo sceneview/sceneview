@@ -11,6 +11,10 @@ import java.nio.ByteOrder
  * JVM unit tests for [DepthVisualization]. ARCore's `Image` is not mockable in JVM
  * tests, so the colorize routine is fed a plain [ByteBuffer] shaped like an
  * ARCore depth image (Y_16 little-endian, row-strided) instead.
+ *
+ * The colorize helpers also back the raw-depth point-cloud demo (#1715) — pinning the
+ * `falseColorArgb` ramp and the `normalize` clamping behaviour here keeps the cloud
+ * color-mapping deterministic across releases.
  */
 class DepthVisualizationTest {
 
@@ -183,5 +187,11 @@ class DepthVisualizationTest {
         assertEquals(0.5f, DepthVisualization.clampUnit(0.5f), 0f)
         assertEquals(0f, DepthVisualization.clampUnit(0f), 0f)
         assertEquals(1f, DepthVisualization.clampUnit(1f), 0f)
+    }
+
+    @Test
+    fun `defaults are sane and ordered`() {
+        assertTrue(DepthVisualization.FAR_MM_DEFAULT > DepthVisualization.NEAR_MM_DEFAULT)
+        assertTrue(DepthVisualization.NEAR_MM_DEFAULT > 0)
     }
 }
