@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- ci: `app-store.yml`'s submit step now GETs the version record's `appStoreVersionSubmission` relationship and DELETEs any stale submission before re-POSTing — so the submission CREATE is idempotent across re-runs. When the #1687 + #1795 absorption logic retargets a stranded draft, that draft's old submission used to remain attached and 403 every subsequent CREATE (`"Allowed operation is: DELETE"`). v4.11.1 hit this on the stranded `367` draft → renamed to `4.11.1` → POST refused. Closes the last loose end of the #1795 / #1687 saga (#1831).

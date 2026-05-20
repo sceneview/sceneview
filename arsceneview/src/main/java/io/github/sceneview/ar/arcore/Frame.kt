@@ -1,14 +1,18 @@
 package io.github.sceneview.ar.arcore
 
+import android.media.Image
 import com.google.ar.core.AugmentedFace
 import com.google.ar.core.AugmentedImage
+import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
+import com.google.ar.core.SemanticLabel
 import com.google.ar.core.Session
 import com.google.ar.core.StreetscapeGeometry
 import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingState
+import com.google.ar.core.exceptions.NotYetAvailableException
 import dev.romainguy.kotlin.math.Ray
 import io.github.sceneview.utils.fps
 import io.github.sceneview.utils.intervalSeconds
@@ -83,3 +87,191 @@ fun Frame.intervalSeconds(other: Frame?): Double = timestamp.intervalSeconds(oth
  * If [other] is `null`, returns the FPS from timestamp 0.
  */
 fun Frame.fps(other: Frame?): Double = timestamp.fps(other?.timestamp)
+
+/**
+ * Acquires the **CPU camera image** for this frame in YUV_420_888 layout (#1733).
+ *
+ * Wraps [Frame.acquireCameraImage] — the standard ARCore entry-point for any custom computer
+ * vision pipeline: ML Kit barcode/face/text detection, OpenCV processing, custom temporal
+ * filters, screenshot helpers, etc. The resolution matches the active
+ * [com.google.ar.core.CameraConfig], so apps that need 1080p / 60 FPS / depth-sensor-paired
+ * configs should pair this accessor with the `cameraConfigFilter { … }` DSL on `ARSceneView`
+ * (or pass a custom `sessionCameraConfig`).
+ *
+ * Returns `null` if the image is not yet available — typically only for the first frame after
+ * session resume, or while the session is paused (`NotYetAvailableException` from ARCore).
+ *
+ * **The returned [Image] is caller-owned** — close it via `use { }` or an explicit
+ * `image.close()` in a `finally` block. Failing to close leaks a native handle and ARCore will
+ * eventually throw `ResourceExhaustedException` after a couple of frames (the CPU image pool
+ * is typically only 2–3 slots deep).
+ *
+ * ```kotlin
+ * onSessionUpdated = { _, frame ->
+ *     frame.cameraImage()?.use { image ->
+ *         // YUV_420_888 — image.planes[0] is the Y plane, [1] is U, [2] is V.
+ *         myCvPipeline.process(image)
+ *     }
+ * }
+ * ```
+ *
+ * @see Frame.acquireCameraImage
+ */
+fun Frame.cameraImage(): Image? = try {
+    acquireCameraImage()
+} catch (_: NotYetAvailableException) {
+    null
+}
+
+/**
+ * Acquires the smoothed full-resolution **depth** image (16-bit per pixel, ARGB_8888-packed
+ * `DEPTH16` layout per ARCore docs) for this frame.
+ *
+ * Wraps [Frame.acquireDepthImage16Bits] — exposed publicly (#1771) so apps can drive
+ * custom occlusion, physics raycasts, AR overlays gated on depth confidence, etc.
+ *
+ * Returns `null` if depth is not yet available (`NotYetAvailableException` from ARCore).
+ * Requires [com.google.ar.core.Config.DepthMode.AUTOMATIC] enabled on the session.
+ *
+ * **The returned [Image] is caller-owned** — close it via `use { }` or an explicit
+ * `image.close()` in a `finally` block. Failing to close will leak the native handle and
+ * eventually throw `ResourceExhaustedException` when ARCore runs out of image slots.
+ *
+ * @see Frame.acquireDepthImage16Bits
+ */
+fun Frame.depthImage(): Image? = try {
+    acquireDepthImage16Bits()
+} catch (_: NotYetAvailableException) {
+    null
+}
+
+/**
+ * Acquires the **raw, unsmoothed** depth image (16-bit per pixel) for this frame.
+ *
+ * Wraps [Frame.acquireRawDepthImage16Bits]. Higher temporal noise than [depthImage], but
+ * preserves sharp edges and is the right input for confidence-filtered overlays or
+ * custom temporal filtering.
+ *
+ * Returns `null` if depth is not yet available. **Caller-owned** — close in `use { }`.
+ *
+ * @see Frame.acquireRawDepthImage16Bits
+ */
+fun Frame.rawDepthImage(): Image? = try {
+    acquireRawDepthImage16Bits()
+} catch (_: NotYetAvailableException) {
+    null
+}
+
+/**
+ * Acquires the **per-pixel confidence** image (`Y8` format, 0..255) matching
+ * [rawDepthImage] — higher values mean more confident depth estimate.
+ *
+ * Wraps [Frame.acquireRawDepthConfidenceImage]. Lets apps filter unreliable raw depth
+ * samples (typical practice: discard pixels with confidence < 128).
+ *
+ * Returns `null` if depth is not yet available. **Caller-owned** — close in `use { }`.
+ *
+ * @see Frame.acquireRawDepthConfidenceImage
+ */
+fun Frame.rawDepthConfidenceImage(): Image? = try {
+    acquireRawDepthConfidenceImage()
+} catch (_: NotYetAvailableException) {
+    null
+}
+
+/**
+ * Acquires the **Scene Semantics label image** (`R8` 8-bit per pixel) for this frame — every
+ * pixel of the live camera feed is classified into one of 12 outdoor classes via ARCore's
+ * on-device ML model: [SemanticLabel.SKY], [SemanticLabel.BUILDING], [SemanticLabel.TREE],
+ * [SemanticLabel.ROAD], [SemanticLabel.SIDEWALK], [SemanticLabel.TERRAIN],
+ * [SemanticLabel.STRUCTURE], [SemanticLabel.OBJECT], [SemanticLabel.VEHICLE],
+ * [SemanticLabel.PERSON], [SemanticLabel.WATER], [SemanticLabel.UNLABELED] (#1730).
+ *
+ * Wraps [Frame.acquireSemanticImage]. Each pixel byte is the ordinal of the matching
+ * [SemanticLabel] — use `SemanticLabel.forNumber(byte.toInt())` to decode. Typical resolution
+ * is 256×144 regardless of the active [com.google.ar.core.CameraConfig].
+ *
+ * Requires [Config.SemanticMode.ENABLED] on the session. Outdoor scenes only — the model has
+ * no indoor training data. On devices without the model the session silently downgrades to
+ * `DISABLED` and this accessor returns `null` forever.
+ *
+ * Returns `null` if semantics are not yet available (`NotYetAvailableException` from ARCore) —
+ * typically only for the first frame after session resume, or when semantics is disabled.
+ *
+ * **The returned [Image] is caller-owned** — close it via `use { }` or an explicit
+ * `image.close()` in a `finally` block. Failing to close leaks a native handle and ARCore
+ * will eventually throw `ResourceExhaustedException` after a couple of frames (the semantic
+ * image pool is typically only 2–3 slots deep).
+ *
+ * ```kotlin
+ * onSessionUpdated = { _, frame ->
+ *     frame.semanticImage()?.use { image ->
+ *         val buffer = image.planes[0].buffer  // R8 — one byte per pixel
+ *         // Decode: SemanticLabel.forNumber(buffer.get(idx).toInt())
+ *     }
+ * }
+ * ```
+ *
+ * @see Frame.acquireSemanticImage
+ * @see semanticConfidenceImage
+ * @see semanticLabelFraction
+ */
+fun Frame.semanticImage(): Image? = try {
+    acquireSemanticImage()
+} catch (_: NotYetAvailableException) {
+    null
+}
+
+/**
+ * Acquires the **per-pixel semantic-confidence image** (`R8` 8-bit per pixel, 0..255) matching
+ * [semanticImage] — higher values mean the ML model is more confident about the label assigned
+ * to that pixel (#1730).
+ *
+ * Wraps [Frame.acquireSemanticConfidenceImage]. Lets apps filter unreliable semantic samples
+ * (e.g. only react when `confidence > 128`).
+ *
+ * Same lifecycle and gating as [semanticImage] — requires [Config.SemanticMode.ENABLED]; returns
+ * `null` when semantics is not yet available; the returned [Image] is **caller-owned** and must
+ * be closed in `use { }`.
+ *
+ * @see Frame.acquireSemanticConfidenceImage
+ */
+fun Frame.semanticConfidenceImage(): Image? = try {
+    acquireSemanticConfidenceImage()
+} catch (_: NotYetAvailableException) {
+    null
+}
+
+/**
+ * Returns the fraction of pixels in the current frame classified as [label] — a value in
+ * `[0f, 1f]` where `1f` means every pixel carries that label and `0f` means none do (#1730).
+ *
+ * Wraps [Frame.getSemanticLabelFraction]. ARCore computes this cheaply on the GPU, so it's the
+ * recommended way to answer "is there a lot of sky / road / vehicle in view right now?"
+ * without acquiring and walking the full [semanticImage] CPU-side.
+ *
+ * Returns `0f` when:
+ *  - [Config.SemanticMode.ENABLED] is not set on the session,
+ *  - the frame has not yet received a semantic update (typical for the first frame after
+ *    resume), or
+ *  - no pixel in the frame carries the [label] (which is the actual semantic meaning).
+ *
+ * `0f` is the safe default for the not-yet-available case because semantic-aware placement
+ * rules ("place models only on TERRAIN") naturally treat absence as "don't place yet".
+ *
+ * ```kotlin
+ * onSessionUpdated = { _, frame ->
+ *     val skyFraction = frame.semanticLabelFraction(SemanticLabel.SKY)
+ *     val groundFraction = frame.semanticLabelFraction(SemanticLabel.TERRAIN)
+ *     // Adapt placement / lighting / UX based on what the scene contains.
+ * }
+ * ```
+ *
+ * @see Frame.getSemanticLabelFraction
+ * @see semanticImage
+ */
+fun Frame.semanticLabelFraction(label: SemanticLabel): Float = try {
+    getSemanticLabelFraction(label)
+} catch (_: NotYetAvailableException) {
+    0f
+}

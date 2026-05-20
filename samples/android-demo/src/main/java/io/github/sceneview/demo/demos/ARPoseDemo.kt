@@ -27,6 +27,7 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.common.Axes3DNode
 import io.github.sceneview.math.Size
 import io.github.sceneview.rememberEngine
@@ -46,6 +47,10 @@ fun ARPoseDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
+    // with `--es ar_playback_file <path>` (#1576). `null` for every normal launch - see
+    // `rememberArPlaybackDataset` - so live AR is completely unchanged for real users.
+    val arPlaybackDataset = rememberArPlaybackDataset()
 
     // Sliders hold the user-tweakable *offset* from the pose captured in front of
     // the camera on first tracked frame. Keeping the offset small and centred means
@@ -163,6 +168,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
+                playbackDataset = arPlaybackDataset,
                 planeRenderer = true,
                 sessionConfiguration = { _: Session, config: Config ->
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL

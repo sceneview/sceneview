@@ -39,6 +39,7 @@ import io.github.sceneview.ar.arcore.getProjectionTransform
 import io.github.sceneview.ar.arcore.transform
 import io.github.sceneview.ar.arcore.viewTransform
 import io.github.sceneview.demo.AssetSourceState
+import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.sketchfab.SampleAssets
@@ -306,6 +307,10 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
+    // with `--es ar_playback_file <path>` (#1576). `null` for every normal launch - see
+    // `rememberArPlaybackDataset` - so live AR is completely unchanged for real users.
+    val arPlaybackDataset = rememberArPlaybackDataset()
     val context = LocalContext.current
 
     // Resolve every streamed slug exactly once per composition. The resolver
@@ -404,6 +409,7 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
+                playbackDataset = arPlaybackDataset,
                 planeRenderer = false,
                 sessionConfiguration = { _: Session, config: Config ->
                     // Plane detection off — the formation lives in world space around the

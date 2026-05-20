@@ -123,6 +123,34 @@ for full API context in any chat:
 
 Contributions to any part of the project are welcome — Android (`sceneview/`, `arsceneview/`), iOS (`SceneViewSwift/`), shared KMP core (`sceneview-core/`), samples, documentation, or the MCP server.
 
+### Adding a demo to `samples/android-demo`
+
+The Android demo app uses an **append-only fragment registry** so that two
+parallel PRs adding two different demos never conflict on a shared file
+(issue #1797). To add a demo:
+
+1. Add the demo composable under
+   `samples/android-demo/src/main/java/io/github/sceneview/demo/demos/`.
+2. Drop a new fragment file at
+   `samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/<MyDemo>Fragment.kt`
+   declaring `object <MyDemo>Fragment : DemoFragment` with the demo's id,
+   title/subtitle string resources, category, icon, and a one-line `Screen`
+   wrapper calling your composable. See [the package
+   README](samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/README.md)
+   for the full template.
+3. Drop the demo's strings into their own resource fragment at
+   `samples/android-demo/src/main/res/values/strings_demo_<my_demo>.xml`
+   (`-` → `_` in the id). Each demo owns its strings file so parallel PRs
+   never share a string-resource anchor (#1870). Android's resource merger
+   fans every `res/values/*.xml` file in at build time, so `R.string.demo_*`
+   references resolve identically.
+4. Run the collator to regenerate `GeneratedDemos.kt`:
+   `bash samples/android-demo/scripts/collate-demos.sh`. The quality gate runs
+   the collator in `--check` mode and blocks the push if the file is stale.
+
+You should **never** edit `DemoRegistry.kt`, `MainActivity.kt`, or
+`GeneratedDemos.kt` by hand — the fragments are the single source of truth.
+
 ### Device-QA flows when adding a demo
 
 The demo apps are exercised on real emulators/simulators by the **autonomous
@@ -229,6 +257,55 @@ view_texture_lit.filamat               view_texture_unlit.filamat
 4. Commit **the runtime bump in `gradle/libs.versions.toml` AND the recompiled `.filamat` files in the SAME PR**. Never split them across commits — that's the failure mode that broke v4.1.0.
 
 If you bump the runtime without touching the blobs (or vice versa), CI will not catch it. The first signal is a runtime crash on whichever demo loads the affected material first.
+
+---
+
+## Maintenance scripts
+
+The `.claude/scripts/` directory holds the housekeeping scripts that
+keep parallel-orchestrator sessions tidy. Two are worth knowing about
+explicitly because the safety contract has gotten complex enough that
+you can't infer it from the source on first read.
+
+### `worktree-auto-prune.sh`
+
+Reclaims `.claude/worktrees/*` whose branch has merged. Safe-by-default:
+the only way it can lose work is via an explicit override flag.
+
+| Flag | Effect |
+|---|---|
+| `--dry-run` | Preview only. No worktree is removed. |
+| `--yes` | Non-interactive. Skip the confirmation prompt. |
+| `--keep <path>` | Repeatable. Never touch this worktree (the caller's own tree should always be `--keep`). |
+| `--allow-stale` | Proceed offline if `git fetch origin main` fails. `ahead=0` then additionally requires a merged-PR signal. |
+| `--no-check-active-sessions` | Disable the cwd scan that protects worktrees with a live process inside them. Almost never the right call. |
+| `--unlock-locked` | Override `git worktree lock`: prune locked-but-clean worktrees too. The dirty check still wins. |
+
+Skip ladder (a worktree must pass every layer to be reclaimed):
+
+1. Not in `--keep`.
+2. `git status --porcelain` is empty (no uncommitted changes).
+3. Not `locked` via `git worktree lock` (unless `--unlock-locked`).
+4. No process anywhere on the host has cwd inside the worktree
+   (gradle daemons, `python`, IDE indexers — all detected, not just
+   `node`/`claude`).
+5. Either `ahead-count == 0` vs `origin/main`, OR the branch's
+   associated GitHub PR is `MERGED`.
+
+Forensic trail: every evaluated worktree appends one JSON line to
+`~/.claude/logs/worktree-prune-YYYYMMDD.log` (daily-rotated, never
+auto-deleted). Cheap to write, priceless if an incident occurs.
+
+Pin: `.claude/scripts/test-worktree-auto-prune.sh` exercises 7 scenarios
+(merged, unmerged, dirty, locked, locked + `--unlock-locked`, active
+subprocess, `--keep`) and runs advisorily inside `quality-gate.sh`.
+
+### `cleanup-branches-worktrees.sh`
+
+Wrapper that runs `worktree-auto-prune.sh` AND deletes the corresponding
+merged `claude/*` branches (local + remote) in a single batched
+`git push --delete` to avoid bot-burst rate limits. Same flags, same
+safety contract; runs daily in `.github/workflows/maintenance.yml`.
 
 ---
 

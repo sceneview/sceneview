@@ -30,6 +30,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -79,7 +80,10 @@ import kotlin.math.sin
  */
 @Composable
 fun VideoDemo(onBack: () -> Unit) {
-    var isPlaying by remember { mutableStateOf(true) }
+    // The user's *desired* playback state. Survives config changes; the prepared
+    // callback below must consult this so a pause issued before the player is
+    // ready is not overridden by auto-play (#1707).
+    var isPlaying by rememberSaveable { mutableStateOf(true) }
     var isReady by remember { mutableStateOf(false) }
     var isMuted by remember { mutableStateOf(true) }
     var surfaceMode by remember { mutableStateOf(SurfaceMode.PLANE) }
@@ -132,6 +136,10 @@ fun VideoDemo(onBack: () -> Unit) {
     // doesn't depend on a third-party mirror staying up (#886). Previous remote URL
     // (commondatastorage / w3schools) had broken multiple times historically.
     val context = LocalContext.current
+    // Live read of the user's desired playback state for the prepared callback,
+    // which is captured once at `remember` time and would otherwise see the
+    // stale initial value (#1707).
+    val playIntent = rememberUpdatedState(isPlaying)
     val player = remember {
         MediaPlayer().apply {
             setAudioAttributes(
@@ -150,7 +158,9 @@ fun VideoDemo(onBack: () -> Unit) {
             }
             setOnPreparedListener {
                 isReady = true
-                start()
+                // Honour a pause the user may have issued while preparing —
+                // only auto-play if their intended state is still "play".
+                if (playIntent.value) start()
             }
             prepareAsync()
         }

@@ -46,6 +46,10 @@ import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.ForcedTrackingFailure
+import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.demos.internal.ArPlacement
 import io.github.sceneview.demo.demos.internal.rememberTexturesSettled
 import io.github.sceneview.demo.R
@@ -104,6 +108,13 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
     // means "Bundled cycle" (the v4.3.1 default behaviour).
     val placementSlugs = remember { SampleAssets.byCategory["ar_placement"].orEmpty() }
     var selectedSlug by remember { mutableStateOf<SketchfabSlug?>(null) }
+
+    // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
+    // with `--es ar_playback_file <path>` (#1576). Resolved once in the parent composable
+    // (not inside `InstantPlacementScene`, which `key(instantEnabled)` remounts) so the
+    // dataset survives the instant-placement toggle. `null` for every normal launch - see
+    // `rememberArPlaybackDataset` - so live AR is completely unchanged for real users.
+    val arPlaybackDataset = rememberArPlaybackDataset()
 
     val context = LocalContext.current
     LaunchedEffect(Unit) {
@@ -199,6 +210,11 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(top = 8.dp)
             )
+            // Developer-only debug toggle — visible when QA mode is on. Lets QA
+            // force-emit each TrackingFailureReason so the actionable-message
+            // overlay can be validated without staging a real failure. See
+            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+            ForceTrackingFailureMenu()
         }
     ) {
         // `key(instantEnabled)` rebuilds the entire ARSceneView (and its ARCore session) when
@@ -210,6 +226,7 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
                 instantEnabled = instantEnabled,
                 selectedSlug = selectedSlug,
                 selectedFile = selectedFile,
+                playbackDataset = arPlaybackDataset,
             )
         }
     }
@@ -220,6 +237,7 @@ private fun InstantPlacementScene(
     instantEnabled: Boolean,
     selectedSlug: SketchfabSlug?,
     selectedFile: File?,
+    playbackDataset: File?,
 ) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
@@ -261,6 +279,7 @@ private fun InstantPlacementScene(
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
+            playbackDataset = playbackDataset,
             planeRenderer = !instantEnabled,
             sessionConfiguration = { _: Session, config: Config ->
                 config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
@@ -521,8 +540,12 @@ private fun InstantPlacementScene(
                 // session start so there's no longer any visual collision.
                 .padding(top = 56.dp)
         ) {
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
-                visible = !isTracking,
+                visible = !isTracking || ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -532,23 +555,12 @@ private fun InstantPlacementScene(
                     shape = MaterialTheme.shapes.large
                 ) {
                     Text(
-                        text = trackingFailureReason?.let { reason ->
-                            when (reason) {
-                                TrackingFailureReason.NONE ->
-                                    if (instantEnabled) "Tap to place — even before scanning"
-                                    else "Point your camera at a surface"
-                                TrackingFailureReason.BAD_STATE -> "AR session error"
-                                TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
-                                TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
-                                TrackingFailureReason.INSUFFICIENT_FEATURES ->
-                                    "Not enough detail — try a textured surface"
-                                TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
-                            }
-                        } ?: if (instantEnabled) {
-                            "Initializing camera — you can already tap to place"
-                        } else {
-                            stringResource(R.string.ar_status_scanning)
-                        },
+                        text = trackingFailureMessage(effectiveReason)
+                            ?: if (instantEnabled) {
+                                "Initializing camera — you can already tap to place"
+                            } else {
+                                stringResource(R.string.ar_status_scanning)
+                            },
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
                     )

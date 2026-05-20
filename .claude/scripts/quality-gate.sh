@@ -77,6 +77,35 @@ LLMS_V=$(grep -m1 'io\.github\.sceneview:sceneview:' llms.txt | grep -oE '[0-9]+
 README_V=$(grep -m1 'io\.github\.sceneview:sceneview:' README.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "MISSING")
 [ "$README_V" = "$SOURCE_VERSION" ] && check "README.md version" "PASS" "$README_V" || check "README.md version" "FAIL" "Expected $SOURCE_VERSION, got $README_V"
 
+# llms.txt mirror drift (issue #1847) — docs/docs/llms.txt and the MCP bundle
+# `mcp/src/generated/llms-txt.ts` must stay byte-identical to root `llms.txt`.
+# The drift detectors used to live only in `sync-versions.sh`, which is NOT
+# called by this gate, so PR #1822 was able to land DepthHitResultNode docs
+# in root `llms.txt` without updating either mirror. Wire the dedicated
+# helper here so the PR-blocking gate catches the divergence.
+if [ -x ".claude/scripts/check-llms-drift.sh" ]; then
+    if bash .claude/scripts/check-llms-drift.sh > /tmp/check-llms-drift.log 2>&1; then
+        check "llms.txt mirrors in sync" "PASS" ""
+    else
+        DRIFT_COUNT=$(grep -c '^MISMATCH:' /tmp/check-llms-drift.log 2>/dev/null || echo "?")
+        check "llms.txt mirrors in sync" "FAIL" "$DRIFT_COUNT mirror(s) drifted; see /tmp/check-llms-drift.log"
+    fi
+fi
+
+# samples/android-demo append-only demo-fragments collator drift (issue #1797).
+# A new fragment added without re-running collate-demos.sh would compile but
+# leave GeneratedDemos.kt stale — the demo would still be invisible in
+# ALL_DEMOS / DemoRouter. The --check mode bit-compares the file against what
+# the collator would emit, blocking the PR on drift.
+COLLATOR="samples/android-demo/scripts/collate-demos.sh"
+if [ -x "$COLLATOR" ]; then
+    if bash "$COLLATOR" --check > /tmp/check-demos-drift.log 2>&1; then
+        check "android-demo GeneratedDemos.kt in sync" "PASS" ""
+    else
+        check "android-demo GeneratedDemos.kt drift" "FAIL" "Run $COLLATOR — see /tmp/check-demos-drift.log"
+    fi
+fi
+
 echo ""
 
 # ─── 3. Security ──────────────────────────────────────────────────────
@@ -193,6 +222,28 @@ if [ -x ".claude/scripts/validate-demo-assets.sh" ]; then
     fi
 else
     check "Demo app asset refs resolve" "WARN" "validate-demo-assets.sh missing"
+fi
+
+echo ""
+
+# ─── 4c. Worktree-prune regression suite (advisory) ────────────────────
+# Pins the safety contract of `.claude/scripts/worktree-auto-prune.sh`
+# (locked-tree skip #1833, broad subprocess detect #1834, forensic log
+# #1839). Advisory: a CI host without `lsof`/`fuser` can't fully exercise
+# the active-session check — we surface a WARN instead of failing.
+if [ -f ".claude/scripts/test-worktree-auto-prune.sh" ]; then
+    if bash .claude/scripts/test-worktree-auto-prune.sh > /tmp/test-worktree-auto-prune.log 2>&1; then
+        check "Worktree-prune regression suite" "PASS"
+    else
+        # Distinguish "host lacks the tool" from "real regression".
+        if grep -q "neither lsof nor fuser" /tmp/test-worktree-auto-prune.log; then
+            check "Worktree-prune regression suite" "WARN" "host lacks lsof/fuser — see /tmp/test-worktree-auto-prune.log"
+        else
+            check "Worktree-prune regression suite" "WARN" "failures — see /tmp/test-worktree-auto-prune.log"
+        fi
+    fi
+else
+    check "Worktree-prune regression suite" "WARN" "test-worktree-auto-prune.sh missing"
 fi
 
 echo ""

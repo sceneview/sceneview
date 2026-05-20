@@ -42,6 +42,10 @@ import io.github.sceneview.ar.createARCameraStream
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.ForcedTrackingFailure
+import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
@@ -85,6 +89,12 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
+    // with `--es ar_playback_file <path>` (#1576). `null` for every normal launch - see
+    // `rememberArPlaybackDataset` - so live AR is completely unchanged for real users.
+    // Hoisted above the `key(depthOn)` block so the resolved dataset is captured once and
+    // survives the camera-stream rebuild on the depth toggle.
+    val arPlaybackDataset = rememberArPlaybackDataset()
 
     // Hoisted so the model loads once for the whole demo, not on every re-placement.
     // The remember slot survives anchor clears + re-drops, so re-tapping is instant
@@ -179,6 +189,11 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
             ) {
                 Text("Clear")
             }
+            // Developer-only debug toggle — visible when QA mode is on. Lets QA
+            // force-emit each TrackingFailureReason so the actionable-message
+            // overlay can be validated without staging a real failure. See
+            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+            ForceTrackingFailureMenu()
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -193,6 +208,7 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                     engine = engine,
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
+                    playbackDataset = arPlaybackDataset,
                     planeRenderer = true,
                     sessionConfiguration = { session: Session, config: Config ->
                         config.planeFindingMode =
@@ -305,8 +321,13 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
             }
 
             // Scanning / tracking-failure overlay — same vocabulary as ARPlacementDemo.
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately, without
+            // waiting for the next ARCore tracking-failure callback.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
-                visible = !isTracking,
+                visible = !isTracking || ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
@@ -318,17 +339,8 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                     shape = MaterialTheme.shapes.large
                 ) {
                     Text(
-                        text = trackingFailureReason?.let { reason ->
-                            when (reason) {
-                                TrackingFailureReason.NONE -> "Point your camera at a surface"
-                                TrackingFailureReason.BAD_STATE -> "AR session error"
-                                TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
-                                TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
-                                TrackingFailureReason.INSUFFICIENT_FEATURES ->
-                                    "Not enough detail — try a textured surface"
-                                TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
-                            }
-                        } ?: stringResource(R.string.ar_status_scanning),
+                        text = trackingFailureMessage(effectiveReason)
+                            ?: stringResource(R.string.ar_status_scanning),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
                     )

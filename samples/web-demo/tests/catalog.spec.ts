@@ -1,5 +1,6 @@
-import { test, expect } from '@playwright/test';
 import {
+  test,
+  expect,
   captureDiagnostics,
   expectNoPageErrors,
   waitForEngineReady,

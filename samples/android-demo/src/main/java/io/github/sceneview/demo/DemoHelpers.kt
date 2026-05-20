@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.math.Position
+import java.io.File
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -128,6 +129,56 @@ fun ARCameraInitScrim(
             )
         }
     }
+}
+
+/**
+ * Resolves the ARCore playback dataset an AR demo should replay, or `null` for a normal
+ * live-camera session.
+ *
+ * The autonomous AR replay device-QA harness ([io.github.sceneview.demo.ar.ARReplayHarnessTest])
+ * deep-links every AR demo with `--es ar_playback_file <path>`, which [MainActivity] stores in
+ * [DemoSettings.arPendingPlaybackFile]. Historically only the `ar-record-playback` demo read
+ * that setting, so the other AR demos could only be graded `alive` (process survived), never
+ * `replayed` (recorded ARCore frames actually advanced). Calling this helper and forwarding
+ * the result to `ARSceneView(playbackDataset = ...)` lets a live-only demo honour the same
+ * deep-link and graduate to `replayed` (#1576).
+ *
+ * ```kotlin
+ * val playbackDataset = rememberArPlaybackDataset()
+ * ARSceneView(playbackDataset = playbackDataset, ...) { ... }
+ * ```
+ *
+ * ### Zero impact on real users - the critical safety property
+ *
+ * [DemoSettings.arPendingPlaybackFile] is `null` for every normal launch (it is only ever set
+ * by the QA harness's intent extra). When it is `null` this helper returns `null`, and
+ * `ARSceneView(playbackDataset = null)` is exactly the plain live-AR session - i.e. the demo
+ * behaves identically to before this wiring existed. There is no live-AR regression path.
+ *
+ * The pending file is **consumed** (reset to `null`) on first composition via a
+ * [androidx.compose.runtime.LaunchedEffect], mirroring `ARRecordPlaybackDemo`, so a
+ * configuration change or process recreation does not silently re-enter playback. The
+ * resolved [File] is captured in `remember` so the demo keeps replaying the dataset across
+ * recompositions even after the setting is cleared.
+ *
+ * A path that does not point at an existing file resolves to `null` (live AR, no crash) -
+ * the same defensive `takeIf { it.exists() }` guard `ARRecordPlaybackDemo` uses.
+ *
+ * @return the dataset [File] to pass as `ARSceneView(playbackDataset = ...)`, or `null` for a
+ *         normal live-camera AR session.
+ */
+@Composable
+fun rememberArPlaybackDataset(): File? {
+    val dataset = androidx.compose.runtime.remember {
+        DemoSettings.arPendingPlaybackFile
+            ?.let(::File)
+            ?.takeIf { it.exists() }
+    }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        // Consume so a config change / process recreation doesn't re-trigger playback.
+        DemoSettings.arPendingPlaybackFile = null
+    }
+    return dataset
 }
 
 /**

@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- `.claude/hooks/pre-risky-github-op.sh`: added an `SV_BATCH_REBASE=1` env-var escape hatch so legitimate multi-PR rebase batches (e.g. a 9-branch ARCore audit sprint) no longer require clearing `~/.claude/logs/force-push.log` to bypass the 1-force-push-per-24h cap. The bypass logs an explicit notice to stderr and tags the entry `[SV_BATCH_REBASE]` for auditability, and the BLOCK message now points to the escape hatch instead of suggesting log tampering (#1796).
