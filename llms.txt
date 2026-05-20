@@ -931,6 +931,74 @@ the depth-image dimensions divided over the camera intrinsics). Cap the accumula
 a few thousand points or the UI thread chokes — Depth Lab's `RAW_DEPTH_ONLY` resolution is
 ~160×120 which is already ~19 200 points per frame.
 
+### Low-level helpers — direct ARCore access
+
+Thin Kotlin wrappers around raw ARCore APIs that apps reach for repeatedly (#1771). Each is
+1–5 LOC and additive — the underlying ARCore call works just the same. Use these for
+custom occlusion / physics raycasts / ML pipelines / orientation-aware UI placement.
+
+```kotlin
+// HitResult — distance is already accessible as a Kotlin synthetic property from
+// HitResult.getDistance(). Documented here for parity with the rest of this section.
+val hit: HitResult
+hit.distance                              // Float — camera-to-hit distance, meters
+
+// Camera — displayOrientedPose accounts for current device orientation (use for
+// rendering / billboard UI), whereas .pose is the raw sensor pose (use for IMU work).
+camera.displayOrientedPose                // Pose
+
+// Camera intrinsics — focal length + principal point + image dimensions for either
+// the GPU texture stream (default) or the CPU image stream. Used by ML pipelines that
+// project 2D detections back into 3D world coords via the pinhole model.
+data class CameraIntrinsicsSnapshot(
+    val focalLength: Float2,              // fx, fy in pixels
+    val principalPoint: Float2,           // cx, cy in pixels
+    val imageWidth: Int,
+    val imageHeight: Int
+)
+fun Camera.intrinsics(useTexture: Boolean = true): CameraIntrinsicsSnapshot
+
+// Plane — polygon outline (plane-local X-Z coords) + subsumedBy (the surviving plane
+// when ARCore merges two overlapping planes; re-anchor your nodes when non-null).
+val Plane.polygon: FloatBuffer            // [x1, z1, x2, z2, ...] — owned by ARCore, don't retain
+val Plane.subsumedBy: Plane?              // null if this plane is still alive
+
+// Frame — public depth-image accessors (caller-owned — close in use { }).
+// Requires Config.DepthMode set; return null if depth not yet available.
+fun Frame.depthImage(): Image?                 // smoothed full-res 16-bit depth
+fun Frame.rawDepthImage(): Image?              // unsmoothed 16-bit depth
+fun Frame.rawDepthConfidenceImage(): Image?    // Y8 confidence map matching rawDepthImage()
+
+// ArCoreApk — suspend-friendly availability check (the sync variant can ANR briefly).
+suspend fun ArCoreApk.awaitAvailability(context: Context): ArCoreApk.Availability
+```
+
+**Usage**:
+
+```kotlin
+// Gate placement on distance
+arSceneView.frame?.hitTest(x, y)
+    ?.firstOrNull { it.distance < 2f }      // accept hits within 2 m only
+    ?.createAnchorOrNull()
+    ?.let { /* place node */ }
+
+// Project a 2D ML detection into 3D using a known depth
+val k = camera.intrinsics(useTexture = false)
+val xWorld = (pxX - k.principalPoint.x) * z / k.focalLength.x
+val yWorld = (pxY - k.principalPoint.y) * z / k.focalLength.y
+
+// Custom depth occlusion (caller-owned image, use { } closes it)
+arSceneView.frame?.depthImage()?.use { depth ->
+    // sample depth.planes[0].buffer (DEPTH16 16-bit per pixel)
+}
+
+// Non-blocking ARCore availability probe
+LaunchedEffect(Unit) {
+    val availability = ArCoreApk.getInstance().awaitAvailability(context)
+    if (availability.isSupported) showArEntryButton = true
+}
+```
+
 ### AugmentedImageNode — image tracking
 ```kotlin
 @Composable fun AugmentedImageNode(

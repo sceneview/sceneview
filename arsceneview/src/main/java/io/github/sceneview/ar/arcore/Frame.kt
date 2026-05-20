@@ -1,5 +1,6 @@
 package io.github.sceneview.ar.arcore
 
+import android.media.Image
 import com.google.ar.core.AugmentedFace
 import com.google.ar.core.AugmentedImage
 import com.google.ar.core.Frame
@@ -9,6 +10,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.StreetscapeGeometry
 import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingState
+import com.google.ar.core.exceptions.NotYetAvailableException
 import dev.romainguy.kotlin.math.Ray
 import io.github.sceneview.utils.fps
 import io.github.sceneview.utils.intervalSeconds
@@ -83,3 +85,59 @@ fun Frame.intervalSeconds(other: Frame?): Double = timestamp.intervalSeconds(oth
  * If [other] is `null`, returns the FPS from timestamp 0.
  */
 fun Frame.fps(other: Frame?): Double = timestamp.fps(other?.timestamp)
+
+/**
+ * Acquires the smoothed full-resolution **depth** image (16-bit per pixel, ARGB_8888-packed
+ * `DEPTH16` layout per ARCore docs) for this frame.
+ *
+ * Wraps [Frame.acquireDepthImage16Bits] — exposed publicly (#1771) so apps can drive
+ * custom occlusion, physics raycasts, AR overlays gated on depth confidence, etc.
+ *
+ * Returns `null` if depth is not yet available (`NotYetAvailableException` from ARCore).
+ * Requires [com.google.ar.core.Config.DepthMode.AUTOMATIC] enabled on the session.
+ *
+ * **The returned [Image] is caller-owned** — close it via `use { }` or an explicit
+ * `image.close()` in a `finally` block. Failing to close will leak the native handle and
+ * eventually throw `ResourceExhaustedException` when ARCore runs out of image slots.
+ *
+ * @see Frame.acquireDepthImage16Bits
+ */
+fun Frame.depthImage(): Image? = try {
+    acquireDepthImage16Bits()
+} catch (_: NotYetAvailableException) {
+    null
+}
+
+/**
+ * Acquires the **raw, unsmoothed** depth image (16-bit per pixel) for this frame.
+ *
+ * Wraps [Frame.acquireRawDepthImage16Bits]. Higher temporal noise than [depthImage], but
+ * preserves sharp edges and is the right input for confidence-filtered overlays or
+ * custom temporal filtering.
+ *
+ * Returns `null` if depth is not yet available. **Caller-owned** — close in `use { }`.
+ *
+ * @see Frame.acquireRawDepthImage16Bits
+ */
+fun Frame.rawDepthImage(): Image? = try {
+    acquireRawDepthImage16Bits()
+} catch (_: NotYetAvailableException) {
+    null
+}
+
+/**
+ * Acquires the **per-pixel confidence** image (`Y8` format, 0..255) matching
+ * [rawDepthImage] — higher values mean more confident depth estimate.
+ *
+ * Wraps [Frame.acquireRawDepthConfidenceImage]. Lets apps filter unreliable raw depth
+ * samples (typical practice: discard pixels with confidence < 128).
+ *
+ * Returns `null` if depth is not yet available. **Caller-owned** — close in `use { }`.
+ *
+ * @see Frame.acquireRawDepthConfidenceImage
+ */
+fun Frame.rawDepthConfidenceImage(): Image? = try {
+    acquireRawDepthConfidenceImage()
+} catch (_: NotYetAvailableException) {
+    null
+}
