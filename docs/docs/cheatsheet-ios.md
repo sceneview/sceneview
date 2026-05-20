@@ -457,6 +457,7 @@ silent stub.
 | `SurfaceType.texture` | RealityKit always renders to `MTKView` | N/A — no port needed |
 | `StreetscapeGeometry` | ARGeoTrackingConfiguration exists but no mesh equivalent | iOS-skip with doc warning |
 | `TerrainAnchor / RooftopAnchor` (geo-anchored to terrain or rooftop) | `ARGeoAnchor` only does ground; rooftop has no ARKit equivalent | iOS-skip with doc warning |
+| `Config.SemanticMode.ENABLED` + `Frame.semanticImage()` / `.semanticConfidenceImage()` / `.semanticLabelFraction(label)` (#1730) | ARKit has no equivalent per-pixel outdoor classifier — the closest primitive is `ARFrame.detectedBody.skeleton` (single-person joints, not pixel labels) | iOS-skip with doc warning. Apps that need semantic-aware placement on iOS must ship their own Vision/Core ML segmentation model; AR-engine integration is not on the SceneViewSwift roadmap. |
 
 ### AR Depth & Cloud Anchors — May 2026 sprint (#1813)
 
