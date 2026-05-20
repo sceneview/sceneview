@@ -1090,6 +1090,66 @@ index buffers in camera space so downstream consumers — a depth-driven physics
 debug-overlay point cloud, an exporter — can read the geometry without poking Filament
 internals.
 
+### rememberDepthCollider — bounce virtual bodies off the real world
+
+`rememberDepthCollider()` builds a static physics collider from the live ARCore depth mesh so
+`PhysicsNode` bodies bounce off the **real** floor / table / wall (Depth Lab "Collider", #1713).
+Thin physics wrapper over `DepthMeshNode` (#1739) — same edge-discontinuity culling, no curtain
+triangles across depth jumps.
+
+```kotlin
+@Composable fun ARSceneScope.rememberDepthCollider(
+    refreshIntervalMs: Long = 200L,  // mesh rebuild rate; 200 ms = 5 Hz
+    stride: Int = 4,                 // pixel stride between depth samples
+    edgeThresholdMeters: Float = 0.10f,
+    renderMesh: Boolean = false,     // also render the underlying mesh (debug / shadow receiver)
+): DepthCollider
+```
+
+`DepthCollider` implements `FloorProvider` — pass it as the `floorProvider` parameter on
+`PhysicsNode`:
+
+```kotlin
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    sessionConfiguration = { _, config ->
+        config.depthMode = Config.DepthMode.AUTOMATIC
+    }
+) {
+    val depthCollider = rememberDepthCollider(refreshIntervalMs = 200L)
+    var ballNode by remember { mutableStateOf<SphereNode?>(null) }
+    SphereNode(
+        radius = 0.05f,
+        materialInstance = ballMaterial,
+        position = Position(0f, 0.5f, -0.3f),
+        apply = { ballNode = this },
+    )
+    ballNode?.let { node ->
+        PhysicsNode(
+            node = node,
+            restitution = 0.7f,
+            radius = 0.05f,
+            floorY = -1f,                 // fallback if depth unavailable
+            floorProvider = depthCollider, // bounce off real geometry when depth is on
+        )
+    }
+}
+```
+
+Optional region-near-bodies culling reduces the per-frame, per-body triangle test set when many
+bodies are clustered and the mesh is dense:
+```kotlin
+depthCollider.setBodiesRegion(
+    centres = floatArrayOf(node.worldPosition.x, node.worldPosition.y, node.worldPosition.z),
+    padding = 0.3f,
+)
+```
+
+`floorYAt(x, y, z, radius)` returns the world-space Y of the highest depth-mesh triangle under
+the body's XZ, or `null` when no surface is available — `PhysicsBody` then falls back to its
+static `floorY` plane. Requires `Config.DepthMode.AUTOMATIC` (or `RAW_DEPTH_ONLY`); without it
+the collider stays empty.
+
 ### AugmentedImageNode — image tracking
 ```kotlin
 @Composable fun AugmentedImageNode(
