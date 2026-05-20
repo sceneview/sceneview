@@ -1,50 +1,8 @@
 package io.github.sceneview.demo
 
 import androidx.annotation.StringRes
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.filled.BlurOn
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.CenterFocusStrong
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.CloudCircle
-import androidx.compose.material.icons.filled.Collections
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.FilterCenterFocus
-import androidx.compose.material.icons.filled.FormatShapes
-import androidx.compose.material.icons.filled.Hexagon
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Landscape
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.LocationCity
-import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.OpenWith
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.PanoramaPhotosphere
-import androidx.compose.material.icons.filled.Park
-import androidx.compose.material.icons.filled.Pentagon
-import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.PictureInPicture
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.RotateRight
-import androidx.compose.material.icons.filled.Roofing
-import androidx.compose.material.icons.filled.ScatterPlot
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Texture
-import androidx.compose.material.icons.filled.Timeline
-import androidx.compose.material.icons.filled.TouchApp
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Vibration
-import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material.icons.filled.ViewInAr
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.ui.graphics.vector.ImageVector
+import io.github.sceneview.demo.fragments.GeneratedDemos
 
 /**
  * Runtime status of a demo as observed on the audited device matrix
@@ -131,58 +89,14 @@ fun categoryDisplayNameRes(category: String): Int = when (category) {
     else -> R.string.category_3d_basics
 }
 
-val ALL_DEMOS = listOf(
-    // 3D Basics
-    DemoEntry("model-viewer", R.string.demo_model_viewer, R.string.demo_model_viewer_subtitle, DemoCategory.BASICS_3D, Icons.Filled.ViewInAr),
-    DemoEntry("geometry", R.string.demo_geometry_title, R.string.demo_geometry_subtitle, DemoCategory.BASICS_3D, Icons.Filled.Category),
-    DemoEntry("animation", R.string.demo_animation_title, R.string.demo_animation_subtitle, DemoCategory.BASICS_3D, Icons.Filled.RotateRight),
-    DemoEntry("multi-model", R.string.demo_multi_model_title, R.string.demo_multi_model_subtitle, DemoCategory.BASICS_3D, Icons.Filled.Layers),
-    DemoEntry("scene-gallery", R.string.demo_scene_gallery_title, R.string.demo_scene_gallery_subtitle, DemoCategory.BASICS_3D, Icons.Filled.Collections),
-    // Lighting & Environment
-    DemoEntry("lighting", R.string.demo_lighting_title, R.string.demo_lighting_subtitle, DemoCategory.LIGHTING_ENVIRONMENT, Icons.Filled.Lightbulb),
-    DemoEntry("movable-light", R.string.demo_movable_light_title, R.string.demo_movable_light_subtitle, DemoCategory.LIGHTING_ENVIRONMENT, Icons.Filled.AutoFixHigh),
-    DemoEntry("dynamic-sky", R.string.demo_dynamic_sky, R.string.demo_dynamic_sky_subtitle, DemoCategory.LIGHTING_ENVIRONMENT, Icons.Filled.WbSunny),
-    DemoEntry("fog", R.string.demo_fog, R.string.demo_fog_subtitle, DemoCategory.LIGHTING_ENVIRONMENT, Icons.Filled.Cloud),
-    DemoEntry("environment", R.string.demo_environment_title, R.string.demo_environment_subtitle, DemoCategory.LIGHTING_ENVIRONMENT, Icons.Filled.PanoramaPhotosphere),
-    // Content
-    DemoEntry("text", R.string.demo_text_title, R.string.demo_text_subtitle, DemoCategory.CONTENT, Icons.Filled.FormatShapes),
-    DemoEntry("lines-paths", R.string.demo_lines_paths_title, R.string.demo_lines_paths_subtitle, DemoCategory.CONTENT, Icons.Filled.Timeline),
-    DemoEntry("image", R.string.demo_image_title, R.string.demo_image_subtitle, DemoCategory.CONTENT, Icons.Filled.Image),
-    DemoEntry("billboard", R.string.demo_billboard_title, R.string.demo_billboard_subtitle, DemoCategory.CONTENT, Icons.Filled.Visibility),
-    DemoEntry("video", R.string.demo_video_title, R.string.demo_video_subtitle, DemoCategory.CONTENT, Icons.Filled.VideoLibrary),
-    // Interaction
-    DemoEntry("camera-controls", R.string.demo_camera_controls_title, R.string.demo_camera_controls_subtitle, DemoCategory.INTERACTION, Icons.Filled.PhotoCamera),
-    DemoEntry("gesture-editing", R.string.demo_gesture_editing_title, R.string.demo_gesture_editing_subtitle, DemoCategory.INTERACTION, Icons.Filled.OpenWith),
-    DemoEntry("collision", R.string.demo_collision_title, R.string.demo_collision_subtitle, DemoCategory.INTERACTION, Icons.Filled.CenterFocusStrong),
-    DemoEntry("view-node", R.string.demo_view_node_title, R.string.demo_view_node_subtitle, DemoCategory.INTERACTION, Icons.Filled.Dashboard),
-    // Advanced
-    DemoEntry("materials", R.string.demo_materials_title, R.string.demo_materials_subtitle, DemoCategory.ADVANCED, Icons.Filled.Palette),
-    DemoEntry("physics", R.string.demo_physics_title, R.string.demo_physics_subtitle, DemoCategory.ADVANCED, Icons.Filled.ScatterPlot),
-    DemoEntry("double-pendulum", R.string.demo_double_pendulum_title, R.string.demo_double_pendulum_subtitle, DemoCategory.ADVANCED, Icons.Filled.Vibration),
-    DemoEntry("post-processing", R.string.demo_post_processing_title, R.string.demo_post_processing_subtitle, DemoCategory.ADVANCED, Icons.Filled.Tune),
-    DemoEntry("custom-mesh", R.string.demo_custom_mesh_title, R.string.demo_custom_mesh_subtitle, DemoCategory.ADVANCED, Icons.Filled.Hexagon),
-    DemoEntry("texture-streaming", R.string.demo_texture_streaming_title, R.string.demo_texture_streaming_subtitle, DemoCategory.ADVANCED, Icons.Filled.Texture),
-    DemoEntry("shape", R.string.demo_shape_title, R.string.demo_shape_subtitle, DemoCategory.ADVANCED, Icons.Filled.Pentagon),
-    DemoEntry("reflection-probes", R.string.demo_reflection_probes_title, R.string.demo_reflection_probes_subtitle, DemoCategory.ADVANCED, Icons.Filled.BlurOn),
-    DemoEntry("secondary-camera", R.string.demo_secondary_camera_title, R.string.demo_secondary_camera_subtitle, DemoCategory.ADVANCED, Icons.Filled.PictureInPicture),
-    DemoEntry("debug-overlay", R.string.demo_debug_overlay_title, R.string.demo_debug_overlay_subtitle, DemoCategory.ADVANCED, Icons.Filled.Speed),
-    // Augmented Reality
-    DemoEntry("ar-placement", R.string.demo_ar_placement_title, R.string.demo_ar_placement_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.TouchApp),
-    DemoEntry("ar-image", R.string.demo_ar_image_title, R.string.demo_ar_image_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Image),
-    DemoEntry("ar-face", R.string.demo_ar_face_title, R.string.demo_ar_face_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Face),
-    DemoEntry("ar-cloud-anchor", R.string.demo_ar_cloud_anchor_title, R.string.demo_ar_cloud_anchor_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.CloudCircle, DemoStatus.KnownIssue),
-    DemoEntry("ar-streetscape", R.string.demo_ar_streetscape_title, R.string.demo_ar_streetscape_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.LocationCity, DemoStatus.KnownIssue),
-    DemoEntry("ar-pose", R.string.demo_ar_pose_title, R.string.demo_ar_pose_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.MyLocation),
-    DemoEntry("ar-rerun", R.string.demo_ar_rerun_title, R.string.demo_ar_rerun_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.BugReport),
-    DemoEntry("ar-record-playback", R.string.demo_ar_record_playback_title, R.string.demo_ar_record_playback_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Replay),
-    DemoEntry("ar-depth-occlusion", R.string.demo_ar_depth_occlusion_title, R.string.demo_ar_depth_occlusion_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.FilterCenterFocus),
-    DemoEntry("ar-instant-placement", R.string.demo_ar_instant_placement_title, R.string.demo_ar_instant_placement_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Bolt),
-    DemoEntry("ar-terrain", R.string.demo_ar_terrain_title, R.string.demo_ar_terrain_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Landscape, DemoStatus.KnownIssue),
-    DemoEntry("ar-rooftop", R.string.demo_ar_rooftop_title, R.string.demo_ar_rooftop_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Roofing, DemoStatus.KnownIssue),
-    DemoEntry("ar-image-stabilization", R.string.demo_ar_image_stabilization_title, R.string.demo_ar_image_stabilization_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Texture),
-    DemoEntry("ar-orbital", R.string.demo_ar_orbital_title, R.string.demo_ar_orbital_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Public),
-    DemoEntry("ar-depth-visualization", R.string.demo_ar_depth_visualization_title, R.string.demo_ar_depth_visualization_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Palette),
-    DemoEntry("ar-raw-depth-point-cloud", R.string.demo_ar_raw_depth_cloud_title, R.string.demo_ar_raw_depth_cloud_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.ScatterPlot),
-    DemoEntry("ar-depth-collider", R.string.demo_ar_depth_collider_title, R.string.demo_ar_depth_collider_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.ScatterPlot, DemoStatus.KnownIssue),
-    DemoEntry("ar-scene-semantics", R.string.demo_ar_scene_semantics_title, R.string.demo_ar_scene_semantics_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Park),
-)
+/**
+ * Every demo surfaced on the Samples tab and routable through the deep-link
+ * router. Sourced from the append-only per-demo fragments under
+ * `io.github.sceneview.demo.fragments` — see
+ * [io.github.sceneview.demo.fragments.DemoFragment] for the registration
+ * pattern and [io.github.sceneview.demo.fragments.GeneratedDemos] for the
+ * collator output. Adding a demo means dropping one new fragment file in that
+ * package and running `samples/android-demo/scripts/collate-demos.sh`; no edit
+ * to this file or to [io.github.sceneview.demo.MainActivity] is needed (#1797).
+ */
+val ALL_DEMOS: List<DemoEntry> = GeneratedDemos.all
