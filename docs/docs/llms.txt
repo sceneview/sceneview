@@ -2606,13 +2606,14 @@ Full canonical reference in `docs/docs/cheatsheet-ios.md`. Three buckets:
 
 ### Deprecated on iOS (v4.0.10+ — compile-warning, no-op runtime)
 
-These three APIs ship as `@available(*, deprecated, message: …)` factories and silently no-op when called. Migrate to the alternative listed.
+These APIs ship as `@available(*, deprecated, message: …)` factories and silently no-op when called. Migrate to the alternative listed.
 
 | Deprecated | Why iOS can't | Replacement |
 |---|---|---|
 | `CameraNode.depthOfField(...)` | `PerspectiveCameraComponent` has no DOF | Custom Metal post-process (out of scope) |
 | `CameraNode.exposure(_:)` | `PerspectiveCameraComponent` has no `exposureCompensation` (verified Xcode 26.x build, #1019) | `ARSceneView(cameraExposure:)` (AR) or `.renderQuality(_:)` IBL tune (3D) |
 | `LightNode.shadowColor(_:)` | `DirectionalLightComponent.Shadow` has no `color` property | `.castsShadow(_:)` + `.shadowMaximumDistance(_:)` |
+| `FogNode.heightBased(...)` / `FogNode.heightFalloff` | `UnlitMaterial` cannot vary opacity by world height; no per-view fog API in RealityKit (#1380) | `FogNode.exponential(density:color:)` |
 
 ### Android-only — no port planned or pending
 
@@ -2631,7 +2632,7 @@ Same public API name on both platforms; the iOS render path differs but the fact
 
 | Symbol | Android renderer | iOS approximation |
 |---|---|---|
-| `FogNode.linear / .exponential / .heightBased` | Filament fog modes | Translucent-sphere shader |
+| `FogNode.linear / .exponential` | Filament fog modes | Translucent-sphere shader (`.heightBased` is deprecated on iOS — see #1380) |
 | `ReflectionProbeNode.box(...) / .sphere(...)` | Volumetric Filament probe | Unbounded `ImageBasedLightReceiverComponent` (volume scope is best-effort) |
 | `CustomMaterial.subsurface(...)` | Filament SSS | PBR `metallic` + `roughness` tuning |
 
@@ -2654,7 +2655,7 @@ DynamicSkyNode(timeOfDay: 14, turbidity: 3, sunIntensity: 1200)
 ```swift
 FogNode.linear(start: 1.0, end: 20.0).color(.cool)
 FogNode.exponential(density: 0.15)
-FogNode.heightBased(density: 0.1, height: 1.0)
+// FogNode.heightBased(...) is deprecated on iOS (RealityKit parity gap, #1380) — use .exponential instead
 ```
 
 **ReflectionProbeNode** — local environment reflections:
