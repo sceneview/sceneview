@@ -58,6 +58,7 @@ import io.github.sceneview.demo.demos.ARPoseDemo
 import io.github.sceneview.demo.demos.ARRerunDemo
 import io.github.sceneview.demo.demos.ARRecordPlaybackDemo
 import io.github.sceneview.demo.demos.ARDepthOcclusionDemo
+import io.github.sceneview.demo.demos.ARDepthVisualizationDemo
 import io.github.sceneview.demo.demos.ARInstantPlacementDemo
 import io.github.sceneview.demo.demos.ARTerrainAnchorDemo
 import io.github.sceneview.demo.demos.ARRooftopAnchorDemo
@@ -347,6 +348,7 @@ fun DemoRouter(id: String, onBack: () -> Unit) {
         "ar-rerun" -> ARRerunDemo(onBack)
         "ar-record-playback" -> ARRecordPlaybackDemo(onBack)
         "ar-depth-occlusion" -> ARDepthOcclusionDemo(onBack)
+        "ar-depth-visualization" -> ARDepthVisualizationDemo(onBack)
         "ar-instant-placement" -> ARInstantPlacementDemo(onBack)
         "ar-terrain" -> ARTerrainAnchorDemo(onBack)
         "ar-rooftop" -> ARRooftopAnchorDemo(onBack)
