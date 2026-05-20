@@ -889,7 +889,66 @@ ARSceneView(
     apply: CloudAnchorNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null
 )
+
+// Imperative host call with explicit ttl (1..365 days, ARCore persistence limit):
+cloudAnchorNode.host(session, ttlDays = 7) { cloudAnchorId, state ->
+    if (cloudAnchorId != null && !state.isError) {
+        // Persist the ID locally so we can re-resolve across launches:
+        registry.add(CloudAnchorEntry(
+            name = "Living room marker",
+            cloudAnchorId = cloudAnchorId,
+            hostedAtEpochMs = System.currentTimeMillis(),
+            ttlDays = 7
+        ))
+    }
+}
 ```
+
+**Persistence — `ttlDays`.** `CloudAnchorNode.host(session, ttlDays = 1)` accepts any value in `CloudAnchorNode.TTL_DAYS_RANGE` (= `1..365`, inclusive). Values outside this range throw `IllegalArgumentException`. Pick a short ttl for ephemeral collaborative sessions, a longer one (e.g. 7..30) for "leave behind" multi-day experiences.
+
+**Privacy disclosure (required).** ARCore Cloud Anchors upload feature points from the user's surroundings to Google. Surface a clear in-app disclosure and link to the ARCore data policy (https://developers.google.com/ar/data-privacy) before hosting.
+
+### CloudAnchorRegistry — local persistence helper for hosted Cloud Anchor IDs
+
+The library does NOT manage Cloud Anchor lifetime — that lives server-side on Google's ARCore API. But apps that host long-ttl anchors typically want a small client-side index keyed by a user-meaningful name so the IDs can be passed back to `CloudAnchorNode.resolve(...)` on the next launch. `CloudAnchorRegistry` is exactly that helper.
+
+```kotlin
+data class CloudAnchorEntry(
+    val name: String,
+    val cloudAnchorId: String,
+    val hostedAtEpochMs: Long,
+    val ttlDays: Int                       // validated against 1..365 at construction
+) {
+    fun isExpired(now: Long = System.currentTimeMillis()): Boolean
+    val expiresAtEpochMs: Long
+}
+
+interface CloudAnchorRegistry {
+    fun add(entry: CloudAnchorEntry)        // insert or replace by name
+    fun remove(name: String): Boolean
+    fun get(name: String): CloudAnchorEntry?
+    fun list(): List<CloudAnchorEntry>
+    fun clear()
+    fun purgeExpired(now: Long = System.currentTimeMillis()): Int
+}
+
+// Default implementation — SharedPreferences-backed, non-blocking writes (apply()):
+class SharedPreferencesCloudAnchorRegistry(
+    prefs: SharedPreferences
+) : CloudAnchorRegistry {
+    constructor(context: Context, prefsName: String = "sceneview_cloud_anchors")
+}
+```
+
+**Re-resolve across launches:**
+```kotlin
+val registry = SharedPreferencesCloudAnchorRegistry(context)
+registry.list().filterNot { it.isExpired() }.forEach { entry ->
+    CloudAnchorNode.resolve(engine, session, entry.cloudAnchorId) { state, node -> /* attach */ }
+}
+```
+
+Threading: safe to call from the main thread — `SharedPreferences.edit().apply()` is non-blocking.
 
 ### TrackableNode — generic trackable
 ```kotlin
