@@ -398,6 +398,8 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                         // place rule above so the reticle never points at an
                         // instant-placement ghost the user can't actually place on.
                         instantPlacementPoint = false,
+                        depthPoint = false,
+                        point = false,
                         onHitResultChanged = { reticleHit = it }
                     ) {
                         // Flat disc (1 mm thick, 4 cm radius) lying along the
