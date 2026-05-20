@@ -330,11 +330,16 @@ run_web() {
 
   # Playwright + the chromium browser binary are installed on demand. The
   # webServer block in playwright.config.ts auto-starts http-server.
+  # `iwer` (Immersive Web Emulation Runtime) is a best-effort WebXR shim
+  # injected by `tests/webxr.spec.ts` via `page.addInitScript()` — same
+  # caveat as the Android record/replay harness: it validates wire-level XR
+  # API access, not real spatial tracking. The rich replay test soft-skips
+  # until a recorded session fixture lands (follow-up of #1878).
   log "ensuring Playwright + chromium are installed (samples/web-demo)"
   (
     cd "$webdir"
     [[ -f package.json ]] || npm init -y >/dev/null 2>&1 || true
-    npm install --no-audit --no-fund --save-dev @playwright/test http-server >/dev/null 2>&1
+    npm install --no-audit --no-fund --save-dev @playwright/test http-server iwer >/dev/null 2>&1
     npx playwright install chromium --with-deps >/dev/null 2>&1 \
       || npx playwright install chromium >/dev/null 2>&1
   ) || {
