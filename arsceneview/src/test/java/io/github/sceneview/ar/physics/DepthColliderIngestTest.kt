@@ -136,6 +136,34 @@ class DepthColliderIngestTest {
         assertNull(collider.floorYAt(0f, 0f, 0f, 0.05f))
     }
 
+    // Input validation (#1812): defensive guards on public API.
+
+    @Test
+    fun `setBodiesRegion throws when centres size is not a multiple of 3`() {
+        val collider = newInertCollider()
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            // 4 floats — not a valid flat-packed [x,y,z,...] triplet.
+            collider.setBodiesRegion(centres = floatArrayOf(1f, 2f, 3f, 4f), padding = 0.1f)
+        }
+    }
+
+    @Test
+    fun `setBodiesRegion falls back to disabled culling on non-finite centres`() {
+        val collider = newInertCollider()
+        // NaN centre would produce a non-finite region that culls every triangle silently.
+        // Defensive path: disable region culling instead of poisoning the collider.
+        collider.setBodiesRegion(centres = floatArrayOf(Float.NaN, 0f, 0f), padding = 0.1f)
+        collider.ingestSnapshot(
+            snapshot(
+                positions = floatArrayOf(-1f, 0f, -1f, 1f, 0f, -1f, 0f, 0f, 1f),
+                indices = intArrayOf(0, 1, 2),
+            ),
+        )
+        // With region disabled, the triangle remains in play.
+        assertEquals(1, collider.triangleCount)
+        assertNotNull(collider.floorYAt(0f, 5f, 0f, 0.05f))
+    }
+
     @Test
     fun `destroy clears the snapshot and the listener`() {
         val collider = newInertCollider()

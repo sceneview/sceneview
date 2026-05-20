@@ -134,6 +134,32 @@ class DepthMeshCollisionTest {
         assertNull(y)
     }
 
+    // Input validation (#1812): mismatched indices/positions must not AIOOBE
+    @Test
+    fun `out-of-bounds indices are skipped (no AIOOBE on render thread)`() {
+        // Position array has 3 vertices; indices point past the end.
+        val pos = floatArrayOf(
+            0f, 0f, 0f,
+            1f, 0f, 0f,
+            0f, 0f, 1f,
+        )
+        // Triangle 0 is valid; triangle 1 references vertex index 99 which is out of bounds.
+        val idx = intArrayOf(0, 1, 2, 99, 100, 101)
+        // Must not crash — malformed triangle is skipped, valid triangle is still considered.
+        val y = nearestSurfaceYBelow(pos, idx, x = 0.25f, y = 5f, z = 0.25f, radius = 0.1f)
+        assertNotNull(y)
+        assertEquals(0f, y!!, 1e-5f)
+    }
+
+    @Test
+    fun `negative indices are skipped (no AIOOBE on render thread)`() {
+        val pos = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f)
+        // Single triangle with one negative index — must be skipped, return null.
+        val idx = intArrayOf(-1, 1, 2)
+        val y = nearestSurfaceYBelow(pos, idx, x = 0.25f, y = 5f, z = 0.25f, radius = 0.1f)
+        assertNull(y)
+    }
+
     @Test
     fun `vertex within radius is picked up even when XZ is outside the triangle`() {
         // Single triangle covering small footprint near origin. Query at (1, ?, 0) — outside the

@@ -177,10 +177,24 @@ open class DepthMeshNode(
             // ARCore reports intrinsics for the full-resolution CPU image; scale them to the
             // (smaller) depth image resolution.
             val intrinsics = camera.imageIntrinsics
-            val scaleX = depthWidth / intrinsics.imageDimensions[0].toFloat()
-            val scaleY = depthHeight / intrinsics.imageDimensions[1].toFloat()
-            val fx = intrinsics.focalLength[0] * scaleX
-            val fy = intrinsics.focalLength[1] * scaleY
+            // Defensive guard (#1812): degenerate intrinsics (zero width/height or zero focal
+            // length) would propagate through to `Inf` scales + an entirely poisoned snapshot.
+            // ARCore is supposed to populate these for any tracking camera, but we surface a
+            // clear error rather than silently corrupting [latestSnapshot] and every downstream
+            // consumer (collider, hit-test, overlay).
+            val intrinsicWidth = intrinsics.imageDimensions[0]
+            val intrinsicHeight = intrinsics.imageDimensions[1]
+            val rawFx = intrinsics.focalLength[0]
+            val rawFy = intrinsics.focalLength[1]
+            require(intrinsicWidth > 0 && intrinsicHeight > 0 && rawFx != 0f && rawFy != 0f) {
+                "Invalid ARCore camera intrinsics for DepthMeshNode: width=$intrinsicWidth," +
+                    " height=$intrinsicHeight, focal=($rawFx, $rawFy)." +
+                    " ARCore must populate non-zero camera intrinsics while tracking."
+            }
+            val scaleX = depthWidth / intrinsicWidth.toFloat()
+            val scaleY = depthHeight / intrinsicHeight.toFloat()
+            val fx = rawFx * scaleX
+            val fy = rawFy * scaleY
             val cx = intrinsics.principalPoint[0] * scaleX
             val cy = intrinsics.principalPoint[1] * scaleY
 

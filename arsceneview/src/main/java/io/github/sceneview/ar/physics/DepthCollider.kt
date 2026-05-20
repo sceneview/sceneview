@@ -107,11 +107,22 @@ class DepthCollider private constructor(
      *                 fudge for the maximum frame-to-frame travel.
      */
     fun setBodiesRegion(centres: FloatArray?, padding: Float) {
-        bodiesRegion = if (centres == null || centres.isEmpty()) {
-            null
-        } else {
-            computeBodiesRegion(centres, padding)
+        if (centres == null || centres.isEmpty()) {
+            bodiesRegion = null
+            return
         }
+        // Defensive validation (#1812): public API trusts caller input — guard against partial
+        // bodies (size not divisible by 3) and non-finite coordinates (NaN/Inf would silently
+        // produce a non-finite region that culls every triangle and breaks physics with no
+        // error). `require` for the structural error; quietly fall back to disabling region
+        // culling when the numeric values themselves are non-finite — the body count is right,
+        // the data just happens to be bad this frame.
+        require(centres.size % 3 == 0) {
+            "DepthCollider.setBodiesRegion: centres.size must be a multiple of 3" +
+                " (flat-packed [x0,y0,z0,...]), got ${centres.size}."
+        }
+        val region = computeBodiesRegion(centres, padding)
+        bodiesRegion = if (region.isFinite()) region else null
     }
 
     /**

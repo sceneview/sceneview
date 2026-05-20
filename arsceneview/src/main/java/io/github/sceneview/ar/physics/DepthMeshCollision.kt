@@ -89,11 +89,22 @@ internal fun nearestSurfaceYBelow(
     var bestY: Float? = null
     val rSquared = radius * radius
     val triangleCount = indices.size / 3
+    val posSize = positionsWorld.size
     var t = 0
     while (t < triangleCount) {
         val i0 = indices[t * 3] * 3
         val i1 = indices[t * 3 + 1] * 3
         val i2 = indices[t * 3 + 2] * 3
+
+        // Defensive bounds check (#1812): a future drift between [positionsWorld] and [indices]
+        // (e.g. caller passed mismatched arrays, or a partial copy after a region cull bug) would
+        // otherwise AIOOBE on the render thread mid-frame. Skip the malformed triangle instead.
+        if (i0 < 0 || i1 < 0 || i2 < 0 ||
+            i0 + 2 >= posSize || i1 + 2 >= posSize || i2 + 2 >= posSize
+        ) {
+            t++
+            continue
+        }
 
         val ax = positionsWorld[i0]
         val ay = positionsWorld[i0 + 1]
