@@ -1272,6 +1272,54 @@ Threading: safe to call from the main thread — `SharedPreferences.edit().apply
 )
 ```
 
+### Geospatial accessors — `rememberCameraGeospatialPose`, `rememberEarthState`, `awaitVpsAvailability`
+
+Composable State + suspend helpers around ARCore's Geospatial API (#1769). Lets apps read the live device lat/lng/altitude, observe the `Earth.EarthState`, and gate Terrain anchor placement on actual VPS coverage — all from regular Compose code.
+
+```kotlin
+// Camera lat/lng/altitude — re-read each frame, null until Earth is TRACKING.
+@Composable fun rememberCameraGeospatialPose(session: Session?): State<GeospatialPose?>
+
+// Snapshot every field of a GeospatialPose into a data class (the raw GeospatialPose handle
+// becomes invalid as soon as the next frame advances — snapshot to retain).
+data class GeospatialPoseSnapshot(
+    val latitude: Double, val longitude: Double, val altitude: Double,
+    val heading: Double,
+    val horizontalAccuracy: Double, val verticalAccuracy: Double,
+    val orientationYawAccuracy: Double
+)
+fun GeospatialPose.snapshot(): GeospatialPoseSnapshot
+
+// EarthState as Compose State — react in UI to ERROR_NOT_AUTHORIZED (missing Cloud key),
+// ERROR_RESOURCE_EXHAUSTED (out of quota), ERROR_APK_VERSION_TOO_OLD, etc.
+@Composable fun rememberEarthState(session: Session?): State<Earth.EarthState?>
+
+// VPS availability — single Cloud round-trip, surfaces "is Terrain anchor placement viable
+// at this lat/lng" so apps don't fire ResolveAnchorOnTerrainFuture into the void.
+suspend fun Session.awaitVpsAvailability(latitude: Double, longitude: Double): VpsAvailability
+```
+
+```kotlin
+ARSceneView(
+    sessionConfiguration = { _, config ->
+        config.geospatialMode = Config.GeospatialMode.ENABLED
+    },
+    onSessionCreated = { arSession = it },
+) {
+    val pose by rememberCameraGeospatialPose(arSession)
+    val state by rememberEarthState(arSession)
+
+    LaunchedEffect(arSession) {
+        val available = arSession?.awaitVpsAvailability(48.8584, 2.2945)
+        if (available == VpsAvailability.AVAILABLE) {
+            // place Terrain anchor at the Eiffel Tower
+        }
+    }
+}
+```
+
+Requires `Config.GeospatialMode.ENABLED`, the ARCore Cloud API key + `ACCESS_FINE_LOCATION` permission documented in the API key warning above. `rememberCameraGeospatialPose` returns `null` until ARCore acquires a GPS lock (the EarthState transitions to `ENABLED` *and* `Earth.trackingState` reaches `TRACKING`); `rememberEarthState` surfaces every error code so the UI can show the right "missing Cloud key" / "out of quota" / "APK too old" message rather than a generic spinner.
+
 ### TerrainAnchorNode — Geospatial anchor pinned to ground at lat/lng
 
 **Imperative API only — async resolve via `Earth`.** Pin a node to Google's outdoor terrain at any GPS coordinate. No plane detection required — works wherever VPS / Street View has coverage.
