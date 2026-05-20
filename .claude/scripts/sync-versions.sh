@@ -207,12 +207,17 @@ if [ -f "$CHANGELOG" ]; then
     add_check "CHANGELOG.md (latest entry)" "$V" "false"
 fi
 
-# Module.md files
+# Module.md files — Dokka entry pages. Promoted to critical (MISMATCH) in
+# #1848 so AI agents reading the rendered API docs never see stale Maven
+# coordinates. Regex anchored on `io.github.sceneview:` to ignore unrelated
+# version strings (e.g. kotlin-math 1.6).
 for modmd in sceneview/Module.md arsceneview/Module.md; do
     F="$REPO_ROOT/$modmd"
     if [ -f "$F" ]; then
-        V=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$F" | head -1 || echo "NOT FOUND")
-        add_check "$modmd" "$V" "false"
+        V=$(grep -m1 'io\.github\.sceneview:' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+        if [ "$V" != "NOT FOUND" ]; then
+            add_check "$modmd" "$V"
+        fi
     fi
 done
 
@@ -236,6 +241,31 @@ if [ -f "$DOCS_LLMS" ]; then
         add_check "docs/docs/llms.txt" "$V"
     fi
 fi
+
+# ─── 5c. Derived doc surfaces missed by section 5 (issue #1848) ──────────
+# Multiple files carry Maven artifact refs but were never scanned by the
+# release tooling — they stayed stale on `main` for several releases
+# (manifest.json @ 4.4.0, structured-data.json @ 4.3.1, SKILL.md @ 4.3.1,
+# cheatsheet.md @ 4.3.1, migration.md @ 4.3.1 while VERSION_NAME was 4.11.1).
+# AI agents / MCP / skill consumers reading these surfaces saw broken
+# `implementation("io.github.sceneview:sceneview:4.x.x")` snippets, which
+# defeats the AI-first promise. Promote them to critical (MISMATCH) so
+# `quality-gate.sh` fails on drift and `--fix` rewrites them.
+for docfile in \
+    docs/docs/manifest.json \
+    docs/docs/structured-data.json \
+    agents/sceneview/SKILL.md \
+    agents/sceneview/references/cheatsheet.md \
+    agents/sceneview/references/migration.md \
+; do
+    F="$REPO_ROOT/$docfile"
+    if [ -f "$F" ]; then
+        V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+        if [ "$V" != "NOT FOUND" ]; then
+            add_check "$docfile" "$V"
+        fi
+    fi
+done
 
 # ─── 5b. llms.txt root↔docs full-content sync (issue #899) ──────────────
 # `docs/docs/llms.txt` must be a byte-for-byte mirror of root `llms.txt` so
@@ -828,8 +858,19 @@ with open('$PKG_JSON', 'w') as f:
 
     for OLD_V in $OLD_VERSIONS; do
         [ "$OLD_V" = "$SOURCE_VERSION" ] && continue
-        # Fix docs that contain Maven artifact version refs
-        for docfile in llms.txt README.md CLAUDE.md docs/docs/index.md docs/docs/quickstart.md docs/docs/llms-full.txt docs/docs/cheatsheet.md docs/docs/platforms.md docs/docs/migration.md docs/docs/android-xr.md; do
+        # Fix docs that contain Maven artifact version refs.
+        # The Module.md + manifest.json + structured-data.json + agents/sceneview/
+        # SKILL.md + references entries (#1848) were added so derived doc surfaces
+        # that AI/MCP/skill consumers read are kept in sync with VERSION_NAME.
+        for docfile in \
+            llms.txt README.md CLAUDE.md \
+            docs/docs/index.md docs/docs/quickstart.md docs/docs/llms-full.txt \
+            docs/docs/cheatsheet.md docs/docs/platforms.md docs/docs/migration.md \
+            docs/docs/android-xr.md docs/docs/manifest.json docs/docs/structured-data.json \
+            sceneview/Module.md arsceneview/Module.md \
+            agents/sceneview/SKILL.md agents/sceneview/references/cheatsheet.md \
+            agents/sceneview/references/migration.md \
+        ; do
             F="$REPO_ROOT/$docfile"
             if [ -f "$F" ] && grep -q "io\.github\.sceneview:.*$OLD_V" "$F" 2>/dev/null; then
                 _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$OLD_V/io.github.sceneview:\1:$SOURCE_VERSION/g" "$F"
@@ -1095,6 +1136,37 @@ with open('$WEB_DEMO_TESTS_PKG', 'w') as f:
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
             _sed_inplace "s/sceneview-web@$CURRENT/sceneview-web@$SOURCE_VERSION/g" "$SCENEVIEW_WEB_README"
             echo -e "  Fixed: sceneview-web/README.md (CDN @version $CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # agents/sceneview/SKILL.md — bridge identifiers beyond Maven coords (#1848).
+    # The Android skill is read by AI agents on the host, so its npm / SPM / RN
+    # bridge versions must track VERSION_NAME as well. Substitutions are scoped
+    # to each exact surrounding token so unrelated `4.x.x` strings on other lines
+    # are never touched. The Maven-coord lines on this file are already fixed by
+    # the bulk Maven sweep above; this block handles the bridge-identifier lines.
+    SKILL_MD="$REPO_ROOT/agents/sceneview/SKILL.md"
+    if [ -f "$SKILL_MD" ]; then
+        # `sceneview-web@X.Y.Z` (npm)
+        CURRENT=$(grep -m1 -oE 'sceneview-web@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$SKILL_MD" \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/sceneview-web@$CURRENT/sceneview-web@$SOURCE_VERSION/g" "$SKILL_MD"
+            echo -e "  Fixed: agents/sceneview/SKILL.md (sceneview-web@ $CURRENT -> $SOURCE_VERSION)"
+        fi
+        # `@sceneview-sdk/react-native@X.Y.Z` (npm)
+        CURRENT=$(grep -m1 -oE '@sceneview-sdk/react-native@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$SKILL_MD" \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s|@sceneview-sdk/react-native@$CURRENT|@sceneview-sdk/react-native@$SOURCE_VERSION|g" "$SKILL_MD"
+            echo -e "  Fixed: agents/sceneview/SKILL.md (@sceneview-sdk/react-native@ $CURRENT -> $SOURCE_VERSION)"
+        fi
+        # ``tag `X.Y.Z`'' SPM tag prose
+        CURRENT=$(grep -m1 -oE 'tag `[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?`' "$SKILL_MD" \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/tag \`$CURRENT\`/tag \`$SOURCE_VERSION\`/g" "$SKILL_MD"
+            echo -e "  Fixed: agents/sceneview/SKILL.md (SPM tag $CURRENT -> $SOURCE_VERSION)"
         fi
     fi
 

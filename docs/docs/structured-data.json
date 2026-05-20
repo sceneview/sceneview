@@ -248,7 +248,7 @@
         "name": "How do I add 3D content to my Android app?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Add the SceneView dependency (io.github.sceneview:sceneview:4.4.0), then use the SceneView{} composable with ModelNode to load and display glTF/GLB 3D models. It takes just 5 lines of Kotlin code to display a 3D model in your Compose UI."
+          "text": "Add the SceneView dependency (io.github.sceneview:sceneview:4.11.1), then use the SceneView{} composable with ModelNode to load and display glTF/GLB 3D models. It takes just 5 lines of Kotlin code to display a 3D model in your Compose UI."
         }
       },
       {
@@ -379,7 +379,7 @@
         "@type": "HowToStep",
         "position": 1,
         "name": "Add the SceneView dependency",
-        "text": "In your app-level build.gradle.kts file, add: implementation(\"io.github.sceneview:sceneview:4.4.0\")",
+        "text": "In your app-level build.gradle.kts file, add: implementation(\"io.github.sceneview:sceneview:4.11.1\")",
         "url": "https://sceneview.github.io/quickstart/#step-1"
       },
       {
