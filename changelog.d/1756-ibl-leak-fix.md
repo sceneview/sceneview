@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- arsceneview: per-frame `IndirectLight` no longer leaks native memory across long AR sessions with intermittent light estimation. The `IndirectLight` built in `onARFrame` is now tracked via a dedicated `AtomicReference` and destroyed explicitly on every supersession or on `DisposableEffect` teardown, independent of `scene.indirectLight` mutations by third parties. The rebuild decision (estimation vs. environment baseline per channel) is extracted to a pure `pickIndirectLightSources` helper covered by JVM unit tests (#1756).

@@ -447,6 +447,32 @@ fun ARSceneView(
     val prevTrackingFailureRef = remember { AtomicReference<TrackingFailureReason?>(null) }
     val isFrontFaceWindingInvertedRef = remember { AtomicBoolean(false) }
 
+    // Tracks the per-frame [IndirectLight] this composable builds from
+    // light-estimation updates so the previous one can be destroyed
+    // independently of whatever currently sits on `scene.indirectLight` (#1756).
+    //
+    // The pre-fix path captured `previousIbl = scene.indirectLight` inside the
+    // rebuild block and destroyed it unless it equalled the environment's base
+    // IBL. That logic relied on the invariant "scene.indirectLight is either
+    // the environment's base or *our* previously-built IBL". A third party
+    // (custom node, app code) overwriting `scene.indirectLight` between two
+    // estimation updates broke that invariant — the IBL we previously built
+    // was then orphaned in native heap with no reference left to destroy it.
+    //
+    // Caching the IBL we own here makes destruction self-contained: each
+    // rebuild destroys exactly the IBL the previous rebuild produced, regardless
+    // of what `scene.indirectLight` looks like now. On dispose the cached IBL
+    // is freed too — closing the lifecycle leak that the umbrella audit flagged
+    // for long AR sessions with intermittent estimation.
+    val builtIndirectLightRef = remember { AtomicReference<IndirectLight?>(null) }
+    DisposableEffect(engine, builtIndirectLightRef) {
+        onDispose {
+            builtIndirectLightRef.getAndSet(null)?.let {
+                engine.safeDestroyIndirectLight(it)
+            }
+        }
+    }
+
     // Baseline mainLight color + intensity captured on the first frame the lightEstimator
     // produces an estimate. Without this, ARScene's per-frame
     // `light.color = light.color * estimate` reads back the PREVIOUS frame's value and
@@ -734,6 +760,7 @@ fun ARSceneView(
                                     onSessionUpdatedRef = onSessionUpdatedRef,
                                     baselineMainLightColorRef = baselineMainLightColorRef,
                                     baselineMainLightIntensityRef = baselineMainLightIntensityRef,
+                                    builtIndirectLightRef = builtIndirectLightRef,
                                     session = session,
                                     frame = frame
                                 )
@@ -814,6 +841,7 @@ private fun onARFrame(
     onSessionUpdatedRef: AtomicReference<((Session, Frame) -> Unit)?>,
     baselineMainLightColorRef: AtomicReference<io.github.sceneview.math.Color?>,
     baselineMainLightIntensityRef: AtomicReference<Float?>,
+    builtIndirectLightRef: AtomicReference<IndirectLight?>,
     session: Session,
     frame: Frame
 ) {
@@ -842,22 +870,41 @@ private fun onARFrame(
             estimation.mainLightIntensity?.let { light.intensity = baselineIntensity * it }
             estimation.mainLightDirection?.let { light.lightDirection = it }
         }
+        // #1756: only rebuild the per-frame IBL when the estimator actually
+        // surfaced new data this frame. `LightEstimator.update()` already
+        // returns `null` when ARCore's `LightEstimate.timestamp` hasn't
+        // advanced, so we're inside the `?.let { estimation ->` block —
+        // therefore the estimation IS fresh. The pure decision logic for
+        // "which texture/SH source do we use" is centralised in
+        // [pickIndirectLightSources] so it can be exercised without a
+        // Filament engine (see `IndirectLightRebuildDecisionTest`).
         val indirectLight = environment.indirectLight
-        val previousIbl = scene.indirectLight
-        IndirectLight.Builder().apply {
-            estimation.irradiance?.let { irradiance(3, it) }
-                ?: indirectLight?.irradianceTexture?.let { irradiance(it) }
-            estimation.reflections?.let { reflections(it) }
-                ?: indirectLight?.reflectionsTexture?.let { reflections(it) }
+        val sources = pickIndirectLightSources(estimation, indirectLight)
+        val newIbl = IndirectLight.Builder().apply {
+            if (sources.useEstimationIrradiance) {
+                estimation.irradiance?.let { irradiance(3, it) }
+            } else {
+                indirectLight?.irradianceTexture?.let { irradiance(it) }
+            }
+            if (sources.useEstimationReflections) {
+                estimation.reflections?.let { reflections(it) }
+            } else {
+                indirectLight?.reflectionsTexture?.let { reflections(it) }
+            }
             indirectLight?.intensity?.let { intensity(it) }
             indirectLight?.getRotation(null)?.let { rotation(it) }
-        }.build(engine).also { newIbl ->
-            scene.indirectLight = newIbl
-            // Destroy the previous per-frame IBL to avoid a native memory leak.
-            // Don't destroy the environment's own IBL — only the ones we built here.
-            if (previousIbl != null && previousIbl != indirectLight) {
-                engine.safeDestroyIndirectLight(previousIbl)
-            }
+        }.build(engine)
+        scene.indirectLight = newIbl
+        // #1756: destroy the IBL we built on the previous estimation update
+        // (tracked via [builtIndirectLightRef]) — independent of what
+        // `scene.indirectLight` happens to be now. The old path captured
+        // `scene.indirectLight` and destroyed it unless it matched the
+        // environment's base IBL; a third party overwriting `scene.indirectLight`
+        // between updates orphaned our previously-built IBL in native heap.
+        // Self-contained ownership tracking closes that leak (the previous
+        // IBL is always destroyed exactly once, when superseded or on dispose).
+        builtIndirectLightRef.getAndSet(newIbl)?.let { previousBuiltIbl ->
+            engine.safeDestroyIndirectLight(previousBuiltIbl)
         }
     }
 
@@ -876,6 +923,56 @@ private fun onARFrame(
 
     onSessionUpdatedRef.get()?.invoke(session, frame)
 }
+
+/**
+ * Pure decision-logic helper for the per-frame `IndirectLight` rebuild (#1756).
+ *
+ * Given a fresh [LightEstimator.Estimation] and the environment's base
+ * [IndirectLight] (may be null), picks whether each IBL source — irradiance and
+ * reflections — should come from the live ARCore estimate or fall back to the
+ * baked environment baseline.
+ *
+ * Extracted out of `onARFrame` so the (otherwise Filament-laden) rebuild block
+ * has a pure-Kotlin core that can be exercised under JVM unit tests — see
+ * `IndirectLightRebuildDecisionTest`. The actual Filament `IndirectLight.Builder`
+ * call still lives in `onARFrame` because the builder needs a live engine.
+ *
+ * Rules:
+ *  - **Irradiance**: use the estimation's spherical-harmonics coefficients if
+ *    present; otherwise fall back to the base IBL's irradiance texture.
+ *  - **Reflections**: use the estimation's cubemap if present; otherwise fall
+ *    back to the base IBL's reflections texture.
+ *
+ * @param estimation the current frame's estimate (never null inside the
+ *   rebuild path — `LightEstimator.update` already returned non-null).
+ * @param baseIndirectLight the environment's static IBL or null.
+ * @return [IndirectLightSources] flagging which source to use per channel.
+ */
+internal fun pickIndirectLightSources(
+    estimation: LightEstimator.Estimation,
+    baseIndirectLight: IndirectLight?
+): IndirectLightSources {
+    val hasIrradiance = estimation.irradiance != null
+    val hasReflections = estimation.reflections != null
+    return IndirectLightSources(
+        useEstimationIrradiance = hasIrradiance,
+        useEstimationReflections = hasReflections,
+        hasBaseIndirectLight = baseIndirectLight != null
+    )
+}
+
+/**
+ * Decision record returned by [pickIndirectLightSources] (#1756).
+ *
+ * Plain data so unit tests can assert exact flag values without spinning up a
+ * Filament engine. [hasBaseIndirectLight] mirrors the env-IBL presence so the
+ * test can pin the precedence rules (estimation > base > unset).
+ */
+internal data class IndirectLightSources(
+    val useEstimationIrradiance: Boolean,
+    val useEstimationReflections: Boolean,
+    val hasBaseIndirectLight: Boolean
+)
 
 // ── Camera config selection ─────────────────────────────────────────────────────────────────────
 
