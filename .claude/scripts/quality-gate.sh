@@ -212,6 +212,28 @@ fi
 
 echo ""
 
+# ─── 4c. Worktree-prune regression suite (advisory) ────────────────────
+# Pins the safety contract of `.claude/scripts/worktree-auto-prune.sh`
+# (locked-tree skip #1833, broad subprocess detect #1834, forensic log
+# #1839). Advisory: a CI host without `lsof`/`fuser` can't fully exercise
+# the active-session check — we surface a WARN instead of failing.
+if [ -f ".claude/scripts/test-worktree-auto-prune.sh" ]; then
+    if bash .claude/scripts/test-worktree-auto-prune.sh > /tmp/test-worktree-auto-prune.log 2>&1; then
+        check "Worktree-prune regression suite" "PASS"
+    else
+        # Distinguish "host lacks the tool" from "real regression".
+        if grep -q "neither lsof nor fuser" /tmp/test-worktree-auto-prune.log; then
+            check "Worktree-prune regression suite" "WARN" "host lacks lsof/fuser — see /tmp/test-worktree-auto-prune.log"
+        else
+            check "Worktree-prune regression suite" "WARN" "failures — see /tmp/test-worktree-auto-prune.log"
+        fi
+    fi
+else
+    check "Worktree-prune regression suite" "WARN" "test-worktree-auto-prune.sh missing"
+fi
+
+echo ""
+
 # ─── 5. Build & Test (skip in quick mode) ────────────────────────────
 #
 # Two skip flags:
