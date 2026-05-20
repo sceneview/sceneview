@@ -900,6 +900,8 @@ The extension calls `Frame.acquireDepthImage16Bits()` and **must not** be invoke
 from a background coroutine. See also: `DepthMeshNode` (depth → renderable mesh)
 and `rememberDepthCollider` (depth → physics collider).
 
+**Cross-platform:** Android-only. The iOS counterpart is `ARView.raycast(from:allowing:.any)` — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+
 ```kotlin
 data class DepthHitResult(
     val position: Position,   // world-space point on the real surface
@@ -1179,6 +1181,8 @@ must run on the AR frame / GL-main thread. The composable handles this for you (
 `node.latestSnapshot` consumers from a background coroutine. See also: `Frame.hitTestDepth`
 (raycast against the same depth image) and `rememberDepthCollider` (depth → physics collider).
 
+**Cross-platform:** Android-only. iOS equivalent is `ARMeshAnchor` via `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). SceneViewSwift wrapper tracked in #1860 — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthMesh(
     refreshIntervalMs: Long = 200L,            // min ms between rebuilds; 5 Hz by default
@@ -1229,6 +1233,8 @@ internals.
 Thin physics wrapper over `DepthMeshNode` (#1739) — same edge-discontinuity culling, no curtain
 triangles across depth jumps. See also: `DepthMeshNode` (the underlying renderable mesh) and
 `Frame.hitTestDepth` (single-ray raycast against the same depth image).
+
+**Cross-platform:** Android-only. iOS equivalent rebuilds `CollisionComponent`s per `ARMeshAnchor` (LiDAR-only, requires Scene Reconstruction). SceneViewSwift wrapper tracked in #1860 — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthCollider(
@@ -1349,6 +1355,8 @@ DisposableEffect(cloudAnchorId) { onDispose { resolveFuture.cancel() } }
 **Persistence — `ttlDays`.** `CloudAnchorNode.host(session, ttlDays = 1)` accepts any value in `CloudAnchorNode.TTL_DAYS_RANGE` (= `1..365`, inclusive). Values outside this range throw `IllegalArgumentException`. Pick a short ttl for ephemeral collaborative sessions, a longer one (e.g. 7..30) for "leave behind" multi-day experiences.
 
 **Privacy disclosure (required).** ARCore Cloud Anchors upload feature points from the user's surroundings to Google. Surface a clear in-app disclosure and link to the ARCore data policy (https://developers.google.com/ar/data-privacy) before hosting.
+
+**Cross-platform:** Android-only. iOS Cloud Anchors require Google's `arcore-ios-sdk` Swift Package (`GARSession.hostCloudAnchor`). The Future + cancel-on-dispose pattern (#1768) needs porting to `SceneViewSwift.CloudAnchorNode` — tracked in #1859. See [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web has no Cloud Anchor runtime.
 
 ### CloudAnchorRegistry — local persistence helper for hosted Cloud Anchor IDs
 
