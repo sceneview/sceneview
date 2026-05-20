@@ -576,8 +576,23 @@ data class DepthMeshSnapshot(
     }
 }
 
-/** Computes an axis-aligned bounding box from a flat-packed `xyz` array. */
-private fun computeAabb(positions: FloatArray): Box {
+/**
+ * Computes an axis-aligned bounding box from a flat-packed `xyz` array.
+ *
+ * Filament rejects empty AABBs (any half-extent ≤ 0) with a `Precondition: AABB can't be empty`
+ * SIGABRT when culling is enabled or the renderable casts/receives shadows. Two degenerate paths
+ * trigger this:
+ *  1. Empty `positions` (no depth samples this frame) — guarded since #1783.
+ *  2. All samples share the same coordinate on at least one axis (e.g. a depth image where every
+ *     pixel reports the same range, or the first frame after a scene reset where only one
+ *     off-grid (0,0,0) vertex made it through). The min/max collapse and at least one half-extent
+ *     comes out as 0 — same SIGABRT (#1806).
+ *
+ * The clamp below substitutes [DepthMeshNode.DEGENERATE_AABB_HALF_EXTENT_M] for any half-extent
+ * below that threshold so the returned [Box] always satisfies Filament's `halfExtent > 0`
+ * precondition. The centre is preserved so frustum culling still localises the renderable.
+ */
+internal fun computeAabb(positions: FloatArray): Box {
     // Same precondition guard as the initial AABB — Filament rejects empty boxes (#1783).
     if (positions.isEmpty()) return Box(
         0f, 0f, 0f,
@@ -607,9 +622,13 @@ private fun computeAabb(positions: FloatArray): Box {
     val centerX = (minX + maxX) * 0.5f
     val centerY = (minY + maxY) * 0.5f
     val centerZ = (minZ + maxZ) * 0.5f
-    val halfX = (maxX - minX) * 0.5f
-    val halfY = (maxY - minY) * 0.5f
-    val halfZ = (maxZ - minZ) * 0.5f
+    // Clamp any half-extent below the degenerate threshold to the minimum half-extent so Filament
+    // never sees a zero-extent box (#1806). This catches the all-same-coordinate case that the
+    // empty-positions guard from #1783 misses.
+    val minHalf = DepthMeshNode.DEGENERATE_AABB_HALF_EXTENT_M
+    val halfX = ((maxX - minX) * 0.5f).coerceAtLeast(minHalf)
+    val halfY = ((maxY - minY) * 0.5f).coerceAtLeast(minHalf)
+    val halfZ = ((maxZ - minZ) * 0.5f).coerceAtLeast(minHalf)
     return Box(centerX, centerY, centerZ, halfX, halfY, halfZ)
 }
 
