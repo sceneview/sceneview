@@ -36,7 +36,7 @@ import io.github.sceneview.node.FloorProvider
  *     PhysicsNode(
  *         node = sphereNode,
  *         restitution = 0.7f,
- *         depthCollider = collider,
+ *         floorProvider = collider,
  *         radius = 0.08f,
  *     )
  * }
