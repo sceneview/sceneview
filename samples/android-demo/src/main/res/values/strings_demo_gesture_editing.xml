@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `gesture-editing` demo (registered by
+     `GestureEditingFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_gesture_editing_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_gesture_editing_title">Gesture Editing</string>
+    <string name="demo_gesture_editing_subtitle">Move, scale, and rotate with gestures</string>
+    <string name="demo_gesture_editing">Gesture Editing</string>
+    <string name="demo_gesture_editing_desc">Drag, rotate, and scale models with touch gestures</string>
+</resources>
