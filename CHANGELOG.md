@@ -47,6 +47,10 @@
 
 - arsceneview: defensive `onDispose` ordering on `ARScene`'s per-frame `IndirectLight` rebuild — clear `scene.indirectLight = null` BEFORE `engine.safeDestroyIndirectLight(...)` so a late `onARFrame` queued on the GL thread cannot dereference a freed native handle (#1814).
 
+### Docs
+
+- `arsceneview`: document ARCore 1.54's **Geospatial Depth** in `llms.txt` and on `StreetscapeGeometryNode`. Enabling `Config.DepthMode.AUTOMATIC` together with `Config.GeospatialMode.ENABLED` and `Config.StreetscapeGeometryMode.ENABLED` automatically extends environment-depth accuracy from ~8 m (motion-stereo only) to **~65 m** by fusing depth with Streetscape geometry + sensors. Every existing depth consumer (`Frame.hitTestDepth`, `DepthMeshNode`, `rememberDepthCollider`, `ARCameraStream` occlusion) benefits transparently — no API change required (#1731).
+
 ## v4.11.0 — 2026-05-20
 
 ### Added
