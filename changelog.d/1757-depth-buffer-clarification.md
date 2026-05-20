@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- arsceneview: clarify the depth `ByteBuffer` lifecycle invariant in `ARCameraStream` — the buffer borrowed from ARCore's depth `Image` is now documented as intentionally NOT cloned, with the upload-completed callback as the load-bearing synchronisation point that closes the ARCore image exactly once. Updates the previous misleading comment that claimed the buffer was cloned. Adds a pure-JVM sentinel test pinning the `buffer.clear()` metadata-only contract and the setter-doesn't-allocate invariant (#1757).
