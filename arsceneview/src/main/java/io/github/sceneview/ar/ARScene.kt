@@ -215,6 +215,33 @@ import java.util.concurrent.atomic.AtomicReference
  * @param lifecycle                Lifecycle that binds the AR session resume/pause cycle.
  * @param content                  Declare AR scene content using the [ARSceneScope] composable DSL.
  */
+/**
+ * Allowed URI schemes for [playbackDatasetUri] (#1845).
+ *
+ * ARCore's [com.google.ar.core.Session.setPlaybackDatasetUri] is documented for
+ * `content://` URIs from `MediaStore`, Storage Access Framework picker output, and
+ * `FileProvider`s. `file://` is also accepted for symmetry with the legacy
+ * [playbackDataset] [java.io.File] path. Anything else (`https://`, `data:`, custom schemes)
+ * is rejected at the SceneView boundary — passing those silently to ARCore either no-ops or
+ * fails with an opaque [com.google.ar.core.exceptions.PlaybackFailedException] from
+ * `session.resume()`.
+ *
+ * Exposed as `internal` (not `private`) so the unit-test suite can pin the scheme set
+ * without instantiating a full Composable host.
+ */
+internal val PLAYBACK_DATASET_URI_ALLOWED_SCHEMES: Set<String> = setOf("content", "file")
+
+/**
+ * Returns true if [uri] is acceptable as a `playbackDatasetUri` (#1845).
+ *
+ * Extracted as a top-level pure function from the `require` inside [ARSceneView] so it can
+ * be unit-tested without a Compose host. Mirrors the Composable's contract: `null` is OK
+ * (no playback requested); a non-null URI must carry a [PLAYBACK_DATASET_URI_ALLOWED_SCHEMES]
+ * scheme.
+ */
+internal fun isAllowedPlaybackDatasetUri(uri: android.net.Uri?): Boolean =
+    uri == null || uri.scheme in PLAYBACK_DATASET_URI_ALLOWED_SCHEMES
+
 @Composable
 fun ARSceneView(
     modifier: Modifier = Modifier,
@@ -277,6 +304,22 @@ fun ARSceneView(
      * path — which on Android 10+ scoped storage means the app must copy the user-picked MP4
      * into its sandbox before replay. With `playbackDatasetUri` the replay reads the original
      * `Uri` directly.
+     *
+     * **Scheme allowlist (#1845).** Only `content://` and `file://` URIs are accepted —
+     * passing e.g. `https://`, `data:`, or any custom scheme triggers an
+     * `IllegalArgumentException` at session creation. ARCore would silently fail or hand the
+     * URI off to an arbitrary `ContentResolver` registration; we surface the misuse at the
+     * SceneView boundary where the caller can see it.
+     *
+     * **Caller-side permission requirement.** A `content://` URI is only readable by ARCore
+     * if the calling process has been granted read access to it. With a Storage Access Framework
+     * picker (`ACTION_OPEN_DOCUMENT`), the grant is implicit for the lifetime of the activity;
+     * to outlive process restarts call
+     * [ContentResolver.takePersistableUriPermission][android.content.ContentResolver.takePersistableUriPermission].
+     * When forwarding the URI to another component via [android.content.Intent], set
+     * [android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION] on the launcher intent. Without
+     * a read grant ARCore raises [PlaybackFailedException] which is routed to
+     * [onPlaybackFailed].
      *
      * **Mutually exclusive with [playbackDataset].** Setting both is a programming error and
      * triggers an `IllegalArgumentException` at session creation. Default `null`.
@@ -584,6 +627,16 @@ fun ARSceneView(
     // Mutually exclusive playback inputs (#1770): only one of File or Uri may be set.
     require(playbackDataset == null || playbackDatasetUri == null) {
         "ARSceneView: pass either playbackDataset (File) OR playbackDatasetUri (Uri), not both."
+    }
+    // Scheme allowlist (#1845) — defense-in-depth. Only content:// and file:// URIs name a
+    // playable dataset. Reject any other scheme (https://, data:, …) at the SceneView
+    // boundary rather than handing it to ARCore where it would either silently fail or raise
+    // an opaque PlaybackFailedException after session.resume(). See the [playbackDatasetUri]
+    // KDoc for the caller-side permission requirements (FLAG_GRANT_READ_URI_PERMISSION /
+    // takePersistableUriPermission).
+    require(isAllowedPlaybackDatasetUri(playbackDatasetUri)) {
+        "ARSceneView: playbackDatasetUri scheme '${playbackDatasetUri?.scheme}' is not " +
+            "allowed — expected one of $PLAYBACK_DATASET_URI_ALLOWED_SCHEMES."
     }
 
     val arCore = remember {
