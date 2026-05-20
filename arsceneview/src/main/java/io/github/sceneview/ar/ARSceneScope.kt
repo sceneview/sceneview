@@ -363,6 +363,46 @@ class ARSceneScope internal constructor(
         NodeLifecycle(node, content)
     }
 
+    /**
+     * A node that follows depth-based AR hit-test results computed by a caller-supplied
+     * [hitTest] lambda — lambda-overload sibling of the screen-pixel composable above
+     * (#1844). Mirrors the 2-overload surface that [HitResultNode] already exposes
+     * (`xPx/yPx` + custom-lambda) so apps can sample multiple pixels, raycast at a moving
+     * reticle, or skip frames cheaply without subclassing [DepthHitResultNodeImpl].
+     *
+     * The [hitTest] lambda runs on the AR frame thread once per frame (when `update` is true)
+     * and is expected to return `null` to keep the previous pose — same fallback semantics as
+     * the screen-pixel overload.
+     *
+     * ```kotlin
+     * DepthHitResultNode(
+     *     hitTest = { frame ->
+     *         // Sample a 3×3 grid and return the closest valid hit
+     *         (-1..1).flatMap { dx -> (-1..1).map { dy -> dx to dy } }
+     *             .mapNotNull { (dx, dy) -> frame.hitTestDepth(cx + dx * 8f, cy + dy * 8f) }
+     *             .minByOrNull { it.distance }
+     *     },
+     * ) {
+     *     CubeNode(size = Float3(0.05f))
+     * }
+     * ```
+     *
+     * @param hitTest Selector — receives the live [Frame] and returns a depth hit, or `null`.
+     * @param apply   Additional imperative configuration on the underlying node.
+     * @param content Optional child nodes declared in a [NodeScope].
+     */
+    @Composable
+    fun DepthHitResultNode(
+        hitTest: DepthHitResultNodeImpl.(Frame) -> io.github.sceneview.ar.arcore.DepthHitResult?,
+        apply: DepthHitResultNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null,
+    ) {
+        val node = remember(engine) {
+            DepthHitResultNodeImpl(engine = engine, hitTest = hitTest).apply(apply)
+        }
+        NodeLifecycle(node, content)
+    }
+
     // ── AugmentedImageNode ────────────────────────────────────────────────────────────────────────
 
     /**

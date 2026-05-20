@@ -13,7 +13,7 @@ import io.github.sceneview.ar.arcore.hitTestDepth
  * [HitResultNode] for placement against the ARCore depth image rather than against detected
  * planes / points / instant-placement (#1814).
  *
- * Each AR frame the node re-runs [Frame.hitTestDepth] at the configured screen pixel and moves
+ * Each AR frame the node re-runs the [hitTest] lambda at the configured selection rule and moves
  * to the world-space surface point under that pixel. Unlike [HitResultNode], a depth hit test
  * resolves a point on *any* real-world geometry the depth camera can see (sofa, slope,
  * cluttered desk) without waiting for ARCore to grow a plane there, and carries a real surface
@@ -28,14 +28,34 @@ import io.github.sceneview.ar.arcore.hitTestDepth
  * [PoseNode.update].
  *
  * @param engine    The Filament [Engine].
- * @param xPx       Screen X coordinate in pixels for the depth hit test.
- * @param yPx       Screen Y coordinate in pixels for the depth hit test.
+ * @param hitTest   Custom depth-hit-test selector — receives the live [Frame] and returns a
+ *                  [DepthHitResult] (or `null` to keep the previous pose). Lets callers raycast
+ *                  at a custom screen anchor, sample multiple pixels, or skip frames cheaply.
+ *                  For the common centre-screen / fixed-pixel case use the secondary
+ *                  `(engine, xPx, yPx)` constructor — it builds this lambda for you.
  */
 open class DepthHitResultNode(
     engine: Engine,
-    val xPx: Float,
-    val yPx: Float,
+    val hitTest: DepthHitResultNode.(Frame) -> DepthHitResult?,
 ) : PoseNode(engine) {
+
+    /**
+     * Build a depth-hit `DepthHitResultNode` that raycasts at a fixed screen pixel — convenience
+     * overload for the common centre-screen / reticle case. Mirrors the screen-pixel form of
+     * the sibling [HitResultNode] (#1844).
+     *
+     * @param engine The Filament [Engine].
+     * @param xPx    Screen X coordinate in pixels for the depth hit test.
+     * @param yPx    Screen Y coordinate in pixels for the depth hit test.
+     */
+    constructor(
+        engine: Engine,
+        xPx: Float,
+        yPx: Float,
+    ) : this(
+        engine = engine,
+        hitTest = { frame -> frame.hitTestDepth(xPx, yPx) },
+    )
 
     /**
      * Whether the node re-runs the depth hit test each frame. Default `true`. Set to `false` to
@@ -60,7 +80,7 @@ open class DepthHitResultNode(
 
     override fun update(session: Session, frame: Frame) {
         if (update && frame.camera.trackingState == TrackingState.TRACKING) {
-            frame.hitTestDepth(xPx, yPx)?.let { result ->
+            hitTest(frame)?.let { result ->
                 depthHitResult = result
                 // Build a `Pose` whose translation is the depth hit point, orientation is identity
                 // (the depth hit carries a normal but not a full surface frame). Callers that need

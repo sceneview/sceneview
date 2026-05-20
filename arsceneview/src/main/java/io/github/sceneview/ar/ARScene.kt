@@ -201,8 +201,11 @@ import java.util.concurrent.atomic.AtomicReference
  * @param onSessionResumed         Called each time the session is resumed.
  * @param onSessionPaused          Called each time the session is paused.
  * @param onSessionFailed          Called if ARCore fails to initialize (missing ARCore or permission).
- *                                 Receives a raw [Exception]. Prefer [onSessionFailure] for
- *                                 typed, exhaustive `when` matching (#1759).
+ *                                 Receives a raw [Exception]. **Soft-deprecated (#1844)** in favour
+ *                                 of [onSessionFailure] for typed, exhaustive `when` matching
+ *                                 (#1759). The legacy callback stays available indefinitely for
+ *                                 backwards compatibility — both fire when set — but new code
+ *                                 should wire [onSessionFailure] only.
  * @param onSessionFailure         Typed [ARSessionFailure] callback (#1759). Fires alongside
  *                                 [onSessionFailed]; pick the one that matches your codebase.
  * @param onSessionUpdated         Called once per AR frame before the scene is updated.
@@ -428,6 +431,12 @@ fun ARSceneView(
      * Playback-dataset failures (`PlaybackFailedException` or any exception thrown by
      * [Session.setPlaybackDataset]) are routed here ONLY when [onPlaybackFailed] is `null`.
      * Set [onPlaybackFailed] for fine-grained handling of "bad MP4 path" vs "AR unavailable".
+     *
+     * **Soft-deprecated (#1844):** prefer [onSessionFailure] which delivers a sealed
+     * [ARSessionFailure] subtype so the compiler enforces exhaustive `when` matching
+     * (#1759). The raw callback is kept un-deprecated at the Kotlin level for
+     * backwards compatibility — both fire when set — but new code should wire only
+     * [onSessionFailure].
      */
     onSessionFailed: ((exception: Exception) -> Unit)? = null,
     /**

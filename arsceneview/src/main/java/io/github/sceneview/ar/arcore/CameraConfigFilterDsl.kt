@@ -17,11 +17,17 @@ import java.util.EnumSet
  *     sessionCameraConfig = cameraConfigFilter {
  *         facing = CameraConfig.FacingDirection.BACK
  *         targetFps = setOf(CameraConfig.TargetFps.TARGET_FPS_60)
- *         depthSensor = CameraConfig.DepthSensorUsage.REQUIRE_AND_USE
- *         stereoCamera = CameraConfig.StereoCameraUsage.REQUIRE_AND_USE
+ *         depthSensor = setOf(CameraConfig.DepthSensorUsage.REQUIRE_AND_USE)
+ *         stereoCamera = setOf(CameraConfig.StereoCameraUsage.REQUIRE_AND_USE)
  *     },
  * ) { /* DSL */ }
  * ```
+ *
+ * **All three filter knobs are `Set<…>?` (#1844)** — `targetFps`, `depthSensor`, `stereoCamera`
+ * — to match the underlying ARCore `CameraConfigFilter.set*(EnumSet)` API symmetrically.
+ * Pass a single-element `setOf(X)` for the common "require only X" case (singleton-style),
+ * or a multi-element set for "any of X / Y" semantics. `null` (default) means "don't filter
+ * on that axis".
  *
  * The builder is mutable — every `var` is optional. Setting `null` (the default) means "don't
  * filter on that axis"; ARCore returns every config matching the remaining constraints.
@@ -47,22 +53,28 @@ class CameraConfigFilterBuilder {
     var targetFps: Set<CameraConfig.TargetFps>? = null
 
     /**
-     * Restrict to configs that either require ([CameraConfig.DepthSensorUsage.REQUIRE_AND_USE])
-     * or skip ([CameraConfig.DepthSensorUsage.DO_NOT_USE]) the hardware depth sensor. Default
-     * `null` — ARCore returns both with/without depth-sensor configs and picks per-device
-     * defaults. Set `REQUIRE_AND_USE` on TOF-equipped devices (S20 Ultra, Pixel 4 XL, etc.)
-     * for higher-quality depth maps.
+     * Restrict to configs whose hardware depth-sensor usage matches **any of** the supplied
+     * [CameraConfig.DepthSensorUsage] values. Default `null` — ARCore returns both with/without
+     * depth-sensor configs and picks per-device defaults. Pass
+     * `setOf(CameraConfig.DepthSensorUsage.REQUIRE_AND_USE)` on TOF-equipped devices (S20 Ultra,
+     * Pixel 4 XL, etc.) for higher-quality depth maps.
+     *
+     * Always a `Set<…>?` (#1844) — symmetric with [targetFps] / [stereoCamera] and matches the
+     * underlying ARCore `setDepthSensorUsage(EnumSet)` API. Pass `setOf(X)` for "only X".
      */
-    var depthSensor: CameraConfig.DepthSensorUsage? = null
+    var depthSensor: Set<CameraConfig.DepthSensorUsage>? = null
 
     /**
-     * Restrict to configs that either require ([CameraConfig.StereoCameraUsage.REQUIRE_AND_USE])
-     * or skip ([CameraConfig.StereoCameraUsage.DO_NOT_USE]) hardware stereo cameras. Default
-     * `null` — ARCore picks per-device defaults. Set `REQUIRE_AND_USE` for devices with
+     * Restrict to configs whose hardware stereo-camera usage matches **any of** the supplied
+     * [CameraConfig.StereoCameraUsage] values. Default `null` — ARCore picks per-device
+     * defaults. Pass `setOf(CameraConfig.StereoCameraUsage.REQUIRE_AND_USE)` for devices with
      * dual-camera AR (e.g. some Samsung S-series back cameras) when you need the wider FOV /
      * stereo-baselined depth.
+     *
+     * Always a `Set<…>?` (#1844) — symmetric with [targetFps] / [depthSensor] and matches the
+     * underlying ARCore `setStereoCameraUsage(EnumSet)` API. Pass `setOf(X)` for "only X".
      */
-    var stereoCamera: CameraConfig.StereoCameraUsage? = null
+    var stereoCamera: Set<CameraConfig.StereoCameraUsage>? = null
 
     /**
      * Internal: builds the native [CameraConfigFilter] for [session].
@@ -70,13 +82,30 @@ class CameraConfigFilterBuilder {
      * Each unset property (`null`) is left at the ARCore default; set ones are forwarded via
      * the underlying setter. The filter is created from `session` because every native filter
      * is bound to its session — apps must not reuse a filter across sessions.
+     *
+     * **Validation (#1845):** every set property must be non-empty. `EnumSet.copyOf(emptySet)`
+     * throws `IllegalArgumentException`, and silently swallowing that in [cameraConfigFilter]
+     * would degrade to the session default — which on some devices is the FRONT-facing config,
+     * a privacy concern when the developer asked for back-only. We fail fast here instead.
      */
     internal fun build(session: Session): CameraConfigFilter {
+        require(targetFps == null || targetFps!!.isNotEmpty()) {
+            "cameraConfigFilter: targetFps must be null or non-empty; emptySet would degrade " +
+                "to the session default (potentially the front camera)."
+        }
+        require(depthSensor == null || depthSensor!!.isNotEmpty()) {
+            "cameraConfigFilter: depthSensor must be null or non-empty; emptySet would degrade " +
+                "to the session default."
+        }
+        require(stereoCamera == null || stereoCamera!!.isNotEmpty()) {
+            "cameraConfigFilter: stereoCamera must be null or non-empty; emptySet would degrade " +
+                "to the session default."
+        }
         val filter = CameraConfigFilter(session)
         facing?.let { filter.setFacingDirection(it) }
         targetFps?.let { filter.setTargetFps(EnumSet.copyOf(it)) }
-        depthSensor?.let { filter.setDepthSensorUsage(EnumSet.of(it)) }
-        stereoCamera?.let { filter.setStereoCameraUsage(EnumSet.of(it)) }
+        depthSensor?.let { filter.setDepthSensorUsage(EnumSet.copyOf(it)) }
+        stereoCamera?.let { filter.setStereoCameraUsage(EnumSet.copyOf(it)) }
         return filter
     }
 }
@@ -117,8 +146,13 @@ fun cameraConfigFilter(
 ): (Session) -> CameraConfig {
     val builder = CameraConfigFilterBuilder().apply(block)
     return { session ->
+        // #1845 — narrow runCatching to the JNI call only. Builder errors (e.g.
+        // emptySet → IllegalArgumentException from `require(...).isNotEmpty()`) must
+        // propagate so the dev fixes the misconfiguration instead of silently degrading
+        // to the session default (which on some devices is the FRONT camera, a privacy
+        // concern when back-only was requested).
+        val filter = builder.build(session)
         runCatching {
-            val filter = builder.build(session)
             session.getSupportedCameraConfigs(filter).maxByOrNull {
                 it.imageSize.width.toLong() * it.imageSize.height.toLong()
             }

@@ -6,18 +6,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pins the public API contract of [DepthHitResultNode] introduced by #1814:
+ * Pins the public API contract of [DepthHitResultNode] introduced by #1814 and extended in
+ * #1844:
  *  - Class is open + public (callers should be able to subclass for custom behaviour).
  *  - Inherits from [PoseNode] so it integrates with the existing
  *    `ARScene.kt`'s per-frame `childNodes` iteration that runs both `PoseNode` and
  *    `DepthMeshNode` updates.
- *  - Carries the `xPx` / `yPx` constructor properties (read-only) and exposes
- *    `depthHitResult` for surface-normal reads.
+ *  - Exposes a `hitTest` lambda (primary constructor, #1844) so callers can override the
+ *    selection rule without subclassing.
+ *  - Ships a secondary `(engine, xPx, yPx)` constructor for the common centre-screen case
+ *    — mirrors [io.github.sceneview.ar.node.HitResultNode]'s 2-overload surface.
  *
  * The full per-frame `update(session, frame)` path requires an ARCore `Frame`, which is
  * JNI-backed and not instantiable in a JVM unit test, but the **shape** of the public
  * API can be pinned via reflection — and that catches the regression where a future
- * refactor accidentally hides the node behind an `internal` or drops a property.
+ * refactor accidentally hides the node behind an `internal` or drops the secondary
+ * `(xPx, yPx)` overload.
  */
 class DepthHitResultNodeContractTest {
 
@@ -42,12 +46,42 @@ class DepthHitResultNodeContractTest {
     }
 
     @Test
-    fun `xPx and yPx are exposed as public read-only properties`() {
-        val xPxField = DepthHitResultNode::class.java.declaredFields.firstOrNull { it.name == "xPx" }
-        val yPxField = DepthHitResultNode::class.java.declaredFields.firstOrNull { it.name == "yPx" }
-        assertNotNull("xPx field must exist (Kotlin val backing field).", xPxField)
-        assertNotNull("yPx field must exist (Kotlin val backing field).", yPxField)
-        assertEquals(Float::class.java, xPxField!!.type)
-        assertEquals(Float::class.java, yPxField!!.type)
+    fun `hitTest lambda is exposed on the primary constructor (1844)`() {
+        // Kotlin primary `val hitTest: …` surfaces as a JVM backing field of type Function1
+        // (or Function2 for receiver lambdas — JVM lowers `T.(Frame) -> R` to a Function1
+        // taking the receiver as first param + an extra Frame, hence Function2). Either way
+        // the field exists and is non-null.
+        val hitField = DepthHitResultNode::class.java.declaredFields
+            .firstOrNull { it.name == "hitTest" }
+        assertNotNull(
+            "hitTest field must exist so callers can swap in a custom depth-hit selector " +
+                "without subclassing (matches HitResultNode's lambda overload, #1844).",
+            hitField,
+        )
+        // Sanity-check the type is a kotlin.jvm.functions.Function* instance.
+        assertTrue(
+            "hitTest must be a Kotlin function type — got ${hitField!!.type}.",
+            hitField.type.name.startsWith("kotlin.jvm.functions.Function"),
+        )
+    }
+
+    @Test
+    fun `secondary (engine xPx yPx) constructor mirrors HitResultNode surface (1844)`() {
+        // The convenience overload for "raycast at one fixed screen pixel" must remain available
+        // — drop-in equivalent of `HitResultNode(engine, xPx, yPx, …)`. The Engine type is
+        // JNI-backed so we only verify by parameter-type signature; reflection cannot instantiate.
+        val ctor = DepthHitResultNode::class.java.declaredConstructors.firstOrNull { ctor ->
+            ctor.parameterTypes.size == 3 &&
+                ctor.parameterTypes[0].name == "com.google.android.filament.Engine" &&
+                ctor.parameterTypes[1] == java.lang.Float.TYPE &&
+                ctor.parameterTypes[2] == java.lang.Float.TYPE
+        }
+        assertNotNull(
+            "Secondary `(engine: Engine, xPx: Float, yPx: Float)` constructor must exist — " +
+                "mirrors HitResultNode's screen-pixel overload (#1844).",
+            ctor,
+        )
+        // Witness that assertEquals is wired for downstream test maintenance.
+        assertEquals(3, ctor!!.parameterTypes.size)
     }
 }

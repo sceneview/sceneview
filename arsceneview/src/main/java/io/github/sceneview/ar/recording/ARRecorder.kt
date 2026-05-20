@@ -706,18 +706,27 @@ public fun rememberARRecorder(): ARRecorder {
  */
 @Composable
 public fun rememberARPlaybackStatus(session: Session?): androidx.compose.runtime.State<PlaybackStatus> {
-    val statusState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(PlaybackStatus.NONE) }
-    androidx.compose.runtime.LaunchedEffect(session) {
+    // Match the produceState idiom used by rememberCameraGeospatialPose / rememberEarthState
+    // (#1844) — same per-frame poll, less ceremony, no orphan `LaunchedEffect` after the first
+    // composition. The bare `try` (vs `runCatching`) avoids allocating a `Throwable` wrapper on
+    // every failure frame — relevant when a corrupt dataset surfaces IO_ERROR every frame (#1846).
+    return androidx.compose.runtime.produceState(
+        initialValue = PlaybackStatus.NONE,
+        key1 = session,
+    ) {
         if (session == null) {
-            statusState.value = PlaybackStatus.NONE
-            return@LaunchedEffect
+            value = PlaybackStatus.NONE
+            return@produceState
         }
         while (true) {
             androidx.compose.runtime.withFrameNanos { _ ->
-                val current = runCatching { session.playbackStatus }.getOrNull() ?: PlaybackStatus.NONE
-                if (statusState.value != current) statusState.value = current
+                val current = try {
+                    session.playbackStatus
+                } catch (_: Exception) {
+                    PlaybackStatus.NONE
+                }
+                if (value != current) value = current
             }
         }
     }
-    return statusState
 }

@@ -33,16 +33,36 @@ class CameraConfigFilterBuilderTest {
 
     @Test
     fun `DSL block populates every field`() {
+        // #1844 — all three "filter on enum X" knobs are Set<X>? for symmetry with the
+        // underlying ARCore `set*(EnumSet)` API.
         val builder = CameraConfigFilterBuilder().apply {
             facing = CameraConfig.FacingDirection.BACK
             targetFps = setOf(CameraConfig.TargetFps.TARGET_FPS_60)
-            depthSensor = CameraConfig.DepthSensorUsage.REQUIRE_AND_USE
-            stereoCamera = CameraConfig.StereoCameraUsage.DO_NOT_USE
+            depthSensor = setOf(CameraConfig.DepthSensorUsage.REQUIRE_AND_USE)
+            stereoCamera = setOf(CameraConfig.StereoCameraUsage.DO_NOT_USE)
         }
         assertEquals(CameraConfig.FacingDirection.BACK, builder.facing)
         assertEquals(setOf(CameraConfig.TargetFps.TARGET_FPS_60), builder.targetFps)
-        assertEquals(CameraConfig.DepthSensorUsage.REQUIRE_AND_USE, builder.depthSensor)
-        assertEquals(CameraConfig.StereoCameraUsage.DO_NOT_USE, builder.stereoCamera)
+        assertEquals(setOf(CameraConfig.DepthSensorUsage.REQUIRE_AND_USE), builder.depthSensor)
+        assertEquals(setOf(CameraConfig.StereoCameraUsage.DO_NOT_USE), builder.stereoCamera)
+    }
+
+    @Test
+    fun `depthSensor and stereoCamera accept multiple values`() {
+        // #1844 — symmetric with targetFps. Mixed sets exercise the underlying
+        // EnumSet.copyOf path inside build().
+        val builder = CameraConfigFilterBuilder().apply {
+            depthSensor = setOf(
+                CameraConfig.DepthSensorUsage.REQUIRE_AND_USE,
+                CameraConfig.DepthSensorUsage.DO_NOT_USE,
+            )
+            stereoCamera = setOf(
+                CameraConfig.StereoCameraUsage.REQUIRE_AND_USE,
+                CameraConfig.StereoCameraUsage.DO_NOT_USE,
+            )
+        }
+        assertEquals(2, builder.depthSensor?.size)
+        assertEquals(2, builder.stereoCamera?.size)
     }
 
     @Test
@@ -64,6 +84,20 @@ class CameraConfigFilterBuilderTest {
             ),
             builder.targetFps
         )
+    }
+
+    @Test
+    fun `empty set on targetFps does not crash builder property assignment`() {
+        // #1844 — the property is `Set<…>?`. Validation moves to `build(session)` (which is
+        // JNI-only). Pin that the DSL itself stays loose so test fixtures can twiddle the value.
+        val builder = CameraConfigFilterBuilder().apply {
+            targetFps = emptySet()
+            depthSensor = emptySet()
+            stereoCamera = emptySet()
+        }
+        assertEquals(emptySet<CameraConfig.TargetFps>(), builder.targetFps)
+        assertEquals(emptySet<CameraConfig.DepthSensorUsage>(), builder.depthSensor)
+        assertEquals(emptySet<CameraConfig.StereoCameraUsage>(), builder.stereoCamera)
     }
 
     @Test
