@@ -2870,6 +2870,85 @@ fun ARFaceTracking() {
 
 ---
 
+<!-- BEGIN GENERATED DEMOS — DO NOT EDIT — run samples/android-demo/scripts/collate-demos.sh -->
+
+## Sample app demos (Android)
+
+Every demo bundled in `samples/android-demo` (the Play Store showcase).
+Each demo is addressable through the deep-link router as `sceneview://demo/<id>`
+and surfaces in the Samples tab. This section is generated from the per-demo
+fragments under `samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/`
+by `samples/android-demo/scripts/collate-demos.sh` — never edit between the markers (#1871).
+
+### 3D Basics
+
+- `animation` — Animation. Play, pause, and control animations.
+- `geometry` — Geometry Primitives. Cube, sphere, cylinder, cone, plane.
+- `model-viewer` — Model Viewer. Load and display 3D models.
+- `multi-model` — Multi-Model Scene. Multiple models in one scene.
+- `scene-gallery` — Scene Gallery. Themed Sketchfab bundles streamed on demand.
+
+### Lighting & Environment
+
+- `dynamic-sky` — Dynamic Sky. Time-of-day sun simulation.
+- `environment` — Environment Gallery. HDR environment switching.
+- `fog` — Fog. Linear, exponential, and height fog.
+- `lighting` — Light Types. Directional, point, and spot lights.
+- `movable-light` — Movable Light. Drag to orbit the light around the model.
+
+### Content
+
+- `billboard` — Billboard. Labels that face the camera.
+- `image` — Image Planes. Image planes in 3D space.
+- `lines-paths` — Lines & Paths. Polylines, helix, grids, and circles.
+- `text` — 3D Text. Extruded text with styles and sizes.
+- `video` — Video Texture. Video playback on a 3D surface.
+
+### Interaction
+
+- `camera-controls` — Camera Controls. Orbit, pan, and free camera modes.
+- `collision` — Collision & Hit Test. Hit testing and collision detection.
+- `gesture-editing` — Gesture Editing. Move, scale, and rotate with gestures.
+- `view-node` — ViewNode. Native UI embedded in 3D space.
+
+### Advanced
+
+- `custom-mesh` — Custom Mesh. Custom vertex and index buffers.
+- `debug-overlay` — Debug Overlay. Performance stats overlay.
+- `double-pendulum` — Double Pendulum. Chaotic two-link physics, shared KMP simulation.
+- `materials` — PBR Materials. PBR metallic and roughness spectrum.
+- `physics` — Physics. Gravity, collisions, and rigid bodies.
+- `post-processing` — Post Processing. SSAO, anti-aliasing, and tone mapping.
+- `reflection-probes` — Reflection Probes. Local cubemap reflections.
+- `secondary-camera` — Secondary Camera (PiP). Picture-in-picture camera view.
+- `shape` — Shape Extrude. Extrude 2D polygons into 3D meshes.
+- `texture-streaming` — Material Streaming. Swap textures and materials on a model at runtime.
+
+### Augmented Reality
+
+- `ar-cloud-anchor` — Cloud Anchors. Persistent multi-user anchors.
+- `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor / table (depth-driven physics).
+- `ar-depth-occlusion` — Depth Occlusion. Real-world depth masks virtual objects.
+- `ar-depth-visualization` — Depth Visualization. False-color depth map with camera↔depth blend.
+- `ar-face` — Augmented Faces. Face mesh tracking and overlays.
+- `ar-image` — Image Tracking. Detect and track reference images.
+- `ar-image-stabilization` — Image Stabilization (EIS). EIS for smoother AR camera feed.
+- `ar-instant-placement` — Instant Placement. Place models before plane detection converges.
+- `ar-orbital` — Orbital AR. Models orbit around you in a personal solar system.
+- `ar-placement` — Tap to Place. Place 3D models in AR.
+- `ar-pose` — Pose Placement. Free pose positioning.
+- `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Confidence-filtered point cloud from raw depth.
+- `ar-record-playback` — AR Recording. Record an AR session and replay it without a phone.
+- `ar-rerun` — Rerun Debug. Stream camera pose and planes to the Rerun viewer.
+- `ar-rooftop` — Rooftop Anchors. Anchor models on geospatial rooftops.
+- `ar-scene-semantics` — Scene Semantics. 12-class outdoor scene labeling — HUD shows top-3 labels in view.
+- `ar-streetscape` — Streetscape Geometry. Geospatial building and terrain meshes.
+- `ar-terrain` — Terrain Anchors. Anchor models on geospatial terrain.
+
+<!-- END GENERATED DEMOS -->
+
+---
+
 ## Sketchfab streaming for samples (#1152)
 
 SceneView's sample app (`samples/android-demo`) streams CC-BY licensed glTF models from Sketchfab on demand instead of bundling 30 MB of GLBs in the APK. The same pattern works in any SceneView consumer.

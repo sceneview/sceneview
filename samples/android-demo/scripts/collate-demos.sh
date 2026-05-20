@@ -1,25 +1,31 @@
 #!/usr/bin/env bash
-# collate-demos.sh — Regenerate GeneratedDemos.kt from the per-demo
-# fragments under `src/main/java/io/github/sceneview/demo/fragments/`.
+# collate-demos.sh — Regenerate GeneratedDemos.kt and the llms.txt
+# "Sample app demos (Android)" section from the per-demo fragments under
+# `src/main/java/io/github/sceneview/demo/fragments/`.
 #
 # Each fragment file declares ONE `object <Id>Fragment : DemoFragment { ... }`.
-# This script discovers every such fragment and emits a single
-# `GeneratedDemos.kt` that aggregates them into:
+# This script discovers every such fragment and emits:
 #
-#   - `GeneratedDemos.all: List<DemoEntry>` — drives the central registry
-#     (`ALL_DEMOS`) and the demo grid in `DemoListScreen`.
-#   - `GeneratedDemos.route(id, onBack)` — drives the deep-link router
-#     (`DemoRouter`); returns a composable lambda or null.
+#   1. `GeneratedDemos.kt` — aggregates fragments into
+#        - `GeneratedDemos.all: List<DemoEntry>` — drives the central registry
+#          (`ALL_DEMOS`) and the demo grid in `DemoListScreen`.
+#        - `GeneratedDemos.route(id, onBack)` — drives the deep-link router
+#          (`DemoRouter`); returns a composable lambda or null.
+#
+#   2. A markered block in `llms.txt` (and its mirror in `docs/docs/llms.txt`)
+#      enumerating every demo (id, title, subtitle, category) so AI consumers
+#      see the sample-app surface without anyone hand-editing `llms.txt` on
+#      every new demo (issue #1871).
 #
 # Fragments are sorted by demo id for a stable, conflict-free diff so two
 # parallel PRs adding two different demos never collide on this file.
 #
-# Idempotent: running this script twice produces a byte-identical file.
+# Idempotent: running this script twice produces byte-identical outputs.
 #
 # Usage:
 #   bash samples/android-demo/scripts/collate-demos.sh           # write
 #   bash samples/android-demo/scripts/collate-demos.sh --check   # exit non-zero
-#                                                                # if file is stale
+#                                                                # if any output is stale
 
 set -euo pipefail
 
@@ -29,6 +35,11 @@ cd "$REPO_ROOT"
 
 FRAG_DIR="samples/android-demo/src/main/java/io/github/sceneview/demo/fragments"
 OUT_FILE="$FRAG_DIR/GeneratedDemos.kt"
+STRINGS_XML="samples/android-demo/src/main/res/values/strings.xml"
+LLMS_ROOT="llms.txt"
+LLMS_MIRROR="docs/docs/llms.txt"
+LLMS_BEGIN_MARKER="<!-- BEGIN GENERATED DEMOS — DO NOT EDIT — run samples/android-demo/scripts/collate-demos.sh -->"
+LLMS_END_MARKER="<!-- END GENERATED DEMOS -->"
 
 CHECK_MODE=false
 case "${1:-}" in
@@ -38,39 +49,68 @@ case "${1:-}" in
 esac
 
 [ -d "$FRAG_DIR" ] || { echo "Error: $FRAG_DIR not found." >&2; exit 1; }
+[ -f "$STRINGS_XML" ] || { echo "Error: $STRINGS_XML not found." >&2; exit 1; }
+[ -f "$LLMS_ROOT" ] || { echo "Error: $LLMS_ROOT not found." >&2; exit 1; }
+[ -f "$LLMS_MIRROR" ] || { echo "Error: $LLMS_MIRROR not found." >&2; exit 1; }
 
-# Discover all fragment object declarations. Each fragment file declares
-# exactly one `object <Name>Fragment : DemoFragment`. We extract `<Name>Fragment`
-# and the demo id from `id = "<id>"`. We pair them, sort by demo id, and
-# emit the generated file.
+# ─── 1. Discover fragments and collect per-demo metadata ──────────────────
 #
-# We skip:
-#   - DemoFragment.kt (the interface itself)
-#   - GeneratedDemos.kt (the output of this script)
-TMP_PAIRS="$(mktemp)"
-trap 'rm -f "$TMP_PAIRS"' EXIT
+# Each fragment declares:
+#   object <Name>Fragment : DemoFragment {
+#       override val entry: DemoEntry = DemoEntry(
+#           id = "<demo-id>",
+#           titleRes = R.string.<title_res>,
+#           subtitleRes = R.string.<subtitle_res>,
+#           category = DemoCategory.<CATEGORY_ENUM>,
+#           ...
+#       )
+#       ...
+#   }
+#
+# We extract: id, object-name, titleRes, subtitleRes, category-enum-key.
+# Title and subtitle texts are resolved from strings.xml further below.
+#
+# TMP_META rows are TAB-separated: id\tobjName\ttitleRes\tsubtitleRes\tcategory
+TMP_META="$(mktemp)"
+trap 'rm -f "$TMP_META"' EXIT
 
 shopt -s nullglob
 fragment_count=0
 for f in "$FRAG_DIR"/*Fragment.kt; do
     base="$(basename "$f")"
     [ "$base" = "DemoFragment.kt" ] && continue
-    # Extract the object name (the symbol that implements DemoFragment).
+
     obj_name=$(grep -oE '^object [A-Za-z0-9_]+Fragment\b' "$f" | head -n1 | awk '{print $2}' || true)
     if [ -z "$obj_name" ]; then
         echo "Error: $f does not declare a top-level 'object <Name>Fragment : DemoFragment'." >&2
         exit 1
     fi
-    # Extract the demo id from `id = "<id>"`.
+
     demo_id=$(grep -oE 'id\s*=\s*"[^"]+"' "$f" | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
     if [ -z "$demo_id" ]; then
         echo "Error: $f does not declare 'id = \"<demo-id>\"' on its DemoEntry." >&2
         exit 1
     fi
-    # Sanity check: the fragment file is named <CamelCase(id)>Fragment.kt.
-    # Not enforced strictly here (would reject legitimate hand-renames) but
-    # the CamelCase mapping is the recommended convention.
-    printf '%s\t%s\n' "$demo_id" "$obj_name" >> "$TMP_PAIRS"
+
+    title_res=$(grep -oE 'titleRes\s*=\s*R\.string\.[a-zA-Z0-9_]+' "$f" | head -n1 | sed -E 's/.*R\.string\.//')
+    if [ -z "$title_res" ]; then
+        echo "Error: $f does not declare 'titleRes = R.string.<id>' on its DemoEntry." >&2
+        exit 1
+    fi
+
+    subtitle_res=$(grep -oE 'subtitleRes\s*=\s*R\.string\.[a-zA-Z0-9_]+' "$f" | head -n1 | sed -E 's/.*R\.string\.//')
+    if [ -z "$subtitle_res" ]; then
+        echo "Error: $f does not declare 'subtitleRes = R.string.<id>' on its DemoEntry." >&2
+        exit 1
+    fi
+
+    category=$(grep -oE 'category\s*=\s*DemoCategory\.[A-Z_0-9]+' "$f" | head -n1 | sed -E 's/.*DemoCategory\.//')
+    if [ -z "$category" ]; then
+        echo "Error: $f does not declare 'category = DemoCategory.<KEY>' on its DemoEntry." >&2
+        exit 1
+    fi
+
+    printf '%s\t%s\t%s\t%s\t%s\n' "$demo_id" "$obj_name" "$title_res" "$subtitle_res" "$category" >> "$TMP_META"
     fragment_count=$((fragment_count + 1))
 done
 
@@ -81,7 +121,7 @@ fi
 
 # Detect duplicate ids — two fragments registering the same demo id would
 # silently shadow each other in the router.
-DUPES=$(cut -f1 "$TMP_PAIRS" | sort | uniq -d)
+DUPES=$(cut -f1 "$TMP_META" | sort | uniq -d)
 if [ -n "$DUPES" ]; then
     echo "Error: duplicate demo ids:" >&2
     echo "$DUPES" >&2
@@ -89,13 +129,13 @@ if [ -n "$DUPES" ]; then
 fi
 
 # Sort by demo id (column 1) for a stable diff.
-SORTED_PAIRS="$(mktemp)"
-trap 'rm -f "$TMP_PAIRS" "$SORTED_PAIRS"' EXIT
-sort -k1,1 "$TMP_PAIRS" > "$SORTED_PAIRS"
+SORTED_META="$(mktemp)"
+trap 'rm -f "$TMP_META" "$SORTED_META"' EXIT
+sort -k1,1 "$TMP_META" > "$SORTED_META"
 
-# Emit GeneratedDemos.kt.
-NEW_FILE="$(mktemp)"
-trap 'rm -f "$TMP_PAIRS" "$SORTED_PAIRS" "$NEW_FILE"' EXIT
+# ─── 2. Emit GeneratedDemos.kt ────────────────────────────────────────────
+NEW_KT="$(mktemp)"
+trap 'rm -f "$TMP_META" "$SORTED_META" "$NEW_KT"' EXIT
 
 {
     cat <<'HEADER'
@@ -125,9 +165,9 @@ object GeneratedDemos {
 HEADER
 
     # Emit list entries, sorted by id.
-    while IFS=$'\t' read -r _id obj; do
+    while IFS=$'\t' read -r _id obj _t _s _c; do
         printf '        %s,\n' "$obj"
-    done < "$SORTED_PAIRS"
+    done < "$SORTED_META"
 
     cat <<'MIDDLE'
     )
@@ -147,9 +187,9 @@ HEADER
 MIDDLE
 
     # Emit the `when` branches, also sorted by id for diff stability.
-    while IFS=$'\t' read -r demo_id obj; do
+    while IFS=$'\t' read -r demo_id obj _t _s _c; do
         printf '            "%s" -> %s.Screen(onBack)\n' "$demo_id" "$obj"
-    done < "$SORTED_PAIRS"
+    done < "$SORTED_META"
 
     cat <<'FOOTER'
             else -> return false
@@ -158,19 +198,195 @@ MIDDLE
     }
 }
 FOOTER
-} > "$NEW_FILE"
+} > "$NEW_KT"
 
+# ─── 3. Resolve title/subtitle from strings.xml ───────────────────────────
+#
+# Each fragment carries `titleRes` and `subtitleRes` pointing at a `<string
+# name="...">` entry in `samples/android-demo/src/main/res/values/strings.xml`.
+# We resolve those keys to their literal English text (the sample app is
+# English-only by design — see #1294) so the llms.txt listing reads naturally.
+#
+# The lookup is line-anchored: each `<string name="key">value</string>` is on
+# a single line in the source file.
+resolve_string() {
+    local key="$1"
+    # Match the first `<string name="<key>">...</string>` line. Captures
+    # everything between the opening and closing tags. The matcher is forgiving
+    # of attributes after `name="…"` (none in this file today, but cheap to
+    # tolerate) and unescapes the two XML entities Android actually uses
+    # (`&amp;` and `&apos;`).
+    local raw
+    raw=$(grep -m1 -E "<string name=\"${key}\"[^>]*>" "$STRINGS_XML" \
+            | sed -E "s|.*<string name=\"${key}\"[^>]*>(.*)</string>.*|\1|" \
+            | sed -e 's/&amp;/\&/g' -e "s/&apos;/'/g" -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g')
+    if [ -z "$raw" ]; then
+        echo "Error: $STRINGS_XML missing <string name=\"${key}\">." >&2
+        return 1
+    fi
+    printf '%s' "$raw"
+}
+
+# Map the Kotlin enum key to its display string (mirrors `DemoCategory` in
+# `samples/android-demo/src/main/java/io/github/sceneview/demo/DemoRegistry.kt`).
+category_display() {
+    case "$1" in
+        BASICS_3D)             printf '3D Basics' ;;
+        LIGHTING_ENVIRONMENT)  printf 'Lighting & Environment' ;;
+        CONTENT)               printf 'Content' ;;
+        INTERACTION)           printf 'Interaction' ;;
+        ADVANCED)              printf 'Advanced' ;;
+        AUGMENTED_REALITY)     printf 'Augmented Reality' ;;
+        *)
+            echo "Error: unknown DemoCategory.$1 — update collate-demos.sh." >&2
+            return 1
+            ;;
+    esac
+}
+
+# ─── 4. Build the llms.txt "Sample app demos" block ───────────────────────
+#
+# Format: one bullet per demo, sorted alphabetically by id within each
+# category, categories in display order. Each bullet is:
+#     - `<id>` — <title>. <subtitle>.
+#
+# That format is single-line / id-keyed so an AI agent reading llms.txt can
+# trivially extract the demo set with one regex per line and use the id with
+# the deep-link router (`sceneview://demo/<id>`).
+NEW_BLOCK="$(mktemp)"
+trap 'rm -f "$TMP_META" "$SORTED_META" "$NEW_KT" "$NEW_BLOCK"' EXIT
+
+CATEGORY_ORDER="BASICS_3D LIGHTING_ENVIRONMENT CONTENT INTERACTION ADVANCED AUGMENTED_REALITY"
+
+{
+    printf '%s\n' "$LLMS_BEGIN_MARKER"
+    printf '\n'
+    printf '## Sample app demos (Android)\n'
+    printf '\n'
+    printf 'Every demo bundled in `samples/android-demo` (the Play Store showcase).\n'
+    printf 'Each demo is addressable through the deep-link router as `sceneview://demo/<id>`\n'
+    printf 'and surfaces in the Samples tab. This section is generated from the per-demo\n'
+    printf 'fragments under `samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/`\n'
+    printf 'by `samples/android-demo/scripts/collate-demos.sh` — never edit between the markers (#1871).\n'
+
+    for cat_key in $CATEGORY_ORDER; do
+        # Filter sorted-meta rows for this category.
+        rows=$(awk -F'\t' -v c="$cat_key" '$5 == c' "$SORTED_META")
+        [ -z "$rows" ] && continue
+
+        cat_display=$(category_display "$cat_key")
+        printf '\n'
+        printf '### %s\n' "$cat_display"
+        printf '\n'
+
+        while IFS=$'\t' read -r demo_id _obj title_res subtitle_res _cat; do
+            title=$(resolve_string "$title_res")
+            subtitle=$(resolve_string "$subtitle_res")
+            printf -- '- `%s` — %s. %s.\n' "$demo_id" "$title" "$subtitle"
+        done <<< "$rows"
+    done
+
+    printf '\n'
+    printf '%s\n' "$LLMS_END_MARKER"
+} > "$NEW_BLOCK"
+
+# ─── 5. Splice the block into llms.txt + docs/docs/llms.txt ───────────────
+#
+# If the markers are not yet present in the target file, splice the block in
+# at a stable anchor (just before `## Sketchfab streaming for samples`) so the
+# first run is a one-shot install. Subsequent runs replace the existing block
+# in place — surrounding text is untouched.
+splice_llms() {
+    local src="$1"
+    local dst_tmp="$2"
+    awk -v block_file="$NEW_BLOCK" -v begin="$LLMS_BEGIN_MARKER" -v end="$LLMS_END_MARKER" '
+        BEGIN {
+            inside = 0
+            spliced = 0
+            # Slurp the generated block (already terminated by a trailing newline).
+            while ((getline line < block_file) > 0) {
+                block[++bn] = line
+            }
+            close(block_file)
+        }
+        # When we hit the BEGIN marker, emit the new block in full and skip
+        # everything up to and including the END marker.
+        $0 == begin {
+            for (i = 1; i <= bn; i++) print block[i]
+            inside = 1
+            spliced = 1
+            next
+        }
+        inside {
+            if ($0 == end) inside = 0
+            next
+        }
+        # First-time install: splice the block above the well-known anchor.
+        # The anchor heading is stable (#1152, untouched by this PR).
+        !spliced && /^## Sketchfab streaming for samples/ {
+            for (i = 1; i <= bn; i++) print block[i]
+            print ""
+            print "---"
+            print ""
+            print
+            spliced = 1
+            next
+        }
+        { print }
+        END {
+            if (!spliced) {
+                print "Error: collate-demos.sh could not find a place to splice the demos block." > "/dev/stderr"
+                exit 1
+            }
+        }
+    ' "$src" > "$dst_tmp"
+}
+
+NEW_LLMS_ROOT="$(mktemp)"
+NEW_LLMS_MIRROR="$(mktemp)"
+trap 'rm -f "$TMP_META" "$SORTED_META" "$NEW_KT" "$NEW_BLOCK" "$NEW_LLMS_ROOT" "$NEW_LLMS_MIRROR"' EXIT
+
+splice_llms "$LLMS_ROOT" "$NEW_LLMS_ROOT"
+splice_llms "$LLMS_MIRROR" "$NEW_LLMS_MIRROR"
+
+# Cross-check: the same bytes must end up in both files. Catches the case
+# where the mirror has drifted ahead of the root (or vice versa) before this
+# collator ran — the user must heal the drift with `sync-versions.sh --fix`
+# first, otherwise we'd silently paper over the broader divergence.
+if ! cmp -s "$NEW_LLMS_ROOT" "$NEW_LLMS_MIRROR"; then
+    echo "Error: llms.txt and docs/docs/llms.txt diverge OUTSIDE the demos block." >&2
+    echo "  Heal the mirror first: bash .claude/scripts/sync-versions.sh --fix" >&2
+    exit 1
+fi
+
+# ─── 6. Apply or check ────────────────────────────────────────────────────
 if [ "$CHECK_MODE" = true ]; then
-    if [ ! -f "$OUT_FILE" ] || ! cmp -s "$NEW_FILE" "$OUT_FILE"; then
+    drift=0
+    if [ ! -f "$OUT_FILE" ] || ! cmp -s "$NEW_KT" "$OUT_FILE"; then
         echo "Error: $OUT_FILE is out of date. Run 'bash samples/android-demo/scripts/collate-demos.sh'." >&2
         if [ -f "$OUT_FILE" ]; then
-            diff -u "$OUT_FILE" "$NEW_FILE" || true
+            diff -u "$OUT_FILE" "$NEW_KT" | head -40 || true
         fi
+        drift=1
+    fi
+    if ! cmp -s "$NEW_LLMS_ROOT" "$LLMS_ROOT"; then
+        echo "Error: $LLMS_ROOT demos block is out of date. Run 'bash samples/android-demo/scripts/collate-demos.sh'." >&2
+        diff -u "$LLMS_ROOT" "$NEW_LLMS_ROOT" | head -40 || true
+        drift=1
+    fi
+    if ! cmp -s "$NEW_LLMS_MIRROR" "$LLMS_MIRROR"; then
+        echo "Error: $LLMS_MIRROR demos block is out of date. Run 'bash samples/android-demo/scripts/collate-demos.sh'." >&2
+        diff -u "$LLMS_MIRROR" "$NEW_LLMS_MIRROR" | head -40 || true
+        drift=1
+    fi
+    if [ "$drift" -ne 0 ]; then
         exit 1
     fi
-    echo "OK: $OUT_FILE is in sync with $fragment_count fragment(s)."
+    echo "OK: GeneratedDemos.kt + llms.txt demos section in sync with $fragment_count fragment(s)."
     exit 0
 fi
 
-mv "$NEW_FILE" "$OUT_FILE"
-echo "Regenerated $OUT_FILE from $fragment_count fragment(s)."
+mv "$NEW_KT" "$OUT_FILE"
+mv "$NEW_LLMS_ROOT" "$LLMS_ROOT"
+mv "$NEW_LLMS_MIRROR" "$LLMS_MIRROR"
+echo "Regenerated $OUT_FILE, $LLMS_ROOT, $LLMS_MIRROR from $fragment_count fragment(s)."
