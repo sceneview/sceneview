@@ -352,6 +352,19 @@ See the [Migration Guide](migration.md) for a step-by-step walkthrough of every 
 
 ---
 
+## Coming from Sceneform?
+
+Google [archived Sceneform](https://github.com/google-ar/sceneform-android-sdk) in 2021 and
+ships no first-party declarative AR renderer. **SceneView is its Compose-native successor** —
+it descends from the maintained Sceneform community fork and pairs ARCore (perception) with
+Filament (rendering) behind a Jetpack Compose API. The `.sfb` model format gives way to
+standard glTF (`.glb` / `.gltf`), and manual lifecycle handling is replaced by the Compose
+lifecycle. See the [Migration Guide](migration.md) for the concept-by-concept mapping
+(`ArFragment` → `ARScene { }`, `ModelRenderable` → `rememberModelInstance`, …) and the
+[comparison page](comparison.md) for a side-by-side feature table.
+
+---
+
 <div class="sv-community" markdown>
 
 ## Join the Community
