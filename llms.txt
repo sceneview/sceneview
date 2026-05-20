@@ -1663,6 +1663,56 @@ See #1731.
 
 ---
 
+## Jetpack XR Extensions (preview, Android XR only)
+
+SceneView ships an opt-in layer for **ARCore for Jetpack XR** (`androidx.xr.arcore`) — the runtime that powers hand tracking and face tracking on Android XR headsets and glasses. It is **separate** from mobile ARCore (`com.google.ar.core`) and only meaningful on devices that expose the Jetpack XR Perception runtime.
+
+**Status: preview.** Tracking issue [#1738](https://github.com/sceneview/sceneview/issues/1738). The upstream `androidx.xr.arcore` is at `1.0.0-alpha14` and subject to breaking changes. SceneView wraps it as an additive, opt-in surface — phone-only apps pay nothing for it. Integration approach: `arsceneview/docs/JETPACK-XR-INTEGRATION.md`.
+
+**Scope this release (Slice 1):** dependency declared (`libs.versions.toml` → `jetpackXrArCore = "1.0.0-alpha14"`, alias `androidx-xr-arcore`), runtime availability check published, design + slicing recorded. Hand tracking node + demo lands in Slice 2 ([#1902](https://github.com/sceneview/sceneview/issues/1902)), face tracking node in Slice 3 ([#1903](https://github.com/sceneview/sceneview/issues/1903)).
+
+**Opt-in dependency** (consumers add this themselves; `arsceneview/` declares it `compileOnly`):
+
+```kotlin
+// app/build.gradle.kts — only if you target Android XR
+dependencies {
+    implementation(libs.androidx.xr.arcore)   // androidx.xr.arcore:arcore:1.0.0-alpha14
+}
+```
+
+### XrFeatures — runtime gate
+
+Before invoking any `io.github.sceneview.ar.xr.*` API, check that the Jetpack XR runtime is reachable. The check uses reflection so it is safe on a stock mobile build:
+
+```kotlin
+import io.github.sceneview.ar.xr.XrFeatures
+
+val context = LocalContext.current
+val xrAvailable = remember { XrFeatures.isAvailable(context) }
+
+ARSceneView(modifier = Modifier.fillMaxSize()) {
+    if (xrAvailable) {
+        // Slice 2 will add: XrHandNode(hand = …) { … }
+        // Slice 3 will add: XrFaceNode(face = …) { … }
+    } else {
+        // Fall back to mobile ARCore: AugmentedFaceNode, AugmentedImageNode, etc.
+    }
+}
+```
+
+**What `XrFeatures.isAvailable(context)` returns:**
+
+- `true` when the consumer has declared `androidx.xr.arcore:arcore` (or any artifact pulling `androidx.xr.runtime`) on the runtime classpath — i.e. the consumer has explicitly opted into the XR path.
+- `false` on a default `arsceneview/` consumer (no XR dep on classpath).
+
+Classpath presence is the foundation gate; the device-capability check (XR headset vs mobile phone) is layered on top by Slices 2 / 3 via the upstream `androidx.xr.runtime.Session.create(activity)` outcome.
+
+Mobile ARCore tracking (`AugmentedFaceNode`, `AugmentedImageNode`, `AnchorNode`, etc.) keeps working unchanged on phones — the Jetpack XR layer is strictly additive.
+
+**Cross-platform parity:** hand tracking on visionOS is covered by `HandTrackingProvider` in `SceneViewSwift`; web covers WebXR `hand-tracking` under issue #1778. Updates to `docs/docs/cheatsheet-ios.md` mirror this section once Slice 2 lands.
+
+---
+
 ## Node Properties & Interaction
 
 All composable node types share these properties (settable via `apply` block or the parameters):
