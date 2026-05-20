@@ -119,7 +119,7 @@ fun ARSceneView(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     sessionFeatures: Set<Session.Feature> = setOf(),
     playbackDataset: File? = null,                 // Replay an MP4 recorded via ARRecorder. See "AR Recording & Playback".
-    sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,  // Picks the highest-res 30fps BACK config so ARRecorder records at full resolution (#1065). Pass null for ARCore's stock default.
+    sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,  // Picks the highest-res 30fps BACK config so ARRecorder records at full resolution (#1065). Pass null for ARCore's stock default, ::frontCameraConfig for Augmented Faces, or `cameraConfigFilter { ... }` for a DSL-built selector (#1733).
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     planeRenderer: Boolean = true,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
@@ -969,6 +969,13 @@ fun Frame.depthImage(): Image?                 // smoothed full-res 16-bit depth
 fun Frame.rawDepthImage(): Image?              // unsmoothed 16-bit depth
 fun Frame.rawDepthConfidenceImage(): Image?    // Y8 confidence map matching rawDepthImage()
 
+// Frame — CPU camera image (YUV_420_888). Caller-owned — close in use { } — the pool is only
+// ~2–3 slots deep; leaking a handle for 3 frames throws ResourceExhaustedException. Resolution
+// follows the active CameraConfig (see cameraConfigFilter DSL below). Returns null only on the
+// first frame after resume or while paused. The standard ARCore entry-point for ML Kit / OpenCV
+// pipelines. (#1733)
+fun Frame.cameraImage(): Image?
+
 // ArCoreApk — suspend-friendly availability check (the sync variant can ANR briefly).
 suspend fun ArCoreApk.awaitAvailability(context: Context): ArCoreApk.Availability
 ```
@@ -998,6 +1005,50 @@ LaunchedEffect(Unit) {
     if (availability.isSupported) showArEntryButton = true
 }
 ```
+
+### CameraConfig selection — `cameraConfigFilter { … }` DSL
+
+ARCore's `Session.getSupportedCameraConfigs(filter)` returns every `CameraConfig` matching a
+filter (facing direction, FPS, depth-sensor usage, stereo-camera usage). `ARSceneView` ships
+two ready-to-use selectors — `::highestResolutionCameraConfig` (the default, BACK + 30 FPS) and
+`::frontCameraConfig` (FRONT, for Augmented Faces) — and a DSL builder for everything else
+(#1733, #1772):
+
+```kotlin
+import io.github.sceneview.ar.arcore.cameraConfigFilter
+import com.google.ar.core.CameraConfig
+
+// 60 FPS BACK config, depth sensor required (S20 Ultra / Pixel 4 XL / etc.):
+ARSceneView(
+    sessionCameraConfig = cameraConfigFilter {
+        facing = CameraConfig.FacingDirection.BACK
+        targetFps = setOf(CameraConfig.TargetFps.TARGET_FPS_60)
+        depthSensor = CameraConfig.DepthSensorUsage.REQUIRE_AND_USE
+    },
+    sessionConfiguration = { _, config ->
+        config.depthMode = Config.DepthMode.AUTOMATIC
+    },
+) { /* DSL */ }
+```
+
+All four DSL fields default to `null` ("don't filter on this axis"). Among matching configs the
+selector picks the **highest-resolution** one (same policy as `highestResolutionCameraConfig`),
+falling back to `session.cameraConfig` when no match exists so session creation never crashes.
+
+Available knobs:
+
+```kotlin
+class CameraConfigFilterBuilder {
+    var facing: CameraConfig.FacingDirection?            // BACK / FRONT
+    var targetFps: Set<CameraConfig.TargetFps>?          // {TARGET_FPS_30}, {TARGET_FPS_60}, or both
+    var depthSensor: CameraConfig.DepthSensorUsage?      // REQUIRE_AND_USE / DO_NOT_USE
+    var stereoCamera: CameraConfig.StereoCameraUsage?    // REQUIRE_AND_USE / DO_NOT_USE
+}
+fun cameraConfigFilter(block: CameraConfigFilterBuilder.() -> Unit): (Session) -> CameraConfig
+```
+
+Pair this with `frame.cameraImage()` (above) for custom CV pipelines: a 60 FPS / low-res config
+keeps the ML model fed with fresh frames while leaving CPU headroom for inference.
 
 ### Raw depth point cloud — confidence-filtered visualization
 
