@@ -122,6 +122,13 @@ open class AugmentedFaceNode(
     // allocated once and reused for the life of the node.
     private var tangentsBuffer: ByteBuffer? = null
 
+    // For unlit materials we upload an identity-quaternion buffer ONCE (mesh creation)
+    // and never touch it again. We track its filled vertex count so a recreate-after-
+    // destroy or vertex-count change re-initialises lazily without the per-frame
+    // (0,0,0,1) write loop the issue (#1758) flagged.
+    private var identityTangentsBuffer: ByteBuffer? = null
+    private var identityTangentsVertexCount: Int = 0
+
     /**
      * The region nodes at the tip of the nose, the detected face's left side of the forehead,
      * the detected face's right side of the forehead.
@@ -281,32 +288,30 @@ open class AugmentedFaceNode(
     }
 
     /**
-     * Builds (or reuses) [tangentsBuffer] and fills it with quaternions computed from
-     * the supplied positions, normals, UVs and indices via Filament's
-     * [SurfaceOrientation]. The returned buffer holds `vertexCount * 16` bytes
-     * (4 floats per vertex) and is rewound to position 0, ready for upload.
-     */
-    /**
      * Identity-quaternion buffer for unlit face mesh — fills the TANGENTS slot once at
      * construction so Filament's stride contract is honoured, then is never re-uploaded.
      * Layout: 4 floats per vertex `(0, 0, 0, 1)` (identity quaternion). The shader
      * never samples it, so the value doesn't matter — but the slot must be the right
      * size and never empty (Filament asserts at build time).
+     *
+     * Cached on the node (separate slot from [tangentsBuffer] so a future toggle of
+     * `computeTangents` doesn't clobber the lit tangents). The (0, 0, 0, 1) write
+     * loop runs at most once per `vertexCount` change — typically exactly once for
+     * the lifetime of the node since ARCore returns a fixed-topology face mesh
+     * (#1758). The previous implementation re-ran the per-vertex write loop on every
+     * call, which was a latent regression risk if this method ever moved back into
+     * the per-frame path.
      */
     private fun identityTangentsBuffer(vertexCount: Int): ByteBuffer {
-        val neededBytes = vertexCount * 4 * 4
-        val buf = tangentsBuffer?.takeIf { it.capacity() >= neededBytes }
-            ?: ByteBuffer.allocateDirect(neededBytes).order(ByteOrder.nativeOrder())
-                .also { tangentsBuffer = it }
-
-        buf.clear()
-        buf.limit(neededBytes)
-        // Write (0, 0, 0, 1) per vertex — identity quaternion. Cheap one-shot pass.
-        val floats = buf.asFloatBuffer()
-        repeat(vertexCount) {
-            floats.put(0f); floats.put(0f); floats.put(0f); floats.put(1f)
+        val (buf, wasCacheHit) = obtainIdentityTangentsBuffer(
+            cached = identityTangentsBuffer,
+            cachedVertexCount = identityTangentsVertexCount,
+            vertexCount = vertexCount
+        )
+        if (!wasCacheHit) {
+            identityTangentsBuffer = buf
+            identityTangentsVertexCount = vertexCount
         }
-        buf.rewind()
         return buf
     }
 
@@ -363,6 +368,56 @@ open class AugmentedFaceNode(
         }
         runCatching { centerNode.destroy() }
         regionNodes.values.forEach { runCatching { it.destroy() } }
+        // Drop the cached tangent / identity-tangent buffers — direct ByteBuffers are
+        // GC'd eventually, but releasing the reference frees the off-heap memory
+        // immediately when the JVM's Cleaner runs.
+        tangentsBuffer = null
+        identityTangentsBuffer = null
+        identityTangentsVertexCount = 0
         super.destroy()
     }
+}
+
+/**
+ * Pure logic for [AugmentedFaceNode]'s identity-tangent buffer cache (#1758).
+ *
+ * Returns a [ByteBuffer] of `vertexCount * 16` bytes (4 floats per vertex)
+ * filled with `(0, 0, 0, 1)` identity quaternions when first allocated. On a cache
+ * hit (same [vertexCount] and capacity >= needed bytes), the cached buffer is
+ * returned unchanged — **no per-vertex rewrite**, which is the perf bug the issue
+ * flagged.
+ *
+ * Returns the buffer and a boolean indicating whether it was a cache hit. Callers
+ * persist `buf` + `vertexCount` to their own state on a miss.
+ *
+ * Extracted as an internal top-level function so JVM unit tests can exercise the
+ * caching contract without instantiating a Filament Engine or ARCore Session.
+ */
+internal fun obtainIdentityTangentsBuffer(
+    cached: ByteBuffer?,
+    cachedVertexCount: Int,
+    vertexCount: Int
+): Pair<ByteBuffer, Boolean> {
+    val neededBytes = vertexCount * 4 * 4
+    if (cached != null &&
+        cached.capacity() >= neededBytes &&
+        cachedVertexCount == vertexCount
+    ) {
+        cached.rewind()
+        cached.limit(neededBytes)
+        return cached to true
+    }
+
+    val buf = cached?.takeIf { it.capacity() >= neededBytes }
+        ?: ByteBuffer.allocateDirect(neededBytes).order(ByteOrder.nativeOrder())
+
+    buf.clear()
+    buf.limit(neededBytes)
+    // Write (0, 0, 0, 1) per vertex — identity quaternion. Cheap one-shot pass.
+    val floats = buf.asFloatBuffer()
+    repeat(vertexCount) {
+        floats.put(0f); floats.put(0f); floats.put(0f); floats.put(1f)
+    }
+    buf.rewind()
+    return buf to false
 }

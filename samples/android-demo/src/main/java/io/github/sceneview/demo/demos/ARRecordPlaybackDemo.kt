@@ -65,6 +65,7 @@ import io.github.sceneview.ar.recording.rememberARRecorder
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -718,16 +719,8 @@ private fun TrackingFailureBanner(reason: TrackingFailureReason?) {
             shape = MaterialTheme.shapes.large
         ) {
             Text(
-                text = when (reason) {
-                    null,
-                    TrackingFailureReason.NONE -> "Point your camera at a surface"
-                    TrackingFailureReason.BAD_STATE -> "AR session error"
-                    TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
-                    TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
-                    TrackingFailureReason.INSUFFICIENT_FEATURES ->
-                        "Not enough detail — try a textured surface"
-                    TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
-                },
+                text = trackingFailureMessage(reason)
+                    ?: "Point your camera at a surface",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
             )

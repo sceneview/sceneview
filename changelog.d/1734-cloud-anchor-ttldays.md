@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- `arsceneview`: surfaced `CloudAnchorNode.TTL_DAYS_RANGE = 1..365` and added the `CloudAnchorRegistry` interface plus a `SharedPreferencesCloudAnchorRegistry` default for persisting hosted Cloud Anchor IDs (name → cloudAnchorId, hostedAt, ttlDays) across app launches, with `isExpired()` / `purgeExpired()` helpers. `CloudAnchorNode.host()` now validates `ttlDays ∈ 1..365` and documents the required ARCore data-privacy disclosure (#1734).

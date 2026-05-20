@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Cache the identity tangent buffer on `AugmentedFaceNode` ([#1758](https://github.com/sceneview/sceneview/issues/1758)).** The `(0, 0, 0, 1)` identity-quaternion buffer used to honour Filament's FLOAT4 TANGENTS stride contract under unlit face materials is now built once at mesh creation and reused unchanged — no per-vertex rewrite on subsequent calls, even when the cached size matches. JVM unit test pins the cache hit/miss contract.

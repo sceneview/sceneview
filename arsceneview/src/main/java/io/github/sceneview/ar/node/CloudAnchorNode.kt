@@ -54,18 +54,38 @@ open class CloudAnchorNode constructor(
     var hostTask: HostCloudAnchorFuture? = null
 
     /**
-     * Hosts a Cloud Anchor based on the [Anchor]
+     * Hosts a Cloud Anchor based on the [Anchor].
      *
-     * @param ttlDays The lifetime of the anchor in days.
+     * **Persistence — `ttlDays`.** ARCore lets the host specify how many days the cloud anchor
+     * lives on Google's ARCore API before being auto-deleted. The valid range is **1..365** days
+     * (inclusive). For short-lived collaborative sessions, `ttlDays = 1` (the default and ARCore's
+     * legacy `hostCloudAnchor` behaviour) is enough. For "leave behind" multi-day or multi-session
+     * experiences (e.g. a treasure hunt that persists for a week), pass a larger value. Pair this
+     * with a [io.github.sceneview.ar.CloudAnchorRegistry] to remember which IDs your app has
+     * hosted/resolved across launches.
+     *
+     * **Privacy disclosure (required).** ARCore Cloud Anchors upload feature points from the
+     * user's surroundings to Google. Apps using Cloud Anchors must surface a clear in-app
+     * disclosure to the user explaining this data collection and link to Google's ARCore data
+     * policy: https://developers.google.com/ar/data-privacy. See the ARCloudAnchorDemo sample
+     * for a reference disclosure UI.
+     *
+     * @param ttlDays    The lifetime of the anchor in days. Must be in `1..365` (inclusive);
+     *                   any value outside this range will throw [IllegalArgumentException].
+     *                   Defaults to `1` for parity with the legacy ARCore default.
      * @param onCompleted Called when the task completes successfully or with an error.
      *
-     * @see [Session.hostCloudAnchorWithTtl] for more details.
+     * @throws IllegalArgumentException if [ttlDays] is not in `1..365`.
+     * @see [Session.hostCloudAnchorAsync] for more details.
      */
     fun host(
         session: Session,
         ttlDays: Int = 1,
         onCompleted: ((cloudAnchorId: String?, state: CloudAnchorState) -> Unit)? = null
     ) {
+        require(ttlDays in TTL_DAYS_RANGE) {
+            "ttlDays must be in $TTL_DAYS_RANGE (ARCore Cloud Anchor persistence limit), was $ttlDays."
+        }
         cancelHost()
         hostTask = session.hostCloudAnchorAsync(anchor, ttlDays) { cloudAnchorId, state ->
             onHosted(cloudAnchorId, state)
@@ -93,6 +113,12 @@ open class CloudAnchorNode constructor(
     }
 
     companion object {
+        /**
+         * Valid range (inclusive) for [host]'s `ttlDays` parameter, mirroring the
+         * ARCore Cloud Anchor persistence limit of 1..365 days.
+         */
+        val TTL_DAYS_RANGE: IntRange = 1..365
+
         /**
          * Resolves a Cloud Anchor
          *

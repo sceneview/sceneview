@@ -44,6 +44,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
@@ -224,18 +225,10 @@ fun ARImageDemo(onBack: () -> Unit) {
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
+                val trackingHint = trackingFailureMessage(trackingFailureReason)
                 val statusText = when {
                     imageCount > 0 -> "Tracking $imageCount image(s)"
-                    !isTracking -> trackingFailureReason?.let { reason ->
-                        when (reason) {
-                            TrackingFailureReason.NONE -> "Point camera at reference image"
-                            TrackingFailureReason.BAD_STATE -> "AR session error"
-                            TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
-                            TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
-                            TrackingFailureReason.INSUFFICIENT_FEATURES -> "Not enough detail"
-                            TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
-                        }
-                    } ?: "Scanning for images\u2026"
+                    !isTracking -> trackingHint ?: "Scanning for images\u2026"
                     else -> "Looking for reference image\u2026"
                 }
                 Text(

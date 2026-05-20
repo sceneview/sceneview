@@ -276,6 +276,8 @@
     <string name="demo_ar_image_stabilization_subtitle">EIS for smoother AR camera feed</string>
     <string name="demo_ar_orbital_title">Orbital AR</string>
     <string name="demo_ar_orbital_subtitle">Models orbit around you in a personal solar system</string>
+    <string name="demo_ar_depth_visualization_title">Depth Visualization</string>
+    <string name="demo_ar_depth_visualization_subtitle">False-color depth map with camera↔depth blend</string>
 
     <!-- Demo placeholder -->
     <string name="demo_coming_soon">Coming soon</string>
@@ -400,4 +402,13 @@
     <string name="cd_back_button">Navigate back</string>
     <string name="cd_remove_model">Remove placed model</string>
     <string name="cd_scanning_surface">Scanning for flat surface</string>
+
+    <!-- AR tracking-failure messages (TrackingFailureMessages.kt) — ported
+         from arcore-android-sdk's common/helpers/TrackingStateHelper.java.
+         Each maps a `TrackingFailureReason` to a short actionable hint. -->
+    <string name="tracking_failure_bad_state">AR session error — try restarting the demo</string>
+    <string name="tracking_failure_insufficient_light">Not enough light — try a brighter area</string>
+    <string name="tracking_failure_excessive_motion">Moving too fast — slow down</string>
+    <string name="tracking_failure_insufficient_features">Not enough detail — point at a more textured surface</string>
+    <string name="tracking_failure_camera_unavailable">Camera unavailable — close other camera apps</string>
 </resources>

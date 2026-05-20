@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- Android demo: added an `ar-depth-visualization` AR demo that renders the ARCore environment depth image as a false-color overlay (warm = near, cool = far), with a slider that blends the live camera feed (0) and the colorized depth map (1). The colorization runs through pure-Kotlin helpers in `samples/android-demo/.../demos/internal/DepthVisualization.kt` covered by JVM unit tests, and the demo handles "depth not supported" and "depth warming up" with explicit banners — never a black screen (#1714).

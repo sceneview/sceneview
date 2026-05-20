@@ -180,6 +180,32 @@ fun MyARScreen() {
 }
 ```
 
+### Tracking-failure messages (user-facing strings)
+
+`TrackingFailureReason` carries the *why* of a tracking loss — surface it to the user with an actionable hint, not a silent black screen. The `android-demo` sample ships a copy-paste helper that maps every reason to a localised string:
+
+```kotlin
+import io.github.sceneview.demo.common.trackingFailureMessage
+
+var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+onTrackingFailureChanged = { failure = it }
+
+// In a status banner:
+val hint = trackingFailureMessage(failure) // null when there is no failure
+Text(hint ?: "Point your camera at a flat surface")
+```
+
+| Reason                     | User-facing hint                                          |
+|----------------------------|-----------------------------------------------------------|
+| `BAD_STATE`                | AR session error — try restarting the demo                |
+| `INSUFFICIENT_LIGHT`       | Not enough light — try a brighter area                    |
+| `EXCESSIVE_MOTION`         | Moving too fast — slow down                               |
+| `INSUFFICIENT_FEATURES`    | Not enough detail — point at a more textured surface      |
+| `CAMERA_UNAVAILABLE`       | Camera unavailable — close other camera apps              |
+| `NONE` / `null`            | (helper returns `null` — caller picks the idle hint)      |
+
+Ported from arcore-android-sdk's `common/helpers/TrackingStateHelper.java`.
+
 ---
 
 ## SceneScope — Node DSL
@@ -851,6 +877,59 @@ ARSceneView(
     )
 )
 ```
+
+### Depth visualization — false-color depth overlay
+
+ARCore's depth image is an 8-bit-millimetre signal that's normally invisible. Calling
+`Frame.acquireDepthImage16Bits()` returns a `Y_16` image (little-endian, row-strided) where
+each pixel is depth in millimetres (`0` = "no data"). Turning that into a false-color overlay
+is a stock recipe for "is depth working on this device?" debugging — see the
+`ar-depth-visualization` demo for the canonical implementation in the sample app: it copies
+the 16-bit buffer into an ARGB bitmap with a 3-segment red→yellow→green→cyan→blue ramp
+(near = warm, far = cool), draws it as an `Image` overlay above the `ARSceneView`, and uses
+a Compose `Slider` for `alpha` to blend camera ↔ depth from 0 to 1.
+
+```kotlin
+// Acquire and colorize a depth frame; render via Image(alpha = blend).
+onSessionUpdated = { _, frame ->
+    val depthImage = runCatching { frame.acquireDepthImage16Bits() }.getOrNull() ?: return@onSessionUpdated
+    val plane = depthImage.planes[0]
+    val pixels = depthBufferToArgb(
+        depthBytes = plane.buffer,
+        width = depthImage.width,
+        height = depthImage.height,
+        rowStrideBytes = plane.rowStride,
+    )
+    // Upload pixels into a recycled Bitmap; close the depth image when done.
+    depthImage.close()
+}
+```
+
+Rules of thumb: the depth image is typically ~240×180 — far smaller than the camera feed,
+so `ContentScale.Crop` upscaling is correct. Pixels with depth `0` should render fully
+transparent (no datum) instead of mapping to the near color. Always show a "warming up"
+banner until the first depth frame lands and an explicit "depth not supported" banner when
+`Session.isDepthModeSupported(...)` returns `false` — never leave the user staring at a
+black screen.
+
+### Raw depth point cloud — accumulated depth visualization
+
+`Config.DepthMode.RAW_DEPTH_ONLY` gives access to raw per-pixel depth **plus** a companion
+confidence image. Unprojecting each high-confidence depth pixel into world space, accumulating
+the points across frames into a bounded buffer, and rendering them as small colored points
+yields a "what does the device actually see" scan view — useful for evaluating depth coverage
+or as a building block for reconstruction tooling. See the `ar-raw-depth-point-cloud` demo:
+the depth + confidence images are fetched on every frame, points below the confidence
+threshold are dropped, the rest are unprojected with the depth-image intrinsics and shown in
+a Compose overlay. A confidence slider lets the user watch noise drop out as the threshold
+rises.
+
+Notes: raw depth is computed asynchronously and may not be available every frame
+(`acquireRawDepthImage16Bits()` returns `null` if not yet ready — handle it). Per-pixel
+unprojection requires the depth-image intrinsics (`Frame.getCameraTextureIntrinsics()` or
+the depth-image dimensions divided over the camera intrinsics). Cap the accumulated cloud at
+a few thousand points or the UI thread chokes — Depth Lab's `RAW_DEPTH_ONLY` resolution is
+~160×120 which is already ~19 200 points per frame.
 
 ### AugmentedImageNode — image tracking
 ```kotlin
