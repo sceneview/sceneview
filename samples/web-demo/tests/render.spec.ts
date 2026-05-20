@@ -1,5 +1,4 @@
-import { test, expect } from '@playwright/test';
-import { sampleCanvas } from './helpers';
+import { test, expect, sampleCanvas } from './helpers';
 
 /**
  * SceneView Web Demo — visual regression / smoke tests.

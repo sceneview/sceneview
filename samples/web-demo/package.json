@@ -9,7 +9,7 @@
     "test:catalog": "playwright test tests/catalog.spec.ts"
   },
   "devDependencies": {
-    "@playwright/test": "^1.49.0",
+    "@playwright/test": "^1.59.0",
     "http-server": "^14.1.1"
   }
 }

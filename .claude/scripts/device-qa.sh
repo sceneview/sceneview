@@ -361,6 +361,18 @@ run_web() {
     cp "$summary" "$kept"
   fi
 
+  # Per-test page.screencast recordings (Playwright >= 1.59, issue #1748 item
+  # 3). The `screencast` fixture in tests/helpers.ts writes one .webm per test
+  # under `test-results/screencasts/`. Mirror them into $ARTIFACTS/ so the
+  # autonomous QA runner surfaces them alongside the Maestro Android / iOS
+  # videos — same convention as `record web` keeps `web-qa-summary.json`.
+  local screencasts="$webdir/test-results/screencasts"
+  if [[ -d "$screencasts" ]] && compgen -G "$screencasts/*.webm" >/dev/null; then
+    mkdir -p "$ARTIFACTS/web-screencasts"
+    cp "$screencasts"/*.webm "$ARTIFACTS/web-screencasts/" 2>/dev/null || true
+    log "web screencasts: $(ls "$ARTIFACTS/web-screencasts" | wc -l | tr -d ' ') .webm under $ARTIFACTS/web-screencasts/"
+  fi
+
   if [[ $rc -eq 0 ]]; then
     record web passed "${FAST:+fast }playwright" "$kept" "$(( $(date +%s) - started ))"
   else
