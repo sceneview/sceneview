@@ -1468,6 +1468,31 @@ ARSceneView(...) {
 
 Demo: `samples/android-demo/.../ARStreetscapeDemo.kt`. Setup guide (Cloud project + API key): `samples/android-demo/STREETSCAPE_SETUP.md`.
 
+### Geospatial Depth — extend environment depth accuracy to ~65 m
+
+Standard ARCore motion-stereo depth (`Config.DepthMode.AUTOMATIC`) is reliable to roughly **8 m**. When the session also has Geospatial enabled, ARCore **automatically** fuses motion depth with Streetscape Geometry + device sensors and extends accurate depth out to **~65 m** — essential for outdoor or large-scale AR (placing virtual signage on a far building façade, occluding a virtual character behind a distant wall, depth-aware hit-tests across a city block). This is the **Geospatial Depth** feature shipped in ARCore 1.54.
+
+There is **no separate `Config.GeospatialDepthMode` knob** — the fusion is opt-in by enabling all three modes together:
+
+```kotlin
+ARSceneView(
+    sessionConfiguration = { _, config ->
+        config.depthMode = Config.DepthMode.AUTOMATIC          // motion-stereo depth (always required)
+        config.geospatialMode = Config.GeospatialMode.ENABLED   // unlocks the Geospatial fusion
+        config.streetscapeGeometryMode = Config.StreetscapeGeometryMode.ENABLED  // far-field mesh source
+    }
+) { /* … */ }
+```
+
+Once the three modes are on **and** the Earth state has reached `TrackingState.TRACKING` with VPS coverage, every `Frame.acquireDepthImage16Bits()` call returns a depth image where pixels beyond ~8 m carry valid values out to ~65 m. **No API change** is required from app code — `ARCameraStream` depth occlusion, `Frame.hitTestDepth` (#1712), `DepthMeshNode` and `rememberDepthCollider` all benefit transparently from the extended range. Outside VPS-covered areas (no Streetscape geometry available), depth falls back to motion-stereo and the ~8 m cap re-applies.
+
+Requirements:
+- ARCore Cloud API key + `ACCESS_FINE_LOCATION` permission (same as the rest of the Geospatial API — see the API key warning above).
+- Device with a back-facing camera config that supports `DepthMode` (most ARCore-supported devices since 2020).
+- A VPS-covered location (city centres of supported regions: https://developers.google.com/ar/coverage).
+
+See #1731.
+
 ---
 
 ## Node Properties & Interaction
