@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `ar-image-stabilization` demo (registered by
+     `ArImageStabilizationFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_ar_image_stabilization_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_ar_image_stabilization_title">Image Stabilization (EIS)</string>
+    <string name="demo_ar_image_stabilization_subtitle">EIS for smoother AR camera feed</string>
+</resources>

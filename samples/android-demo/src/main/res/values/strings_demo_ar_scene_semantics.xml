@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `ar-scene-semantics` demo (registered by
+     `ArSceneSemanticsFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_ar_scene_semantics_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_ar_scene_semantics_title">Scene Semantics</string>
+    <string name="demo_ar_scene_semantics_subtitle">12-class outdoor scene labeling — HUD shows top-3 labels in view</string>
+</resources>

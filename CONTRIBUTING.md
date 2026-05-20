@@ -138,7 +138,13 @@ parallel PRs adding two different demos never conflict on a shared file
    wrapper calling your composable. See [the package
    README](samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/README.md)
    for the full template.
-3. Run the collator to regenerate `GeneratedDemos.kt`:
+3. Drop the demo's strings into their own resource fragment at
+   `samples/android-demo/src/main/res/values/strings_demo_<my_demo>.xml`
+   (`-` → `_` in the id). Each demo owns its strings file so parallel PRs
+   never share a string-resource anchor (#1870). Android's resource merger
+   fans every `res/values/*.xml` file in at build time, so `R.string.demo_*`
+   references resolve identically.
+4. Run the collator to regenerate `GeneratedDemos.kt`:
    `bash samples/android-demo/scripts/collate-demos.sh`. The quality gate runs
    the collator in `--check` mode and blocks the push if the file is stale.
 

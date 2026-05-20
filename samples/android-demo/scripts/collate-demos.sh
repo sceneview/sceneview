@@ -35,7 +35,12 @@ cd "$REPO_ROOT"
 
 FRAG_DIR="samples/android-demo/src/main/java/io/github/sceneview/demo/fragments"
 OUT_FILE="$FRAG_DIR/GeneratedDemos.kt"
-STRINGS_XML="samples/android-demo/src/main/res/values/strings.xml"
+# Per-demo string fragments live alongside `strings.xml` under
+# `res/values/strings_demo_<id>.xml` (issue #1870). Android's resource merger
+# fans every `res/values/*.xml` in, so the lookup below must walk all of them
+# rather than just the central `strings.xml`.
+VALUES_DIR="samples/android-demo/src/main/res/values"
+STRINGS_XML="$VALUES_DIR/strings.xml"
 LLMS_ROOT="llms.txt"
 LLMS_MIRROR="docs/docs/llms.txt"
 LLMS_BEGIN_MARKER="<!-- BEGIN GENERATED DEMOS — DO NOT EDIT — run samples/android-demo/scripts/collate-demos.sh -->"
@@ -49,6 +54,7 @@ case "${1:-}" in
 esac
 
 [ -d "$FRAG_DIR" ] || { echo "Error: $FRAG_DIR not found." >&2; exit 1; }
+[ -d "$VALUES_DIR" ] || { echo "Error: $VALUES_DIR not found." >&2; exit 1; }
 [ -f "$STRINGS_XML" ] || { echo "Error: $STRINGS_XML not found." >&2; exit 1; }
 [ -f "$LLMS_ROOT" ] || { echo "Error: $LLMS_ROOT not found." >&2; exit 1; }
 [ -f "$LLMS_MIRROR" ] || { echo "Error: $LLMS_MIRROR not found." >&2; exit 1; }
@@ -200,28 +206,33 @@ MIDDLE
 FOOTER
 } > "$NEW_KT"
 
-# ─── 3. Resolve title/subtitle from strings.xml ───────────────────────────
+# ─── 3. Resolve title/subtitle from values/*.xml ─────────────────────────
 #
 # Each fragment carries `titleRes` and `subtitleRes` pointing at a `<string
-# name="...">` entry in `samples/android-demo/src/main/res/values/strings.xml`.
-# We resolve those keys to their literal English text (the sample app is
-# English-only by design — see #1294) so the llms.txt listing reads naturally.
+# name="...">` entry under
+# `samples/android-demo/src/main/res/values/*.xml`. Per-demo strings ship in
+# their own `strings_demo_<id>.xml` file alongside the central `strings.xml`
+# (issue #1870); Android's resource merger fans them all in so a `R.string.*`
+# lookup is file-agnostic. We mirror that behaviour here by grepping the whole
+# `values/` directory, returning the first hit (uniqueness of `name` is enforced
+# at compile time by `aapt2`, so the first hit is the canonical value).
 #
 # The lookup is line-anchored: each `<string name="key">value</string>` is on
-# a single line in the source file.
+# a single line in the source files.
 resolve_string() {
     local key="$1"
-    # Match the first `<string name="<key>">...</string>` line. Captures
-    # everything between the opening and closing tags. The matcher is forgiving
-    # of attributes after `name="…"` (none in this file today, but cheap to
-    # tolerate) and unescapes the two XML entities Android actually uses
-    # (`&amp;` and `&apos;`).
+    # Match the first `<string name="<key>">...</string>` line across every
+    # `values/*.xml`. Captures everything between the opening and closing tags.
+    # The matcher is forgiving of attributes after `name="…"` (none in these
+    # files today, but cheap to tolerate) and unescapes the XML entities
+    # Android actually uses (`&amp;`, `&apos;`, `&quot;`, `&lt;`, `&gt;`).
     local raw
-    raw=$(grep -m1 -E "<string name=\"${key}\"[^>]*>" "$STRINGS_XML" \
+    raw=$(grep -h -m1 -E "<string name=\"${key}\"[^>]*>" "$VALUES_DIR"/*.xml 2>/dev/null \
+            | head -n1 \
             | sed -E "s|.*<string name=\"${key}\"[^>]*>(.*)</string>.*|\1|" \
             | sed -e 's/&amp;/\&/g' -e "s/&apos;/'/g" -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g')
     if [ -z "$raw" ]; then
-        echo "Error: $STRINGS_XML missing <string name=\"${key}\">." >&2
+        echo "Error: no <string name=\"${key}\"> under $VALUES_DIR/*.xml." >&2
         return 1
     fi
     printf '%s' "$raw"

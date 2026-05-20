@@ -20,7 +20,9 @@ rebase cycles during the May 2026 ARCore sprint alone.
 
 This package is the fix: **one new demo = one new file**, sorted by id by the
 collator so the diff stays stable. Two parallel PRs touch disjoint files.
-Zero conflicts.
+Zero conflicts. Per-demo strings followed the same pattern in #1870 — each
+demo ships its strings in `res/values/strings_demo_<id>.xml`, so `strings.xml`
+is no longer a shared anchor either.
 
 ## Adding a new demo
 
@@ -54,9 +56,26 @@ Zero conflicts.
    }
    ```
 
-2. Add the `demo_my_demo_title` / `demo_my_demo_subtitle` strings to
-   `samples/android-demo/src/main/res/values/strings.xml`. (Per-demo string
-   fragments are a follow-up — see #1797's follow-up issues.)
+2. Drop the demo's strings into their own resource fragment at
+   `samples/android-demo/src/main/res/values/strings_demo_<my_demo>.xml`
+   (substitute `-` with `_` in the id to match Android resource-naming rules).
+   Each demo owns its strings file so two parallel PRs adding two different
+   demos never share a string-resource anchor (#1870). Android's resource
+   merger fans every `res/values/*.xml` in at build time, so the
+   `R.string.demo_my_demo_*` references in your fragment resolve identically.
+   Minimal template:
+
+   ```xml
+   <?xml version="1.0" encoding="utf-8"?>
+   <resources>
+       <string name="demo_my_demo_title">My Demo</string>
+       <string name="demo_my_demo_subtitle">What it shows in one sentence</string>
+   </resources>
+   ```
+
+   Any demo-specific UI strings (button labels, picker entries…) belong in
+   this file too — they keep the demo self-contained and avoid edits to the
+   shared `strings.xml`.
 
 3. Run the collator:
 
