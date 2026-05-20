@@ -855,14 +855,23 @@ ARSceneView(
     xPx: Float,                         // screen X in pixels (use viewWidth / 2f for center)
     yPx: Float,                         // screen Y in pixels (use viewHeight / 2f for center)
     planeTypes: Set<Plane.Type> = Plane.Type.entries.toSet(),
-    point: Boolean = true,
-    depthPoint: Boolean = true,
-    instantPlacementPoint: Boolean = true,
+    point: Boolean = false,             // plane-only by default (#1891)
+    depthPoint: Boolean = false,        // plane-only by default (#1891)
+    instantPlacementPoint: Boolean = false,
+    minCameraDistance: Float? = 0.3f,   // defensive floor — rejects hits closer than 30 cm
     // ... other filters with sensible defaults ...
     apply: HitResultNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
+
+**Defaults are plane-only ([#1891](https://github.com/sceneview/sceneview/issues/1891)).**
+Depth / feature-point hits before motion-stereo convergence return positions extremely
+close to the camera (often <10 cm), which causes a child placement disc to render as a
+fullscreen overlay that blanks the camera feed on session start. Opt each filter back
+in explicitly once your scene is tracking-stable (e.g. `point = true, depthPoint = true`
+inside a "Free placement" toggle). `minCameraDistance` is a defensive camera-to-hit
+floor in meters — pass `null` to disable.
 
 **Custom hit test** (full control):
 ```kotlin
@@ -876,7 +885,7 @@ ARSceneView(
 Typical center-screen placement cursor:
 ```kotlin
 ARSceneView(modifier = Modifier.fillMaxSize()) {
-    // Place a cursor at screen center — follows detected surfaces
+    // Place a cursor at screen center — plane-only, hidden until motion stereo converges
     HitResultNode(xPx = viewWidth / 2f, yPx = viewHeight / 2f) {
         CubeNode(size = Size(0.05f))  // small indicator cube
     }
