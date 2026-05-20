@@ -266,11 +266,14 @@ fun PhysicsNode(
  * The Euler integration applies only gravity, which is an acceleration and therefore
  * mass-independent. `mass` will gain an effect once a force/impulse API lands. Until then,
  * use the [PhysicsNode] overload without `mass`.
+ *
+ * Note: [ReplaceWith] **preserves [floorProvider]** so the IDE quick-fix on the deprecation
+ * never silently strips the AR-floor wiring (#1807).
  */
 @Deprecated(
     "The 'mass' parameter is currently a no-op (the Euler integration applies only gravity, " +
         "which is mass-independent). Use the PhysicsNode overload without 'mass'.",
-    ReplaceWith("PhysicsNode(node, restitution, linearVelocity, floorY, radius)"),
+    ReplaceWith("PhysicsNode(node, restitution, linearVelocity, floorY, radius, floorProvider)"),
     DeprecationLevel.WARNING
 )
 @Composable
@@ -280,11 +283,13 @@ fun PhysicsNode(
     restitution: Float = 0.6f,
     linearVelocity: Position = Position(0f, 0f, 0f),
     floorY: Float = 0f,
-    radius: Float = 0f
+    radius: Float = 0f,
+    floorProvider: FloorProvider? = null,
 ) = PhysicsNode(
     node = node,
     restitution = restitution,
     linearVelocity = linearVelocity,
     floorY = floorY,
-    radius = radius
+    radius = radius,
+    floorProvider = floorProvider,
 )
