@@ -101,6 +101,12 @@ class DepthCollider private constructor(
      * Costless if [centres] is empty. Call once per frame from the scene's `onFrame` block; the
      * cost is `O(bodies)` and only the per-rebuild ingest pays the cull cost.
      *
+     * Threading (#1811): must be called on the render / AR-frame thread, the same thread that
+     * runs [DepthMeshNode.update] and [floorYAt]. The underlying [bodiesRegion] field is
+     * `@Volatile` so a write here is observed by the next [ingestSnapshot], but calling this from
+     * a background coroutine is **unsupported** — the bodies you compute the region from
+     * (sphere world positions) are themselves only safe to read on the render thread.
+     *
      * @param centres  Sphere centres in world space (flat-packed `[x0,y0,z0, ...]`). `null` to
      *                 disable region culling entirely.
      * @param padding  Per-axis padding in metres. Use roughly each body's collision radius plus a

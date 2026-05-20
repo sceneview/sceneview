@@ -1,5 +1,6 @@
 package io.github.sceneview.ar.node
 
+import androidx.annotation.MainThread
 import com.google.android.filament.Box
 import com.google.android.filament.Engine
 import com.google.android.filament.IndexBuffer
@@ -88,7 +89,7 @@ open class DepthMeshNode(
     var edgeThresholdMeters: Float = DEFAULT_DEPTH_EDGE_THRESHOLD_METERS,
     materialInstance: MaterialInstance? = null,
     builder: RenderableManager.Builder.() -> Unit = {},
-    var onMeshRebuilt: ((DepthMeshSnapshot) -> Unit)? = null,
+    onMeshRebuilt: ((DepthMeshSnapshot) -> Unit)? = null,
 ) : MeshNode(
     engine = engine,
     primitiveType = PrimitiveType.TRIANGLES,
@@ -110,20 +111,24 @@ open class DepthMeshNode(
      * Vertices are in **ARCore camera space** at the time of the rebuild. Combine with the node's
      * current [worldTransform] to get world-space positions — or read [DepthMeshSnapshot.worldTransform]
      * which captures the camera pose at rebuild time.
+     *
+     * Threading: read and write on the render / AR-frame thread only (#1811). Reading from a
+     * background coroutine is **unsupported** — the field may be torn or stale.
      */
+    @get:MainThread
     var latestSnapshot: DepthMeshSnapshot? = null
-        protected set
+        @MainThread protected set
 
     /**
      * Tracks the wall-clock time of the last successful rebuild so [refreshIntervalMs] can gate
-     * the next one.
+     * the next one. Render-thread only (#1811).
      */
     private var lastRebuildTimestampMs: Long = Long.MIN_VALUE
 
-    /** Capacity (in vertices) of the currently-allocated [vertexBuffer]. */
+    /** Capacity (in vertices) of the currently-allocated [vertexBuffer]. Render-thread only. */
     private var allocatedVertexCount: Int = INITIAL_VERTEX_CAPACITY
 
-    /** Capacity (in indices) of the currently-allocated [indexBuffer]. */
+    /** Capacity (in indices) of the currently-allocated [indexBuffer]. Render-thread only. */
     private var allocatedIndexCount: Int = INITIAL_INDEX_CAPACITY
 
     /**
@@ -139,11 +144,27 @@ open class DepthMeshNode(
      * Exposed for downstream consumers (the #1713 physics collider) that need a stable handle to
      * the latest geometry. Read-only — never call [com.google.android.filament.Engine.destroyVertexBuffer]
      * on this; [destroy] handles the lifecycle.
+     *
+     * Threading: render-thread only (#1811). Filament buffer handles are scene-graph state and
+     * must not be inspected from a background coroutine.
      */
+    @get:MainThread
     val currentVertexBuffer: VertexBuffer get() = ownedVertexBuffer
 
-    /** Returns the current index buffer (live, may change across rebuilds when capacity grows). */
+    /**
+     * Returns the current index buffer (live, may change across rebuilds when capacity grows).
+     *
+     * Threading: render-thread only (#1811).
+     */
+    @get:MainThread
     val currentIndexBuffer: IndexBuffer get() = ownedIndexBuffer
+
+    /**
+     * Per-rebuild callback. Setter is render-thread only (#1811) — swapping the callback from a
+     * background coroutine could race with the next invoke under the [update] call site.
+     */
+    @set:MainThread
+    var onMeshRebuilt: ((DepthMeshSnapshot) -> Unit)? = onMeshRebuilt
 
     /**
      * Pulls the latest depth image off [frame], rebuilds the mesh if [refreshIntervalMs] has
@@ -154,7 +175,12 @@ open class DepthMeshNode(
      *
      * No-ops when the camera is not tracking, when depth is not supported / not yet computed, or
      * when the refresh interval has not yet elapsed.
+     *
+     * Threading: must be called on the render / AR-frame thread (#1811). Calling it from a
+     * background coroutine is **unsupported** — Filament JNI calls require the main / render
+     * thread, and the depth-image acquire path is not re-entrant.
      */
+    @MainThread
     open fun update(session: Session, frame: Frame) {
         val camera = frame.camera
         if (camera.trackingState != TrackingState.TRACKING) return
