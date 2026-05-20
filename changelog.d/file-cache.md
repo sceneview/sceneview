@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- Remote files loaded over http(s) — glTF/GLB models, KTX environments, textures — are now cached on disk by the new `FileCache`. The first load downloads and persists the bytes; every later load reuses the cached file, so there are no repeated downloads and assets stay available offline. Caching is wired transparently into `FileLoader.loadFileBuffer`, with `Context.fileCacheDir` / `Context.clearFileCache()` to inspect or reclaim it, and `FileCache.enabled` to opt out.

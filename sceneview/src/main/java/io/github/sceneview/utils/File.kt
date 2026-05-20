@@ -38,8 +38,8 @@ object FileLoader {
         val uri = Uri.parse(fileLocation)
         return withContext(Dispatchers.IO) {
             when (uri.scheme) {
-                "http", "https" -> {
-                    ByteBuffer.wrap(fuelManager.get(fileLocation).awaitByteArray())
+                "http", "https" -> FileCache.getOrPut(context.fileCacheDir, fileLocation) {
+                    fuelManager.get(fileLocation).awaitByteArray()
                 }
 
                 else -> {
@@ -111,6 +111,21 @@ fun InputStream.readBuffer(): ByteBuffer = toByteArray().let {
 fun Context.getResourceUri(resId: Int): String {
     return "${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/$resId"
 }
+
+/**
+ * Directory backing the [FileCache] for remote files downloaded over http(s).
+ *
+ * Lives under the app cache directory, so the OS may reclaim it under storage pressure.
+ */
+val Context.fileCacheDir: File
+    get() = File(cacheDir, FileCache.DIRECTORY_NAME)
+
+/**
+ * Deletes every remote file cached by [FileCache] for this app.
+ *
+ * @return the number of cached files removed.
+ */
+fun Context.clearFileCache(): Int = FileCache.clear(fileCacheDir)
 
 fun InputStream.toByteArray() = use { readBytes() }
 

@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- New cinematic turntable camera: `applyCinematicOrbit(cameraNode, timeSeconds)` drives a slow, eased "hero shot" orbit around the content — long lens, gentle downward tilt and a soft vertical bob. Three feel presets are provided (`CinematicCameraProfile.HeroProduct`, `SlowCinematic`, `NeutralWeb`); `CinematicCameraProfile.Default` is the contemplative `SlowCinematic` profile. Pairs with `SceneView(autoCenterContent = true, cameraManipulator = null)` for a one-call cinematic showcase.
