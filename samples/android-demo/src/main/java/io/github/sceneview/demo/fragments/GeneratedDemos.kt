@@ -37,6 +37,7 @@ object GeneratedDemos {
         ArRecordPlaybackFragment,
         ArRerunFragment,
         ArRooftopFragment,
+        ArSceneSemanticsFragment,
         ArStreetscapeFragment,
         ArTerrainFragment,
         BillboardFragment,
@@ -97,6 +98,7 @@ object GeneratedDemos {
             "ar-record-playback" -> ArRecordPlaybackFragment.Screen(onBack)
             "ar-rerun" -> ArRerunFragment.Screen(onBack)
             "ar-rooftop" -> ArRooftopFragment.Screen(onBack)
+            "ar-scene-semantics" -> ArSceneSemanticsFragment.Screen(onBack)
             "ar-streetscape" -> ArStreetscapeFragment.Screen(onBack)
             "ar-terrain" -> ArTerrainFragment.Screen(onBack)
             "billboard" -> BillboardFragment.Screen(onBack)

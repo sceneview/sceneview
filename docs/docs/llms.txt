@@ -1046,6 +1046,14 @@ fun Frame.depthImage(): Image?                 // smoothed full-res 16-bit depth
 fun Frame.rawDepthImage(): Image?              // unsmoothed 16-bit depth
 fun Frame.rawDepthConfidenceImage(): Image?    // Y8 confidence map matching rawDepthImage()
 
+// Frame — Scene Semantics accessors (#1730). Requires Config.SemanticMode.ENABLED.
+// Outdoor only — the 12-class ML model has no indoor training data. Caller-owned Images
+// (close in use { }) for the per-pixel rasters; semanticLabelFraction is a cheap
+// GPU-backed query returning 0f when semantics not yet available.
+fun Frame.semanticImage(): Image?                              // R8 — per-pixel label ordinal
+fun Frame.semanticConfidenceImage(): Image?                    // R8 — per-pixel 0..255 confidence
+fun Frame.semanticLabelFraction(label: SemanticLabel): Float   // 0f..1f — pixel-share for `label`
+
 // Frame — CPU camera image (YUV_420_888). Caller-owned — close in use { } — the pool is only
 // ~2–3 slots deep; leaking a handle for 3 frames throws ResourceExhaustedException. Resolution
 // follows the active CameraConfig (see cameraConfigFilter DSL below). Returns null only on the
@@ -1288,6 +1296,55 @@ depthCollider.setBodiesRegion(
 the body's XZ, or `null` when no surface is available — `PhysicsBody` then falls back to its
 static `floorY` plane. Requires `Config.DepthMode.AUTOMATIC` (or `RAW_DEPTH_ONLY`); without it
 the collider stays empty.
+
+### Scene Semantics — per-pixel outdoor classification (#1730)
+
+ARCore's Scene Semantics labels every pixel of an **outdoor** camera frame with one of 12 classes
+through an on-device ML model (`SKY`, `BUILDING`, `TREE`, `ROAD`, `SIDEWALK`, `TERRAIN`,
+`STRUCTURE`, `OBJECT`, `VEHICLE`, `PERSON`, `WATER`, `UNLABELED`). The AI-first use case is
+semantic placement rules — "place models only on `TERRAIN`, never on `SKY`/`PERSON`/`VEHICLE`" —
+that an assistant can generate without reading per-pixel rasters.
+
+```kotlin
+import com.google.ar.core.Config
+import com.google.ar.core.SemanticLabel
+import io.github.sceneview.ar.arcore.semanticImage
+import io.github.sceneview.ar.arcore.semanticConfidenceImage
+import io.github.sceneview.ar.arcore.semanticLabelFraction
+
+ARSceneView(
+    sessionConfiguration = { session, config ->
+        // Capability gate — the on-device ML model ships only on a subset of Google Play
+        // Services for AR devices. ARSceneView's internal resolveSemanticMode gate applies
+        // the same fallback if you forget to test for support yourself.
+        if (session.isSemanticModeSupported(Config.SemanticMode.ENABLED)) {
+            config.semanticMode = Config.SemanticMode.ENABLED
+        }
+    },
+    onSessionUpdated = { _, frame ->
+        // Cheap GPU-backed query — answers "is there a lot of sky / road / terrain in view?"
+        // without acquiring the per-pixel raster.
+        val groundFraction = frame.semanticLabelFraction(SemanticLabel.TERRAIN)
+        if (groundFraction > 0.3f) { /* enough ground in view to place a model */ }
+
+        // Per-pixel raster (R8, label ordinal per pixel — `SemanticLabel.forNumber(byte)`).
+        // Caller-owned Image — close in `use { }` or ARCore will throw ResourceExhausted
+        // after 2-3 leaked frames. Returns null while semantics are warming up.
+        frame.semanticImage()?.use { image -> /* walk image.planes[0].buffer */ }
+
+        // Per-pixel confidence (R8, 0..255). Same lifecycle as semanticImage().
+        frame.semanticConfidenceImage()?.use { image -> /* filter low-confidence pixels */ }
+    },
+)
+```
+
+**Outdoor only.** The model has no indoor training data — pointing at a living room returns
+mostly `UNLABELED`. **Support-gated.** `Session.isSemanticModeSupported()` is the canonical
+probe; on unsupported devices `ARSceneView` silently downgrades to `DISABLED` rather than
+throwing. **`semanticLabelFraction` returns 0f** when semantics are disabled or not yet
+available — making "place on TERRAIN" rules naturally wait for the first usable frame.
+
+Sample: `ARSceneSemanticsDemo` (Android demo registry id `ar-scene-semantics`).
 
 ### AugmentedImageNode — image tracking
 ```kotlin
