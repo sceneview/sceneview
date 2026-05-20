@@ -65,6 +65,8 @@ import io.github.sceneview.ar.recording.rememberARRecorder
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
@@ -360,6 +362,12 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
                     )
                 }
             }
+
+            // Developer-only debug toggle — visible when QA mode is on. Lets QA
+            // force-emit each TrackingFailureReason so the actionable-message
+            // overlay can be validated without staging a real failure. See
+            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+            ForceTrackingFailureMenu()
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -563,8 +571,12 @@ private fun ModeContent(
 
     // Tracking failure overlay — uses its own fillMaxSize Box internally so it can align to
     // the bottom of the parent Box.
-    if (!isTracking) {
-        TrackingFailureBanner(reason = trackingFailureReason)
+    // ForcedTrackingFailure.override shadows the real ARCore-reported reason when a developer
+    // has picked one in the debug menu (#1881). Read it here so flipping the override
+    // re-renders the overlay immediately.
+    val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+    if (!isTracking || ForcedTrackingFailure.override != null) {
+        TrackingFailureBanner(reason = effectiveReason)
     }
 
     // Cover the still-black ARSceneView surface until ARCore delivers its first frame —

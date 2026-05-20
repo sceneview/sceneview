@@ -59,6 +59,8 @@ import io.github.sceneview.ar.rerun.RerunBridge
 import io.github.sceneview.ar.rerun.rememberRerunBridge
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
@@ -168,6 +170,12 @@ fun ARRerunDemo(onBack: () -> Unit) {
                 lastPose = lastCameraPose,
                 isConnected = isConnected
             )
+
+            // Developer-only debug toggle — visible when QA mode is on. Lets QA
+            // force-emit each TrackingFailureReason so the actionable-message
+            // overlay can be validated without staging a real failure. See
+            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+            ForceTrackingFailureMenu()
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -255,14 +263,18 @@ fun ARRerunDemo(onBack: () -> Unit) {
             }
 
             // Status overlay
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
-                visible = !isTracking,
+                visible = !isTracking || ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 Text(
-                    text = trackingFailureMessage(trackingFailureReason)
+                    text = trackingFailureMessage(effectiveReason)
                         ?: stringResource(R.string.ar_status_scanning),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimary,

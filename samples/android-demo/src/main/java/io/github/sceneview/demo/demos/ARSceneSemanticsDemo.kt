@@ -42,6 +42,8 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.semanticLabelFraction
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -142,6 +144,11 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                     )
                 }
             }
+            // Developer-only debug toggle — visible when QA mode is on. Lets QA
+            // force-emit each TrackingFailureReason so the actionable-message
+            // overlay can be validated without staging a real failure. See
+            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+            ForceTrackingFailureMenu()
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -233,8 +240,13 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
             }
 
             // Tracking-failure overlay — same vocabulary as the other AR demos.
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
-                visible = !isTracking && trackingFailureReason != null,
+                visible = (!isTracking && trackingFailureReason != null) ||
+                    ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier
@@ -247,7 +259,7 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                     shape = MaterialTheme.shapes.large
                 ) {
                     Text(
-                        text = when (trackingFailureReason) {
+                        text = when (effectiveReason) {
                             TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
                             TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
                             TrackingFailureReason.INSUFFICIENT_FEATURES ->
