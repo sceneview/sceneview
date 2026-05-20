@@ -21,6 +21,13 @@ coroutines = "1.11.0"
 kotlinMath = "1.8.0"
 
 # 3D / AR
+# Jetpack XR ARCore — preview SDK for hand & face tracking on Android XR
+# (headsets, glasses). Distinct runtime from mobile `com.google.ar:core`.
+# Wired as `compileOnly` in arsceneview/ so phone-only apps pay nothing
+# at runtime. See arsceneview/docs/JETPACK-XR-INTEGRATION.md for the
+# integration approach and slicing plan (issue #1738).
+jetpackXrArCore = "1.0.0-alpha14"
+
 # Filament 1.71.0 — must match the binary version of .filamat files committed
 # under sceneview/src/main/assets/materials/ and website-static/materials/.
 # Those were recompiled to material-binary version 71 in commit `efd296f1`
@@ -105,6 +112,11 @@ filament-utils = { group = "com.google.android.filament", name = "filament-utils
 
 # AR
 arcore = { group = "com.google.ar", name = "core", version.ref = "arCore" }
+
+# Jetpack XR ARCore (preview) — opt-in for headsets / glasses. Consumers add
+# this themselves; arsceneview/ wires it as compileOnly so non-XR apps don't
+# pull it. See arsceneview/docs/JETPACK-XR-INTEGRATION.md (#1738).
+androidx-xr-arcore = { group = "androidx.xr.arcore", name = "arcore", version.ref = "jetpackXrArCore" }
 
 # Fuel (HTTP client)
 fuel = { group = "com.github.kittinunf.fuel", name = "fuel", version.ref = "fuel" }
