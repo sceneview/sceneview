@@ -57,12 +57,15 @@ export default defineConfig({
     /* Capture trace on first retry */
     trace: 'on-first-retry',
 
-    /* Screen-record every test — parity with the Android / iOS device-QA legs
-     * so a 3D regression can be reviewed frame-by-frame. In headless Chromium
-     * the video is software-rendered (the real "did it render" assertion is
-     * helpers.ts:sampleCanvas, a compositor screenshot); the recording is for
-     * human review. Videos land under outputDir (./test-results, gitignored). */
-    video: 'on',
+    /* Per-test recording is driven by the `screencast` fixture in
+     * `tests/helpers.ts` (Playwright 1.59+ `page.screencast.start/stop`), not
+     * by the legacy `video: 'on'` config. The fixture brackets each test, adds
+     * a chapter annotation per `loadCatalogPage(...)` / tab switch, and lands
+     * the .webm at `test-results/screencasts/<test-name>.webm` — parity with
+     * the Maestro Android / iOS device-QA legs. See `helpers.ts:test` for the
+     * extended fixture and `device-qa.sh` for how the runner collects the
+     * recordings into `$ARTIFACTS/`. Issue #1748 item 3. */
+    video: 'off',
 
     /* Viewport size for consistent screenshots */
     viewport: { width: 1280, height: 720 },
