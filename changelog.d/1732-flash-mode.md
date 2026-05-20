@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- `arsceneview`: surfaced ARCore v1.45+ Flash Mode as a new `flashMode: Config.FlashMode` parameter on `ARSceneView` (default `OFF`). Toggling between `OFF` / `TORCH` recomposes the session config reactively, and unsupported devices / front-camera sessions silently downgrade to `OFF` via `Session.isFlashModeSupported()` — matching the existing `depthMode` auto-fallback behaviour (#1732).
