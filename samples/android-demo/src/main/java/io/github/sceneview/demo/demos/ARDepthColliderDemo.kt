@@ -9,20 +9,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
-import com.google.ar.core.TrackingState
-import io.github.sceneview.SceneView
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.physics.DepthCollider
 import io.github.sceneview.demo.DemoScaffold
@@ -94,6 +90,20 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
     ) {
         // key(generation) forces full recomposition on reset so previous bodies are torn down.
         key(generation) {
+            // Per-slot SphereNode refs, indexed by ball position in the for-loop. The array is
+            // re-allocated every time `ballCount` changes so abandoned slots can't accumulate
+            // stale refs the way the previous `mutableListOf + activeBallNodes += this`
+            // approach did — recompositions that don't change `ballCount` (slider, theme,
+            // parent state) used to leak references → growing AABB → triangle-test count
+            // re-bloat (#1842). Each ball writes its own slot via `nodeRefs[i] = this`.
+            val nodeRefs = remember(ballCount, generation) { arrayOfNulls<SphereNode>(ballCount) }
+
+            // The depth collider is created OUTSIDE the for-loop so its lifetime tracks the
+            // outer composition, not any individual ball. We capture it in a mutable holder so
+            // the `onSessionUpdated` Scene-level callback (which is set up by ARSceneView at
+            // its construction site) can read the latest collider ref on each frame.
+            val depthColliderRef = remember { mutableStateOf<DepthCollider?>(null) }
+
             ARSceneView(
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
@@ -106,24 +116,32 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                         config.depthMode = Config.DepthMode.AUTOMATIC
                     }
                 },
+                // Scene-level per-frame hook — runs ONCE per AR frame, vs. the previous
+                // per-ball `apply.onFrame` fan-out which ran `publishCollisionRegion` N× per
+                // frame at 5 balls × 60 fps = 300 redundant FloatArrays/sec (#1842). The
+                // ARSceneView's `onSessionUpdated` is the canonical "once per frame" hook with
+                // access to the live session + frame; we ignore them here because all we need
+                // is the cadence.
+                onSessionUpdated = { _, _ ->
+                    val collider = depthColliderRef.value ?: return@ARSceneView
+                    publishCollisionRegion(nodeRefs, collider)
+                },
             ) {
                 // The depth collider. Default 5 Hz rebuild rate — the cost of touching the
                 // depth image + transforming vertices per rebuild stays under the 16 ms budget
                 // on a Pixel 7a (160×90 image, stride 4 → ~900 quads after edge-cull). Tune
                 // refreshIntervalMs lower for a "live" surface, higher for cheaper.
                 val depthCollider: DepthCollider = rememberDepthCollider(refreshIntervalMs = 200L)
+                // Surface the collider to the Scene-level onSessionUpdated callback above.
+                DisposableEffect(depthCollider) {
+                    depthColliderRef.value = depthCollider
+                    onDispose { depthColliderRef.value = null }
+                }
 
                 val ballMaterial = rememberMaterialInstance(
                     materialLoader,
                     SceneViewColors.Ramp4[0],
                 )
-
-                // Per-frame collection of active sphere node refs so the demo can feed the
-                // collider's region-cull fast path (#1810). Snapshot-stateless plain list; the
-                // demo replaces the `nodeRefs` collection on every recomposition, but the
-                // collider's `setBodiesRegion` consumer reads from a transient FloatArray we
-                // build on each onFrame tick.
-                val activeBallNodes = remember { mutableListOf<SphereNode>() }
 
                 for (i in 0 until ballCount) {
                     // Spawn at the scene origin + a small column above so multiple drops don't
@@ -139,17 +157,12 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                         position = Position(x = xOffset, y = startY, z = zOffset),
                         apply = {
                             nodeRef = this
-                            activeBallNodes += this
-                            onFrame = {
-                                // Drive the depth collider's region-cull fast path once per
-                                // frame (#1810). The KDoc-documented region cull was previously
-                                // bypassed in this demo so the collider was testing every
-                                // triangle (~540k tri-tests/sec with 5 balls × 1800 triangles ×
-                                // 60 fps). Re-publishing the body centres + a generous radius
-                                // padding shrinks the per-frame triangle list to just those
-                                // overlapping the ball cluster's AABB.
-                                publishCollisionRegion(activeBallNodes, depthCollider)
-                            }
+                            // Write into our per-slot ref array. The slot is keyed by `i` so
+                            // re-running this `apply` on recomposition simply overwrites the
+                            // SAME slot rather than appending → no stale-ref leak (#1842). The
+                            // array itself is `remember(ballCount, generation)` so abandoned
+                            // slots disappear when the ball count changes.
+                            if (i < nodeRefs.size) nodeRefs[i] = this
                         },
                     )
                     nodeRef?.let { node ->
@@ -164,11 +177,6 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                         )
                     }
                 }
-                // Reset the list on each recomposition — the per-node `apply` block above is the
-                // single source of truth for who's active this composition pass.
-                DisposableEffect(ballCount) {
-                    onDispose { activeBallNodes.clear() }
-                }
             }
         }
     }
@@ -179,25 +187,61 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
  * (#1810). Allocates one short [FloatArray] per call — small (3 × ballCount floats), all on
  * the render thread, and unavoidable given [DepthCollider.setBodiesRegion]'s flat-packed
  * interface. A future optimisation would expose an overload taking a reusable scratch array.
+ *
+ * `nodeRefs` slots may legitimately be `null` mid-composition before a `SphereNode`'s `apply`
+ * block has run for that index; those slots are skipped (#1842).
  */
-private fun publishCollisionRegion(
-    nodes: List<SphereNode>,
+internal fun publishCollisionRegion(
+    nodeRefs: Array<SphereNode?>,
     collider: DepthCollider,
 ) {
-    if (nodes.isEmpty()) {
-        collider.setBodiesRegion(null, padding = 0.15f)
-        return
-    }
-    val centres = FloatArray(nodes.size * 3)
-    var i = 0
-    for (n in nodes) {
-        val p = n.worldPosition
-        centres[i] = p.x
-        centres[i + 1] = p.y
-        centres[i + 2] = p.z
-        i += 3
-    }
+    val centres = packCentres(
+        slotCount = nodeRefs.size,
+        slotAt = { i ->
+            nodeRefs[i]?.let { n ->
+                val p = n.worldPosition
+                floatArrayOf(p.x, p.y, p.z)
+            }
+        },
+    )
     // padding 0.15 m ≈ 3 × the ball radius + frame-to-frame travel headroom; matches the
     // DepthCollider KDoc's example value for a 5 cm radius body.
     collider.setBodiesRegion(centres, padding = 0.15f)
+}
+
+/**
+ * Walks [slotCount] slots, calls [slotAt] for each, and packs the non-null `(x, y, z)` triples
+ * into a flat [FloatArray]. Returns `null` when every slot is empty so [DepthCollider.setBodiesRegion]
+ * sees the "no bodies" sentinel rather than an empty array (matches the collider's null-vs-empty
+ * contract).
+ *
+ * Exposed `internal` so JVM tests can pin the slot-skipping logic without standing up a Filament
+ * Engine to hydrate a real [SphereNode] (#1842).
+ */
+internal fun packCentres(
+    slotCount: Int,
+    slotAt: (Int) -> FloatArray?,
+): FloatArray? {
+    // Count populated slots so the centres array is sized exactly — skipping the array
+    // length avoids surfacing null-slot sentinels to setBodiesRegion's distance test.
+    val resolved = arrayOfNulls<FloatArray>(slotCount)
+    var populated = 0
+    for (i in 0 until slotCount) {
+        val triple = slotAt(i)
+        if (triple != null) {
+            resolved[i] = triple
+            populated++
+        }
+    }
+    if (populated == 0) return null
+    val centres = FloatArray(populated * 3)
+    var j = 0
+    for (i in 0 until slotCount) {
+        val triple = resolved[i] ?: continue
+        centres[j] = triple[0]
+        centres[j + 1] = triple[1]
+        centres[j + 2] = triple[2]
+        j += 3
+    }
+    return centres
 }
