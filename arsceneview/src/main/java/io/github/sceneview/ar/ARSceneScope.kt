@@ -582,12 +582,30 @@ class ARSceneScope internal constructor(
      *     }
      * ) {
      *     geometries.forEach { geo ->
-     *         StreetscapeGeometryNode(streetscapeGeometry = geo, meshMaterialInstance = buildingMat)
+     *         // Render only buildings, and only the higher-LOD ones:
+     *         StreetscapeGeometryNode(
+     *             streetscapeGeometry = geo,
+     *             types = setOf(StreetscapeGeometry.Type.BUILDING),
+     *             minQuality = StreetscapeGeometry.Quality.BUILDING_LOD_2,
+     *             meshMaterialInstance = buildingMat
+     *         )
      *     }
      * }
      * ```
      *
      * @param streetscapeGeometry     The [StreetscapeGeometry] mesh to render.
+     * @param types                   Filter — only geometries whose [StreetscapeGeometry.getType]
+     *                                is in this set render (#1772). Defaults to
+     *                                `setOf(BUILDING, TERRAIN)` (no filtering). Set to
+     *                                `setOf(BUILDING)` to drop the (often noisy) ground terrain
+     *                                in dense urban scenes.
+     * @param minQuality              Filter — geometries with a [StreetscapeGeometry.getQuality]
+     *                                whose ordinal is lower than this enum's ordinal are skipped
+     *                                (#1772). Default `Quality.NONE` (no filtering). Set to
+     *                                `BUILDING_LOD_2` to render only the higher-LOD buildings and
+     *                                save the frame-rate cliff on low-end devices. The ordering
+     *                                used here is ARCore's declaration order:
+     *                                `NONE < BUILDING_LOD_1 < BUILDING_LOD_2`.
      * @param meshMaterialInstance    Optional material applied to the geometry mesh.
      * @param onTrackingStateChanged  Callback when tracking state changes.
      * @param onUpdated               Callback invoked each frame while the geometry is updated.
@@ -597,12 +615,21 @@ class ARSceneScope internal constructor(
     @Composable
     fun StreetscapeGeometryNode(
         streetscapeGeometry: StreetscapeGeometry,
+        types: Set<StreetscapeGeometry.Type> = setOf(
+            StreetscapeGeometry.Type.BUILDING,
+            StreetscapeGeometry.Type.TERRAIN
+        ),
+        minQuality: StreetscapeGeometry.Quality = StreetscapeGeometry.Quality.NONE,
         meshMaterialInstance: MaterialInstance? = null,
         onTrackingStateChanged: ((TrackingState) -> Unit)? = null,
         onUpdated: ((StreetscapeGeometry) -> Unit)? = null,
         apply: StreetscapeGeometryNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null
     ) {
+        // No-op composable when the geometry doesn't pass the filter (#1772). Logic centralised
+        // in [streetscapeGeometryPasses] so it's exercised by pure-JVM unit tests.
+        if (!streetscapeGeometryPasses(streetscapeGeometry, types, minQuality)) return
+
         val node = remember(engine, streetscapeGeometry) {
             StreetscapeGeometryNodeImpl(
                 engine = engine,
@@ -897,3 +924,46 @@ class ARSceneScope internal constructor(
         return collider
     }
 }
+
+// ── StreetscapeGeometry filter helpers (#1772) ────────────────────────────────────────────────────
+
+/**
+ * Pure-logic gate for [ARSceneScope.StreetscapeGeometryNode]'s `types` + `minQuality` filter
+ * (#1772). Reads the underlying [StreetscapeGeometry.getType] / [StreetscapeGeometry.getQuality]
+ * once and delegates to the JVM-friendly [streetscapeGeometryPasses] overload.
+ *
+ * Visible at file scope (not a `companion object` member) so it can be exercised without
+ * spinning up the `ARSceneScope` constructor under unit tests.
+ */
+internal fun streetscapeGeometryPasses(
+    streetscapeGeometry: StreetscapeGeometry,
+    types: Set<StreetscapeGeometry.Type>,
+    minQuality: StreetscapeGeometry.Quality
+): Boolean = streetscapeGeometryPasses(
+    actualType = streetscapeGeometry.type,
+    actualQuality = streetscapeGeometry.quality,
+    types = types,
+    minQuality = minQuality
+)
+
+/**
+ * JVM-friendly overload of [streetscapeGeometryPasses] taking the type/quality directly. ARCore's
+ * `StreetscapeGeometry` is JNI-only — the constructor takes a native handle and is unmockable
+ * under pure-JVM tests. This signature lets the test feed enum values without an instance, while
+ * the production overload above is the one called from `ARSceneScope`.
+ *
+ * Rules:
+ *  - The geometry's [StreetscapeGeometry.getType] must be in [types]. An empty set means
+ *    "nothing matches" — the composable becomes a no-op for every geometry.
+ *  - The geometry's [StreetscapeGeometry.getQuality] ordinal must be >= [minQuality].ordinal.
+ *    ARCore declares quality in ascending order
+ *    (`NONE < BUILDING_LOD_1 < BUILDING_LOD_2`), so the ordinal comparison maps directly to the
+ *    documented "must be at least this good" semantics.
+ */
+internal fun streetscapeGeometryPasses(
+    actualType: StreetscapeGeometry.Type,
+    actualQuality: StreetscapeGeometry.Quality,
+    types: Set<StreetscapeGeometry.Type>,
+    minQuality: StreetscapeGeometry.Quality
+): Boolean = actualType in types && actualQuality.ordinal >= minQuality.ordinal
+
