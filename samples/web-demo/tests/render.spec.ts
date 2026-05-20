@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { sampleCanvas } from './helpers';
+import { sampleCanvas, assertCanvasContextAlive } from './helpers';
 
 /**
  * SceneView Web Demo — visual regression / smoke tests.
@@ -45,8 +45,12 @@ test.describe('SceneView Web Demo Rendering', () => {
     // Give Filament a moment to render frames
     await page.waitForTimeout(2000);
 
-    // Check that the canvas is not all-black by sampling pixel data via the
-    // shared helper (also used by the catalog-coverage suite).
+    // Hard-assert the WebGL context is alive and the canvas shows pixels.
+    // SwiftShader (`--enable-unsafe-swiftshader` in playwright.config.ts) gives
+    // headless CI a real software-rasterised context, so this can be a true
+    // failure signal — no more green-on-nothing (issues #1593, #1674).
+    await assertCanvasContextAlive(page, 'canvas renders non-blank content');
+
     const { hasContent, headlessGpuOk } = await sampleCanvas(page);
 
     // Capture screenshot regardless of content check
@@ -55,11 +59,11 @@ test.describe('SceneView Web Demo Rendering', () => {
       fullPage: false,
     });
 
-    // This assertion stays soft — headless WebGL on a GPU-less runner may not
-    // produce a readable framebuffer (`headlessGpuOk: false`).
-    if (headlessGpuOk && !hasContent) {
-      console.warn('Canvas appears blank — headless WebGL may not produce visible output');
-    }
+    expect(headlessGpuOk, 'canvas element is missing or zero-sized').toBe(true);
+    expect(
+      hasContent,
+      'canvas appears blank — Filament rendered nothing visible',
+    ).toBe(true);
   });
 
   test('model results panel is visible', async ({ page }) => {

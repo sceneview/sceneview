@@ -173,6 +173,39 @@ export async function sampleCanvas(
 }
 
 /**
+ * Hard-assert the WebGL context backing `#scene-canvas` is still alive.
+ *
+ * Catches GPU-process crashes and lost contexts: the canvas DOM element is
+ * still in the page but nothing will ever paint to it again. Cheaper than a
+ * screenshot — call this first inside `assertRendered`.
+ *
+ * Why the `?? true` fallback: if the canvas has no WebGL context at all (e.g.
+ * the engine never initialised because `--enable-unsafe-swiftshader` is
+ * missing on a GPU-less runner — issue #1674), `getContext('webgl2')` returns
+ * `null`. Treating that as "lost" is the right outcome; we want the test to
+ * fail loudly instead of green-on-nothing.
+ */
+export async function assertCanvasContextAlive(
+  page: Page,
+  context: string,
+): Promise<void> {
+  const lost = await page.evaluate(() => {
+    const c = document.querySelector('#scene-canvas') as HTMLCanvasElement | null;
+    if (!c) return true;
+    const gl =
+      (c.getContext('webgl2') as WebGLRenderingContext | null) ??
+      (c.getContext('webgl') as WebGLRenderingContext | null);
+    if (!gl) return true;
+    return gl.isContextLost();
+  });
+  expect(
+    lost,
+    `[${context}] WebGL context is lost or missing — Filament can no longer ` +
+      `render to the canvas (GPU-process crash, or no context was ever created)`,
+  ).toBe(false);
+}
+
+/**
  * Drive an orbit gesture on the canvas: press, drag across, release.
  * Mirrors what a user does to rotate the camera. Returns nothing — the
  * caller re-samples the canvas afterwards to confirm the scene survived.
