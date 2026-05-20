@@ -454,9 +454,21 @@ open class DepthMeshNode(
      * Render-thread only (matches the rest of the upload path). Power-of-two growth amortises
      * the rare reallocations across many rebuilds — once the depth image's pixel count + edge
      * culling settle, this returns the same buffer on every call (#1810).
+     *
+     * **Cap (#1846):** the cached buffer is never reused above [MAX_UPLOAD_BUFFER_BYTES] (1 MB).
+     * A one-off oversized depth image (rare today, possible if a future ARCore exposes
+     * higher-res depth) would otherwise permanently inflate the cache — we prefer a fresh
+     * allocation in that case so the steady-state memory footprint matches the typical
+     * stride-4 mesh from a 160×90 depth image. Buffers under the cap retain the prior
+     * no-shrink reuse behaviour.
      */
     private fun acquireDirectBuffer(existing: ByteBuffer?, bytesNeeded: Int): ByteBuffer {
-        if (existing != null && existing.capacity() >= bytesNeeded) return existing
+        if (existing != null &&
+            existing.capacity() >= bytesNeeded &&
+            existing.capacity() <= MAX_UPLOAD_BUFFER_BYTES
+        ) {
+            return existing
+        }
         val capacity = nextPowerOfTwo(max(bytesNeeded, MIN_UPLOAD_BUFFER_BYTES))
         return ByteBuffer.allocateDirect(capacity).order(ByteOrder.nativeOrder())
     }
@@ -489,6 +501,16 @@ open class DepthMeshNode(
          * larger captures.
          */
         internal const val MIN_UPLOAD_BUFFER_BYTES: Int = 16 * 1024
+
+        /**
+         * Ceiling capacity (bytes) above which the cached upload [ByteBuffer]s are no longer
+         * reused — a one-off oversized depth image must not permanently inflate the cache
+         * (#1846). 1 MB comfortably covers a stride-1 vertex stream from a high-end 480×270
+         * depth image (~130k verts × 12 B = ~1.6 MB → triggers a fresh alloc), while a typical
+         * stride-4 mesh from a 160×90 capture stays well under the cap (~12 KB) and retains the
+         * no-shrink reuse path.
+         */
+        internal const val MAX_UPLOAD_BUFFER_BYTES: Int = 1 * 1024 * 1024
 
         private fun createInitialVertexBuffer(engine: Engine): VertexBuffer =
             VertexBuffer.Builder()
