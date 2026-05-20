@@ -9,16 +9,21 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +44,10 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.CloudAnchorNode as CloudAnchorNodeImpl
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.CLOUD_ANCHOR_DEFAULT_TTL_DAYS
+import io.github.sceneview.demo.common.CLOUD_ANCHOR_MAX_TTL_DAYS
+import io.github.sceneview.demo.common.rememberCloudAnchorPrivacyAccepted
+import io.github.sceneview.demo.common.rememberCloudAnchorRegistry
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.math.Position
@@ -85,6 +94,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     var localAnchor by remember { mutableStateOf<Anchor?>(null) }
     var cloudAnchorId by remember { mutableStateOf<String?>(null) }
     var resolveId by remember { mutableStateOf("") }
+    var anchorName by remember { mutableStateOf("") }
     var isTracking by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var hostedId by remember { mutableStateOf<String?>(null) }
@@ -105,7 +115,91 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     // the Host button just updated the status text and nothing hit the Cloud Anchor API.
     var cloudNode by remember { mutableStateOf<CloudAnchorNodeImpl?>(null) }
 
+    // Persistent registry of previously hosted Cloud Anchors so users can
+    // re-resolve a saved anchor across app launches. Mirrors the persistent-
+    // cloud-anchor flow shipped in arcore-android-sdk's
+    // `persistent_cloud_anchor_java` sample. See `CloudAnchorStore.kt`.
+    val registry = rememberCloudAnchorRegistry()
+    val (privacyAccepted, setPrivacyAccepted) = rememberCloudAnchorPrivacyAccepted()
+    // Prune entries whose TTL elapsed — they would return
+    // ERROR_RESOLVING_CLOUD_ANCHOR_ID_NOT_FOUND otherwise, which is confusing.
+    LaunchedEffect(Unit) { registry.pruneExpired() }
+    // Privacy-disclosure gate: hosting uploads visual feature points to
+    // Google's ARCore Cloud Anchor service, so we surface a one-time consent
+    // dialog before the first Host call (per ARCore's terms of service).
+    var pendingHost by remember { mutableStateOf(false) }
+    var pendingSave by remember { mutableStateOf(false) }
+    val showPrivacyDialog = !privacyAccepted && (pendingHost || pendingSave)
+
     val modelInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+
+    // Actually run the host call once the user has acknowledged the privacy
+    // disclosure. Persistent anchors are hosted with the maximum 365-day TTL so
+    // the registry can re-resolve them weeks later. ARCore caps `ttlDays` at
+    // [CLOUD_ANCHOR_MAX_TTL_DAYS] (since 1.33).
+    val hostAndOptionallySave: (Boolean) -> Unit = { save ->
+        val node = cloudNode
+        val session = arSession
+        val name = anchorName.trim()
+        when {
+            localAnchor == null -> Toast.makeText(
+                context, "Place an anchor first", Toast.LENGTH_SHORT
+            ).show()
+            node == null || session == null -> Toast.makeText(
+                context, "AR session not ready", Toast.LENGTH_SHORT
+            ).show()
+            save && name.isEmpty() -> Toast.makeText(
+                context, "Enter a name to save this anchor", Toast.LENGTH_SHORT
+            ).show()
+            else -> {
+                statusMessage = if (save) {
+                    "Hosting & saving \u201c$name\u201d\u2026"
+                } else {
+                    "Hosting anchor\u2026"
+                }
+                val ttlDays = if (save) CLOUD_ANCHOR_DEFAULT_TTL_DAYS else 1
+                node.host(session, ttlDays = ttlDays) { id, state ->
+                    if (save && state == Anchor.CloudAnchorState.SUCCESS && id != null) {
+                        registry.save(name, id, ttlDays)
+                    }
+                }
+            }
+        }
+    }
+
+    if (showPrivacyDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                pendingHost = false
+                pendingSave = false
+            },
+            title = { Text("Share AR view with Google?") },
+            text = {
+                Text(
+                    "Hosting a Cloud Anchor uploads visual feature points from " +
+                        "your surroundings to Google's ARCore Cloud Anchor service " +
+                        "so the same point in space can be recognised on other " +
+                        "devices. Make sure no sensitive content is in view before " +
+                        "you continue."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    setPrivacyAccepted(true)
+                    val save = pendingSave
+                    pendingHost = false
+                    pendingSave = false
+                    hostAndOptionallySave(save)
+                }) { Text("Allow & host") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingHost = false
+                    pendingSave = false
+                }) { Text("Cancel") }
+            }
+        )
+    }
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_cloud_anchor_title),
@@ -119,20 +213,8 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             ) {
                 Button(
                     onClick = {
-                        val node = cloudNode
-                        val session = arSession
-                        when {
-                            localAnchor == null -> Toast.makeText(
-                                context, "Place an anchor first", Toast.LENGTH_SHORT
-                            ).show()
-                            node == null || session == null -> Toast.makeText(
-                                context, "AR session not ready", Toast.LENGTH_SHORT
-                            ).show()
-                            else -> {
-                                statusMessage = "Hosting anchor\u2026"
-                                node.host(session)
-                            }
-                        }
+                        if (privacyAccepted) hostAndOptionallySave(false)
+                        else pendingHost = true
                     },
                     // Without an ARCore Cloud API key the SDK returns
                     // ERROR_NOT_AUTHORIZED silently \u2014 disable the action so the
@@ -142,6 +224,19 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                     enabled = hasArcoreApiKey && localAnchor != null && hostedId == null
                 ) {
                     Text("Host")
+                }
+
+                Button(
+                    onClick = {
+                        if (privacyAccepted) hostAndOptionallySave(true)
+                        else pendingSave = true
+                    },
+                    // Save = host with a 365-day TTL + persist locally so we can
+                    // re-resolve on next launch. Same API-key gate as Host.
+                    enabled = hasArcoreApiKey && localAnchor != null && hostedId == null
+                        && anchorName.isNotBlank()
+                ) {
+                    Text("Host & save")
                 }
 
                 Button(
@@ -180,6 +275,14 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             }
 
             OutlinedTextField(
+                value = anchorName,
+                onValueChange = { anchorName = it },
+                label = { Text("Anchor name (for saving)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
                 value = resolveId,
                 onValueChange = { resolveId = it },
                 label = { Text("Cloud Anchor ID") },
@@ -193,6 +296,36 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary
                 )
+            }
+
+            // Saved-anchor registry \u2014 re-resolve on next launch.
+            if (registry.entries.isNotEmpty()) {
+                Text(
+                    text = "Saved anchors (max TTL ${CLOUD_ANCHOR_MAX_TTL_DAYS} days):",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                Column {
+                    registry.entries.forEach { entry ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = entry.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedButton(onClick = {
+                                resolveId = entry.cloudAnchorId
+                            }) { Text("Use") }
+                            TextButton(onClick = { registry.remove(entry.name) }) {
+                                Text("Forget")
+                            }
+                        }
+                    }
+                }
             }
         }
     ) {

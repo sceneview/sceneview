@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- Cloud Anchor persistence in `ARCloudAnchorDemo` — a new `CloudAnchorStore` / `rememberCloudAnchorRegistry` helper persists `{name → cloudAnchorId, expiry}` in `SharedPreferences` so a hosted anchor can be re-resolved across app launches with the ARCore 365-day TTL maximum. Adds a one-time privacy disclosure dialog and a "Host & save" / saved-anchor list to the demo UI (#1734).

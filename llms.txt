@@ -1060,6 +1060,28 @@ val resolveFuture: ResolveCloudAnchorFuture = CloudAnchorNode.resolve(
     engine, session, cloudAnchorId
 ) { state, node -> /* ... */ }
 DisposableEffect(cloudAnchorId) { onDispose { resolveFuture.cancel() } }
+
+// CloudAnchorNode.host(session, ttlDays = 1..365, onCompleted)
+// ttlDays caps at 365 (ARCore 1.33+). Anchors with ttlDays > 1 are billed
+// as "persistent" cloud anchors in the Google Cloud Console and keep
+// resolving for the requested window before the backend GCs them.
+//
+// Persistent cloud-anchor pattern — store {name -> cloudAnchorId, expiry}
+// across launches, re-resolve on next start, prune expired entries. The
+// android-demo ships a SharedPreferences-backed helper that demos can
+// reuse as a copy-paste pattern:
+//
+//   import io.github.sceneview.demo.common.rememberCloudAnchorRegistry
+//   val registry = rememberCloudAnchorRegistry()
+//   LaunchedEffect(Unit) { registry.pruneExpired() }
+//   registry.save(name = "Living room", cloudAnchorId = id, ttlDays = 365)
+//   registry.entries // List<CloudAnchorEntry(name, cloudAnchorId, expiryEpochMillis)>
+//
+// **Privacy disclosure (REQUIRED):** hosting a Cloud Anchor uploads visual
+// feature points from the user's surroundings to Google's ARCore Cloud
+// Anchor service. Per ARCore's terms of service, apps MUST show a one-time
+// consent dialog before the first host call. See
+// `samples/android-demo/.../ARCloudAnchorDemo.kt` for the reference flow.
 ```
 
 **Persistence — `ttlDays`.** `CloudAnchorNode.host(session, ttlDays = 1)` accepts any value in `CloudAnchorNode.TTL_DAYS_RANGE` (= `1..365`, inclusive). Values outside this range throw `IllegalArgumentException`. Pick a short ttl for ephemeral collaborative sessions, a longer one (e.g. 7..30) for "leave behind" multi-day experiences.
