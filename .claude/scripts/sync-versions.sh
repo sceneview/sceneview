@@ -606,6 +606,76 @@ if [ -n "$KOTLIN_TOML" ]; then
     done
 fi
 
+# ─── 13. Extra off-map refs surfaced by the v4.11.0 audit (#1755) ─────────
+# More files that sat outside every previous scan and shipped stale through
+# v4.11.0. Wired in here so a future release catches them via --fix.
+echo -e "${CYAN}--- Off-map Version Refs (#1755 audit) ---${NC}"
+
+# samples/web-demo/package.json — Playwright device-QA suite package.json.
+# Distinct from samples/web-demo's Kotlin/JS Main.kt SDK_VERSION; this is the
+# Node test harness manifest and must track VERSION_NAME so the QA suite
+# advertises the same version as the demo it tests.
+WEB_DEMO_TESTS_PKG="$REPO_ROOT/samples/web-demo/package.json"
+if [ -f "$WEB_DEMO_TESTS_PKG" ]; then
+    V=$(python3 -c "import json; print(json.load(open('$WEB_DEMO_TESTS_PKG'))['version'])" 2>/dev/null || echo "MISSING")
+    add_check "samples/web-demo/package.json" "$V"
+fi
+
+# website-static/.well-known/llms.txt — the "(version X.Y.Z)" prose label on
+# the Maven artifacts line. Distinct from the artifact coordinate scan above
+# which catches the next two lines (`io.github.sceneview:sceneview:X.Y.Z`).
+# Also catches the `sceneview-web` prose `vX.Y.Z` references further down.
+WELLKNOWN_LLMS="$REPO_ROOT/website-static/.well-known/llms.txt"
+if [ -f "$WELLKNOWN_LLMS" ]; then
+    V=$(grep -m1 -oE 'Maven artifacts \(version [0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?\)' "$WELLKNOWN_LLMS" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check ".well-known/llms.txt (Maven prose)" "$V"
+    fi
+    # The two `sceneview-web vX.Y.Z` prose refs further down the file.
+    V=$(grep -m1 -oE 'sceneview-web` v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$WELLKNOWN_LLMS" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check ".well-known/llms.txt (sceneview-web prose)" "$V"
+    fi
+fi
+
+# ROADMAP.md — "## Current: vX.Y.Z stable" header + the "GitHub Release"
+# table row both encode the latest release version. Was 5 minors stale at
+# the v4.11.0 audit despite the doc itself instructing "must be refreshed
+# at every release".
+ROADMAP_MD="$REPO_ROOT/ROADMAP.md"
+if [ -f "$ROADMAP_MD" ]; then
+    V=$(grep -m1 -oE '^## Current: v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)? ' "$ROADMAP_MD" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "ROADMAP.md (Current version)" "$V"
+    fi
+    V=$(grep -m1 -oE 'GitHub Release \| \*\*v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)? stable\*\*' "$ROADMAP_MD" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "ROADMAP.md (GitHub Release row)" "$V"
+    fi
+fi
+
+# sceneview-web/README.md — the "sceneview.js vX.Y.Z" header + CDN URL
+# `sceneview-web@X.Y.Z/sceneview.js`. The Section-12 CDN scan covers
+# README.md and docs/docs/index.md but not this package-local README, which
+# sat at 3.6.0 for ~6 minor releases until the v4.11.0 audit caught it.
+SCENEVIEW_WEB_README="$REPO_ROOT/sceneview-web/README.md"
+if [ -f "$SCENEVIEW_WEB_README" ]; then
+    V=$(grep -m1 -oE 'sceneview\.js v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$SCENEVIEW_WEB_README" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "sceneview-web/README.md (sceneview.js header)" "$V"
+    fi
+    V=$(grep -m1 -oE 'sceneview-web@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$SCENEVIEW_WEB_README" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "sceneview-web/README.md (CDN @version)" "$V"
+    fi
+fi
+
 # ─── Report ────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}=== Version Alignment Report ===${NC}"
@@ -902,6 +972,77 @@ with open('$WEBSITE_JS_PKG', 'w') as f:
             fi
         done
     done
+
+    # ─── Fixes for off-map refs surfaced by the v4.11.0 audit (#1755) ──────
+
+    # samples/web-demo/package.json — Playwright test suite manifest.
+    if [ -f "$WEB_DEMO_TESTS_PKG" ]; then
+        CURRENT=$(python3 -c "import json; print(json.load(open('$WEB_DEMO_TESTS_PKG'))['version'])" 2>/dev/null || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            python3 -c "
+import json
+with open('$WEB_DEMO_TESTS_PKG', 'r') as f:
+    data = json.load(f)
+data['version'] = '$SOURCE_VERSION'
+with open('$WEB_DEMO_TESTS_PKG', 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+"
+            echo -e "  Fixed: samples/web-demo/package.json ($CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # website-static/.well-known/llms.txt — Maven prose label + sceneview-web prose.
+    if [ -f "$WELLKNOWN_LLMS" ]; then
+        # "Maven artifacts (version X.Y.Z)" prose label.
+        CURRENT=$(grep -m1 -oE 'Maven artifacts \(version [0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?\)' "$WELLKNOWN_LLMS" \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/Maven artifacts (version $CURRENT)/Maven artifacts (version $SOURCE_VERSION)/g" "$WELLKNOWN_LLMS"
+            echo -e "  Fixed: .well-known/llms.txt (Maven prose $CURRENT -> $SOURCE_VERSION)"
+        fi
+        # All `sceneview-web vX.Y.Z` prose references.
+        CURRENT=$(grep -m1 -oE 'sceneview-web` v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$WELLKNOWN_LLMS" \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/sceneview-web\` v$CURRENT/sceneview-web\` v$SOURCE_VERSION/g" "$WELLKNOWN_LLMS"
+            # Also catches "(sceneview-web vX.Y.Z)" form without the backtick.
+            _sed_inplace "s/(sceneview-web v$CURRENT)/(sceneview-web v$SOURCE_VERSION)/g" "$WELLKNOWN_LLMS"
+            echo -e "  Fixed: .well-known/llms.txt (sceneview-web prose $CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # ROADMAP.md — Current version header + GitHub Release row.
+    if [ -f "$ROADMAP_MD" ]; then
+        CURRENT=$(grep -m1 -oE '^## Current: v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)? ' "$ROADMAP_MD" \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/^## Current: v$CURRENT /## Current: v$SOURCE_VERSION /" "$ROADMAP_MD"
+            echo -e "  Fixed: ROADMAP.md (Current $CURRENT -> $SOURCE_VERSION)"
+        fi
+        CURRENT=$(grep -m1 -oE 'GitHub Release \| \*\*v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)? stable\*\*' "$ROADMAP_MD" \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/GitHub Release | \*\*v$CURRENT stable\*\*/GitHub Release | **v$SOURCE_VERSION stable**/" "$ROADMAP_MD"
+            echo -e "  Fixed: ROADMAP.md (GitHub Release row $CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # sceneview-web/README.md — JS API header + CDN @version pin.
+    if [ -f "$SCENEVIEW_WEB_README" ]; then
+        CURRENT=$(grep -m1 -oE 'sceneview\.js v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$SCENEVIEW_WEB_README" \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/sceneview\.js v$CURRENT/sceneview.js v$SOURCE_VERSION/g" "$SCENEVIEW_WEB_README"
+            echo -e "  Fixed: sceneview-web/README.md (JS header $CURRENT -> $SOURCE_VERSION)"
+        fi
+        CURRENT=$(grep -m1 -oE 'sceneview-web@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$SCENEVIEW_WEB_README" \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/sceneview-web@$CURRENT/sceneview-web@$SOURCE_VERSION/g" "$SCENEVIEW_WEB_README"
+            echo -e "  Fixed: sceneview-web/README.md (CDN @version $CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
 
     echo ""
     echo -e "${GREEN}Fixes applied. Re-run without --fix to verify.${NC}"
