@@ -240,7 +240,7 @@ struct SamplesTab: View {
             DemoItem(title: "Dynamic Sky", icon: "sun.horizon.fill", subtitle: "Time-of-day sun simulation", category: .lighting) {
                 DynamicSkyDemo()
             },
-            DemoItem(title: "Fog", icon: "cloud.fog.fill", subtitle: "Linear, exponential, and height fog", category: .lighting) {
+            DemoItem(title: "Fog", icon: "cloud.fog.fill", subtitle: "Linear and exponential fog", category: .lighting) {
                 FogDemo()
             },
 
