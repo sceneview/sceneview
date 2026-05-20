@@ -853,6 +853,12 @@ Requires the session depth mode set to `Config.DepthMode.AUTOMATIC` or `RAW_DEPT
 Returns `null` when depth is unavailable (not supported, not yet computed, camera not tracking,
 or no valid depth at that pixel). Cheap enough for tap-driven placement — do not call it per-pixel.
 
+**Threading:** call from the AR frame / GL-main thread — typically from
+`onSessionUpdated`, `onFrame` or a UI gesture callback that already runs there.
+The extension calls `Frame.acquireDepthImage16Bits()` and **must not** be invoked
+from a background coroutine. See also: `DepthMeshNode` (depth → renderable mesh)
+and `rememberDepthCollider` (depth → physics collider).
+
 ```kotlin
 data class DepthHitResult(
     val position: Position,   // world-space point on the real surface
@@ -1048,6 +1054,12 @@ Requires the session depth mode set to `Config.DepthMode.AUTOMATIC` or `RAW_DEPT
 stays empty until depth is available and the camera is tracking. The rebuild is costly — it runs
 on an interval (default 200 ms / 5 Hz), not every frame.
 
+**Threading:** the rebuild reads `Frame.acquireDepthImage16Bits()` and updates Filament — both
+must run on the AR frame / GL-main thread. The composable handles this for you (the internal
+`LaunchedEffect` posts the work to the right thread); **do not** call `node.rebuild()` or
+`node.latestSnapshot` consumers from a background coroutine. See also: `Frame.hitTestDepth`
+(raycast against the same depth image) and `rememberDepthCollider` (depth → physics collider).
+
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthMesh(
     refreshIntervalMs: Long = 200L,            // min ms between rebuilds; 5 Hz by default
@@ -1096,7 +1108,8 @@ internals.
 `rememberDepthCollider()` builds a static physics collider from the live ARCore depth mesh so
 `PhysicsNode` bodies bounce off the **real** floor / table / wall (Depth Lab "Collider", #1713).
 Thin physics wrapper over `DepthMeshNode` (#1739) — same edge-discontinuity culling, no curtain
-triangles across depth jumps.
+triangles across depth jumps. See also: `DepthMeshNode` (the underlying renderable mesh) and
+`Frame.hitTestDepth` (single-ray raycast against the same depth image).
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthCollider(
@@ -1328,21 +1341,24 @@ Requires `Config.GeospatialMode.ENABLED`, the ARCore Cloud API key + `ACCESS_FIN
 import io.github.sceneview.ar.node.TerrainAnchorNode
 
 // Inside `onSessionUpdated = { session, frame -> ... }` once Earth is TRACKING:
-val earth: Earth? = session.earth
-if (earth?.trackingState == TrackingState.TRACKING) {
-    val future: ResolveAnchorOnTerrainFuture = TerrainAnchorNode.resolve(
+if (session.earth?.trackingState == TrackingState.TRACKING) {
+    val future: ResolveAnchorOnTerrainFuture? = TerrainAnchorNode.resolve(
         engine = engine,
-        earth = earth,
-        latitude = 48.8584,           // Eiffel Tower
+        session = session,                 // resolve internally reads session.earth
+        latitude = 48.8584,                // Eiffel Tower
         longitude = 2.2945,
-        altitudeAboveTerrain = 1.5,    // metres above terrain (0 = on the ground)
-        eusQuaternion = Quaternion()   // east-up-south rotation
+        altitudeAboveTerrain = 1.5,        // metres above terrain (0 = on the ground)
+        eusQuaternion = Quaternion()       // east-up-south rotation
     ) { state: TerrainAnchorState, anchorNode: TerrainAnchorNode? ->
         if (state == TerrainAnchorState.SUCCESS && anchorNode != null) {
             // anchorNode IS-A AnchorNode — pin children via the standard composable:
             anchorNodes.add(anchorNode)
         }
     }
+    // Cancel the pending resolve on dispose to avoid running the network
+    // round-trip (and accruing Google Cloud billing) after the user has
+    // navigated away (#1768). Matches the CloudAnchorNode pattern.
+    DisposableEffect(future) { onDispose { future?.cancel() } }
 }
 ```
 
@@ -1372,14 +1388,17 @@ Requires:
 Same async-resolve API as `TerrainAnchorNode`, but the altitude is interpreted relative to the rooftop of the building at the given lat/lng (or the terrain if no building is detected).
 
 ```kotlin
-val future = RooftopAnchorNode.resolve(
+val future: ResolveAnchorOnRooftopFuture? = RooftopAnchorNode.resolve(
     engine = engine,
-    earth = earth,
+    session = session,              // resolve internally reads session.earth
     latitude = 48.8738,             // Arc de Triomphe
     longitude = 2.2950,
     altitudeAboveRooftop = 0.0,
     eusQuaternion = Quaternion()
 ) { state: RooftopAnchorState, anchorNode: RooftopAnchorNode? -> /* ... */ }
+// Cancel on dispose to drop the network round-trip + Google Cloud billing
+// after the user navigates away (#1768).
+DisposableEffect(future) { onDispose { future?.cancel() } }
 ```
 
 Same requirements as `TerrainAnchorNode`. Demo: `samples/android-demo/.../ARRooftopAnchorDemo.kt`.
