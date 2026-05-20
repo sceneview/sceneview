@@ -155,6 +155,11 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 recordings capture at full camera resolution instead of ARCore's
  *                                 low-res 640×480 CPU-stream default (#1065). Pass `null` to keep
  *                                 ARCore's stock default config.
+ * @param flashMode                ARCore v1.45+ Flash Mode — drives the device torch during the AR
+ *                                 session for low-light tracking ([Config.FlashMode.OFF] /
+ *                                 [Config.FlashMode.TORCH]). Default `OFF`. Support-gated —
+ *                                 unsupported devices / front-camera configs silently downgrade
+ *                                 to `OFF` (#1732).
  * @param sessionConfiguration     Callback to configure the ARCore [Session] and [Config].
  *                                 SceneView pre-sets `config.lightEstimationMode = ENVIRONMENTAL_HDR`
  *                                 (replacing ARCore's `AMBIENT_INTENSITY` default) BEFORE invoking
@@ -264,6 +269,23 @@ fun ARSceneView(
      * Pass `null` to keep ARCore's stock default config, or supply a custom selector.
      */
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
+    /**
+     * Drives the device torch during the AR session — ARCore v1.45+ Flash Mode API (#1732).
+     *
+     * - [Config.FlashMode.OFF] (default): no torch.
+     * - [Config.FlashMode.TORCH]: ARCore keeps the back-camera LED on while the session is
+     *   running. Helps tracking in low-light scenes; battery cost is significant — toggle off
+     *   once the user re-enters daylight.
+     *
+     * **Support-gated.** Flash Mode requires (a) ARCore 1.45+ runtime on-device, and (b) a
+     * back-camera config — front-camera sessions never expose a torch. If the device or the
+     * current camera config does not support the requested mode, SceneView silently downgrades
+     * the session to `OFF` (matching the auto-fallback used for unsupported `depthMode`). Apps
+     * that want to surface the support state to the user can call
+     * [com.google.ar.core.Session.isSupported] with a config carrying the desired
+     * [Config.FlashMode] directly.
+     */
+    flashMode: Config.FlashMode = Config.FlashMode.OFF,
     /**
      * Configures the session and verifies that the enabled features in the specified session
      * config are supported with the currently set camera config.
@@ -432,6 +454,7 @@ fun ARSceneView(
     val onTrackingFailureChangedRef = remember { AtomicReference(onTrackingFailureChanged) }
     val sessionConfigurationRef = remember { AtomicReference(sessionConfiguration) }
     val sessionCameraConfigRef = remember { AtomicReference(sessionCameraConfig) }
+    val flashModeRef = remember { AtomicReference(flashMode) }
 
     SideEffect {
         onSessionCreatedRef.set(onSessionCreated)
@@ -443,6 +466,7 @@ fun ARSceneView(
         onTrackingFailureChangedRef.set(onTrackingFailureChanged)
         sessionConfigurationRef.set(sessionConfiguration)
         sessionCameraConfigRef.set(sessionCameraConfig)
+        flashModeRef.set(flashMode)
     }
 
     val prevTrackingFailureRef = remember { AtomicReference<TrackingFailureReason?>(null) }
@@ -531,6 +555,10 @@ fun ARSceneView(
                     // still force DISABLED inside `ARSession.configure()` regardless. Set BEFORE
                     // invoking the user callback so callers can opt back into another mode.
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
+                    // Apply the caller-requested Flash Mode (#1732). Support is verified inside
+                    // ArSession.configure (silently downgraded to OFF if unsupported). Set BEFORE
+                    // the user callback so callers can opt back into a different mode.
+                    config.flashMode = flashModeRef.get() ?: Config.FlashMode.OFF
                     sessionConfigurationRef.get()?.invoke(session, config)
                 }
                 cameraStream?.let { scene.addEntity(it.entity) }
@@ -566,6 +594,19 @@ fun ARSceneView(
         onDispose {
             lifecycle.removeObserver(observer)
             arCore.destroy()
+        }
+    }
+
+    // ── Flash mode reactivity (#1732) ─────────────────────────────────────────────────────────────
+    //
+    // Allow apps to toggle the torch by recomposing with a new `flashMode` value. The session is
+    // reconfigured only when the actual value changes, so flipping unrelated state does not pay
+    // for an ARCore `configure()` call. Support gating + front-camera downgrade is centralised
+    // inside `ArSession.configure()`.
+    LaunchedEffect(flashMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.flashMode != flashMode) {
+            session.configure { config -> config.flashMode = flashMode }
         }
     }
 
@@ -1191,7 +1232,7 @@ private fun ARScenePreview(modifier: Modifier) {
  * @deprecated Use [ARSceneView] instead. This function is a direct alias provided for backward
  * compatibility with code written against earlier SceneView versions.
  */
-@Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, sessionConfiguration, planeRenderer, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))
+@Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, flashMode, sessionConfiguration, planeRenderer, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))
 @Composable
 fun ARScene(
     modifier: Modifier = Modifier,
@@ -1203,6 +1244,7 @@ fun ARScene(
     sessionFeatures: Set<Session.Feature> = setOf(),
     playbackDataset: File? = null,
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
+    flashMode: Config.FlashMode = Config.FlashMode.OFF,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     planeRenderer: Boolean = true,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
@@ -1241,6 +1283,7 @@ fun ARScene(
     sessionFeatures = sessionFeatures,
     playbackDataset = playbackDataset,
     sessionCameraConfig = sessionCameraConfig,
+    flashMode = flashMode,
     sessionConfiguration = sessionConfiguration,
     planeRenderer = planeRenderer,
     cameraStream = cameraStream,

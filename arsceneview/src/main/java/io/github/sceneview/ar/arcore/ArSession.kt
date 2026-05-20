@@ -73,6 +73,24 @@ class ARSession(
             config.depthMode = Config.DepthMode.DISABLED
         }
 
+        // Flash mode is only available on a subset of devices (and only with a BACK camera config
+        // — front-camera sessions never expose a torch). ARCore throws if a session is configured
+        // with an unsupported FlashMode, so we silently fall back to OFF here, matching the
+        // depthMode auto-fallback above (#1732).
+        //
+        // ARCore doesn't ship an `isFlashModeSupported(FlashMode)` getter (cf. depthMode etc.),
+        // so we test the whole config via `Session.isSupported(config)`. Logic is centralised in
+        // [resolveFlashMode] so it can be exercised without a live Session.
+        config.flashMode = resolveFlashMode(config.flashMode) { mode ->
+            // Temporarily mutate the config to probe support, then restore — `isSupported` is a
+            // read-only check against the native session, so probing is side-effect free.
+            val previous = config.flashMode
+            config.flashMode = mode
+            val supported = isSupported(config)
+            config.flashMode = previous
+            supported
+        }
+
         // Light estimation is not usable with front camera
         if (cameraConfig.facingDirection == CameraConfig.FacingDirection.FRONT
             && config.lightEstimationMode != Config.LightEstimationMode.DISABLED
@@ -135,6 +153,25 @@ class ARSession(
         }
     }
 }
+
+/**
+ * Pure-Kotlin support-gate for [Config.FlashMode] used by [ARSession.configure] (#1732).
+ *
+ * Returns the requested mode if the session supports it; otherwise [Config.FlashMode.OFF].
+ *
+ * Extracted so the gate can be unit-tested without an ARCore [Session] instance — the JNI-bound
+ * `Session.isFlashModeSupported()` is impossible to mock under pure-JVM tests.
+ *
+ * @param requested The mode the caller asked for (typically from `Config.flashMode`).
+ * @param isSupported Adapter returning `true` if the session supports `requested` (typically
+ *   `session::isFlashModeSupported`).
+ */
+internal fun resolveFlashMode(
+    requested: Config.FlashMode,
+    isSupported: (Config.FlashMode) -> Boolean
+): Config.FlashMode =
+    if (requested == Config.FlashMode.OFF || isSupported(requested)) requested
+    else Config.FlashMode.OFF
 
 /**
  * Define the session config used by ARCore

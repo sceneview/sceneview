@@ -120,6 +120,7 @@ fun ARSceneView(
     sessionFeatures: Set<Session.Feature> = setOf(),
     playbackDataset: File? = null,                 // Replay an MP4 recorded via ARRecorder. See "AR Recording & Playback".
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,  // Picks the highest-res 30fps BACK config so ARRecorder records at full resolution (#1065). Pass null for ARCore's stock default.
+    flashMode: Config.FlashMode = Config.FlashMode.OFF,  // ARCore v1.45+ Flash Mode — OFF/TORCH. Reactive; unsupported devices/front-camera silently downgrade to OFF (#1732).
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     planeRenderer: Boolean = true,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
