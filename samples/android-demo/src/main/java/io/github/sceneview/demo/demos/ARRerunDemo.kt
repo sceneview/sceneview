@@ -59,6 +59,7 @@ import io.github.sceneview.ar.rerun.RerunBridge
 import io.github.sceneview.ar.rerun.rememberRerunBridge
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
@@ -261,17 +262,8 @@ fun ARRerunDemo(onBack: () -> Unit) {
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 Text(
-                    text = trackingFailureReason?.let { reason ->
-                        when (reason) {
-                            TrackingFailureReason.NONE -> "Point your camera at a surface"
-                            TrackingFailureReason.BAD_STATE -> "AR session error"
-                            TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
-                            TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
-                            TrackingFailureReason.INSUFFICIENT_FEATURES ->
-                                "Not enough detail — try a textured surface"
-                            TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
-                        }
-                    } ?: stringResource(R.string.ar_status_scanning),
+                    text = trackingFailureMessage(trackingFailureReason)
+                        ?: stringResource(R.string.ar_status_scanning),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier

@@ -46,6 +46,7 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -340,16 +341,8 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
                     geospatialUnavailable != null ->
                         "${geospatialUnavailable!!} \u2014 needs outdoor area with Street View coverage + Cloud API key"
                     geometryCount > 0 -> "Rendering $geometryCount structure(s)"
-                    !isTracking -> trackingFailureReason?.let { reason ->
-                        when (reason) {
-                            TrackingFailureReason.NONE -> "Initializing geospatial\u2026"
-                            TrackingFailureReason.BAD_STATE -> "AR session error"
-                            TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
-                            TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
-                            TrackingFailureReason.INSUFFICIENT_FEATURES -> "Not enough detail"
-                            TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
-                        }
-                    } ?: "Scanning environment\u2026"
+                    !isTracking -> trackingFailureMessage(trackingFailureReason)
+                        ?: "Scanning environment\u2026"
                     else -> "Looking for streetscape geometry\u2026"
                 }
                 Text(

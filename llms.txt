@@ -180,6 +180,32 @@ fun MyARScreen() {
 }
 ```
 
+### Tracking-failure messages (user-facing strings)
+
+`TrackingFailureReason` carries the *why* of a tracking loss — surface it to the user with an actionable hint, not a silent black screen. The `android-demo` sample ships a copy-paste helper that maps every reason to a localised string:
+
+```kotlin
+import io.github.sceneview.demo.common.trackingFailureMessage
+
+var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+onTrackingFailureChanged = { failure = it }
+
+// In a status banner:
+val hint = trackingFailureMessage(failure) // null when there is no failure
+Text(hint ?: "Point your camera at a flat surface")
+```
+
+| Reason                     | User-facing hint                                          |
+|----------------------------|-----------------------------------------------------------|
+| `BAD_STATE`                | AR session error — try restarting the demo                |
+| `INSUFFICIENT_LIGHT`       | Not enough light — try a brighter area                    |
+| `EXCESSIVE_MOTION`         | Moving too fast — slow down                               |
+| `INSUFFICIENT_FEATURES`    | Not enough detail — point at a more textured surface      |
+| `CAMERA_UNAVAILABLE`       | Camera unavailable — close other camera apps              |
+| `NONE` / `null`            | (helper returns `null` — caller picks the idle hint)      |
+
+Ported from arcore-android-sdk's `common/helpers/TrackingStateHelper.java`.
+
 ---
 
 ## SceneScope — Node DSL
