@@ -14,7 +14,11 @@ plugins {
 plugins.withType(org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin) {
     extensions.getByType(org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension).tap {
         resolution("serialize-javascript", ">=7.0.3")
-        resolution("webpack", ">=5.104.1")
+        // 5.107.0 moved `lib/ModuleNotFoundError` → `lib/errors/ModuleNotFoundError`,
+        // which kotlin-web-helpers still requires by the old path → every
+        // jsBrowserProductionWebpack task crashes. Cap at <5.107.0 until
+        // kotlin-web-helpers ships a fix.
+        resolution("webpack", ">=5.104.1 <5.107.0")
         resolution("webpack-dev-server", ">=5.2.1")
         resolution("path-to-regexp", ">=0.2.2")
         resolution("brace-expansion", ">=1.1.13")
