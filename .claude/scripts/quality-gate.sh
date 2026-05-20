@@ -77,6 +77,21 @@ LLMS_V=$(grep -m1 'io\.github\.sceneview:sceneview:' llms.txt | grep -oE '[0-9]+
 README_V=$(grep -m1 'io\.github\.sceneview:sceneview:' README.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "MISSING")
 [ "$README_V" = "$SOURCE_VERSION" ] && check "README.md version" "PASS" "$README_V" || check "README.md version" "FAIL" "Expected $SOURCE_VERSION, got $README_V"
 
+# llms.txt mirror drift (issue #1847) — docs/docs/llms.txt and the MCP bundle
+# `mcp/src/generated/llms-txt.ts` must stay byte-identical to root `llms.txt`.
+# The drift detectors used to live only in `sync-versions.sh`, which is NOT
+# called by this gate, so PR #1822 was able to land DepthHitResultNode docs
+# in root `llms.txt` without updating either mirror. Wire the dedicated
+# helper here so the PR-blocking gate catches the divergence.
+if [ -x ".claude/scripts/check-llms-drift.sh" ]; then
+    if bash .claude/scripts/check-llms-drift.sh > /tmp/check-llms-drift.log 2>&1; then
+        check "llms.txt mirrors in sync" "PASS" ""
+    else
+        DRIFT_COUNT=$(grep -c '^MISMATCH:' /tmp/check-llms-drift.log 2>/dev/null || echo "?")
+        check "llms.txt mirrors in sync" "FAIL" "$DRIFT_COUNT mirror(s) drifted; see /tmp/check-llms-drift.log"
+    fi
+fi
+
 echo ""
 
 # ─── 3. Security ──────────────────────────────────────────────────────
