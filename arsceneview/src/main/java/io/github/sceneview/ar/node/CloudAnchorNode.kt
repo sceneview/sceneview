@@ -54,7 +54,8 @@ open class CloudAnchorNode constructor(
     var hostTask: HostCloudAnchorFuture? = null
 
     /**
-     * Hosts a Cloud Anchor based on the [Anchor].
+     * Hosts a Cloud Anchor based on the [Anchor], returning the underlying ARCore
+     * [HostCloudAnchorFuture] so callers can cancel the pending request.
      *
      * **Persistence — `ttlDays`.** ARCore lets the host specify how many days the cloud anchor
      * lives on Google's ARCore API before being auto-deleted. The valid range is **1..365** days
@@ -70,10 +71,21 @@ open class CloudAnchorNode constructor(
      * policy: https://developers.google.com/ar/data-privacy. See the ARCloudAnchorDemo sample
      * for a reference disclosure UI.
      *
+     * Cloud anchor hosting hits Google Cloud and accrues a billing event whether the
+     * caller is still listening or not. **Always cancel the returned future when the
+     * UI scope is leaving** — e.g. from `DisposableEffect.onDispose { future.cancel() }`
+     * in a Compose host. The internal `hostTask` field is still cleared on cancel and
+     * on completion so the node lifecycle (`destroy()` → `cancelHost()`) keeps working
+     * without callers having to.
+     *
      * @param ttlDays    The lifetime of the anchor in days. Must be in `1..365` (inclusive);
      *                   any value outside this range will throw [IllegalArgumentException].
      *                   Defaults to `1` for parity with the legacy ARCore default.
-     * @param onCompleted Called when the task completes successfully or with an error.
+     * @param onCompleted Called when the task completes successfully or with an error
+     *                    — **not invoked if the future is cancelled** (matches ARCore).
+     *
+     * @return the [HostCloudAnchorFuture]; cancel via [Future.cancel] to stop observing
+     *         and free the network request.
      *
      * @throws IllegalArgumentException if [ttlDays] is not in `1..365`.
      * @see [Session.hostCloudAnchorAsync] for more details.
@@ -82,16 +94,18 @@ open class CloudAnchorNode constructor(
         session: Session,
         ttlDays: Int = 1,
         onCompleted: ((cloudAnchorId: String?, state: CloudAnchorState) -> Unit)? = null
-    ) {
+    ): HostCloudAnchorFuture {
         require(ttlDays in TTL_DAYS_RANGE) {
             "ttlDays must be in $TTL_DAYS_RANGE (ARCore Cloud Anchor persistence limit), was $ttlDays."
         }
         cancelHost()
-        hostTask = session.hostCloudAnchorAsync(anchor, ttlDays) { cloudAnchorId, state ->
+        val future = session.hostCloudAnchorAsync(anchor, ttlDays) { cloudAnchorId, state ->
             onHosted(cloudAnchorId, state)
             onCompleted?.invoke(cloudAnchorId, state)
             hostTask = null
         }
+        hostTask = future
+        return future
     }
 
     open fun onHosted(cloudAnchorId: String?, state: CloudAnchorState) {
@@ -120,12 +134,24 @@ open class CloudAnchorNode constructor(
         val TTL_DAYS_RANGE: IntRange = 1..365
 
         /**
-         * Resolves a Cloud Anchor
+         * Resolves a Cloud Anchor, returning the underlying ARCore
+         * [com.google.ar.core.ResolveCloudAnchorFuture] so callers can cancel the
+         * pending request.
          *
-         * The [anchor] is replaced with a new anchor returned by [Session.resolveCloudAnchor].
+         * Cloud anchor resolution hits Google Cloud and accrues a billing event
+         * whether the caller is still listening or not. **Always cancel the returned
+         * future when the UI scope is leaving** — e.g. from
+         * `DisposableEffect.onDispose { future.cancel() }` in a Compose host.
+         *
+         * The [anchor] is replaced with a new anchor returned by [Session.resolveCloudAnchorAsync].
          *
          * @param cloudAnchorId The Cloud Anchor ID of the Cloud Anchor.
-         * @param onCompleted Called when the task completes successfully or with an error.
+         * @param onCompleted   Called when the task completes successfully or with an
+         *                      error — **not invoked if the future is cancelled**
+         *                      (matches ARCore).
+         *
+         * @return the [com.google.ar.core.ResolveCloudAnchorFuture]; cancel via
+         *         [com.google.ar.core.Future.cancel] to stop observing.
          *
          * @see [Session.resolveCloudAnchorAsync] for more details.
          */
@@ -134,10 +160,11 @@ open class CloudAnchorNode constructor(
             session: Session,
             cloudAnchorId: String,
             onCompleted: (state: CloudAnchorState, node: CloudAnchorNode?) -> Unit
-        ) = session.resolveCloudAnchorAsync(cloudAnchorId) { anchor, state ->
-            onCompleted(state, anchor?.takeIf { !state.isError }?.let {
-                CloudAnchorNode(engine, it, cloudAnchorId)
-            })
-        }
+        ): com.google.ar.core.ResolveCloudAnchorFuture =
+            session.resolveCloudAnchorAsync(cloudAnchorId) { anchor, state ->
+                onCompleted(state, anchor?.takeIf { !state.isError }?.let {
+                    CloudAnchorNode(engine, it, cloudAnchorId)
+                })
+            }
     }
 }
