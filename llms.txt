@@ -999,6 +999,61 @@ LaunchedEffect(Unit) {
 }
 ```
 
+### DepthMeshNode — reify ARCore depth as a renderable Filament mesh
+
+`rememberDepthMesh()` + `DepthMeshNode` turn the live ARCore environment depth image into an
+actual Filament mesh in the scene, with **edge-discontinuity culling** so triangles don't stretch
+across depth jumps. This is the foundational primitive that unblocks: shadows cast by virtual
+objects onto the real world, scan / pulse / x-ray materials over real geometry, and depth-driven
+physics colliders.
+
+Requires the session depth mode set to `Config.DepthMode.AUTOMATIC` or `RAW_DEPTH_ONLY`. The mesh
+stays empty until depth is available and the camera is tracking. The rebuild is costly — it runs
+on an interval (default 200 ms / 5 Hz), not every frame.
+
+```kotlin
+@Composable fun ARSceneScope.rememberDepthMesh(
+    refreshIntervalMs: Long = 200L,            // min ms between rebuilds; 5 Hz by default
+    stride: Int = 4,                            // pixel stride between vertices (higher = coarser)
+    edgeThresholdMeters: Float = 0.10f,         // depth-jump above which triangles are culled
+    materialInstance: MaterialInstance? = null, // e.g. a transparent shadow-receiver material
+    builder: RenderableManager.Builder.() -> Unit = {},
+    onMeshRebuilt: ((DepthMeshSnapshot) -> Unit)? = null,
+): DepthMeshNode
+
+@Composable fun ARSceneScope.DepthMeshNode(
+    node: DepthMeshNode,
+    apply: DepthMeshNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null,
+)
+
+data class DepthMeshSnapshot(
+    val positions: FloatArray,   // camera-space, flat-packed [x0,y0,z0, x1,y1,z1, ...]
+    val indices: IntArray,       // triangle indices (3 ints per triangle)
+    val width: Int,              // grid width in vertices
+    val height: Int,             // grid height in vertices
+    val worldTransform: Transform, // camera pose at rebuild time
+    val timestampMs: Long,
+)
+```
+
+```kotlin
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    sessionConfiguration = { _, config ->
+        config.depthMode = Config.DepthMode.AUTOMATIC
+    }
+) {
+    val depthMesh = rememberDepthMesh()  // 5 Hz refresh, stride 4, 10 cm edge threshold
+    DepthMeshNode(depthMesh)             // attaches it to the scene as a renderable
+}
+```
+
+The `onMeshRebuilt` callback (and `node.latestSnapshot`) expose the freshly-computed vertex /
+index buffers in camera space so downstream consumers — a depth-driven physics collider, a
+debug-overlay point cloud, an exporter — can read the geometry without poking Filament
+internals.
+
 ### AugmentedImageNode — image tracking
 ```kotlin
 @Composable fun AugmentedImageNode(
