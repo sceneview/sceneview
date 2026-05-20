@@ -201,6 +201,10 @@ import java.util.concurrent.atomic.AtomicReference
  * @param onSessionResumed         Called each time the session is resumed.
  * @param onSessionPaused          Called each time the session is paused.
  * @param onSessionFailed          Called if ARCore fails to initialize (missing ARCore or permission).
+ *                                 Receives a raw [Exception]. Prefer [onSessionFailure] for
+ *                                 typed, exhaustive `when` matching (#1759).
+ * @param onSessionFailure         Typed [ARSessionFailure] callback (#1759). Fires alongside
+ *                                 [onSessionFailed]; pick the one that matches your codebase.
  * @param onSessionUpdated         Called once per AR frame before the scene is updated.
  * @param onTrackingFailureChanged Called when the camera [TrackingFailureReason] changes.
  * @param onGestureListener        Gesture callbacks — tap, double-tap, drag, pinch, etc.
@@ -427,6 +431,18 @@ fun ARSceneView(
      */
     onSessionFailed: ((exception: Exception) -> Unit)? = null,
     /**
+     * Typed equivalent of [onSessionFailed] (#1759). Receives an [ARSessionFailure] sealed-class
+     * instance instead of a raw [Exception], so the callback can do an exhaustive `when` over
+     * every ARCore failure mode (install, permission, camera, cloud-anchor, …) — the compiler
+     * catches the day a new failure category is added and the app forgot to handle it.
+     *
+     * **Both callbacks fire** when set — [onSessionFailed] runs first (raw `Exception`),
+     * [onSessionFailure] runs second (mapped). Apps migrating off the raw form can wire the
+     * typed callback alongside and gradually delete the legacy one; setting only
+     * [onSessionFailure] is the new recommended path.
+     */
+    onSessionFailure: ((failure: ARSessionFailure) -> Unit)? = null,
+    /**
      * Optional dedicated callback for failures that originate from the
      * [playbackDataset] binding — typically `PlaybackFailedException` from ARCore when the
      * MP4 cannot be opened, parsed, or already has an active recording.
@@ -487,6 +503,7 @@ fun ARSceneView(
     val onSessionResumedRef = remember { AtomicReference(onSessionResumed) }
     val onSessionPausedRef = remember { AtomicReference(onSessionPaused) }
     val onSessionFailedRef = remember { AtomicReference(onSessionFailed) }
+    val onSessionFailureRef = remember { AtomicReference(onSessionFailure) }
     val onPlaybackFailedRef = remember { AtomicReference(onPlaybackFailed) }
     val onSessionUpdatedRef = remember { AtomicReference(onSessionUpdated) }
     val onTrackingFailureChangedRef = remember { AtomicReference(onTrackingFailureChanged) }
@@ -499,6 +516,7 @@ fun ARSceneView(
         onSessionResumedRef.set(onSessionResumed)
         onSessionPausedRef.set(onSessionPaused)
         onSessionFailedRef.set(onSessionFailed)
+        onSessionFailureRef.set(onSessionFailure)
         onPlaybackFailedRef.set(onPlaybackFailed)
         onSessionUpdatedRef.set(onSessionUpdated)
         onTrackingFailureChangedRef.set(onTrackingFailureChanged)
@@ -583,18 +601,26 @@ fun ARSceneView(
                 // resume(), and configure() happens here, then resume() runs immediately
                 // after this callback returns. File path takes precedence over Uri (the
                 // mutually-exclusive `require` above prevents both from being set).
+                val dispatchPlaybackFailure: (Exception) -> Unit = { e ->
+                    // Prefer the dedicated playback callback when wired (audit #876).
+                    // Otherwise fan out to onSessionFailed (raw) + onSessionFailure (typed, #1759).
+                    if (onPlaybackFailedRef.get() != null) {
+                        onPlaybackFailedRef.get()?.invoke(e)
+                    } else {
+                        onSessionFailedRef.get()?.invoke(e)
+                        onSessionFailureRef.get()?.invoke(ARSessionFailure.from(e))
+                    }
+                }
                 val bindFile: () -> Unit = {
                     initialPlaybackDataset?.let { file ->
                         try {
                             session.setPlaybackDataset(file.absolutePath)
                         } catch (e: PlaybackFailedException) {
-                            // Prefer the dedicated playback callback when wired (audit #876),
-                            // fall back to onSessionFailed for backwards compatibility.
-                            (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                            dispatchPlaybackFailure(e)
                         } catch (e: Exception) {
                             // Defensive — ARCore may throw IllegalStateException if the session
                             // has already been resumed elsewhere. Don't crash; surface to caller.
-                            (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                            dispatchPlaybackFailure(e)
                         }
                     }
                 }
@@ -603,9 +629,9 @@ fun ARSceneView(
                         try {
                             session.setPlaybackDatasetUri(uri)
                         } catch (e: PlaybackFailedException) {
-                            (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                            dispatchPlaybackFailure(e)
                         } catch (e: Exception) {
-                            (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                            dispatchPlaybackFailure(e)
                         }
                     }
                 }
@@ -641,7 +667,10 @@ fun ARSceneView(
                 onSessionPausedRef.get()?.invoke(session)
             },
             onArSessionFailed = { exception ->
+                // Dual dispatch (#1759): raw callback first for backwards compat, then the
+                // typed one so apps can wire either or both.
                 onSessionFailedRef.get()?.invoke(exception)
+                onSessionFailureRef.get()?.invoke(ARSessionFailure.from(exception))
             },
             onSessionConfigChanged = { session, _ ->
                 isFrontFaceWindingInvertedRef.set(
