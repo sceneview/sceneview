@@ -49,6 +49,7 @@ import io.github.sceneview.demo.demos.TextureStreamingDemo
 import io.github.sceneview.demo.demos.ReflectionProbesDemo
 import io.github.sceneview.demo.demos.SecondaryCameraDemo
 import io.github.sceneview.demo.demos.DebugOverlayDemo
+import io.github.sceneview.demo.demos.OcclusionMaterialDemo
 import io.github.sceneview.demo.demos.DoublePendulumDemo
 import io.github.sceneview.demo.demos.ARImageDemo
 import io.github.sceneview.demo.demos.ARFaceDemo
@@ -340,6 +341,7 @@ fun DemoRouter(id: String, onBack: () -> Unit) {
         "reflection-probes" -> ReflectionProbesDemo(onBack)
         "secondary-camera" -> SecondaryCameraDemo(onBack)
         "debug-overlay" -> DebugOverlayDemo(onBack)
+        "occlusion-material" -> OcclusionMaterialDemo(onBack)
         // Augmented Reality
         "ar-placement" -> ARPlacementDemo(onBack)
         "ar-image" -> ARImageDemo(onBack)

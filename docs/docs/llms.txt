@@ -1614,6 +1614,14 @@ class MaterialLoader(engine: Engine, context: Context) {
     fun createUnlitColorInstance(color: androidx.compose.ui.graphics.Color): MaterialInstance
     fun createUnlitColorInstance(color: Int): MaterialInstance
 
+    // Invisible depth-writing material — punches the depth buffer, emits no colour.
+    // RealityKit `OcclusionMaterial` / Sceneform `makeOcclusionMaterial` parity.
+    // Use for virtual aquarium walls, window/door cutouts on photogrammetry, proxy
+    // walls that should hide virtual content behind them without rendering themselves.
+    // For AR depth from the camera image, use ARCameraStream.isDepthOcclusionEnabled
+    // instead (per-pixel depth from ARCore, not a static mesh).
+    fun createOcclusionInstance(): MaterialInstance
+
     // Texture material
     fun createTextureInstance(texture: Texture, ...): MaterialInstance
 

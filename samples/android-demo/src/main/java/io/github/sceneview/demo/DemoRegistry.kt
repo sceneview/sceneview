@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material.icons.filled.Visibility
@@ -165,6 +166,7 @@ val ALL_DEMOS = listOf(
     DemoEntry("reflection-probes", R.string.demo_reflection_probes_title, R.string.demo_reflection_probes_subtitle, DemoCategory.ADVANCED, Icons.Filled.BlurOn),
     DemoEntry("secondary-camera", R.string.demo_secondary_camera_title, R.string.demo_secondary_camera_subtitle, DemoCategory.ADVANCED, Icons.Filled.PictureInPicture),
     DemoEntry("debug-overlay", R.string.demo_debug_overlay_title, R.string.demo_debug_overlay_subtitle, DemoCategory.ADVANCED, Icons.Filled.Speed),
+    DemoEntry("occlusion-material", R.string.demo_occlusion_material_title, R.string.demo_occlusion_material_subtitle, DemoCategory.ADVANCED, Icons.Filled.VisibilityOff),
     // Augmented Reality
     DemoEntry("ar-placement", R.string.demo_ar_placement_title, R.string.demo_ar_placement_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.TouchApp),
     DemoEntry("ar-image", R.string.demo_ar_image_title, R.string.demo_ar_image_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Image),

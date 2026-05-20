@@ -220,6 +220,10 @@
     <string name="demo_materials_subtitle">PBR metallic and roughness spectrum</string>
     <string name="demo_materials_loading">Streaming material…</string>
     <string name="demo_materials_credit">by %1$s · CC-BY 4.0</string>
+    <string name="demo_occlusion_material_title">Occlusion Material</string>
+    <string name="demo_occlusion_material_subtitle">Invisible depth-writing surface hides content behind it</string>
+    <string name="demo_occlusion_material_toggle">Occluder visible</string>
+    <string name="demo_occlusion_material_explainer">A plane sits between the camera and the helmet. Toggle ON: a debug-tinted plate shows where the plane is. Toggle OFF: the same plane wears the occlusion material — invisible, but it still hides what is behind it.</string>
     <string name="demo_post_processing_title">Post Processing</string>
     <string name="demo_post_processing_subtitle">SSAO, anti-aliasing, and tone mapping</string>
     <string name="demo_custom_mesh_title">Custom Mesh</string>
