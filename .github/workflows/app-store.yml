@@ -328,7 +328,19 @@ jobs:
           print(f"Target App Store versionString: {version_string}")
 
           # 3. Get or create the app store version
-          r = requests.get(f"{BASE}/apps/{app_id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW", headers=headers)
+          # Embed the linked appStoreVersionSubmission in the response via
+          # `include` (JSON:API). This is the only Apple-supported way for
+          # this service-account tier to learn the submission's ID — both
+          # the to-one related-resource endpoint
+          # (`/appStoreVersions/{id}/appStoreVersionSubmission`) and a
+          # filter on the top-level collection
+          # (`/appStoreVersionSubmissions?filter[appStoreVersion]={id}`)
+          # were tested in #1831 v1/v2 and return 404 / 403 respectively
+          # for our key.
+          r = requests.get(
+              f"{BASE}/apps/{app_id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW&include=appStoreVersionSubmission",
+              headers=headers,
+          )
           versions = r.json().get("data", [])
           # Pick a version record that already targets our versionString,
           # otherwise fall back to the first editable one if any, otherwise
@@ -336,9 +348,11 @@ jobs:
           # previously-hardcoded "4.0.3" trap where any unrelated editable
           # version would get hijacked for an unrelated build.
           version_id = None
+          matched_version = None
           for v in versions:
               if v.get("attributes", {}).get("versionString") == version_string:
                   version_id = v["id"]
+                  matched_version = v
                   print(f"Using matching version record: {version_id}")
                   break
           if not version_id:
@@ -357,6 +371,7 @@ jobs:
               )
               if stale:
                   version_id = stale["id"]
+                  matched_version = stale
                   stale_vs = stale.get("attributes", {}).get("versionString")
                   r = requests.patch(
                       f"{BASE}/appStoreVersions/{version_id}",
@@ -538,31 +553,30 @@ jobs:
           # "Allowed operation is: DELETE". DELETE the existing submission
           # first so the POST below is idempotent (#1831).
           #
-          # The first attempt (#1831 v1) used the JSON:API-conventional
-          # `/relationships/appStoreVersionSubmission` endpoint which Apple's
-          # ASC API does not expose (returns 404, silently no-op). The
-          # authoritative endpoint per Apple's docs is the related-resource
-          # form `/appStoreVersions/{id}/appStoreVersionSubmission`. We try
-          # that first; if it 404s or returns no data, fall back to filtering
-          # the top-level submissions collection by appStoreVersion.
+          # Both probe attempts in earlier #1831 versions failed because of
+          # service-account permission limits:
+          #   v1 used `/appStoreVersions/{id}/relationships/...` (404 — not
+          #     exposed by Apple).
+          #   v2 used `/appStoreVersionSubmissions?filter[...]` (403 — not
+          #     permitted for this key) and the related-resource form
+          #     `/appStoreVersions/{id}/appStoreVersionSubmission` (404 —
+          #     ditto when no submission attached, but also when one IS
+          #     attached if the key can't read it directly).
+          #
+          # v3 uses Apple-standard JSON:API `include`: the initial GET of
+          # the appStoreVersions list (above) passes
+          # `&include=appStoreVersionSubmission`, which embeds the linked
+          # submission's `id` inside the version's `relationships` block.
+          # No extra round-trip, no probe endpoint required.
           existing_sub_id = None
-          for probe_url in (
-              f"{BASE}/appStoreVersions/{version_id}/appStoreVersionSubmission",
-              f"{BASE}/appStoreVersionSubmissions?filter[appStoreVersion]={version_id}&limit=1",
-          ):
+          if matched_version:
               try:
-                  g = requests.get(probe_url, headers=headers)
-                  print(f"Probe {probe_url} → {g.status_code}")
-                  if g.status_code == 200:
-                      data = (g.json() or {}).get("data")
-                      if isinstance(data, list):
-                          existing_sub_id = data[0]["id"] if data else None
-                      elif isinstance(data, dict):
-                          existing_sub_id = data.get("id")
-                      if existing_sub_id:
-                          break
+                  rel = matched_version.get("relationships", {}).get("appStoreVersionSubmission", {})
+                  data = rel.get("data")
+                  if isinstance(data, dict):
+                      existing_sub_id = data.get("id")
               except Exception as e:
-                  print(f"::warning::Pre-submit probe {probe_url} failed: {e}")
+                  print(f"::warning::Failed to read submission relationship from version record: {e}")
           if existing_sub_id:
               try:
                   d = requests.delete(f"{BASE}/appStoreVersionSubmissions/{existing_sub_id}", headers=headers)
