@@ -7,6 +7,60 @@ description: "Migration guides for SceneView: 3.6.x to 4.0.0 Rerun integration, 
 
 ---
 
+## SceneView 4.10.x to 4.11.0 (Android) — `CloudAnchorNode.host()` returns `HostCloudAnchorFuture`
+
+### `CloudAnchorNode.host()` now returns the underlying ARCore `HostCloudAnchorFuture` ([#1768](https://github.com/sceneview/sceneview/pull/1768))
+
+Pre-v4.11.0, `CloudAnchorNode.host(session, ttlDays, onCompleted)` returned `Unit`
+and stored the in-flight future privately — apps had no way to cancel a pending
+host request when the UI scope was leaving. The network round-trip ran to
+completion regardless, accruing a Google Cloud billing event whether or not the
+caller was still listening.
+
+v4.11.0 surfaces the underlying ARCore [`HostCloudAnchorFuture`](https://developers.google.com/ar/reference/java/com/google/ar/core/HostCloudAnchorFuture)
+as the return value so callers can cancel via `future.cancel()` — typically from
+`DisposableEffect.onDispose { future?.cancel() }`. The same change applies to
+`CloudAnchorNode.resolve(...)`, `TerrainAnchorNode.resolve(...)`, and
+`RooftopAnchorNode.resolve(...)`.
+
+**Billing rationale.** Each pending host/resolve future is **one Google Cloud
+ARCore API request**. Without explicit cancellation, the request runs to
+completion (a few seconds, sometimes longer for cross-continent resolves) and
+the billing event lands on your Google Cloud project even after the user has
+navigated away from the screen that started it. For apps that surface a "Place
+anchor" CTA inside a navigable hierarchy (Compose / Fragment / Activity stack)
+this is a measurable cost on cancelled user flows — see
+[Google's ARCore Cloud Anchors pricing](https://developers.google.com/ar/develop/cloud-anchors-faq#pricing).
+Cancellation does **not** invoke the `onCompleted` callback (matches ARCore
+semantics), so observers stay clean.
+
+**Action — source compatibility.** Most call sites are unaffected — the new
+return type is purely additive. The only break is for callers that wrote
+`val unused: Unit = node.host(...)` or any test that asserts the return type is
+`Unit`. Adjust the local binding and (recommended) cancel the future on dispose:
+
+```kotlin
+// pre-v4.11.0
+DisposableEffect(anchorNode) {
+    anchorNode.host(session, ttlDays = 7) { id, state -> /* ... */ }
+    onDispose { /* nothing to cancel — the future was internal */ }
+}
+
+// v4.11.0 — capture the future, cancel on dispose to free the billing event
+DisposableEffect(anchorNode) {
+    val future = anchorNode.host(session, ttlDays = 7) { id, state -> /* ... */ }
+    onDispose { future.cancel() }
+}
+```
+
+The same pattern applies to `CloudAnchorNode.resolve(engine, session, id) { ... }`,
+`TerrainAnchorNode.resolve(...)`, and `RooftopAnchorNode.resolve(...)`. The
+node's own `destroy()` lifecycle still calls `cancelHost()` internally, so an
+app that doesn't cancel explicitly still cleans up on scene disposal — but it
+pays the round-trip until destroy fires.
+
+---
+
 ## SceneView 4.3.x to 4.4.0 (iOS) — true camera motion + skybox renders + mirror retired
 
 ### `Environment.showSkybox = true` now actually paints the HDR as background ([PR #1215](https://github.com/sceneview/sceneview/pull/1215))

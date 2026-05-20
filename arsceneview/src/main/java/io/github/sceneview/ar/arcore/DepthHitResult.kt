@@ -59,6 +59,14 @@ private const val NORMAL_SAMPLE_RADIUS = 2
  *
  * @param xPx screen X in pixels.
  * @param yPx screen Y in pixels.
+ *
+ * @return a single [DepthHitResult] — the real-world point under the queried pixel — or `null`
+ *         when depth is unavailable. **This is intentionally not a list, unlike
+ *         [Frame.hitTest]**: the depth at one screen pixel is by definition a unique point in
+ *         space (the depth image stores one Z per pixel), whereas a standard
+ *         [Frame.hitTest] casts a ray that can pierce multiple parallel planes / surfaces at
+ *         increasing distances. A list return would always have at most one element here, so
+ *         the API is flattened to `DepthHitResult?` for ergonomics.
  */
 fun Frame.hitTestDepth(xPx: Float, yPx: Float): DepthHitResult? {
     val camera = camera

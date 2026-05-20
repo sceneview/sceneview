@@ -37,6 +37,7 @@ import io.github.sceneview.ar.node.AnchorNode as AnchorNodeImpl
 import io.github.sceneview.ar.node.AugmentedFaceNode as AugmentedFaceNodeImpl
 import io.github.sceneview.ar.node.AugmentedImageNode as AugmentedImageNodeImpl
 import io.github.sceneview.ar.node.CloudAnchorNode as CloudAnchorNodeImpl
+import io.github.sceneview.ar.node.DepthHitResultNode as DepthHitResultNodeImpl
 import io.github.sceneview.ar.node.DepthMeshNode as DepthMeshNodeImpl
 import io.github.sceneview.ar.node.DepthMeshSnapshot
 import io.github.sceneview.ar.physics.DepthCollider
@@ -309,6 +310,55 @@ class ARSceneScope internal constructor(
     ) {
         val node = remember(engine) {
             HitResultNodeImpl(engine = engine, hitTest = hitTest).apply(apply)
+        }
+        NodeLifecycle(node, content)
+    }
+
+    // ── DepthHitResultNode ────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A node that follows real-time **depth-based** AR hit-test results at the given view
+     * coordinates — Compose-idiomatic mirror of [HitResultNode] for placement against arbitrary
+     * real-world geometry rather than against detected planes / points (#1814).
+     *
+     * On each [Frame] update, the node performs a depth hit test at ([xPx], [yPx]) in view space
+     * via [io.github.sceneview.ar.arcore.hitTestDepth] and moves to the world-space surface point
+     * under that pixel. Unlike [HitResultNode], a depth hit test resolves a point on *any* visible
+     * geometry the depth camera can see (sofa, slope, cluttered desk) without waiting for ARCore
+     * to grow a plane there, and the underlying [io.github.sceneview.ar.arcore.DepthHitResult]
+     * carries a real surface normal — read it via [DepthHitResultNodeImpl.depthHitResult] if you
+     * want to align the placed object with the surface orientation.
+     *
+     * Requires the session depth mode set to [com.google.ar.core.Config.DepthMode.AUTOMATIC] or
+     * [com.google.ar.core.Config.DepthMode.RAW_DEPTH_ONLY]. When depth is unavailable, the node
+     * keeps its last known pose (same fallback contract as [HitResultNode]).
+     *
+     * ```kotlin
+     * ARSceneView(
+     *     sessionConfiguration = { _, config ->
+     *         config.depthMode = Config.DepthMode.AUTOMATIC
+     *     }
+     * ) {
+     *     DepthHitResultNode(xPx = viewWidth / 2f, yPx = viewHeight / 2f) {
+     *         CubeNode(size = Float3(0.05f))
+     *     }
+     * }
+     * ```
+     *
+     * @param xPx       View X coordinate in pixels for the depth hit test.
+     * @param yPx       View Y coordinate in pixels for the depth hit test.
+     * @param apply     Additional imperative configuration on the underlying [DepthHitResultNodeImpl].
+     * @param content   Optional child nodes declared in a [NodeScope].
+     */
+    @Composable
+    fun DepthHitResultNode(
+        xPx: Float,
+        yPx: Float,
+        apply: DepthHitResultNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null,
+    ) {
+        val node = remember(engine, xPx, yPx) {
+            DepthHitResultNodeImpl(engine = engine, xPx = xPx, yPx = yPx).apply(apply)
         }
         NodeLifecycle(node, content)
     }
