@@ -139,6 +139,7 @@ fun ARSceneView(
     onSessionResumed: ((session: Session) -> Unit)? = null,
     onSessionPaused: ((session: Session) -> Unit)? = null,
     onSessionFailed: ((exception: Exception) -> Unit)? = null,
+    onSessionFailure: ((failure: ARSessionFailure) -> Unit)? = null,  // Typed sealed-class equivalent — see "Error Handling" (#1759).
     onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
     onTrackingFailureChanged: ((trackingFailureReason: TrackingFailureReason?) -> Unit)? = null,
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
@@ -1897,11 +1898,43 @@ SceneView(surfaceType = SurfaceType.TextureSurface, isOpaque = false)  // Textur
 | Model not showing | `rememberModelInstance` returns null | Always null-check: `model?.let { ModelNode(...) }` |
 | Black screen | No environment / no light | Add `mainLightNode` and `environment` |
 | Crash on background thread | Filament JNI on wrong thread | Use `rememberModelInstance` or `Dispatchers.Main` |
-| AR not starting | Missing CAMERA permission or ARCore | Handle `onSessionFailed`, check `ArCoreApk.checkAvailability()` |
+| AR not starting | Missing CAMERA permission or ARCore | Handle `onSessionFailure`, check `ArCoreApk.checkAvailability()` |
 | Model too big/small | Model units mismatch | Use `scaleToUnits` parameter |
 | Oversaturated AR camera | Wrong tone mapper | Use `rememberARView(engine)` (Linear tone mapper) |
 | Crash on empty bounding box | Filament 1.70+ enforcement | SceneView auto-sanitizes; update to latest version |
 | Material crash on dispose | Entity still in scene | SceneView handles cleanup order automatically |
+
+### `ARSessionFailure` — typed AR error taxonomy (#1759)
+
+`onSessionFailed: (Exception) -> Unit` lumps all 25 ARCore exception subclasses into a single `Exception`. Apps that want to retry vs fallback vs "install ARCore" vs "open Settings" need exhaustive `when` matching — string-matching on exception messages is fragile. Wire `onSessionFailure: (ARSessionFailure) -> Unit` instead (it fires alongside `onSessionFailed`, so legacy callers keep working).
+
+```kotlin
+ARSceneView(
+    onSessionFailure = { failure ->
+        when (failure) {
+            is ARSessionFailure.ArCoreNotInstalled   -> showInstallArCoreCta()
+            is ARSessionFailure.UserDeclinedInstall  -> showRetryCta()
+            is ARSessionFailure.ApkTooOld            -> showUpdateArCoreCta()
+            is ARSessionFailure.SdkTooOld            -> reportToCrashlytics(failure.cause)
+            is ARSessionFailure.DeviceNotCompatible  -> disableArEntryPoints()
+            is ARSessionFailure.FineLocationMissing  -> requestLocationPermission()
+            is ARSessionFailure.CameraNotAvailable   -> showCameraBusyCta()
+            is ARSessionFailure.CloudAnchorsNotConfigured -> showCloudKeySetupHelp()
+            is ARSessionFailure.ResourceExhausted    -> showCloudQuotaErrorCta()
+            is ARSessionFailure.ImageInsufficientQuality -> showBetterReferenceImageCta()
+            is ARSessionFailure.Other                -> reportToCrashlytics(failure.cause)
+            else -> showGenericRetryCta()
+        }
+    }
+) { /* … */ }
+```
+
+Subtypes are organised into Install/availability, Permissions, Camera, Quota/runtime, Cloud Anchor, Augmented image, Recording/playback, Session/config, and an `Other` catch-all for forward compatibility with future ARCore exception classes. Every subtype preserves the original `Exception` on `.cause`, so apps that need the raw stack trace can still get at it.
+
+**Per-node error states** that already ship:
+- `CloudAnchorNode.onHosted: (cloudAnchorId: String?, state: CloudAnchorState) -> Unit` — receives the specific `CloudAnchorState` (`ERROR_NOT_AUTHORIZED`, `ERROR_RESOURCE_EXHAUSTED`, `ERROR_HOSTING_SERVICE_UNAVAILABLE`, …) instead of a binary `isError`. Pair with the resolve overload's same signature.
+- `AugmentedImageNode.trackingMethod: TrackingMethod` + `onTrackingMethodChanged: ((TrackingMethod) -> Unit)?` — observes `FULL_TRACKING` vs `LAST_KNOWN_POSE` transitions for image tracking robustness.
+- `Config.addAugmentedImage` throws `ImageInsufficientQualityException` — caught by SceneView and routed through `ARSessionFailure.ImageInsufficientQuality` to your `onSessionFailure` callback.
 
 ---
 
