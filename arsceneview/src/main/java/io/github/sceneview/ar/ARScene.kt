@@ -490,8 +490,17 @@ fun ARSceneView(
     // is freed too — closing the lifecycle leak that the umbrella audit flagged
     // for long AR sessions with intermittent estimation.
     val builtIndirectLightRef = remember { AtomicReference<IndirectLight?>(null) }
-    DisposableEffect(engine, builtIndirectLightRef) {
+    DisposableEffect(engine, builtIndirectLightRef, scene) {
         onDispose {
+            // Defensive ordering (#1814): clear the scene's [IndirectLight] reference BEFORE
+            // freeing it. The window between [Engine.destroyIndirectLight] and Compose teardown
+            // could otherwise have an in-flight `onARFrame` (still queued on the GL thread) walk
+            // [scene.indirectLight] and dereference a freed native handle. Setting `null` first
+            // unblocks the destroy: Filament's renderer simply skips IBL sampling when the slot
+            // is null. If a third party overwrote `scene.indirectLight` with their own resource
+            // after we last set it, this null-out replaces *their* reference too — and that is
+            // fine: we're tearing the scene down, the slot owner is leaving anyway.
+            scene.indirectLight = null
             builtIndirectLightRef.getAndSet(null)?.let {
                 engine.safeDestroyIndirectLight(it)
             }

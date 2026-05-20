@@ -866,6 +866,7 @@ data class DepthHitResult(
     val distance: Float       // camera-to-point distance, meters
 )
 
+// Single result (not a list) — depth at one pixel is unique, unlike Frame.hitTest's ray cast.
 fun Frame.hitTestDepth(xPx: Float, yPx: Float): DepthHitResult?
 ```
 
@@ -883,6 +884,32 @@ ARSceneView(
         }
     )
 )
+```
+
+### DepthHitResultNode — Compose-idiomatic depth-hit placement
+
+For continuous, declarative placement against any real-world surface, use `DepthHitResultNode` —
+the depth-image mirror of `HitResultNode`. Each frame it re-runs `Frame.hitTestDepth` at the
+configured pixel and moves to the resulting world-space point. When depth is unavailable, the
+node keeps its last known pose (same fallback contract as `HitResultNode`).
+
+```kotlin
+@Composable fun ARSceneScope.DepthHitResultNode(
+    xPx: Float,
+    yPx: Float,
+    apply: DepthHitResultNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null,
+)
+```
+
+```kotlin
+ARSceneView(
+    sessionConfiguration = { _, config -> config.depthMode = Config.DepthMode.AUTOMATIC }
+) {
+    DepthHitResultNode(xPx = viewWidth / 2f, yPx = viewHeight / 2f) {
+        CubeNode(size = Float3(0.05f))
+    }
+}
 ```
 
 ### Depth visualization — false-color depth overlay
