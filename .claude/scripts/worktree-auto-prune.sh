@@ -12,6 +12,11 @@
 #   - NEVER removes a worktree whose branch is NOT merged. "Merged" means
 #     either ahead-count == 0 vs origin/main, OR the branch's associated
 #     PR is MERGED on GitHub (squash-merge case — ahead-count stays > 0).
+#   - ABORTS if `origin/main` cannot be refreshed via `git fetch` (silent
+#     staleness is the #1 cause of false ahead=0 → spurious deletion of
+#     unmerged work). Pass --allow-stale to opt back into local refs.
+#   - With --check-active-sessions, also skips worktrees whose path appears
+#     in any running `claude*` process command line.
 #   - Uses plain `git worktree remove` (fails safe on dirty/locked trees),
 #     never `--force`.
 #   - Defaults to interactive prompt; --yes for non-interactive; --dry-run
@@ -20,6 +25,8 @@
 # Usage:
 #   bash .claude/scripts/worktree-auto-prune.sh --dry-run --keep "$(git rev-parse --show-toplevel)"
 #   bash .claude/scripts/worktree-auto-prune.sh --yes  --keep "$PATH_A" --keep "$PATH_B"
+#   bash .claude/scripts/worktree-auto-prune.sh --yes  --check-active-sessions
+#   bash .claude/scripts/worktree-auto-prune.sh --yes  --allow-stale   # offline
 #
 # Tracking: https://github.com/sceneview/sceneview/issues/1242
 #
@@ -32,6 +39,8 @@ set -euo pipefail
 DRY_RUN=false
 ASSUME_YES=false
 KEEP_PATHS=()
+ALLOW_STALE=false
+CHECK_ACTIVE_SESSIONS=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -39,8 +48,10 @@ while [ $# -gt 0 ]; do
         --yes)     ASSUME_YES=true; shift ;;
         --keep)    KEEP_PATHS+=("${2:-}"); shift 2 ;;
         --keep=*)  KEEP_PATHS+=("${1#--keep=}"); shift ;;
+        --allow-stale)           ALLOW_STALE=true; shift ;;
+        --check-active-sessions) CHECK_ACTIVE_SESSIONS=true; shift ;;
         -h|--help)
-            sed -n '2,28p' "$0"
+            sed -n '2,33p' "$0"
             exit 0
             ;;
         *)
@@ -101,6 +112,17 @@ pr_is_merged() {
     [ "$state" = "MERGED" ]
 }
 
+# is_active_session <path> — true if any running `claude*` process has the
+# worktree path on its command line. Heuristic: Claude Code passes the cwd
+# and tool args containing the worktree path, so a fixed-string match
+# against `pgrep -af claude` is a low-cost, low-false-positive signal.
+# Only consulted when --check-active-sessions is set.
+is_active_session() {
+    local p="$1"
+    command -v pgrep >/dev/null 2>&1 || return 1
+    pgrep -af claude 2>/dev/null | grep -qF -- "$p"
+}
+
 WORKTREES_DIR="$REPO_ROOT/.claude/worktrees"
 
 if [ ! -d "$WORKTREES_DIR" ]; then
@@ -118,14 +140,28 @@ if [ "${#KEEP_ABS[@]:-0}" -gt 0 ]; then
 fi
 echo ""
 
-# Make sure origin/main is recent enough to compute ahead-count.
-git fetch --quiet origin main 2>/dev/null || \
-    echo -e "${YELLOW}Warning: couldn't fetch origin/main — using local refs.${NC}"
+# Refresh origin/main before computing any ahead-count. A stale `origin/main`
+# is the #1 root cause of a branch with unmerged work being misclassified as
+# `ahead=0` and then deleted (see https://github.com/sceneview/sceneview —
+# session report 2026-05-20, `claude/v4.11.1-patch`). Default: abort if the
+# fetch fails. Pass `--allow-stale` to opt back into local refs (offline use).
+if ! git fetch --quiet origin main 2>/dev/null; then
+    if [ "$ALLOW_STALE" = "true" ]; then
+        echo -e "${YELLOW}Warning: fetch origin/main failed — proceeding with local refs (--allow-stale).${NC}"
+    else
+        echo -e "${RED}Error: couldn't fetch origin/main.${NC}" >&2
+        echo "  A stale origin/main can make worktrees with unmerged work" >&2
+        echo "  look like ahead=0 and be wrongly removed." >&2
+        echo "  Re-run with --allow-stale to use local refs anyway." >&2
+        exit 1
+    fi
+fi
 
 CANDIDATES=()
 SKIPPED_UNMERGED=()
 SKIPPED_KEEP=()
 SKIPPED_DIRTY=()
+SKIPPED_ACTIVE=()
 
 # Iterate worktrees registered with git (avoids stale dirs that aren't
 # real worktrees, and respects locked-state).
@@ -151,6 +187,11 @@ while IFS= read -r line; do
                         # is mid-work. NEVER prune; data-loss risk (#1278).
                         elif [ -n "$(git -C "$current_path" status --porcelain 2>/dev/null)" ]; then
                             SKIPPED_DIRTY+=("$current_path (${current_branch:-detached} — uncommitted changes)")
+                        # Active-session guard (opt-in via --check-active-sessions):
+                        # a worktree path showing up in a live claude process is
+                        # almost certainly mid-work even if currently clean.
+                        elif [ "$CHECK_ACTIVE_SESSIONS" = "true" ] && is_active_session "$current_path"; then
+                            SKIPPED_ACTIVE+=("$current_path (${current_branch:-detached} — active claude process)")
                         elif [ -n "${current_branch:-}" ]; then
                             # ahead-count: commits in branch not yet on origin/main
                             ahead=$(git rev-list --count "origin/main..$current_branch" 2>/dev/null || echo "unknown")
@@ -194,6 +235,14 @@ if [ "${#SKIPPED_DIRTY[@]}" -gt 0 ]; then
     echo ""
     echo -e "${YELLOW}--- Skipped (uncommitted changes — DO NOT delete) ---${NC}"
     for entry in "${SKIPPED_DIRTY[@]}"; do
+        echo "  $entry"
+    done
+fi
+
+if [ "${#SKIPPED_ACTIVE[@]}" -gt 0 ]; then
+    echo ""
+    echo -e "${YELLOW}--- Skipped (active claude session — DO NOT delete) ---${NC}"
+    for entry in "${SKIPPED_ACTIVE[@]}"; do
         echo "  $entry"
     done
 fi
