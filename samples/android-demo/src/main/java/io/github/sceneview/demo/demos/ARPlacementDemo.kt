@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
+import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
@@ -161,6 +163,20 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     // Keep a reference to the latest Frame for hit testing in the gesture callback.
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
+    // Placement reticle state (#1882). The reticle continuously hit-tests at
+    // screen center; `reticleHit` is the most-recent successful hit, surfaced
+    // back into Compose state by `ReticleNode`'s `onHitResultChanged`. Tap-to-
+    // place reads this value so the placed model lands exactly where the
+    // reticle was — what-you-see-is-what-you-get placement. Cleared when the
+    // ray misses every trackable, which drives the "aim at a surface" hint.
+    var reticleHit by remember { mutableStateOf<HitResult?>(null) }
+    // View size in pixels — captured via `onSizeChanged` and used to position
+    // the library-level `ReticleNode` at screen center. Initial `null` keeps
+    // the reticle out of the scene until layout completes (first non-zero
+    // size triggers the recomp that inserts the node).
+    var viewWidthPx by remember { mutableStateOf(0) }
+    var viewHeightPx by remember { mutableStateOf(0) }
+
     // Active-gesture label (shown while the user is mid-manipulating a placed
     // model). `null` ⇒ no overlay. Mirrors the GestureEditingDemo pattern so
     // both demos share the same visual language for "what is my touch doing
@@ -263,7 +279,16 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    // Track view size so we can position the placement reticle
+                    // at screen center each frame (#1882). The reticle Composable
+                    // is only emitted once `viewWidthPx`/`viewHeightPx` are
+                    // non-zero — see the content block below.
+                    .onSizeChanged { size ->
+                        viewWidthPx = size.width
+                        viewHeightPx = size.height
+                    },
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
@@ -291,9 +316,18 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                             return@rememberOnGestureListener
                         }
 
-                        // Perform an ARCore hit test at the tap coordinates.
-                        val hitResults = frame.hitTest(event)
-                        val hit = hitResults.firstOrNull { result ->
+                        // Placement strategy: prefer the reticle's last-known hit
+                        // (what-you-see-is-what-you-get placement, #1882) so the
+                        // model lands exactly where the on-screen marker is. Fall
+                        // back to a tap-coordinate hit test when the reticle has
+                        // no hit (e.g. user disabled the reticle in settings) so
+                        // existing tap behaviour still works.
+                        val hit = reticleHit?.takeIf {
+                            val trackable = it.trackable
+                            trackable is Plane &&
+                                trackable.isPoseInPolygon(it.hitPose) &&
+                                it.distance <= 5.0f
+                        } ?: frame.hitTest(event).firstOrNull { result ->
                             val trackable = result.trackable
                             trackable is Plane &&
                                 trackable.isPoseInPolygon(result.hitPose) &&
@@ -343,6 +377,41 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                     onScaleEnd = { _, _, _ -> gestureMode = null }
                 )
             ) {
+                // Placement reticle (#1882). Centred on the live view in pixels —
+                // only emitted once `onSizeChanged` has measured the surface so
+                // the hit test runs against a real screen coordinate. The
+                // visual marker is a small unlit cyan disc; the library-level
+                // `ReticleNode` handles auto-hide on no-hit and surfaces the
+                // current hit back into Compose state via `onHitResultChanged`,
+                // which the `onSingleTapConfirmed` handler above consults to
+                // place the model exactly under the reticle.
+                if (viewWidthPx > 0 && viewHeightPx > 0) {
+                    val reticleMaterial = remember(materialLoader) {
+                        materialLoader.createUnlitColorInstance(
+                            Color(red = 0.40f, green = 0.85f, blue = 1.00f, alpha = 0.85f)
+                        )
+                    }
+                    ReticleNode(
+                        xPx = viewWidthPx / 2f,
+                        yPx = viewHeightPx / 2f,
+                        // Place against real planes only — reflects the tap-to-
+                        // place rule above so the reticle never points at an
+                        // instant-placement ghost the user can't actually place on.
+                        instantPlacementPoint = false,
+                        onHitResultChanged = { reticleHit = it }
+                    ) {
+                        // Flat disc (1 mm thick, 4 cm radius) lying along the
+                        // surface normal that ARCore returned. The reticle node
+                        // already orients itself along the surface, so the
+                        // disc renders parallel to the detected plane.
+                        CylinderNode(
+                            radius = 0.04f,
+                            height = 0.002f,
+                            materialInstance = reticleMaterial
+                        )
+                    }
+                }
+
                 // One AnchorNode + ModelNode per placement. Wrapping each in `key(id)` gives
                 // every placement its own remember slot, so the rememberModelInstance call
                 // inside loads a fresh, independent ModelInstance per anchor (Filament instances
@@ -420,6 +489,33 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                         text = gestureMode ?: "",
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
+
+            // Reticle "aim at a surface" hint (#1882). Visible only while
+            // tracking IS working but the reticle has no hit — distinguishes
+            // "ARCore isn't ready yet" (the scanning indicator below) from
+            // "ARCore is ready but you need to point at a real surface". The
+            // gap is small (just below the count + gesture pills) so the user
+            // sees the prompt without occluding the camera view.
+            AnimatedVisibility(
+                visible = isTracking && reticleHit == null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(top = 96.dp)
+            ) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.6f),
+                    contentColor = Color.White,
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text(
+                        text = "Aim at a surface",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelMedium
                     )
                 }
             }

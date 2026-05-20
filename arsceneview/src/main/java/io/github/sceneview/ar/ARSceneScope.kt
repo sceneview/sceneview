@@ -43,6 +43,7 @@ import io.github.sceneview.ar.node.DepthMeshSnapshot
 import io.github.sceneview.ar.physics.DepthCollider
 import io.github.sceneview.ar.node.HitResultNode as HitResultNodeImpl
 import io.github.sceneview.ar.node.PoseNode as PoseNodeImpl
+import io.github.sceneview.ar.node.ReticleNode as ReticleNodeImpl
 import io.github.sceneview.ar.node.RooftopAnchorNode as RooftopAnchorNodeImpl
 import io.github.sceneview.ar.node.StreetscapeGeometryNode as StreetscapeGeometryNodeImpl
 import io.github.sceneview.ar.node.TerrainAnchorNode as TerrainAnchorNodeImpl
@@ -310,6 +311,111 @@ class ARSceneScope internal constructor(
     ) {
         val node = remember(engine) {
             HitResultNodeImpl(engine = engine, hitTest = hitTest).apply(apply)
+        }
+        NodeLifecycle(node, content)
+    }
+
+    // ── ReticleNode ───────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Placement reticle — a [HitResultNode] specialised for "tap to place" UX
+     * that continuously hit-tests at a fixed screen-space coordinate (typically
+     * screen center) and auto-hides when no valid surface is found (#1882).
+     *
+     * Unlike the bare [HitResultNode], the reticle:
+     *  - flips [io.github.sceneview.node.Node.isVisible] to `false` when the ray
+     *    misses every trackable, so the visual marker doesn't ghost at the last
+     *    known pose;
+     *  - surfaces every hit-result change (including transitions to / from
+     *    `null`) via [onHitResultChanged], so the caller can drive an
+     *    "aim at a surface" hint and capture the last-known hit on tap-to-place
+     *    without attaching a duplicate hit test in [ARScene.onSessionUpdated].
+     *
+     * Provide a visual marker as the [content] block — a small `CylinderNode`
+     * disc, a `SphereNode`, or any other geometry — and it will follow the
+     * reticle's pose, snapped to the surface normal that ARCore returned. See
+     * `samples/android-demo` `ARPlacementDemo` for a reference implementation
+     * paired with the corresponding tap-to-place handler.
+     *
+     * ```kotlin
+     * var reticleHit by remember { mutableStateOf<HitResult?>(null) }
+     * ARSceneView(
+     *     modifier = Modifier.fillMaxSize(),
+     *     onGestureListener = rememberOnGestureListener(
+     *         onSingleTapConfirmed = { _, _ ->
+     *             reticleHit?.createAnchor()?.let { placedAnchors.add(it) }
+     *         }
+     *     )
+     * ) {
+     *     ReticleNode(
+     *         xPx = viewWidth / 2f,
+     *         yPx = viewHeight / 2f,
+     *         onHitResultChanged = { reticleHit = it }
+     *     ) {
+     *         CylinderNode(radius = 0.04f, height = 0.002f, materialInstance = reticleMaterial)
+     *     }
+     * }
+     * ```
+     *
+     * @param xPx                    View X coordinate in pixels for the hit test (screen center
+     *                               on most placement UIs).
+     * @param yPx                    View Y coordinate in pixels for the hit test.
+     * @param planeTypes             Which plane types to include in results.
+     * @param point                  Include [Point] trackable results.
+     * @param depthPoint             Include depth-based hit results.
+     * @param instantPlacementPoint  Include instant placement results — off by default for the
+     *                               reticle so the visible marker only appears on real geometry.
+     * @param trackingStates         Only accept results where the trackable has these states.
+     * @param pointOrientationModes  Filter by point orientation mode.
+     * @param planePoseInPolygon     Require the pose to lie inside the plane polygon.
+     * @param predicate              Custom filter applied to each candidate [HitResult].
+     * @param onHitResultChanged     Invoked whenever the resolved hit changes (including
+     *                               `null` ↔ value transitions).
+     * @param apply                  Additional imperative configuration on the underlying
+     *                               [ReticleNodeImpl].
+     * @param content                Optional child nodes (the visual marker geometry) declared
+     *                               in a [NodeScope].
+     */
+    @Composable
+    fun ReticleNode(
+        xPx: Float,
+        yPx: Float,
+        planeTypes: Set<Plane.Type> = Plane.Type.entries.toSet(),
+        point: Boolean = true,
+        depthPoint: Boolean = true,
+        instantPlacementPoint: Boolean = false,
+        trackingStates: Set<TrackingState> = setOf(TrackingState.TRACKING),
+        pointOrientationModes: Set<Point.OrientationMode> = setOf(
+            Point.OrientationMode.ESTIMATED_SURFACE_NORMAL
+        ),
+        planePoseInPolygon: Boolean = true,
+        predicate: ((HitResult) -> Boolean)? = null,
+        onHitResultChanged: ((HitResult?) -> Unit)? = null,
+        apply: ReticleNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null
+    ) {
+        val node = remember(engine, xPx, yPx) {
+            ReticleNodeImpl(
+                engine = engine,
+                xPx = xPx,
+                yPx = yPx,
+                planeTypes = planeTypes,
+                point = point,
+                depthPoint = depthPoint,
+                instantPlacementPoint = instantPlacementPoint,
+                trackingStates = trackingStates,
+                pointOrientationModes = pointOrientationModes,
+                planePoseInPolygon = planePoseInPolygon,
+                predicate = predicate,
+                onHitResultChanged = onHitResultChanged
+            ).apply(apply)
+        }
+        // Keep the live `onHitResultChanged` callback in sync with the latest
+        // composition — without this, a recomposed callback (e.g. closing over
+        // fresh state) would never get invoked because the node held the
+        // original lambda captured at remember time.
+        SideEffect {
+            node.onHitResultChanged = onHitResultChanged
         }
         NodeLifecycle(node, content)
     }
