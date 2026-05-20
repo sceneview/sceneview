@@ -793,25 +793,32 @@ public fun rememberARRecorder(): ARRecorder {
  */
 @Composable
 public fun rememberARPlaybackStatus(session: Session?): androidx.compose.runtime.State<PlaybackStatus> {
-    val statusState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(PlaybackStatus.NONE) }
-    androidx.compose.runtime.LaunchedEffect(session) {
+    // Match the produceState idiom used by rememberCameraGeospatialPose / rememberEarthState
+    // (#1844) — same per-frame poll, less ceremony, no orphan `LaunchedEffect` after the first
+    // composition. The bare `try` (vs `runCatching`) avoids allocating a `Throwable` wrapper on
+    // every failure frame — relevant when a corrupt dataset surfaces IO_ERROR every frame (#1846).
+    return androidx.compose.runtime.produceState(
+        initialValue = PlaybackStatus.NONE,
+        key1 = session,
+    ) {
         if (session == null) {
-            statusState.value = PlaybackStatus.NONE
-            return@LaunchedEffect
+            value = PlaybackStatus.NONE
+            return@produceState
         }
         while (true) {
             androidx.compose.runtime.withFrameNanos { _ ->
                 // Narrow the catch to ARCore JNI failures (#1845): the only documented failure
                 // mode of [Session.getPlaybackStatus] is a runtime exception when the session
-                // is closed concurrently. Errors propagate unchanged.
+                // is closed concurrently. JVM `Error`s propagate unchanged. Plain `try`/`catch`
+                // (vs `runCatching`) avoids allocating a `Throwable` wrapper every IO_ERROR
+                // frame (#1846).
                 val current: PlaybackStatus = try {
                     session.playbackStatus
                 } catch (e: RuntimeException) {
                     PlaybackStatus.NONE
                 }
-                if (statusState.value != current) statusState.value = current
+                if (value != current) value = current
             }
         }
     }
-    return statusState
 }

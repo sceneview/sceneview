@@ -38,7 +38,9 @@ collation script can group it:
 ```
 
 Recognised categories (case-insensitive): `Added`, `Changed`, `Fixed`,
-`Removed`, `Tests`, `Docs`. If the tag line is omitted the entry is filed under
+`Removed`, `Tests`, `Docs`, `Performance` (#1844). If the tag line is omitted the
+entry is filed under `Changed`. Use `Performance` for pure perf wins (no behaviour
+change, no bug fix) — that's the distinction between this bucket and `Fixed` or
 `Changed`.
 
 You may include more than one bullet in a single fragment if the PR genuinely
