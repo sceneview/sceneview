@@ -61,6 +61,7 @@ import io.github.sceneview.demo.demos.ARDepthColliderDemo
 import io.github.sceneview.demo.demos.ARDepthOcclusionDemo
 import io.github.sceneview.demo.demos.ARDepthVisualizationDemo
 import io.github.sceneview.demo.demos.ARRawDepthPointCloudDemo
+import io.github.sceneview.demo.demos.ARSceneSemanticsDemo
 import io.github.sceneview.demo.demos.ARInstantPlacementDemo
 import io.github.sceneview.demo.demos.ARTerrainAnchorDemo
 import io.github.sceneview.demo.demos.ARRooftopAnchorDemo
@@ -358,6 +359,7 @@ fun DemoRouter(id: String, onBack: () -> Unit) {
         "ar-image-stabilization" -> ARImageStabilizationDemo(onBack)
         "ar-orbital" -> OrbitalARDemo(onBack)
         "ar-depth-collider" -> ARDepthColliderDemo(onBack)
+        "ar-scene-semantics" -> ARSceneSemanticsDemo(onBack)
         // Drift guard — see the KDoc above. Unreachable in a correct build.
         else -> {
             check(!BuildConfig.DEBUG) {

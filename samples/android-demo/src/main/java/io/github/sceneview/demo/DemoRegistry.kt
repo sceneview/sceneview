@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PanoramaPhotosphere
+import androidx.compose.material.icons.filled.Park
 import androidx.compose.material.icons.filled.Pentagon
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PictureInPicture
@@ -183,4 +184,5 @@ val ALL_DEMOS = listOf(
     DemoEntry("ar-depth-visualization", R.string.demo_ar_depth_visualization_title, R.string.demo_ar_depth_visualization_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Palette),
     DemoEntry("ar-raw-depth-point-cloud", R.string.demo_ar_raw_depth_cloud_title, R.string.demo_ar_raw_depth_cloud_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.ScatterPlot),
     DemoEntry("ar-depth-collider", R.string.demo_ar_depth_collider_title, R.string.demo_ar_depth_collider_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.ScatterPlot, DemoStatus.KnownIssue),
+    DemoEntry("ar-scene-semantics", R.string.demo_ar_scene_semantics_title, R.string.demo_ar_scene_semantics_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Park),
 )

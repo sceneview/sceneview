@@ -282,6 +282,8 @@
     <string name="demo_ar_raw_depth_cloud_subtitle">Confidence-filtered point cloud from raw depth</string>
     <string name="demo_ar_depth_collider_title">Depth Collider</string>
     <string name="demo_ar_depth_collider_subtitle">Virtual balls bounce off the real floor / table (depth-driven physics)</string>
+    <string name="demo_ar_scene_semantics_title">Scene Semantics</string>
+    <string name="demo_ar_scene_semantics_subtitle">12-class outdoor scene labeling — HUD shows top-3 labels in view</string>
 
     <!-- Demo placeholder -->
     <string name="demo_coming_soon">Coming soon</string>

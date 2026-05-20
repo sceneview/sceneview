@@ -97,6 +97,16 @@ class ARSession(
         ) {
             config.lightEstimationMode = Config.LightEstimationMode.DISABLED
         }
+
+        // Scene Semantics requires both the ML model present on-device AND a back-camera
+        // session — the outdoor 12-class semantics model has no front-camera training data.
+        // ARCore throws `UnsupportedConfigurationException` when a session is configured with
+        // `SemanticMode.ENABLED` on a device that lacks the model, so we silently fall back
+        // to DISABLED here, matching the depthMode / flashMode auto-fallbacks above (#1730).
+        config.semanticMode = resolveSemanticMode(config.semanticMode) { mode ->
+            isSemanticModeSupported(mode)
+        }
+
         hasAugmentedImageDatabase = (config.augmentedImageDatabase?.numImages ?: 0) > 0
 
         onConfigChanged(this, config)
@@ -172,6 +182,27 @@ internal fun resolveFlashMode(
 ): Config.FlashMode =
     if (requested == Config.FlashMode.OFF || isSupported(requested)) requested
     else Config.FlashMode.OFF
+
+/**
+ * Pure-Kotlin support-gate for [Config.SemanticMode] used by [ARSession.configure] (#1730).
+ *
+ * Returns the requested mode if the session supports it; otherwise [Config.SemanticMode.DISABLED].
+ *
+ * Scene Semantics requires the on-device ML model (downloaded by Google Play Services for AR on
+ * devices that ship it) and a back-camera session. ARCore's `Session.isSemanticModeSupported` is
+ * the canonical capability probe; we wrap it here so the gate logic stays unit-testable without
+ * a live JNI-bound [Session].
+ *
+ * @param requested The mode the caller asked for (typically from `Config.semanticMode`).
+ * @param isSupported Adapter returning `true` if the session supports `requested` (typically
+ *   `session::isSemanticModeSupported`).
+ */
+internal fun resolveSemanticMode(
+    requested: Config.SemanticMode,
+    isSupported: (Config.SemanticMode) -> Boolean
+): Config.SemanticMode =
+    if (requested == Config.SemanticMode.DISABLED || isSupported(requested)) requested
+    else Config.SemanticMode.DISABLED
 
 /**
  * Define the session config used by ARCore
