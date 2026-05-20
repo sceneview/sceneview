@@ -61,22 +61,91 @@ import com.google.ar.core.exceptions.UnsupportedConfigurationException
  *
  * ### Usage
  *
+ * Prefer an **exhaustive `when`** with NO `else` branch — that is the whole point of the sealed
+ * hierarchy. The compiler then forces you to revisit this site the day SceneView adds a new
+ * subtype (#1759). An `else ->` fallback silently defeats that contract.
+ *
+ * #### Exhaustive (recommended — compiler-checked)
+ *
  * ```kotlin
  * ARSceneView(
  *     onSessionFailure = { failure ->
  *         when (failure) {
- *             is ARSessionFailure.ArCoreNotInstalled -> showInstallArCoreCta()
- *             is ARSessionFailure.UserDeclinedInstall -> showRetryCta()
- *             is ARSessionFailure.FineLocationMissing -> requestLocationPermission()
+ *             // Install / availability
+ *             is ARSessionFailure.ArCoreNotInstalled       -> showInstallArCoreCta()
+ *             is ARSessionFailure.UserDeclinedInstall      -> showRetryCta()
+ *             is ARSessionFailure.ApkTooOld                -> showUpdateArCoreCta()
+ *             is ARSessionFailure.SdkTooOld                -> reportToCrashlytics(failure.cause)
+ *             is ARSessionFailure.DeviceNotCompatible      -> disableArEntryPoints()
+ *             // Permissions
+ *             is ARSessionFailure.FineLocationMissing      -> requestLocationPermission()
+ *             is ARSessionFailure.GooglePlayServicesLocationLibraryNotLinked ->
+ *                 reportToCrashlytics(failure.cause)
+ *             // Camera
+ *             is ARSessionFailure.CameraNotAvailable       -> openCameraSettings()
+ *             is ARSessionFailure.TextureNotSet            -> reportToCrashlytics(failure.cause)
+ *             is ARSessionFailure.MissingGlContext         -> reportToCrashlytics(failure.cause)
+ *             // Quota / runtime
+ *             is ARSessionFailure.ResourceExhausted        -> showCloudQuotaErrorCta()
+ *             is ARSessionFailure.DeadlineExceeded         -> showRetryCta()
+ *             is ARSessionFailure.Fatal                    -> recreateSession()
+ *             // Cloud Anchor
  *             is ARSessionFailure.CloudAnchorsNotConfigured -> showCloudKeySetupHelp()
- *             is ARSessionFailure.CameraNotAvailable -> openCameraSettings()
- *             is ARSessionFailure.ResourceExhausted -> showCloudQuotaErrorCta()
- *             is ARSessionFailure.Other -> reportToCrashlytics(failure.cause)
- *             else -> showGenericRetryCta()
+ *             is ARSessionFailure.AnchorNotSupportedForHosting -> showMoveDeviceCta()
+ *             // Augmented image
+ *             is ARSessionFailure.ImageInsufficientQuality -> showBetterReferenceImageCta()
+ *             // Recording / playback
+ *             is ARSessionFailure.RecordingFailed          -> showRecordingErrorCta()
+ *             is ARSessionFailure.PlaybackFailed           -> showPlaybackErrorCta()
+ *             is ARSessionFailure.DataInvalidFormat        -> showPlaybackErrorCta()
+ *             is ARSessionFailure.DataUnsupportedVersion   -> showPlaybackErrorCta()
+ *             is ARSessionFailure.MetadataNotFound         -> showPlaybackErrorCta()
+ *             // Session / config
+ *             is ARSessionFailure.SessionUnsupported       -> disableArEntryPoints()
+ *             is ARSessionFailure.SessionPaused            -> reportToCrashlytics(failure.cause)
+ *             is ARSessionFailure.SessionNotPaused         -> reportToCrashlytics(failure.cause)
+ *             is ARSessionFailure.NotTracking              -> showMoveDeviceCta()
+ *             is ARSessionFailure.NotYetAvailable          -> retryNextFrame()
+ *             is ARSessionFailure.UnsupportedConfiguration -> reportToCrashlytics(failure.cause)
+ *             // Catch-all (forward compat — new ARCore exceptions land here until SceneView
+ *             // adds a typed subclass, at which point the compiler flags every `when` site)
+ *             is ARSessionFailure.Other                    -> reportToCrashlytics(failure.cause)
  *         }
  *     }
  * ) { /* … */ }
  * ```
+ *
+ * #### Compact (still exhaustive — group then dispatch)
+ *
+ * For apps that route many subtypes to the same action, extract a tiny helper that returns a
+ * coarse category and `when` on that — still exhaustive, no `else ->`:
+ *
+ * ```kotlin
+ * private enum class ArFailureAction { Install, Retry, Permission, Settings, Report }
+ *
+ * private fun ARSessionFailure.action(): ArFailureAction = when (this) {
+ *     is ARSessionFailure.ArCoreNotInstalled, is ARSessionFailure.ApkTooOld -> ArFailureAction.Install
+ *     is ARSessionFailure.UserDeclinedInstall, is ARSessionFailure.DeadlineExceeded,
+ *     is ARSessionFailure.NotTracking, is ARSessionFailure.NotYetAvailable -> ArFailureAction.Retry
+ *     is ARSessionFailure.FineLocationMissing -> ArFailureAction.Permission
+ *     is ARSessionFailure.CameraNotAvailable -> ArFailureAction.Settings
+ *     is ARSessionFailure.SdkTooOld, is ARSessionFailure.DeviceNotCompatible,
+ *     is ARSessionFailure.GooglePlayServicesLocationLibraryNotLinked,
+ *     is ARSessionFailure.TextureNotSet, is ARSessionFailure.MissingGlContext,
+ *     is ARSessionFailure.ResourceExhausted, is ARSessionFailure.Fatal,
+ *     is ARSessionFailure.CloudAnchorsNotConfigured, is ARSessionFailure.AnchorNotSupportedForHosting,
+ *     is ARSessionFailure.ImageInsufficientQuality,
+ *     is ARSessionFailure.RecordingFailed, is ARSessionFailure.PlaybackFailed,
+ *     is ARSessionFailure.DataInvalidFormat, is ARSessionFailure.DataUnsupportedVersion,
+ *     is ARSessionFailure.MetadataNotFound,
+ *     is ARSessionFailure.SessionUnsupported, is ARSessionFailure.SessionPaused,
+ *     is ARSessionFailure.SessionNotPaused, is ARSessionFailure.UnsupportedConfiguration,
+ *     is ARSessionFailure.Other -> ArFailureAction.Report
+ * }
+ * ```
+ *
+ * Avoid `else -> …` in the `when (failure)` site: it silently catches future SceneView subtypes
+ * and you lose the compile-time alarm that justifies the sealed hierarchy in the first place.
  */
 public sealed class ARSessionFailure(public open val cause: Exception) {
 
