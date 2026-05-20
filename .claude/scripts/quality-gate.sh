@@ -92,6 +92,20 @@ if [ -x ".claude/scripts/check-llms-drift.sh" ]; then
     fi
 fi
 
+# samples/android-demo append-only demo-fragments collator drift (issue #1797).
+# A new fragment added without re-running collate-demos.sh would compile but
+# leave GeneratedDemos.kt stale — the demo would still be invisible in
+# ALL_DEMOS / DemoRouter. The --check mode bit-compares the file against what
+# the collator would emit, blocking the PR on drift.
+COLLATOR="samples/android-demo/scripts/collate-demos.sh"
+if [ -x "$COLLATOR" ]; then
+    if bash "$COLLATOR" --check > /tmp/check-demos-drift.log 2>&1; then
+        check "android-demo GeneratedDemos.kt in sync" "PASS" ""
+    else
+        check "android-demo GeneratedDemos.kt drift" "FAIL" "Run $COLLATOR — see /tmp/check-demos-drift.log"
+    fi
+fi
+
 echo ""
 
 # ─── 3. Security ──────────────────────────────────────────────────────

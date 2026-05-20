@@ -123,6 +123,28 @@ for full API context in any chat:
 
 Contributions to any part of the project are welcome — Android (`sceneview/`, `arsceneview/`), iOS (`SceneViewSwift/`), shared KMP core (`sceneview-core/`), samples, documentation, or the MCP server.
 
+### Adding a demo to `samples/android-demo`
+
+The Android demo app uses an **append-only fragment registry** so that two
+parallel PRs adding two different demos never conflict on a shared file
+(issue #1797). To add a demo:
+
+1. Add the demo composable under
+   `samples/android-demo/src/main/java/io/github/sceneview/demo/demos/`.
+2. Drop a new fragment file at
+   `samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/<MyDemo>Fragment.kt`
+   declaring `object <MyDemo>Fragment : DemoFragment` with the demo's id,
+   title/subtitle string resources, category, icon, and a one-line `Screen`
+   wrapper calling your composable. See [the package
+   README](samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/README.md)
+   for the full template.
+3. Run the collator to regenerate `GeneratedDemos.kt`:
+   `bash samples/android-demo/scripts/collate-demos.sh`. The quality gate runs
+   the collator in `--check` mode and blocks the push if the file is stale.
+
+You should **never** edit `DemoRegistry.kt`, `MainActivity.kt`, or
+`GeneratedDemos.kt` by hand — the fragments are the single source of truth.
+
 ### Device-QA flows when adding a demo
 
 The demo apps are exercised on real emulators/simulators by the **autonomous
