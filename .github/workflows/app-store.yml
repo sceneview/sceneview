@@ -531,6 +531,32 @@ jobs:
               print(f"::warning::Failed to update App Store localization: {e}")
 
           # 5. Submit for review
+          # If a previous run already POST'd a submission against this same
+          # version record (typical when the #1687 + #1795 absorption
+          # retargets a stranded draft — its old submission stays attached),
+          # a second CREATE returns 403 FORBIDDEN_ERROR with
+          # "Allowed operation is: DELETE". GET the existing relationship
+          # and DELETE it first so the POST below is idempotent (#1831).
+          try:
+              r = requests.get(
+                  f"{BASE}/appStoreVersions/{version_id}/relationships/appStoreVersionSubmission",
+                  headers=headers,
+              )
+              if r.status_code == 200:
+                  existing = (r.json() or {}).get("data") or None
+                  existing_id = existing.get("id") if existing else None
+                  if existing_id:
+                      d = requests.delete(
+                          f"{BASE}/appStoreVersionSubmissions/{existing_id}",
+                          headers=headers,
+                      )
+                      if d.status_code in (200, 204):
+                          print(f"Deleted stale submission {existing_id} before re-creating")
+                      else:
+                          print(f"::warning::Stale submission {existing_id} DELETE returned {d.status_code} - {d.text[:200]} — CREATE may still 403")
+          except Exception as e:
+              print(f"::warning::Pre-submit cleanup probe failed: {e}")
+
           payload = {
               "data": {
                   "type": "appStoreVersionSubmissions",
