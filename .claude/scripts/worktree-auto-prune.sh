@@ -112,15 +112,24 @@ pr_is_merged() {
     [ "$state" = "MERGED" ]
 }
 
-# is_active_session <path> — true if any running `claude*` process has the
-# worktree path on its command line. Heuristic: Claude Code passes the cwd
-# and tool args containing the worktree path, so a fixed-string match
-# against `pgrep -af claude` is a low-cost, low-false-positive signal.
-# Only consulted when --check-active-sessions is set.
+# is_active_session <path> — true if any active claude-related process
+# has its cwd inside <path>. We look at cwd (via `lsof -d cwd`) rather
+# than argv because shell wrappers/eval-strings (Claude Code's harness,
+# pgrep -a fallbacks, etc.) inject candidate paths into argv even for
+# uninvolved processes, producing massive false positives. cwd is the
+# authoritative signal: a session that's actually working in worktree X
+# has X as cwd.
+#
+# ACTIVE_CWDS is pre-computed once below when --check-active-sessions
+# is set; this function just iterates the cached list.
 is_active_session() {
-    local p="$1"
-    command -v pgrep >/dev/null 2>&1 || return 1
-    pgrep -af claude 2>/dev/null | grep -qF -- "$p"
+    local p="$1" cwd
+    for cwd in "${ACTIVE_CWDS[@]:-}"; do
+        case "$cwd" in
+            "$p"|"$p"/*) return 0 ;;
+        esac
+    done
+    return 1
 }
 
 WORKTREES_DIR="$REPO_ROOT/.claude/worktrees"
@@ -162,6 +171,27 @@ SKIPPED_UNMERGED=()
 SKIPPED_KEEP=()
 SKIPPED_DIRTY=()
 SKIPPED_ACTIVE=()
+
+# Pre-compute the cwd of every running claude/node process exactly once.
+# Used by is_active_session when --check-active-sessions is set.
+ACTIVE_CWDS=()
+if [ "$CHECK_ACTIVE_SESSIONS" = "true" ]; then
+    if command -v lsof >/dev/null 2>&1; then
+        # `lsof -d cwd -a -c <name>` prints one line per matching process
+        # with the cwd in the last column. We scan both `node` (Claude Code
+        # CLI is a Node binary) and `claude` (dedicated binaries).
+        while IFS= read -r cwd; do
+            [ -n "$cwd" ] && ACTIVE_CWDS+=("$cwd")
+        done < <(
+            {
+                lsof -d cwd -a -c node   2>/dev/null
+                lsof -d cwd -a -c claude 2>/dev/null
+            } | awk '$NF ~ /^\// {print $NF}' | sort -u
+        )
+    else
+        echo -e "${YELLOW}Warning: lsof not found — --check-active-sessions disabled.${NC}"
+    fi
+fi
 
 # Iterate worktrees registered with git (avoids stale dirs that aren't
 # real worktrees, and respects locked-state).
