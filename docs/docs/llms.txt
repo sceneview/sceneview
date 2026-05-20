@@ -123,6 +123,7 @@ fun ARSceneView(
     flashMode: Config.FlashMode = Config.FlashMode.OFF,  // ARCore v1.45+ Flash Mode — OFF/TORCH. Reactive; unsupported devices/front-camera silently downgrade to OFF (#1732).
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     planeRenderer: Boolean = true,
+    sceneUnderstanding: SceneUnderstanding? = null,  // v4.10.0+ — grouped occlusion/lighting/physics/planeVisualization (#1767, RealityKit parity). null = use the individual flags.
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
     view: View = rememberARView(engine),
     isOpaque: Boolean = true,
@@ -206,6 +207,45 @@ Text(hint ?: "Point your camera at a flat surface")
 | `NONE` / `null`            | (helper returns `null` — caller picks the idle hint)      |
 
 Ported from arcore-android-sdk's `common/helpers/TrackingStateHelper.java`.
+
+### Scene Understanding — grouped AR rendering flags
+
+`SceneUnderstanding` (`io.github.sceneview.ar.scene.SceneUnderstanding`, v4.10.0+, #1767) groups four scattered AR rendering flags into a single discoverable knob — mirrors RealityKit's `ARView.environment.sceneUnderstanding.options`. Pass it via `ARSceneView(sceneUnderstanding = ...)`; null (default) keeps every individual flag at its current default.
+
+```kotlin
+data class SceneUnderstanding(
+    val occlusion: Boolean = true,        // ARCameraStream.isDepthOcclusionEnabled
+    val lighting: Boolean = true,         // LightEstimator.isEnabled
+    val physics: Boolean = false,         // Reserved — Scene Semantics / Mesh, #1760/#1761
+    val planeVisualization: Boolean = true // PlaneRenderer.isEnabled
+)
+```
+
+Named constants: `SceneUnderstanding.Full` (everything on), `SceneUnderstanding.Minimal` (lighting only, low-CPU / no depth), `SceneUnderstanding.None` (everything off — pass-through camera feed).
+
+```kotlin
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    sceneUnderstanding = SceneUnderstanding.Full,
+    sessionConfiguration = { _, config ->
+        // Occlusion still needs DepthMode opt-in — SceneView does NOT auto-set this.
+        config.depthMode = Config.DepthMode.AUTOMATIC
+    }
+) { /* ... */ }
+```
+
+Equivalent fine-grained mutation (still works — `sceneUnderstanding` is purely additive):
+
+```kotlin
+val cameraStream = rememberARCameraStream(materialLoader)
+ARSceneView(
+    cameraStream = cameraStream,
+    planeRenderer = true,
+) { /* ... */ }
+// Imperative: cameraStream.isDepthOcclusionEnabled = true
+```
+
+When `sceneUnderstanding` is non-null, its four flags override the individual ones on every recomposition. When null, the individual flags retain their pre-#1767 defaults verbatim.
 
 ---
 
