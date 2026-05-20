@@ -1003,6 +1003,11 @@ fun Frame.depthImage(): Image?                 // smoothed full-res 16-bit depth
 fun Frame.rawDepthImage(): Image?              // unsmoothed 16-bit depth
 fun Frame.rawDepthConfidenceImage(): Image?    // Y8 confidence map matching rawDepthImage()
 
+// Frame — CPU camera image (YUV_420_888) for ML Kit / OpenCV / custom CV.
+// Caller-owned — close in use { }. The CPU image pool is ~2-3 slots deep, so leaking
+// a single image for a few frames throws ResourceExhaustedException.
+fun Frame.cameraImage(): Image?                // null if not yet available
+
 // ArCoreApk — suspend-friendly availability check (the sync variant can ANR briefly).
 suspend fun ArCoreApk.awaitAvailability(context: Context): ArCoreApk.Availability
 ```
@@ -1024,6 +1029,18 @@ val yWorld = (pxY - k.principalPoint.y) * z / k.focalLength.y
 // Custom depth occlusion (caller-owned image, use { } closes it)
 arSceneView.frame?.depthImage()?.use { depth ->
     // sample depth.planes[0].buffer (DEPTH16 16-bit per pixel)
+}
+
+// ML Kit object detection on the CPU image — see ARMLObjectLabelDemo
+// (samples/android-demo/.../demos/ARMLObjectLabelDemo.kt) for the full pattern:
+// throttled per-frame dispatch, anchor de-dup, label bitmap caching, anchor cleanup.
+onSessionUpdated = { _, frame ->
+    val cameraImage = frame.cameraImage() ?: return@onSessionUpdated
+    val rotation = mapDisplayRotationDegrees(context.display.rotation)
+    val input = InputImage.fromMediaImage(cameraImage, rotation)
+    detector.process(input)
+        .addOnSuccessListener { results -> /* spawn anchors; close image */ }
+        .addOnFailureListener { /* close image */ }
 }
 
 // Non-blocking ARCore availability probe

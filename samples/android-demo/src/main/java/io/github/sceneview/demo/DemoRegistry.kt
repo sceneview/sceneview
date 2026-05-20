@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.FilterCenterFocus
 import androidx.compose.material.icons.filled.FormatShapes
 import androidx.compose.material.icons.filled.Hexagon
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Landscape
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lightbulb
@@ -183,4 +184,5 @@ val ALL_DEMOS = listOf(
     DemoEntry("ar-depth-visualization", R.string.demo_ar_depth_visualization_title, R.string.demo_ar_depth_visualization_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Palette),
     DemoEntry("ar-raw-depth-point-cloud", R.string.demo_ar_raw_depth_cloud_title, R.string.demo_ar_raw_depth_cloud_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.ScatterPlot),
     DemoEntry("ar-depth-collider", R.string.demo_ar_depth_collider_title, R.string.demo_ar_depth_collider_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.ScatterPlot, DemoStatus.KnownIssue),
+    DemoEntry("ar-ml-object-label", R.string.demo_ar_ml_title, R.string.demo_ar_ml_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Label),
 )

@@ -415,4 +415,15 @@
     <string name="tracking_failure_excessive_motion">Moving too fast — slow down</string>
     <string name="tracking_failure_insufficient_features">Not enough detail — point at a more textured surface</string>
     <string name="tracking_failure_camera_unavailable">Camera unavailable — close other camera apps</string>
+
+    <!-- ML Kit object detection demo (#1737) -->
+    <string name="demo_ar_ml_title">ML Kit Object Labels</string>
+    <string name="demo_ar_ml_subtitle">ML Kit object detection with 3D labels anchored on real-world hits</string>
+    <string name="demo_ar_ml_explainer">Aim the device at a recognisable object (a chair, a plant, a book). ML Kit\'s bundled detector classifies the CPU camera image and we anchor a 3D label at the hit-tested world position.</string>
+    <string name="demo_ar_ml_status_warming">Warming up — waiting for camera image…</string>
+    <string name="demo_ar_ml_status_aim">Aim at a recognisable object</string>
+    <plurals name="demo_ar_ml_status_detected">
+        <item quantity="one">%d object detected</item>
+        <item quantity="other">%d objects detected</item>
+    </plurals>
 </resources>

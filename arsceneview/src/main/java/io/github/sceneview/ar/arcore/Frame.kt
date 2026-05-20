@@ -87,6 +87,37 @@ fun Frame.intervalSeconds(other: Frame?): Double = timestamp.intervalSeconds(oth
 fun Frame.fps(other: Frame?): Double = timestamp.fps(other?.timestamp)
 
 /**
+ * Acquires the **CPU camera image** for this frame in YUV_420_888 layout (#1737, #1733).
+ *
+ * Wraps [Frame.acquireCameraImage] — the standard ARCore entry-point for any custom
+ * computer-vision pipeline: ML Kit barcode / face / object detection, OpenCV processing,
+ * custom temporal filters, screenshot helpers, etc.
+ *
+ * Returns `null` if the camera image is not yet available (`NotYetAvailableException` from
+ * ARCore). This is normal for the very first frames after session start.
+ *
+ * **The returned [Image] is caller-owned** — close it via `use { }` or an explicit
+ * `image.close()` in a `finally` block. The CPU image pool is only ~2–3 slots deep, so
+ * leaking for 3 frames throws `ResourceExhaustedException` and stalls the AR loop.
+ *
+ * ```kotlin
+ * onSessionUpdated = { _, frame ->
+ *     frame.cameraImage()?.use { image ->
+ *         // image is android.media.Image YUV_420_888 (Y, U, V planes)
+ *         detector.process(InputImage.fromMediaImage(image, rotationDegrees))
+ *     }
+ * }
+ * ```
+ *
+ * @see Frame.acquireCameraImage
+ */
+fun Frame.cameraImage(): Image? = try {
+    acquireCameraImage()
+} catch (_: NotYetAvailableException) {
+    null
+}
+
+/**
  * Acquires the smoothed full-resolution **depth** image (16-bit per pixel, ARGB_8888-packed
  * `DEPTH16` layout per ARCore docs) for this frame.
  *
