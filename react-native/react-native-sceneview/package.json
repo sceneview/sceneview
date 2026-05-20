@@ -42,6 +42,9 @@
     "url": "https://github.com/sceneview/sceneview/issues"
   },
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "peerDependencies": {
     "react": ">=18.0.0",
     "react-native": ">=0.72.0"
