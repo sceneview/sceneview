@@ -1,0 +1,2 @@
+<!-- category: Docs -->
+- `arsceneview`: rewrote the `ARSessionFailure` KDoc + `llms.txt` examples to use a fully exhaustive `when` (all 25 subtypes + `Other`) and removed the `else -> showGenericRetryCta()` fallback that silently defeated the sealed-class compile-time-safety contract introduced by #1759. Also added a "compact" pattern showing how to dispatch many subtypes via a category-mapping helper without `else ->`. AI agents copy-pasting the snippet now keep the exhaustive-`when` guarantee (#1843).
