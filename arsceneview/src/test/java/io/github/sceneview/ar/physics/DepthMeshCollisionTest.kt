@@ -52,6 +52,29 @@ class DepthMeshCollisionTest {
         assertEquals(0, world.size)
     }
 
+    @Test
+    fun `inline matrix multiply preserves a translate+identity-rotation Mat4`() {
+        // Regression pin (#1810): the inline 4x4 multiply that replaced `Mat4 * Float3` must
+        // pick the matrix columns in the right order. A column-swap would still pass the
+        // identity test but reorder axes under a non-axis-aligned translate.
+        val cam = floatArrayOf(
+            1f, 2f, 3f,
+            -4f, 5f, -6f,
+            0f, 0f, 0f,
+        )
+        val t = translation(Position(7f, 8f, 9f))
+        val world = transformPositionsToWorld(cam, t)
+        assertArrayEqualsFloat(
+            floatArrayOf(
+                1f + 7f, 2f + 8f, 3f + 9f,
+                -4f + 7f, 5f + 8f, -6f + 9f,
+                7f, 8f, 9f,
+            ),
+            world,
+            eps = 1e-5f,
+        )
+    }
+
     // ── nearestSurfaceYBelow ──────────────────────────────────────────────────────────────────────
 
     @Test
