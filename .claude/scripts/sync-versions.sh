@@ -624,14 +624,17 @@ for cdnfile in README.md docs/docs/index.md website-static/index.html website-st
 done
 
 # SceneViewJS.kt — `SCENEVIEW_VERSION` constant stamped into the Kotlin/JS
-# bundle. The .kt file lives in a library module other agents own, so this
-# check is REPORT-ONLY (critical=false) and never auto-fixed here — bumping
-# the constant is tracked separately (#1357).
+# bundle. This is a public `@JsExport`-reachable code constant; web consumers
+# querying the library version get whatever this literal says, so silent drift
+# is a real defect (it lagged 2 majors before #1357). Hard MISMATCH check —
+# never demote back to WARN-only. The literal is pinned by a jsTest in
+# `sceneview-web/src/jsTest/.../SceneViewVersionTest.kt` as a second line of
+# defense.
 SCENEVIEWJS_KT=$(find "$REPO_ROOT/sceneview-web" -name 'SceneViewJS.kt' 2>/dev/null | head -1 || true)
 if [ -n "$SCENEVIEWJS_KT" ] && [ -f "$SCENEVIEWJS_KT" ]; then
     V=$(grep -E 'SCENEVIEW_VERSION' "$SCENEVIEWJS_KT" | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"' | tr -d '"' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
-        add_check "sceneview-web SceneViewJS.kt SCENEVIEW_VERSION" "$V" "false"
+        add_check "sceneview-web SceneViewJS.kt SCENEVIEW_VERSION" "$V"
     fi
 fi
 
