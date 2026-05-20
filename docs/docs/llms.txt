@@ -1277,6 +1277,44 @@ val future = RooftopAnchorNode.resolve(
 
 Same requirements as `TerrainAnchorNode`. Demo: `samples/android-demo/.../ARRooftopAnchorDemo.kt`.
 
+### StreetscapeGeometryNode — building / terrain mesh (filtered)
+
+Renders an ARCore Geospatial **Streetscape Geometry** mesh — full polygonal buildings and terrain meshes that the device's tracker reconstructs around the user. Requires `Config.GeospatialMode.ENABLED` + `Config.StreetscapeGeometryMode.ENABLED` and the same Cloud API key + location permission as `TerrainAnchorNode` (see the API key warning above).
+
+```kotlin
+@Composable fun StreetscapeGeometryNode(
+    streetscapeGeometry: StreetscapeGeometry,
+    types: Set<StreetscapeGeometry.Type> = setOf(BUILDING, TERRAIN),  // #1772
+    minQuality: StreetscapeGeometry.Quality = StreetscapeGeometry.Quality.NONE,  // NONE < BUILDING_LOD_1 < BUILDING_LOD_2 (#1772)
+    meshMaterialInstance: MaterialInstance? = null,
+    onTrackingStateChanged: ((TrackingState) -> Unit)? = null,
+    onUpdated: ((StreetscapeGeometry) -> Unit)? = null,
+    apply: StreetscapeGeometryNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null
+)
+```
+
+Pass `types = setOf(StreetscapeGeometry.Type.BUILDING)` to drop the (often noisy) ground terrain in dense urban scenes. Pass `minQuality = StreetscapeGeometry.Quality.BUILDING_LOD_2` to render only the higher-LOD buildings and save a frame-rate cliff on low-end devices. The filter is a no-op early-return on the composable side, so unmatched geometries never allocate Filament buffers.
+
+```kotlin
+onSessionUpdated = { _, frame ->
+    geometries = frame.getUpdatedTrackables(StreetscapeGeometry::class.java).toList()
+}
+
+ARSceneView(...) {
+    geometries.forEach { geo ->
+        StreetscapeGeometryNode(
+            streetscapeGeometry = geo,
+            types = setOf(StreetscapeGeometry.Type.BUILDING),
+            minQuality = StreetscapeGeometry.Quality.BUILDING_LOD_2,
+            meshMaterialInstance = buildingMat
+        )
+    }
+}
+```
+
+Demo: `samples/android-demo/.../ARStreetscapeDemo.kt`. Setup guide (Cloud project + API key): `samples/android-demo/STREETSCAPE_SETUP.md`.
+
 ---
 
 ## Node Properties & Interaction
