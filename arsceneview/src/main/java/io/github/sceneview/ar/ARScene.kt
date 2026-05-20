@@ -62,6 +62,7 @@ import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
 import io.github.sceneview.ar.node.PoseNode
 import io.github.sceneview.ar.scene.PlaneRenderer
+import io.github.sceneview.ar.scene.SceneUnderstanding
 import io.github.sceneview.collision.CollisionSystem
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.environment.Environment
@@ -272,6 +273,20 @@ fun ARSceneView(
      * Enable the plane renderer.
      */
     planeRenderer: Boolean = true,
+    /**
+     * Grouped scene-understanding flags (#1767) — mirrors RealityKit's
+     * `ARView.environment.sceneUnderstanding.options`. When non-null, the four
+     * inner flags (`occlusion`, `lighting`, `physics`, `planeVisualization`)
+     * are applied in tandem, overriding the individual scattered flags
+     * (`planeRenderer`, [ARCameraStream.isDepthOcclusionEnabled],
+     * [io.github.sceneview.ar.light.LightEstimator.isEnabled]).
+     *
+     * Default `null` keeps every individual flag at its pre-#1767 default —
+     * the grouped knob is purely additive and opt-in. Use it when you want a
+     * single discoverable point of configuration; keep it null and mutate the
+     * individual flags directly if you need fine-grained control.
+     */
+    sceneUnderstanding: SceneUnderstanding? = null,
     /**
      * The [ARCameraStream] to render the camera texture.
      */
@@ -630,6 +645,25 @@ fun ARSceneView(
 
     SideEffect {
         arPlaneRenderer.isEnabled = planeRenderer
+    }
+
+    // ── Grouped scene-understanding flags (#1767) ────────────────────────────────────────────────
+    //
+    // When `sceneUnderstanding` is provided, fan out its four flags to the four
+    // scattered owners in tandem. Applied AFTER the individual `planeRenderer`
+    // SideEffect above so the grouped knob wins on every recomposition — that
+    // matches the data class contract documented in [SceneUnderstanding].
+    //
+    // `physics` is reserved (no current backing implementation, see KDoc on
+    // [SceneUnderstanding.physics]). When the underlying ARCore Scene Semantics
+    // / Mesh path lands (#1760, #1761), this is the canonical place to wire it.
+    SideEffect {
+        sceneUnderstanding?.let { su ->
+            arPlaneRenderer.isEnabled = su.planeVisualization
+            lightEstimator.isEnabled = su.lighting
+            cameraStream?.isDepthOcclusionEnabled = su.occlusion
+            // su.physics: no-op today; wired when #1760/#1761 land.
+        }
     }
 
     // ── Lifecycle-aware rendering ─────────────────────────────────────────────────────────────────
