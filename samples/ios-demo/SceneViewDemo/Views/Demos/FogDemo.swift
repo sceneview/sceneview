@@ -2,13 +2,17 @@ import SwiftUI
 import RealityKit
 import SceneViewSwift
 
-/// Fog effect demo -- linear, exponential, and height-based modes.
+/// Fog effect demo -- linear and exponential modes.
+///
+/// Height-based fog is not supported on RealityKit (Filament-only feature on Android);
+/// see #1380. The mode is omitted from this demo so the UI does not advertise a
+/// silent no-op.
 struct FogDemo: View {
     @State private var fogMode: Int = 0
     @State private var density: Float = 0.3
 
-    private let modeNames = ["Linear", "Exponential", "Height"]
-    private let modeIcons = ["line.diagonal", "waveform", "mountain.2.fill"]
+    private let modeNames = ["Linear", "Exponential"]
+    private let modeIcons = ["line.diagonal", "waveform"]
 
     var body: some View {
         sceneContent
@@ -49,10 +53,8 @@ struct FogDemo: View {
                 case 0:
                     fog = FogNode.linear(start: 0.5, end: 5.0, color: .cool)
                         .density(density)
-                case 1:
-                    fog = FogNode.exponential(density: density, color: .warm)
                 default:
-                    fog = FogNode.heightBased(density: density, height: 1.0, color: .white)
+                    fog = FogNode.exponential(density: density, color: .warm)
                 }
                 fog.entity.position = .init(x: 0, y: 0, z: -2)
                 root.addChild(fog.entity)
@@ -69,7 +71,7 @@ struct FogDemo: View {
         VStack(spacing: 12) {
             // Mode selector
             HStack(spacing: 8) {
-                ForEach(0..<3, id: \.self) { i in
+                ForEach(0..<modeNames.count, id: \.self) { i in
                     Button {
                         fogMode = i
                         #if os(iOS)

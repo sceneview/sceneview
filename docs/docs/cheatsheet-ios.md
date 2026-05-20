@@ -447,6 +447,7 @@ silent stub.
 | `CameraNode.depthOfField(...)` | `PerspectiveCameraComponent` has no DOF | Custom Metal post-process required (out of scope) |
 | `CameraNode.exposure(_:)` | No `exposureCompensation` on `PerspectiveCameraComponent` (verified Xcode 26.x compile failure in #1019) | `ARSceneView(cameraExposure:)` for AR; `SceneView.renderQuality(_:)` to tune IBL for 3D |
 | `LightNode.shadowColor(_:)` | `DirectionalLightComponent.Shadow` has no `color` property | Use `castsShadow(_:)` + `shadowMaximumDistance(_:)` |
+| `FogNode.heightBased(...)` / `FogNode.heightFalloff` | `UnlitMaterial` cannot vary opacity by world height; no per-view fog API in RealityKit (#1380) | `FogNode.exponential(density:color:)` |
 
 ### Android-only — no port planned (or pending)
 
@@ -464,7 +465,7 @@ Use as you would on Android; expect minor visual differences.
 
 | Symbol | Android renderer | iOS approximation |
 |---|---|---|
-| `FogNode.linear / .exponential / .heightBased` | Filament fog modes | Translucent-sphere shader (visual approximation; same factory API) |
+| `FogNode.linear / .exponential` | Filament fog modes | Translucent-sphere shader (visual approximation; same factory API). `FogNode.heightBased` is deprecated on iOS — see #1380. |
 | `ReflectionProbeNode.box(...) / .sphere(...)` | Volumetric Filament probe | Unbounded `ImageBasedLightReceiverComponent` (volume scope is best-effort) |
 | `CustomMaterial.subsurface(...)` | Filament SSS | PBR `metallic` + `roughness` tuning |
 
