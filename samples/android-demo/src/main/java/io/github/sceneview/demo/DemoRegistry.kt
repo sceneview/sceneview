@@ -182,4 +182,5 @@ val ALL_DEMOS = listOf(
     DemoEntry("ar-orbital", R.string.demo_ar_orbital_title, R.string.demo_ar_orbital_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Public),
     DemoEntry("ar-depth-visualization", R.string.demo_ar_depth_visualization_title, R.string.demo_ar_depth_visualization_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.Palette),
     DemoEntry("ar-raw-depth-point-cloud", R.string.demo_ar_raw_depth_cloud_title, R.string.demo_ar_raw_depth_cloud_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.ScatterPlot),
+    DemoEntry("ar-depth-collider", R.string.demo_ar_depth_collider_title, R.string.demo_ar_depth_collider_subtitle, DemoCategory.AUGMENTED_REALITY, Icons.Filled.ScatterPlot, DemoStatus.KnownIssue),
 )

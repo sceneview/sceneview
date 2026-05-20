@@ -60,6 +60,7 @@ import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
+import io.github.sceneview.ar.node.DepthMeshNode
 import io.github.sceneview.ar.node.PoseNode
 import io.github.sceneview.ar.scene.PlaneRenderer
 import io.github.sceneview.collision.CollisionSystem
@@ -148,12 +149,20 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 Useful for record-replay debugging, deterministic AR tests, and
  *                                 sharing reproducers between developers without needing the
  *                                 original device or location.
+ * @param playbackDatasetUri       Scoped-storage equivalent of [playbackDataset] (#1770).
+ *                                 Accepts `content://` URIs on Android 10+ — mutually exclusive
+ *                                 with [playbackDataset].
  * @param sessionCameraConfig      Selects the ARCore [CameraConfig] for the session. Defaults to
  *                                 [highestResolutionCameraConfig], which picks the highest-resolution
  *                                 BACK-facing 30 FPS config the device exposes — so [ARRecorder]
  *                                 recordings capture at full camera resolution instead of ARCore's
  *                                 low-res 640×480 CPU-stream default (#1065). Pass `null` to keep
  *                                 ARCore's stock default config.
+ * @param flashMode                ARCore v1.45+ Flash Mode — drives the device torch during the AR
+ *                                 session for low-light tracking ([Config.FlashMode.OFF] /
+ *                                 [Config.FlashMode.TORCH]). Default `OFF`. Support-gated —
+ *                                 unsupported devices / front-camera configs silently downgrade
+ *                                 to `OFF` (#1732).
  * @param sessionConfiguration     Callback to configure the ARCore [Session] and [Config].
  *                                 SceneView pre-sets `config.lightEstimationMode = ENVIRONMENTAL_HDR`
  *                                 (replacing ARCore's `AMBIENT_INTENSITY` default) BEFORE invoking
@@ -254,6 +263,26 @@ fun ARSceneView(
      */
     playbackDataset: File? = null,
     /**
+     * Optional scoped-storage [android.net.Uri] dataset to play back instead of the live camera
+     * feed (Android 10+ / API 29+ alternative to [playbackDataset]).
+     *
+     * Wraps ARCore's [com.google.ar.core.Session.setPlaybackDatasetUri] (#1770), which accepts
+     * `content://` URIs (`MediaStore`, Storage Access Framework picker output, app-private
+     * file providers). The legacy `playbackDataset: File?` only accepts an absolute filesystem
+     * path — which on Android 10+ scoped storage means the app must copy the user-picked MP4
+     * into its sandbox before replay. With `playbackDatasetUri` the replay reads the original
+     * `Uri` directly.
+     *
+     * **Mutually exclusive with [playbackDataset].** Setting both is a programming error and
+     * triggers an `IllegalArgumentException` at session creation. Default `null`.
+     *
+     * Same snapshot semantics as [playbackDataset] — the value is captured at first composition
+     * (ARCore requires the playback source to be set before the first resume). Switching
+     * between live and playback at runtime requires wrapping the `ARSceneView` in
+     * `key(playbackDatasetUri) { … }` so Compose rebuilds the session.
+     */
+    playbackDatasetUri: android.net.Uri? = null,
+    /**
      * Selects the camera config to use. The returned config must be one returned by
      * [Session.getSupportedCameraConfigs].
      *
@@ -263,6 +292,23 @@ fun ARSceneView(
      * Pass `null` to keep ARCore's stock default config, or supply a custom selector.
      */
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
+    /**
+     * Drives the device torch during the AR session — ARCore v1.45+ Flash Mode API (#1732).
+     *
+     * - [Config.FlashMode.OFF] (default): no torch.
+     * - [Config.FlashMode.TORCH]: ARCore keeps the back-camera LED on while the session is
+     *   running. Helps tracking in low-light scenes; battery cost is significant — toggle off
+     *   once the user re-enters daylight.
+     *
+     * **Support-gated.** Flash Mode requires (a) ARCore 1.45+ runtime on-device, and (b) a
+     * back-camera config — front-camera sessions never expose a torch. If the device or the
+     * current camera config does not support the requested mode, SceneView silently downgrades
+     * the session to `OFF` (matching the auto-fallback used for unsupported `depthMode`). Apps
+     * that want to surface the support state to the user can call
+     * [com.google.ar.core.Session.isSupported] with a config carrying the desired
+     * [Config.FlashMode] directly.
+     */
+    flashMode: Config.FlashMode = Config.FlashMode.OFF,
     /**
      * Configures the session and verifies that the enabled features in the specified session
      * config are supported with the currently set camera config.
@@ -431,6 +477,7 @@ fun ARSceneView(
     val onTrackingFailureChangedRef = remember { AtomicReference(onTrackingFailureChanged) }
     val sessionConfigurationRef = remember { AtomicReference(sessionConfiguration) }
     val sessionCameraConfigRef = remember { AtomicReference(sessionCameraConfig) }
+    val flashModeRef = remember { AtomicReference(flashMode) }
 
     SideEffect {
         onSessionCreatedRef.set(onSessionCreated)
@@ -442,6 +489,7 @@ fun ARSceneView(
         onTrackingFailureChangedRef.set(onTrackingFailureChanged)
         sessionConfigurationRef.set(sessionConfiguration)
         sessionCameraConfigRef.set(sessionCameraConfig)
+        flashModeRef.set(flashMode)
     }
 
     val prevTrackingFailureRef = remember { AtomicReference<TrackingFailureReason?>(null) }
@@ -465,8 +513,17 @@ fun ARSceneView(
     // is freed too — closing the lifecycle leak that the umbrella audit flagged
     // for long AR sessions with intermittent estimation.
     val builtIndirectLightRef = remember { AtomicReference<IndirectLight?>(null) }
-    DisposableEffect(engine, builtIndirectLightRef) {
+    DisposableEffect(engine, builtIndirectLightRef, scene) {
         onDispose {
+            // Defensive ordering (#1814): clear the scene's [IndirectLight] reference BEFORE
+            // freeing it. The window between [Engine.destroyIndirectLight] and Compose teardown
+            // could otherwise have an in-flight `onARFrame` (still queued on the GL thread) walk
+            // [scene.indirectLight] and dereference a freed native handle. Setting `null` first
+            // unblocks the destroy: Filament's renderer simply skips IBL sampling when the slot
+            // is null. If a third party overwrote `scene.indirectLight` with their own resource
+            // after we last set it, this null-out replaces *their* reference too — and that is
+            // fine: we're tearing the scene down, the slot owner is leaving anyway.
+            scene.indirectLight = null
             builtIndirectLightRef.getAndSet(null)?.let {
                 engine.safeDestroyIndirectLight(it)
             }
@@ -491,6 +548,11 @@ fun ARSceneView(
         AtomicReference<Float?>(null)
     }
 
+    // Mutually exclusive playback inputs (#1770): only one of File or Uri may be set.
+    require(playbackDataset == null || playbackDatasetUri == null) {
+        "ARSceneView: pass either playbackDataset (File) OR playbackDatasetUri (Uri), not both."
+    }
+
     val arCore = remember {
         // Snapshotted at first composition. ARCore requires setPlaybackDataset() to be called
         // BEFORE the first resume(), so we capture the param value once when the session is
@@ -498,25 +560,42 @@ fun ARSceneView(
         // at runtime requires the caller to recreate the ARSceneView (typically via
         // `key(playbackDataset) { ARSceneView(...) }`).
         val initialPlaybackDataset = playbackDataset
+        val initialPlaybackDatasetUri = playbackDatasetUri
         ARCore(
             onSessionCreated = { session ->
                 cameraStream?.let { session.setCameraTextureNames(it.cameraTextureIds) }
                 // Bind the playback source first — ARCore mandates the dataset is set before
                 // resume(), and configure() happens here, then resume() runs immediately
-                // after this callback returns.
-                initialPlaybackDataset?.let { file ->
-                    try {
-                        session.setPlaybackDataset(file.absolutePath)
-                    } catch (e: PlaybackFailedException) {
-                        // Prefer the dedicated playback callback when wired (audit #876),
-                        // fall back to onSessionFailed for backwards compatibility.
-                        (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
-                    } catch (e: Exception) {
-                        // Defensive — ARCore may throw IllegalStateException if the session
-                        // has already been resumed elsewhere. Don't crash; surface to caller.
-                        (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                // after this callback returns. File path takes precedence over Uri (the
+                // mutually-exclusive `require` above prevents both from being set).
+                val bindFile: () -> Unit = {
+                    initialPlaybackDataset?.let { file ->
+                        try {
+                            session.setPlaybackDataset(file.absolutePath)
+                        } catch (e: PlaybackFailedException) {
+                            // Prefer the dedicated playback callback when wired (audit #876),
+                            // fall back to onSessionFailed for backwards compatibility.
+                            (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                        } catch (e: Exception) {
+                            // Defensive — ARCore may throw IllegalStateException if the session
+                            // has already been resumed elsewhere. Don't crash; surface to caller.
+                            (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                        }
                     }
                 }
+                val bindUri: () -> Unit = {
+                    initialPlaybackDatasetUri?.let { uri ->
+                        try {
+                            session.setPlaybackDatasetUri(uri)
+                        } catch (e: PlaybackFailedException) {
+                            (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                        } catch (e: Exception) {
+                            (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                        }
+                    }
+                }
+                bindFile()
+                bindUri()
                 sessionCameraConfigRef.get()?.let { session.cameraConfig = it(session) }
                 session.configure { config ->
                     config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
@@ -530,6 +609,10 @@ fun ARSceneView(
                     // still force DISABLED inside `ARSession.configure()` regardless. Set BEFORE
                     // invoking the user callback so callers can opt back into another mode.
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
+                    // Apply the caller-requested Flash Mode (#1732). Support is verified inside
+                    // ArSession.configure (silently downgraded to OFF if unsupported). Set BEFORE
+                    // the user callback so callers can opt back into a different mode.
+                    config.flashMode = flashModeRef.get() ?: Config.FlashMode.OFF
                     sessionConfigurationRef.get()?.invoke(session, config)
                 }
                 cameraStream?.let { scene.addEntity(it.entity) }
@@ -565,6 +648,19 @@ fun ARSceneView(
         onDispose {
             lifecycle.removeObserver(observer)
             arCore.destroy()
+        }
+    }
+
+    // ── Flash mode reactivity (#1732) ─────────────────────────────────────────────────────────────
+    //
+    // Allow apps to toggle the torch by recomposing with a new `flashMode` value. The session is
+    // reconfigured only when the actual value changes, so flipping unrelated state does not pay
+    // for an ARCore `configure()` call. Support gating + front-camera downgrade is centralised
+    // inside `ArSession.configure()`.
+    LaunchedEffect(flashMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.flashMode != flashMode) {
+            session.configure { config -> config.flashMode = flashMode }
         }
     }
 
@@ -910,7 +1006,14 @@ private fun onARFrame(
 
     arPlaneRenderer.update(session, frame)
 
-    childNodes.filterIsInstance<PoseNode>().forEach { it.update(session, frame) }
+    // Single-pass dispatch (#1810): the previous `filterIsInstance<PoseNode>().forEach { }` +
+    // `filterIsInstance<DepthMeshNode>().forEach { }` allocated two fresh ArrayLists every frame
+    // (~240 list allocations/sec at 60 fps on the render thread). A single `for` loop with a
+    // `when` type-check is zero-allocation and walks the child list once.
+    for (n in childNodes) when (n) {
+        is PoseNode -> n.update(session, frame)
+        is DepthMeshNode -> n.update(session, frame)
+    }
 
     val newTrackingFailure = if (!isCameraTracking) {
         camera.trackingFailureReason.takeIf { it != TrackingFailureReason.NONE }
@@ -1189,7 +1292,7 @@ private fun ARScenePreview(modifier: Modifier) {
  * @deprecated Use [ARSceneView] instead. This function is a direct alias provided for backward
  * compatibility with code written against earlier SceneView versions.
  */
-@Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, sessionConfiguration, planeRenderer, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))
+@Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, flashMode, sessionConfiguration, planeRenderer, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))
 @Composable
 fun ARScene(
     modifier: Modifier = Modifier,
@@ -1201,6 +1304,7 @@ fun ARScene(
     sessionFeatures: Set<Session.Feature> = setOf(),
     playbackDataset: File? = null,
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
+    flashMode: Config.FlashMode = Config.FlashMode.OFF,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     planeRenderer: Boolean = true,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
@@ -1239,6 +1343,7 @@ fun ARScene(
     sessionFeatures = sessionFeatures,
     playbackDataset = playbackDataset,
     sessionCameraConfig = sessionCameraConfig,
+    flashMode = flashMode,
     sessionConfiguration = sessionConfiguration,
     planeRenderer = planeRenderer,
     cameraStream = cameraStream,

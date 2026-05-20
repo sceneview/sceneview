@@ -1,6 +1,6 @@
 {
   "name": "@sceneview-sdk/react-native",
-  "version": "4.11.0",
+  "version": "4.11.1",
   "description": "React Native bindings for SceneView \u2014 3D and AR scenes powered by Filament (Android) and RealityKit (iOS)",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
@@ -42,6 +42,9 @@
     "url": "https://github.com/sceneview/sceneview/issues"
   },
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "peerDependencies": {
     "react": ">=18.0.0",
     "react-native": ">=0.72.0"

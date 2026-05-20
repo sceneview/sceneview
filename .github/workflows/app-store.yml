@@ -292,10 +292,14 @@ jobs:
           # ASC_VERSION_STRING via env (e.g. "v4.2.0"). Drop the leading "v"
           # via `removeprefix` (Py 3.9+, exact single-occurrence strip — we
           # don't want `lstrip("v")` which would eat any number of leading
-          # v's). Fall back to the build's own version (which xcodebuild
-          # stamps from the Marketing Version field — itself bumped per
-          # release) when ASC_VERSION_STRING is empty (manual
-          # workflow_dispatch case).
+          # v's). On manual workflow_dispatch (no tag, ASC_VERSION_STRING
+          # empty), fall back to the marketing version declared in the
+          # repo's root `gradle.properties` (`VERSION_NAME=X.Y.Z`) — that
+          # is also what `MARKETING_VERSION` is built from. The earlier
+          # fallback to the build's own version was wrong: xcodebuild's
+          # `build_version` returns CFBundleVersion (the build number,
+          # e.g. `367`), not MARKETING_VERSION — which produced nonsense
+          # App Store version records named `367` (#1795).
           #
           # Apple's versionString validator accepts only clean `X` or `X.Y`
           # or `X.Y.Z` — pre-release suffixes like `4.2.0-rc.1` are rejected
@@ -305,7 +309,22 @@ jobs:
           # below would need a stripping step.
           version_string = (os.environ.get("ASC_VERSION_STRING") or "").removeprefix("v")
           if not version_string:
-              version_string = build_version
+              workspace = os.environ.get("GITHUB_WORKSPACE", os.path.join(os.path.dirname(__file__), "..", ".."))
+              gradle_properties = os.path.join(workspace, "gradle.properties")
+              try:
+                  with open(gradle_properties) as f:
+                      for line in f:
+                          if line.startswith("VERSION_NAME="):
+                              version_string = line.split("=", 1)[1].strip()
+                              break
+              except OSError as e:
+                  print(f"::warning::Could not read VERSION_NAME from {gradle_properties}: {e}")
+              if not version_string:
+                  # Last-resort fallback: build's own version (CFBundleVersion).
+                  # Should never be hit in practice — gradle.properties is the
+                  # single source of truth and is always present in the repo.
+                  print(f"::warning::Falling back to build version {build_version} — VERSION_NAME not resolvable")
+                  version_string = build_version
           print(f"Target App Store versionString: {version_string}")
 
           # 3. Get or create the app store version

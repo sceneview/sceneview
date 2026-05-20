@@ -2,12 +2,12 @@
 
 SceneView is a declarative 3D and AR SDK for Android (Jetpack Compose, Filament, ARCore) and Apple platforms — iOS, macOS, visionOS (SwiftUI, RealityKit, ARKit) — with shared core logic via Kotlin Multiplatform. Each platform uses its native renderer: Filament on Android, RealityKit on Apple.
 
-**Android — Maven artifacts (version 4.11.0):**
-- 3D only: `io.github.sceneview:sceneview:4.11.0`
-- AR + 3D: `io.github.sceneview:arsceneview:4.11.0`
+**Android — Maven artifacts (version 4.11.1):**
+- 3D only: `io.github.sceneview:sceneview:4.11.1`
+- AR + 3D: `io.github.sceneview:arsceneview:4.11.1`
 
 **Apple (iOS 18+ / macOS 15+ / visionOS 2+) — Swift Package:**
-- `https://github.com/sceneview/sceneview.git` (from: "4.11.0")
+- `https://github.com/sceneview/sceneview.git` (from: "4.11.1")
 
 **Min SDK:** 24 | **Target SDK:** 36 | **Kotlin:** 2.3.21 | **Compose BOM compatible**
 
@@ -23,8 +23,8 @@ is also archived under `/api/sceneview/<version>/`.
 ### build.gradle (app module)
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.11.0")   // 3D only
-    implementation("io.github.sceneview:arsceneview:4.11.0") // AR (includes sceneview)
+    implementation("io.github.sceneview:sceneview:4.11.1")   // 3D only
+    implementation("io.github.sceneview:arsceneview:4.11.1") // AR (includes sceneview)
 }
 ```
 
@@ -120,6 +120,7 @@ fun ARSceneView(
     sessionFeatures: Set<Session.Feature> = setOf(),
     playbackDataset: File? = null,                 // Replay an MP4 recorded via ARRecorder. See "AR Recording & Playback".
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,  // Picks the highest-res 30fps BACK config so ARRecorder records at full resolution (#1065). Pass null for ARCore's stock default, ::frontCameraConfig for Augmented Faces, or `cameraConfigFilter { ... }` for a DSL-built selector (#1733).
+    flashMode: Config.FlashMode = Config.FlashMode.OFF,  // ARCore v1.45+ Flash Mode — OFF/TORCH. Reactive; unsupported devices/front-camera silently downgrade to OFF (#1732).
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     planeRenderer: Boolean = true,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
@@ -852,6 +853,12 @@ Requires the session depth mode set to `Config.DepthMode.AUTOMATIC` or `RAW_DEPT
 Returns `null` when depth is unavailable (not supported, not yet computed, camera not tracking,
 or no valid depth at that pixel). Cheap enough for tap-driven placement — do not call it per-pixel.
 
+**Threading:** call from the AR frame / GL-main thread — typically from
+`onSessionUpdated`, `onFrame` or a UI gesture callback that already runs there.
+The extension calls `Frame.acquireDepthImage16Bits()` and **must not** be invoked
+from a background coroutine. See also: `DepthMeshNode` (depth → renderable mesh)
+and `rememberDepthCollider` (depth → physics collider).
+
 ```kotlin
 data class DepthHitResult(
     val position: Position,   // world-space point on the real surface
@@ -859,6 +866,7 @@ data class DepthHitResult(
     val distance: Float       // camera-to-point distance, meters
 )
 
+// Single result (not a list) — depth at one pixel is unique, unlike Frame.hitTest's ray cast.
 fun Frame.hitTestDepth(xPx: Float, yPx: Float): DepthHitResult?
 ```
 
@@ -876,6 +884,32 @@ ARSceneView(
         }
     )
 )
+```
+
+### DepthHitResultNode — Compose-idiomatic depth-hit placement
+
+For continuous, declarative placement against any real-world surface, use `DepthHitResultNode` —
+the depth-image mirror of `HitResultNode`. Each frame it re-runs `Frame.hitTestDepth` at the
+configured pixel and moves to the resulting world-space point. When depth is unavailable, the
+node keeps its last known pose (same fallback contract as `HitResultNode`).
+
+```kotlin
+@Composable fun ARSceneScope.DepthHitResultNode(
+    xPx: Float,
+    yPx: Float,
+    apply: DepthHitResultNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null,
+)
+```
+
+```kotlin
+ARSceneView(
+    sessionConfiguration = { _, config -> config.depthMode = Config.DepthMode.AUTOMATIC }
+) {
+    DepthHitResultNode(xPx = viewWidth / 2f, yPx = viewHeight / 2f) {
+        CubeNode(size = Float3(0.05f))
+    }
+}
 ```
 
 ### Depth visualization — false-color depth overlay
@@ -1086,6 +1120,128 @@ session start (depth is computed asynchronously) — handle it. Raw depth typica
 the 16 ms frame budget at 60 fps. Always show an explicit "depth not supported" banner when
 `Session.isDepthModeSupported(...)` is false — never leave the user staring at a black screen.
 
+### DepthMeshNode — reify ARCore depth as a renderable Filament mesh
+
+`rememberDepthMesh()` + `DepthMeshNode` turn the live ARCore environment depth image into an
+actual Filament mesh in the scene, with **edge-discontinuity culling** so triangles don't stretch
+across depth jumps. This is the foundational primitive that unblocks: shadows cast by virtual
+objects onto the real world, scan / pulse / x-ray materials over real geometry, and depth-driven
+physics colliders.
+
+Requires the session depth mode set to `Config.DepthMode.AUTOMATIC` or `RAW_DEPTH_ONLY`. The mesh
+stays empty until depth is available and the camera is tracking. The rebuild is costly — it runs
+on an interval (default 200 ms / 5 Hz), not every frame.
+
+**Threading:** the rebuild reads `Frame.acquireDepthImage16Bits()` and updates Filament — both
+must run on the AR frame / GL-main thread. The composable handles this for you (the internal
+`LaunchedEffect` posts the work to the right thread); **do not** call `node.rebuild()` or
+`node.latestSnapshot` consumers from a background coroutine. See also: `Frame.hitTestDepth`
+(raycast against the same depth image) and `rememberDepthCollider` (depth → physics collider).
+
+```kotlin
+@Composable fun ARSceneScope.rememberDepthMesh(
+    refreshIntervalMs: Long = 200L,            // min ms between rebuilds; 5 Hz by default
+    stride: Int = 4,                            // pixel stride between vertices (higher = coarser)
+    edgeThresholdMeters: Float = 0.10f,         // depth-jump above which triangles are culled
+    materialInstance: MaterialInstance? = null, // e.g. a transparent shadow-receiver material
+    builder: RenderableManager.Builder.() -> Unit = {},
+    onMeshRebuilt: ((DepthMeshSnapshot) -> Unit)? = null,
+): DepthMeshNode
+
+@Composable fun ARSceneScope.DepthMeshNode(
+    node: DepthMeshNode,
+    apply: DepthMeshNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null,
+)
+
+data class DepthMeshSnapshot(
+    val positions: FloatArray,   // camera-space, flat-packed [x0,y0,z0, x1,y1,z1, ...]
+    val indices: IntArray,       // triangle indices (3 ints per triangle)
+    val width: Int,              // grid width in vertices
+    val height: Int,             // grid height in vertices
+    val worldTransform: Transform, // camera pose at rebuild time
+    val timestampMs: Long,
+)
+```
+
+```kotlin
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    sessionConfiguration = { _, config ->
+        config.depthMode = Config.DepthMode.AUTOMATIC
+    }
+) {
+    val depthMesh = rememberDepthMesh()  // 5 Hz refresh, stride 4, 10 cm edge threshold
+    DepthMeshNode(depthMesh)             // attaches it to the scene as a renderable
+}
+```
+
+The `onMeshRebuilt` callback (and `node.latestSnapshot`) expose the freshly-computed vertex /
+index buffers in camera space so downstream consumers — a depth-driven physics collider, a
+debug-overlay point cloud, an exporter — can read the geometry without poking Filament
+internals.
+
+### rememberDepthCollider — bounce virtual bodies off the real world
+
+`rememberDepthCollider()` builds a static physics collider from the live ARCore depth mesh so
+`PhysicsNode` bodies bounce off the **real** floor / table / wall (Depth Lab "Collider", #1713).
+Thin physics wrapper over `DepthMeshNode` (#1739) — same edge-discontinuity culling, no curtain
+triangles across depth jumps. See also: `DepthMeshNode` (the underlying renderable mesh) and
+`Frame.hitTestDepth` (single-ray raycast against the same depth image).
+
+```kotlin
+@Composable fun ARSceneScope.rememberDepthCollider(
+    refreshIntervalMs: Long = 200L,  // mesh rebuild rate; 200 ms = 5 Hz
+    stride: Int = 4,                 // pixel stride between depth samples
+    edgeThresholdMeters: Float = 0.10f,
+    renderMesh: Boolean = false,     // also render the underlying mesh (debug / shadow receiver)
+): DepthCollider
+```
+
+`DepthCollider` implements `FloorProvider` — pass it as the `floorProvider` parameter on
+`PhysicsNode`:
+
+```kotlin
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    sessionConfiguration = { _, config ->
+        config.depthMode = Config.DepthMode.AUTOMATIC
+    }
+) {
+    val depthCollider = rememberDepthCollider(refreshIntervalMs = 200L)
+    var ballNode by remember { mutableStateOf<SphereNode?>(null) }
+    SphereNode(
+        radius = 0.05f,
+        materialInstance = ballMaterial,
+        position = Position(0f, 0.5f, -0.3f),
+        apply = { ballNode = this },
+    )
+    ballNode?.let { node ->
+        PhysicsNode(
+            node = node,
+            restitution = 0.7f,
+            radius = 0.05f,
+            floorY = -1f,                 // fallback if depth unavailable
+            floorProvider = depthCollider, // bounce off real geometry when depth is on
+        )
+    }
+}
+```
+
+Optional region-near-bodies culling reduces the per-frame, per-body triangle test set when many
+bodies are clustered and the mesh is dense:
+```kotlin
+depthCollider.setBodiesRegion(
+    centres = floatArrayOf(node.worldPosition.x, node.worldPosition.y, node.worldPosition.z),
+    padding = 0.3f,
+)
+```
+
+`floorYAt(x, y, z, radius)` returns the world-space Y of the highest depth-mesh triangle under
+the body's XZ, or `null` when no surface is available — `PhysicsBody` then falls back to its
+static `floorY` plane. Requires `Config.DepthMode.AUTOMATIC` (or `RAW_DEPTH_ONLY`); without it
+the collider stays empty.
+
 ### AugmentedImageNode — image tracking
 ```kotlin
 @Composable fun AugmentedImageNode(
@@ -1124,6 +1280,19 @@ the 16 ms frame budget at 60 fps. Always show an explicit "depth not supported" 
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 
+// Imperative host call with explicit ttl (1..365 days, ARCore persistence limit):
+cloudAnchorNode.host(session, ttlDays = 7) { cloudAnchorId, state ->
+    if (cloudAnchorId != null && !state.isError) {
+        // Persist the ID locally so we can re-resolve across launches:
+        registry.add(CloudAnchorEntry(
+            name = "Living room marker",
+            cloudAnchorId = cloudAnchorId,
+            hostedAtEpochMs = System.currentTimeMillis(),
+            ttlDays = 7
+        ))
+    }
+}
+
 // host / resolve return the underlying ARCore Future — cancel pending requests on dispose
 // to avoid running the network round-trip (and accruing Google Cloud billing) after the
 // user has navigated away. (#1768)
@@ -1135,6 +1304,52 @@ val resolveFuture: ResolveCloudAnchorFuture = CloudAnchorNode.resolve(
 ) { state, node -> /* ... */ }
 DisposableEffect(cloudAnchorId) { onDispose { resolveFuture.cancel() } }
 ```
+
+**Persistence — `ttlDays`.** `CloudAnchorNode.host(session, ttlDays = 1)` accepts any value in `CloudAnchorNode.TTL_DAYS_RANGE` (= `1..365`, inclusive). Values outside this range throw `IllegalArgumentException`. Pick a short ttl for ephemeral collaborative sessions, a longer one (e.g. 7..30) for "leave behind" multi-day experiences.
+
+**Privacy disclosure (required).** ARCore Cloud Anchors upload feature points from the user's surroundings to Google. Surface a clear in-app disclosure and link to the ARCore data policy (https://developers.google.com/ar/data-privacy) before hosting.
+
+### CloudAnchorRegistry — local persistence helper for hosted Cloud Anchor IDs
+
+The library does NOT manage Cloud Anchor lifetime — that lives server-side on Google's ARCore API. But apps that host long-ttl anchors typically want a small client-side index keyed by a user-meaningful name so the IDs can be passed back to `CloudAnchorNode.resolve(...)` on the next launch. `CloudAnchorRegistry` is exactly that helper.
+
+```kotlin
+data class CloudAnchorEntry(
+    val name: String,
+    val cloudAnchorId: String,
+    val hostedAtEpochMs: Long,
+    val ttlDays: Int                       // validated against 1..365 at construction
+) {
+    fun isExpired(now: Long = System.currentTimeMillis()): Boolean
+    val expiresAtEpochMs: Long
+}
+
+interface CloudAnchorRegistry {
+    fun add(entry: CloudAnchorEntry)        // insert or replace by name
+    fun remove(name: String): Boolean
+    fun get(name: String): CloudAnchorEntry?
+    fun list(): List<CloudAnchorEntry>
+    fun clear()
+    fun purgeExpired(now: Long = System.currentTimeMillis()): Int
+}
+
+// Default implementation — SharedPreferences-backed, non-blocking writes (apply()):
+class SharedPreferencesCloudAnchorRegistry(
+    prefs: SharedPreferences
+) : CloudAnchorRegistry {
+    constructor(context: Context, prefsName: String = "sceneview_cloud_anchors")
+}
+```
+
+**Re-resolve across launches:**
+```kotlin
+val registry = SharedPreferencesCloudAnchorRegistry(context)
+registry.list().filterNot { it.isExpired() }.forEach { entry ->
+    CloudAnchorNode.resolve(engine, session, entry.cloudAnchorId) { state, node -> /* attach */ }
+}
+```
+
+Threading: safe to call from the main thread — `SharedPreferences.edit().apply()` is non-blocking.
 
 ### TrackableNode — generic trackable
 ```kotlin
@@ -1148,6 +1363,54 @@ DisposableEffect(cloudAnchorId) { onDispose { resolveFuture.cancel() } }
 )
 ```
 
+### Geospatial accessors — `rememberCameraGeospatialPose`, `rememberEarthState`, `awaitVpsAvailability`
+
+Composable State + suspend helpers around ARCore's Geospatial API (#1769). Lets apps read the live device lat/lng/altitude, observe the `Earth.EarthState`, and gate Terrain anchor placement on actual VPS coverage — all from regular Compose code.
+
+```kotlin
+// Camera lat/lng/altitude — re-read each frame, null until Earth is TRACKING.
+@Composable fun rememberCameraGeospatialPose(session: Session?): State<GeospatialPose?>
+
+// Snapshot every field of a GeospatialPose into a data class (the raw GeospatialPose handle
+// becomes invalid as soon as the next frame advances — snapshot to retain).
+data class GeospatialPoseSnapshot(
+    val latitude: Double, val longitude: Double, val altitude: Double,
+    val heading: Double,
+    val horizontalAccuracy: Double, val verticalAccuracy: Double,
+    val orientationYawAccuracy: Double
+)
+fun GeospatialPose.snapshot(): GeospatialPoseSnapshot
+
+// EarthState as Compose State — react in UI to ERROR_NOT_AUTHORIZED (missing Cloud key),
+// ERROR_RESOURCE_EXHAUSTED (out of quota), ERROR_APK_VERSION_TOO_OLD, etc.
+@Composable fun rememberEarthState(session: Session?): State<Earth.EarthState?>
+
+// VPS availability — single Cloud round-trip, surfaces "is Terrain anchor placement viable
+// at this lat/lng" so apps don't fire ResolveAnchorOnTerrainFuture into the void.
+suspend fun Session.awaitVpsAvailability(latitude: Double, longitude: Double): VpsAvailability
+```
+
+```kotlin
+ARSceneView(
+    sessionConfiguration = { _, config ->
+        config.geospatialMode = Config.GeospatialMode.ENABLED
+    },
+    onSessionCreated = { arSession = it },
+) {
+    val pose by rememberCameraGeospatialPose(arSession)
+    val state by rememberEarthState(arSession)
+
+    LaunchedEffect(arSession) {
+        val available = arSession?.awaitVpsAvailability(48.8584, 2.2945)
+        if (available == VpsAvailability.AVAILABLE) {
+            // place Terrain anchor at the Eiffel Tower
+        }
+    }
+}
+```
+
+Requires `Config.GeospatialMode.ENABLED`, the ARCore Cloud API key + `ACCESS_FINE_LOCATION` permission documented in the API key warning above. `rememberCameraGeospatialPose` returns `null` until ARCore acquires a GPS lock (the EarthState transitions to `ENABLED` *and* `Earth.trackingState` reaches `TRACKING`); `rememberEarthState` surfaces every error code so the UI can show the right "missing Cloud key" / "out of quota" / "APK too old" message rather than a generic spinner.
+
 ### TerrainAnchorNode — Geospatial anchor pinned to ground at lat/lng
 
 **Imperative API only — async resolve via `Earth`.** Pin a node to Google's outdoor terrain at any GPS coordinate. No plane detection required — works wherever VPS / Street View has coverage.
@@ -1156,21 +1419,24 @@ DisposableEffect(cloudAnchorId) { onDispose { resolveFuture.cancel() } }
 import io.github.sceneview.ar.node.TerrainAnchorNode
 
 // Inside `onSessionUpdated = { session, frame -> ... }` once Earth is TRACKING:
-val earth: Earth? = session.earth
-if (earth?.trackingState == TrackingState.TRACKING) {
-    val future: ResolveAnchorOnTerrainFuture = TerrainAnchorNode.resolve(
+if (session.earth?.trackingState == TrackingState.TRACKING) {
+    val future: ResolveAnchorOnTerrainFuture? = TerrainAnchorNode.resolve(
         engine = engine,
-        earth = earth,
-        latitude = 48.8584,           // Eiffel Tower
+        session = session,                 // resolve internally reads session.earth
+        latitude = 48.8584,                // Eiffel Tower
         longitude = 2.2945,
-        altitudeAboveTerrain = 1.5,    // metres above terrain (0 = on the ground)
-        eusQuaternion = Quaternion()   // east-up-south rotation
+        altitudeAboveTerrain = 1.5,        // metres above terrain (0 = on the ground)
+        eusQuaternion = Quaternion()       // east-up-south rotation
     ) { state: TerrainAnchorState, anchorNode: TerrainAnchorNode? ->
         if (state == TerrainAnchorState.SUCCESS && anchorNode != null) {
             // anchorNode IS-A AnchorNode — pin children via the standard composable:
             anchorNodes.add(anchorNode)
         }
     }
+    // Cancel the pending resolve on dispose to avoid running the network
+    // round-trip (and accruing Google Cloud billing) after the user has
+    // navigated away (#1768). Matches the CloudAnchorNode pattern.
+    DisposableEffect(future) { onDispose { future?.cancel() } }
 }
 ```
 
@@ -1200,17 +1466,83 @@ Requires:
 Same async-resolve API as `TerrainAnchorNode`, but the altitude is interpreted relative to the rooftop of the building at the given lat/lng (or the terrain if no building is detected).
 
 ```kotlin
-val future = RooftopAnchorNode.resolve(
+val future: ResolveAnchorOnRooftopFuture? = RooftopAnchorNode.resolve(
     engine = engine,
-    earth = earth,
+    session = session,              // resolve internally reads session.earth
     latitude = 48.8738,             // Arc de Triomphe
     longitude = 2.2950,
     altitudeAboveRooftop = 0.0,
     eusQuaternion = Quaternion()
 ) { state: RooftopAnchorState, anchorNode: RooftopAnchorNode? -> /* ... */ }
+// Cancel on dispose to drop the network round-trip + Google Cloud billing
+// after the user navigates away (#1768).
+DisposableEffect(future) { onDispose { future?.cancel() } }
 ```
 
 Same requirements as `TerrainAnchorNode`. Demo: `samples/android-demo/.../ARRooftopAnchorDemo.kt`.
+
+### StreetscapeGeometryNode — building / terrain mesh (filtered)
+
+Renders an ARCore Geospatial **Streetscape Geometry** mesh — full polygonal buildings and terrain meshes that the device's tracker reconstructs around the user. Requires `Config.GeospatialMode.ENABLED` + `Config.StreetscapeGeometryMode.ENABLED` and the same Cloud API key + location permission as `TerrainAnchorNode` (see the API key warning above).
+
+```kotlin
+@Composable fun StreetscapeGeometryNode(
+    streetscapeGeometry: StreetscapeGeometry,
+    types: Set<StreetscapeGeometry.Type> = setOf(BUILDING, TERRAIN),  // #1772
+    minQuality: StreetscapeGeometry.Quality = StreetscapeGeometry.Quality.NONE,  // NONE < BUILDING_LOD_1 < BUILDING_LOD_2 (#1772)
+    meshMaterialInstance: MaterialInstance? = null,
+    onTrackingStateChanged: ((TrackingState) -> Unit)? = null,
+    onUpdated: ((StreetscapeGeometry) -> Unit)? = null,
+    apply: StreetscapeGeometryNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null
+)
+```
+
+Pass `types = setOf(StreetscapeGeometry.Type.BUILDING)` to drop the (often noisy) ground terrain in dense urban scenes. Pass `minQuality = StreetscapeGeometry.Quality.BUILDING_LOD_2` to render only the higher-LOD buildings and save a frame-rate cliff on low-end devices. The filter is a no-op early-return on the composable side, so unmatched geometries never allocate Filament buffers.
+
+```kotlin
+onSessionUpdated = { _, frame ->
+    geometries = frame.getUpdatedTrackables(StreetscapeGeometry::class.java).toList()
+}
+
+ARSceneView(...) {
+    geometries.forEach { geo ->
+        StreetscapeGeometryNode(
+            streetscapeGeometry = geo,
+            types = setOf(StreetscapeGeometry.Type.BUILDING),
+            minQuality = StreetscapeGeometry.Quality.BUILDING_LOD_2,
+            meshMaterialInstance = buildingMat
+        )
+    }
+}
+```
+
+Demo: `samples/android-demo/.../ARStreetscapeDemo.kt`. Setup guide (Cloud project + API key): `samples/android-demo/STREETSCAPE_SETUP.md`.
+
+### Geospatial Depth — extend environment depth accuracy to ~65 m
+
+Standard ARCore motion-stereo depth (`Config.DepthMode.AUTOMATIC`) is reliable to roughly **8 m**. When the session also has Geospatial enabled, ARCore **automatically** fuses motion depth with Streetscape Geometry + device sensors and extends accurate depth out to **~65 m** — essential for outdoor or large-scale AR (placing virtual signage on a far building façade, occluding a virtual character behind a distant wall, depth-aware hit-tests across a city block). This is the **Geospatial Depth** feature shipped in ARCore 1.54.
+
+There is **no separate `Config.GeospatialDepthMode` knob** — the fusion is opt-in by enabling all three modes together:
+
+```kotlin
+ARSceneView(
+    sessionConfiguration = { _, config ->
+        config.depthMode = Config.DepthMode.AUTOMATIC          // motion-stereo depth (always required)
+        config.geospatialMode = Config.GeospatialMode.ENABLED   // unlocks the Geospatial fusion
+        config.streetscapeGeometryMode = Config.StreetscapeGeometryMode.ENABLED  // far-field mesh source
+    }
+) { /* … */ }
+```
+
+Once the three modes are on **and** the Earth state has reached `TrackingState.TRACKING` with VPS coverage, every `Frame.acquireDepthImage16Bits()` call returns a depth image where pixels beyond ~8 m carry valid values out to ~65 m. **No API change** is required from app code — `ARCameraStream` depth occlusion, `Frame.hitTestDepth` (#1712), `DepthMeshNode` and `rememberDepthCollider` all benefit transparently from the extended range. Outside VPS-covered areas (no Streetscape geometry available), depth falls back to motion-stereo and the ~8 m cap re-applies.
+
+Requirements:
+- ARCore Cloud API key + `ACCESS_FINE_LOCATION` permission (same as the rest of the Geospatial API — see the API key warning above).
+- Device with a back-facing camera config that supports `DepthMode` (most ARCore-supported devices since 2020).
+- A VPS-covered location (city centres of supported regions: https://developers.google.com/ar/coverage).
+
+See #1731.
 
 ---
 
@@ -1905,6 +2237,49 @@ Returns a content `Uri` on success, or `null` if the copy fails. Throws `FileNot
 - **Switching live ↔ playback** requires a full `ARSceneView` recreation — wrap in `key(playbackDataset) { ARSceneView(...) }` so Compose discards and rebuilds the session. Mutating the param after first composition is silently ignored (the value is snapshotted at session creation).
 - **Recording while in playback mode is rejected.** `ARRecorder.start()` returns `false` and surfaces an error message if the session is currently bound to a playback dataset.
 - **`attach(newSession)` mid-RECORDING is a pointer swap, not a graceful handoff.** If the underlying `Session` instance changes while a recording is in flight (e.g. the user navigates away and back, or `key(...)` triggers a full ARSceneView teardown), the old session never receives `stopRecording()` — the in-flight MP4 is left dangling. `stop()` on the new session is a no-op for the orphaned recording. Mitigation: call `stop()` BEFORE any UI action that might dispose the ARSceneView; or hook `onSessionCreated` to detect the new-session event and stop+restart deliberately. Note that ARCore keeps the same `Session` instance across plain Activity pause/resume — you only need to worry about swap on composable disposal.
+
+### Recording/playback completeness (#1770)
+
+Beyond `start` / `stop`, ARCore exposes four more state signals SceneView wires through:
+
+```kotlin
+// 1. PlaybackStatus as Compose State — observe NONE / OK / FINISHED / IO_ERROR.
+//    The FINISHED transition is the only public end-of-replay signal — use it to loop,
+//    rewind, or advance to the next dataset.
+val playback by rememberARPlaybackStatus(arSession)
+LaunchedEffect(playback) {
+    if (playback == PlaybackStatus.FINISHED) loopCount++
+}
+
+// 2. RecordingStatus.IO_ERROR — disk-full / storage-detached / permission-revoked
+//    mid-recording. ARRecorder.State.IO_ERROR is distinct from State.ERROR so apps
+//    can offer a "clear cache and retry" CTA without overloading the generic error.
+when (recorder.state) {
+    ARRecorder.State.IO_ERROR -> Text("Storage full — free up space and retry")
+    ARRecorder.State.ERROR    -> Text("Recording failed: ${recorder.errorMessage}")
+    else                      -> /* … */
+}
+
+// 3. Custom data tracks — annotate the MP4 with ML detections, ground truth boxes,
+//    or any side-channel data. Wraps RecordingConfig.addTrack + Frame.recordTrackData.
+val detectionsTrack = remember {
+    recorder.addTrack(UUID.fromString("…"), "application/text") // BEFORE start()
+}
+recorder.start(file)
+// In onSessionUpdated:
+val payload = ByteBuffer.wrap(detectionJson.toByteArray(Charsets.UTF_8))
+recorder.recordTrack(detectionsTrack, frame, payload)
+// On playback (replay side):
+val tracks = frame.getUpdatedTrackData(detectionsTrack.uuid)
+
+// 4. Scoped-storage playback Uri — Android 10+ apps can replay an MP4 picked via the
+//    Storage Access Framework without copying it into app-private storage first.
+ARSceneView(playbackDatasetUri = pickedUri) { /* … */ }
+//    Mutually exclusive with playbackDataset: File? — setting both throws
+//    IllegalArgumentException at session creation.
+```
+
+See [`ARRecorder.kt`](arsceneview/src/main/java/io/github/sceneview/ar/recording/ARRecorder.kt).
 
 ### iOS — `ARRecorder` (record-only via ReplayKit, v4.3.0+)
 
@@ -2663,7 +3038,7 @@ React Native (Turbo Module / Fabric), KMP Compose iOS (UIKitView).
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.0")
+    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.1")
 ]
 ```
 
@@ -3407,7 +3782,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.1")
 ```
 
 Import: `import SceneViewSwift`
@@ -4014,7 +4389,7 @@ Install:
 ```yaml
 # pubspec.yaml
 dependencies:
-  sceneview_flutter: ^4.11.0
+  sceneview_flutter: ^4.11.1
 ```
 
 Widgets: `SceneView` (3D), `ARSceneView` (AR).

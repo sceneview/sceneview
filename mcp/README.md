@@ -111,7 +111,7 @@ Every developer tool is **free**: setup guides for every platform, code samples,
 
 | Tool | What it does |
 |---|---|
-| `get_node_reference` | Full API reference for any of 35+ node types — exact signatures, defaults, examples |
+| `get_node_reference` | Full API reference for any of 36+ node types — exact signatures, defaults, examples |
 | `list_platforms` | Supported platforms with their status, renderer, and framework |
 | `get_platform_roadmap` | Multi-platform status and timeline |
 
@@ -208,7 +208,7 @@ The assistant calls `validate_code` with the generated snippet and checks it aga
 - Always use the current SceneView 4.0.x API surface
 - Generate correct **Compose-native** 3D/AR code for Android
 - Generate correct **SwiftUI-native** code for iOS/macOS/visionOS
-- Know about all 35+ node types and their exact parameters
+- Know about all 36+ node types and their exact parameters
 - Validate code against 15+ rules before presenting it
 - Provide working, tested sample code for 33 scenarios
 

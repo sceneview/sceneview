@@ -244,6 +244,108 @@ class PhysicsSimulationTest {
         assertFalse(result.isAsleep, "Even zero impulse should wake body")
     }
 
+    // --- simulateStep with dynamic floor lookup (#1713) ---
+
+    @Test
+    fun dynamicFloorRaisesContactSurface() {
+        // Static floor at y = 0, dynamic depth-mesh surface reports y = 0.5 → the body must
+        // come to rest at y = 0.5 + radius, not on the static floor below.
+        val state = PhysicsState(
+            position = Position(0f, 0.6f, 0f),
+            velocity = Position(0f, -5f, 0f),
+            radius = 0.1f,
+            floorY = 0f,
+            restitution = 0f, // inelastic so the bounce reads cleanly
+        )
+        val result = simulateStep(state, 0.05f) { _, _, _, _ -> 0.5f }
+        // The body lands on the dynamic surface (0.5) offset by its radius (0.1).
+        assertEquals(0.6f, result.position.y, epsilon)
+    }
+
+    @Test
+    fun dynamicFloorNullFallsBackToStaticFloor() {
+        // Depth lookup returns null → static floorY = 0 takes effect.
+        val state = PhysicsState(
+            position = Position(0f, 0.05f, 0f),
+            velocity = Position(0f, -5f, 0f),
+            radius = 0.1f,
+            floorY = 0f,
+            restitution = 0f,
+        )
+        val result = simulateStep(state, 0.05f) { _, _, _, _ -> null }
+        // Falls back to static floor at y = 0 + radius (0.1).
+        assertEquals(0.1f, result.position.y, epsilon)
+    }
+
+    @Test
+    fun dynamicFloorDisablesSleepEvenAtNegligibleRebound() {
+        // Velocity is tiny and dt is short enough that gravity's contribution stays under the
+        // sleep threshold: the body WOULD sleep on a static floor (no depth source) — pinned by
+        // [dynamicFloorAllowsSleepWhenLookupReturnsNull] — but with a depth surface, the
+        // simulation MUST keep it awake so the next mesh rebuild can re-evaluate the contact.
+        val state = PhysicsState(
+            position = Position(0f, 0.099f, 0f),
+            velocity = Position(0f, -0.02f, 0f),
+            radius = 0.1f,
+            restitution = 0.5f,
+        )
+        // dt small enough that gravity adds only ~0.01 to velocity → |reboundVy| stays under
+        // SLEEP_THRESHOLD = 0.05.
+        val result = simulateStep(state, 0.001f) { _, _, _, _ -> 0f }
+        assertFalse(result.isAsleep, "Bodies on a depth surface must not sleep")
+    }
+
+    @Test
+    fun dynamicFloorAllowsSleepWhenLookupReturnsNull() {
+        // Same setup as above, but no depth surface → sleep still kicks in via the static floor.
+        val state = PhysicsState(
+            position = Position(0f, 0.099f, 0f),
+            velocity = Position(0f, -0.02f, 0f),
+            radius = 0.1f,
+            restitution = 0.5f,
+        )
+        val result = simulateStep(state, 0.001f) { _, _, _, _ -> null }
+        assertTrue(result.isAsleep, "Static-floor sleep behaviour is preserved")
+    }
+
+    @Test
+    fun dynamicFloorLookupReceivesProjectedPosition() {
+        // Pin that the lookup is invoked with the post-integration XYZ + the body's radius,
+        // not the pre-integration values — Depth Lab's "Collider" feeds the projected XZ so
+        // a fast-moving body queries the surface where it will land.
+        var seenX: Float? = null
+        var seenZ: Float? = null
+        var seenR: Float? = null
+        val state = PhysicsState(
+            position = Position(1f, 1f, 2f),
+            velocity = Position(10f, 0f, 20f),
+            radius = 0.25f,
+        )
+        simulateStep(state, 0.01f) { x, _, z, r ->
+            seenX = x
+            seenZ = z
+            seenR = r
+            null
+        }
+        // After integration: x = 1 + 10*0.01 = 1.10; z = 2 + 20*0.01 = 2.20
+        assertEquals(1.1f, seenX!!, epsilon)
+        assertEquals(2.2f, seenZ!!, epsilon)
+        assertEquals(0.25f, seenR!!, epsilon)
+    }
+
+    @Test
+    fun dynamicFloorSleepingBodyStaysAsleep() {
+        // The depth lookup variant must respect the same isAsleep guard as the static one —
+        // PhysicsBody's lifecycle can put a body to sleep then later attach a depth collider.
+        val state = PhysicsState(
+            position = Position(0f, 0f, 0f),
+            velocity = Position(0f, 0f, 0f),
+            isAsleep = true,
+        )
+        val result = simulateStep(state, 0.01f) { _, _, _, _ -> 5f }
+        assertEquals(state, result)
+    }
+
     // --- PhysicsState defaults ---
 
     @Test
