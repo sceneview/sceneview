@@ -149,6 +149,9 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 Useful for record-replay debugging, deterministic AR tests, and
  *                                 sharing reproducers between developers without needing the
  *                                 original device or location.
+ * @param playbackDatasetUri       Scoped-storage equivalent of [playbackDataset] (#1770).
+ *                                 Accepts `content://` URIs on Android 10+ — mutually exclusive
+ *                                 with [playbackDataset].
  * @param sessionCameraConfig      Selects the ARCore [CameraConfig] for the session. Defaults to
  *                                 [highestResolutionCameraConfig], which picks the highest-resolution
  *                                 BACK-facing 30 FPS config the device exposes — so [ARRecorder]
@@ -259,6 +262,26 @@ fun ARSceneView(
      * Default `null` (live camera mode).
      */
     playbackDataset: File? = null,
+    /**
+     * Optional scoped-storage [android.net.Uri] dataset to play back instead of the live camera
+     * feed (Android 10+ / API 29+ alternative to [playbackDataset]).
+     *
+     * Wraps ARCore's [com.google.ar.core.Session.setPlaybackDatasetUri] (#1770), which accepts
+     * `content://` URIs (`MediaStore`, Storage Access Framework picker output, app-private
+     * file providers). The legacy `playbackDataset: File?` only accepts an absolute filesystem
+     * path — which on Android 10+ scoped storage means the app must copy the user-picked MP4
+     * into its sandbox before replay. With `playbackDatasetUri` the replay reads the original
+     * `Uri` directly.
+     *
+     * **Mutually exclusive with [playbackDataset].** Setting both is a programming error and
+     * triggers an `IllegalArgumentException` at session creation. Default `null`.
+     *
+     * Same snapshot semantics as [playbackDataset] — the value is captured at first composition
+     * (ARCore requires the playback source to be set before the first resume). Switching
+     * between live and playback at runtime requires wrapping the `ARSceneView` in
+     * `key(playbackDatasetUri) { … }` so Compose rebuilds the session.
+     */
+    playbackDatasetUri: android.net.Uri? = null,
     /**
      * Selects the camera config to use. The returned config must be one returned by
      * [Session.getSupportedCameraConfigs].
@@ -525,6 +548,11 @@ fun ARSceneView(
         AtomicReference<Float?>(null)
     }
 
+    // Mutually exclusive playback inputs (#1770): only one of File or Uri may be set.
+    require(playbackDataset == null || playbackDatasetUri == null) {
+        "ARSceneView: pass either playbackDataset (File) OR playbackDatasetUri (Uri), not both."
+    }
+
     val arCore = remember {
         // Snapshotted at first composition. ARCore requires setPlaybackDataset() to be called
         // BEFORE the first resume(), so we capture the param value once when the session is
@@ -532,25 +560,42 @@ fun ARSceneView(
         // at runtime requires the caller to recreate the ARSceneView (typically via
         // `key(playbackDataset) { ARSceneView(...) }`).
         val initialPlaybackDataset = playbackDataset
+        val initialPlaybackDatasetUri = playbackDatasetUri
         ARCore(
             onSessionCreated = { session ->
                 cameraStream?.let { session.setCameraTextureNames(it.cameraTextureIds) }
                 // Bind the playback source first — ARCore mandates the dataset is set before
                 // resume(), and configure() happens here, then resume() runs immediately
-                // after this callback returns.
-                initialPlaybackDataset?.let { file ->
-                    try {
-                        session.setPlaybackDataset(file.absolutePath)
-                    } catch (e: PlaybackFailedException) {
-                        // Prefer the dedicated playback callback when wired (audit #876),
-                        // fall back to onSessionFailed for backwards compatibility.
-                        (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
-                    } catch (e: Exception) {
-                        // Defensive — ARCore may throw IllegalStateException if the session
-                        // has already been resumed elsewhere. Don't crash; surface to caller.
-                        (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                // after this callback returns. File path takes precedence over Uri (the
+                // mutually-exclusive `require` above prevents both from being set).
+                val bindFile: () -> Unit = {
+                    initialPlaybackDataset?.let { file ->
+                        try {
+                            session.setPlaybackDataset(file.absolutePath)
+                        } catch (e: PlaybackFailedException) {
+                            // Prefer the dedicated playback callback when wired (audit #876),
+                            // fall back to onSessionFailed for backwards compatibility.
+                            (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                        } catch (e: Exception) {
+                            // Defensive — ARCore may throw IllegalStateException if the session
+                            // has already been resumed elsewhere. Don't crash; surface to caller.
+                            (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                        }
                     }
                 }
+                val bindUri: () -> Unit = {
+                    initialPlaybackDatasetUri?.let { uri ->
+                        try {
+                            session.setPlaybackDatasetUri(uri)
+                        } catch (e: PlaybackFailedException) {
+                            (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                        } catch (e: Exception) {
+                            (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                        }
+                    }
+                }
+                bindFile()
+                bindUri()
                 sessionCameraConfigRef.get()?.let { session.cameraConfig = it(session) }
                 session.configure { config ->
                     config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
