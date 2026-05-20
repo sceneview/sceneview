@@ -41,7 +41,6 @@ import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.InstantPlacementPoint
 import com.google.ar.core.Plane
-import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
@@ -274,14 +273,13 @@ private fun InstantPlacementScene(
             materialLoader = materialLoader,
             playbackDataset = playbackDataset,
             planeRenderer = !instantEnabled,
-            sessionConfiguration = { _: Session, config: Config ->
-                config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-                config.instantPlacementMode = if (instantEnabled) {
-                    Config.InstantPlacementMode.LOCAL_Y_UP
-                } else {
-                    Config.InstantPlacementMode.DISABLED
-                }
+            // Typed Config.*Mode params (#1766) — reactive: flipping `instantEnabled` recomposes
+            // the session config without a sessionConfiguration callback. planeFindingMode +
+            // lightEstimationMode are already the defaults.
+            instantPlacementMode = if (instantEnabled) {
+                Config.InstantPlacementMode.LOCAL_Y_UP
+            } else {
+                Config.InstantPlacementMode.DISABLED
             },
             onSessionUpdated = { _, frame: Frame ->
                 latestFrame = frame

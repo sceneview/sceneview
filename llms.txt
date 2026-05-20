@@ -121,7 +121,19 @@ fun ARSceneView(
     playbackDataset: File? = null,                 // Replay an MP4 recorded via ARRecorder. See "AR Recording & Playback".
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,  // Picks the highest-res 30fps BACK config so ARRecorder records at full resolution (#1065). Pass null for ARCore's stock default.
     flashMode: Config.FlashMode = Config.FlashMode.OFF,  // ARCore v1.45+ Flash Mode — OFF/TORCH. Reactive; unsupported devices/front-camera silently downgrade to OFF (#1732).
-    sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
+    // Typed Config.*Mode DSL params (#1766) — applied BEFORE sessionConfiguration so the callback still wins. All reactive.
+    planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
+    depthMode: Config.DepthMode = Config.DepthMode.DISABLED,                                   // Support-gated; auto-downgrades to DISABLED.
+    instantPlacementMode: Config.InstantPlacementMode = Config.InstantPlacementMode.DISABLED,
+    geospatialMode: Config.GeospatialMode = Config.GeospatialMode.DISABLED,                    // Needs Cloud key + ACCESS_FINE_LOCATION.
+    streetscapeGeometryMode: Config.StreetscapeGeometryMode = Config.StreetscapeGeometryMode.DISABLED,  // Needs geospatialMode = ENABLED.
+    cloudAnchorMode: Config.CloudAnchorMode = Config.CloudAnchorMode.DISABLED,                 // Needs Cloud key.
+    augmentedFaceMode: Config.AugmentedFaceMode = Config.AugmentedFaceMode.DISABLED,           // Needs Session.Feature.FRONT_CAMERA.
+    imageStabilizationMode: Config.ImageStabilizationMode = Config.ImageStabilizationMode.OFF,
+    semanticMode: Config.SemanticMode = Config.SemanticMode.DISABLED,
+    updateMode: Config.UpdateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE,
+    focusMode: Config.FocusMode = Config.FocusMode.AUTO,
+    sessionConfiguration: ((session: Session, Config) -> Unit)? = null,  // Escape hatch — runs AFTER all typed params above.
     planeRenderer: Boolean = true,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
     view: View = rememberARView(engine),
@@ -162,14 +174,15 @@ fun MyARScreen() {
         engine = engine,
         modelLoader = modelLoader,
         planeRenderer = true,
-        sessionConfiguration = { session, config ->
-            config.depthMode = Config.DepthMode.AUTOMATIC
-            config.instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
-            // ENVIRONMENTAL_HDR is the v4.3.0+ default — set BEFORE this callback runs. Front
-            // camera sessions are clamped to DISABLED inside ARSession.configure regardless.
-            // Uncomment to opt back into AMBIENT_INTENSITY:
-            // config.lightEstimationMode = Config.LightEstimationMode.AMBIENT_INTENSITY
-        },
+        // Typed Config.*Mode DSL params (#1766) — preferred over a sessionConfiguration callback
+        // for the common cases. Each is reactive; flipping them via Compose state recomposes
+        // the AR session config.
+        depthMode = Config.DepthMode.AUTOMATIC,
+        instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP,
+        // ENVIRONMENTAL_HDR is the v4.3.0+ default LightEstimationMode — front-camera sessions
+        // are clamped to DISABLED inside ARSession.configure regardless. The sessionConfiguration
+        // callback remains the escape hatch for any Config property without a typed param.
+        // sessionConfiguration = { session, config -> /* raw access here if needed */ },
         onSessionCreated = { session -> /* ARCore session ready */ },
         onSessionResumed = { session -> /* session resumed */ },
         onSessionFailed = { exception -> /* ARCore init error — show fallback UI */ },

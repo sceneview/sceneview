@@ -204,11 +204,9 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 materialLoader = materialLoader,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = true,
-                sessionConfiguration = { _: Session, config: Config ->
-                    config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                    config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-                    config.cloudAnchorMode = Config.CloudAnchorMode.ENABLED
-                },
+                // Typed Config.*Mode params (#1766) — replaces the previous sessionConfiguration
+                // callback. planeFindingMode + lightEstimationMode were already the defaults.
+                cloudAnchorMode = Config.CloudAnchorMode.ENABLED,
                 onSessionCreated = { session ->
                     arSession = session
                 },
