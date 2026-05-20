@@ -87,6 +87,41 @@ fun Frame.intervalSeconds(other: Frame?): Double = timestamp.intervalSeconds(oth
 fun Frame.fps(other: Frame?): Double = timestamp.fps(other?.timestamp)
 
 /**
+ * Acquires the **CPU camera image** for this frame in YUV_420_888 layout (#1733).
+ *
+ * Wraps [Frame.acquireCameraImage] — the standard ARCore entry-point for any custom computer
+ * vision pipeline: ML Kit barcode/face/text detection, OpenCV processing, custom temporal
+ * filters, screenshot helpers, etc. The resolution matches the active
+ * [com.google.ar.core.CameraConfig], so apps that need 1080p / 60 FPS / depth-sensor-paired
+ * configs should pair this accessor with the `cameraConfigFilter { … }` DSL on `ARSceneView`
+ * (or pass a custom `sessionCameraConfig`).
+ *
+ * Returns `null` if the image is not yet available — typically only for the first frame after
+ * session resume, or while the session is paused (`NotYetAvailableException` from ARCore).
+ *
+ * **The returned [Image] is caller-owned** — close it via `use { }` or an explicit
+ * `image.close()` in a `finally` block. Failing to close leaks a native handle and ARCore will
+ * eventually throw `ResourceExhaustedException` after a couple of frames (the CPU image pool
+ * is typically only 2–3 slots deep).
+ *
+ * ```kotlin
+ * onSessionUpdated = { _, frame ->
+ *     frame.cameraImage()?.use { image ->
+ *         // YUV_420_888 — image.planes[0] is the Y plane, [1] is U, [2] is V.
+ *         myCvPipeline.process(image)
+ *     }
+ * }
+ * ```
+ *
+ * @see Frame.acquireCameraImage
+ */
+fun Frame.cameraImage(): Image? = try {
+    acquireCameraImage()
+} catch (_: NotYetAvailableException) {
+    null
+}
+
+/**
  * Acquires the smoothed full-resolution **depth** image (16-bit per pixel, ARGB_8888-packed
  * `DEPTH16` layout per ARCore docs) for this frame.
  *
