@@ -51,6 +51,17 @@ open class CloudAnchorNode constructor(
     var hostState = CloudAnchorState.NONE
         private set
 
+    /**
+     * The active host request, or `null` when no host is in flight.
+     *
+     * Threading (#1811): writes happen on the GL/render thread (from [host], from the ARCore
+     * async callback, from [cancelHost]) and reads can race when callers invoke [cancelHost]
+     * from `viewModelScope.launch { ... }` while the callback is firing. `@Volatile` guarantees
+     * the read observes the most recent write rather than a thread-local cache, and the
+     * `synchronized(this)` block in [cancelHost] serialises the read-then-cancel sequence so
+     * `HostCloudAnchorFuture.cancel()` is never invoked twice on the same future.
+     */
+    @Volatile
     var hostTask: HostCloudAnchorFuture? = null
 
     /**
@@ -114,10 +125,20 @@ open class CloudAnchorNode constructor(
         onHosted?.invoke(cloudAnchorId, state)
     }
 
+    /**
+     * Cancels the in-flight host request, if any, and resets [hostState] to [CloudAnchorState.NONE].
+     *
+     * Safe to call from any thread (#1811): the read-cancel-clear sequence is `synchronized` on
+     * `this` so a caller invoking it from `viewModelScope.launch { ... }` cannot race with the
+     * ARCore async callback (which fires on the GL/render thread) into double-cancelling the
+     * same [HostCloudAnchorFuture].
+     */
     fun cancelHost() {
-        hostTask?.cancel()
-        hostState = CloudAnchorState.NONE
-        hostTask = null
+        synchronized(this) {
+            hostTask?.cancel()
+            hostState = CloudAnchorState.NONE
+            hostTask = null
+        }
     }
 
     override fun destroy() {
