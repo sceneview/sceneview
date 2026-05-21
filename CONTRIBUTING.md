@@ -238,15 +238,15 @@ Recompile Filament materials using the [current Filament version](https://github
 
 Filament refuses any material whose binary version field does not match the runtime, with `Filament panic — material version N ≠ runtime M` on first frame. There is no compile-time check; the mismatch only manifests at runtime, demo by demo. v4.1.0 shipped with the runtime at 1.70.2 and blobs at 1.71 (two parallel branches each fixed half of the pair) — 10 demos crashed; v4.1.1 hot-fixed by realigning both sides to 1.71.
 
-**The 12 committed blobs that must be recompiled together** (under `sceneview/src/main/assets/materials/`):
+**The 11 committed blobs that must be recompiled together** (under `sceneview/src/main/assets/materials/`):
 
 ```
 image_texture.filamat                  transparent_colored.filamat
 opaque_colored.filamat                 transparent_textured.filamat
 opaque_textured.filamat                transparent_unlit_colored.filamat
 opaque_unlit_colored.filamat           video_texture.filamat
-view_renderable.filamat                video_texture_chroma_key.filamat
-view_texture_lit.filamat               view_texture_unlit.filamat
+video_texture_chroma_key.filamat       view_texture_lit.filamat
+view_texture_unlit.filamat
 ```
 
 **How to recompile after a Filament version bump:**
