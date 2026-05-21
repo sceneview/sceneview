@@ -999,6 +999,60 @@ ARSceneView(modifier = Modifier.fillMaxSize()) {
 }
 ```
 
+### ReticleNode — placement reticle with auto-hide
+
+`ReticleNode` is a **thin wrapper** over `HitResultNode` for "tap to place" UX. It is a
+`HitResultNode` subclass — it delegates the screen-coordinate hit test (including the
+plane-only defaults and the 30 cm `minCameraDistance` floor) to `HitResultNode` and
+adds only the `onHitResultChanged` callback. **Auto-hide on no-hit comes for free**:
+a `null` hit clears the trackable, so a child marker stops rendering with no manual
+visibility juggling. Use `ReticleNode` when you want a one-call callback on every hit
+change (to drive an "aim at a surface" hint and capture the last-known hit on
+tap-to-place); use `HitResultNode` directly otherwise. New in v4.x (#1882).
+
+```kotlin
+@Composable fun ReticleNode(
+    xPx: Float,                                                // screen X (usually viewWidth / 2f)
+    yPx: Float,                                                // screen Y (usually viewHeight / 2f)
+    planeTypes: Set<Plane.Type> = Plane.Type.entries.toSet(),
+    point: Boolean = false,                                    // plane-only by default (#1891)
+    depthPoint: Boolean = false,                               // plane-only by default (#1891)
+    instantPlacementPoint: Boolean = false,                    // off by default — visible markers stick to real geometry
+    trackingStates: Set<TrackingState> = setOf(TrackingState.TRACKING),
+    pointOrientationModes: Set<Point.OrientationMode> = setOf(Point.OrientationMode.ESTIMATED_SURFACE_NORMAL),
+    planePoseInPolygon: Boolean = true,
+    minCameraDistance: Float? = 0.3f,                          // 30 cm floor — hits closer are dropped (#1891)
+    minCameraDistanceFromPlane: Pair<Camera, Float>? = null,   // legacy plane-only gate
+    predicate: ((HitResult) -> Boolean)? = null,
+    onHitResultChanged: ((HitResult?) -> Unit)? = null,        // null when the ray misses every trackable
+    apply: ReticleNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null        // visual marker (e.g. a thin disc)
+)
+```
+
+Typical "what-you-see-is-what-you-get" placement:
+```kotlin
+var reticleHit by remember { mutableStateOf<HitResult?>(null) }
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    onGestureListener = rememberOnGestureListener(
+        onSingleTapConfirmed = { _, _ ->
+            // The model lands exactly where the user saw the reticle.
+            reticleHit?.createAnchor()?.let { placedAnchors.add(it) }
+        }
+    )
+) {
+    ReticleNode(
+        xPx = viewWidth / 2f,
+        yPx = viewHeight / 2f,
+        onHitResultChanged = { reticleHit = it }
+    ) {
+        // Visual marker — a thin cyan disc parallel to the detected surface.
+        CylinderNode(radius = 0.04f, height = 0.002f, materialInstance = reticleMaterial)
+    }
+}
+```
+
 ### Depth hit test — place on any real surface
 
 `HitResultNode` / `Frame.hitTest` resolve only against **detected planes / feature points**.
@@ -1267,6 +1321,61 @@ fun cameraConfigFilter(block: CameraConfigFilterBuilder.() -> Unit): (Session) -
 Pair this with `frame.cameraImage()` (above) for custom CV pipelines: a 60 FPS / low-res config
 keeps the ML model fed with fresh frames while leaving CPU headroom for inference.
 
+### Camera config swap mid-session (back ↔ front)
+
+`sessionCameraConfig` is **reactive** — changing it (e.g. flipping from a BACK config to
+`::frontCameraConfig` to enter Augmented Faces) is applied to the live `Session`. ARCore
+accepts this, but it forces a camera-pipeline restart with real, visible side effects:
+
+- A frame drop / black flash while the new camera opens.
+- Total loss of tracking — all `Anchor`s become invalid, planes and the world coordinate
+  frame are re-acquired from scratch, and newly found planes will not line up with the
+  pre-swap world.
+- Depth-buffer format changes — front-camera configs do not expose ARCore Depth, so any
+  `depthMode` / occlusion path silently downgrades when the session moves to FRONT.
+
+**Recommended pattern — wrap the whole `ARSceneView` in `key(...)` and show a spinner**
+so Compose rebuilds the session cleanly instead of mutating it live:
+
+```kotlin
+@Composable
+fun CameraSwapDemo() {
+    var useFrontCamera by remember { mutableStateOf(false) }
+    var switching by remember { mutableStateOf(false) }
+
+    Box(Modifier.fillMaxSize()) {
+        // Re-keying on the facing direction tears down + rebuilds the session — the
+        // boring, correct way to swap cameras. The lambda below toggles a spinner.
+        key(useFrontCamera) {
+            ARSceneView(
+                sessionFeatures = if (useFrontCamera) {
+                    setOf(Session.Feature.FRONT_CAMERA)
+                } else {
+                    emptySet()
+                },
+                // BACK uses the default highestResolutionCameraConfig; FRONT needs
+                // ::frontCameraConfig or the session stays on the back camera.
+                sessionCameraConfig = if (useFrontCamera) ::frontCameraConfig else null,
+                sessionConfiguration = { _, config ->
+                    config.augmentedFaceMode = if (useFrontCamera) {
+                        Config.AugmentedFaceMode.MESH3D
+                    } else {
+                        Config.AugmentedFaceMode.DISABLED
+                    }
+                },
+                // First frame of the rebuilt session — the swap is done.
+                onSessionUpdated = { _, _ -> switching = false }
+            ) { /* nodes */ }
+        }
+        Button(onClick = { switching = true; useFrontCamera = !useFrontCamera }) {
+            Text(if (useFrontCamera) "Use back camera" else "Use front camera")
+        }
+        // Cover the black flash with a loading spinner.
+        if (switching) CircularProgressIndicator(Modifier.align(Alignment.Center))
+    }
+}
+```
+
 ### Raw depth point cloud — confidence-filtered visualization
 
 `Config.DepthMode.RAW_DEPTH_ONLY` exposes raw per-pixel depth **plus** a companion
@@ -1365,6 +1474,54 @@ The `onMeshRebuilt` callback (and `node.latestSnapshot`) expose the freshly-comp
 index buffers in camera space so downstream consumers — a depth-driven physics collider, a
 debug-overlay point cloud, an exporter — can read the geometry without poking Filament
 internals.
+
+### PointCloudNode — render ARCore feature points as a scene point cloud
+
+`rememberPointCloud()` + `PointCloudNode` render ARCore's live tracking feature points
+(`Frame.acquirePointCloud()`) as a real Filament `POINTS` primitive in the 3D scene — the
+SceneView equivalent of AR Foundation's `ARPointCloudManager`. Use it for debug overlays,
+"scanning" feedback, procedural-art demos, or surfacing tracking quality to the user.
+
+The points are the **sparse, world-space** feature points ARCore uses for motion tracking
+(distinct from the dense *depth image* sampled by `DepthMeshNode`). Each point carries a
+`[0, 1]` confidence value; points below `confidenceThreshold` are filtered out. The node stays
+at the scene origin since the points are already in world space.
+
+**Threading:** the per-frame update reads `Frame.acquirePointCloud()` and uploads Filament
+buffers on the AR frame / GL-main thread. The composable handles this for you; do not poke the
+node from a background coroutine.
+
+**Point size:** Filament renders `POINTS` at a fixed 1-pixel size with the default unlit
+material — variable per-point size needs a custom `gl_PointSize` shader and is a deliberate
+non-goal. Color is fully configurable via `materialInstance` (use
+`materialLoader.createUnlitColorInstance(...)`).
+
+**Cross-platform:** Android-only. iOS equivalent is `ARPointCloud` from `ARFrame.rawFeaturePoints`.
+
+```kotlin
+@Composable fun ARSceneScope.rememberPointCloud(
+    confidenceThreshold: Float = 0.2f,          // min ARCore confidence in [0, 1]
+    materialInstance: MaterialInstance? = null, // e.g. createUnlitColorInstance(Color.Cyan)
+    builder: RenderableManager.Builder.() -> Unit = {},
+    onPointCloudUpdated: ((pointCount: Int) -> Unit)? = null,
+): PointCloudNode
+
+@Composable fun ARSceneScope.PointCloudNode(
+    node: PointCloudNode,
+    apply: PointCloudNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null,
+)
+```
+
+```kotlin
+val materialLoader = rememberMaterialLoader(engine)
+ARSceneView(modifier = Modifier.fillMaxSize()) {
+    val pointCloud = rememberPointCloud(
+        materialInstance = materialLoader.createUnlitColorInstance(Color.Cyan),
+    )
+    PointCloudNode(pointCloud)
+}
+```
 
 ### rememberDepthCollider — bounce virtual bodies off the real world
 
@@ -1558,7 +1715,22 @@ probe; on unsupported devices `ARSceneView` silently downgrades to `DISABLED` ra
 throwing. **`semanticLabelFraction` returns 0f** when semantics are disabled or not yet
 available — making "place on TERRAIN" rules naturally wait for the first usable frame.
 
-Sample: `ARSceneSemanticsDemo` (Android demo registry id `ar-scene-semantics`).
+**Visualizing the segmentation (#1868).** To render the per-pixel labels as a tinted overlay
+instead of just reading them, use the built-in `semantics_overlay.filamat` material. Upload the
+`semanticImage()` R8 raster into a Filament `R8` `Texture`, then paint a quad with the overlay
+material instance — the shader maps each of the 12 label ordinals to a fixed colour (`UNLABELED`
+stays transparent):
+
+```kotlin
+import io.github.sceneview.material.setSemanticsOpacity
+
+// `opacity` blends camera (0f) ↔ semantic overlay (1f); re-upload the texture each frame.
+val overlay = materialLoader.createSemanticsOverlayInstance(semanticTexture, opacity = 0.6f)
+overlay.setSemanticsOpacity(blendSlider)   // MaterialInstance.setSemanticsTexture also exists
+```
+
+Sample: `ARSceneSemanticsDemo` (Android demo registry id `ar-scene-semantics`) — a camera ↔
+semantic blend slider over the overlay material, plus the top-3 label HUD.
 
 ### AugmentedImageNode — image tracking
 ```kotlin
@@ -1872,7 +2044,7 @@ SceneView ships an opt-in layer for **ARCore for Jetpack XR** (`androidx.xr.arco
 
 **Status: preview.** Tracking issue [#1738](https://github.com/sceneview/sceneview/issues/1738). The upstream `androidx.xr.arcore` is at `1.0.0-alpha14` and subject to breaking changes. SceneView wraps it as an additive, opt-in surface — phone-only apps pay nothing for it. Integration approach: `arsceneview/docs/JETPACK-XR-INTEGRATION.md`.
 
-**Scope this release (Slice 1):** dependency declared (`libs.versions.toml` → `jetpackXrArCore = "1.0.0-alpha14"`, alias `androidx-xr-arcore`), runtime availability check published, design + slicing recorded. Hand tracking node + demo lands in Slice 2 ([#1902](https://github.com/sceneview/sceneview/issues/1902)), face tracking node in Slice 3 ([#1903](https://github.com/sceneview/sceneview/issues/1903)).
+**Scope this release:** Slice 1 — dependency declared (`libs.versions.toml` → `jetpackXrArCore = "1.0.0-alpha14"`, alias `androidx-xr-arcore`), `XrFeatures` runtime availability check, design + slicing recorded. Slice 2 ([#1902](https://github.com/sceneview/sceneview/issues/1902)) — `XrHandNode` hand-tracking node + `ar-hand-tracking` demo. Slice 3 ([#1903](https://github.com/sceneview/sceneview/issues/1903)) — `XrFaceNode` face-tracking node + `ar-xr-face` demo.
 
 **Opt-in dependency** (consumers add this themselves; `arsceneview/` declares it `compileOnly`):
 
@@ -1893,10 +2065,10 @@ import io.github.sceneview.ar.xr.XrFeatures
 val context = LocalContext.current
 val xrAvailable = remember { XrFeatures.isAvailable(context) }
 
-ARSceneView(modifier = Modifier.fillMaxSize()) {
+SceneView(modifier = Modifier.fillMaxSize()) {
     if (xrAvailable) {
-        // Slice 2 will add: XrHandNode(hand = …) { … }
-        // Slice 3 will add: XrFaceNode(face = …) { … }
+        // Slice 2: XrHandNode(hand = …, handedness = …) { … }
+        // Slice 3: XrFaceNode(face = …) { … }
     } else {
         // Fall back to mobile ARCore: AugmentedFaceNode, AugmentedImageNode, etc.
     }
@@ -1912,7 +2084,78 @@ Classpath presence is the foundation gate; the device-capability check (XR heads
 
 Mobile ARCore tracking (`AugmentedFaceNode`, `AugmentedImageNode`, `AnchorNode`, etc.) keeps working unchanged on phones — the Jetpack XR layer is strictly additive.
 
-**Cross-platform parity:** hand tracking on visionOS is covered by `HandTrackingProvider` in `SceneViewSwift`; web covers WebXR `hand-tracking` under issue #1778. Updates to `docs/docs/cheatsheet-ios.md` mirror this section once Slice 2 lands.
+### XrHandNode — hand tracking (Slice 2)
+
+`XrHandNode` mirrors a hand tracked by ARCore for Jetpack XR (`androidx.xr.arcore.Hand`) as a SceneView scene-graph node — the Jetpack XR sibling of `AugmentedFaceNode`. It exposes one child node per skeleton joint (~26 joints: wrist, palm, and 4–5 joints per finger); attach a `SphereNode` per joint and a `LineNode` per bone to render a hand skeleton, or anchor a model to a single joint.
+
+**Preview API.** Every `XrHandNode` symbol carries `@XrPreviewApi` (a `@RequiresOptIn` marker) because `androidx.xr.arcore` is alpha — opt in with `@OptIn(XrPreviewApi::class)`.
+
+Declarative form (a `@Composable SceneScope` extension — usable inside `SceneView { }` / `ARSceneView { }`):
+
+```kotlin
+import io.github.sceneview.ar.xr.XrFeatures
+import io.github.sceneview.ar.xr.XrHandNode
+import io.github.sceneview.ar.xr.XrHandedness
+import io.github.sceneview.ar.xr.XrPreviewApi
+import androidx.xr.arcore.Hand
+
+@OptIn(XrPreviewApi::class)
+@Composable
+fun HandSkeleton(session: androidx.xr.runtime.Session) {
+    SceneView {
+        // Mirror the live right hand; one joint child node per HandJointType.
+        XrHandNode(hand = Hand.right(session), handedness = XrHandedness.RIGHT) {
+            // `this` is a NodeScope rooted at the hand node — declare per-joint
+            // geometry. Each joint's transform follows the tracked pose.
+            SphereNode(radius = 0.008f)
+        }
+    }
+}
+```
+
+The composable refreshes the skeleton in a `SideEffect` (per recomposition) — recompose once per XR frame and the hand follows for free. For an update cadence decoupled from recomposition, use the imperative node directly: collect `Hand.state` on the main dispatcher and call `handNode.update(...)`.
+
+**Threading:** `XrHandNode.update()` writes only Filament `Node` transforms (no JNI resource creation) but, like every node mutation, MUST run on the main thread. Drive it from a Compose effect on `Dispatchers.Main`.
+
+**Pure joint math** (`XrHandSkeleton`) is JVM-testable and runtime-free: `XrHandSkeleton.BONES` (the bone topology), `boneLength`, `boneMidpoint`, `lerp`, `totalBoneLength`, `trackedJointCount`. The `XrHandJoint` / `XrHandedness` enums and `XrHandSkeleton` carry no `androidx.xr.arcore` dependency, so they are safe to use on a phone-only build.
+
+Sample: the `ar-hand-tracking` demo renders a static reference hand skeleton on phones (no public Android XR emulator yet) and points the developer at `XrHandNode` for the live integration on an Android XR headset.
+
+### XrFaceNode — face tracking (Slice 3)
+
+`XrFaceNode` mirrors a face tracked by ARCore for Jetpack XR (`androidx.xr.arcore.Face`) as a SceneView scene-graph node — the Jetpack XR sibling of `AugmentedFaceNode`. The headset's user-facing cameras track the face, unlike the phone-only `AugmentedFaceNode` which is restricted to the front (selfie) camera. The two coexist: phones keep using `AugmentedFaceNode`, Android XR devices get `XrFaceNode`.
+
+It exposes one child node per named anchor region (`XrFaceRegion`: `CENTER`, `NOSE_TIP`, `FOREHEAD_LEFT`, `FOREHEAD_RIGHT`) whose transform follows the live pose — anchor glasses to `NOSE_TIP`, a hat above the forehead — plus the decoded dense mesh (`XrFaceMeshData`: vertex / normal / index buffers) so a consumer can upload its own `MeshNode` skin overlay. `XrFaceNode` creates no Filament mesh resource itself; building geometry stays a deliberate, main-thread step the consumer owns.
+
+**Preview API.** Every `XrFaceNode` symbol carries `@XrPreviewApi` (a `@RequiresOptIn` marker) because `androidx.xr.arcore` is alpha — opt in with `@OptIn(XrPreviewApi::class)`.
+
+Declarative form (a `@Composable SceneScope` extension — usable inside `SceneView { }` / `ARSceneView { }`):
+
+```kotlin
+import io.github.sceneview.ar.xr.XrFaceNode
+import io.github.sceneview.ar.xr.XrFeatures
+import io.github.sceneview.ar.xr.XrPreviewApi
+import androidx.xr.arcore.Face
+
+@OptIn(XrPreviewApi::class)
+@Composable
+fun FaceOverlay(session: androidx.xr.runtime.Session) {
+    SceneView {
+        // Mirror the live tracked face; one child node per XrFaceRegion.
+        XrFaceNode(face = Face.getUserFace(session)) {
+            // `this` is a NodeScope rooted at the face node — declare per-region geometry.
+        }
+    }
+}
+```
+
+The composable refreshes the face in a `SideEffect` (per recomposition) — recompose once per XR frame and the face follows for free. For an update cadence decoupled from recomposition, use the imperative node directly: collect `Face.state` on the main dispatcher and call `faceNode.update(...)`.
+
+**Threading:** `XrFaceNode.update()` writes only Filament `Node` transforms and decodes the mesh into plain arrays (no JNI resource creation) but, like every node mutation, MUST run on the main thread.
+
+**Pure mesh math** (`XrFaceMesh`) is JVM-testable and runtime-free: `XrFaceMesh.isValid` (buffer-layout sanity check), `vertexAt`, `centroid`, `extent`, `regionDistance`, `lerp`, `trackedRegionCount`. The `XrFaceRegion` enum, `XrFaceMeshData` and `XrFaceMesh` carry no `androidx.xr.arcore` dependency, so they are safe on a phone-only build. Sample: the `ar-xr-face` demo renders a static reference face mesh on phones (no public Android XR emulator yet) and points the developer at `XrFaceNode` for the live integration.
+
+**Cross-platform parity:** hand tracking on visionOS is covered by `HandTrackingProvider` in `SceneViewSwift`, face mesh by `ARFaceTrackingConfiguration`; web covers WebXR `hand-tracking` under issue #1778. Updates to `docs/docs/cheatsheet-ios.md` mirror this section ([#1904](https://github.com/sceneview/sceneview/issues/1904)).
 
 ---
 
@@ -1961,6 +2204,47 @@ node.lookTowards(lookDirection, upDirection)
 node.animatePositions(...)
 node.animateRotations(...)
 ```
+
+### Editable nodes — Sceneform `TransformableNode` parity
+
+SceneView's gesture-editing API is the direct replacement for Sceneform's
+`TransformableNode`. It is already shipped on every `Node` (and therefore every
+`ModelNode`) — there is no separate node type to instantiate, you just flip flags:
+
+```kotlin
+ModelNode(
+    modelInstance = instance,
+    scaleToUnits = 0.5f,
+    isEditable = true,              // master switch — enables drag / pinch / twist
+    apply = {
+        // Per-axis locks — each one ALSO requires isEditable = true to take effect.
+        isPositionEditable = true   // one-finger drag moves the node
+        isRotationEditable = true   // two-finger twist rotates the node
+        isScaleEditable = true      // pinch scales the node
+        editableScaleRange = 0.1f..10.0f   // clamp pinch-to-scale (default 0.1..10)
+        scaleGestureSensitivity = 0.5f     // 0 = no scaling, 1 = raw pinch factor
+    }
+)
+```
+
+Key facts an AI codegen pass must get right:
+
+- `isEditable = false` (the default) makes the node a pure observed object — all three
+  per-axis gestures are blocked regardless of the sub-flags.
+- The three sub-flags (`isPositionEditable` / `isRotationEditable` / `isScaleEditable`)
+  are gated: their getter returns `isEditable && field`, so setting `isRotationEditable
+  = true` while `isEditable = false` still yields `false`. Default sub-flag values:
+  position `false`, rotation `true`, scale `true`.
+- When a touch lands on an editable node, the camera orbit/pan/zoom manipulator is
+  skipped for the duration of that touch — otherwise the same drag would move the node
+  AND orbit the camera.
+- These are plain `Node` properties, not composable parameters — to change them
+  reactively after creation, re-push them from a `LaunchedEffect` keyed on the new
+  values (the `apply` block runs only once at node creation).
+
+The `gesture-editing` demo in `samples/android-demo` is the canonical end-to-end
+example: it wires every flag to a UI switch, a scale-sensitivity slider, and a
+live-transform overlay.
 
 ---
 
@@ -2042,6 +2326,14 @@ class MaterialLoader(engine: Engine, context: Context) {
     // For AR depth from the camera image, use ARCameraStream.isDepthOcclusionEnabled
     // instead (per-pixel depth from ARCore, not a static mesh).
     fun createOcclusionInstance(): MaterialInstance
+
+    // Scene Semantics overlay material (#1868) — colour-codes ARCore's 12-class
+    // per-pixel outdoor segmentation. `semanticTexture` is an R8 Texture holding
+    // the `Frame.semanticImage()` label ordinals; `opacity` blends 0f..1f.
+    // Pair with MaterialInstance.setSemanticsTexture / setSemanticsOpacity.
+    fun createSemanticsOverlayInstance(
+        semanticTexture: Texture, opacity: Float = 1.0f
+    ): MaterialInstance
 
     // Texture material
     fun createTextureInstance(texture: Texture, ...): MaterialInstance
@@ -3407,12 +3699,14 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-depth-visualization` — Depth Visualization. False-color depth map with camera↔depth blend.
 - `ar-face` — Augmented Faces. Face mesh tracking and overlays.
 - `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
+- `ar-hand-tracking` — Hand Tracking (Jetpack XR). Hand skeleton on Android XR headsets.
 - `ar-image` — Image Tracking. Detect and track reference images.
 - `ar-image-stabilization` — Image Stabilization (EIS). EIS for smoother AR camera feed.
 - `ar-instant-placement` — Instant Placement. Place models before plane detection converges.
 - `ar-ml-object-label` — ML Kit Object Labels. ML Kit object detection with 3D labels anchored on real-world hits.
 - `ar-orbital` — Orbital AR. Models orbit around you in a personal solar system.
 - `ar-placement` — Tap to Place. Place 3D models in AR.
+- `ar-point-cloud` — Point Cloud. World-space feature points via PointCloudNode.
 - `ar-pose` — Pose Placement. Free pose positioning.
 - `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Confidence-filtered point cloud from raw depth.
 - `ar-record-playback` — AR Recording. Record an AR session and replay it without a phone.
@@ -3421,6 +3715,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-scene-semantics` — Scene Semantics. 12-class outdoor scene labeling — HUD shows top-3 labels in view.
 - `ar-streetscape` — Streetscape Geometry. Geospatial building and terrain meshes.
 - `ar-terrain` — Terrain Anchors. Anchor models on geospatial terrain.
+- `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
 - `placement-scene` — Placement Scene. One-line tap-to-place AR (Sceneform ArFragment parity).
 
 <!-- END GENERATED DEMOS -->

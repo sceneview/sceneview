@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `ar-xr-face` demo (registered by
+     `ArXrFaceFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_ar_xr_face_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_ar_xr_face_title">Face Tracking (Jetpack XR)</string>
+    <string name="demo_ar_xr_face_subtitle">Face mesh on Android XR headsets</string>
+    <string name="demo_ar_xr_face_xr_required">Jetpack XR headset required for live face tracking</string>
+    <string name="demo_ar_xr_face_xr_available">Jetpack XR runtime detected — use XrFaceNode for live tracking</string>
+    <string name="demo_ar_xr_face_reference_note">Showing a static reference face mesh. On an Android XR headset, XrFaceNode mirrors a real tracked face.</string>
+</resources>

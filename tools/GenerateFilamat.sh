@@ -10,14 +10,14 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (21 mats → 21 filamats):
-#   sceneview/src/main/materials/         (12) → sceneview/src/main/assets/materials/
+# Inventory (22 mats → 22 filamats):
+#   sceneview/src/main/materials/         (13) → sceneview/src/main/assets/materials/
 #   arsceneview/src/main/materials/        (6) → arsceneview/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/
 #
 # Usage:
-#   bash tools/GenerateFilamat.sh                 # regenerate all 21 filamats
-#   bash tools/GenerateFilamat.sh --check         # diff all 21 against committed blobs; exit 1 on drift
+#   bash tools/GenerateFilamat.sh                 # regenerate all 22 filamats
+#   bash tools/GenerateFilamat.sh --check         # diff all 22 against committed blobs; exit 1 on drift
 #   bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 #   bash tools/GenerateFilamat.sh --ci-tolerant   # treat matc download failure as WARN, not FAIL
 #   bash tools/GenerateFilamat.sh --help
@@ -98,7 +98,7 @@ log "${CYAN}Filament version (pinned):${NC} $FILAMENT_VERSION"
 #   Profile B — lean Android (sceneview unlit, 2 mats):
 #     "-a opengl -p mobile"   (note flag order!)
 #
-#   Profile C — ARCore (arsceneview, 6 mats):
+#   Profile C — ARCore (arsceneview 6 mats + sceneview semantics_overlay):
 #     "--optimize-size -p mobile -a opengl -a vulkan"
 #
 #   Profile D — website-static (Filament.js / WebGL, 3 mats):
@@ -117,6 +117,7 @@ MATS=(
     "sceneview:image_texture:sceneview/src/main/materials/image_texture.mat:sceneview/src/main/assets/materials/image_texture.filamat:-p all -a all"
     "sceneview:occlusion:sceneview/src/main/materials/occlusion.mat:sceneview/src/main/assets/materials/occlusion.filamat:-a vulkan -a opengl -p mobile"
     "sceneview:opaque_colored:sceneview/src/main/materials/opaque_colored.mat:sceneview/src/main/assets/materials/opaque_colored.filamat:-p all -a all"
+    "sceneview:semantics_overlay:sceneview/src/main/materials/semantics_overlay.mat:sceneview/src/main/assets/materials/semantics_overlay.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "sceneview:opaque_textured:sceneview/src/main/materials/opaque_textured.mat:sceneview/src/main/assets/materials/opaque_textured.filamat:-p all -a all"
     "sceneview:opaque_unlit_colored:sceneview/src/main/materials/opaque_unlit_colored.mat:sceneview/src/main/assets/materials/opaque_unlit_colored.filamat:-a opengl -p mobile"
     "sceneview:transparent_colored:sceneview/src/main/materials/transparent_colored.mat:sceneview/src/main/assets/materials/transparent_colored.filamat:-p all -a all"

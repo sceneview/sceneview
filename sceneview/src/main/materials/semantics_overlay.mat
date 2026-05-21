@@ -1,0 +1,79 @@
+// semantics_overlay.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Color-codes ARCore Scene Semantics segmentation (#1730 / #1868). Samples an R8
+//             label-ordinal texture (the raster from `Frame.semanticImage()`) and maps each
+//             pixel to one of the 12 outdoor-class colors, modulated by a global `opacity`.
+//             Drawn as a transparent full-screen overlay on top of the live camera feed so
+//             the camera ↔ semantic blend reads through Filament's alpha pipeline.
+// Used by:    MaterialLoader.createSemanticsOverlayInstance() — opt-in AR visualization.
+// Parameters:
+//   semanticTexture — sampler2d, R8 image; each texel's red channel is a SemanticLabel ordinal
+//                     (0..11) scaled to [0, 1] (255 → 1.0). Upload the `Frame.semanticImage()`
+//                     R8 buffer into a single-channel Filament Texture.
+//   opacity         — float [0, 1], global overlay alpha. 0 = camera only, 1 = full overlay.
+// matc profile: C (ARCore overlay — "--optimize-size -p mobile -a opengl -a vulkan").
+//
+// The 12-class palette is a compile-time `const` array: the ARCore Scene Semantics model
+// always emits exactly the same 12 ordinals (SKY..UNLABELED), so baking the colors keeps the
+// parameter surface tiny (one texture + one float) and the lookup branch-free. The colors are
+// ported from Google's `samples/semantics_java` `background_semantics.frag` reference.
+material {
+    name : semanticsOverlay,
+    shadingModel : unlit,
+    blending : transparent,
+    culling : none,
+    depthWrite : false,
+    depthCulling : false,
+    parameters : [
+        {
+            type : sampler2d,
+            name : semanticTexture
+        },
+        {
+            type : float,
+            name : opacity
+        }
+    ],
+    requires : [
+        uv0
+    ]
+}
+
+fragment {
+    // Per-class colors for the 12 ARCore Scene Semantics outdoor labels, indexed by ordinal:
+    //   0 SKY  1 BUILDING  2 TREE  3 ROAD  4 SIDEWALK  5 TERRAIN
+    //   6 STRUCTURE  7 OBJECT  8 VEHICLE  9 PERSON  10 WATER  11 UNLABELED
+    const vec3 SEMANTIC_PALETTE[12] = vec3[12](
+        vec3(0.40, 0.69, 0.96),  // SKY        — light blue
+        vec3(0.85, 0.37, 0.34),  // BUILDING   — terracotta
+        vec3(0.30, 0.69, 0.31),  // TREE       — green
+        vec3(0.46, 0.46, 0.46),  // ROAD       — grey
+        vec3(0.74, 0.74, 0.55),  // SIDEWALK   — khaki
+        vec3(0.80, 0.62, 0.42),  // TERRAIN    — tan
+        vec3(0.62, 0.46, 0.74),  // STRUCTURE  — purple
+        vec3(1.00, 0.76, 0.03),  // OBJECT     — amber
+        vec3(0.13, 0.59, 0.95),  // VEHICLE    — strong blue
+        vec3(0.96, 0.26, 0.55),  // PERSON     — pink
+        vec3(0.00, 0.74, 0.83),  // WATER      — cyan
+        vec3(0.00, 0.00, 0.00)   // UNLABELED  — black
+    );
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        // The R8 texel red channel holds the SemanticLabel ordinal scaled to [0, 1]
+        // (label ordinal o → o/255 on upload). Recover the integer ordinal and clamp
+        // into the palette range so a stray byte can never index out of bounds.
+        float raw = texture(materialParams_semanticTexture, getUV0()).r;
+        int ordinal = clamp(int(raw * 255.0 + 0.5), 0, 11);
+
+        vec3 tint = SEMANTIC_PALETTE[ordinal];
+
+        // UNLABELED (ordinal 11) stays fully transparent so the live camera feed shows
+        // through un-classified pixels — only confident classes get tinted.
+        float classAlpha = ordinal == 11 ? 0.0 : 1.0;
+
+        material.baseColor.rgb = tint;
+        material.baseColor.a = clamp(materialParams.opacity, 0.0, 1.0) * classAlpha;
+    }
+}

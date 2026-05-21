@@ -61,6 +61,7 @@ import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
 import io.github.sceneview.ar.node.DepthMeshNode
+import io.github.sceneview.ar.node.PointCloudNode
 import io.github.sceneview.ar.node.PoseNode
 import io.github.sceneview.ar.scene.PlaneRenderer
 import io.github.sceneview.ar.scene.SceneUnderstanding
@@ -357,7 +358,16 @@ fun ARSceneView(
      * Defaults to [highestResolutionCameraConfig] so every AR scene — and in particular every
      * [ARRecorder] recording — runs at the device's full back-camera resolution rather than
      * ARCore's low-res 640×480 CPU-stream default ([#1065](https://github.com/sceneview/sceneview/issues/1065)).
-     * Pass `null` to keep ARCore's stock default config, or supply a custom selector.
+     * Pass `null` to keep ARCore's stock default config, [::frontCameraConfig] for an Augmented
+     * Faces session, or supply a custom selector (e.g. `cameraConfigFilter { … }`).
+     *
+     * **⚠️ Swapping the camera config mid-session is disruptive.** This selector is reactive —
+     * changing it (e.g. BACK→FRONT for Augmented Faces) is applied to the live [Session], but
+     * ARCore restarts the camera pipeline: a frame drop / black flash, total tracking loss
+     * (anchors invalidated, planes + world frame re-acquired, plane discontinuities), and a
+     * depth-buffer format change (front-camera configs expose no ARCore Depth, so occlusion
+     * silently downgrades). For a clean swap, wrap the `ARSceneView` in `key(facing) { … }` and
+     * show a spinner over the flash — see the "Camera config swap" example in `llms.txt`.
      */
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
     /**
@@ -464,6 +474,13 @@ fun ARSceneView(
      * BEFORE this callback runs, so the callback still wins. Use the typed params for the
      * common cases (AI codegen, demo boilerplate) and this callback as the escape hatch for
      * any [Config] property without a dedicated param.
+     *
+     * **⚠️ Mid-session config changes are accepted but not free.** This callback is reactive —
+     * editing it re-runs [Session.configure] on the live session. Most `Config` knobs
+     * reconfigure cheaply, but some force a camera-pipeline restart with a visible frame drop
+     * and brief tracking loss — notably toggling [Config.DepthMode] or any change that switches
+     * the camera config (see [sessionCameraConfig]). When in doubt, wrap the `ARSceneView` in
+     * `key(...) { … }` keyed on the changing value so Compose rebuilds the session cleanly.
      */
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     /**
@@ -1394,6 +1411,7 @@ private fun onARFrame(
     for (n in childNodes) when (n) {
         is PoseNode -> n.update(session, frame)
         is DepthMeshNode -> n.update(session, frame)
+        is PointCloudNode -> n.update(session, frame)
     }
 
     val newTrackingFailure = if (!isCameraTracking) {
