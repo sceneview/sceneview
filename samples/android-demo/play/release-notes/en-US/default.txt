@@ -1,7 +1,0 @@
-3D & AR Explorer v3.6.0:
-• Explore tab — orbit, zoom, and inspect 14 premium 3D models
-• AR tab — tap-to-place 6 models with drag/scale/rotate
-• Features tab — 14 live interactive showcases
-• Dynamic Sky, Fog, Physics, Post-Processing, Image Detection
-• Material 3 Expressive design with dynamic color (Android 12+)
-• Built-in in-app update support

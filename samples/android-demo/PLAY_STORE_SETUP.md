@@ -26,30 +26,37 @@ Step-by-step guide to publish the SceneView app on Google Play.
 
 ## 3. Complete the Store Listing
 
-The Play Store metadata is pre-configured in `play/listings/`:
+The Play Store listing is pre-configured in `distribution/play-store/` — the
+single source of truth consumed by the `play-store.yml` listing-sync job
+(text **and** graphics):
 
 ```
-play/
-├── listings/
-│   ├── en-US/
-│   │   ├── title.txt
-│   │   ├── short-description.txt
-│   │   └── full-description.txt
-│   └── fr-FR/
-│       ├── title.txt
-│       ├── short-description.txt
-│       └── full-description.txt
-└── release-notes/
-    ├── en-US/
-    │   └── default.txt
-    └── fr-FR/
-        └── default.txt
+distribution/play-store/
+└── en-GB/
+    ├── title.txt
+    ├── short_description.txt
+    ├── full_description.txt
+    └── graphics/
+        ├── feature-graphic.png       (1024×500)
+        ├── icon-512.png              (512×512)
+        ├── phone-screenshot-1.png    (1080×2304)
+        ├── phone-screenshot-2.png
+        ├── phone-screenshot-3.png
+        └── phone-screenshot-4.png
 ```
 
-You still need to manually upload:
-- **App icon:** 512×512 PNG
-- **Feature graphic:** 1024×500 PNG
-- **Screenshots:** At least 2 phone screenshots (16:9 or 9:16)
+On every `vX.Y.0` tag release, the `sync-listing` job in
+`.github/workflows/play-store.yml` PATCHes the listing text and uploads the
+graphics above via the Play `edits.images` API — no manual Play Console
+upload is needed. Refresh the phone screenshots with
+`.claude/scripts/capture-play-store-screenshots.sh`, which writes into the
+same `graphics/` directory.
+
+Optional extras still not in the repo:
+- **Tablet screenshots:** 7" and 10" — add them under `graphics/` as
+  `tablet7-screenshot-*.png` / `tablet10-screenshot-*.png` and the
+  listing-sync job uploads them automatically.
+- **Promo video:** YouTube link — set manually in the Play Console.
 
 ### Content Rating
 
@@ -177,7 +184,9 @@ defaultConfig {
 }
 ```
 
-Update release notes in `play/release-notes/en-US/default.txt`.
+Release notes ("What's new") are extracted automatically from the matching
+`## vX.Y.Z` section of the root `CHANGELOG.md` by the `play-store.yml`
+workflow — there is no separate release-notes file to maintain.
 
 ---
 
