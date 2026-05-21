@@ -3357,6 +3357,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-ml-object-label` — ML Kit Object Labels. ML Kit object detection with 3D labels anchored on real-world hits.
 - `ar-orbital` — Orbital AR. Models orbit around you in a personal solar system.
 - `ar-placement` — Tap to Place. Place 3D models in AR.
+- `ar-point-cloud` — Point Cloud. World-space feature points via PointCloudNode.
 - `ar-pose` — Pose Placement. Free pose positioning.
 - `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Confidence-filtered point cloud from raw depth.
 - `ar-record-playback` — AR Recording. Record an AR session and replay it without a phone.
