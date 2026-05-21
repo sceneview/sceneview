@@ -1,7 +1,0 @@
-3D & AR Explorer v3.6.0 :
-• Onglet Explorer — orbite, zoom et inspection de 14 modèles 3D premium
-• Onglet AR — placement de 6 modèles par tap avec déplacement/échelle/rotation
-• Onglet Fonctionnalités — 14 expériences interactives
-• Ciel dynamique, brouillard, physique, post-traitement, détection d'image
-• Design Material 3 Expressif avec couleurs dynamiques (Android 12+)
-• Mise à jour in-app intégrée
