@@ -25,6 +25,10 @@ internal class RecordingHapticEngine(override val sdkInt: Int) : HapticEngine {
     override fun playOneShot(durationMs: Long, amplitude: Int) {
         _calls += HapticCall.OneShot(durationMs, amplitude)
     }
+
+    override fun cancel() {
+        _calls += HapticCall.Cancel
+    }
 }
 
 internal sealed class HapticCall {
@@ -55,4 +59,5 @@ internal sealed class HapticCall {
             "AmplitudeWaveform(timings=${timings.toList()}, amplitudes=${amplitudes.toList()}, repeat=$repeat)"
     }
     data class OneShot(val durationMs: Long, val amplitude: Int) : HapticCall()
+    object Cancel : HapticCall()
 }

@@ -91,6 +91,13 @@ android {
         abortOnError = false
         checkDependencies = true
     }
+
+    testOptions {
+        unitTests {
+            // Required by Robolectric (SystemHapticEngineRobolectricTest).
+            includeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -125,6 +132,10 @@ dependencies {
     // Kotlin reflection — used by SceneAutoFitWiringTest to assert the public `SceneView`
     // composable actually declares the `autoFitContent` parameter (#1595 regression pin).
     testImplementation "org.jetbrains.kotlin:kotlin-reflect"
+    // Robolectric — needed by SystemHapticEngineRobolectricTest to exercise the
+    // SDK_INT branches of SystemHapticEngine on a mocked Vibrator (pins the
+    // API 24-25 VibrationEffect-absence crash). Mirrors :arsceneview's setup.
+    testImplementation libs.robolectric
 
     // Instrumented tests
     androidTestImplementation libs.androidx.test.junit

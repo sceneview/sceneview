@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-05-14'
+  last-updated: '2026-05-21'
   keywords:
   - sceneview
   - 3d
@@ -197,6 +197,34 @@ This skill is most useful paired with the **`android-cli`** skill:
   reports as a single AndroidView, so for in-3D tap targets you still need
   pointerInput / hit testing).
 - `android docs search "compose canvas"` — underlying Compose APIs.
+
+## Haptic feedback
+
+`io.github.sceneview.haptic.SceneViewHaptic` wraps Android's `Vibrator`
+behind seven semantic presets plus low-level escape hatches. Get an
+instance with `rememberHapticFeedback()` inside a `@Composable`; it is a
+silent no-op (one `Log.d`, never throws) when the device has no vibrator or
+the consumer app omits the permission.
+
+```kotlin
+import io.github.sceneview.haptic.rememberHapticFeedback
+
+@Composable
+fun PlaceAnchorButton(onPlace: () -> Unit) {
+    val haptic = rememberHapticFeedback()
+    Button(onClick = { haptic.medium(); onPlace() }) { Text("Place") }
+}
+```
+
+- Presets: `light()` `medium()` `heavy()` `success()` `warning()` `error()`
+  `selection()`. Escape hatches: `continuous(intensity, durationMs)` and
+  `pattern(events)`. `cancel()` stops an in-progress vibration —
+  `rememberHapticFeedback()` calls it automatically on dispose.
+- The consumer app MUST opt in by adding
+  `<uses-permission android:name="android.permission.VIBRATE" />` to its
+  manifest — the `sceneview` library does not auto-merge it.
+- The same API ships on iOS (`SceneViewSwift.SceneViewHaptic`) and Web
+  (`sceneview.haptic.*`). See `llms.txt § Haptic Feedback`.
 
 ## Resources
 

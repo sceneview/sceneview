@@ -2830,20 +2830,32 @@ SceneViewHaptic.shared.success()
 
 iOS uses `UIImpactFeedbackGenerator` / `UISelectionFeedbackGenerator` /
 `UINotificationFeedbackGenerator` for the presets, and `CHHapticEngine`
-for `continuous(intensity:duration:)` / `pattern(_:)`. The Core Haptics
+for `continuous(intensity:durationMs:)` / `pattern(_:)`. The Core Haptics
 escape hatches gracefully fall back to the preset generators on
 devices without Core Haptics support — they never throw.
+
+`continuous` takes a millisecond `Int` on every platform —
+`continuous(intensity:durationMs:)` on iOS, `continuous(intensity, durationMs)`
+on Android and Web — so cross-platform callers pass the same value:
+
+```swift
+haptic.continuous(intensity: 0.8, durationMs: 200)
+```
 
 ### Web (plain JS)
 
 ```js
 sceneview.haptic.light();
 sceneview.haptic.success();
+sceneview.haptic.continuous(1.0, 200);  // intensity ignored on Web
 sceneview.haptic.pattern([10, 50, 20]);
 ```
 
-Maps to `window.navigator.vibrate(...)`. Desktop browsers / Safari iOS
-that don't expose `navigator.vibrate` are silently no-ops.
+Maps to `window.navigator.vibrate(...)`. `continuous(intensity, durationMs)`
+maps to `navigator.vibrate(durationMs)` — the Web Vibration API exposes
+durations only, so `intensity` is accepted for cross-platform parity but
+ignored at runtime. Desktop browsers / Safari iOS that don't expose
+`navigator.vibrate` are silently no-ops.
 
 ### Preset mapping table
 
