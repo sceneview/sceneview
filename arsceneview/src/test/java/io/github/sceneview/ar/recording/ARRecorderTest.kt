@@ -704,7 +704,7 @@ class ARRecorderTest {
      * can be created in tests without going through the JNI-backed `Session(Context)` path.
      * We only override the methods [ARRecorder] actually calls.
      */
-    private class FakeSession(
+    internal class FakeSession(
         private val playbackStatus: PlaybackStatus = PlaybackStatus.NONE,
         private val startRecordingException: Lazy<RecordingFailedException>? = null,
         /**
@@ -719,6 +719,9 @@ class ARRecorderTest {
         private val getSupportedCameraConfigsThrows: Boolean = false,
         /** The config in effect before recording — what a `recordingResolution` swap must restore. */
         initialCameraConfig: CameraConfig? = null,
+        /** Current recording status — what `Session.getRecordingStatus()` reports. */
+        var recordingStatusValue: com.google.ar.core.RecordingStatus =
+            com.google.ar.core.RecordingStatus.NONE,
     ) : Session() {
 
         var startRecordingCount: Int = 0
@@ -734,6 +737,8 @@ class ARRecorderTest {
         private var currentCameraConfig: CameraConfig? = initialCameraConfig
 
         override fun getPlaybackStatus(): PlaybackStatus = playbackStatus
+
+        override fun getRecordingStatus(): com.google.ar.core.RecordingStatus = recordingStatusValue
 
         override fun startRecording(config: RecordingConfig?) {
             startRecordingCount += 1

@@ -54,6 +54,48 @@ external interface XRFrame {
      * @return Promise resolving to an [XRAnchor]
      */
     fun createAnchor(pose: XRRigidTransform, space: XRReferenceSpace): dynamic /* Promise<XRAnchor>? */
+
+    /**
+     * The set of anchors currently tracked in this frame.
+     *
+     * Requires the "anchors" feature to be enabled. Iterate to detect
+     * added / persisted anchors per frame; see [XRAnchorNode] for the
+     * high-level wrapper.
+     *
+     * Spec: [XRFrame.trackedAnchors](https://immersive-web.github.io/anchors/#xrframe-trackedanchors).
+     */
+    val trackedAnchors: dynamic /* XRAnchorSet */
+}
+
+/**
+ * Retrieve the CPU-readable depth info for a given [XRView] from this frame.
+ *
+ * Requires the "depth-sensing" session feature with `usagePreference` containing
+ * [XRDepthUsage.CPU_OPTIMIZED]. The result is per-frame — do **not** cache it
+ * across frames.
+ *
+ * @return The depth info, or `null` if the runtime did not produce depth this
+ * frame (transient tracking loss, occluded sensor, etc.).
+ */
+fun XRFrame.getDepthInformation(view: XRView): XRCPUDepthInformation? {
+    val raw = this.asDynamic().getDepthInformation(view)
+    return raw.unsafeCast<XRCPUDepthInformation?>()
+}
+
+/**
+ * Retrieve the **tracked images** for this frame. Requires the
+ * "image-tracking" session feature and `trackedImages` init dict at session
+ * creation time.
+ *
+ * Each entry exposes the image space (`imageSpace`), tracking state, and the
+ * spec-defined `measuredWidthInMeters` if the runtime measures the marker size.
+ *
+ * @see XRImageTrackingNode
+ */
+fun XRFrame.getImageTrackingResults(): Array<XRImageTrackingResult> {
+    val r = this.asDynamic().getImageTrackingResults()
+    @Suppress("UnsafeCastFromDynamic")
+    return (r ?: js("[]")) as Array<XRImageTrackingResult>
 }
 
 /**

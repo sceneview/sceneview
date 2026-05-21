@@ -1,3 +1,0 @@
-<!-- category: Fixed -->
-- arsceneview: `DepthCollider` class-level KDoc example now passes the collider through `floorProvider = collider` instead of the non-existent `depthCollider = collider` parameter (#1807). Code pasted from the KDoc previously did not compile. The `ARSceneScope.rememberDepthCollider` KDoc and the `PhysicsNode` KDoc already used the correct form, so the bug was isolated to `DepthCollider.kt`.
-- sceneview: deprecated mass-overload `PhysicsNode`'s `@Deprecated(ReplaceWith(...))` now preserves the newly-added `floorProvider` parameter (#1807). The IDE quick-fix on the deprecation previously silently stripped AR floor wiring. The deprecated overload itself also gained a `floorProvider` parameter so the replacement is a 1:1 source-compatible swap.

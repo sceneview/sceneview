@@ -221,10 +221,24 @@ open class DepthMeshNode(
             // ARCore reports intrinsics for the full-resolution CPU image; scale them to the
             // (smaller) depth image resolution.
             val intrinsics = camera.imageIntrinsics
-            val scaleX = depthWidth / intrinsics.imageDimensions[0].toFloat()
-            val scaleY = depthHeight / intrinsics.imageDimensions[1].toFloat()
-            val fx = intrinsics.focalLength[0] * scaleX
-            val fy = intrinsics.focalLength[1] * scaleY
+            // Defensive guard (#1812): degenerate intrinsics (zero width/height or zero focal
+            // length) would propagate through to `Inf` scales + an entirely poisoned snapshot.
+            // ARCore is supposed to populate these for any tracking camera, but we surface a
+            // clear error rather than silently corrupting [latestSnapshot] and every downstream
+            // consumer (collider, hit-test, overlay).
+            val intrinsicWidth = intrinsics.imageDimensions[0]
+            val intrinsicHeight = intrinsics.imageDimensions[1]
+            val rawFx = intrinsics.focalLength[0]
+            val rawFy = intrinsics.focalLength[1]
+            require(intrinsicWidth > 0 && intrinsicHeight > 0 && rawFx != 0f && rawFy != 0f) {
+                "Invalid ARCore camera intrinsics for DepthMeshNode: width=$intrinsicWidth," +
+                    " height=$intrinsicHeight, focal=($rawFx, $rawFy)." +
+                    " ARCore must populate non-zero camera intrinsics while tracking."
+            }
+            val scaleX = depthWidth / intrinsicWidth.toFloat()
+            val scaleY = depthHeight / intrinsicHeight.toFloat()
+            val fx = rawFx * scaleX
+            val fy = rawFy * scaleY
             val cx = intrinsics.principalPoint[0] * scaleX
             val cy = intrinsics.principalPoint[1] * scaleY
 
@@ -274,105 +288,150 @@ open class DepthMeshNode(
      * (#1805).
      */
     private fun uploadGeometry(geometry: DepthMeshGeometry) {
-        val staleBuffers = rebuildBuffersIfNeeded(geometry.vertexCount, geometry.indices.size)
+        // Build any newly-needed buffers WITHOUT swapping the owned* fields yet (#1840). If the
+        // upload below throws (engine teardown mid-frame, OOM, etc.) we still need a clean handle
+        // on every buffer this method allocated so we can free them — and we still need the OLD
+        // owned* fields intact so [destroy] can release them when the node is torn down.
+        val rebuild = rebuildBuffersIfNeeded(geometry.vertexCount, geometry.indices.size)
+        val targetVertexBuffer = rebuild.newVertexBuffer ?: ownedVertexBuffer
+        val targetIndexBuffer = rebuild.newIndexBuffer ?: ownedIndexBuffer
+        val newVertexAllocCount = rebuild.newVertexCount ?: allocatedVertexCount
+        val newIndexAllocCount = rebuild.newIndexCount ?: allocatedIndexCount
 
-        // VertexBuffer expects a direct ByteBuffer. Per-rebuild fresh-allocate path was ~11 KB
-        // per upload at 5 Hz = ~100 KB/s direct-buffer churn (#1810). Cached buffers below are
-        // grown in powers of two and reused across rebuilds — steady-state is zero-alloc.
-        val positions = geometry.positions
-        val vertexBytesNeeded = positions.size * Float.SIZE_BYTES
-        val vertexBytes = acquireDirectBuffer(vertexUploadBuffer, vertexBytesNeeded).also {
-            vertexUploadBuffer = it
+        val indicesCount = geometry.indices.size
+        try {
+            // VertexBuffer expects a direct ByteBuffer. Per-rebuild fresh-allocate path was ~11 KB
+            // per upload at 5 Hz = ~100 KB/s direct-buffer churn (#1810). Cached buffers below are
+            // grown in powers of two and reused across rebuilds — steady-state is zero-alloc.
+            val positions = geometry.positions
+            val vertexBytesNeeded = positions.size * Float.SIZE_BYTES
+            val vertexBytes = acquireDirectBuffer(vertexUploadBuffer, vertexBytesNeeded).also {
+                vertexUploadBuffer = it
+            }
+            vertexBytes.clear()
+            vertexBytes.asFloatBuffer().put(positions)
+            // ByteBuffer position stays at 0 (we mutated the FloatBuffer view only); setBufferAt
+            // reads from the underlying ByteBuffer's position.
+            targetVertexBuffer.setBufferAt(engine, 0, vertexBytes, 0, vertexBytesNeeded)
+
+            val indices = geometry.indices
+            val indexBytesNeeded = indices.size * Int.SIZE_BYTES
+            val indexBytes = acquireDirectBuffer(indexUploadBuffer, indexBytesNeeded).also {
+                indexUploadBuffer = it
+            }
+            indexBytes.clear()
+            indexBytes.asIntBuffer().put(indices)
+            targetIndexBuffer.setBuffer(engine, indexBytes, 0, indexBytesNeeded)
+
+            // Tell Filament how many indices to actually render. We don't expose the offset/count
+            // overload publicly, but we can replace the renderable's geometry in-place.
+            // Rebinding the renderable to the NEW buffers BEFORE freeing the old ones closes the
+            // use-after-free window (#1805): for one frame between safeDestroy and setGeometryAt the
+            // renderable would otherwise reference freed Filament native handles.
+            renderableManager.setGeometryAt(
+                renderableInstance,
+                0,
+                PrimitiveType.TRIANGLES,
+                targetVertexBuffer,
+                targetIndexBuffer,
+                0,
+                indicesCount,
+            )
+
+            // Recompute and apply the AABB so frustum culling works once the mesh has real content.
+            renderableManager.setAxisAlignedBoundingBox(renderableInstance, computeAabb(positions))
+        } catch (t: Throwable) {
+            // setBufferAt / setBuffer / setGeometryAt / setAxisAlignedBoundingBox threw (engine
+            // teardown mid-frame is the realistic case). The renderable is still bound to the
+            // PREVIOUS owned* buffers — keep those reachable via the unchanged owned* fields, and
+            // destroy the freshly-allocated buffers that nothing else owns now (#1840).
+            rebuild.newVertexBuffer?.let { engine.safeDestroyVertexBuffer(it) }
+            rebuild.newIndexBuffer?.let { engine.safeDestroyIndexBuffer(it) }
+            throw t
         }
-        vertexBytes.clear()
-        vertexBytes.asFloatBuffer().put(positions)
-        // ByteBuffer position stays at 0 (we mutated the FloatBuffer view only); setBufferAt
-        // reads from the underlying ByteBuffer's position.
-        ownedVertexBuffer.setBufferAt(engine, 0, vertexBytes, 0, vertexBytesNeeded)
 
-        val indices = geometry.indices
-        val indexBytesNeeded = indices.size * Int.SIZE_BYTES
-        val indexBytes = acquireDirectBuffer(indexUploadBuffer, indexBytesNeeded).also {
-            indexUploadBuffer = it
+        // Upload + rebind succeeded — commit the swap (#1840) and free the now-stale OLD buffers.
+        // Field updates are render-thread-only, mirror what the previous in-place swap did.
+        if (rebuild.newVertexBuffer != null) {
+            val stale = ownedVertexBuffer
+            ownedVertexBuffer = rebuild.newVertexBuffer
+            allocatedVertexCount = newVertexAllocCount
+            engine.safeDestroyVertexBuffer(stale)
         }
-        indexBytes.clear()
-        indexBytes.asIntBuffer().put(indices)
-        ownedIndexBuffer.setBuffer(engine, indexBytes, 0, indexBytesNeeded)
-
-        // Tell Filament how many indices to actually render. We don't expose the offset/count
-        // overload publicly, but we can replace the renderable's geometry in-place.
-        // Rebinding the renderable to the NEW buffers BEFORE freeing the old ones closes the
-        // use-after-free window (#1805): for one frame between safeDestroy and setGeometryAt the
-        // renderable would otherwise reference freed Filament native handles.
-        renderableManager.setGeometryAt(
-            renderableInstance,
-            0,
-            PrimitiveType.TRIANGLES,
-            ownedVertexBuffer,
-            ownedIndexBuffer,
-            0,
-            indices.size,
-        )
-
-        // Now that the renderable points at the new buffers, it is safe to release the old ones.
-        staleBuffers.staleVertexBuffer?.let { engine.safeDestroyVertexBuffer(it) }
-        staleBuffers.staleIndexBuffer?.let { engine.safeDestroyIndexBuffer(it) }
-
-        // Recompute and apply the AABB so frustum culling works once the mesh has real content.
-        renderableManager.setAxisAlignedBoundingBox(renderableInstance, computeAabb(positions))
+        if (rebuild.newIndexBuffer != null) {
+            val stale = ownedIndexBuffer
+            ownedIndexBuffer = rebuild.newIndexBuffer
+            allocatedIndexCount = newIndexAllocCount
+            engine.safeDestroyIndexBuffer(stale)
+        }
     }
 
     /**
-     * Reallocate [ownedVertexBuffer] / [ownedIndexBuffer] when the requested capacity exceeds the
-     * current one. Grows in powers of two to amortise allocation churn across rebuilds — the
-     * depth image dimensions are constant, so this typically reallocates **once**.
+     * Allocate replacement [VertexBuffer] / [IndexBuffer] handles when the requested capacity
+     * exceeds the currently-allocated one. Grows in powers of two to amortise allocation churn
+     * across rebuilds — the depth image dimensions are constant, so this typically reallocates
+     * **once**.
      *
-     * Returns the **old** [VertexBuffer] / [IndexBuffer] handles that the caller must destroy
-     * **after** rebinding the renderable to the new buffers. Destroying in-place here would
-     * leave the renderable pointing at freed Filament native handles between this call and the
-     * subsequent [RenderableManager.setGeometryAt] — a use-after-free (#1805).
+     * **Does NOT mutate** [ownedVertexBuffer] / [ownedIndexBuffer] / [allocatedVertexCount] /
+     * [allocatedIndexCount] (#1840). The caller is responsible for the **commit** step after
+     * [RenderableManager.setGeometryAt] returns successfully:
+     *
+     *   - swap the field to the new buffer
+     *   - update the allocated-count tracker
+     *   - destroy the old buffer
+     *
+     * If `setGeometryAt` (or any upload step) throws BEFORE the commit, the new buffer is the
+     * only reference and the caller must `safeDestroy` it. Mutating the owned* fields up-front,
+     * as the previous code did, would have left the OLD buffer unreachable AND undestroyed on
+     * any mid-upload exception (#1840).
+     *
+     * Rebuild → rebind → destroy-old still respects the #1805 ordering invariant — the new
+     * `setGeometryAt` happens BEFORE the old buffers are destroyed.
      */
     private fun rebuildBuffersIfNeeded(
         requestedVertexCount: Int,
         requestedIndexCount: Int,
-    ): StaleBuffers {
+    ): BufferRebuild {
         val plan = planBufferRebuild(
             allocatedVertexCount = allocatedVertexCount,
             allocatedIndexCount = allocatedIndexCount,
             requestedVertexCount = requestedVertexCount,
             requestedIndexCount = requestedIndexCount,
         )
-        var staleVertexBuffer: VertexBuffer? = null
-        var staleIndexBuffer: IndexBuffer? = null
-        if (plan.newVertexCount != null) {
-            // Capture the OLD buffer first; build the new buffer; swap the field. The old buffer
-            // is returned so the caller can destroy it AFTER rebinding the renderable.
-            staleVertexBuffer = ownedVertexBuffer
-            ownedVertexBuffer = VertexBuffer.Builder()
+        val newVertexBuffer = plan.newVertexCount?.let { count ->
+            VertexBuffer.Builder()
                 .bufferCount(1)
-                .vertexCount(plan.newVertexCount)
+                .vertexCount(count)
                 .attribute(VertexAttribute.POSITION, 0, AttributeType.FLOAT3)
                 .build(engine)
-            allocatedVertexCount = plan.newVertexCount
         }
-        if (plan.newIndexCount != null) {
-            staleIndexBuffer = ownedIndexBuffer
-            ownedIndexBuffer = IndexBuffer.Builder()
+        val newIndexBuffer = plan.newIndexCount?.let { count ->
+            IndexBuffer.Builder()
                 .bufferType(IndexBuffer.Builder.IndexType.UINT)
-                .indexCount(plan.newIndexCount)
+                .indexCount(count)
                 .build(engine)
-            allocatedIndexCount = plan.newIndexCount
         }
-        return StaleBuffers(staleVertexBuffer, staleIndexBuffer)
+        return BufferRebuild(
+            newVertexBuffer = newVertexBuffer,
+            newIndexBuffer = newIndexBuffer,
+            newVertexCount = plan.newVertexCount,
+            newIndexCount = plan.newIndexCount,
+        )
     }
 
     /**
-     * Buffers superseded by [rebuildBuffersIfNeeded] — destroyed by [uploadGeometry] **after** the
-     * renderable has been rebound to the new buffers (#1805 ordering invariant).
+     * Freshly-allocated replacement buffers produced by [rebuildBuffersIfNeeded].
+     *
+     * The fields are **not yet owned** by the node — `uploadGeometry` commits them after a
+     * successful `setGeometryAt`, swapping the [ownedVertexBuffer] / [ownedIndexBuffer] fields
+     * and destroying the displaced old buffers. On any upload failure, the caller must destroy
+     * these new buffers to avoid leaking them (#1840).
      */
-    private data class StaleBuffers(
-        val staleVertexBuffer: VertexBuffer?,
-        val staleIndexBuffer: IndexBuffer?,
+    private data class BufferRebuild(
+        val newVertexBuffer: VertexBuffer?,
+        val newIndexBuffer: IndexBuffer?,
+        val newVertexCount: Int?,
+        val newIndexCount: Int?,
     )
 
     override fun destroy() {
@@ -395,9 +454,21 @@ open class DepthMeshNode(
      * Render-thread only (matches the rest of the upload path). Power-of-two growth amortises
      * the rare reallocations across many rebuilds — once the depth image's pixel count + edge
      * culling settle, this returns the same buffer on every call (#1810).
+     *
+     * **Cap (#1846):** the cached buffer is never reused above [MAX_UPLOAD_BUFFER_BYTES] (1 MB).
+     * A one-off oversized depth image (rare today, possible if a future ARCore exposes
+     * higher-res depth) would otherwise permanently inflate the cache — we prefer a fresh
+     * allocation in that case so the steady-state memory footprint matches the typical
+     * stride-4 mesh from a 160×90 depth image. Buffers under the cap retain the prior
+     * no-shrink reuse behaviour.
      */
     private fun acquireDirectBuffer(existing: ByteBuffer?, bytesNeeded: Int): ByteBuffer {
-        if (existing != null && existing.capacity() >= bytesNeeded) return existing
+        if (existing != null &&
+            existing.capacity() >= bytesNeeded &&
+            existing.capacity() <= MAX_UPLOAD_BUFFER_BYTES
+        ) {
+            return existing
+        }
         val capacity = nextPowerOfTwo(max(bytesNeeded, MIN_UPLOAD_BUFFER_BYTES))
         return ByteBuffer.allocateDirect(capacity).order(ByteOrder.nativeOrder())
     }
@@ -430,6 +501,16 @@ open class DepthMeshNode(
          * larger captures.
          */
         internal const val MIN_UPLOAD_BUFFER_BYTES: Int = 16 * 1024
+
+        /**
+         * Ceiling capacity (bytes) above which the cached upload [ByteBuffer]s are no longer
+         * reused — a one-off oversized depth image must not permanently inflate the cache
+         * (#1846). 1 MB comfortably covers a stride-1 vertex stream from a high-end 480×270
+         * depth image (~130k verts × 12 B = ~1.6 MB → triggers a fresh alloc), while a typical
+         * stride-4 mesh from a 160×90 capture stays well under the cap (~12 KB) and retains the
+         * no-shrink reuse path.
+         */
+        internal const val MAX_UPLOAD_BUFFER_BYTES: Int = 1 * 1024 * 1024
 
         private fun createInitialVertexBuffer(engine: Engine): VertexBuffer =
             VertexBuffer.Builder()
@@ -495,8 +576,23 @@ data class DepthMeshSnapshot(
     }
 }
 
-/** Computes an axis-aligned bounding box from a flat-packed `xyz` array. */
-private fun computeAabb(positions: FloatArray): Box {
+/**
+ * Computes an axis-aligned bounding box from a flat-packed `xyz` array.
+ *
+ * Filament rejects empty AABBs (any half-extent ≤ 0) with a `Precondition: AABB can't be empty`
+ * SIGABRT when culling is enabled or the renderable casts/receives shadows. Two degenerate paths
+ * trigger this:
+ *  1. Empty `positions` (no depth samples this frame) — guarded since #1783.
+ *  2. All samples share the same coordinate on at least one axis (e.g. a depth image where every
+ *     pixel reports the same range, or the first frame after a scene reset where only one
+ *     off-grid (0,0,0) vertex made it through). The min/max collapse and at least one half-extent
+ *     comes out as 0 — same SIGABRT (#1806).
+ *
+ * The clamp below substitutes [DepthMeshNode.DEGENERATE_AABB_HALF_EXTENT_M] for any half-extent
+ * below that threshold so the returned [Box] always satisfies Filament's `halfExtent > 0`
+ * precondition. The centre is preserved so frustum culling still localises the renderable.
+ */
+internal fun computeAabb(positions: FloatArray): Box {
     // Same precondition guard as the initial AABB — Filament rejects empty boxes (#1783).
     if (positions.isEmpty()) return Box(
         0f, 0f, 0f,
@@ -526,9 +622,13 @@ private fun computeAabb(positions: FloatArray): Box {
     val centerX = (minX + maxX) * 0.5f
     val centerY = (minY + maxY) * 0.5f
     val centerZ = (minZ + maxZ) * 0.5f
-    val halfX = (maxX - minX) * 0.5f
-    val halfY = (maxY - minY) * 0.5f
-    val halfZ = (maxZ - minZ) * 0.5f
+    // Clamp any half-extent below the degenerate threshold to the minimum half-extent so Filament
+    // never sees a zero-extent box (#1806). This catches the all-same-coordinate case that the
+    // empty-positions guard from #1783 misses.
+    val minHalf = DepthMeshNode.DEGENERATE_AABB_HALF_EXTENT_M
+    val halfX = ((maxX - minX) * 0.5f).coerceAtLeast(minHalf)
+    val halfY = ((maxY - minY) * 0.5f).coerceAtLeast(minHalf)
+    val halfZ = ((maxZ - minZ) * 0.5f).coerceAtLeast(minHalf)
     return Box(centerX, centerY, centerZ, halfX, halfY, halfZ)
 }
 

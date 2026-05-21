@@ -75,6 +75,50 @@ class DepthMeshCollisionTest {
         )
     }
 
+    @Test
+    fun `inline matrix multiply handles 90-degree Y rotation plus non-axis-aligned translate`() {
+        // #1846 column-order hardening — the translate-only and identity-rotate tests above let
+        // a column-swap in the inline matmul pass: `m01/m02`, `m10/m12`, `m20/m21` are all
+        // multiplied by zero. Pin the multiplication with a 90° Y-rotation + a non-axis-aligned
+        // translate so every rotation entry contributes.
+        //
+        // Compose translate * rotate(Y, 90°) — verify against kotlin-math's own `Mat4 * Float3`
+        // operator (the ground truth) so the test stays correct regardless of kotlin-math's
+        // column convention. We build the same composite matrix here and compare both
+        // implementations sample-by-sample — a column-swap in the inline matmul will differ
+        // from kotlin-math's reference implementation on every non-zero rotation component.
+        val cam = floatArrayOf(
+            1f, 2f, 3f,
+            -4f, 5f, -6f,
+            7f, 0f, -2f,
+        )
+        // translation(...) * rotation(Y, 90°). Use kotlin-math's own builders so the composite
+        // matches whatever column convention the runtime uses — the inline matmul under test
+        // must agree with it.
+        val transform = translation(Position(7f, 8f, 9f)) *
+            dev.romainguy.kotlin.math.rotation(
+                dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
+                90f,
+            )
+        val world = transformPositionsToWorld(cam, transform)
+
+        // Ground truth: kotlin-math's own `Mat4 * Float4` operator. Sample-by-sample equality
+        // means the inline matmul under test produced the same world coordinates as the
+        // high-level operator, proving no column-swap drift. (Float3 has no `*` overload with
+        // Mat4 in kotlin-math; the canonical "transform a 3D point" recipe is to pad with w=1.)
+        for (i in 0 until 3) {
+            val gx = transform * dev.romainguy.kotlin.math.Float4(
+                cam[i * 3],
+                cam[i * 3 + 1],
+                cam[i * 3 + 2],
+                1f,
+            )
+            assertEquals("vertex $i x", gx.x, world[i * 3], 1e-4f)
+            assertEquals("vertex $i y", gx.y, world[i * 3 + 1], 1e-4f)
+            assertEquals("vertex $i z", gx.z, world[i * 3 + 2], 1e-4f)
+        }
+    }
+
     // ── nearestSurfaceYBelow ──────────────────────────────────────────────────────────────────────
 
     @Test
@@ -154,6 +198,32 @@ class DepthMeshCollisionTest {
         val idx = intArrayOf(0, 1, 2)
         // No exception, no crash; just nothing under the query.
         val y = nearestSurfaceYBelow(pos, idx, x = 0.5f, y = 5f, z = 0f, radius = 0.05f)
+        assertNull(y)
+    }
+
+    // Input validation (#1812): mismatched indices/positions must not AIOOBE
+    @Test
+    fun `out-of-bounds indices are skipped (no AIOOBE on render thread)`() {
+        // Position array has 3 vertices; indices point past the end.
+        val pos = floatArrayOf(
+            0f, 0f, 0f,
+            1f, 0f, 0f,
+            0f, 0f, 1f,
+        )
+        // Triangle 0 is valid; triangle 1 references vertex index 99 which is out of bounds.
+        val idx = intArrayOf(0, 1, 2, 99, 100, 101)
+        // Must not crash — malformed triangle is skipped, valid triangle is still considered.
+        val y = nearestSurfaceYBelow(pos, idx, x = 0.25f, y = 5f, z = 0.25f, radius = 0.1f)
+        assertNotNull(y)
+        assertEquals(0f, y!!, 1e-5f)
+    }
+
+    @Test
+    fun `negative indices are skipped (no AIOOBE on render thread)`() {
+        val pos = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f)
+        // Single triangle with one negative index — must be skipped, return null.
+        val idx = intArrayOf(-1, 1, 2)
+        val y = nearestSurfaceYBelow(pos, idx, x = 0.25f, y = 5f, z = 0.25f, radius = 0.1f)
         assertNull(y)
     }
 

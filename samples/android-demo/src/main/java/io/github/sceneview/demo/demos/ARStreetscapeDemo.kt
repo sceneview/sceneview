@@ -46,6 +46,8 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
@@ -247,7 +249,14 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_streetscape_title),
-        onBack = onBack
+        onBack = onBack,
+        controls = {
+            // Developer-only debug toggle — visible when QA mode is on. Lets QA
+            // force-emit each TrackingFailureReason so the actionable-message
+            // overlay can be validated without staging a real failure. See
+            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+            ForceTrackingFailureMenu()
+        }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -328,6 +337,10 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
             }
 
             // Status overlay
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
                 visible = true,
                 enter = fadeIn(),
@@ -340,8 +353,10 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
                         "ARCore Cloud API key not configured \u2014 see samples/android-demo/STREETSCAPE_SETUP.md"
                     geospatialUnavailable != null ->
                         "${geospatialUnavailable!!} \u2014 needs outdoor area with Street View coverage + Cloud API key"
+                    ForcedTrackingFailure.override != null ->
+                        trackingFailureMessage(effectiveReason) ?: "Scanning environment\u2026"
                     geometryCount > 0 -> "Rendering $geometryCount structure(s)"
-                    !isTracking -> trackingFailureMessage(trackingFailureReason)
+                    !isTracking -> trackingFailureMessage(effectiveReason)
                         ?: "Scanning environment\u2026"
                     else -> "Looking for streetscape geometry\u2026"
                 }

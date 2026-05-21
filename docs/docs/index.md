@@ -45,7 +45,7 @@ description: "The #1 open-source 3D & AR SDK. Build immersive 3D and AR experien
 </div>
 
 <div class="sv-stat">
-<span class="sv-stat-number">v4.11.0</span>
+<span class="sv-stat-number">v4.11.2</span>
 <span class="sv-stat-label">Latest Release</span>
 </div>
 
@@ -61,7 +61,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 === "Kotlin (Android)"
 
     ```kotlin
-    // build.gradle: implementation("io.github.sceneview:sceneview:4.11.0")
+    // build.gradle: implementation("io.github.sceneview:sceneview:4.11.2")
 
     SceneView(modifier = Modifier.fillMaxSize()) {
         val model = rememberModelInstance(modelLoader, "models/helmet.glb")
@@ -83,7 +83,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 === "Swift (iOS / macOS / visionOS)"
 
     ```swift
-    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.11.0")
+    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.11.2")
 
     SceneView { root in
         let model = try? await ModelNode.load("helmet.usdz")
@@ -97,7 +97,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 
     ```html
     <!-- One-liner 3D for the web -->
-    <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.11.0/sceneview-web.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.11.2/sceneview-web.js"></script>
     <scene-view model="helmet.glb" auto-rotate camera-orbit></scene-view>
     ```
 
@@ -190,7 +190,7 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
     ```kotlin
     // build.gradle.kts
     dependencies {
-        implementation("io.github.sceneview:sceneview:4.11.0")
+        implementation("io.github.sceneview:sceneview:4.11.2")
     }
     ```
 
@@ -199,7 +199,7 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
     ```kotlin
     // build.gradle.kts
     dependencies {
-        implementation("io.github.sceneview:arsceneview:4.11.0")
+        implementation("io.github.sceneview:arsceneview:4.11.2")
     }
     ```
 
@@ -207,13 +207,13 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
 
     ```swift
     // Package.swift or Xcode > Add Package Dependency
-    .package(url: "https://github.com/sceneview/sceneview", from: "4.11.0")
+    .package(url: "https://github.com/sceneview/sceneview", from: "4.11.2")
     ```
 
 === "Web"
 
     ```html
-    <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.11.0/sceneview-web.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.11.2/sceneview-web.js"></script>
     ```
 
 ---
@@ -349,6 +349,19 @@ The demo apps ship with 14+ interactive samples covering model viewing, AR place
 ## Upgrading from v2.x?
 
 See the [Migration Guide](migration.md) for a step-by-step walkthrough of every breaking change.
+
+---
+
+## Coming from Sceneform?
+
+Google [archived Sceneform](https://github.com/google-ar/sceneform-android-sdk) in 2021 and
+ships no first-party declarative AR renderer. **SceneView is its Compose-native successor** —
+it descends from the maintained Sceneform community fork and pairs ARCore (perception) with
+Filament (rendering) behind a Jetpack Compose API. The `.sfb` model format gives way to
+standard glTF (`.glb` / `.gltf`), and manual lifecycle handling is replaced by the Compose
+lifecycle. See the [Migration Guide](migration.md) for the concept-by-concept mapping
+(`ArFragment` → `ARScene { }`, `ModelRenderable` → `rememberModelInstance`, …) and the
+[comparison page](comparison.md) for a side-by-side feature table.
 
 ---
 

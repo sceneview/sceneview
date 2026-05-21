@@ -156,7 +156,7 @@ struct AnimationDemo: View {
                             Button {
                                 selectedIndex = index
                                 #if os(iOS)
-                                HapticManager.selectionChanged()
+                                SceneViewHaptic.shared.selection()
                                 #endif
                             } label: {
                                 Text(subject.displayName)
@@ -184,7 +184,7 @@ struct AnimationDemo: View {
                     Button {
                         isPlaying.toggle()
                         #if os(iOS)
-                        HapticManager.lightTap()
+                        SceneViewHaptic.shared.light()
                         #endif
                     } label: {
                         Image(systemName: isPlaying ? "pause.fill" : "play.fill")
@@ -212,7 +212,7 @@ struct AnimationDemo: View {
                     Button {
                         loop = true
                         #if os(iOS)
-                        HapticManager.selectionChanged()
+                        SceneViewHaptic.shared.selection()
                         #endif
                     } label: {
                         Text("Loop")
@@ -227,7 +227,7 @@ struct AnimationDemo: View {
                     Button {
                         loop = false
                         #if os(iOS)
-                        HapticManager.selectionChanged()
+                        SceneViewHaptic.shared.selection()
                         #endif
                     } label: {
                         Text("Once")

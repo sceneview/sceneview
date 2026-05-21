@@ -207,12 +207,19 @@ if [ -f "$CHANGELOG" ]; then
     add_check "CHANGELOG.md (latest entry)" "$V" "false"
 fi
 
-# Module.md files
+# Module.md files — Dokka-rendered module landing pages.
+# Pre-#1848 this check grepped the first version number in the file, which
+# happens to be the Maven coordinate, but the match was UNANCHORED so a
+# future version literal elsewhere in the prose would silently shadow the
+# coordinate. ERROR-level (not WARN) + anchored to `io.github.sceneview:NAME:`
+# so the check fails loudly if the install snippet drifts (issue #1848).
 for modmd in sceneview/Module.md arsceneview/Module.md; do
     F="$REPO_ROOT/$modmd"
     if [ -f "$F" ]; then
-        V=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$F" | head -1 || echo "NOT FOUND")
-        add_check "$modmd" "$V" "false"
+        V=$(grep -m1 'io\.github\.sceneview:' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+        if [ "$V" != "NOT FOUND" ]; then
+            add_check "$modmd" "$V"
+        fi
     fi
 done
 
@@ -511,6 +518,13 @@ SPM_FILES=(
     # and again in #1262). Listed explicitly so `--fix` keeps them in sync.
     pro/gpt-store/gpt-instructions.md
     marketing/stackoverflow/qa-drafts.md
+    # Agent skills under agents/* — installed into `~/.android/cli/skills/xr/`
+    # by `bash .claude/scripts/install-sceneview-*-skill.sh`. The Android skill
+    # SPM tag prose is checked explicitly in section 14; the iOS skill ships a
+    # canonical `.package(... from: "X.Y.Z")` snippet that fits cleanly into
+    # this sweep (#1848).
+    agents/sceneview-ios/SKILL.md
+    agents/sceneview-ios/references/migration.md
 )
 for spm_file in "${SPM_FILES[@]}"; do
     F="$REPO_ROOT/$spm_file"
@@ -624,14 +638,17 @@ for cdnfile in README.md docs/docs/index.md website-static/index.html website-st
 done
 
 # SceneViewJS.kt — `SCENEVIEW_VERSION` constant stamped into the Kotlin/JS
-# bundle. The .kt file lives in a library module other agents own, so this
-# check is REPORT-ONLY (critical=false) and never auto-fixed here — bumping
-# the constant is tracked separately (#1357).
+# bundle. This is a public `@JsExport`-reachable code constant; web consumers
+# querying the library version get whatever this literal says, so silent drift
+# is a real defect (it lagged 2 majors before #1357). Hard MISMATCH check —
+# never demote back to WARN-only. The literal is pinned by a jsTest in
+# `sceneview-web/src/jsTest/.../SceneViewVersionTest.kt` as a second line of
+# defense.
 SCENEVIEWJS_KT=$(find "$REPO_ROOT/sceneview-web" -name 'SceneViewJS.kt' 2>/dev/null | head -1 || true)
 if [ -n "$SCENEVIEWJS_KT" ] && [ -f "$SCENEVIEWJS_KT" ]; then
     V=$(grep -E 'SCENEVIEW_VERSION' "$SCENEVIEWJS_KT" | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"' | tr -d '"' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
-        add_check "sceneview-web SceneViewJS.kt SCENEVIEW_VERSION" "$V" "false"
+        add_check "sceneview-web SceneViewJS.kt SCENEVIEW_VERSION" "$V"
     fi
 fi
 
@@ -724,6 +741,113 @@ if [ -f "$SCENEVIEW_WEB_README" ]; then
         | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
         add_check "sceneview-web/README.md (CDN @version)" "$V"
+    fi
+fi
+
+# ─── 14. Derived doc surfaces missed by every previous scan (#1848) ────────
+# Tier-2 Wave 4 DOCS review surfaced five doc surfaces sitting outside every
+# previous scan and stale on `main` for multiple minors:
+#   * docs/docs/manifest.json — PWA manifest `related_applications[].id`
+#     Maven coordinate, was 4.4.0.
+#   * docs/docs/structured-data.json — JSON-LD softwareVersion + releaseNotes
+#     URL + two Maven coordinate prose mentions, was 3.6.2 / 4.4.0.
+#   * agents/sceneview/SKILL.md + references/cheatsheet.md + references/migration.md
+#     — Android skill artifact coordinates and SPM/npm refs, were 4.3.1.
+#   * agents/sceneview-ios/SKILL.md + references/migration.md — SPM `from:`
+#     and SPM-tag prose ref, were 4.3.5.
+#   * agents/sceneview-web/SKILL.md + references/cheatsheet.md + references/recipes.md
+#     — npm prose + jsdelivr CDN @version pin, were 4.3.5.
+# AI agents / MCP / skill consumers reading these get broken install snippets
+# pointing at a non-current Maven coordinate. ERROR-level checks below; future
+# drift fails the gate, --fix sweep rewrites them.
+echo -e "${CYAN}--- Derived Doc Surfaces (#1848) ---${NC}"
+
+# docs/docs/manifest.json — PWA manifest's `related_applications[].id`.
+DOCS_MANIFEST="$REPO_ROOT/docs/docs/manifest.json"
+if [ -f "$DOCS_MANIFEST" ]; then
+    V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$DOCS_MANIFEST" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "docs/docs/manifest.json (related_applications id)" "$V"
+    fi
+fi
+
+# docs/docs/structured-data.json — JSON-LD softwareVersion + releaseNotes URL
+# + Maven coordinate prose. Multiple distinct version slots that all must
+# track VERSION_NAME.
+DOCS_STRUCTURED="$REPO_ROOT/docs/docs/structured-data.json"
+if [ -f "$DOCS_STRUCTURED" ]; then
+    V=$(grep -m1 '"softwareVersion"' "$DOCS_STRUCTURED" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "docs/docs/structured-data.json (softwareVersion)" "$V"
+    fi
+    V=$(grep -m1 '"releaseNotes"' "$DOCS_STRUCTURED" | grep -oE 'tag/v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "docs/docs/structured-data.json (releaseNotes tag)" "$V"
+    fi
+    V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$DOCS_STRUCTURED" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "docs/docs/structured-data.json (Maven coordinate)" "$V"
+    fi
+fi
+
+# agents/sceneview/* — Android skill: Maven artifact coordinates, SPM tag
+# prose, npm sceneview-web prose, and @sceneview-sdk/react-native prose. All
+# checked against VERSION_NAME.
+for agentf in agents/sceneview/SKILL.md agents/sceneview/references/cheatsheet.md agents/sceneview/references/migration.md; do
+    F="$REPO_ROOT/$agentf"
+    if [ -f "$F" ]; then
+        V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+        if [ "$V" != "NOT FOUND" ]; then
+            add_check "$agentf (Maven coordinate)" "$V"
+        fi
+    fi
+done
+
+# agents/sceneview/SKILL.md — additional npm + SPM tag prose lines that the
+# Maven-coordinate scan doesn't reach.
+AGENT_ANDROID_SKILL="$REPO_ROOT/agents/sceneview/SKILL.md"
+if [ -f "$AGENT_ANDROID_SKILL" ]; then
+    V=$(grep -m1 'sceneview-web@' "$AGENT_ANDROID_SKILL" | grep -oE 'sceneview-web@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "agents/sceneview/SKILL.md (sceneview-web@)" "$V"
+    fi
+    V=$(grep -m1 '@sceneview-sdk/react-native@' "$AGENT_ANDROID_SKILL" | grep -oE '@sceneview-sdk/react-native@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "agents/sceneview/SKILL.md (@sceneview-sdk/react-native@)" "$V"
+    fi
+    V=$(grep -m1 -E 'tag `[0-9]+\.[0-9]+\.[0-9]+' "$AGENT_ANDROID_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "agents/sceneview/SKILL.md (SPM tag prose)" "$V"
+    fi
+fi
+
+# agents/sceneview-ios/* — Apple skill: SPM `from:` is already covered by the
+# section-10b SPM_FILES sweep IF we add the files there. Add them, plus a
+# direct ERROR-level check on the prose "version tag (currently `X.Y.Z`)" line.
+AGENT_IOS_SKILL="$REPO_ROOT/agents/sceneview-ios/SKILL.md"
+if [ -f "$AGENT_IOS_SKILL" ]; then
+    V=$(grep -m1 -E 'version tag \(currently `[0-9]+\.[0-9]+\.[0-9]+' "$AGENT_IOS_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "agents/sceneview-ios/SKILL.md (SPM tag prose)" "$V"
+    fi
+fi
+
+# agents/sceneview-web/* — Web skill: jsdelivr CDN @version pin + "currently
+# `X.Y.Z`" prose line.
+for webskill in agents/sceneview-web/SKILL.md agents/sceneview-web/references/cheatsheet.md agents/sceneview-web/references/recipes.md; do
+    F="$REPO_ROOT/$webskill"
+    if [ -f "$F" ]; then
+        V=$(grep -m1 'sceneview-web@' "$F" | grep -oE 'sceneview-web@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+        if [ "$V" != "NOT FOUND" ]; then
+            add_check "$webskill (CDN @version)" "$V"
+        fi
+    fi
+done
+AGENT_WEB_SKILL="$REPO_ROOT/agents/sceneview-web/SKILL.md"
+if [ -f "$AGENT_WEB_SKILL" ]; then
+    V=$(grep -m1 -E 'sceneview-web. \(currently `[0-9]+\.[0-9]+\.[0-9]+' "$AGENT_WEB_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "agents/sceneview-web/SKILL.md (npm prose)" "$V"
     fi
 fi
 
@@ -1092,6 +1216,109 @@ with open('$WEB_DEMO_TESTS_PKG', 'w') as f:
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
             _sed_inplace "s/sceneview-web@$CURRENT/sceneview-web@$SOURCE_VERSION/g" "$SCENEVIEW_WEB_README"
             echo -e "  Fixed: sceneview-web/README.md (CDN @version $CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # ─── Fixes for derived doc surfaces surfaced by #1848 ────────────────────
+
+    # arsceneview/Module.md + sceneview/Module.md — Dokka module landing pages.
+    # Already touched by the section "Fix docs files" Maven-coordinate sweep
+    # IF the check status was MISMATCH (caught by OLD_VERSIONS). But that
+    # sweep only iterates a hard-coded docfile list — Module.md isn't in it.
+    # Wire it in here.
+    for OLD_V in $OLD_VERSIONS; do
+        [ "$OLD_V" = "$SOURCE_VERSION" ] && continue
+        for modmd in sceneview/Module.md arsceneview/Module.md; do
+            F="$REPO_ROOT/$modmd"
+            if [ -f "$F" ] && grep -q "io\.github\.sceneview:.*$OLD_V" "$F" 2>/dev/null; then
+                _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$OLD_V/io.github.sceneview:\1:$SOURCE_VERSION/g" "$F"
+                echo -e "  Fixed: $modmd (artifact ref $OLD_V -> $SOURCE_VERSION)"
+            fi
+        done
+    done
+
+    # docs/docs/manifest.json — PWA `related_applications[].id` Maven coordinate.
+    if [ -f "$DOCS_MANIFEST" ]; then
+        CURRENT=$(grep -m1 'io\.github\.sceneview:sceneview:' "$DOCS_MANIFEST" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$CURRENT/io.github.sceneview:\1:$SOURCE_VERSION/g" "$DOCS_MANIFEST"
+            echo -e "  Fixed: docs/docs/manifest.json ($CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # docs/docs/structured-data.json — JSON-LD softwareVersion + releaseNotes
+    # + Maven prose. Three distinct slots, each fixed with its own scoped sub.
+    if [ -f "$DOCS_STRUCTURED" ]; then
+        CURRENT=$(grep -m1 '"softwareVersion"' "$DOCS_STRUCTURED" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/\"softwareVersion\": \"$CURRENT\"/\"softwareVersion\": \"$SOURCE_VERSION\"/" "$DOCS_STRUCTURED"
+            echo -e "  Fixed: docs/docs/structured-data.json (softwareVersion $CURRENT -> $SOURCE_VERSION)"
+        fi
+        CURRENT=$(grep -m1 '"releaseNotes"' "$DOCS_STRUCTURED" | grep -oE 'tag/v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s|releases/tag/v$CURRENT|releases/tag/v$SOURCE_VERSION|" "$DOCS_STRUCTURED"
+            echo -e "  Fixed: docs/docs/structured-data.json (releaseNotes tag $CURRENT -> $SOURCE_VERSION)"
+        fi
+        CURRENT=$(grep -m1 'io\.github\.sceneview:sceneview:' "$DOCS_STRUCTURED" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$CURRENT/io.github.sceneview:\1:$SOURCE_VERSION/g" "$DOCS_STRUCTURED"
+            echo -e "  Fixed: docs/docs/structured-data.json (Maven coordinate $CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # agents/sceneview/* — Android skill files. Maven coordinate + sceneview-web
+    # + @sceneview-sdk/react-native + SPM tag prose, each scoped to its line shape.
+    for agentf in agents/sceneview/SKILL.md agents/sceneview/references/cheatsheet.md agents/sceneview/references/migration.md; do
+        F="$REPO_ROOT/$agentf"
+        [ -f "$F" ] || continue
+        CURRENT=$(grep -m1 'io\.github\.sceneview:sceneview:' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$CURRENT/io.github.sceneview:\1:$SOURCE_VERSION/g" "$F"
+            echo -e "  Fixed: $agentf (Maven coordinate $CURRENT -> $SOURCE_VERSION)"
+        fi
+    done
+    if [ -f "$AGENT_ANDROID_SKILL" ]; then
+        CURRENT=$(grep -m1 'sceneview-web@' "$AGENT_ANDROID_SKILL" | grep -oE 'sceneview-web@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/sceneview-web@$CURRENT/sceneview-web@$SOURCE_VERSION/g" "$AGENT_ANDROID_SKILL"
+            echo -e "  Fixed: agents/sceneview/SKILL.md (sceneview-web@ $CURRENT -> $SOURCE_VERSION)"
+        fi
+        CURRENT=$(grep -m1 '@sceneview-sdk/react-native@' "$AGENT_ANDROID_SKILL" | grep -oE '@sceneview-sdk/react-native@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/@sceneview-sdk\/react-native@$CURRENT/@sceneview-sdk\/react-native@$SOURCE_VERSION/g" "$AGENT_ANDROID_SKILL"
+            echo -e "  Fixed: agents/sceneview/SKILL.md (@sceneview-sdk/react-native@ $CURRENT -> $SOURCE_VERSION)"
+        fi
+        CURRENT=$(grep -m1 -E 'tag `[0-9]+\.[0-9]+\.[0-9]+' "$AGENT_ANDROID_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/tag \`$CURRENT\`/tag \`$SOURCE_VERSION\`/" "$AGENT_ANDROID_SKILL"
+            echo -e "  Fixed: agents/sceneview/SKILL.md (SPM tag prose $CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # agents/sceneview-ios/SKILL.md — "version tag (currently `X.Y.Z`)" prose.
+    if [ -f "$AGENT_IOS_SKILL" ]; then
+        CURRENT=$(grep -m1 -E 'version tag \(currently `[0-9]+\.[0-9]+\.[0-9]+' "$AGENT_IOS_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/version tag (currently \`$CURRENT\`)/version tag (currently \`$SOURCE_VERSION\`)/" "$AGENT_IOS_SKILL"
+            echo -e "  Fixed: agents/sceneview-ios/SKILL.md (SPM tag prose $CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # agents/sceneview-web/* — CDN @version + "currently `X.Y.Z`" prose.
+    for webskill in agents/sceneview-web/SKILL.md agents/sceneview-web/references/cheatsheet.md agents/sceneview-web/references/recipes.md; do
+        F="$REPO_ROOT/$webskill"
+        [ -f "$F" ] || continue
+        CURRENT=$(grep -m1 'sceneview-web@' "$F" | grep -oE 'sceneview-web@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/sceneview-web@$CURRENT/sceneview-web@$SOURCE_VERSION/g" "$F"
+            echo -e "  Fixed: $webskill (CDN @version $CURRENT -> $SOURCE_VERSION)"
+        fi
+    done
+    if [ -f "$AGENT_WEB_SKILL" ]; then
+        CURRENT=$(grep -m1 -E 'sceneview-web. \(currently `[0-9]+\.[0-9]+\.[0-9]+' "$AGENT_WEB_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/(currently \`$CURRENT\`)/(currently \`$SOURCE_VERSION\`)/" "$AGENT_WEB_SKILL"
+            echo -e "  Fixed: agents/sceneview-web/SKILL.md (npm prose $CURRENT -> $SOURCE_VERSION)"
         fi
     fi
 

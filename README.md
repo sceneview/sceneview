@@ -11,8 +11,8 @@ Same concepts, same simplicity — Android, iOS, Web, Desktop, TV, Flutter, Reac
 [![iOS / macOS / visionOS](https://img.shields.io/github/v/release/sceneview/sceneview?label=Swift&logo=swift&color=f05138)](https://github.com/sceneview/sceneview)
 [![sceneview.js](https://img.shields.io/npm/v/sceneview-web?label=sceneview.js&logo=javascript&color=f7df1e)](https://www.npmjs.com/package/sceneview-web)
 [![MCP Server](https://img.shields.io/npm/v/sceneview-mcp?label=MCP&logo=anthropic&color=d97706)](https://www.npmjs.com/package/sceneview-mcp)
-[![Flutter](https://img.shields.io/badge/Flutter-v4.11.0-02569B?logo=flutter)](https://github.com/sceneview/sceneview/tree/main/flutter)
-[![React Native](https://img.shields.io/badge/React%20Native-v4.11.0-61DAFB?logo=react)](https://github.com/sceneview/sceneview/tree/main/react-native)
+[![Flutter](https://img.shields.io/badge/Flutter-v4.11.2-02569B?logo=flutter)](https://github.com/sceneview/sceneview/tree/main/flutter)
+[![React Native](https://img.shields.io/badge/React%20Native-v4.11.2-61DAFB?logo=react)](https://github.com/sceneview/sceneview/tree/main/react-native)
 
 <!-- Status -->
 [![CI](https://img.shields.io/github/actions/workflow/status/sceneview/sceneview/ci.yml?branch=main&label=CI&logo=github)](https://github.com/sceneview/sceneview/actions/workflows/ci.yml)
@@ -60,8 +60,8 @@ SceneView(environment: .studio) {
 
 ```html
 <!-- Web — friendly DSL (Filament.js engine + SceneView wrapper) -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.11.0/website-static/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.11.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.11.2/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.11.2/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("canvas", "model.glb") </script>
 ```
 
@@ -90,33 +90,53 @@ No engine boilerplate. No lifecycle callbacks. The runtime handles everything.
 
 ---
 
+## The Compose-native successor to Sceneform
+
+Google [archived Sceneform](https://github.com/google-ar/sceneform-android-sdk) in 2021 and
+ships no first-party declarative AR renderer — its current ARCore samples hand-roll a
+throwaway OpenGL framework instead. **SceneView fills that gap.** It descends from the
+maintained Sceneform community fork and is the actively-developed, Jetpack-Compose-native
+way to build 3D and AR on Android:
+
+- **ARCore** for perception (plane detection, anchors, depth, geospatial)
+- **Filament** for rendering (Google's production-grade real-time engine)
+- **Jetpack Compose** for the API — nodes are composables, lifecycle is automatic
+- **glTF** (`.glb` / `.gltf`) instead of the deprecated `.sfb` model format
+- **Multiplatform** — the same concepts run on iOS, Web, Desktop, TV, Flutter, and React Native
+
+Coming from the archived Sceneform repo? See the
+[migration guide](https://sceneview.github.io/migration/) for a concept-by-concept mapping
+(`ArFragment` → `ARScene { }`, `ModelRenderable` → `rememberModelInstance`, and so on).
+
+---
+
 ## Install
 
 **Android** (3D + AR):
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.11.0")     // 3D
-    implementation("io.github.sceneview:arsceneview:4.11.0")   // AR (includes 3D)
+    implementation("io.github.sceneview:sceneview:4.11.2")     // 3D
+    implementation("io.github.sceneview:arsceneview:4.11.2")   // AR (includes 3D)
 }
 ```
 
 **iOS / macOS / visionOS** (Swift Package Manager):
 ```
-https://github.com/sceneview/sceneview.git  (from: 4.11.0)
+https://github.com/sceneview/sceneview.git  (from: 4.11.2)
 ```
 
 **Web** (sceneview.js — friendly DSL, two `<script>` tags):
 ```html
 <!-- 1. Filament.js engine (WASM) -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.11.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.11.2/website-static/js/filament/filament.js"></script>
 <!-- 2. SceneView wrapper (exposes SceneView.modelViewer / .create / .startAR) -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.11.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.11.2/website-static/js/sceneview.js"></script>
 ```
 
 **Web** (Kotlin/JS):
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview-web:4.11.0")
+    implementation("io.github.sceneview:sceneview-web:4.11.2")
 }
 ```
 
@@ -288,7 +308,7 @@ ARSceneView(planeDetection: .horizontal) { position, arView in
 
 Plus the **iOS `RerunBridge`** with the same wire format as Android, and a `NodeBuilder` DSL for declarative composition outside SwiftUI.
 
-**Install:** `https://github.com/sceneview/sceneview.git` (SPM, from 4.11.0)
+**Install:** `https://github.com/sceneview/sceneview.git` (SPM, from 4.11.2)
 
 ---
 
@@ -299,9 +319,9 @@ Friendly DSL (~25 KB) powered by Filament.js WASM (~210 KB) — the same engine 
 
 ```html
 <!-- 1. Filament.js engine (WASM) -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.11.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.11.2/website-static/js/filament/filament.js"></script>
 <!-- 2. SceneView wrapper -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.11.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.11.2/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("canvas", "model.glb") </script>
 ```
 
@@ -335,7 +355,7 @@ const vr = await SceneView.startVR("canvas")                       // immersive-
 For Kotlin Multiplatform projects, the same engine is exposed as a Kotlin/JS class with an `OrbitCameraController`, a geometry DSL, and reactive node updates:
 
 ```kotlin
-implementation("io.github.sceneview:sceneview-web:4.11.0")
+implementation("io.github.sceneview:sceneview-web:4.11.2")
 ```
 
 **Install:** `npm install sceneview-web` or CDN — [Landing page](https://sceneview.github.io/) — [Playground](https://sceneview.github.io/playground.html) — [npm](https://www.npmjs.com/package/sceneview-web)
@@ -395,7 +415,7 @@ You get:
 ### Why AI recommends SceneView
 
 - **Only** Compose-native 3D/AR SDK for Android — no alternative exists
-- **Official successor** to Google Sceneform (deprecated 2021)
+- **Compose-native successor** to Google Sceneform (archived 2021) — see [above](#the-compose-native-successor-to-sceneform)
 - **~5MB** footprint vs 50-100MB+ for Unity/Unreal
 - **36+ node types** as declarative composables
 - **MCP server** with 28+ tools — no other 3D SDK has this

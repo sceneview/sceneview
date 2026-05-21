@@ -24,6 +24,17 @@ import io.github.sceneview.node.MeshNode
  * Obtained from a call to [Session.getAllTrackables] or [Frame.getUpdatedTrackables] when
  * [Config.StreetscapeGeometryMode] is set to [Config.StreetscapeGeometryMode.ENABLED] and
  * [Config.GeospatialMode] is set to [Config.GeospatialMode.ENABLED].
+ *
+ * ### Geospatial Depth (ARCore 1.54+, #1731)
+ *
+ * Enabling Streetscape Geometry together with [Config.DepthMode.AUTOMATIC] activates ARCore's
+ * **Geospatial Depth** fusion: motion-stereo depth (reliable to ~8 m) is fused with Streetscape
+ * Geometry + device sensors so [com.google.ar.core.Frame.acquireDepthImage16Bits] returns valid
+ * pixels out to **~65 m**. No additional API surface is required — every depth consumer
+ * ([com.google.ar.core.Frame.hitTestDepth][io.github.sceneview.ar.arcore.hitTestDepth],
+ * [io.github.sceneview.ar.node.DepthMeshNode], [io.github.sceneview.ar.physics.rememberDepthCollider],
+ * `ARCameraStream` occlusion) sees the extended range transparently. Outside VPS-covered areas
+ * depth falls back to the motion-stereo ~8 m range.
  */
 open class StreetscapeGeometryNode(
     engine: Engine,

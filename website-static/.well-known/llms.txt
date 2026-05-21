@@ -2,12 +2,12 @@
 
 SceneView is a declarative 3D and AR SDK for Android (Jetpack Compose, Filament, ARCore) and Apple platforms — iOS, macOS, visionOS (SwiftUI, RealityKit, ARKit) — with shared core logic via Kotlin Multiplatform. Each platform uses its native renderer: Filament on Android, RealityKit on Apple.
 
-**Android — Maven artifacts (version 4.11.0):**
-- 3D only: `io.github.sceneview:sceneview:4.11.0`
-- AR + 3D: `io.github.sceneview:arsceneview:4.11.0`
+**Android — Maven artifacts (version 4.11.2):**
+- 3D only: `io.github.sceneview:sceneview:4.11.2`
+- AR + 3D: `io.github.sceneview:arsceneview:4.11.2`
 
 **Apple (iOS 17+ / macOS 14+ / visionOS 1+) — Swift Package:**
-- `https://github.com/sceneview/sceneview.git` (from: "4.11.0"))
+- `https://github.com/sceneview/sceneview.git` (from: "4.11.2"))
 
 **Min SDK:** 24 | **Target SDK:** 36 | **Kotlin:** 2.3.20 | **Compose BOM compatible**
 
@@ -18,8 +18,8 @@ SceneView is a declarative 3D and AR SDK for Android (Jetpack Compose, Filament,
 ### build.gradle (app module)
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.11.0")   // 3D only
-    implementation("io.github.sceneview:arsceneview:4.11.0") // AR (includes sceneview)
+    implementation("io.github.sceneview:sceneview:4.11.2")   // 3D only
+    implementation("io.github.sceneview:arsceneview:4.11.2") // AR (includes sceneview)
 }
 ```
 
@@ -2070,7 +2070,7 @@ React Native (Turbo Module / Fabric), KMP Compose iOS (UIKitView).
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.0")
+    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.2")
 ]
 ```
 
@@ -2443,7 +2443,7 @@ ferrari_f40.glb
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.11.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.11.2 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -2753,7 +2753,7 @@ Renderer: **RealityKit**. Requires iOS 17+ / macOS 14+ / visionOS 1+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.2")
 ```
 
 Import: `import SceneViewSwift`
@@ -3249,7 +3249,7 @@ Backpressure is absorbed by `rateHz`. Wire format: JSON-lines consumed by
 | visionOS | RealityKit | SwiftUI | via SceneViewSwift | Alpha |
 | Web | Filament.js + WebXR | Kotlin/JS | `samples/web-demo` | Alpha |
 
-SceneView Web (sceneview-web v4.11.0) — see "## SceneView Web (Kotlin/JS + Filament.js)" section above for the full API reference.
+SceneView Web (sceneview-web v4.11.2) — see "## SceneView Web (Kotlin/JS + Filament.js)" section above for the full API reference.
 | Desktop | Software renderer | Compose Desktop | `samples/desktop-demo` | Alpha |
 | Flutter | Filament/RealityKit | PlatformView | `samples/flutter-demo` | Alpha |
 | React Native | Filament/RealityKit | Fabric | `samples/react-native-demo` | Alpha |

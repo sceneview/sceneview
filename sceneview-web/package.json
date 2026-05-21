@@ -1,6 +1,6 @@
 {
   "name": "sceneview-web",
-  "version": "4.11.0",
+  "version": "4.11.2",
   "description": "SceneView for Web \u2014 3D rendering with Filament.js (WebGL2/WASM). Same engine as SceneView Android.",
   "main": "build/dist/js/productionExecutable/sceneview-web.js",
   "files": [

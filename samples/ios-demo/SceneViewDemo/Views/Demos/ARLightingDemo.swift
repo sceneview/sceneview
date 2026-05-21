@@ -156,7 +156,7 @@ struct ARLightingDemo: View {
                 ForEach(LightingMode.allCases) { option in
                     Button {
                         mode = option
-                        HapticManager.selectionChanged()
+                        SceneViewHaptic.shared.selection()
                     } label: {
                         VStack(spacing: 2) {
                             Text(option.rawValue)
