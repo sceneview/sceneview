@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -41,6 +39,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.semanticLabelFraction
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
@@ -105,50 +104,22 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_ar_scene_semantics_title),
         onBack = onBack,
-        controls = {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "Scene Semantics",
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "ARCore classifies every pixel into 12 outdoor classes (SKY, " +
-                            "BUILDING, TREE, ROAD, …). The HUD lists the 3 most-present " +
-                            "labels in view. Outdoor only — indoor scenes are mostly UNLABELED.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+        // The on-screen warming-up overlay and HUD already explain the demo
+        // ("point the camera at an outdoor scene"), so the sheet's help card was
+        // redundant; the device-unsupported notice is now an on-screen banner.
+        // The only remaining sheet content was the dev-only
+        // ForceTrackingFailureMenu — gate the whole `controls` block on qaMode
+        // so end users get no empty-sheet FAB (#1620 thread 1).
+        controls = if (DemoSettings.qaMode) {
+            {
+                // Developer-only debug toggle — lets QA force-emit each
+                // TrackingFailureReason so the actionable-message overlay can be
+                // validated without staging a real failure. See
+                // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+                ForceTrackingFailureMenu()
             }
-
-            if (semanticsSupported == false) {
-                Spacer(Modifier.height(8.dp))
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Text(
-                        text = "Your device doesn't have the ARCore Scene Semantics model. " +
-                            "It ships on a subset of Google Play Services for AR devices — " +
-                            "see ARCore docs for the supported device list.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(12.dp)
-                    )
-                }
-            }
-            // Developer-only debug toggle — visible when QA mode is on. Lets QA
-            // force-emit each TrackingFailureReason so the actionable-message
-            // overlay can be validated without staging a real failure. See
-            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
-            ForceTrackingFailureMenu()
+        } else {
+            null
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -212,6 +183,32 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                             LabelRow(label, fraction)
                         }
                     }
+                }
+            }
+
+            // Device-unsupported banner — surfaced on-screen (not buried in a
+            // Settings sheet) so a user on a device without the Scene Semantics
+            // ML model immediately understands why the HUD never appears (#1620
+            // thread 1).
+            AnimatedVisibility(
+                visible = semanticsSupported == false,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text(
+                        text = "Your device doesn't have the ARCore Scene Semantics " +
+                            "model — see ARCore docs for the supported device list.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
                 }
             }
 

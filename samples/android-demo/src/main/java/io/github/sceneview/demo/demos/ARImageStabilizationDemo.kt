@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -172,30 +170,16 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_ar_image_stabilization_title),
         onBack = onBack,
         controls = {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Text(
-                    text = "How to test",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp)
-                )
-                Text(
-                    text = "A helmet auto-places ~1 m in front of you the moment " +
-                        "tracking stabilizes. Tap anywhere on a plane to relocate, " +
-                        "or use Clear to remove.\n\n" +
-                        "1. Toggle EIS on.\n" +
-                        "2. Move the phone around — notice the camera feed is much smoother.\n" +
-                        "3. Toggle off — judder returns.\n" +
-                        "4. The virtual model stays anchored either way; only the camera " +
-                        "background is stabilized.",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(12.dp)
-                )
-            }
+            // One-line hint instead of a multi-paragraph "How to test" card:
+            // the sheet is now just the real control (the EIS toggle) plus a
+            // short explanation of what it does (#1620 thread 1).
+            Text(
+                text = "A helmet auto-places in front of you; tap a plane to " +
+                    "relocate. Toggle EIS and move the phone — the camera feed " +
+                    "is smoother with it on, juddery with it off.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             if (eisSupported == false) {
                 Spacer(Modifier.height(8.dp))

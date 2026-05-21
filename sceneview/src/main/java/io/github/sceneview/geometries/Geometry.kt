@@ -229,7 +229,14 @@ fun VertexBuffer.setVertices(engine: Engine, vertices: List<Geometry.Vertex>): B
         setBufferAt(
             engine, bufferIndex,
             FloatBuffer.allocate(vertices.size * kTangentSize).apply {
-                vertices.forEach { put(normalToTangent(it.normal!!).toFloatArray()) }
+                vertices.forEach { vertex ->
+                    val normal = vertex.normal ?: error(
+                        "Geometry attribute 'normal' missing on a vertex while other vertices " +
+                            "declare one — every vertex must declare a normal or none should " +
+                            "(partial vertex declarations are not supported)."
+                    )
+                    put(normalToTangent(normal).toFloatArray())
+                }
                 flip()
             }, 0,
             vertices.size * kTangentSize
@@ -242,7 +249,14 @@ fun VertexBuffer.setVertices(engine: Engine, vertices: List<Geometry.Vertex>): B
         setBufferAt(
             engine, bufferIndex,
             FloatBuffer.allocate(vertices.size * kUVSize).apply {
-                vertices.forEach { put(it.uvCoordinate!!.toFloatArray()) }
+                vertices.forEach { vertex ->
+                    val uvCoordinate = vertex.uvCoordinate ?: error(
+                        "Geometry attribute 'uvCoordinate' missing on a vertex while other " +
+                            "vertices declare one — every vertex must declare a uvCoordinate or " +
+                            "none should (partial vertex declarations are not supported)."
+                    )
+                    put(uvCoordinate.toFloatArray())
+                }
                 rewind()
             }, 0,
             vertices.size * kUVSize
@@ -255,7 +269,14 @@ fun VertexBuffer.setVertices(engine: Engine, vertices: List<Geometry.Vertex>): B
         setBufferAt(
             engine, bufferIndex,
             FloatBuffer.allocate(vertices.size * kColorSize).apply {
-                vertices.forEach { put(it.color!!.toFloatArray()) }
+                vertices.forEach { vertex ->
+                    val color = vertex.color ?: error(
+                        "Geometry attribute 'color' missing on a vertex while other vertices " +
+                            "declare one — every vertex must declare a color or none should " +
+                            "(partial vertex declarations are not supported)."
+                    )
+                    put(color.toFloatArray())
+                }
                 rewind()
             }, 0,
             vertices.size * kColorSize
