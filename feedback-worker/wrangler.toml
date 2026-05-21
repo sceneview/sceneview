@@ -33,13 +33,13 @@ local_protocol = "http"
 [[d1_databases]]
 binding = "DB"
 database_name = "sceneview-feedback"
-database_id = "TODO-run-wrangler-d1-create"
+database_id = "4b903de8-efb1-4a78-b35e-ba55e43410d8"
 migrations_dir = "migrations"
 
 # ── KV namespace (rate-limit counters) ───────────────────────────────────────
 [[kv_namespaces]]
 binding = "RL_KV"
-id = "TODO-run-wrangler-kv-namespace-create"
+id = "5598b0f12d2d4c21ba1cae2f1392f359"
 
 # ── R2 bucket (private media — screen recordings + audio) ────────────────────
 [[r2_buckets]]
