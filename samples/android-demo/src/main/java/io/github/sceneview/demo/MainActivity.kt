@@ -283,6 +283,20 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         val context = LocalContext.current
         val currentEntry by navController.currentBackStackEntryAsState()
         val onListScreen = currentEntry?.destination?.route == "list"
+
+        // Keep the feedback recorder's notion of "current demo" in sync with
+        // navigation, so a feedback submission can name the exact demo a bug is
+        // in (#1934). Tracked here — not in the feedback flow — because the
+        // dialog is dismissed during recording, so the route the user navigates
+        // to while demonstrating a bug can only be observed from the NavHost.
+        LaunchedEffect(currentEntry) {
+            FeedbackRecorder.currentDemoId =
+                if (currentEntry?.destination?.route == "demo/{id}") {
+                    currentEntry?.arguments?.getString("id")
+                } else {
+                    null
+                }
+        }
         var feedbackOpen by rememberSaveable { mutableStateOf(false) }
         val recordingState by FeedbackRecorder.state.collectAsState()
         val isRecording = recordingState is RecordingState.Recording

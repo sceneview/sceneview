@@ -43,6 +43,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -78,7 +79,12 @@ private enum class FeedbackStep { ONBOARDING, CATEGORY, CONSENT, REVIEW, SENDING
 
 /** State of the feedback upload, driving the SENDING step. */
 private sealed interface UploadUiState {
-    data object Sending : UploadUiState
+    /**
+     * Upload in flight. [progress] is the fraction of the payload sent
+     * (`0f..1f`), or `null` while the request is still being prepared / the
+     * worker is processing — the UI then shows an indeterminate spinner.
+     */
+    data class Sending(val progress: Float? = null) : UploadUiState
     data class Sent(val issueNumber: Int?) : UploadUiState
     data object Failed : UploadUiState
 }
@@ -108,7 +114,7 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
     }
     var category by rememberSaveable { mutableStateOf<FeedbackCategory?>(null) }
     var note by rememberSaveable { mutableStateOf("") }
-    var uploadState by remember { mutableStateOf<UploadUiState>(UploadUiState.Sending) }
+    var uploadState by remember { mutableStateOf<UploadUiState>(UploadUiState.Sending()) }
 
     // The previously submitted tickets — read once per dialog open. Used to
     // surface the "My feedback" entry and to populate the tracking screen.
@@ -118,14 +124,28 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
         val recording = (FeedbackRecorder.state.value as? RecordingState.Done)?.recording
         val chosen = FeedbackRecorder.category ?: category ?: FeedbackCategory.BUG
         val text = note.trim()
-        uploadState = UploadUiState.Sending
+        // Capture the context — including the current demo route (#1934) —
+        // before switching to the SENDING step.
+        val feedbackContext = captureFeedbackContext(context)
+        uploadState = UploadUiState.Sending()
         step = FeedbackStep.SENDING
         scope.launch {
             val result = FeedbackUploader.upload(
                 category = chosen,
                 note = text,
-                context = captureFeedbackContext(context),
+                context = feedbackContext,
                 recording = recording,
+                onProgress = { fraction ->
+                    // Keep showing the determinate bar only while still
+                    // uploading; once at 100% the worker is processing, so
+                    // fall back to the indeterminate spinner.
+                    val current = uploadState
+                    if (current is UploadUiState.Sending) {
+                        uploadState = UploadUiState.Sending(
+                            progress = fraction.takeIf { it < 1f },
+                        )
+                    }
+                },
             )
             uploadState = if (result.ok) {
                 UploadUiState.Sent(result.issueNumber)
@@ -397,7 +417,7 @@ private fun SendingStep(
     onRetry: () -> Unit,
 ) {
     when (state) {
-        UploadUiState.Sending -> FeedbackStepScaffold(onClose = null) {
+        is UploadUiState.Sending -> FeedbackStepScaffold(onClose = null) {
             Spacer(Modifier.height(64.dp))
             CircularProgressIndicator(
                 modifier = Modifier
@@ -406,6 +426,26 @@ private fun SendingStep(
             )
             Spacer(Modifier.height(24.dp))
             StepBody(stringResource(R.string.feedback_sending))
+            val progress = state.progress
+            if (progress != null) {
+                Spacer(Modifier.height(20.dp))
+                // Determinate bar while the payload (mostly the screen
+                // recording) is uploading; the spinner above covers the
+                // worker-side processing once the body is fully sent.
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    stringResource(
+                        R.string.feedback_sending_progress,
+                        (progress * 100).toInt(),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         is UploadUiState.Sent -> FeedbackStepScaffold(

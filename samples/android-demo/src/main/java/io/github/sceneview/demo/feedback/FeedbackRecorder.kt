@@ -39,6 +39,17 @@ object FeedbackRecorder {
      *  starts, so it survives the dialog being dismissed during capture. */
     var category: FeedbackCategory? = null
 
+    /**
+     * Demo id of the screen the user is currently on — `null` on a tab screen.
+     * `MainActivity` keeps this in sync with the `NavController`'s current
+     * destination so that, when feedback is sent, the upload context can name
+     * exactly which demo the bug was demonstrated in (#1934). Tracked process-
+     * wide because the feedback dialog is dismissed during the recording, so
+     * the route the user navigates to cannot be observed from composition.
+     */
+    @Volatile
+    var currentDemoId: String? = null
+
     fun setRecording() {
         _state.value = RecordingState.Recording
     }

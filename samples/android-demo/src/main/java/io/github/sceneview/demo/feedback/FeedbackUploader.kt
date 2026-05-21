@@ -1,20 +1,36 @@
 package io.github.sceneview.demo.feedback
 
+import io.github.sceneview.demo.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import okio.Buffer
+import okio.BufferedSink
+import okio.ForwardingSink
+import okio.Sink
+import okio.buffer
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /** Uploads feedback submissions to the SceneView feedback worker. */
 object FeedbackUploader {
 
-    private const val ENDPOINT =
-        "https://sceneview-feedback.mcp-tools-lab.workers.dev/v1/feedback"
+    /**
+     * Endpoint of the feedback worker — `<base>/v1/feedback`. The base URL is a
+     * single configurable [BuildConfig] field (`FEEDBACK_WORKER_URL`), set in
+     * `samples/android-demo/build.gradle`. The worker is not deployed yet; until
+     * the maintainer sets the real URL there, this points at the planned
+     * workers.dev subdomain.
+     */
+    private val endpoint: String by lazy {
+        BuildConfig.FEEDBACK_WORKER_URL.trimEnd('/') + "/v1/feedback"
+    }
 
     private val client by lazy {
         OkHttpClient.Builder()
@@ -40,14 +56,20 @@ object FeedbackUploader {
     /**
      * POST a feedback submission as multipart form data. Runs on
      * [Dispatchers.IO] and never throws — a network failure returns `ok = false`.
+     *
+     * @param onProgress invoked with the upload fraction in `0f..1f` as bytes
+     *   are written, so the UI can show a determinate progress bar. Reaches
+     *   `1f` once the request body is fully sent (the worker is then
+     *   transcribing + opening the issue). Called off the main thread.
      */
     suspend fun upload(
         category: FeedbackCategory,
         note: String,
         context: Map<String, String>,
         recording: FeedbackRecording?,
+        onProgress: (Float) -> Unit = {},
     ): Result = withContext(Dispatchers.IO) {
-        val body = MultipartBody.Builder()
+        val multipart = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart(
                 "category",
@@ -73,7 +95,10 @@ object FeedbackUploader {
             }
             .build()
 
-        val request = Request.Builder().url(ENDPOINT).post(body).build()
+        val request = Request.Builder()
+            .url(endpoint)
+            .post(ProgressRequestBody(multipart, onProgress))
+            .build()
         try {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
@@ -91,6 +116,52 @@ object FeedbackUploader {
             }
         } catch (e: Exception) {
             Result(false, null, null, null)
+        }
+    }
+
+    /**
+     * Wraps a [RequestBody] to report how much of it has been written, so the
+     * feedback UI can show a determinate upload progress bar. A screen recording
+     * is the bulk of the payload, so byte-level progress is meaningful here.
+     */
+    private class ProgressRequestBody(
+        private val delegate: RequestBody,
+        private val onProgress: (Float) -> Unit,
+    ) : RequestBody() {
+
+        override fun contentType(): MediaType? = delegate.contentType()
+
+        override fun contentLength(): Long = delegate.contentLength()
+
+        override fun writeTo(sink: BufferedSink) {
+            val total = contentLength()
+            if (total <= 0L) {
+                // Length unknown — fall through without progress reporting.
+                delegate.writeTo(sink)
+                onProgress(1f)
+                return
+            }
+            val counting = CountingSink(sink, total, onProgress)
+            val buffered = counting.buffer()
+            delegate.writeTo(buffered)
+            buffered.flush()
+            onProgress(1f)
+        }
+    }
+
+    /** A [ForwardingSink] that reports the running fraction of [total] written. */
+    private class CountingSink(
+        delegate: Sink,
+        private val total: Long,
+        private val onProgress: (Float) -> Unit,
+    ) : ForwardingSink(delegate) {
+
+        private var written = 0L
+
+        override fun write(source: Buffer, byteCount: Long) {
+            super.write(source, byteCount)
+            written += byteCount
+            onProgress((written.toFloat() / total).coerceIn(0f, 1f))
         }
     }
 }

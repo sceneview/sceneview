@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **In-app feedback — screen + mic recording (1C):** the Android demo app captures a screen recording with microphone audio via `MediaProjection` and a `mediaProjection` foreground service, demuxes the AAC audio track into a standalone file for server-side transcription, and shows a review screen (duration, optional note, record-again / send) before the recording is submitted. Recording is optional for the "Idea" category. ([#1933](https://github.com/sceneview/sceneview/issues/1933))

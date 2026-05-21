@@ -317,6 +317,7 @@
     <string name="feedback_record_failed_body">The recording didn\'t finish. You can try again.</string>
     <string name="feedback_record_retry">Try again</string>
     <string name="feedback_sending">Sending your feedback…</string>
+    <string name="feedback_sending_progress">Uploading… %1$d%%</string>
     <string name="feedback_sent_title">Thank you!</string>
     <string name="feedback_sent_issue">Your report was filed as issue #%1$d. The team will take a look.</string>
     <string name="feedback_sent_generic">Your feedback was received by the SceneView team.</string>

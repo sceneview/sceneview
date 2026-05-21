@@ -45,6 +45,22 @@ if (sketchfabApiKey.isEmpty()) {
     sketchfabApiKey = loadFromLocalProperties("sketchfab.api.key")
 }
 
+// FEEDBACK_WORKER_URL — base URL of the in-app-feedback Cloudflare worker
+// (feedback-worker/, see #1934). The Android flow POSTs multipart submissions
+// to `<base>/v1/feedback`. Resolution order: env var -> local.properties
+// `feedback.worker.url` -> the default constant below.
+//
+// ⚠️ MAINTAINER: the worker is not deployed yet. The default below is the
+// PLANNED workers.dev subdomain — once the worker is published, set the real
+// URL here (or via the env var / local.properties) so released APKs hit it.
+def feedbackWorkerUrl = System.getenv("FEEDBACK_WORKER_URL") ?: ""
+if (feedbackWorkerUrl.isEmpty()) {
+    feedbackWorkerUrl = loadFromLocalProperties("feedback.worker.url")
+}
+if (feedbackWorkerUrl.isEmpty()) {
+    feedbackWorkerUrl = "https://sceneview-feedback.mcp-tools-lab.workers.dev"
+}
+
 android {
     namespace = "io.github.sceneview.demo"
 
@@ -63,6 +79,8 @@ android {
         // The key MUST NEVER be committed — see the resolution block above.
         manifestPlaceholders["arcoreApiKey"] = arcoreApiKey
         buildConfigField "String", "SKETCHFAB_API_KEY", "\"${sketchfabApiKey}\""
+        // Single source of truth for the feedback-worker base URL (#1934).
+        buildConfigField "String", "FEEDBACK_WORKER_URL", "\"${feedbackWorkerUrl}\""
     }
 
     signingConfigs {
