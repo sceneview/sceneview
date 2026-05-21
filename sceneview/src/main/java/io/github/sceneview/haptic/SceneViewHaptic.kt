@@ -8,6 +8,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 
@@ -93,6 +94,17 @@ public interface SceneViewHaptic {
      * ignored).
      */
     public fun pattern(events: List<HapticEvent>)
+
+    /**
+     * Cancel any in-progress vibration (a long [continuous] or [pattern]).
+     *
+     * Maps to [Vibrator.cancel]. [rememberHapticFeedback] calls this
+     * automatically from its `DisposableEffect.onDispose` so a long
+     * [continuous] does not keep vibrating after the composable leaves
+     * composition. The short semantic presets finish near-instantly, so
+     * calling [cancel] for them is harmless but rarely necessary.
+     */
+    public fun cancel()
 }
 
 /**
@@ -116,11 +128,23 @@ public interface SceneViewHaptic {
  * haptic.light()    // tap
  * haptic.success()  // confirmation
  * ```
+ *
+ * A `DisposableEffect` calls [SceneViewHaptic.cancel] when the composable
+ * leaves composition, so a long [SceneViewHaptic.continuous] does not keep
+ * vibrating after the screen is gone or the app is backgrounded.
  */
 @Composable
 public fun rememberHapticFeedback(): SceneViewHaptic {
     val context = LocalContext.current
-    return remember(context) { SceneViewHaptic(context) }
+    // SceneViewHaptic(context) resolves context.applicationContext internally,
+    // so the instance is independent of the (possibly Activity-scoped)
+    // LocalContext — key on the stable applicationContext, not LocalContext,
+    // to avoid a needless rebuild on a configuration change.
+    val haptic = remember(context.applicationContext) { SceneViewHaptic(context) }
+    DisposableEffect(haptic) {
+        onDispose { haptic.cancel() }
+    }
+    return haptic
 }
 
 /**

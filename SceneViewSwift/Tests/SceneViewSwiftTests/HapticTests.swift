@@ -61,14 +61,23 @@ final class HapticTests: XCTestCase {
 
     func testContinuousWithZeroDurationIsNoop() {
         let haptic = SceneViewHaptic()
-        haptic.continuous(intensity: 0.5, duration: 0)  // must not throw
+        haptic.continuous(intensity: 0.5, durationMs: 0)  // must not throw
     }
 
     func testContinuousClampsIntensity() {
         let haptic = SceneViewHaptic()
         // Out-of-range intensities must be clamped, not crash.
-        haptic.continuous(intensity: 5.0, duration: 0.01)
-        haptic.continuous(intensity: -1.0, duration: 0.01)
+        haptic.continuous(intensity: 5.0, durationMs: 10)
+        haptic.continuous(intensity: -1.0, durationMs: 10)
+    }
+
+    func testContinuousTakesMillisecondsLikeAndroidAndWeb() {
+        // `continuous` takes a millisecond Int, matching the Android
+        // `continuous(intensity, durationMs)` and Web signatures. A small
+        // positive value must not throw; a non-positive value is a no-op.
+        let haptic = SceneViewHaptic()
+        haptic.continuous(intensity: 0.8, durationMs: 200)  // must not throw
+        haptic.continuous(intensity: 0.8, durationMs: -5)   // no-op
     }
 
     func testPatternWithSingleEventDoesNotThrow() {

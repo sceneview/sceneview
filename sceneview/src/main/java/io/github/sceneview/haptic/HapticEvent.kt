@@ -22,17 +22,22 @@ package io.github.sceneview.haptic
  * - **Web** — events render via `navigator.vibrate(durationsMs[])`; [intensity] and
  *   [sharpness] are ignored (the Web Vibration API takes durations only).
  *
+ * The field types mirror the iOS `HapticEvent` (`Int` milliseconds) so the
+ * same pattern definitions are byte-for-byte portable across platforms.
+ *
  * @property intensity Strength of the haptic, `0.0` (off) .. `1.0` (max). Values
  * outside the range are clamped.
  * @property sharpness Wave-shape hint, `0.0` (round/dull) .. `1.0` (sharp/clicky).
  * Honoured on iOS; ignored on Android / Web in this release.
- * @property durationMs How long this event vibrates, in milliseconds.
+ * @property durationMs How long this event vibrates, in milliseconds. Negative
+ * values are coerced to `0`.
  * @property delayMs Delay before this event starts, relative to the end of the
- * previous event (or to `pattern()` invocation for the first event).
+ * previous event (or to `pattern()` invocation for the first event). Negative
+ * values are coerced to `0`.
  */
 public data class HapticEvent(
     val intensity: Float,
     val sharpness: Float,
-    val durationMs: Long,
-    val delayMs: Long = 0,
+    val durationMs: Int,
+    val delayMs: Int = 0,
 )

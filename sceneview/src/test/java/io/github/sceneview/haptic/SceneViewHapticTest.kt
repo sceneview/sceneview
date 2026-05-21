@@ -149,6 +149,16 @@ class SceneViewHapticTest {
     }
 
     @Test
+    fun continuous_negativeIntensity_clampsToAmplitudeOne() {
+        // A negative intensity must clamp to amplitude 1 — never 0, which some
+        // devices interpret as DEFAULT_AMPLITUDE / "off" for a one-shot.
+        val (haptic, engine) = newHaptic()
+        haptic.continuous(intensity = -3f, durationMs = 100L)
+        val call = engine.calls.single() as HapticCall.OneShot
+        assertEquals(1, call.amplitude)
+    }
+
+    @Test
     fun continuous_withZeroDuration_isNoop() {
         val (haptic, engine) = newHaptic()
         haptic.continuous(intensity = 0.5f, durationMs = 0L)
@@ -160,8 +170,8 @@ class SceneViewHapticTest {
         val (haptic, engine) = newHaptic()
         haptic.pattern(
             listOf(
-                HapticEvent(intensity = 1.0f, sharpness = 0.5f, durationMs = 50L, delayMs = 0L),
-                HapticEvent(intensity = 0.5f, sharpness = 0.0f, durationMs = 20L, delayMs = 30L),
+                HapticEvent(intensity = 1.0f, sharpness = 0.5f, durationMs = 50, delayMs = 0),
+                HapticEvent(intensity = 0.5f, sharpness = 0.0f, durationMs = 20, delayMs = 30),
             )
         )
         val call = engine.calls.single() as HapticCall.AmplitudeWaveform
@@ -170,10 +180,56 @@ class SceneViewHapticTest {
     }
 
     @Test
+    fun pattern_onLegacyApi_emitsPlainWaveformWithoutAmplitudes() {
+        // API 24-25: VibrationEffect is absent — pattern() must fall back to
+        // the plain long[] waveform overload, no per-step amplitudes.
+        val (haptic, engine) = newHaptic(sdkInt = Build.VERSION_CODES.N)
+        haptic.pattern(
+            listOf(
+                HapticEvent(intensity = 1.0f, sharpness = 0.5f, durationMs = 50, delayMs = 0),
+                HapticEvent(intensity = 0.5f, sharpness = 0.0f, durationMs = 20, delayMs = 30),
+            )
+        )
+        val call = engine.calls.single() as HapticCall.Waveform
+        assertEquals(listOf(0L, 50L, 30L, 20L), call.timings.toList())
+    }
+
+    @Test
     fun pattern_empty_isNoop() {
         val (haptic, engine) = newHaptic()
         haptic.pattern(emptyList())
         assertEquals(emptyList<HapticCall>(), engine.calls)
+    }
+
+    @Test
+    fun pattern_allZeroTimings_isNoop() {
+        // A pattern of events all with durationMs == 0 && delayMs == 0 passes
+        // the isEmpty() guard but would make VibrationEffect.createWaveform
+        // throw IllegalArgumentException — it must be a no-op instead.
+        val (haptic, engine) = newHaptic()
+        haptic.pattern(
+            listOf(
+                HapticEvent(intensity = 1.0f, sharpness = 0.5f, durationMs = 0, delayMs = 0),
+                HapticEvent(intensity = 0.5f, sharpness = 0.0f, durationMs = 0, delayMs = 0),
+            )
+        )
+        assertEquals(emptyList<HapticCall>(), engine.calls)
+    }
+
+    @Test
+    fun pattern_negativeTimings_areCoercedToZero() {
+        // Negative durationMs / delayMs must be coerced to 0 — never passed
+        // raw to the Vibrator (which would throw).
+        val (haptic, engine) = newHaptic()
+        haptic.pattern(
+            listOf(
+                HapticEvent(intensity = 1.0f, sharpness = 0.5f, durationMs = -10, delayMs = -5),
+                HapticEvent(intensity = 0.5f, sharpness = 0.0f, durationMs = 20, delayMs = 30),
+            )
+        )
+        val call = engine.calls.single() as HapticCall.AmplitudeWaveform
+        // First event's negative timings clamp to 0; second event is intact.
+        assertEquals(listOf(0L, 0L, 30L, 20L), call.timings.toList())
     }
 
     // ── Edge cases ───────────────────────────────────────────────────────
@@ -189,7 +245,8 @@ class SceneViewHapticTest {
         haptic.error()
         haptic.selection()
         haptic.continuous(0.5f, 100L)
-        haptic.pattern(listOf(HapticEvent(1f, 1f, 10L)))
+        haptic.pattern(listOf(HapticEvent(1f, 1f, 10)))
+        haptic.cancel()
         assertEquals(
             "Missing VIBRATE permission must short-circuit every API",
             emptyList<HapticCall>(),
@@ -198,27 +255,51 @@ class SceneViewHapticTest {
     }
 
     @Test
-    fun withoutVibratorOnDevice_everyCallIsNoop() {
+    fun withoutVibratorOnDevice_everyCallIsNoopAndLogsOnce() {
+        val engine = RecordingHapticEngine(Build.VERSION_CODES.TIRAMISU)
+        // A null engine models "no vibrator on device". The recording engine
+        // is only here to assert nothing reaches it — the real instance has
+        // engine = null.
         val haptic = AndroidSceneViewHaptic(
             engine = null,
             hasVibratePermission = true,
         )
-        // None of these must throw — the only observable behavior is the one
-        // Log.d line, which is fine to skip asserting in pure JVM.
+        // None of these must throw or touch a vibrator.
         haptic.light()
         haptic.success()
         haptic.continuous(0.5f, 100L)
-        haptic.pattern(listOf(HapticEvent(1f, 1f, 10L)))
+        haptic.pattern(listOf(HapticEvent(1f, 1f, 10)))
+        haptic.cancel()
+        assertEquals(
+            "No vibrator on device must short-circuit every API",
+            emptyList<HapticCall>(),
+            engine.calls,
+        )
     }
 
     @Test
-    fun nullEngineAndNoPermission_compose_areAlsoNoop() {
+    fun degradedHaptic_logsAtMostOnce() {
+        // The single Log.d diagnostic must be emitted exactly once even
+        // across many calls — pinned via the AtomicBoolean latch. We can't
+        // intercept Log.d in pure JVM, so we assert the observable proxy:
+        // none of the repeated degraded calls throw and none reach an engine.
         val haptic = AndroidSceneViewHaptic(
             engine = null,
             hasVibratePermission = false,
         )
-        haptic.heavy()  // must not throw, must not log twice (assert via no exception)
-        haptic.heavy()
-        haptic.heavy()
+        repeat(5) {
+            haptic.heavy()
+            haptic.cancel()
+        }
+        // Reaching here without an exception is the contract — the latch in
+        // logDegradation() guarantees a single Log.d; ShadowLog-based
+        // assertion lives in SystemHapticEngineRobolectricTest.
+    }
+
+    @Test
+    fun cancel_delegatesToEngineWhenEnabled() {
+        val (haptic, engine) = newHaptic()
+        haptic.cancel()
+        assertEquals(listOf<HapticCall>(HapticCall.Cancel), engine.calls)
     }
 }
