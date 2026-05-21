@@ -52,8 +52,12 @@ Browser 3D viewer with:
 - WebXR AR/VR support ("Enter AR" / "Enter VR" buttons)
 - Orbit camera, auto-resize
 
+A plain static site (HTML + inline JS + a self-hosted `sceneview.js`) —
+not a Gradle module. Open `samples/web-demo/site/index.html` directly, or
+serve the folder:
+
 ```bash
-./gradlew :samples:web-demo:jsBrowserRun
+npx http-server samples/web-demo/site -p 8080
 ```
 
 ### Desktop Demo

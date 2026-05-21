@@ -31,8 +31,11 @@ include ":sceneview-web"
 include ":samples:common"
 include ":samples:android-demo"         // Android (Play Store)
 include ":samples:android-tv-demo"      // Android TV
-include ":samples:web-demo"             // Web (Filament.js + WebXR)
 include ":samples:desktop-demo"         // Desktop (Windows/macOS/Linux)
+// Web demo: samples/web-demo/ — plain static-site (HTML + inline JS +
+//   self-hosted sceneview.js); NOT a Gradle module. Its dead Kotlin/JS
+//   source set was removed in #1946 — the inline JS is the single runtime.
+//   Built by a verbatim file copy (docs.yml) and tested with Playwright.
 // Flutter demo: samples/flutter-demo/ (Dart, not Gradle)
 // React Native demo: samples/react-native-demo/ (JS, not Gradle)
 // iOS demo: samples/ios-demo/ (Xcode, not Gradle)
