@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- AR Record interpretation: new `ARRecordInterpreter` (+ `rememberARRecordInterpreter()`) folds every frame of a replayed AR Record dataset into an `ARRecordInterpretation` — camera trajectory length & extent, tracked-frame ratio with a per-`TrackingFailureReason` breakdown, and discovered plane count & area — turning a record/playback session into a quantified, CI-assertable tracking-quality report ([#1441](https://github.com/sceneview/sceneview/issues/1441)).
