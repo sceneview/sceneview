@@ -7,7 +7,8 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Regression tests for [rememberMaterialInstance] / [rememberUnlitMaterialInstance].
+ * Regression tests for [rememberMaterialInstance], [rememberUnlitMaterialInstance]
+ * and [rememberOcclusionMaterialInstance].
  *
  * Why these are source-anchored (not full Compose-UI tests)
  * =========================================================
@@ -117,23 +118,86 @@ class RememberMaterialInstanceTest {
     }
 
     @Test
-    fun `both helpers destroy their instance on dispose`() {
-        // Pin the leak fix (#937): every allocated MaterialInstance must be
-        // reclaimed in an onDispose. Two allocations (lit + unlit) → two
-        // destroyMaterialInstance calls.
+    fun `all helpers destroy their instance on dispose`() {
+        // Pin the leak fix (#937, #1776): every allocated MaterialInstance must
+        // be reclaimed in an onDispose. Three allocations (lit + unlit +
+        // occlusion) → three destroyMaterialInstance calls.
         val destroyCalls =
             Regex("materialLoader\\.destroyMaterialInstance\\(instance\\)")
                 .findAll(source)
                 .count()
         assertEquals(
-            "expected rememberMaterialInstance and rememberUnlitMaterialInstance " +
-                "to each destroy their instance in onDispose (the #937 leak fix)",
-            2,
+            "expected rememberMaterialInstance, rememberUnlitMaterialInstance " +
+                "and rememberOcclusionMaterialInstance to each destroy their " +
+                "instance in onDispose (the #937 / #1776 leak fix)",
+            3,
             destroyCalls,
         )
         assertTrue(
             "the destroy call must sit inside an onDispose { } block",
             Regex("onDispose\\s*\\{[^}]*destroyMaterialInstance").containsMatchIn(source),
+        )
+    }
+
+    @Test
+    fun `occlusion helper destroys its instance in an onDispose`() {
+        // #1776 added rememberOcclusionMaterialInstance. Like the lit/unlit
+        // helpers it allocates a Filament MaterialInstance via the
+        // MaterialLoader, so it MUST reclaim that handle on composition exit or
+        // it leaks a GPU + JNI handle exactly the way the pre-#937 demos did.
+        // Pin the helper exists and that its body wraps the destroy call in a
+        // DisposableEffect { onDispose { ... } }.
+        val marker = "fun rememberOcclusionMaterialInstance("
+        val start = source.indexOf(marker)
+        assertTrue(
+            "rememberOcclusionMaterialInstance not found — did the #1776 " +
+                "occlusion helper move or get removed?",
+            start >= 0,
+        )
+        val body = source.substring(start)
+        assertTrue(
+            "rememberOcclusionMaterialInstance must allocate via " +
+                "materialLoader.createOcclusionInstance()",
+            body.contains("materialLoader.createOcclusionInstance()"),
+        )
+        assertTrue(
+            "rememberOcclusionMaterialInstance must destroy its instance in an " +
+                "onDispose { } block (the #1776 leak fix) — a leaked occlusion " +
+                "MaterialInstance is a real GPU + JNI handle leak",
+            Regex(
+                "DisposableEffect\\s*\\(\\s*instance\\s*\\)\\s*\\{\\s*" +
+                    "onDispose\\s*\\{[^}]*materialLoader\\.destroyMaterialInstance" +
+                    "\\(instance\\)",
+            ).containsMatchIn(body),
+        )
+    }
+
+    @Test
+    fun `occlusion instance is remembered on materialLoader only`() {
+        // The occlusion material has no colour to tint, so its remember(...)
+        // key is just [materialLoader] — pin that so a future edit cannot
+        // silently widen the key and start churning the instance.
+        val marker = "fun rememberOcclusionMaterialInstance("
+        val fnStart = source.indexOf(marker)
+        assertTrue("rememberOcclusionMaterialInstance not found", fnStart >= 0)
+        val rememberMarker = "val instance = remember("
+        val rememberStart = source.indexOf(rememberMarker, fnStart)
+        assertTrue(
+            "could not locate the remember(...) call in " +
+                "rememberOcclusionMaterialInstance",
+            rememberStart >= 0,
+        )
+        val keysStart = rememberStart + rememberMarker.length
+        val keysEnd = source.indexOf(')', keysStart)
+        val keys = source.substring(keysStart, keysEnd)
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        assertEquals(
+            "rememberOcclusionMaterialInstance must key remember(...) on " +
+                "exactly [materialLoader] — found $keys",
+            listOf("materialLoader"),
+            keys,
         )
     }
 
