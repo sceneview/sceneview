@@ -50,8 +50,16 @@ CONFLICT_FILES=$(git diff --name-only --diff-filter=U 2>/dev/null | wc -l | tr -
 [ "$CONFLICT_FILES" -eq 0 ] && check "No merge conflicts" "PASS" "" || check "No merge conflicts" "FAIL" "$CONFLICT_FILES files"
 
 # Check for large files being committed
+# Note: the inner per-file checks must NOT propagate a non-zero exit when the
+# file is under the threshold — pipefail + set -e would otherwise abort the
+# whole quality-gate run on the common case (see issue #1914).
 LARGE_FILES=$(git diff --cached --name-only 2>/dev/null | while read f; do
-    [ -f "$f" ] && SIZE=$(wc -c < "$f" 2>/dev/null | tr -d ' ') && [ "$SIZE" -gt 10485760 ] && echo "$f"
+    if [ -f "$f" ]; then
+        SIZE=$(wc -c < "$f" 2>/dev/null | tr -d ' ')
+        if [ "${SIZE:-0}" -gt 10485760 ]; then
+            echo "$f"
+        fi
+    fi
 done | wc -l | tr -d ' ')
 [ "$LARGE_FILES" -eq 0 ] && check "No large files (>10MB) staged" "PASS" "" || check "No large files staged" "WARN" "$LARGE_FILES files"
 
