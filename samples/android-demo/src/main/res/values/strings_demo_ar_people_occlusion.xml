@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `ar-people-occlusion` demo (registered by
+     `ArPeopleOcclusionFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_ar_people_occlusion_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_ar_people_occlusion_title">People Occlusion</string>
+    <string name="demo_ar_people_occlusion_subtitle">Real people hide virtual objects behind them</string>
+</resources>

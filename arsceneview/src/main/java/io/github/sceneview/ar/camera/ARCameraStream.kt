@@ -16,6 +16,7 @@ import com.google.ar.core.Coordinates2d
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import dev.romainguy.kotlin.math.Float3
+import io.github.sceneview.ar.arcore.semanticImage
 import io.github.sceneview.ar.node.ARFogConfig
 import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.loaders.MaterialLoader
@@ -37,6 +38,10 @@ const val kUVTransformParameter = "uvTransform"
 const val kCameraTextureParameter = "cameraTexture"
 const val kDepthTextureParameter = "depthTexture"
 
+// People occlusion (issue #1761). The `personTexture` sampler holds the binary PERSON mask
+// derived from ARCore Scene Semantics — see `camera_stream_person_occlusion.mat`.
+const val kPersonTextureParameter = "personTexture"
+
 // Environment-aware AR fog (issue #1717). Parameter names match the
 // `camera_stream_depth.mat` declarations 1:1 so the Filament binding is a
 // straight pass-through. Defaults mirror `FogNode`'s virtual-fog defaults so
@@ -53,18 +58,22 @@ const val kFogEndParameter = "fogEnd"
  * The camera stream owns OpenGL external textures that receive frames from ARCore, and a
  * full-screen Filament renderable that draws the active texture behind all scene content.
  * It also supports **depth occlusion** — when enabled, virtual objects are correctly hidden
- * behind real-world surfaces using the ARCore depth image.
+ * behind real-world surfaces using the ARCore depth image — and **people occlusion**
+ * ([isPersonOcclusionEnabled], #1761) — virtual content is hidden behind real people using
+ * the ARCore Scene Semantics `PERSON`-class segmentation mask.
  *
  * Typically created via [rememberARCameraStream] and passed to `ARSceneView(cameraStream = ...)`.
  *
- * @param materialLoader             [MaterialLoader] for creating the camera background materials.
- * @param standardMaterialFile       Asset path for the flat (non-depth) camera material.
- * @param depthOcclusionMaterialFile Asset path for the depth-aware occlusion material.
+ * @param materialLoader               [MaterialLoader] for creating the camera background materials.
+ * @param standardMaterialFile         Asset path for the flat (non-depth) camera material.
+ * @param depthOcclusionMaterialFile   Asset path for the depth-aware occlusion material.
+ * @param personOcclusionMaterialFile  Asset path for the Scene Semantics people-occlusion material.
  */
 open class ARCameraStream(
     private val materialLoader: MaterialLoader,
     standardMaterialFile: String = "materials/camera_stream_flat.filamat",
     depthOcclusionMaterialFile: String = "materials/camera_stream_depth.filamat",
+    personOcclusionMaterialFile: String = "materials/camera_stream_person_occlusion.filamat",
 ) : RenderableComponent {
 
     final override val engine: Engine = materialLoader.engine
@@ -141,6 +150,59 @@ open class ARCameraStream(
     }
 
     /**
+     * Single-channel `R8` texture holding the binary PERSON occlusion mask (issue #1761).
+     *
+     * Re-uploaded every frame from [PersonMask.build] while [isPersonOcclusionEnabled] is
+     * `true`: `255` where ARCore Scene Semantics classified the pixel as `PERSON`, `0`
+     * elsewhere.
+     *
+     * Sized lazily — ARCore's semantic image resolution (typically 256×144) is not known
+     * until the first frame, and a Filament [Texture] is immutable-size. The texture is
+     * (re)built by [updatePersonMask] the first time a semantic image arrives, and again if
+     * the resolution ever changes (display rotation, camera-config switch). Starts as a
+     * 1×1 placeholder so the material always has a valid sampler bound — a 1×1 R8 texel of
+     * value 0 reads as "no person", so people occlusion is a clean no-op until the first
+     * real mask lands.
+     */
+    var personMaskTexture: Texture =
+        Texture.Builder().width(1).height(1)
+            .sampler(Texture.Sampler.SAMPLER_2D).format(Texture.InternalFormat.R8)
+            .levels(1).build(engine)
+        private set
+
+    // Current dimensions of [personMaskTexture]. (0, 0) means "still the 1×1 placeholder,
+    // never had a real semantic image yet". A resolution change rebuilds the texture.
+    private var personMaskWidth = 0
+    private var personMaskHeight = 0
+
+    /**
+     * ### People occlusion material (issue #1761)
+     *
+     * Strict superset of [depthOcclusionMaterial]: keeps the ARCore depth-occlusion path and
+     * the environment-aware fog verbatim, and additionally samples [personMaskTexture] — the
+     * Scene Semantics `PERSON`-class mask — to push the camera fragment to the near plane
+     * wherever a real person is detected, so virtual geometry behind the person is
+     * depth-tested away.
+     *
+     * Selected over [depthOcclusionMaterial] when [isPersonOcclusionEnabled] is `true`.
+     */
+    var personOcclusionMaterial =
+        materialLoader.createMaterial(personOcclusionMaterialFile).apply {
+            defaultInstance.apply {
+                setParameter(kUVTransformParameter, Transform())
+                setExternalTexture(kCameraTextureParameter, cameraTexture)
+                setTexture(kDepthTextureParameter, depthTexture)
+                setTexture(kPersonTextureParameter, personMaskTexture)
+                // Fog defaults — match `FogNode`'s defaults for parameter parity.
+                setParameter(kFogEnabledParameter, 0f)
+                setParameter(kFogColorParameter, Float3(0.8f, 0.866f, 1.0f))
+                setParameter(kFogDensityParameter, 0.05f)
+                setParameter(kFogStartParameter, 0f)
+                setParameter(kFogEndParameter, 30f)
+            }
+        }
+
+    /**
      * Environment-aware AR fog config (issue #1717).
      *
      * Set to a non-null value to fade distant real-world geometry into a
@@ -164,24 +226,33 @@ open class ARCameraStream(
         }
 
     private fun applyARFog(config: ARFogConfig?) {
-        depthOcclusionMaterial.defaultInstance.apply {
-            if (config == null || !config.enabled) {
-                setParameter(kFogEnabledParameter, 0f)
-                return@apply
+        // Both the depth and the people-occlusion materials carry the identical fog
+        // parameter set (`camera_stream_person_occlusion.mat` is a strict superset of
+        // `camera_stream_depth.mat`). Drive both so fog stays consistent regardless of
+        // which occlusion material is currently bound.
+        for (instance in listOf(
+            depthOcclusionMaterial.defaultInstance,
+            personOcclusionMaterial.defaultInstance
+        )) {
+            instance.apply {
+                if (config == null || !config.enabled) {
+                    setParameter(kFogEnabledParameter, 0f)
+                    return@apply
+                }
+                setParameter(kFogEnabledParameter, 1f)
+                // Compose Color is sRGB; the shader does its haze blend in the
+                // linear-ish space Filament hands us via `inverseTonemapSRGB`.
+                // Use the linear components straight (`red`/`green`/`blue` on
+                // Compose Color are already in the colour-space's component
+                // domain) — matches how `FogNode` writes to `fogOptions.color`.
+                setParameter(
+                    kFogColorParameter,
+                    Float3(config.color.red, config.color.green, config.color.blue)
+                )
+                setParameter(kFogDensityParameter, config.density.coerceIn(0f, 1f))
+                setParameter(kFogStartParameter, config.start.coerceAtLeast(0f))
+                setParameter(kFogEndParameter, config.end.coerceAtLeast(config.start + 0.001f))
             }
-            setParameter(kFogEnabledParameter, 1f)
-            // Compose Color is sRGB; the shader does its haze blend in the
-            // linear-ish space Filament hands us via `inverseTonemapSRGB`.
-            // Use the linear components straight (`red`/`green`/`blue` on
-            // Compose Color are already in the colour-space's component
-            // domain) — matches how `FogNode` writes to `fogOptions.color`.
-            setParameter(
-                kFogColorParameter,
-                Float3(config.color.red, config.color.green, config.color.blue)
-            )
-            setParameter(kFogDensityParameter, config.density.coerceIn(0f, 1f))
-            setParameter(kFogStartParameter, config.start.coerceAtLeast(0f))
-            setParameter(kFogEndParameter, config.end.coerceAtLeast(config.start + 0.001f))
         }
     }
 
@@ -225,16 +296,74 @@ open class ARCameraStream(
         set(value) {
             if (field != value) {
                 field = value
-                setMaterialInstances(
-                    if (value) {
-                        depthOcclusionMaterial.defaultInstance
-                    } else {
-                        standardMaterial.defaultInstance
-                    }
-                )
-                applyCameraStreamPriority(value)
+                applyOcclusionMaterial()
+                applyCameraStreamPriority()
             }
         }
+
+    /**
+     * ### Enable people occlusion (issue #1761)
+     *
+     * Occludes virtual objects behind **real people** using ARCore's Scene Semantics
+     * `PERSON`-class segmentation mask. When a real person walks in front of a placed virtual
+     * object, the object is correctly hidden — the flagship cross-ecosystem AR effect (ARKit
+     * `ARFrame.segmentationBuffer`, AR Foundation `AROcclusionManager`, Niantic Lightship).
+     *
+     * Enabling this selects [personOcclusionMaterial], which is a strict superset of
+     * [depthOcclusionMaterial]: it keeps the depth-occlusion path (static real-world geometry
+     * still occludes correctly) and additionally pushes the camera fragment to the near
+     * plane wherever the PERSON mask is set. People occlusion therefore **implies depth
+     * occlusion** — when this is `true` the depth material is never selected even if
+     * [isDepthOcclusionEnabled] is also `true`.
+     *
+     * ## Requirements
+     *
+     * Requires the ARCore [Session] to be configured with
+     * [Config.SemanticMode.ENABLED] — without it [com.google.ar.core.Frame.acquireSemanticImage]
+     * never produces a mask and the camera feed shows through un-occluded. SceneView does NOT
+     * auto-enable `Config.SemanticMode`; set it in your `sessionConfiguration` block (or via
+     * `ARSceneView(semanticMode = …)`).
+     *
+     * ## Caveats (be honest with users)
+     *
+     * Scene Semantics is ARCore's only segmentation surface and it carries real limits:
+     *
+     *  - **Outdoor scenes only.** The on-device ML model has no indoor training data — indoor
+     *    people may not be classified at all. Devices without the model silently downgrade
+     *    `SemanticMode` to `DISABLED` and this path is a no-op.
+     *  - **Coarse resolution.** The semantic raster is typically 256×144 — the person cutout
+     *    edge is blocky compared with ARKit's dedicated person-segmentation model.
+     *  - **Latency.** The mask trails fast motion by a frame or two.
+     *
+     * For a hard cutout against authored geometry (window frames, virtual aquarium walls)
+     * use [io.github.sceneview.loaders.MaterialLoader.createOcclusionInstance] instead.
+     *
+     * Disable this value (and [isDepthOcclusionEnabled]) to apply the standard flat camera
+     * material.
+     */
+    var isPersonOcclusionEnabled = false
+        set(value) {
+            if (field != value) {
+                field = value
+                applyOcclusionMaterial()
+                applyCameraStreamPriority()
+            }
+        }
+
+    /**
+     * Selects the camera-background material from the current [isPersonOcclusionEnabled] /
+     * [isDepthOcclusionEnabled] flags. People occlusion wins because its material already
+     * subsumes the depth-occlusion behaviour.
+     */
+    private fun applyOcclusionMaterial() {
+        setMaterialInstances(
+            when {
+                isPersonOcclusionEnabled -> personOcclusionMaterial.defaultInstance
+                isDepthOcclusionEnabled -> depthOcclusionMaterial.defaultInstance
+                else -> standardMaterial.defaultInstance
+            }
+        )
+    }
 
     /**
      * Coarse-level draw ordering for the camera-stream renderable (issue #1617).
@@ -246,11 +375,12 @@ open class ARCameraStream(
      *    lets the early-Z reject every texel already covered by virtual geometry,
      *    so the camera feed only fills the uncovered pixels — minimal overdraw.
      *
-     *  - **Depth occlusion** (`camera_stream_depth.mat`): writes the real-world
-     *    per-pixel depth into the z-buffer via `gl_FragDepth`. For virtual
-     *    geometry to be *occluded* by real surfaces, that real-world depth MUST
-     *    already be in the buffer when the virtual objects are depth-tested —
-     *    i.e. the camera quad has to draw **first**
+     *  - **Depth / person occlusion** (`camera_stream_depth.mat`,
+     *    `camera_stream_person_occlusion.mat`): writes the real-world per-pixel
+     *    depth into the z-buffer via `gl_FragDepth`. For virtual geometry to be
+     *    *occluded* by real surfaces (or by real people, #1761), that real-world
+     *    depth MUST already be in the buffer when the virtual objects are
+     *    depth-tested — i.e. the camera quad has to draw **first**
      *    ([CAMERA_PRIORITY_DEPTH_PRIME]). Drawing it last (the old fixed
      *    `priority(7)`) wrote the real-world depth *after* every virtual object
      *    had already passed its depth test against an empty buffer, so nothing
@@ -258,12 +388,12 @@ open class ARCameraStream(
      *
      * Filament's `RenderableManager` priority runs 0 (drawn first) … 7 (drawn
      * last); this is a JNI call so it must run on the main thread, which is
-     * guaranteed because [isDepthOcclusionEnabled] is only ever set from the
-     * composable / main-thread setup path.
+     * guaranteed because [isDepthOcclusionEnabled] / [isPersonOcclusionEnabled]
+     * are only ever set from the composable / main-thread setup path.
      */
-    private fun applyCameraStreamPriority(depthOcclusionEnabled: Boolean) {
+    private fun applyCameraStreamPriority() {
         setPriority(
-            if (depthOcclusionEnabled) {
+            if (isDepthOcclusionEnabled || isPersonOcclusionEnabled) {
                 CAMERA_PRIORITY_DEPTH_PRIME
             } else {
                 CAMERA_PRIORITY_BACKGROUND
@@ -351,7 +481,10 @@ open class ARCameraStream(
             vertexBuffer.setBufferAt(engine, UV_BUFFER_INDEX, transformedUvCoordinates)
         }
 
-        if (isDepthOcclusionEnabled) {
+        // The depth texture feeds both the depth-occlusion material AND the people-occlusion
+        // material (the latter keeps the depth path so static geometry still occludes). Upload
+        // depth whenever either path is active.
+        if (isDepthOcclusionEnabled || isPersonOcclusionEnabled) {
             when (session.config.depthMode) {
                 Config.DepthMode.AUTOMATIC -> {
                     runCatching {
@@ -421,6 +554,70 @@ open class ARCameraStream(
                 })
             }
         }
+
+        if (isPersonOcclusionEnabled) {
+            updatePersonMask(frame)
+        }
+    }
+
+    /**
+     * Acquires the ARCore Scene Semantics raster for [frame], bakes it into a binary PERSON
+     * mask via [PersonMask.build], and uploads it to [personMaskTexture] (issue #1761).
+     *
+     * Lifecycle: the semantic [com.google.ar.core.Image] is **caller-owned** — unlike the
+     * depth path it is closed immediately after the mask is built, because [PersonMask.build]
+     * fully copies the data into a freshly-allocated packed buffer (it must, to drop the row
+     * stride and binarise). The packed buffer — not the ARCore image — is what Filament holds
+     * until the upload completes, so there is no use-after-close hazard and the ARCore
+     * semantic-image pool (only 2–3 slots deep) is freed promptly.
+     *
+     * Returns silently when semantics are not yet available (first frame after resume, or
+     * `Config.SemanticMode.DISABLED`) — the camera feed simply shows through un-occluded.
+     */
+    private fun updatePersonMask(frame: Frame) {
+        val image = frame.semanticImage() ?: return
+        val mask: ByteBuffer
+        val width: Int
+        val height: Int
+        try {
+            width = image.width
+            height = image.height
+            if (width <= 0 || height <= 0) return
+            val plane = image.planes[0]
+            mask = PersonMask.build(
+                source = plane.buffer,
+                width = width,
+                height = height,
+                rowStrideBytes = plane.rowStride
+            )
+        } finally {
+            // The ARCore semantic image is fully consumed by `PersonMask.build` above —
+            // close it now so the shallow semantic-image pool does not exhaust.
+            image.close()
+        }
+
+        // (Re)build the texture when the semantic resolution first becomes known or changes
+        // (display rotation, camera-config switch). A Filament Texture is immutable-size, so
+        // a size change means a destroy + rebuild + rebind on the material instance. This
+        // happens at most a handful of times in a session, never per-frame in steady state.
+        if (personMaskWidth != width || personMaskHeight != height) {
+            engine.safeDestroyTexture(personMaskTexture)
+            personMaskTexture = Texture.Builder().width(width).height(height)
+                .sampler(Texture.Sampler.SAMPLER_2D).format(Texture.InternalFormat.R8)
+                .levels(1).build(engine)
+            personMaskWidth = width
+            personMaskHeight = height
+            personOcclusionMaterial.defaultInstance
+                .setTexture(kPersonTextureParameter, personMaskTexture)
+        }
+
+        // `mask` is a fresh DirectByteBuffer owned by us — Filament holds it until the
+        // upload completes; nothing else references it, so no close/clear coordination is
+        // needed beyond letting it go out of scope after the GPU drains it.
+        personMaskTexture.setImage(
+            engine, 0,
+            PixelBufferDescriptor(mask, Texture.Format.R, Texture.Type.UBYTE)
+        )
     }
 
     fun destroy() {
@@ -443,8 +640,10 @@ open class ARCameraStream(
         engine.safeDestroyVertexBuffer(vertexBuffer)
         materialLoader.destroyMaterial(standardMaterial)
         materialLoader.destroyMaterial(depthOcclusionMaterial)
+        materialLoader.destroyMaterial(personOcclusionMaterial)
         cameraTextures.values.forEach { engine.safeDestroyTexture(it) }
         engine.safeDestroyTexture(depthTexture)
+        engine.safeDestroyTexture(personMaskTexture)
         uvCoordinates.clear()
         transformedUvCoordinates?.clear()
         Log.d("Sceneview", "CameraStream destroyed")

@@ -1732,6 +1732,53 @@ overlay.setSemanticsOpacity(blendSlider)   // MaterialInstance.setSemanticsTextu
 Sample: `ARSceneSemanticsDemo` (Android demo registry id `ar-scene-semantics`) — a camera ↔
 semantic blend slider over the overlay material, plus the top-3 label HUD.
 
+### People Occlusion — virtual content hides behind real people (#1761)
+
+`ARCameraStream.isPersonOcclusionEnabled = true` occludes virtual objects behind **real
+people** using the Scene Semantics `PERSON`-class segmentation mask — the flagship
+cross-ecosystem AR effect (ARKit `ARFrame.segmentationBuffer`, AR Foundation
+`AROcclusionManager`, Niantic Lightship). When a real person walks in front of a placed
+virtual object, the object is correctly hidden.
+
+Enabling it selects the `camera_stream_person_occlusion.filamat` camera material — a strict
+superset of the depth-occlusion material: it keeps the depth path (static real-world geometry
+still occludes) and additionally pushes the camera fragment to the near clip plane wherever
+the per-frame `PERSON` mask is set. People occlusion therefore **implies depth occlusion**.
+
+```kotlin
+import com.google.ar.core.Config
+import io.github.sceneview.ar.createARCameraStream
+import io.github.sceneview.ar.rememberARCameraStream
+
+ARSceneView(
+    sessionConfiguration = { session, config ->
+        // People occlusion is driven by Scene Semantics — enable it (support-gated).
+        if (session.isSemanticModeSupported(Config.SemanticMode.ENABLED)) {
+            config.semanticMode = Config.SemanticMode.ENABLED
+        }
+        // Keep depth on so static geometry still occludes (the people material needs it).
+        if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
+            config.depthMode = Config.DepthMode.AUTOMATIC
+        }
+    },
+    cameraStream = rememberARCameraStream(materialLoader = materialLoader, creator = {
+        createARCameraStream(materialLoader).apply { isPersonOcclusionEnabled = true }
+    }),
+)
+// Imperative toggle also works: cameraStream.isPersonOcclusionEnabled = true
+```
+
+**Requirements & honest limits.** Requires `Config.SemanticMode.ENABLED` — SceneView does NOT
+auto-enable it. Scene Semantics is ARCore's only segmentation surface and carries real limits:
+**outdoor scenes only** (the on-device model has no indoor training data; devices without the
+model silently no-op), **coarse resolution** (the mask is typically 256×144, so the cutout
+edge is blockier than ARKit's dedicated person model), and a **frame or two of latency** on
+fast motion. For a hard cutout against authored geometry use `createOcclusionInstance()`
+instead.
+
+Sample: `ARPeopleOcclusionDemo` (Android demo registry id `ar-people-occlusion`) — place a
+model, walk a person in front of it; a HUD shows the live `PERSON`-pixel fraction.
+
 ### AugmentedImageNode — image tracking
 ```kotlin
 @Composable fun AugmentedImageNode(
@@ -3828,6 +3875,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-instant-placement` — Instant Placement. Place models before plane detection converges.
 - `ar-ml-object-label` — ML Kit Object Labels. ML Kit object detection with 3D labels anchored on real-world hits.
 - `ar-orbital` — Orbital AR. Models orbit around you in a personal solar system.
+- `ar-people-occlusion` — People Occlusion. Real people hide virtual objects behind them.
 - `ar-placement` — Tap to Place. Place 3D models in AR.
 - `ar-plane-node` — Plane Lifecycle. PlaneNode + onAdded/onUpdated/onRemoved.
 - `ar-point-cloud` — Point Cloud. World-space feature points via PointCloudNode.
