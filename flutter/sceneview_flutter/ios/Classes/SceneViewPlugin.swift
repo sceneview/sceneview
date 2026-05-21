@@ -117,14 +117,20 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
             sceneState.autoCenterContent = autoCenter
         }
 
-        channel.setMethodCallHandler(handleMethodCall)
+        // Install the handler with a `[weak self]` capture so the channel does
+        // not strong-hold the platform view. A bare `handleMethodCall` method
+        // reference would strong-capture `self`, forming a retain cycle
+        // (self -> channel -> handler -> self) that pins the retain count
+        // above zero forever, so `deinit` would never run (issue #2069).
+        channel.setMethodCallHandler { [weak self] call, result in
+            self?.handleMethodCall(call, result: result)
+        }
     }
 
     deinit {
-        // Detach the channel handler so the retained handler block (which
-        // captures `self`) is released — otherwise the platform view, its
-        // UIHostingController, and the RealityKit scene leak on every
-        // create/dispose cycle (issue #2052).
+        // `deinit` now fires naturally because the handler no longer pins
+        // `self`. Still detach the channel handler as hygiene — the channel
+        // may outlive the platform view (issue #2052).
         channel.setMethodCallHandler(nil)
     }
 
@@ -286,14 +292,20 @@ class ARSceneViewPlatformView: NSObject, FlutterPlatformView {
         )
         super.init()
 
-        channel.setMethodCallHandler(handleMethodCall)
+        // Install the handler with a `[weak self]` capture so the channel does
+        // not strong-hold the platform view. A bare `handleMethodCall` method
+        // reference would strong-capture `self`, forming a retain cycle
+        // (self -> channel -> handler -> self) that pins the retain count
+        // above zero forever, so `deinit` would never run (issue #2069).
+        channel.setMethodCallHandler { [weak self] call, result in
+            self?.handleMethodCall(call, result: result)
+        }
     }
 
     deinit {
-        // Detach the channel handler so the retained handler block (which
-        // captures `self`) is released — otherwise the platform view, its
-        // UIHostingController, the ARSession, and the RealityKit scene leak
-        // on every create/dispose cycle (issue #2052).
+        // `deinit` now fires naturally because the handler no longer pins
+        // `self`. Still detach the channel handler as hygiene — the channel
+        // may outlive the platform view (issue #2052).
         channel.setMethodCallHandler(nil)
     }
 
