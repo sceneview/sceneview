@@ -1,0 +1,139 @@
+name: Bridge iOS Compile
+
+# Compile-checks the Flutter plugin's iOS Swift bridge code against the REAL
+# `SceneViewSwift` public API.
+#
+# Why a dedicated workflow (issue #2065): no existing job ever compiled the
+# Flutter plugin's iOS target, so `SceneViewSwiftUIWrapper` drifted to APIs
+# that do not exist on `SceneViewSwift` (`ModelNode(path)`, `ForEach` inside
+# `@NodeBuilder`) and the bridge silently never compiled. This guard makes that
+# class of regression fail the PR.
+#
+# Approach — a `swiftc -typecheck`, not a full `flutter build ios`:
+#   * The Flutter plugin consumes `SceneViewSwift` via SPM, which CocoaPods
+#     does not natively integrate — a full `flutter build ios` would need the
+#     example app's `ios/` platform folder scaffolded AND the SPM dependency
+#     wired into a generated `.xcodeproj`. That is heavy and flaky.
+#   * A type-check builds `SceneViewSwift` for the iOS Simulator, then
+#     `swiftc -typecheck`s the plugin's `Classes/*.swift` against the built
+#     `.swiftmodule` plus the `Flutter.framework` that ships with the Flutter
+#     SDK. It catches exactly the #2065 regression — Swift code referencing a
+#     non-existent SceneViewSwift symbol — with no simulator, no CocoaPods,
+#     and no generated project. Fast and deterministic.
+#
+# Limitation (documented honestly): a type-check does not exercise CocoaPods
+# integration or the Obj-C plugin-registration glue. It DOES guarantee the
+# bridge's Swift compiles against the published SceneViewSwift API surface,
+# which is the regression #2065 is about.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'flutter/sceneview_flutter/ios/**'
+      - 'SceneViewSwift/**'
+      - '.github/workflows/bridge-ios-compile.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'flutter/sceneview_flutter/ios/**'
+      - 'SceneViewSwift/**'
+      - '.github/workflows/bridge-ios-compile.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: bridge-ios-compile-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  flutter-ios-bridge:
+    name: Flutter iOS bridge type-check
+    runs-on: macos-15
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.1.1.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          echo "Using Xcode: $(xcode-select -p)"
+          xcodebuild -version
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Cache SceneViewSwift build
+        uses: actions/cache@v5
+        with:
+          path: SceneViewSwift/.build
+          key: bridge-ios-spm-${{ runner.os }}-${{ hashFiles('SceneViewSwift/Package.resolved') }}
+          restore-keys: |
+            bridge-ios-spm-${{ runner.os }}-
+
+      # Build SceneViewSwift for the iOS Simulator so the bridge type-check has
+      # a real `.swiftmodule` to import. `pipefail` so a failing build is not
+      # masked by the xcpretty fallback (#1515).
+      - name: Build SceneViewSwift (iOS Simulator)
+        working-directory: SceneViewSwift
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -scheme SceneViewSwift \
+            -destination 'generic/platform=iOS Simulator' \
+            -skipMacroValidation \
+            -derivedDataPath "$RUNNER_TEMP/sv-dd" \
+            | xcpretty --color 2>/dev/null || cat
+
+      # Type-check the Flutter plugin's iOS Swift against the built
+      # SceneViewSwift module + the Flutter.framework that ships with the SDK.
+      # A reference to a non-existent SceneViewSwift symbol fails here.
+      - name: Type-check Flutter iOS bridge
+        run: |
+          set -euo pipefail
+
+          SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          SV_MODULE="$RUNNER_TEMP/sv-dd/Build/Products/Debug-iphonesimulator"
+
+          # Locate the simulator slice of the Flutter engine xcframework that
+          # ships inside the Flutter SDK cache. The path is engine-revision
+          # independent — resolved via `flutter` so it tracks the SDK in use.
+          FLUTTER_ROOT="$(dirname "$(dirname "$(readlink -f "$(command -v flutter)")")")"
+          FLUTTER_FW=""
+          for cand in \
+            "$FLUTTER_ROOT/bin/cache/artifacts/engine/ios/Flutter.xcframework" \
+            "$FLUTTER_ROOT/bin/cache/artifacts/engine/ios-release/Flutter.xcframework"; do
+            if [ -d "$cand" ]; then FLUTTER_FW="$cand"; break; fi
+          done
+          if [ -z "$FLUTTER_FW" ]; then
+            # `flutter precache --ios` populates the iOS engine artifacts.
+            flutter precache --ios
+            FLUTTER_FW="$FLUTTER_ROOT/bin/cache/artifacts/engine/ios/Flutter.xcframework"
+          fi
+          FLUTTER_SIM_FW="$(find "$FLUTTER_FW" -maxdepth 1 -type d -name 'ios-*simulator*' | head -1)"
+          echo "SceneViewSwift module dir: $SV_MODULE"
+          echo "Flutter simulator framework: $FLUTTER_SIM_FW"
+
+          # Type-check every Swift file in the plugin's iOS Classes/ folder.
+          # `-typecheck` performs full semantic analysis (the #2065 errors are
+          # semantic, not syntactic) without emitting object code. Swift 5
+          # language mode matches the podspec's `swift_version = '5.9'`.
+          swiftc -typecheck \
+            -swift-version 5 \
+            -sdk "$SDK" \
+            -target arm64-apple-ios18.0-simulator \
+            -F "$FLUTTER_SIM_FW" \
+            -I "$SV_MODULE" \
+            -L "$SV_MODULE" \
+            flutter/sceneview_flutter/ios/Classes/*.swift
+
+          echo "✅ Flutter iOS bridge type-checks against the real SceneViewSwift API."
