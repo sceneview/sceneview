@@ -3284,6 +3284,45 @@ ARSceneView(playbackDatasetUri = pickedUri) { /* … */ }
 
 See [`ARRecorder.kt`](arsceneview/src/main/java/io/github/sceneview/ar/recording/ARRecorder.kt).
 
+### AR Record interpretation — quantify a replayed session (#1441)
+
+Replay alone re-renders the camera feed; it does not tell you *whether the session
+tracked well*. `ARRecordInterpreter` is the analysis half: feed it every replayed frame
+and it folds the camera pose + plane trackables into an `ARRecordInterpretation` — a
+quantified, CI-assertable tracking-quality report. This is the deterministic, desk-side
+counterpart to on-device QA: record a hard tracking stress-case once, then replay +
+interpret it on every CI run and assert the metrics never regress.
+
+```kotlin
+import io.github.sceneview.ar.recording.rememberARRecordInterpreter
+
+val interpreter = rememberARRecordInterpreter()
+ARSceneView(
+    playbackDataset = recordedDataset,
+    onSessionUpdated = { session, frame -> interpreter.ingest(session, frame) },
+    content = { /* … */ }
+)
+// When rememberARPlaybackStatus(arSession) reports PlaybackStatus.FINISHED:
+val report = interpreter.interpretation
+// report.frameCount / trackedFrameCount / trackedFrameRatio (0.0..1.0)
+// report.durationSeconds
+// report.trajectoryLengthMeters   — total camera path length over tracked frames
+// report.trajectoryExtentMeters   — diagonal of the bounding box of the path
+// report.failureReasonFrameCounts — Map<TrackingFailureReason, Int> of lost frames
+// report.horizontalPlaneCount / verticalPlaneCount / planeCount / planeAreaMeters2
+```
+
+- `ingest(session, frame)` is the stateless side-channel shape used by `ARRecorder.recordFrame`
+  and `RerunBridge.logFrame` — call it from `onSessionUpdated`. It does no Filament JNI work,
+  no extra ARCore acquire calls, and no allocation beyond the immutable snapshot.
+- A lost frame breaks the trajectory so a relocalization teleport is **not** counted as travel.
+- Planes are de-subsumed and counted once across frames; `planeAreaMeters2` uses each plane's
+  largest observed extent so a growing plane is not double-counted.
+- Call `interpreter.reset()` to interpret another dataset with the same instance.
+- The pure folding core (`ARRecordInterpreterCore`, ARCore-free) is JVM-unit-tested directly.
+
+See [`ARRecordInterpreter.kt`](arsceneview/src/main/java/io/github/sceneview/ar/recording/ARRecordInterpreter.kt).
+
 ### iOS — `ARRecorder` (record-only via ReplayKit, v4.3.0+)
 
 iOS gets the record half via `ReplayKit.RPScreenRecorder`. There is no replay half because ARKit has no deterministic playback API (see `cheatsheet-ios.md` parity table, #1036). The MP4 plays back in the Photos app or any QuickTime player; it cannot be fed back into `ARSession`.
