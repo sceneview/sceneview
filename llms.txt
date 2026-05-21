@@ -3243,6 +3243,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `reflection-probes` — Reflection Probes. Local cubemap reflections.
 - `secondary-camera` — Secondary Camera (PiP). Picture-in-picture camera view.
 - `shape` — Shape Extrude. Extrude 2D polygons into 3D meshes.
+- `spatial-audio` — Spatial Audio. 3D positional sound that pans as you orbit.
 - `texture-streaming` — Material Streaming. Swap textures and materials on a model at runtime.
 
 ### Augmented Reality
