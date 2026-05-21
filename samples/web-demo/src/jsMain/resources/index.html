@@ -703,6 +703,7 @@
         <button class="tab-btn" data-tab="text">Text</button>
         <button class="tab-btn" data-tab="environment">Environment</button>
         <button class="tab-btn" data-tab="physics">Physics</button>
+        <button class="tab-btn" data-tab="audio">Spatial Audio</button>
         <button class="tab-btn" data-tab="settings">Settings</button>
     </nav>
 
@@ -919,6 +920,35 @@
             <code>DoublePendulum</code> simulation in <code>sceneview-core</code> (KMP) — the
             same physics drives the Android and iOS demos. Adapted from
             <a href="https://github.com/radcli14/twolinks" target="_blank">&#64;radcli14's twolinks</a>.
+        </p>
+    </div>
+
+    <!-- Spatial Audio panel — Web Audio PannerNode HRTF -->
+    <div id="panel-audio" class="panel geometry-panel">
+        <div class="geo-card">
+            <div class="geo-card-header">
+                <span class="geo-card-title">Orbiting Bell</span>
+            </div>
+            <div class="geo-controls">
+                <label>Falloff
+                    <select id="audio-falloff" class="quality-select">
+                        <option value="inverse" selected>Inverse (realistic)</option>
+                        <option value="linear">Linear (silent at max)</option>
+                        <option value="none">None (no attenuation)</option>
+                    </select>
+                </label>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <button id="audio-play" class="geo-add-btn" style="flex:1">Play</button>
+                <button id="audio-stop" class="geo-clear-btn" style="flex:1;margin:0">Stop</button>
+            </div>
+        </div>
+        <p style="font-size:12px;color:var(--sv-text-dim);line-height:1.5;padding:0 4px">
+            A looping bell tone orbits the scene as a <code>SpatialAudioNode</code>.
+            The sound pans between your ears and fades with distance — driven by a
+            Web Audio <code>PannerNode</code> in <code>HRTF</code> mode. The audio
+            listener tracks the orbit camera, so the same code maps 1:1 onto the
+            Android and iOS Spatial Audio demos. Headphones recommended.
         </p>
     </div>
 
@@ -1181,7 +1211,7 @@
           var btn = buttons[i];
           btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
         }
-        var panels = ['models', 'geometry', 'lighting', 'animation', 'text', 'environment', 'physics', 'settings'];
+        var panels = ['models', 'geometry', 'lighting', 'animation', 'text', 'environment', 'physics', 'audio', 'settings'];
         panels.forEach(function(p) {
           var panel = document.getElementById('panel-' + p);
           if (panel) {
@@ -1194,7 +1224,8 @@
         });
         // Adjust controls-info position — left-anchored panels push it right.
         var sidePanel = (tab === 'models' || tab === 'geometry' || tab === 'physics' ||
-                         tab === 'lighting' || tab === 'animation' || tab === 'text');
+                         tab === 'lighting' || tab === 'animation' || tab === 'text' ||
+                         tab === 'audio');
         controlsInfo.style.left = sidePanel ? '380px' : '20px';
         // The Double Pendulum runs its own physics scene; entering or leaving
         // the Physics tab swaps the scene in/out so it never lingers behind
