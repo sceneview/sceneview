@@ -71,8 +71,10 @@ if [ "${#FRAGMENTS[@]}" -eq 0 ]; then
     echo -e "${YELLOW}No fragments in $FRAG_DIR/${NC} — only legacy ## Unreleased entries will be collated."
 fi
 
-# Canonical category order. "Changed" is the fallback bucket.
-CATEGORIES=(Added Changed Fixed Removed Tests Docs)
+# Canonical category order. "Changed" is the fallback bucket. `Performance` (#1844)
+# is dedicated to perf-only commits — splits them out of the noisy `Fixed` bucket so
+# release notes credit pure perf wins distinctly from behaviour fixes.
+CATEGORIES=(Added Changed Fixed Performance Removed Tests Docs)
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 for cat in "${CATEGORIES[@]}"; do : > "$TMP_DIR/$cat"; done
@@ -98,6 +100,7 @@ canonical_category() {
     case "$raw" in
         added|new)            echo "Added" ;;
         fixed|fix|bugfix)     echo "Fixed" ;;
+        performance|perf)     echo "Performance" ;;
         removed|remove)       echo "Removed" ;;
         tests|test)           echo "Tests" ;;
         docs|doc|documentation) echo "Docs" ;;

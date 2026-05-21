@@ -1167,7 +1167,7 @@ ARSceneView(
     sessionCameraConfig = cameraConfigFilter {
         facing = CameraConfig.FacingDirection.BACK
         targetFps = setOf(CameraConfig.TargetFps.TARGET_FPS_60)
-        depthSensor = CameraConfig.DepthSensorUsage.REQUIRE_AND_USE
+        depthSensor = setOf(CameraConfig.DepthSensorUsage.REQUIRE_AND_USE)
     },
     sessionConfiguration = { _, config ->
         config.depthMode = Config.DepthMode.AUTOMATIC
@@ -1178,15 +1178,19 @@ ARSceneView(
 All four DSL fields default to `null` ("don't filter on this axis"). Among matching configs the
 selector picks the **highest-resolution** one (same policy as `highestResolutionCameraConfig`),
 falling back to `session.cameraConfig` when no match exists so session creation never crashes.
+Programmer errors (`emptySet()` on any of the three enum knobs) `throw IllegalArgumentException`
+from `cameraConfigFilter` builder at session start — surfaced, not silently degraded to the
+session default (which on some devices is the FRONT camera, a privacy concern when back-only
+was requested) (#1844, #1845).
 
 Available knobs:
 
 ```kotlin
 class CameraConfigFilterBuilder {
-    var facing: CameraConfig.FacingDirection?            // BACK / FRONT
-    var targetFps: Set<CameraConfig.TargetFps>?          // {TARGET_FPS_30}, {TARGET_FPS_60}, or both
-    var depthSensor: CameraConfig.DepthSensorUsage?      // REQUIRE_AND_USE / DO_NOT_USE
-    var stereoCamera: CameraConfig.StereoCameraUsage?    // REQUIRE_AND_USE / DO_NOT_USE
+    var facing: CameraConfig.FacingDirection?                // BACK / FRONT
+    var targetFps: Set<CameraConfig.TargetFps>?              // {TARGET_FPS_30}, {TARGET_FPS_60}, or both
+    var depthSensor: Set<CameraConfig.DepthSensorUsage>?     // {REQUIRE_AND_USE} / {DO_NOT_USE} / both
+    var stereoCamera: Set<CameraConfig.StereoCameraUsage>?   // {REQUIRE_AND_USE} / {DO_NOT_USE} / both
 }
 fun cameraConfigFilter(block: CameraConfigFilterBuilder.() -> Unit): (Session) -> CameraConfig
 ```
