@@ -226,6 +226,11 @@ struct ExploreTab: View {
     @State private var sketchfabRecent: [SketchfabModel] = []
     @State private var isLoadingFeeds = false
     @State private var feedsError: String?
+    /// Defensive banner state (#1909). When the release build was published
+    /// without a valid `SKETCHFAB_API_KEY` user-defined build setting, the
+    /// Explore carousels + search go silent — the banner explains why, and
+    /// this `@State` opens the explanatory sheet on tap.
+    @State private var showSketchfabDisabledInfo = false
     /// When `true`, all three carousels filter to `animated=true` (skeletal rigs).
     @State private var animatedOnly = false
     /// Shared namespace for the iOS 18 zoom transition: the carousel card's
@@ -245,9 +250,24 @@ struct ExploreTab: View {
     }
 
     var body: some View {
-        NavigationStack {
+        // Capture the apiKey resolution exactly once per body evaluation —
+        // drives both the banner and the search-bar hint so they stay in
+        // sync (#1909). On TestFlight / App Store builds with a missing
+        // secret this is `nil`, the banner appears at the top of the
+        // ScrollView, and the carousels fall back to `bundledFeaturedSection`.
+        let apiKeyAvailable = SketchfabConfig.apiKey != nil
+        return NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
+                    // Defensive banner (#1909) — sits above everything when the
+                    // release build was published without a Sketchfab token.
+                    // The curated samples + categories still work; the banner
+                    // tells the user WHY the dynamic carousels are missing
+                    // instead of silently rendering an emptier-than-expected
+                    // page.
+                    if !apiKeyAvailable {
+                        sketchfabDisabledBanner
+                    }
                     // Home feed mix — samples first (always available), then live Sketchfab
                     // feeds when an API key is configured. Each row shows SceneView SDK
                     // content (bundled or streamed) — never the Sketchfab web viewer.
@@ -272,7 +292,16 @@ struct ExploreTab: View {
                 .padding(.bottom, 24)
             }
             .navigationTitle("Explore")
-            .searchable(text: $searchText, prompt: "Search 3D models on Sketchfab")
+            // When no Sketchfab key is wired, the search bar is dead UI —
+            // `onSubmit(of: .search)` only pushes the query into
+            // `recentSearches`. Make that visible by tagging the prompt so
+            // users understand WHY their query went nowhere (#1909).
+            .searchable(
+                text: $searchText,
+                prompt: apiKeyAvailable
+                    ? "Search 3D models on Sketchfab"
+                    : "Sketchfab search disabled — API key missing"
+            )
             .onSubmit(of: .search) {
                 let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !q.isEmpty {
@@ -315,7 +344,57 @@ struct ExploreTab: View {
                 .presentationCornerRadius(28)
                 #endif
             }
+            // #1909 explanation alert. `.alert(...)` is the SwiftUI counterpart
+            // of the Android `AlertDialog` in ExploreTabScreen.kt — same copy,
+            // so QA can compare both apps side-by-side.
+            .alert(
+                "Sketchfab integration is off",
+                isPresented: $showSketchfabDisabledInfo
+            ) {
+                Button("Got it", role: .cancel) { showSketchfabDisabledInfo = false }
+            } message: {
+                Text("This build was published without a Sketchfab API key, so the Staff Picks, Most Liked and Recently Added carousels are hidden and search is disabled.\n\nThe curated samples and category grid below still work — they bundle local 3D models.\n\nIf you're building locally, pass SKETCHFAB_API_KEY=<your-token> to xcodebuild or add it to your scheme's environment variables. Grab a token at Sketchfab → Settings → Password & API → API Token.")
+            }
         }
+    }
+
+    /// Outlined banner shown above the Explore content when
+    /// `SketchfabConfig.apiKey == nil`. Mirrors the Android
+    /// `SketchfabDisabledBanner` (#1909) so QA can compare both apps
+    /// side-by-side. Neutral styling (secondary fill) — the app is degraded
+    /// but functional, not crashed.
+    private var sketchfabDisabledBanner: some View {
+        Button {
+            showSketchfabDisabledInfo = true
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "info.circle")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Sketchfab carousels disabled")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("API key missing — search and trending feeds are unavailable.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.secondary.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Shows why Sketchfab features are disabled in this build.")
     }
 
     // MARK: - Sketchfab data loading
