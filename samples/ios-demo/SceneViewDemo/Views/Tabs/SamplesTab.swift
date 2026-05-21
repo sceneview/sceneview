@@ -306,6 +306,9 @@ struct SamplesTab: View {
             DemoItem(title: "Custom Mesh", icon: "diamond.fill", subtitle: "Custom vertex and index buffers", category: .advanced) {
                 CustomMeshDemo()
             },
+            DemoItem(title: "Spatial Audio", icon: "speaker.wave.3.fill", subtitle: "Positional 3D audio with distance falloff", category: .advanced) {
+                SpatialAudioDemo()
+            },
             DemoItem(
                 comingSoonTitle: "Post Processing",
                 icon: "sparkles",
