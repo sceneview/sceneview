@@ -29,10 +29,10 @@ SceneView uses **native renderers per platform** for the best performance and to
 
 The primary platform. SceneView wraps Google Filament (PBR rendering) and ARCore (augmented reality) in Jetpack Compose composables.
 
-- **3D**: `SceneView { }` composable with 35+ node types
+- **3D**: `SceneView { }` composable with 41+ node types
 - **AR**: `ARSceneView { }` with plane detection, image tracking, face mesh, cloud anchors, geospatial
 - **Min SDK**: 24 (Android 7.0)
-- **Install**: `implementation("io.github.sceneview:sceneview:4.12.0")`
+- **Install**: `implementation("io.github.sceneview:sceneview:4.13.0")`
 
 [:octicons-arrow-right-24: Android Quickstart](quickstart.md)
 
@@ -45,7 +45,7 @@ SceneViewSwift provides a native SwiftUI library powered by RealityKit and ARKit
 - **3D**: `SceneView { }` with ModelNode, GeometryNode, LightNode, and more
 - **AR**: `ARSceneView()` with plane detection and tap-to-place (iOS only)
 - **Min versions**: iOS 18+, macOS 15+, visionOS 1+
-- **Install**: `.package(url: "https://github.com/sceneview/sceneview.git", from: "4.12.0")`
+- **Install**: `.package(url: "https://github.com/sceneview/sceneview.git", from: "4.13.0")`
 
 [:octicons-arrow-right-24: Apple Quickstart](quickstart-ios.md)
 

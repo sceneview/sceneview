@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- Release builds of the demo apps now fail loud when `SKETCHFAB_API_KEY` or `ARCORE_API_KEY` is empty (#1915): the Android `assembleRelease`/`bundleRelease` path and the iOS `Release` archive abort with a clear actionable error instead of silently shipping a store build with invisible Sketchfab carousels (the #1909 silent-fail class). Debug builds stay permissive; forks opt out with `SV_ALLOW_MISSING_SECRETS=1`.

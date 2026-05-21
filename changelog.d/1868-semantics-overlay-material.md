@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- Scene Semantics label-overlay material (#1868, follow-up of #1730): a new `semantics_overlay.filamat` Filament material colour-codes ARCore's per-pixel 12-class outdoor segmentation, exposed via `MaterialLoader.createSemanticsOverlayInstance(texture, opacity)` plus `MaterialInstance.setSemanticsTexture` / `setSemanticsOpacity`. `ARSceneSemanticsDemo` now renders the live segmentation as a camera ↔ semantic blend overlay (with a colour legend) alongside the existing top-3 label HUD.
