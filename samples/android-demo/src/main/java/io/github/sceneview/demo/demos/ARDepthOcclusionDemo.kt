@@ -145,6 +145,14 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_ar_depth_occlusion_title),
         onBack = onBack,
+        // Predictable reset path (#1966) — a consistent top-bar Refresh action,
+        // in the same place as in every other demo, detaches any placed anchor
+        // and re-arms plane placement so the user can re-tap a surface. The
+        // bottom-start "Clear" action stays as the contextual shortcut.
+        onReset = {
+            placedAnchor?.let { runCatching { it.detach() } }
+            placedAnchor = null
+        },
         controls = {
             // One-line hint instead of a multi-paragraph "How to test" card:
             // the sheet is now just the real control (the depth toggle) plus a

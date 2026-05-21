@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- Demo app: `DemoScaffold` now exposes an opt-in `onReset` parameter that renders a consistent, always-in-the-same-place **Reset** action in the demo's top app bar, giving every demo a predictable path back to its initial state and re-arming its core interaction. A brief confirmation snackbar ("Demo reset — ready to try again") tells the user the demo is ready for re-interaction. Wired into the owner-flagged AR Depth Occlusion demo. (#1966)

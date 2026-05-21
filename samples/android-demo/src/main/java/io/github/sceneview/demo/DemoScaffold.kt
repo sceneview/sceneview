@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -33,6 +34,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
@@ -135,6 +139,21 @@ enum class AssetSourceState { Streamed, Streaming, Bundled }
  * - `onResetSettings != null` → a "Reset" text button is shown in the sheet
  *   header. Tapping it lets a demo clear any in-memory tweaks back to its
  *   defaults. `null` hides the button entirely so demos opt in.
+ *
+ * Predictable demo reset (#1966):
+ * - `onReset != null` → a single, **consistent** reset action is rendered in the
+ *   top app bar (a `Refresh` icon, always in the same place across every demo).
+ *   Tapping it returns the demo to its initial state and re-arms its core
+ *   interaction (clear placed anchors, drop highlights, re-centre the camera,
+ *   etc.). A brief confirmation snackbar ("Demo reset — ready to try again")
+ *   then tells the user the demo is ready for re-interaction. `null` hides the
+ *   action entirely so demos opt in.
+ *
+ *   This complements (does not replace) [io.github.sceneview.demo.common.SceneActionBar]:
+ *   a demo whose reset is *contextual* (only meaningful once something is placed)
+ *   can still use the bottom-start action bar, while `onReset` gives every demo
+ *   one always-available, always-discoverable reset path in a fixed location —
+ *   the predictable re-interaction path #1966 asks for.
  */
 @Composable
 fun DemoScaffold(
@@ -145,10 +164,15 @@ fun DemoScaffold(
     firstFrameRendered: androidx.compose.runtime.State<Boolean>? = null,
     peekHeader: String? = null,
     onResetSettings: (() -> Unit)? = null,
+    onReset: (() -> Unit)? = null,
     scene: @Composable BoxScope.() -> Unit
 ) {
     val haptic = rememberHapticFeedback()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val resetScope = rememberCoroutineScope()
+    val resetConfirmation = stringResource(R.string.demo_reset_done)
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -187,6 +211,37 @@ fun DemoScaffold(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.cd_back_button)
                         )
+                    }
+                },
+                actions = {
+                    // Predictable, always-in-the-same-place reset action (#1966).
+                    // Every demo that opts in surfaces this single Refresh icon
+                    // in the top bar, so users have one consistent path back to
+                    // a demo's initial state regardless of which demo they are
+                    // in. A brief snackbar then confirms the demo is re-armed.
+                    if (onReset != null) {
+                        val resetCd = stringResource(R.string.demo_reset_cd)
+                        IconButton(
+                            onClick = {
+                                haptic.medium()
+                                onReset()
+                                resetScope.launch {
+                                    snackbarHostState.currentSnackbarData?.dismiss()
+                                    snackbarHostState.showSnackbar(
+                                        message = resetConfirmation,
+                                        duration = SnackbarDuration.Short,
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .semantics { contentDescription = resetCd }
+                                .testTag(DemoScaffoldTestTags.RESET_ACTION),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = null,
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -335,6 +390,7 @@ object DemoScaffoldTestTags {
     const val SETTINGS_PEEK = "demo-settings-peek"
     const val SETTINGS_SHEET = "demo-settings-sheet"
     const val SETTINGS_RESET = "demo-settings-reset"
+    const val RESET_ACTION = "demo-reset-action"
     const val QA_PILL = "demo-qa-pill"
     const val ASSET_SOURCE_CHIP = "demo-asset-source-chip"
     const val FIRST_FRAME_SCRIM = "demo-first-frame-scrim"
