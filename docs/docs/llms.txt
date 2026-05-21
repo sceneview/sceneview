@@ -1971,6 +1971,81 @@ registry.list().filterNot { it.isExpired() }.forEach { entry ->
 
 Threading: safe to call from the main thread — `SharedPreferences.edit().apply()` is non-blocking.
 
+### Collaborative AR — multi-user sessions (`io.github.sceneview.ar.collaborative`)
+
+Two or more devices see the **same** anchored content and each other's live camera poses.
+
+**ARCore reality check.** ARCore has NO `collaborationData` / `ParticipantManager` (unlike ARKit's `ARSession.collaborationData`). Its entire shared-AR story is Cloud Anchors. SceneView's collaborative layer is therefore built on the two pieces that DO exist: a shared coordinate frame via the existing `CloudAnchorNode` (one device hosts, every other resolves the same id), plus a **pluggable transport** relaying app state. SceneView does NOT pick a networking stack — it ships the interface plus an in-process reference impl.
+
+```kotlin
+// Pluggable network layer — app supplies one, or uses the loopback reference impl.
+interface CollaborativeTransport {
+    val localPeerId: String
+    val peers: StateFlow<Set<String>>                 // remote peers, never includes self
+    fun send(message: ByteArray)                      // non-blocking — may be called from the render loop
+    fun incoming(handler: (peerId: String, ByteArray) -> Unit): AutoCloseable
+    fun close()
+}
+
+// In-process reference transport — always available, no networking, no permissions.
+// Perfect for unit tests + single-device demos. Swap for Nearby Connections /
+// Firebase / WebRTC in production.
+val hub = LoopbackCollaborativeTransport.LoopbackHub()
+val transport = hub.join("my-peer-id")               // join one per simulated device
+
+// Orchestrator over CloudAnchorNode + the transport. Mirrors RerunBridge:
+// supervisor IO scope, CONFLATED outbox, lifecycle-bound remember* helper.
+@Composable fun rememberCollaborativeSession(
+    transport: CollaborativeTransport,
+    displayName: String = transport.localPeerId,
+    poseRateHz: Int = 10,                             // camera-pose broadcast rate
+    closeTransportOnDispose: Boolean = true
+): CollaborativeSession
+
+class CollaborativeSession {
+    val participants: List<Participant>               // Compose-observable, remote peers only
+    val placedNodes: List<PlacedNode>                 // every peer's placed objects, shared-anchor space
+    val sharedAnchorNode: CloudAnchorNode?            // the shared coordinate frame
+    val sharedCloudAnchorId: String?
+
+    fun start(); fun stop()
+    fun host(session: Session, anchor: Anchor, engine: Engine,
+             ttlDays: Int = 1, name: String = "session",
+             onHosted: ((cloudAnchorId: String?, success: Boolean) -> Unit)? = null)
+    fun resolve(engine: Engine, session: Session, cloudAnchorId: String,
+                onResolved: ((node: CloudAnchorNode?) -> Unit)? = null)
+    fun onFrame(frame: Frame)                         // call from onSessionUpdated — broadcasts camera pose
+    fun placeNode(nodeKey: String, modelKey: String,
+                  translation: FloatArray, quaternion: FloatArray,
+                  scale: FloatArray = floatArrayOf(1f, 1f, 1f))
+}
+```
+
+**Usage** — one device hosts the shared anchor, the rest resolve it; every device broadcasts its camera pose each frame and mirrors `placedNodes`:
+
+```kotlin
+@Composable
+fun MultiplayerARScreen() {
+    val transport = remember { LoopbackCollaborativeTransport.LoopbackHub().join("me") }
+    val session = rememberCollaborativeSession(transport, displayName = "Alice")
+    ARSceneView(
+        modifier = Modifier.fillMaxSize(),
+        onSessionUpdated = { _, frame -> session.onFrame(frame) },
+    ) {
+        // Parent collaborative content to session.sharedAnchorNode (the shared
+        // Cloud Anchor) and reconcile your scene against session.placedNodes
+        // and session.participants every frame.
+    }
+}
+```
+
+- **Wire format** — `CollaborativeWireFormat`: JSON-lines (`hello` / `anchor` / `pose` / `node` / `bye`), pure Kotlin, zero new runtime deps, fully unit-tested. All transforms are in the shared anchor's local space so they are comparable across devices.
+- **Conflict policy** — last-writer-wins per node key (`PlacedNode`); stale (out-of-order) poses are dropped by epoch.
+- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`placeNode` are non-blocking (conflated channel) so they are safe in the AR render callback. All merge work runs on a supervisor IO scope.
+- **Privacy** — the shared anchor is an ARCore Cloud Anchor; the same disclosure requirement as `CloudAnchorNode.host` applies (feature points uploaded to Google).
+
+**Cross-platform:** Android-only today. The `CollaborativeTransport` abstraction maps cleanly onto RealityKit's `MultipeerConnectivityService` on iOS — the interface shape is kept cross-platform-friendly. A production **Nearby Connections** transport (offline same-room, no backend) is tracked as a follow-up — see the `ar-collaborative` sample demo, which proves the full sync end-to-end on one device via the loopback transport.
+
 ### TrackableNode — generic trackable
 ```kotlin
 @Composable fun TrackableNode(
@@ -3863,6 +3938,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 - `ar-body-tracker` — AR Body Tracker. Live 2D skeleton overlay from MediaPipe Pose on the AR camera feed.
 - `ar-cloud-anchor` — Cloud Anchors. Persistent multi-user anchors.
+- `ar-collaborative` — Collaborative AR. Multi-user session sync over a pluggable transport.
 - `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor / table (depth-driven physics).
 - `ar-depth-occlusion` — Depth Occlusion. Real-world depth masks virtual objects.
 - `ar-depth-of-field` — AR Depth of Field. Tap to focus — real-world bokeh blur.
