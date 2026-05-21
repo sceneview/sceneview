@@ -20,6 +20,7 @@ import kotlinx.browser.window
  * // Plain JS usage via the global `sceneview` namespace:
  * sceneview.haptic.light();
  * sceneview.haptic.success();
+ * sceneview.haptic.continuous(1.0, 200);  // intensity ignored on Web
  * sceneview.haptic.pattern([10, 50, 20]);
  * ```
  *
@@ -67,6 +68,22 @@ public class SceneViewHaptic {
     /** Selection tick — drag tick, picker scroll. `vibrate(5)`. */
     public fun selection() {
         vibrate(5)
+    }
+
+    /**
+     * Continuous vibration for [durationMs] milliseconds.
+     *
+     * Maps to `navigator.vibrate(durationMs)`. The Web Vibration API exposes
+     * **durations only** — there is no amplitude/intensity knob — so the
+     * [intensity] argument is accepted for cross-platform API parity with
+     * Android (`continuous(intensity, durationMs)`) and iOS
+     * (`continuous(intensity:durationMs:)`) but is **ignored at runtime**, the
+     * same honest-degradation pattern as [pattern]. A non-positive
+     * [durationMs] is a no-op.
+     */
+    public fun continuous(intensity: Float, durationMs: Int) {
+        if (durationMs <= 0) return
+        vibrate(durationMs)
     }
 
     /**

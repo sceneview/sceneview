@@ -1,18 +1,26 @@
 package io.github.sceneview.samples.web
 
 import io.github.sceneview.web.SceneView
+import io.github.sceneview.web.audio.AudioFalloff
+import io.github.sceneview.web.audio.SpatialAudioNode
+import io.github.sceneview.web.audio.Vec3
+import io.github.sceneview.web.audio.loadAudioSourcePromise
+import io.github.sceneview.web.audio.setSpatialAudioListenerPose
 import io.github.sceneview.web.xr.ARSceneView
 import io.github.sceneview.web.xr.VRSceneView
 import io.github.sceneview.web.xr.XRSessionMode
 import io.github.sceneview.web.xr.WebXRSession
 import kotlinx.browser.document
 import kotlinx.browser.window
+import kotlin.math.cos
+import kotlin.math.sin
 import org.w3c.dom.HTMLButtonElement
 import org.w3c.dom.HTMLCanvasElement
 import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLImageElement
 import org.w3c.dom.HTMLInputElement
+import org.w3c.dom.HTMLSelectElement
 
 /**
  * SceneView Web Demo — rewritten showcase application.
@@ -69,6 +77,9 @@ fun main() {
 
     // Wire up geometry buttons
     setupGeometry()
+
+    // Wire up the Spatial Audio demo (Web Audio PannerNode HRTF)
+    setupSpatialAudio()
 }
 
 // ---- Scene initialization ----
@@ -654,6 +665,113 @@ private fun enterVR(canvas: HTMLCanvasElement) {
             vrSession.start()
         }
     )
+}
+
+// ---- Spatial Audio ----
+
+/** The single audio node for the demo — recreated on each `Play`. */
+private var spatialAudioNode: SpatialAudioNode? = null
+
+/** Currently-picked falloff curve, kept so a new `Play` reuses the selection. */
+private var audioFalloff: AudioFalloff =
+    AudioFalloff.Inverse(refDistance = 0.5f, maxDistance = 6f)
+
+/** `requestAnimationFrame` handle for the audio-orbit loop, or `null` when idle. */
+private var audioOrbitFrame: Int? = null
+
+/** Orbit angle of the source, radians — advanced every animation frame. */
+private var audioOrbitAngle = 0.0
+
+/**
+ * Wires the Spatial Audio demo panel.
+ *
+ * A looping bell tone is attached to a [SpatialAudioNode] whose position orbits
+ * a fixed centre. The Web Audio listener is parked at the origin facing `-Z`,
+ * so as the source swings past it the sound pans between the ears and fades
+ * with distance — exactly the behaviour of the Android and iOS Spatial Audio
+ * demos, here driven by a Web Audio `PannerNode` in `HRTF` mode.
+ */
+private fun setupSpatialAudio() {
+    val playBtn = document.getElementById("audio-play") as? HTMLButtonElement ?: return
+    val stopBtn = document.getElementById("audio-stop") as? HTMLButtonElement ?: return
+    val falloffSelect = document.getElementById("audio-falloff") as? HTMLSelectElement
+
+    falloffSelect?.addEventListener("change", {
+        audioFalloff = when (falloffSelect.value) {
+            "linear" -> AudioFalloff.Linear(refDistance = 0.2f, maxDistance = 4f)
+            "none" -> AudioFalloff.None
+            else -> AudioFalloff.Inverse(refDistance = 0.5f, maxDistance = 6f)
+        }
+        // If a clip is already playing, restart it so the new curve applies.
+        if (spatialAudioNode != null) startSpatialAudio()
+    })
+
+    playBtn.addEventListener("click", { startSpatialAudio() })
+    stopBtn.addEventListener("click", { stopSpatialAudio() })
+}
+
+/**
+ * Loads `audio/bell.wav`, attaches it to a fresh orbiting [SpatialAudioNode],
+ * and starts the per-frame orbit + listener-pose loop.
+ */
+private fun startSpatialAudio() {
+    stopSpatialAudio()
+    // Listener sits at the origin looking down -Z with +Y up — the standard
+    // camera basis. The source then orbits around it.
+    setSpatialAudioListenerPose(
+        position = Vec3(0f, 0f, 0f),
+        forward = Vec3(0f, 0f, -1f),
+        up = Vec3(0f, 1f, 0f),
+    )
+    loadAudioSourcePromise("audio/bell.wav").then { source ->
+        val node = SpatialAudioNode(
+            source = source,
+            position = Vec3(0f, 0f, -2f),
+            falloff = audioFalloff,
+            loop = true,
+            autoPlay = true,
+        )
+        spatialAudioNode = node
+        startAudioOrbitLoop()
+        console.log("Spatial Audio demo started — bell.wav orbiting via PannerNode (HRTF)")
+    }.catch { error ->
+        console.error("Failed to start Spatial Audio demo:", error)
+        window.alert("Could not load the audio clip — check the console for details.")
+    }
+}
+
+/** Stops playback, disposes the node, and cancels the orbit loop. */
+private fun stopSpatialAudio() {
+    audioOrbitFrame?.let { window.cancelAnimationFrame(it) }
+    audioOrbitFrame = null
+    spatialAudioNode?.dispose()
+    spatialAudioNode = null
+}
+
+/**
+ * Drives the source position around a 2 m-radius circle once every ~4 s via
+ * `requestAnimationFrame`, so the pan is slow enough to clearly hear the sound
+ * cross from one ear to the other.
+ */
+private fun startAudioOrbitLoop() {
+    val radius = 2.0
+    var lastMs = 0.0
+    fun step(nowMs: Double) {
+        val node = spatialAudioNode ?: return
+        if (lastMs == 0.0) lastMs = nowMs
+        val dtSec = ((nowMs - lastMs).coerceAtLeast(0.0)) / 1000.0
+        lastMs = nowMs
+        // ~0.25 revolution per second.
+        audioOrbitAngle = (audioOrbitAngle + dtSec * 2.0 * kotlin.math.PI * 0.25) %
+            (2.0 * kotlin.math.PI)
+        node.position = Vec3(
+            x = (cos(audioOrbitAngle) * radius).toFloat(),
+            y = 0f,
+            z = (sin(audioOrbitAngle) * radius).toFloat(),
+        )
+        audioOrbitFrame = window.requestAnimationFrame(::step)
+    }
+    audioOrbitFrame = window.requestAnimationFrame(::step)
 }
 
 // ---- Utility ----

@@ -123,7 +123,19 @@ fun ARSceneView(
     playbackDataset: File? = null,                 // Replay an MP4 recorded via ARRecorder. See "AR Recording & Playback".
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,  // Picks the highest-res 30fps BACK config so ARRecorder records at full resolution (#1065). Pass null for ARCore's stock default, ::frontCameraConfig for Augmented Faces, or `cameraConfigFilter { ... }` for a DSL-built selector (#1733).
     flashMode: Config.FlashMode = Config.FlashMode.OFF,  // ARCore v1.45+ Flash Mode — OFF/TORCH. Reactive; unsupported devices/front-camera silently downgrade to OFF (#1732).
-    sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
+    // Typed Config.*Mode DSL params (#1766) — applied BEFORE sessionConfiguration so the callback still wins. All reactive.
+    planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
+    depthMode: Config.DepthMode = Config.DepthMode.DISABLED,                                   // Support-gated; auto-downgrades to DISABLED.
+    instantPlacementMode: Config.InstantPlacementMode = Config.InstantPlacementMode.DISABLED,
+    geospatialMode: Config.GeospatialMode = Config.GeospatialMode.DISABLED,                    // Needs Cloud key + ACCESS_FINE_LOCATION.
+    streetscapeGeometryMode: Config.StreetscapeGeometryMode = Config.StreetscapeGeometryMode.DISABLED,  // Needs geospatialMode = ENABLED.
+    cloudAnchorMode: Config.CloudAnchorMode = Config.CloudAnchorMode.DISABLED,                 // Needs Cloud key.
+    augmentedFaceMode: Config.AugmentedFaceMode = Config.AugmentedFaceMode.DISABLED,           // Needs Session.Feature.FRONT_CAMERA.
+    imageStabilizationMode: Config.ImageStabilizationMode = Config.ImageStabilizationMode.OFF,
+    semanticMode: Config.SemanticMode = Config.SemanticMode.DISABLED,
+    updateMode: Config.UpdateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE,
+    focusMode: Config.FocusMode = Config.FocusMode.AUTO,
+    sessionConfiguration: ((session: Session, Config) -> Unit)? = null,  // Escape hatch — runs AFTER all typed params above.
     planeRenderer: Boolean = true,
     sceneUnderstanding: SceneUnderstanding? = null,  // v4.10.0+ — grouped occlusion/lighting/physics/planeVisualization (#1767, RealityKit parity). null = use the individual flags.
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
@@ -166,14 +178,15 @@ fun MyARScreen() {
         engine = engine,
         modelLoader = modelLoader,
         planeRenderer = true,
-        sessionConfiguration = { session, config ->
-            config.depthMode = Config.DepthMode.AUTOMATIC
-            config.instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
-            // ENVIRONMENTAL_HDR is the v4.3.0+ default — set BEFORE this callback runs. Front
-            // camera sessions are clamped to DISABLED inside ARSession.configure regardless.
-            // Uncomment to opt back into AMBIENT_INTENSITY:
-            // config.lightEstimationMode = Config.LightEstimationMode.AMBIENT_INTENSITY
-        },
+        // Typed Config.*Mode DSL params (#1766) — preferred over a sessionConfiguration callback
+        // for the common cases. Each is reactive; flipping them via Compose state recomposes
+        // the AR session config.
+        depthMode = Config.DepthMode.AUTOMATIC,
+        instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP,
+        // ENVIRONMENTAL_HDR is the v4.3.0+ default LightEstimationMode — front-camera sessions
+        // are clamped to DISABLED inside ARSession.configure regardless. The sessionConfiguration
+        // callback remains the escape hatch for any Config property without a typed param.
+        // sessionConfiguration = { session, config -> /* raw access here if needed */ },
         onSessionCreated = { session -> /* ARCore session ready */ },
         onSessionResumed = { session -> /* session resumed */ },
         onSessionFailed = { exception -> /* ARCore init error — show fallback UI */ },
@@ -2825,20 +2838,32 @@ SceneViewHaptic.shared.success()
 
 iOS uses `UIImpactFeedbackGenerator` / `UISelectionFeedbackGenerator` /
 `UINotificationFeedbackGenerator` for the presets, and `CHHapticEngine`
-for `continuous(intensity:duration:)` / `pattern(_:)`. The Core Haptics
+for `continuous(intensity:durationMs:)` / `pattern(_:)`. The Core Haptics
 escape hatches gracefully fall back to the preset generators on
 devices without Core Haptics support — they never throw.
+
+`continuous` takes a millisecond `Int` on every platform —
+`continuous(intensity:durationMs:)` on iOS, `continuous(intensity, durationMs)`
+on Android and Web — so cross-platform callers pass the same value:
+
+```swift
+haptic.continuous(intensity: 0.8, durationMs: 200)
+```
 
 ### Web (plain JS)
 
 ```js
 sceneview.haptic.light();
 sceneview.haptic.success();
+sceneview.haptic.continuous(1.0, 200);  // intensity ignored on Web
 sceneview.haptic.pattern([10, 50, 20]);
 ```
 
-Maps to `window.navigator.vibrate(...)`. Desktop browsers / Safari iOS
-that don't expose `navigator.vibrate` are silently no-ops.
+Maps to `window.navigator.vibrate(...)`. `continuous(intensity, durationMs)`
+maps to `navigator.vibrate(durationMs)` — the Web Vibration API exposes
+durations only, so `intensity` is accepted for cross-platform parity but
+ignored at runtime. Desktop browsers / Safari iOS that don't expose
+`navigator.vibrate` are silently no-ops.
 
 ### Preset mapping table
 
@@ -2857,6 +2882,93 @@ Android API 24..28 fall back to short one-shots (`light` → 10 ms,
 effects aren't available. The fallback table is encoded as part of the
 public contract — see `AndroidSceneViewHaptic` and pinned in
 `SceneViewHapticTest`.
+
+---
+
+## Spatial Audio
+
+`SpatialAudioNode` attaches positional 3D audio to the scene graph: a sound source that sits at a world position, pans between the listener's ears, and attenuates with distance. Distance attenuation is configurable with an inverse (physically-realistic) or linear falloff curve. Available on Android, iOS, and Web with platform-native audio back-ends — this is **phase 1** of [#1900](https://github.com/sceneview/sceneview/issues/1900). In phase 1 the caller drives the listener pose from the render loop; automatic camera-tracked listening is phase 2.
+
+### Android (Jetpack Compose)
+
+```kotlin
+SceneView(
+    cameraNode = cameraNode,
+    onFrame = {
+        // Phase 1: drive the listener from the camera each frame. The basis is
+        // (position, forward, up) — the engine derives the right vector internally.
+        val pose = cameraNode.worldTransform
+        setSpatialAudioListenerPose(
+            position = cameraNode.worldPosition,
+            forward = Position(-pose.z.x, -pose.z.y, -pose.z.z),
+            up = Position(pose.y.x, pose.y.y, pose.y.z),
+        )
+    },
+) {
+    AudioListener()                                       // declares phase-1 intent
+    rememberAudioSource("audio/bell.wav")?.let { source ->
+        SpatialAudioNode(
+            source = source,
+            position = Position(z = -2f),
+            falloff = AudioFalloff.Inverse(refDistance = 1f, maxDistance = 20f),
+            loop = true,
+        )
+    }
+}
+```
+
+- Load assets with `rememberAudioSource("audio/file.wav")` — returns `null` while loading, like `rememberModelInstance`. WAV / MP3 / OGG / FLAC are supported. An `AudioSource` is a lightweight, shareable handle: each `SpatialAudioNode` builds its own `MediaPlayer` from it, so two nodes never cross-talk.
+- **Phase 1 listener is caller-driven.** `AudioListener()` documents the intent but `SceneScope` does not expose the camera, so you must call `setSpatialAudioListenerPose(position, forward, up)` from a `SceneView` `onFrame` callback as shown above. Automatic camera tracking is phase 2. `AudioListenerSource.Anchor` is reserved for phase 2 and falls back to the camera in phase 1.
+- `setSpatialAudioListenerPose` takes the `(position, forward, up)` basis on every platform (Android / Web).
+- `AudioFalloff` has three variants: `Inverse(refDistance, maxDistance, rolloffFactor)`, `Linear(refDistance, maxDistance)`, and `None`.
+- The composable's `apply` lambda exposes an `AudioController` (`play()` / `pause()` / `stop()` / `seekTo()`) for imperative control from outside the tree.
+- The node reads its `position` *parameter* on recomposition — pass an animated position as Compose state (e.g. from a `withFrameNanos` loop). A parent node moved imperatively does not move the sound.
+
+### iOS (SwiftUI)
+
+```swift
+// `spatial(named:loop:)` loads the resource with shouldLoop set for you —
+// the loop flag is honoured for real (RealityKit fixes looping at load time).
+let node = try await SpatialAudioNode.spatial(
+    named: "bell.wav",
+    falloff: .inverse(refDistance: 0.5, maxDistance: 6),
+    loop: true
+)
+content.add(node.entity)        // attach to the scene, or to a moving entity
+```
+
+- Backed by RealityKit's spatial-audio renderer — the active camera IS the listener, so distance attenuation and panning apply automatically once the entity is added to a scene.
+- Prefer `SpatialAudioNode.spatial(named:loop:)` when you need looping. The `spatial(source:)` overload takes a pre-loaded `AudioResource` and cannot change its loop configuration — load it with `AudioFileResource.Configuration(shouldLoop: true)` yourself.
+- `node.play()` / `pause()` / `stop()` control playback; `play()` after `pause()` resumes from the paused position. `setFalloff(_:)` and `updateGain(forDistance:)` push curve changes.
+- Apply `.audioListener(.camera)` on the view for parity with Android's `AudioListener`.
+
+### Web (Kotlin/JS or plain JavaScript)
+
+```kotlin
+val source = loadAudioSource("audio/bell.wav")            // suspend; or loadAudioSourcePromise(...)
+val node = SpatialAudioNode(
+    source = source,
+    position = Vec3(0f, 0f, -2f),
+    falloff = AudioFalloff.Inverse(refDistance = 1f, maxDistance = 20f),
+    loop = true,
+)
+setSpatialAudioListenerPose(cameraPos, cameraForward, cameraUp)  // call as the camera moves
+```
+
+- Backed by the Web Audio API: each node owns an `AudioBufferSourceNode → PannerNode → GainNode → destination` chain. The `PannerNode` runs in `"HRTF"` mode for binaural panning.
+- `node.play()` / `pause()` / `stop()` / `seekTo(positionMs)` control playback. `setSpatialAudioListenerPose(position, forward, up)` is the same `(position, forward, up)` basis as Android.
+
+### Platform back-ends
+
+| Platform | Back-end | Listener (phase 1) |
+|---|---|---|
+| Android | Phase 1: per-node `MediaPlayer` + manual L/R pan (works on API 24+, no asset preprocessing). Phase 2: `AudioTrack` + `android.media.Spatializer` HRTF on API 33+ devices. | Caller-driven via `setSpatialAudioListenerPose` from `onFrame` |
+| iOS / macOS / visionOS | RealityKit spatial audio (`SpatialAudioComponent` + `Entity.playAudio`) | Active camera (RealityKit default) |
+| Web | Web Audio `PannerNode` (`panningModel = "HRTF"`, `distanceModel = "inverse"` / `"linear"`) | Caller-driven via `setSpatialAudioListenerPose` |
+
+**Phases.** Phase 1 (this release) ships positional playback with inverse / linear falloff. The listener is **caller-driven** in phase 1 — call `setSpatialAudioListenerPose` from your render loop. Automatic camera-tracked listening and anchor-attached listeners are phase 2. Occlusion and reverb zones are phase 3. See [#1900](https://github.com/sceneview/sceneview/issues/1900).
+
+**Interactive demos** — Android [`SpatialAudioDemo.kt`](samples/android-demo/src/main/java/io/github/sceneview/demo/demos/SpatialAudioDemo.kt), iOS [`SpatialAudioDemo.swift`](samples/ios-demo/SceneViewDemo/Views/Demos/SpatialAudioDemo.swift), and the **Spatial Audio** tab of the Web demo.
 
 ---
 
@@ -3227,6 +3339,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `reflection-probes` — Reflection Probes. Local cubemap reflections.
 - `secondary-camera` — Secondary Camera (PiP). Picture-in-picture camera view.
 - `shape` — Shape Extrude. Extrude 2D polygons into 3D meshes.
+- `spatial-audio` — Spatial Audio. 3D positional sound that pans as you orbit.
 - `texture-streaming` — Material Streaming. Swap textures and materials on a model at runtime.
 
 ### Augmented Reality

@@ -9,7 +9,7 @@ import CoreHaptics
 /// `UINotificationFeedbackGenerator` behind a small set of **semantic**
 /// presets (``light()``, ``medium()``, ``heavy()``, ``success()``,
 /// ``warning()``, ``error()``, ``selection()``) plus a Core Haptics-backed
-/// ``continuous(intensity:duration:)`` and ``pattern(_:)`` for richer
+/// ``continuous(intensity:durationMs:)`` and ``pattern(_:)`` for richer
 /// feedback. The same API surface ships on Android
 /// (`io.github.sceneview.haptic.SceneViewHaptic`) and on Web
 /// (`navigator.vibrate(...)` fallback) so cross-platform code paths stay
@@ -37,7 +37,7 @@ import CoreHaptics
 ///
 /// ### Core Haptics
 ///
-/// ``continuous(intensity:duration:)`` and ``pattern(_:)`` use Core
+/// ``continuous(intensity:durationMs:)`` and ``pattern(_:)`` use Core
 /// Haptics under the hood. The first call lazily creates a
 /// `CHHapticEngine`. If Core Haptics is not available on the device
 /// (e.g. older iPad models), those two APIs gracefully fall back to the
@@ -108,11 +108,17 @@ public final class SceneViewHaptic: ObservableObject {
 
     // MARK: - Low-level Core Haptics escape hatches
 
-    /// Continuous vibration for `duration` seconds at `intensity` (0.0..1.0).
+    /// Continuous vibration for `durationMs` milliseconds at `intensity`
+    /// (0.0..1.0).
+    ///
+    /// The duration is expressed in **milliseconds** to match the Android
+    /// (`continuous(intensity, durationMs)`) and Web
+    /// (`continuous(intensity, durationMs)`) signatures — cross-platform
+    /// callers pass the same integer.
     ///
     /// Falls back to ``medium()`` on devices without Core Haptics.
-    public func continuous(intensity: Float, duration: TimeInterval) {
-        guard duration > 0 else { return }
+    public func continuous(intensity: Float, durationMs: Int) {
+        guard durationMs > 0 else { return }
         guard ensureEngine() else {
             medium()
             return
@@ -125,7 +131,7 @@ public final class SceneViewHaptic: ObservableObject {
             eventType: .hapticContinuous,
             parameters: [intensityParam],
             relativeTime: 0,
-            duration: duration
+            duration: TimeInterval(durationMs) / 1000.0
         )
         play(events: [event])
     }
@@ -175,12 +181,18 @@ public final class SceneViewHaptic: ObservableObject {
             let engine = try CHHapticEngine()
             try engine.start()
             engine.resetHandler = { [weak self] in
+                // Fired only on a media-services reset — restart from scratch.
                 guard let self = self else { return }
                 try? self.hapticEngine?.start()
             }
             engine.stoppedHandler = { _ in
-                // The engine can stop on app-background; the resetHandler
-                // restarts it on next use, so nothing to do here.
+                // The engine stops on a normal app-background (and on a few
+                // other system reasons) — this handler does NOT need to
+                // restart it. play() calls `try engine.start()` (cheap and
+                // idempotent) before every makePlayer, so a stopped engine is
+                // always restarted lazily on the next haptic. Restarting here
+                // too would just spin the engine up while the app is in the
+                // background for no benefit.
             }
             hapticEngine = engine
             return true
@@ -193,6 +205,13 @@ public final class SceneViewHaptic: ObservableObject {
     private func play(events: [CHHapticEvent]) {
         guard let engine = hapticEngine else { return }
         do {
+            // The engine stops when the app backgrounds; resetHandler only
+            // fires on a media-services reset, not a normal stop. Without
+            // this, makePlayer on a stopped engine throws and haptics stay
+            // permanently dead after the first background/foreground cycle.
+            // CHHapticEngine.start() is cheap and idempotent when the engine
+            // is already running.
+            try engine.start()
             let pattern = try CHHapticPattern(events: events, parameters: [])
             let player = try engine.makePlayer(with: pattern)
             try player.start(atTime: CHHapticTimeImmediate)

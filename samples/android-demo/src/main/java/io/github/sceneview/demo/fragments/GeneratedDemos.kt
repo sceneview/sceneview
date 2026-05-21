@@ -68,6 +68,7 @@ object GeneratedDemos {
         SceneGalleryFragment,
         SecondaryCameraFragment,
         ShapeFragment,
+        SpatialAudioFragment,
         TextFragment,
         TextureStreamingFragment,
         VideoFragment,
@@ -133,6 +134,7 @@ object GeneratedDemos {
             "scene-gallery" -> SceneGalleryFragment.Screen(onBack)
             "secondary-camera" -> SecondaryCameraFragment.Screen(onBack)
             "shape" -> ShapeFragment.Screen(onBack)
+            "spatial-audio" -> SpatialAudioFragment.Screen(onBack)
             "text" -> TextFragment.Screen(onBack)
             "texture-streaming" -> TextureStreamingFragment.Screen(onBack)
             "video" -> VideoFragment.Screen(onBack)
