@@ -219,6 +219,11 @@ struct RNSceneViewContent: View {
         for model in state.models {
             do {
                 let node = try await ModelNode.load(model.path)
+                // `.task(id:)` cancels this task when the `modelNodes` prop
+                // changes mid-load. A cancelled task still resumes past the
+                // `await`, so bail out before mutating the scene — otherwise a
+                // superseded load leaks a stale model into `modelRoot`.
+                guard !Task.isCancelled else { return }
                 node.position(model.position)
                 node.scale(model.scale)
                 if let animation = model.animation {
@@ -447,10 +452,18 @@ struct RNARSceneViewContent: View {
             anchor = sessionBox.contentAnchor
         }
         guard let anchor else { return }
+        // The poll above `await`s; if the `modelNodes` prop changed while we
+        // waited, this task was superseded — do not clear/repopulate the anchor.
+        guard !Task.isCancelled else { return }
         anchor.removeAll()
         for model in state.models {
             do {
                 let node = try await ModelNode.load(model.path)
+                // `.task(id:)` cancels this task when the `modelNodes` prop
+                // changes mid-load. A cancelled task still resumes past the
+                // `await`, so bail out before mutating the scene — otherwise a
+                // superseded load leaks a stale model into the content anchor.
+                guard !Task.isCancelled else { return }
                 node.position(model.position)
                 node.scale(model.scale)
                 if let animation = model.animation {
