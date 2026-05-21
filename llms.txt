@@ -1816,7 +1816,7 @@ SceneView ships an opt-in layer for **ARCore for Jetpack XR** (`androidx.xr.arco
 
 **Status: preview.** Tracking issue [#1738](https://github.com/sceneview/sceneview/issues/1738). The upstream `androidx.xr.arcore` is at `1.0.0-alpha14` and subject to breaking changes. SceneView wraps it as an additive, opt-in surface — phone-only apps pay nothing for it. Integration approach: `arsceneview/docs/JETPACK-XR-INTEGRATION.md`.
 
-**Scope this release (Slice 1):** dependency declared (`libs.versions.toml` → `jetpackXrArCore = "1.0.0-alpha14"`, alias `androidx-xr-arcore`), runtime availability check published, design + slicing recorded. Hand tracking node + demo lands in Slice 2 ([#1902](https://github.com/sceneview/sceneview/issues/1902)), face tracking node in Slice 3 ([#1903](https://github.com/sceneview/sceneview/issues/1903)).
+**Scope this release:** Slice 1 — dependency declared (`libs.versions.toml` → `jetpackXrArCore = "1.0.0-alpha14"`, alias `androidx-xr-arcore`), `XrFeatures` runtime availability check, design + slicing recorded. Slice 2 ([#1902](https://github.com/sceneview/sceneview/issues/1902)) — `XrHandNode` hand-tracking node + `ar-hand-tracking` demo. Face tracking node lands in Slice 3 ([#1903](https://github.com/sceneview/sceneview/issues/1903)).
 
 **Opt-in dependency** (consumers add this themselves; `arsceneview/` declares it `compileOnly`):
 
@@ -1837,9 +1837,9 @@ import io.github.sceneview.ar.xr.XrFeatures
 val context = LocalContext.current
 val xrAvailable = remember { XrFeatures.isAvailable(context) }
 
-ARSceneView(modifier = Modifier.fillMaxSize()) {
+SceneView(modifier = Modifier.fillMaxSize()) {
     if (xrAvailable) {
-        // Slice 2 will add: XrHandNode(hand = …) { … }
+        // Slice 2: XrHandNode(hand = …, handedness = …) { … }
         // Slice 3 will add: XrFaceNode(face = …) { … }
     } else {
         // Fall back to mobile ARCore: AugmentedFaceNode, AugmentedImageNode, etc.
@@ -1856,7 +1856,44 @@ Classpath presence is the foundation gate; the device-capability check (XR heads
 
 Mobile ARCore tracking (`AugmentedFaceNode`, `AugmentedImageNode`, `AnchorNode`, etc.) keeps working unchanged on phones — the Jetpack XR layer is strictly additive.
 
-**Cross-platform parity:** hand tracking on visionOS is covered by `HandTrackingProvider` in `SceneViewSwift`; web covers WebXR `hand-tracking` under issue #1778. Updates to `docs/docs/cheatsheet-ios.md` mirror this section once Slice 2 lands.
+### XrHandNode — hand tracking (Slice 2)
+
+`XrHandNode` mirrors a hand tracked by ARCore for Jetpack XR (`androidx.xr.arcore.Hand`) as a SceneView scene-graph node — the Jetpack XR sibling of `AugmentedFaceNode`. It exposes one child node per skeleton joint (~26 joints: wrist, palm, and 4–5 joints per finger); attach a `SphereNode` per joint and a `LineNode` per bone to render a hand skeleton, or anchor a model to a single joint.
+
+**Preview API.** Every `XrHandNode` symbol carries `@XrPreviewApi` (a `@RequiresOptIn` marker) because `androidx.xr.arcore` is alpha — opt in with `@OptIn(XrPreviewApi::class)`.
+
+Declarative form (a `@Composable SceneScope` extension — usable inside `SceneView { }` / `ARSceneView { }`):
+
+```kotlin
+import io.github.sceneview.ar.xr.XrFeatures
+import io.github.sceneview.ar.xr.XrHandNode
+import io.github.sceneview.ar.xr.XrHandedness
+import io.github.sceneview.ar.xr.XrPreviewApi
+import androidx.xr.arcore.Hand
+
+@OptIn(XrPreviewApi::class)
+@Composable
+fun HandSkeleton(session: androidx.xr.runtime.Session) {
+    SceneView {
+        // Mirror the live right hand; one joint child node per HandJointType.
+        XrHandNode(hand = Hand.right(session), handedness = XrHandedness.RIGHT) {
+            // `this` is a NodeScope rooted at the hand node — declare per-joint
+            // geometry. Each joint's transform follows the tracked pose.
+            SphereNode(radius = 0.008f)
+        }
+    }
+}
+```
+
+The composable refreshes the skeleton in a `SideEffect` (per recomposition) — recompose once per XR frame and the hand follows for free. For an update cadence decoupled from recomposition, use the imperative node directly: collect `Hand.state` on the main dispatcher and call `handNode.update(...)`.
+
+**Threading:** `XrHandNode.update()` writes only Filament `Node` transforms (no JNI resource creation) but, like every node mutation, MUST run on the main thread. Drive it from a Compose effect on `Dispatchers.Main`.
+
+**Pure joint math** (`XrHandSkeleton`) is JVM-testable and runtime-free: `XrHandSkeleton.BONES` (the bone topology), `boneLength`, `boneMidpoint`, `lerp`, `totalBoneLength`, `trackedJointCount`. The `XrHandJoint` / `XrHandedness` enums and `XrHandSkeleton` carry no `androidx.xr.arcore` dependency, so they are safe to use on a phone-only build.
+
+Sample: the `ar-hand-tracking` demo renders a static reference hand skeleton on phones (no public Android XR emulator yet) and points the developer at `XrHandNode` for the live integration on an Android XR headset.
+
+**Cross-platform parity:** hand tracking on visionOS is covered by `HandTrackingProvider` in `SceneViewSwift`; web covers WebXR `hand-tracking` under issue #1778. Updates to `docs/docs/cheatsheet-ios.md` mirror this section ([#1904](https://github.com/sceneview/sceneview/issues/1904)).
 
 ---
 
@@ -3351,6 +3388,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-depth-visualization` — Depth Visualization. False-color depth map with camera↔depth blend.
 - `ar-face` — Augmented Faces. Face mesh tracking and overlays.
 - `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
+- `ar-hand-tracking` — Hand Tracking (Jetpack XR). Hand skeleton on Android XR headsets.
 - `ar-image` — Image Tracking. Detect and track reference images.
 - `ar-image-stabilization` — Image Stabilization (EIS). EIS for smoother AR camera feed.
 - `ar-instant-placement` — Instant Placement. Place models before plane detection converges.

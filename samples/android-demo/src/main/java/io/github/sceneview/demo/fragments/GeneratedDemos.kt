@@ -29,6 +29,7 @@ object GeneratedDemos {
         ArDepthVisualizationFragment,
         ArFaceFragment,
         ArFogFragment,
+        ArHandTrackingFragment,
         ArImageFragment,
         ArImageStabilizationFragment,
         ArInstantPlacementFragment,
@@ -95,6 +96,7 @@ object GeneratedDemos {
             "ar-depth-visualization" -> ArDepthVisualizationFragment.Screen(onBack)
             "ar-face" -> ArFaceFragment.Screen(onBack)
             "ar-fog" -> ArFogFragment.Screen(onBack)
+            "ar-hand-tracking" -> ArHandTrackingFragment.Screen(onBack)
             "ar-image" -> ArImageFragment.Screen(onBack)
             "ar-image-stabilization" -> ArImageStabilizationFragment.Screen(onBack)
             "ar-instant-placement" -> ArInstantPlacementFragment.Screen(onBack)
