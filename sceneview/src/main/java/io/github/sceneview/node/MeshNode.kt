@@ -8,6 +8,8 @@ import com.google.android.filament.RenderableManager
 import com.google.android.filament.RenderableManager.PrimitiveType
 import com.google.android.filament.VertexBuffer
 import io.github.sceneview.geometries.Geometry
+import io.github.sceneview.safeDestroyIndexBuffer
+import io.github.sceneview.safeDestroyVertexBuffer
 
 /**
  * Mesh are bundles of primitives, each of which has its own geometry and material.
@@ -46,6 +48,20 @@ open class MeshNode(
      * If no material is specified, Filament will fall back to a basic default material.
      */
     materialInstance: MaterialInstance? = null,
+    /**
+     * If `true`, [destroy] also frees [vertexBuffer] and [indexBuffer] via
+     * [Engine.safeDestroyVertexBuffer] / [Engine.safeDestroyIndexBuffer].
+     *
+     * Use `true` when this node exclusively owns the buffers — typically when you build a
+     * one-off `VertexBuffer`/`IndexBuffer` just for this node and let the node go out of
+     * scope (e.g. [io.github.sceneview.ar.node.StreetscapeGeometryNode]). Without this
+     * flag the buffers outlive the renderable and accumulate in Filament's native heap
+     * until engine teardown — a steady-state leak (#2037).
+     *
+     * Use `false` (the default, for backward compatibility) when the buffers are shared or
+     * owned by a longer-lived holder responsible for destroying them externally.
+     */
+    private val destroyBuffersOnDispose: Boolean = false,
     builder: RenderableManager.Builder.() -> Unit = {}
 ) : RenderableNode(engine) {
 
@@ -66,5 +82,15 @@ open class MeshNode(
             }.apply(builder)
             .build(engine, entity)
         updateCollisionShape()
+    }
+
+    override fun destroy() {
+        // RenderableNode.destroy() tears down the renderable component first, then the
+        // entity. Free the raw geometry buffers after that, only when this node owns them.
+        super.destroy()
+        if (destroyBuffersOnDispose) {
+            engine.safeDestroyVertexBuffer(vertexBuffer)
+            engine.safeDestroyIndexBuffer(indexBuffer)
+        }
     }
 }

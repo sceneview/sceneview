@@ -957,10 +957,24 @@ open class Node(
 
     // ---- Destroy ----
 
+    /** Guards [destroy] against re-entrancy when a node tree references itself. */
+    private var isDestroyed = false
+
     /**
      * Detach and destroy the node and all its children.
+     *
+     * Every descendant's [destroy] is invoked first (post-order), so an entire
+     * imperatively-built node tree is released by a single call on the root.
+     * Compose-declared children are disposed independently by `rememberNode`;
+     * destroying them again here is a safe no-op.
      */
     open fun destroy() {
+        if (isDestroyed) return
+        isDestroyed = true
+        // Snapshot the children before iterating: each child's destroy() mutates
+        // childNodes (via `parent = null`), so iterating the live set would throw
+        // ConcurrentModificationException.
+        childNodes.toList().forEach { it.destroy() }
         runCatching { parent = null }
         engine.safeDestroyTransformable(entity)
         engine.safeDestroyEntity(entity)

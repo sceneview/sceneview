@@ -69,6 +69,11 @@ open class StreetscapeGeometryNode(
                 setBuffer(engine, streetscapeGeometry.mesh.indexList)
             },
         materialInstance = meshMaterialInstance,
+        // This node builds the VertexBuffer/IndexBuffer above just for this MeshNode and
+        // owns them exclusively — free them when the node is destroyed (#2037). The mesh
+        // node is a child of this node, so Node.destroy()'s recursive child teardown
+        // (#2036) reaches it when the StreetscapeGeometryNode is destroyed.
+        destroyBuffersOnDispose = true,
         builder = builder
     ).apply { parent = this@StreetscapeGeometryNode }
 
