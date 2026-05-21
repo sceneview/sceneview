@@ -1898,6 +1898,47 @@ Threading: safe to call from the main thread — `SharedPreferences.edit().apply
 )
 ```
 
+### PlaneNode — detected plane + lifecycle (AR Foundation `ARPlaneManager` parity, #1774)
+
+A node anchored to a detected ARCore `Plane`. It follows the plane's `centerPose` every frame so child content rides the plane as ARCore refines its extents. Pair it with `rememberDetectedPlanes` — the SceneView equivalent of AR Foundation's `ARPlaneManager.planesChanged` — to declare one node per detected plane reactively, with no `frame.getUpdatedTrackables(Plane::class.java)` loop.
+
+```kotlin
+@Composable fun ARSceneScope.PlaneNode(
+    plane: Plane,
+    visibleTrackingStates: Set<TrackingState> = setOf(TrackingState.TRACKING),
+    onTrackingStateChanged: ((TrackingState) -> Unit)? = null,
+    onUpdated: ((Plane) -> Unit)? = null,
+    apply: PlaneNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null
+)
+
+// ARPlaneManager.planesChanged equivalent — live State + add/update/remove callbacks.
+@Composable fun rememberDetectedPlanes(
+    session: Session?,
+    onAdded: ((List<Plane>) -> Unit)? = null,
+    onUpdated: ((List<Plane>) -> Unit)? = null,
+    onRemoved: ((List<Plane>) -> Unit)? = null
+): State<List<Plane>>
+```
+
+`rememberDetectedPlanes` re-reads `session.getAllTrackables(Plane::class.java)` each Compose frame (`withFrameNanos`, main thread), filters to `TrackingState.TRACKING`, and fires the three callbacks on every change. A plane subsumed into a larger coplanar one (`Plane.subsumedBy`) naturally surfaces through `onRemoved`.
+
+```kotlin
+ARSceneView(onSessionCreated = { arSession = it }) {
+    val planes by rememberDetectedPlanes(
+        session = arSession,
+        onAdded = { added -> detectedCount += added.size }
+    )
+    planes.forEach { plane ->
+        PlaneNode(plane = plane) {
+            CubeNode(size = Size(0.08f), materialInstance = markerMat)
+        }
+    }
+}
+```
+
+`PlaneNode` exposes `type` (`Plane.Type`), `extentX`, `extentZ`. Demo: `samples/android-demo/.../ARPlaneNodeDemo.kt`.
+
 ### Geospatial accessors — `rememberCameraGeospatialPose`, `rememberEarthState`, `awaitVpsAvailability`
 
 Composable State + suspend helpers around ARCore's Geospatial API (#1769). Lets apps read the live device lat/lng/altitude, observe the `Earth.EarthState`, and gate Terrain anchor placement on actual VPS coverage — all from regular Compose code.
@@ -3749,6 +3790,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-ml-object-label` — ML Kit Object Labels. ML Kit object detection with 3D labels anchored on real-world hits.
 - `ar-orbital` — Orbital AR. Models orbit around you in a personal solar system.
 - `ar-placement` — Tap to Place. Place 3D models in AR.
+- `ar-plane-node` — Plane Lifecycle. PlaneNode + onAdded/onUpdated/onRemoved.
 - `ar-point-cloud` — Point Cloud. World-space feature points via PointCloudNode.
 - `ar-pose` — Pose Placement. Free pose positioning.
 - `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Confidence-filtered point cloud from raw depth.
