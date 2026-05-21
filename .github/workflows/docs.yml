@@ -337,9 +337,14 @@ jobs:
           echo
           # 201 Created is the success status for a queued build request.
           if [ "$HTTP" != "201" ]; then
-            echo "::error::Pages build request failed (HTTP $HTTP). The live"
-            echo "::error::site will not rebuild — see #1826. Check that the"
-            echo "::error::PAT secret has 'repo'/'pages:write' scope."
-            exit 1
+            # NON-fatal (#2014): the deploy above already pushed the new site
+            # content — a failed Pages-REBUILD trigger must not red-light the
+            # docs workflow. A dead/expired PAGES_REBUILD_TOKEN PAT surfaces
+            # as a loud warning; renew the secret per #2014 to restore the
+            # auto-rebuild (HTTP 401 = bad credentials).
+            echo "::warning::Pages build request failed (HTTP $HTTP) — see #1826/#2014."
+            echo "::warning::Deploy is unaffected; sceneview.github.io may show stale"
+            echo "::warning::content until PAGES_REBUILD_TOKEN is renewed ('pages:write')."
+            exit 0
           fi
           echo "Pages build queued — sceneview.github.io will rebuild shortly."

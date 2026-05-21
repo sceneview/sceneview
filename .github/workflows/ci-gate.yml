@@ -77,8 +77,14 @@ name: CI Gate
 # must NEVER affect the gate verdict — for ALL conclusions, including
 # `CANCELLED` / `SKIPPED` / `FAILURE`. So any check run whose name is in
 # `ADVISORY_CHECKS` (substring match) is filtered out of the `failed` set
-# entirely, regardless of conclusion. It is still allowed to register and
-# is still waited on while pending — it just cannot red-light the gate.
+# entirely, regardless of conclusion.
+#
+# An advisory check is ALSO dropped from the `pending` wait set (#2013):
+# the gate must not block waiting for it. The slow `Coverage (advisory)`
+# job can run well past the gate's internal deadline; if the gate waited
+# on it the poll loop would time out red even though Coverage can never
+# gate. Advisory checks may keep running — the gate stops as soon as every
+# NON-advisory check has finished and ignores the advisory ones entirely.
 #
 # Branch protection on `main` requires ONLY this `CI Gate` check.
 
@@ -118,6 +124,13 @@ jobs:
     # #1955).
     timeout-minutes: 60
     steps:
+      # REQUIRED: the aggregation step shells out to
+      # `.github/scripts/ci-gate-aggregate.sh`. Without a checkout that
+      # script is not on disk, so the step dies with "No such file or
+      # directory", `gate_rc` is non-zero and the gate fails EVERY PR
+      # (#2013). This is the actual cause of the v4.13.0 admin-merge spree —
+      # the helper was extracted by #1984 but no checkout step was added.
+      - uses: actions/checkout@v6
       - name: Aggregate all PR check conclusions
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -248,6 +261,31 @@ jobs:
             # the loop break and the `failed` set flip the gate red.
             pending=$(echo "$others" | jq -r \
               'select(.status != "completed" or .conclusion == "action_required") | .name')
+
+            # ADVISORY checks are NOT waited on (#2013). An advisory check
+            # (e.g. the slow `Coverage (advisory)` job) cannot affect the
+            # verdict, so the gate must not block on it either — if it hangs
+            # past the deadline the gate would otherwise time out red even
+            # though the check is non-gating. Drop advisory names from the
+            # `pending` set so the loop can break once every NON-advisory
+            # check has finished; the advisory job may keep running.
+            if [ -n "$pending" ] && [ -n "$advisory_checks" ]; then
+              non_advisory_pending=""
+              while IFS= read -r pname; do
+                [ -z "$pname" ] && continue
+                is_advisory=false
+                while IFS= read -r adv; do
+                  [ -z "$adv" ] && continue
+                  case "$pname" in
+                    *"$adv"*) is_advisory=true; break ;;
+                  esac
+                done <<< "$advisory_checks"
+                [ "$is_advisory" = true ] || \
+                  non_advisory_pending="${non_advisory_pending}${pname}"$'\n'
+              done <<< "$pending"
+              pending=$(printf '%s\n' "$non_advisory_pending" | sed '/^[[:space:]]*$/d')
+            fi
+
             if [ -z "$pending" ] && [ -z "$missing_core" ] && [ "$seen_any_other" = true ]; then
               break
             fi
