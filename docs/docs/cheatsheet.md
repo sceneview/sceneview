@@ -16,8 +16,8 @@ A quick reference for SceneView's most-used APIs. Print it, pin it, keep it next
 
 ```kotlin
 // build.gradle
-implementation("io.github.sceneview:sceneview:4.11.2")     // 3D
-implementation("io.github.sceneview:arsceneview:4.11.2")    // AR + 3D
+implementation("io.github.sceneview:sceneview:4.12.0")     // 3D
+implementation("io.github.sceneview:arsceneview:4.12.0")    // AR + 3D
 ```
 
 ---
@@ -88,11 +88,35 @@ ARSceneView(
     sessionFeatures = setOf(),  // e.g., Session.Feature.FRONT_CAMERA
     // fillLightNode = null,     // v4.3.0+: pass null to disable the dual-light AR baseline
     cameraExposure = null,      // null = ARCore default; Float (EV) to override
+    flashMode = Config.FlashMode.OFF,  // v4.11+: Config.FlashMode.TORCH for low-light tracking
+    // playbackDataset = file,      // v4.5+: deterministic replay from a recorded MP4 (File)
+    // playbackDatasetUri = uri,    // v4.11+ scoped-storage equivalent (mutually exclusive)
     onSessionUpdated = { session, frame -> },
+    onSessionFailure = { failure ->     // v4.11+: typed exhaustive when (#1759)
+        when (failure) {
+            is ARSessionFailure.UnavailableArcoreNotInstalled -> { /* install ARCore */ }
+            is ARSessionFailure.CameraPermissionNotGranted -> { /* request permission */ }
+            // ... see ARSessionFailure for the full sealed hierarchy
+            else -> { /* compiler will flag the day a new failure mode is added */ }
+        }
+    },
     onTouchEvent = { event, hitResult -> true }
 ) {
     // ARSceneScope — declare AR nodes here
 }
+```
+
+### Recording / playback
+
+```kotlin
+val recorder = rememberARRecorder()
+val status by rememberARPlaybackStatus(arSession)   // v4.11+: PlaybackStatus as State
+
+ARSceneView(
+    playbackDatasetUri = pickedUri,                 // scoped-storage Uri
+    onSessionUpdated = { s, _ -> recorder.recordFrame(s) },
+    onPlaybackFailed = { e -> /* MP4 unreadable */ },
+) { /* DSL */ }
 ```
 
 ### Camera exposure override

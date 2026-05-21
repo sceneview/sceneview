@@ -39,11 +39,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Anchor
-import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
-import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
@@ -407,10 +405,9 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 materialLoader = materialLoader,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = true,
-                sessionConfiguration = { _: Session, config: Config ->
-                    config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                    config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-                },
+                // Typed Config.*Mode params (#1766) — both planeFindingMode and
+                // lightEstimationMode are already the ARSceneView defaults, so the demo can drop
+                // its sessionConfiguration callback entirely.
                 onSessionUpdated = { _, frame: Frame ->
                     latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING

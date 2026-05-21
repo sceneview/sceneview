@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-05-14'
+  last-updated: '2026-05-21'
   keywords:
   - sceneview
   - 3d
@@ -28,14 +28,14 @@ metadata:
 SceneView is a declarative 3D and AR SDK. One mental model across every platform:
 
 - **Android** — `SceneView { … }` (3D) and `ARSceneView { … }` (AR) composables.
-  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.11.2` and
-  `io.github.sceneview:arsceneview:4.11.2`.
+  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.12.0` and
+  `io.github.sceneview:arsceneview:4.12.0`.
 - **Apple (iOS / macOS / visionOS)** — `SceneView { }` and `ARSceneView { }` SwiftUI
   views from the [`sceneview`](https://github.com/sceneview/sceneview) monorepo
-  via Swift Package Manager (tag `4.11.2`). RealityKit renderer.
-- **Web** — `sceneview-web@4.11.2` on npm (Filament.js + WebXR).
+  via Swift Package Manager (tag `4.12.0`). RealityKit renderer.
+- **Web** — `sceneview-web@4.12.0` on npm (Filament.js + WebXR).
 - **Flutter** — `sceneview_flutter` plugin (PlatformView bridge).
-- **React Native** — `@sceneview-sdk/react-native@4.11.2` (Fabric bridge).
+- **React Native** — `@sceneview-sdk/react-native@4.12.0` (Fabric bridge).
 - **MCP** — `sceneview-mcp` on npm — gives AI agents direct API access from chat.
 
 Nodes are declared as composables / SwiftUI views inside the parent SceneView's
@@ -197,6 +197,34 @@ This skill is most useful paired with the **`android-cli`** skill:
   reports as a single AndroidView, so for in-3D tap targets you still need
   pointerInput / hit testing).
 - `android docs search "compose canvas"` — underlying Compose APIs.
+
+## Haptic feedback
+
+`io.github.sceneview.haptic.SceneViewHaptic` wraps Android's `Vibrator`
+behind seven semantic presets plus low-level escape hatches. Get an
+instance with `rememberHapticFeedback()` inside a `@Composable`; it is a
+silent no-op (one `Log.d`, never throws) when the device has no vibrator or
+the consumer app omits the permission.
+
+```kotlin
+import io.github.sceneview.haptic.rememberHapticFeedback
+
+@Composable
+fun PlaceAnchorButton(onPlace: () -> Unit) {
+    val haptic = rememberHapticFeedback()
+    Button(onClick = { haptic.medium(); onPlace() }) { Text("Place") }
+}
+```
+
+- Presets: `light()` `medium()` `heavy()` `success()` `warning()` `error()`
+  `selection()`. Escape hatches: `continuous(intensity, durationMs)` and
+  `pattern(events)`. `cancel()` stops an in-progress vibration —
+  `rememberHapticFeedback()` calls it automatically on dispose.
+- The consumer app MUST opt in by adding
+  `<uses-permission android:name="android.permission.VIBRATE" />` to its
+  manifest — the `sceneview` library does not auto-merge it.
+- The same API ships on iOS (`SceneViewSwift.SceneViewHaptic`) and Web
+  (`sceneview.haptic.*`). See `llms.txt § Haptic Feedback`.
 
 ## Resources
 

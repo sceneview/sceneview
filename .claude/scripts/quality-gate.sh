@@ -85,18 +85,20 @@ LLMS_V=$(grep -m1 'io\.github\.sceneview:sceneview:' llms.txt | grep -oE '[0-9]+
 README_V=$(grep -m1 'io\.github\.sceneview:sceneview:' README.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "MISSING")
 [ "$README_V" = "$SOURCE_VERSION" ] && check "README.md version" "PASS" "$README_V" || check "README.md version" "FAIL" "Expected $SOURCE_VERSION, got $README_V"
 
-# llms.txt mirror drift (issue #1847) — docs/docs/llms.txt and the MCP bundle
-# `mcp/src/generated/llms-txt.ts` must stay byte-identical to root `llms.txt`.
-# The drift detectors used to live only in `sync-versions.sh`, which is NOT
-# called by this gate, so PR #1822 was able to land DepthHitResultNode docs
-# in root `llms.txt` without updating either mirror. Wire the dedicated
-# helper here so the PR-blocking gate catches the divergence.
+# llms.txt mirror drift (issue #1847) — docs/docs/llms.txt must stay
+# byte-identical to root `llms.txt`. The drift detector used to live only in
+# `sync-versions.sh`, which is NOT called by this gate, so PR #1822 was able
+# to land DepthHitResultNode docs in root `llms.txt` without updating the
+# mirror. Wire the dedicated helper here so the PR-blocking gate catches the
+# divergence. The MCP bundle `mcp/src/generated/llms-txt.ts` is no longer a
+# committed mirror — it is generated at build time and `.gitignore`d (#1928),
+# so it is fresh-by-construction and cannot drift.
 if [ -x ".claude/scripts/check-llms-drift.sh" ]; then
     if bash .claude/scripts/check-llms-drift.sh > /tmp/check-llms-drift.log 2>&1; then
-        check "llms.txt mirrors in sync" "PASS" ""
+        check "llms.txt mirror in sync" "PASS" ""
     else
         DRIFT_COUNT=$(grep -c '^MISMATCH:' /tmp/check-llms-drift.log 2>/dev/null || echo "?")
-        check "llms.txt mirrors in sync" "FAIL" "$DRIFT_COUNT mirror(s) drifted; see /tmp/check-llms-drift.log"
+        check "llms.txt mirror in sync" "FAIL" "$DRIFT_COUNT mirror(s) drifted; see /tmp/check-llms-drift.log"
     fi
 fi
 
@@ -129,8 +131,12 @@ done
 LP_TRACKED=$(git ls-files "local.properties" 2>/dev/null | wc -l | tr -d ' ')
 [ "$LP_TRACKED" -eq 0 ] && check "local.properties not tracked" "PASS" "" || check "local.properties tracked" "FAIL" "Contains local paths/secrets"
 
-# Check for API keys in staged changes
-STAGED_KEYS=$(git diff --cached 2>/dev/null | grep -c "AIza\|sk-\|AKIA\|ghp_\|npm_\|PRIVATE_KEY" 2>/dev/null || true)
+# Check for API keys in ADDED lines of staged changes.
+# Patterns are anchored to each provider's real key shape — a bare `sk-`
+# substring matched `disk-full`, `task-*`, `npm_install`, etc. (false positives,
+# notably on large file deletions). Scan only added lines (`^+`) so removing a
+# secret never fails the gate.
+STAGED_KEYS=$(git diff --cached 2>/dev/null | grep '^+' | grep -cE 'AIza[A-Za-z0-9_-]{35}|sk-[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16}|ghp_[A-Za-z0-9]{36}|npm_[A-Za-z0-9]{36}|-----BEGIN [A-Z ]*PRIVATE KEY-----' 2>/dev/null || true)
 STAGED_KEYS=$(echo "$STAGED_KEYS" | tr -d '[:space:]' | head -c 10)
 [ -z "$STAGED_KEYS" ] && STAGED_KEYS=0
 [ "$STAGED_KEYS" -eq 0 ] 2>/dev/null && check "No API keys in staged changes" "PASS" "" || check "API keys in staged changes" "FAIL" "$STAGED_KEYS matches"
@@ -234,7 +240,43 @@ fi
 
 echo ""
 
-# ─── 4c. Worktree-prune regression suite (advisory) ────────────────────
+# ─── 4c. Filament .mat → .filamat drift (issue #1912) ─────────────────
+# The Filament runtime ↔ .filamat ABI invariant has caused a real shipping
+# incident (v4.1.0 — 10 demos crashed at runtime because half the .filamat
+# blobs were compiled with a different matc than the runtime expected).
+# Each .filamat embeds the matc MATERIAL_VERSION + flag list in its header
+# chunks (SREV_TAM and MRPC_TAM). `tools/GenerateFilamat.sh --check`
+# regenerates every .filamat to a tmp dir with the pinned matc and the
+# committed per-profile flag list, then byte-diffs against the committed
+# blob. Exit 1 on drift blocks the PR.
+#
+# Failure modes (degraded gracefully):
+#   - Sandbox without network → matc cannot be downloaded → WARN, advisory.
+#   - matc version mismatch     → WARN, advisory.
+# A clean tree on a host with matc cached produces a hard PASS.
+echo -e "${CYAN}--- Filament .filamat blobs ---${NC}"
+if [ -x "tools/GenerateFilamat.sh" ]; then
+    if bash tools/GenerateFilamat.sh --check --ci-tolerant > /tmp/check-filamat-drift.log 2>&1; then
+        # --ci-tolerant turns matc unavailability into exit-0; distinguish.
+        if grep -q "All .* filamat blob" /tmp/check-filamat-drift.log; then
+            BLOB_COUNT=$(grep -oE 'All [0-9]+ filamat' /tmp/check-filamat-drift.log | grep -oE '[0-9]+' | head -1)
+            check "Filament .filamat blobs in sync" "PASS" "${BLOB_COUNT:-21} blob(s)"
+        elif grep -q "matc unavailable" /tmp/check-filamat-drift.log; then
+            check "Filament .filamat blobs" "WARN" "matc unavailable (no network?) — see /tmp/check-filamat-drift.log"
+        else
+            check "Filament .filamat blobs" "WARN" "see /tmp/check-filamat-drift.log"
+        fi
+    else
+        DRIFT_COUNT=$(grep -cE '^\[FAIL\] \[' /tmp/check-filamat-drift.log 2>/dev/null || echo "?")
+        check "Filament .filamat blobs in sync" "FAIL" "$DRIFT_COUNT blob(s) drifted — run tools/GenerateFilamat.sh"
+    fi
+else
+    check "Filament .filamat blobs" "WARN" "tools/GenerateFilamat.sh missing"
+fi
+
+echo ""
+
+# ─── 4d. Worktree-prune regression suite (advisory) ────────────────────
 # Pins the safety contract of `.claude/scripts/worktree-auto-prune.sh`
 # (locked-tree skip #1833, broad subprocess detect #1834, forensic log
 # #1839). Advisory: a CI host without `lsof`/`fuser` can't fully exercise

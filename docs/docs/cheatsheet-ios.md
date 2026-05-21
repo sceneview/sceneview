@@ -16,7 +16,7 @@ A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it
 
 ```swift
 // Package.swift or Xcode SPM
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.2")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.12.0")
 ```
 
 ```swift
@@ -453,7 +453,13 @@ silent stub.
 
 | Symbol | Why iOS can't | iOS path |
 |---|---|---|
-| `ARSceneView(playbackDataset:)` | ARKit has no deterministic recording playback | Record-only via [#1032 ReplayKit](https://github.com/sceneview/sceneview/issues/1032); replay stays Android-only |
+| `ARSceneView(playbackDataset:)` / `ARSceneView(playbackDatasetUri:)` (#1770) | ARKit has no deterministic recording playback | Record-only via [#1032 ReplayKit](https://github.com/sceneview/sceneview/issues/1032); replay stays Android-only |
+| `rememberARPlaybackStatus(session)` (#1770) | Mirrors ARCore `Session.getPlaybackStatus` — no ARKit counterpart | iOS-skip; surface "Live AR only" in UI |
+| `ARRecorder.addTrack / recordTrack / State.IO_ERROR` (#1770) | ARCore custom-data-track + RecordingStatus disk-IO surface; no ARKit analogue | iOS-skip with doc warning |
+| `ARSessionFailure` sealed taxonomy + `onSessionFailure` callback (#1759) | Wraps the 25 ARCore `*Exception` types; ARKit surfaces failures via `ARErrorCode` instead | Use SwiftUI `onSessionFailed` (raw `Error`) and switch on `ARError.Code` |
+| `DepthHitResultNode` / `Frame.hitTestDepth` (#1712) | Backed by ARCore `Frame.acquire(Raw)DepthImage16Bits` — ARKit `ARKit.captureDepth*` is API-incompatible | Use `RealityView`'s standard hit-test or `ARView.smartHitTest` |
+| `cameraConfigFilter { … }` DSL (#1733, #1772) | ARCore `CameraConfigFilter` selection model; ARKit picks its config automatically from `ARConfiguration` | iOS-skip |
+| `Frame.cameraImage()` (#1771) | ARCore CPU image stream — ARKit exposes `ARFrame.capturedImage` directly on the frame | Use `arSession.currentFrame?.capturedImage` |
 | `SurfaceType.texture` | RealityKit always renders to `MTKView` | N/A — no port needed |
 | `StreetscapeGeometry` | ARGeoTrackingConfiguration exists but no mesh equivalent | iOS-skip with doc warning |
 | `TerrainAnchor / RooftopAnchor` (geo-anchored to terrain or rooftop) | `ARGeoAnchor` only does ground; rooftop has no ARKit equivalent | iOS-skip with doc warning |

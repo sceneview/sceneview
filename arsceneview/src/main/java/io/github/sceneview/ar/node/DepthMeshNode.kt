@@ -139,24 +139,6 @@ open class DepthMeshNode(
     private var ownedIndexBuffer: IndexBuffer = indexBuffer
 
     /**
-     * Cached direct [ByteBuffer]s for vertex / index upload (#1810). The previous
-     * [uploadGeometry] allocated a fresh `ByteBuffer.allocateDirect(positions × 4)` + a fresh
-     * `ByteBuffer.allocateDirect(indices × 4)` on **every rebuild** — ~11 KB + ~9 KB per rebuild
-     * at the default stride-4 settings × 5 Hz = ~100 KB/s direct-buffer churn on the render
-     * thread, climbing to ~600 KB/s at 30 Hz. Caching them here, with power-of-two growth
-     * alongside the existing [allocatedVertexCount] / [allocatedIndexCount] capacity logic,
-     * makes the steady-state upload **zero-allocation** — same buffer, position rewound + bytes
-     * overwritten per upload.
-     *
-     * Render-thread only. Initialized lazily on first use so a node that never uploads (test
-     * fixture, edge case) doesn't pay for the allocation.
-     */
-    private var vertexUploadBuffer: ByteBuffer? = null
-
-    /** Companion of [vertexUploadBuffer] for the index stream. */
-    private var indexUploadBuffer: ByteBuffer? = null
-
-    /**
      * Returns the current vertex buffer (live, may change across rebuilds when capacity grows).
      *
      * Exposed for downstream consumers (the #1713 physics collider) that need a stable handle to
@@ -300,15 +282,18 @@ open class DepthMeshNode(
 
         val indicesCount = geometry.indices.size
         try {
-            // VertexBuffer expects a direct ByteBuffer. Per-rebuild fresh-allocate path was ~11 KB
-            // per upload at 5 Hz = ~100 KB/s direct-buffer churn (#1810). Cached buffers below are
-            // grown in powers of two and reused across rebuilds — steady-state is zero-alloc.
+            // Filament's setBufferAt / setBuffer capture a global ref to the direct ByteBuffer and
+            // copy ASYNCHRONOUSLY on the render command stream. Reusing the same ByteBuffer across
+            // uploads (cached for GC churn reasons in #1810) is unsafe: the next frame's clear() +
+            // overwrite can clobber bytes Filament has not yet consumed → torn vertex uploads,
+            // corrupted mesh frames (#1841). Allocating fresh each upload matches the standard
+            // pattern used by every other Geometry.kt caller and trades GC churn for correctness.
+            // The fresh buffer is unreferenced after this method returns; GC reclaims it once
+            // Filament's JNI global ref is dropped (or sooner if Filament has already copied).
             val positions = geometry.positions
             val vertexBytesNeeded = positions.size * Float.SIZE_BYTES
-            val vertexBytes = acquireDirectBuffer(vertexUploadBuffer, vertexBytesNeeded).also {
-                vertexUploadBuffer = it
-            }
-            vertexBytes.clear()
+            val vertexBytes =
+                ByteBuffer.allocateDirect(vertexBytesNeeded).order(ByteOrder.nativeOrder())
             vertexBytes.asFloatBuffer().put(positions)
             // ByteBuffer position stays at 0 (we mutated the FloatBuffer view only); setBufferAt
             // reads from the underlying ByteBuffer's position.
@@ -316,10 +301,8 @@ open class DepthMeshNode(
 
             val indices = geometry.indices
             val indexBytesNeeded = indices.size * Int.SIZE_BYTES
-            val indexBytes = acquireDirectBuffer(indexUploadBuffer, indexBytesNeeded).also {
-                indexUploadBuffer = it
-            }
-            indexBytes.clear()
+            val indexBytes =
+                ByteBuffer.allocateDirect(indexBytesNeeded).order(ByteOrder.nativeOrder())
             indexBytes.asIntBuffer().put(indices)
             targetIndexBuffer.setBuffer(engine, indexBytes, 0, indexBytesNeeded)
 
@@ -445,34 +428,6 @@ open class DepthMeshNode(
     /** Hook for tests — JVM monotonic time. */
     protected open fun nowMs(): Long = System.currentTimeMillis()
 
-    /**
-     * Returns a direct, native-order [ByteBuffer] of at least [bytesNeeded] bytes — reusing
-     * [existing] when it already has the capacity, otherwise allocating a fresh one rounded up
-     * to the next power of two. The caller is responsible for `clear()` + position-resetting
-     * before each write (the existing one will have stale state from a previous upload).
-     *
-     * Render-thread only (matches the rest of the upload path). Power-of-two growth amortises
-     * the rare reallocations across many rebuilds — once the depth image's pixel count + edge
-     * culling settle, this returns the same buffer on every call (#1810).
-     *
-     * **Cap (#1846):** the cached buffer is never reused above [MAX_UPLOAD_BUFFER_BYTES] (1 MB).
-     * A one-off oversized depth image (rare today, possible if a future ARCore exposes
-     * higher-res depth) would otherwise permanently inflate the cache — we prefer a fresh
-     * allocation in that case so the steady-state memory footprint matches the typical
-     * stride-4 mesh from a 160×90 depth image. Buffers under the cap retain the prior
-     * no-shrink reuse behaviour.
-     */
-    private fun acquireDirectBuffer(existing: ByteBuffer?, bytesNeeded: Int): ByteBuffer {
-        if (existing != null &&
-            existing.capacity() >= bytesNeeded &&
-            existing.capacity() <= MAX_UPLOAD_BUFFER_BYTES
-        ) {
-            return existing
-        }
-        val capacity = nextPowerOfTwo(max(bytesNeeded, MIN_UPLOAD_BUFFER_BYTES))
-        return ByteBuffer.allocateDirect(capacity).order(ByteOrder.nativeOrder())
-    }
-
     companion object {
         /** Default rebuild rate, in milliseconds — 5 Hz, well below ARCore's ~30 Hz delivery. */
         const val DEFAULT_REFRESH_INTERVAL_MS: Long = 200L
@@ -493,24 +448,6 @@ open class DepthMeshNode(
          * even before [update] has run with valid camera tracking + depth data — see #1783.
          */
         internal const val DEGENERATE_AABB_HALF_EXTENT_M: Float = 1e-3f
-
-        /**
-         * Floor capacity (bytes) for the cached upload [ByteBuffer]s (#1810). Sized to cover the
-         * default stride-4 mesh from a 160×90 ARCore depth image: ~1024 vertices × 12 bytes
-         * ≈ 12 KB. The next-power-of-two growth in [acquireDirectBuffer] still kicks in for
-         * larger captures.
-         */
-        internal const val MIN_UPLOAD_BUFFER_BYTES: Int = 16 * 1024
-
-        /**
-         * Ceiling capacity (bytes) above which the cached upload [ByteBuffer]s are no longer
-         * reused — a one-off oversized depth image must not permanently inflate the cache
-         * (#1846). 1 MB comfortably covers a stride-1 vertex stream from a high-end 480×270
-         * depth image (~130k verts × 12 B = ~1.6 MB → triggers a fresh alloc), while a typical
-         * stride-4 mesh from a 160×90 capture stays well under the cap (~12 KB) and retains the
-         * no-shrink reuse path.
-         */
-        internal const val MAX_UPLOAD_BUFFER_BYTES: Int = 1 * 1024 * 1024
 
         private fun createInitialVertexBuffer(engine: Engine): VertexBuffer =
             VertexBuffer.Builder()

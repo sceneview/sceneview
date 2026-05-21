@@ -39,7 +39,8 @@ import androidx.compose.ui.res.stringResource
 class MainActivity : ComponentActivity() {
 
     // Exposed (internal) so SceneViewDemoApp can hand the manager to UpdateBanner —
-    // the composable only renders the downloaded-and-ready chrome.
+    // the composable renders the demo-native update-available / downloading /
+    // ready-to-restart chrome.
     internal lateinit var updateManager: InAppUpdateManager
 
     /**
@@ -58,6 +59,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         updateManager = InAppUpdateManager(this)
+        // Register the activity-result launcher for Google's FLEXIBLE consent
+        // modal BEFORE the activity reaches STARTED. Cancelling that modal is
+        // delivered here (RESULT_CANCELED) — without it a cancel would strand
+        // the in-app Update button as a permanent no-op (#1942 review).
+        updateManager.registerForResult(this)
         // Two ingress channels: (1) `--es demo <id>` from `adb shell am` for QA / instrumented
         // tests, (2) URL deep-links via the public sceneview://demo/<id> scheme parsed by
         // DeepLinkRouter. The QA channel takes precedence so a tester running adb against a
@@ -155,10 +161,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         // Two phases (#890): handle a partially-downloaded update from a prior session,
-        // then proactively check the Play Console for a newer release. Without
-        // checkForUpdate() the flexible-update flow never starts, so the UpdateBanner
-        // composable below also never lights up — making the entire in-app-update
-        // pipeline a phantom on production builds.
+        // then proactively check the Play Console for a newer release. Called from
+        // onResume (not onCreate) so a backgrounded-then-resumed app re-checks.
+        // checkForUpdate() only surfaces the AVAILABLE state — it never pops the
+        // Google consent modal; that happens solely on the user's deliberate tap of
+        // the in-app "Update" button rendered by UpdateBanner below (#1941).
         updateManager.checkForStalledUpdate()
         updateManager.checkForUpdate()
     }
@@ -231,10 +238,11 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         }
 
         // The update banner is a no-op when state is IDLE / CHECKING /
-        // UP_TO_DATE — it only renders during DOWNLOADING / READY_TO_INSTALL so
-        // it doesn't take screen real estate from demos (#890). The status-bar
-        // inset keeps it clear of the system bar so the banner is never clipped
-        // behind the status bar or a demo's top app bar (#1425).
+        // UP_TO_DATE — it renders the demo-native AVAILABLE / DOWNLOADING /
+        // READY_TO_INSTALL chrome so the whole flexible-update flow stays inside
+        // the app's own UI (#890, #1941). The status-bar inset keeps it clear of
+        // the system bar so the banner is never clipped behind the status bar or
+        // a demo's top app bar (#1425).
         activity?.updateManager?.let { mgr ->
             UpdateBanner(
                 updateManager = mgr,

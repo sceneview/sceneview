@@ -67,7 +67,7 @@ struct LightingDemo: View {
                         Button {
                             selectedLight = i
                             #if os(iOS)
-                            HapticManager.selectionChanged()
+                            SceneViewHaptic.shared.selection()
                             #endif
                         } label: {
                             VStack(spacing: 4) {

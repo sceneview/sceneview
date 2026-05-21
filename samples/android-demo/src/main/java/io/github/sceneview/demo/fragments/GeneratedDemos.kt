@@ -32,6 +32,7 @@ object GeneratedDemos {
         ArImageFragment,
         ArImageStabilizationFragment,
         ArInstantPlacementFragment,
+        ArMlObjectLabelFragment,
         ArOrbitalFragment,
         ArPlacementFragment,
         ArPoseFragment,
@@ -66,6 +67,7 @@ object GeneratedDemos {
         SceneGalleryFragment,
         SecondaryCameraFragment,
         ShapeFragment,
+        SpatialAudioFragment,
         TextFragment,
         TextureStreamingFragment,
         VideoFragment,
@@ -95,6 +97,7 @@ object GeneratedDemos {
             "ar-image" -> ArImageFragment.Screen(onBack)
             "ar-image-stabilization" -> ArImageStabilizationFragment.Screen(onBack)
             "ar-instant-placement" -> ArInstantPlacementFragment.Screen(onBack)
+            "ar-ml-object-label" -> ArMlObjectLabelFragment.Screen(onBack)
             "ar-orbital" -> ArOrbitalFragment.Screen(onBack)
             "ar-placement" -> ArPlacementFragment.Screen(onBack)
             "ar-pose" -> ArPoseFragment.Screen(onBack)
@@ -129,6 +132,7 @@ object GeneratedDemos {
             "scene-gallery" -> SceneGalleryFragment.Screen(onBack)
             "secondary-camera" -> SecondaryCameraFragment.Screen(onBack)
             "shape" -> ShapeFragment.Screen(onBack)
+            "spatial-audio" -> SpatialAudioFragment.Screen(onBack)
             "text" -> TextFragment.Screen(onBack)
             "texture-streaming" -> TextureStreamingFragment.Screen(onBack)
             "video" -> VideoFragment.Screen(onBack)

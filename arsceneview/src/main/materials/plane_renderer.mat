@@ -1,3 +1,13 @@
+// plane_renderer.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Unlit transparent material that draws detected ARCore planes with a tiled
+//             grid texture (the dotted detection overlay).
+// Used by:    PlaneRenderer (planeMaterial) — ARSceneView plane visualization.
+// Parameters:
+//   texture    — sampler2d, the tiled plane-grid texture (textures/plane_renderer.png).
+//   color      — float3, RGB tint multiplied into the texture.
+//   uvScale    — float2, tiling factor mapping local plane X/Z to texture UV.
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
 material {
     name : "AR Core Plane Material",
 
@@ -13,14 +23,6 @@ material {
         {
             "type": "float2",
             "name": "uvScale"
-        },
-        {
-            "type": "float3",
-            "name": "focusPoint"
-        },
-        {
-            "type": "float",
-            "name": "radius"
         }
     ],
     "variables" : [
@@ -60,14 +62,8 @@ fragment {
         material.baseColor = texture(materialParams_texture, variable_texCoordsAlpha.xy);
         material.baseColor.rgb *= materialParams.color;
 
-        //float textureAlpha = material.baseColor.a;
-
-        // Create a spotlight effect around the focus point.
-        //float distToFocus = distance(getWorldPosition() + getWorldOffset(), materialParams.focusPoint);
-        //float alpha = 1.0 - smoothstep(materialParams.radius * 0.5, materialParams.radius, distToFocus);
-
-        // Transparent blending uses pre-multiplied alpha,
-        // so multiply the entire baseColor by the alpha for this fragment.
-        //material.baseColor *= variable_texCoordsAlpha.z * alpha;
+        // Spotlight highlight: removed unused focusPoint/radius params (#1922); see git history to restore.
+        // The parked block also gated baseColor by variable_texCoordsAlpha.z (per-vertex
+        // alpha) — kept disabled to preserve current rendering behaviour.
     }
 }

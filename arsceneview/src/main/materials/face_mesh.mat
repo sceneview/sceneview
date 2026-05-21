@@ -1,3 +1,11 @@
+// face_mesh.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Unlit transparent material that textures an ARCore Augmented Face mesh
+//             (face paint / mask overlay).
+// Used by:    AugmentedFaceNode mesh material — supplied to its `meshMaterialInstance`.
+// Parameters:
+//   texture — sampler2d, the RGBA face-texture sampled across the face-mesh UVs.
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
 material {
     name : "Face Mesh",
 
