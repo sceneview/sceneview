@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,8 +50,20 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.utils.readBuffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 private const val HELMET_ASSET = "models/khronos_damaged_helmet.glb"
+
+/** Origin the PiP camera always looks at. */
+private val ORIGIN = Position(0f, 0f, 0f)
+
+// Orbit preset tuning. The camera circles the model in the horizontal plane at
+// a slight elevation; one full sweep takes ORBIT_PERIOD_NANOS.
+private const val ORBIT_RADIUS = 1.8f
+private const val ORBIT_HEIGHT = 0.6f
+private const val ORBIT_PERIOD_NANOS = 12_000_000_000L
 
 /**
  * Secondary camera (picture-in-picture) demo.
@@ -59,9 +72,19 @@ private const val HELMET_ASSET = "models/khronos_damaged_helmet.glb"
  * simultaneously:
  *  - the main view uses the default orbital camera (user-interactive),
  *  - the small PiP overlay binds a dedicated [rememberCameraNode] and is
- *    repositioned by [LaunchedEffect] when the user picks a chip (Top /
- *    Side / Front / Corner), so switching chips actually changes what the
- *    PiP shows (top-down, side profile, front-on, 3/4).
+ *    repositioned by [LaunchedEffect] when the user picks a chip.
+ *
+ * The chips drive the PiP camera in two distinct ways, both proving the
+ * per-instance `cameraNode` binding is genuinely independent of the main view:
+ *
+ *  - **Fixed angles** (Top / Side / Front / Corner) park the PiP at a static
+ *    eye position, so the inset shows the helmet from an angle the user has
+ *    not orbited the main view to.
+ *  - **Orbit** runs an [LaunchedEffect] frame loop that continuously sweeps
+ *    `pipCameraNode.position` around the model. The PiP keeps flying around
+ *    the helmet on its own *while the user drags the main view* — the most
+ *    direct demonstration of why you would reach for a second `cameraNode`:
+ *    one scene, two cameras moving fully independently.
  *
  * Key correctness invariants — both ship-blockers if missed:
  *
@@ -110,9 +133,32 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
     var cameraPreset by rememberSaveable { mutableStateOf(CameraPreset.TOP) }
 
     val pipCameraNode = rememberCameraNode(engine)
+    // Positions the PiP camera. A fixed preset (Top / Side / Front / Corner)
+    // parks the camera once; the Orbit preset runs a frame loop that keeps
+    // sweeping the camera around the model — independently of the user's
+    // main-view orbit, which is the whole point of a dedicated `cameraNode`.
     LaunchedEffect(cameraPreset) {
-        pipCameraNode.position = cameraPreset.eye
-        pipCameraNode.lookAt(Position(0f, 0f, 0f))
+        cameraPreset.eye?.let { eye ->
+            pipCameraNode.position = eye
+            pipCameraNode.lookAt(ORIGIN)
+            return@LaunchedEffect
+        }
+        // Orbit: one full sweep every ORBIT_PERIOD_NANOS, driven by the display
+        // clock so the speed is frame-rate independent (matches OrbitalARDemo).
+        var startNanos = 0L
+        while (true) {
+            withFrameNanos { nanos ->
+                if (startNanos == 0L) startNanos = nanos
+                val phase = (nanos - startNanos) % ORBIT_PERIOD_NANOS
+                val angle = phase.toFloat() / ORBIT_PERIOD_NANOS * (2f * PI.toFloat())
+                pipCameraNode.position = Position(
+                    x = sin(angle) * ORBIT_RADIUS,
+                    y = ORBIT_HEIGHT,
+                    z = cos(angle) * ORBIT_RADIUS,
+                )
+                pipCameraNode.lookAt(ORIGIN)
+            }
+        }
     }
 
     val firstFrame = rememberFirstFrameState()
@@ -242,11 +288,21 @@ private fun rememberInstancedHelmet(
     }.value
 }
 
-private enum class CameraPreset(@StringRes val labelRes: Int, val eye: Position) {
+/**
+ * A PiP camera framing.
+ *
+ * [eye] is the static eye position for a fixed angle. It is `null` for [ORBIT],
+ * which has no fixed position — the [LaunchedEffect] animates it every frame.
+ */
+private enum class CameraPreset(@StringRes val labelRes: Int, val eye: Position?) {
     // Y=1.8 with X=0.01 to avoid a gimbal singularity in lookAt's up-vector
     // resolution when the camera sits exactly above the origin.
     TOP(R.string.demo_secondary_camera_chip_top, Position(0.01f, 1.8f, 0f)),
     SIDE(R.string.demo_secondary_camera_chip_side, Position(1.8f, 0.2f, 0f)),
     FRONT(R.string.demo_secondary_camera_chip_front, Position(0f, 0.2f, 1.8f)),
     CORNER(R.string.demo_secondary_camera_chip_corner, Position(1.3f, 0.9f, 1.3f)),
+
+    // No fixed eye — the demo's LaunchedEffect sweeps the PiP camera around the
+    // model on its own, regardless of how the user orbits the main view.
+    ORBIT(R.string.demo_secondary_camera_chip_orbit, null),
 }

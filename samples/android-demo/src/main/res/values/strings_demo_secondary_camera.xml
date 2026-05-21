@@ -9,6 +9,7 @@
     <string name="demo_secondary_camera_subtitle">Picture-in-picture camera view</string>
     <string name="demo_secondary_camera_chip_corner">Corner</string>
     <string name="demo_secondary_camera_chip_front">Front</string>
+    <string name="demo_secondary_camera_chip_orbit">Orbit</string>
     <string name="demo_secondary_camera_chip_section">PiP Camera Angle</string>
     <string name="demo_secondary_camera_chip_selected">Selected camera angle</string>
     <string name="demo_secondary_camera_chip_side">Side</string>
