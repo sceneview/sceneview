@@ -41,10 +41,10 @@ import kotlin.math.sin
 /**
  * Demonstrates positional 3D audio with [SpatialAudioNode].
  *
- * A small sphere orbits a fixed centre at 0.6 m radius. A looping bell tone is
- * attached to the sphere via [SpatialAudioNode], so as the sphere swings past
- * you the audio pans from one ear to the other and grows softer / louder with
- * distance to the camera.
+ * A clearly-framed sphere orbits a fixed centre at 0.6 m radius. A looping bell
+ * tone is attached to the sphere via [SpatialAudioNode], so as the sphere swings
+ * past you the audio pans from one ear to the other and grows softer / louder
+ * with distance to the camera.
  *
  * Drag to orbit the camera — the audio bus updates every frame from the camera
  * pose, so circling the scene the sound rotates with you (because the source
@@ -73,11 +73,12 @@ fun SpatialAudioDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
 
-    // Camera home — pulled back enough that the orbiting sphere sweeps a wide
-    // stereo field on a typical phone. The look-at hugs the orbit plane so the
-    // sphere never disappears off-screen.
+    // Camera home — close enough that the orbiting sphere fills a comfortable
+    // portion of the viewport (the orbit radius is only 0.6 m), but high enough
+    // to show the ground plate for depth. The look-at hugs the orbit plane so
+    // the sphere never disappears off-screen.
     val cameraNode = rememberCameraNode(engine) {
-        position = Position(0f, 0.6f, 2.2f)
+        position = Position(0f, 0.45f, 1.4f)
         lookAt(Position(0f, 0f, 0f))
     }
 
@@ -174,19 +175,35 @@ fun SpatialAudioDemo(onBack: () -> Unit) {
                 )
             },
         ) {
-            // Soft key light.
+            // Key light — warm directional that catches the orbiting sphere
+            // from the upper-front so it always shows a lit face to the camera.
             LightNode(
                 type = LightManager.Type.DIRECTIONAL,
                 direction = io.github.sceneview.math.Direction(-0.3f, -1f, -0.5f),
-                apply = { intensity(10_000f) }
+                apply = {
+                    color(1.0f, 0.97f, 0.92f)
+                    intensity(12_000f)
+                }
+            )
+            // Cool fill from the opposite side — lifts the shaded half of the
+            // sphere so it never reads as a flat dark dot against the backdrop.
+            LightNode(
+                type = LightManager.Type.DIRECTIONAL,
+                direction = io.github.sceneview.math.Direction(0.5f, -0.4f, 0.6f),
+                apply = {
+                    color(0.85f, 0.9f, 1.0f)
+                    intensity(4_000f)
+                }
             )
 
-            // The orbiting sphere — visible carrier for the audio source.
+            // The orbiting sphere — visible carrier for the audio source. Sized
+            // generously and tinted with the bright on-brand purple so it pops
+            // against the dark scene and reads as the demo's subject.
             val orbiterMaterial = rememberMaterialInstance(
-                materialLoader, SceneViewColors.Ramp4[2]
+                materialLoader, SceneViewColors.TintSoft
             )
             SphereNode(
-                radius = 0.08f,
+                radius = 0.16f,
                 materialInstance = orbiterMaterial,
                 position = spherePosition,
             )
@@ -194,19 +211,23 @@ fun SpatialAudioDemo(onBack: () -> Unit) {
             // A small marker at the orbit centre so the user has a visual
             // anchor for where the camera is looking.
             val centerMaterial = rememberMaterialInstance(
-                materialLoader, SceneViewColors.SurfaceDim
+                materialLoader, SceneViewColors.TintLight
             )
             SphereNode(
-                radius = 0.02f,
+                radius = 0.04f,
                 materialInstance = centerMaterial,
                 position = Position(x = 0f, y = 0f, z = 0f),
             )
 
-            // Ground "shadow" plate.
+            // Ground "shadow" plate — a dim surface set just below the orbit
+            // plane gives the sphere a grounded backdrop to read against.
+            val groundMaterial = rememberMaterialInstance(
+                materialLoader, SceneViewColors.SurfaceDim
+            )
             PlaneNode(
-                materialInstance = centerMaterial,
+                materialInstance = groundMaterial,
                 size = Size(x = 2f, y = 0f, z = 2f),
-                position = Position(y = -0.5f),
+                position = Position(y = -0.3f),
             )
 
             // Listener — Camera (the default). Declared explicitly here for
