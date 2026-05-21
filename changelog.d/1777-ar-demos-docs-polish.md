@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- AR demos + docs polish (#1777): `ARDepthOcclusionDemo` now shows a transition spinner while the depth toggle rebuilds the camera stream (+ a `connectedAndroidTest` that flips depth mode 10× and asserts stability); `LightEstimator` gains an `enableColorCorrection` toggle and exposes the raw `lastColorCorrection` triple; `sessionConfiguration` / `sessionCameraConfig` KDoc now warns about mid-session config swaps; `llms.txt` documents camera-config swapping and editable nodes (`TransformableNode` parity).

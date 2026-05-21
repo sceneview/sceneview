@@ -1211,6 +1211,61 @@ fun cameraConfigFilter(block: CameraConfigFilterBuilder.() -> Unit): (Session) -
 Pair this with `frame.cameraImage()` (above) for custom CV pipelines: a 60 FPS / low-res config
 keeps the ML model fed with fresh frames while leaving CPU headroom for inference.
 
+### Camera config swap mid-session (back ↔ front)
+
+`sessionCameraConfig` is **reactive** — changing it (e.g. flipping from a BACK config to
+`::frontCameraConfig` to enter Augmented Faces) is applied to the live `Session`. ARCore
+accepts this, but it forces a camera-pipeline restart with real, visible side effects:
+
+- A frame drop / black flash while the new camera opens.
+- Total loss of tracking — all `Anchor`s become invalid, planes and the world coordinate
+  frame are re-acquired from scratch, and newly found planes will not line up with the
+  pre-swap world.
+- Depth-buffer format changes — front-camera configs do not expose ARCore Depth, so any
+  `depthMode` / occlusion path silently downgrades when the session moves to FRONT.
+
+**Recommended pattern — wrap the whole `ARSceneView` in `key(...)` and show a spinner**
+so Compose rebuilds the session cleanly instead of mutating it live:
+
+```kotlin
+@Composable
+fun CameraSwapDemo() {
+    var useFrontCamera by remember { mutableStateOf(false) }
+    var switching by remember { mutableStateOf(false) }
+
+    Box(Modifier.fillMaxSize()) {
+        // Re-keying on the facing direction tears down + rebuilds the session — the
+        // boring, correct way to swap cameras. The lambda below toggles a spinner.
+        key(useFrontCamera) {
+            ARSceneView(
+                sessionFeatures = if (useFrontCamera) {
+                    setOf(Session.Feature.FRONT_CAMERA)
+                } else {
+                    emptySet()
+                },
+                // BACK uses the default highestResolutionCameraConfig; FRONT needs
+                // ::frontCameraConfig or the session stays on the back camera.
+                sessionCameraConfig = if (useFrontCamera) ::frontCameraConfig else null,
+                sessionConfiguration = { _, config ->
+                    config.augmentedFaceMode = if (useFrontCamera) {
+                        Config.AugmentedFaceMode.MESH3D
+                    } else {
+                        Config.AugmentedFaceMode.DISABLED
+                    }
+                },
+                // First frame of the rebuilt session — the swap is done.
+                onSessionUpdated = { _, _ -> switching = false }
+            ) { /* nodes */ }
+        }
+        Button(onClick = { switching = true; useFrontCamera = !useFrontCamera }) {
+            Text(if (useFrontCamera) "Use back camera" else "Use front camera")
+        }
+        // Cover the black flash with a loading spinner.
+        if (switching) CircularProgressIndicator(Modifier.align(Alignment.Center))
+    }
+}
+```
+
 ### Raw depth point cloud — confidence-filtered visualization
 
 `Config.DepthMode.RAW_DEPTH_ONLY` exposes raw per-pixel depth **plus** a companion
@@ -2005,6 +2060,47 @@ node.lookTowards(lookDirection, upDirection)
 node.animatePositions(...)
 node.animateRotations(...)
 ```
+
+### Editable nodes — Sceneform `TransformableNode` parity
+
+SceneView's gesture-editing API is the direct replacement for Sceneform's
+`TransformableNode`. It is already shipped on every `Node` (and therefore every
+`ModelNode`) — there is no separate node type to instantiate, you just flip flags:
+
+```kotlin
+ModelNode(
+    modelInstance = instance,
+    scaleToUnits = 0.5f,
+    isEditable = true,              // master switch — enables drag / pinch / twist
+    apply = {
+        // Per-axis locks — each one ALSO requires isEditable = true to take effect.
+        isPositionEditable = true   // one-finger drag moves the node
+        isRotationEditable = true   // two-finger twist rotates the node
+        isScaleEditable = true      // pinch scales the node
+        editableScaleRange = 0.1f..10.0f   // clamp pinch-to-scale (default 0.1..10)
+        scaleGestureSensitivity = 0.5f     // 0 = no scaling, 1 = raw pinch factor
+    }
+)
+```
+
+Key facts an AI codegen pass must get right:
+
+- `isEditable = false` (the default) makes the node a pure observed object — all three
+  per-axis gestures are blocked regardless of the sub-flags.
+- The three sub-flags (`isPositionEditable` / `isRotationEditable` / `isScaleEditable`)
+  are gated: their getter returns `isEditable && field`, so setting `isRotationEditable
+  = true` while `isEditable = false` still yields `false`. Default sub-flag values:
+  position `false`, rotation `true`, scale `true`.
+- When a touch lands on an editable node, the camera orbit/pan/zoom manipulator is
+  skipped for the duration of that touch — otherwise the same drag would move the node
+  AND orbit the camera.
+- These are plain `Node` properties, not composable parameters — to change them
+  reactively after creation, re-push them from a `LaunchedEffect` keyed on the new
+  values (the `apply` block runs only once at node creation).
+
+The `gesture-editing` demo in `samples/android-demo` is the canonical end-to-end
+example: it wires every flag to a UI switch, a scale-sensitivity slider, and a
+live-transform overlay.
 
 ---
 

@@ -10,16 +10,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -105,6 +109,11 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
     var occlusionEnabled by remember { mutableStateOf(true) }
     var depthSupported by remember { mutableStateOf<Boolean?>(null) }
 
+    // Tracks whether the depth-transition `LaunchedEffect` below has run once already —
+    // a plain `remember` (not `mutableStateOf`) since it never drives recomposition, it
+    // only suppresses the spinner on the demo's initial composition (#1777).
+    val firstDepthCompositionHolder = remember { booleanArrayOf(true) }
+
     var placedAnchor by remember { mutableStateOf<Anchor?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var isTracking by remember { mutableStateOf(false) }
@@ -115,6 +124,23 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
     // The toggle ultimately drives both ARCore's session config AND the camera stream's
     // material selection. Snapshot the value so the keyed scope below sees a stable boolean.
     val depthOn = occlusionEnabled && (depthSupported != false)
+
+    // Transition feedback for the depth toggle (#1777). Flipping the toggle re-keys the
+    // whole ARSceneView, which tears down and rebuilds the engine + camera stream — a
+    // visible 2-3 frame hitch with no feedback before this. `depthSwitching` is set to
+    // `true` the moment the keyed value changes and cleared once the rebuilt scene
+    // delivers its first session frame; while true a spinner overlay tells the user the
+    // material swap is in progress (and, if the swap silently fails, the spinner clearing
+    // is itself a signal the new scene came up). See the related pre-existing #1617.
+    var depthSwitching by remember { mutableStateOf(false) }
+    LaunchedEffect(depthOn) {
+        // Skip the very first composition — only a genuine user toggle should spin.
+        if (firstDepthCompositionHolder[0]) {
+            firstDepthCompositionHolder[0] = false
+        } else {
+            depthSwitching = true
+        }
+    }
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_depth_occlusion_title),
@@ -224,6 +250,10 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                     onSessionUpdated = { _, frame: Frame ->
                         latestFrame = frame
                         isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                        // The rebuilt scene has produced its first frame — the depth
+                        // material swap is complete, so drop the transition spinner
+                        // (#1777). Cheap idempotent assignment on every later frame.
+                        if (depthSwitching) depthSwitching = false
                     },
                     onTrackingFailureChanged = { reason ->
                         trackingFailureReason = reason
@@ -294,6 +324,42 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.labelLarge
                 )
+            }
+
+            // Depth-toggle transition spinner (#1777) — covers the 2-3 frame engine +
+            // camera-stream rebuild triggered by the `key(depthOn)` remount. Without it
+            // the user gets no feedback during the black flash and cannot tell a slow
+            // swap from a silently failed one. Centred, with a `testTag` so the
+            // ARDepthOcclusionToggleTest can assert the spinner appears/clears.
+            AnimatedVisibility(
+                visible = depthSwitching,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Surface(
+                    modifier = Modifier.testTag("depth-transition-spinner"),
+                    color = Color.Black.copy(alpha = 0.6f),
+                    contentColor = Color.White,
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = 6.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Text(
+                            text = "Switching depth mode…",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
             }
 
             // Scanning / tracking-failure overlay — same vocabulary as ARPlacementDemo.

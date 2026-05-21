@@ -96,6 +96,63 @@ class LightEstimator(
     var isEnabled = true
 
     /**
+     * Apply ARCore's per-frame white-balance / color-correction in the
+     * [LightEstimationMode.AMBIENT_INTENSITY] path.
+     *
+     * **Default `true`** — preserves the historical behaviour. ARCore's
+     * `LightEstimate.getColorCorrection()` returns an RGB triple that tints the
+     * estimated main light so virtual objects pick up the real scene's white
+     * balance (e.g. a warm tungsten room shifts the directional light amber).
+     *
+     * Set `false` to keep the main light a **neutral white** while still
+     * tracking the estimated *intensity* — useful when an app wants
+     * authored materials to render with their designed albedo (no
+     * environment-driven hue shift), or to debug whether a wrong-looking
+     * tint comes from the estimator or from the materials themselves.
+     *
+     * This toggle only affects [LightEstimationMode.AMBIENT_INTENSITY]; the
+     * [LightEstimationMode.ENVIRONMENTAL_HDR] path derives its main-light
+     * color from `environmentalHdrMainLightIntensity` and is unaffected.
+     *
+     * **Interaction with camera exposure:** color correction is a *hue*
+     * adjustment and is orthogonal to exposure. ARCore writes the average
+     * pixel intensity into the 4th component of the color-correction array
+     * (mirrored into [lastColorCorrection]'s `w`); the main-light *intensity*
+     * (not color) is derived from that and scaled by [AMBIENT_INTENSITY_GAIN].
+     * Disabling color correction therefore changes only the light's tint, not
+     * how bright the scene reads — exposure stays driven by the camera model.
+     *
+     * `@Volatile` — safe to flip from any thread, same contract as the other
+     * public toggles.
+     */
+    @Volatile
+    var enableColorCorrection = true
+
+    /**
+     * The raw ARCore color-correction values from the most recent
+     * [LightEstimationMode.AMBIENT_INTENSITY] estimate, or `null` until the
+     * first valid estimate arrives (and on any non-`AMBIENT_INTENSITY` mode).
+     *
+     * The four [Color] components map directly onto ARCore's
+     * `LightEstimate.getColorCorrection()` output:
+     * - `r` — red-channel correction factor (`>= 0`).
+     * - `g` — green-channel correction factor; always `1.0` (the reference
+     *   baseline ARCore scales the other two channels against).
+     * - `b` — blue-channel correction factor (`>= 0`).
+     * - `w` — average pixel intensity in `[0.0, 1.0]` (identical to
+     *   `LightEstimate.getPixelIntensity()`).
+     *
+     * Exposed read-only so apps can surface the live white-balance estimate
+     * in a debug overlay or feed it into their own shading. A white triple
+     * (`r = g = b = 1.0`) with `w = 1.0` means "no correction needed".
+     *
+     * `@Volatile` — written on the AR render thread, read from any thread.
+     */
+    @Volatile
+    var lastColorCorrection: Color? = null
+        private set
+
+    /**
      * Enable reflection cubemap
      *
      * - true if the AR Core reflection cubemap should be used
@@ -372,6 +429,13 @@ class LightEstimator(
         // frame) instead of allocating one per call on the 30-60 Hz render thread.
         estimation.clear()
 
+        // The raw color-correction triple only exists in the AMBIENT_INTENSITY
+        // path (#1777) — drop any stale value so a reader never sees a triple
+        // left over from a mode that no longer produces one.
+        if (mode != LightEstimationMode.AMBIENT_INTENSITY) {
+            lastColorCorrection = null
+        }
+
         return when (mode) {
             LightEstimationMode.AMBIENT_INTENSITY -> estimation.apply {
                 // The 4-component color correction values are written into the
@@ -391,11 +455,24 @@ class LightEstimator(
                 // intensity will not be significantly changed
                 lightEstimate.getColorCorrection(colorCorrections, 0)
 
+                // Publish the raw 4-component estimate so apps can surface the
+                // live white balance (#1777). The 4th component is ARCore's
+                // average pixel intensity, mapped onto `Color.w`.
+                lastColorCorrection = Color(
+                    colorCorrections[0], colorCorrections[1],
+                    colorCorrections[2], colorCorrections[3]
+                )
+
                 // Index the RGB channels directly (#1105) — `slice(0..2)` boxed a
                 // `List<Float>` plus 3 boxed `Float`s every frame.
-                val colorIntensitiesFactors = Color(
-                    colorCorrections[0], colorCorrections[1], colorCorrections[2]
-                )
+                val colorIntensitiesFactors = if (enableColorCorrection) {
+                    Color(colorCorrections[0], colorCorrections[1], colorCorrections[2])
+                } else {
+                    // Color correction off (#1777): keep the main light a neutral
+                    // white. Intensity (below) is unaffected — only the hue shift
+                    // ARCore would apply for the scene's white balance is dropped.
+                    Color(1.0f, 1.0f, 1.0f)
+                }
                 val maxIntensity = max(colorIntensitiesFactors)
                 // Normalize color to fit into [0..1]
                 // Rendering in linear space
