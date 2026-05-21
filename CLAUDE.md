@@ -217,6 +217,24 @@ and AR UI/state QA. AR features that need real world tracking (Cloud Anchor,
 Streetscape/VPS, face mesh against a live face) still need a physical-device
 AR Record — request one rather than driving someone's personal phone over USB.
 
+**Golden boot snapshot — faster, deterministic QA (#1672).** The QA AVD's
+userdata partition fills up after ~6 runs and Filament viewports turn black.
+Seed a clean post-install boot snapshot once; every subsequent run cold-boots
+from it with `-no-snapshot-save` (loads the warm state, never writes back), so
+runs start identical and the partition never degrades:
+
+```bash
+bash .claude/scripts/setup-ar-emulator.sh --clean --seed-snapshot   # seed once
+bash .claude/scripts/setup-ar-emulator.sh                           # restores 'qa-clean'
+bash .claude/scripts/setup-ar-emulator.sh --no-snapshot             # force cold boot
+```
+
+Only the base-port emulator restores the snapshot (`-snapshot` is incompatible
+with the `-read-only` pool peers); `--clean` drops the snapshot; CI is
+unaffected (the GitHub emulator action has its own snapshot caching). See
+[`.maestro/README.md`](.maestro/README.md) for the full rationale and the
+Android Studio Journeys assessment (not adopted — blocked on an AGP 9.0.0 bump).
+
 **Visible (windowed) emulator — opt-in (#1660).** The emulator boots **headless
 by default** (`-no-window`), which is marginally lighter on the host (skips the
 skin-window draw + window-server compositing). To watch it locally, opt in:
@@ -730,7 +748,7 @@ Hooks trigger automatically on specific Claude Code actions:
 | `cross-platform-check.sh` | Compare Android vs iOS vs Web API surface, report gaps |
 | `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.) |
 | `lib/android-cli.sh` | Shared helpers for Google's `android` CLI (screenshot, layout, install+launch) with `adb` fallback |
-| `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool state), `--clean` (wipe+recreate). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. **Use this for routine QA — never QA on a personal device.** |
+| `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool + snapshot state), `--clean` (wipe+recreate), `--seed-snapshot` (seed the golden `qa-clean` boot snapshot), `--no-snapshot` (force cold boot). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. Boot snapshots (#1672): once seeded, the base-port emulator cold-boots from the immutable `qa-clean` snapshot — faster and deterministic, and fixes the userdata storage-degradation bug. **Use this for routine QA — never QA on a personal device.** |
 | `lib/emulator-select.sh` | Sourced helper for `setup-ar-emulator.sh` / `device-qa.sh` / `qa-android-demos.sh` — RAM monitoring (`vm_stat`/`/proc/meminfo`), RAM-budgeted pool-cap computation, a per-emulator lease registry, RAM-scaled `-memory`, multi-port boot, and stale-lease reclaim. The adaptive pool runs as many emulators as live host RAM safely allows (floor 1, `EMU_POOL_MAX` ceiling), superseding #1647's strict-single design (#1654). |
 | `qa-android-demos.sh` | QA loop over every demo — uses `android layout`/`screen capture` for the UI dump and screenshots |
 | `capture-play-store-screenshots.sh` | Play Store screenshot capture — `android screen capture` (no LF/CRLF corruption) |
