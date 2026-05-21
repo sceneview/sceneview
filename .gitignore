@@ -91,6 +91,15 @@ samples/ios-demo/.build/
 *.apk
 *.aab
 
+# `GeneratedDemos.kt` is the collated output of the append-only DemoRegistry
+# fragments (issue #1797). Committing it produced a guaranteed merge conflict
+# on every parallel demo-adding PR (issue #1976) — the same conflict class
+# #1928 killed for `mcp/src/generated/llms-txt.ts`. It is now generated at
+# build time: the `generateDemoRegistry` Gradle task runs
+# `samples/android-demo/scripts/collate-demos.sh --kt-only` before
+# `:samples:android-demo` Kotlin compilation.
+samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/GeneratedDemos.kt
+
 # ── MkDocs ────────────────────────────────────────────────
 docs/.cache/
 docs/site/
