@@ -1,7 +1,8 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
+import { getCookie, setCookie } from "hono/cookie";
 import type { Env } from "./env.js";
-import { isRateLimited } from "./rate-limit.js";
+import { isRateLimited, issueQuotaExceeded } from "./rate-limit.js";
 import { transcribe } from "./transcribe.js";
 import { buildIssue, type Category, type FeedbackContext } from "./issue.js";
 import { createIssue } from "./github.js";
@@ -31,6 +32,31 @@ function fileField(form: FormData, name: string): File | null {
     return entry as File;
   }
   return null;
+}
+
+/** Name of the HttpOnly cookie carrying the admin session token. */
+const ADMIN_COOKIE = "fb_admin";
+
+/** Constant-time string compare via SHA-256 digests (fixed length, no early-out). */
+async function constantTimeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const va = new Uint8Array(da);
+  const vb = new Uint8Array(db);
+  let diff = 0;
+  for (let i = 0; i < va.length; i++) diff |= va[i] ^ vb[i];
+  return diff === 0;
+}
+
+/** True when the request carries a valid admin session cookie. */
+async function isAdmin(c: Context<{ Bindings: Env }>): Promise<boolean> {
+  const token = c.env.ADMIN_TOKEN;
+  if (!token) return false;
+  const cookie = getCookie(c, ADMIN_COOKIE);
+  return !!cookie && (await constantTimeEqual(cookie, token));
 }
 
 // ── CORS — the demo apps post from a native HTTP client ─────────────────────
@@ -92,6 +118,17 @@ app.post("/v1/feedback", async (c) => {
   const video = fileField(form, "video");
   const audio = fileField(form, "audio");
 
+  // Enforce the real upload size on the File objects — `content-length`
+  // (checked above) is optional and client-controlled, so it is not authoritative.
+  if ((video?.size ?? 0) + (audio?.size ?? 0) > MAX_UPLOAD) {
+    return c.json({ error: "payload_too_large" }, 413);
+  }
+  // Reject empty submissions — no text, no audio and no video would only
+  // produce a blank GitHub issue.
+  if (!text && !video && !audio) {
+    return c.json({ error: "empty_feedback" }, 400);
+  }
+
   const id = crypto.randomUUID();
   let videoKey: string | null = null;
   let audioKey: string | null = null;
@@ -146,6 +183,14 @@ app.post("/v1/feedback", async (c) => {
     viewerUrl,
   });
 
+  // Repo-wide backstop: if issue creation is being flooded this hour, keep the
+  // feedback (media + transcript are already stored) but skip opening the issue.
+  if (await issueQuotaExceeded(c.env.RL_KV)) {
+    console.error("global issue quota exceeded — feedback stored, issue skipped");
+    await markError(c.env, id).catch(() => {});
+    return c.json({ ok: true, id, issue: null }, 202);
+  }
+
   try {
     const created = await createIssue(c.env, issue);
     await markIssued(c.env, id, created.number, created.url);
@@ -167,15 +212,31 @@ app.get("/feedback/:id", async (c) => {
   const row = await getFeedback(c.env, id);
   if (!row) return c.html(renderNotFound(), 404);
 
-  const token = c.req.query("token");
-  const admin =
-    !!c.env.ADMIN_TOKEN && token === c.env.ADMIN_TOKEN ? c.env.ADMIN_TOKEN : null;
-  return c.html(renderViewer(row, admin));
+  // Admin unlock: a valid `?token=` sets an HttpOnly cookie and redirects to a
+  // clean URL, so the token never lingers in browser history, logs or Referer.
+  const queryToken = c.req.query("token");
+  if (queryToken !== undefined) {
+    if (
+      c.env.ADMIN_TOKEN &&
+      (await constantTimeEqual(queryToken, c.env.ADMIN_TOKEN))
+    ) {
+      setCookie(c, ADMIN_COOKIE, c.env.ADMIN_TOKEN, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "Strict",
+        path: "/feedback",
+        maxAge: 28800,
+      });
+    }
+    return c.redirect(`/feedback/${id}`, 302);
+  }
+
+  return c.html(renderViewer(row, await isAdmin(c)));
 });
 
 // ── GET /feedback/:id/media/:kind — admin-gated media stream ─────────────────
 app.get("/feedback/:id/media/:kind", async (c) => {
-  if (!c.env.ADMIN_TOKEN || c.req.query("token") !== c.env.ADMIN_TOKEN) {
+  if (!(await isAdmin(c))) {
     return c.json({ error: "unauthorized" }, 401);
   }
   const id = c.req.param("id");

@@ -50,6 +50,10 @@ bucket_name = "sceneview-feedback-media"
 [ai]
 binding = "AI"
 
+# ── Observability (Workers Logs — surfaces console.error in the dashboard) ───
+[observability]
+enabled = true
+
 # ── Environment variables ────────────────────────────────────────────────────
 [vars]
 ENVIRONMENT = "production"

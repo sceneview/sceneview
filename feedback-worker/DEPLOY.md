@@ -34,10 +34,18 @@ Keep `app.pkcs8.pem` out of the repo — it goes straight into a Wrangler secret
 
 ```sh
 npm install
-wrangler d1 create sceneview-feedback            # paste database_id into wrangler.toml
-wrangler kv namespace create RL_KV               # paste id into wrangler.toml
+wrangler d1 create sceneview-feedback
+wrangler kv namespace create RL_KV
 wrangler r2 bucket create sceneview-feedback-media
-wrangler d1 migrations apply sceneview-feedback
+```
+
+Paste the printed `database_id` and KV `id` into `wrangler.toml`, **then** apply
+the migration to the **remote** D1. Without `--remote`, `migrations apply` only
+touches the local dev database and production launches with no `feedback` table
+(every `POST /v1/feedback` then 502s):
+
+```sh
+wrangler d1 migrations apply sceneview-feedback --remote
 ```
 
 ## 3. Secrets

@@ -52,3 +52,25 @@ export async function isRateLimited(
     limit: MAX_REQUESTS_PER_MINUTE,
   };
 }
+
+/** Repo-wide cap on GitHub issue creation per hour. */
+const MAX_ISSUES_PER_HOUR = 30;
+
+function hourBucket(): string {
+  return Math.floor(Date.now() / 3_600_000).toString(36);
+}
+
+/**
+ * Repo-wide backstop against an issue-creation flood that gets past the per-IP
+ * limiter (e.g. a botnet rotating IPs). Same approximate KV semantics as
+ * `isRateLimited` — an exact count is not needed, only a usable ceiling.
+ * Returns true (and does NOT consume a slot) once the hourly cap is reached.
+ */
+export async function issueQuotaExceeded(kv: KVNamespace): Promise<boolean> {
+  const key = `issuequota:${hourBucket()}`;
+  const current = await kv.get(key);
+  const count = current ? parseInt(current, 10) : 0;
+  if (count >= MAX_ISSUES_PER_HOUR) return true;
+  await kv.put(key, String(count + 1), { expirationTtl: 7200 });
+  return false;
+}

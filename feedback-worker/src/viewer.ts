@@ -5,7 +5,8 @@ function esc(s: unknown): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function shell(title: string, inner: string): string {
@@ -51,13 +52,10 @@ export function renderNotFound(): string {
 
 /**
  * Render the feedback viewer page.
- * @param adminToken non-null when the request carried a valid admin token —
+ * @param admin true when the request carried a valid admin session cookie —
  *   only then are the screen recording + audio players embedded.
  */
-export function renderViewer(
-  row: FeedbackRow,
-  adminToken: string | null,
-): string {
+export function renderViewer(row: FeedbackRow, admin: boolean): string {
   let context: Record<string, unknown> = {};
   try {
     context = row.context_json ? JSON.parse(row.context_json) : {};
@@ -91,13 +89,14 @@ export function renderViewer(
     mediaCard = `<div class="card"><h2>Recording</h2><p class="muted">Media expired and was purged after the 90-day retention window.</p></div>`;
   } else if (!hasMedia) {
     mediaCard = `<div class="card"><h2>Recording</h2><p class="muted">No screen recording or audio was attached to this feedback.</p></div>`;
-  } else if (adminToken) {
-    const t = encodeURIComponent(adminToken);
+  } else if (admin) {
+    // Media is fetched with the admin session cookie (Path=/feedback) — no
+    // token in the URL.
     const video = row.video_key
-      ? `<video controls preload="metadata" src="/feedback/${row.id}/media/video?token=${t}"></video>`
+      ? `<video controls preload="metadata" src="/feedback/${row.id}/media/video"></video>`
       : "";
     const audio = row.audio_key
-      ? `<audio controls preload="metadata" src="/feedback/${row.id}/media/audio?token=${t}"></audio>`
+      ? `<audio controls preload="metadata" src="/feedback/${row.id}/media/audio"></audio>`
       : "";
     mediaCard = `<div class="card"><h2>Recording</h2>${video}${audio}</div>`;
   } else {

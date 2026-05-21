@@ -60,7 +60,11 @@ export function buildIssue(input: {
     text.trim() ||
     transcript.trim().split(/[.\n]/)[0]?.trim() ||
     "User feedback";
-  const title = `[${tag}] ${summary}`.replace(/\s+/g, " ").slice(0, 110);
+  // neutralize() so an @mention / #ref in the summary cannot ping a user or
+  // cross-link an unrelated issue from the title.
+  const title = `[${tag}] ${neutralize(summary)}`
+    .replace(/\s+/g, " ")
+    .slice(0, 110);
 
   const lines: string[] = [
     `> Submitted via the in-app feedback reporter (${category}).`,

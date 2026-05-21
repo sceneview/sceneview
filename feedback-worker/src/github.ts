@@ -62,9 +62,8 @@ async function installationToken(env: Env): Promise<string> {
     },
   );
   if (!res.ok) {
-    throw new Error(
-      `installation token request failed: ${res.status} ${await res.text()}`,
-    );
+    // Status only — the response body can echo request detail / secrets.
+    throw new Error(`installation token request failed: ${res.status}`);
   }
   const json = (await res.json()) as { token: string };
   return json.token;
@@ -121,7 +120,8 @@ export async function createIssue(
     body: JSON.stringify(issue),
   });
   if (!res.ok) {
-    throw new Error(`create issue failed: ${res.status} ${await res.text()}`);
+    // Status only — never interpolate the response body into the error.
+    throw new Error(`create issue failed: ${res.status}`);
   }
   const json = (await res.json()) as { number: number; html_url: string };
   return { number: json.number, url: json.html_url };

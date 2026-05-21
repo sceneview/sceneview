@@ -230,7 +230,7 @@ describe("feedback worker", () => {
     expect(html).toContain('name="token"');
   });
 
-  it("viewer embeds the player with a valid admin token", async () => {
+  it("a valid ?token= sets an admin cookie and redirects to a clean URL", async () => {
     const env = makeEnv();
     const id = crypto.randomUUID();
     env.DB._rows = [feedbackRow(id)];
@@ -239,10 +239,26 @@ describe("feedback worker", () => {
       {},
       asEnv(env),
     );
-    expect(await res.text()).toContain("<audio");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`/feedback/${id}`);
+    expect(res.headers.get("set-cookie") ?? "").toContain("fb_admin=");
   });
 
-  it("media endpoint rejects requests without the admin token", async () => {
+  it("viewer embeds the player when the request carries the admin cookie", async () => {
+    const env = makeEnv();
+    const id = crypto.randomUUID();
+    env.DB._rows = [feedbackRow(id)];
+    const res = await app.request(
+      `/feedback/${id}`,
+      { headers: { Cookie: "fb_admin=admin-secret" } },
+      asEnv(env),
+    );
+    const html = await res.text();
+    expect(html).toContain("<audio");
+    expect(html).not.toContain("?token=");
+  });
+
+  it("media endpoint rejects requests without the admin cookie", async () => {
     const env = makeEnv();
     const id = crypto.randomUUID();
     env.DB._rows = [feedbackRow(id)];
@@ -254,7 +270,7 @@ describe("feedback worker", () => {
     expect(res.status).toBe(401);
   });
 
-  it("media endpoint streams the file with a valid admin token", async () => {
+  it("media endpoint streams the file with a valid admin cookie", async () => {
     const env = makeEnv();
     const id = crypto.randomUUID();
     const row = feedbackRow(id);
@@ -265,12 +281,63 @@ describe("feedback worker", () => {
       { httpMetadata: { contentType: "audio/mp4" } },
     );
     const res = await app.request(
-      `/feedback/${id}/media/audio?token=admin-secret`,
-      {},
+      `/feedback/${id}/media/audio`,
+      { headers: { Cookie: "fb_admin=admin-secret" } },
       asEnv(env),
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("audio");
+  });
+
+  it("rejects an empty submission (no text, no audio, no video)", async () => {
+    const fd = new FormData();
+    fd.set("category", "idea");
+    fd.set("context", "{}");
+    const res = await app.request(
+      "/v1/feedback",
+      { method: "POST", body: fd },
+      asEnv(makeEnv()),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an over-sized upload by actual file size", async () => {
+    const fd = new FormData();
+    fd.set("category", "bug");
+    fd.set("context", "{}");
+    // 31 MB — over the 30 MB ceiling; the guard reads File.size, not the header.
+    fd.set(
+      "video",
+      new File([new Uint8Array(31 * 1024 * 1024)], "screen.mp4", {
+        type: "video/mp4",
+      }),
+    );
+    const res = await app.request(
+      "/v1/feedback",
+      { method: "POST", body: fd },
+      asEnv(makeEnv()),
+    );
+    expect(res.status).toBe(413);
+  });
+
+  it("skips issue creation when the global hourly quota is exhausted", async () => {
+    stubGitHub();
+    const env = makeEnv();
+    // Pre-fill the current hour's global issue-quota bucket to the cap.
+    const bucket = Math.floor(Date.now() / 3_600_000).toString(36);
+    env.RL_KV._store.set(`issuequota:${bucket}`, "30");
+    const res = await app.request(
+      "/v1/feedback",
+      { method: "POST", body: feedbackForm("bug") },
+      asEnv(env),
+    );
+    expect(res.status).toBe(202);
+    const json = (await res.json()) as { ok: boolean; issue: number | null };
+    expect(json.ok).toBe(true);
+    expect(json.issue).toBeNull();
+    expect(env.DB._statements.map((s) => s.sql).join(" | ")).toContain(
+      "status = 'error'",
+    );
   });
 
   it("retention purges expired media and keeps the record", async () => {
