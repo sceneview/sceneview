@@ -1,3 +1,12 @@
+// video_texture_chroma_key.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Unlit masked material that draws video frames while keying out one colour
+//             (green-screen style transparency).
+// Used by:    MaterialLoader.createVideoInstance (chromaKeyColor != null) / VideoNode.
+// Parameters:
+//   texture        — samplerExternal, the SurfaceTexture-backed stream of decoded video frames.
+//   chromaKeyColor — float4, the RGB colour to filter out; matching pixels become transparent.
+// matc profile: A (heavy Android — "-p all -a all", see tools/GenerateFilamat.sh).
 material {
     name : "ChromaKey Video Material",
     parameters : [

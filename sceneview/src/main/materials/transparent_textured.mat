@@ -1,3 +1,13 @@
+// transparent_textured.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Lit PBR material for translucent geometry textured from a sampler2d.
+// Used by:    MaterialLoader.createTextureInstance (isOpaque = false).
+// Parameters:
+//   texture     — sampler2d, the base-colour texture sampled at uv0; alpha drives transparency.
+//   metallic    — float [0,1], 0 = dielectric, 1 = metal.
+//   roughness   — float [0,1], 0 = mirror, 1 = fully diffuse.
+//   reflectance — float [0,1], dielectric Fresnel reflectance at normal incidence.
+// matc profile: A (heavy Android — "-p all -a all", see tools/GenerateFilamat.sh).
 material {
     "name" : "Transparent Textured",
 

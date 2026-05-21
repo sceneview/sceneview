@@ -1,0 +1,8 @@
+<!-- category: Changed -->
+- **API consistency polish ([#1844](https://github.com/sceneview/sceneview/issues/1844)).** Tier-2 Wave-4 follow-ups bundled into one release surface:
+  - `ARSceneView(onSessionFailed = …)` soft-deprecated in KDoc in favour of the typed `onSessionFailure` (#1759). Both still fire when set; the legacy callback stays available indefinitely for backwards compatibility.
+  - `rememberARPlaybackStatus` ported to the `produceState` idiom — matches `rememberCameraGeospatialPose` / `rememberEarthState` instead of the bespoke `LaunchedEffect + mutableStateOf` pair.
+  - `ARSceneScope.DepthHitResultNode` adds a custom `hitTest: (Frame) -> DepthHitResult?` lambda overload — mirrors `HitResultNode`'s 2-overload surface. Apps wanting multi-pixel / moving-reticle depth selection no longer have to subclass the node.
+  - `cameraConfigFilter { … }` DSL: `depthSensor` and `stereoCamera` are now `Set<…>?` instead of singletons — symmetric with `targetFps` and with the underlying ARCore `set*(EnumSet)` API. `setOf(X)` keeps the singleton case ergonomic. Empty sets fail fast (validation moved out of #1845).
+  - Cheatsheets refreshed: `docs/docs/cheatsheet.md` absorbs the Wave-4 `ARSceneView(onSessionFailure / playbackDatasetUri / flashMode)` parameters; `docs/docs/cheatsheet-ios.md` lists every new Android-only API surface so AI agents stop emitting iOS code referencing `ARSessionFailure`, `DepthHitResultNode`, `cameraConfigFilter`, `Frame.cameraImage()`, `rememberARPlaybackStatus`, or `ARRecorder.addTrack / recordTrack / State.IO_ERROR`.
+  - Changelog fragments gain a `Performance` category — covers pure perf wins (#1810-style) that don't fit `Fixed` or `Changed`. `.claude/scripts/collate-changelog.sh` recognises it.

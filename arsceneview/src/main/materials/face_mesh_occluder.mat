@@ -1,3 +1,10 @@
+// face_mesh_occluder.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Depth-only material for the ARCore Augmented Face mesh — writes depth but no
+//             colour, so virtual props attached to the face are occluded by the real head.
+// Used by:    AugmentedFaceNode occluder mesh.
+// Parameters: none (colorWrite = false, depthWrite = true).
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
 material {
     name : "Face Mesh Occluder",
 

@@ -1131,6 +1131,18 @@ arSceneView.frame?.depthImage()?.use { depth ->
     // sample depth.planes[0].buffer (DEPTH16 16-bit per pixel)
 }
 
+// ML Kit object detection on the CPU image — see ARMLObjectLabelDemo
+// (samples/android-demo/.../demos/ARMLObjectLabelDemo.kt) for the full pattern:
+// throttled per-frame dispatch, anchor de-dup, label bitmap caching, anchor cleanup.
+onSessionUpdated = { _, frame ->
+    val cameraImage = frame.cameraImage() ?: return@onSessionUpdated
+    val rotation = mapDisplayRotationDegrees(context.display.rotation)
+    val input = InputImage.fromMediaImage(cameraImage, rotation)
+    detector.process(input)
+        .addOnSuccessListener { results -> /* spawn anchors; close image */ }
+        .addOnFailureListener { /* close image */ }
+}
+
 // Non-blocking ARCore availability probe
 LaunchedEffect(Unit) {
     val availability = ArCoreApk.getInstance().awaitAvailability(context)
@@ -1155,7 +1167,7 @@ ARSceneView(
     sessionCameraConfig = cameraConfigFilter {
         facing = CameraConfig.FacingDirection.BACK
         targetFps = setOf(CameraConfig.TargetFps.TARGET_FPS_60)
-        depthSensor = CameraConfig.DepthSensorUsage.REQUIRE_AND_USE
+        depthSensor = setOf(CameraConfig.DepthSensorUsage.REQUIRE_AND_USE)
     },
     sessionConfiguration = { _, config ->
         config.depthMode = Config.DepthMode.AUTOMATIC
@@ -1166,15 +1178,19 @@ ARSceneView(
 All four DSL fields default to `null` ("don't filter on this axis"). Among matching configs the
 selector picks the **highest-resolution** one (same policy as `highestResolutionCameraConfig`),
 falling back to `session.cameraConfig` when no match exists so session creation never crashes.
+Programmer errors (`emptySet()` on any of the three enum knobs) `throw IllegalArgumentException`
+from `cameraConfigFilter` builder at session start — surfaced, not silently degraded to the
+session default (which on some devices is the FRONT camera, a privacy concern when back-only
+was requested) (#1844, #1845).
 
 Available knobs:
 
 ```kotlin
 class CameraConfigFilterBuilder {
-    var facing: CameraConfig.FacingDirection?            // BACK / FRONT
-    var targetFps: Set<CameraConfig.TargetFps>?          // {TARGET_FPS_30}, {TARGET_FPS_60}, or both
-    var depthSensor: CameraConfig.DepthSensorUsage?      // REQUIRE_AND_USE / DO_NOT_USE
-    var stereoCamera: CameraConfig.StereoCameraUsage?    // REQUIRE_AND_USE / DO_NOT_USE
+    var facing: CameraConfig.FacingDirection?                // BACK / FRONT
+    var targetFps: Set<CameraConfig.TargetFps>?              // {TARGET_FPS_30}, {TARGET_FPS_60}, or both
+    var depthSensor: Set<CameraConfig.DepthSensorUsage>?     // {REQUIRE_AND_USE} / {DO_NOT_USE} / both
+    var stereoCamera: Set<CameraConfig.StereoCameraUsage>?   // {REQUIRE_AND_USE} / {DO_NOT_USE} / both
 }
 fun cameraConfigFilter(block: CameraConfigFilterBuilder.() -> Unit): (Session) -> CameraConfig
 ```
@@ -3225,6 +3241,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-image` — Image Tracking. Detect and track reference images.
 - `ar-image-stabilization` — Image Stabilization (EIS). EIS for smoother AR camera feed.
 - `ar-instant-placement` — Instant Placement. Place models before plane detection converges.
+- `ar-ml-object-label` — ML Kit Object Labels. ML Kit object detection with 3D labels anchored on real-world hits.
 - `ar-orbital` — Orbital AR. Models orbit around you in a personal solar system.
 - `ar-placement` — Tap to Place. Place 3D models in AR.
 - `ar-pose` — Pose Placement. Free pose positioning.

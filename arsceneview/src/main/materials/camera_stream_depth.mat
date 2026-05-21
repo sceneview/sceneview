@@ -1,3 +1,19 @@
+// camera_stream_depth.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Full-screen AR camera passthrough with ARCore depth occlusion and optional
+//             environment-aware fog (issue #1717). Writes gl_FragDepth so virtual geometry
+//             is correctly occluded by the real world.
+// Used by:    ARCameraStream (depthOcclusionMaterialFile) — ARSceneView depth-occlusion path.
+// Parameters:
+//   cameraTexture — samplerExternal, the live ARCore camera feed.
+//   depthTexture  — sampler2d, ARCore packed depth (mm) in the .xy channels.
+//   uvTransform   — float4x4, ARCore display-rotation UV transform.
+//   fogEnabled    — float, 0/1 branchless gate multiplied into the fog factor.
+//   fogColor      — float3, RGB haze colour (mirrors FogNode.color).
+//   fogDensity    — float [0,1], exponential falloff coefficient in 1/m.
+//   fogStart      — float, distance in metres where fog begins to accumulate.
+//   fogEnd        — float, distance in metres where fog is fully opaque.
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
 material {
     name : depth,
     shadingModel : unlit,
