@@ -2,7 +2,9 @@ package io.github.sceneview.ar.arcore
 
 import io.github.sceneview.math.Position
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -108,6 +110,55 @@ class DepthHitResultTest {
         assertThrows(IllegalArgumentException::class.java) {
             unprojectDepthPixel(0, 0, depthMeters = 1f, fx = fx, fy = 0f, cx = cx, cy = cy)
         }
+    }
+
+    // ── hitTestDepth intrinsics guard (#1812, #1957) ──────────────────────────────────────────────
+
+    @Test
+    fun `valid intrinsics are usable`() {
+        assertTrue(
+            "well-formed intrinsics must pass the guard",
+            areDepthIntrinsicsUsable(intrinsicWidth = 640, intrinsicHeight = 480, rawFx = fx, rawFy = fy)
+        )
+    }
+
+    @Test
+    fun `zero intrinsic width is rejected`() {
+        // A zero width makes the depthWidth / intrinsicWidth scale factor blow up to Inf, which
+        // would poison every downstream world-space coordinate. The guard must reject it so
+        // hitTestDepth returns null instead.
+        assertFalse(
+            areDepthIntrinsicsUsable(intrinsicWidth = 0, intrinsicHeight = 480, rawFx = fx, rawFy = fy)
+        )
+    }
+
+    @Test
+    fun `negative intrinsic width is rejected`() {
+        assertFalse(
+            areDepthIntrinsicsUsable(intrinsicWidth = -1, intrinsicHeight = 480, rawFx = fx, rawFy = fy)
+        )
+    }
+
+    @Test
+    fun `zero intrinsic height is rejected`() {
+        assertFalse(
+            areDepthIntrinsicsUsable(intrinsicWidth = 640, intrinsicHeight = 0, rawFx = fx, rawFy = fy)
+        )
+    }
+
+    @Test
+    fun `zero raw focal length X is rejected`() {
+        // rawFx == 0 would propagate into fx and then divide-by-zero inside unprojectDepthPixel.
+        assertFalse(
+            areDepthIntrinsicsUsable(intrinsicWidth = 640, intrinsicHeight = 480, rawFx = 0f, rawFy = fy)
+        )
+    }
+
+    @Test
+    fun `zero raw focal length Y is rejected`() {
+        assertFalse(
+            areDepthIntrinsicsUsable(intrinsicWidth = 640, intrinsicHeight = 480, rawFx = fx, rawFy = 0f)
+        )
     }
 
     companion object {

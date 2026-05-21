@@ -109,7 +109,7 @@ fun Frame.hitTestDepth(xPx: Float, yPx: Float): DepthHitResult? {
         val intrinsicHeight = intrinsics.imageDimensions[1]
         val rawFx = intrinsics.focalLength[0]
         val rawFy = intrinsics.focalLength[1]
-        if (intrinsicWidth <= 0 || intrinsicHeight <= 0 || rawFx == 0f || rawFy == 0f) return null
+        if (!areDepthIntrinsicsUsable(intrinsicWidth, intrinsicHeight, rawFx, rawFy)) return null
         val scaleX = depthWidth / intrinsicWidth.toFloat()
         val scaleY = depthHeight / intrinsicHeight.toFloat()
         val fx = rawFx * scaleX
@@ -154,6 +154,24 @@ fun Frame.hitTestDepth(xPx: Float, yPx: Float): DepthHitResult? {
         depthImage.close()
     }
 }
+
+/**
+ * Returns `true` only when ARCore camera intrinsics are safe to scale into depth-image space.
+ *
+ * Degenerate intrinsics — a zero (or negative) image dimension, or a zero focal length —
+ * would make [Frame.hitTestDepth] compute a division by zero / `Inf` scale factor, propagate
+ * `Inf` into world-space coordinates, and ultimately surface `NaN` from `normalize(normal)`.
+ * The caller treats a `false` here as "depth unavailable" and returns `null` so no poisoned
+ * intrinsics ever reach [unprojectDepthPixel] (#1812, #1957).
+ *
+ * `internal` so the guard can be unit-tested without an ARCore [Frame].
+ */
+internal fun areDepthIntrinsicsUsable(
+    intrinsicWidth: Int,
+    intrinsicHeight: Int,
+    rawFx: Float,
+    rawFy: Float
+): Boolean = intrinsicWidth > 0 && intrinsicHeight > 0 && rawFx != 0f && rawFy != 0f
 
 /**
  * Reads the depth sample at depth-image pixel ([x], [y]) and returns it in meters, or `0f` when
