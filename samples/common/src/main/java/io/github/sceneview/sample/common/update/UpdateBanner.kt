@@ -50,17 +50,19 @@ import androidx.compose.ui.unit.dp
  * so it overlays cleanly on top of any sample UI — including the full-bleed
  * SceneView surface — without competing with primary CTAs.
  *
- * @param restartFocusRequester optional [FocusRequester] for the action CTA.
- * D-pad hosts (Android TV) should pass one in: when the banner reaches an
- * actionable state the button is focused automatically so the Leanback user can
- * act without hunting for it. Phone hosts leave this `null` — touch users tap
- * the button regardless, and an unsolicited focus request would be inert.
+ * @param actionFocusRequester optional [FocusRequester] for the banner's action
+ * CTA — the **Update** button while `AVAILABLE`, the **Restart** button while
+ * `READY_TO_INSTALL`. D-pad hosts (Android TV) should pass one in: when the
+ * banner reaches an actionable state the visible button is focused
+ * automatically so the Leanback user can act without hunting for it. Phone
+ * hosts leave this `null` — touch users tap the button regardless, and an
+ * unsolicited focus request would be inert.
  */
 @Composable
 fun UpdateBanner(
     updateManager: InAppUpdateManager,
     modifier: Modifier = Modifier,
-    restartFocusRequester: FocusRequester? = null,
+    actionFocusRequester: FocusRequester? = null,
 ) {
     val state = updateManager.updateState
     val showBanner = state == InAppUpdateManager.UpdateState.AVAILABLE
@@ -124,6 +126,18 @@ fun UpdateBanner(
 
                     when (state) {
                         InAppUpdateManager.UpdateState.AVAILABLE -> {
+                            // Auto-focus the Update CTA for D-pad hosts. Keyed
+                            // on `updateState` so it fires exactly once on the
+                            // transition into AVAILABLE, not on every
+                            // recomposition. No-op for phone hosts, which pass
+                            // `actionFocusRequester == null`. Without this the
+                            // Update button is unreachable by D-pad on Android
+                            // TV (#1942 review — MAJOR 5).
+                            if (actionFocusRequester != null) {
+                                LaunchedEffect(state) {
+                                    actionFocusRequester.requestFocus()
+                                }
+                            }
                             Spacer(modifier = Modifier.width(12.dp))
                             Button(
                                 // `startUpdate()` is a no-op once the state
@@ -133,7 +147,12 @@ fun UpdateBanner(
                                 shape = RoundedCornerShape(50),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary
-                                )
+                                ),
+                                modifier = if (actionFocusRequester != null) {
+                                    Modifier.focusRequester(actionFocusRequester)
+                                } else {
+                                    Modifier
+                                }
                             ) {
                                 Text("Update")
                             }
@@ -143,10 +162,10 @@ fun UpdateBanner(
                             // on `updateState` so it fires exactly once on the
                             // transition into READY_TO_INSTALL, not on every
                             // recomposition. No-op for phone hosts, which pass
-                            // `restartFocusRequester == null`.
-                            if (restartFocusRequester != null) {
+                            // `actionFocusRequester == null`.
+                            if (actionFocusRequester != null) {
                                 LaunchedEffect(state) {
-                                    restartFocusRequester.requestFocus()
+                                    actionFocusRequester.requestFocus()
                                 }
                             }
                             Spacer(modifier = Modifier.width(12.dp))
@@ -159,8 +178,8 @@ fun UpdateBanner(
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary
                                 ),
-                                modifier = if (restartFocusRequester != null) {
-                                    Modifier.focusRequester(restartFocusRequester)
+                                modifier = if (actionFocusRequester != null) {
+                                    Modifier.focusRequester(actionFocusRequester)
                                 } else {
                                     Modifier
                                 }
