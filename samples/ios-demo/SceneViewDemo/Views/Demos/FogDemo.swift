@@ -75,7 +75,7 @@ struct FogDemo: View {
                     Button {
                         fogMode = i
                         #if os(iOS)
-                        HapticManager.selectionChanged()
+                        SceneViewHaptic.shared.selection()
                         #endif
                     } label: {
                         VStack(spacing: 4) {

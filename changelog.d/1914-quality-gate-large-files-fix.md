@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- `.claude/scripts/quality-gate.sh`: The `LARGE_FILES` check no longer aborts the whole quality gate under `set -euo pipefail` when staged files are under the 10 MB threshold (the common case). Restructured the per-file `&&` chain into nested `if` blocks so the size comparison returning false stays local to the loop iteration instead of propagating through `pipefail` and bailing the script via `set -e`. Local pre-push runs now reach the final `Quality Gate Summary` block as intended (#1914).

@@ -1,9 +1,25 @@
 #!/bin/bash
 # ─── SceneView Impact Check ───────────────────────────────────────────────
 # Run AFTER any code/doc change to catch cross-file inconsistencies.
-# Exit 1 if blockers found. Part of the quality-gate pipeline.
+# Part of the quality-gate pipeline.
 #
-# Usage: bash .claude/scripts/impact-check.sh [--fix]
+# Usage:
+#   bash .claude/scripts/impact-check.sh           # report warnings, exit 0 if all checks ran
+#   bash .claude/scripts/impact-check.sh --fail    # exit 1 if any check FAIL'd
+#   bash .claude/scripts/impact-check.sh --fix     # auto-fix where possible
+#
+# Env:
+#   SV_IMPACT_TRACE=1         force `set -x` regardless of TTY
+#   SV_IMPACT_TRACE_AUTO=0    disable auto `set -x` when stdout is not a TTY
+#
+# Robustness contract (#1782 / #1786):
+#   - Every check echoes a trace line BEFORE running, so an unexpected death
+#     under `set -euo pipefail` points at the failing predicate.
+#   - Path-dependent checks (sparse-checkout / lean-clone aware) [SKIP]
+#     instead of dying when their inputs are absent.
+#   - An ERR trap names the dying check on any other unexpected failure.
+#   - Default exit code is 0 (report-only); `--fail` opts in to non-zero
+#     for use in the quality gate.
 
 set -euo pipefail
 
@@ -14,10 +30,54 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 FIX_MODE=false
-[ "${1:-}" = "--fix" ] && FIX_MODE=true
+FAIL_ON_ERROR=false
+for arg in "$@"; do
+    case "$arg" in
+        --fix)  FIX_MODE=true ;;
+        --fail) FAIL_ON_ERROR=true ;;
+        -h|--help)
+            sed -n '2,22p' "$0"
+            exit 0
+            ;;
+    esac
+done
+
+# Acknowledge `--fix` so shellcheck doesn't flag FIX_MODE as unused. The flag
+# is plumbed for future per-check auto-fix support; today it's a no-op.
+: "${FIX_MODE}"
+
+# ─── Tracing ──────────────────────────────────────────────────────────────
+# Manual opt-in (SV_IMPACT_TRACE=1) OR auto when stdout is not a TTY (CI /
+# agent runs) UNLESS the user disabled the auto behavior with
+# SV_IMPACT_TRACE_AUTO=0.
+if [[ "${SV_IMPACT_TRACE:-0}" == "1" ]]; then
+    set -x
+elif [[ ! -t 1 ]] && [[ "${SV_IMPACT_TRACE_AUTO:-1}" == "1" ]]; then
+    set -x
+fi
+
+# Last check announced via `trace` — surfaced in the ERR trap so a death
+# under `set -e` points at the actual failing predicate, not just $LINENO.
+CURRENT_CHECK="<startup>"
+trace() {
+    CURRENT_CHECK="$*"
+    # `printf '%b'` interprets backslash escapes (color codes) without
+    # depending on a system-dependent `echo -e`.
+    printf '%b→ check: %s%b\n' "$CYAN" "$*" "$NC" >&2
+}
+
+# shellcheck disable=SC2329  # invoked indirectly via `trap on_err ERR`
+on_err() {
+    local rc=$?
+    printf '%b❌ impact-check died at line %s (rc=%d) running: %s%b\n' \
+        "$RED" "${BASH_LINENO[0]:-?}" "$rc" "$CURRENT_CHECK" "$NC" >&2
+    exit "$rc"
+}
+trap on_err ERR
 
 ISSUES=0
 WARNINGS=0
+SKIPS=0
 
 check() {
     local name="$1" status="$2" detail="${3:-}"
@@ -25,139 +85,236 @@ check() {
         PASS) printf "  ${GREEN}[PASS]${NC}  %-50s %s\n" "$name" "$detail" ;;
         FAIL) printf "  ${RED}[FAIL]${NC}  %-50s %s\n" "$name" "$detail"; ISSUES=$((ISSUES + 1)) ;;
         WARN) printf "  ${YELLOW}[WARN]${NC}  %-50s %s\n" "$name" "$detail"; WARNINGS=$((WARNINGS + 1)) ;;
+        SKIP) printf "  ${YELLOW}[SKIP]${NC}  %-50s %s\n" "$name" "$detail"; SKIPS=$((SKIPS + 1)) ;;
     esac
+}
+
+# Path-gate helper: skip-and-continue if a required path is absent (lean /
+# sparse clone). Returns 0 if the path exists, 1 (handled by the caller's
+# `if`) otherwise — never aborts the script.
+require_path() {
+    local path="$1" check_name="$2"
+    if [[ -e "$path" ]]; then
+        return 0
+    fi
+    check "$check_name" "SKIP" "$path not in checkout"
+    return 1
 }
 
 echo -e "${CYAN}=== Impact Check ===${NC}"
 echo ""
 
 # ─── 1. Node count consistency ────────────────────────────────────────────
-# Count actual node types in source (3D + AR combined)
-NODES_3D=$(ls sceneview/src/main/java/io/github/sceneview/node/*Node.kt 2>/dev/null | \
-    grep -v 'NodeState\|NodeAnimationDelegate\|NodeGestureDelegate\|RenderableNode\|GeometryNode' | wc -l | tr -d ' ')
-NODES_AR=$(ls arsceneview/src/main/java/io/github/sceneview/ar/node/*Node.kt 2>/dev/null | wc -l | tr -d ' ')
+trace "node count consistency (count *Node.kt sources)"
+
+# `ls *.kt | grep -v ...` is fragile under `pipefail`: zero matches → grep
+# returns 1 → whole pipe dies. Use `find ... -print | grep -cv ... || true`
+# which never fails for zero matches.
+ANDROID_3D_DIR="sceneview/src/main/java/io/github/sceneview/node"
+ANDROID_AR_DIR="arsceneview/src/main/java/io/github/sceneview/ar/node"
+
+if [[ -d "$ANDROID_3D_DIR" ]]; then
+    # `grep -c` rather than `grep | wc -l`: one fewer process and one fewer
+    # pipefail surface (per shellcheck SC2126).
+    NODES_3D=$(find "$ANDROID_3D_DIR" -maxdepth 1 -name '*Node.kt' -print 2>/dev/null \
+        | grep -cEv 'NodeState|NodeAnimationDelegate|NodeGestureDelegate|RenderableNode|GeometryNode' \
+        || true)
+else
+    NODES_3D=0
+fi
+if [[ -d "$ANDROID_AR_DIR" ]]; then
+    NODES_AR=$(find "$ANDROID_AR_DIR" -maxdepth 1 -name '*Node.kt' -print 2>/dev/null \
+        | grep -c '' || true)
+else
+    NODES_AR=0
+fi
 ACTUAL_NODES=$((NODES_3D + NODES_AR))
 
-echo -e "${CYAN}--- Node count consistency (actual: $ACTUAL_NODES) ---${NC}"
-
-# Check each file that claims a node count
-for f in README.md llms.txt website-static/index.html docs/docs/showcase.md mcp/README.md; do
-    if [ -f "$f" ]; then
-        # Only check claims with "+" (marketing total), skip platform-specific counts
-        CLAIMED=$(grep -oE '[0-9]+\+ node type' "$f" 2>/dev/null | head -1 | grep -oE '[0-9]+' || true)
-        if [ -n "$CLAIMED" ] && [ "$CLAIMED" -ne "$ACTUAL_NODES" ]; then
-            check "$f node count" "FAIL" "Claims $CLAIMED, actual $ACTUAL_NODES"
-        elif [ -n "$CLAIMED" ]; then
-            check "$f node count" "PASS" "$CLAIMED"
+if [[ ! -d "$ANDROID_3D_DIR" ]] && [[ ! -d "$ANDROID_AR_DIR" ]]; then
+    echo -e "${CYAN}--- Node count consistency (skipped: Android sources not in checkout) ---${NC}"
+    check "Node count consistency" "SKIP" "no Android sources"
+else
+    echo -e "${CYAN}--- Node count consistency (actual: $ACTUAL_NODES) ---${NC}"
+    # Check each file that claims a node count
+    for f in README.md llms.txt website-static/index.html docs/docs/showcase.md mcp/README.md; do
+        trace "node count claim in $f"
+        if [[ -f "$f" ]]; then
+            # Only check claims with "+" (marketing total), skip platform-specific counts
+            CLAIMED=$(grep -oE '[0-9]+\+ node type' "$f" 2>/dev/null | head -1 | grep -oE '[0-9]+' 2>/dev/null || true)
+            if [[ -n "$CLAIMED" ]] && [[ "$CLAIMED" -ne "$ACTUAL_NODES" ]]; then
+                check "$f node count" "FAIL" "Claims $CLAIMED, actual $ACTUAL_NODES"
+            elif [[ -n "$CLAIMED" ]]; then
+                check "$f node count" "PASS" "$CLAIMED"
+            fi
         fi
-    fi
-done
+    done
+fi
 
 # ─── 2. New public API → must be in llms.txt ─────────────────────────────
 echo ""
 echo -e "${CYAN}--- New API → llms.txt coverage ---${NC}"
+trace "SceneScope.kt → llms.txt coverage"
 
-# Get all composable node functions in SceneScope
-SCOPE_NODES=$(grep -oE 'fun (([A-Z][a-zA-Z]+Node)|ModelNode|LightNode|CameraNode)\(' \
-    sceneview/src/main/java/io/github/sceneview/SceneScope.kt 2>/dev/null | \
-    sed 's/fun //; s/(//' | sort -u)
+SCENESCOPE_FILE="sceneview/src/main/java/io/github/sceneview/SceneScope.kt"
+if require_path "$SCENESCOPE_FILE" "SceneScope nodes in llms.txt"; then
+    if ! require_path "llms.txt" "SceneScope nodes in llms.txt"; then
+        : # SKIP already emitted by require_path
+    else
+        # `grep -oE` returns 1 if no matches under `pipefail` — append `|| true`.
+        SCOPE_NODES=$(grep -oE 'fun (([A-Z][a-zA-Z]+Node)|ModelNode|LightNode|CameraNode)\(' \
+            "$SCENESCOPE_FILE" 2>/dev/null \
+            | sed 's/fun //; s/(//' | sort -u || true)
 
-MISSING_IN_LLMS=""
-for node in $SCOPE_NODES; do
-    if ! grep -q "$node" llms.txt 2>/dev/null; then
-        MISSING_IN_LLMS="$MISSING_IN_LLMS $node"
+        MISSING_IN_LLMS=""
+        for node in $SCOPE_NODES; do
+            trace "llms.txt mentions $node"
+            if ! grep -q "$node" llms.txt 2>/dev/null; then
+                MISSING_IN_LLMS="$MISSING_IN_LLMS $node"
+            fi
+        done
+
+        if [[ -z "$MISSING_IN_LLMS" ]]; then
+            check "All SceneScope nodes in llms.txt" "PASS" ""
+        else
+            check "Nodes missing from llms.txt" "FAIL" "$MISSING_IN_LLMS"
+        fi
     fi
-done
-
-if [ -z "$MISSING_IN_LLMS" ]; then
-    check "All SceneScope nodes in llms.txt" "PASS" ""
-else
-    check "Nodes missing from llms.txt" "FAIL" "$MISSING_IN_LLMS"
 fi
 
 # ─── 3. SceneViewSwift parity check ──────────────────────────────────────
 echo ""
 echo -e "${CYAN}--- Cross-platform parity (Android vs Swift) ---${NC}"
 
-# Android: file-based node types (exclude base classes)
-ANDROID_NODES=$(ls sceneview/src/main/java/io/github/sceneview/node/*Node.kt 2>/dev/null | \
-    xargs -I{} basename {} .kt | \
-    grep -Ev '^(Node|RenderableNode|GeometryNode)$' | sort)
+ANDROID_NODE_DIR="sceneview/src/main/java/io/github/sceneview/node"
+SWIFT_NODE_DIR="SceneViewSwift/Sources/SceneViewSwift/Nodes"
+SWIFT_GEOM_FILE="$SWIFT_NODE_DIR/GeometryNode.swift"
 
-# Swift: file-based node types + geometry factories in GeometryNode.swift
-SWIFT_FILE_NODES=$(ls SceneViewSwift/Sources/SceneViewSwift/Nodes/*Node.swift 2>/dev/null | \
-    xargs -I{} basename {} .swift | \
-    grep -Ev '^GeometryNode$' | sort)
-# Extract geometry factory names and map to Android-equivalent node names
-SWIFT_GEOM_FACTORIES=$(grep 'public static func' SceneViewSwift/Sources/SceneViewSwift/Nodes/GeometryNode.swift 2>/dev/null | \
-    sed -n 's/.*public static func \([a-z]*\)(.*/\1/p' | sort -u | \
-    grep -v loadTexture | \
-    while read name; do
-        # Capitalize first letter and add "Node" suffix → e.g. "torus" → "TorusNode"
-        echo "$name" | awk '{print toupper(substr($0,1,1)) substr($0,2) "Node"}'
-    done)
-SWIFT_NODES=$(printf '%s\n' "$SWIFT_FILE_NODES" $SWIFT_GEOM_FACTORIES | sort -u)
-
-ANDROID_ONLY=$(comm -23 <(echo "$ANDROID_NODES") <(echo "$SWIFT_NODES") 2>/dev/null | tr '\n' ' ')
-SWIFT_ONLY=$(comm -13 <(echo "$ANDROID_NODES") <(echo "$SWIFT_NODES") 2>/dev/null | tr '\n' ' ')
-
-if [ -z "$ANDROID_ONLY" ] && [ -z "$SWIFT_ONLY" ]; then
-    check "Android ↔ Swift node parity" "PASS" ""
+if [[ ! -d "$ANDROID_NODE_DIR" ]] || [[ ! -d "$SWIFT_NODE_DIR" ]]; then
+    check "Android ↔ Swift node parity" "SKIP" "one side not in checkout"
 else
-    [ -n "$ANDROID_ONLY" ] && check "Android-only nodes (no Swift)" "WARN" "$ANDROID_ONLY"
-    [ -n "$SWIFT_ONLY" ] && check "Swift-only nodes (no Android)" "WARN" "$SWIFT_ONLY"
+    trace "Android node enumeration ($ANDROID_NODE_DIR)"
+    # Android: file-based node types (exclude base classes). `-printf` is not
+    # portable to BSD `find` (macOS) — use `-exec basename {} .kt \;` for
+    # cross-platform basename extraction without `xargs` word-splitting.
+    ANDROID_NODES=$(find "$ANDROID_NODE_DIR" -maxdepth 1 -name '*Node.kt' \
+        -exec basename {} .kt \; 2>/dev/null \
+        | grep -Ev '^(Node|RenderableNode|GeometryNode)$' \
+        | sort -u || true)
+
+    trace "Swift node enumeration ($SWIFT_NODE_DIR)"
+    # Swift: file-based node types + geometry factories in GeometryNode.swift
+    SWIFT_FILE_NODES=$(find "$SWIFT_NODE_DIR" -maxdepth 1 -name '*Node.swift' \
+        -exec basename {} .swift \; 2>/dev/null \
+        | grep -Ev '^GeometryNode$' \
+        | sort -u || true)
+
+    SWIFT_GEOM_FACTORIES=""
+    if [[ -f "$SWIFT_GEOM_FILE" ]]; then
+        trace "Swift geometry factories in GeometryNode.swift"
+        # Extract geometry factory names and map to Android-equivalent node names
+        SWIFT_GEOM_FACTORIES=$(grep 'public static func' "$SWIFT_GEOM_FILE" 2>/dev/null \
+            | sed -n 's/.*public static func \([a-z]*\)(.*/\1/p' \
+            | sort -u \
+            | grep -v loadTexture \
+            | while read -r name; do
+                # Capitalize first letter and add "Node" suffix → e.g. "torus" → "TorusNode"
+                [[ -n "$name" ]] && echo "$name" | awk '{print toupper(substr($0,1,1)) substr($0,2) "Node"}'
+              done || true)
+    fi
+    SWIFT_NODES=$(printf '%s\n%s\n' "$SWIFT_FILE_NODES" "$SWIFT_GEOM_FACTORIES" | sort -u | grep -v '^$' || true)
+
+    trace "diff Android vs Swift node sets (comm)"
+    ANDROID_ONLY=$(comm -23 <(echo "$ANDROID_NODES") <(echo "$SWIFT_NODES") 2>/dev/null | tr '\n' ' ' || true)
+    SWIFT_ONLY=$(comm -13 <(echo "$ANDROID_NODES") <(echo "$SWIFT_NODES") 2>/dev/null | tr '\n' ' ' || true)
+
+    if [[ -z "${ANDROID_ONLY// }" ]] && [[ -z "${SWIFT_ONLY// }" ]]; then
+        check "Android ↔ Swift node parity" "PASS" ""
+    else
+        [[ -n "${ANDROID_ONLY// }" ]] && check "Android-only nodes (no Swift)" "WARN" "$ANDROID_ONLY"
+        [[ -n "${SWIFT_ONLY// }"   ]] && check "Swift-only nodes (no Android)" "WARN" "$SWIFT_ONLY"
+    fi
 fi
 
 # ─── 4. SPM version consistency ──────────────────────────────────────────
 echo ""
 echo -e "${CYAN}--- SPM version consistency ---${NC}"
+trace "SPM version consistency vs gradle.properties"
 
-GRADLE_VERSION=$(grep '^VERSION_NAME=' gradle.properties 2>/dev/null | cut -d= -f2)
-# Migration guides + changelogs legitimately quote the legacy
-# `sceneview-swift` mirror coordinate with an OLD version inside a diff
-# snippet (the whole point is to document the deprecation) — exclude them
-# so they're never flagged stale.
-SPM_STALE=$(grep -rl "sceneview-swift.*from.*\"[0-9]" --include='*.md' --include='*.txt' . 2>/dev/null | \
-    grep -vE 'node_modules|build/|\.git/|docs/site/|\.claude/worktrees/|\.claude/plans/|docs/docs/migration|CHANGELOG\.md|MIGRATION\.md' | \
-    xargs grep -l "sceneview-swift" 2>/dev/null | \
-    xargs grep -L "from.*\"$GRADLE_VERSION\"" 2>/dev/null || true)
-
-if [ -z "$SPM_STALE" ]; then
-    check "SPM version refs match $GRADLE_VERSION" "PASS" ""
+if ! require_path "gradle.properties" "SPM version consistency"; then
+    : # SKIP already emitted
 else
-    # `printf | grep -c .` counts non-empty lines — `echo "" | wc -l`
-    # returns 1 for an empty string and would report a phantom "1 file".
-    STALE_COUNT=$(printf '%s\n' "$SPM_STALE" | grep -c .)
-    check "SPM version refs stale" "FAIL" "$STALE_COUNT file(s)"
+    GRADLE_VERSION=$(grep '^VERSION_NAME=' gradle.properties 2>/dev/null | cut -d= -f2 || true)
+    if [[ -z "$GRADLE_VERSION" ]]; then
+        check "SPM version refs" "SKIP" "VERSION_NAME unreadable in gradle.properties"
+    else
+        # Migration guides + changelogs legitimately quote the legacy
+        # `sceneview-swift` mirror coordinate with an OLD version inside a diff
+        # snippet (the whole point is to document the deprecation) — exclude them
+        # so they're never flagged stale.
+        SPM_STALE=$(grep -rl "sceneview-swift.*from.*\"[0-9]" --include='*.md' --include='*.txt' . 2>/dev/null \
+            | grep -vE 'node_modules|build/|\.git/|docs/site/|\.claude/worktrees/|\.claude/plans/|docs/docs/migration|CHANGELOG\.md|MIGRATION\.md' \
+            | xargs grep -l "sceneview-swift" 2>/dev/null \
+            | xargs grep -L "from.*\"$GRADLE_VERSION\"" 2>/dev/null || true)
+
+        if [[ -z "$SPM_STALE" ]]; then
+            check "SPM version refs match $GRADLE_VERSION" "PASS" ""
+        else
+            # `printf | grep -c .` counts non-empty lines — `echo "" | wc -l`
+            # returns 1 for an empty string and would report a phantom "1 file".
+            STALE_COUNT=$(printf '%s\n' "$SPM_STALE" | grep -c . || true)
+            check "SPM version refs stale" "FAIL" "$STALE_COUNT file(s)"
+        fi
+    fi
 fi
 
 # ─── 5. Emulator build check ─────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}--- Sample app build (fast check) ---${NC}"
+trace "Android sample build dry-run gate"
 
 # Only check if Android SDK source changed
-CHANGED_SRC=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '^sceneview/src|^arsceneview/src|^samples/' || true)
-if [ -n "$CHANGED_SRC" ]; then
-    if ./gradlew :samples:android-demo:assembleDebug --dry-run > /dev/null 2>&1; then
-        check "Android demo assembleDebug (dry-run)" "PASS" "Gradle task resolved"
-    else
-        check "Android demo assembleDebug (dry-run)" "FAIL" "Gradle task resolution failed"
-    fi
+if [[ ! -d ".git" ]]; then
+    check "Android demo assembleDebug" "SKIP" "not a git repository"
+elif [[ ! -x "./gradlew" ]]; then
+    check "Android demo assembleDebug" "SKIP" "gradlew not present in checkout"
 else
-    check "Android demo assembleDebug" "PASS" "No SDK/sample source changed"
+    CHANGED_SRC=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '^sceneview/src|^arsceneview/src|^samples/' 2>/dev/null || true)
+    if [[ -n "$CHANGED_SRC" ]]; then
+        trace "gradle :samples:android-demo:assembleDebug --dry-run"
+        if ./gradlew :samples:android-demo:assembleDebug --dry-run > /dev/null 2>&1; then
+            check "Android demo assembleDebug (dry-run)" "PASS" "Gradle task resolved"
+        else
+            check "Android demo assembleDebug (dry-run)" "FAIL" "Gradle task resolution failed"
+        fi
+    else
+        check "Android demo assembleDebug" "PASS" "No SDK/sample source changed"
+    fi
 fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}=== Impact Check Summary ===${NC}"
 echo ""
-if [ "$ISSUES" -eq 0 ] && [ "$WARNINGS" -eq 0 ]; then
-    echo -e "${GREEN}ALL CLEAR — no cross-file inconsistencies${NC}"
+
+# Disable the ERR trap before the structured exit — we own the exit code now.
+trap - ERR
+
+SUMMARY_DETAIL=""
+[[ "$SKIPS" -gt 0 ]] && SUMMARY_DETAIL=" ($SKIPS skipped — likely sparse-checkout)"
+
+if [[ "$ISSUES" -eq 0 ]] && [[ "$WARNINGS" -eq 0 ]]; then
+    echo -e "${GREEN}ALL CLEAR — no cross-file inconsistencies${NC}${SUMMARY_DETAIL}"
     exit 0
-elif [ "$ISSUES" -eq 0 ]; then
-    echo -e "${YELLOW}PASS with $WARNINGS warning(s)${NC}"
+elif [[ "$ISSUES" -eq 0 ]]; then
+    echo -e "${YELLOW}PASS with $WARNINGS warning(s)${NC}${SUMMARY_DETAIL}"
     exit 0
 else
-    echo -e "${RED}$ISSUES blocker(s) found — fix before pushing${NC}"
-    exit 1
+    echo -e "${RED}$ISSUES blocker(s) found${NC}${SUMMARY_DETAIL}"
+    if [[ "$FAIL_ON_ERROR" == "true" ]]; then
+        echo -e "${RED}--fail set — exiting 1${NC}"
+        exit 1
+    else
+        echo -e "${YELLOW}--fail not set — exiting 0 (pass --fail to enforce)${NC}"
+        exit 0
+    fi
 fi

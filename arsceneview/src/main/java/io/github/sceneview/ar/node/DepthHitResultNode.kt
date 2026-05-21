@@ -65,6 +65,17 @@ open class DepthHitResultNode(
                 // Build a `Pose` whose translation is the depth hit point, orientation is identity
                 // (the depth hit carries a normal but not a full surface frame). Callers that need
                 // the surface normal can read it via [depthHitResult].
+                //
+                // **Per-frame `Pose` allocation cost (#1846):** ARCore's [Pose] is a small JNI
+                // wrapper around two `float[]`s (translation + rotation) — the alloc shows up as
+                // ~60 alloc/sec per node at 60 fps. We investigated reusing a single cached Pose
+                // and discovered that ARCore [Pose] is *immutable* by design (no setter, no
+                // `setTranslation()`), and [DepthHitResult] is built from the raw depth-sample
+                // floats — there is no pre-existing Pose on the result we could reuse. So one
+                // [Pose.makeTranslation] per active node per frame is the floor for this surface.
+                // 60 Hz × small JNI alloc stays well below the AR-frame budget; documenting the
+                // invariant here so future perf passes don't try to "fix" it without first
+                // verifying [Pose] is still immutable.
                 pose = Pose.makeTranslation(result.position.x, result.position.y, result.position.z)
             }
         }

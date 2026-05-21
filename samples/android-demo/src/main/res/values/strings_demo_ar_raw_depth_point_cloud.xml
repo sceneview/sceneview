@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `ar-raw-depth-point-cloud` demo (registered by
+     `ArRawDepthPointCloudFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_ar_raw_depth_cloud_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_ar_raw_depth_cloud_title">Raw Depth Point Cloud</string>
+    <string name="demo_ar_raw_depth_cloud_subtitle">Confidence-filtered point cloud from raw depth</string>
+    <string name="demo_ar_raw_depth_cloud_move_hint">Move your device for raw depth to converge</string>
+    <string name="demo_ar_raw_depth_cloud_move_hint_short">Move device — no points yet</string>
+</resources>
