@@ -178,6 +178,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Bottom inset for the feedback FAB on the tab screens — clears the 80 dp M3
+ * `NavigationBar` plus a 16 dp gap.
+ */
+private val FEEDBACK_FAB_BOTTOM_INSET = 96.dp
+
 @Composable
 fun SceneViewDemoApp(activity: MainActivity? = null) {
     val navController = rememberNavController()
@@ -253,24 +259,22 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             )
         }
 
-        // Global feedback entry point — overlays every screen (#1932). Bottom-start
-        // so it never collides with a demo's bottom-end settings FAB.
+        // Feedback entry point — shown only on the four tab screens. Demo
+        // screens place their own controls in every corner (movement pads, AR
+        // action buttons), so a floating FAB there would collide; an in-demo
+        // feedback entry point is a separate follow-up (#1932).
         val currentEntry by navController.currentBackStackEntryAsState()
         val onListScreen = currentEntry?.destination?.route == "list"
         var feedbackOpen by rememberSaveable { mutableStateOf(false) }
-        FeedbackButton(
-            expanded = onListScreen,
-            onClick = { feedbackOpen = true },
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(
-                    start = 16.dp,
-                    // On the four tab screens, clear the 80 dp M3 NavigationBar so
-                    // the button floats above it; a demo screen has no bottom bar.
-                    bottom = if (onListScreen) 96.dp else 16.dp,
-                ),
-        )
+        if (onListScreen) {
+            FeedbackButton(
+                onClick = { feedbackOpen = true },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(start = 16.dp, bottom = FEEDBACK_FAB_BOTTOM_INSET),
+            )
+        }
         if (feedbackOpen) {
             FeedbackFlow(onDismiss = { feedbackOpen = false })
         }

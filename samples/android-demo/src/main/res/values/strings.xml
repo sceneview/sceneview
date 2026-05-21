@@ -279,10 +279,9 @@
 
     <!-- In-app feedback (issue #1932) -->
     <string name="feedback_button">Feedback</string>
-    <string name="feedback_cd_button">Send feedback</string>
     <string name="feedback_cd_close">Close</string>
     <string name="feedback_onboarding_title">Help improve SceneView</string>
-    <string name="feedback_onboarding_body">See a bug or have an idea? Tap Feedback anytime. Record your screen and describe what\'s happening in your own words — we\'ll turn it into a report for the team. It only takes a few seconds.</string>
+    <string name="feedback_onboarding_body">See a bug or have an idea? Tap Feedback anytime. Record your screen and describe what\'s happening in your own words — we\'ll turn it into a report for the team.</string>
     <string name="feedback_onboarding_continue">Get started</string>
     <string name="feedback_category_title">What would you like to share?</string>
     <string name="feedback_bug_title">Report a bug</string>

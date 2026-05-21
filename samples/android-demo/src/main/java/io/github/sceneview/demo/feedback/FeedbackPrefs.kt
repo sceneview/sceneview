@@ -17,6 +17,7 @@ object FeedbackPrefs {
         prefs(context).edit().putBoolean(KEY_ONBOARDED, true).apply()
     }
 
+    // applicationContext — prefs access must never pin an Activity context.
     private fun prefs(context: Context) =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }
