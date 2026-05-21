@@ -386,18 +386,14 @@ fun OrbitalARDemo(onBack: () -> Unit) {
         AssetSourceState.Streaming
     }
 
+    // No Settings FAB: this demo has nothing to configure. The orbit runs
+    // automatically and the top-center status pill already tells the user what
+    // to do ("Turn around — N models orbiting"), so a settings sheet carrying a
+    // lone paragraph of help text added only chrome (#1620 thread 1).
     DemoScaffold(
         title = stringResource(R.string.demo_ar_orbital_title),
         onBack = onBack,
         assetSource = assetSource,
-        controls = {
-            Text(
-                text = "8 models orbit around you in a personal solar system. " +
-                    "Stand still and turn the phone — each model passes by at " +
-                    "a different speed and height.",
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
     ) {
         Box(
             modifier = Modifier

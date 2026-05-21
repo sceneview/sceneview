@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -121,27 +119,15 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_ar_depth_occlusion_title),
         onBack = onBack,
         controls = {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Text(
-                    text = "How to test",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp)
-                )
-                Text(
-                    text = "1. Tap a flat surface to place the model.\n" +
-                        "2. Walk around it, or pass your hand between the camera and the model.\n" +
-                        "3. With Depth ON, real objects in front correctly hide the virtual " +
-                        "object. With Depth OFF, the model is always drawn on top — wrong, " +
-                        "but instructive.",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(12.dp)
-                )
-            }
+            // One-line hint instead of a multi-paragraph "How to test" card:
+            // the sheet is now just the real control (the depth toggle) plus a
+            // short explanation of what it does (#1620 thread 1).
+            Text(
+                text = "Tap a flat surface to place the model, then toggle Depth " +
+                    "to see real objects occlude (or fail to occlude) it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             if (depthSupported == false) {
                 Spacer(Modifier.height(8.dp))

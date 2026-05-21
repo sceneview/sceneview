@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -137,44 +135,29 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     // per frame (saves ~2–4 ms of canvas work per detector pass).
     val labelBitmaps = remember { mutableMapOf<String, Bitmap>() }
 
+    // No Settings FAB: the only sheet content was a help paragraph and a live
+    // status card. The status ("Warming up…" / "Aim at an object" / detection
+    // count) is the demo's primary feedback, so it now sits in an always-on
+    // top-center overlay instead of being hidden behind a Settings FAB — and the
+    // status text already tells a first-time user what to do (#1620 thread 1).
     DemoScaffold(
         title = stringResource(R.string.demo_ar_ml_title),
         onBack = onBack,
-        controls = {
-            Text(
-                stringResource(R.string.demo_ar_ml_explainer),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            // Status banner — "Warming up…" / "Aim at an object" / detection count.
-            // trackingFailureMessage returns String? — fall back to "Warming up…" if the
-            // reason resolves to no specific message (unknown / new ARCore enum value).
-            val trackingMessage = trackingFailureMessage(trackingFailureReason)
-            val statusText = when {
-                trackingMessage != null -> trackingMessage
-                detections.isNotEmpty() ->
-                    context.resources.getQuantityString(
-                        R.plurals.demo_ar_ml_status_detected,
-                        detections.size,
-                        detections.size,
-                    )
-                else -> stringResource(statusBannerRes)
-            }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                ),
-            ) {
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.padding(12.dp),
-                )
-            }
-        },
     ) {
+        // Status banner text — "Warming up…" / "Aim at an object" / detection
+        // count. trackingFailureMessage returns String? — fall back to the
+        // status-banner res if the reason resolves to no specific message.
+        val trackingMessage = trackingFailureMessage(trackingFailureReason)
+        val statusText = when {
+            trackingMessage != null -> trackingMessage
+            detections.isNotEmpty() ->
+                context.resources.getQuantityString(
+                    R.plurals.demo_ar_ml_status_detected,
+                    detections.size,
+                    detections.size,
+                )
+            else -> stringResource(statusBannerRes)
+        }
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
                 modifier = Modifier.fillMaxSize(),
@@ -281,22 +264,22 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                 }
             }
 
-            // Initial "Warming up…" banner overlay only when we haven't drawn anything
-            // useful yet — avoids a black-screen-then-anchor flash for the first ~1 s.
-            if (!isTracking && detections.isEmpty()) {
-                Surface(
-                    color = Color.Black.copy(alpha = 0.4f),
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(16.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.demo_ar_ml_status_warming),
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
+            // Always-on status banner overlay — "Warming up…" / "Aim at an
+            // object" / detection count. Surfaced on-screen (previously buried
+            // in a Settings sheet) so the user always knows the demo state
+            // without opening a FAB (#1620 thread 1).
+            Surface(
+                color = Color.Black.copy(alpha = 0.4f),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(16.dp),
+            ) {
+                Text(
+                    text = statusText,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
             }
         }
     }
