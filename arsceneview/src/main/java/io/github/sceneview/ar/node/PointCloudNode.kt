@@ -73,7 +73,10 @@ open class PointCloudNode(
     indexBuffer = createInitialIndexBuffer(engine),
     // Degenerate but non-empty AABB so Filament's "AABB can't be empty" precondition passes
     // before the first valid point cloud populates the real bounds — see DepthMeshNode #1783.
-    boundingBox = Box(0f, 0f, 0f, DEGENERATE_AABB_HALF_EXTENT_M, DEGENERATE_AABB_HALF_EXTENT_M, DEGENERATE_AABB_HALF_EXTENT_M),
+    boundingBox = Box(
+        0f, 0f, 0f,
+        DEGENERATE_AABB_HALF_EXTENT_M, DEGENERATE_AABB_HALF_EXTENT_M, DEGENERATE_AABB_HALF_EXTENT_M,
+    ),
     materialInstance = materialInstance,
     builder = builder,
 ) {
@@ -140,7 +143,11 @@ open class PointCloudNode(
         // below throws we must still be able to free the new buffers AND keep the old ones for
         // [destroy]. Mirrors DepthMeshNode #1840.
         val grow = requestedCount > allocatedPointCount
-        val newCapacity = if (grow) pointCloudNextPowerOfTwo(maxOf(requestedCount, INITIAL_POINT_CAPACITY)) else allocatedPointCount
+        val newCapacity = if (grow) {
+            pointCloudNextPowerOfTwo(maxOf(requestedCount, INITIAL_POINT_CAPACITY))
+        } else {
+            allocatedPointCount
+        }
         val newVertexBuffer = if (grow) createVertexBuffer(engine, newCapacity) else null
         val newIndexBuffer = if (grow) createIndexBuffer(engine, newCapacity) else null
         val targetVertexBuffer = newVertexBuffer ?: ownedVertexBuffer
