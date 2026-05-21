@@ -144,7 +144,7 @@ echo ""
 # ─── 7. Git state ───────────────────────────────────────────────────────
 echo -e "${CYAN}--- Git State ---${NC}"
 
-DIRTY=$(git status --porcelain | grep -v '??' | wc -l | tr -d ' ')
+DIRTY=$(git status --porcelain | { grep -v '??' || true; } | wc -l | tr -d ' ')
 [ "$DIRTY" -eq 0 ] && check "Working tree clean" "PASS" "" || check "Working tree clean" "FAIL" "$DIRTY uncommitted changes"
 
 BRANCH=$(git branch --show-current)
@@ -196,8 +196,8 @@ done
 [ "$SECRETS_FOUND" -eq 0 ] && check "No secrets in tracked files" "PASS" ""
 
 # Check for API keys in source
-API_KEY_HITS=$(grep -rn "AIza\|sk-\|AKIA\|ghp_\|npm_" --include="*.kt" --include="*.swift" --include="*.ts" --include="*.js" \
-    sceneview/ arsceneview/ SceneViewSwift/ mcp/src/ 2>/dev/null | grep -v "node_modules\|\.test\." | wc -l | tr -d ' ')
+API_KEY_HITS=$({ grep -rn "AIza\|sk-\|AKIA\|ghp_\|npm_" --include="*.kt" --include="*.swift" --include="*.ts" --include="*.js" \
+    sceneview/ arsceneview/ SceneViewSwift/ mcp/src/ 2>/dev/null || true; } | { grep -v "node_modules\|\.test\." || true; } | wc -l | tr -d ' ')
 [ "$API_KEY_HITS" -eq 0 ] && check "No hardcoded API keys" "PASS" "" || check "No hardcoded API keys" "FAIL" "$API_KEY_HITS hit(s)"
 echo ""
 
@@ -228,7 +228,13 @@ echo ""
 echo -e "${CYAN}--- Essential Files ---${NC}"
 
 for f in llms.txt README.md CLAUDE.md CHANGELOG.md LICENSE CONTRIBUTING.md SECURITY.md; do
-    [ -f "$f" ] && check "$f exists" "PASS" "" || check "$f exists" "FAIL" "Missing"
+    # GitHub also looks under .github/ for community-health files (SECURITY.md,
+    # CONTRIBUTING.md, CODE_OF_CONDUCT.md) — treat that location as equivalent.
+    if [ -f "$f" ] || [ -f ".github/$f" ]; then
+        check "$f exists" "PASS" ""
+    else
+        check "$f exists" "FAIL" "Missing"
+    fi
 done
 echo ""
 

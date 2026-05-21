@@ -2,6 +2,7 @@ package io.github.sceneview.ar.arcore
 
 import io.github.sceneview.math.Position
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
@@ -91,6 +92,22 @@ class DepthHitResultTest {
         assertEquals(0f, normal.x, EPSILON)
         assertEquals(0f, normal.y, EPSILON)
         assertEquals(1f, normal.z, EPSILON)
+    }
+
+    // ── Input validation (#1812) ──────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `unprojectDepthPixel throws on zero focal length X`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            unprojectDepthPixel(0, 0, depthMeters = 1f, fx = 0f, fy = fy, cx = cx, cy = cy)
+        }
+    }
+
+    @Test
+    fun `unprojectDepthPixel throws on zero focal length Y`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            unprojectDepthPixel(0, 0, depthMeters = 1f, fx = fx, fy = 0f, cx = cx, cy = cy)
+        }
     }
 
     companion object {

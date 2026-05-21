@@ -60,8 +60,10 @@ import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
+import io.github.sceneview.ar.node.DepthMeshNode
 import io.github.sceneview.ar.node.PoseNode
 import io.github.sceneview.ar.scene.PlaneRenderer
+import io.github.sceneview.ar.scene.SceneUnderstanding
 import io.github.sceneview.collision.CollisionSystem
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.environment.Environment
@@ -148,12 +150,20 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 Useful for record-replay debugging, deterministic AR tests, and
  *                                 sharing reproducers between developers without needing the
  *                                 original device or location.
+ * @param playbackDatasetUri       Scoped-storage equivalent of [playbackDataset] (#1770).
+ *                                 Accepts `content://` URIs on Android 10+ — mutually exclusive
+ *                                 with [playbackDataset].
  * @param sessionCameraConfig      Selects the ARCore [CameraConfig] for the session. Defaults to
  *                                 [highestResolutionCameraConfig], which picks the highest-resolution
  *                                 BACK-facing 30 FPS config the device exposes — so [ARRecorder]
  *                                 recordings capture at full camera resolution instead of ARCore's
  *                                 low-res 640×480 CPU-stream default (#1065). Pass `null` to keep
  *                                 ARCore's stock default config.
+ * @param flashMode                ARCore v1.45+ Flash Mode — drives the device torch during the AR
+ *                                 session for low-light tracking ([Config.FlashMode.OFF] /
+ *                                 [Config.FlashMode.TORCH]). Default `OFF`. Support-gated —
+ *                                 unsupported devices / front-camera configs silently downgrade
+ *                                 to `OFF` (#1732).
  * @param sessionConfiguration     Callback to configure the ARCore [Session] and [Config].
  *                                 SceneView pre-sets `config.lightEstimationMode = ENVIRONMENTAL_HDR`
  *                                 (replacing ARCore's `AMBIENT_INTENSITY` default) BEFORE invoking
@@ -191,6 +201,10 @@ import java.util.concurrent.atomic.AtomicReference
  * @param onSessionResumed         Called each time the session is resumed.
  * @param onSessionPaused          Called each time the session is paused.
  * @param onSessionFailed          Called if ARCore fails to initialize (missing ARCore or permission).
+ *                                 Receives a raw [Exception]. Prefer [onSessionFailure] for
+ *                                 typed, exhaustive `when` matching (#1759).
+ * @param onSessionFailure         Typed [ARSessionFailure] callback (#1759). Fires alongside
+ *                                 [onSessionFailed]; pick the one that matches your codebase.
  * @param onSessionUpdated         Called once per AR frame before the scene is updated.
  * @param onTrackingFailureChanged Called when the camera [TrackingFailureReason] changes.
  * @param onGestureListener        Gesture callbacks — tap, double-tap, drag, pinch, etc.
@@ -201,6 +215,33 @@ import java.util.concurrent.atomic.AtomicReference
  * @param lifecycle                Lifecycle that binds the AR session resume/pause cycle.
  * @param content                  Declare AR scene content using the [ARSceneScope] composable DSL.
  */
+/**
+ * Allowed URI schemes for [playbackDatasetUri] (#1845).
+ *
+ * ARCore's [com.google.ar.core.Session.setPlaybackDatasetUri] is documented for
+ * `content://` URIs from `MediaStore`, Storage Access Framework picker output, and
+ * `FileProvider`s. `file://` is also accepted for symmetry with the legacy
+ * [playbackDataset] [java.io.File] path. Anything else (`https://`, `data:`, custom schemes)
+ * is rejected at the SceneView boundary — passing those silently to ARCore either no-ops or
+ * fails with an opaque [com.google.ar.core.exceptions.PlaybackFailedException] from
+ * `session.resume()`.
+ *
+ * Exposed as `internal` (not `private`) so the unit-test suite can pin the scheme set
+ * without instantiating a full Composable host.
+ */
+internal val PLAYBACK_DATASET_URI_ALLOWED_SCHEMES: Set<String> = setOf("content", "file")
+
+/**
+ * Returns true if [uri] is acceptable as a `playbackDatasetUri` (#1845).
+ *
+ * Extracted as a top-level pure function from the `require` inside [ARSceneView] so it can
+ * be unit-tested without a Compose host. Mirrors the Composable's contract: `null` is OK
+ * (no playback requested); a non-null URI must carry a [PLAYBACK_DATASET_URI_ALLOWED_SCHEMES]
+ * scheme.
+ */
+internal fun isAllowedPlaybackDatasetUri(uri: android.net.Uri?): Boolean =
+    uri == null || uri.scheme in PLAYBACK_DATASET_URI_ALLOWED_SCHEMES
+
 @Composable
 fun ARSceneView(
     modifier: Modifier = Modifier,
@@ -254,6 +295,42 @@ fun ARSceneView(
      */
     playbackDataset: File? = null,
     /**
+     * Optional scoped-storage [android.net.Uri] dataset to play back instead of the live camera
+     * feed (Android 10+ / API 29+ alternative to [playbackDataset]).
+     *
+     * Wraps ARCore's [com.google.ar.core.Session.setPlaybackDatasetUri] (#1770), which accepts
+     * `content://` URIs (`MediaStore`, Storage Access Framework picker output, app-private
+     * file providers). The legacy `playbackDataset: File?` only accepts an absolute filesystem
+     * path — which on Android 10+ scoped storage means the app must copy the user-picked MP4
+     * into its sandbox before replay. With `playbackDatasetUri` the replay reads the original
+     * `Uri` directly.
+     *
+     * **Scheme allowlist (#1845).** Only `content://` and `file://` URIs are accepted —
+     * passing e.g. `https://`, `data:`, or any custom scheme triggers an
+     * `IllegalArgumentException` at session creation. ARCore would silently fail or hand the
+     * URI off to an arbitrary `ContentResolver` registration; we surface the misuse at the
+     * SceneView boundary where the caller can see it.
+     *
+     * **Caller-side permission requirement.** A `content://` URI is only readable by ARCore
+     * if the calling process has been granted read access to it. With a Storage Access Framework
+     * picker (`ACTION_OPEN_DOCUMENT`), the grant is implicit for the lifetime of the activity;
+     * to outlive process restarts call
+     * [ContentResolver.takePersistableUriPermission][android.content.ContentResolver.takePersistableUriPermission].
+     * When forwarding the URI to another component via [android.content.Intent], set
+     * [android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION] on the launcher intent. Without
+     * a read grant ARCore raises [PlaybackFailedException] which is routed to
+     * [onPlaybackFailed].
+     *
+     * **Mutually exclusive with [playbackDataset].** Setting both is a programming error and
+     * triggers an `IllegalArgumentException` at session creation. Default `null`.
+     *
+     * Same snapshot semantics as [playbackDataset] — the value is captured at first composition
+     * (ARCore requires the playback source to be set before the first resume). Switching
+     * between live and playback at runtime requires wrapping the `ARSceneView` in
+     * `key(playbackDatasetUri) { … }` so Compose rebuilds the session.
+     */
+    playbackDatasetUri: android.net.Uri? = null,
+    /**
      * Selects the camera config to use. The returned config must be one returned by
      * [Session.getSupportedCameraConfigs].
      *
@@ -264,6 +341,23 @@ fun ARSceneView(
      */
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
     /**
+     * Drives the device torch during the AR session — ARCore v1.45+ Flash Mode API (#1732).
+     *
+     * - [Config.FlashMode.OFF] (default): no torch.
+     * - [Config.FlashMode.TORCH]: ARCore keeps the back-camera LED on while the session is
+     *   running. Helps tracking in low-light scenes; battery cost is significant — toggle off
+     *   once the user re-enters daylight.
+     *
+     * **Support-gated.** Flash Mode requires (a) ARCore 1.45+ runtime on-device, and (b) a
+     * back-camera config — front-camera sessions never expose a torch. If the device or the
+     * current camera config does not support the requested mode, SceneView silently downgrades
+     * the session to `OFF` (matching the auto-fallback used for unsupported `depthMode`). Apps
+     * that want to surface the support state to the user can call
+     * [com.google.ar.core.Session.isSupported] with a config carrying the desired
+     * [Config.FlashMode] directly.
+     */
+    flashMode: Config.FlashMode = Config.FlashMode.OFF,
+    /**
      * Configures the session and verifies that the enabled features in the specified session
      * config are supported with the currently set camera config.
      */
@@ -272,6 +366,20 @@ fun ARSceneView(
      * Enable the plane renderer.
      */
     planeRenderer: Boolean = true,
+    /**
+     * Grouped scene-understanding flags (#1767) — mirrors RealityKit's
+     * `ARView.environment.sceneUnderstanding.options`. When non-null, the four
+     * inner flags (`occlusion`, `lighting`, `physics`, `planeVisualization`)
+     * are applied in tandem, overriding the individual scattered flags
+     * (`planeRenderer`, [ARCameraStream.isDepthOcclusionEnabled],
+     * [io.github.sceneview.ar.light.LightEstimator.isEnabled]).
+     *
+     * Default `null` keeps every individual flag at its pre-#1767 default —
+     * the grouped knob is purely additive and opt-in. Use it when you want a
+     * single discoverable point of configuration; keep it null and mutate the
+     * individual flags directly if you need fine-grained control.
+     */
+    sceneUnderstanding: SceneUnderstanding? = null,
     /**
      * The [ARCameraStream] to render the camera texture.
      */
@@ -366,6 +474,18 @@ fun ARSceneView(
      */
     onSessionFailed: ((exception: Exception) -> Unit)? = null,
     /**
+     * Typed equivalent of [onSessionFailed] (#1759). Receives an [ARSessionFailure] sealed-class
+     * instance instead of a raw [Exception], so the callback can do an exhaustive `when` over
+     * every ARCore failure mode (install, permission, camera, cloud-anchor, …) — the compiler
+     * catches the day a new failure category is added and the app forgot to handle it.
+     *
+     * **Both callbacks fire** when set — [onSessionFailed] runs first (raw `Exception`),
+     * [onSessionFailure] runs second (mapped). Apps migrating off the raw form can wire the
+     * typed callback alongside and gradually delete the legacy one; setting only
+     * [onSessionFailure] is the new recommended path.
+     */
+    onSessionFailure: ((failure: ARSessionFailure) -> Unit)? = null,
+    /**
      * Optional dedicated callback for failures that originate from the
      * [playbackDataset] binding — typically `PlaybackFailedException` from ARCore when the
      * MP4 cannot be opened, parsed, or already has an active recording.
@@ -426,26 +546,65 @@ fun ARSceneView(
     val onSessionResumedRef = remember { AtomicReference(onSessionResumed) }
     val onSessionPausedRef = remember { AtomicReference(onSessionPaused) }
     val onSessionFailedRef = remember { AtomicReference(onSessionFailed) }
+    val onSessionFailureRef = remember { AtomicReference(onSessionFailure) }
     val onPlaybackFailedRef = remember { AtomicReference(onPlaybackFailed) }
     val onSessionUpdatedRef = remember { AtomicReference(onSessionUpdated) }
     val onTrackingFailureChangedRef = remember { AtomicReference(onTrackingFailureChanged) }
     val sessionConfigurationRef = remember { AtomicReference(sessionConfiguration) }
     val sessionCameraConfigRef = remember { AtomicReference(sessionCameraConfig) }
+    val flashModeRef = remember { AtomicReference(flashMode) }
 
     SideEffect {
         onSessionCreatedRef.set(onSessionCreated)
         onSessionResumedRef.set(onSessionResumed)
         onSessionPausedRef.set(onSessionPaused)
         onSessionFailedRef.set(onSessionFailed)
+        onSessionFailureRef.set(onSessionFailure)
         onPlaybackFailedRef.set(onPlaybackFailed)
         onSessionUpdatedRef.set(onSessionUpdated)
         onTrackingFailureChangedRef.set(onTrackingFailureChanged)
         sessionConfigurationRef.set(sessionConfiguration)
         sessionCameraConfigRef.set(sessionCameraConfig)
+        flashModeRef.set(flashMode)
     }
 
     val prevTrackingFailureRef = remember { AtomicReference<TrackingFailureReason?>(null) }
     val isFrontFaceWindingInvertedRef = remember { AtomicBoolean(false) }
+
+    // Tracks the per-frame [IndirectLight] this composable builds from
+    // light-estimation updates so the previous one can be destroyed
+    // independently of whatever currently sits on `scene.indirectLight` (#1756).
+    //
+    // The pre-fix path captured `previousIbl = scene.indirectLight` inside the
+    // rebuild block and destroyed it unless it equalled the environment's base
+    // IBL. That logic relied on the invariant "scene.indirectLight is either
+    // the environment's base or *our* previously-built IBL". A third party
+    // (custom node, app code) overwriting `scene.indirectLight` between two
+    // estimation updates broke that invariant — the IBL we previously built
+    // was then orphaned in native heap with no reference left to destroy it.
+    //
+    // Caching the IBL we own here makes destruction self-contained: each
+    // rebuild destroys exactly the IBL the previous rebuild produced, regardless
+    // of what `scene.indirectLight` looks like now. On dispose the cached IBL
+    // is freed too — closing the lifecycle leak that the umbrella audit flagged
+    // for long AR sessions with intermittent estimation.
+    val builtIndirectLightRef = remember { AtomicReference<IndirectLight?>(null) }
+    DisposableEffect(engine, builtIndirectLightRef, scene) {
+        onDispose {
+            // Defensive ordering (#1814): clear the scene's [IndirectLight] reference BEFORE
+            // freeing it. The window between [Engine.destroyIndirectLight] and Compose teardown
+            // could otherwise have an in-flight `onARFrame` (still queued on the GL thread) walk
+            // [scene.indirectLight] and dereference a freed native handle. Setting `null` first
+            // unblocks the destroy: Filament's renderer simply skips IBL sampling when the slot
+            // is null. If a third party overwrote `scene.indirectLight` with their own resource
+            // after we last set it, this null-out replaces *their* reference too — and that is
+            // fine: we're tearing the scene down, the slot owner is leaving anyway.
+            scene.indirectLight = null
+            builtIndirectLightRef.getAndSet(null)?.let {
+                engine.safeDestroyIndirectLight(it)
+            }
+        }
+    }
 
     // Baseline mainLight color + intensity captured on the first frame the lightEstimator
     // produces an estimate. Without this, ARScene's per-frame
@@ -465,6 +624,21 @@ fun ARSceneView(
         AtomicReference<Float?>(null)
     }
 
+    // Mutually exclusive playback inputs (#1770): only one of File or Uri may be set.
+    require(playbackDataset == null || playbackDatasetUri == null) {
+        "ARSceneView: pass either playbackDataset (File) OR playbackDatasetUri (Uri), not both."
+    }
+    // Scheme allowlist (#1845) — defense-in-depth. Only content:// and file:// URIs name a
+    // playable dataset. Reject any other scheme (https://, data:, …) at the SceneView
+    // boundary rather than handing it to ARCore where it would either silently fail or raise
+    // an opaque PlaybackFailedException after session.resume(). See the [playbackDatasetUri]
+    // KDoc for the caller-side permission requirements (FLAG_GRANT_READ_URI_PERMISSION /
+    // takePersistableUriPermission).
+    require(isAllowedPlaybackDatasetUri(playbackDatasetUri)) {
+        "ARSceneView: playbackDatasetUri scheme '${playbackDatasetUri?.scheme}' is not " +
+            "allowed — expected one of $PLAYBACK_DATASET_URI_ALLOWED_SCHEMES."
+    }
+
     val arCore = remember {
         // Snapshotted at first composition. ARCore requires setPlaybackDataset() to be called
         // BEFORE the first resume(), so we capture the param value once when the session is
@@ -472,25 +646,50 @@ fun ARSceneView(
         // at runtime requires the caller to recreate the ARSceneView (typically via
         // `key(playbackDataset) { ARSceneView(...) }`).
         val initialPlaybackDataset = playbackDataset
+        val initialPlaybackDatasetUri = playbackDatasetUri
         ARCore(
             onSessionCreated = { session ->
                 cameraStream?.let { session.setCameraTextureNames(it.cameraTextureIds) }
                 // Bind the playback source first — ARCore mandates the dataset is set before
                 // resume(), and configure() happens here, then resume() runs immediately
-                // after this callback returns.
-                initialPlaybackDataset?.let { file ->
-                    try {
-                        session.setPlaybackDataset(file.absolutePath)
-                    } catch (e: PlaybackFailedException) {
-                        // Prefer the dedicated playback callback when wired (audit #876),
-                        // fall back to onSessionFailed for backwards compatibility.
-                        (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
-                    } catch (e: Exception) {
-                        // Defensive — ARCore may throw IllegalStateException if the session
-                        // has already been resumed elsewhere. Don't crash; surface to caller.
-                        (onPlaybackFailedRef.get() ?: onSessionFailedRef.get())?.invoke(e)
+                // after this callback returns. File path takes precedence over Uri (the
+                // mutually-exclusive `require` above prevents both from being set).
+                val dispatchPlaybackFailure: (Exception) -> Unit = { e ->
+                    // Prefer the dedicated playback callback when wired (audit #876).
+                    // Otherwise fan out to onSessionFailed (raw) + onSessionFailure (typed, #1759).
+                    if (onPlaybackFailedRef.get() != null) {
+                        onPlaybackFailedRef.get()?.invoke(e)
+                    } else {
+                        onSessionFailedRef.get()?.invoke(e)
+                        onSessionFailureRef.get()?.invoke(ARSessionFailure.from(e))
                     }
                 }
+                val bindFile: () -> Unit = {
+                    initialPlaybackDataset?.let { file ->
+                        try {
+                            session.setPlaybackDataset(file.absolutePath)
+                        } catch (e: PlaybackFailedException) {
+                            dispatchPlaybackFailure(e)
+                        } catch (e: Exception) {
+                            // Defensive — ARCore may throw IllegalStateException if the session
+                            // has already been resumed elsewhere. Don't crash; surface to caller.
+                            dispatchPlaybackFailure(e)
+                        }
+                    }
+                }
+                val bindUri: () -> Unit = {
+                    initialPlaybackDatasetUri?.let { uri ->
+                        try {
+                            session.setPlaybackDatasetUri(uri)
+                        } catch (e: PlaybackFailedException) {
+                            dispatchPlaybackFailure(e)
+                        } catch (e: Exception) {
+                            dispatchPlaybackFailure(e)
+                        }
+                    }
+                }
+                bindFile()
+                bindUri()
                 sessionCameraConfigRef.get()?.let { session.cameraConfig = it(session) }
                 session.configure { config ->
                     config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
@@ -504,6 +703,10 @@ fun ARSceneView(
                     // still force DISABLED inside `ARSession.configure()` regardless. Set BEFORE
                     // invoking the user callback so callers can opt back into another mode.
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
+                    // Apply the caller-requested Flash Mode (#1732). Support is verified inside
+                    // ArSession.configure (silently downgraded to OFF if unsupported). Set BEFORE
+                    // the user callback so callers can opt back into a different mode.
+                    config.flashMode = flashModeRef.get() ?: Config.FlashMode.OFF
                     sessionConfigurationRef.get()?.invoke(session, config)
                 }
                 cameraStream?.let { scene.addEntity(it.entity) }
@@ -517,7 +720,10 @@ fun ARSceneView(
                 onSessionPausedRef.get()?.invoke(session)
             },
             onArSessionFailed = { exception ->
+                // Dual dispatch (#1759): raw callback first for backwards compat, then the
+                // typed one so apps can wire either or both.
                 onSessionFailedRef.get()?.invoke(exception)
+                onSessionFailureRef.get()?.invoke(ARSessionFailure.from(exception))
             },
             onSessionConfigChanged = { session, _ ->
                 isFrontFaceWindingInvertedRef.set(
@@ -542,13 +748,40 @@ fun ARSceneView(
         }
     }
 
+    // ── Flash mode reactivity (#1732) ─────────────────────────────────────────────────────────────
+    //
+    // Allow apps to toggle the torch by recomposing with a new `flashMode` value. The session is
+    // reconfigured only when the actual value changes, so flipping unrelated state does not pay
+    // for an ARCore `configure()` call. Support gating + front-camera downgrade is centralised
+    // inside `ArSession.configure()`.
+    LaunchedEffect(flashMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.flashMode != flashMode) {
+            session.configure { config -> config.flashMode = flashMode }
+        }
+    }
+
     // ── Scene / camera / environment setup ───────────────────────────────────────────────────────
 
     val nodeManager = remember(scene, collisionSystem) { SceneNodeManager(scene, collisionSystem) }
 
-    SideEffect {
+    // Baseline IBL + skybox setup. Applied ONCE per `environment` instance change,
+    // not on every recomposition (#1611). The per-frame `onARFrame` rebuild path
+    // overwrites `scene.indirectLight` with a fresh IBL each time ARCore surfaces
+    // a new light estimate; running this initialiser inside `SideEffect` instead
+    // would reset the rebuilt IBL on the *next* recomposition (which fires every
+    // frame in demos that surface `latestFrame` / `isTracking` to UI state) and
+    // collapse the scene back to the neutral baseline — which on KTX1-loaded IBLs
+    // is reflections-mostly with limited diffuse SH, producing visible-but-dim
+    // metals at best and flat-black models at worst. `LaunchedEffect(environment)`
+    // restores the baseline only when the env instance actually changes (initial
+    // composition, environment swap by the caller).
+    LaunchedEffect(environment, scene) {
         scene.indirectLight = environment.indirectLight
         scene.skybox = environment.skybox
+    }
+
+    SideEffect {
         view.scene = scene
         view.camera = cameraNode.camera
         cameraNode.collisionSystem = collisionSystem
@@ -630,6 +863,25 @@ fun ARSceneView(
 
     SideEffect {
         arPlaneRenderer.isEnabled = planeRenderer
+    }
+
+    // ── Grouped scene-understanding flags (#1767) ────────────────────────────────────────────────
+    //
+    // When `sceneUnderstanding` is provided, fan out its four flags to the four
+    // scattered owners in tandem. Applied AFTER the individual `planeRenderer`
+    // SideEffect above so the grouped knob wins on every recomposition — that
+    // matches the data class contract documented in [SceneUnderstanding].
+    //
+    // `physics` is reserved (no current backing implementation, see KDoc on
+    // [SceneUnderstanding.physics]). When the underlying ARCore Scene Semantics
+    // / Mesh path lands (#1760, #1761), this is the canonical place to wire it.
+    SideEffect {
+        sceneUnderstanding?.let { su ->
+            arPlaneRenderer.isEnabled = su.planeVisualization
+            lightEstimator.isEnabled = su.lighting
+            cameraStream?.isDepthOcclusionEnabled = su.occlusion
+            // su.physics: no-op today; wired when #1760/#1761 land.
+        }
     }
 
     // ── Lifecycle-aware rendering ─────────────────────────────────────────────────────────────────
@@ -734,6 +986,7 @@ fun ARSceneView(
                                     onSessionUpdatedRef = onSessionUpdatedRef,
                                     baselineMainLightColorRef = baselineMainLightColorRef,
                                     baselineMainLightIntensityRef = baselineMainLightIntensityRef,
+                                    builtIndirectLightRef = builtIndirectLightRef,
                                     session = session,
                                     frame = frame
                                 )
@@ -814,6 +1067,7 @@ private fun onARFrame(
     onSessionUpdatedRef: AtomicReference<((Session, Frame) -> Unit)?>,
     baselineMainLightColorRef: AtomicReference<io.github.sceneview.math.Color?>,
     baselineMainLightIntensityRef: AtomicReference<Float?>,
+    builtIndirectLightRef: AtomicReference<IndirectLight?>,
     session: Session,
     frame: Frame
 ) {
@@ -842,28 +1096,71 @@ private fun onARFrame(
             estimation.mainLightIntensity?.let { light.intensity = baselineIntensity * it }
             estimation.mainLightDirection?.let { light.lightDirection = it }
         }
+        // #1756: only rebuild the per-frame IBL when the estimator actually
+        // surfaced new data this frame. `LightEstimator.update()` already
+        // returns `null` when ARCore's `LightEstimate.timestamp` hasn't
+        // advanced, so we're inside the `?.let { estimation ->` block —
+        // therefore the estimation IS fresh. The pure decision logic for
+        // "which texture/SH source do we use" is centralised in
+        // [pickIndirectLightSources] so it can be exercised without a
+        // Filament engine (see `IndirectLightRebuildDecisionTest`).
+        //
+        // #1611: skip the rebuild entirely when the resulting IBL would be
+        // incomplete — i.e. either irradiance or reflections cannot be sourced
+        // from estimation AND a baseline fallback is not available. Baseline
+        // KTX1-loaded IBLs typically expose SH coefficients via the native
+        // handle (no `getIrradianceTexture()`) so the legacy fallback
+        // `baseline.irradianceTexture` returned null on them — and the rebuilt
+        // IBL ended up with an explicit empty irradiance source, which
+        // Filament treats as "no diffuse IBL". The visible symptom on Pixel 9
+        // was placed PBR models rendering as flat-black silhouettes during
+        // every transient frame where ARCore surfaced reflections only or
+        // irradiance only. The new gate keeps `scene.indirectLight` on the
+        // last good build (which falls back to `environment.indirectLight`
+        // until the first FULL estimate lands), so partial estimations no
+        // longer collapse the scene to black.
         val indirectLight = environment.indirectLight
-        val previousIbl = scene.indirectLight
-        IndirectLight.Builder().apply {
-            estimation.irradiance?.let { irradiance(3, it) }
-                ?: indirectLight?.irradianceTexture?.let { irradiance(it) }
-            estimation.reflections?.let { reflections(it) }
-                ?: indirectLight?.reflectionsTexture?.let { reflections(it) }
-            indirectLight?.intensity?.let { intensity(it) }
-            indirectLight?.getRotation(null)?.let { rotation(it) }
-        }.build(engine).also { newIbl ->
+        if (shouldRebuildIndirectLight(estimation, indirectLight)) {
+            val sources = pickIndirectLightSources(estimation, indirectLight)
+            val newIbl = IndirectLight.Builder().apply {
+                if (sources.useEstimationIrradiance) {
+                    estimation.irradiance?.let { irradiance(3, it) }
+                } else {
+                    indirectLight?.irradianceTexture?.let { irradiance(it) }
+                }
+                if (sources.useEstimationReflections) {
+                    estimation.reflections?.let { reflections(it) }
+                } else {
+                    indirectLight?.reflectionsTexture?.let { reflections(it) }
+                }
+                indirectLight?.intensity?.let { intensity(it) }
+                indirectLight?.getRotation(null)?.let { rotation(it) }
+            }.build(engine)
             scene.indirectLight = newIbl
-            // Destroy the previous per-frame IBL to avoid a native memory leak.
-            // Don't destroy the environment's own IBL — only the ones we built here.
-            if (previousIbl != null && previousIbl != indirectLight) {
-                engine.safeDestroyIndirectLight(previousIbl)
+            // #1756: destroy the IBL we built on the previous estimation update
+            // (tracked via [builtIndirectLightRef]) — independent of what
+            // `scene.indirectLight` happens to be now. The old path captured
+            // `scene.indirectLight` and destroyed it unless it matched the
+            // environment's base IBL; a third party overwriting `scene.indirectLight`
+            // between updates orphaned our previously-built IBL in native heap.
+            // Self-contained ownership tracking closes that leak (the previous
+            // IBL is always destroyed exactly once, when superseded or on dispose).
+            builtIndirectLightRef.getAndSet(newIbl)?.let { previousBuiltIbl ->
+                engine.safeDestroyIndirectLight(previousBuiltIbl)
             }
         }
     }
 
     arPlaneRenderer.update(session, frame)
 
-    childNodes.filterIsInstance<PoseNode>().forEach { it.update(session, frame) }
+    // Single-pass dispatch (#1810): the previous `filterIsInstance<PoseNode>().forEach { }` +
+    // `filterIsInstance<DepthMeshNode>().forEach { }` allocated two fresh ArrayLists every frame
+    // (~240 list allocations/sec at 60 fps on the render thread). A single `for` loop with a
+    // `when` type-check is zero-allocation and walks the child list once.
+    for (n in childNodes) when (n) {
+        is PoseNode -> n.update(session, frame)
+        is DepthMeshNode -> n.update(session, frame)
+    }
 
     val newTrackingFailure = if (!isCameraTracking) {
         camera.trackingFailureReason.takeIf { it != TrackingFailureReason.NONE }
@@ -876,6 +1173,109 @@ private fun onARFrame(
 
     onSessionUpdatedRef.get()?.invoke(session, frame)
 }
+
+/**
+ * Pure decision-logic helper for the per-frame `IndirectLight` rebuild (#1756).
+ *
+ * Given a fresh [LightEstimator.Estimation] and the environment's base
+ * [IndirectLight] (may be null), picks whether each IBL source — irradiance and
+ * reflections — should come from the live ARCore estimate or fall back to the
+ * baked environment baseline.
+ *
+ * Extracted out of `onARFrame` so the (otherwise Filament-laden) rebuild block
+ * has a pure-Kotlin core that can be exercised under JVM unit tests — see
+ * `IndirectLightRebuildDecisionTest`. The actual Filament `IndirectLight.Builder`
+ * call still lives in `onARFrame` because the builder needs a live engine.
+ *
+ * Rules:
+ *  - **Irradiance**: use the estimation's spherical-harmonics coefficients if
+ *    present; otherwise fall back to the base IBL's irradiance texture.
+ *  - **Reflections**: use the estimation's cubemap if present; otherwise fall
+ *    back to the base IBL's reflections texture.
+ *
+ * @param estimation the current frame's estimate (never null inside the
+ *   rebuild path — `LightEstimator.update` already returned non-null).
+ * @param baseIndirectLight the environment's static IBL or null.
+ * @return [IndirectLightSources] flagging which source to use per channel.
+ */
+internal fun pickIndirectLightSources(
+    estimation: LightEstimator.Estimation,
+    baseIndirectLight: IndirectLight?
+): IndirectLightSources {
+    val hasIrradiance = estimation.irradiance != null
+    val hasReflections = estimation.reflections != null
+    return IndirectLightSources(
+        useEstimationIrradiance = hasIrradiance,
+        useEstimationReflections = hasReflections,
+        hasBaseIndirectLight = baseIndirectLight != null
+    )
+}
+
+/**
+ * Returns `true` when the per-frame `IndirectLight` rebuild has enough source
+ * data to produce a visually complete IBL (#1611).
+ *
+ * The rebuild path at [onARFrame] composes a new IBL from a mix of ARCore's
+ * `LightEstimate` (irradiance SH + reflections cubemap) and the environment's
+ * baseline `IndirectLight`. When neither side provides usable data for one of
+ * the two channels, the resulting IBL has an empty source for that channel,
+ * which Filament renders as "no IBL contribution" — diffuse base color goes
+ * black on PBR materials and the placed model reads as a flat silhouette
+ * against the camera feed.
+ *
+ * Skip the rebuild instead. `scene.indirectLight` then keeps whatever the
+ * last good rebuild produced (or the environment baseline, set once per
+ * `environment` change inside [ARSceneView]). The next ARCore estimate that
+ * brings either channel back to a workable state triggers a fresh, complete
+ * rebuild.
+ *
+ * Specifically:
+ *  - **Irradiance is sourceable** when the estimation has SH coefficients, OR
+ *    the baseline exposes an `irradianceTexture`. KTX1-loaded IBLs typically
+ *    expose SH via the native handle (no `irradianceTexture`), so this gates
+ *    fallback only on data Filament can actually consume.
+ *  - **Reflections is sourceable** when the estimation has a freshly-uploaded
+ *    cubemap, OR the baseline exposes a `reflectionsTexture` (the KTX1
+ *    cubemap mip chain, present in the default `rememberAREnvironment`).
+ *
+ * Pure decision logic; extracted out of [onARFrame] so the rule can be pinned
+ * by `IndirectLightRebuildDecisionTest` without spinning up an engine. The
+ * texture nullity check requires a real `IndirectLight`, so the JVM matrix
+ * exercises the "no base IBL" path only — the "base IBL with one texture"
+ * branches are pinned by an instrumented test on a live engine.
+ *
+ * @param estimation the current frame's estimate (must be non-null — caller
+ *   already entered the `?.let { estimation ->` block).
+ * @param baseIndirectLight the environment's baseline IBL, may be null.
+ * @return `true` if a rebuild would produce a complete IBL.
+ */
+internal fun shouldRebuildIndirectLight(
+    estimation: LightEstimator.Estimation,
+    baseIndirectLight: IndirectLight?
+): Boolean {
+    val irradianceAvailable = estimation.irradiance != null ||
+        baseIndirectLight?.irradianceTexture != null
+    val reflectionsAvailable = estimation.reflections != null ||
+        baseIndirectLight?.reflectionsTexture != null
+    // Require at least one fresh estimation channel — otherwise rebuilding
+    // simply duplicates the baseline, wasting an `IndirectLight.Builder.build()`
+    // call per frame plus the destroy on the next update.
+    val anyFresh = estimation.irradiance != null || estimation.reflections != null
+    return anyFresh && irradianceAvailable && reflectionsAvailable
+}
+
+/**
+ * Decision record returned by [pickIndirectLightSources] (#1756).
+ *
+ * Plain data so unit tests can assert exact flag values without spinning up a
+ * Filament engine. [hasBaseIndirectLight] mirrors the env-IBL presence so the
+ * test can pin the precedence rules (estimation > base > unset).
+ */
+internal data class IndirectLightSources(
+    val useEstimationIrradiance: Boolean,
+    val useEstimationReflections: Boolean,
+    val hasBaseIndirectLight: Boolean
+)
 
 // ── Camera config selection ─────────────────────────────────────────────────────────────────────
 
@@ -1092,7 +1492,7 @@ private fun ARScenePreview(modifier: Modifier) {
  * @deprecated Use [ARSceneView] instead. This function is a direct alias provided for backward
  * compatibility with code written against earlier SceneView versions.
  */
-@Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, sessionConfiguration, planeRenderer, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))
+@Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, flashMode, sessionConfiguration, planeRenderer, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))
 @Composable
 fun ARScene(
     modifier: Modifier = Modifier,
@@ -1104,6 +1504,7 @@ fun ARScene(
     sessionFeatures: Set<Session.Feature> = setOf(),
     playbackDataset: File? = null,
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
+    flashMode: Config.FlashMode = Config.FlashMode.OFF,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     planeRenderer: Boolean = true,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
@@ -1142,6 +1543,7 @@ fun ARScene(
     sessionFeatures = sessionFeatures,
     playbackDataset = playbackDataset,
     sessionCameraConfig = sessionCameraConfig,
+    flashMode = flashMode,
     sessionConfiguration = sessionConfiguration,
     planeRenderer = planeRenderer,
     cameraStream = cameraStream,

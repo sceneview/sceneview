@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **iOS**: `FogNode.heightBased(...)` and `FogNode.heightFalloff` are now formally deprecated with a compile-warning instead of silently no-op'ing at runtime — RealityKit has no per-pixel height fog equivalent to Filament's `View.fogOptions.heightFalloff`. Use `FogNode.exponential(density:color:)` instead. The iOS Fog demo no longer advertises a "Height" mode. ([#1380](https://github.com/sceneview/sceneview/issues/1380))

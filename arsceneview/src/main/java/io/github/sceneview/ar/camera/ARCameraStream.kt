@@ -1,6 +1,7 @@
 package io.github.sceneview.ar.camera
 
 import android.util.Log
+import androidx.compose.ui.graphics.Color
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
 import com.google.android.filament.IndexBuffer
@@ -14,6 +15,8 @@ import com.google.ar.core.Config
 import com.google.ar.core.Coordinates2d
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
+import dev.romainguy.kotlin.math.Float3
+import io.github.sceneview.ar.node.ARFogConfig
 import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.managers.safeDestroy
@@ -33,6 +36,16 @@ import java.nio.ShortBuffer
 const val kUVTransformParameter = "uvTransform"
 const val kCameraTextureParameter = "cameraTexture"
 const val kDepthTextureParameter = "depthTexture"
+
+// Environment-aware AR fog (issue #1717). Parameter names match the
+// `camera_stream_depth.mat` declarations 1:1 so the Filament binding is a
+// straight pass-through. Defaults mirror `FogNode`'s virtual-fog defaults so
+// real + virtual fog visually align out of the box.
+const val kFogEnabledParameter = "fogEnabled"
+const val kFogColorParameter = "fogColor"
+const val kFogDensityParameter = "fogDensity"
+const val kFogStartParameter = "fogStart"
+const val kFogEndParameter = "fogEnd"
 
 /**
  * Renders the live AR camera feed as the scene background using Filament.
@@ -105,12 +118,70 @@ open class ARCameraStream(
 
     /**
      * ### Depth occlusion material
+     *
+     * Also carries the environment-aware AR fog parameters (issue #1717).
+     * Fog is initialised disabled with the same defaults as
+     * [io.github.sceneview.node.FogNode] so the material is a strict superset
+     * of the previous depth-only behaviour. Drive the fog from the public
+     * [io.github.sceneview.ar.node.ARFogNode] composable, or set
+     * [arFog] imperatively.
      */
     var depthOcclusionMaterial = materialLoader.createMaterial(depthOcclusionMaterialFile).apply {
         defaultInstance.apply {
             setParameter(kUVTransformParameter, Transform())
             setExternalTexture(kCameraTextureParameter, cameraTexture)
             setTexture(kDepthTextureParameter, depthTexture)
+            // Fog defaults — match `FogNode`'s defaults for parameter parity.
+            setParameter(kFogEnabledParameter, 0f)
+            setParameter(kFogColorParameter, Float3(0.8f, 0.866f, 1.0f))
+            setParameter(kFogDensityParameter, 0.05f)
+            setParameter(kFogStartParameter, 0f)
+            setParameter(kFogEndParameter, 30f)
+        }
+    }
+
+    /**
+     * Environment-aware AR fog config (issue #1717).
+     *
+     * Set to a non-null value to fade distant real-world geometry into a
+     * coloured haze using the ARCore depth image. Mirrors the parameter set of
+     * [io.github.sceneview.node.FogNode] (`color`, `density`, `start`, `end`)
+     * so the same numbers fog both the real world and virtual geometry
+     * consistently.
+     *
+     * Requires [isDepthOcclusionEnabled] to be `true` — without depth pixels
+     * we have nothing to drive the per-pixel fog factor. The setter does NOT
+     * force depth occlusion on, since some callers may want to gate both
+     * flags on the same user toggle; ensure both are set together.
+     *
+     * Default `null` keeps fog disabled at zero shader cost (the fog mix
+     * collapses to a no-op via `fogEnabled = 0`).
+     */
+    var arFog: ARFogConfig? = null
+        set(value) {
+            field = value
+            applyARFog(value)
+        }
+
+    private fun applyARFog(config: ARFogConfig?) {
+        depthOcclusionMaterial.defaultInstance.apply {
+            if (config == null || !config.enabled) {
+                setParameter(kFogEnabledParameter, 0f)
+                return@apply
+            }
+            setParameter(kFogEnabledParameter, 1f)
+            // Compose Color is sRGB; the shader does its haze blend in the
+            // linear-ish space Filament hands us via `inverseTonemapSRGB`.
+            // Use the linear components straight (`red`/`green`/`blue` on
+            // Compose Color are already in the colour-space's component
+            // domain) — matches how `FogNode` writes to `fogOptions.color`.
+            setParameter(
+                kFogColorParameter,
+                Float3(config.color.red, config.color.green, config.color.blue)
+            )
+            setParameter(kFogDensityParameter, config.density.coerceIn(0f, 1f))
+            setParameter(kFogStartParameter, config.start.coerceAtLeast(0f))
+            setParameter(kFogEndParameter, config.end.coerceAtLeast(config.start + 0.001f))
         }
     }
 
@@ -133,6 +204,22 @@ open class ARCameraStream(
      * [Config.DepthMode.RAW_DEPTH_ONLY]
      *
      * Disable this value to apply the standard camera material to the CameraStream.
+     *
+     * ### Depth ByteBuffer lifecycle (#1757)
+     *
+     * The depth [ByteBuffer] handed to Filament via [PixelBufferDescriptor] is borrowed
+     * from the ARCore [com.google.ar.core.Image] — **not cloned**. Closure of the ARCore
+     * image is serialised to the descriptor's upload-completed callback, so a stale
+     * read after `Image.close()` is structurally impossible:
+     *
+     *  - Filament keeps the [PixelBufferDescriptor] alive until the GPU transfer
+     *    finishes; only then does the callback fire and call [Image.close].
+     *  - Toggling this property mid-upload is safe: the setter only swaps material
+     *    instances, never the in-flight buffer. The upload-completed callback still
+     *    fires and closes its own image. See the long-form comment in [update].
+     *  - On [destroy], Filament cancels in-flight uploads BEFORE freeing
+     *    [depthTexture], so the callback still fires and the image is closed exactly
+     *    once.
      */
     var isDepthOcclusionEnabled = false
         set(value) {
@@ -240,15 +327,55 @@ open class ARCameraStream(
 
                 else -> null
             }?.let { depthImage ->
-                // Recalculate Occlusion
-                // To solve a problem with a to early released DepthImage the ByteBuffer which holds
-                // all necessary data is cloned. The cloned ByteBuffer is unaffected of a released
-                // DepthImage and therefore produces not a flickering result.
-                val buffer = depthImage.planes[0].buffer//.clone()
+                // Depth ByteBuffer lifecycle invariant (#1757).
+                //
+                // We pass `depthImage.planes[0].buffer` directly to Filament's
+                // [PixelBufferDescriptor] WITHOUT cloning it. The earlier comment
+                // claimed the buffer was cloned (followed by a `//.clone()` strike-through
+                // in the source) — that was misleading: the code never has cloned
+                // and we have intentionally kept it that way.
+                //
+                // The correct invariant is: Filament uploads asynchronously, holding a
+                // strong reference to the [PixelBufferDescriptor] (and through it, our
+                // ARCore-owned buffer) until the GPU transfer completes. The completion
+                // callback below is THE serialization point that makes
+                // [depthImage.close] safe: it fires AFTER Filament releases its hold,
+                // so the ARCore native handle is never released while a transfer is
+                // still draining.
+                //
+                // Why not clone defensively?
+                //  - The buffer is sized W×H×2 bytes (e.g. 160×120×2 = 38.4 kB on a
+                //    Pixel-class device for depth16 AUTOMATIC mode). Cloning at 30 Hz
+                //    would churn ~1.1 MB/s of fresh DirectByteBuffer allocation +
+                //    cleaner work, for zero correctness benefit.
+                //  - The current path is structurally race-free: the upload-completed
+                //    callback owns the close, no other code path closes the image.
+                //
+                // What about toggling [isDepthOcclusionEnabled] off mid-upload?
+                //  - The toggle setter only swaps the material instance — it does NOT
+                //    touch any in-flight [depthImage] or its [PixelBufferDescriptor].
+                //  - Subsequent frames skip this whole block (we're inside
+                //    `if (isDepthOcclusionEnabled)`), so no NEW depth acquire happens.
+                //  - The previously-uploaded depth image still completes via its
+                //    callback, closing itself cleanly. No use-after-close.
+                //
+                // What about destruction (`destroy()`) while an upload is in flight?
+                //  - `engine.safeDestroyTexture(depthTexture)` runs in `destroy()`.
+                //    Filament guarantees the descriptor callback fires (with the
+                //    upload either completed or cancelled) before the texture is
+                //    freed, so `depthImage.close` is still invoked exactly once.
+                //
+                // `buffer.clear()` inside the callback only resets ByteBuffer
+                // position/limit metadata — it does NOT free native memory. The actual
+                // memory is owned by the ARCore [com.google.ar.core.Image] and freed
+                // by [depthImage.close].
+                val buffer = depthImage.planes[0].buffer
                 depthTexture.setImage(engine, 0, PixelBufferDescriptor(
                     buffer, Texture.Format.RG, Texture.Type.UBYTE, 1, 0, 0, 0, null
                 ) {
-                    // Close the image only after the execution
+                    // Close the ARCore image only after Filament has finished draining
+                    // the buffer to the GPU. This callback is the load-bearing
+                    // synchronisation point — see the long-form comment above.
                     depthImage.close()
                     buffer.clear()
                 })

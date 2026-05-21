@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `camera-controls` demo (registered by
+     `CameraControlsFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_camera_controls_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_camera_controls_title">Camera Controls</string>
+    <string name="demo_camera_controls_subtitle">Orbit, pan, and free camera modes</string>
+    <string name="demo_camera_controls">Camera Controls</string>
+    <string name="demo_camera_controls_desc">Orbit, pan, zoom camera manipulator</string>
+</resources>
