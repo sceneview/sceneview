@@ -9,12 +9,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +39,8 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.RooftopAnchorNode
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.SceneAction
+import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
@@ -173,9 +172,67 @@ fun ARRooftopAnchorDemo(onBack: () -> Unit) {
 
     val labelInstance = rememberModelInstance(modelLoader, "models/khronos_lantern.glb")
 
+    // Resolve a rooftop anchor at the current camera lat/lng. Hoisted so the
+    // on-screen SceneActionBar can invoke it — "Drop on roof" is the demo's
+    // primary action (the banner says tap "Drop on roof"), so it lives
+    // on-screen, not in the Settings sheet (#1964).
+    val onDrop = onDrop@{
+        val session = arSession ?: return@onDrop
+        val lat = cameraLat ?: return@onDrop
+        val lng = cameraLng ?: return@onDrop
+        val id = nextId++
+        placedAnchors.add(
+            PlacedRooftopAnchor(
+                id = id,
+                latitude = lat,
+                longitude = lng,
+                // ARCore RooftopAnchorState has no TASK_IN_PROGRESS — use NONE as
+                // the in-flight placeholder, then update on the resolve callback.
+                state = RooftopAnchorState.NONE,
+                anchor = null
+            )
+        )
+        runCatching {
+            RooftopAnchorNode.resolve(
+                engine = engine,
+                session = session,
+                latitude = lat,
+                longitude = lng,
+                altitudeAboveRooftop = 1.5,
+                // Identity EUS quaternion (X+ east, Y+ up, Z+ south).
+                eusQuaternion = Quaternion()
+            ) { state, node ->
+                val idx = placedAnchors.indexOfFirst { it.id == id }
+                if (idx < 0) return@resolve
+                placedAnchors[idx] = placedAnchors[idx].copy(
+                    state = state,
+                    anchor = node?.anchor
+                )
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "Rooftop anchor resolve threw", error)
+            val idx = placedAnchors.indexOfFirst { it.id == id }
+            if (idx >= 0) {
+                placedAnchors[idx] = placedAnchors[idx].copy(
+                    state = RooftopAnchorState.ERROR_INTERNAL
+                )
+            }
+        }
+        Unit
+    }
+    // Clear All is also a primary action (resets the demo) — moved on-screen.
+    val onClearAll = {
+        placedAnchors.forEach { it.anchor?.let { a -> runCatching { a.detach() } } }
+        placedAnchors.clear()
+    }
+
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rooftop_title),
         onBack = onBack,
+        // "Drop on roof" / "Clear All" are the demo's primary actions and live
+        // on-screen via SceneActionBar (#1964). The sheet keeps only the demo
+        // explainer, the live Geospatial pose readout, the placed-anchors list
+        // and the states legend — all genuinely informational / secondary.
         controls = {
             Text(
                 text = "Rooftop anchors snap to building tops. Useful for floating labels above " +
@@ -205,61 +262,6 @@ fun ARRooftopAnchorDemo(onBack: () -> Unit) {
                 modifier = Modifier.padding(top = 8.dp)
             )
 
-            Button(
-                onClick = {
-                    val session = arSession ?: return@Button
-                    val lat = cameraLat ?: return@Button
-                    val lng = cameraLng ?: return@Button
-                    val id = nextId++
-                    placedAnchors.add(
-                        PlacedRooftopAnchor(
-                            id = id,
-                            latitude = lat,
-                            longitude = lng,
-                            // ARCore RooftopAnchorState has no TASK_IN_PROGRESS — use NONE as
-                            // the in-flight placeholder, then update on the resolve callback.
-                            state = RooftopAnchorState.NONE,
-                            anchor = null
-                        )
-                    )
-                    runCatching {
-                        RooftopAnchorNode.resolve(
-                            engine = engine,
-                            session = session,
-                            latitude = lat,
-                            longitude = lng,
-                            altitudeAboveRooftop = 1.5,
-                            // Identity EUS quaternion (X+ east, Y+ up, Z+ south).
-                            eusQuaternion = Quaternion()
-                        ) { state, node ->
-                            val idx = placedAnchors.indexOfFirst { it.id == id }
-                            if (idx < 0) return@resolve
-                            placedAnchors[idx] = placedAnchors[idx].copy(
-                                state = state,
-                                anchor = node?.anchor
-                            )
-                        }
-                    }.onFailure { error ->
-                        Log.w(TAG, "Rooftop anchor resolve threw", error)
-                        val idx = placedAnchors.indexOfFirst { it.id == id }
-                        if (idx >= 0) {
-                            placedAnchors[idx] = placedAnchors[idx].copy(
-                                state = RooftopAnchorState.ERROR_INTERNAL
-                            )
-                        }
-                    }
-                },
-                enabled = hasArcoreApiKey &&
-                    earthTracking &&
-                    earthState == Earth.EarthState.ENABLED &&
-                    cameraLat != null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-            ) {
-                Text("Drop on roof")
-            }
-
             // Surface the EarthState when it is something other than ENABLED — the
             // resolve API throws IllegalStateException in that case, but the button
             // is disabled silently so the user otherwise has no idea what's wrong.
@@ -270,18 +272,6 @@ fun ARRooftopAnchorDemo(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 4.dp)
                 )
-            }
-
-            OutlinedButton(
-                onClick = {
-                    placedAnchors.forEach { it.anchor?.let { a -> runCatching { a.detach() } } }
-                    placedAnchors.clear()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-            ) {
-                Text("Clear All")
             }
 
             if (placedAnchors.isNotEmpty()) {
@@ -411,6 +401,26 @@ fun ARRooftopAnchorDemo(onBack: () -> Unit) {
                         shape = RoundedCornerShape(24.dp)
                     )
                     .padding(horizontal = 20.dp, vertical = 10.dp)
+            )
+
+            // Primary actions on-screen (#1964) — the banner tells the user to
+            // tap "Drop on roof", so it (and the Clear All reset) must be
+            // on-screen buttons. Same enabled gates as the previous in-sheet
+            // buttons; Clear All only appears once something is placed.
+            SceneActionBar(
+                SceneAction(
+                    label = "Drop on roof",
+                    onClick = onDrop,
+                    enabled = hasArcoreApiKey &&
+                        earthTracking &&
+                        earthState == Earth.EarthState.ENABLED &&
+                        cameraLat != null,
+                ),
+                *(if (placedAnchors.isNotEmpty()) {
+                    arrayOf(SceneAction("Clear All", onClick = onClearAll))
+                } else {
+                    emptyArray()
+                }),
             )
         }
     }

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -42,6 +41,8 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
+import io.github.sceneview.demo.common.SceneAction
+import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.demos.internal.DemoMath
@@ -164,17 +165,6 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                 )
             }
 
-            OutlinedButton(
-                onClick = {
-                    placedAnchor?.let { runCatching { it.detach() } }
-                    placedAnchor = null
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-            ) {
-                Text("Clear")
-            }
             // Developer-only debug toggle — visible when QA mode is on. Lets QA
             // force-emit each TrackingFailureReason so the actionable-message
             // overlay can be validated without staging a real failure. See
@@ -331,6 +321,19 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
                     )
                 }
+            }
+
+            // Primary action on-screen (#1964) — Clear re-arms placement (a
+            // primary re-interaction), so it lives bottom-start instead of in
+            // the Settings sheet. The depth Switch stays in the sheet — genuine
+            // secondary configuration. Hidden until something has been placed.
+            if (placedAnchor != null) {
+                SceneActionBar(
+                    SceneAction("Clear", onClick = {
+                        placedAnchor?.let { runCatching { it.detach() } }
+                        placedAnchor = null
+                    }),
+                )
             }
         }
     }
