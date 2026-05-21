@@ -35,6 +35,22 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.dp
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.compose.ui.platform.LocalContext
+import io.github.sceneview.demo.feedback.FeedbackButton
+import io.github.sceneview.demo.feedback.FeedbackFlow
+import io.github.sceneview.demo.feedback.FeedbackRecorder
+import io.github.sceneview.demo.feedback.FeedbackRecordingService
+import io.github.sceneview.demo.feedback.RecordingState
+import io.github.sceneview.demo.feedback.RecordingStopPill
+import io.github.sceneview.demo.feedback.rememberFeedbackRecordingLauncher
+import io.github.sceneview.demo.feedback.sweepStaleFeedbackMedia
 
 class MainActivity : ComponentActivity() {
 
@@ -58,6 +74,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Clean up any feedback recording stranded in the cache by a prior run.
+        sweepStaleFeedbackMedia(this)
         updateManager = InAppUpdateManager(this)
         // Register the activity-result launcher for Google's FLEXIBLE consent
         // modal BEFORE the activity reaches STARTED. Cancelling that modal is
@@ -176,6 +194,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Bottom inset for the feedback FAB on the tab screens — clears the 80 dp M3
+ * `NavigationBar` plus a 16 dp gap.
+ */
+private val FEEDBACK_FAB_BOTTOM_INSET = 96.dp
+
 @Composable
 fun SceneViewDemoApp(activity: MainActivity? = null) {
     val navController = rememberNavController()
@@ -249,6 +273,59 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .windowInsetsPadding(WindowInsets.statusBars),
+            )
+        }
+
+        // Feedback entry point — shown only on the four tab screens. Demo
+        // screens place their own controls in every corner (movement pads, AR
+        // action buttons), so a floating FAB there would collide; an in-demo
+        // feedback entry point is a separate follow-up (#1932).
+        val context = LocalContext.current
+        val currentEntry by navController.currentBackStackEntryAsState()
+        val onListScreen = currentEntry?.destination?.route == "list"
+        var feedbackOpen by rememberSaveable { mutableStateOf(false) }
+        val recordingState by FeedbackRecorder.state.collectAsState()
+        val isRecording = recordingState is RecordingState.Recording
+        val startRecording = rememberFeedbackRecordingLauncher()
+
+        // A finished or failed recording re-opens the flow at its review step.
+        LaunchedEffect(recordingState) {
+            if (recordingState is RecordingState.Done ||
+                recordingState is RecordingState.Failed
+            ) {
+                feedbackOpen = true
+            }
+        }
+
+        if (onListScreen && !isRecording) {
+            FeedbackButton(
+                onClick = { feedbackOpen = true },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(start = 16.dp, bottom = FEEDBACK_FAB_BOTTOM_INSET),
+            )
+        }
+
+        // While recording, the dialog is hidden so the user can demonstrate the
+        // bug; a floating Stop pill stays on top of every screen.
+        if (isRecording) {
+            RecordingStopPill(
+                onStop = { FeedbackRecordingService.stop(context) },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = 24.dp),
+            )
+        }
+
+        if (feedbackOpen && !isRecording) {
+            FeedbackFlow(
+                onDismiss = {
+                    feedbackOpen = false
+                    FeedbackRecorder.reset()
+                },
+                onStartRecording = startRecording,
             )
         }
     }
