@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- Secondary Camera (PiP) demo: added an **Orbit** chip that flies the picture-in-picture camera around the model on its own, independently of the user's main-view orbit. This makes the per-instance `cameraNode` binding *visibly* independent — one scene, two cameras moving on their own — instead of just parking the PiP at a fixed angle ([#1256](https://github.com/sceneview/sceneview/issues/1256)).
