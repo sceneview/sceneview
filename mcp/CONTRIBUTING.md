@@ -6,56 +6,51 @@ flow) see the repo-root [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 ---
 
-## Generated files — DO regenerate, don't hand-edit
+## Generated files — never hand-edit, never commit
 
-Two files under `src/generated/` are committed to git but **never edited by
-hand**. Both are recreated by `npm run build` (and `npm test`, via the
-`prebuild` hook in `package.json`):
+Two files under `src/generated/` are **build artefacts**, recreated from
+their sources by the npm lifecycle scripts — never edited by hand:
 
-| File | Generator | Source | Purpose |
-|---|---|---|---|
-| `src/generated/llms-txt.ts`  | `scripts/generate-llms-txt.js` | repo-root `llms.txt`          | Embeds the full SceneView API reference as a TS string constant so the gateway (which runs on Cloudflare Workers and has no filesystem) and the stdio npm package both ship a byte-identical bundle. |
-| `src/generated/version.ts`   | `scripts/generate-version.js`  | `package.json` + `../gradle.properties` | Snapshots the MCP package version and the SceneView SDK version (`VERSION_NAME`) at build time so the MCP server advertises the *actually-published* numbers — never a hardcoded stale literal. |
+| File | Generator | Source | Committed? | Purpose |
+|---|---|---|---|---|
+| `src/generated/llms-txt.ts`  | `scripts/generate-llms-txt.js` | repo-root `llms.txt`          | **No** — `.gitignore`d | Embeds the full SceneView API reference as a TS string constant so the gateway (which runs on Cloudflare Workers and has no filesystem) and the stdio npm package both ship a byte-identical bundle. |
+| `src/generated/version.ts`   | `scripts/generate-version.js`  | `package.json` + `../gradle.properties` | Yes | Snapshots the MCP package version and the SceneView SDK version (`VERSION_NAME`) at build time so the MCP server advertises the *actually-published* numbers — never a hardcoded stale literal. |
 
-### When to regenerate the LLMs bundle
+`src/generated/llms-txt.ts` is **not committed to git** (issue #1928). It
+embeds the entire ~230 KB root `llms.txt` as a single string literal, so a
+committed copy produced a guaranteed merge conflict on *every* parallel PR
+that also touched `llms.txt` — even when the `llms.txt` edits were in
+non-overlapping sections. It is now generated fresh by the npm lifecycle:
 
-**Any time you edit the repo-root `llms.txt`**, even by one character. If
-you forget, AI clients consuming `sceneview-mcp` will keep seeing the old
-API surface (this happened repeatedly throughout the May 2026 AR sprint —
-`DepthMeshNode`, `Frame.hitTestDepth`, the Future-returning Cloud Anchor
-APIs all landed in `llms.txt` while the bundle stayed pinned to the
-previous release, see issue #1808).
+- `prebuild` → runs before `npm run build`
+- `prepare` → runs after `npm install` **and** before `npm publish`
+- `test` → regenerates before `vitest run`
 
-**How:**
+So a clean checkout has the file the moment you run `npm install`, and the
+published tarball always ships the freshly-generated `dist/generated/llms-txt.js`.
+
+### Editing the LLMs bundle
+
+There is **no manual regen step and nothing to commit**. Edit the
+repo-root `llms.txt`; the build regenerates `src/generated/llms-txt.ts`
+from it automatically. If you want to inspect the result locally:
 
 ```bash
 cd mcp
-node scripts/generate-llms-txt.js
-# or, equivalently, `npm run build` — the prebuild hook calls the same
-# generator and then re-runs `tsc`.
+npm run build   # the prebuild hook runs scripts/generate-llms-txt.js, then tsc
 ```
-
-Commit the regenerated `src/generated/llms-txt.ts` alongside your
-`llms.txt` change in the same PR.
 
 ### CI drift guard
 
-`.claude/scripts/sync-versions.sh` (run by both `quality-gate.sh` and the
-`ci.yml` `quality-gate` job) verifies that `src/generated/llms-txt.ts` is
-identical to what the generator would produce from the current root
-`llms.txt`. If you edited `llms.txt` and forgot the regen step, CI fails
-with:
+`.claude/scripts/check-llms-drift.sh` (run by `quality-gate.sh` and the
+`ci.yml` `quality-gate` job) verifies that `docs/docs/llms.txt` is a
+byte-for-byte mirror of root `llms.txt` so the mkdocs site serves the same
+content as the raw GitHub URL LLM clients fetch. `sync-versions.sh --fix`
+re-copies the mirror for you locally.
 
-```
-MISMATCH: mcp/src/generated/llms-txt.ts is out of sync with root llms.txt
-  Run: cd mcp && node scripts/generate-llms-txt.js
-```
-
-`sync-versions.sh --fix` will regenerate it for you locally.
-
-The same script also catches drift in `docs/docs/llms.txt` (which must be
-a byte-for-byte mirror of root `llms.txt` so the mkdocs site serves the
-same content as the raw GitHub URL LLM clients fetch).
+`src/generated/llms-txt.ts` no longer needs a drift check: being generated
+fresh on every build, publish and test run, it cannot drift from root
+`llms.txt`.
 
 ---
 

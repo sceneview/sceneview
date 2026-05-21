@@ -85,18 +85,20 @@ LLMS_V=$(grep -m1 'io\.github\.sceneview:sceneview:' llms.txt | grep -oE '[0-9]+
 README_V=$(grep -m1 'io\.github\.sceneview:sceneview:' README.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "MISSING")
 [ "$README_V" = "$SOURCE_VERSION" ] && check "README.md version" "PASS" "$README_V" || check "README.md version" "FAIL" "Expected $SOURCE_VERSION, got $README_V"
 
-# llms.txt mirror drift (issue #1847) — docs/docs/llms.txt and the MCP bundle
-# `mcp/src/generated/llms-txt.ts` must stay byte-identical to root `llms.txt`.
-# The drift detectors used to live only in `sync-versions.sh`, which is NOT
-# called by this gate, so PR #1822 was able to land DepthHitResultNode docs
-# in root `llms.txt` without updating either mirror. Wire the dedicated
-# helper here so the PR-blocking gate catches the divergence.
+# llms.txt mirror drift (issue #1847) — docs/docs/llms.txt must stay
+# byte-identical to root `llms.txt`. The drift detector used to live only in
+# `sync-versions.sh`, which is NOT called by this gate, so PR #1822 was able
+# to land DepthHitResultNode docs in root `llms.txt` without updating the
+# mirror. Wire the dedicated helper here so the PR-blocking gate catches the
+# divergence. The MCP bundle `mcp/src/generated/llms-txt.ts` is no longer a
+# committed mirror — it is generated at build time and `.gitignore`d (#1928),
+# so it is fresh-by-construction and cannot drift.
 if [ -x ".claude/scripts/check-llms-drift.sh" ]; then
     if bash .claude/scripts/check-llms-drift.sh > /tmp/check-llms-drift.log 2>&1; then
-        check "llms.txt mirrors in sync" "PASS" ""
+        check "llms.txt mirror in sync" "PASS" ""
     else
         DRIFT_COUNT=$(grep -c '^MISMATCH:' /tmp/check-llms-drift.log 2>/dev/null || echo "?")
-        check "llms.txt mirrors in sync" "FAIL" "$DRIFT_COUNT mirror(s) drifted; see /tmp/check-llms-drift.log"
+        check "llms.txt mirror in sync" "FAIL" "$DRIFT_COUNT mirror(s) drifted; see /tmp/check-llms-drift.log"
     fi
 fi
 
@@ -129,8 +131,12 @@ done
 LP_TRACKED=$(git ls-files "local.properties" 2>/dev/null | wc -l | tr -d ' ')
 [ "$LP_TRACKED" -eq 0 ] && check "local.properties not tracked" "PASS" "" || check "local.properties tracked" "FAIL" "Contains local paths/secrets"
 
-# Check for API keys in staged changes
-STAGED_KEYS=$(git diff --cached 2>/dev/null | grep -c "AIza\|sk-\|AKIA\|ghp_\|npm_\|PRIVATE_KEY" 2>/dev/null || true)
+# Check for API keys in ADDED lines of staged changes.
+# Patterns are anchored to each provider's real key shape — a bare `sk-`
+# substring matched `disk-full`, `task-*`, `npm_install`, etc. (false positives,
+# notably on large file deletions). Scan only added lines (`^+`) so removing a
+# secret never fails the gate.
+STAGED_KEYS=$(git diff --cached 2>/dev/null | grep '^+' | grep -cE 'AIza[A-Za-z0-9_-]{35}|sk-[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16}|ghp_[A-Za-z0-9]{36}|npm_[A-Za-z0-9]{36}|-----BEGIN [A-Z ]*PRIVATE KEY-----' 2>/dev/null || true)
 STAGED_KEYS=$(echo "$STAGED_KEYS" | tr -d '[:space:]' | head -c 10)
 [ -z "$STAGED_KEYS" ] && STAGED_KEYS=0
 [ "$STAGED_KEYS" -eq 0 ] 2>/dev/null && check "No API keys in staged changes" "PASS" "" || check "API keys in staged changes" "FAIL" "$STAGED_KEYS matches"

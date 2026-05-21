@@ -68,6 +68,13 @@ mcp/dist/*.test.js
 mcp/llms.txt
 mcp/.mcpregistry_*
 .mcpregistry_*
+# `mcp/src/generated/llms-txt.ts` embeds the entire root `llms.txt` as a
+# ~230 KB string literal. Committing it produced a guaranteed merge conflict
+# on every parallel PR that also touched `llms.txt` (issue #1928). It is now
+# generated at build time — `npm install` / `npm run build` / `npm test` /
+# `npm publish` all run `scripts/generate-llms-txt.js` via the
+# `prepare` / `prebuild` / `test` lifecycle scripts.
+mcp/src/generated/llms-txt.ts
 
 # ── Swift / Xcode ─────────────────────────────────────────
 SceneViewSwift/.build/
