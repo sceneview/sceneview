@@ -175,14 +175,196 @@ export async function installIwer(page: Page): Promise<{ injected: boolean; erro
       }
       const device = new I.XRDevice(I.metaQuest3);
       device.installRuntime();
-      // Surface a flag tests can check to confirm the shim took.
+      // Surface a flag tests can check to confirm the shim took, plus the
+      // device handle itself so `driveWebXrSession` can nudge pose /
+      // controllers programmatically (no recorded fixture needed — #1674/#1748
+      // item 4). `__IWER_DEVICE__` is the XRDevice the runtime is bound to.
       (globalThis as any).__IWER_INSTALLED__ = true;
+      (globalThis as any).__IWER_DEVICE__ = device;
     } catch (err) {
       console.warn('[iwer] installRuntime threw: ' + (err as Error).message);
     }
   });
 
   return { injected: true };
+}
+
+/** Outcome of a programmatically-driven IWER WebXR session. */
+export interface XrSessionRun {
+  /** The session-mode that was driven (`immersive-ar` / `immersive-vr`). */
+  mode: 'immersive-ar' | 'immersive-vr';
+  /** `true` once the demo's `requestSession(...)` promise resolved. */
+  sessionStarted: boolean;
+  /** `true` once the session's `end` event fired after `session.end()`. */
+  sessionEnded: boolean;
+  /** Number of synthetic `requestAnimationFrame` XR frames observed. */
+  framesObserved: number;
+  /** A non-fatal note when the run could not be completed (soft path). */
+  note?: string;
+}
+
+/**
+ * Drive a full WebXR session end-to-end against the IWER-emulated device —
+ * the web analogue of the Android AR record/replay harness, WITHOUT needing a
+ * recorded fixture or real headset hardware.
+ *
+ * Why no recorded fixture: IWER's `XRDevice` is a *programmable* emulator. Its
+ * pose, controller transforms and `requestAnimationFrame` pump are all driven
+ * from script, so a deterministic session can be synthesised in-test. A
+ * recorded `.json` capture (IWER's `ActionRecorder` format) still requires a
+ * real Quest / Vision Pro to author — but it is NOT a prerequisite for
+ * exercising the demo's WebXR code path. This helper closes issue #1674 item 4
+ * / #1748 item 4 by replacing the fixture-pending soft-skip with a real run.
+ *
+ * What it does, inside the page context:
+ *  1. Confirms IWER mocked `navigator.xr` and the mode is supported.
+ *  2. Calls `navigator.xr.requestSession(mode, ...)` — exactly what the demo's
+ *     `#enter-ar` / `#enter-vr` handler does (`requiredFeatures: ['hit-test']`
+ *     for AR) — and waits for it to resolve.
+ *  3. Pumps a handful of `session.requestAnimationFrame` callbacks so the
+ *     session's XR frame loop actually runs (catches a frame-loop throw).
+ *  4. Nudges the emulated device pose / first controller so input plumbing is
+ *     exercised, not just session creation.
+ *  5. Ends the session and waits for its `end` event.
+ *
+ * Best-effort: if IWER is not installed or the mode is unsupported the helper
+ * returns `sessionStarted:false` with a `note` instead of throwing, so the
+ * caller can `test.skip(...)` with a discoverable reason (mirrors the
+ * soft-degrade contract of `installIwer` / `screencast`).
+ */
+export async function driveWebXrSession(
+  page: Page,
+  mode: 'immersive-ar' | 'immersive-vr' = 'immersive-ar',
+): Promise<XrSessionRun> {
+  return page.evaluate(async (sessionMode: 'immersive-ar' | 'immersive-vr') => {
+    const result: {
+      mode: 'immersive-ar' | 'immersive-vr';
+      sessionStarted: boolean;
+      sessionEnded: boolean;
+      framesObserved: number;
+      note?: string;
+    } = {
+      mode: sessionMode,
+      sessionStarted: false,
+      sessionEnded: false,
+      framesObserved: 0,
+    };
+
+    const xr = (navigator as any).xr;
+    if (!xr || typeof xr.requestSession !== 'function') {
+      result.note = 'navigator.xr unavailable — IWER runtime not installed';
+      return result;
+    }
+
+    // The emulated device handle IWER hangs off the global so the test can
+    // nudge pose / controllers. Absent on a pre-2.x IWER — degrade softly.
+    const device = (globalThis as any).__IWER_DEVICE__;
+
+    let supported = false;
+    try {
+      supported = await xr.isSessionSupported(sessionMode);
+    } catch {
+      /* isSessionSupported can reject — treat as unsupported */
+    }
+    if (!supported) {
+      result.note = `${sessionMode} not supported by the emulated device`;
+      return result;
+    }
+
+    // Same option shape the demo's #enter-ar handler uses.
+    const opts = sessionMode === 'immersive-ar'
+      ? { requiredFeatures: ['hit-test'] }
+      : {};
+
+    let session: any;
+    try {
+      session = await xr.requestSession(sessionMode, opts);
+    } catch (e) {
+      result.note = `requestSession(${sessionMode}) rejected: ${(e as Error).message}`;
+      return result;
+    }
+    result.sessionStarted = true;
+
+    let ended = false;
+    session.addEventListener('end', () => { ended = true; });
+
+    // The session's frame loop only pumps once a baseLayer is attached via
+    // `updateRenderState` — IWER's XRSession bails its device-frame callback
+    // while `renderState.baseLayer === null`. A real WebXR app wires its own
+    // GL context here; the demo's #enter-ar handler does not, so this helper
+    // attaches a throwaway `XRWebGLLayer` over an offscreen WebGL context so
+    // the frame loop runs and `requestAnimationFrame` callbacks actually fire.
+    try {
+      const xrCanvas = document.createElement('canvas');
+      xrCanvas.width = 64;
+      xrCanvas.height = 64;
+      const xrGl =
+        (xrCanvas.getContext('webgl2', { xrCompatible: true } as any) as WebGLRenderingContext | null) ??
+        (xrCanvas.getContext('webgl', { xrCompatible: true } as any) as WebGLRenderingContext | null);
+      const XRWebGLLayerCtor = (globalThis as any).XRWebGLLayer;
+      if (xrGl && typeof XRWebGLLayerCtor === 'function') {
+        // `makeXRCompatible` is required before an XRWebGLLayer can wrap a
+        // context — guarded, some emulated contexts already report compatible.
+        if (typeof (xrGl as any).makeXRCompatible === 'function') {
+          await (xrGl as any).makeXRCompatible();
+        }
+        const layer = new XRWebGLLayerCtor(session, xrGl);
+        await session.updateRenderState({ baseLayer: layer });
+      }
+    } catch {
+      /* render-state setup is best-effort — frames may still pump on some
+       * IWER versions, and the frame-count assertion below catches a miss */
+    }
+
+    // Pump a few XR frames so the session's animation loop actually executes.
+    // A frame-loop throw (the most common WebXR regression) surfaces here.
+    const FRAMES = 8;
+    for (let i = 0; i < FRAMES; i++) {
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const done = () => { if (!settled) { settled = true; resolve(); } };
+        try {
+          session.requestAnimationFrame(() => {
+            result.framesObserved++;
+            done();
+          });
+        } catch {
+          done();
+        }
+        // Safety valve: never hang the suite if a frame never fires.
+        setTimeout(done, 250);
+      });
+
+      // Nudge the emulated device so input plumbing is exercised, not just
+      // session creation. All guarded — IWER API drift must not crash the run.
+      if (device) {
+        try {
+          const ctrl = device.controllers?.right || device.controllers?.left;
+          if (ctrl && ctrl.position) {
+            ctrl.position.x = 0.1 * i;
+          }
+          if (device.position) {
+            device.position.z = -0.05 * i;
+          }
+        } catch {
+          /* pose nudge is best-effort */
+        }
+      }
+    }
+
+    // End the session and wait (briefly) for its `end` event to fire.
+    try {
+      await session.end();
+    } catch {
+      /* end() can reject if already ended */
+    }
+    for (let i = 0; i < 20 && !ended; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    result.sessionEnded = ended;
+
+    return result;
+  }, mode);
 }
 
 /** Collected console / page diagnostics for a single test. */
