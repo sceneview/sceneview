@@ -27,18 +27,20 @@
 #      if not, opens the Play Store to the listing (one-time manual click).
 #
 # Why the higher spec:
-#   A SceneView 3D demo renders through Filament (host GPU) while QA runs
-#   `adb shell screenrecord` at the same time — the recorder's H.264 encoder is
-#   a software thread on the *guest*. On the stock 4-core / 4 GB AVD the guest
+#   A SceneView 3D demo renders through Filament (host GPU) while QA drives the
+#   demo catalog through Maestro. On the stock 4-core / 4 GB AVD the guest
 #   `system_server` gets CPU/memory-starved and ANRs ("System UI isn't
-#   responding"), aborting the recording. More cores + RAM give it headroom.
+#   responding"), aborting the run. More cores + RAM give it headroom.
+#   (Screen recording is now host-side — `adb emu screenrecord`, #1671 — so it
+#   no longer adds a guest-side H.264 encoder thread to that budget; the spec
+#   headroom is kept for the Filament render itself.)
 #
 #   RAM is sized to the *host*, not pinned at 8 GB: an 8 GB guest on a 16 GB Mac
 #   that is also running the Gradle build + agent tooling gets SIGTERM'd by
-#   macOS under memory pressure mid-QA — which aborts the recording just as
-#   surely as an ANR. detect_target_ram_mb() reserves 10 GB for the host and
-#   clamps the guest to [4 GB, 8 GB]: ~6 GB on a 16 GB Mac, the full 8 GB on a
-#   24 GB+ Mac. The load-bearing ANR fix is the core count, not raw RAM.
+#   macOS under memory pressure mid-QA. detect_target_ram_mb() reserves 10 GB
+#   for the host and clamps the guest to [4 GB, 8 GB]: ~6 GB on a 16 GB Mac, the
+#   full 8 GB on a 24 GB+ Mac. The load-bearing ANR fix is the core count, not
+#   raw RAM.
 #
 # Emulator snapshots (#1672 — fixes the storage-degradation bug):
 #   The QA AVD's userdata partition fills up after ~6 QA runs and Filament
@@ -244,34 +246,20 @@ save_golden_snapshot() {
 [[ -x "$ADB_BIN" ]] || { log "missing adb at $ADB_BIN"; exit 1; }
 [[ -x "$AVDMANAGER_BIN" ]] || { log "missing avdmanager at $AVDMANAGER_BIN"; exit 1; }
 
-# --- step 1b: emulator-version guard ------------------------------------------
-# Android Emulator 36.x REGRESSED `adb shell screenrecord`: it no longer
-# captures host-GPU-composited frames, so a Filament 3D scene records as a
-# near-empty ~0.5 fps mp4 (verified: 36.5.11 -> 23 frames / 48 s; 35.6.11 ->
-# 2541 frames). That silently breaks every QA screen recording while leaving
-# the demo itself running fine — the worst kind of regression. 35.6.11 is the
-# last version where screenrecord captures GPU content correctly, so the
-# SceneView QA emulator is pinned there. If `sdkmanager` has since pulled a
-# 36+ emulator, warn loudly with the one-shot re-pin recipe.
-KNOWN_GOOD_EMULATOR_BUILD=13610412   # emulator 35.6.11
-check_emulator_version() {
-  local ver major
-  ver="$("$EMULATOR_BIN" -version 2>/dev/null | sed -nE 's/.*version ([0-9]+)\..*/\1/p' | head -1)"
-  major="${ver:-0}"
-  if [[ "$major" -ge 36 ]]; then
-    log "WARNING ────────────────────────────────────────────────────────────"
-    log "  Emulator major version $major detected. Emulator 36.x breaks"
-    log "  'adb shell screenrecord' capture of host-GPU content — SceneView QA"
-    log "  recordings will be near-empty. Re-pin to 35.6.11 (build"
-    log "  $KNOWN_GOOD_EMULATOR_BUILD), after killing any running emulator:"
-    log "    curl -fsSL -o /tmp/emu.zip \\"
-    log "      https://dl.google.com/android/repository/emulator-darwin_aarch64-${KNOWN_GOOD_EMULATOR_BUILD}.zip"
-    log "    rm -rf '$SDK_ROOT/emulator' && unzip -q /tmp/emu.zip -d '$SDK_ROOT'"
-    log "  (use emulator-linux_x64-${KNOWN_GOOD_EMULATOR_BUILD}.zip on Linux.)"
-    log "─────────────────────────────────────────────────────────────────────"
-  fi
-}
-check_emulator_version
+# --- step 1b: emulator version ------------------------------------------------
+# No version pin. The SceneView QA emulator used to be pinned to 35.6.11
+# because Android Emulator 36.x regressed the *guest-side* `adb shell
+# screenrecord` — with `-gpu host` (gfxstream) a Filament 3D scene composites
+# host-side and the guest virtual display almost never receives frames, so a
+# recording came back near-empty (verified: 36.5.11 -> 23 frames / 48 s;
+# 35.6.11 -> 2541 frames).
+#
+# That pin is no longer needed: QA screen recording moved to the *host-side*
+# `adb emu screenrecord` emulator-console path (see android_cli_screenrecord_*
+# in lib/android-cli.sh, issue #1671). Host-side recording captures the
+# emulator's presented framebuffer directly and is immune to the gfxstream
+# composition-path change, so the QA emulator now runs whatever `sdkmanager`
+# ships — latest is fine.
 
 # --- step 2: verify system image is installed ---------------------------------
 SYS_IMAGE_DIR="$SDK_ROOT/system-images/android-36/google_apis_playstore/$IMG_ARCH"
@@ -387,7 +375,8 @@ apply_ar_config() {
   patch_kv "hw.camera.front"  "emulated"     "$AVD_CONFIG"
   patch_kv "hw.gpu.enabled"   "yes"          "$AVD_CONFIG"
   patch_kv "hw.gpu.mode"      "host"         "$AVD_CONFIG"
-  # Headroom so a Filament render + screenrecord don't starve system_server.
+  # Headroom so a Filament render + the Maestro QA drive don't starve
+  # system_server (screen recording is host-side now — #1671 — and off-budget).
   patch_kv "hw.ramSize"       "$TARGET_RAM_MB"         "$AVD_CONFIG"
   patch_kv "vm.heapSize"      "$TARGET_HEAP_MB"        "$AVD_CONFIG"
   patch_kv "hw.cpu.ncore"     "$TARGET_NCORE"          "$AVD_CONFIG"
