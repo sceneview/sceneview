@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Feedback
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -214,6 +215,28 @@ fun DemoScaffold(
                     }
                 },
                 actions = {
+                    // In-app feedback entry point — #1930 requires the feedback
+                    // button "on the 4 tabs AND inside every demo", and a bug
+                    // hit inside a demo is the highest-value feedback case. A
+                    // top-app-bar action is the right slot: a FAB would collide
+                    // with the demo controls `Tune` FAB at the bottom-end.
+                    // Tapping it raises FeedbackOpenRequest, which
+                    // SceneViewDemoApp observes to open the shared FeedbackFlow.
+                    val feedbackCd = stringResource(R.string.feedback_action_cd)
+                    IconButton(
+                        onClick = {
+                            haptic.selection()
+                            io.github.sceneview.demo.feedback.FeedbackOpenRequest.request()
+                        },
+                        modifier = Modifier
+                            .semantics { contentDescription = feedbackCd }
+                            .testTag(DemoScaffoldTestTags.FEEDBACK_ACTION),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Feedback,
+                            contentDescription = null,
+                        )
+                    }
                     // Predictable, always-in-the-same-place reset action (#1966).
                     // Every demo that opts in surfaces this single Refresh icon
                     // in the top bar, so users have one consistent path back to
@@ -391,6 +414,7 @@ object DemoScaffoldTestTags {
     const val SETTINGS_SHEET = "demo-settings-sheet"
     const val SETTINGS_RESET = "demo-settings-reset"
     const val RESET_ACTION = "demo-reset-action"
+    const val FEEDBACK_ACTION = "demo-feedback-action"
     const val QA_PILL = "demo-qa-pill"
     const val ASSET_SOURCE_CHIP = "demo-asset-source-chip"
     const val FIRST_FRAME_SCRIM = "demo-first-frame-scrim"

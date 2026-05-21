@@ -50,9 +50,9 @@ if (sketchfabApiKey.isEmpty()) {
 // to `<base>/v1/feedback`. Resolution order: env var -> local.properties
 // `feedback.worker.url` -> the default constant below.
 //
-// ⚠️ MAINTAINER: the worker is not deployed yet. The default below is the
-// PLANNED workers.dev subdomain — once the worker is published, set the real
-// URL here (or via the env var / local.properties) so released APKs hit it.
+// The worker is deployed at sceneview-feedback.mcp-tools-lab.workers.dev (the
+// default constant below). Override via the env var / local.properties to
+// point a build at a staging worker.
 def feedbackWorkerUrl = System.getenv("FEEDBACK_WORKER_URL") ?: ""
 if (feedbackWorkerUrl.isEmpty()) {
     feedbackWorkerUrl = loadFromLocalProperties("feedback.worker.url")
@@ -268,6 +268,11 @@ dependencies {
     testImplementation libs.androidx.test.junit
     testImplementation platform(libs.androidx.compose.bom)
     testImplementation libs.androidx.compose.ui
+
+    // MockWebServer — JVM test double for the in-app feedback HTTP calls
+    // (FeedbackUploader / FeedbackTicketStatus, #1930 review).
+    testImplementation libs.okhttp.mockwebserver
+    testImplementation libs.kotlin.coroutines.test
 
     // UiAutomator-based interaction tests. Drives the real demo app process through
     // DemoHostActivity (debug flavour) — no ComposeTestRule, no Filament thread-adoption

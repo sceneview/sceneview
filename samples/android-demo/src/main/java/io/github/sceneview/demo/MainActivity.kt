@@ -1,6 +1,8 @@
 package io.github.sceneview.demo
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -43,12 +45,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import io.github.sceneview.demo.feedback.FeedbackButton
 import io.github.sceneview.demo.feedback.FeedbackFlow
+import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.feedback.FeedbackRecorder
 import io.github.sceneview.demo.feedback.FeedbackRecordingService
 import io.github.sceneview.demo.feedback.RecordingState
 import io.github.sceneview.demo.feedback.RecordingStopPill
+import io.github.sceneview.demo.feedback.isMicPermanentlyDenied
 import io.github.sceneview.demo.feedback.rememberFeedbackRecordingLauncher
 import io.github.sceneview.demo.feedback.sweepStaleFeedbackMedia
 
@@ -276,10 +282,14 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             )
         }
 
-        // Feedback entry point — shown only on the four tab screens. Demo
-        // screens place their own controls in every corner (movement pads, AR
-        // action buttons), so a floating FAB there would collide; an in-demo
-        // feedback entry point is a separate follow-up (#1932).
+        // Feedback entry points (#1930):
+        //  - the tab host ("list" — RootScreen, all four tabs) gets the
+        //    extended FAB rendered below;
+        //  - every demo screen gets a top-app-bar feedback action in
+        //    DemoScaffold, which raises FeedbackOpenRequest (observed here).
+        // A demo screen places its own controls in every corner (movement
+        // pads, AR action buttons, the Tune FAB), so a floating FAB there
+        // would collide — the top-bar action is the right slot.
         val context = LocalContext.current
         val currentEntry by navController.currentBackStackEntryAsState()
         val onListScreen = currentEntry?.destination?.route == "list"
@@ -300,7 +310,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         var feedbackOpen by rememberSaveable { mutableStateOf(false) }
         val recordingState by FeedbackRecorder.state.collectAsState()
         val isRecording = recordingState is RecordingState.Recording
-        val startRecording = rememberFeedbackRecordingLauncher()
+        val feedbackLauncher = rememberFeedbackRecordingLauncher()
 
         // A finished or failed recording re-opens the flow at its review step.
         LaunchedEffect(recordingState) {
@@ -308,6 +318,36 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 recordingState is RecordingState.Failed
             ) {
                 feedbackOpen = true
+            }
+        }
+
+        // A demo screen's top-app-bar feedback action raises this flag — open
+        // the shared flow and consume the request (#1930).
+        val feedbackRequested by FeedbackOpenRequest.requested.collectAsState()
+        LaunchedEffect(feedbackRequested) {
+            if (feedbackRequested) {
+                feedbackOpen = true
+                FeedbackOpenRequest.consume()
+            }
+        }
+
+        // Whether the microphone permission is permanently denied and whether
+        // the foreground-service notification control will be visible — both
+        // re-evaluated when the feedback flow opens so the UI can adapt
+        // (route to settings / surface the in-app-Stop hint). #1930 review.
+        val micPermanentlyDenied = remember(feedbackOpen) {
+            activity?.let { isMicPermanentlyDenied(it) } ?: false
+        }
+        val notificationControlAvailable = remember(feedbackOpen) {
+            if (Build.VERSION.SDK_INT >= 33) {
+                ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS,
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                // Pre-13: notifications need no runtime permission, but the
+                // channel can still be disabled by the user.
+                NotificationManagerCompat.from(context).areNotificationsEnabled()
             }
         }
 
@@ -339,7 +379,9 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                     feedbackOpen = false
                     FeedbackRecorder.reset()
                 },
-                onStartRecording = startRecording,
+                launcher = feedbackLauncher,
+                micPermanentlyDenied = micPermanentlyDenied,
+                notificationControlAvailable = notificationControlAvailable,
             )
         }
     }

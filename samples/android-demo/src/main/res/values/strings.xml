@@ -339,4 +339,16 @@
     <string name="feedback_tickets_no_app">No app available to open the issue</string>
     <string name="feedback_tickets_open_a11y">Open issue on GitHub</string>
     <string name="feedback_tickets_status_loading">Loading status</string>
+    <!-- In-app feedback — review-blocker hardening (issue #1930) -->
+    <string name="feedback_recording_capped">Recording length limit reached — your clip was saved. You can send it as is, or record a shorter one.</string>
+    <string name="feedback_send_failed_too_large">Your recording is too large to send. Record a shorter clip and try again.</string>
+    <string name="feedback_send_failed_rate_limited">Too many submissions right now. Please try again in a minute.</string>
+    <string name="feedback_send_failed_server">The feedback service is having trouble. Please try again shortly.</string>
+    <string name="feedback_record_denied_title">Microphone access needed</string>
+    <string name="feedback_record_denied_body">Recording needs microphone access. Enable it in app settings, or skip recording and send a written note instead.</string>
+    <string name="feedback_record_open_settings">Open settings</string>
+    <string name="feedback_record_skip">Send a note instead</string>
+    <string name="feedback_notif_warning">If you can\'t see a notification, use the Stop button at the top of the screen to finish recording.</string>
+    <string name="feedback_sending_cancel">Cancel</string>
+    <string name="feedback_action_cd">Send feedback</string>
 </resources>
