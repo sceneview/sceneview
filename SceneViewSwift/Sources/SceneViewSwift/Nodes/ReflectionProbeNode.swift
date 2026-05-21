@@ -120,14 +120,12 @@ public struct ReflectionProbeNode: Sendable {
     /// ```
     @discardableResult
     public func environmentTexture(_ resource: EnvironmentResource) -> ReflectionProbeNode {
-        #if os(iOS) || os(visionOS) || os(macOS)
         entity.components.set(
             ImageBasedLightComponent(source: .single(resource))
         )
         entity.components.set(
             ImageBasedLightReceiverComponent(imageBasedLight: entity)
         )
-        #endif
         return self
     }
 
@@ -138,12 +136,10 @@ public struct ReflectionProbeNode: Sendable {
         // We encode intensity in the entity name suffix for retrieval, and if an IBL
         // component is present, we update its intensity scale.
         entity.name = nameBase + "_i\(value)"
-        #if os(iOS) || os(visionOS) || os(macOS)
         if var iblComponent = entity.components[ImageBasedLightComponent.self] {
             iblComponent.intensityExponent = value
             entity.components.set(iblComponent)
         }
-        #endif
         return self
     }
 

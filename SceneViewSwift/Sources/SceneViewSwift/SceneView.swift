@@ -381,6 +381,24 @@ private final class SceneEntities: ObservableObject {
     /// camera entity exists.
     let perspCamera = PerspectiveCamera()
     #endif
+
+    deinit {
+        // Real teardown path for per-entity gesture handlers (#2038).
+        // A `NodeGesture` handler closure that captures the node it is
+        // registered on (the documented `onDrag(cube.entity) { cube … }`
+        // pattern) forms a retain cycle: entity → GestureHandlers
+        // component → closure → node → entity. Stripping the component
+        // from every entity in this scene's subtree when the scene's
+        // `SceneEntities` is released breaks that cycle, so the content
+        // entities and their resources deallocate with the scene instead
+        // of leaking for the process lifetime. `deinit` of a non-Sendable
+        // class runs on whatever thread released the last reference, but
+        // `removeAllHandlers(under:)` only mutates RealityKit components
+        // and SwiftUI tears `@StateObject`s down on the main actor.
+        MainActor.assumeIsolated {
+            NodeGesture.removeAllHandlers(under: root)
+        }
+    }
 }
 
 // MARK: - Internal implementation
@@ -614,7 +632,6 @@ private struct SceneViewRepresentation: View {
 
     @ViewBuilder
     private var realityViewContent: some View {
-        #if os(iOS) || os(visionOS) || os(macOS)
         // GeometryReader captures the live viewport aspect ratio so the
         // fit-to-bounds framing (#1041) accounts for the real frustum
         // width. Portrait phones have aspect < 1 and would clip content
@@ -636,11 +653,6 @@ private struct SceneViewRepresentation: View {
                     }
                 }
         }
-        #else
-        // RealityView requires macOS 15.0+; fall back to a placeholder on older SDKs
-        Text("3D view requires macOS 15.0 or later")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        #endif
     }
 
     /// Records the viewport aspect ratio from a layout size. Re-frames the
@@ -659,7 +671,6 @@ private struct SceneViewRepresentation: View {
         }
     }
 
-    #if os(iOS) || os(visionOS) || os(macOS)
     @ViewBuilder
     private var realityView: some View {
         // `RealityView(make:update:)` with an `inout RealityViewCameraContent`
@@ -727,7 +738,6 @@ private struct SceneViewRepresentation: View {
         }
         #endif
     }
-    #endif
 
     // MARK: - Scene Setup
 
@@ -743,7 +753,6 @@ private struct SceneViewRepresentation: View {
     private typealias RealitySceneContent = RealityViewCameraContent
     #endif
 
-    #if os(iOS) || os(visionOS) || os(macOS)
     /// Populates the RealityView content tree. The content type resolves to
     /// `RealityViewCameraContent` on iOS / macOS and `RealityViewContent` on
     /// visionOS (see ``RealitySceneContent``).
@@ -806,7 +815,6 @@ private struct SceneViewRepresentation: View {
             iblReceiver: entities.ibl
         )
     }
-    #endif
 
     // MARK: - Light slot reactive plumbing (#1017)
 
@@ -1106,7 +1114,6 @@ private struct SceneViewRepresentation: View {
     private func loadEnvironment(_ env: SceneEnvironment) async {
         do {
             let resource = try await env.load()
-            #if os(iOS) || os(visionOS) || os(macOS)
             // Apply IBL to the scene via ImageBasedLightComponent
             entities.ibl.components.set(
                 ImageBasedLightComponent(
@@ -1124,7 +1131,6 @@ private struct SceneViewRepresentation: View {
             // reverts to `.default` and the background goes neutral again.
             // Ported from Eliott Radcliffe's sceneview-swift PR #1.
             loadedSkyboxResource = env.showSkybox ? resource : nil
-            #endif
 
             // visionOS immersive-space skybox: also load the equirectangular
             // HDR as a `TextureResource` for the inverted-sphere skybox.

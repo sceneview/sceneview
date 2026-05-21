@@ -46,11 +46,9 @@ public struct BillboardNode: Sendable {
     public init(child: Entity) {
         let container = Entity()
         container.addChild(child)
-        #if os(iOS) || os(visionOS) || os(macOS)
         if #available(iOS 18.0, visionOS 2.0, *) {
             container.components.set(BillboardComponent())
         }
-        #endif
         self.entity = container
     }
 

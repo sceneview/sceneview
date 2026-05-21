@@ -16,38 +16,51 @@ import Foundation
 ///     cube.position += translation
 /// }
 /// ```
+///
+/// ## Memory ownership
+///
+/// Handlers are stored in a RealityKit `Component` on the **target entity
+/// itself**, so they live exactly as long as that entity does and never
+/// outlive the scene that owns it (unlike a process-global registry).
+///
+/// A handler that captures the node it is registered on — as the example
+/// above does — forms a retain cycle (entity → component → closure →
+/// node → entity). ``SceneView`` breaks this automatically when the scene
+/// is torn down (it calls ``removeAllHandlers(under:)`` on its content
+/// root). If you register handlers on entities **outside** a `SceneView`
+/// lifecycle, either `[weak]`-capture or call ``removeAll(from:)`` when
+/// done to avoid leaking the entity.
 public enum NodeGesture {
 
     // MARK: - Gesture state storage
 
-    /// Registry of tap handlers keyed by entity ID.
-    @MainActor
-    private static var tapHandlers: [ObjectIdentifier: () -> Void] = [:]
+    /// Per-entity gesture handler storage.
+    ///
+    /// The handlers are kept in a RealityKit `Component` **attached to the
+    /// target entity itself** rather than in process-global `static`
+    /// dictionaries. This is the fix for the leak described in #2038:
+    ///
+    /// - **No leak.** A component is owned by its entity, so the handler
+    ///   closures live exactly as long as the entity does. The common
+    ///   capture pattern — `onDrag(cube.entity) { cube.position += … }`,
+    ///   where the closure retains the node that owns the entity — no
+    ///   longer creates an immortal global → closure → entity → resources
+    ///   chain. When the scene is torn down and drops its last reference
+    ///   to the entity, the component (and its closures) deallocate with it.
+    /// - **No cross-scene contamination.** Storage is per-entity, so two
+    ///   `SceneView` instances can never share a handler table or have one
+    ///   `removeAllHandlers()` wipe the other's gestures.
+    struct GestureHandlers: Component {
+        var tap: (() -> Void)?
+        var drag: ((SIMD3<Float>) -> Void)?
+        var scale: ((Float) -> Void)?
+        var rotate: ((Float) -> Void)?
+        var longPress: (() -> Void)?
 
-    /// Registry of drag handlers keyed by entity ID.
-    @MainActor
-    private static var dragHandlers: [ObjectIdentifier: (SIMD3<Float>) -> Void] = [:]
-
-    /// Registry of scale handlers keyed by entity ID.
-    @MainActor
-    private static var scaleHandlers: [ObjectIdentifier: (Float) -> Void] = [:]
-
-    /// Registry of rotation handlers keyed by entity ID.
-    @MainActor
-    private static var rotateHandlers: [ObjectIdentifier: (Float) -> Void] = [:]
-
-    /// Registry of long press handlers keyed by entity ID.
-    @MainActor
-    private static var longPressHandlers: [ObjectIdentifier: () -> Void] = [:]
-
-    /// Weak references to registered entities for automatic cleanup.
-    @MainActor
-    private static var registeredEntities: [ObjectIdentifier: WeakEntity] = [:]
-
-    /// Wrapper for weak entity reference.
-    private final class WeakEntity {
-        weak var entity: Entity?
-        init(_ entity: Entity) { self.entity = entity }
+        var isEmpty: Bool {
+            tap == nil && drag == nil && scale == nil
+                && rotate == nil && longPress == nil
+        }
     }
 
     // MARK: - Registration
@@ -62,8 +75,7 @@ public enum NodeGesture {
     @MainActor
     public static func onTap(_ entity: Entity, handler: @escaping () -> Void) {
         ensureCollision(entity)
-        trackEntity(entity)
-        tapHandlers[ObjectIdentifier(entity)] = handler
+        mutateHandlers(of: entity) { $0.tap = handler }
     }
 
     /// Registers a drag handler for an entity.
@@ -74,8 +86,7 @@ public enum NodeGesture {
     @MainActor
     public static func onDrag(_ entity: Entity, handler: @escaping (SIMD3<Float>) -> Void) {
         ensureCollision(entity)
-        trackEntity(entity)
-        dragHandlers[ObjectIdentifier(entity)] = handler
+        mutateHandlers(of: entity) { $0.drag = handler }
     }
 
     /// Registers a pinch-to-scale handler for an entity.
@@ -86,8 +97,7 @@ public enum NodeGesture {
     @MainActor
     public static func onScale(_ entity: Entity, handler: @escaping (Float) -> Void) {
         ensureCollision(entity)
-        trackEntity(entity)
-        scaleHandlers[ObjectIdentifier(entity)] = handler
+        mutateHandlers(of: entity) { $0.scale = handler }
     }
 
     /// Registers a two-finger rotation handler for an entity.
@@ -98,8 +108,7 @@ public enum NodeGesture {
     @MainActor
     public static func onRotate(_ entity: Entity, handler: @escaping (Float) -> Void) {
         ensureCollision(entity)
-        trackEntity(entity)
-        rotateHandlers[ObjectIdentifier(entity)] = handler
+        mutateHandlers(of: entity) { $0.rotate = handler }
     }
 
     /// Registers a long press handler for an entity.
@@ -110,8 +119,7 @@ public enum NodeGesture {
     @MainActor
     public static func onLongPress(_ entity: Entity, handler: @escaping () -> Void) {
         ensureCollision(entity)
-        trackEntity(entity)
-        longPressHandlers[ObjectIdentifier(entity)] = handler
+        mutateHandlers(of: entity) { $0.longPress = handler }
     }
 
     // MARK: - Deregistration
@@ -119,24 +127,24 @@ public enum NodeGesture {
     /// Removes all gesture handlers for an entity.
     @MainActor
     public static func removeAll(from entity: Entity) {
-        let id = ObjectIdentifier(entity)
-        tapHandlers.removeValue(forKey: id)
-        dragHandlers.removeValue(forKey: id)
-        scaleHandlers.removeValue(forKey: id)
-        rotateHandlers.removeValue(forKey: id)
-        longPressHandlers.removeValue(forKey: id)
-        registeredEntities.removeValue(forKey: id)
+        entity.components.remove(GestureHandlers.self)
     }
 
-    /// Removes all registered gesture handlers.
+    /// Removes all registered gesture handlers reachable from a scene root.
+    ///
+    /// Walks `root` and all of its descendants, removing the gesture
+    /// handler component from each. Pass the scene's content root so the
+    /// teardown is scoped to that scene — gesture handlers registered in a
+    /// different `SceneView` are untouched (handler storage is per-entity,
+    /// so there is no longer a shared global table to corrupt).
+    ///
+    /// - Parameter root: The scene root whose subtree should be cleared.
     @MainActor
-    public static func removeAllHandlers() {
-        tapHandlers.removeAll()
-        dragHandlers.removeAll()
-        scaleHandlers.removeAll()
-        rotateHandlers.removeAll()
-        longPressHandlers.removeAll()
-        registeredEntities.removeAll()
+    public static func removeAllHandlers(under root: Entity) {
+        root.components.remove(GestureHandlers.self)
+        for child in root.children {
+            removeAllHandlers(under: child)
+        }
     }
 
     // MARK: - Dispatch (called by scene implementation)
@@ -144,62 +152,43 @@ public enum NodeGesture {
     /// Dispatches a tap event to the entity's registered handler.
     @MainActor
     public static func dispatchTap(on entity: Entity) {
-        tapHandlers[ObjectIdentifier(entity)]?()
+        entity.components[GestureHandlers.self]?.tap?()
     }
 
     /// Dispatches a drag event to the entity's registered handler.
     @MainActor
     public static func dispatchDrag(on entity: Entity, translation: SIMD3<Float>) {
-        dragHandlers[ObjectIdentifier(entity)]?(translation)
+        entity.components[GestureHandlers.self]?.drag?(translation)
     }
 
     /// Dispatches a scale event to the entity's registered handler.
     @MainActor
     public static func dispatchScale(on entity: Entity, magnification: Float) {
-        scaleHandlers[ObjectIdentifier(entity)]?(magnification)
+        entity.components[GestureHandlers.self]?.scale?(magnification)
     }
 
     /// Dispatches a rotation event to the entity's registered handler.
     @MainActor
     public static func dispatchRotate(on entity: Entity, angle: Float) {
-        rotateHandlers[ObjectIdentifier(entity)]?(angle)
+        entity.components[GestureHandlers.self]?.rotate?(angle)
     }
 
     /// Dispatches a long press event to the entity's registered handler.
     @MainActor
     public static func dispatchLongPress(on entity: Entity) {
-        longPressHandlers[ObjectIdentifier(entity)]?()
+        entity.components[GestureHandlers.self]?.longPress?()
     }
 
     /// Whether the entity has any registered gesture handlers.
     @MainActor
     public static func hasHandlers(for entity: Entity) -> Bool {
-        let id = ObjectIdentifier(entity)
-        return tapHandlers[id] != nil
-            || dragHandlers[id] != nil
-            || scaleHandlers[id] != nil
-            || rotateHandlers[id] != nil
-            || longPressHandlers[id] != nil
+        guard let handlers = entity.components[GestureHandlers.self] else {
+            return false
+        }
+        return !handlers.isEmpty
     }
 
     // MARK: - Private helpers
-
-    /// Removes handlers for entities that have been deallocated.
-    ///
-    /// Called automatically during handler registration. Can also be called
-    /// manually to reclaim memory in long-running scenes.
-    @MainActor
-    public static func purgeStaleHandlers() {
-        let staleIds = registeredEntities.filter { $0.value.entity == nil }.map { $0.key }
-        for id in staleIds {
-            tapHandlers.removeValue(forKey: id)
-            dragHandlers.removeValue(forKey: id)
-            scaleHandlers.removeValue(forKey: id)
-            rotateHandlers.removeValue(forKey: id)
-            longPressHandlers.removeValue(forKey: id)
-            registeredEntities.removeValue(forKey: id)
-        }
-    }
 
     private static func ensureCollision(_ entity: Entity) {
         if entity.components[CollisionComponent.self] == nil {
@@ -209,16 +198,19 @@ public enum NodeGesture {
         }
     }
 
-    /// Tracks the entity for automatic stale handler cleanup.
+    /// Reads, mutates, and writes back the entity's `GestureHandlers`
+    /// component, removing it entirely if the mutation left it empty.
     @MainActor
-    private static func trackEntity(_ entity: Entity) {
-        let id = ObjectIdentifier(entity)
-        if registeredEntities[id] == nil {
-            registeredEntities[id] = WeakEntity(entity)
-        }
-        // Opportunistic cleanup: purge stale entries periodically
-        if registeredEntities.count > 10 {
-            purgeStaleHandlers()
+    private static func mutateHandlers(
+        of entity: Entity,
+        _ body: (inout GestureHandlers) -> Void
+    ) {
+        var handlers = entity.components[GestureHandlers.self] ?? GestureHandlers()
+        body(&handlers)
+        if handlers.isEmpty {
+            entity.components.remove(GestureHandlers.self)
+        } else {
+            entity.components.set(handlers)
         }
     }
 }

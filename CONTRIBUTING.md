@@ -257,6 +257,14 @@ input.
 - **Swift**: follow the existing SceneViewSwift patterns (builder-style modifiers, RealityKit conventions).
 - No wildcard imports. No unused imports.
 - Keep changes minimal — you can fix obvious mistakes in formatting or documentation along the way.
+- **Swift `#if os(...)` guards**: do not nest a platform `#if` whose condition is
+  a permutation of the file's outer guard — it is always true and only adds
+  noise (issue #2044). Every `SceneViewSwift` file is wrapped in
+  `#if os(iOS) || os(macOS) || os(visionOS)`; an inner
+  `#if os(iOS) || os(visionOS) || os(macOS)` is the same three platforms and
+  therefore dead. Use a `#if` only for a genuinely narrower set
+  (`#if os(visionOS)`, `#if !os(visionOS)`, `#if os(macOS)`), and prefer a
+  runtime `#available` check when the gate is an OS-version requirement.
 
 ### Changes in Filament materials
 

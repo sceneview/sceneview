@@ -7,29 +7,34 @@ import AppKit
 import UIKit
 #endif
 
-/// Embeds a SwiftUI view as a 3D entity in the scene.
+/// A placeholder node for embedding a SwiftUI view as a 3D entity.
 ///
-/// Mirrors SceneView Android's `ViewNode` — renders a 2D SwiftUI view on a 3D plane
-/// using RealityKit's attachment system. The view is interactive and responds to
-/// gestures within the 3D scene.
+/// > Warning: **The SwiftUI content is not yet rendered.** This node
+/// > currently displays a plain white plane regardless of the `content`
+/// > you pass — the UIView/NSView → `MTLTexture` pipeline that would turn
+/// > a SwiftUI view into a 3D surface is not implemented. The `content`
+/// > closure is stored but never displayed, and there is **no gesture
+/// > forwarding** into the view. Building that pipeline is tracked by
+/// > [#1035](https://github.com/sceneview/sceneview/issues/1035).
+///
+/// `ViewNode` is the planned Apple counterpart of SceneView Android's
+/// `ViewNode`. It ships now only so the type and its transform API are
+/// stable for callers; treat it as **"Coming soon"** for content
+/// rendering. Use a textured ``ImageNode`` if you need a static 2D
+/// surface today.
 ///
 /// ```swift
-/// @State private var counter = 0
-///
+/// // Currently renders a blank white plane — the SwiftUI content is
+/// // not yet displayed. See #1035 for the rendering pipeline.
 /// SceneView { root in
 ///     let viewNode = ViewNode {
-///         VStack {
-///             Text("Count: \(counter)")
-///             Button("Increment") { counter += 1 }
-///         }
-///         .padding()
-///         .background(.regularMaterial)
-///         .cornerRadius(12)
+///         Text("Coming soon")
 ///     }
 ///     viewNode.position = SIMD3<Float>(0, 1.5, -2)
 ///     root.addChild(viewNode.entity)
 /// }
 /// ```
+@available(*, deprecated, message: "ViewNode renders a placeholder plane only — the SwiftUI content is not yet displayed. Tracked by #1035.")
 public struct ViewNode<Content: View>: @unchecked Sendable {
     /// The underlying RealityKit entity.
     public let entity: Entity
@@ -58,16 +63,19 @@ public struct ViewNode<Content: View>: @unchecked Sendable {
         nonmutating set { entity.scale = newValue }
     }
 
-    /// Creates a ViewNode that renders SwiftUI content as a 3D plane.
+    /// Creates a `ViewNode` placeholder plane.
     ///
-    /// The view is rendered as a texture on a plane entity. For interactive views,
-    /// consider using RealityKit's attachment API on visionOS.
+    /// > Warning: The `content` you pass is **stored but not rendered** —
+    /// > this produces a plain white plane. SwiftUI-content rendering is
+    /// > tracked by #1035.
     ///
     /// - Parameters:
-    ///   - pixelsPerMeter: Rendering resolution. Default 500.
+    ///   - pixelsPerMeter: Intended rendering resolution. Stored for the
+    ///     future #1035 pipeline; has no effect today.
     ///   - width: Plane width in meters. Default 0.5.
     ///   - height: Plane height in meters. Default 0.3.
-    ///   - content: The SwiftUI view to display.
+    ///   - content: The SwiftUI view to display once #1035 lands. Not
+    ///     displayed by the current placeholder implementation.
     public init(
         pixelsPerMeter: Float = 500,
         width: Float = 0.5,
