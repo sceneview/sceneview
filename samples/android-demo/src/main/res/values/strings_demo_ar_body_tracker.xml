@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `ar-body-tracker` demo (registered by
+     `ArBodyTrackerFragment.kt`). Android's resource merger fans every
+     `res/values/*.xml` file in, so `R.string.demo_ar_body_tracker_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_ar_body_tracker_title">AR Body Tracker</string>
+    <string name="demo_ar_body_tracker_subtitle">Live 2D skeleton overlay from MediaPipe Pose on the AR camera feed</string>
+    <string name="demo_ar_body_tracker_explainer">Point the camera at a person. MediaPipe Pose Landmarker runs on-device on the AR camera image and SceneView projects the landmarks onto a 17-joint ARKit-parity skeleton. Note: ARCore has no native body tracking — this is an image-space pose overlay, not a world-anchored 3D skeleton like ARKit.</string>
+    <string name="demo_ar_body_tracker_status_aim">Aim the camera at a person</string>
+    <string name="demo_ar_body_tracker_status_tracked">Body tracked — %1$d joints</string>
+    <string name="demo_ar_body_tracker_status_no_model">Pose model unavailable — add pose_landmarker_lite.task to assets/mediapipe/</string>
+</resources>

@@ -36,6 +36,8 @@ try-demo text eol=lf
 *.ktx2 binary
 *.filamat binary
 *.filamesh binary
+*.task binary
+*.tflite binary
 *.png binary
 *.jpg binary
 *.jpeg binary

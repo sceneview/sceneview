@@ -1801,6 +1801,44 @@ Sample: `ARImageDemo` (Android demo registry id `ar-image`) — "Capture this vi
 )
 ```
 
+### Body tracking — BodyPose + Joint (image-space, MediaPipe Pose) (#1763)
+ARCore has **no native body-tracking API** (unlike ARKit's `ARBodyTrackingConfiguration`
++ `BodyTrackedEntity`). SceneView's Android body-tracking path feeds the AR CPU camera
+image to Google's on-device **MediaPipe Pose Landmarker** and exposes the result through
+two renderer-agnostic value types in `io.github.sceneview.ar.body`:
+
+```kotlin
+// 17 ARKit-parity joint names (ARSkeleton.JointName upper tier) — reads the same on
+// Android and SceneViewSwift. ROOT/SPINE/NECK are synthesised midpoints.
+enum class Joint { ROOT, SPINE, NECK, HEAD,
+    LEFT_SHOULDER, LEFT_ELBOW, LEFT_HAND, RIGHT_SHOULDER, RIGHT_ELBOW, RIGHT_HAND,
+    LEFT_HIP, LEFT_KNEE, LEFT_FOOT, RIGHT_HIP, RIGHT_KNEE, RIGHT_FOOT }
+
+// One detected pose. x/y are normalised [0,1] in IMAGE space; z is a RELATIVE depth.
+data class BodyPose(val landmarks: Map<Joint, BodyLandmark>) {
+    val isTracked: Boolean
+    operator fun get(joint: Joint): BodyLandmark?
+    companion object {
+        fun fromMediaPipeLandmarks(landmarks: List<RawLandmark>?): BodyPose
+    }
+}
+data class BodyLandmark(val joint: Joint, val x: Float, val y: Float, val z: Float,
+                        val inFrameLikelihood: Float)
+
+// Bone topology for drawing a skeleton overlay.
+val SKELETON_BONES: List<Pair<Joint, Joint>>
+```
+
+**⚠️ Parity caveat — read before relying on this.** This is **image-space** tracking, not
+ARKit's world-anchored 3D skeleton. `x`/`y` are normalised pixel coordinates and `z` is a
+relative depth with no absolute scale or AR-world anchoring. It is ideal for 2D skeleton
+overlays, fitness/gesture detection and on-screen AR filters, but is **not** a drop-in
+replacement for `BodyTrackedEntity` — you cannot reliably weld a 3D model to a limb in
+world space from MediaPipe landmarks. The MediaPipe runtime + `.task` model are a
+**sample-only dependency**: the published `arsceneview` artifact carries only the
+`BodyPose` / `Joint` value types, not `com.google.mediapipe`. See the `ar-body-tracker`
+demo for the full camera-feed → `BodyPose` → skeleton-overlay pipeline.
+
 ### CloudAnchorNode — cross-device persistent anchors
 ```kotlin
 @Composable fun CloudAnchorNode(
@@ -3776,6 +3814,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Augmented Reality
 
+- `ar-body-tracker` — AR Body Tracker. Live 2D skeleton overlay from MediaPipe Pose on the AR camera feed.
 - `ar-cloud-anchor` — Cloud Anchors. Persistent multi-user anchors.
 - `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor / table (depth-driven physics).
 - `ar-depth-occlusion` — Depth Occlusion. Real-world depth masks virtual objects.
