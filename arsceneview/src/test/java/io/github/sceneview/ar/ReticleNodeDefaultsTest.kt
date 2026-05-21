@@ -175,12 +175,17 @@ class ReticleNodeDefaultsTest {
     fun `ReticleNode extends HitResultNode`() {
         val src = reticleNodeSource
         // The whole point of the #1882 thin-wrapper redesign: ReticleNode is a
-        // HitResultNode subclass, not a parallel implementation.
-        val pattern = Regex("""class\s+ReticleNode\s*\([^)]*\)\s*:\s*HitResultNode\s*\(""", RegexOption.DOT_MATCHES_ALL)
+        // HitResultNode subclass, not a parallel implementation. The class header
+        // and the `: HitResultNode(` supertype call are on separate lines, so
+        // assert each independently rather than spanning the parameter list.
         assertTrue(
-            "ReticleNode must `extend HitResultNode` (thin-wrapper redesign, #1882). " +
-                "Did not match $pattern.",
-            pattern.containsMatchIn(src)
+            "ReticleNode must be declared `open class ReticleNode(` (#1882). ",
+            Regex("""class\s+ReticleNode\s*\(""").containsMatchIn(src)
+        )
+        assertTrue(
+            "ReticleNode must `extend HitResultNode` via a `: HitResultNode(` supertype call " +
+                "(thin-wrapper redesign, #1882).",
+            Regex("""\)\s*:\s*HitResultNode\s*\(""", RegexOption.DOT_MATCHES_ALL).containsMatchIn(src)
         )
     }
 
