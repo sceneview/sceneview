@@ -92,6 +92,11 @@ class TvModelViewerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         updateManager = InAppUpdateManager(this)
+        // Register the activity-result launcher for Google's FLEXIBLE consent
+        // modal BEFORE the activity reaches STARTED. Cancelling that modal is
+        // delivered here (RESULT_CANCELED) — without it a cancel would strand
+        // the in-app Update button as a permanent no-op (#1942 review).
+        updateManager.registerForResult(this)
 
         setContent {
             SceneviewTheme {
@@ -232,16 +237,19 @@ private fun TvModelViewerScreen(updateManager: InAppUpdateManager? = null) {
         )
 
         // Play in-app update banner — overlays the top of the screen during
-        // DOWNLOADING / READY_TO_INSTALL only (no-op otherwise). On TV the
-        // Restart CTA must grab D-pad focus the moment the banner appears, so
-        // we hand UpdateBanner a FocusRequester it auto-requests on the
-        // READY_TO_INSTALL transition. FLEXIBLE is the supported Leanback flow.
-        val restartFocusRequester = remember { FocusRequester() }
+        // AVAILABLE / DOWNLOADING / READY_TO_INSTALL (no-op otherwise). On TV
+        // the action CTA must grab D-pad focus the moment the banner appears,
+        // so we hand UpdateBanner a FocusRequester it auto-requests on every
+        // actionable transition — the Update button while AVAILABLE and the
+        // Restart button while READY_TO_INSTALL. Without it the Update button
+        // would be unreachable by D-pad (#1942 review). FLEXIBLE is the
+        // supported Leanback flow.
+        val actionFocusRequester = remember { FocusRequester() }
         updateManager?.let { mgr ->
             UpdateBanner(
                 updateManager = mgr,
                 modifier = Modifier.align(Alignment.TopCenter),
-                restartFocusRequester = restartFocusRequester
+                actionFocusRequester = actionFocusRequester
             )
         }
     }

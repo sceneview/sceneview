@@ -43,7 +43,7 @@ import org.w3c.dom.HTMLSelectElement
  * `.claude/scripts/sync-versions.sh`.
  */
 
-private const val SDK_VERSION = "4.11.2"
+private const val SDK_VERSION = "4.12.0"
 
 /** Sketchfab public API endpoint for searching downloadable models. */
 private const val SKETCHFAB_API =
