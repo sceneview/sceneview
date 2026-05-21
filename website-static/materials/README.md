@@ -2,7 +2,7 @@
 
 The three `.mat` sources in this directory back the **web** 3D viewer
 (`sceneview-web`, Filament.js / WebGL2 + WASM). They are **intentionally
-distinct** from the 11 Android `sceneview/src/main/materials/` sources — same
+distinct** from the 13 Android `sceneview/src/main/materials/` sources — same
 shading concept, leaner shader surface for the browser renderer.
 
 | Material | Shading | Blending | Parameters |
@@ -37,7 +37,7 @@ These three blobs are part of the unified inventory in
 [`tools/GenerateFilamat.sh`](../../tools/GenerateFilamat.sh). Regenerate with:
 
 ```bash
-bash tools/GenerateFilamat.sh                        # all 20 blobs
+bash tools/GenerateFilamat.sh                        # all 22 blobs
 bash tools/GenerateFilamat.sh --mat unlit_colored    # one web blob
 ```
 

@@ -10,14 +10,14 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (20 mats → 20 filamats):
-#   sceneview/src/main/materials/         (11) → sceneview/src/main/assets/materials/
+# Inventory (22 mats → 22 filamats):
+#   sceneview/src/main/materials/         (13) → sceneview/src/main/assets/materials/
 #   arsceneview/src/main/materials/        (6) → arsceneview/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/
 #
 # Usage:
-#   bash tools/GenerateFilamat.sh                 # regenerate all 20 filamats
-#   bash tools/GenerateFilamat.sh --check         # diff against committed blobs; exit 1 on drift
+#   bash tools/GenerateFilamat.sh                 # regenerate all 22 filamats
+#   bash tools/GenerateFilamat.sh --check         # diff all 22 against committed blobs; exit 1 on drift
 #   bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 #   bash tools/GenerateFilamat.sh --ci-tolerant   # treat matc download failure as WARN, not FAIL
 #   bash tools/GenerateFilamat.sh --help
@@ -86,7 +86,7 @@ log "${CYAN}Filament version (pinned):${NC} $FILAMENT_VERSION"
 # Format: "<module>:<name>:<src-path>:<out-path>:<matc-flags>"
 # matc-flags is the full flag list (excluding -o and the source path).
 #
-# Why per-mat flags: the committed .filamat blobs were compiled with FOUR
+# Why per-mat flags: the committed .filamat blobs were compiled with FIVE
 # distinct profiles (visible in each blob's MRPC chunk via `strings`).
 # We preserve each blob's exact compile profile — including flag *order*,
 # because matc embeds the verbatim flag string and any reorder produces
@@ -98,11 +98,14 @@ log "${CYAN}Filament version (pinned):${NC} $FILAMENT_VERSION"
 #   Profile B — lean Android (sceneview unlit, 2 mats):
 #     "-a opengl -p mobile"   (note flag order!)
 #
-#   Profile C — ARCore (arsceneview, 6 mats):
+#   Profile C — ARCore (arsceneview 6 mats + sceneview semantics_overlay):
 #     "--optimize-size -p mobile -a opengl -a vulkan"
 #
 #   Profile D — website-static (Filament.js / WebGL, 3 mats):
 #     "-p mobile -a opengl"
+#
+#   Profile E — Android occluder (sceneview occlusion, 1 mat):
+#     "-a vulkan -a opengl -p mobile"   (note flag order!)
 #
 # When adding a new material, pick a profile based on the deployment
 # target. Audit #1918 (Part A) reviewed the A-vs-B split: Profile B
@@ -112,7 +115,9 @@ log "${CYAN}Filament version (pinned):${NC} $FILAMENT_VERSION"
 # intentional, not drift; left as-is. See the audit summary in the #1918 PR.
 MATS=(
     "sceneview:image_texture:sceneview/src/main/materials/image_texture.mat:sceneview/src/main/assets/materials/image_texture.filamat:-p all -a all"
+    "sceneview:occlusion:sceneview/src/main/materials/occlusion.mat:sceneview/src/main/assets/materials/occlusion.filamat:-a vulkan -a opengl -p mobile"
     "sceneview:opaque_colored:sceneview/src/main/materials/opaque_colored.mat:sceneview/src/main/assets/materials/opaque_colored.filamat:-p all -a all"
+    "sceneview:semantics_overlay:sceneview/src/main/materials/semantics_overlay.mat:sceneview/src/main/assets/materials/semantics_overlay.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "sceneview:opaque_textured:sceneview/src/main/materials/opaque_textured.mat:sceneview/src/main/assets/materials/opaque_textured.filamat:-p all -a all"
     "sceneview:opaque_unlit_colored:sceneview/src/main/materials/opaque_unlit_colored.mat:sceneview/src/main/assets/materials/opaque_unlit_colored.filamat:-a opengl -p mobile"
     "sceneview:transparent_colored:sceneview/src/main/materials/transparent_colored.mat:sceneview/src/main/assets/materials/transparent_colored.filamat:-p all -a all"

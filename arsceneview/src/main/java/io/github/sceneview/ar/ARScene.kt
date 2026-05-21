@@ -61,6 +61,7 @@ import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
 import io.github.sceneview.ar.node.DepthMeshNode
+import io.github.sceneview.ar.node.PointCloudNode
 import io.github.sceneview.ar.node.PoseNode
 import io.github.sceneview.ar.scene.PlaneRenderer
 import io.github.sceneview.ar.scene.SceneUnderstanding
@@ -1394,6 +1395,7 @@ private fun onARFrame(
     for (n in childNodes) when (n) {
         is PoseNode -> n.update(session, frame)
         is DepthMeshNode -> n.update(session, frame)
+        is PointCloudNode -> n.update(session, frame)
     }
 
     val newTrackingFailure = if (!isCameraTracking) {

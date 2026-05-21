@@ -42,6 +42,7 @@ import io.github.sceneview.ar.node.DepthMeshNode as DepthMeshNodeImpl
 import io.github.sceneview.ar.node.DepthMeshSnapshot
 import io.github.sceneview.ar.physics.DepthCollider
 import io.github.sceneview.ar.node.HitResultNode as HitResultNodeImpl
+import io.github.sceneview.ar.node.PointCloudNode as PointCloudNodeImpl
 import io.github.sceneview.ar.node.PoseNode as PoseNodeImpl
 import io.github.sceneview.ar.node.ReticleNode as ReticleNodeImpl
 import io.github.sceneview.ar.node.RooftopAnchorNode as RooftopAnchorNodeImpl
@@ -1045,6 +1046,85 @@ class ARSceneScope internal constructor(
     fun DepthMeshNode(
         node: DepthMeshNodeImpl,
         apply: DepthMeshNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null,
+    ) {
+        val attached = remember(node) { node.apply(apply) }
+        NodeLifecycle(attached, content)
+    }
+
+    // ── PointCloudNode ────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Creates and remembers a [PointCloudNodeImpl] that renders ARCore's live tracking feature
+     * points as an in-scene Filament point primitive — the SceneView equivalent of AR Foundation's
+     * `ARPointCloudManager`.
+     *
+     * Each frame the node consumes [com.google.ar.core.Frame.acquirePointCloud], filters out
+     * points below [confidenceThreshold], and uploads the survivors. The points are already in
+     * world space, so the node stays at the scene origin. Use it for debug overlays, "scanning"
+     * feedback, procedural-art demos, or to surface tracking quality to the user.
+     *
+     * ```kotlin
+     * val materialLoader = rememberMaterialLoader(engine)
+     * ARSceneView {
+     *     val pointCloud = rememberPointCloud(
+     *         materialInstance = materialLoader.createUnlitColorInstance(Color.Cyan),
+     *     )
+     *     PointCloudNode(pointCloud)
+     * }
+     * ```
+     *
+     * @param confidenceThreshold Minimum ARCore confidence in `[0, 1]` for a feature point to be
+     *                            rendered (default
+     *                            [PointCloudNodeImpl.DEFAULT_CONFIDENCE_THRESHOLD]).
+     * @param materialInstance    Optional material applied to the cloud. An unlit colored material
+     *                            from [MaterialLoader.createUnlitColorInstance] is the usual choice.
+     * @param onPointCloudUpdated Invoked on each update with the rendered point count — use it to
+     *                            drive a tracking-quality indicator.
+     */
+    @Composable
+    fun rememberPointCloud(
+        confidenceThreshold: Float = PointCloudNodeImpl.DEFAULT_CONFIDENCE_THRESHOLD,
+        materialInstance: MaterialInstance? = null,
+        builder: RenderableManager.Builder.() -> Unit = {},
+        onPointCloudUpdated: ((pointCount: Int) -> Unit)? = null,
+    ): PointCloudNodeImpl {
+        val node = remember(engine) {
+            PointCloudNodeImpl(
+                engine = engine,
+                confidenceThreshold = confidenceThreshold,
+                materialInstance = materialInstance,
+                builder = builder,
+                onPointCloudUpdated = onPointCloudUpdated,
+            )
+        }
+        // Keep the live params in sync so a recomposition with new arguments rebinds without
+        // recreating the underlying Filament buffers.
+        SideEffect {
+            node.confidenceThreshold = confidenceThreshold
+            node.onPointCloudUpdated = onPointCloudUpdated
+        }
+        DisposableEffect(node) {
+            onDispose { node.destroy() }
+        }
+        return node
+    }
+
+    /**
+     * Adds a [PointCloudNodeImpl] returned by [rememberPointCloud] to the AR scene.
+     *
+     * Splitting the factory ([rememberPointCloud]) from the scene-attach composable lets the
+     * caller hold the node reference (to read [PointCloudNodeImpl.pointCount]) while still
+     * benefiting from the standard lifecycle attach/detach.
+     *
+     * @param node    The point cloud node returned by [rememberPointCloud].
+     * @param apply   Imperative configuration applied once on first composition.
+     * @param content Optional child nodes declared in a [NodeScope].
+     */
+    @Composable
+    fun PointCloudNode(
+        node: PointCloudNodeImpl,
+        apply: PointCloudNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null,
     ) {
         val attached = remember(node) { node.apply(apply) }

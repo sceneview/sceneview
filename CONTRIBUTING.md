@@ -41,6 +41,36 @@ Open the project in Android Studio. Gradle sync will pull all dependencies autom
 
 For iOS (SceneViewSwift), open `SceneViewSwift/Package.swift` in Xcode and build from there.
 
+### Store secrets and the release-build guard
+
+The demo apps read two optional secrets — `SKETCHFAB_API_KEY` (Sketchfab
+carousels in the Explore tab) and `ARCORE_API_KEY` (AR Streetscape / Geospatial
+/ Cloud Anchor demos). They're resolved from an environment variable or, on
+developer machines, from the repo-root `local.properties`
+(`sketchfab.api.key` and `ARCORE_API_KEY` respectively).
+
+**Debug builds are permissive** — a missing key just disables those features at
+runtime, so you can build and contribute without either secret.
+
+**Release builds fail loud (#1915).** A release `assembleRelease` /
+`bundleRelease` (Android) or `Release` archive (iOS) *refuses to build* when a
+secret is empty or unsubstituted, instead of silently shipping a store APK with
+invisible Sketchfab carousels (the regression class behind #1909). This guard
+only fires on the release path — it never affects `assembleDebug` or PR-check
+builds.
+
+Forks have no access to the org GitHub Secrets, so to produce a release build
+without the keys, opt out of the guard:
+
+```bash
+# Android
+./gradlew :samples:android-demo:bundleRelease -PSV_ALLOW_MISSING_SECRETS=1
+# or export SV_ALLOW_MISSING_SECRETS=1
+
+# iOS
+xcodebuild archive ... SV_ALLOW_MISSING_SECRETS=1
+```
+
 ### Run tests
 
 ```bash
@@ -238,12 +268,12 @@ Recompile Filament materials using the [current Filament version](https://github
 
 Filament refuses any material whose binary version field does not match the runtime, with `Filament panic — material version N ≠ runtime M` on first frame. There is no compile-time check; the mismatch only manifests at runtime, demo by demo. v4.1.0 shipped with the runtime at 1.70.2 and blobs at 1.71 (two parallel branches each fixed half of the pair) — 10 demos crashed; v4.1.1 hot-fixed by realigning both sides to 1.71.
 
-**The 20 committed blobs that must stay in sync with their `.mat` sources**, spread across three modules:
+**The 22 committed blobs that must stay in sync with their `.mat` sources**, spread across three modules:
 
 ```
-sceneview/src/main/assets/materials/     (11) — image_texture, opaque/transparent
-                                                colored/textured/unlit, video_texture(_chroma_key),
-                                                view_texture_lit/_unlit
+sceneview/src/main/assets/materials/     (13) — image_texture, occlusion, opaque/transparent
+                                                colored/textured/unlit, semantics_overlay,
+                                                video_texture(_chroma_key), view_texture_lit/_unlit
 arsceneview/src/main/assets/materials/    (6) — camera_stream_flat/_depth, face_mesh(_occluder),
                                                 plane_renderer(_shadow)
 website-static/materials/                 (3) — lit_colored, transparent_colored, unlit_colored
@@ -252,7 +282,7 @@ website-static/materials/                 (3) — lit_colored, transparent_color
 **The `tools/GenerateFilamat.sh` workflow.** [`tools/GenerateFilamat.sh`](tools/GenerateFilamat.sh) is the single entry point for every Filament material in the repo. It auto-downloads the `matc` toolchain pinned to the Filament version in [`gradle/libs.versions.toml`](gradle/libs.versions.toml) and compiles each `.mat` to its `.filamat` blob — no manual `matc` install needed.
 
 ```
-bash tools/GenerateFilamat.sh                 # regenerate all 20 .filamat blobs in place
+bash tools/GenerateFilamat.sh                 # regenerate all 22 .filamat blobs in place
 bash tools/GenerateFilamat.sh --check         # diff against committed blobs; exit 1 on drift
 bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 bash tools/GenerateFilamat.sh --ci-tolerant   # treat a matc download failure as WARN, not FAIL
@@ -262,14 +292,15 @@ The `matc` binary is cached at `~/.cache/sceneview/matc-<version>/` (overridable
 
 **The drift gate.** `bash .claude/scripts/quality-gate.sh` runs `GenerateFilamat.sh --check` on every pre-push gate. Editing a `.mat` source **without** recompiling its `.filamat` blob now **blocks the PR** — the gate reports the drifted blob(s) and fails. This catches the v4.1.0-class mistake before it ships.
 
-**The four matc flag profiles.** The committed blobs were compiled with four distinct profiles (recorded in each blob's MRPC chunk). `GenerateFilamat.sh` reproduces each one — including flag *order*, since matc embeds the verbatim flag string:
+**The five matc flag profiles.** The committed blobs were compiled with five distinct profiles (recorded in each blob's MRPC chunk). `GenerateFilamat.sh` reproduces each one — including flag *order*, since matc embeds the verbatim flag string:
 
 | Profile | Flags | Module |
 |---|---|---|
 | **A** — heavy Android | `-p all -a all` | `sceneview/` lit/textured/video/view materials |
 | **B** — lean Android | `-a opengl -p mobile` | `sceneview/` unlit colored materials (2) |
-| **C** — ARCore | `--optimize-size -p mobile -a opengl -a vulkan` | `arsceneview/` (6) |
+| **C** — ARCore | `--optimize-size -p mobile -a opengl -a vulkan` | `arsceneview/` (6) + `sceneview/` semantics_overlay (1) |
 | **D** — website / WebGL | `-p mobile -a opengl` | `website-static/materials/` (3) |
+| **E** — Android occluder | `-a vulkan -a opengl -p mobile` | `sceneview/` occlusion material (1) |
 
 When adding a new material, pick a profile by deployment target and add an entry to the `MATS` inventory in `GenerateFilamat.sh`. Each `.mat` source carries a short header block (purpose, used-by, parameters, profile) — read those headers to learn what an individual material does and where it is consumed.
 

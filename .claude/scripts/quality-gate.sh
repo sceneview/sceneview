@@ -103,16 +103,20 @@ if [ -x ".claude/scripts/check-llms-drift.sh" ]; then
 fi
 
 # samples/android-demo append-only demo-fragments collator drift (issue #1797).
-# A new fragment added without re-running collate-demos.sh would compile but
-# leave GeneratedDemos.kt stale — the demo would still be invisible in
-# ALL_DEMOS / DemoRouter. The --check mode bit-compares the file against what
-# the collator would emit, blocking the PR on drift.
+# `GeneratedDemos.kt` is no longer committed — it is `.gitignore`d and
+# regenerated before `:samples:android-demo` Kotlin compilation by the
+# `generateDemoRegistry` Gradle task (issue #1976), so it is fresh by
+# construction and cannot drift. The collator's other two outputs (root
+# `llms.txt` + `docs/docs/llms.txt` demo blocks) stay TRACKED and hand-edited:
+# a new fragment added without re-running the collator would leave those blocks
+# stale. `--check` bit-compares those blocks against what the collator would
+# emit, blocking the PR on drift.
 COLLATOR="samples/android-demo/scripts/collate-demos.sh"
 if [ -x "$COLLATOR" ]; then
     if bash "$COLLATOR" --check > /tmp/check-demos-drift.log 2>&1; then
-        check "android-demo GeneratedDemos.kt in sync" "PASS" ""
+        check "android-demo llms.txt demos block in sync" "PASS" ""
     else
-        check "android-demo GeneratedDemos.kt drift" "FAIL" "Run $COLLATOR — see /tmp/check-demos-drift.log"
+        check "android-demo llms.txt demos block drift" "FAIL" "Run $COLLATOR — see /tmp/check-demos-drift.log"
     fi
 fi
 
