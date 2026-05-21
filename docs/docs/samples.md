@@ -52,8 +52,10 @@ Browser 3D viewer with:
 - WebXR AR/VR support ("Enter AR" / "Enter VR" buttons)
 - Orbit camera, auto-resize
 
+The web demo is a static `index.html` — open it directly, or serve it:
+
 ```bash
-./gradlew :samples:web-demo:jsBrowserRun
+npx http-server samples/web-demo
 ```
 
 ### Desktop Demo

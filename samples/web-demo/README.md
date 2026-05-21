@@ -30,23 +30,29 @@ Also:
 
 ## Run
 
-Open `src/jsMain/resources/index.html` directly in a browser, or:
+Open `index.html` directly in a browser, or serve the directory:
 
 ```bash
-./gradlew :samples:web-demo:jsBrowserRun
+npx http-server samples/web-demo -p 8080
 ```
 
 ## Architecture
 
-- `index.html` — self-contained single-file app (HTML + CSS + inline JS). This
-  is the shipped demo; it loads `SceneView.js` from the CDN.
+The web demo is a **single static `index.html`** — there is no build step and
+no Kotlin/JS module. This is the one runtime: a future contributor's change to
+`index.html` is what actually ships.
+
+- `index.html` — self-contained single-file app (HTML + CSS + inline JS). It is
+  the shipped demo; it loads `SceneView.js` from the CDN.
 - Uses `SceneView.js` from CDN (`SceneView.modelViewer()`, `createBox()`,
   `setQuality()`, `setBloom()`, `setBackgroundColor()`, etc.).
 - Filament.js WASM engine loaded from CDN.
 - Sketchfab API: `GET /v3/search?type=models&downloadable=true&q={query}`.
 - CDN models: `https://cdn.jsdelivr.net/gh/sceneview/sceneview@main/assets/models/glb/`.
-- `src/jsMain/kotlin/.../web/Main.kt` is an alternative Kotlin/JS entry point
-  built against the `sceneview-web` module; the shipped page uses the inline JS.
+
+The `sceneview-web` Kotlin/JS library is published independently to npm
+(`sceneview-web`) and consumed via its own CDN bundle — it is not built or
+exercised by this demo.
 
 ## Tests
 

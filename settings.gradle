@@ -31,8 +31,8 @@ include ":sceneview-web"
 include ":samples:common"
 include ":samples:android-demo"         // Android (Play Store)
 include ":samples:android-tv-demo"      // Android TV
-include ":samples:web-demo"             // Web (Filament.js + WebXR)
 include ":samples:desktop-demo"         // Desktop (Windows/macOS/Linux)
+// Web demo: samples/web-demo/ (static index.html + inline JS, not Gradle)
 // Flutter demo: samples/flutter-demo/ (Dart, not Gradle)
 // React Native demo: samples/react-native-demo/ (JS, not Gradle)
 // iOS demo: samples/ios-demo/ (Xcode, not Gradle)

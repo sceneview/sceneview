@@ -135,7 +135,6 @@ jobs:
               - *shared
               - 'sceneview-core/**'
               - 'sceneview-web/**'
-              - 'samples/web-demo/**'
             flutter:
               - *shared
               - 'flutter/**'
@@ -346,16 +345,11 @@ jobs:
           ./gradlew \
             :sceneview-core:jsMainClasses \
             :sceneview-web:jsMainClasses \
-            :samples:web-demo:compileKotlinJs \
             --stacktrace
 
-      # Full production webpack bundle. Goes beyond `compileKotlinJs` because
-      # it runs the real webpack 5 pipeline against filament.js, which
-      # imports Node core modules (path, fs, crypto) unconditionally and
-      # fails hard without samples/web-demo/webpack.config.d/filament.js.
-      # Keeps session 34's polyfill fix protected on every main push.
-      - name: web-demo production webpack
-        run: ./gradlew :samples:web-demo:jsBrowserProductionWebpack --stacktrace
+      # samples/web-demo is a static `index.html` (inline JS on top of the
+      # CDN-hosted `sceneview.js`) — not a Kotlin/JS module — so there is no
+      # bundle to compile here. Its Playwright suite runs in render-tests.yml.
 
       # samples/desktop-demo is a deliberate Compose Canvas wireframe
       # placeholder (Filament JNI is not available on desktop) — it does not

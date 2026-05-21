@@ -290,8 +290,8 @@ done
 section "5. iOS / web demo references resolve"
 
 # The iOS skill cites *Demo.swift files under samples/ios-demo; the web skill
-# cites *.kt under sceneview-web/ and samples/web-demo/. Verify every cited
-# demo filename exists so the skills never point an agent at a dead file.
+# cites *.kt under sceneview-web/src/jsMain. Verify every cited filename
+# exists so the skills never point an agent at a dead file.
 python3 - <<'PY'
 import re, pathlib
 

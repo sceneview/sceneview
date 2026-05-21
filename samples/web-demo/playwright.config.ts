@@ -70,9 +70,9 @@ export default defineConfig({
     },
   ],
 
-  /* Dev server — start the web demo if not already running */
+  /* Dev server — serve the static web demo (index.html) if not already running */
   webServer: process.env.WEB_DEMO_URL ? undefined : {
-    command: 'npx http-server src/jsMain/resources -p 8080 -s',
+    command: 'npx http-server . -p 8080 -s',
     port: 8080,
     timeout: 30_000,
     reuseExistingServer: true,

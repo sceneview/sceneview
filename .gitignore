@@ -134,8 +134,8 @@ samples/android-tv-demo/src/main/assets/
 samples/flutter-demo/models/
 samples/react-native-demo/assets/models/
 samples/react-native-demo/ios/Models/
-samples/web-demo/src/jsMain/resources/models/
-samples/web-demo/src/jsMain/resources/environments/
+samples/web-demo/models/
+samples/web-demo/environments/
 
 # Local MCP workspace artifacts (not canonical — canonical code is in mcp/packages/)
 mcp-automotive/

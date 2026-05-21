@@ -3,7 +3,7 @@ name: Deploy website + docs
 # This is the SINGLE workflow that publishes the user-facing site at
 # https://sceneview.github.io. It assembles ONE complete `site/` tree —
 # marketing landing page (root) + MkDocs technical docs (/docs/) +
-# Kotlin/JS web-demo (/web-demo/) + Dokka API reference (/api/sceneview/) —
+# static web-demo (/web-demo/) + Dokka API reference (/api/sceneview/) —
 # and pushes it to the external `sceneview/sceneview.github.io` repo.
 #
 # Why a single workflow: `deploy-website.yml` previously published ONLY
@@ -29,6 +29,7 @@ on:
     paths:
       - 'docs/**'
       - 'website-static/**'
+      - 'samples/web-demo/index.html'
       - 'llms.txt'
       - '**/*.md'
       - '.github/workflows/docs.yml'
@@ -108,38 +109,15 @@ jobs:
           # Root llms.txt
           [ ! -f "site/llms.txt" ] && [ -f "llms.txt" ] && cp llms.txt site/ || true
 
-      # ── 3b. Build and publish samples/web-demo to /web-demo/ ────────────
-      - uses: ./.github/actions/setup-gradle
-
-      - name: Build samples/web-demo (Kotlin/JS distribution)
+      # ── 3b. Publish samples/web-demo to /web-demo/ ──────────────────────
+      - name: Publish samples/web-demo
         run: |
-          # `:samples:web-demo:jsBrowserDistribution` runs the webpack
-          # production build AND copies HTML resources from
-          # `src/jsMain/resources/` into the same output dir — without
-          # `Distribution`, the webpack-only task drops JS only and
-          # `site/web-demo/index.html` would be missing. Gradle plugin
-          # writes to `build/dist/js/productionExecutable/` for the
-          # Distribution task (vs `build/kotlin-webpack/js/
-          # productionExecutable/` for the webpack-only one). Both
-          # locations were caught by an independent review; the
-          # Distribution task is the correct one for "deploy a static
-          # site" because it bundles the HTML next to the JS bundle.
-          # See #926.
-          ./gradlew :samples:web-demo:jsBrowserDistribution --stacktrace
+          # samples/web-demo is a self-contained static `index.html` — the
+          # inline-JS runtime built on top of the CDN-hosted `sceneview.js`
+          # (it has no Kotlin/JS module to compile, so no Gradle step).
+          # Copy it verbatim to the deploy tree.
           mkdir -p site/web-demo
-          # Defensive: support both AGP/Gradle output layouts.
-          if [ -d samples/web-demo/build/dist/js/productionExecutable ]; then
-            cp -r samples/web-demo/build/dist/js/productionExecutable/* site/web-demo/
-          elif [ -d samples/web-demo/build/kotlin-webpack/js/productionExecutable ]; then
-            cp -r samples/web-demo/build/kotlin-webpack/js/productionExecutable/* site/web-demo/
-            # Webpack-only output may lack index.html — copy it from sources.
-            [ -f samples/web-demo/src/jsMain/resources/index.html ] && \
-              cp samples/web-demo/src/jsMain/resources/index.html site/web-demo/index.html
-          else
-            echo "::error::Neither expected web-demo output dir exists; aborting"
-            find samples/web-demo/build/ | head -50
-            exit 1
-          fi
+          cp samples/web-demo/index.html site/web-demo/index.html
           [ -f site/web-demo/index.html ] || {
             echo "::error::site/web-demo/index.html missing — deploy would 404"; exit 1; }
 

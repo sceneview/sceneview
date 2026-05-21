@@ -189,7 +189,7 @@ fun MultiModelScene() {
 | `android-demo/` | Android (Jetpack Compose) | `./gradlew :samples:android-demo:bundleRelease` | ✓ |
 | `android-tv-demo/` | Android TV | `./gradlew :samples:android-tv-demo:assembleDebug` | ✓ |
 | `ios-demo/` | iOS (SwiftUI) | `open samples/ios-demo/SceneViewDemo/SceneViewDemo.xcodeproj` | ✓ |
-| `web-demo/` | Web (Kotlin/JS + Filament.js) | `./gradlew :samples:web-demo:jsBrowserProductionWebpack` | ✓ |
+| `web-demo/` | Web (static `index.html` + Filament.js) | `npx http-server samples/web-demo` | ✓ |
 | `desktop-demo/` | Desktop (Compose) — wireframe placeholder, not SceneView | `./gradlew :samples:desktop-demo:run` | ✓ |
 | `flutter-demo/` | Flutter | `cd samples/flutter-demo && flutter build apk --debug` | ✓ |
 | `react-native-demo/` | React Native | See [`react-native-demo/SETUP.md`](react-native-demo/SETUP.md) — one-time bridge build + pod install required before first `run-android`/`run-ios` | scaffold only |

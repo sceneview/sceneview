@@ -291,7 +291,7 @@ fi
 if [ "$platforms" = "all" ] || [ "$platforms" = "web" ]; then
     process_platform_refs \
         "web-demo" \
-        "samples/web-demo/src" \
+        "samples/web-demo" \
         "samples/web-demo/public" \
         "glb|gltf|hdr"
 fi
