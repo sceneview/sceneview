@@ -37,7 +37,7 @@ These three blobs are part of the unified inventory in
 [`tools/GenerateFilamat.sh`](../../tools/GenerateFilamat.sh). Regenerate with:
 
 ```bash
-bash tools/GenerateFilamat.sh                        # all 20 blobs
+bash tools/GenerateFilamat.sh                        # all 21 blobs
 bash tools/GenerateFilamat.sh --mat unlit_colored    # one web blob
 ```
 

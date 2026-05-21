@@ -252,7 +252,7 @@ website-static/materials/                 (3) — lit_colored, transparent_color
 **The `tools/GenerateFilamat.sh` workflow.** [`tools/GenerateFilamat.sh`](tools/GenerateFilamat.sh) is the single entry point for every Filament material in the repo. It auto-downloads the `matc` toolchain pinned to the Filament version in [`gradle/libs.versions.toml`](gradle/libs.versions.toml) and compiles each `.mat` to its `.filamat` blob — no manual `matc` install needed.
 
 ```
-bash tools/GenerateFilamat.sh                 # regenerate all 20 .filamat blobs in place
+bash tools/GenerateFilamat.sh                 # regenerate all 21 .filamat blobs in place
 bash tools/GenerateFilamat.sh --check         # diff against committed blobs; exit 1 on drift
 bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 bash tools/GenerateFilamat.sh --ci-tolerant   # treat a matc download failure as WARN, not FAIL
@@ -262,7 +262,7 @@ The `matc` binary is cached at `~/.cache/sceneview/matc-<version>/` (overridable
 
 **The drift gate.** `bash .claude/scripts/quality-gate.sh` runs `GenerateFilamat.sh --check` on every pre-push gate. Editing a `.mat` source **without** recompiling its `.filamat` blob now **blocks the PR** — the gate reports the drifted blob(s) and fails. This catches the v4.1.0-class mistake before it ships.
 
-**The four matc flag profiles.** The committed blobs were compiled with four distinct profiles (recorded in each blob's MRPC chunk). `GenerateFilamat.sh` reproduces each one — including flag *order*, since matc embeds the verbatim flag string:
+**The five matc flag profiles.** The committed blobs were compiled with five distinct profiles (recorded in each blob's MRPC chunk). `GenerateFilamat.sh` reproduces each one — including flag *order*, since matc embeds the verbatim flag string:
 
 | Profile | Flags | Module |
 |---|---|---|
@@ -270,6 +270,7 @@ The `matc` binary is cached at `~/.cache/sceneview/matc-<version>/` (overridable
 | **B** — lean Android | `-a opengl -p mobile` | `sceneview/` unlit colored materials (2) |
 | **C** — ARCore | `--optimize-size -p mobile -a opengl -a vulkan` | `arsceneview/` (6) |
 | **D** — website / WebGL | `-p mobile -a opengl` | `website-static/materials/` (3) |
+| **E** — Android occluder | `-a vulkan -a opengl -p mobile` | `sceneview/` occlusion material (1) |
 
 When adding a new material, pick a profile by deployment target and add an entry to the `MATS` inventory in `GenerateFilamat.sh`. Each `.mat` source carries a short header block (purpose, used-by, parameters, profile) — read those headers to learn what an individual material does and where it is consumed.
 
