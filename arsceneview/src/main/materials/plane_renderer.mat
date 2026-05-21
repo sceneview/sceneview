@@ -1,3 +1,15 @@
+// plane_renderer.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Unlit transparent material that draws detected ARCore planes with a tiled
+//             grid texture (the dotted detection overlay).
+// Used by:    PlaneRenderer (planeMaterial) — ARSceneView plane visualization.
+// Parameters:
+//   texture    — sampler2d, the tiled plane-grid texture (textures/plane_renderer.png).
+//   color      — float3, RGB tint multiplied into the texture.
+//   uvScale    — float2, tiling factor mapping local plane X/Z to texture UV.
+//   focusPoint — float3, world-space spotlight centre (reserved; currently unused path).
+//   radius     — float, spotlight falloff radius (reserved; currently unused path).
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
 material {
     name : "AR Core Plane Material",
 

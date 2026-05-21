@@ -238,25 +238,48 @@ Recompile Filament materials using the [current Filament version](https://github
 
 Filament refuses any material whose binary version field does not match the runtime, with `Filament panic — material version N ≠ runtime M` on first frame. There is no compile-time check; the mismatch only manifests at runtime, demo by demo. v4.1.0 shipped with the runtime at 1.70.2 and blobs at 1.71 (two parallel branches each fixed half of the pair) — 10 demos crashed; v4.1.1 hot-fixed by realigning both sides to 1.71.
 
-**The 12 committed blobs that must be recompiled together** (under `sceneview/src/main/assets/materials/`):
+**The 21 committed blobs that must stay in sync with their `.mat` sources**, spread across three modules:
 
 ```
-image_texture.filamat                  transparent_colored.filamat
-opaque_colored.filamat                 transparent_textured.filamat
-opaque_textured.filamat                transparent_unlit_colored.filamat
-opaque_unlit_colored.filamat           video_texture.filamat
-view_renderable.filamat                video_texture_chroma_key.filamat
-view_texture_lit.filamat               view_texture_unlit.filamat
+sceneview/src/main/assets/materials/     (12) — image_texture, opaque/transparent
+                                                colored/textured/unlit, video_texture(_chroma_key),
+                                                view_renderable, view_texture_lit/_unlit
+arsceneview/src/main/assets/materials/    (6) — camera_stream_flat/_depth, face_mesh(_occluder),
+                                                plane_renderer(_shadow)
+website-static/materials/                 (3) — lit_colored, transparent_colored, unlit_colored
 ```
+
+**The `tools/GenerateFilamat.sh` workflow.** [`tools/GenerateFilamat.sh`](tools/GenerateFilamat.sh) is the single entry point for every Filament material in the repo. It auto-downloads the `matc` toolchain pinned to the Filament version in [`gradle/libs.versions.toml`](gradle/libs.versions.toml) and compiles each `.mat` to its `.filamat` blob — no manual `matc` install needed.
+
+```
+bash tools/GenerateFilamat.sh                 # regenerate all 21 .filamat blobs in place
+bash tools/GenerateFilamat.sh --check         # diff against committed blobs; exit 1 on drift
+bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
+bash tools/GenerateFilamat.sh --ci-tolerant   # treat a matc download failure as WARN, not FAIL
+```
+
+The `matc` binary is cached at `~/.cache/sceneview/matc-<version>/` (overridable via `$XDG_CACHE_HOME`); the first run downloads it, subsequent runs reuse it. `--ci-tolerant` exists for sandboxed CI runners with no network — it lets the check pass with a WARN instead of failing the build when `matc` cannot be fetched.
+
+**The drift gate.** `bash .claude/scripts/quality-gate.sh` runs `GenerateFilamat.sh --check` on every pre-push gate. Editing a `.mat` source **without** recompiling its `.filamat` blob now **blocks the PR** — the gate reports the drifted blob(s) and fails. This catches the v4.1.0-class mistake before it ships.
+
+**The four matc flag profiles.** The committed blobs were compiled with four distinct profiles (recorded in each blob's MRPC chunk). `GenerateFilamat.sh` reproduces each one — including flag *order*, since matc embeds the verbatim flag string:
+
+| Profile | Flags | Module |
+|---|---|---|
+| **A** — heavy Android | `-p all -a all` | `sceneview/` lit/textured/video/view materials |
+| **B** — lean Android | `-a opengl -p mobile` | `sceneview/` unlit colored materials (2) |
+| **C** — ARCore | `--optimize-size -p mobile -a opengl -a vulkan` | `arsceneview/` (6) |
+| **D** — website / WebGL | `-p mobile -a opengl` | `website-static/materials/` (3) |
+
+When adding a new material, pick a profile by deployment target and add an entry to the `MATS` inventory in `GenerateFilamat.sh`. Each `.mat` source carries a short header block (purpose, used-by, parameters, profile) — read those headers to learn what an individual material does and where it is consumed.
 
 **How to recompile after a Filament version bump:**
 
-1. Download the matching `matc` from the Filament release tarball — `https://github.com/google/filament/releases/tag/vX.Y.Z` → `filament-vX.Y.Z-mac.tgz` (or `-linux.tgz`) → `./bin/matc`.
-2. Put `matc` on your `PATH` (or update [`tools/GenerateFilamat.sh`](tools/GenerateFilamat.sh) to point at it).
-3. Run `cd tools && bash GenerateFilamat.sh` — recompiles every `.filamat` from its `.mat` source.
-4. Commit **the runtime bump in `gradle/libs.versions.toml` AND the recompiled `.filamat` files in the SAME PR**. Never split them across commits — that's the failure mode that broke v4.1.0.
+1. Bump `filament = "X.Y.Z"` in [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
+2. Run `bash tools/GenerateFilamat.sh` — it downloads the matching `matc` and recompiles every `.filamat` from its `.mat` source.
+3. Commit **the runtime bump AND the recompiled `.filamat` files in the SAME PR**. Never split them across commits — that's the failure mode that broke v4.1.0.
 
-If you bump the runtime without touching the blobs (or vice versa), CI will not catch it. The first signal is a runtime crash on whichever demo loads the affected material first.
+`GenerateFilamat.sh --check` (and the `quality-gate.sh` drift gate) will catch a runtime/blob mismatch before merge. If you somehow bypass the gate, the first signal is a runtime crash on whichever demo loads the affected material first.
 
 ---
 

@@ -1,3 +1,12 @@
+// camera_stream_flat.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Full-screen AR camera passthrough without depth occlusion (the standard,
+//             non-occluding camera background).
+// Used by:    ARCameraStream (standardMaterialFile) — default ARSceneView camera path.
+// Parameters:
+//   cameraTexture — samplerExternal, the live ARCore camera feed.
+//   uvTransform   — float4x4, ARCore display-rotation UV transform.
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
 material {
     name : flat,
     vertexDomain : device,
