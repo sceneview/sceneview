@@ -7,19 +7,28 @@ import Combine
 ///
 /// Mirrors SceneView Android's `SpatialAudioNode` composable
 /// (`sceneview/src/main/java/io/github/sceneview/audio/SpatialAudioNode.kt`). Backed by
-/// RealityKit's built-in spatial-audio renderer: `AudioFileResource` configured with
-/// `shouldLoop` + `loadingStrategy`, played through `Entity.playAudio(_:)`.
+/// RealityKit's built-in spatial-audio renderer: an `AudioFileResource` played through
+/// `Entity.playAudio(_:)`.
 ///
 /// RealityKit's audio engine evaluates per-frame attenuation based on the entity's world
 /// transform relative to the listener — by default the active camera — so positional pan
 /// and distance gain "just work" without a manual frame loop. The Android implementation
 /// has to do this by hand on the MediaPlayer fallback path; iOS gets it from the OS.
 ///
+/// ## Looping
+///
+/// RealityKit sets looping at `AudioFileResource` *load* time — there is no way to flip an
+/// already-loaded resource to looping. Use the ``spatial(named:in:falloff:loop:autoPlay:volume:pitch:)``
+/// factory and the `loop` flag is honoured for real: the factory loads the named resource
+/// with `AudioFileResource.Configuration(shouldLoop:)` set accordingly. The
+/// ``spatial(source:falloff:loop:autoPlay:volume:pitch:)`` factory that takes a
+/// pre-loaded `AudioResource` cannot change the resource's loop configuration — pass a
+/// resource you already loaded with `shouldLoop: true` if you need looping there.
+///
 /// ```swift
-/// // Async — `AudioFileResource.load` is throwing async.
-/// let source = try await AudioFileResource.load(named: "bell.wav")
-/// let node = SpatialAudioNode.spatial(
-///     source: source,
+/// // Looping handled for you — the factory loads with shouldLoop: true.
+/// let node = try await SpatialAudioNode.spatial(
+///     named: "bell.wav",
 ///     falloff: .inverse(refDistance: 0.5, maxDistance: 6),
 ///     loop: true
 /// )
@@ -35,6 +44,10 @@ public struct SpatialAudioNode {
     /// The underlying RealityKit entity carrying the spatial audio component. Attach to
     /// the scene via `content.add(node.entity)` or as a child of any other entity to make
     /// the sound follow that entity.
+    ///
+    /// Until the entity is added to a scene RealityKit has no listener to spatialise
+    /// against — `autoPlay` audio therefore plays non-spatially (centred, unattenuated)
+    /// until `content.add(node.entity)` runs.
     public let entity: Entity
 
     /// Active playback controller — RealityKit hands one back from `entity.playAudio(_:)`
@@ -44,20 +57,73 @@ public struct SpatialAudioNode {
     /// `true` while audio is actively playing.
     public var isPlaying: Bool { storage.isPlaying }
 
-    /// Creates a spatial audio node from an `AudioResource`.
+    /// Creates a spatial audio node, loading the named audio resource with the requested
+    /// loop configuration.
+    ///
+    /// Prefer this factory over ``spatial(source:falloff:loop:autoPlay:volume:pitch:)``
+    /// when you need looping: RealityKit's loop flag is fixed at `AudioFileResource` load
+    /// time, and this factory loads the resource with
+    /// `AudioFileResource.Configuration(shouldLoop:)` set from `loop`.
     ///
     /// - Parameters:
-    ///   - source: The decoded audio resource — typically obtained via
-    ///             `AudioFileResource.load(named:in:)`.
+    ///   - name: Resource name to load via `AudioFileResource(named:in:configuration:)`.
+    ///   - bundle: Bundle to load the resource from. Default `Bundle.main`.
     ///   - falloff: Distance attenuation curve. Default
     ///              ``AudioFalloff/inverse(refDistance:maxDistance:rolloffFactor:)``.
-    ///   - loop: Whether the resource loops at end. Default `false`.
-    ///   - autoPlay: Start playback immediately. Default `true`.
+    ///   - loop: Whether the resource loops at end. Honoured for real — passed straight to
+    ///           `AudioFileResource.Configuration(shouldLoop:)`. Default `false`.
+    ///   - autoPlay: Start playback immediately. Default `true`. Note: audio plays
+    ///               non-spatially until `entity` is added to a scene.
     ///   - volume: Base linear gain in `[0, 1]` multiplied with the falloff curve.
     ///   - pitch: Playback pitch/speed multiplier — clamped to `[0.5, 2]`. RealityKit
     ///            does not expose a pitch knob on `AudioPlaybackController` as of
     ///            iOS 18, so phase-1 stores the value for parity with Android but
     ///            does not actually shift pitch. Phase 2 wires it via PHASE.
+    /// - Throws: Whatever `AudioFileResource(named:in:configuration:)` throws.
+    public static func spatial(
+        named name: String,
+        in bundle: Bundle = .main,
+        falloff: AudioFalloff = .inverse(refDistance: 1, maxDistance: 100),
+        loop: Bool = false,
+        autoPlay: Bool = true,
+        volume: Float = 1.0,
+        pitch: Float = 1.0
+    ) async throws -> SpatialAudioNode {
+        let configuration = AudioFileResource.Configuration(shouldLoop: loop)
+        let resource = try await AudioFileResource(
+            named: name,
+            in: bundle,
+            configuration: configuration
+        )
+        return spatial(
+            source: resource,
+            falloff: falloff,
+            loop: loop,
+            autoPlay: autoPlay,
+            volume: volume,
+            pitch: pitch
+        )
+    }
+
+    /// Creates a spatial audio node from a pre-loaded `AudioResource`.
+    ///
+    /// - Important: RealityKit's loop flag is set at `AudioFileResource` *load* time and
+    ///   cannot be changed on an already-loaded resource. The `loop` parameter here is
+    ///   recorded for parity, but for looping to actually take effect the `source` must
+    ///   have been loaded with `AudioFileResource.Configuration(shouldLoop: true)`. Use
+    ///   ``spatial(named:in:falloff:loop:autoPlay:volume:pitch:)`` to have the library
+    ///   load with the right configuration for you.
+    ///
+    /// - Parameters:
+    ///   - source: The decoded audio resource — typically obtained via
+    ///             `AudioFileResource(named:in:configuration:)`.
+    ///   - falloff: Distance attenuation curve. Default
+    ///              ``AudioFalloff/inverse(refDistance:maxDistance:rolloffFactor:)``.
+    ///   - loop: Whether the resource loops — see the Important note above.
+    ///   - autoPlay: Start playback immediately. Default `true`.
+    ///   - volume: Base linear gain in `[0, 1]` multiplied with the falloff curve.
+    ///   - pitch: Playback pitch/speed multiplier — clamped to `[0.5, 2]`. Phase-1 stores
+    ///            the value for parity with Android but does not actually shift pitch.
     public static func spatial(
         source: AudioResource,
         falloff: AudioFalloff = .inverse(refDistance: 1, maxDistance: 100),
@@ -88,22 +154,45 @@ public struct SpatialAudioNode {
 
     // MARK: - Playback
 
-    /// Starts (or resumes) playback. Idempotent.
+    /// Starts or resumes playback. Idempotent.
+    ///
+    /// If a controller already exists and is paused, it is resumed from its current
+    /// position (matching ``pause()``'s "pauses at current position" contract). Only the
+    /// first start — or a start after ``stop()`` — creates a fresh controller via
+    /// `entity.playAudio(_:)`.
     public func play() {
         guard !storage.isPlaying else { return }
-        // RealityKit re-creates an AudioPlaybackController per play() call — we stash the
-        // most recent one so pause()/stop() reach the right instance.
-        // The looping flag lives on the AudioFileResource configuration; for `loop = true`
-        // we configure the resource at construction time (see `prepareLoopingResource`).
-        let resourceToPlay = storage.prepareLoopingResource()
-        let controller = entity.playAudio(resourceToPlay)
+
+        if let controller = storage.controller {
+            // A paused controller — resume it instead of restarting from zero.
+            controller.play()
+            storage.isPlaying = true
+            storage.boundController?.setPlaying(true)
+            return
+        }
+
+        // First start (or first after stop): create a fresh playback controller.
+        let controller = entity.playAudio(storage.source)
         controller.gain = AudioPlaybackController.gainFromLinear(storage.currentLinearGain())
+        // Reset our `isPlaying` flag when a one-shot clip finishes — otherwise a finished
+        // clip would report `isPlaying == true` forever and play() would never resume it.
+        controller.completionHandler = { [weak storage] in
+            Task { @MainActor in
+                guard let storage else { return }
+                // Only flip if this is still the live controller (a stop()/play() cycle
+                // may have replaced it).
+                if storage.controller === controller {
+                    storage.isPlaying = false
+                    storage.boundController?.setPlaying(false)
+                }
+            }
+        }
         storage.controller = controller
         storage.isPlaying = true
         storage.boundController?.setPlaying(true)
     }
 
-    /// Pauses playback at the current position.
+    /// Pauses playback at the current position. A subsequent ``play()`` resumes from here.
     public func pause() {
         storage.controller?.pause()
         storage.isPlaying = false
@@ -111,9 +200,11 @@ public struct SpatialAudioNode {
     }
 
     /// Stops playback and rewinds to position `0`. The next ``play()`` starts from the
-    /// beginning of the resource.
+    /// beginning of the resource with a fresh controller.
     public func stop() {
         storage.controller?.stop()
+        // Drop the controller so the next play() starts fresh from the beginning.
+        storage.controller = nil
         storage.isPlaying = false
         storage.boundController?.setPlaying(false)
     }
@@ -130,7 +221,7 @@ public struct SpatialAudioNode {
         }
     }
 
-    /// Updates the distance-attenuation curve. Re-applied on the next ``updateGain(for:)``.
+    /// Updates the distance-attenuation curve. Re-applied on the next ``updateGain(forDistance:)``.
     public func setFalloff(_ falloff: AudioFalloff) {
         storage.falloff = falloff
     }
@@ -205,29 +296,12 @@ final class AudioStorage {
     weak var boundController: AudioController?
     var isPlaying: Bool = false
 
-    private var loopingResourceCache: AudioResource?
-
     init(source: AudioResource, falloff: AudioFalloff, loop: Bool, baseVolume: Float, pitch: Float) {
         self.source = source
         self.falloff = falloff
         self.loop = loop
         self.baseVolume = baseVolume
         self.pitch = pitch
-    }
-
-    /// Returns an `AudioResource` configured for the desired loop behaviour. We cache one
-    /// looping wrapper so repeated `play()` calls don't allocate a new `AudioFileResource`
-    /// every time.
-    func prepareLoopingResource() -> AudioResource {
-        if !loop { return source }
-        if let cached = loopingResourceCache { return cached }
-        // Phase 1: RealityKit's `AudioResource` does not have a public clone-with-config
-        // surface on `AudioResource` itself — looping is set at `AudioFileResource.load`
-        // time. Callers wanting `loop = true` must therefore pass a resource that was
-        // loaded with `shouldLoop = true`. The cached value remains the input resource;
-        // we still cache it to avoid lookup on every play call.
-        loopingResourceCache = source
-        return source
     }
 
     func currentLinearGain() -> Float {

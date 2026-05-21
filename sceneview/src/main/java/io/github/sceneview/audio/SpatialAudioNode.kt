@@ -2,10 +2,10 @@ package io.github.sceneview.audio
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.length
 import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.NodeScope
 import io.github.sceneview.SceneScope
@@ -15,26 +15,36 @@ import io.github.sceneview.math.Position
  * Positional 3D audio source attached to the scene graph.
  *
  * Acts like any other [io.github.sceneview.node.Node]: it sits at [position] in world
- * space, follows its parent in [NodeScope] (so attaching it under a moving node makes the
- * sound move with that node), and is removed from the audio engine when the composition
- * leaves the tree.
+ * space and is removed from the audio engine when the composition leaves the tree.
+ *
+ * **Position must be supplied as Compose state.** The player reads the [position]
+ * *parameter* on every recomposition (via [SideEffect]); it does **not** read the enclosing
+ * Filament node's world transform. A parent animation that moves the node imperatively
+ * (e.g. through `Node.onFrame` writes) therefore does **not** move the sound — pass the
+ * animated position as a Compose `State` so the recomposition path keeps the audio source
+ * pose current. Driving the source from a `withFrameNanos` loop (as the demo does) is the
+ * supported pattern.
  *
  * Backend choice:
- * - **Phase 1 (v4.12 — this release):** every source is rendered through
- *   [android.media.MediaPlayer] with per-frame L/R [setVolume] pan computed against the
- *   active listener. No HRTF, no head tracking, but works on every supported API level
- *   (24+) without any audio-asset preprocessing.
+ * - **Phase 1 (v4.12 — this release):** every source is rendered through its own private
+ *   [android.media.MediaPlayer] with per-frame L/R [android.media.MediaPlayer.setVolume]
+ *   pan computed against the active listener. No HRTF, no head tracking, but works on
+ *   every supported API level (24+) without any audio-asset preprocessing. Each node owns
+ *   its own player, so two nodes backed by the same [AudioSource] never cross-talk.
  * - **Phase 2 (#1900):** API 33+ devices route through `AudioTrack` +
  *   `android.media.Spatializer` for true HRTF binaural mix on supported headphones,
  *   falling back to the phase-1 MediaPlayer path on older devices or when the platform
  *   reports `Spatializer.isAvailable == false`.
  *
- * Pair with an [AudioListener] somewhere in the scene (default position is the camera) so
- * the listener pose actually drives gain / pan.
+ * Drive the listener pose with [setSpatialAudioListenerPose] from a `SceneView` `onFrame`
+ * callback so gain / pan track the camera — see [AudioListener] for the exact snippet.
  *
  * ```kotlin
- * SceneView {
- *     AudioListener()                                       // ears = camera
+ * SceneView(
+ *     // … cameraNode, etc.
+ *     onFrame = { setSpatialAudioListenerPose(cameraNode) },   // ears follow the camera
+ * ) {
+ *     AudioListener()                                          // declares phase-1 intent
  *     rememberAudioSource("audio/bell.wav")?.let { source ->
  *         SpatialAudioNode(
  *             source = source,
@@ -46,8 +56,10 @@ import io.github.sceneview.math.Position
  * }
  * ```
  *
- * @param source     The decoded audio asset to play (obtain via [rememberAudioSource]).
- * @param position   World-space (or parent-relative inside [NodeScope]) source position.
+ * @param source     The audio asset to play (obtain via [rememberAudioSource]). Safe to
+ *                   share across several [SpatialAudioNode]s — each builds its own player.
+ * @param position   World-space source position. Pass it as Compose state if it is
+ *                   animated (see the note above).
  * @param falloff    Distance-attenuation curve. Defaults to
  *                   [AudioFalloff.Inverse] which is the physically-realistic choice.
  * @param loop       Whether the asset loops at end. Default `false`.
@@ -72,10 +84,10 @@ fun SceneScope.SpatialAudioNode(
     apply: AudioController.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null,
 ) {
-    // The audio source position is tracked at the scene-graph level by piggy-backing on a
-    // plain Node — this gives us the same parent-relative transform machinery as every
-    // other SceneScope composable, and lets users nest a SpatialAudioNode under a moving
-    // ModelNode to attach sound to it. The Filament entity carries no renderable.
+    // The audio source piggy-backs on a plain Node so it nests in SceneScope like every
+    // other composable and can carry children. The Filament entity carries no renderable.
+    // Note: the player tracks `position` via the parameter below, NOT via this Node's
+    // world transform — see the composable's KDoc.
     Node(position = position) {
         val player = remember(source) {
             SpatialAudioPlayer(
@@ -92,50 +104,24 @@ fun SceneScope.SpatialAudioNode(
         val controller = remember(player) { PlayerController(player) }
         SideEffect { apply(controller) }
 
-        // Push reactive props on every recomposition.
+        // Push reactive props on every recomposition. `position` is declarative: when the
+        // caller updates it (directly or via a withFrameNanos loop) this SideEffect
+        // re-reads it and the player self-refreshes its gain in the same frame.
         SideEffect {
             player.falloff = falloff
             player.setLoop(loop)
             player.setBaseVolume(volume)
             player.setPitch(pitch)
-            // Push the new source position through the engine immediately so the user
-            // sees a gain change in the same frame they moved the source. Position is
-            // declarative (it comes from the parent Node above) so we re-read it here
-            // rather than letting onFrame do it — onFrame fires only once per render.
             player.sourcePosition = position
         }
 
-        // Register with the engine — the listener side ([AudioListener]) refreshes every
-        // registered player whenever the listener pose changes.
+        // Register with the engine and fully release the player on dispose.
         DisposableEffect(player) {
             SpatialAudioEngine.register(player)
             if (autoPlay) player.play()
             onDispose {
                 player.destroy()
             }
-        }
-
-        // Per-frame pose refresh — even if `position` parameter never changed, an animation
-        // running on the parent node still moves us in world space. This effect re-renders
-        // on every LaunchedEffect tick anyway, but the heavy lifting of position
-        // computation actually happens in the AudioListener composable, which has access
-        // to the camera transform (the source side only knows its own).
-        LaunchedEffect(player) {
-            // Empty body — declaring the LaunchedEffect ensures the player is kept alive
-            // for as long as the composable is in the tree. The actual per-frame pull
-            // happens via Node.onFrame below.
-        }
-
-        // Hook into the underlying Node's frame callback so the player picks up world-
-        // transform changes coming from a parent animation / physics body.
-        DisposableEffect(player) {
-            // The enclosing Node composable provides `node` via this NodeScope.
-            // We can't reach it here without API surgery, so the engine relies on the
-            // declarative `position` parameter being kept up to date by the caller's
-            // recomposition. For animation-driven moves (Node.onFrame writes to position
-            // imperatively) callers should pair this composable with the parent's
-            // Position as Compose state so the recomposition path stays valid.
-            onDispose { }
         }
 
         content?.let { /* expose the NodeScope to children */ it() }
@@ -157,22 +143,31 @@ private class PlayerController(private val player: SpatialAudioPlayer) : AudioCo
 }
 
 /**
- * Declares the listener that drives positional gain / pan for every [SpatialAudioNode] in
- * the scene.
+ * Marks the intent to use a camera-tracked audio listener for the [SpatialAudioNode]s in
+ * this scene.
  *
- * **One [AudioListener] per scene** — declaring two is harmless but the second one wins
- * (last-writer takes the engine). Most apps want exactly the default:
- * `AudioListener()` — ears track the camera.
- *
- * Phase 1 implements [AudioListenerSource.Camera] only; [AudioListenerSource.Anchor] is
- * declared in the API for forward-compat but logs a warning and falls back to the camera.
+ * **Phase 1 (v4.12) — the caller drives the listener.** [SceneScope] does not expose the
+ * camera node, so this composable cannot read the camera or push a pose itself. In phase 1
+ * it is purely a declarative marker; you **must** drive the listener yourself by calling
+ * [setSpatialAudioListenerPose] from the `SceneView` `onFrame` callback:
  *
  * ```kotlin
- * SceneView {
- *     AudioListener()                                      // ears = camera (default)
+ * SceneView(
+ *     cameraNode = cameraNode,
+ *     onFrame = { setSpatialAudioListenerPose(cameraNode) },   // ears follow the camera
+ * ) {
+ *     AudioListener()                                          // documents the intent
  *     // … positional sources …
  * }
  * ```
+ *
+ * Automatic, frame-driven camera tracking (so `AudioListener()` alone is enough) is
+ * **phase 2** of [#1900](https://github.com/sceneview/sceneview/issues/1900) — it needs
+ * the engine to reach the active camera, which requires a core `SceneScope` change.
+ *
+ * [AudioListenerSource.Anchor] is likewise reserved for phase 2; it is declared today so
+ * the public API does not churn between phases. The phase-1 fallback logs a warning and
+ * substitutes the camera at runtime.
  *
  * @param source Where the virtual ears sit. Default [AudioListenerSource.Camera].
  */
@@ -181,64 +176,50 @@ fun SceneScope.AudioListener(
     source: AudioListenerSource = AudioListenerSource.Camera,
 ) {
     // Phase 1: only Camera is implemented. Anchor is API-stable but logs + falls back.
-    val effective = remember(source) {
+    remember(source) {
         when (source) {
-            is AudioListenerSource.Camera -> source
-            is AudioListenerSource.Anchor -> {
-                android.util.Log.w(
-                    "SpatialAudio",
-                    "Anchor listener — phase 2 (#1900) — falling back to camera"
-                )
-                AudioListenerSource.Camera
-            }
+            is AudioListenerSource.Camera -> Unit
+            is AudioListenerSource.Anchor -> android.util.Log.w(
+                TAG,
+                "Anchor listener — phase 2 (#1900) — falling back to camera"
+            )
         }
     }
-
-    // The listener pose is computed from a base Node whose transform follows the camera
-    // declaratively. We hook into the SceneScope's frame loop by attaching to a Node and
-    // reading the camera pose each tick. Since SceneScope doesn't expose its camera node
-    // directly (it's a parameter on Scene), we instead let user code pass a
-    // `cameraNode.worldPosition` as the listener — that's the explicit, side-effect-free
-    // form. The default `Camera` mode wires itself through a `LaunchedEffect` that polls
-    // the scene's view.camera each frame.
-    Node {
-        DisposableEffect(effective) {
-            // No-op: the actual per-frame poll happens via the engine's setListenerPose
-            // call below — but the engine has no Filament context, so we need a frame
-            // driver. That driver comes from a SceneView-level onFrame hook the caller
-            // wires up. For the v4.12 phase-1 baseline we accept the camera-tracked
-            // listener default and recommend callers also forward camera pose via
-            // `setListenerPose` from a top-level Scene `onFrame` callback when the camera
-            // changes rapidly. The demo wires this explicitly.
-            onDispose { }
-        }
-    }
+    // No effect body: phase-1 listener tracking is caller-driven via
+    // setSpatialAudioListenerPose from a SceneView onFrame (see the KDoc above).
 }
 
 /**
- * Pushes the listener pose for the [SpatialAudioEngine] from outside the composition.
+ * Pushes the listener pose for the [SpatialAudioEngine] so every [SpatialAudioNode] pans /
+ * fades correctly relative to where the listener is.
  *
- * Use this when you want to drive the listener from a non-camera source (e.g. a moving
- * character entity) or to force a one-shot refresh after a teleport. The recommended way
- * is still [AudioListener], which sets the listener implicitly per frame.
+ * Call this from a `SceneView` `onFrame` callback (or any per-frame hook) whenever the
+ * listener moves — e.g. as the camera orbits. The convenience overload that takes a
+ * `CameraNode` lives in `arsceneview` is not needed here: pass the camera's world
+ * position, forward and up vectors directly.
+ *
+ * The basis is `(position, forward, up)` — the same convention as the Web platform's
+ * `setSpatialAudioListenerPose` and the Web Audio `AudioListener`. The listener's right
+ * vector is derived internally via `right = normalize(forward × up)`.
  *
  * The vectors must already be in world space and need not be unit-length — the engine
- * normalises [forward] and [right] internally.
+ * normalises them internally.
  *
  * @param position World position of the virtual ears.
  * @param forward  Direction the listener is facing.
- * @param right    Direction to the listener's right (used for L/R pan).
+ * @param up       The listener's up direction.
  */
 fun setSpatialAudioListenerPose(
     position: Position,
     forward: Position,
-    right: Position,
+    up: Position,
 ) {
-    val fwdLen = kotlin.math.sqrt(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z)
-    val fwd = if (fwdLen > 1e-4f) normalize(Float3(forward.x, forward.y, forward.z))
-        .let { Position(it.x, it.y, it.z) } else Position(z = -1f)
-    val rightLen = kotlin.math.sqrt(right.x * right.x + right.y * right.y + right.z * right.z)
-    val rgt = if (rightLen > 1e-4f) normalize(Float3(right.x, right.y, right.z))
-        .let { Position(it.x, it.y, it.z) } else Position(x = 1f)
-    SpatialAudioEngine.setListenerPose(position, fwd, rgt)
+    val fwdVec = Float3(forward.x, forward.y, forward.z)
+    val fwd = if (length(fwdVec) > 1e-4f) {
+        normalize(fwdVec).let { Position(it.x, it.y, it.z) }
+    } else {
+        Position(z = -1f)
+    }
+    val right = rightFromForwardUp(fwd, up)
+    SpatialAudioEngine.setListenerPose(position, fwd, right)
 }

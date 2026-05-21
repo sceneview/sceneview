@@ -6,11 +6,13 @@ import kotlin.js.Promise
 /**
  * A minimal 3-component vector used by the spatial-audio API.
  *
- * `sceneview-web` has no shared public math type on its JS surface — the
- * internal geometry path uses `dev.romainguy.kotlin.math.Float3`, which is not
- * `@JsExport`-able. [Vec3] is the small, JS-friendly value type the audio API
- * exposes so plain-JavaScript callers can pass positions / directions without
- * pulling in the kotlin-math package.
+ * The whole spatial-audio module is consumed from Kotlin/JS — it relies on
+ * `suspend` functions, `external` Web Audio declarations and a `sealed
+ * interface`, none of which are `@JsExport`-compatible. [Vec3] is therefore a
+ * plain Kotlin/JS value type for Kotlin callers, not a `@JsExport`-ed
+ * plain-JavaScript type. It exists so the audio API does not pull
+ * `dev.romainguy.kotlin.math.Float3` (an internal geometry type) into its
+ * signatures.
  *
  * Mirrors the role of `io.github.sceneview.math.Position` (Android) and
  * `SIMD3<Float>` (iOS) for the spatial-audio feature.
@@ -139,8 +141,14 @@ public external interface AudioBufferSourceNode : AudioNode {
     /** Whether playback repeats from the start when it reaches the end. */
     var loop: Boolean
 
-    /** Starts playback at the given context time (`0.0` = now). */
-    fun start(whenTime: Double = definedExternally)
+    /**
+     * Starts playback.
+     *
+     * @param whenTime Context time at which to start (`0.0` = now).
+     * @param offset   Offset into the buffer, in seconds, at which playback begins
+     *                 (`0.0` = clip start). Used by [SpatialAudioNode.seekTo].
+     */
+    fun start(whenTime: Double = definedExternally, offset: Double = definedExternally)
 
     /** Stops playback at the given context time (`0.0` = now). */
     fun stop(whenTime: Double = definedExternally)
@@ -365,7 +373,8 @@ private fun Throwable?.toThrowableOrDefault(): Throwable =
  * @param falloff  Distance-attenuation curve. Defaults to a realistic inverse curve.
  * @param loop     Whether the asset loops at end. Default `false`.
  * @param autoPlay Start playback immediately on construction. Default `true`.
- * @param volume   Base linear gain in `[0f, 1f]`. Default `1f`.
+ * @param volume   Base linear gain, clamped to `[0f, 1f]` to match Android / iOS.
+ *                 Default `1f`.
  */
 public class SpatialAudioNode(
     private val source: AudioSource,
@@ -402,7 +411,8 @@ public class SpatialAudioNode(
         // the panner per play() call (a buffer source is single-use).
         panner.connect(gain)
         gain.connect(context.destination)
-        gain.gain.value = volume.coerceIn(0f, 4f)
+        // Clamp to [0, 1] to match the Android and iOS `volume` contract.
+        gain.gain.value = volume.coerceIn(0f, 1f)
         if (autoPlay) play()
     }
 
@@ -444,6 +454,31 @@ public class SpatialAudioNode(
     public fun stop() {
         stopInternal()
         playing = false
+    }
+
+    /**
+     * Seeks playback to [positionMs] milliseconds from the start of the clip.
+     *
+     * A Web Audio `AudioBufferSourceNode` is single-use and has no native seek,
+     * so this stops the current source and starts a fresh one from the requested
+     * offset — parity with the iOS `seek` and Android `seekTo`. Seeking to `0`
+     * rewinds to the beginning. If the node is not currently playing the new
+     * offset is still applied: a fresh source is started, so `seek` doubles as a
+     * "play from offset". Out-of-range offsets are clamped to the clip duration.
+     *
+     * @param positionMs Target offset from the clip start, in milliseconds.
+     */
+    public fun seekTo(positionMs: Long) {
+        val offsetSeconds = (positionMs.coerceAtLeast(0L).toDouble() / 1000.0)
+        runCatching { context.resume() }
+        stopInternal()
+        val src = context.createBufferSource()
+        src.buffer = source.buffer
+        src.loop = loop
+        src.connect(panner)
+        src.start(0.0, offsetSeconds)
+        bufferSource = src
+        playing = true
     }
 
     /** `true` while a buffer source is actively playing. */
@@ -493,11 +528,16 @@ public class SpatialAudioNode(
                 panner.rolloffFactor = 1.0
             }
             is AudioFalloff.None -> {
-                // No native "off" model — a very large maxDistance with zero
-                // rolloff makes the inverse model effectively flat at unity.
-                panner.distanceModel = "inverse"
+                // Provably flat at unity for *every* distance: the Web Audio
+                // "linear" distance model is
+                //   gain = 1 - rolloffFactor * (clamp(d, ref, max) - ref) / (max - ref)
+                // so a rolloffFactor of 0 makes the attenuation term identically
+                // zero → gain == 1 at all distances, matching Android/iOS `None`
+                // (which return a hard 1f). The "inverse" model is only unity for
+                // d >= refDistance, so it cannot be used here.
+                panner.distanceModel = "linear"
                 panner.refDistance = 1.0
-                panner.maxDistance = 1_000_000.0
+                panner.maxDistance = 2.0  // any value > refDistance; unused at rolloff 0
                 panner.rolloffFactor = 0.0
             }
         }

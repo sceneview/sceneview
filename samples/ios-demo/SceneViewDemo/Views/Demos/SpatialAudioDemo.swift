@@ -189,15 +189,11 @@ private final class SpatialAudioCoordinator: ObservableObject {
         guard !loaded else { return }
         loaded = true
         do {
-            // `bell.wav` is bundled with the app; load it with looping enabled
-            // so the orbiting bell plays continuously.
-            let configuration = AudioFileResource.Configuration(shouldLoop: true)
-            let resource = try await AudioFileResource(
+            // `bell.wav` is bundled with the app. The `spatial(named:loop:)` factory
+            // loads the resource with `shouldLoop: true` so the orbiting bell plays
+            // continuously — the loop flag is honoured for real.
+            let node = try await SpatialAudioNode.spatial(
                 named: "bell.wav",
-                configuration: configuration
-            )
-            let node = SpatialAudioNode.spatial(
-                source: resource,
                 falloff: currentFalloff,
                 loop: true,
                 autoPlay: true

@@ -24,9 +24,9 @@ public enum AudioListenerSource: Sendable {
     /// **Phase 1 (v4.12):** declared but not implemented — the engine logs and falls
     /// back to ``camera``. Wired up for real in phase 2.
     ///
-    /// `AnchorNode` is a `@MainActor`-bound RealityKit wrapper, so the case payload is
-    /// also `@MainActor`-safe by construction. iOS-only because `AnchorNode` is
-    /// ARKit-backed and ARKit ships on iOS only.
+    /// `AnchorNode` is itself a `Sendable` value type, so this enum can stay `Sendable`
+    /// while carrying the payload. iOS-only because `AnchorNode` is ARKit-backed and
+    /// ARKit ships on iOS only.
     case anchor(AnchorNode)
     #endif
 }

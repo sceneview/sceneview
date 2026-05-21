@@ -74,6 +74,18 @@ final class SpatialAudioNodeTests: XCTestCase {
         XCTAssertEqual(AudioFalloff.gain(for: f, distance: 20), 0, accuracy: tol)
     }
 
+    func testInverseDegenerateRangeStaysUnity() {
+        // refDistance > maxDistance is degenerate: the clamped distance can never exceed
+        // maxDistance, which is below refDistance, so gain stays at unity for ALL
+        // distances. Must not divide by zero or go negative. Mirrors the Android
+        // `AudioFalloffTest.inverseDegenerateRangeStaysUnity` case.
+        let f = AudioFalloff.inverse(refDistance: 20, maxDistance: 5)
+        XCTAssertEqual(AudioFalloff.gain(for: f, distance: 0), 1, accuracy: tol)
+        XCTAssertEqual(AudioFalloff.gain(for: f, distance: 5), 1, accuracy: tol)
+        XCTAssertEqual(AudioFalloff.gain(for: f, distance: 50), 1, accuracy: tol)
+        XCTAssertEqual(AudioFalloff.gain(for: f, distance: 10_000), 1, accuracy: tol)
+    }
+
     func testInverseRolloffFactor() {
         // Sharper rolloff yields less gain at the same distance.
         let mild = AudioFalloff.inverse(refDistance: 1, maxDistance: 100, rolloffFactor: 1)

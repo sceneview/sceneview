@@ -158,21 +158,19 @@ fun SpatialAudioDemo(onBack: () -> Unit) {
                 firstFrame.onFrame(nanos)
                 // Drive the audio listener pose from the camera every frame —
                 // even when the user is mid-orbit-drag this keeps pan / gain
-                // synced to the live camera transform. The "right" vector is
-                // derived from the camera basis (column 0 of the transform).
+                // synced to the live camera transform. The listener basis is
+                // (position, forward, up) — the same convention on every
+                // platform; the engine derives the right vector internally.
                 val cam = cameraNode
                 val pose = cam.worldTransform
-                // kotlin-math Mat4 columns are .x .y .z .w; right = -.x because
-                // RealityKit / Filament conventions vary, but for our purposes
-                // we pick the basis vector that makes "positive X relative to
-                // camera" map to the right channel. Tested visually on the
-                // emulator.
-                val right = Position(pose.x.x, pose.x.y, pose.x.z)
+                // kotlin-math Mat4 columns are .x .y .z .w. Camera looks down
+                // -Z; up is +Y of the camera basis.
                 val forward = Position(-pose.z.x, -pose.z.y, -pose.z.z)
+                val up = Position(pose.y.x, pose.y.y, pose.y.z)
                 setSpatialAudioListenerPose(
                     position = cam.worldPosition,
                     forward = forward,
-                    right = right,
+                    up = up,
                 )
             },
         ) {

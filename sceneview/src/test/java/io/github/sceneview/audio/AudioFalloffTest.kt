@@ -69,6 +69,17 @@ class AudioFalloffTest {
         assertEquals(1f / 3f, sharpGain, tol)
     }
 
+    @Test fun inverseDegenerateRangeStaysUnity() {
+        // refDistance > maxDistance is degenerate: the clamped distance can never exceed
+        // maxDistance, which is below refDistance, so gain stays at unity for ALL
+        // distances. Must not divide by zero or go negative.
+        val f = AudioFalloff.Inverse(refDistance = 20f, maxDistance = 5f)
+        assertEquals(1f, AudioFalloff.gainFor(f, 0f), tol)
+        assertEquals(1f, AudioFalloff.gainFor(f, 5f), tol)
+        assertEquals(1f, AudioFalloff.gainFor(f, 50f), tol)
+        assertEquals(1f, AudioFalloff.gainFor(f, 10_000f), tol)
+    }
+
     @Test fun inverseGoldenCurve() {
         val f = AudioFalloff.Inverse(refDistance = 1f, maxDistance = 100f, rolloffFactor = 1f)
         // Golden table — matches WebAudio "inverse" model with the same parameters.
