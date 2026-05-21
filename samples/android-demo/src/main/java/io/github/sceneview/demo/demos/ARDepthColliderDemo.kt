@@ -1,12 +1,11 @@
 package io.github.sceneview.demo.demos
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -29,6 +28,8 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.physics.DepthCollider
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.SceneAction
+import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.PhysicsNode
@@ -87,37 +88,20 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_ar_depth_collider_title),
         onBack = onBack,
+        peekHeader = if (ballCount > 0) "Balls dropped: $ballCount" else null,
+        // The Drop / Drop 5 / Reset actions are the demo's core interaction, so
+        // they live on-screen via SceneActionBar (#1964). The sheet keeps only
+        // the "Show depth mesh" dev toggle — genuine secondary configuration.
         controls = {
-            Text(
-                text = "Balls dropped: $ballCount",
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(onClick = {
-                    spawnAnchorRef.value = latestCameraPoseRef.value
-                    ballCount++
-                }) { Text("Drop") }
-                Button(onClick = {
-                    spawnAnchorRef.value = latestCameraPoseRef.value
-                    ballCount += 5
-                }) { Text("Drop 5") }
-                Button(onClick = {
-                    ballCount = 0
-                    spawnAnchorRef.value = null
-                    generation++
-                }) { Text("Reset") }
-            }
             Text(
                 text = "Aim at the floor or a table, then tap Drop. Balls bounce off real geometry " +
                     "via DepthCollider (#1713).",
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.bodyMedium,
             )
-            Spacer(Modifier.height(8.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -132,6 +116,7 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
             }
         },
     ) {
+      Box(modifier = Modifier.fillMaxSize()) {
         // key(generation) forces full recomposition on reset so previous bodies are torn down.
         key(generation) {
             // Per-slot SphereNode refs, indexed by ball position in the for-loop. The array is
@@ -276,6 +261,30 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                 }
             }
         }
+
+        // Primary actions on-screen (#1964) — Drop / Drop 5 / Reset are the
+        // demo's core interaction, so they live bottom-start, clear of the
+        // Settings FAB. Reset is disabled until at least one ball is dropped.
+        SceneActionBar(
+            SceneAction("Drop", onClick = {
+                spawnAnchorRef.value = latestCameraPoseRef.value
+                ballCount++
+            }),
+            SceneAction("Drop 5", onClick = {
+                spawnAnchorRef.value = latestCameraPoseRef.value
+                ballCount += 5
+            }),
+            SceneAction(
+                label = "Reset",
+                onClick = {
+                    ballCount = 0
+                    spawnAnchorRef.value = null
+                    generation++
+                },
+                enabled = ballCount > 0,
+            ),
+        )
+      }
     }
 }
 

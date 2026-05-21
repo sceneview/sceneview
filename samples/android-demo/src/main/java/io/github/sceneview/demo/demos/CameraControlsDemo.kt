@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -46,6 +45,8 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.SceneAction
+import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.gesture.orbitHomePosition
@@ -125,6 +126,9 @@ fun CameraControlsDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_camera_controls_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        // The camera-mode picker is genuine configuration and stays in the
+        // sheet. "Reset Camera" is the demo's primary reset action, so it lives
+        // on-screen via SceneActionBar (#1964).
         controls = {
             Text(
                 text = "Camera Mode",
@@ -158,6 +162,8 @@ fun CameraControlsDemo(onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
             // Camera-distance slider — complements pinch-to-zoom by making the
             // zoom level discoverable and Maestro-testable (no pinch in Maestro).
+            // "Reset Camera" is the demo's primary reset action — it lives
+            // on-screen via SceneActionBar (#1964), not here in the sheet.
             Text(
                 text = "Camera distance: %.1f m".format(cameraDistance),
                 style = MaterialTheme.typography.labelLarge
@@ -167,14 +173,6 @@ fun CameraControlsDemo(onBack: () -> Unit) {
                 onValueChange = { cameraDistance = it },
                 valueRange = 0.5f..8f
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(onClick = {
-                // Reset both the orbit pose and the slider-driven distance.
-                cameraDistance = 1.5f
-                resetKey++
-            }) {
-                Text("Reset Camera")
-            }
         }
     ) {
         // key(selectedMode, resetKey, cameraDistance) forces a fresh rememberCameraManipulator
@@ -226,18 +224,27 @@ fun CameraControlsDemo(onBack: () -> Unit) {
                 }
                 // FREE_FLIGHT has no touch translation gesture — Filament drives flight
                 // movement from held keys. Surface an on-screen pad so the mode is usable
-                // on a touch device (#1428).
+                // on a touch device (#1428). The pad sits above the on-screen
+                // Reset Camera action bar so the two never overlap (#1964).
                 if (isFreeFlight) {
                     FreeFlightMovementPad(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .padding(16.dp),
+                            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
                         onKeyDown = { manipulator.keyDown(it) },
                         onKeyUp = { manipulator.keyUp(it) }
                     )
                 }
             }
             LoadingScrim(loading = modelInstance == null, label = "Loading helmet…")
+
+            // Primary action on-screen (#1964) — "Reset Camera" is the demo's
+            // reset action, so it lives bottom-start instead of in the Settings
+            // sheet. In FREE_FLIGHT mode the movement pad above is offset up so
+            // the two never collide.
+            SceneActionBar(
+                SceneAction("Reset Camera", onClick = { cameraDistance = 1.5f; resetKey++ }),
+            )
         }
     }
 }

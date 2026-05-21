@@ -9,12 +9,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +41,8 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.SceneAction
+import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -177,9 +176,70 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
 
     val helmetInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
 
+    // Resolve a terrain anchor at the current camera lat/lng. Hoisted so the
+    // on-screen SceneActionBar can invoke it — "Drop here" is the demo's
+    // primary action (the banner says tap "Drop here"), so it lives on-screen,
+    // not in the Settings sheet (#1964).
+    val onDrop = onDrop@{
+        val session = arSession ?: return@onDrop
+        val lat = cameraLat ?: return@onDrop
+        val lng = cameraLng ?: return@onDrop
+        val id = nextId++
+        placedAnchors.add(
+            PlacedTerrainAnchor(
+                id = id,
+                latitude = lat,
+                longitude = lng,
+                state = TerrainAnchorState.TASK_IN_PROGRESS,
+                anchor = null
+            )
+        )
+        // Identity EUS quaternion so the model is upright with X+ east, Y+ up,
+        // Z+ south — that is, oriented north-facing and ground-flat. ARCore takes
+        // the four floats x/y/z/w of the quaternion.
+        runCatching {
+            TerrainAnchorNode.resolve(
+                engine = engine,
+                session = session,
+                latitude = lat,
+                longitude = lng,
+                altitudeAboveTerrain = 0.0,
+                // Identity EUS quaternion (0,0,0,1): X+ east, Y+ up, Z+ south.
+                // Default no-arg constructor of dev.romainguy.kotlin.math.Quaternion
+                // is the identity rotation.
+                eusQuaternion = Quaternion()
+            ) { state, node ->
+                val idx = placedAnchors.indexOfFirst { it.id == id }
+                if (idx < 0) return@resolve
+                placedAnchors[idx] = placedAnchors[idx].copy(
+                    state = state,
+                    anchor = node?.anchor
+                )
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "Terrain anchor resolve threw", error)
+            val idx = placedAnchors.indexOfFirst { it.id == id }
+            if (idx >= 0) {
+                placedAnchors[idx] = placedAnchors[idx].copy(
+                    state = TerrainAnchorState.ERROR_INTERNAL
+                )
+            }
+        }
+        Unit
+    }
+    // Clear All is also a primary action (resets the demo) — moved on-screen.
+    val onClearAll = {
+        placedAnchors.forEach { it.anchor?.let { a -> runCatching { a.detach() } } }
+        placedAnchors.clear()
+    }
+
     DemoScaffold(
         title = stringResource(R.string.demo_ar_terrain_title),
         onBack = onBack,
+        // "Drop here" / "Clear All" are the demo's primary actions and live
+        // on-screen via SceneActionBar (#1964). The sheet keeps only the demo
+        // explainer, the live Geospatial pose readout, the placed-anchors list
+        // and the states legend — all genuinely informational / secondary.
         controls = {
             Text(
                 text = "Terrain anchors snap to Google's outdoor terrain data. Works outdoors " +
@@ -213,64 +273,6 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
                 modifier = Modifier.padding(top = 8.dp)
             )
 
-            Button(
-                onClick = {
-                    val session = arSession ?: return@Button
-                    val lat = cameraLat ?: return@Button
-                    val lng = cameraLng ?: return@Button
-                    val id = nextId++
-                    placedAnchors.add(
-                        PlacedTerrainAnchor(
-                            id = id,
-                            latitude = lat,
-                            longitude = lng,
-                            state = TerrainAnchorState.TASK_IN_PROGRESS,
-                            anchor = null
-                        )
-                    )
-                    // Identity EUS quaternion so the model is upright with X+ east, Y+ up,
-                    // Z+ south — that is, oriented north-facing and ground-flat. ARCore takes
-                    // the four floats x/y/z/w of the quaternion.
-                    runCatching {
-                        TerrainAnchorNode.resolve(
-                            engine = engine,
-                            session = session,
-                            latitude = lat,
-                            longitude = lng,
-                            altitudeAboveTerrain = 0.0,
-                            // Identity EUS quaternion (0,0,0,1): X+ east, Y+ up, Z+ south.
-                            // Default no-arg constructor of dev.romainguy.kotlin.math.Quaternion
-                            // is the identity rotation.
-                            eusQuaternion = Quaternion()
-                        ) { state, node ->
-                            val idx = placedAnchors.indexOfFirst { it.id == id }
-                            if (idx < 0) return@resolve
-                            placedAnchors[idx] = placedAnchors[idx].copy(
-                                state = state,
-                                anchor = node?.anchor
-                            )
-                        }
-                    }.onFailure { error ->
-                        Log.w(TAG, "Terrain anchor resolve threw", error)
-                        val idx = placedAnchors.indexOfFirst { it.id == id }
-                        if (idx >= 0) {
-                            placedAnchors[idx] = placedAnchors[idx].copy(
-                                state = TerrainAnchorState.ERROR_INTERNAL
-                            )
-                        }
-                    }
-                },
-                enabled = hasArcoreApiKey &&
-                    earthTracking &&
-                    earthState == Earth.EarthState.ENABLED &&
-                    cameraLat != null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-            ) {
-                Text("Drop here")
-            }
-
             // Surface the EarthState when it is something other than ENABLED — the
             // resolve API throws IllegalStateException in that case, but the button
             // is disabled silently so the user otherwise has no idea what's wrong.
@@ -281,18 +283,6 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 4.dp)
                 )
-            }
-
-            OutlinedButton(
-                onClick = {
-                    placedAnchors.forEach { it.anchor?.let { a -> runCatching { a.detach() } } }
-                    placedAnchors.clear()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-            ) {
-                Text("Clear All")
             }
 
             if (placedAnchors.isNotEmpty()) {
@@ -420,6 +410,26 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
             // Cover the still-black ARSceneView surface until ARCore delivers its
             // first camera frame, so the entry doesn't read as a frozen screen (#1473).
             ARCameraInitScrim(initializing = !cameraReady && sessionError == null)
+
+            // Primary actions on-screen (#1964) — the banner tells the user to
+            // tap "Drop here", so it (and the Clear All reset) must be on-screen
+            // buttons. Same enabled gates as the previous in-sheet buttons;
+            // Clear All only appears once something is placed.
+            SceneActionBar(
+                SceneAction(
+                    label = "Drop here",
+                    onClick = onDrop,
+                    enabled = hasArcoreApiKey &&
+                        earthTracking &&
+                        earthState == Earth.EarthState.ENABLED &&
+                        cameraLat != null,
+                ),
+                *(if (placedAnchors.isNotEmpty()) {
+                    arrayOf(SceneAction("Clear All", onClick = onClearAll))
+                } else {
+                    emptyArray()
+                }),
+            )
         }
     }
 }

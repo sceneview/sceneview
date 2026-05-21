@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +60,8 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
+import io.github.sceneview.demo.common.SceneAction
+import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
@@ -127,36 +128,35 @@ fun ARRerunDemo(onBack: () -> Unit) {
         }
     }
 
+    // Save & Share is the demo's primary action. Hoisted so the on-screen
+    // SceneActionBar can invoke it — primary actions belong on-screen, not in
+    // the Settings sheet (#1964).
+    val onSaveAndShare = {
+        if (!sharing) {
+            sharing = true
+            bridge.requestSaveAndShare { result ->
+                scope.launch {
+                    withContext(Dispatchers.Main) {
+                        sharing = false
+                        shareResult = result
+                    }
+                }
+            }
+        }
+    }
+
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
+        // "Save & Share recording" is the demo's primary action and lives
+        // on-screen via SceneActionBar (#1964). The sheet keeps only the
+        // stream-stats readout — purely informational.
         controls = {
-            // ── Primary action ──────────────────────────────────────────────
-            Button(
-                onClick = {
-                    if (sharing) return@Button
-                    sharing = true
-                    bridge.requestSaveAndShare { result ->
-                        scope.launch {
-                            withContext(Dispatchers.Main) {
-                                sharing = false
-                                shareResult = result
-                            }
-                        }
-                    }
-                },
-                enabled = !sharing,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    if (sharing) "Saving on dev machine…"
-                    else "Save & Share recording"
-                )
-            }
             Text(
                 text = "Captures camera pose, planes and point cloud as a .rrd file " +
-                    "you can drop onto sceneview.github.io/rerun/ to scrub frame-by-frame.",
-                style = MaterialTheme.typography.labelSmall,
+                    "you can drop onto sceneview.github.io/rerun/ to scrub frame-by-frame. " +
+                    "Tap \"Save & Share recording\" on-screen when you're done.",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -287,6 +287,18 @@ fun ARRerunDemo(onBack: () -> Unit) {
                         .padding(horizontal = 24.dp, vertical = 12.dp)
                 )
             }
+
+            // Primary action on-screen (#1964) — "Save & Share recording" is
+            // the demo's core action, so it lives bottom-start instead of in
+            // the Settings sheet. The label reflects the in-flight save state.
+            SceneActionBar(
+                SceneAction(
+                    label = if (sharing) "Saving on dev machine…"
+                        else "Save & Share recording",
+                    onClick = onSaveAndShare,
+                    enabled = !sharing,
+                ),
+            )
         }
     }
 }

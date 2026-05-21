@@ -1,11 +1,8 @@
 package io.github.sceneview.demo.demos
 
 import android.view.MotionEvent
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,11 +12,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.SceneAction
+import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
@@ -99,20 +97,17 @@ fun CollisionDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_collision_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        // "Reset Colors" is the demo's reset action, so it lives on-screen via
+        // SceneActionBar (#1964). The sheet keeps only the one-line how-to text.
         controls = {
             Text(
-                "Tap a shape to highlight it",
+                "Tap a shape to highlight it. Use the on-screen \"Reset Colors\" " +
+                    "button to clear all highlights.",
                 style = MaterialTheme.typography.bodyMedium
             )
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = { highlightedIndices = emptySet() },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Reset Colors")
-            }
         }
     ) {
+      Box(modifier = Modifier.fillMaxSize()) {
         SceneView(
             modifier = Modifier.fillMaxSize(),
             onFrame = firstFrame.onFrame,
@@ -168,5 +163,12 @@ fun CollisionDemo(onBack: () -> Unit) {
                 }
             }
         }
+
+        // Primary action on-screen (#1964) — "Reset Colors" is the demo's reset
+        // action, so it lives bottom-start instead of in the Settings sheet.
+        SceneActionBar(
+            SceneAction("Reset Colors", onClick = { highlightedIndices = emptySet() }),
+        )
+      }
     }
 }
