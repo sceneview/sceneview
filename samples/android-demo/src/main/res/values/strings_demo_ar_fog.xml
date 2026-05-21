@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `ar-fog` demo (registered by
+     `ArFogFragment.kt`, issue #1717). Android's resource merger fans every
+     `res/values/*.xml` file in, so `R.string.demo_ar_fog_title` etc. remains
+     globally resolvable. Adding a new demo never needs to touch this file or
+     `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_ar_fog_title">AR Fog</string>
+    <string name="demo_ar_fog_subtitle">Distance fog over real and virtual geometry</string>
+</resources>
