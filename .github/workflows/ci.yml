@@ -131,11 +131,14 @@ jobs:
               - 'samples/android-demo/**'
               - 'samples/android-tv-demo/**'
               - 'samples/common/**'
+            # `web` gates the Gradle Kotlin/JS build of the sceneview-web
+            # LIBRARY only. samples/web-demo is a plain static site (no
+            # Gradle module since #1946) — it is guarded by the Playwright
+            # suite in device-qa.yml / render-tests.yml, not this job.
             web:
               - *shared
               - 'sceneview-core/**'
               - 'sceneview-web/**'
-              - 'samples/web-demo/**'
             flutter:
               - *shared
               - 'flutter/**'
@@ -373,16 +376,13 @@ jobs:
           ./gradlew \
             :sceneview-core:jsMainClasses \
             :sceneview-web:jsMainClasses \
-            :samples:web-demo:compileKotlinJs \
             --stacktrace
 
-      # Full production webpack bundle. Goes beyond `compileKotlinJs` because
-      # it runs the real webpack 5 pipeline against filament.js, which
-      # imports Node core modules (path, fs, crypto) unconditionally and
-      # fails hard without samples/web-demo/webpack.config.d/filament.js.
-      # Keeps session 34's polyfill fix protected on every main push.
-      - name: web-demo production webpack
-        run: ./gradlew :samples:web-demo:jsBrowserProductionWebpack --stacktrace
+      # samples/web-demo is a plain static site (HTML + inline JS +
+      # self-hosted sceneview.js) — NOT a Gradle module since #1946 removed
+      # its dead Kotlin/JS source set. There is nothing to compile; the
+      # Playwright suite in samples/web-demo/tests/ (run by render-tests.yml
+      # / device-qa.yml against the served static files) is what guards it.
 
       # samples/desktop-demo is a deliberate Compose Canvas wireframe
       # placeholder (Filament JNI is not available on desktop) — it does not

@@ -393,21 +393,11 @@ if [ -f "$VERSION_JSON" ]; then
     add_check "website-static/version.json (.version)" "$V"
 fi
 
-# Web demo Kotlin/JS source — `const val SDK_VERSION = "X.Y.Z"` in Main.kt
-# stamps the running bundle. Compared against version.json at runtime so
-# both must point at the same version.
-WEB_DEMO_MAIN_KT="$REPO_ROOT/samples/web-demo/src/jsMain/kotlin/io/github/sceneview/samples/web/Main.kt"
-if [ -f "$WEB_DEMO_MAIN_KT" ]; then
-    V=$(grep -E 'const val SDK_VERSION' "$WEB_DEMO_MAIN_KT" | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"' | tr -d '"' | head -1 || echo "NOT FOUND")
-    if [ "$V" != "NOT FOUND" ]; then
-        add_check "samples/web-demo Main.kt SDK_VERSION" "$V"
-    fi
-fi
-
 # Web demo inline JS — `var BUILD_VERSION = 'X.Y.Z'` in index.html. The
-# inline-JS path is the one that actually drives the auto-update snackbar,
-# so it has to match. Kept literal-equal to Main.kt's SDK_VERSION.
-WEB_DEMO_INDEX="$REPO_ROOT/samples/web-demo/src/jsMain/resources/index.html"
+# inline-JS path is the web demo's single runtime (the dead Kotlin/JS
+# source set was removed in #1946) and it drives the auto-update snackbar,
+# so it has to stay in sync with VERSION_NAME.
+WEB_DEMO_INDEX="$REPO_ROOT/samples/web-demo/site/index.html"
 if [ -f "$WEB_DEMO_INDEX" ]; then
     V=$(grep -E "var BUILD_VERSION = '" "$WEB_DEMO_INDEX" | grep -oE "'[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?'" | tr -d "'" | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
@@ -640,7 +630,7 @@ fi
 echo -e "${CYAN}--- Off-map Version Refs (#1755 audit) ---${NC}"
 
 # samples/web-demo/package.json — Playwright device-QA suite package.json.
-# Distinct from samples/web-demo's Kotlin/JS Main.kt SDK_VERSION; this is the
+# Distinct from the demo's own `site/index.html` BUILD_VERSION; this is the
 # Node test harness manifest and must track VERSION_NAME so the QA suite
 # advertises the same version as the demo it tests.
 WEB_DEMO_TESTS_PKG="$REPO_ROOT/samples/web-demo/package.json"
@@ -992,15 +982,6 @@ with open('$VERSION_JSON', 'w') as f:
     f.write('\n')
 "
             echo -e "  Fixed: website-static/version.json ($CURRENT -> $SOURCE_VERSION)"
-        fi
-    fi
-
-    # Fix samples/web-demo Main.kt SDK_VERSION constant
-    if [ -f "$WEB_DEMO_MAIN_KT" ]; then
-        CURRENT=$(grep -E 'const val SDK_VERSION' "$WEB_DEMO_MAIN_KT" | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"' | tr -d '"' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/const val SDK_VERSION = \"$CURRENT\"/const val SDK_VERSION = \"$SOURCE_VERSION\"/" "$WEB_DEMO_MAIN_KT"
-            echo -e "  Fixed: samples/web-demo Main.kt SDK_VERSION ($CURRENT -> $SOURCE_VERSION)"
         fi
     fi
 

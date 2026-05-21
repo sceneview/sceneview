@@ -219,7 +219,7 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ -z "$URL" ]]; then
-  WEBROOT="$REPO_ROOT/samples/web-demo/src/jsMain/resources"
+  WEBROOT="$REPO_ROOT/samples/web-demo/site"
   if [[ ! -d "$WEBROOT" ]]; then
     emit_skipped "web-demo resources missing at $WEBROOT"
   fi

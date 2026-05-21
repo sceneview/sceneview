@@ -1018,9 +1018,9 @@
       //
       // Catalog models are SELF-HOSTED next to this page — SceneView policy is
       // to never depend on a third-party CDN for demo assets. The GLB blobs in
-      // `models/` are committed under `src/jsMain/resources/models/`, served
-      // verbatim by the Playwright dev server and copied into the Kotlin/JS
-      // `jsBrowserDistribution` output, so a relative `models/` path resolves
+      // `models/` are committed under `samples/web-demo/site/models/`, served
+      // verbatim by the Playwright dev server and copied to `/web-demo/` by the
+      // docs.yml static-site deploy, so a relative `models/` path resolves
       // identically for local runs, the deployed site, and the device-QA suite.
       //
       // Previously this pointed at jsDelivr's gh-proxy
@@ -1033,7 +1033,7 @@
       var SKETCHFAB_API = 'https://api.sketchfab.com/v3/search?type=models&downloadable=true';
 
       // Curated, self-hosted model catalog. Every `file` MUST exist under
-      // `src/jsMain/resources/models/` — `validate-demo-assets.sh` enforces
+      // `samples/web-demo/site/models/` — `validate-demo-assets.sh` enforces
       // this. Kept lean (12 GLBs, ~60 MB) so the demo distribution stays
       // small; the Sketchfab Search source toggle covers the wider catalog.
       var CDN_MODELS = [
