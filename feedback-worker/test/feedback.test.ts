@@ -209,6 +209,24 @@ describe("feedback worker", () => {
     expect(statuses[5]).toBe(429);
   });
 
+  it("fails open (still succeeds) when the rate-limit KV is exhausted", async () => {
+    stubGitHub();
+    const env = makeEnv();
+    // Reproduce Cloudflare KV's daily write-quota exhaustion: every put()
+    // throws. The rate limiter and the issue-quota backstop must both fail
+    // open so a KV-infrastructure failure never 500s the whole endpoint.
+    env.RL_KV.put = async () => {
+      throw new Error("KV put() limit exceeded for the day.");
+    };
+    const res = await app.request(
+      "/v1/feedback",
+      { method: "POST", body: feedbackForm("bug") },
+      asEnv(env),
+    );
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
+  });
+
   it("viewer returns 404 for an unknown id", async () => {
     const res = await app.request(
       `/feedback/${crypto.randomUUID()}`,

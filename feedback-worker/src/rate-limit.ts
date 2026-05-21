@@ -37,20 +37,33 @@ export async function isRateLimited(
 ): Promise<{ limited: boolean; remaining: number; limit: number }> {
   const key = `rl:${hashIp(ip)}:${minuteBucket()}`;
 
-  const current = await kv.get(key);
-  const count = current ? parseInt(current, 10) : 0;
+  try {
+    const current = await kv.get(key);
+    const count = current ? parseInt(current, 10) : 0;
 
-  if (count >= MAX_REQUESTS_PER_MINUTE) {
-    return { limited: true, remaining: 0, limit: MAX_REQUESTS_PER_MINUTE };
+    if (count >= MAX_REQUESTS_PER_MINUTE) {
+      return { limited: true, remaining: 0, limit: MAX_REQUESTS_PER_MINUTE };
+    }
+
+    await kv.put(key, String(count + 1), { expirationTtl: BUCKET_TTL_SECONDS });
+
+    return {
+      limited: false,
+      remaining: MAX_REQUESTS_PER_MINUTE - (count + 1),
+      limit: MAX_REQUESTS_PER_MINUTE,
+    };
+  } catch (e) {
+    // KV unavailable — exhausted daily write quota or a transient error. Fail
+    // open: a rate-limiter infrastructure failure must never crash (500) the
+    // whole feedback endpoint. The quota resets daily; abuse risk for the short
+    // window is acceptable next to dropping every genuine submission.
+    console.error("rate-limit KV error — failing open", e);
+    return {
+      limited: false,
+      remaining: MAX_REQUESTS_PER_MINUTE,
+      limit: MAX_REQUESTS_PER_MINUTE,
+    };
   }
-
-  await kv.put(key, String(count + 1), { expirationTtl: BUCKET_TTL_SECONDS });
-
-  return {
-    limited: false,
-    remaining: MAX_REQUESTS_PER_MINUTE - (count + 1),
-    limit: MAX_REQUESTS_PER_MINUTE,
-  };
 }
 
 /** Repo-wide cap on GitHub issue creation per hour. */
@@ -68,9 +81,16 @@ function hourBucket(): string {
  */
 export async function issueQuotaExceeded(kv: KVNamespace): Promise<boolean> {
   const key = `issuequota:${hourBucket()}`;
-  const current = await kv.get(key);
-  const count = current ? parseInt(current, 10) : 0;
-  if (count >= MAX_ISSUES_PER_HOUR) return true;
-  await kv.put(key, String(count + 1), { expirationTtl: 7200 });
-  return false;
+  try {
+    const current = await kv.get(key);
+    const count = current ? parseInt(current, 10) : 0;
+    if (count >= MAX_ISSUES_PER_HOUR) return true;
+    await kv.put(key, String(count + 1), { expirationTtl: 7200 });
+    return false;
+  } catch (e) {
+    // KV unavailable — fail open so a counter failure never blocks a genuine
+    // feedback submission. The per-IP limiter is the primary abuse guard.
+    console.error("issue-quota KV error — failing open", e);
+    return false;
+  }
 }
