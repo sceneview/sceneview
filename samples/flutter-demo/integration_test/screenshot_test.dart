@@ -63,7 +63,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('SceneView Flutter'), findsOneWidget);
-      expect(find.text('v3.6.1'), findsOneWidget);
+      expect(find.text('v4.13.0'), findsOneWidget);
+      // The About tab's "Bridge Coverage" section honestly labels which
+      // features the bridge exposes — see issue #909.
+      expect(find.text('Bridge Coverage'), findsOneWidget);
 
       await binding.takeScreenshot('04_about_tab');
     });

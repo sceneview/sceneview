@@ -14,10 +14,16 @@ Flutter plugin for [SceneView](https://sceneview.github.io) — 3D and AR scenes
 
 - Load and display 3D models (GLB/GLTF) using native renderers
 - AR scenes with plane detection on Android (ARCore) and iOS (ARKit)
-- HDR environment lighting
+- HDR environment lighting (Android; iOS support pending — #909)
 - Orbit camera controls (touch gestures)
 - `SceneViewController` for imperative commands
-- Geometry and light node APIs (forward-looking — not yet rendered natively)
+- Geometry and light node APIs — rendered natively on **Android**; the iOS
+  RealityKit port is not yet bridged (#909)
+
+> This plugin exposes a **subset** of the SceneView SDK. See the
+> [Controller API](#controller-api) note and issue
+> [#909](https://github.com/sceneview/sceneview/issues/909) for the full
+> coverage map.
 
 ## Installation
 
@@ -107,12 +113,20 @@ ARSceneView(
 |----------------------------------------|----------------------------------------------------------|
 | `loadModel(ModelNode)`                 | Load a glTF/GLB model into the scene                     |
 | `clearScene()`                         | Remove all models from the scene                         |
-| `setEnvironment(String path)`          | Set HDR environment for image-based lighting             |
-| `addGeometry(GeometryNode)`            | Add a geometry node (placeholder — not yet rendered)     |
-| `addLight(LightNode)`                  | Add a light node (placeholder — scene uses defaults)     |
+| `setEnvironment(String path)`          | Set HDR environment for image-based lighting (Android; iOS accepts but does not apply it — #909) |
+| `addGeometry(GeometryNode)`            | Add a geometry node — rendered on **Android**; iOS port pending (#909) |
+| `addLight(LightNode)`                  | Add a light node — rendered on **Android**; iOS port pending (#909) |
 | `setCameraControlMode(CameraControlMode)` | Change the camera mode at runtime (v4.3.0)            |
 | `setAutoCenterContent(bool)`           | Toggle content auto-centring at runtime (v4.3.0)         |
 | `isAttached`                           | Whether the controller is attached to a live view        |
+
+> ⚠️ **Bridge coverage.** This plugin exposes a subset of the native SceneView
+> SDK. `addGeometry` / `addLight` render natively on Android only; node taps,
+> plane events and the HDR environment are forwarded on Android but not yet on
+> iOS. Camera positioning, `ViewNode` / `ImageNode` / `VideoNode` / `TextNode`,
+> advanced AR anchors and the `sceneview-core` physics/geometry APIs are not
+> bridged at all. The full gap is tracked in the
+> [#909](https://github.com/sceneview/sceneview/issues/909) umbrella.
 
 ### Camera controls & content centring (v4.3.0)
 

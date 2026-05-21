@@ -112,9 +112,15 @@ Android side is tracked in issue #1051.
 | Prop                | Type       | Default | Description                               |
 |---------------------|------------|---------|-------------------------------------------|
 | `planeDetection`    | `boolean`  | `true`  | Enable plane detection                    |
-| `depthOcclusion`    | `boolean`  | `false` | Enable depth occlusion (Depth API/LiDAR)  |
-| `instantPlacement`  | `boolean`  | `false` | Enable instant placement                  |
+| `depthOcclusion`    | `boolean`  | `false` | **Not yet bridged** — accepted but not configured natively (#909) |
+| `instantPlacement`  | `boolean`  | `false` | **Not yet bridged** — accepted but not configured natively (#909) |
 | `onPlaneDetected`   | `function` | —       | Callback when a new plane is detected     |
+
+> ⚠️ `depthOcclusion` and `instantPlacement` are declared so the API surface is
+> stable, but the native bridge does **not** yet apply them to the ARCore
+> `Config`. Setting either has no visible effect today. Wiring them into the
+> native AR session is tracked in the [#909](https://github.com/sceneview/sceneview/issues/909)
+> bridge-parity umbrella.
 
 ### ModelNode interface
 
@@ -167,10 +173,25 @@ Props are mapped from the React Native bridge to native view parameters on each 
 
 ## Limitations
 
-- Geometry and light node props are defined in types but not yet rendered natively
-- `onTap` and `onPlaneDetected` event callbacks are declared but events are not yet dispatched
-- Scale prop on `ModelNode` is parsed as a uniform float (per-axis array not yet supported)
-- Only Android and iOS are supported; other platforms render a fallback message
+This bridge currently exposes a subset of the SceneView SDK. The honest
+coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/909)):
+
+- **`geometryNodes` / `lightNodes`** — rendered natively on **Android** only;
+  the iOS RealityKit port is not yet bridged.
+- **`depthOcclusion` / `instantPlacement`** — declared as props but **not
+  configured natively** on either platform. Setting them has no effect today.
+- **`onTap` / `onPlaneDetected`** — declared, but the native side does not yet
+  dispatch these events, so the callbacks never fire.
+- **`environment` on `ARSceneView`** — AR scenes use the camera feed; the HDR
+  environment is accepted but not applied.
+- **`ModelNode.scale`** — parsed as a uniform float; the per-axis `[x, y, z]`
+  array form is not yet supported.
+- **`cameraControlMode` `'pan'` / `'firstPerson'`** — iOS-only; fall back to
+  orbit on Android.
+- Not yet bridged at all: `ViewNode` / `ImageNode` / `VideoNode` / `TextNode`,
+  camera positioning, advanced AR anchors, Augmented Faces/Images, and the
+  `sceneview-core` physics/collision/geometry-generation APIs.
+- Only Android and iOS are supported; other platforms render a fallback message.
 
 ## Contributing
 

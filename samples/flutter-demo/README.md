@@ -1,6 +1,11 @@
 # SceneView Flutter Demo
 
-> Feature showcase for the SceneView Flutter bridge (v3.6.1)
+> Feature showcase for the SceneView Flutter bridge.
+>
+> The Flutter bridge exposes a **subset** of the native SceneView SDK. This
+> demo honestly surfaces what does and does not work today — see
+> [Bridge coverage](#bridge-coverage) and issue
+> [#909](https://github.com/sceneview/sceneview/issues/909).
 
 ## Tabs
 
@@ -26,11 +31,28 @@ Flutter (Dart)
 - **ModelNode** with position, rotation (X/Y/Z), scale
 - **onTap** callback (node name)
 - **onPlaneDetected** callback (plane type)
-- **GeometryNode** (cube, sphere, cylinder, plane) -- placeholder
-- **LightNode** (directional, point, spot) -- placeholder
+- **GeometryNode** (cube, sphere, cylinder, plane)
+- **LightNode** (directional, point, spot)
 - **Environment HDR** (image-based lighting)
 - **Sketchfab search** (public API, no key required)
 - **AR/3D mode toggle**
+
+## Bridge coverage
+
+The Flutter bridge is alpha and exposes only part of the SceneView SDK. The
+**Features** tab in the app shows a per-API status badge; this table mirrors it:
+
+| Feature | Real bridge status |
+|---|---|
+| `loadModel`, `clearScene` | Works on Android and iOS |
+| `ModelNode` position / rotation | Android only; iOS honours path + scale (#909) |
+| `addGeometry`, `addLight` | Rendered on **Android** only; iOS RealityKit port pending (#909) |
+| `setEnvironment` (HDR IBL) | Works on Android; iOS acknowledges the call but does not apply it (#909) |
+| `onTap`, `onPlaneDetected` | Forwarded on Android; not yet forwarded on iOS (#909) |
+| `cameraControlMode` `pan` / `firstPerson` | iOS-only; fall back to orbit on Android |
+
+Tracked in the [#909](https://github.com/sceneview/sceneview/issues/909)
+bridge-parity umbrella.
 
 ## Run
 
