@@ -281,6 +281,14 @@ run_android() {
   bash "$SCRIPT_DIR/qa-android-demos.sh" --install --flow "$flow" 2>&1 \
     | tee "$ARTIFACTS/android-output.txt" || rc=$?
 
+  # Surface the host-side `adb emu screenrecord` capture (#1671) alongside the
+  # iOS/web recordings so the autonomous QA runner finds all three in one place.
+  local android_rec="$REPO_ROOT/tools/qa-screenshots/android/android-qa-${flow}.webm"
+  if [[ -s "$android_rec" ]]; then
+    cp "$android_rec" "$ARTIFACTS/" 2>/dev/null \
+      && log "android recording: $ARTIFACTS/$(basename "$android_rec")"
+  fi
+
   # Maestro has no flat summary JSON; the wrapper's exit code is the verdict.
   if [[ $rc -eq 0 ]]; then
     record android passed "flow=$flow" "" "$(( $(date +%s) - started ))"
@@ -310,6 +318,14 @@ run_ios() {
   bash "$SCRIPT_DIR/ios-device-qa.sh" --install --flow "$flow" \
     > "$ARTIFACTS/ios-output.txt" 2>&1 || rc=$?
   cat "$ARTIFACTS/ios-output.txt"
+
+  # Surface the `simctl io recordVideo` capture alongside the android/web
+  # recordings so the autonomous QA runner finds all three in one place.
+  local ios_rec="$REPO_ROOT/tools/qa-screenshots/ios/ios-qa-${flow}.mov"
+  if [[ -s "$ios_rec" ]]; then
+    cp "$ios_rec" "$ARTIFACTS/" 2>/dev/null \
+      && log "ios recording: $ARTIFACTS/$(basename "$ios_rec")"
+  fi
 
   if [[ $rc -eq 0 ]]; then
     record ios passed "flow=$flow" "" "$(( $(date +%s) - started ))"

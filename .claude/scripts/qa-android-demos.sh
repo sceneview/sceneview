@@ -10,7 +10,10 @@
 #
 # This script just orchestrates the pieces around `maestro test`:
 #   1. (optional) build + install the demo APK
-#   2. run the Maestro catalog (or a single category subflow)
+#   2. (best-effort) screen-record the run via host-side `adb emu screenrecord`
+#      — parity with the iOS / web QA legs; skipped silently on a physical
+#      device or when the emulator console is unavailable (#1671)
+#   3. run the Maestro catalog (or a single category subflow)
 #
 # Usage:
 #   bash .claude/scripts/qa-android-demos.sh [--install] [--flow <name>]
@@ -58,7 +61,7 @@ while [[ $# -gt 0 ]]; do
     --install) INSTALL=true; shift ;;
     --flow)    FLOW="${2:?--flow needs a name}"; shift 2 ;;
     -h|--help)
-      sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "[qa] unknown argument: $1" >&2; exit 2 ;;
@@ -127,6 +130,28 @@ fi
 # --- Crash gate: clear logcat so the post-run FATAL/ANR sweep is scoped -----
 adb logcat -c 2>/dev/null || true
 
+# --- Optional screen recording (best-effort) -------------------------------
+# Record the whole QA run for visual review — parity with the iOS leg
+# (`simctl io recordVideo`) and the web leg (Playwright `page.screencast`).
+# Uses the HOST-SIDE `adb emu screenrecord` console path (#1671): unlike the
+# guest-side `adb shell screenrecord` it captures the emulator's presented
+# framebuffer directly, so it is immune to the Emulator 36.x gfxstream
+# regression that records `-gpu host` Filament content as near-empty. Strictly
+# best-effort: a recording failure never fails the QA run (e.g. a physical
+# device, where the emulator console is unavailable). The .webm lands under
+# tools/qa-screenshots/android/ (gitignored).
+QA_VIDEO=""
+QA_VIDEO_DIR="${ANDROID_QA_VIDEO_DIR:-tools/qa-screenshots/android}"
+mkdir -p "$QA_VIDEO_DIR"
+# `--time-limit` is a hard encoder cap. Maestro's catalog run is long, so cap
+# generously (overridable via ANDROID_QA_REC_LIMIT for short single flows).
+if REC_TMP="$(android_cli_screenrecord_start "${ANDROID_SERIAL:-}" "${ANDROID_QA_REC_LIMIT:-1800}")"; then
+  QA_VIDEO="$QA_VIDEO_DIR/android-qa-${FLOW}.webm"
+  echo "[qa] recording the QA run -> $QA_VIDEO"
+else
+  echo "[qa] screen recording unavailable (host-side 'adb emu screenrecord' needs an emulator) — continuing without it"
+fi
+
 # --- Run the Maestro flow --------------------------------------------------
 echo "[qa] running Maestro flow: $FLOW_FILE"
 MAESTRO_RC=0
@@ -144,6 +169,19 @@ if [[ "$MAESTRO_RC" -ne 0 ]]; then
     adb wait-for-device 2>/dev/null || true
     MAESTRO_RC=0
     maestro_run "$FLOW_FILE" || MAESTRO_RC=$?
+  fi
+fi
+
+# --- Stop the screen recording --------------------------------------------
+# Stop the host-side emulator recording and move the finished .webm into the
+# QA video dir. Best-effort throughout — a recording failure never affects the
+# QA verdict.
+if [[ -n "$QA_VIDEO" ]]; then
+  android_cli_screenrecord_stop "${ANDROID_SERIAL:-}" || true
+  if [[ -n "${REC_TMP:-}" && -s "$REC_TMP" ]]; then
+    mv "$REC_TMP" "$QA_VIDEO" 2>/dev/null \
+      && echo "[qa] recording saved: $QA_VIDEO" \
+      || echo "[qa] recording could not be moved from $REC_TMP" >&2
   fi
 fi
 

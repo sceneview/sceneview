@@ -1,0 +1,2 @@
+<!-- category: Tests -->
+- Device-QA: the Android leg now screen-records each run via host-side `adb emu screenrecord`, completing cross-platform parity with the iOS (`simctl io recordVideo`) and web (Playwright `page.screencast`) legs. Host-side capture is immune to the Emulator 36.x gfxstream regression that recorded `-gpu host` Filament content as near-empty. The Android and iOS QA recordings are now surfaced into `device-qa-artifacts/` alongside the web screencasts.
