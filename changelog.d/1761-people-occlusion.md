@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **People Occlusion** — `ARCameraStream.isPersonOcclusionEnabled` occludes virtual objects behind real people using ARCore Scene Semantics' `PERSON`-class segmentation mask (flagship parity with ARKit `ARFrame.segmentationBuffer`, AR Foundation `AROcclusionManager`). New `camera_stream_person_occlusion.filamat` camera material (a strict superset of the depth-occlusion material) and an `ar-people-occlusion` demo. Requires `Config.SemanticMode.ENABLED`; outdoor scenes only (#1761).

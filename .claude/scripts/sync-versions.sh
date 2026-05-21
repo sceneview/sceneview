@@ -333,11 +333,16 @@ if [ -f "$LLMS" ]; then
 fi
 
 # ─── 6. Android demo app ────────────────────────────────────────────────
+# The Play Store demo app's `versionName` MUST track VERSION_NAME — it is the
+# user-visible release version on Google Play. Checked CRITICAL so it can
+# never silently drift again (it lagged 4 releases behind at 4.9.0 because it
+# was only WARN-level before — see the CLAUDE.md Version Location Map).
+# `versionCode` is intentionally NOT checked: CI injects it via -PversionCode.
 echo -e "${CYAN}--- Sample Apps ---${NC}"
 DEMO_GRADLE="$REPO_ROOT/samples/android-demo/build.gradle"
 if [ -f "$DEMO_GRADLE" ]; then
     V=$(grep "versionName" "$DEMO_GRADLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    add_check "samples/android-demo versionName" "$V" "false"
+    add_check "samples/android-demo versionName" "$V"
 fi
 
 # ─── 7. MCP source/dist version ─────────────────────────────────────────
@@ -883,6 +888,15 @@ with open('$PKG_JSON', 'w') as f:
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
             _sed_inplace "s/s\.version *= *'$CURRENT'/s.version          = '$SOURCE_VERSION'/" "$PODSPEC"
             echo -e "  Fixed: flutter/.../ios/sceneview_flutter.podspec ($CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # Fix Android demo app versionName (Play Store user-visible version).
+    if [ -f "$DEMO_GRADLE" ]; then
+        CURRENT=$(grep "versionName" "$DEMO_GRADLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1)
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/versionName \"$CURRENT\"/versionName \"$SOURCE_VERSION\"/" "$DEMO_GRADLE"
+            echo -e "  Fixed: samples/android-demo/build.gradle versionName ($CURRENT -> $SOURCE_VERSION)"
         fi
     fi
 

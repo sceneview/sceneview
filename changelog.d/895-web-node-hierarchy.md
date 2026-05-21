@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- `llms.txt`: added an explicit **"Web API model — builder DSL, NOT a Node scene-graph"** section to the SceneView Web reference, with a concept-mapping table (Android/iOS `Node` ↔ Web builder DSL) and correct-vs-incorrect code examples. This stops AI assistants from generating Android-style `Node`-tree code that does not compile against `sceneview-web`, and documents that a node scene-graph for Web is a tracked v5 milestone effort ([#895](https://github.com/sceneview/sceneview/issues/895)).

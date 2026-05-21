@@ -684,7 +684,7 @@
         <a href="https://sceneview.github.io" target="_blank" class="logo" title="SceneView — 3D and AR for Compose and SwiftUI">
             <div class="logo-icon">S</div>
             <span class="logo-text">SceneView Web Demo</span>
-            <span class="logo-version">v4.13.0</span>
+            <span class="logo-version">v4.14.0</span>
         </a>
         <div class="top-right">
             <button id="auto-rotate-toggle" class="auto-rotate-btn active" title="Toggle auto-rotation">Auto-rotate</button>
@@ -1145,7 +1145,7 @@
             instance.setAutoRotate(autoRotate);
             instance.setQuality('medium');
             loadingOverlay.classList.add('hidden');
-            console.log('SceneView Web Demo initialized — v4.13.0');
+            console.log('SceneView Web Demo initialized — v4.14.0');
             // Engine init complete — surface any update snackbar deferred
             // while the loading overlay was still covering the viewport.
             flushPendingUpdateSnackbar();
@@ -2352,7 +2352,7 @@
       // No-op if version.json is missing (dev mode, no deploy yet, fetch
       // blocked by an ad-blocker, …) — the snackbar just stays hidden.
 
-      var BUILD_VERSION = '4.13.0';
+      var BUILD_VERSION = '4.14.0';
       var VERSION_URL = '/version.json';
       var UPDATE_THROTTLE_MS = 12 * 60 * 60 * 1000;     // 12 hours
       var UPDATE_LAST_CHECK_KEY = 'sceneview.update.lastCheckAt';
