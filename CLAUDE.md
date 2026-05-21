@@ -65,7 +65,7 @@ platform as a failure), `--out <dir>`.
 
 | Leg | Harness | Drives | Report |
 |---|---|---|---|
-| `android` | Maestro flows `.maestro/android/` via `qa-android-demos.sh` | All 42 demos on an emulator | `device-qa-report.json` |
+| `android` | Maestro flows `.maestro/android/` via `qa-android-demos.sh` | All 59 demos on an emulator | `device-qa-report.json` |
 | `ios` | Maestro flows `.maestro/ios/` via `ios-device-qa.sh` | 24 deep-linkable demos on a simulator (AR = launch-only smoke) | `device-qa-report.json` |
 | `web` | Playwright suite `samples/web-demo/tests/` | Browser 3D viewer + every catalog tab | `web-qa-summary.json` |
 | `ar` | `ar-replay-qa.sh` + `ARReplayHarnessTest` | Every Android AR demo replayed against recorded ARCore sessions — no physical device | `ar-qa-summary.json` |
@@ -316,7 +316,7 @@ One unified showcase app per platform — all features integrated into tabs.
 
 | Directory | Platform | Demonstrates |
 |---|---|---|
-| `samples/android-demo` | Android | Play Store app — 4-tab Material 3 (3D, AR, Samples, About), 37 demos (24 3D + 13 AR) |
+| `samples/android-demo` | Android | Play Store app — 4-tab Material 3 (Explore, AR View, Samples, About), 59 demos (30 non-AR + 29 AR) |
 | `samples/android-tv-demo` | Android TV | D-pad controls, model cycling, auto-rotation |
 | `samples/web-demo` | Web | Browser 3D viewer, Filament.js (WASM), WebXR AR/VR |
 | `samples/ios-demo` | iOS | App Store app — 3-tab SwiftUI (3D, AR, Samples) |
