@@ -52,14 +52,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import io.github.sceneview.haptic.SceneViewHaptic
+import io.github.sceneview.haptic.rememberHapticFeedback
 import kotlinx.coroutines.launch
 
 /**
@@ -147,7 +147,7 @@ fun DemoScaffold(
     onResetSettings: (() -> Unit)? = null,
     scene: @Composable BoxScope.() -> Unit
 ) {
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberHapticFeedback()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -172,9 +172,7 @@ fun DemoScaffold(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null,
                                     ) {
-                                        haptic.performHapticFeedback(
-                                            HapticFeedbackType.LongPress
-                                        )
+                                        haptic.medium()
                                         DemoSettings.qaMode = false
                                     }
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -350,7 +348,7 @@ object DemoScaffoldTestTags {
 @Composable
 private fun BoxScope.DemoSettingsLayer(
     controlsContent: @Composable ColumnScope.() -> Unit,
-    haptic: androidx.compose.ui.hapticfeedback.HapticFeedback,
+    haptic: SceneViewHaptic,
     peekHeader: String? = null,
     onResetSettings: (() -> Unit)? = null,
 ) {
@@ -387,11 +385,11 @@ private fun BoxScope.DemoSettingsLayer(
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                haptic.selection()
                                 expanded = true
                             },
                             onLongPress = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                haptic.medium()
                                 DemoSettings.qaMode = !DemoSettings.qaMode
                             },
                         )
@@ -426,7 +424,7 @@ private fun BoxScope.DemoSettingsLayer(
         // collapsed its hit-target to ~24 dp on Compose Material3 1.5.x.
         FloatingActionButton(
             onClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                haptic.selection()
                 expanded = true
             },
             shape = CircleShape,
@@ -475,7 +473,7 @@ private fun BoxScope.DemoSettingsLayer(
                     val resetCd = stringResource(R.string.demo_settings_reset_cd)
                     TextButton(
                         onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            haptic.selection()
                             onResetSettings()
                         },
                         modifier = Modifier
@@ -511,14 +509,14 @@ private fun BoxScope.DemoSettingsLayer(
                 SheetValue.Expanded,
                 SheetValue.PartiallyExpanded -> {
                     hasShown = true
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    haptic.selection()
                 }
                 SheetValue.Hidden -> {
                     if (hasShown) {
                         // Subtle tick on drag-down-to-dismiss so the gesture
                         // gets the same tactile confirmation as a detent
                         // change (#1154 Stage 3).
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        haptic.selection()
                         expanded = false
                     }
                 }

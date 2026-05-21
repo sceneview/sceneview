@@ -38,6 +38,16 @@
     <string name="explore_search_results">Search results</string>
     <string name="explore_search_no_results">No results for "%s"</string>
     <string name="explore_search_loading">Searching…</string>
+    <!-- Defensive banner shown when SketchfabConfig.apiKey is null (#1909).
+         End-user release builds with a missing or revoked secret would
+         otherwise silently render an Explore tab without carousels and a
+         search bar that swallows every query — see issue #1909. -->
+    <string name="explore_sketchfab_disabled_title">Sketchfab carousels disabled</string>
+    <string name="explore_sketchfab_disabled_subtitle">API key missing — search and trending feeds are unavailable.</string>
+    <string name="explore_sketchfab_disabled_dialog_title">Sketchfab integration is off</string>
+    <string name="explore_sketchfab_disabled_dialog_body">This build was published without a Sketchfab API key, so the Staff Picks, Most Liked and Recently Added carousels are hidden and search is disabled.\n\nThe curated samples and category grid below still work — they bundle local 3D models.\n\nIf you\'re building locally, add the line below to <b>local.properties</b> and rebuild:\n\n  sketchfab.api.key=&lt;your-token&gt;\n\nGrab a token at Sketchfab → Settings → Password &amp; API → API Token.</string>
+    <string name="explore_sketchfab_disabled_dismiss">Got it</string>
+    <string name="explore_sketchfab_search_hint">Search needs a Sketchfab API key — see banner above.</string>
 
     <!-- Sketchfab model viewer screen -->
     <string name="sketchfab_animated">Animated</string>

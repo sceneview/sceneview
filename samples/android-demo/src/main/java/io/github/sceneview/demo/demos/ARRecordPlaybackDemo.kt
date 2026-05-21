@@ -45,9 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,6 +66,7 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -250,24 +249,22 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val chipHaptic = LocalHapticFeedback.current
+                val chipHaptic = rememberHapticFeedback()
                 Mode.values().forEach { mode ->
                     FilterChip(
                         selected = currentMode == mode,
                         onClick = {
                             if (currentMode != mode) {
-                                // TextHandleMove is Compose's "small confirm"
-                                // pulse — same one Material 3 uses on chip
-                                // toggles when the system honours haptic-on-
-                                // touch. Explicit here so it fires on every
-                                // device, not only those with the OS setting
-                                // turned on (#956). Skipped in qaMode so
-                                // adb-driven instrumentation tests that tap
-                                // these chips don't get unexpected vibration.
+                                // `selection()` is the small-confirm pulse — same
+                                // one Material 3 uses on chip toggles when the
+                                // system honours haptic-on-touch. Explicit here
+                                // so it fires on every device, not only those
+                                // with the OS setting turned on (#956). Skipped
+                                // in qaMode so adb-driven instrumentation tests
+                                // that tap these chips don't get unexpected
+                                // vibration.
                                 if (!io.github.sceneview.demo.DemoSettings.qaMode) {
-                                    chipHaptic.performHapticFeedback(
-                                        HapticFeedbackType.TextHandleMove
-                                    )
+                                    chipHaptic.selection()
                                 }
                                 currentMode = mode
                                 if (mode != Mode.PLAYBACK) currentPlaybackFile = null
@@ -643,11 +640,11 @@ private fun RecordOverlay(
             // No haptic on a no-op tap (greyed shutter) — that would be
             // confusing rather than confirming. iOS/Android camera apps both
             // use a LongPress-strength haptic for shutter; matching it (#956).
-            val shutterHaptic = LocalHapticFeedback.current
+            val shutterHaptic = rememberHapticFeedback()
             Surface(
                 onClick = {
                     if (!isTappable) return@Surface
-                    shutterHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    shutterHaptic.heavy()
                     if (isRecording) onStop() else onStart()
                 },
                 shape = androidx.compose.foundation.shape.CircleShape,
