@@ -4139,7 +4139,7 @@ arView.stop()               // ends the XR session
 arView.sceneView            // underlying SceneView for direct Filament access
 ```
 
-XRFeature constants: `XRFeature.HIT_TEST`, `XRFeature.DOM_OVERLAY`, `XRFeature.LIGHT_ESTIMATION`, `XRFeature.HAND_TRACKING`
+XRFeature constants: `XRFeature.HIT_TEST`, `XRFeature.DOM_OVERLAY`, `XRFeature.LIGHT_ESTIMATION`, `XRFeature.HAND_TRACKING`, `XRFeature.DEPTH_SENSING`, `XRFeature.IMAGE_TRACKING`, `XRFeature.ANCHORS`, `XRFeature.PLANE_DETECTION`, `XRFeature.MESH_DETECTION`, `XRFeature.LAYERS`
 
 ---
 
@@ -4203,6 +4203,120 @@ WebXRSession.create(
 
 XRSessionMode: `XRSessionMode.IMMERSIVE_AR`, `XRSessionMode.IMMERSIVE_VR`
 XRReferenceSpaceType: `LOCAL_FLOOR`, `LOCAL`, `VIEWER`, `BOUNDED_FLOOR`, `UNBOUNDED`
+
+---
+
+### WebXR — Depth-sensing, Hand-tracking, Image-tracking, Anchors (sceneview-web ≥ 4.10.0)
+
+Parity layer for WebXR feature strings — mirrors the Android `arsceneview` composables. Add to `WebXRSession.Features.required` or `optional`.
+
+XRFeature constants now include `XRFeature.DEPTH_SENSING`, `XRFeature.HAND_TRACKING`, `XRFeature.IMAGE_TRACKING`, `XRFeature.ANCHORS`, `XRFeature.PLANE_DETECTION`, `XRFeature.MESH_DETECTION` (the last two are still raw — no composable yet).
+
+#### Depth sensing (real-world occlusion)
+
+Quest 3 + ARCore Android Chrome only. Request `XRFeature.DEPTH_SENSING` and read per-frame depth via the [`getDepthInformation`](https://www.w3.org/TR/webxr-depth-sensing-1/) extension on `XRFrame`.
+
+```kotlin
+WebXRSession.create(
+    canvas = canvas,
+    mode = XRSessionMode.IMMERSIVE_AR,
+    features = WebXRSession.Features(
+        required = arrayOf(XRFeature.HIT_TEST),
+        optional = arrayOf(XRFeature.DEPTH_SENSING)
+    ),
+    onReady = { session ->
+        session.onFrame = { frame, viewerPose ->
+            val view = viewerPose?.views?.firstOrNull() ?: return@onFrame
+            val raw = frame.getDepthInformation(view)        // XRCPUDepthInformation?
+            val depth = XRDepthInfo.from(raw) ?: return@onFrame
+            if (depth.isCpuReadable) {
+                val centerMeters = depth.atNormalized(0.5, 0.5)   // Double; +Inf if invalid
+                // Discard fragments behind centerMeters when rendering
+            }
+        }
+        session.start()
+    }
+)
+```
+
+`XRDepthInfo`: `raw` (raw `XRDepthInformation`), `width`, `height`, `rawValueToMeters`, `isCpuReadable`, `atNormalized(x: Double, y: Double): Double`. Inputs are clamped to `[0, 1]`. `atNormalized` returns `Double.POSITIVE_INFINITY` for GPU-only buffers or invalid samples.
+
+`XRDepthUsage`: `CPU_OPTIMIZED`, `GPU_OPTIMIZED`. `XRDepthFormat`: `LUMINANCE_ALPHA`, `FLOAT32`.
+
+For GPU-side occlusion (shader sampling) ship the bundled `DepthOcclusionShader.VERTEX_SHADER` / `DepthOcclusionShader.FRAGMENT_SHADER` (GLSL ES 300, ~80 instr.) — set uniforms `uDepthTexture`, `uRawValueToMeters`, `uNormDepthBufferFromNormView`, `uColor`, `uFragmentDepthMeters`. Mirrors Android `ARCameraStream` depth occlusion.
+
+#### Hand tracking (`XRHandNode`)
+
+Quest 3 / Quest Pro / any WebXR runtime exposing `hand-tracking`. 25 spec-defined joints; short aliases live on `XRHandNode.Joint` (`INDEX_TIP`, `THUMB_TIP`, `WRIST`, `MIDDLE_INTERMEDIATE`, …). `XRHandNode.Joint.ALL` is the full ordered list.
+
+```kotlin
+val leftHand = XRHandNode(XRHandNode.Handedness.LEFT)
+    .joint(XRHandNode.Joint.INDEX_TIP) { pose -> /* pose.transform.position is the fingertip */ }
+    .joint(XRHandNode.Joint.THUMB_TIP) { pose -> }
+    .joint(XRHandNode.Joint.WRIST)     { pose -> }
+
+leftHand.onHandFound = { hand -> }   // first frame the hand becomes tracked
+leftHand.onHandLost  = { }           // the frame the hand disappears
+
+session.onFrame = { frame, _ -> leftHand.update(frame, session.referenceSpace) }
+```
+
+API: `joint(joint, block)` (chainable), `removeJoint(joint)`, `clear()`, `jointCount`, `isObserving(joint)`. The `update(frame, referenceSpace)` call walks `frame.session.inputSources`, finds the source with matching `handedness` and non-null `hand`, and invokes each registered joint callback with the per-frame `XRPose`. Joints with no resolvable pose (lost tracking) are silently skipped.
+
+#### Image tracking (`XRImageTrackingNode`)
+
+WebXR `image-tracking` ([marker-tracking explainer](https://github.com/immersive-web/marker-tracking)) — Android Chrome flag / origin trial. Mirrors Android `AugmentedImageNode`. Register the images at session creation via the `trackedImages` init dict; index into them with `XRImageTrackingNode`.
+
+```kotlin
+// 1. Build trackedImages[] (ImageBitmap + widthInMeters) via dynamic JS;
+//    WebXR spec passes an external Web API type (ImageBitmap).
+val sessionOptions = js("{}")
+sessionOptions.requiredFeatures = arrayOf(XRFeature.IMAGE_TRACKING)
+sessionOptions.trackedImages = arrayOf(js("{ image: bitmap, widthInMeters: 0.2 }"))
+
+// 2. Wrap the per-image result:
+val poster = XRImageTrackingNode(index = 0) { pose, result ->
+    // pose.transform.matrix = 4x4 column-major model matrix
+    // result.measuredWidthInMeters / result.trackingState ("tracked" | "emulated")
+}
+poster.onFound = { result -> }
+poster.onLost  = { }
+
+session.onFrame = { frame, _ -> poster.update(frame, session.referenceSpace) }
+```
+
+Tracking state constants: `XRImageTrackingState.TRACKED`, `XRImageTrackingState.EMULATED`, `XRImageTrackingState.UNTRACKED`. Helper: `frame.getImageTrackingResults(): Array<XRImageTrackingResult>` (extension on `XRFrame`).
+
+#### Anchors (`XRAnchorNode`)
+
+Chrome on Android (ARCore) + Quest 3. Mirrors Android `arsceneview` `AnchorNode`. Create the underlying `XRAnchor` via `frame.createAnchor(transform, referenceSpace)` or via the hit-test helper `result.createAnchor()` and wrap it:
+
+```kotlin
+val anchorPromise = session.xrSession.asDynamic().createAnchor(transform, session.referenceSpace)
+anchorPromise.then { anchor: XRAnchor ->
+    val node = XRAnchorNode(anchor) { pose ->
+        // Apply pose.transform.matrix to a Filament entity each frame
+    }
+    node.onAttached = { firstPose -> }
+    node.onLost     = { }
+    anchors += node
+}
+
+session.onFrame = { frame, _ ->
+    val it = anchors.iterator()
+    while (it.hasNext()) {
+        val node = it.next()
+        if (!node.update(frame, session.referenceSpace)) it.remove()
+    }
+}
+
+// Cleanup
+session.onSessionEnd = { anchors.forEach { it.detach() }; anchors.clear() }
+```
+
+`update(frame, referenceSpace)` returns `false` when the anchor is no longer in `frame.trackedAnchors` — drop the node from your list. `detach()` calls `XRAnchor.delete()` and is idempotent.
+
+XRFrame additions: `trackedAnchors` (anchor set), extension `frame.getDepthInformation(view)`, extension `frame.getImageTrackingResults()`.
 
 ---
 
