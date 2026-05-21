@@ -1,12 +1,15 @@
 // plane_renderer.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
 //
-// Purpose:    Unlit transparent material that draws detected ARCore planes with a tiled
-//             grid texture (the dotted detection overlay).
+// Purpose:    Unlit transparent material that draws detected ARCore planes as a modern,
+//             procedural soft grid (issue #1616). The old dense white dot-grid PNG read
+//             as low-fidelity next to apps like Reality Composer / Polycam; this shader
+//             draws thin anti-aliased grid lines with a feathered edge fade instead.
 // Used by:    PlaneRenderer (planeMaterial) — ARSceneView plane visualization.
 // Parameters:
-//   texture    — sampler2d, the tiled plane-grid texture (textures/plane_renderer.png).
-//   color      — float3, RGB tint multiplied into the texture.
-//   uvScale    — float2, tiling factor mapping local plane X/Z to texture UV.
+//   texture    — sampler2d, kept for binary/API compatibility with PlaneRenderer; the
+//                shader is now procedural and does NOT sample it.
+//   color      — float3, RGB tint of the grid lines.
+//   uvScale    — float2, tiling factor mapping local plane X/Z to grid-cell coordinates.
 // matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
 material {
     name : "AR Core Plane Material",
@@ -56,14 +59,40 @@ vertex {
 }
 
 fragment {
+    // Anti-aliased distance-to-nearest-grid-line, in grid-cell units.
+    // Uses screen-space derivatives so the line stays ~1px wide at any
+    // distance/angle — no shimmer, unlike the fixed-size dot PNG.
+    float gridLine(float2 uv) {
+        float2 grid = abs(fract(uv - 0.5) - 0.5);
+        float2 fw = fwidth(uv);
+        // Half-width of the line in cell units (~1.1 device px once divided by fwidth).
+        float2 d = grid / max(fw, vec2(1e-5));
+        float line = 1.0 - min(min(d.x, d.y) * 0.65, 1.0);
+        return clamp(line, 0.0, 1.0);
+    }
+
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
 
-        material.baseColor = texture(materialParams_texture, variable_texCoordsAlpha.xy);
-        material.baseColor.rgb *= materialParams.color;
+        // Procedural soft grid — replaces the dated dense dot-grid PNG (#1616).
+        float2 uv = variable_texCoordsAlpha.xy;
 
-        // Spotlight highlight: removed unused focusPoint/radius params (#1922); see git history to restore.
-        // The parked block also gated baseColor by variable_texCoordsAlpha.z (per-vertex
-        // alpha) — kept disabled to preserve current rendering behaviour.
+        // Thin anti-aliased grid lines.
+        float line = gridLine(uv);
+
+        // Soft cell glow: a faint fill inside each cell so the plane reads as a
+        // surface, not just wireframe — gives the modern "feathered overlay" look.
+        float2 cell = abs(fract(uv) - 0.5) * 2.0;
+        float fill = (1.0 - max(cell.x, cell.y)) * 0.10;
+
+        // Per-vertex edge feather: PlaneVisualizer writes the boundary->interior
+        // ramp into texCoordsAlpha.z (0 at the plane edge, 1 in the interior).
+        // Smooth it so detected planes fade out softly instead of a hard cut.
+        float edge = smoothstep(0.0, 0.6, variable_texCoordsAlpha.z);
+
+        float alpha = clamp(line * 0.85 + fill, 0.0, 1.0) * edge;
+
+        material.baseColor.rgb = materialParams.color;
+        material.baseColor.a = alpha;
     }
 }
