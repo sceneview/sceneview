@@ -656,7 +656,10 @@ function ARTab() {
           />
         </View>
         <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Depth Occlusion</Text>
+          <View style={styles.switchLabelGroup}>
+            <Text style={styles.switchLabel}>Depth Occlusion</Text>
+            <Text style={styles.switchSublabel}>Not yet bridged (#909)</Text>
+          </View>
           <Switch
             value={depthOcclusion}
             onValueChange={setDepthOcclusion}
@@ -665,7 +668,10 @@ function ARTab() {
           />
         </View>
         <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Instant Placement</Text>
+          <View style={styles.switchLabelGroup}>
+            <Text style={styles.switchLabel}>Instant Placement</Text>
+            <Text style={styles.switchSublabel}>Not yet bridged (#909)</Text>
+          </View>
           <Switch
             value={instantPlacement}
             onValueChange={setInstantPlacement}
@@ -701,15 +707,17 @@ function ARTab() {
         </View>
 
         <View style={styles.arInfoCard}>
-          <Text style={styles.arInfoTitle}>AR Bridge Features</Text>
+          <Text style={styles.arInfoTitle}>AR Bridge Coverage</Text>
           <Text style={styles.arInfoBody}>
-            This tab demonstrates the full AR bridge:{'\n'}
-            {'\u2022'} Plane detection (horizontal + vertical){'\n'}
-            {'\u2022'} Depth occlusion (ARCore/LiDAR){'\n'}
-            {'\u2022'} Instant placement{'\n'}
-            {'\u2022'} Geometry nodes in AR{'\n'}
-            {'\u2022'} Light nodes in AR{'\n'}
-            {'\u2022'} Tap events with world coordinates
+            {'What the RN bridge exposes today (issue #909):\n'}
+            {'\u2022 Plane detection \u2014 wired into the ARCore session\n'}
+            {'\u2022 Geometry nodes in AR \u2014 Android only\n'}
+            {'\u2022 Light nodes in AR \u2014 Android only\n'}
+            {'\nNot yet bridged \u2014 the controls below are present so the '}
+            {'API is stable, but they have no native effect:\n'}
+            {'\u2022 Depth occlusion \u2014 prop not applied to the AR Config\n'}
+            {'\u2022 Instant placement \u2014 prop not applied to the AR Config\n'}
+            {'\u2022 onTap / onPlaneDetected \u2014 events not dispatched yet'}
           </Text>
         </View>
       </ScrollView>
@@ -1459,10 +1467,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#1E2430',
   },
+  switchLabelGroup: {
+    flexShrink: 1,
+    paddingRight: 12,
+  },
   switchLabel: {
     color: '#D1D5DB',
     fontSize: 15,
     fontWeight: '500',
+  },
+  switchSublabel: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 1,
   },
 
   // AR info card

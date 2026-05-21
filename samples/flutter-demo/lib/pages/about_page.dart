@@ -37,7 +37,7 @@ class AboutPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'v3.6.1',
+                    'v4.13.0',
                     style: theme.textTheme.titleMedium?.copyWith(
                       color: theme.colorScheme.onPrimaryContainer.withOpacity(0.7),
                     ),
@@ -106,24 +106,30 @@ class AboutPage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // Supported features
-          Text('Supported Features', style: theme.textTheme.titleLarge),
+          // Bridge coverage — honest per-feature status. See issue #909.
+          Text('Bridge Coverage', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 4),
+          Text(
+            'What the Flutter bridge exposes today. The bridge covers a '
+            'subset of the native SceneView SDK — see issue #909.',
+            style: theme.textTheme.bodySmall,
+          ),
           const SizedBox(height: 8),
           Card(
             child: Column(
               children: [
-                _FeatureRow('SceneView (3D)', true, theme),
-                _FeatureRow('ARSceneView (AR)', true, theme),
-                _FeatureRow('Model loading (GLB/glTF)', true, theme),
-                _FeatureRow('Model position, rotation, scale', true, theme),
-                _FeatureRow('onTap callback', true, theme),
-                _FeatureRow('onPlaneDetected callback', true, theme),
-                _FeatureRow('Environment HDR', true, theme),
-                _FeatureRow('Camera gestures (pan, pinch)', true, theme),
-                _FeatureRow('Geometry nodes (cube, sphere, etc.)', false, theme),
-                _FeatureRow('Light configuration', false, theme),
-                _FeatureRow('Animation control', false, theme),
-                _FeatureRow('Texture swapping', false, theme),
+                _FeatureRow('SceneView (3D)', _FeatureSupport.both, theme),
+                _FeatureRow('ARSceneView (AR)', _FeatureSupport.both, theme),
+                _FeatureRow('Model loading (GLB/glTF)', _FeatureSupport.both, theme),
+                _FeatureRow('Camera gestures (pan, pinch)', _FeatureSupport.both, theme),
+                _FeatureRow('Model position, rotation', _FeatureSupport.androidOnly, theme),
+                _FeatureRow('onTap callback', _FeatureSupport.androidOnly, theme),
+                _FeatureRow('onPlaneDetected callback', _FeatureSupport.androidOnly, theme),
+                _FeatureRow('Environment HDR', _FeatureSupport.androidOnly, theme),
+                _FeatureRow('Geometry nodes (cube, sphere, etc.)', _FeatureSupport.androidOnly, theme),
+                _FeatureRow('Light configuration', _FeatureSupport.androidOnly, theme),
+                _FeatureRow('Animation control', _FeatureSupport.planned, theme),
+                _FeatureRow('Texture swapping', _FeatureSupport.planned, theme),
               ],
             ),
           ),
@@ -182,7 +188,7 @@ class AboutPage extends StatelessWidget {
           // Footer
           Center(
             child: Text(
-              'Made with SceneView SDK v3.6.1',
+              'Made with SceneView SDK v4.13.0',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -247,20 +253,34 @@ class _ArchArrow extends StatelessWidget {
   }
 }
 
-Widget _FeatureRow(String name, bool implemented, ThemeData theme) {
+/// Honest per-feature bridge status. Avoids a binary "Ready/Planned" badge
+/// that would imply iOS parity the bridge does not have yet (issue #909).
+enum _FeatureSupport {
+  /// Wired through and rendered on both Android and iOS.
+  both,
+
+  /// Implemented on Android; the iOS port is not yet bridged (#909).
+  androidOnly,
+
+  /// Not yet bridged on either platform.
+  planned,
+}
+
+Widget _FeatureRow(String name, _FeatureSupport support, ThemeData theme) {
+  final (icon, color, label) = switch (support) {
+    _FeatureSupport.both => (Icons.check_circle, Colors.green, 'Android + iOS'),
+    _FeatureSupport.androidOnly =>
+      (Icons.adjust, Colors.blue, 'Android only'),
+    _FeatureSupport.planned =>
+      (Icons.radio_button_unchecked, Colors.grey, 'Not yet bridged'),
+  };
   return ListTile(
     dense: true,
-    leading: Icon(
-      implemented ? Icons.check_circle : Icons.radio_button_unchecked,
-      color: implemented ? Colors.green : Colors.grey,
-      size: 20,
-    ),
+    leading: Icon(icon, color: color, size: 20),
     title: Text(name),
     trailing: Text(
-      implemented ? 'Ready' : 'Planned',
-      style: theme.textTheme.bodySmall?.copyWith(
-        color: implemented ? Colors.green : Colors.grey,
-      ),
+      label,
+      style: theme.textTheme.bodySmall?.copyWith(color: color),
     ),
   );
 }
