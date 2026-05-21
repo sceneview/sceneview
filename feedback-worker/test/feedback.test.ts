@@ -118,6 +118,38 @@ function feedbackForm(category = "bug"): FormData {
   return fd;
 }
 
+/**
+ * POST a multipart form to /v1/feedback with a correct `Content-Length`
+ * header — a real native HTTP client always sends one for a buffered body,
+ * and the worker now requires it (411 Length Required otherwise).
+ * `headerOverride` lets a test forge/omit the header to exercise the guard.
+ */
+async function postFeedback(
+  fd: FormData,
+  env: Env,
+  headerOverride?: Record<string, string | undefined>,
+): Promise<Response> {
+  // Serialise the body so we can measure its real length, then replay it.
+  const probe = new Request("https://w/v1/feedback", { method: "POST", body: fd });
+  const ct = probe.headers.get("content-type") ?? "multipart/form-data";
+  const bytes = new Uint8Array(await probe.arrayBuffer());
+  const headers: Record<string, string> = {
+    "content-type": ct,
+    "content-length": String(bytes.byteLength),
+  };
+  if (headerOverride) {
+    for (const [k, v] of Object.entries(headerOverride)) {
+      if (v === undefined) delete headers[k];
+      else headers[k] = v;
+    }
+  }
+  return app.request(
+    "/v1/feedback",
+    { method: "POST", body: bytes, headers },
+    env,
+  );
+}
+
 function feedbackRow(id: string): Record<string, unknown> {
   return {
     id,
@@ -147,22 +179,15 @@ describe("feedback worker", () => {
   it("rejects an invalid category", async () => {
     const fd = new FormData();
     fd.set("category", "nonsense");
-    const res = await app.request(
-      "/v1/feedback",
-      { method: "POST", body: fd },
-      asEnv(makeEnv()),
-    );
+    fd.set("text", "something");
+    const res = await postFeedback(fd, asEnv(makeEnv()));
     expect(res.status).toBe(400);
   });
 
   it("creates a GitHub issue on the happy path", async () => {
     stubGitHub();
     const env = makeEnv();
-    const res = await app.request(
-      "/v1/feedback",
-      { method: "POST", body: feedbackForm("bug") },
-      asEnv(env),
-    );
+    const res = await postFeedback(feedbackForm("bug"), asEnv(env));
     expect(res.status).toBe(201);
     const json = (await res.json()) as { ok: boolean; issue: number };
     expect(json.ok).toBe(true);
@@ -179,11 +204,7 @@ describe("feedback worker", () => {
   it("returns 202 and records an error when issue creation fails", async () => {
     stubGitHub({ issueFails: true });
     const env = makeEnv();
-    const res = await app.request(
-      "/v1/feedback",
-      { method: "POST", body: feedbackForm("bug") },
-      asEnv(env),
-    );
+    const res = await postFeedback(feedbackForm("bug"), asEnv(env));
     expect(res.status).toBe(202);
     const json = (await res.json()) as { ok: boolean; issue: number | null };
     expect(json.ok).toBe(true);
@@ -198,11 +219,7 @@ describe("feedback worker", () => {
     const env = makeEnv();
     const statuses: number[] = [];
     for (let i = 0; i < 6; i++) {
-      const res = await app.request(
-        "/v1/feedback",
-        { method: "POST", body: feedbackForm("idea") },
-        asEnv(env),
-      );
+      const res = await postFeedback(feedbackForm("idea"), asEnv(env));
       statuses.push(res.status);
     }
     expect(statuses.filter((s) => s === 429).length).toBe(1);
@@ -218,11 +235,7 @@ describe("feedback worker", () => {
     env.RL_KV.put = async () => {
       throw new Error("KV put() limit exceeded for the day.");
     };
-    const res = await app.request(
-      "/v1/feedback",
-      { method: "POST", body: feedbackForm("bug") },
-      asEnv(env),
-    );
+    const res = await postFeedback(feedbackForm("bug"), asEnv(env));
     expect(res.status).toBe(201);
     expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
   });
@@ -311,11 +324,7 @@ describe("feedback worker", () => {
     const fd = new FormData();
     fd.set("category", "idea");
     fd.set("context", "{}");
-    const res = await app.request(
-      "/v1/feedback",
-      { method: "POST", body: fd },
-      asEnv(makeEnv()),
-    );
+    const res = await postFeedback(fd, asEnv(makeEnv()));
     expect(res.status).toBe(400);
   });
 
@@ -323,18 +332,58 @@ describe("feedback worker", () => {
     const fd = new FormData();
     fd.set("category", "bug");
     fd.set("context", "{}");
-    // 31 MB — over the 30 MB ceiling; the guard reads File.size, not the header.
+    // 31 MB — over the 30 MB ceiling. The honest Content-Length is over the
+    // cap, so the pre-buffer guard rejects it with 413.
     fd.set(
       "video",
       new File([new Uint8Array(31 * 1024 * 1024)], "screen.mp4", {
         type: "video/mp4",
       }),
     );
-    const res = await app.request(
-      "/v1/feedback",
-      { method: "POST", body: fd },
-      asEnv(makeEnv()),
+    const res = await postFeedback(fd, asEnv(makeEnv()));
+    expect(res.status).toBe(413);
+  });
+
+  it("rejects a request with a missing Content-Length header (411)", async () => {
+    // A real native HTTP client always sends Content-Length for a buffered
+    // body; a missing one is a malformed/abusive request and is rejected
+    // BEFORE the body is buffered into the isolate.
+    const res = await postFeedback(feedbackForm("bug"), asEnv(makeEnv()), {
+      "content-length": undefined,
+    });
+    expect(res.status).toBe(411);
+  });
+
+  it("rejects a non-numeric Content-Length header (411)", async () => {
+    const res = await postFeedback(feedbackForm("bug"), asEnv(makeEnv()), {
+      "content-length": "not-a-number",
+    });
+    expect(res.status).toBe(411);
+  });
+
+  it("rejects a forged Content-Length over the cap before buffering (413)", async () => {
+    // A small body but a forged huge Content-Length — rejected up-front.
+    const res = await postFeedback(feedbackForm("bug"), asEnv(makeEnv()), {
+      "content-length": String(99 * 1024 * 1024),
+    });
+    expect(res.status).toBe(413);
+  });
+
+  it("aborts the stream when the body exceeds the cap despite a small Content-Length", async () => {
+    // Forge a tiny Content-Length but stream a 31 MB body: the counting
+    // TransformStream must trip and the request is rejected, not OOM'd.
+    const fd = new FormData();
+    fd.set("category", "bug");
+    fd.set("context", "{}");
+    fd.set(
+      "video",
+      new File([new Uint8Array(31 * 1024 * 1024)], "screen.mp4", {
+        type: "video/mp4",
+      }),
     );
+    const res = await postFeedback(fd, asEnv(makeEnv()), {
+      "content-length": "1024",
+    });
     expect(res.status).toBe(413);
   });
 
@@ -344,11 +393,7 @@ describe("feedback worker", () => {
     // Pre-fill the current hour's global issue-quota bucket to the cap.
     const bucket = Math.floor(Date.now() / 3_600_000).toString(36);
     env.RL_KV._store.set(`issuequota:${bucket}`, "30");
-    const res = await app.request(
-      "/v1/feedback",
-      { method: "POST", body: feedbackForm("bug") },
-      asEnv(env),
-    );
+    const res = await postFeedback(feedbackForm("bug"), asEnv(env));
     expect(res.status).toBe(202);
     const json = (await res.json()) as { ok: boolean; issue: number | null };
     expect(json.ok).toBe(true);
@@ -356,6 +401,34 @@ describe("feedback worker", () => {
     expect(env.DB._statements.map((s) => s.sql).join(" | ")).toContain(
       "status = 'error'",
     );
+  });
+
+  it("deletes orphaned R2 media when the D1 insert fails", async () => {
+    const env = makeEnv();
+    // The media is stored in R2, then the D1 insert throws — the media must
+    // be cleaned up so it is not stranded un-purgeable forever.
+    env.DB._shouldFail = true;
+    const res = await postFeedback(feedbackForm("bug"), asEnv(env));
+    expect(res.status).toBe(502);
+    expect(env.MEDIA._store.size).toBe(0);
+  });
+
+  it("rate-limits brute-force admin-token attempts on the viewer", async () => {
+    const env = makeEnv();
+    const id = crypto.randomUUID();
+    env.DB._rows = [feedbackRow(id)];
+    const statuses: number[] = [];
+    // 11 wrong-token attempts — the 11th must be rate-limited (cap is 10/min).
+    for (let i = 0; i < 11; i++) {
+      const res = await app.request(
+        `/feedback/${id}?token=wrong-${i}`,
+        {},
+        asEnv(env),
+      );
+      statuses.push(res.status);
+    }
+    expect(statuses.slice(0, 10).every((s) => s === 302)).toBe(true);
+    expect(statuses[10]).toBe(429);
   });
 
   it("retention purges expired media and keeps the record", async () => {

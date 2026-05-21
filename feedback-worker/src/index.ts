@@ -2,7 +2,11 @@ import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { getCookie, setCookie } from "hono/cookie";
 import type { Env } from "./env.js";
-import { isRateLimited, issueQuotaExceeded } from "./rate-limit.js";
+import {
+  adminAttemptLimited,
+  isRateLimited,
+  issueQuotaExceeded,
+} from "./rate-limit.js";
 import { transcribe } from "./transcribe.js";
 import { buildIssue, type Category, type FeedbackContext } from "./issue.js";
 import { createIssue } from "./github.js";
@@ -20,6 +24,31 @@ const app = new Hono<{ Bindings: Env }>();
 /** Upload ceiling — a short screen recording is well under this. */
 const MAX_UPLOAD = 30 * 1024 * 1024; // 30 MB
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Wrap a request body stream in a counting `TransformStream` that aborts once
+ * `limit` bytes have flowed through it. This caps how much can be buffered into
+ * the 128 MB isolate by `formData()` even when `Content-Length` is missing or
+ * forged — the stream is torn down before the body is fully read into memory.
+ */
+function limitedBody(
+  body: ReadableStream<Uint8Array>,
+  limit: number,
+): ReadableStream<Uint8Array> {
+  let seen = 0;
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+        if (seen > limit) {
+          controller.error(new Error("upload_too_large"));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+}
 
 /** Pick a File-valued multipart field; null if absent or a plain string. */
 function fileField(form: FormData, name: string): File | null {
@@ -77,8 +106,16 @@ app.get("/health", (c) =>
 
 // ── POST /v1/feedback — receive a feedback submission ────────────────────────
 app.post("/v1/feedback", async (c) => {
-  // Reject oversized uploads before reading the body.
-  const cl = parseInt(c.req.header("content-length") ?? "0", 10);
+  // Reject oversized uploads BEFORE buffering the body into the isolate.
+  // `Content-Length` is client-controlled and may be absent or forged, so a
+  // present numeric value over the cap is rejected outright; a missing or
+  // non-numeric value is also rejected (a well-behaved multipart upload always
+  // sends one). The streaming guard below is the real backstop for the rest.
+  const clHeader = c.req.header("content-length");
+  const cl = Number(clHeader);
+  if (clHeader === undefined || !Number.isFinite(cl) || cl < 0) {
+    return c.json({ error: "length_required" }, 411);
+  }
   if (cl > MAX_UPLOAD) return c.json({ error: "payload_too_large" }, 413);
 
   // Rate limit by IP (hashed — never stored raw).
@@ -88,11 +125,26 @@ app.post("/v1/feedback", async (c) => {
     return c.json({ error: "rate_limited" }, 429, { "Retry-After": "60" });
   }
 
+  // Hard ceiling: wrap the raw body in a counting stream that aborts once
+  // MAX_UPLOAD bytes have flowed, so a forged Content-Length cannot OOM the
+  // isolate by streaming an unbounded body into `formData()`.
   let form: FormData;
   try {
-    form = await c.req.formData();
+    const raw = c.req.raw.body;
+    const req = raw
+      ? new Request(c.req.raw.url, {
+          method: c.req.raw.method,
+          headers: c.req.raw.headers,
+          body: limitedBody(raw, MAX_UPLOAD),
+          // Streaming request bodies require an explicit half-duplex hint.
+          duplex: "half",
+        } as RequestInit & { duplex: "half" })
+      : c.req.raw;
+    form = await req.formData();
   } catch {
-    return c.json({ error: "invalid_multipart" }, 400);
+    // A multipart parse error and a tripped size guard are indistinguishable
+    // here; both mean the body could not be safely consumed.
+    return c.json({ error: "invalid_or_oversized_multipart" }, 413);
   }
 
   const category = String(form.get("category") ?? "");
@@ -169,6 +221,13 @@ app.post("/v1/feedback", async (c) => {
     });
   } catch (e) {
     console.error("D1 insert failed", e);
+    // The media is already in R2 but no row references it — retention sweeps
+    // by D1 row, so without this cleanup the objects would be un-purgeable
+    // forever. Best-effort delete both keys before returning.
+    await Promise.allSettled([
+      videoKey ? c.env.MEDIA.delete(videoKey) : Promise.resolve(),
+      audioKey ? c.env.MEDIA.delete(audioKey) : Promise.resolve(),
+    ]);
     return c.json({ error: "storage_failed" }, 502);
   }
 
@@ -216,6 +275,12 @@ app.get("/feedback/:id", async (c) => {
   // clean URL, so the token never lingers in browser history, logs or Referer.
   const queryToken = c.req.query("token");
   if (queryToken !== undefined) {
+    // Feedback UUIDs appear publicly on the GitHub issues, so the viewer URL is
+    // guessable — rate-limit token attempts per IP to blunt a brute-force.
+    const ip = c.req.header("cf-connecting-ip") ?? "unknown";
+    if (await adminAttemptLimited(ip, c.env.RL_KV)) {
+      return c.json({ error: "rate_limited" }, 429, { "Retry-After": "60" });
+    }
     if (
       c.env.ADMIN_TOKEN &&
       (await constantTimeEqual(queryToken, c.env.ADMIN_TOKEN))
@@ -227,6 +292,9 @@ app.get("/feedback/:id", async (c) => {
         path: "/feedback",
         maxAge: 28800,
       });
+    } else {
+      // Audit trail — a failed admin-token attempt against a guessable URL.
+      console.warn(`failed admin-token attempt for feedback ${id}`);
     }
     return c.redirect(`/feedback/${id}`, 302);
   }
@@ -287,6 +355,10 @@ export { app };
 export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(purgeExpiredMedia(env));
+    ctx.waitUntil(
+      purgeExpiredMedia(env)
+        .then((n) => console.log(`retention cron: purged ${n} record(s)`))
+        .catch((e) => console.error("retention cron failed", e)),
+    );
   },
 };

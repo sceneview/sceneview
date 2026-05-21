@@ -106,7 +106,7 @@ export function renderViewer(row: FeedbackRow, admin: boolean): string {
   }
 
   const inner = `<h1>Feedback</h1>
-    <span class="badge ${row.category}">${esc(row.category)}</span>
+    <span class="badge ${esc(row.category)}">${esc(row.category)}</span>
     <p class="muted">Received ${esc(row.created_at)} UTC · status: ${esc(
       row.status,
     )}</p>

@@ -14,13 +14,38 @@ function neutralize(text: string): string {
   return text.replace(/([@#])(?=[\w-])/g, "$1\u200b");
 }
 
-/** Escape a value for a single Markdown table cell. */
+/** Escape every Markdown-significant character in an inline string. */
+function escapeMarkdown(s: string): string {
+  return s.replace(/[\\`*_{}[\]()#+\-.!|~<>]/g, "\\$&");
+}
+
+/**
+ * Escape a value for a single Markdown table cell. The context values are
+ * client-controlled, so all Markdown specials are escaped — not just `|` —
+ * to stop link/image injection through the context table.
+ */
 function cell(value: unknown): string {
-  return String(value ?? "")
-    .replace(/[\r\n]+/g, " ")
-    .replace(/\|/g, "\\|")
-    .trim()
-    .slice(0, 300);
+  return escapeMarkdown(
+    String(value ?? "")
+      .replace(/[\r\n]+/g, " ")
+      .trim()
+      .slice(0, 300),
+  );
+}
+
+/**
+ * Render an untrusted free-text block (the user's typed description or the
+ * Whisper transcript) inside a fenced code block. A code fence renders the
+ * content verbatim, so `![img](url)` tracking pixels and `[txt](url)` phishing
+ * links can never auto-load or become clickable on the public issue tracker.
+ *
+ * Breakout guard: any run of three-or-more backticks in the content is broken
+ * with a zero-width space so it cannot terminate the fence early and escape
+ * back into Markdown rendering. The fence itself uses a 4-backtick delimiter.
+ */
+function fencedBlock(text: string): string {
+  const safe = text.replace(/`{3,}/g, (run) => run.split("").join("​"));
+  return ["````text", safe, "````"].join("\n");
 }
 
 /** Friendly labels + stable display order for known context keys. */
@@ -71,16 +96,27 @@ export function buildIssue(input: {
     "",
   ];
 
+  // The transcript and the typed text are untrusted free text. They are
+  // rendered inside fenced code blocks so a `![img](url)` tracking pixel can
+  // never auto-load and a `[txt](url)` phishing link can never become
+  // clickable on the public sceneview/sceneview tracker. neutralize() still
+  // breaks @mentions / #refs that would otherwise show literally.
   if (transcript.trim()) {
-    lines.push("### What the user said", "");
-    for (const l of neutralize(transcript.trim()).split("\n")) {
-      lines.push(`> ${l}`);
-    }
-    lines.push("");
+    lines.push(
+      "### What the user said",
+      "",
+      fencedBlock(neutralize(transcript.trim())),
+      "",
+    );
   }
 
   if (text.trim()) {
-    lines.push("### Description", "", neutralize(text.trim()), "");
+    lines.push(
+      "### Description",
+      "",
+      fencedBlock(neutralize(text.trim())),
+      "",
+    );
   }
 
   if (!transcript.trim() && !text.trim()) {
