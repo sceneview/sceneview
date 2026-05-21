@@ -42,8 +42,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.compose.ui.platform.LocalContext
 import io.github.sceneview.demo.feedback.FeedbackButton
 import io.github.sceneview.demo.feedback.FeedbackFlow
+import io.github.sceneview.demo.feedback.FeedbackRecorder
+import io.github.sceneview.demo.feedback.FeedbackRecordingService
+import io.github.sceneview.demo.feedback.RecordingState
+import io.github.sceneview.demo.feedback.RecordingStopPill
+import io.github.sceneview.demo.feedback.rememberFeedbackRecordingLauncher
 
 class MainActivity : ComponentActivity() {
 
@@ -263,10 +269,24 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         // screens place their own controls in every corner (movement pads, AR
         // action buttons), so a floating FAB there would collide; an in-demo
         // feedback entry point is a separate follow-up (#1932).
+        val context = LocalContext.current
         val currentEntry by navController.currentBackStackEntryAsState()
         val onListScreen = currentEntry?.destination?.route == "list"
         var feedbackOpen by rememberSaveable { mutableStateOf(false) }
-        if (onListScreen) {
+        val recordingState by FeedbackRecorder.state.collectAsState()
+        val isRecording = recordingState is RecordingState.Recording
+        val startRecording = rememberFeedbackRecordingLauncher()
+
+        // A finished or failed recording re-opens the flow at its review step.
+        LaunchedEffect(recordingState) {
+            if (recordingState is RecordingState.Done ||
+                recordingState is RecordingState.Failed
+            ) {
+                feedbackOpen = true
+            }
+        }
+
+        if (onListScreen && !isRecording) {
             FeedbackButton(
                 onClick = { feedbackOpen = true },
                 modifier = Modifier
@@ -275,8 +295,27 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                     .padding(start = 16.dp, bottom = FEEDBACK_FAB_BOTTOM_INSET),
             )
         }
-        if (feedbackOpen) {
-            FeedbackFlow(onDismiss = { feedbackOpen = false })
+
+        // While recording, the dialog is hidden so the user can demonstrate the
+        // bug; a floating Stop pill stays on top of every screen.
+        if (isRecording) {
+            RecordingStopPill(
+                onStop = { FeedbackRecordingService.stop(context) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(bottom = 24.dp),
+            )
+        }
+
+        if (feedbackOpen && !isRecording) {
+            FeedbackFlow(
+                onDismiss = {
+                    feedbackOpen = false
+                    FeedbackRecorder.reset()
+                },
+                onStartRecording = startRecording,
+            )
         }
     }
 }

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Feedback
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Lock
@@ -34,10 +35,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -55,26 +58,34 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.sceneview.demo.R
 
-private enum class FeedbackStep { ONBOARDING, CATEGORY, CONSENT, STUB }
+private enum class FeedbackStep { ONBOARDING, CATEGORY, CONSENT, REVIEW, SENT }
 
 /**
- * The in-app feedback flow, shown as a full-screen dialog: a one-time
- * onboarding screen, the Bug/Idea picker, and the screen + microphone consent
- * screen.
+ * The in-app feedback flow, shown as a full-screen dialog: one-time onboarding,
+ * the Bug/Idea picker, the screen + microphone consent screen, then — after the
+ * user has recorded — a review screen.
  *
- * The actual screen + audio recording is wired in a later step (1C, #1933) —
- * for now the consent screen leads to a placeholder.
+ * The recording itself happens with the dialog dismissed (so the user can
+ * demonstrate the bug); [FeedbackRecorder] bridges the recording state back in,
+ * and this flow shows the review step once a recording is available.
+ *
+ * Sending the feedback is wired in task 1D (#1934) — for now "Send" leads to a
+ * placeholder confirmation.
+ *
+ * @param onStartRecording requests the screen + mic permissions and starts the
+ *   recording service; see [rememberFeedbackRecordingLauncher].
  */
 @Composable
-fun FeedbackFlow(onDismiss: () -> Unit) {
+fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
     val context = LocalContext.current
+    val recState by FeedbackRecorder.state.collectAsState()
+
     var step by rememberSaveable {
         mutableStateOf(
             if (FeedbackPrefs.hasSeenOnboarding(context)) FeedbackStep.CATEGORY
             else FeedbackStep.ONBOARDING,
         )
     }
-    // Retained for the recording / upload steps (1C / 1D).
     var category by rememberSaveable { mutableStateOf<FeedbackCategory?>(null) }
 
     Dialog(
@@ -88,28 +99,62 @@ fun FeedbackFlow(onDismiss: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.surface,
         ) {
-            when (step) {
-                FeedbackStep.ONBOARDING -> OnboardingStep(
+            val doneRecording = (recState as? RecordingState.Done)?.recording
+            when {
+                recState is RecordingState.Failed -> FailedStep(
                     onClose = onDismiss,
-                    onContinue = {
-                        FeedbackPrefs.markOnboardingSeen(context)
-                        step = FeedbackStep.CATEGORY
+                    onRetry = {
+                        FeedbackRecorder.reset()
+                        onStartRecording()
                     },
                 )
-                FeedbackStep.CATEGORY -> CategoryStep(
+
+                doneRecording != null || step == FeedbackStep.REVIEW -> ReviewStep(
+                    recording = doneRecording,
                     onClose = onDismiss,
-                    onPick = {
-                        category = it
-                        step = FeedbackStep.CONSENT
+                    onRerecord = {
+                        FeedbackRecorder.reset()
+                        onStartRecording()
+                    },
+                    onSend = {
+                        // Upload is wired in task 1D — for now discard the
+                        // local recording and show a placeholder confirmation.
+                        FeedbackRecorder.reset()
+                        step = FeedbackStep.SENT
                     },
                 )
-                FeedbackStep.CONSENT -> ConsentStep(
-                    category = category ?: FeedbackCategory.BUG,
-                    onClose = onDismiss,
-                    onBack = { step = FeedbackStep.CATEGORY },
-                    onAgree = { step = FeedbackStep.STUB },
-                )
-                FeedbackStep.STUB -> StubStep(onClose = onDismiss)
+
+                else -> when (step) {
+                    FeedbackStep.ONBOARDING -> OnboardingStep(
+                        onClose = onDismiss,
+                        onContinue = {
+                            FeedbackPrefs.markOnboardingSeen(context)
+                            step = FeedbackStep.CATEGORY
+                        },
+                    )
+                    FeedbackStep.CATEGORY -> CategoryStep(
+                        onClose = onDismiss,
+                        onPick = {
+                            category = it
+                            step = FeedbackStep.CONSENT
+                        },
+                    )
+                    FeedbackStep.CONSENT -> ConsentStep(
+                        category = category ?: FeedbackCategory.BUG,
+                        onClose = onDismiss,
+                        onBack = { step = FeedbackStep.CATEGORY },
+                        onAgree = {
+                            FeedbackRecorder.category = category
+                            onStartRecording()
+                        },
+                        onSkip = {
+                            FeedbackRecorder.category = category
+                            step = FeedbackStep.REVIEW
+                        },
+                    )
+                    FeedbackStep.SENT -> SentStep(onClose = onDismiss)
+                    FeedbackStep.REVIEW -> Unit // handled above
+                }
             }
         }
     }
@@ -167,6 +212,7 @@ private fun ConsentStep(
     onClose: () -> Unit,
     onBack: () -> Unit,
     onAgree: () -> Unit,
+    onSkip: () -> Unit,
 ) {
     FeedbackStepScaffold(
         onClose = onClose,
@@ -175,6 +221,11 @@ private fun ConsentStep(
                 text = stringResource(R.string.feedback_consent_agree),
                 onClick = onAgree,
             )
+            if (category == FeedbackCategory.IDEA) {
+                TextButton(onClick = onSkip, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.feedback_consent_skip))
+                }
+            }
             TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.feedback_consent_back))
             }
@@ -203,7 +254,71 @@ private fun ConsentStep(
 }
 
 @Composable
-private fun StubStep(onClose: () -> Unit) {
+private fun ReviewStep(
+    recording: FeedbackRecording?,
+    onClose: () -> Unit,
+    onRerecord: () -> Unit,
+    onSend: (note: String) -> Unit,
+) {
+    var note by rememberSaveable { mutableStateOf("") }
+    FeedbackStepScaffold(
+        onClose = onClose,
+        actions = {
+            PrimaryButton(
+                text = stringResource(R.string.feedback_review_send),
+                onClick = { onSend(note.trim()) },
+            )
+            TextButton(onClick = onRerecord, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.feedback_review_rerecord))
+            }
+        },
+    ) {
+        Spacer(Modifier.height(16.dp))
+        FeedbackHeroIcon(Icons.Outlined.CheckCircle, Modifier.align(Alignment.CenterHorizontally))
+        Spacer(Modifier.height(24.dp))
+        StepTitle(stringResource(R.string.feedback_review_title))
+        Spacer(Modifier.height(12.dp))
+        StepBody(stringResource(R.string.feedback_review_body))
+        Spacer(Modifier.height(16.dp))
+        if (recording != null) {
+            RecordingSummary(recording)
+        } else {
+            StepBody(stringResource(R.string.feedback_review_no_recording))
+        }
+        Spacer(Modifier.height(16.dp))
+        OutlinedTextField(
+            value = note,
+            onValueChange = { note = it },
+            label = { Text(stringResource(R.string.feedback_review_note_label)) },
+            placeholder = { Text(stringResource(R.string.feedback_review_note_placeholder)) },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+        )
+    }
+}
+
+@Composable
+private fun FailedStep(onClose: () -> Unit, onRetry: () -> Unit) {
+    FeedbackStepScaffold(
+        onClose = onClose,
+        actions = {
+            PrimaryButton(
+                text = stringResource(R.string.feedback_record_retry),
+                onClick = onRetry,
+            )
+        },
+    ) {
+        Spacer(Modifier.height(16.dp))
+        FeedbackHeroIcon(Icons.Outlined.ErrorOutline, Modifier.align(Alignment.CenterHorizontally))
+        Spacer(Modifier.height(24.dp))
+        StepTitle(stringResource(R.string.feedback_record_failed_title))
+        Spacer(Modifier.height(12.dp))
+        StepBody(stringResource(R.string.feedback_record_failed_body))
+    }
+}
+
+@Composable
+private fun SentStep(onClose: () -> Unit) {
     FeedbackStepScaffold(
         onClose = onClose,
         actions = {
@@ -406,4 +521,47 @@ private fun PrivacyNote() {
             )
         }
     }
+}
+
+@Composable
+private fun RecordingSummary(recording: FeedbackRecording) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                Icons.Outlined.Videocam,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.feedback_review_recorded),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    formatDuration(recording.durationMs),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private fun formatDuration(ms: Long): String {
+    val totalSeconds = (ms / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
 }

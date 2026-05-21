@@ -299,4 +299,21 @@
     <string name="feedback_stub_title">Almost there</string>
     <string name="feedback_stub_body">Screen recording is being wired up and lands in the next update. Thanks for helping improve SceneView!</string>
     <string name="feedback_stub_done">Done</string>
+    <string name="feedback_recording_channel">Feedback recording</string>
+    <string name="feedback_recording_title">Recording your feedback</string>
+    <string name="feedback_recording_text">Show what happens, then tap Stop</string>
+    <string name="feedback_recording_stop">Stop</string>
+    <string name="feedback_recording_stop_action">Stop recording</string>
+    <string name="feedback_consent_skip">Skip recording</string>
+    <string name="feedback_review_title">Review your feedback</string>
+    <string name="feedback_review_body">Send it to the SceneView team, or record again.</string>
+    <string name="feedback_review_recorded">Screen recording captured</string>
+    <string name="feedback_review_no_recording">No recording — your note will be sent on its own.</string>
+    <string name="feedback_review_note_label">Add a note (optional)</string>
+    <string name="feedback_review_note_placeholder">Anything else the team should know?</string>
+    <string name="feedback_review_rerecord">Record again</string>
+    <string name="feedback_review_send">Send feedback</string>
+    <string name="feedback_record_failed_title">Recording didn\'t work</string>
+    <string name="feedback_record_failed_body">The screen recording was interrupted or not granted. You can try again.</string>
+    <string name="feedback_record_retry">Try again</string>
 </resources>
