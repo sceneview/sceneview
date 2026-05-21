@@ -3,10 +3,15 @@
      `LightingFragment.kt`). Android's resource merger
      fans every `res/values/*.xml` file in, so `R.string.demo_lighting_title` etc.
      remains globally resolvable. Adding a new demo never needs to touch
-     this file or `strings.xml` — see #1870. -->
+     this file or `strings.xml` — see #1870.
+
+     The `lighting` demo consolidates the former `lighting` and `movable-light`
+     demos behind an in-demo mode switch (issue #1444). -->
 <resources>
-    <string name="demo_lighting_title">Light Types</string>
-    <string name="demo_lighting_subtitle">Directional, point, and spot lights</string>
+    <string name="demo_lighting_title">Lighting</string>
+    <string name="demo_lighting_subtitle">Light types, plus a movable orbiting light</string>
     <string name="demo_lighting">Lighting</string>
     <string name="demo_lighting_desc">Point, directional, and spot lights with shadows</string>
+    <string name="demo_lighting_mode_types">Light Types</string>
+    <string name="demo_lighting_mode_movable">Movable Light</string>
 </resources>

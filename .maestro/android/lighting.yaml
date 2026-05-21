@@ -1,10 +1,14 @@
-# Maestro flow — "Lighting & Environment" demo category (5 demos).
+# Maestro flow — "Lighting & Environment" demo category (4 demos).
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/lighting.yaml
 #
 # Each demo is exercised by the reusable flows/demo.yaml subflow. Demo ids
 # mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
+#
+# Note: the former `movable-light` demo was consolidated into `lighting` as an
+# in-demo mode switch (#1444); the retired id still deep-link-resolves via
+# DeepLinkRouter.DEMO_ID_ALIASES, but it no longer needs its own QA leg.
 appId: io.github.sceneview.demo
 ---
 - runFlow:
@@ -12,11 +16,6 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: lighting
       DEMO_NAME: Lighting
-- runFlow:
-    file: flows/demo.yaml
-    env:
-      DEMO_ID: movable-light
-      DEMO_NAME: Movable Light
 - runFlow:
     file: flows/demo.yaml
     env:

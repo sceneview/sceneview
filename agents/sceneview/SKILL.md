@@ -155,7 +155,7 @@ lambda — there is NO `rememberARSession()` helper, do NOT invent one.
 
 3. **`LightNode` accepts both top-level params and `apply = { … }`** for builder
    extras. The canonical form for intensity/color/direction is top-level
-   (verified against `MovableLightDemo.kt`):
+   (verified against `LightingDemo.kt`):
 
    ```kotlin
    LightNode(
