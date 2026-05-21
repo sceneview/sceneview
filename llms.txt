@@ -2877,6 +2877,79 @@ public contract — see `AndroidSceneViewHaptic` and pinned in
 
 ---
 
+## Spatial Audio
+
+`SpatialAudioNode` attaches positional 3D audio to the scene graph: a sound source that sits at a world position, pans between the listener's ears, and attenuates with distance. The listener tracks the camera by default, so as you orbit the scene the audio rotates with you. Distance attenuation is configurable with an inverse (physically-realistic) or linear falloff curve. Available on Android, iOS, and Web with platform-native audio back-ends — this is **phase 1** of [#1900](https://github.com/sceneview/sceneview/issues/1900).
+
+### Android (Jetpack Compose)
+
+```kotlin
+SceneView {
+    AudioListener()                                       // ears = camera (the default)
+    rememberAudioSource("audio/bell.wav")?.let { source ->
+        SpatialAudioNode(
+            source = source,
+            position = Position(z = -2f),
+            falloff = AudioFalloff.Inverse(refDistance = 1f, maxDistance = 20f),
+            loop = true,
+        )
+    }
+}
+```
+
+- Load assets with `rememberAudioSource("audio/file.wav")` — returns `null` while loading, like `rememberModelInstance`. WAV / MP3 / OGG / FLAC are supported.
+- `AudioListener()` declares the virtual ears; the default `AudioListenerSource.Camera` tracks the camera pose. `AudioListenerSource.Anchor` is reserved for phase 2 and falls back to the camera in phase 1.
+- `AudioFalloff` has three variants: `Inverse(refDistance, maxDistance, rolloffFactor)`, `Linear(refDistance, maxDistance)`, and `None`.
+- The composable's `apply` lambda exposes an `AudioController` (`play()` / `pause()` / `stop()` / `seekTo()`) for imperative control from outside the tree.
+
+### iOS (SwiftUI)
+
+```swift
+let source = try await AudioFileResource(
+    named: "bell.wav",
+    configuration: .init(shouldLoop: true)
+)
+let node = SpatialAudioNode.spatial(
+    source: source,
+    falloff: .inverse(refDistance: 0.5, maxDistance: 6),
+    loop: true
+)
+content.add(node.entity)        // attach to the scene, or to a moving entity
+```
+
+- Backed by RealityKit's spatial-audio renderer — the active camera IS the listener, so distance attenuation and panning apply automatically.
+- `node.play()` / `pause()` / `stop()` control playback; `setFalloff(_:)` and `updateGain(forDistance:)` push curve changes.
+- Apply `.audioListener(.camera)` on the view for parity with Android's `AudioListener`.
+
+### Web (Kotlin/JS or plain JavaScript)
+
+```kotlin
+val source = loadAudioSource("audio/bell.wav")            // suspend; or loadAudioSourcePromise(...)
+val node = SpatialAudioNode(
+    source = source,
+    position = Vec3(0f, 0f, -2f),
+    falloff = AudioFalloff.Inverse(refDistance = 1f, maxDistance = 20f),
+    loop = true,
+)
+setSpatialAudioListenerPose(cameraPos, cameraForward, cameraUp)  // call as the camera moves
+```
+
+- Backed by the Web Audio API: each node owns an `AudioBufferSourceNode → PannerNode → GainNode → destination` chain. The `PannerNode` runs in `"HRTF"` mode for binaural panning.
+
+### Platform back-ends
+
+| Platform | Back-end | Listener |
+|---|---|---|
+| Android | Phase 1: `MediaPlayer` + manual L/R pan (works on API 24+, no asset preprocessing). Phase 2: `AudioTrack` + `android.media.Spatializer` HRTF on API 33+ devices. | Camera-tracked |
+| iOS / macOS / visionOS | RealityKit spatial audio (`SpatialAudioComponent` + `Entity.playAudio`) | Active camera |
+| Web | Web Audio `PannerNode` (`panningModel = "HRTF"`, `distanceModel = "inverse"` / `"linear"`) | `AudioContext.listener` |
+
+**Phases.** Phase 1 (this release) ships positional playback with inverse / linear falloff and a camera-tracked listener. Anchor-attached listeners are phase 2. Occlusion and reverb zones are phase 3. See [#1900](https://github.com/sceneview/sceneview/issues/1900).
+
+**Interactive demos** — Android [`SpatialAudioDemo.kt`](samples/android-demo/src/main/java/io/github/sceneview/demo/demos/SpatialAudioDemo.kt), iOS [`SpatialAudioDemo.swift`](samples/ios-demo/SceneViewDemo/Views/Demos/SpatialAudioDemo.swift), and the **Spatial Audio** tab of the Web demo.
+
+---
+
 ## Recipes — "I want to..."
 
 ### Show a 3D model with orbit camera
