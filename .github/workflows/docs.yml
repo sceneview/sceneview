@@ -130,6 +130,24 @@ jobs:
           cp CHANGELOG.md docs/docs/changelog.md 2>/dev/null || true
           cp CONTRIBUTING.md docs/docs/contributing.md 2>/dev/null || true
 
+      # Mirror root `llms.txt` into `docs/docs/llms.txt` so mkdocs serves the
+      # same AI-first API reference at `/docs/llms.txt` (issue #899). The
+      # mirror is NOT committed — it is `.gitignore`d and regenerated here on
+      # every docs build, so it is fresh-by-construction and can never drift
+      # from root `llms.txt`. Committing the copy meant a PR touching root
+      # `llms.txt` repeatedly forgot the mirror and turned the quality gate
+      # red (#1822 → #1847). This step MUST run before `mkdocs build` below,
+      # which copies `docs/docs/` static files into the published site.
+      - name: Mirror root llms.txt into docs
+        run: |
+          if [ -f llms.txt ]; then
+            cp llms.txt docs/docs/llms.txt
+            echo "Mirrored root llms.txt -> docs/docs/llms.txt ($(wc -c < docs/docs/llms.txt) bytes)."
+          else
+            echo "::error::root llms.txt missing — docs/docs/llms.txt cannot be generated"
+            exit 1
+          fi
+
       - name: Build MkDocs
         run: |
           cd docs

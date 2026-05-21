@@ -85,14 +85,16 @@ LLMS_V=$(grep -m1 'io\.github\.sceneview:sceneview:' llms.txt | grep -oE '[0-9]+
 README_V=$(grep -m1 'io\.github\.sceneview:sceneview:' README.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "MISSING")
 [ "$README_V" = "$SOURCE_VERSION" ] && check "README.md version" "PASS" "$README_V" || check "README.md version" "FAIL" "Expected $SOURCE_VERSION, got $README_V"
 
-# llms.txt mirror drift (issue #1847) — docs/docs/llms.txt must stay
-# byte-identical to root `llms.txt`. The drift detector used to live only in
-# `sync-versions.sh`, which is NOT called by this gate, so PR #1822 was able
-# to land DepthHitResultNode docs in root `llms.txt` without updating the
-# mirror. Wire the dedicated helper here so the PR-blocking gate catches the
-# divergence. The MCP bundle `mcp/src/generated/llms-txt.ts` is no longer a
-# committed mirror — it is generated at build time and `.gitignore`d (#1928),
-# so it is fresh-by-construction and cannot drift.
+# llms.txt mirror invariant (issue #1847, CI-drift hardening) — the two
+# llms.txt mirrors are now BOTH build-generated and `.gitignore`d, so neither
+# can drift from root `llms.txt`:
+#   * `docs/docs/llms.txt` — regenerated from root `llms.txt` at docs-build
+#     time by `.github/workflows/docs.yml` (issue #899 hardening).
+#   * `mcp/src/generated/llms-txt.ts` — generated at build time (#1928).
+# `check-llms-drift.sh` no longer diffs content (there is no committed copy to
+# diff); it enforces the STRUCTURAL invariant — that `docs/docs/llms.txt`
+# stays untracked — so a committed mirror can never silently reappear and
+# reintroduce the drift class that reddened the gate on clean PRs (#1822).
 if [ -x ".claude/scripts/check-llms-drift.sh" ]; then
     if bash .claude/scripts/check-llms-drift.sh > /tmp/check-llms-drift.log 2>&1; then
         check "llms.txt mirror in sync" "PASS" ""
@@ -106,11 +108,11 @@ fi
 # `GeneratedDemos.kt` is no longer committed — it is `.gitignore`d and
 # regenerated before `:samples:android-demo` Kotlin compilation by the
 # `generateDemoRegistry` Gradle task (issue #1976), so it is fresh by
-# construction and cannot drift. The collator's other two outputs (root
-# `llms.txt` + `docs/docs/llms.txt` demo blocks) stay TRACKED and hand-edited:
-# a new fragment added without re-running the collator would leave those blocks
-# stale. `--check` bit-compares those blocks against what the collator would
-# emit, blocking the PR on drift.
+# construction and cannot drift. Likewise `docs/docs/llms.txt` is no longer
+# committed (issue #899 hardening). The only TRACKED collator output is the
+# generated demos block inside root `llms.txt`: a new fragment added without
+# re-running the collator would leave that block stale. `--check`
+# bit-compares it against what the collator would emit, blocking the PR on drift.
 COLLATOR="samples/android-demo/scripts/collate-demos.sh"
 if [ -x "$COLLATOR" ]; then
     if bash "$COLLATOR" --check > /tmp/check-demos-drift.log 2>&1; then
