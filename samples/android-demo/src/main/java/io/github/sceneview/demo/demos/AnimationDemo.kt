@@ -44,6 +44,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LoadingScrim
+import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
@@ -294,8 +295,11 @@ fun AnimationDemo(onBack: () -> Unit) {
     // baseYHeight = 0.0    → camera at the soldier's vertical center for symmetric
     //                        framing (head and feet equidistant from frame edges)
     // target = (0, 0.0, 0) → look-at point at the soldier's center of mass
-    val baseRadius = 3.5f
-    val baseYHeight = 0.5f
+    // baseRadius / baseYHeight / defaultFovDegrees are sourced from DemoMath so the
+    // pure-JVM cinematic-camera tests (AnimationDemoStateMachineTest, issue #880)
+    // assert against the same constants the demo actually renders with.
+    val baseRadius = DemoMath.BASE_RADIUS
+    val baseYHeight = DemoMath.BASE_Y_HEIGHT
     // The soldier is lifted so feet rest on y=0; its bbox center (chest) is at y=0.5 in
     // world space. Camera target lives at chest height so all modes frame the upper body
     // naturally and the rooftop ground line aligns visually with the soldier's feet.
@@ -304,7 +308,7 @@ fun AnimationDemo(onBack: () -> Unit) {
     // Default lens FOV (vertical, degrees). Filament's default focal length of 28 mm
     // works out to ~46° vertical FOV on a phone aspect — we drive this directly so the
     // VERTIGO shot can compress/expand it while radius moves in opposition.
-    val defaultFovDegrees = 45f
+    val defaultFovDegrees = DemoMath.DEFAULT_FOV_DEGREES
 
     // Animatables that drive the scripted camera. yaw/radius/yHeight are spherical
     // coordinates, eyeOverride lets TRACKING bypass them with an absolute position,
@@ -716,7 +720,7 @@ fun AnimationDemo(onBack: () -> Unit) {
             Slider(
                 value = speed,
                 onValueChange = { speed = it },
-                valueRange = 0.25f..3f,
+                valueRange = DemoMath.ANIMATION_SPEED_RANGE,
                 steps = 10
             )
 
@@ -747,7 +751,7 @@ fun AnimationDemo(onBack: () -> Unit) {
             Slider(
                 value = iblIntensity,
                 onValueChange = { iblIntensity = it },
-                valueRange = 0f..10_000f,
+                valueRange = DemoMath.IBL_INTENSITY_RANGE,
             )
         }
     ) {
