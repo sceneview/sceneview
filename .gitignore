@@ -83,6 +83,9 @@ DerivedData/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
 samples/ios-demo/.build/
+# SwiftPM build dir at any depth (root `.build/` appears when `swift build` is
+# run from the worktree root).
+.build/
 
 # ── Android artifacts ─────────────────────────────────────
 *.apk
