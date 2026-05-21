@@ -59,7 +59,16 @@ jobs:
           mkdir -p site
 
           # Static HTML/CSS/JS landing page.
-          cp -r website-static/* site/
+          #
+          # `cp -r website-static/.` (trailing dot) — NOT `website-static/*`.
+          # The `*` glob is expanded by the shell BEFORE `cp` runs and does
+          # NOT match dot-prefixed entries, so it silently skipped the
+          # `.well-known/` directory. The result: `assetlinks.json` and
+          # `apple-app-site-association` never reached the deployed site and
+          # both returned HTTP 404, breaking Android App Links / iOS
+          # Universal Links auto-verification (#1998). The `/.` form copies
+          # the directory contents verbatim, dotfiles included.
+          cp -r website-static/. site/
 
           # Defensive: `site/docs/` is owned exclusively by the MkDocs
           # build (step 2). `website-static/` must not pre-seed it — a
@@ -78,6 +87,18 @@ jobs:
           # version-synced file with no canonical root counterpart.)
           rm -f site/llms.txt
 
+          # `.well-known/` ships only the two verified deep-link manifests
+          # (`assetlinks.json` + `apple-app-site-association`). The
+          # `README.md` and `llms.txt` that sit alongside them in source
+          # are repo-internal docs — drop them so they are not published
+          # under the live `/.well-known/` route (#1998).
+          rm -f site/.well-known/README.md site/.well-known/llms.txt
+
+          # `.nojekyll` disables GitHub Pages' Jekyll build on the
+          # deployed `sceneview.github.io` repo. Without it, Jekyll
+          # excludes dot-prefixed files/directories from its output, so
+          # even a correctly copied `.well-known/` would be dropped at
+          # build time and 404 (#1998).
           touch site/.nojekyll
 
       # ── 2. Build MkDocs (technical docs — /docs/) ───────────────────────
@@ -203,6 +224,25 @@ jobs:
             echo "OK   site/api/sceneview/index.html"
           else
             echo "::warning::site/api/sceneview/index.html missing — Dokka artifact was not available for this run; /api/sceneview/ will 404 until a release run publishes it"
+          fi
+          # The verified deep-link manifests MUST be present, or Android
+          # App Links / iOS Universal Links auto-verification breaks
+          # silently — the regression #1998 fixed (the `cp website-static/*`
+          # glob dropped the dot-prefixed `.well-known/` directory).
+          for path in .well-known/assetlinks.json .well-known/apple-app-site-association; do
+            if [ -f "site/$path" ]; then
+              echo "OK   site/$path"
+            else
+              echo "::error::Missing site/$path — deep-link verification would 404 (#1998)"
+              fail=1
+            fi
+          done
+          # `.nojekyll` keeps GitHub Pages from stripping `.well-known/`.
+          if [ -f site/.nojekyll ]; then
+            echo "OK   site/.nojekyll"
+          else
+            echo "::error::Missing site/.nojekyll — Jekyll would drop dotfiles incl. /.well-known/ (#1998)"
+            fail=1
           fi
           [ "$fail" -eq 0 ] || exit 1
 
