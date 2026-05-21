@@ -1308,6 +1308,88 @@ the body's XZ, or `null` when no surface is available — `PhysicsBody` then fal
 static `floorY` plane. Requires `Config.DepthMode.AUTOMATIC` (or `RAW_DEPTH_ONLY`); without it
 the collider stays empty.
 
+### AR depth-of-field — Filament bokeh driven by ARCore depth (#1716)
+
+`arDepthOfField(view, camera, options)` turns on Filament's native depth-of-field post-pass and
+points its focus distance at any meters value — tapping a near object throws the far background
+out of focus and vice-versa, because `ARCameraStream`'s depth-occlusion material already writes
+real-world depth into Filament's z-buffer (`gl_FragDepth` in `camera_stream_depth.mat`). Filament
+samples the same z-buffer for DoF, so the bokeh blur kicks in for both the virtual scene and the
+camera background without any new render pass — no `.filamat` recompile required.
+
+Inspired by Google's [arcore-depth-lab](https://github.com/googlesamples/arcore-depth-lab)
+"Depth-of-Field" sample.
+
+**Hard requirements** (callers must satisfy both, otherwise the effect degrades silently):
+1. `Config.depthMode` is `AUTOMATIC` or `RAW_DEPTH_ONLY` (without it, no depth image → background
+   never blurs).
+2. `ARCameraStream.isDepthOcclusionEnabled = true` (that's the flag that swaps in the
+   `gl_FragDepth`-writing camera material — see "Depth occlusion" for the longer story).
+
+**Off by default; zero cost when disabled.** Filament fully skips the DoF post-pass when
+`View.DepthOfFieldOptions.enabled` is `false`, which is the state `arDepthOfField` lands in when
+`ARDepthOfFieldOptions.enabled = false`. No measurable frame-budget impact on disabled frames.
+
+**Cross-platform:** Android-only. iOS equivalent is `RealityKit`'s camera DoF via
+`PerspectiveCameraComponent.depthOfFieldOptions` — porting tracked in the iOS parity umbrella.
+Web tracked separately.
+
+```kotlin
+data class ARDepthOfFieldOptions(
+    val focusDepth: Float,             // meters; pair with Frame.depthFocusDistance() for tap-to-focus
+    val blurStrength: Float = 1.0f,    // 0 = effectively off, 1 = stock cinematic, clamped to [0, 8]
+    val enabled: Boolean = true,
+)
+
+@Composable fun arDepthOfField(
+    view: View,
+    camera: CameraComponent,
+    options: ARDepthOfFieldOptions,
+)
+
+// Returns the real-world distance from the camera to the tapped pixel, or null when depth
+// is unavailable. Internally Frame.hitTestDepth(...) — same requirements.
+fun Frame.depthFocusDistance(xPx: Float, yPx: Float): Float?
+```
+
+Typical tap-to-focus loop:
+
+```kotlin
+var focusDepth by remember { mutableStateOf(1.0f) }
+var blurStrength by remember { mutableStateOf(2.0f) }
+var latestFrame by remember { mutableStateOf<Frame?>(null) }
+
+val view = rememberARView(engine)
+val cameraNode = rememberARCameraNode(engine)
+
+arDepthOfField(
+    view = view,
+    camera = cameraNode,
+    options = ARDepthOfFieldOptions(focusDepth, blurStrength),
+)
+
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    view = view,
+    cameraNode = cameraNode,
+    sessionConfiguration = { _, config -> config.depthMode = Config.DepthMode.AUTOMATIC },
+    cameraStream = rememberARCameraStream(materialLoader = materialLoader, creator = {
+        createARCameraStream(materialLoader).apply { isDepthOcclusionEnabled = true }
+    }),
+    onSessionUpdated = { _, frame -> latestFrame = frame },
+    onGestureListener = rememberOnGestureListener(
+        onSingleTapConfirmed = { e, _ ->
+            latestFrame?.depthFocusDistance(e.x, e.y)?.let { focusDepth = it }
+        }
+    )
+)
+```
+
+`blurStrength` maps to Filament's `View.DepthOfFieldOptions.cocScale` (identity at `1.0`), so
+existing Filament tuning advice (cocScale, ring counts, max-CoC bounds) still applies — drop in
+`view.depthOfFieldOptions = view.depthOfFieldOptions.apply { … }` alongside `arDepthOfField` for
+fine-grained control. See the `ar-depth-of-field` demo for the canonical wiring.
+
 ### Scene Semantics — per-pixel outdoor classification (#1730)
 
 ARCore's Scene Semantics labels every pixel of an **outdoor** camera frame with one of 12 classes
@@ -2981,6 +3063,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-cloud-anchor` — Cloud Anchors. Persistent multi-user anchors.
 - `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor / table (depth-driven physics).
 - `ar-depth-occlusion` — Depth Occlusion. Real-world depth masks virtual objects.
+- `ar-depth-of-field` — AR Depth of Field. Tap to focus — real-world bokeh blur.
 - `ar-depth-visualization` — Depth Visualization. False-color depth map with camera↔depth blend.
 - `ar-face` — Augmented Faces. Face mesh tracking and overlays.
 - `ar-image` — Image Tracking. Detect and track reference images.
