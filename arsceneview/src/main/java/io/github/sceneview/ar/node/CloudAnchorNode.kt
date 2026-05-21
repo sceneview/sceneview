@@ -51,27 +51,72 @@ open class CloudAnchorNode constructor(
     var hostState = CloudAnchorState.NONE
         private set
 
+    /**
+     * The active host request, or `null` when no host is in flight.
+     *
+     * Threading (#1811): writes happen on the GL/render thread (from [host], from the ARCore
+     * async callback, from [cancelHost]) and reads can race when callers invoke [cancelHost]
+     * from `viewModelScope.launch { ... }` while the callback is firing. `@Volatile` guarantees
+     * the read observes the most recent write rather than a thread-local cache, and the
+     * `synchronized(this)` block in [cancelHost] serialises the read-then-cancel sequence so
+     * `HostCloudAnchorFuture.cancel()` is never invoked twice on the same future.
+     */
+    @Volatile
     var hostTask: HostCloudAnchorFuture? = null
 
     /**
-     * Hosts a Cloud Anchor based on the [Anchor]
+     * Hosts a Cloud Anchor based on the [Anchor], returning the underlying ARCore
+     * [HostCloudAnchorFuture] so callers can cancel the pending request.
      *
-     * @param ttlDays The lifetime of the anchor in days.
-     * @param onCompleted Called when the task completes successfully or with an error.
+     * **Persistence — `ttlDays`.** ARCore lets the host specify how many days the cloud anchor
+     * lives on Google's ARCore API before being auto-deleted. The valid range is **1..365** days
+     * (inclusive). For short-lived collaborative sessions, `ttlDays = 1` (the default and ARCore's
+     * legacy `hostCloudAnchor` behaviour) is enough. For "leave behind" multi-day or multi-session
+     * experiences (e.g. a treasure hunt that persists for a week), pass a larger value. Pair this
+     * with a [io.github.sceneview.ar.CloudAnchorRegistry] to remember which IDs your app has
+     * hosted/resolved across launches.
      *
-     * @see [Session.hostCloudAnchorWithTtl] for more details.
+     * **Privacy disclosure (required).** ARCore Cloud Anchors upload feature points from the
+     * user's surroundings to Google. Apps using Cloud Anchors must surface a clear in-app
+     * disclosure to the user explaining this data collection and link to Google's ARCore data
+     * policy: https://developers.google.com/ar/data-privacy. See the ARCloudAnchorDemo sample
+     * for a reference disclosure UI.
+     *
+     * Cloud anchor hosting hits Google Cloud and accrues a billing event whether the
+     * caller is still listening or not. **Always cancel the returned future when the
+     * UI scope is leaving** — e.g. from `DisposableEffect.onDispose { future.cancel() }`
+     * in a Compose host. The internal `hostTask` field is still cleared on cancel and
+     * on completion so the node lifecycle (`destroy()` → `cancelHost()`) keeps working
+     * without callers having to.
+     *
+     * @param ttlDays    The lifetime of the anchor in days. Must be in `1..365` (inclusive);
+     *                   any value outside this range will throw [IllegalArgumentException].
+     *                   Defaults to `1` for parity with the legacy ARCore default.
+     * @param onCompleted Called when the task completes successfully or with an error
+     *                    — **not invoked if the future is cancelled** (matches ARCore).
+     *
+     * @return the [HostCloudAnchorFuture]; cancel via [Future.cancel] to stop observing
+     *         and free the network request.
+     *
+     * @throws IllegalArgumentException if [ttlDays] is not in `1..365`.
+     * @see [Session.hostCloudAnchorAsync] for more details.
      */
     fun host(
         session: Session,
         ttlDays: Int = 1,
         onCompleted: ((cloudAnchorId: String?, state: CloudAnchorState) -> Unit)? = null
-    ) {
+    ): HostCloudAnchorFuture {
+        require(ttlDays in TTL_DAYS_RANGE) {
+            "ttlDays must be in $TTL_DAYS_RANGE (ARCore Cloud Anchor persistence limit), was $ttlDays."
+        }
         cancelHost()
-        hostTask = session.hostCloudAnchorAsync(anchor, ttlDays) { cloudAnchorId, state ->
+        val future = session.hostCloudAnchorAsync(anchor, ttlDays) { cloudAnchorId, state ->
             onHosted(cloudAnchorId, state)
             onCompleted?.invoke(cloudAnchorId, state)
             hostTask = null
         }
+        hostTask = future
+        return future
     }
 
     open fun onHosted(cloudAnchorId: String?, state: CloudAnchorState) {
@@ -80,10 +125,20 @@ open class CloudAnchorNode constructor(
         onHosted?.invoke(cloudAnchorId, state)
     }
 
+    /**
+     * Cancels the in-flight host request, if any, and resets [hostState] to [CloudAnchorState.NONE].
+     *
+     * Safe to call from any thread (#1811): the read-cancel-clear sequence is `synchronized` on
+     * `this` so a caller invoking it from `viewModelScope.launch { ... }` cannot race with the
+     * ARCore async callback (which fires on the GL/render thread) into double-cancelling the
+     * same [HostCloudAnchorFuture].
+     */
     fun cancelHost() {
-        hostTask?.cancel()
-        hostState = CloudAnchorState.NONE
-        hostTask = null
+        synchronized(this) {
+            hostTask?.cancel()
+            hostState = CloudAnchorState.NONE
+            hostTask = null
+        }
     }
 
     override fun destroy() {
@@ -94,12 +149,30 @@ open class CloudAnchorNode constructor(
 
     companion object {
         /**
-         * Resolves a Cloud Anchor
+         * Valid range (inclusive) for [host]'s `ttlDays` parameter, mirroring the
+         * ARCore Cloud Anchor persistence limit of 1..365 days.
+         */
+        val TTL_DAYS_RANGE: IntRange = 1..365
+
+        /**
+         * Resolves a Cloud Anchor, returning the underlying ARCore
+         * [com.google.ar.core.ResolveCloudAnchorFuture] so callers can cancel the
+         * pending request.
          *
-         * The [anchor] is replaced with a new anchor returned by [Session.resolveCloudAnchor].
+         * Cloud anchor resolution hits Google Cloud and accrues a billing event
+         * whether the caller is still listening or not. **Always cancel the returned
+         * future when the UI scope is leaving** — e.g. from
+         * `DisposableEffect.onDispose { future.cancel() }` in a Compose host.
+         *
+         * The [anchor] is replaced with a new anchor returned by [Session.resolveCloudAnchorAsync].
          *
          * @param cloudAnchorId The Cloud Anchor ID of the Cloud Anchor.
-         * @param onCompleted Called when the task completes successfully or with an error.
+         * @param onCompleted   Called when the task completes successfully or with an
+         *                      error — **not invoked if the future is cancelled**
+         *                      (matches ARCore).
+         *
+         * @return the [com.google.ar.core.ResolveCloudAnchorFuture]; cancel via
+         *         [com.google.ar.core.Future.cancel] to stop observing.
          *
          * @see [Session.resolveCloudAnchorAsync] for more details.
          */
@@ -108,10 +181,11 @@ open class CloudAnchorNode constructor(
             session: Session,
             cloudAnchorId: String,
             onCompleted: (state: CloudAnchorState, node: CloudAnchorNode?) -> Unit
-        ) = session.resolveCloudAnchorAsync(cloudAnchorId) { anchor, state ->
-            onCompleted(state, anchor?.takeIf { !state.isError }?.let {
-                CloudAnchorNode(engine, it, cloudAnchorId)
-            })
-        }
+        ): com.google.ar.core.ResolveCloudAnchorFuture =
+            session.resolveCloudAnchorAsync(cloudAnchorId) { anchor, state ->
+                onCompleted(state, anchor?.takeIf { !state.isError }?.let {
+                    CloudAnchorNode(engine, it, cloudAnchorId)
+                })
+            }
     }
 }

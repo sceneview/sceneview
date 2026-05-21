@@ -1,5 +1,4 @@
-import { test, expect } from '@playwright/test';
-import { sampleCanvas, assertCanvasContextAlive } from './helpers';
+import { test, expect, sampleCanvas, assertCanvasContextAlive } from './helpers';
 
 /**
  * SceneView Web Demo — visual regression / smoke tests.

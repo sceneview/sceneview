@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `multi-model` demo (registered by
+     `MultiModelFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_multi_model_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_multi_model_title">Multi-Model Scene</string>
+    <string name="demo_multi_model_subtitle">Multiple models in one scene</string>
+    <string name="demo_multi_model">Multi-Model Scene</string>
+    <string name="demo_multi_model_desc">Compose multiple models into a single styled scene</string>
+</resources>

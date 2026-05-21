@@ -64,8 +64,9 @@ class ARCompletenessDefaultsTest {
         // matches the open `{` after `config ->`.
         val openIdx = Regex("""session\.configure\s*\{\s*config\s*->""").find(src)?.range?.last
             ?: throw AssertionError("Could not find `session.configure { config -> ` in ARScene.kt")
-        // We only need to scan past the user callback line, so a window of ~600 chars is plenty.
-        val window = src.substring(openIdx, (openIdx + 1200).coerceAtMost(src.length))
+        // We only need to scan past the user callback line. Window must accommodate the long-form
+        // KDoc-style comments + later additions (e.g. #1732 flashMode wiring).
+        val window = src.substring(openIdx, (openIdx + 2000).coerceAtMost(src.length))
         val modeIdx = window.indexOf(
             "config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR"
         )
