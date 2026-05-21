@@ -46,11 +46,14 @@
 #   --advisory=<csv> Comma-separated platforms whose result is ADVISORY for the
 #                    release gate — a failure on an advisory leg surfaces as a
 #                    WARN (not a hard block) in release-checklist.sh section 14
-#                    (#1651). Default: `android,ar` — these legs run on the
-#                    chronically flaky SwiftShader emulator (#1643) and are
-#                    `continue-on-error: true` in device-qa.yml, so the release
-#                    gate must not be hard-blocked by them. The `web` leg is
-#                    intentionally NOT advisory: it is reliable and BLOCKING.
+#                    (#1651). Default: `android,ar,web-perf`. `android,ar` run
+#                    on the chronically flaky SwiftShader emulator (#1643) and
+#                    are `continue-on-error: true` in device-qa.yml, so the
+#                    release gate must not be hard-blocked by them. `web-perf`
+#                    is the Lighthouse perf sub-leg of `web` (#1879/#1898) —
+#                    advisory until its budgets are proven against real
+#                    baseline data. The `web` leg itself is intentionally NOT
+#                    advisory: it is reliable and BLOCKING.
 #                    Pass `--advisory=` (empty) to make every leg blocking.
 #   -h | --help      Show this help.
 #
@@ -93,7 +96,10 @@ OUT_DIR="$REPO_ROOT"
 # Advisory legs (#1651): a failure here is a release-gate WARN, not a block.
 # `android,ar` ride the flaky SwiftShader emulator and are continue-on-error
 # in device-qa.yml; `web` is reliable and stays BLOCKING.
-ADVISORY="android,ar"
+# `web-perf` (#1898) is the Lighthouse perf sub-leg — advisory at first, until
+# its budgets are proven stable against real baseline data. Promote it out of
+# this CSV to make a budget breach a hard release block.
+ADVISORY="android,ar,web-perf"
 ADVISORY_SET=false
 
 while [[ $# -gt 0 ]]; do
@@ -107,7 +113,7 @@ while [[ $# -gt 0 ]]; do
     --advisory=*) ADVISORY="${1#--advisory=}"; ADVISORY_SET=true; shift ;;
     --advisory)   ADVISORY="${2-}"; ADVISORY_SET=true; shift 2 ;;
     -h|--help)
-      sed -n '2,62p' "$SCRIPT_DIR/device-qa.sh" | sed 's/^# \{0,1\}//'
+      sed -n '2,71p' "$SCRIPT_DIR/device-qa.sh" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "[device-qa] unknown argument: $1" >&2; exit 2 ;;
@@ -384,23 +390,37 @@ run_web() {
     record web failed "playwright rc=$rc" "$kept" "$(( $(date +%s) - started ))"
   fi
 
-  # Optional ADVISORY perf-QA sub-leg (item 5 of #1748, scaffolded in #1879).
-  # Runs Lighthouse against the web-demo and writes web-perf-summary.json
-  # alongside web-qa-summary.json. Continue-on-error: the perf scaffold is
-  # advisory until thresholds settle (tracked in the #1879 follow-up), so a
-  # missing tool / slow run NEVER blocks the device-QA gate. The perf summary
-  # is mirrored into $ARTIFACTS/ but is NOT embedded in the recorded `web`
-  # verdict above — its release-gate weight is decided by the follow-up.
+  # ADVISORY perf-QA sub-leg (item 5 of #1748, scaffolded in #1879, thresholds
+  # tuned + recorded in #1898). Runs Lighthouse against the web-demo and writes
+  # web-perf-summary.json with an ENFORCED per-metric budget. The result is now
+  # `record()`-ed as its own `web-perf` leg so a budget breach surfaces in
+  # device-qa-report.json -> releaseGate.advisoryFailed (web-perf is in the
+  # default ADVISORY CSV — a breach is a release WARN, not a hard block). The
+  # call is still continue-on-error: web-perf-qa.sh exits 0 even on a `failed`
+  # verdict (the breach is carried in the JSON), and a missing tool soft-skips.
   if [[ -x "$SCRIPT_DIR/web-perf-qa.sh" ]]; then
-    log "running advisory web-perf-qa (Lighthouse, scaffold from #1879)"
+    local perf_started; perf_started=$(date +%s)
+    log "running advisory web-perf-qa (Lighthouse, #1879/#1898)"
     bash "$SCRIPT_DIR/web-perf-qa.sh" --out "$webdir/test-results" \
       >> "$ARTIFACTS/web-output.txt" 2>&1 \
       || warn "web-perf-qa.sh exited non-zero — advisory, continuing"
     local perf_summary="$webdir/test-results/web-perf-summary.json"
+    local perf_kept="" perf_status="skipped" perf_reason="web-perf-qa.sh produced no summary"
     if [[ -f "$perf_summary" ]]; then
-      cp "$perf_summary" "$ARTIFACTS/web-perf-summary.json"
-      log "advisory perf summary: $ARTIFACTS/web-perf-summary.json"
+      perf_kept="$ARTIFACTS/web-perf-summary.json"
+      cp "$perf_summary" "$perf_kept"
+      log "advisory perf summary: $perf_kept"
+      # Read status + a human reason straight from the perf summary. python3 is
+      # already a hard dependency of web-perf-qa.sh, so it is safe to use here.
+      perf_status="$(python3 -c "import json;d=json.load(open('$perf_summary'));print(d.get('status','skipped'))" 2>/dev/null || echo skipped)"
+      perf_reason="$(python3 -c "
+import json
+d=json.load(open('$perf_summary'))
+br=d.get('breaches') or []
+print('; '.join(br) if br else (d.get('reason') or 'all metrics within budget'))
+" 2>/dev/null || echo 'could not read web-perf-summary.json')"
     fi
+    record web-perf "$perf_status" "$perf_reason" "$perf_kept" "$(( $(date +%s) - perf_started ))"
   fi
 }
 
