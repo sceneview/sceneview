@@ -333,4 +333,6 @@
     <string name="feedback_tickets_untitled_idea">Idea</string>
     <string name="feedback_tickets_row_meta">#%1$d · %2$s</string>
     <string name="feedback_tickets_no_app">No app available to open the issue</string>
+    <string name="feedback_tickets_open_a11y">Open issue on GitHub</string>
+    <string name="feedback_tickets_status_loading">Loading status</string>
 </resources>

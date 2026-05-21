@@ -15,9 +15,9 @@ enum class TicketState { OPEN, CLOSED, UNKNOWN }
  * public REST API — the issue is the source of truth, never re-implemented.
  *
  * Results are cached in memory for [CACHE_TTL_MS] so reopening the "My feedback"
- * screen does not burn the unauthenticated 60 req/h GitHub limit. [UNKNOWN]
- * results (offline, rate-limited) are deliberately not cached so a transient
- * failure self-heals on the next view.
+ * screen does not burn the unauthenticated 60 req/h GitHub limit. [TicketState.UNKNOWN]
+ * results (offline, rate-limited) are deliberately not cached, so the next call
+ * — a later screen open, or a row scrolled back into view — retries.
  */
 object FeedbackTicketStatus {
     private const val REPO = "sceneview/sceneview"

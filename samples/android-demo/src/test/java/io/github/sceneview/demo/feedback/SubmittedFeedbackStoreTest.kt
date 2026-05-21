@@ -61,4 +61,27 @@ class SubmittedFeedbackStoreTest {
         assertEquals(1, all.size)
         assertEquals(5_000L, all.single().createdAt)
     }
+
+    @Test
+    fun `corrupt stored data is ignored rather than crashing`() {
+        // White-box: write garbage straight into the backing prefs.
+        context.getSharedPreferences("sceneview_feedback", android.content.Context.MODE_PRIVATE)
+            .edit()
+            .putString("submitted_tickets", "{not valid json")
+            .apply()
+
+        assertTrue(SubmittedFeedbackStore.all(context).isEmpty())
+    }
+
+    @Test
+    fun `store keeps only the 50 most recent entries`() {
+        repeat(60) { i ->
+            SubmittedFeedbackStore.add(context, entry(i + 1, createdAt = (i + 1).toLong()))
+        }
+
+        val all = SubmittedFeedbackStore.all(context)
+        assertEquals(50, all.size)
+        assertEquals(60, all.first().issueNumber) // newest kept
+        assertEquals(11, all.last().issueNumber) // entries 1..10 dropped
+    }
 }

@@ -16,11 +16,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,6 +64,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -489,6 +494,7 @@ private fun TicketsStep(
                 Text(stringResource(R.string.feedback_tickets_back))
             }
         },
+        scrollableContent = false,
     ) {
         Spacer(Modifier.height(8.dp))
         StepTitle(stringResource(R.string.feedback_tickets_title))
@@ -498,12 +504,20 @@ private fun TicketsStep(
         if (tickets.isEmpty()) {
             StepBody(stringResource(R.string.feedback_tickets_empty))
         } else {
-            tickets.forEachIndexed { index, ticket ->
-                if (index > 0) Spacer(Modifier.height(12.dp))
-                TicketRow(ticket = ticket, onClick = { onOpenTicket(ticket) })
+            // A LazyColumn so each row's GitHub status fetch fires only when the
+            // row scrolls into view — not all at once on open.
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(bottom = 8.dp),
+            ) {
+                items(tickets, key = { it.issueNumber }) { ticket ->
+                    TicketRow(ticket = ticket, onClick = { onOpenTicket(ticket) })
+                }
             }
         }
-        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -515,11 +529,17 @@ private fun TicketRow(ticket: SubmittedFeedback, onClick: () -> Unit) {
         value = FeedbackTicketStatus.fetch(ticket.issueNumber)
     }
     val isBug = ticket.category == FeedbackCategory.BUG
-    val tint = if (isBug) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+    // A category accent, not an alert — these are the user's own filed tickets,
+    // so `error` (reserved for alarms) would wrongly read as "something wrong".
+    val tint = if (isBug) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onClick),
+            .clickable(
+                role = Role.Button,
+                onClickLabel = stringResource(R.string.feedback_tickets_open_a11y),
+                onClick = onClick,
+            ),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 1.dp,
@@ -569,10 +589,15 @@ private fun TicketRow(ticket: SubmittedFeedback, onClick: () -> Unit) {
 @Composable
 private fun TicketStatusBadge(state: TicketState?) {
     when (state) {
-        null -> CircularProgressIndicator(
-            modifier = Modifier.size(16.dp),
-            strokeWidth = 2.dp,
-        )
+        null -> {
+            val loadingDesc = stringResource(R.string.feedback_tickets_status_loading)
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .size(16.dp)
+                    .semantics { contentDescription = loadingDesc },
+                strokeWidth = 2.dp,
+            )
+        }
         TicketState.OPEN -> StatusPill(
             text = stringResource(R.string.feedback_tickets_open),
             container = MaterialTheme.colorScheme.tertiaryContainer,
@@ -633,11 +658,18 @@ private fun openIssue(context: Context, url: String) {
 
 // ── Shared pieces ────────────────────────────────────────────────────────────
 
-/** Close row, scrolling content area, and a pinned action area at the bottom. */
+/**
+ * Close row, content area, and a pinned action area at the bottom.
+ *
+ * @param scrollableContent when true (default) the content area is wrapped in a
+ *   `verticalScroll`; pass false for a step that owns its own scrolling (e.g. a
+ *   `LazyColumn`), since nesting two same-axis scroll containers is illegal.
+ */
 @Composable
 private fun FeedbackStepScaffold(
     onClose: (() -> Unit)?,
     actions: @Composable ColumnScope.() -> Unit = {},
+    scrollableContent: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -665,7 +697,13 @@ private fun FeedbackStepScaffold(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .verticalScroll(rememberScrollState())
+                .then(
+                    if (scrollableContent) {
+                        Modifier.verticalScroll(rememberScrollState())
+                    } else {
+                        Modifier
+                    },
+                )
                 .padding(horizontal = 24.dp),
             content = content,
         )
