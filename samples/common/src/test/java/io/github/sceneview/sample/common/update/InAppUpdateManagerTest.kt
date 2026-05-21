@@ -6,6 +6,7 @@ import com.google.android.play.core.appupdate.testing.FakeAppUpdateManager
 import com.google.android.play.core.install.model.AppUpdateType
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -60,14 +61,51 @@ class InAppUpdateManagerTest {
     }
 
     @Test
-    fun `update available + user consent + download completion drives READY_TO_INSTALL`() {
+    fun `checkForUpdate surfaces AVAILABLE but does NOT start the Google flow`() {
+        // Single-modal invariant (#1941): detecting an update must NOT pop the
+        // Google consent modal — it only surfaces the in-app AVAILABLE banner.
         fake.setUpdateAvailable(/* availableVersionCode = */ 42)
         manager.checkForUpdate()
         shadowOf(activity.mainLooper).idle()
 
-        // Sanity: `startUpdateFlow` was invoked with FLEXIBLE — guards against
-        // a future refactor silently degrading to IMMEDIATE.
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, manager.updateState)
+        // The Google modal must not have been triggered by checkForUpdate().
+        assertFalse(fake.isConfirmationDialogVisible)
+    }
+
+    @Test
+    fun `startUpdate triggers the single Google consent modal`() {
+        // Only a deliberate startUpdate() tap pops the Google modal — exactly once.
+        fake.setUpdateAvailable(42)
+        manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertFalse(fake.isConfirmationDialogVisible)
+
+        manager.startUpdate()
+        shadowOf(activity.mainLooper).idle()
+
+        assertTrue(fake.isConfirmationDialogVisible)
+        // Guards against a future refactor silently degrading to IMMEDIATE.
         assertEquals(AppUpdateType.FLEXIBLE, fake.typeForUpdateInProgress)
+    }
+
+    @Test
+    fun `startUpdate is a no-op unless state is AVAILABLE`() {
+        // A stray startUpdate() call before any update is detected must do nothing.
+        manager.startUpdate()
+        shadowOf(activity.mainLooper).idle()
+
+        assertFalse(fake.isConfirmationDialogVisible)
+        assertEquals(InAppUpdateManager.UpdateState.IDLE, manager.updateState)
+    }
+
+    @Test
+    fun `update available + user consent + download completion drives READY_TO_INSTALL`() {
+        fake.setUpdateAvailable(/* availableVersionCode = */ 42)
+        manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        manager.startUpdate()
+        shadowOf(activity.mainLooper).idle()
 
         fake.userAcceptsUpdate()
         fake.downloadStarts()
@@ -81,6 +119,8 @@ class InAppUpdateManagerTest {
     fun `install completion returns state to IDLE`() {
         fake.setUpdateAvailable(42)
         manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        manager.startUpdate()
         shadowOf(activity.mainLooper).idle()
         fake.userAcceptsUpdate()
         fake.downloadStarts()
@@ -98,6 +138,29 @@ class InAppUpdateManagerTest {
     }
 
     @Test
+    fun `completeUpdate is a no-op unless state is READY_TO_INSTALL`() {
+        // Restart-only-when-ready invariant (#1941): the banner's Restart button
+        // must not finish an install that isn't actually downloaded yet.
+        fake.setUpdateAvailable(42)
+        manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        manager.startUpdate()
+        shadowOf(activity.mainLooper).idle()
+        fake.userAcceptsUpdate()
+        fake.downloadStarts()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.DOWNLOADING, manager.updateState)
+
+        // completeUpdate() while DOWNLOADING must NOT complete the install.
+        manager.completeUpdate()
+        fake.installCompletes()
+        shadowOf(activity.mainLooper).idle()
+
+        // The install never completed, so state did not fall to IDLE.
+        assertEquals(InAppUpdateManager.UpdateState.DOWNLOADING, manager.updateState)
+    }
+
+    @Test
     fun `checkForStalledUpdate picks up an already-DOWNLOADED install on a fresh manager`() {
         // Simulate: a prior session downloaded the update; the new
         // InAppUpdateManager comes online in onResume and must surface the
@@ -105,6 +168,8 @@ class InAppUpdateManagerTest {
         fake.setUpdateAvailable(42)
         val priming = InAppUpdateManager(activity, fake)
         priming.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        priming.startUpdate()
         shadowOf(activity.mainLooper).idle()
         fake.userAcceptsUpdate()
         fake.downloadStarts()
@@ -132,27 +197,46 @@ class InAppUpdateManagerTest {
     fun `two rapid checkForUpdate calls trigger only one update flow`() {
         // Simulate a fast double-resume: both `checkForUpdate()` calls land
         // while the first SDK round-trip is still in flight (state CHECKING).
-        // The `inFlight` guard must drop the second call so `startUpdateFlow`
-        // runs exactly once — otherwise the user is double-prompted.
+        // The `inFlight` guard must drop the second call so the SDK is queried
+        // exactly once and the manager lands cleanly in AVAILABLE.
         fake.setUpdateAvailable(42)
         manager.checkForUpdate()
         manager.checkForUpdate() // second call before the looper idles
         shadowOf(activity.mainLooper).idle()
 
-        // FakeAppUpdateManager only tracks ONE in-progress flow; a duplicate
-        // `startUpdateFlow` on the same fake would clobber its internal state.
-        // The flow being cleanly FLEXIBLE-typed and acceptable confirms a
-        // single, well-formed invocation.
-        assertEquals(AppUpdateType.FLEXIBLE, fake.typeForUpdateInProgress)
-        assertTrue(fake.isConfirmationDialogVisible)
         assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, manager.updateState)
+        // No Google modal was triggered by either checkForUpdate() call.
+        assertFalse(fake.isConfirmationDialogVisible)
+    }
+
+    @Test
+    fun `double onResume in the AVAILABLE window produces no extra prompt`() {
+        // Single-modal invariant (#1941): once the AVAILABLE banner is showing,
+        // a second onResume (config change, fast background-foreground) must be
+        // a complete no-op — the AVAILABLE early-return blocks any re-query and
+        // never re-pops the Google modal.
+        fake.setUpdateAvailable(42)
+        manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, manager.updateState)
+
+        // Second resume while AVAILABLE — must do nothing.
+        manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, manager.updateState)
+        assertFalse(fake.isConfirmationDialogVisible)
+
+        // The user finally taps Update — exactly one Google modal appears.
+        manager.startUpdate()
+        shadowOf(activity.mainLooper).idle()
+        assertTrue(fake.isConfirmationDialogVisible)
     }
 
     @Test
     fun `inFlight clears after a failed check so a later check can run`() {
-        // A failed `appUpdateInfo` round-trip must clear the `inFlight` guard
-        // on the failure listener — otherwise the manager is permanently
-        // locked out of all future checks.
+        // A no-update round-trip must clear the `inFlight` guard so the manager
+        // is not permanently locked out of all future checks.
         fake.setUpdateNotAvailable()
         manager.checkForUpdate()
         shadowOf(activity.mainLooper).idle()
@@ -169,6 +253,8 @@ class InAppUpdateManagerTest {
     fun `DOWNLOADING state surfaces with non-zero downloadProgress`() {
         fake.setUpdateAvailable(42)
         manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        manager.startUpdate()
         shadowOf(activity.mainLooper).idle()
         fake.userAcceptsUpdate()
         // `downloadStarts()` flips the fake into the DOWNLOADING phase and
@@ -194,6 +280,8 @@ class InAppUpdateManagerTest {
     fun `zero totalBytes does not crash progress computation`() {
         fake.setUpdateAvailable(42)
         manager.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        manager.startUpdate()
         shadowOf(activity.mainLooper).idle()
         fake.userAcceptsUpdate()
         fake.downloadStarts()

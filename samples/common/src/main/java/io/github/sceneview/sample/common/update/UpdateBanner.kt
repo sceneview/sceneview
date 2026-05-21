@@ -33,21 +33,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * Material 3 Expressive banner that surfaces a Play in-app update in progress.
+ * Material 3 Expressive banner that surfaces a Play in-app update.
  *
  * No-op while [InAppUpdateManager.updateState] is `IDLE` / `CHECKING` /
- * `AVAILABLE` / `UP_TO_DATE`. Renders a progress card during `DOWNLOADING` and a
- * primary "Restart" CTA once the install reaches `READY_TO_INSTALL`.
+ * `UP_TO_DATE`. Renders an integrated card for every actionable state so the
+ * whole flexible-update flow feels native to the demo — no Google modals beyond
+ * the single consent dialog (#1941):
+ *
+ * - `AVAILABLE` → "A new version is available" + an in-app **Update** button
+ *   that calls [InAppUpdateManager.startUpdate] (the one Google consent modal).
+ * - `DOWNLOADING` → integrated progress bar.
+ * - `READY_TO_INSTALL` → "Update ready" + a **Restart** button that calls
+ *   [InAppUpdateManager.completeUpdate].
  *
  * The banner is intentionally rounded + edge-aligned (24 dp radius, 16 dp inset)
  * so it overlays cleanly on top of any sample UI — including the full-bleed
  * SceneView surface — without competing with primary CTAs.
  *
- * @param restartFocusRequester optional [FocusRequester] for the "Restart" CTA.
- * D-pad hosts (Android TV) should pass one in: when the install reaches
- * `READY_TO_INSTALL` the button is focused automatically so the Leanback user
- * can act without hunting for it. Phone hosts leave this `null` — touch users
- * tap the button regardless, and an unsolicited focus request would be inert.
+ * @param restartFocusRequester optional [FocusRequester] for the action CTA.
+ * D-pad hosts (Android TV) should pass one in: when the banner reaches an
+ * actionable state the button is focused automatically so the Leanback user can
+ * act without hunting for it. Phone hosts leave this `null` — touch users tap
+ * the button regardless, and an unsolicited focus request would be inert.
  */
 @Composable
 fun UpdateBanner(
@@ -55,8 +62,10 @@ fun UpdateBanner(
     modifier: Modifier = Modifier,
     restartFocusRequester: FocusRequester? = null,
 ) {
-    val showBanner = updateManager.updateState == InAppUpdateManager.UpdateState.DOWNLOADING
-            || updateManager.updateState == InAppUpdateManager.UpdateState.READY_TO_INSTALL
+    val state = updateManager.updateState
+    val showBanner = state == InAppUpdateManager.UpdateState.AVAILABLE
+            || state == InAppUpdateManager.UpdateState.DOWNLOADING
+            || state == InAppUpdateManager.UpdateState.READY_TO_INSTALL
 
     AnimatedVisibility(
         visible = showBanner,
@@ -70,7 +79,7 @@ fun UpdateBanner(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(
-                containerColor = when (updateManager.updateState) {
+                containerColor = when (state) {
                     InAppUpdateManager.UpdateState.READY_TO_INSTALL ->
                         MaterialTheme.colorScheme.primaryContainer
                     else ->
@@ -86,53 +95,84 @@ fun UpdateBanner(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = when (updateManager.updateState) {
-                                InAppUpdateManager.UpdateState.DOWNLOADING -> "Downloading update…"
-                                InAppUpdateManager.UpdateState.READY_TO_INSTALL -> "Update ready!"
+                            text = when (state) {
+                                InAppUpdateManager.UpdateState.AVAILABLE ->
+                                    "A new version is available"
+                                InAppUpdateManager.UpdateState.DOWNLOADING ->
+                                    "Downloading update…"
+                                InAppUpdateManager.UpdateState.READY_TO_INSTALL ->
+                                    "Update ready!"
                                 else -> ""
                             },
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
-                        if (updateManager.updateState == InAppUpdateManager.UpdateState.DOWNLOADING) {
-                            Text(
+                        when (state) {
+                            InAppUpdateManager.UpdateState.AVAILABLE -> Text(
+                                text = "Tap Update to download it in the background.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            InAppUpdateManager.UpdateState.DOWNLOADING -> Text(
                                 text = "${(updateManager.downloadProgress * 100).toInt()}%",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
+                            else -> {}
                         }
                     }
 
-                    if (updateManager.updateState == InAppUpdateManager.UpdateState.READY_TO_INSTALL) {
-                        // Auto-focus the Restart CTA for D-pad hosts. Keyed on
-                        // `updateState` so it fires exactly once on the
-                        // IDLE/DOWNLOADING -> READY_TO_INSTALL transition, not
-                        // on every recomposition. No-op for phone hosts, which
-                        // pass `restartFocusRequester == null`.
-                        if (restartFocusRequester != null) {
-                            LaunchedEffect(updateManager.updateState) {
-                                restartFocusRequester.requestFocus()
+                    when (state) {
+                        InAppUpdateManager.UpdateState.AVAILABLE -> {
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Button(
+                                // `startUpdate()` is a no-op once the state
+                                // leaves AVAILABLE, so a fast double tap can't
+                                // double-prompt — the manager owns the guard.
+                                onClick = { updateManager.startUpdate() },
+                                shape = RoundedCornerShape(50),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Text("Update")
                             }
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Button(
-                            onClick = { updateManager.completeUpdate() },
-                            shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            ),
-                            modifier = if (restartFocusRequester != null) {
-                                Modifier.focusRequester(restartFocusRequester)
-                            } else {
-                                Modifier
+                        InAppUpdateManager.UpdateState.READY_TO_INSTALL -> {
+                            // Auto-focus the Restart CTA for D-pad hosts. Keyed
+                            // on `updateState` so it fires exactly once on the
+                            // transition into READY_TO_INSTALL, not on every
+                            // recomposition. No-op for phone hosts, which pass
+                            // `restartFocusRequester == null`.
+                            if (restartFocusRequester != null) {
+                                LaunchedEffect(state) {
+                                    restartFocusRequester.requestFocus()
+                                }
                             }
-                        ) {
-                            Text("Restart")
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Button(
+                                // `completeUpdate()` is a no-op unless the
+                                // state is READY_TO_INSTALL — the manager
+                                // guards it, so the button can't misfire.
+                                onClick = { updateManager.completeUpdate() },
+                                shape = RoundedCornerShape(50),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                ),
+                                modifier = if (restartFocusRequester != null) {
+                                    Modifier.focusRequester(restartFocusRequester)
+                                } else {
+                                    Modifier
+                                }
+                            ) {
+                                Text("Restart")
+                            }
                         }
+                        else -> {}
                     }
                 }
 
-                if (updateManager.updateState == InAppUpdateManager.UpdateState.DOWNLOADING) {
+                if (state == InAppUpdateManager.UpdateState.DOWNLOADING) {
                     Spacer(modifier = Modifier.height(12.dp))
                     LinearProgressIndicator(
                         progress = { updateManager.downloadProgress },

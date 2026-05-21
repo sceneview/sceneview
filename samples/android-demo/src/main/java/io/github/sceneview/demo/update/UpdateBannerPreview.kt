@@ -33,6 +33,49 @@ import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 
 @Composable
+private fun UpdateBannerAvailable() {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "A new version is available",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Tap Update to download it in the background.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Button(
+                    onClick = {},
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text("Update")
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun UpdateBannerDownloading(progress: Float) {
     Card(
         modifier = Modifier
@@ -108,6 +151,14 @@ private fun UpdateBannerReadyToInstall() {
     }
 }
 
+@Preview(showBackground = true, name = "UpdateBanner - Available")
+@Composable
+private fun UpdateBannerAvailablePreview() {
+    SceneViewDemoTheme(dynamicColor = false) {
+        Surface { UpdateBannerAvailable() }
+    }
+}
+
 @Preview(showBackground = true, name = "UpdateBanner - Downloading 30%")
 @Composable
 private fun UpdateBannerDownloading30Preview() {
@@ -129,6 +180,14 @@ private fun UpdateBannerDownloading75Preview() {
 private fun UpdateBannerReadyPreview() {
     SceneViewDemoTheme(dynamicColor = false) {
         Surface { UpdateBannerReadyToInstall() }
+    }
+}
+
+@Preview(showBackground = true, name = "UpdateBanner - Dark Available", uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun UpdateBannerDarkAvailablePreview() {
+    SceneViewDemoTheme(dynamicColor = false) {
+        Surface { UpdateBannerAvailable() }
     }
 }
 
