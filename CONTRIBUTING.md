@@ -41,6 +41,36 @@ Open the project in Android Studio. Gradle sync will pull all dependencies autom
 
 For iOS (SceneViewSwift), open `SceneViewSwift/Package.swift` in Xcode and build from there.
 
+### Store secrets and the release-build guard
+
+The demo apps read two optional secrets — `SKETCHFAB_API_KEY` (Sketchfab
+carousels in the Explore tab) and `ARCORE_API_KEY` (AR Streetscape / Geospatial
+/ Cloud Anchor demos). They're resolved from an environment variable or, on
+developer machines, from the repo-root `local.properties`
+(`sketchfab.api.key` and `ARCORE_API_KEY` respectively).
+
+**Debug builds are permissive** — a missing key just disables those features at
+runtime, so you can build and contribute without either secret.
+
+**Release builds fail loud (#1915).** A release `assembleRelease` /
+`bundleRelease` (Android) or `Release` archive (iOS) *refuses to build* when a
+secret is empty or unsubstituted, instead of silently shipping a store APK with
+invisible Sketchfab carousels (the regression class behind #1909). This guard
+only fires on the release path — it never affects `assembleDebug` or PR-check
+builds.
+
+Forks have no access to the org GitHub Secrets, so to produce a release build
+without the keys, opt out of the guard:
+
+```bash
+# Android
+./gradlew :samples:android-demo:bundleRelease -PSV_ALLOW_MISSING_SECRETS=1
+# or export SV_ALLOW_MISSING_SECRETS=1
+
+# iOS
+xcodebuild archive ... SV_ALLOW_MISSING_SECRETS=1
+```
+
 ### Run tests
 
 ```bash
