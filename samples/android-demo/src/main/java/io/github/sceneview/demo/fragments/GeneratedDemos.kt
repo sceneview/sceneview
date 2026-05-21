@@ -61,6 +61,7 @@ object GeneratedDemos {
         ModelViewerFragment,
         MovableLightFragment,
         MultiModelFragment,
+        OcclusionMaterialFragment,
         PhysicsFragment,
         PostProcessingFragment,
         ReflectionProbesFragment,
@@ -126,6 +127,7 @@ object GeneratedDemos {
             "model-viewer" -> ModelViewerFragment.Screen(onBack)
             "movable-light" -> MovableLightFragment.Screen(onBack)
             "multi-model" -> MultiModelFragment.Screen(onBack)
+            "occlusion-material" -> OcclusionMaterialFragment.Screen(onBack)
             "physics" -> PhysicsFragment.Screen(onBack)
             "post-processing" -> PostProcessingFragment.Screen(onBack)
             "reflection-probes" -> ReflectionProbesFragment.Screen(onBack)

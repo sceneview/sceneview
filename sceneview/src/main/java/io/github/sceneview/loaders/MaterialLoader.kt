@@ -87,6 +87,9 @@ class MaterialLoader(
     private val viewTextureUnlitMaterial by lazy {
         createMaterial("$kMaterialsAssetFolder/view_texture_unlit.filamat")
     }
+    private val occlusionMaterial by lazy {
+        createMaterial("$kMaterialsAssetFolder/occlusion.filamat")
+    }
 
     private val materials = java.util.Collections.synchronizedList(mutableListOf<Material>())
     private val materialInstances = java.util.Collections.synchronizedList(mutableListOf<MaterialInstance>())
@@ -389,6 +392,42 @@ class MaterialLoader(
         setExternalTexture(viewTexture)
         setInvertFrontFaceWinding(invertFrontFaceWinding)
     }
+
+    /**
+     * Creates a [MaterialInstance] of the **occlusion material** — invisible, depth-writing.
+     *
+     * Geometry rendered with this material punches the depth buffer but emits no colour, so
+     * any virtual node behind it is hidden by the depth test while the surface itself paints
+     * zero pixels. This is the SceneView equivalent of:
+     *
+     * - RealityKit's [`OcclusionMaterial`](https://developer.apple.com/documentation/realitykit/occlusionmaterial)
+     * - Sceneform legacy's `MaterialFactory.makeOcclusionMaterial(...)`
+     *
+     * **Use cases**
+     *   * Virtual aquarium / shop-window walls — author the wall as a quad, then put fish
+     *     behind it and they vanish at the wall plane like real depth occlusion.
+     *   * Door / window cutouts on photogrammetry assets — paint the opening with the
+     *     occlusion material to suppress everything visible through it.
+     *   * "Real-world geometry stand-in" stubs in non-AR 3D scenes (proxy walls / props).
+     *
+     * For AR scenes that need to occlude virtual content against the **live depth camera**,
+     * use `ARSceneView`'s built-in depth-aware camera stream
+     * ([`ARCameraStream.isDepthOcclusionEnabled`][io.github.sceneview.ar.camera.ARCameraStream])
+     * — that path samples ARCore's per-pixel depth image, not a static occluder mesh.
+     *
+     * **Caveats**
+     *   * No colour parameters — the material has nothing to tint. Apply your scene's
+     *     reflectance/highlight via lit nodes positioned in front of the occluder if you
+     *     need the occluder surface to look like glass / a screen.
+     *   * Draws as **opaque** so the renderable lands in the opaque pass — virtual
+     *     transparents behind it skip their fragment shader entirely, which is usually the
+     *     intent (an "invisible wall" shouldn't paint translucents through itself).
+     *   * Double-sided — back-face culling is disabled so single-sided plane occluders work
+     *     in either orientation. If you author a closed convex mesh as an occluder, that's
+     *     still correct (the depth buffer only takes the nearest fragment per pixel).
+     */
+    @MainThread
+    fun createOcclusionInstance(): MaterialInstance = createInstance(occlusionMaterial)
 
     fun destroyMaterial(material: Material) {
         if (material in materials) {

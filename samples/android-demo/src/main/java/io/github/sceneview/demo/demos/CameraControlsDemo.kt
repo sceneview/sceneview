@@ -23,10 +23,12 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.google.android.filament.utils.Manipulator
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.SceneAction
@@ -86,10 +89,22 @@ fun CameraControlsDemo(onBack: () -> Unit) {
     // from scratch at its home position. Both the mode chips and the Reset button go through it.
     var resetKey by remember { mutableIntStateOf(0) }
 
-    // Home camera at 1.5 m so the 0.3 m helmet fills a meaningful fraction of the
-    // viewport. Previous z = 4 made the model render at ~10% of frame — far too small.
-    // QA finding 2026-05-11.
-    val homePosition = remember { Position(0.0f, 0.0f, 1.5f) }
+    // Camera distance, in metres, driving the manipulator's home / flight-start
+    // position along -Z. A labelled "Camera distance" slider in the controls
+    // sheet exposes it (#1965): the underlying Filament `Manipulator` only zooms
+    // via a pinch gesture, which is invisible discoverability-wise and — crucially
+    // — untestable by Maestro (no pinch). The slider COMPLEMENTS pinch-to-zoom,
+    // it does not replace it. Default 1.5 m so the 0.3 m helmet fills a meaningful
+    // fraction of the viewport (QA finding 2026-05-11); seeded from the #1571
+    // `--ef camera_distance` / `?cameraDistance=` deep-link hook when present so a
+    // deep-linked launch frames at the requested zoom and the slider reflects it.
+    var cameraDistance by remember {
+        mutableFloatStateOf(DemoSettings.cameraDistance?.coerceIn(0.5f, 8f) ?: 1.5f)
+    }
+
+    // Home / target the manipulator orbits. `homePosition` tracks `cameraDistance`
+    // so the slider drives a live rebuild (see the `remember(...)` key below).
+    val homePosition = Position(0.0f, 0.0f, cameraDistance)
     val target = remember { Position(0.0f, 0.0f, 0.0f) }
 
     val engine = rememberEngine()
@@ -144,19 +159,34 @@ fun CameraControlsDemo(onBack: () -> Unit) {
                 },
                 style = MaterialTheme.typography.bodySmall
             )
+            Spacer(modifier = Modifier.height(16.dp))
+            // Camera-distance slider — complements pinch-to-zoom by making the
+            // zoom level discoverable and Maestro-testable (no pinch in Maestro).
+            // "Reset Camera" is the demo's primary reset action — it lives
+            // on-screen via SceneActionBar (#1964), not here in the sheet.
+            Text(
+                text = "Camera distance: %.1f m".format(cameraDistance),
+                style = MaterialTheme.typography.labelLarge
+            )
+            Slider(
+                value = cameraDistance,
+                onValueChange = { cameraDistance = it },
+                valueRange = 0.5f..8f
+            )
         }
     ) {
-        // key(selectedMode, resetKey) forces a fresh rememberCameraManipulator on either
-        // a mode change or a reset tap — the creator lambda captures the current mode and
-        // rebuilds the Manipulator from its home position. This is the only reliable way
-        // to swap Manipulator.Mode mid-session since Manipulator itself has no setMode API.
+        // key(selectedMode, resetKey, cameraDistance) forces a fresh rememberCameraManipulator
+        // on a mode change, a reset tap, or a "Camera distance" slider drag — the creator
+        // lambda captures the current mode and rebuilds the Manipulator from its home
+        // position. This is the only reliable way to swap Manipulator.Mode mid-session
+        // (Manipulator has no setMode API) and likewise to re-home it at a new distance.
         Box(modifier = Modifier.fillMaxSize()) {
-            androidx.compose.runtime.key(selectedMode, resetKey) {
+            androidx.compose.runtime.key(selectedMode, resetKey, cameraDistance) {
                 // Build the underlying Manipulator here and keep our own reference so the
                 // FREE_FLIGHT movement pad can drive it through keyDown/keyUp. ORBIT and MAP
                 // ignore the flight* builder values; FREE_FLIGHT needs flightStartPosition set
                 // away from the origin, otherwise the camera spawns inside the helmet (#1428).
-                val manipulator = remember(selectedMode, resetKey) {
+                val manipulator = remember(selectedMode, resetKey, cameraDistance) {
                     Manipulator.Builder()
                         .orbitHomePosition(homePosition)
                         .targetPosition(target)
@@ -213,7 +243,7 @@ fun CameraControlsDemo(onBack: () -> Unit) {
             // sheet. In FREE_FLIGHT mode the movement pad above is offset up so
             // the two never collide.
             SceneActionBar(
-                SceneAction("Reset Camera", onClick = { resetKey++ }),
+                SceneAction("Reset Camera", onClick = { cameraDistance = 1.5f; resetKey++ }),
             )
         }
     }
