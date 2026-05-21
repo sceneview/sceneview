@@ -1,0 +1,31 @@
+{
+  "_comment": "Web-demo Lighthouse perf baseline — feeds the budgets enforced by .claude/scripts/web-perf-qa.sh (#1898, follow-up of #1879).",
+  "_howToRecompute": [
+    "1. Run `bash .claude/scripts/web-perf-qa.sh` on every push to main (or piggyback on device-qa.yml's web job) for ~7 days.",
+    "2. Collect each run's web-perf-summary.json from the device-qa-report-web workflow artifact.",
+    "3. Append { date, fcp_ms, lcp_ms, cls, performanceScore } to the `samples` array below.",
+    "4. Set each budget to the 95th percentile of its metric across all samples (a perf-score budget is the 5th percentile — higher is better).",
+    "5. Copy the recomputed budgets into the BUDGET_* defaults + header table of web-perf-qa.sh, and bump `lastUpdated` here.",
+    "A fresh contributor can reproduce the budgets entirely from this file's `samples` array — no hidden state."
+  ],
+  "schemaVersion": 1,
+  "preset": "mobile",
+  "lastUpdated": "2026-05-21",
+  "budgets": {
+    "fcp_ms": 4000,
+    "lcp_ms": 4400,
+    "cls": 0.10,
+    "performanceScore": 0.65
+  },
+  "budgetRationale": "First cut — sized from the single #1879 smoke run plus safety margin, NOT yet a 7-day 95th-percentile baseline. Intentionally loose: catch a real regression, never fail a healthy run. Re-tighten once `samples` has real data.",
+  "samples": [
+    {
+      "date": "2026-05-14",
+      "source": "#1879 smoke test",
+      "fcp_ms": 3008,
+      "lcp_ms": 3178,
+      "cls": 0.0,
+      "performanceScore": 0.79
+    }
+  ]
+}
