@@ -43,6 +43,16 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
 
+      # Tag pushes only — see #1909. `build-apks.yml` runs on every main push
+      # too (debug APKs for QA), but those builds intentionally tolerate a
+      # missing key (forks, internal snapshots). Only the tag-attached release
+      # APKs must fail-fast on a blank secret.
+      - name: Verify Sketchfab API key wiring (#1909)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        run: bash .claude/scripts/verify-sketchfab-key.sh
+
       - name: Build all sample APKs
         env:
           # Optional. When unset (forks, PRs from forks), the demo's runtime

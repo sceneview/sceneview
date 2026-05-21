@@ -138,8 +138,11 @@ echo ""
 
 # --- 1. refresh refs -------------------------------------------------------
 echo -e "${CYAN}--- Fetching origin --prune ---${NC}"
-git -C "$REPO_ROOT" fetch origin --prune --quiet 2>/dev/null \
-    || echo -e "${YELLOW}Warning: fetch failed — working from local refs.${NC}"
+FETCH_FAILED=false
+if ! git -C "$REPO_ROOT" fetch origin --prune --quiet 2>/dev/null; then
+    echo -e "${YELLOW}Warning: fetch failed — working from local refs.${NC}"
+    FETCH_FAILED=true
+fi
 echo ""
 
 # --- 1b. bulk PR state -----------------------------------------------------
@@ -279,6 +282,10 @@ if [ "$DO_WORKTREES" = "true" ]; then
         echo -e "${CYAN}--- Worktrees (delegating to worktree-auto-prune.sh) ---${NC}"
         PRUNE_ARGS=()
         [ "$DRY_RUN" = "true" ] && PRUNE_ARGS+=(--dry-run) || PRUNE_ARGS+=(--yes)
+        # If our own fetch above failed, pass --allow-stale so the
+        # delegate doesn't abort on its own re-fetch attempt (we've
+        # already accepted local refs at the wrapper level).
+        [ "$FETCH_FAILED" = "true" ] && PRUNE_ARGS+=(--allow-stale)
         # Always spare the current worktree, plus any --keep paths.
         PRUNE_ARGS+=(--keep "$(git rev-parse --show-toplevel)")
         for k in "${KEEP[@]:-}"; do

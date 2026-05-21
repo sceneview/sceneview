@@ -68,6 +68,7 @@ class WebXRFeatureTest {
         assertEquals("hand-tracking", XRFeature.HAND_TRACKING)
         assertEquals("layers", XRFeature.LAYERS)
         assertEquals("mesh-detection", XRFeature.MESH_DETECTION)
+        assertEquals("image-tracking", XRFeature.IMAGE_TRACKING)
     }
 
     @Test
@@ -81,7 +82,8 @@ class WebXRFeatureTest {
             XRFeature.DEPTH_SENSING,
             XRFeature.HAND_TRACKING,
             XRFeature.LAYERS,
-            XRFeature.MESH_DETECTION
+            XRFeature.MESH_DETECTION,
+            XRFeature.IMAGE_TRACKING,
         )
         assertEquals(features.size, features.toSet().size, "All feature strings should be unique")
     }

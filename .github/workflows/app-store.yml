@@ -148,6 +148,19 @@ jobs:
             -project SceneViewDemo.xcodeproj \
             -clonedSourcePackagesDirPath SourcePackages
 
+      # Tag pushes always run through this workflow (the `on:` block above is
+      # `tags: [v[0-9]+.[0-9]+.[0-9]+]`), but mirror the Play Store guard
+      # condition so manual `workflow_dispatch` debug runs can iterate without
+      # tripping the live API probe. See #1909.
+      - name: Verify Sketchfab API key wiring (#1909)
+        if: startsWith(github.ref, 'refs/tags/v')
+        # `defaults.run.working-directory` is samples/ios-demo, so step back
+        # to the repo root for the shared verify script.
+        working-directory: ${{ github.workspace }}
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        run: bash .claude/scripts/verify-sketchfab-key.sh
+
       - name: Build archive
         # Inject the Sketchfab API key as a user-defined build setting so it
         # gets substituted into `Info.plist`'s `SketchfabAPIKey =
@@ -328,7 +341,19 @@ jobs:
           print(f"Target App Store versionString: {version_string}")
 
           # 3. Get or create the app store version
-          r = requests.get(f"{BASE}/apps/{app_id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW", headers=headers)
+          # Embed the linked appStoreVersionSubmission in the response via
+          # `include` (JSON:API). This is the only Apple-supported way for
+          # this service-account tier to learn the submission's ID — both
+          # the to-one related-resource endpoint
+          # (`/appStoreVersions/{id}/appStoreVersionSubmission`) and a
+          # filter on the top-level collection
+          # (`/appStoreVersionSubmissions?filter[appStoreVersion]={id}`)
+          # were tested in #1831 v1/v2 and return 404 / 403 respectively
+          # for our key.
+          r = requests.get(
+              f"{BASE}/apps/{app_id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW&include=appStoreVersionSubmission",
+              headers=headers,
+          )
           versions = r.json().get("data", [])
           # Pick a version record that already targets our versionString,
           # otherwise fall back to the first editable one if any, otherwise
@@ -336,9 +361,11 @@ jobs:
           # previously-hardcoded "4.0.3" trap where any unrelated editable
           # version would get hijacked for an unrelated build.
           version_id = None
+          matched_version = None
           for v in versions:
               if v.get("attributes", {}).get("versionString") == version_string:
                   version_id = v["id"]
+                  matched_version = v
                   print(f"Using matching version record: {version_id}")
                   break
           if not version_id:
@@ -357,6 +384,7 @@ jobs:
               )
               if stale:
                   version_id = stale["id"]
+                  matched_version = stale
                   stale_vs = stale.get("attributes", {}).get("versionString")
                   r = requests.patch(
                       f"{BASE}/appStoreVersions/{version_id}",
@@ -531,6 +559,49 @@ jobs:
               print(f"::warning::Failed to update App Store localization: {e}")
 
           # 5. Submit for review
+          # If a previous run already POST'd a submission against this same
+          # version record (typical when the #1687 + #1795 absorption
+          # retargets a stranded draft — its old submission stays attached),
+          # a second CREATE returns 403 FORBIDDEN_ERROR with
+          # "Allowed operation is: DELETE". DELETE the existing submission
+          # first so the POST below is idempotent (#1831).
+          #
+          # Both probe attempts in earlier #1831 versions failed because of
+          # service-account permission limits:
+          #   v1 used `/appStoreVersions/{id}/relationships/...` (404 — not
+          #     exposed by Apple).
+          #   v2 used `/appStoreVersionSubmissions?filter[...]` (403 — not
+          #     permitted for this key) and the related-resource form
+          #     `/appStoreVersions/{id}/appStoreVersionSubmission` (404 —
+          #     ditto when no submission attached, but also when one IS
+          #     attached if the key can't read it directly).
+          #
+          # v3 uses Apple-standard JSON:API `include`: the initial GET of
+          # the appStoreVersions list (above) passes
+          # `&include=appStoreVersionSubmission`, which embeds the linked
+          # submission's `id` inside the version's `relationships` block.
+          # No extra round-trip, no probe endpoint required.
+          existing_sub_id = None
+          if matched_version:
+              try:
+                  rel = matched_version.get("relationships", {}).get("appStoreVersionSubmission", {})
+                  data = rel.get("data")
+                  if isinstance(data, dict):
+                      existing_sub_id = data.get("id")
+              except Exception as e:
+                  print(f"::warning::Failed to read submission relationship from version record: {e}")
+          if existing_sub_id:
+              try:
+                  d = requests.delete(f"{BASE}/appStoreVersionSubmissions/{existing_sub_id}", headers=headers)
+                  if d.status_code in (200, 204):
+                      print(f"Deleted stale submission {existing_sub_id} before re-creating")
+                  else:
+                      print(f"::warning::Stale submission {existing_sub_id} DELETE returned {d.status_code} - {d.text[:200]} — CREATE may still 403")
+              except Exception as e:
+                  print(f"::warning::DELETE of stale submission {existing_sub_id} failed: {e}")
+          else:
+              print("No stale appStoreVersionSubmission attached — proceeding with fresh CREATE")
+
           payload = {
               "data": {
                   "type": "appStoreVersionSubmissions",
@@ -622,6 +693,16 @@ jobs:
             -scheme SceneViewDemo \
             -project SceneViewDemo.xcodeproj \
             -clonedSourcePackagesDirPath SourcePackages
+
+      # Same #1909 guard as the iOS archive above — macOS App Store builds
+      # share the SKETCHFAB_API_KEY secret, so the same empty/blank secret
+      # would silently ship a broken Explore tab to Mac users too.
+      - name: Verify Sketchfab API key wiring (#1909)
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: ${{ github.workspace }}
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        run: bash .claude/scripts/verify-sketchfab-key.sh
 
       - name: Build archive
         # See iOS variant above for the rationale on `SKETCHFAB_API_KEY=` —

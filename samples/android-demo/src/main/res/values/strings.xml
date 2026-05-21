@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- App-level strings. Per-demo strings (titles, subtitles, demo-specific
+     controls) live in `strings_demo_<id>.xml` next to this file — Android's
+     resource merger fans every `res/values/*.xml` in, so `R.string.demo_*`
+     references resolve identically. See issue #1870 and
+     `samples/android-demo/demo-fragments/README.md`. -->
 <resources>
     <string name="app_name">SceneView</string>
 
@@ -33,6 +38,16 @@
     <string name="explore_search_results">Search results</string>
     <string name="explore_search_no_results">No results for "%s"</string>
     <string name="explore_search_loading">Searching…</string>
+    <!-- Defensive banner shown when SketchfabConfig.apiKey is null (#1909).
+         End-user release builds with a missing or revoked secret would
+         otherwise silently render an Explore tab without carousels and a
+         search bar that swallows every query — see issue #1909. -->
+    <string name="explore_sketchfab_disabled_title">Sketchfab carousels disabled</string>
+    <string name="explore_sketchfab_disabled_subtitle">API key missing — search and trending feeds are unavailable.</string>
+    <string name="explore_sketchfab_disabled_dialog_title">Sketchfab integration is off</string>
+    <string name="explore_sketchfab_disabled_dialog_body">This build was published without a Sketchfab API key, so the Staff Picks, Most Liked and Recently Added carousels are hidden and search is disabled.\n\nThe curated samples and category grid below still work — they bundle local 3D models.\n\nIf you\'re building locally, add the line below to <b>local.properties</b> and rebuild:\n\n  sketchfab.api.key=&lt;your-token&gt;\n\nGrab a token at Sketchfab → Settings → Password &amp; API → API Token.</string>
+    <string name="explore_sketchfab_disabled_dismiss">Got it</string>
+    <string name="explore_sketchfab_search_hint">Search needs a Sketchfab API key — see banner above.</string>
 
     <!-- Sketchfab model viewer screen -->
     <string name="sketchfab_animated">Animated</string>
@@ -132,160 +147,14 @@
     <string name="category_augmented_reality">Augmented Reality</string>
 
     <!-- Sample demo titles (legacy keys preserved for backwards compatibility) -->
-    <string name="demo_model_viewer">Model Viewer</string>
-    <string name="demo_model_viewer_desc">Load and render glTF/GLB 3D models with orbit camera</string>
-    <string name="demo_geometry">Geometry Nodes</string>
-    <string name="demo_geometry_desc">Procedural cube, sphere, cylinder, and plane geometry</string>
     <string name="demo_animations">Animations</string>
     <string name="demo_animations_desc">Play, pause, and cycle through model animations</string>
-    <string name="demo_dynamic_sky">Dynamic Sky</string>
-    <string name="demo_dynamic_sky_desc">Time-of-day sun position with atmospheric scattering</string>
-    <string name="demo_lighting">Lighting</string>
-    <string name="demo_lighting_desc">Point, directional, and spot lights with shadows</string>
-    <string name="demo_camera_controls">Camera Controls</string>
-    <string name="demo_camera_controls_desc">Orbit, pan, zoom camera manipulator</string>
-    <string name="demo_post_processing">Post-Processing</string>
-    <string name="demo_post_processing_desc">Bloom, SSAO, FXAA, tone mapping, vignette</string>
-    <string name="demo_fog">Fog</string>
-    <string name="demo_fog_desc">Height-based atmospheric volumetric fog</string>
-    <string name="demo_text_labels">Text Labels</string>
-    <string name="demo_text_labels_desc">3D text rendering with billboard facing</string>
     <string name="demo_line_paths">Line Paths</string>
     <string name="demo_line_paths_desc">3D polylines and Lissajous curves</string>
-    <string name="demo_physics">Physics</string>
-    <string name="demo_physics_desc">Rigid body simulation with bouncing balls</string>
-    <string name="demo_image_detection">Image Detection</string>
-    <string name="demo_image_detection_desc">Real-world image recognition with AR overlay</string>
-    <string name="demo_reflection_probes">Reflection Probes</string>
-    <string name="demo_reflection_probes_desc">Local cubemap reflections for realistic materials</string>
     <string name="demo_gltf_cameras">glTF Cameras</string>
     <string name="demo_gltf_cameras_desc">Import and switch between cameras from glTF files</string>
-    <string name="demo_multi_model">Multi-Model Scene</string>
-    <string name="demo_multi_model_desc">Compose multiple models into a single styled scene</string>
     <string name="demo_dynamic_lighting">Dynamic Lighting</string>
     <string name="demo_dynamic_lighting_desc">Adjust light color, intensity, and type in real time</string>
-    <string name="demo_animation_control">Animation Control</string>
-    <string name="demo_animation_control_desc">Switch animations by name, control speed and looping</string>
-    <string name="demo_environment_gallery">Environment Gallery</string>
-    <string name="demo_environment_gallery_desc">Compare HDR environments on the same model side by side</string>
-    <string name="demo_gesture_editing">Gesture Editing</string>
-    <string name="demo_gesture_editing_desc">Drag, rotate, and scale models with touch gestures</string>
-
-    <!-- Sample demo titles + subtitles (canonical keys consumed by DemoRegistry) -->
-    <string name="demo_model_viewer_subtitle">Load and display 3D models</string>
-    <string name="demo_model_viewer_loading">Loading model…</string>
-    <string name="demo_model_viewer_surprise">Surprise me</string>
-    <string name="demo_model_viewer_surprise_loading">Finding…</string>
-    <string name="demo_geometry_title">Geometry Primitives</string>
-    <string name="demo_geometry_subtitle">Cube, sphere, cylinder, cone, plane</string>
-    <string name="demo_animation_title">Animation</string>
-    <string name="demo_animation_subtitle">Play, pause, and control animations</string>
-    <string name="demo_multi_model_title">Multi-Model Scene</string>
-    <string name="demo_multi_model_subtitle">Multiple models in one scene</string>
-    <string name="demo_scene_gallery_title">Scene Gallery</string>
-    <string name="demo_scene_gallery_subtitle">Themed Sketchfab bundles streamed on demand</string>
-    <string name="demo_scene_gallery_loading">Streaming model…</string>
-    <string name="demo_scene_gallery_credit">by %1$s · CC-BY 4.0</string>
-    <string name="demo_lighting_title">Light Types</string>
-    <string name="demo_lighting_subtitle">Directional, point, and spot lights</string>
-    <string name="demo_movable_light_title">Movable Light</string>
-    <string name="demo_movable_light_subtitle">Drag to orbit the light around the model</string>
-    <string name="demo_dynamic_sky_subtitle">Time-of-day sun simulation</string>
-    <string name="demo_fog_subtitle">Linear, exponential, and height fog</string>
-    <string name="demo_environment_title">Environment Gallery</string>
-    <string name="demo_environment_subtitle">HDR environment switching</string>
-    <string name="demo_text_title">3D Text</string>
-    <string name="demo_text_subtitle">Extruded text with styles and sizes</string>
-    <string name="demo_lines_paths_title">Lines &amp; Paths</string>
-    <string name="demo_lines_paths_subtitle">Polylines, helix, grids, and circles</string>
-    <string name="demo_image_title">Image Planes</string>
-    <string name="demo_image_subtitle">Image planes in 3D space</string>
-    <string name="demo_billboard_title">Billboard</string>
-    <string name="demo_billboard_subtitle">Labels that face the camera</string>
-    <string name="demo_video_title">Video Texture</string>
-    <string name="demo_video_subtitle">Video playback on a 3D surface</string>
-    <string name="demo_camera_controls_title">Camera Controls</string>
-    <string name="demo_camera_controls_subtitle">Orbit, pan, and free camera modes</string>
-    <string name="demo_gesture_editing_title">Gesture Editing</string>
-    <string name="demo_gesture_editing_subtitle">Move, scale, and rotate with gestures</string>
-    <string name="demo_collision_title">Collision &amp; Hit Test</string>
-    <string name="demo_collision_subtitle">Hit testing and collision detection</string>
-    <string name="demo_view_node_title">ViewNode</string>
-    <string name="demo_view_node_subtitle">Native UI embedded in 3D space</string>
-    <string name="demo_physics_title">Physics</string>
-    <string name="demo_physics_subtitle">Gravity, collisions, and rigid bodies</string>
-    <string name="demo_double_pendulum_title">Double Pendulum</string>
-    <string name="demo_double_pendulum_subtitle">Chaotic two-link physics, shared KMP simulation</string>
-    <string name="demo_materials_title">PBR Materials</string>
-    <string name="demo_materials_subtitle">PBR metallic and roughness spectrum</string>
-    <string name="demo_materials_loading">Streaming material…</string>
-    <string name="demo_materials_credit">by %1$s · CC-BY 4.0</string>
-    <string name="demo_occlusion_material_title">Occlusion Material</string>
-    <string name="demo_occlusion_material_subtitle">Invisible depth-writing surface hides content behind it</string>
-    <string name="demo_occlusion_material_toggle">Occluder visible</string>
-    <string name="demo_occlusion_material_explainer">A plane sits between the camera and the helmet. Toggle ON: a debug-tinted plate shows where the plane is. Toggle OFF: the same plane wears the occlusion material — invisible, but it still hides what is behind it.</string>
-    <string name="demo_post_processing_title">Post Processing</string>
-    <string name="demo_post_processing_subtitle">SSAO, anti-aliasing, and tone mapping</string>
-    <string name="demo_custom_mesh_title">Custom Mesh</string>
-    <string name="demo_custom_mesh_subtitle">Custom vertex and index buffers</string>
-    <string name="demo_texture_streaming_title">Material Streaming</string>
-    <string name="demo_texture_streaming_subtitle">Swap textures and materials on a model at runtime</string>
-    <string name="demo_texture_streaming_picker_label">Material set</string>
-    <string name="demo_texture_streaming_variant_detail">metallic %1$.2f · roughness %2$.2f</string>
-    <string name="demo_texture_streaming_variant_steel">Polished Steel</string>
-    <string name="demo_texture_streaming_variant_gold">Brushed Gold</string>
-    <string name="demo_texture_streaming_variant_copper">Copper</string>
-    <string name="demo_texture_streaming_variant_plastic">Matte Plastic</string>
-    <string name="demo_texture_streaming_variant_ceramic">Glazed Ceramic</string>
-    <string name="demo_shape_title">Shape Extrude</string>
-    <string name="demo_shape_subtitle">Extrude 2D polygons into 3D meshes</string>
-    <string name="demo_reflection_probes_title">Reflection Probes</string>
-    <string name="demo_reflection_probes_subtitle">Local cubemap reflections</string>
-    <string name="demo_secondary_camera_title">Secondary Camera (PiP)</string>
-    <string name="demo_secondary_camera_subtitle">Picture-in-picture camera view</string>
-    <string name="demo_secondary_camera_chip_section">PiP Camera Angle</string>
-    <string name="demo_secondary_camera_chip_top">Top</string>
-    <string name="demo_secondary_camera_chip_side">Side</string>
-    <string name="demo_secondary_camera_chip_front">Front</string>
-    <string name="demo_secondary_camera_chip_corner">Corner</string>
-    <string name="demo_secondary_camera_pip_cd">Picture-in-picture camera view: %1$s</string>
-    <string name="demo_secondary_camera_chip_selected">Selected camera angle</string>
-    <string name="demo_debug_overlay_title">Debug Overlay</string>
-    <string name="demo_debug_overlay_subtitle">Performance stats overlay</string>
-    <string name="demo_ar_placement_title">Tap to Place</string>
-    <string name="demo_ar_placement_subtitle">Place 3D models in AR</string>
-    <string name="demo_ar_image_title">Image Tracking</string>
-    <string name="demo_ar_image_subtitle">Detect and track reference images</string>
-    <string name="demo_ar_face_title">Augmented Faces</string>
-    <string name="demo_ar_face_subtitle">Face mesh tracking and overlays</string>
-    <string name="demo_ar_cloud_anchor_title">Cloud Anchors</string>
-    <string name="demo_ar_cloud_anchor_subtitle">Persistent multi-user anchors</string>
-    <string name="demo_ar_streetscape_title">Streetscape Geometry</string>
-    <string name="demo_ar_streetscape_subtitle">Geospatial building and terrain meshes</string>
-    <string name="demo_ar_pose_title">Pose Placement</string>
-    <string name="demo_ar_pose_subtitle">Free pose positioning</string>
-    <string name="demo_ar_rerun_title">Rerun Debug</string>
-    <string name="demo_ar_rerun_subtitle">Stream camera pose and planes to the Rerun viewer</string>
-    <string name="demo_ar_record_playback_title">AR Recording</string>
-    <string name="demo_ar_record_playback_subtitle">Record an AR session and replay it without a phone</string>
-    <string name="demo_ar_depth_occlusion_title">Depth Occlusion</string>
-    <string name="demo_ar_depth_occlusion_subtitle">Real-world depth masks virtual objects</string>
-    <string name="demo_ar_instant_placement_title">Instant Placement</string>
-    <string name="demo_ar_instant_placement_subtitle">Place models before plane detection converges</string>
-    <string name="demo_ar_terrain_title">Terrain Anchors</string>
-    <string name="demo_ar_terrain_subtitle">Anchor models on geospatial terrain</string>
-    <string name="demo_ar_rooftop_title">Rooftop Anchors</string>
-    <string name="demo_ar_rooftop_subtitle">Anchor models on geospatial rooftops</string>
-    <string name="demo_ar_image_stabilization_title">Image Stabilization (EIS)</string>
-    <string name="demo_ar_image_stabilization_subtitle">EIS for smoother AR camera feed</string>
-    <string name="demo_ar_orbital_title">Orbital AR</string>
-    <string name="demo_ar_orbital_subtitle">Models orbit around you in a personal solar system</string>
-    <string name="demo_ar_depth_visualization_title">Depth Visualization</string>
-    <string name="demo_ar_depth_visualization_subtitle">False-color depth map with camera↔depth blend</string>
-    <string name="demo_ar_raw_depth_cloud_title">Raw Depth Point Cloud</string>
-    <string name="demo_ar_raw_depth_cloud_subtitle">Confidence-filtered point cloud from raw depth</string>
-    <string name="demo_ar_depth_collider_title">Depth Collider</string>
-    <string name="demo_ar_depth_collider_subtitle">Virtual balls bounce off the real floor / table (depth-driven physics)</string>
 
     <!-- Demo placeholder -->
     <string name="demo_coming_soon">Coming soon</string>
@@ -308,18 +177,6 @@
     <string name="control_animation_loop">Loop</string>
     <string name="control_gesture_drag_hint">Drag model to move · Pinch to resize · Twist to rotate</string>
     <string name="control_reset_position">Reset</string>
-
-    <!-- AR placement Stage 2 picker (issue #1152) -->
-    <string name="demo_ar_placement_picker_label">What to place</string>
-    <string name="demo_ar_placement_picker_bundled">Bundled cycle</string>
-    <string name="demo_ar_placement_picker_streaming">Streaming %1$s…</string>
-    <string name="demo_ar_placement_picker_streamed">%1$s</string>
-    <string name="demo_ar_placement_picker_subtitle">Bundled cycle ships with the APK · streamed entries are CC-BY models from Sketchfab.</string>
-
-    <!-- Physics Stage 2 picker (issue #1152) -->
-    <string name="demo_physics_picker_label">What to drop</string>
-    <string name="demo_physics_picker_spheres">Bundled spheres</string>
-    <string name="demo_physics_picker_subtitle">Crash-test bodies are CC-BY models from Sketchfab. Switching the picker resets the scene so the new shape is what falls.</string>
 
     <!-- Image Detection demo -->
     <string name="image_detection_title">Image Detection Demo</string>
