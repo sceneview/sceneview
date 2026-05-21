@@ -276,4 +276,28 @@
     <string name="tracking_failure_excessive_motion">Moving too fast — slow down</string>
     <string name="tracking_failure_insufficient_features">Not enough detail — point at a more textured surface</string>
     <string name="tracking_failure_camera_unavailable">Camera unavailable — close other camera apps</string>
+
+    <!-- In-app feedback (issue #1932) -->
+    <string name="feedback_button">Feedback</string>
+    <string name="feedback_cd_button">Send feedback</string>
+    <string name="feedback_cd_close">Close</string>
+    <string name="feedback_onboarding_title">Help improve SceneView</string>
+    <string name="feedback_onboarding_body">See a bug or have an idea? Tap Feedback anytime. Record your screen and describe what\'s happening in your own words — we\'ll turn it into a report for the team. It only takes a few seconds.</string>
+    <string name="feedback_onboarding_continue">Get started</string>
+    <string name="feedback_category_title">What would you like to share?</string>
+    <string name="feedback_bug_title">Report a bug</string>
+    <string name="feedback_bug_subtitle">Something isn\'t working right</string>
+    <string name="feedback_idea_title">Share an idea</string>
+    <string name="feedback_idea_subtitle">A suggestion or feature request</string>
+    <string name="feedback_consent_title">Screen &amp; microphone</string>
+    <string name="feedback_consent_body">To capture your feedback, the next step records:</string>
+    <string name="feedback_consent_screen">Your screen, while you show what happens</string>
+    <string name="feedback_consent_voice">Your voice, describing the issue in your own words</string>
+    <string name="feedback_consent_idea_optional">Sharing an idea? Recording is optional — a few spoken words are enough</string>
+    <string name="feedback_consent_privacy">The recording stays private — only the SceneView team can view it, and it is deleted after 90 days. The public report contains only a written summary.</string>
+    <string name="feedback_consent_agree">Allow &amp; continue</string>
+    <string name="feedback_consent_back">Back</string>
+    <string name="feedback_stub_title">Almost there</string>
+    <string name="feedback_stub_body">Screen recording is being wired up and lands in the next update. Thanks for helping improve SceneView!</string>
+    <string name="feedback_stub_done">Done</string>
 </resources>

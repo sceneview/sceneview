@@ -35,6 +35,15 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.dp
+import androidx.navigation.compose.currentBackStackEntryAsState
+import io.github.sceneview.demo.feedback.FeedbackButton
+import io.github.sceneview.demo.feedback.FeedbackFlow
 
 class MainActivity : ComponentActivity() {
 
@@ -242,6 +251,28 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                     .align(Alignment.TopCenter)
                     .windowInsetsPadding(WindowInsets.statusBars),
             )
+        }
+
+        // Global feedback entry point — overlays every screen (#1932). Bottom-start
+        // so it never collides with a demo's bottom-end settings FAB.
+        val currentEntry by navController.currentBackStackEntryAsState()
+        val onListScreen = currentEntry?.destination?.route == "list"
+        var feedbackOpen by rememberSaveable { mutableStateOf(false) }
+        FeedbackButton(
+            expanded = onListScreen,
+            onClick = { feedbackOpen = true },
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(
+                    start = 16.dp,
+                    // On the four tab screens, clear the 80 dp M3 NavigationBar so
+                    // the button floats above it; a demo screen has no bottom bar.
+                    bottom = if (onListScreen) 96.dp else 16.dp,
+                ),
+        )
+        if (feedbackOpen) {
+            FeedbackFlow(onDismiss = { feedbackOpen = false })
         }
     }
 }
