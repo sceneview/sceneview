@@ -196,6 +196,32 @@ jobs:
           user_name: github-actions[bot]
           user_email: github-actions[bot]@users.noreply.github.com
 
+      # The SSH deploy-key push above does NOT trigger GitHub Pages' legacy
+      # auto-build (bot/deploy-key pushes are deliberately skipped to avoid
+      # recursive automation). Without this step a release lands fresh
+      # `/api/` docs on `sceneview.github.io` that the live site never
+      # rebuilds — the same drift class as #1826. Force a build via the
+      # Pages REST API. Mirrors the step in `docs.yml`.
+      - name: Trigger GitHub Pages build (legacy auto-build skips bot pushes)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && (secrets.PAGES_REBUILD_TOKEN != '' || secrets.PERSONAL_TOKEN != '') }}
+        env:
+          PAGES_TOKEN: ${{ secrets.PAGES_REBUILD_TOKEN || secrets.PERSONAL_TOKEN }}
+        run: |
+          echo "Requesting a GitHub Pages build for sceneview/sceneview.github.io..."
+          HTTP=$(curl -sS -o /tmp/pages-build.json -w '%{http_code}' -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $PAGES_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/sceneview/sceneview.github.io/pages/builds)
+          echo "Pages build request HTTP $HTTP"
+          head -c 400 /tmp/pages-build.json || true
+          echo
+          if [ "$HTTP" != "201" ]; then
+            echo "::error::Pages build request failed (HTTP $HTTP) — see #1826."
+            exit 1
+          fi
+          echo "Pages build queued — sceneview.github.io will rebuild shortly."
+
   # ── 3. Publish MCP to npm ──────────────────────────────────────────────────
   publish-mcp:
     name: Publish MCP to npm

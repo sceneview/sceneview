@@ -398,6 +398,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A70000010000000000000003 /* Build configuration list for PBXNativeTarget "SceneViewDemo" */;
 			buildPhases = (
+				A60000010000000000000003 /* Validate store secrets */,
 				A60000010000000000000001 /* Sources */,
 				A30000010000000000000001 /* Frameworks */,
 				A60000010000000000000002 /* Resources */,
@@ -525,6 +526,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A60000010000000000000003 /* Validate store secrets */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Validate store secrets";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Fail-loud guard for store secrets (#1915).\n#\n# An empty / unsubstituted SKETCHFAB_API_KEY compiles silently — Xcode is\n# happy with the literal placeholder \"$(SKETCHFAB_API_KEY)\" — and ships a\n# TestFlight / App Store build whose Explore tab Sketchfab carousels are\n# invisible, with nothing surfacing the cause. That is the exact silent-fail\n# class that caused #1909.\n#\n# Refuse to archive a RELEASE configuration when the key is empty or still the\n# unsubstituted placeholder. Debug builds stay permissive — developers without\n# the key still need to compile. Forks without the org secret opt out with\n# SV_ALLOW_MISSING_SECRETS=1.\nset -eu\nif [ \"${CONFIGURATION}\" != \"Release\" ]; then\n  echo \"note: store-secret guard skipped (CONFIGURATION=${CONFIGURATION}, not Release).\"\n  exit 0\nfi\nif [ \"${SV_ALLOW_MISSING_SECRETS:-0}\" = \"1\" ]; then\n  echo \"warning: SV_ALLOW_MISSING_SECRETS=1 — skipping release secret guard (#1915).\"\n  exit 0\nfi\nKEY=\"${SKETCHFAB_API_KEY:-}\"\nif [ -z \"${KEY}\" ] || [ \"${KEY}\" = '$(SKETCHFAB_API_KEY)' ]; then\n  echo \"error: Release archive refusing to ship — SKETCHFAB_API_KEY is empty or unsubstituted.\"\n  echo \"error:   An empty key ships a build with invisible Sketchfab carousels (the #1909 silent-fail class).\"\n  echo \"error:   Fix: pass SKETCHFAB_API_KEY=\\\"\\$SKETCHFAB_API_KEY\\\" to xcodebuild archive (CI: GitHub Secrets).\"\n  echo \"error:   Forks without the org secret: pass SV_ALLOW_MISSING_SECRETS=1 to override.\"\n  exit 1\nfi\necho \"note: release secret guard (#1915): SKETCHFAB_API_KEY present.\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A60000010000000000000001 /* Sources */ = {

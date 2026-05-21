@@ -6,6 +6,45 @@ plugins {
     alias(libs.plugins.roborazzi)
 }
 
+// Resolve store secrets once, at android-block scope, so both `defaultConfig`
+// (which injects them into the manifest / BuildConfig) and the release secret
+// guard below (#1915) can see the same resolved values.
+//
+// Each key is read from one of:
+//   1. its environment variable (CI / store-bound builds)
+//   2. repo-root local.properties (developer machines)
+//   3. fallback empty string (the feature stays disabled at runtime — and the
+//      #1915 release guard refuses to ship a store APK in that state)
+def loadFromLocalProperties = { String propertyName ->
+    def localPropsFile = rootProject.file("local.properties")
+    if (!localPropsFile.exists()) {
+        return ""
+    }
+    def localProps = new Properties()
+    localPropsFile.withInputStream { localProps.load(it) }
+    return localProps.getProperty(propertyName, "")
+}
+
+// ARCORE_API_KEY env var -> local.properties `ARCORE_API_KEY`. Injected into
+// AndroidManifest.xml as the `arcoreApiKey` placeholder. Empty => Streetscape /
+// Geospatial / Cloud Anchors stay disabled via the demo's `hasArcoreApiKey`
+// check. See arsceneview/STREETSCAPE_SETUP.md for how to provision your own key.
+def arcoreApiKey = System.getenv("ARCORE_API_KEY") ?: ""
+if (arcoreApiKey.isEmpty()) {
+    arcoreApiKey = loadFromLocalProperties("ARCORE_API_KEY")
+}
+
+// SKETCHFAB_API_KEY env var -> local.properties `sketchfab.api.key`. Injected
+// into BuildConfig so SketchfabService can authenticate against
+// api.sketchfab.com. Empty => Sketchfab features stay disabled
+// (SketchfabConfig.apiKey returns null, the service throws MissingApiKey).
+// TODO V1.1: route requests via the mcp-gateway proxy so end-users never see
+// the master key in the APK. See SketchfabConfig.kt.
+def sketchfabApiKey = System.getenv("SKETCHFAB_API_KEY") ?: ""
+if (sketchfabApiKey.isEmpty()) {
+    sketchfabApiKey = loadFromLocalProperties("sketchfab.api.key")
+}
+
 android {
     namespace = "io.github.sceneview.demo"
 
@@ -21,43 +60,8 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        // Inject the ARCore Cloud API key into AndroidManifest.xml as a manifest
-        // placeholder. The key MUST NEVER be committed — it's read from one of:
-        //   1. ARCORE_API_KEY environment variable (CI / store-bound builds)
-        //   2. local.properties → ARCORE_API_KEY (developer machines)
-        //   3. fallback empty string (Streetscape / Geospatial / Cloud Anchors
-        //      stay disabled at runtime via the demo's `hasArcoreApiKey` check)
-        // See arsceneview/STREETSCAPE_SETUP.md for how to provision your own key.
-        def arcoreApiKey = System.getenv("ARCORE_API_KEY") ?: ""
-        if (arcoreApiKey.isEmpty()) {
-            def localPropsFile = rootProject.file("local.properties")
-            if (localPropsFile.exists()) {
-                def localProps = new Properties()
-                localPropsFile.withInputStream { localProps.load(it) }
-                arcoreApiKey = localProps.getProperty("ARCORE_API_KEY", "")
-            }
-        }
+        // The key MUST NEVER be committed — see the resolution block above.
         manifestPlaceholders["arcoreApiKey"] = arcoreApiKey
-
-        // Inject the Sketchfab API key into BuildConfig so the demo's
-        // SketchfabService can authenticate against api.sketchfab.com without
-        // hard-coding a token in source. The key is read from one of:
-        //   1. SKETCHFAB_API_KEY environment variable (CI / store builds)
-        //   2. local.properties → sketchfab.api.key (developer machines)
-        //   3. fallback empty string (Sketchfab features stay disabled —
-        //      SketchfabConfig.apiKey returns null and the service throws
-        //      MissingApiKey).
-        // TODO V1.1: route requests via the mcp-gateway proxy so end-users
-        // never see the master key in the APK. See SketchfabConfig.kt.
-        def sketchfabApiKey = System.getenv("SKETCHFAB_API_KEY") ?: ""
-        if (sketchfabApiKey.isEmpty()) {
-            def localPropsFile = rootProject.file("local.properties")
-            if (localPropsFile.exists()) {
-                def localProps = new Properties()
-                localPropsFile.withInputStream { localProps.load(it) }
-                sketchfabApiKey = localProps.getProperty("sketchfab.api.key", "")
-            }
-        }
         buildConfigField "String", "SKETCHFAB_API_KEY", "\"${sketchfabApiKey}\""
     }
 
@@ -86,6 +90,57 @@ android {
             def keystoreFile = System.getenv("SCENEVIEW_DEMO_KEYSTORE_FILE")
             if (keystoreFile != null) {
                 signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    // Build-time fail-loud guard for store secrets (#1915).
+    //
+    // An empty SKETCHFAB_API_KEY / ARCORE_API_KEY compiles silently — Gradle is
+    // happy with `""` — and ships a store APK whose Sketchfab carousels are
+    // invisible and whose Streetscape / Geospatial / Cloud Anchor demos are
+    // disabled, with nothing surfacing the cause. That is the exact silent-fail
+    // class that caused #1909 (empty carousels on Play Store for weeks).
+    //
+    // Refuse to assemble a RELEASE variant when either secret is empty. Debug
+    // builds stay permissive — developers without the keys still need to compile.
+    // Forks / PRs from forks (no access to org secrets) opt out by setting
+    // `SV_ALLOW_MISSING_SECRETS=1` in the environment, or pass
+    // `-PSV_ALLOW_MISSING_SECRETS=1` on the Gradle command line.
+    applicationVariants.configureEach { variant ->
+        if (variant.buildType.name != "release") {
+            return
+        }
+        def allowMissing = System.getenv("SV_ALLOW_MISSING_SECRETS") == "1" ||
+                (project.hasProperty("SV_ALLOW_MISSING_SECRETS") &&
+                        project.property("SV_ALLOW_MISSING_SECRETS").toString() == "1")
+        variant.assembleProvider.configure { assembleTask ->
+            assembleTask.doFirst {
+                if (allowMissing) {
+                    logger.warn("⚠️  SV_ALLOW_MISSING_SECRETS=1 — skipping release secret guard (#1915).")
+                    return
+                }
+                def missing = []
+                if (sketchfabApiKey == null || sketchfabApiKey.trim().isEmpty()) {
+                    missing << "SKETCHFAB_API_KEY"
+                }
+                if (arcoreApiKey == null || arcoreApiKey.trim().isEmpty()) {
+                    missing << "ARCORE_API_KEY"
+                }
+                if (!missing.isEmpty()) {
+                    throw new GradleException(
+                            "Release build refusing to ship without store secrets: " +
+                            "${missing.join(', ')}.\n" +
+                            "  An empty key compiles silently and ships a store APK with\n" +
+                            "  invisible Sketchfab carousels / disabled AR Geospatial demos\n" +
+                            "  (the #1909 silent-fail class).\n" +
+                            "  Fix: set the missing secret(s) as environment variables\n" +
+                            "  (CI: GitHub Secrets), or in the repo-root local.properties\n" +
+                            "  (SKETCHFAB_API_KEY -> sketchfab.api.key, ARCORE_API_KEY -> ARCORE_API_KEY).\n" +
+                            "  Forks without org secrets: pass -PSV_ALLOW_MISSING_SECRETS=1\n" +
+                            "  or export SV_ALLOW_MISSING_SECRETS=1 to override.")
+                }
+                logger.lifecycle("✅ Release secret guard (#1915): SKETCHFAB_API_KEY + ARCORE_API_KEY present.")
             }
         }
     }
@@ -195,4 +250,45 @@ dependencies {
     androidTestImplementation libs.androidx.test.ext.junit
     androidTestImplementation libs.androidx.test.runner
     androidTestImplementation libs.androidx.test.uiautomator
+}
+
+// ─── Generated demo registry (issue #1976) ───────────────────────────────
+//
+// `GeneratedDemos.kt` is the collated output of the append-only DemoRegistry
+// fragments (#1797). It used to be committed, which guaranteed a merge conflict
+// on every parallel demo-adding PR. It is now `.gitignore`d and regenerated at
+// build time by this task — the same treatment #1928 applied to the MCP's
+// `llms-txt.ts`. A clean checkout with NO `GeneratedDemos.kt` present builds
+// `:samples:android-demo` because every Kotlin compilation depends on this task.
+//
+// `--kt-only` writes ONLY `GeneratedDemos.kt`; the collator's other two outputs
+// (root `llms.txt` + `docs/docs/llms.txt`) stay tracked and hand-maintained, so
+// the build must never rewrite them.
+def collatorScript = rootProject.file("samples/android-demo/scripts/collate-demos.sh")
+def fragmentsDir = file("src/main/java/io/github/sceneview/demo/fragments")
+def valuesDir = file("src/main/res/values")
+def generatedDemosFile = file("src/main/java/io/github/sceneview/demo/fragments/GeneratedDemos.kt")
+
+def generateDemoRegistry = tasks.register("generateDemoRegistry", Exec) {
+    description = "Regenerates GeneratedDemos.kt from the per-demo DemoRegistry fragments (#1976)."
+    group = "build"
+
+    // Re-run when a fragment is added/removed/edited or a demo string changes —
+    // the collator reads fragment metadata and resolves titles from values/*.xml.
+    inputs.dir(fragmentsDir).withPropertyName("fragments")
+    inputs.dir(valuesDir).withPropertyName("demoStrings")
+    inputs.file(collatorScript).withPropertyName("collator")
+    outputs.file(generatedDemosFile).withPropertyName("generatedDemos")
+
+    workingDir rootProject.projectDir
+    commandLine "bash", collatorScript.absolutePath, "--kt-only"
+}
+
+// Make every Kotlin compilation (debug/release, app + unit tests) depend on the
+// generator so a fresh checkout always has GeneratedDemos.kt before kotlinc runs.
+tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.configureEach {
+    dependsOn(generateDemoRegistry)
+}
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(generateDemoRegistry)
 }
