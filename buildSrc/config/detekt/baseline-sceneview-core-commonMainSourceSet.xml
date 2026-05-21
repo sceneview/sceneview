@@ -1,0 +1,63 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:Earcut.kt:Earcut$!equals(a, b) &amp;&amp; intersects(a, p, p.next, b) &amp;&amp; locallyInside(a, b) &amp;&amp; locallyInside(b, a)</ID>
+    <ID>ComplexCondition:Earcut.kt:Earcut$hx >= p.x &amp;&amp; p.x >= mx &amp;&amp; hx != p.x &amp;&amp; pointInTriangle( if (hy &lt; my) hx else qx, hy, mx, my, if (hy &lt; my) qx else hx, hy, p.x, p.y )</ID>
+    <ID>ComplexCondition:Earcut.kt:Earcut$locallyInside(p, hole) &amp;&amp; (tan &lt; tanMin || tan == tanMin &amp;&amp; (p.x > m!!.x || p.x == m.x &amp;&amp; sectorContainsSector(m, p)))</ID>
+    <ID>ComplexCondition:Earcut.kt:Earcut$n.x >= x0 &amp;&amp; n.x &lt;= x1 &amp;&amp; n.y >= y0 &amp;&amp; n.y &lt;= y1 &amp;&amp; n !== a &amp;&amp; n !== c &amp;&amp; pointInTriangle(ax, ay, bx, by, cx, cy, n.x, n.y) &amp;&amp; area(n.prev, n, n.next) >= 0</ID>
+    <ID>ComplexCondition:Earcut.kt:Earcut$p != null &amp;&amp; p.z >= minZ &amp;&amp; n != null &amp;&amp; n.z &lt;= maxZ</ID>
+    <ID>ComplexCondition:Earcut.kt:Earcut$p.i != a.i &amp;&amp; p.next.i != a.i &amp;&amp; p.i != b.i &amp;&amp; p.next.i != b.i &amp;&amp; intersects(p, p.next, a, b)</ID>
+    <ID>ComplexCondition:Earcut.kt:Earcut$p.x >= x0 &amp;&amp; p.x &lt;= x1 &amp;&amp; p.y >= y0 &amp;&amp; p.y &lt;= y1 &amp;&amp; p !== a &amp;&amp; p !== c &amp;&amp; pointInTriangle(ax, ay, bx, by, cx, cy, p.x, p.y) &amp;&amp; area(p.prev, p, p.next) >= 0</ID>
+    <ID>ComplexCondition:Earcut.kt:Earcut$p.x >= x0 &amp;&amp; p.x &lt;= x1 &amp;&amp; p.y >= y0 &amp;&amp; p.y &lt;= y1 &amp;&amp; pointInTriangle(ax, ay, bx, by, cx, cy, p.x, p.y) &amp;&amp; area(p.prev, p, p.next) >= 0</ID>
+    <ID>ComplexCondition:Earcut.kt:Earcut$pSize != 0 &amp;&amp; (qSize == 0 || q == null || p!!.z &lt;= q.z)</ID>
+    <ID>CyclomaticComplexMethod:Earcut.kt:Earcut$private fun isEarHashed( ear: VertexIndex, minX: Double, minY: Double, invSize: Double ): Boolean</ID>
+    <ID>DestructuringDeclarationWithTooManyEntries:Math.kt:(x, y, z, w)</ID>
+    <ID>FunctionNaming:Math.kt:fun Transform( position: Position = Position(), quaternion: Quaternion = Quaternion(), scale: Scale = Scale(1.0f) )</ID>
+    <ID>FunctionNaming:Math.kt:fun Transform( position: Position = Position(), rotation: Rotation, scale: Scale = Scale(1.0F) )</ID>
+    <ID>FunctionParameterNaming:Earcut.kt:Earcut$_ear: VertexIndex?</ID>
+    <ID>FunctionParameterNaming:Earcut.kt:Earcut$_end: VertexIndex?</ID>
+    <ID>FunctionParameterNaming:Earcut.kt:Earcut$_list: VertexIndex</ID>
+    <ID>FunctionParameterNaming:Earcut.kt:Earcut$_outerVertexIndex: VertexIndex</ID>
+    <ID>FunctionParameterNaming:Earcut.kt:Earcut$_start: VertexIndex</ID>
+    <ID>LongMethod:Box.kt:Box$override fun rayIntersection(ray: Ray, result: RayHit): Boolean</ID>
+    <ID>LongMethod:CapsuleGeometry.kt:fun generateCapsule( radius: Float = 0.5f, height: Float = 2f, center: Float3 = Float3(0f), slices: Int = 24, hemisphereStacks: Int = 8, cylinderStacks: Int = 1 ): GeometryData</ID>
+    <ID>LongMethod:CylinderGeometry.kt:fun generateCylinder( radius: Float = 1f, height: Float = 2f, center: Float3 = Float3(0f), sideCount: Int = 24 ): GeometryData</ID>
+    <ID>LongMethod:Matrix.kt:Matrix.Companion$fun invert(matrix: Matrix, dest: Matrix): Boolean</ID>
+    <ID>LongMethod:Matrix.kt:Matrix.Companion$fun multiply(lhs: Matrix, rhs: Matrix, dest: Matrix)</ID>
+    <ID>LoopWithTooManyJumpStatements:Delaunator.kt:Delaunator$for</ID>
+    <ID>LoopWithTooManyJumpStatements:Delaunator.kt:Delaunator$while</ID>
+    <ID>LoopWithTooManyJumpStatements:Earcut.kt:Earcut$while</ID>
+    <ID>LoopWithTooManyJumpStatements:SceneGraph.kt:SceneGraph$for</ID>
+    <ID>MatchingDeclarationName:CollisionResponse.kt:CollisionResult</ID>
+    <ID>MatchingDeclarationName:Interpolation.kt:Easing</ID>
+    <ID>MatchingDeclarationName:NodeLifecycle.kt:SceneNode</ID>
+    <ID>MatchingDeclarationName:PhysicsSimulation.kt:PhysicsState</ID>
+    <ID>MaxLineLength:Earcut.kt:Earcut$if</ID>
+    <ID>MaxLineLength:Earcut.kt:Earcut$trianglesArea += abs((data[a] - data[c]) * (data[b + 1] - data[a + 1]) - (data[a] - data[b]) * (data[c + 1] - data[a + 1]))</ID>
+    <ID>NestedBlockDepth:Delaunator.kt:Delaunator$private fun legalize(index: Int): Int</ID>
+    <ID>ProtectedMemberInFinalClass:Earcut.kt:Earcut.AnyToXYTransform$protected var m00 = 0.0</ID>
+    <ID>ProtectedMemberInFinalClass:Earcut.kt:Earcut.AnyToXYTransform$protected var m01 = 0.0</ID>
+    <ID>ProtectedMemberInFinalClass:Earcut.kt:Earcut.AnyToXYTransform$protected var m02 = 0.0</ID>
+    <ID>ProtectedMemberInFinalClass:Earcut.kt:Earcut.AnyToXYTransform$protected var m10 = 0.0</ID>
+    <ID>ProtectedMemberInFinalClass:Earcut.kt:Earcut.AnyToXYTransform$protected var m11 = 0.0</ID>
+    <ID>ProtectedMemberInFinalClass:Earcut.kt:Earcut.AnyToXYTransform$protected var m12 = 0.0</ID>
+    <ID>ProtectedMemberInFinalClass:Earcut.kt:Earcut.AnyToXYTransform$protected var m20 = 0.0</ID>
+    <ID>ProtectedMemberInFinalClass:Earcut.kt:Earcut.AnyToXYTransform$protected var m21 = 0.0</ID>
+    <ID>ProtectedMemberInFinalClass:Earcut.kt:Earcut.AnyToXYTransform$protected var m22 = 0.0</ID>
+    <ID>ReturnCount:Box.kt:Box$override fun rayIntersection(ray: Ray, result: RayHit): Boolean</ID>
+    <ID>ReturnCount:Earcut.kt:Earcut$private fun intersects(p1: VertexIndex, q1: VertexIndex, p2: VertexIndex, q2: VertexIndex): Boolean</ID>
+    <ID>ReturnCount:Earcut.kt:Earcut$private fun isEarHashed( ear: VertexIndex, minX: Double, minY: Double, invSize: Double ): Boolean</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:Preconditions.kt:Preconditions$IllegalStateException()</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:Preconditions.kt:Preconditions$NullPointerException()</ID>
+    <ID>TooGenericExceptionThrown:Delaunator.kt:Delaunator$throw Exception("No Delaunay triangulation exists for this input.")</ID>
+    <ID>TooManyFunctions:Earcut.kt:Earcut</ID>
+    <ID>TooManyFunctions:Math.kt:io.github.sceneview.math.Math.kt</ID>
+    <ID>TopLevelPropertyNaming:MaterialDefaults.kt:/** Default metallic value (dielectric). */ const val kMaterialDefaultMetallic = 0.0f</ID>
+    <ID>TopLevelPropertyNaming:MaterialDefaults.kt:/** Default reflectance at normal incidence (4% — typical for dielectrics). */ const val kMaterialDefaultReflectance = 0.5f</ID>
+    <ID>TopLevelPropertyNaming:MaterialDefaults.kt:/** Default roughness value (slightly smooth). */ const val kMaterialDefaultRoughness = 0.4f</ID>
+    <ID>UnusedParameter:Splines.kt:alpha: Float = 0.5f</ID>
+    <ID>UnusedPrivateClass:CSG.kt:CSG$Plane</ID>
+    <ID>VariableNaming:Delaunator.kt:Delaunator.ITriangle$val Index: Int</ID>
+  </CurrentIssues>
+</SmellBaseline>

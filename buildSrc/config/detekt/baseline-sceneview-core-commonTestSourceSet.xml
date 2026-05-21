@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>EmptyFunctionBlock:SceneGraphEdgeCasesTest.kt:SceneGraphEdgeCasesTest.FakeNode${}</ID>
+    <ID>EmptyFunctionBlock:SceneGraphTest.kt:TestNode${}</ID>
+    <ID>MaxLineLength:GeometryBuildersTest.kt:GeometryBuildersTest$val xzDists = torus.vertices.map { kotlin.math.sqrt(it.position.x * it.position.x + it.position.z * it.position.z) }</ID>
+  </CurrentIssues>
+</SmellBaseline>
