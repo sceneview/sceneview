@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +44,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -57,20 +60,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.sceneview.demo.R
+import kotlinx.coroutines.launch
 
-private enum class FeedbackStep { ONBOARDING, CATEGORY, CONSENT, REVIEW, SENT }
+private enum class FeedbackStep { ONBOARDING, CATEGORY, CONSENT, REVIEW, SENDING }
+
+/** State of the feedback upload, driving the SENDING step. */
+private sealed interface UploadUiState {
+    data object Sending : UploadUiState
+    data class Sent(val issueNumber: Int?) : UploadUiState
+    data object Failed : UploadUiState
+}
 
 /**
  * The in-app feedback flow, shown as a full-screen dialog: one-time onboarding,
- * the Bug/Idea picker, the screen + microphone consent screen, then — after the
- * user has recorded — a review screen.
+ * the Bug/Idea picker, the screen + microphone consent screen, a review screen,
+ * and the upload to the SceneView feedback worker.
  *
  * The recording itself happens with the dialog dismissed (so the user can
- * demonstrate the bug); [FeedbackRecorder] bridges the recording state back in,
- * and this flow shows the review step once a recording is available.
- *
- * Sending the feedback is wired in task 1D (#1934) — for now "Send" leads to a
- * placeholder confirmation.
+ * demonstrate the bug); [FeedbackRecorder] bridges the recording state back in.
  *
  * @param onStartRecording requests the screen + mic permissions and starts the
  *   recording service; see [rememberFeedbackRecordingLauncher].
@@ -78,6 +85,7 @@ private enum class FeedbackStep { ONBOARDING, CATEGORY, CONSENT, REVIEW, SENT }
 @Composable
 fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val recState by FeedbackRecorder.state.collectAsState()
 
     var step by rememberSaveable {
@@ -87,6 +95,30 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
         )
     }
     var category by rememberSaveable { mutableStateOf<FeedbackCategory?>(null) }
+    var note by rememberSaveable { mutableStateOf("") }
+    var uploadState by remember { mutableStateOf<UploadUiState>(UploadUiState.Sending) }
+
+    fun send() {
+        val recording = (FeedbackRecorder.state.value as? RecordingState.Done)?.recording
+        val chosen = FeedbackRecorder.category ?: category ?: FeedbackCategory.BUG
+        val text = note.trim()
+        uploadState = UploadUiState.Sending
+        step = FeedbackStep.SENDING
+        scope.launch {
+            val result = FeedbackUploader.upload(
+                category = chosen,
+                note = text,
+                context = captureFeedbackContext(context),
+                recording = recording,
+            )
+            uploadState = if (result.ok) {
+                UploadUiState.Sent(result.issueNumber)
+            } else {
+                UploadUiState.Failed
+            }
+            if (result.ok) FeedbackRecorder.reset()
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -101,6 +133,12 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
         ) {
             val doneRecording = (recState as? RecordingState.Done)?.recording
             when {
+                step == FeedbackStep.SENDING -> SendingStep(
+                    state = uploadState,
+                    onClose = onDismiss,
+                    onRetry = { send() },
+                )
+
                 recState is RecordingState.Failed -> FailedStep(
                     onClose = onDismiss,
                     onRetry = {
@@ -111,17 +149,14 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
 
                 doneRecording != null || step == FeedbackStep.REVIEW -> ReviewStep(
                     recording = doneRecording,
+                    note = note,
+                    onNoteChange = { note = it },
                     onClose = onDismiss,
                     onRerecord = {
                         FeedbackRecorder.reset()
                         onStartRecording()
                     },
-                    onSend = {
-                        // Upload is wired in task 1D — for now discard the
-                        // local recording and show a placeholder confirmation.
-                        FeedbackRecorder.reset()
-                        step = FeedbackStep.SENT
-                    },
+                    onSend = { send() },
                 )
 
                 else -> when (step) {
@@ -152,8 +187,7 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
                             step = FeedbackStep.REVIEW
                         },
                     )
-                    FeedbackStep.SENT -> SentStep(onClose = onDismiss)
-                    FeedbackStep.REVIEW -> Unit // handled above
+                    FeedbackStep.REVIEW, FeedbackStep.SENDING -> Unit // handled above
                 }
             }
         }
@@ -256,17 +290,18 @@ private fun ConsentStep(
 @Composable
 private fun ReviewStep(
     recording: FeedbackRecording?,
+    note: String,
+    onNoteChange: (String) -> Unit,
     onClose: () -> Unit,
     onRerecord: () -> Unit,
-    onSend: (note: String) -> Unit,
+    onSend: () -> Unit,
 ) {
-    var note by rememberSaveable { mutableStateOf("") }
     FeedbackStepScaffold(
         onClose = onClose,
         actions = {
             PrimaryButton(
                 text = stringResource(R.string.feedback_review_send),
-                onClick = { onSend(note.trim()) },
+                onClick = onSend,
             )
             TextButton(onClick = onRerecord, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.feedback_review_rerecord))
@@ -288,12 +323,78 @@ private fun ReviewStep(
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(
             value = note,
-            onValueChange = { note = it },
+            onValueChange = onNoteChange,
             label = { Text(stringResource(R.string.feedback_review_note_label)) },
             placeholder = { Text(stringResource(R.string.feedback_review_note_placeholder)) },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
         )
+    }
+}
+
+@Composable
+private fun SendingStep(
+    state: UploadUiState,
+    onClose: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    when (state) {
+        UploadUiState.Sending -> FeedbackStepScaffold(onClose = onClose) {
+            Spacer(Modifier.height(64.dp))
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .size(48.dp),
+            )
+            Spacer(Modifier.height(24.dp))
+            StepBody(stringResource(R.string.feedback_sending))
+        }
+
+        is UploadUiState.Sent -> FeedbackStepScaffold(
+            onClose = onClose,
+            actions = {
+                PrimaryButton(
+                    text = stringResource(R.string.feedback_sent_done),
+                    onClick = onClose,
+                )
+            },
+        ) {
+            Spacer(Modifier.height(16.dp))
+            FeedbackHeroIcon(
+                Icons.Outlined.CheckCircle,
+                Modifier.align(Alignment.CenterHorizontally),
+            )
+            Spacer(Modifier.height(24.dp))
+            StepTitle(stringResource(R.string.feedback_sent_title))
+            Spacer(Modifier.height(12.dp))
+            StepBody(
+                if (state.issueNumber != null) {
+                    stringResource(R.string.feedback_sent_issue, state.issueNumber)
+                } else {
+                    stringResource(R.string.feedback_sent_generic)
+                },
+            )
+        }
+
+        UploadUiState.Failed -> FeedbackStepScaffold(
+            onClose = onClose,
+            actions = {
+                PrimaryButton(
+                    text = stringResource(R.string.feedback_send_retry),
+                    onClick = onRetry,
+                )
+            },
+        ) {
+            Spacer(Modifier.height(16.dp))
+            FeedbackHeroIcon(
+                Icons.Outlined.ErrorOutline,
+                Modifier.align(Alignment.CenterHorizontally),
+            )
+            Spacer(Modifier.height(24.dp))
+            StepTitle(stringResource(R.string.feedback_send_failed_title))
+            Spacer(Modifier.height(12.dp))
+            StepBody(stringResource(R.string.feedback_send_failed_body))
+        }
     }
 }
 
@@ -314,26 +415,6 @@ private fun FailedStep(onClose: () -> Unit, onRetry: () -> Unit) {
         StepTitle(stringResource(R.string.feedback_record_failed_title))
         Spacer(Modifier.height(12.dp))
         StepBody(stringResource(R.string.feedback_record_failed_body))
-    }
-}
-
-@Composable
-private fun SentStep(onClose: () -> Unit) {
-    FeedbackStepScaffold(
-        onClose = onClose,
-        actions = {
-            PrimaryButton(
-                text = stringResource(R.string.feedback_stub_done),
-                onClick = onClose,
-            )
-        },
-    ) {
-        Spacer(Modifier.height(16.dp))
-        FeedbackHeroIcon(Icons.Outlined.CheckCircle, Modifier.align(Alignment.CenterHorizontally))
-        Spacer(Modifier.height(24.dp))
-        StepTitle(stringResource(R.string.feedback_stub_title))
-        Spacer(Modifier.height(12.dp))
-        StepBody(stringResource(R.string.feedback_stub_body))
     }
 }
 
@@ -561,7 +642,5 @@ private fun RecordingSummary(recording: FeedbackRecording) {
 
 private fun formatDuration(ms: Long): String {
     val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return "%d:%02d".format(minutes, seconds)
+    return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
 }

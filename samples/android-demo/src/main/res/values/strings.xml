@@ -296,9 +296,6 @@
     <string name="feedback_consent_privacy">The recording stays private — only the SceneView team can view it, and it is deleted after 90 days. The public report contains only a written summary.</string>
     <string name="feedback_consent_agree">Allow &amp; continue</string>
     <string name="feedback_consent_back">Back</string>
-    <string name="feedback_stub_title">Almost there</string>
-    <string name="feedback_stub_body">Screen recording is being wired up and lands in the next update. Thanks for helping improve SceneView!</string>
-    <string name="feedback_stub_done">Done</string>
     <string name="feedback_recording_channel">Feedback recording</string>
     <string name="feedback_recording_title">Recording your feedback</string>
     <string name="feedback_recording_text">Show what happens, then tap Stop</string>
@@ -316,4 +313,12 @@
     <string name="feedback_record_failed_title">Recording didn\'t work</string>
     <string name="feedback_record_failed_body">The screen recording was interrupted or not granted. You can try again.</string>
     <string name="feedback_record_retry">Try again</string>
+    <string name="feedback_sending">Sending your feedback…</string>
+    <string name="feedback_sent_title">Thank you!</string>
+    <string name="feedback_sent_issue">Your report was filed as issue #%1$d. The team will take a look.</string>
+    <string name="feedback_sent_generic">Your feedback was received by the SceneView team.</string>
+    <string name="feedback_sent_done">Done</string>
+    <string name="feedback_send_failed_title">Couldn\'t send</string>
+    <string name="feedback_send_failed_body">Your feedback couldn\'t be sent. Check your connection and try again.</string>
+    <string name="feedback_send_retry">Try again</string>
 </resources>
