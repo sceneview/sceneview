@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- `MaterialLoader.createOcclusionInstance()` — invisible, depth-writing material (RealityKit `OcclusionMaterial` / Sceneform `makeOcclusionMaterial` parity). Compose helper `rememberOcclusionMaterialInstance` ships in `samples/common`. New "Occlusion Material" demo in the Android demo app (Advanced category). For AR scenes that want occlusion against the live depth camera, keep using `ARCameraStream.isDepthOcclusionEnabled`. (#1776)

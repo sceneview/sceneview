@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- Pruned the unused `focusPoint`/`radius` spotlight parameters from `plane_renderer.mat` (#1922): these declared a half-built "spotlight around the focus point" effect whose fragment-shader falloff and `PlaneRenderer.kt` setter were both already commented out, so they never affected rendering. The `.mat` source, the orphaned Kotlin constants/`getFocusPoint(...)` helper, and the regenerated `plane_renderer.filamat` blob are all updated together — no behaviour change.
