@@ -388,6 +388,7 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 | **Website** | `website-static/index.html` | softwareVersion, badge, code |
 | | `sceneview.github.io/index.html` | deployed version (separate repo) |
 | **Samples** | `samples/android-demo/build.gradle` | versionName default |
+| | `samples/ios-demo/SceneViewDemo.xcodeproj/project.pbxproj` | `MARKETING_VERSION = X.Y.Z` (iOS + macOS App Store marketing version — the `SceneViewDemo` app target, both Debug & Release configs; the test target's `1.0` is a placeholder, leave it) |
 | | `sceneview/Module.md` | version ref |
 | **Swift** | `SceneViewSwift/` uses git tag `vX.Y.Z` | not a file version |
 
