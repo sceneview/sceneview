@@ -33,18 +33,42 @@ suggest an idea. It is **opt-in and consent-gated** — nothing is recorded or
 sent unless you start a feedback report and explicitly agree on the consent
 screen.
 
-When you submit feedback:
+**What is captured.** When you submit feedback:
 
-- The app records **your screen**, and — if you allow it — **your microphone**,
-  so you can demonstrate and describe the issue.
-- The screen recording, a transcript of your narration, and basic device
-  context (app version, Android version, device model, locale, free memory)
-  are sent over HTTPS to the SceneView feedback service.
-- A pre-filled issue is opened in the public SceneView issue tracker on GitHub.
-  **That public issue contains only the written transcript and the device
-  context — never your screen recording or audio.**
-- The screen recording and audio are kept **private** and are **automatically
-  deleted after 90 days**; only the SceneView maintainers can view them.
+- The app records **your screen** (a short `.mp4` — it may include the AR
+  camera viewfinder if an AR demo is open) and, if you allow it, **your
+  microphone audio**, so you can demonstrate and describe the issue.
+- It also collects **device/app context**: app version and build number,
+  Android version and API level, device manufacturer and model, locale, and
+  free RAM. No advertising ID, no IP address, no account identifier.
+- For a bug report a screen recording is encouraged; for an idea, a quick
+  voice note or plain text is enough — a recording is never forced.
+
+**Where it goes.** The recording, audio, and context are uploaded over HTTPS
+to the **SceneView feedback service** — an open-source Cloudflare Worker
+operated by the SceneView project
+([`feedback-worker/`](https://github.com/sceneview/sceneview/tree/main/feedback-worker)).
+The service then:
+
+1. Stores the screen recording and audio **privately** in **Cloudflare R2**
+   object storage — a private bucket, not publicly listable or indexable.
+2. Transcribes your voice audio to text using **Cloudflare Workers AI** (the
+   OpenAI **Whisper** model). The audio is processed for transcription only and
+   is not used to train any model.
+3. Opens a pre-filled issue in the public SceneView issue tracker on GitHub.
+   **That public issue contains only the written transcript, any text you
+   typed, and the device/app context — never your screen recording or audio.**
+   Please avoid showing or saying personal information while recording, since
+   the transcript and context are public.
+
+**Access control & retention.** The screen recording and audio are accessible
+only to SceneView maintainers, through an **admin-token-gated viewer**. Without
+that token the viewer page shows only the public transcript and context — the
+media players are not available; media is served with `private, no-store`
+caching and the viewer page is `noindex`. The recording and audio are
+**automatically deleted after 90 days** by a scheduled job; the transcript and
+context (already public on the GitHub issue) are kept. The service hashes the
+request IP for rate limiting only — the raw IP is never stored.
 
 You can cancel at any point before sending. If you never use the feedback
 feature, none of the above applies.
@@ -56,13 +80,25 @@ feature, none of the above applies.
 | Google Filament | 3D rendering engine | None |
 | Google ARCore | Augmented reality | Camera processed locally, no data sent to Google |
 | Jetpack Compose | UI framework | None |
+| Android MediaProjection / MediaRecorder | Screen + audio capture for the opt-in feedback feature | Only when you record feedback (see *In-App Feedback*) |
+
+### Third-Party Processors (feedback feature only)
+
+These processors handle data **only** when you choose to submit feedback:
+
+| Service | Role | Data handled |
+|---------|------|--------------|
+| Cloudflare R2 | Private object storage | Screen recording, audio |
+| Cloudflare Workers AI (Whisper) | Speech-to-text transcription | Audio |
+| GitHub | Public issue tracker | Transcript, typed text, device/app context |
 
 ### Data Sharing
 
 - The only data that ever leaves the device is feedback **you** choose to
   submit. It is sent to the SceneView feedback service (a Cloudflare Worker
-  operated by the SceneView open-source project) and surfaces as an issue on
-  GitHub, as described in *In-App Feedback* above.
+  operated by the SceneView open-source project), processed by the services in
+  the *Third-Party Processors* table above, and surfaces as an issue on GitHub,
+  as described in *In-App Feedback* above.
 - No data is sold or used for advertising.
 
 ### Children's Privacy
