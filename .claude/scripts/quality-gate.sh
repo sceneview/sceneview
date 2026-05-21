@@ -234,7 +234,43 @@ fi
 
 echo ""
 
-# ─── 4c. Worktree-prune regression suite (advisory) ────────────────────
+# ─── 4c. Filament .mat → .filamat drift (issue #1912) ─────────────────
+# The Filament runtime ↔ .filamat ABI invariant has caused a real shipping
+# incident (v4.1.0 — 10 demos crashed at runtime because half the .filamat
+# blobs were compiled with a different matc than the runtime expected).
+# Each .filamat embeds the matc MATERIAL_VERSION + flag list in its header
+# chunks (SREV_TAM and MRPC_TAM). `tools/GenerateFilamat.sh --check`
+# regenerates every .filamat to a tmp dir with the pinned matc and the
+# committed per-profile flag list, then byte-diffs against the committed
+# blob. Exit 1 on drift blocks the PR.
+#
+# Failure modes (degraded gracefully):
+#   - Sandbox without network → matc cannot be downloaded → WARN, advisory.
+#   - matc version mismatch     → WARN, advisory.
+# A clean tree on a host with matc cached produces a hard PASS.
+echo -e "${CYAN}--- Filament .filamat blobs ---${NC}"
+if [ -x "tools/GenerateFilamat.sh" ]; then
+    if bash tools/GenerateFilamat.sh --check --ci-tolerant > /tmp/check-filamat-drift.log 2>&1; then
+        # --ci-tolerant turns matc unavailability into exit-0; distinguish.
+        if grep -q "All .* filamat blob" /tmp/check-filamat-drift.log; then
+            BLOB_COUNT=$(grep -oE 'All [0-9]+ filamat' /tmp/check-filamat-drift.log | grep -oE '[0-9]+' | head -1)
+            check "Filament .filamat blobs in sync" "PASS" "${BLOB_COUNT:-21} blob(s)"
+        elif grep -q "matc unavailable" /tmp/check-filamat-drift.log; then
+            check "Filament .filamat blobs" "WARN" "matc unavailable (no network?) — see /tmp/check-filamat-drift.log"
+        else
+            check "Filament .filamat blobs" "WARN" "see /tmp/check-filamat-drift.log"
+        fi
+    else
+        DRIFT_COUNT=$(grep -cE '^\[FAIL\] \[' /tmp/check-filamat-drift.log 2>/dev/null || echo "?")
+        check "Filament .filamat blobs in sync" "FAIL" "$DRIFT_COUNT blob(s) drifted — run tools/GenerateFilamat.sh"
+    fi
+else
+    check "Filament .filamat blobs" "WARN" "tools/GenerateFilamat.sh missing"
+fi
+
+echo ""
+
+# ─── 4d. Worktree-prune regression suite (advisory) ────────────────────
 # Pins the safety contract of `.claude/scripts/worktree-auto-prune.sh`
 # (locked-tree skip #1833, broad subprocess detect #1834, forensic log
 # #1839). Advisory: a CI host without `lsof`/`fuser` can't fully exercise
