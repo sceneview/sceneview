@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- New `SpatialAudioNode` (Android + iOS + Web) — positional 3D audio attached to scene nodes with inverse/linear distance falloff. Each node owns its own player so two nodes never cross-talk. Android phase-1 per-node `MediaPlayer` backend (`Spatializer` in phase 2); iOS RealityKit spatial audio; Web Audio `PannerNode` HRTF. Phase 1 of #1900 — drive the listener with `setSpatialAudioListenerPose(position, forward, up)` from the render loop; automatic camera tracking is phase 2.
