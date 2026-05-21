@@ -112,7 +112,7 @@ fun ARImageDemo(onBack: () -> Unit) {
     // reference image to point the camera at; it collapses to a chip once detection succeeds.
     var showScanGuide by remember { mutableStateOf(true) }
 
-    val modelInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+    val modelInstance = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
 
     // Decode the reference image once per composition — ARCore calls sessionConfiguration on
     // every session reconfig, so decoding inside that lambda re-opens the asset + allocates a

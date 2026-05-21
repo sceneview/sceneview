@@ -97,7 +97,7 @@ import java.util.Locale
  *
  * The demo has four modes wired to a top segmented control:
  *
- * - **LIVE** — plain AR, tap a plane to drop a helmet (sanity check the session works).
+ * - **LIVE** — plain AR, tap a plane to drop a fox (sanity check the session works).
  * - **RECORD** — same as LIVE, plus a record button. While recording, an elapsed-time pill
  *   is shown. Stopping reveals the saved MP4 in the Recordings card.
  * - **PLAYBACK** — lists the MP4s on disk; tapping one re-mounts the [ARSceneView] with
@@ -521,7 +521,7 @@ private fun ModeContent(
         }
     }
 
-    val helmet = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+    val fox = rememberModelInstance(modelLoader, "models/khronos_fox.glb")
 
     // PLAYBACK and ANALYSE both bind the selected MP4 as the replay source.
     val playbackDataset: File? = if (mode.isPlayback) playbackFile else null
@@ -617,7 +617,7 @@ private fun ModeContent(
     ) {
         anchors.forEach { anchor ->
             AnchorNode(anchor = anchor) {
-                helmet?.let { instance ->
+                fox?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = 0.3f,

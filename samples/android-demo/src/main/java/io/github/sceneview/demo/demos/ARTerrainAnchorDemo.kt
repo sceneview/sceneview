@@ -174,7 +174,7 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
     val placedAnchors = remember { mutableStateListOf<PlacedTerrainAnchor>() }
     var nextId by remember { mutableStateOf(0) }
 
-    val helmetInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+    val foxInstance = rememberModelInstance(modelLoader, "models/khronos_fox.glb")
 
     // Resolve a terrain anchor at the current camera lat/lng. Hoisted so the
     // on-screen SceneActionBar can invoke it — "Drop here" is the demo's
@@ -362,7 +362,7 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
                     val anchor = placed.anchor ?: return@forEach
                     key(placed.id) {
                         AnchorNode(anchor = anchor) {
-                            helmetInstance?.let { instance ->
+                            foxInstance?.let { instance ->
                                 ModelNode(
                                     modelInstance = instance,
                                     scaleToUnits = 0.5f,
