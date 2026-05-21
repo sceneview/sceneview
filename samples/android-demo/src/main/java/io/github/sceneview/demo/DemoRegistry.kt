@@ -162,6 +162,7 @@ val ALL_DEMOS = listOf(
     DemoEntry("custom-mesh", R.string.demo_custom_mesh_title, R.string.demo_custom_mesh_subtitle, DemoCategory.ADVANCED, Icons.Filled.Hexagon),
     DemoEntry("shape", R.string.demo_shape_title, R.string.demo_shape_subtitle, DemoCategory.ADVANCED, Icons.Filled.Pentagon),
     DemoEntry("reflection-probes", R.string.demo_reflection_probes_title, R.string.demo_reflection_probes_subtitle, DemoCategory.ADVANCED, Icons.Filled.BlurOn),
+    DemoEntry("texture-streaming", R.string.demo_texture_streaming_title, R.string.demo_texture_streaming_subtitle, DemoCategory.ADVANCED, Icons.Filled.Texture),
     DemoEntry("secondary-camera", R.string.demo_secondary_camera_title, R.string.demo_secondary_camera_subtitle, DemoCategory.ADVANCED, Icons.Filled.PictureInPicture),
     DemoEntry("debug-overlay", R.string.demo_debug_overlay_title, R.string.demo_debug_overlay_subtitle, DemoCategory.ADVANCED, Icons.Filled.Speed),
     // Augmented Reality
