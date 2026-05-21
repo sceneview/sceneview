@@ -261,20 +261,41 @@ jobs:
           user_email: github-actions[bot]@users.noreply.github.com
 
       # GitHub Pages' legacy auto-build on `sceneview/sceneview.github.io`
-      # has been intermittently failing to fire on the push above
-      # (verified 2026-05-07). Force a build via the Pages API. Requires a
-      # PAT in `secrets.PAGES_REBUILD_TOKEN` with `repo` scope — falls
-      # through silently if the secret isn't set, in which case run:
-      #   gh api -X POST repos/sceneview/sceneview.github.io/pages/builds
-      - name: Trigger GitHub Pages build (workaround for auto-build skip)
-        if: ${{ env.PAGES_TOKEN != '' }}
+      # does NOT fire for the push above. The deploy uses an SSH deploy key
+      # (`github-actions[bot]`), and GitHub deliberately skips the legacy
+      # Pages build for bot / deploy-key pushes to avoid recursive
+      # automation. The result: every `docs.yml` deploy lands new commits on
+      # `sceneview.github.io` but the live site is never rebuilt, so it
+      # silently drifts (#1826 — 13 days stuck on softwareVersion 4.0.9).
+      #
+      # Fix: force a build via the Pages REST API after every deploy.
+      #
+      # Auth: a PAT with `repo` scope. `PERSONAL_TOKEN` already exists as a
+      # repo secret (used for cross-repo automation) and is the default;
+      # `PAGES_REBUILD_TOKEN` is honoured first if a dedicated token is
+      # ever provisioned. The `if:` tests `secrets.*` directly — secrets are
+      # available to step `if:` conditions, whereas an `env:` set on the
+      # SAME step is NOT yet in scope when the `if:` is evaluated (the bug
+      # that kept this step permanently skipped before #1826).
+      - name: Trigger GitHub Pages build (legacy auto-build skips bot pushes)
+        if: ${{ secrets.PAGES_REBUILD_TOKEN != '' || secrets.PERSONAL_TOKEN != '' }}
         env:
-          PAGES_TOKEN: ${{ secrets.PAGES_REBUILD_TOKEN }}
-        continue-on-error: true
+          PAGES_TOKEN: ${{ secrets.PAGES_REBUILD_TOKEN || secrets.PERSONAL_TOKEN }}
         run: |
-          curl -sSf -X POST \
+          echo "Requesting a GitHub Pages build for sceneview/sceneview.github.io..."
+          HTTP=$(curl -sS -o /tmp/pages-build.json -w '%{http_code}' -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $PAGES_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/sceneview/sceneview.github.io/pages/builds \
-            | head -c 200
+            https://api.github.com/repos/sceneview/sceneview.github.io/pages/builds)
+          echo "Pages build request HTTP $HTTP"
+          head -c 400 /tmp/pages-build.json || true
+          echo
+          # 201 Created is the success status for a queued build request.
+          if [ "$HTTP" != "201" ]; then
+            echo "::error::Pages build request failed (HTTP $HTTP). The live"
+            echo "::error::site will not rebuild — see #1826. Check that the"
+            echo "::error::PAT secret has 'repo'/'pages:write' scope."
+            exit 1
+          fi
+          echo "Pages build queued — sceneview.github.io will rebuild shortly."
