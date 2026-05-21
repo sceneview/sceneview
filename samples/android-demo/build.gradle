@@ -28,7 +28,7 @@ def loadFromLocalProperties = { String propertyName ->
 // ARCORE_API_KEY env var -> local.properties `ARCORE_API_KEY`. Injected into
 // AndroidManifest.xml as the `arcoreApiKey` placeholder. Empty => Streetscape /
 // Geospatial / Cloud Anchors stay disabled via the demo's `hasArcoreApiKey`
-// check. See arsceneview/STREETSCAPE_SETUP.md for how to provision your own key.
+// check. See samples/android-demo/ARCORE_CLOUD_SETUP.md to provision your own key.
 def arcoreApiKey = System.getenv("ARCORE_API_KEY") ?: ""
 if (arcoreApiKey.isEmpty()) {
     arcoreApiKey = loadFromLocalProperties("ARCORE_API_KEY")

@@ -360,7 +360,7 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
                 val statusText = when {
                     sessionError != null -> "AR session error: $sessionError"
                     !hasArcoreApiKey ->
-                        "ARCore Cloud API key not configured \u2014 see samples/android-demo/STREETSCAPE_SETUP.md"
+                        "ARCore Cloud API key not configured \u2014 see samples/android-demo/ARCORE_CLOUD_SETUP.md"
                     geospatialUnavailable != null ->
                         "${geospatialUnavailable!!} \u2014 needs outdoor area with Street View coverage + Cloud API key"
                     ForcedTrackingFailure.override != null ->

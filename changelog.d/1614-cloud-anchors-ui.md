@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- Cloud Anchors demo: renamed the setup runbook `STREETSCAPE_SETUP.md` → `ARCORE_CLOUD_SETUP.md` so a *Cloud Anchor* demo no longer routes `ERROR_NOT_AUTHORIZED` users to a Streetscape-named doc, and updated all 14 references across the demos, `arsceneview`, `build.gradle` and `llms.txt` ([#1614](https://github.com/sceneview/sceneview/issues/1614)). The on-screen Host/Resolve actions already shipped via `SceneActionBar` in #1986.

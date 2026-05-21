@@ -380,7 +380,7 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
                 sessionError != null -> "AR session error: $sessionError"
                 !hasArcoreApiKey ->
                     "ARCore Cloud API key not configured — see samples/android-demo/" +
-                        "STREETSCAPE_SETUP.md"
+                        "ARCORE_CLOUD_SETUP.md"
                 geospatialUnavailable != null ->
                     "${geospatialUnavailable!!} — needs outdoor area with VPS coverage + " +
                         "Cloud API key"

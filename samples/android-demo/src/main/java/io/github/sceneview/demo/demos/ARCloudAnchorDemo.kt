@@ -96,7 +96,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 "Tap a surface to place an anchor"
             } else {
                 "ARCore Cloud API key not configured — Host/Resolve will return " +
-                    "ERROR_NOT_AUTHORIZED. See samples/android-demo/STREETSCAPE_SETUP.md"
+                    "ERROR_NOT_AUTHORIZED. See samples/android-demo/ARCORE_CLOUD_SETUP.md"
             }
         )
     }
@@ -152,7 +152,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                     Anchor.CloudAnchorState.ERROR_NOT_AUTHORIZED ->
                         "Resolve failed: ERROR_NOT_AUTHORIZED. The ARCore Cloud " +
                             "API key is rejecting this APK. Check SHA-1 + billing " +
-                            "+ ARCore API restrictions in STREETSCAPE_SETUP.md."
+                            "+ ARCore API restrictions in ARCORE_CLOUD_SETUP.md."
                     else -> "Resolve failed: $state"
                 }
             }
@@ -254,13 +254,13 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                                 // Surface ERROR_NOT_AUTHORIZED with actionable guidance: the
                                 // most common cause on a fresh Play Store deploy is that the
                                 // App Signing key SHA-1 (post-Play-resign) isn't whitelisted on
-                                // the Google Cloud API key. See samples/android-demo/STREETSCAPE_SETUP.md
+                                // the Google Cloud API key. See samples/android-demo/ARCORE_CLOUD_SETUP.md
                                 // for the runbook. Generic states still get the bare label.
                                 statusMessage = when (state) {
                                     Anchor.CloudAnchorState.ERROR_NOT_AUTHORIZED ->
                                         "Hosting failed: ERROR_NOT_AUTHORIZED. The ARCore Cloud " +
                                             "API key is rejecting this APK. Check SHA-1 + billing " +
-                                            "+ ARCore API restrictions in STREETSCAPE_SETUP.md."
+                                            "+ ARCore API restrictions in ARCORE_CLOUD_SETUP.md."
                                     else -> "Hosting failed: $state"
                                 }
                             }

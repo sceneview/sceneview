@@ -226,7 +226,7 @@ public sealed class ARSessionFailure(public open val cause: Exception) {
 
     /**
      * `Config.CloudAnchorMode = ENABLED` but the ARCore Cloud API key is missing from
-     * `AndroidManifest.xml`. See `samples/android-demo/STREETSCAPE_SETUP.md`.
+     * `AndroidManifest.xml`. See `samples/android-demo/ARCORE_CLOUD_SETUP.md`.
      */
     public data class CloudAnchorsNotConfigured(override val cause: CloudAnchorsNotConfiguredException) :
         ARSessionFailure(cause)
