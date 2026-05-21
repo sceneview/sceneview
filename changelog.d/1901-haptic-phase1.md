@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- New `rememberHapticFeedback()` (Android) + `SceneViewHaptic` (iOS) + Web `navigator.vibrate` fallback. 7 presets (light/medium/heavy/success/warning/error/selection) + `continuous()` + `pattern()` + `cancel()`. `continuous(intensity, durationMs)` takes a millisecond `Int` on every platform — Android, iOS and Web — so cross-platform callers pass the same value. Library API replaces ad-hoc per-demo wrappers. Phase 1 of #1901; NodeGesture modifiers + AR event modifiers come in phase 2 / phase 3.

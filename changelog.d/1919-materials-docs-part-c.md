@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- Filament materials documentation (#1919 Part C): every `.mat` source now carries a header comment block (purpose, used-by node/loader, per-parameter contract, matc flag profile), and the `CONTRIBUTING.md` "Filament runtime ↔ .filamat ABI invariant" section is updated with the `tools/GenerateFilamat.sh` workflow, the `quality-gate.sh` drift gate, and the four A/B/C/D matc flag profiles.
