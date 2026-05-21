@@ -18,7 +18,7 @@
 # What this script CANNOT check (manual, Cloud Console only):
 #   - Whether the Play App Signing key SHA-1 is whitelisted on the Cloud API
 #     key restrictions. That's the actual root cause of #1177 and the runbook
-#     lives in samples/android-demo/STREETSCAPE_SETUP.md → "Play App Signing key".
+#     lives in samples/android-demo/ARCORE_CLOUD_SETUP.md → "Play App Signing key".
 #
 # Exit codes: 0 = ok; 1 = missing key / missing wiring.
 
@@ -77,7 +77,7 @@ echo -e "${YELLOW}ℹ️  Reminder: production Cloud Anchors / Geospatial errors
 echo -e "${YELLOW}   most often mean the Play App Signing key SHA-1 isn't whitelisted on the${NC}"
 echo -e "${YELLOW}   Cloud API key. If the SHA-1 IS whitelisted and the error persists, walk the${NC}"
 echo -e "${YELLOW}   5-step checklist (billing / ARCore API enabled / API restrictions / propagation /${NC}"
-echo -e "${YELLOW}   project-id mismatch) in samples/android-demo/STREETSCAPE_SETUP.md →${NC}"
+echo -e "${YELLOW}   project-id mismatch) in samples/android-demo/ARCORE_CLOUD_SETUP.md →${NC}"
 echo -e "${YELLOW}   \"Troubleshooting — ERROR_NOT_AUTHORIZED persists after SHA-1 is whitelisted\".${NC}"
 
 if [ "$errors" -gt 0 ]; then
