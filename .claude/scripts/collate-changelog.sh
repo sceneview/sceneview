@@ -179,8 +179,20 @@ NEW_SECTION="$TMP_DIR/new_section"
 #   ## v<previous> ...
 RESULT="$TMP_DIR/changelog_new"
 {
-    # Preamble: everything up to and including the '# Changelog' title line.
-    awk 'NR==1{print; if ($0 ~ /^# /) {print ""; exit}}' "$CHANGELOG"
+    # Preamble: everything BEFORE the first '## ' section header — the
+    # '# Changelog' title plus any intro prose / Keep-a-Changelog blurb
+    # that sits between the title and the first section. The old
+    # `NR==1{print; ...exit}` form printed only line 1 and silently dropped
+    # that preamble on every release. A blank line is appended only when the
+    # preamble does not already end with one, so the layout stays stable.
+    awk '
+        /^## / { exit }
+        { lines[NR] = $0; last = NR }
+        END {
+            for (i = 1; i <= last; i++) print lines[i]
+            if (last > 0 && lines[last] !~ /^[[:space:]]*$/) print ""
+        }
+    ' "$CHANGELOG"
     # Empty Unreleased placeholder.
     echo "## Unreleased"
     echo ""

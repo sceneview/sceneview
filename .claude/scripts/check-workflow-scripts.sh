@@ -219,14 +219,102 @@ if [ "$HAVE_SHELLCHECK" -eq 1 ]; then
     echo "  checked $RUN_COUNT run: block(s), $WARN_COUNT with warnings"
 fi
 
+# ── Pass 3: `if:` expressions — MUST NOT reference contexts disallowed in an
+# `if:`. GitHub Actions rejects the WHOLE workflow file at parse time if a
+# step/job `if:` references the `secrets` context ("Unrecognized named-value:
+# 'secrets'"), and the failure surfaces only as a run-time startup-failure —
+# exactly the v4.13.0 release startup-failure that shipped to main. `secrets`
+# is the only context that is categorically forbidden in `if:`; it must be
+# read into `env:`/`with:` and the resulting variable tested instead. ────────
+echo ""
+echo "── Validating if: expressions for disallowed contexts ──"
+if ! python3 - "$WORKFLOWS_DIR" <<'PY'
+import glob
+import os
+import sys
+
+try:
+    import yaml
+except ImportError:
+    print("::error::PyYAML not installed. Run 'pip install pyyaml'.")
+    sys.exit(2)
+
+workflows_dir = sys.argv[1]
+
+# Contexts that are NOT available in an `if:` expression. `secrets` is the
+# one that hard-fails the whole workflow at parse time; keep the set tight
+# and explicit so we never false-positive on a legitimate context.
+FORBIDDEN = ("secrets",)
+
+failures = 0
+checked = 0
+
+
+def check_if(wf, where, expr):
+    """Flag a forbidden context referenced as `<ctx>.something` in an `if:`."""
+    global failures
+    if not isinstance(expr, str):
+        return
+    for ctx in FORBIDDEN:
+        # Match `secrets.` and `secrets[` token-boundaried so we don't trip
+        # on an unrelated identifier that merely ends in 'secrets'.
+        for needle in (ctx + ".", ctx + "["):
+            idx = 0
+            while True:
+                pos = expr.find(needle, idx)
+                if pos == -1:
+                    break
+                before = expr[pos - 1] if pos > 0 else ""
+                if not (before.isalnum() or before in ("_", "-", ".")):
+                    print(f"::error file={wf}::{where}: if: expression "
+                          f"references the '{ctx}' context, which is NOT "
+                          f"allowed in an if: — GitHub rejects the whole "
+                          f"workflow at parse time. Read it into env:/with: "
+                          f"and test the resulting variable instead.")
+                    failures += 1
+                    return
+                idx = pos + len(needle)
+
+
+for wf in sorted(glob.glob(os.path.join(workflows_dir, "*.yml"))):
+    try:
+        with open(wf) as f:
+            doc = yaml.safe_load(f) or {}
+    except yaml.YAMLError as e:
+        print(f"::error file={wf}::YAML parse failed: {e}")
+        failures += 1
+        continue
+
+    for job_name, job in (doc.get("jobs") or {}).items():
+        if not isinstance(job, dict):
+            continue
+        if "if" in job:
+            checked += 1
+            check_if(wf, f"job '{job_name}'", job["if"])
+        for idx, step in enumerate(job.get("steps", []) or []):
+            if isinstance(step, dict) and "if" in step:
+                checked += 1
+                name = step.get("name") or f"step{idx}"
+                check_if(wf, f"job '{job_name}' step '{name}'", step["if"])
+
+print(f"check-workflow-scripts: checked {checked} if: expression(s)")
+sys.exit(1 if failures else 0)
+PY
+then
+    EXIT=1
+fi
+
 if [ $EXIT -ne 0 ]; then
     echo ""
-    echo "::error::One or more workflow with.script: blocks fail to parse under dash."
-    echo "         ReactiveCircus/android-emulator-runner@v2 (and similar)"
-    echo "         actions exec each line via 'sh -c', which is dash on Linux"
-    echo "         runners. A bashism here is a CI-time silent failure."
-    echo "         Fix the block(s) above by replacing [[ ]] with [ ], arrays"
-    echo "         with newline-separated strings, etc."
+    echo "::error::Workflow validation failed — see the error(s) above."
+    echo "         Possible causes:"
+    echo "         - a with.script: block fails to parse under dash"
+    echo "           (ReactiveCircus/android-emulator-runner@v2 and similar"
+    echo "           actions exec each line via 'sh -c' = dash on Linux"
+    echo "           runners; replace [[ ]] with [ ], arrays with"
+    echo "           newline-separated strings, etc.);"
+    echo "         - an if: expression references a context disallowed in"
+    echo "           if: (e.g. 'secrets') — read it into env:/with: instead."
     exit 1
 fi
 
