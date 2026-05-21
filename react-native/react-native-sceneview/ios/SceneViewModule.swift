@@ -1,5 +1,6 @@
 import Foundation
 import React
+import RealityKit
 import SceneViewSwift
 import SwiftUI
 
@@ -51,6 +52,11 @@ class RNSceneState: ObservableObject {
     @Published var cameraOrbit: Bool = true
     @Published var cameraControlMode: CameraControlMode = .orbit
     @Published var autoCenterContent: Bool = true
+
+    /// Invoked from the SwiftUI content's `onEntityTapped` modifier so the
+    /// wrapper can forward the tap to React Native's `onTap` prop (issue #2053).
+    /// Not `@Published` — it is plumbing, not rendered state.
+    var onTap: ((Entity) -> Void)?
 }
 
 /// UIView wrapper that hosts a SwiftUI `SceneView` via UIHostingController.
@@ -60,7 +66,24 @@ class RNSceneViewWrapper: UIView {
     private let sceneState = RNSceneState()
 
     /// Event callback for tap events.
-    @objc var onTap: RCTDirectEventBlock?
+    @objc var onTap: RCTDirectEventBlock? {
+        didSet {
+            let block = onTap
+            Task { @MainActor in
+                sceneState.onTap = { entity in
+                    // Mirrors the Android `TapEvent` payload: world-space
+                    // coordinates of the tapped entity + its node name.
+                    let p = entity.position(relativeTo: nil)
+                    block?([
+                        "x": p.x,
+                        "y": p.y,
+                        "z": p.z,
+                        "nodeName": entity.name,
+                    ])
+                }
+            }
+        }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -159,6 +182,10 @@ struct RNSceneViewContent: View {
         }
         .cameraControls(state.cameraControlMode)
         .autoCenterContent(state.autoCenterContent)
+        // Forward entity taps to React Native's `onTap` prop (issue #2053).
+        .onEntityTapped { entity in
+            state.onTap?(entity)
+        }
     }
 }
 
@@ -185,6 +212,11 @@ class RNARSceneState: ObservableObject {
     @Published var planeDetection: Bool = true
     @Published var depthOcclusion: Bool = false
     @Published var instantPlacement: Bool = false
+
+    /// Invoked from `ARSceneView`'s `onTapOnPlane` so the wrapper can forward
+    /// the tap to React Native's `onTap` prop (issue #2053). Not `@Published` —
+    /// it is plumbing, not rendered state.
+    var onTap: ((SIMD3<Float>) -> Void)?
 }
 
 /// UIView wrapper that hosts a SwiftUI `ARSceneView` via UIHostingController.
@@ -194,9 +226,30 @@ class RNARSceneViewWrapper: UIView {
     private let sceneState = RNARSceneState()
 
     /// Event callback for tap events.
-    @objc var onTap: RCTDirectEventBlock?
+    @objc var onTap: RCTDirectEventBlock? {
+        didSet {
+            let block = onTap
+            Task { @MainActor in
+                sceneState.onTap = { worldPosition in
+                    // Mirrors the Android `TapEvent` payload. `ARSceneView`'s
+                    // `onTapOnPlane` reports the tapped surface point, not a
+                    // node, so `nodeName` is left absent.
+                    block?([
+                        "x": worldPosition.x,
+                        "y": worldPosition.y,
+                        "z": worldPosition.z,
+                    ])
+                }
+            }
+        }
+    }
 
     /// Event callback for plane detection events.
+    ///
+    /// **iOS limitation (issue #2053):** SceneViewSwift's `ARSceneView` does
+    /// not expose a public per-plane-detected callback — only `onTapOnPlane`.
+    /// The block is accepted for API compatibility but is not yet invoked on
+    /// iOS; the TypeScript doc comment for `onPlaneDetected` discloses this.
     @objc var onPlaneDetected: RCTDirectEventBlock?
 
     override init(frame: CGRect) {
@@ -282,7 +335,16 @@ struct RNARSceneViewContent: View {
     @ObservedObject var state: RNARSceneState
 
     var body: some View {
-        ARSceneView { anchor in
+        // Forward surface taps to React Native's `onTap` prop (issue #2053).
+        // `depthOcclusion` / `instantPlacement` are accepted as props but have
+        // no `ARSceneView` configuration knob in SceneViewSwift yet — the
+        // TypeScript doc comments disclose that iOS gap (issue #2055).
+        ARSceneView(
+            planeDetection: state.planeDetection ? .both : .none,
+            onTapOnPlane: { worldPosition, _ in
+                state.onTap?(worldPosition)
+            }
+        ) { anchor in
             ForEach(state.models) { model in
                 ModelNode(model.path)
                     .scale(model.scale)

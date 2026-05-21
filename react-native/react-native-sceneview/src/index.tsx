@@ -31,7 +31,15 @@ export interface ModelNode {
   animation?: string;
 }
 
-/** A procedural geometry node (box, sphere, cylinder, plane). */
+/**
+ * A procedural geometry node (box, sphere, cylinder, plane).
+ *
+ * Platform support:
+ * - **Android**: fully rendered.
+ * - **iOS**: acknowledged but not yet rendered — the RealityKit bridge does
+ *   not currently map procedural geometry nodes. Tracked under the
+ *   cross-platform bridge-parity umbrella (#909). Use `modelNodes` on iOS.
+ */
 export interface GeometryNode {
   type: 'box' | 'cube' | 'sphere' | 'cylinder' | 'plane';
   size?: [number, number, number];
@@ -50,7 +58,15 @@ export interface GeometryNode {
   unlit?: boolean;
 }
 
-/** A light source in the scene. */
+/**
+ * A light source in the scene.
+ *
+ * Platform support:
+ * - **Android**: fully rendered.
+ * - **iOS**: acknowledged but not yet rendered — the RealityKit bridge does
+ *   not currently map declarative light nodes. Tracked under the
+ *   cross-platform bridge-parity umbrella (#909).
+ */
 export interface LightNode {
   type: 'directional' | 'point' | 'spot';
   intensity?: number;
@@ -102,9 +118,17 @@ export interface SceneViewProps {
 
   /** Model nodes to render in the scene. */
   modelNodes?: ModelNode[];
-  /** Geometry nodes to render in the scene. */
+  /**
+   * Geometry nodes to render in the scene.
+   *
+   * **iOS:** acknowledged but not yet rendered — see {@link GeometryNode}.
+   */
   geometryNodes?: GeometryNode[];
-  /** Light nodes in the scene. */
+  /**
+   * Light nodes in the scene.
+   *
+   * **iOS:** acknowledged but not yet rendered — see {@link LightNode}.
+   */
   lightNodes?: LightNode[];
 
   /** Enable default orbit camera controls. Default: true. */
@@ -125,7 +149,13 @@ export interface SceneViewProps {
    */
   autoCenterContent?: boolean;
 
-  /** Called when the user taps inside the scene. */
+  /**
+   * Called when the user taps inside the scene.
+   *
+   * The event payload carries the world-space tap coordinates. On Android the
+   * tapped node's `nodeName` is included when the tap hits a node; on iOS AR
+   * the tap reports the surface point only, so `nodeName` is absent there.
+   */
   onTap?: (event: NativeSyntheticEvent<TapEvent>) => void;
 }
 
@@ -133,13 +163,36 @@ export interface ARSceneViewProps extends SceneViewProps {
   /** Enable plane detection. Default: true. */
   planeDetection?: boolean;
 
-  /** Enable depth occlusion (ARCore Depth API / LiDAR). Default: false. */
+  /**
+   * Enable depth occlusion (ARCore Depth API / LiDAR). Default: false.
+   *
+   * Platform support:
+   * - **Android**: wired to ARCore's `Config.DepthMode.AUTOMATIC` (the flag is
+   *   ignored on devices that do not support the Depth API).
+   * - **iOS**: accepted but not yet wired — SceneViewSwift's `ARSceneView`
+   *   exposes no scene-understanding occlusion knob. Tracked under #909.
+   */
   depthOcclusion?: boolean;
 
-  /** Enable instant placement (approximate hit-test before tracking). Default: false. */
+  /**
+   * Enable instant placement (approximate hit-test before tracking).
+   * Default: false.
+   *
+   * Platform support:
+   * - **Android**: wired to ARCore's `Config.InstantPlacementMode.LOCAL_Y_UP`.
+   * - **iOS**: accepted but not yet wired — SceneViewSwift's `ARSceneView`
+   *   exposes no instant-placement knob. Tracked under #909.
+   */
   instantPlacement?: boolean;
 
-  /** Called when a new plane is detected. */
+  /**
+   * Called when a new plane is detected.
+   *
+   * Platform support:
+   * - **Android**: fires once per newly-tracked ARCore plane.
+   * - **iOS**: not yet dispatched — SceneViewSwift's `ARSceneView` exposes no
+   *   public per-plane-detected callback. Tracked under #909.
+   */
   onPlaneDetected?: (event: NativeSyntheticEvent<PlaneDetectedEvent>) => void;
 }
 

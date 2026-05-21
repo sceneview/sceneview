@@ -10,12 +10,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableType
+import com.facebook.react.common.MapBuilder
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.annotations.ReactProp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
+import io.github.sceneview.gesture.GestureDetector
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -69,10 +71,32 @@ class SceneViewManager : SimpleViewManager<FrameLayout>() {
         return view.tag as? SceneViewState ?: SceneViewState().also { view.tag = it }
     }
 
+    /**
+     * Registers `onTap` so React Native delivers the native [TapEvent] dispatch
+     * to the JS `onTap` prop. Without this entry the event is silently dropped
+     * even when the native side dispatches it (issue #2053).
+     */
+    override fun getExportedCustomDirectEventTypeConstants(): Map<String, Any> =
+        MapBuilder.builder<String, Any>()
+            .put(TapEvent.NAME, MapBuilder.of("registrationName", "onTap"))
+            .build()
+
     override fun createViewInstance(reactContext: ThemedReactContext): FrameLayout {
         val container = FrameLayout(reactContext)
         val state = SceneViewState()
         container.tag = state
+
+        // Tap gesture → JS `onTap`. SceneView's GestureDetector resolves the
+        // tapped node (if any) via collision hit-testing, so the event carries
+        // the node name and its world-space position (issue #2053).
+        val gestureListener = object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(
+                e: android.view.MotionEvent,
+                node: io.github.sceneview.node.Node?,
+            ) {
+                dispatchTapEvent(reactContext, container, node)
+            }
+        }
 
         val composeView = ComposeView(reactContext).apply {
             setContent {
@@ -100,6 +124,7 @@ class SceneViewManager : SimpleViewManager<FrameLayout>() {
                     materialLoader = materialLoader,
                     cameraNode = cameraNode,
                     environment = environment ?: rememberEnvironment(environmentLoader),
+                    onGestureListener = gestureListener,
                 ) {
                     state.modelPaths.forEach { model ->
                         val instance = rememberModelInstance(modelLoader, model.src)
