@@ -25,6 +25,7 @@ object GeneratedDemos {
         ArCloudAnchorFragment,
         ArDepthColliderFragment,
         ArDepthOcclusionFragment,
+        ArDepthOfFieldFragment,
         ArDepthVisualizationFragment,
         ArFaceFragment,
         ArImageFragment,
@@ -86,6 +87,7 @@ object GeneratedDemos {
             "ar-cloud-anchor" -> ArCloudAnchorFragment.Screen(onBack)
             "ar-depth-collider" -> ArDepthColliderFragment.Screen(onBack)
             "ar-depth-occlusion" -> ArDepthOcclusionFragment.Screen(onBack)
+            "ar-depth-of-field" -> ArDepthOfFieldFragment.Screen(onBack)
             "ar-depth-visualization" -> ArDepthVisualizationFragment.Screen(onBack)
             "ar-face" -> ArFaceFragment.Screen(onBack)
             "ar-image" -> ArImageFragment.Screen(onBack)
