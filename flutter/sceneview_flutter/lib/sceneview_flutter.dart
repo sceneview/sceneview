@@ -350,10 +350,18 @@ class SceneViewController {
   bool _disposed = false;
 
   /// Called when a model node is tapped. Receives the node name/id.
+  ///
+  /// Wired on both Android and iOS for [SceneView] (3D). On iOS [ARSceneView]
+  /// this callback is not yet delivered — SceneViewSwift's `ARSceneView` does
+  /// not expose an entity hit-test hook (tracked in #2051).
   void Function(String nodeName)? onTap;
 
   /// Called when an AR plane is detected. Receives the plane type
   /// ('horizontal_upward', 'horizontal_downward', 'vertical', or 'unknown').
+  ///
+  /// Delivered on Android only. On iOS, SceneViewSwift's `ARSceneView` does
+  /// not yet expose a plane-detection callback, so this is never invoked
+  /// there (tracked in #2051).
   void Function(String planeType)? onPlaneDetected;
 
   /// Whether this controller is attached to a platform view.
@@ -481,6 +489,8 @@ class SceneView extends StatefulWidget {
   final List<ModelNode> initialModels;
 
   /// Called when a model node is tapped. Receives the node name/id.
+  ///
+  /// Wired on both Android and iOS.
   final void Function(String nodeName)? onTap;
 
   /// Camera interaction mode. Defaults to [CameraControlMode.orbit].
@@ -540,8 +550,10 @@ class _SceneViewState extends State<SceneView> {
 
   @override
   void dispose() {
+    // Dispose ONLY the controller this widget created itself. A
+    // caller-supplied [widget.controller] is owned by the caller — disposing
+    // it here would kill a controller the caller still holds (issue #2050).
     _internalController?.dispose();
-    widget.controller?.dispose();
     super.dispose();
   }
 
@@ -611,10 +623,18 @@ class ARSceneView extends StatefulWidget {
   final bool planeDetection;
 
   /// Called when a model node is tapped. Receives the node name/id.
+  ///
+  /// Delivered on Android only. On iOS, SceneViewSwift's `ARSceneView` does
+  /// not yet expose an entity hit-test hook, so this is never invoked there
+  /// (tracked in #2051).
   final void Function(String nodeName)? onTap;
 
   /// Called when an AR plane is detected. Receives the plane type
   /// ('horizontal_upward', 'horizontal_downward', 'vertical', or 'unknown').
+  ///
+  /// Delivered on Android only. On iOS, SceneViewSwift's `ARSceneView` does
+  /// not yet expose a plane-detection callback, so this is never invoked
+  /// there (tracked in #2051).
   final void Function(String planeType)? onPlaneDetected;
 
   const ARSceneView({
@@ -664,8 +684,10 @@ class _ARSceneViewState extends State<ARSceneView> {
 
   @override
   void dispose() {
+    // Dispose ONLY the controller this widget created itself. A
+    // caller-supplied [widget.controller] is owned by the caller — disposing
+    // it here would kill a controller the caller still holds (issue #2050).
     _internalController?.dispose();
-    widget.controller?.dispose();
     super.dispose();
   }
 
