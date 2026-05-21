@@ -125,13 +125,13 @@ dependencies {
     // bundling them into the runtime classpath of phone-only consumers. Apps that
     // target Android XR add `implementation(libs.androidx.xr.arcore)` themselves and
     // gate any XR code path on `XrFeatures.isAvailable(context)`. See
-    // arsceneview/docs/JETPACK-XR-INTEGRATION.md (#1738) — Slice 2 (#1902).
+    // arsceneview/docs/JETPACK-XR-INTEGRATION.md (#1738) — Slices 2 (#1902) / 3 (#1903).
     compileOnly libs.androidx.xr.arcore
 
     // Unit tests (JVM — no device required)
     testImplementation 'junit:junit:4.13.2'
     testImplementation libs.robolectric
-    // The XrHandNode JVM tests exercise pure-Kotlin joint/bone math on SceneView's
+    // The Xr*Node JVM tests exercise pure-Kotlin mesh/joint math on SceneView's
     // own `Position` type and never load `androidx.xr.arcore`, so the XR artifact
     // is intentionally NOT a test dependency — keeping the test classpath identical
     // to a stock phone build (the negative path that matters for 99% of consumers).

@@ -1879,7 +1879,7 @@ SceneView ships an opt-in layer for **ARCore for Jetpack XR** (`androidx.xr.arco
 
 **Status: preview.** Tracking issue [#1738](https://github.com/sceneview/sceneview/issues/1738). The upstream `androidx.xr.arcore` is at `1.0.0-alpha14` and subject to breaking changes. SceneView wraps it as an additive, opt-in surface — phone-only apps pay nothing for it. Integration approach: `arsceneview/docs/JETPACK-XR-INTEGRATION.md`.
 
-**Scope this release:** Slice 1 — dependency declared (`libs.versions.toml` → `jetpackXrArCore = "1.0.0-alpha14"`, alias `androidx-xr-arcore`), `XrFeatures` runtime availability check, design + slicing recorded. Slice 2 ([#1902](https://github.com/sceneview/sceneview/issues/1902)) — `XrHandNode` hand-tracking node + `ar-hand-tracking` demo. Face tracking node lands in Slice 3 ([#1903](https://github.com/sceneview/sceneview/issues/1903)).
+**Scope this release:** Slice 1 — dependency declared (`libs.versions.toml` → `jetpackXrArCore = "1.0.0-alpha14"`, alias `androidx-xr-arcore`), `XrFeatures` runtime availability check, design + slicing recorded. Slice 2 ([#1902](https://github.com/sceneview/sceneview/issues/1902)) — `XrHandNode` hand-tracking node + `ar-hand-tracking` demo. Slice 3 ([#1903](https://github.com/sceneview/sceneview/issues/1903)) — `XrFaceNode` face-tracking node + `ar-xr-face` demo.
 
 **Opt-in dependency** (consumers add this themselves; `arsceneview/` declares it `compileOnly`):
 
@@ -1903,7 +1903,7 @@ val xrAvailable = remember { XrFeatures.isAvailable(context) }
 SceneView(modifier = Modifier.fillMaxSize()) {
     if (xrAvailable) {
         // Slice 2: XrHandNode(hand = …, handedness = …) { … }
-        // Slice 3 will add: XrFaceNode(face = …) { … }
+        // Slice 3: XrFaceNode(face = …) { … }
     } else {
         // Fall back to mobile ARCore: AugmentedFaceNode, AugmentedImageNode, etc.
     }
@@ -1956,7 +1956,41 @@ The composable refreshes the skeleton in a `SideEffect` (per recomposition) — 
 
 Sample: the `ar-hand-tracking` demo renders a static reference hand skeleton on phones (no public Android XR emulator yet) and points the developer at `XrHandNode` for the live integration on an Android XR headset.
 
-**Cross-platform parity:** hand tracking on visionOS is covered by `HandTrackingProvider` in `SceneViewSwift`; web covers WebXR `hand-tracking` under issue #1778. Updates to `docs/docs/cheatsheet-ios.md` mirror this section ([#1904](https://github.com/sceneview/sceneview/issues/1904)).
+### XrFaceNode — face tracking (Slice 3)
+
+`XrFaceNode` mirrors a face tracked by ARCore for Jetpack XR (`androidx.xr.arcore.Face`) as a SceneView scene-graph node — the Jetpack XR sibling of `AugmentedFaceNode`. The headset's user-facing cameras track the face, unlike the phone-only `AugmentedFaceNode` which is restricted to the front (selfie) camera. The two coexist: phones keep using `AugmentedFaceNode`, Android XR devices get `XrFaceNode`.
+
+It exposes one child node per named anchor region (`XrFaceRegion`: `CENTER`, `NOSE_TIP`, `FOREHEAD_LEFT`, `FOREHEAD_RIGHT`) whose transform follows the live pose — anchor glasses to `NOSE_TIP`, a hat above the forehead — plus the decoded dense mesh (`XrFaceMeshData`: vertex / normal / index buffers) so a consumer can upload its own `MeshNode` skin overlay. `XrFaceNode` creates no Filament mesh resource itself; building geometry stays a deliberate, main-thread step the consumer owns.
+
+**Preview API.** Every `XrFaceNode` symbol carries `@XrPreviewApi` (a `@RequiresOptIn` marker) because `androidx.xr.arcore` is alpha — opt in with `@OptIn(XrPreviewApi::class)`.
+
+Declarative form (a `@Composable SceneScope` extension — usable inside `SceneView { }` / `ARSceneView { }`):
+
+```kotlin
+import io.github.sceneview.ar.xr.XrFaceNode
+import io.github.sceneview.ar.xr.XrFeatures
+import io.github.sceneview.ar.xr.XrPreviewApi
+import androidx.xr.arcore.Face
+
+@OptIn(XrPreviewApi::class)
+@Composable
+fun FaceOverlay(session: androidx.xr.runtime.Session) {
+    SceneView {
+        // Mirror the live tracked face; one child node per XrFaceRegion.
+        XrFaceNode(face = Face.getUserFace(session)) {
+            // `this` is a NodeScope rooted at the face node — declare per-region geometry.
+        }
+    }
+}
+```
+
+The composable refreshes the face in a `SideEffect` (per recomposition) — recompose once per XR frame and the face follows for free. For an update cadence decoupled from recomposition, use the imperative node directly: collect `Face.state` on the main dispatcher and call `faceNode.update(...)`.
+
+**Threading:** `XrFaceNode.update()` writes only Filament `Node` transforms and decodes the mesh into plain arrays (no JNI resource creation) but, like every node mutation, MUST run on the main thread.
+
+**Pure mesh math** (`XrFaceMesh`) is JVM-testable and runtime-free: `XrFaceMesh.isValid` (buffer-layout sanity check), `vertexAt`, `centroid`, `extent`, `regionDistance`, `lerp`, `trackedRegionCount`. The `XrFaceRegion` enum, `XrFaceMeshData` and `XrFaceMesh` carry no `androidx.xr.arcore` dependency, so they are safe on a phone-only build. Sample: the `ar-xr-face` demo renders a static reference face mesh on phones (no public Android XR emulator yet) and points the developer at `XrFaceNode` for the live integration.
+
+**Cross-platform parity:** hand tracking on visionOS is covered by `HandTrackingProvider` in `SceneViewSwift`, face mesh by `ARFaceTrackingConfiguration`; web covers WebXR `hand-tracking` under issue #1778. Updates to `docs/docs/cheatsheet-ios.md` mirror this section ([#1904](https://github.com/sceneview/sceneview/issues/1904)).
 
 ---
 
@@ -3475,6 +3509,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-scene-semantics` — Scene Semantics. 12-class outdoor scene labeling — HUD shows top-3 labels in view.
 - `ar-streetscape` — Streetscape Geometry. Geospatial building and terrain meshes.
 - `ar-terrain` — Terrain Anchors. Anchor models on geospatial terrain.
+- `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
 
 <!-- END GENERATED DEMOS -->
 

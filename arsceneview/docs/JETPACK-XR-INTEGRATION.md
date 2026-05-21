@@ -145,7 +145,7 @@ Each slice is a separate PR.
 |-------|--------|-------------------------------------------------------------------------------------------|------------------------------------------------|
 | **1** | ✅     | This design doc · `androidx.xr.arcore` dep declaration · `XrFeatures` availability check · stubs in `llms.txt` · CHANGELOG fragment | [#1908](https://github.com/sceneview/sceneview/pull/1908) — closed #1738 |
 | **2** | ✅     | `XrHandNode` + `XrHandSkeleton` joint math + `SceneScope.XrHandNode` composable + `samples/android-demo/ARHandTrackingDemo.kt` + JVM tests · gated on `XrFeatures.isAvailable` | [#1902](https://github.com/sceneview/sceneview/issues/1902) |
-| **3** | ⬜     | `XrFaceNode` (Jetpack XR variant alongside existing `AugmentedFaceNode`) + demo + tests   | [#1903](https://github.com/sceneview/sceneview/issues/1903) |
+| **3** | ✅     | `XrFaceNode` + `XrFaceMesh` mesh/region math + `SceneScope.XrFaceNode` composable + `samples/android-demo/ARXrFaceDemo.kt` + JVM tests · gated on `XrFeatures.isAvailable` | [#1903](https://github.com/sceneview/sceneview/issues/1903) |
 
 Cross-platform parity follow-ups:
 
