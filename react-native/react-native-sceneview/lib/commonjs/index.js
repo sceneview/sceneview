@@ -13,9 +13,25 @@ function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e
 
 /** A 3D model loaded from a .glb / .gltf file. */
 
-/** A procedural geometry node (box, sphere, cylinder, plane). */
+/**
+ * A procedural geometry node (box, sphere, cylinder, plane).
+ *
+ * Platform support:
+ * - **Android**: fully rendered.
+ * - **iOS**: acknowledged but not yet rendered — the RealityKit bridge does
+ *   not currently map procedural geometry nodes. Tracked under the
+ *   cross-platform bridge-parity umbrella (#909). Use `modelNodes` on iOS.
+ */
 
-/** A light source in the scene. */
+/**
+ * A light source in the scene.
+ *
+ * Platform support:
+ * - **Android**: fully rendered.
+ * - **iOS**: acknowledged but not yet rendered — the RealityKit bridge does
+ *   not currently map declarative light nodes. Tracked under the
+ *   cross-platform bridge-parity umbrella (#909).
+ */
 
 // ---------------------------------------------------------------------------
 // Event payloads

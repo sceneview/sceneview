@@ -10,11 +10,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableType
+import com.facebook.react.common.MapBuilder
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.annotations.ReactProp
 import com.google.android.filament.LightManager
+import com.google.ar.core.Config
+import com.google.ar.core.Plane
 import io.github.sceneview.SurfaceType
+import io.github.sceneview.ar.arcore.getUpdatedPlanes
+import io.github.sceneview.gesture.GestureDetector
 import io.github.sceneview.math.Size
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -31,6 +36,14 @@ class ARSceneViewState {
     val planeDetection = mutableStateOf(true)
     val depthOcclusion = mutableStateOf(false)
     val instantPlacement = mutableStateOf(false)
+
+    /**
+     * ARCore [Plane] instances already reported to JS via `onPlaneDetected`.
+     * ARCore returns the same `Plane` reference for a given trackable across
+     * frames, so reference identity is the correct de-duplication key — the
+     * event fires exactly once per newly-detected plane (issue #2053).
+     */
+    val reportedPlanes = HashSet<Plane>()
 }
 
 /**
@@ -48,16 +61,48 @@ class ARSceneViewManager : SimpleViewManager<FrameLayout>() {
         return view.tag as? ARSceneViewState ?: ARSceneViewState().also { view.tag = it }
     }
 
+    /**
+     * Registers `onTap` / `onPlaneDetected` so React Native delivers the native
+     * event dispatches to the matching JS props. Without these entries the
+     * events are silently dropped even when the native side dispatches them
+     * (issue #2053).
+     */
+    override fun getExportedCustomDirectEventTypeConstants(): Map<String, Any> =
+        MapBuilder.builder<String, Any>()
+            .put(TapEvent.NAME, MapBuilder.of("registrationName", "onTap"))
+            .put(
+                PlaneDetectedEvent.NAME,
+                MapBuilder.of("registrationName", "onPlaneDetected"),
+            )
+            .build()
+
     override fun createViewInstance(reactContext: ThemedReactContext): FrameLayout {
         val container = FrameLayout(reactContext)
         val state = ARSceneViewState()
         container.tag = state
+
+        // Tap gesture → JS `onTap` (issue #2053).
+        val gestureListener = object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(
+                e: android.view.MotionEvent,
+                node: io.github.sceneview.node.Node?,
+            ) {
+                dispatchTapEvent(reactContext, container, node)
+            }
+        }
 
         val composeView = ComposeView(reactContext).apply {
             setContent {
                 val engine = rememberEngine()
                 val modelLoader = rememberModelLoader(engine)
                 val materialLoader = rememberMaterialLoader(engine)
+
+                // Read the AR config flags here so the `sessionConfiguration`
+                // lambda below captures them by value — its identity then
+                // changes whenever JS toggles the prop, which re-applies the
+                // ARCore Config on the live session (issue #2055).
+                val depthOcclusion = state.depthOcclusion.value
+                val instantPlacement = state.instantPlacement.value
 
                 io.github.sceneview.ar.ARSceneView(
                     modifier = Modifier.fillMaxSize(),
@@ -66,6 +111,40 @@ class ARSceneViewManager : SimpleViewManager<FrameLayout>() {
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
                     planeRenderer = state.planeDetection.value,
+                    onGestureListener = gestureListener,
+                    // depthOcclusion / instantPlacement → ARCore Config. The
+                    // typed `depthMode` / `instantPlacementMode` composable
+                    // params (#1766) post-date the consumed arsceneview
+                    // artifact, so the flags are applied via the stable
+                    // `sessionConfiguration` callback instead (issue #2055).
+                    sessionConfiguration = { session, config ->
+                        config.depthMode =
+                            if (depthOcclusion &&
+                                session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
+                            ) {
+                                Config.DepthMode.AUTOMATIC
+                            } else {
+                                Config.DepthMode.DISABLED
+                            }
+                        config.instantPlacementMode =
+                            if (instantPlacement) {
+                                Config.InstantPlacementMode.LOCAL_Y_UP
+                            } else {
+                                Config.InstantPlacementMode.DISABLED
+                            }
+                    },
+                    // Per-frame plane diff → JS `onPlaneDetected`. Fires once
+                    // per newly-tracked ARCore plane (issue #2053).
+                    onSessionUpdated = { _, frame ->
+                        for (plane in frame.getUpdatedPlanes()) {
+                            if (plane.trackingState != com.google.ar.core.TrackingState.TRACKING) {
+                                continue
+                            }
+                            if (state.reportedPlanes.add(plane)) {
+                                dispatchPlaneEvent(reactContext, container, plane)
+                            }
+                        }
+                    },
                 ) {
                     state.modelPaths.forEach { model ->
                         val instance = rememberModelInstance(modelLoader, model.src)
