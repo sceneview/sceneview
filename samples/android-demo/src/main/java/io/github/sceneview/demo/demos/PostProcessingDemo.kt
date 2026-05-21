@@ -1,10 +1,8 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -33,8 +31,12 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.rememberFirstFrameState
+import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Scale
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
+import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberView
@@ -44,6 +46,12 @@ import io.github.sceneview.rememberView
  *
  * The Filament [View] is created via [rememberView] and passed to [SceneView]. Toggle switches
  * modify the view's properties on every recomposition via [SideEffect]-style updates.
+ *
+ * The helmet is staged sitting **on a ground plane** rather than floating in the void: SSAO
+ * darkens contact zones and crevices, so the soft shadow where the helmet meets the floor only
+ * exists with SSAO on. Toggling the SSAO switch makes that contact shadow flatly appear and
+ * disappear — the post-processing difference reads at a glance instead of being a subtle change
+ * a user can easily miss (#1443).
  */
 @Composable
 fun PostProcessingDemo(onBack: () -> Unit) {
@@ -60,9 +68,15 @@ fun PostProcessingDemo(onBack: () -> Unit) {
 
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val view = rememberView(engine)
     val modelInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+
+    // A light, matte ground the helmet rests on. SSAO darkens the contact zone
+    // between the model and this plane, so toggling SSAO makes the soft contact
+    // shadow visibly appear/disappear — the whole point of the demo (#1443).
+    val groundBitmap = remember { createMattGroundBitmap() }
 
     // Apply post-processing settings to the Filament View after composition lands —
     // a SideEffect runs on every successful recomposition so toggles actually take
@@ -81,14 +95,16 @@ fun PostProcessingDemo(onBack: () -> Unit) {
         view.dithering = if (ditheringEnabled) Dithering.TEMPORAL else Dithering.NONE
     }
 
-    // Camera orbits the helmet; SSAO / FXAA / dithering read best on a static model
-    // where the user can catch aliasing at grazing angles as the camera moves —
-    // a spinning helmet sweeps its surface through the same screen pixels so edge
-    // aliasing is harder to compare between AA modes.
+    // Camera orbits the helmet from a slightly raised angle so the ground plane
+    // reads as a floor receding into the scene — that angle is what makes the
+    // SSAO contact shadow under the helmet visible. SSAO / FXAA / dithering read
+    // best on a static model where the user can catch aliasing at grazing angles
+    // as the camera moves; a spinning helmet would sweep its surface through the
+    // same screen pixels so edge aliasing is harder to compare between AA modes.
     val cameraManipulator = io.github.sceneview.demo.rememberHeroOrbitCameraManipulator(
         trigger = modelInstance != null,
         radius = 2.0f,
-        yHeight = 0.3f,
+        yHeight = 0.7f,
         durationMillis = 20_000,
         staticYaw = 30f,
     )
@@ -100,6 +116,13 @@ fun PostProcessingDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         controls = {
+            Text(
+                "Toggle SSAO and watch the soft contact shadow where the helmet " +
+                    "meets the floor appear and disappear.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
             Text("Render Effects", style = MaterialTheme.typography.labelLarge)
             Spacer(modifier = Modifier.height(4.dp))
             ToggleRow("SSAO (Ambient Occlusion)", ssaoEnabled) { ssaoEnabled = it }
@@ -114,10 +137,21 @@ fun PostProcessingDemo(onBack: () -> Unit) {
                 onFrame = firstFrame.onFrame,
                 engine = engine,
                 modelLoader = modelLoader,
+                materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
                 view = view,
                 cameraManipulator = cameraManipulator,
             ) {
+                // Ground plane the helmet rests on. Laid flat (rotated -90° about
+                // X) and pushed down to the base of the model so SSAO has a
+                // contact surface to darken.
+                ImageNode(
+                    bitmap = groundBitmap,
+                    position = Position(x = 0f, y = -0.27f, z = 0f),
+                    rotation = Rotation(x = -90f),
+                    scale = Scale(2.6f),
+                )
+
                 modelInstance?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
@@ -128,6 +162,28 @@ fun PostProcessingDemo(onBack: () -> Unit) {
             LoadingScrim(loading = modelInstance == null, label = "Loading helmet…")
         }
     }
+}
+
+/**
+ * A plain, light, matte ground bitmap. Kept deliberately flat and uniform so the
+ * only thing the eye picks up near the helmet's base is the SSAO contact shadow —
+ * a textured or patterned floor would compete with it.
+ */
+private fun createMattGroundBitmap(): Bitmap {
+    val size = 256
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    canvas.drawColor(0xFFB8BCC4.toInt())
+    // A faint inset border so the plane reads as a finite surface, not an
+    // infinite void-colored quad.
+    val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFA0A4AC.toInt()
+        style = Paint.Style.STROKE
+        strokeWidth = 6f
+    }
+    val inset = 10f
+    canvas.drawRect(inset, inset, size - inset, size - inset, borderPaint)
+    return bitmap
 }
 
 @Composable
