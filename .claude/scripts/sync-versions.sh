@@ -235,36 +235,33 @@ for docfile in docs/docs/index.md docs/docs/quickstart.md docs/docs/llms-full.tx
     fi
 done
 
-# docs/docs/llms.txt (separate from root llms.txt)
+# docs/docs/llms.txt — build-generated, NOT committed. It is regenerated from
+# root `llms.txt` at docs-build time and `.gitignore`d (issue #899 hardening),
+# so it carries the same version as root `llms.txt` by construction and needs
+# no check. The `[ -f ]` guard below skips it cleanly when it is absent (the
+# committed state); if a local docs build has left a working copy, it is still
+# checked WARN-only so a stale build artefact never fails the gate.
 DOCS_LLMS="$REPO_ROOT/docs/docs/llms.txt"
 if [ -f "$DOCS_LLMS" ]; then
     V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$DOCS_LLMS" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
-        add_check "docs/docs/llms.txt" "$V"
+        add_check "docs/docs/llms.txt (build artefact)" "$V" "false"
     fi
 fi
 
-# ─── 5b. llms.txt root↔docs full-content sync (issue #899) ──────────────
-# `docs/docs/llms.txt` must be a byte-for-byte mirror of root `llms.txt` so
-# mkdocs serves the same content as the raw GitHub URL that LLMs fetch. The
-# `io.github.sceneview:sceneview:X.Y.Z` check above only catches ONE line —
-# this catches any drift in prose/SPM/web/flutter snippets.
-if [ -f "$LLMS" ] && [ -f "$DOCS_LLMS" ]; then
-    if ! diff -q "$LLMS" "$DOCS_LLMS" >/dev/null 2>&1; then
-        echo -e "${RED}MISMATCH: docs/docs/llms.txt has drifted from root llms.txt${NC}"
-        if [ "$FIX_MODE" = "--fix" ]; then
-            cp "$LLMS" "$DOCS_LLMS"
-            echo -e "${GREEN}  Fixed: copied root llms.txt over docs/docs/llms.txt${NC}"
-        else
-            echo "  Diff (first 5 hunks):"
-            # `head -N` closes the pipe early under `pipefail`, surfacing
-            # SIGPIPE from `diff`. Suppress it so the script keeps running
-            # the remaining checks.
-            { diff -u "$LLMS" "$DOCS_LLMS" 2>&1 || true; } | head -25 | sed 's/^/    /'
-            ERRORS=$((ERRORS + 1))
-        fi
-    fi
-fi
+# ─── 5b. docs/docs/llms.txt is build-generated (issue #899) ─────────────
+# `docs/docs/llms.txt` used to be a committed byte-for-byte mirror of root
+# `llms.txt` that this section diffed and `--fix`-copied. As of the CI-drift
+# hardening it is NO LONGER COMMITTED: it is `.gitignore`d and regenerated
+# from root `llms.txt` at docs-build time by `.github/workflows/docs.yml`
+# (the "Mirror root llms.txt into docs" step, before `mkdocs build`). Being a
+# fresh copy on every build it is fresh-by-construction and cannot drift, so
+# there is nothing to diff or fix here — the same "no committed generated
+# artefact" decision as #1928 (`mcp/src/generated/llms-txt.ts`).
+#
+# `check-llms-drift.sh` (wired into `quality-gate.sh`) now enforces the
+# structural invariant — that `docs/docs/llms.txt` stays untracked — so a
+# committed copy can never silently reappear.
 
 # ─── 5b-bis. MCP generated bundle (issue #1928) ───────────────────────────
 # `mcp/src/generated/llms-txt.ts` used to be a committed artefact that this
@@ -462,7 +459,10 @@ SPM_FILES=(
     # prose-backtick form; #1693 found them 6 minors stale after v4.10.0.
     docs/docs/codelabs/codelab-3d-swiftui.md
     docs/docs/codelabs/codelab-ar-swiftui.md
-    docs/docs/llms.txt
+    # NOTE: `docs/docs/llms.txt` is intentionally NOT listed — it is no longer
+    # committed. It is regenerated from root `llms.txt` (already swept above)
+    # at docs-build time and `.gitignore`d (issue #899 hardening), so its SPM
+    # snippet is fresh by construction.
     website-static/.well-known/llms.txt
     website-static/playground.html
     .github/copilot-instructions.md
@@ -595,9 +595,7 @@ done
 # bundle. This is a public `@JsExport`-reachable code constant; web consumers
 # querying the library version get whatever this literal says, so silent drift
 # is a real defect (it lagged 2 majors before #1357). Hard MISMATCH check —
-# never demote back to WARN-only. The literal is pinned by a jsTest in
-# `sceneview-web/src/jsTest/.../SceneViewVersionTest.kt` as a second line of
-# defense.
+# never demote back to WARN-only.
 SCENEVIEWJS_KT=$(find "$REPO_ROOT/sceneview-web" -name 'SceneViewJS.kt' 2>/dev/null | head -1 || true)
 if [ -n "$SCENEVIEWJS_KT" ] && [ -f "$SCENEVIEWJS_KT" ]; then
     V=$(grep -E 'SCENEVIEW_VERSION' "$SCENEVIEWJS_KT" | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"' | tr -d '"' | head -1 || echo "NOT FOUND")
@@ -606,12 +604,30 @@ if [ -n "$SCENEVIEWJS_KT" ] && [ -f "$SCENEVIEWJS_KT" ]; then
     fi
 fi
 
+# SceneViewVersionTest.kt — the jsTest regression pin for the constant above.
+# `versionIsCurrent()` asserts `assertEquals("X.Y.Z", SCENEVIEW_VERSION)` with
+# a HARDCODED literal. Before the CI-drift hardening NEITHER `SceneViewJS.kt`
+# nor this test had an auto-`--fix` handler — they were check-only — so after
+# a release bump the SDK shipped a stale `SCENEVIEW_VERSION` and the
+# `:sceneview-web:jsTest` job went red on an otherwise-clean release PR. The
+# `--fix` block below now rewrites BOTH the constant and this pin in lockstep
+# with VERSION_NAME, closing the drift trap.
+SCENEVIEWJS_VERSION_TEST=$(find "$REPO_ROOT/sceneview-web" -name 'SceneViewVersionTest.kt' 2>/dev/null | head -1 || true)
+if [ -n "$SCENEVIEWJS_VERSION_TEST" ] && [ -f "$SCENEVIEWJS_VERSION_TEST" ]; then
+    V=$(grep -E 'assertEquals\("[0-9]+\.[0-9]+\.[0-9]+' "$SCENEVIEWJS_VERSION_TEST" | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"' | tr -d '"' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "sceneview-web SceneViewVersionTest.kt pin" "$V"
+    fi
+fi
+
 # Kotlin toolchain version — gradle/libs.versions.toml `kotlin = "X.Y.Z"` is
 # the source of truth; llms.txt + llms-full.txt quote it in prose and drift.
 # Reported under a separate "Kotlin" banner since it's not VERSION_NAME.
+# `docs/docs/llms.txt` is omitted — it is build-generated from root `llms.txt`
+# (swept here) and `.gitignore`d (issue #899 hardening).
 KOTLIN_TOML=$(grep -m1 '^kotlin = ' "$REPO_ROOT/gradle/libs.versions.toml" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
 if [ -n "$KOTLIN_TOML" ]; then
-    for kfile in llms.txt docs/docs/llms.txt docs/docs/llms-full.txt; do
+    for kfile in llms.txt docs/docs/llms-full.txt; do
         F="$REPO_ROOT/$kfile"
         [ -f "$F" ] || continue
         V=$(grep -oE 'Kotlin:\*\* [0-9]+\.[0-9]+\.[0-9]+' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
@@ -1054,6 +1070,28 @@ with open('$RN_DEMO_PKG', 'w') as f:
             fi
         fi
     done
+
+    # Fix sceneview-web SCENEVIEW_VERSION constant + its jsTest pin
+    # (CI-drift hardening). The constant is a public `@JsExport`-reachable
+    # value; the test `assertEquals("X.Y.Z", SCENEVIEW_VERSION)` pins it. Both
+    # carried a hardcoded literal with no `--fix` handler, so a release bump
+    # left the SDK shipping a stale version and reddened `:sceneview-web:jsTest`.
+    # Each substitution is scoped to the exact surrounding text so no unrelated
+    # version string in the file is touched.
+    if [ -n "$SCENEVIEWJS_KT" ] && [ -f "$SCENEVIEWJS_KT" ]; then
+        CURRENT=$(grep -E 'SCENEVIEW_VERSION' "$SCENEVIEWJS_KT" | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"' | tr -d '"' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/SCENEVIEW_VERSION = \"$CURRENT\"/SCENEVIEW_VERSION = \"$SOURCE_VERSION\"/" "$SCENEVIEWJS_KT"
+            echo -e "  Fixed: sceneview-web SceneViewJS.kt SCENEVIEW_VERSION ($CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+    if [ -n "$SCENEVIEWJS_VERSION_TEST" ] && [ -f "$SCENEVIEWJS_VERSION_TEST" ]; then
+        CURRENT=$(grep -E 'assertEquals\("[0-9]+\.[0-9]+\.[0-9]+' "$SCENEVIEWJS_VERSION_TEST" | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"' | tr -d '"' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/assertEquals(\"$CURRENT\", SCENEVIEW_VERSION)/assertEquals(\"$SOURCE_VERSION\", SCENEVIEW_VERSION)/" "$SCENEVIEWJS_VERSION_TEST"
+            echo -e "  Fixed: sceneview-web SceneViewVersionTest.kt pin ($CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
 
     # Fix website-static/js/package.json (#1356)
     if [ -f "$WEBSITE_JS_PKG" ]; then

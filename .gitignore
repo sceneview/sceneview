@@ -113,6 +113,19 @@ docs/.cache/
 docs/site/
 site/
 
+# `docs/docs/llms.txt` is a byte-for-byte mirror of the root `llms.txt`,
+# served by mkdocs at `/docs/llms.txt` (issue #899). Committing the mirror
+# meant every PR touching root `llms.txt` had to remember to update the copy
+# (or run `sync-versions.sh --fix`) — drift landed on `main` repeatedly
+# (#1822 → #1847) and turned the quality gate red on otherwise-clean PRs.
+# It is now generated from root `llms.txt` at docs-build time by
+# `.github/workflows/docs.yml` (the "Mirror root llms.txt into docs" step,
+# before `mkdocs build`) and `.gitignore`d. Being a copy made fresh on every
+# build, it is fresh-by-construction and cannot drift — the same
+# "no committed generated artefact" decision as #1928
+# (`mcp/src/generated/llms-txt.ts`) and #1976 (`GeneratedDemos.kt`).
+docs/docs/llms.txt
+
 # ── Environment & secrets ─────────────────────────────────
 .env
 .env.local

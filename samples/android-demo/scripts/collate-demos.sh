@@ -12,10 +12,15 @@
 #        - `GeneratedDemos.route(id, onBack)` — drives the deep-link router
 #          (`DemoRouter`); returns a composable lambda or null.
 #
-#   2. A markered block in `llms.txt` (and its mirror in `docs/docs/llms.txt`)
-#      enumerating every demo (id, title, subtitle, category) so AI consumers
-#      see the sample-app surface without anyone hand-editing `llms.txt` on
-#      every new demo (issue #1871).
+#   2. A markered block in the root `llms.txt` enumerating every demo (id,
+#      title, subtitle, category) so AI consumers see the sample-app surface
+#      without anyone hand-editing `llms.txt` on every new demo (issue #1871).
+#
+# Note: `docs/docs/llms.txt` was once a committed mirror this script also
+# rewrote. It is no longer committed — it is regenerated from root `llms.txt`
+# at docs-build time and `.gitignore`d (issue #899 hardening) — so the
+# collator only touches root `llms.txt`. The docs mirror inherits the
+# up-to-date demos block automatically when the docs build copies the file.
 #
 # Fragments are sorted by demo id for a stable, conflict-free diff so two
 # parallel PRs adding two different demos never collide on this file.
@@ -23,7 +28,7 @@
 # Idempotent: running this script twice produces byte-identical outputs.
 #
 # Usage:
-#   bash samples/android-demo/scripts/collate-demos.sh           # write all 3
+#   bash samples/android-demo/scripts/collate-demos.sh           # write both
 #   bash samples/android-demo/scripts/collate-demos.sh --check   # exit non-zero
 #                                                                # if any output is stale
 #   bash samples/android-demo/scripts/collate-demos.sh --kt-only # write only
@@ -31,9 +36,9 @@
 #
 # `--kt-only` is what the Gradle build wires in: `GeneratedDemos.kt` is no
 # longer committed (it is `.gitignore`d, issue #1976) and is regenerated before
-# `:samples:android-demo` Kotlin compilation. The `llms.txt` files stay tracked
-# (they carry hand-maintained content outside the generated block) so the Gradle
-# build must not rewrite them — `--kt-only` skips them entirely.
+# `:samples:android-demo` Kotlin compilation. The root `llms.txt` stays tracked
+# (it carries hand-maintained content outside the generated block) so the Gradle
+# build must not rewrite it — `--kt-only` skips it entirely.
 
 set -euo pipefail
 
@@ -50,7 +55,6 @@ OUT_FILE="$FRAG_DIR/GeneratedDemos.kt"
 VALUES_DIR="samples/android-demo/src/main/res/values"
 STRINGS_XML="$VALUES_DIR/strings.xml"
 LLMS_ROOT="llms.txt"
-LLMS_MIRROR="docs/docs/llms.txt"
 LLMS_BEGIN_MARKER="<!-- BEGIN GENERATED DEMOS — DO NOT EDIT — run samples/android-demo/scripts/collate-demos.sh -->"
 LLMS_END_MARKER="<!-- END GENERATED DEMOS -->"
 
@@ -66,13 +70,11 @@ esac
 [ -d "$FRAG_DIR" ] || { echo "Error: $FRAG_DIR not found." >&2; exit 1; }
 [ -d "$VALUES_DIR" ] || { echo "Error: $VALUES_DIR not found." >&2; exit 1; }
 [ -f "$STRINGS_XML" ] || { echo "Error: $STRINGS_XML not found." >&2; exit 1; }
-# The `llms.txt` files are only touched by the full (write) and `--check`
-# modes. `--kt-only` (the Gradle build path, #1976) emits ONLY
-# `GeneratedDemos.kt`, so it must not require the llms.txt files — they may be
-# absent in a sparse checkout that excludes `docs/`.
+# Root `llms.txt` is only touched by the full (write) and `--check` modes.
+# `--kt-only` (the Gradle build path, #1976) emits ONLY `GeneratedDemos.kt`,
+# so it must not require `llms.txt`.
 if [ "$KT_ONLY" != true ]; then
     [ -f "$LLMS_ROOT" ] || { echo "Error: $LLMS_ROOT not found." >&2; exit 1; }
-    [ -f "$LLMS_MIRROR" ] || { echo "Error: $LLMS_MIRROR not found." >&2; exit 1; }
 fi
 
 # ─── 1. Discover fragments and collect per-demo metadata ──────────────────
@@ -335,7 +337,7 @@ CATEGORY_ORDER="BASICS_3D LIGHTING_ENVIRONMENT CONTENT INTERACTION ADVANCED AUGM
     printf '%s\n' "$LLMS_END_MARKER"
 } > "$NEW_BLOCK"
 
-# ─── 5. Splice the block into llms.txt + docs/docs/llms.txt ───────────────
+# ─── 5. Splice the block into root llms.txt ───────────────────────────────
 #
 # If the markers are not yet present in the target file, splice the block in
 # at a stable anchor (just before `## Sketchfab streaming for samples`) so the
@@ -388,42 +390,23 @@ splice_llms() {
 }
 
 NEW_LLMS_ROOT="$(mktemp)"
-NEW_LLMS_MIRROR="$(mktemp)"
-trap 'rm -f "$TMP_META" "$SORTED_META" "$NEW_KT" "$NEW_BLOCK" "$NEW_LLMS_ROOT" "$NEW_LLMS_MIRROR"' EXIT
+trap 'rm -f "$TMP_META" "$SORTED_META" "$NEW_KT" "$NEW_BLOCK" "$NEW_LLMS_ROOT"' EXIT
 
 splice_llms "$LLMS_ROOT" "$NEW_LLMS_ROOT"
-splice_llms "$LLMS_MIRROR" "$NEW_LLMS_MIRROR"
-
-# Cross-check: the same bytes must end up in both files. Catches the case
-# where the mirror has drifted ahead of the root (or vice versa) before this
-# collator ran — the user must heal the drift with `sync-versions.sh --fix`
-# first, otherwise we'd silently paper over the broader divergence.
-if ! cmp -s "$NEW_LLMS_ROOT" "$NEW_LLMS_MIRROR"; then
-    echo "Error: llms.txt and docs/docs/llms.txt diverge OUTSIDE the demos block." >&2
-    echo "  Heal the mirror first: bash .claude/scripts/sync-versions.sh --fix" >&2
-    exit 1
-fi
 
 # ─── 6. Apply or check ────────────────────────────────────────────────────
 if [ "$CHECK_MODE" = true ]; then
     # `GeneratedDemos.kt` is no longer committed — it is `.gitignore`d and
     # regenerated at build time by the `generateDemoRegistry` Gradle task
-    # (issue #1976). A `.gitignore`d, build-generated file is fresh by
-    # construction and cannot drift, so `--check` no longer compares it. The
-    # `llms.txt` files stay tracked with hand-maintained content, so their
-    # generated demo blocks are still drift-checked here.
-    drift=0
+    # (issue #1976). `docs/docs/llms.txt` is likewise no longer committed —
+    # it is regenerated from root `llms.txt` at docs-build time and
+    # `.gitignore`d (issue #899 hardening). Both are fresh by construction
+    # and cannot drift, so `--check` compares neither. Only the root
+    # `llms.txt` stays tracked with hand-maintained content, so its generated
+    # demo block is still drift-checked here.
     if ! cmp -s "$NEW_LLMS_ROOT" "$LLMS_ROOT"; then
         echo "Error: $LLMS_ROOT demos block is out of date. Run 'bash samples/android-demo/scripts/collate-demos.sh'." >&2
         diff -u "$LLMS_ROOT" "$NEW_LLMS_ROOT" | head -40 || true
-        drift=1
-    fi
-    if ! cmp -s "$NEW_LLMS_MIRROR" "$LLMS_MIRROR"; then
-        echo "Error: $LLMS_MIRROR demos block is out of date. Run 'bash samples/android-demo/scripts/collate-demos.sh'." >&2
-        diff -u "$LLMS_MIRROR" "$NEW_LLMS_MIRROR" | head -40 || true
-        drift=1
-    fi
-    if [ "$drift" -ne 0 ]; then
         exit 1
     fi
     echo "OK: llms.txt demos section in sync with $fragment_count fragment(s)."
@@ -432,5 +415,4 @@ fi
 
 mv "$NEW_KT" "$OUT_FILE"
 mv "$NEW_LLMS_ROOT" "$LLMS_ROOT"
-mv "$NEW_LLMS_MIRROR" "$LLMS_MIRROR"
-echo "Regenerated $OUT_FILE, $LLMS_ROOT, $LLMS_MIRROR from $fragment_count fragment(s)."
+echo "Regenerated $OUT_FILE, $LLMS_ROOT from $fragment_count fragment(s)."

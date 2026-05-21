@@ -12,7 +12,7 @@ Before #1797, adding a demo required edits to four or five shared files:
 - `DemoRegistry.kt` (the central `ALL_DEMOS` list)
 - `MainActivity.kt` (the `DemoRouter` `when` block + the `import` block)
 - `strings.xml` (per-demo title/subtitle)
-- `llms.txt` and `docs/docs/llms.txt`
+- `llms.txt` (the docs mirror `docs/docs/llms.txt` is now build-generated)
 
 Two PRs adding two different demos always conflict on the same anchors, and
 merging one created fresh conflicts in every sibling — five+ unnecessary
