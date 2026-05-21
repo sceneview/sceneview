@@ -313,15 +313,19 @@ jobs:
       # Auth: a PAT with `repo` scope. `PERSONAL_TOKEN` already exists as a
       # repo secret (used for cross-repo automation) and is the default;
       # `PAGES_REBUILD_TOKEN` is honoured first if a dedicated token is
-      # ever provisioned. The `if:` tests `secrets.*` directly — secrets are
-      # available to step `if:` conditions, whereas an `env:` set on the
-      # SAME step is NOT yet in scope when the `if:` is evaluated (the bug
-      # that kept this step permanently skipped before #1826).
+      # ever provisioned. NOTE: the `secrets` context is NOT allowed in a
+      # step `if:` expression — referencing it there makes the whole
+      # workflow file invalid ("Unrecognized named-value: 'secrets'"). The
+      # token presence check is done inside the `run:` script via
+      # `$PAGES_TOKEN` instead.
       - name: Trigger GitHub Pages build (legacy auto-build skips bot pushes)
-        if: ${{ secrets.PAGES_REBUILD_TOKEN != '' || secrets.PERSONAL_TOKEN != '' }}
         env:
           PAGES_TOKEN: ${{ secrets.PAGES_REBUILD_TOKEN || secrets.PERSONAL_TOKEN }}
         run: |
+          if [ -z "$PAGES_TOKEN" ]; then
+            echo "::warning::No Pages rebuild token configured — skipping."
+            exit 0
+          fi
           echo "Requesting a GitHub Pages build for sceneview/sceneview.github.io..."
           HTTP=$(curl -sS -o /tmp/pages-build.json -w '%{http_code}' -X POST \
             -H "Accept: application/vnd.github+json" \

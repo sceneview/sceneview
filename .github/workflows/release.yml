@@ -202,11 +202,21 @@ jobs:
       # `/api/` docs on `sceneview.github.io` that the live site never
       # rebuilds — the same drift class as #1826. Force a build via the
       # Pages REST API. Mirrors the step in `docs.yml`.
+      # NOTE: the `secrets` context is NOT allowed in a step `if:` expression
+      # (only `github`, `env`, `steps`, `inputs`, etc. are). Referencing
+      # `secrets.*` here makes the WHOLE workflow file invalid
+      # ("Unrecognized named-value: 'secrets'") and every release run fails
+      # at startup with 0 jobs. The token check is therefore done inside the
+      # `run:` script via `$PAGES_TOKEN` instead.
       - name: Trigger GitHub Pages build (legacy auto-build skips bot pushes)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') && (secrets.PAGES_REBUILD_TOKEN != '' || secrets.PERSONAL_TOKEN != '') }}
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
           PAGES_TOKEN: ${{ secrets.PAGES_REBUILD_TOKEN || secrets.PERSONAL_TOKEN }}
         run: |
+          if [ -z "$PAGES_TOKEN" ]; then
+            echo "::warning::No Pages rebuild token configured — skipping."
+            exit 0
+          fi
           echo "Requesting a GitHub Pages build for sceneview/sceneview.github.io..."
           HTTP=$(curl -sS -o /tmp/pages-build.json -w '%{http_code}' -X POST \
             -H "Accept: application/vnd.github+json" \
