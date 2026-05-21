@@ -43,6 +43,14 @@ class CameraConfigFilterBuilder {
      *
      * Pass `setOf(CameraConfig.TargetFps.TARGET_FPS_60)` for a 60 FPS-only filter, or
      * `setOf(TARGET_FPS_30, TARGET_FPS_60)` for either.
+     *
+     * Must be either `null` or a non-empty set. An empty set is a programmer error: the
+     * native [java.util.EnumSet.copyOf] call inside [build] would throw
+     * [IllegalArgumentException], and historically the surrounding [runCatching] silently
+     * fell back to the session's default camera config — which on Augmented Faces sessions
+     * is FRONT-facing, so a developer requesting back-only got the front camera with no
+     * signal (#1845). The non-empty invariant is enforced at session-creation time inside
+     * [cameraConfigFilter].
      */
     var targetFps: Set<CameraConfig.TargetFps>? = null
 
@@ -116,12 +124,29 @@ fun cameraConfigFilter(
     block: CameraConfigFilterBuilder.() -> Unit
 ): (Session) -> CameraConfig {
     val builder = CameraConfigFilterBuilder().apply(block)
+    // Validate developer invariants once at builder time so the failure is observed at the call
+    // site that wrote the bad DSL, not on every session-creation invocation (#1845).
+    require(builder.targetFps == null || builder.targetFps!!.isNotEmpty()) {
+        "cameraConfigFilter: targetFps must be either null or a non-empty set — " +
+            "an empty set silently degrades to the session's default camera config, " +
+            "which on Augmented Faces sessions is FRONT-facing."
+    }
     return { session ->
-        runCatching {
-            val filter = builder.build(session)
-            session.getSupportedCameraConfigs(filter).maxByOrNull {
-                it.imageSize.width.toLong() * it.imageSize.height.toLong()
-            }
-        }.getOrNull() ?: session.cameraConfig
+        // Narrow the catch to the documented ARCore failure point —
+        // [Session.getSupportedCameraConfigs] is JNI-backed and may legitimately fail on a
+        // session in an odd state (#1845). Builder errors (e.g. EnumSet.copyOf on an empty set,
+        // any IllegalArgumentException ARCore raises from the filter setters) must propagate so
+        // misuse is caught at dev time, not silently degraded to the session default — which
+        // on many devices is FRONT-facing or non-depth, a privacy regression. See also the
+        // `targetFps` builder field's KDoc for the same rationale.
+        val filter = builder.build(session)
+        val configs = try {
+            session.getSupportedCameraConfigs(filter)
+        } catch (e: RuntimeException) {
+            null
+        }
+        configs?.maxByOrNull {
+            it.imageSize.width.toLong() * it.imageSize.height.toLong()
+        } ?: session.cameraConfig
     }
 }

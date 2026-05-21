@@ -148,6 +148,19 @@ jobs:
             -project SceneViewDemo.xcodeproj \
             -clonedSourcePackagesDirPath SourcePackages
 
+      # Tag pushes always run through this workflow (the `on:` block above is
+      # `tags: [v[0-9]+.[0-9]+.[0-9]+]`), but mirror the Play Store guard
+      # condition so manual `workflow_dispatch` debug runs can iterate without
+      # tripping the live API probe. See #1909.
+      - name: Verify Sketchfab API key wiring (#1909)
+        if: startsWith(github.ref, 'refs/tags/v')
+        # `defaults.run.working-directory` is samples/ios-demo, so step back
+        # to the repo root for the shared verify script.
+        working-directory: ${{ github.workspace }}
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        run: bash .claude/scripts/verify-sketchfab-key.sh
+
       - name: Build archive
         # Inject the Sketchfab API key as a user-defined build setting so it
         # gets substituted into `Info.plist`'s `SketchfabAPIKey =
@@ -680,6 +693,16 @@ jobs:
             -scheme SceneViewDemo \
             -project SceneViewDemo.xcodeproj \
             -clonedSourcePackagesDirPath SourcePackages
+
+      # Same #1909 guard as the iOS archive above — macOS App Store builds
+      # share the SKETCHFAB_API_KEY secret, so the same empty/blank secret
+      # would silently ship a broken Explore tab to Mac users too.
+      - name: Verify Sketchfab API key wiring (#1909)
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: ${{ github.workspace }}
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        run: bash .claude/scripts/verify-sketchfab-key.sh
 
       - name: Build archive
         # See iOS variant above for the rationale on `SKETCHFAB_API_KEY=` —

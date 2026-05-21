@@ -1,3 +1,19 @@
+// camera_stream_depth.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Full-screen AR camera passthrough with ARCore depth occlusion and optional
+//             environment-aware fog (issue #1717). Writes gl_FragDepth so virtual geometry
+//             is correctly occluded by the real world.
+// Used by:    ARCameraStream (depthOcclusionMaterialFile) — ARSceneView depth-occlusion path.
+// Parameters:
+//   cameraTexture — samplerExternal, the live ARCore camera feed.
+//   depthTexture  — sampler2d, ARCore packed depth (mm) in the .xy channels.
+//   uvTransform   — float4x4, ARCore display-rotation UV transform.
+//   fogEnabled    — float, 0/1 branchless gate multiplied into the fog factor.
+//   fogColor      — float3, RGB haze colour (mirrors FogNode.color).
+//   fogDensity    — float [0,1], exponential falloff coefficient in 1/m.
+//   fogStart      — float, distance in metres where fog begins to accumulate.
+//   fogEnd        — float, distance in metres where fog is fully opaque.
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
 material {
     name : depth,
     shadingModel : unlit,
@@ -16,6 +32,46 @@ material {
         {
             type : float4x4,
             name : uvTransform
+        },
+        // Environment-aware AR fog (issue #1717). Disabled by default so the
+        // material is a strict superset of the previous depth-only behaviour.
+        //
+        //  - `fogEnabled`  : 0.0 or 1.0. Branchless gate — multiplied into the
+        //                    fog factor so the fog mix collapses to a no-op
+        //                    when disabled, avoiding a divergent branch.
+        //  - `fogColor`    : RGB haze colour. Matches `FogNode.color`'s
+        //                    semantic (`Color(0xFFCCDDFF)` default in code).
+        //  - `fogDensity`  : Falloff coefficient in 1/m. Used in the
+        //                    exponential term `1 - exp(-density * (d - start))`.
+        //                    Range [0, 1] like `FogNode.density`.
+        //  - `fogStart`    : Distance in metres at which fog begins to
+        //                    accumulate. Real-world surfaces closer than this
+        //                    stay crisp.
+        //  - `fogEnd`      : Distance in metres at which fog is fully opaque
+        //                    (factor clamped to 1).
+        //
+        // Depth pixels with `depth_mm == 0` (ARCore "no depth available")
+        // contribute no fog — we drive the factor to 0 in that case to avoid
+        // tinting the camera passthrough on regions the depth API can't see.
+        {
+            type : float,
+            name : fogEnabled
+        },
+        {
+            type : float3,
+            name : fogColor
+        },
+        {
+            type : float,
+            name : fogDensity
+        },
+        {
+            type : float,
+            name : fogStart
+        },
+        {
+            type : float,
+            name : fogEnd
         }
     ],
     requires : [
@@ -26,9 +82,31 @@ material {
 fragment {
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
-        material.baseColor.rgb = inverseTonemapSRGB(texture(materialParams_cameraTexture, getUV0()).rgb);
+        vec3 camera = inverseTonemapSRGB(texture(materialParams_cameraTexture, getUV0()).rgb);
         vec2 packed_depth = texture(materialParams_depthTexture, getUV0()).xy;
         float depth_mm = dot(packed_depth, vec2(255.f, 256.f * 255.f));
+        float depth_m = depth_mm / 1000.f;
+
+        // Environment-aware fog blend. We deliberately compute the term every
+        // pixel rather than `if (fogEnabled > 0.5)` to keep the shader divergent-
+        // free on tile-based GPUs.
+        //
+        // depth_valid : 1 when ARCore returned a non-zero depth for this texel,
+        //               0 otherwise. Keeps the camera pixel crisp on regions
+        //               where the depth API has no data (e.g. moving objects,
+        //               sky, near edges).
+        // adjusted   : metres beyond `fogStart`, clamped to fogEnd.
+        // factor     : 1 - exp(-density * adjusted), clamped to [0, 1].
+        float depth_valid = step(0.001f, depth_m);
+        float adjusted = clamp(depth_m - materialParams.fogStart, 0.f,
+                               max(materialParams.fogEnd - materialParams.fogStart, 0.001f));
+        float factor = 1.f - exp(-materialParams.fogDensity * adjusted);
+        factor = clamp(factor, 0.f, 1.f) * depth_valid * materialParams.fogEnabled;
+
+        vec3 fogged = mix(camera, materialParams.fogColor, factor);
+        material.baseColor.rgb = fogged;
+
+        // Depth occlusion path — unchanged from the original material.
         vec4 view = mulMat4x4Float3(getClipFromViewMatrix(), vec3(0.f, 0.f, (-depth_mm / 1000.f)));
         float ndc_depth = view.z / view.w;
         gl_FragDepth = ndc_depth;
@@ -42,4 +120,4 @@ vertex {
         clip.z = 0.9999f;
         material.worldPosition = mulMat4x4Float3(getWorldFromClipMatrix(), clip.xyz);
     }
-} 
+}

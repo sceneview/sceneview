@@ -1,3 +1,10 @@
+// video_texture.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Unlit opaque material that draws video frames from an external (OES) texture.
+// Used by:    MaterialLoader.createVideoInstance (chromaKeyColor == null) / VideoNode.
+// Parameters:
+//   texture — samplerExternal, the SurfaceTexture-backed stream of decoded video frames.
+// matc profile: A (heavy Android — "-p all -a all", see tools/GenerateFilamat.sh).
 material {
     name : "Video Material",
     parameters : [

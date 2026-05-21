@@ -1,3 +1,10 @@
+// transparent_unlit_colored.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Unlit (lighting-independent) flat-colour material for translucent geometry.
+// Used by:    MaterialLoader.createUnlitColorInstance (alpha < 1) — overlays, billboards.
+// Parameters:
+//   color — float4, base RGBA colour; alpha drives transparency, rendered flat, double-sided.
+// matc profile: B (lean Android — "-a opengl -p mobile", see tools/GenerateFilamat.sh).
 material {
     "name" : "Transparent Unlit Colored",
 

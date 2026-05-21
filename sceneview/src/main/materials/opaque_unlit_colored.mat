@@ -1,3 +1,10 @@
+// opaque_unlit_colored.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Unlit (lighting-independent) flat-colour material for opaque geometry.
+// Used by:    MaterialLoader.createUnlitColorInstance (alpha == 1) — HUD overlays, debug visuals.
+// Parameters:
+//   color — float4, base RGBA colour; rendered flat, ignores scene lighting.
+// matc profile: B (lean Android — "-a opengl -p mobile", see tools/GenerateFilamat.sh).
 material {
     "name" : "Opaque Unlit Colored",
 

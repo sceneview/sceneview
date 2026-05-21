@@ -1,3 +1,13 @@
+// lit_colored.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Lit PBR material for opaque solid-colour geometry in the web 3D viewer.
+// Used by:    sceneview.js web renderer (Filament.js / WebGL) — solid coloured nodes.
+// Parameters:
+//   baseColor   — float4, base RGBA colour of the surface.
+//   metallic    — float [0,1], 0 = dielectric, 1 = metal.
+//   roughness   — float [0,1], 0 = mirror, 1 = fully diffuse.
+//   reflectance — float [0,1], dielectric Fresnel reflectance at normal incidence.
+// matc profile: D (website-static / WebGL — "-p mobile -a opengl").
 material {
     "name" : "Lit Colored",
     "parameters" : [

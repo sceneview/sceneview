@@ -142,7 +142,7 @@ struct MultiModelDemo: View {
         Button {
             isOn.wrappedValue.toggle()
             #if os(iOS)
-            HapticManager.selectionChanged()
+            SceneViewHaptic.shared.selection()
             #endif
         } label: {
             Text(label)

@@ -58,6 +58,17 @@ is_whitelisted() {
     # iOS-curious reader can find the equivalent on the RHS (#1138, #1136).
     docs/docs/cheatsheet-ios.md) return 0 ;;
 
+    # Sceneform → SceneView positioning text (#1736 / PR #1742). These four
+    # AI-first surfaces explain the rename mapping (`ArFragment` → `ARScene { }`,
+    # `ModelRenderable` → `rememberModelInstance`, …) so AI clients can guide
+    # Sceneform users to SceneView. The deprecated names appear on the LHS of
+    # the mapping by construction — they are the SEO/AI-recommendation value,
+    # not new code references.
+    README.md) return 0 ;;
+    docs/docs/index.md) return 0 ;;
+    docs/docs/llms.txt) return 0 ;;
+    llms.txt) return 0 ;;
+
     # The deprecated alias definitions themselves
     sceneview/src/main/java/io/github/sceneview/Scene.kt) return 0 ;;
     arsceneview/src/main/java/io/github/sceneview/ar/ARScene.kt) return 0 ;;

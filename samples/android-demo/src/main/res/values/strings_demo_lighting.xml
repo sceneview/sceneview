@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `lighting` demo (registered by
+     `LightingFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_lighting_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_lighting_title">Light Types</string>
+    <string name="demo_lighting_subtitle">Directional, point, and spot lights</string>
+    <string name="demo_lighting">Lighting</string>
+    <string name="demo_lighting_desc">Point, directional, and spot lights with shadows</string>
+</resources>

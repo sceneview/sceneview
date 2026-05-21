@@ -16,7 +16,6 @@
 		E11525001A2B40A19EAECE6700000001 /* SketchfabSlug.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11525101A2B40A19EAECE6700000001 /* SketchfabSlug.swift */; };
 		E11525011A2B40A19EAECE6700000002 /* SampleAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11525111A2B40A19EAECE6700000002 /* SampleAssets.swift */; };
 		E11525021A2B40A19EAECE6700000003 /* SketchfabAssetResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11525121A2B40A19EAECE6700000003 /* SketchfabAssetResolver.swift */; };
-		C10000000000000000000001 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* HapticManager.swift */; };
 		C10000000000000000000002 /* DemoItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* DemoItem.swift */; };
 		C10000000000000000000003 /* ExploreTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000003 /* ExploreTab.swift */; };
 		C10000000000000000000004 /* ARTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000004 /* ARTab.swift */; };
@@ -114,7 +113,6 @@
 		A20000010000000000000010 /* SceneViewDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SceneViewDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F00000000000000000000001 /* SceneViewDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SceneViewDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F00000000000000000000002 /* AppStoreUpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdaterTests.swift; path = SceneViewDemoTests/AppStoreUpdaterTests.swift; sourceTree = SOURCE_ROOT; };
-		C20000000000000000000001 /* HapticManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticManager.swift; sourceTree = "<group>"; };
 		C20000000000000000000002 /* DemoItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoItem.swift; sourceTree = "<group>"; };
 		C20000000000000000000003 /* ExploreTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreTab.swift; sourceTree = "<group>"; };
 		C20000000000000000000004 /* ARTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARTab.swift; sourceTree = "<group>"; };
@@ -323,7 +321,6 @@
 		C40000000000000000000004 /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
-				C20000000000000000000001 /* HapticManager.swift */,
 				C20000000000000000000002 /* DemoItem.swift */,
 				C20000000000000000000030 /* FavoritesManager.swift */,
 			);
@@ -518,7 +515,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000010000000000000001 /* SceneViewDemoApp.swift in Sources */,
-				C10000000000000000000001 /* HapticManager.swift in Sources */,
 				C10000000000000000000002 /* DemoItem.swift in Sources */,
 				C10000000000000000000030 /* FavoritesManager.swift in Sources */,
 				C10000000000000000000003 /* ExploreTab.swift in Sources */,

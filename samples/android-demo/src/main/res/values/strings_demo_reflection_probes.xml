@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `reflection-probes` demo (registered by
+     `ReflectionProbesFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_reflection_probes_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_reflection_probes_title">Reflection Probes</string>
+    <string name="demo_reflection_probes_subtitle">Local cubemap reflections</string>
+    <string name="demo_reflection_probes">Reflection Probes</string>
+    <string name="demo_reflection_probes_desc">Local cubemap reflections for realistic materials</string>
+</resources>

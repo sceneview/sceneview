@@ -123,6 +123,34 @@ for full API context in any chat:
 
 Contributions to any part of the project are welcome — Android (`sceneview/`, `arsceneview/`), iOS (`SceneViewSwift/`), shared KMP core (`sceneview-core/`), samples, documentation, or the MCP server.
 
+### Adding a demo to `samples/android-demo`
+
+The Android demo app uses an **append-only fragment registry** so that two
+parallel PRs adding two different demos never conflict on a shared file
+(issue #1797). To add a demo:
+
+1. Add the demo composable under
+   `samples/android-demo/src/main/java/io/github/sceneview/demo/demos/`.
+2. Drop a new fragment file at
+   `samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/<MyDemo>Fragment.kt`
+   declaring `object <MyDemo>Fragment : DemoFragment` with the demo's id,
+   title/subtitle string resources, category, icon, and a one-line `Screen`
+   wrapper calling your composable. See [the package
+   README](samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/README.md)
+   for the full template.
+3. Drop the demo's strings into their own resource fragment at
+   `samples/android-demo/src/main/res/values/strings_demo_<my_demo>.xml`
+   (`-` → `_` in the id). Each demo owns its strings file so parallel PRs
+   never share a string-resource anchor (#1870). Android's resource merger
+   fans every `res/values/*.xml` file in at build time, so `R.string.demo_*`
+   references resolve identically.
+4. Run the collator to regenerate `GeneratedDemos.kt`:
+   `bash samples/android-demo/scripts/collate-demos.sh`. The quality gate runs
+   the collator in `--check` mode and blocks the push if the file is stale.
+
+You should **never** edit `DemoRegistry.kt`, `MainActivity.kt`, or
+`GeneratedDemos.kt` by hand — the fragments are the single source of truth.
+
 ### Device-QA flows when adding a demo
 
 The demo apps are exercised on real emulators/simulators by the **autonomous
@@ -210,25 +238,97 @@ Recompile Filament materials using the [current Filament version](https://github
 
 Filament refuses any material whose binary version field does not match the runtime, with `Filament panic — material version N ≠ runtime M` on first frame. There is no compile-time check; the mismatch only manifests at runtime, demo by demo. v4.1.0 shipped with the runtime at 1.70.2 and blobs at 1.71 (two parallel branches each fixed half of the pair) — 10 demos crashed; v4.1.1 hot-fixed by realigning both sides to 1.71.
 
-**The 12 committed blobs that must be recompiled together** (under `sceneview/src/main/assets/materials/`):
+**The 20 committed blobs that must stay in sync with their `.mat` sources**, spread across three modules:
 
 ```
-image_texture.filamat                  transparent_colored.filamat
-opaque_colored.filamat                 transparent_textured.filamat
-opaque_textured.filamat                transparent_unlit_colored.filamat
-opaque_unlit_colored.filamat           video_texture.filamat
-view_renderable.filamat                video_texture_chroma_key.filamat
-view_texture_lit.filamat               view_texture_unlit.filamat
+sceneview/src/main/assets/materials/     (11) — image_texture, opaque/transparent
+                                                colored/textured/unlit, video_texture(_chroma_key),
+                                                view_texture_lit/_unlit
+arsceneview/src/main/assets/materials/    (6) — camera_stream_flat/_depth, face_mesh(_occluder),
+                                                plane_renderer(_shadow)
+website-static/materials/                 (3) — lit_colored, transparent_colored, unlit_colored
 ```
+
+**The `tools/GenerateFilamat.sh` workflow.** [`tools/GenerateFilamat.sh`](tools/GenerateFilamat.sh) is the single entry point for every Filament material in the repo. It auto-downloads the `matc` toolchain pinned to the Filament version in [`gradle/libs.versions.toml`](gradle/libs.versions.toml) and compiles each `.mat` to its `.filamat` blob — no manual `matc` install needed.
+
+```
+bash tools/GenerateFilamat.sh                 # regenerate all 20 .filamat blobs in place
+bash tools/GenerateFilamat.sh --check         # diff against committed blobs; exit 1 on drift
+bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
+bash tools/GenerateFilamat.sh --ci-tolerant   # treat a matc download failure as WARN, not FAIL
+```
+
+The `matc` binary is cached at `~/.cache/sceneview/matc-<version>/` (overridable via `$XDG_CACHE_HOME`); the first run downloads it, subsequent runs reuse it. `--ci-tolerant` exists for sandboxed CI runners with no network — it lets the check pass with a WARN instead of failing the build when `matc` cannot be fetched.
+
+**The drift gate.** `bash .claude/scripts/quality-gate.sh` runs `GenerateFilamat.sh --check` on every pre-push gate. Editing a `.mat` source **without** recompiling its `.filamat` blob now **blocks the PR** — the gate reports the drifted blob(s) and fails. This catches the v4.1.0-class mistake before it ships.
+
+**The four matc flag profiles.** The committed blobs were compiled with four distinct profiles (recorded in each blob's MRPC chunk). `GenerateFilamat.sh` reproduces each one — including flag *order*, since matc embeds the verbatim flag string:
+
+| Profile | Flags | Module |
+|---|---|---|
+| **A** — heavy Android | `-p all -a all` | `sceneview/` lit/textured/video/view materials |
+| **B** — lean Android | `-a opengl -p mobile` | `sceneview/` unlit colored materials (2) |
+| **C** — ARCore | `--optimize-size -p mobile -a opengl -a vulkan` | `arsceneview/` (6) |
+| **D** — website / WebGL | `-p mobile -a opengl` | `website-static/materials/` (3) |
+
+When adding a new material, pick a profile by deployment target and add an entry to the `MATS` inventory in `GenerateFilamat.sh`. Each `.mat` source carries a short header block (purpose, used-by, parameters, profile) — read those headers to learn what an individual material does and where it is consumed.
 
 **How to recompile after a Filament version bump:**
 
-1. Download the matching `matc` from the Filament release tarball — `https://github.com/google/filament/releases/tag/vX.Y.Z` → `filament-vX.Y.Z-mac.tgz` (or `-linux.tgz`) → `./bin/matc`.
-2. Put `matc` on your `PATH` (or update [`tools/GenerateFilamat.sh`](tools/GenerateFilamat.sh) to point at it).
-3. Run `cd tools && bash GenerateFilamat.sh` — recompiles every `.filamat` from its `.mat` source.
-4. Commit **the runtime bump in `gradle/libs.versions.toml` AND the recompiled `.filamat` files in the SAME PR**. Never split them across commits — that's the failure mode that broke v4.1.0.
+1. Bump `filament = "X.Y.Z"` in [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
+2. Run `bash tools/GenerateFilamat.sh` — it downloads the matching `matc` and recompiles every `.filamat` from its `.mat` source.
+3. Commit **the runtime bump AND the recompiled `.filamat` files in the SAME PR**. Never split them across commits — that's the failure mode that broke v4.1.0.
 
-If you bump the runtime without touching the blobs (or vice versa), CI will not catch it. The first signal is a runtime crash on whichever demo loads the affected material first.
+`GenerateFilamat.sh --check` (and the `quality-gate.sh` drift gate) will catch a runtime/blob mismatch before merge. If you somehow bypass the gate, the first signal is a runtime crash on whichever demo loads the affected material first.
+
+---
+
+## Maintenance scripts
+
+The `.claude/scripts/` directory holds the housekeeping scripts that
+keep parallel-orchestrator sessions tidy. Two are worth knowing about
+explicitly because the safety contract has gotten complex enough that
+you can't infer it from the source on first read.
+
+### `worktree-auto-prune.sh`
+
+Reclaims `.claude/worktrees/*` whose branch has merged. Safe-by-default:
+the only way it can lose work is via an explicit override flag.
+
+| Flag | Effect |
+|---|---|
+| `--dry-run` | Preview only. No worktree is removed. |
+| `--yes` | Non-interactive. Skip the confirmation prompt. |
+| `--keep <path>` | Repeatable. Never touch this worktree (the caller's own tree should always be `--keep`). |
+| `--allow-stale` | Proceed offline if `git fetch origin main` fails. `ahead=0` then additionally requires a merged-PR signal. |
+| `--no-check-active-sessions` | Disable the cwd scan that protects worktrees with a live process inside them. Almost never the right call. |
+| `--unlock-locked` | Override `git worktree lock`: prune locked-but-clean worktrees too. The dirty check still wins. |
+
+Skip ladder (a worktree must pass every layer to be reclaimed):
+
+1. Not in `--keep`.
+2. `git status --porcelain` is empty (no uncommitted changes).
+3. Not `locked` via `git worktree lock` (unless `--unlock-locked`).
+4. No process anywhere on the host has cwd inside the worktree
+   (gradle daemons, `python`, IDE indexers — all detected, not just
+   `node`/`claude`).
+5. Either `ahead-count == 0` vs `origin/main`, OR the branch's
+   associated GitHub PR is `MERGED`.
+
+Forensic trail: every evaluated worktree appends one JSON line to
+`~/.claude/logs/worktree-prune-YYYYMMDD.log` (daily-rotated, never
+auto-deleted). Cheap to write, priceless if an incident occurs.
+
+Pin: `.claude/scripts/test-worktree-auto-prune.sh` exercises 7 scenarios
+(merged, unmerged, dirty, locked, locked + `--unlock-locked`, active
+subprocess, `--keep`) and runs advisorily inside `quality-gate.sh`.
+
+### `cleanup-branches-worktrees.sh`
+
+Wrapper that runs `worktree-auto-prune.sh` AND deletes the corresponding
+merged `claude/*` branches (local + remote) in a single batched
+`git push --delete` to avoid bot-burst rate limits. Same flags, same
+safety contract; runs daily in `.github/workflows/maintenance.yml`.
 
 ---
 

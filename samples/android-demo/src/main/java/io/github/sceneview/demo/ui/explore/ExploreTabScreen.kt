@@ -30,7 +30,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -38,6 +40,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -178,9 +181,18 @@ fun ExploreTabScreen(
         }
     }
 
+    // Capture the apiKey resolution exactly once per composition so the body +
+    // banner + search-field hint stay coherent (the property reads BuildConfig
+    // + System.getenv, so re-reading on every recomposition is harmless but
+    // wasted work). Used to drive the #1909 defensive banner: when null the
+    // build was shipped without a Sketchfab token and the carousels/search
+    // would otherwise be silent dead UI.
+    val apiKeyAvailable = SketchfabConfig.apiKey != null
+
     val body = @Composable {
         ExploreBody(
             scroll = scroll,
+            apiKeyAvailable = apiKeyAvailable,
             searchQuery = searchQuery,
             onSearchQueryChange = { newValue ->
                 searchQuery = newValue
@@ -218,7 +230,7 @@ fun ExploreTabScreen(
     // spin a spinner that immediately settles, which is worse than no affordance
     // at all. onRefresh just bumps `refreshTick`; the LaunchedEffect above
     // owns the single cancel-then-restart pipeline.
-    if (SketchfabConfig.apiKey != null) {
+    if (apiKeyAvailable) {
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = {
@@ -242,6 +254,7 @@ fun ExploreTabScreen(
 @Composable
 private fun ExploreBody(
     scroll: androidx.compose.foundation.ScrollState,
+    apiKeyAvailable: Boolean,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onSearchSubmit: (String) -> Unit,
@@ -279,9 +292,20 @@ private fun ExploreBody(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
             onSubmit = onSearchSubmit,
+            apiKeyAvailable = apiKeyAvailable,
         )
 
-        if (SketchfabConfig.apiKey != null) {
+        // Defensive banner (#1909) — when the release build shipped without a
+        // valid SKETCHFAB_API_KEY secret, every Sketchfab-backed surface below
+        // (carousels + search) is silent dead UI. Surface that explicitly so
+        // QA + curious users see WHY the page looks empty, instead of
+        // assuming "the app is broken". The banner is intentionally outlined
+        // (not error-colored) — disabled is not the same as crashed.
+        if (!apiKeyAvailable) {
+            SketchfabDisabledBanner()
+        }
+
+        if (apiKeyAvailable) {
             FiltersBar(animatedOnly = animatedOnly, onToggle = onToggleAnimated)
         }
 
@@ -311,9 +335,9 @@ private fun ExploreBody(
         // in via gradle.properties / CI secret. On end-user Play Store builds
         // the key is always present (see release.yml). Builds without the key
         // silently fall back to the "Try a sample" carousel + curated category
-        // grid below — no dev-flavored "set SKETCHFAB_API_KEY" placeholder
-        // ever reaches a real user.
-        if (SketchfabConfig.apiKey != null) {
+        // grid below — the SketchfabDisabledBanner above already tells the
+        // user WHY the dynamic carousels are missing (#1909).
+        if (apiKeyAvailable) {
             if (isSearching) {
                 // Active search (#1239): render results section, hide the three
                 // default feeds. searchResults == null ⇒ still loading;
@@ -385,25 +409,119 @@ private fun SearchField(
     value: String,
     onValueChange: (String) -> Unit,
     onSubmit: (String) -> Unit,
+    apiKeyAvailable: Boolean = true,
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth(),
-        placeholder = { Text(stringResource(R.string.explore_search_placeholder)) },
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-        singleLine = true,
-        shape = RoundedCornerShape(28.dp),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { onSubmit(value) }),
-        trailingIcon = if (value.isNotEmpty()) {
-            {
-                IconButton(onClick = { onValueChange("") }) {
-                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.explore_clear_search))
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text(stringResource(R.string.explore_search_placeholder)) },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            singleLine = true,
+            // When the API key is missing the search bar is purely cosmetic —
+            // the LaunchedEffect short-circuits in ExploreTabScreen.kt:165, so
+            // disabling the input is honest UX rather than letting users type
+            // queries that go into a black hole (#1909).
+            enabled = apiKeyAvailable,
+            shape = RoundedCornerShape(28.dp),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSubmit(value) }),
+            trailingIcon = if (value.isNotEmpty()) {
+                {
+                    IconButton(onClick = { onValueChange("") }) {
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.explore_clear_search))
+                    }
                 }
+            } else null,
+        )
+        if (!apiKeyAvailable) {
+            Text(
+                text = stringResource(R.string.explore_sketchfab_search_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Defensive banner shown in the Explore tab when [SketchfabConfig.apiKey] is
+ * `null` — typically because the release build was published without (or with
+ * a revoked) `SKETCHFAB_API_KEY` secret. See #1909.
+ *
+ * The banner is intentionally outlined (neutral container) rather than error-
+ * colored — the app is degraded but functional: the curated samples + category
+ * grid + recent searches all still work. Tapping the banner surfaces a short
+ * dialog explaining the situation + the `local.properties` workaround for
+ * contributors building from source.
+ */
+@Composable
+private fun SketchfabDisabledBanner() {
+    var showDialog by remember { mutableStateOf(false) }
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { showDialog = true },
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.explore_sketchfab_disabled_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = stringResource(R.string.explore_sketchfab_disabled_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-        } else null,
-    )
+        }
+    }
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = null,
+                )
+            },
+            title = { Text(stringResource(R.string.explore_sketchfab_disabled_dialog_title)) },
+            text = {
+                // Strip the `<b>` markers (kept in the string for future
+                // HTML-rendering upgrade) and render as plain bodyMedium for
+                // now — keeps the dialog accessible without an extra
+                // dependency on HtmlCompat.fromHtml.
+                Text(
+                    text = stringResource(R.string.explore_sketchfab_disabled_dialog_body)
+                        .replace("<b>", "")
+                        .replace("</b>", ""),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text(stringResource(R.string.explore_sketchfab_disabled_dismiss))
+                }
+            },
+        )
+    }
 }
 
 @Composable

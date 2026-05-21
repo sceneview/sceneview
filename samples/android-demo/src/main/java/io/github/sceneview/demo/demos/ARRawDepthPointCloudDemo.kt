@@ -20,9 +20,11 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,11 +40,15 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.demos.internal.RawDepthCloud
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.delay
 
 /**
  * AR demo — sample ARCore's [Config.DepthMode.RAW_DEPTH_ONLY] depth + confidence
@@ -76,12 +82,29 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
     val materialLoader = rememberMaterialLoader(engine)
     val arPlaybackDataset = rememberArPlaybackDataset()
 
-    // Slider in [0..1] mapped to confidence threshold in [0..255].
-    var confidenceSlider by remember { mutableStateOf(0.25f) }
+    // Slider in [0..1] mapped to confidence threshold in [0..255]. Default 32/255
+    // (≈ 0.1255) is permissive enough for motion-stereo's noisy first frames on
+    // non-LiDAR Pixels to surface visible points, see #1873. Users can still raise
+    // it via the slider for cleaner edges once depth converges.
+    var confidenceSlider by remember { mutableStateOf(32f / 255f) }
     var depthSupported by remember { mutableStateOf<Boolean?>(null) }
     var depthEverReceived by remember { mutableStateOf(false) }
     var isTracking by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
+
+    // Onboarding hint state — survives configuration changes within the same
+    // session (so rotating the device doesn't re-show the hint).
+    // `hasShownHint` flips true once the hint dismisses (first non-zero frame or
+    // 8 s elapsed) and stays true — we never re-show it.
+    var hasShownHint by rememberSaveable { mutableStateOf(false) }
+    var hintVisible by remember { mutableStateOf(!hasShownHint) }
+
+    // Passive "still no points after >2 s" chip — recomputed each frame from
+    // `zeroPointsSince`. `now` is bumped by a 1 Hz tick so the chip surfaces
+    // even if the AR session is producing frames where `visiblePointCount == 0`
+    // continuously (the condition wouldn't fire on a level edge otherwise).
+    var zeroPointsSince by remember { mutableStateOf<Long?>(null) }
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
 
     // Latest cloud + image dimensions. The packed cloud is `[x, y, depthMm, argb]` per point.
     var cloudPacked by remember { mutableStateOf<IntArray?>(null) }
@@ -90,6 +113,31 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
     var visiblePointCount by remember { mutableStateOf(0) }
 
     val confidenceThreshold = (confidenceSlider * 255f).toInt().coerceIn(0, 255)
+
+    // 8-second auto-dismiss for the first-launch onboarding hint. Skipped if the
+    // hint has already been dismissed in this session (e.g. by a non-zero frame).
+    LaunchedEffect(hasShownHint) {
+        if (!hasShownHint) {
+            delay(8.seconds)
+            hintVisible = false
+            hasShownHint = true
+        }
+    }
+
+    // 1 Hz tick so the "stuck at zero" chip surfaces between frames. Cheap and
+    // bounded — only flips a single state on every second.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1.seconds)
+            now = System.currentTimeMillis()
+        }
+    }
+
+    val zeroPointsStuck = depthSupported == true &&
+        isTracking &&
+        visiblePointCount == 0 &&
+        zeroPointsSince != null &&
+        (now - (zeroPointsSince ?: now)) > 2000L
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_raw_depth_cloud_title),
@@ -159,6 +207,11 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
                 text = "Confidence ≥ $confidenceThreshold / 255 · $visiblePointCount points",
                 style = MaterialTheme.typography.labelMedium
             )
+            // Developer-only debug toggle — visible when QA mode is on. Lets QA
+            // force-emit each TrackingFailureReason so the actionable-message
+            // overlay can be validated without staging a real failure. See
+            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+            ForceTrackingFailureMenu()
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -205,6 +258,17 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
                                 depthHeight = h
                                 visiblePointCount = RawDepthCloud.pointCount(cloudPacked!!)
                                 depthEverReceived = true
+                                // Onboarding hint dismisses on the first frame that
+                                // actually has points (motion-stereo has converged).
+                                if (visiblePointCount > 0) {
+                                    if (!hasShownHint) {
+                                        hintVisible = false
+                                        hasShownHint = true
+                                    }
+                                    zeroPointsSince = null
+                                } else if (zeroPointsSince == null) {
+                                    zeroPointsSince = System.currentTimeMillis()
+                                }
                             } finally {
                                 runCatching { depthImage.close() }
                                 runCatching { confidenceImage.close() }
@@ -269,9 +333,66 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
                 }
             }
 
-            // Tracking-failure overlay.
+            // First-launch onboarding hint — motion-stereo on non-LiDAR Pixels needs
+            // parallax frames before any points show up, otherwise "0 points" looks
+            // like the demo is broken (#1873). Auto-dismisses on first non-zero frame
+            // or after 8 s. `rememberSaveable`-backed so configuration changes don't
+            // re-show it. Visually distinct from the warm-up surface above (bottom
+            // placement, larger padding) so it co-exists during the first frames.
             AnimatedVisibility(
-                visible = !isTracking && trackingFailureReason != null,
+                visible = hintVisible && depthSupported == true,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 120.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text(
+                        text = stringResource(R.string.demo_ar_raw_depth_cloud_move_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                    )
+                }
+            }
+
+            // Passive "still no points after >2 s" chip — small, non-blocking,
+            // top-end corner. Surfaces when the user has missed (or dismissed) the
+            // first-launch hint but raw depth still hasn't converged. Hides as soon
+            // as a non-zero frame arrives.
+            AnimatedVisibility(
+                visible = zeroPointsStuck,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 8.dp, end = 8.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f),
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = stringResource(R.string.demo_ar_raw_depth_cloud_move_hint_short),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            // Tracking-failure overlay.
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+            AnimatedVisibility(
+                visible = (!isTracking && trackingFailureReason != null) ||
+                    ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier
@@ -284,7 +405,7 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
                     shape = MaterialTheme.shapes.large
                 ) {
                     Text(
-                        text = when (trackingFailureReason) {
+                        text = when (effectiveReason) {
                             TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
                             TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
                             TrackingFailureReason.INSUFFICIENT_FEATURES ->

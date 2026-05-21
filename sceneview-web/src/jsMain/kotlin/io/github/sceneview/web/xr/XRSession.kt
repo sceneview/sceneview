@@ -88,4 +88,12 @@ object XRFeature {
     const val HAND_TRACKING = "hand-tracking"
     const val LAYERS = "layers"
     const val MESH_DETECTION = "mesh-detection"
+
+    /**
+     * Image marker tracking — track the 6-DoF pose of a 2D image in the real world.
+     * See [Marker Tracking explainer](https://github.com/immersive-web/marker-tracking) and
+     * [WebXR `image-tracking` feature](https://immersive-web.github.io/marker-tracking/).
+     * Supported on recent Android Chrome (origin trial / flag).
+     */
+    const val IMAGE_TRACKING = "image-tracking"
 }
