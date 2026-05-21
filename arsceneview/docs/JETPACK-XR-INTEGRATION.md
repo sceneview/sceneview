@@ -141,11 +141,11 @@ opt-in marker until the upstream goes to a stable `1.0.0`.
 
 Each slice is a separate PR.
 
-| Slice | Scope                                                                                     | Issue                                          |
-|-------|-------------------------------------------------------------------------------------------|------------------------------------------------|
-| **1** | This design doc · `androidx.xr.arcore` dep declaration · `XrFeatures` availability check · stubs in `llms.txt` · CHANGELOG fragment | THIS PR — closes #1738                         |
-| **2** | `XrHandNode` + Compose state hook + `samples/android-demo/ARHandTrackingDemo.kt` + JVM tests for joint math · gated on `XrFeatures.isAvailable` | [#1902](https://github.com/sceneview/sceneview/issues/1902) |
-| **3** | `XrFaceNode` (Jetpack XR variant alongside existing `AugmentedFaceNode`) + demo + tests   | [#1903](https://github.com/sceneview/sceneview/issues/1903) |
+| Slice | Status | Scope                                                                                     | Issue                                          |
+|-------|--------|-------------------------------------------------------------------------------------------|------------------------------------------------|
+| **1** | ✅     | This design doc · `androidx.xr.arcore` dep declaration · `XrFeatures` availability check · stubs in `llms.txt` · CHANGELOG fragment | [#1908](https://github.com/sceneview/sceneview/pull/1908) — closed #1738 |
+| **2** | ✅     | `XrHandNode` + `XrHandSkeleton` joint math + `SceneScope.XrHandNode` composable + `samples/android-demo/ARHandTrackingDemo.kt` + JVM tests · gated on `XrFeatures.isAvailable` | [#1902](https://github.com/sceneview/sceneview/issues/1902) |
+| **3** | ⬜     | `XrFaceNode` (Jetpack XR variant alongside existing `AugmentedFaceNode`) + demo + tests   | [#1903](https://github.com/sceneview/sceneview/issues/1903) |
 
 Cross-platform parity follow-ups:
 

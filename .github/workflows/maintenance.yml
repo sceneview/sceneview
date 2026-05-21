@@ -259,7 +259,84 @@ jobs:
               || echo "::warning::Could not comment on digest issue #$EXISTING"
           fi
 
-  # ── 6. Stale claude/* branch cleanup ──────────────────────────────────────
+  # ── 6. GitHub Pages freshness check ───────────────────────────────────────
+  # The live site at https://sceneview.github.io is published by docs.yml,
+  # which pushes to the external `sceneview/sceneview.github.io` repo over an
+  # SSH deploy key. GitHub's legacy Pages auto-build does NOT fire for
+  # bot/deploy-key pushes, so the site can silently stop rebuilding even
+  # though new commits keep landing (#1826 — 13 days stuck on an old
+  # version). docs.yml now force-triggers a build via the Pages API, but
+  # that depends on a PAT secret being present and the API call succeeding.
+  # This job is the safety net: it compares the latest commit on
+  # `sceneview.github.io` against its latest Pages BUILD and alerts if the
+  # site is behind by more than a day.
+  pages-freshness:
+    name: GitHub Pages freshness check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check sceneview.github.io build freshness
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REPO="sceneview/sceneview.github.io"
+
+          # Latest commit timestamp on the published branch.
+          LATEST_COMMIT_DATE=$(gh api "repos/$REPO/commits?per_page=1" \
+            --jq '.[0].commit.committer.date' 2>/dev/null || echo "")
+          # Latest Pages BUILD timestamp (the actual site rebuild).
+          LATEST_BUILD_DATE=$(gh api "repos/$REPO/pages/builds/latest" \
+            --jq '.created_at' 2>/dev/null || echo "")
+
+          echo "Latest commit on $REPO : ${LATEST_COMMIT_DATE:-unknown}"
+          echo "Latest Pages build     : ${LATEST_BUILD_DATE:-unknown}"
+
+          if [ -z "$LATEST_COMMIT_DATE" ] || [ -z "$LATEST_BUILD_DATE" ]; then
+            echo "::warning::Could not read commit/build timestamps — skipping check."
+            exit 0
+          fi
+
+          COMMIT_TS=$(date -d "$LATEST_COMMIT_DATE" +%s 2>/dev/null || echo 0)
+          BUILD_TS=$(date -d "$LATEST_BUILD_DATE" +%s 2>/dev/null || echo 0)
+          # Lag = how far the published build trails the latest commit.
+          LAG=$(( COMMIT_TS - BUILD_TS ))
+          LAG_HOURS=$(( LAG / 3600 ))
+          echo "Build trails latest commit by ${LAG_HOURS}h."
+
+          # Allow 24h of slack — a commit can land just before this cron.
+          if [ "$LAG" -le 86400 ]; then
+            echo "GitHub Pages is fresh."
+            exit 0
+          fi
+
+          echo "::warning::sceneview.github.io has unbuilt commits for ${LAG_HOURS}h."
+          TITLE="GitHub Pages build is stale — sceneview.github.io"
+          BODY="Automated maintenance detected that **https://sceneview.github.io** has not rebuilt for the latest commits.
+
+          - Latest commit on \`$REPO\`: \`$LATEST_COMMIT_DATE\`
+          - Latest Pages build:          \`$LATEST_BUILD_DATE\`
+          - Build trails the latest commit by **~${LAG_HOURS}h**.
+
+          The site is serving stale content. GitHub Pages' legacy auto-build does not fire for the SSH deploy-key pushes \`docs.yml\` makes. \`docs.yml\` force-triggers a build via the Pages API after each deploy — if this issue is open, that trigger is failing.
+
+          **To fix:** re-run \`docs.yml\` (workflow_dispatch), or manually \`gh api -X POST repos/$REPO/pages/builds\`, then confirm the \`PERSONAL_TOKEN\`/\`PAGES_REBUILD_TOKEN\` secret has \`repo\`/\`pages:write\` scope. Background: #1826."
+          EXISTING=$(gh issue list --repo "${{ github.repository }}" --state open \
+            --search "GitHub Pages build is stale in:title" \
+            --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -z "$EXISTING" ]; then
+            gh issue create --repo "${{ github.repository }}" \
+              --title "$TITLE" \
+              --body "$BODY" \
+              --label "bug,maintenance" \
+              || echo "::warning::Could not create Pages staleness issue"
+          else
+            echo "Pages staleness issue #$EXISTING already open — skipping duplicate."
+          fi
+
+  # ── 7. Stale claude/* branch cleanup ──────────────────────────────────────
   # PRIMARY mechanism is the repo's "Automatically delete head branches"
   # setting (deleteBranchOnMerge) — every PR branch is dropped the instant
   # its PR merges, so no backlog accumulates in normal operation.

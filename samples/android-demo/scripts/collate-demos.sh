@@ -23,9 +23,17 @@
 # Idempotent: running this script twice produces byte-identical outputs.
 #
 # Usage:
-#   bash samples/android-demo/scripts/collate-demos.sh           # write
+#   bash samples/android-demo/scripts/collate-demos.sh           # write all 3
 #   bash samples/android-demo/scripts/collate-demos.sh --check   # exit non-zero
 #                                                                # if any output is stale
+#   bash samples/android-demo/scripts/collate-demos.sh --kt-only # write only
+#                                                                # GeneratedDemos.kt
+#
+# `--kt-only` is what the Gradle build wires in: `GeneratedDemos.kt` is no
+# longer committed (it is `.gitignore`d, issue #1976) and is regenerated before
+# `:samples:android-demo` Kotlin compilation. The `llms.txt` files stay tracked
+# (they carry hand-maintained content outside the generated block) so the Gradle
+# build must not rewrite them — `--kt-only` skips them entirely.
 
 set -euo pipefail
 
@@ -47,17 +55,25 @@ LLMS_BEGIN_MARKER="<!-- BEGIN GENERATED DEMOS — DO NOT EDIT — run samples/an
 LLMS_END_MARKER="<!-- END GENERATED DEMOS -->"
 
 CHECK_MODE=false
+KT_ONLY=false
 case "${1:-}" in
-    --check) CHECK_MODE=true ;;
+    --check)   CHECK_MODE=true ;;
+    --kt-only) KT_ONLY=true ;;
     "") ;;
-    *) echo "Usage: $0 [--check]" >&2; exit 1 ;;
+    *) echo "Usage: $0 [--check|--kt-only]" >&2; exit 1 ;;
 esac
 
 [ -d "$FRAG_DIR" ] || { echo "Error: $FRAG_DIR not found." >&2; exit 1; }
 [ -d "$VALUES_DIR" ] || { echo "Error: $VALUES_DIR not found." >&2; exit 1; }
 [ -f "$STRINGS_XML" ] || { echo "Error: $STRINGS_XML not found." >&2; exit 1; }
-[ -f "$LLMS_ROOT" ] || { echo "Error: $LLMS_ROOT not found." >&2; exit 1; }
-[ -f "$LLMS_MIRROR" ] || { echo "Error: $LLMS_MIRROR not found." >&2; exit 1; }
+# The `llms.txt` files are only touched by the full (write) and `--check`
+# modes. `--kt-only` (the Gradle build path, #1976) emits ONLY
+# `GeneratedDemos.kt`, so it must not require the llms.txt files — they may be
+# absent in a sparse checkout that excludes `docs/`.
+if [ "$KT_ONLY" != true ]; then
+    [ -f "$LLMS_ROOT" ] || { echo "Error: $LLMS_ROOT not found." >&2; exit 1; }
+    [ -f "$LLMS_MIRROR" ] || { echo "Error: $LLMS_MIRROR not found." >&2; exit 1; }
+fi
 
 # ─── 1. Discover fragments and collect per-demo metadata ──────────────────
 #
@@ -205,6 +221,24 @@ MIDDLE
 }
 FOOTER
 } > "$NEW_KT"
+
+# ─── 2b. --kt-only fast path ──────────────────────────────────────────────
+#
+# The Gradle build (issue #1976) only needs `GeneratedDemos.kt`: that file is
+# `.gitignore`d and regenerated before `:samples:android-demo` compiles. The
+# `llms.txt` files stay TRACKED and carry hand-maintained content outside the
+# generated block, so a build step must never rewrite them. `--kt-only` writes
+# `GeneratedDemos.kt` (only if its bytes changed, to keep Gradle up-to-date
+# checks honest and avoid needless recompiles) and stops here.
+if [ "$KT_ONLY" = true ]; then
+    if [ ! -f "$OUT_FILE" ] || ! cmp -s "$NEW_KT" "$OUT_FILE"; then
+        mv "$NEW_KT" "$OUT_FILE"
+        echo "Regenerated $OUT_FILE from $fragment_count fragment(s)."
+    else
+        echo "OK: $OUT_FILE already in sync with $fragment_count fragment(s)."
+    fi
+    exit 0
+fi
 
 # ─── 3. Resolve title/subtitle from values/*.xml ─────────────────────────
 #
@@ -372,14 +406,13 @@ fi
 
 # ─── 6. Apply or check ────────────────────────────────────────────────────
 if [ "$CHECK_MODE" = true ]; then
+    # `GeneratedDemos.kt` is no longer committed — it is `.gitignore`d and
+    # regenerated at build time by the `generateDemoRegistry` Gradle task
+    # (issue #1976). A `.gitignore`d, build-generated file is fresh by
+    # construction and cannot drift, so `--check` no longer compares it. The
+    # `llms.txt` files stay tracked with hand-maintained content, so their
+    # generated demo blocks are still drift-checked here.
     drift=0
-    if [ ! -f "$OUT_FILE" ] || ! cmp -s "$NEW_KT" "$OUT_FILE"; then
-        echo "Error: $OUT_FILE is out of date. Run 'bash samples/android-demo/scripts/collate-demos.sh'." >&2
-        if [ -f "$OUT_FILE" ]; then
-            diff -u "$OUT_FILE" "$NEW_KT" | head -40 || true
-        fi
-        drift=1
-    fi
     if ! cmp -s "$NEW_LLMS_ROOT" "$LLMS_ROOT"; then
         echo "Error: $LLMS_ROOT demos block is out of date. Run 'bash samples/android-demo/scripts/collate-demos.sh'." >&2
         diff -u "$LLMS_ROOT" "$NEW_LLMS_ROOT" | head -40 || true
@@ -393,7 +426,7 @@ if [ "$CHECK_MODE" = true ]; then
     if [ "$drift" -ne 0 ]; then
         exit 1
     fi
-    echo "OK: GeneratedDemos.kt + llms.txt demos section in sync with $fragment_count fragment(s)."
+    echo "OK: llms.txt demos section in sync with $fragment_count fragment(s)."
     exit 0
 fi
 
