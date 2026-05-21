@@ -112,7 +112,7 @@ struct SpatialAudioDemo: View {
                 Button {
                     isPlaying.toggle()
                     #if os(iOS)
-                    HapticManager.lightTap()
+                    SceneViewHaptic.shared.light()
                     #endif
                 } label: {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
@@ -133,7 +133,7 @@ struct SpatialAudioDemo: View {
                         Button {
                             falloffMode = mode
                             #if os(iOS)
-                            HapticManager.selectionChanged()
+                            SceneViewHaptic.shared.selection()
                             #endif
                         } label: {
                             Text(mode.rawValue)
