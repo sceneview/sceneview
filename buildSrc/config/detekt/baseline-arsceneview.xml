@@ -21,6 +21,7 @@
     <ID>LongMethod:LightEstimatorConcurrentDestroyTest.kt:LightEstimatorConcurrentDestroyTest$@Test fun `100 iterations of concurrent update + destroy at 50 percent — zero crashes`()</ID>
     <ID>LoopWithTooManyJumpStatements:DepthMeshCollision.kt:while</ID>
     <ID>LoopWithTooManyJumpStatements:RerunBridge.kt:RerunBridge$while</ID>
+    <ID>LoopWithTooManyJumpStatements:XrHandNode.kt:for</ID>
     <ID>MatchingDeclarationName:ARDepthOfField.kt:ARDepthOfFieldOptions</ID>
     <ID>MatchingDeclarationName:ARFogNode.kt:ARFogConfig</ID>
     <ID>MatchingDeclarationName:ArSession.kt:ARSession : Session</ID>

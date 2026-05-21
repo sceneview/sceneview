@@ -1310,6 +1310,54 @@ index buffers in camera space so downstream consumers — a depth-driven physics
 debug-overlay point cloud, an exporter — can read the geometry without poking Filament
 internals.
 
+### PointCloudNode — render ARCore feature points as a scene point cloud
+
+`rememberPointCloud()` + `PointCloudNode` render ARCore's live tracking feature points
+(`Frame.acquirePointCloud()`) as a real Filament `POINTS` primitive in the 3D scene — the
+SceneView equivalent of AR Foundation's `ARPointCloudManager`. Use it for debug overlays,
+"scanning" feedback, procedural-art demos, or surfacing tracking quality to the user.
+
+The points are the **sparse, world-space** feature points ARCore uses for motion tracking
+(distinct from the dense *depth image* sampled by `DepthMeshNode`). Each point carries a
+`[0, 1]` confidence value; points below `confidenceThreshold` are filtered out. The node stays
+at the scene origin since the points are already in world space.
+
+**Threading:** the per-frame update reads `Frame.acquirePointCloud()` and uploads Filament
+buffers on the AR frame / GL-main thread. The composable handles this for you; do not poke the
+node from a background coroutine.
+
+**Point size:** Filament renders `POINTS` at a fixed 1-pixel size with the default unlit
+material — variable per-point size needs a custom `gl_PointSize` shader and is a deliberate
+non-goal. Color is fully configurable via `materialInstance` (use
+`materialLoader.createUnlitColorInstance(...)`).
+
+**Cross-platform:** Android-only. iOS equivalent is `ARPointCloud` from `ARFrame.rawFeaturePoints`.
+
+```kotlin
+@Composable fun ARSceneScope.rememberPointCloud(
+    confidenceThreshold: Float = 0.2f,          // min ARCore confidence in [0, 1]
+    materialInstance: MaterialInstance? = null, // e.g. createUnlitColorInstance(Color.Cyan)
+    builder: RenderableManager.Builder.() -> Unit = {},
+    onPointCloudUpdated: ((pointCount: Int) -> Unit)? = null,
+): PointCloudNode
+
+@Composable fun ARSceneScope.PointCloudNode(
+    node: PointCloudNode,
+    apply: PointCloudNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null,
+)
+```
+
+```kotlin
+val materialLoader = rememberMaterialLoader(engine)
+ARSceneView(modifier = Modifier.fillMaxSize()) {
+    val pointCloud = rememberPointCloud(
+        materialInstance = materialLoader.createUnlitColorInstance(Color.Cyan),
+    )
+    PointCloudNode(pointCloud)
+}
+```
+
 ### rememberDepthCollider — bounce virtual bodies off the real world
 
 `rememberDepthCollider()` builds a static physics collider from the live ARCore depth mesh so
@@ -1890,15 +1938,23 @@ import androidx.xr.arcore.Hand
 @Composable
 fun HandSkeleton(session: androidx.xr.runtime.Session) {
     SceneView {
+        // Mirror the live right hand; one joint child node per HandJointType.
         XrHandNode(hand = Hand.right(session), handedness = XrHandedness.RIGHT) {
-            // `this` is a NodeScope rooted at the hand node — declare per-joint geometry.
+            // `this` is a NodeScope rooted at the hand node — declare per-joint
+            // geometry. Each joint's transform follows the tracked pose.
             SphereNode(radius = 0.008f)
         }
     }
 }
 ```
 
-**Pure joint math** (`XrHandSkeleton`) is JVM-testable and runtime-free: `XrHandSkeleton.BONES`, `boneLength`, `boneMidpoint`, `lerp`, `totalBoneLength`, `trackedJointCount`. Sample: the `ar-hand-tracking` demo.
+The composable refreshes the skeleton in a `SideEffect` (per recomposition) — recompose once per XR frame and the hand follows for free. For an update cadence decoupled from recomposition, use the imperative node directly: collect `Hand.state` on the main dispatcher and call `handNode.update(...)`.
+
+**Threading:** `XrHandNode.update()` writes only Filament `Node` transforms (no JNI resource creation) but, like every node mutation, MUST run on the main thread. Drive it from a Compose effect on `Dispatchers.Main`.
+
+**Pure joint math** (`XrHandSkeleton`) is JVM-testable and runtime-free: `XrHandSkeleton.BONES` (the bone topology), `boneLength`, `boneMidpoint`, `lerp`, `totalBoneLength`, `trackedJointCount`. The `XrHandJoint` / `XrHandedness` enums and `XrHandSkeleton` carry no `androidx.xr.arcore` dependency, so they are safe to use on a phone-only build.
+
+Sample: the `ar-hand-tracking` demo renders a static reference hand skeleton on phones (no public Android XR emulator yet) and points the developer at `XrHandNode` for the live integration on an Android XR headset.
 
 ### XrFaceNode — face tracking (Slice 3)
 
@@ -3437,12 +3493,14 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-depth-visualization` — Depth Visualization. False-color depth map with camera↔depth blend.
 - `ar-face` — Augmented Faces. Face mesh tracking and overlays.
 - `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
+- `ar-hand-tracking` — Hand Tracking (Jetpack XR). Hand skeleton on Android XR headsets.
 - `ar-image` — Image Tracking. Detect and track reference images.
 - `ar-image-stabilization` — Image Stabilization (EIS). EIS for smoother AR camera feed.
 - `ar-instant-placement` — Instant Placement. Place models before plane detection converges.
 - `ar-ml-object-label` — ML Kit Object Labels. ML Kit object detection with 3D labels anchored on real-world hits.
 - `ar-orbital` — Orbital AR. Models orbit around you in a personal solar system.
 - `ar-placement` — Tap to Place. Place 3D models in AR.
+- `ar-point-cloud` — Point Cloud. World-space feature points via PointCloudNode.
 - `ar-pose` — Pose Placement. Free pose positioning.
 - `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Confidence-filtered point cloud from raw depth.
 - `ar-record-playback` — AR Recording. Record an AR session and replay it without a phone.

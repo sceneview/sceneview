@@ -14,28 +14,6 @@ import java.nio.FloatBuffer
 import java.nio.ShortBuffer
 
 /**
- * Opt-in marker for the **preview** Jetpack XR layer of SceneView.
- *
- * Every public symbol that wraps `androidx.xr.arcore` (`1.0.0-alpha14` at the
- * time of writing) carries this annotation. The upstream SDK is alpha and
- * subject to breaking changes; requiring an explicit opt-in makes the preview
- * status visible at every call site rather than burying it in a doc comment.
- *
- * Opt in per call site with `@OptIn(XrPreviewApi::class)`, or module-wide via
- * the `-opt-in` compiler flag.
- *
- * See [arsceneview/docs/JETPACK-XR-INTEGRATION.md](https://github.com/sceneview/sceneview/blob/main/arsceneview/docs/JETPACK-XR-INTEGRATION.md)
- * — tracking issue [#1738](https://github.com/sceneview/sceneview/issues/1738).
- */
-@RequiresOptIn(
-    message = "Jetpack XR API is preview (androidx.xr.arcore 1.0.0-alpha14) and may change.",
-    level = RequiresOptIn.Level.WARNING,
-)
-@Retention(AnnotationRetention.BINARY)
-@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY)
-annotation class XrPreviewApi
-
-/**
  * A scene-graph node that mirrors a face tracked by **ARCore for Jetpack XR**
  * (`androidx.xr.arcore.Face`) on an Android XR headset or glasses.
  *
