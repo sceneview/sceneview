@@ -1,0 +1,2 @@
+<!-- category: Docs -->
+- **android-demo: Play Store tablet & Chromebook screenshots.** Added a generated set of large-screen Play Store listing assets under `samples/android-demo/play/listings/en-US/graphics/` — six 16:9 tablet screenshots (2560×1440, used for both the 7-inch and 10-inch listing slots) and three 16:9 Chromebook screenshots (2400×1350). The captures cover the headline surfaces — the Dynamic Sky, Environment Gallery, Model Viewer and Geometry Primitives demos plus the Samples and About tabs — taken on a Pixel Tablet emulator running the bundled-asset demos.
