@@ -35,6 +35,71 @@ struct FlutterModelData: Identifiable, Equatable {
     }
 }
 
+// MARK: - Content root
+
+/// Holds the persistent RealityKit content root for a Flutter platform view.
+///
+/// `SceneViewSwift.SceneView`'s content closure runs only once during scene
+/// setup, so it cannot react to models added later over the method channel.
+/// This holder gives the bridge a stable `Entity` that is handed to `SceneView`
+/// at construction and then mutated imperatively (`addChild` / `removeFromParent`)
+/// as `SceneState.models` changes — the same pattern the SceneViewSwift docs
+/// recommend for async-loaded models.
+@MainActor
+final class FlutterContentRoot {
+    /// The entity passed to `SceneView { root in root.addChild(content) }`.
+    let entity = Entity()
+
+    /// Loaded model entities, keyed by the `FlutterModelData.id` that produced
+    /// them, so a `clearScene` / model removal can detach exactly the right
+    /// entity without disturbing models that are still present.
+    private var loaded: [UUID: Entity] = [:]
+
+    /// Reconciles the attached model entities with the desired model list.
+    ///
+    /// Loads any model in `models` that is not yet attached and detaches any
+    /// previously-loaded model no longer present (covers both `loadModel` and
+    /// `clearScene` from the Dart side). `ModelNode.load(_:)` is `async` and
+    /// `@MainActor` — there is no synchronous path/`String` initialiser on
+    /// `ModelNode` (issue #2065), so each load is awaited in turn.
+    ///
+    /// RealityKit only loads `.usdz` / `.reality` natively. A `.glb` path
+    /// throws; the failure is logged rather than thrown so one bad asset does
+    /// not block the rest of the scene.
+    func sync(to models: [FlutterModelData]) async {
+        let desired = Set(models.map(\.id))
+
+        // Detach models that were removed. Snapshot the keys first — mutating
+        // the dictionary while iterating its `keys` view is undefined.
+        for id in Array(loaded.keys) where !desired.contains(id) {
+            loaded.removeValue(forKey: id)?.removeFromParent()
+        }
+
+        // Load and attach models not yet present.
+        for data in models where loaded[data.id] == nil {
+            do {
+                let node = try await ModelNode.load(data.path)
+                node.scale(data.scale)
+                // The Dart side may have cleared the model between the
+                // `await` suspension and resumption — only attach if it is
+                // still wanted.
+                guard loaded[data.id] == nil else { continue }
+                // The model file's base name without extension is the node
+                // name reported back to Dart on tap (matches Android).
+                node.entity.name = (data.path as NSString).lastPathComponent
+                loaded[data.id] = node.entity
+                entity.addChild(node.entity)
+            } catch {
+                NSLog(
+                    "[sceneview_flutter] Failed to load model '%@': %@",
+                    data.path,
+                    error.localizedDescription
+                )
+            }
+        }
+    }
+}
+
 // MARK: - 3D SceneView
 
 class SceneViewFactory: NSObject, FlutterPlatformViewFactory {
@@ -80,6 +145,16 @@ class SceneState: ObservableObject {
     @Published var environmentPath: String?
     @Published var cameraControlMode: CameraControlMode = .orbit
     @Published var autoCenterContent: Bool = true
+
+    /// `nonisolated` so the platform-view classes (plain `NSObject`s, not
+    /// `@MainActor`) can construct a `SceneState` as a stored-property
+    /// initialiser. The initialiser only assigns the inline property defaults
+    /// — no main-actor state is touched — so it is safe outside the actor.
+    /// Without this, the `@MainActor`-implicit `init()` is unreachable from
+    /// the non-isolated `SceneViewPlatformView` / `ARSceneViewPlatformView`
+    /// initialisers and the whole Flutter iOS target fails to compile under
+    /// Swift 6 actor checking (issue #2065).
+    nonisolated init() {}
 }
 
 class SceneViewPlatformView: NSObject, FlutterPlatformView {
@@ -211,19 +286,31 @@ func flutterTappedNodeName(_ entity: Entity) -> String {
     return ""
 }
 
-/// SwiftUI wrapper for SceneViewSwift.SceneView, driven by observable state.
+/// SwiftUI wrapper for `SceneViewSwift.SceneView`, driven by observable state.
+///
+/// `SceneView`'s `@NodeBuilder` initialiser composes a *static* `[Entity]` list
+/// at construction (it has no SwiftUI `ForEach` support — issue #2065), and its
+/// imperative `SceneView { (Entity) -> Void }` content closure runs only once.
+/// To support models streamed in over the Flutter method channel, the bridge
+/// hands `SceneView` a persistent content-root entity and then attaches loaded
+/// model entities to it imperatively as `state.models` changes.
 struct SceneViewSwiftUIWrapper: View {
     @ObservedObject var state: SceneState
+
+    /// Persistent content root attached to the scene once and mutated as
+    /// models load. `@StateObject` so the same `Entity` survives every
+    /// SwiftUI re-render — re-creating it would orphan already-loaded models.
+    @StateObject private var contentBox = FlutterContentRootBox()
 
     /// Forwards a model tap to the Flutter method channel as `onTap`.
     let onTap: (String) -> Void
 
     var body: some View {
-        SceneView {
-            ForEach(state.models) { model in
-                ModelNode(model.path)
-                    .scale(model.scale)
-            }
+        SceneView { root in
+            // Runs once during scene setup. Attach the persistent content
+            // root so later async model loads (added as its children) appear
+            // without re-running this closure.
+            root.addChild(contentBox.root.entity)
         }
         .cameraControls(state.cameraControlMode)
         .autoCenterContent(state.autoCenterContent)
@@ -232,7 +319,20 @@ struct SceneViewSwiftUIWrapper: View {
             // the Dart `onTap` callback fires on iOS, matching Android (#2051).
             onTap(flutterTappedNodeName(entity))
         }
+        // Re-sync the loaded model entities whenever the Dart side mutates
+        // `state.models` (loadModel / clearScene). `ModelNode.load` is async,
+        // so the diff runs in a task keyed on the model-id list.
+        .task(id: state.models.map(\.id)) {
+            await contentBox.root.sync(to: state.models)
+        }
     }
+}
+
+/// `ObservableObject` box so a `FlutterContentRoot` (which is `@MainActor`)
+/// can be held by `@StateObject` with a stable identity across re-renders.
+@MainActor
+final class FlutterContentRootBox: ObservableObject {
+    let root = FlutterContentRoot()
 }
 
 // MARK: - AR SceneView
@@ -397,16 +497,79 @@ class ARSceneViewPlatformView: NSObject, FlutterPlatformView {
     }
 }
 
-/// SwiftUI wrapper for SceneViewSwift.ARSceneView, driven by observable state.
+/// SwiftUI wrapper for `SceneViewSwift.ARSceneView`, driven by observable state.
+///
+/// `ARSceneView` has no declarative content closure (issue #2065) — content is
+/// placed in the real world by anchoring entities. The bridge registers an
+/// `onTapOnPlane` handler so a tap on a detected plane drops the most recently
+/// requested model at that world position, mirroring the Android Flutter
+/// demo's tap-to-place AR behaviour.
 struct ARSceneViewSwiftUIWrapper: View {
     @ObservedObject var state: SceneState
 
+    /// Drives async model loading and tap-to-place anchoring. `@StateObject`
+    /// so the loaded-model cache survives SwiftUI re-renders.
+    @StateObject private var placement = ARPlacementController()
+
     var body: some View {
-        ARSceneView { anchor in
-            ForEach(state.models) { model in
-                ModelNode(model.path)
-                    .scale(model.scale)
+        ARSceneView(
+            planeDetection: .horizontal,
+            onTapOnPlane: { position, arView in
+                placement.placeModel(at: position, in: arView)
+            }
+        )
+        // Pre-load the requested models so a plane tap can anchor them
+        // immediately. Keyed on the model-id list so loadModel / clearScene
+        // from the Dart side re-run the loader.
+        .task(id: state.models.map(\.id)) {
+            await placement.sync(to: state.models)
+        }
+    }
+}
+
+/// Loads AR models off the method channel and places them on plane taps.
+///
+/// `ARSceneView` is anchor-driven — there is no "scene content list" to mutate
+/// (unlike the 3D `SceneView`). This controller pre-loads each requested model
+/// once and, on a plane tap, clones the most recently requested model under a
+/// world `AnchorNode` at the tapped position.
+@MainActor
+final class ARPlacementController: ObservableObject {
+    /// Loaded model entities, keyed by `FlutterModelData.id`, kept as
+    /// templates that are cloned for each placement.
+    private var templates: [(data: FlutterModelData, entity: ModelEntity)] = []
+
+    /// Reconciles the loaded templates with the requested model list.
+    func sync(to models: [FlutterModelData]) async {
+        let desired = Set(models.map(\.id))
+        templates.removeAll { !desired.contains($0.data.id) }
+
+        let loadedIds = Set(templates.map(\.data.id))
+        for data in models where !loadedIds.contains(data.id) {
+            do {
+                let node = try await ModelNode.load(data.path)
+                node.scale(data.scale)
+                node.entity.name = (data.path as NSString).lastPathComponent
+                templates.append((data, node.entity))
+            } catch {
+                NSLog(
+                    "[sceneview_flutter] Failed to load AR model '%@': %@",
+                    data.path,
+                    error.localizedDescription
+                )
             }
         }
+    }
+
+    /// Anchors a clone of the most recently requested model at `position`.
+    ///
+    /// Cloning lets the same model be tapped onto multiple planes. Does
+    /// nothing until at least one model has finished loading.
+    func placeModel(at position: SIMD3<Float>, in arView: ARView) {
+        guard let template = templates.last else { return }
+        let clone = template.entity.clone(recursive: true)
+        let anchor = AnchorNode.world(position: position)
+        anchor.add(clone)
+        arView.scene.addAnchor(anchor.entity)
     }
 }

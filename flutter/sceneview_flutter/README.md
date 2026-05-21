@@ -63,15 +63,23 @@ android {
 
 ### iOS setup
 
-Minimum iOS 17. In `ios/Podfile`:
+Minimum iOS 18 (`SceneViewSwift`'s `Package.swift` requires iOS 18.0). In
+`ios/Podfile`:
 
 ```ruby
-platform :ios, '17.0'
+platform :ios, '18.0'
 ```
 
-The host app must also add `SceneViewSwift` via Swift Package Manager in Xcode:
-- URL: `https://github.com/sceneview/SceneViewSwift`
-- Version: `3.6.2`
+The plugin's iOS bridge wraps `SceneViewSwift` (the RealityKit renderer). It is
+consumed via Swift Package Manager — CocoaPods does not natively integrate SPM
+dependencies — so the **host app** must add the package in Xcode:
+
+- File → Add Package Dependencies… → `https://github.com/sceneview/sceneview`
+- Pick the `SceneViewSwift` library product; depend on the latest `vX.Y.Z` tag.
+
+> **iOS model format.** RealityKit loads `.usdz` and `.reality` natively. Pass
+> `.usdz` model paths to `loadModel(...)` on iOS — a `.glb` path fails to load
+> (the failure is logged; the rest of the scene is unaffected).
 
 ## Usage
 
@@ -178,10 +186,10 @@ declare `NSPhotoLibraryAddUsageDescription` in `Info.plist` to use
 Flutter (Dart)
   |
   +-- PlatformView -----> Android: ComposeView + SceneView { }
-  |                        (Filament renderer, SceneView SDK 3.6.2)
+  |                        (Filament renderer, SceneView SDK)
   |
   +-- PlatformView -----> iOS: UIHostingController + SceneViewSwift
-                           (RealityKit renderer, SceneViewSwift 3.6.2)
+                           (RealityKit renderer)
 ```
 
 Method channels bridge Dart commands (`loadModel`, `clearScene`, `setEnvironment`) to native implementations.
