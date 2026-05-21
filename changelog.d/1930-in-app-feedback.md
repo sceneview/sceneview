@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **In-app feedback** — the Android demo app now has a "Feedback" button on every tab: users record their screen + voice to report a bug or share an idea, the recording is transcribed server-side and filed as a pre-filled GitHub issue, and a "My feedback" screen tracks each submitted ticket's live Open/Closed status with a tap-through to the real issue. ([#1930](https://github.com/sceneview/sceneview/issues/1930))

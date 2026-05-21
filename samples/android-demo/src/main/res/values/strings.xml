@@ -321,4 +321,16 @@
     <string name="feedback_send_failed_title">Couldn\'t send</string>
     <string name="feedback_send_failed_body">Your feedback couldn\'t be sent. Check your connection and try again.</string>
     <string name="feedback_send_retry">Try again</string>
+    <!-- In-app feedback — ticket tracking (issue #1940) -->
+    <string name="feedback_tickets_entry">My feedback</string>
+    <string name="feedback_tickets_title">My feedback</string>
+    <string name="feedback_tickets_body">Tap a report to see its status and the team\'s replies on GitHub.</string>
+    <string name="feedback_tickets_back">Back</string>
+    <string name="feedback_tickets_empty">You haven\'t submitted any feedback yet.</string>
+    <string name="feedback_tickets_open">Open</string>
+    <string name="feedback_tickets_closed">Closed</string>
+    <string name="feedback_tickets_untitled_bug">Bug report</string>
+    <string name="feedback_tickets_untitled_idea">Idea</string>
+    <string name="feedback_tickets_row_meta">#%1$d · %2$s</string>
+    <string name="feedback_tickets_no_app">No app available to open the issue</string>
 </resources>

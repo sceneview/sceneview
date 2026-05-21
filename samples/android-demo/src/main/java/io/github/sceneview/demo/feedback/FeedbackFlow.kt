@@ -1,5 +1,10 @@
 package io.github.sceneview.demo.feedback
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.text.format.DateUtils
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -56,13 +62,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.sceneview.demo.R
 import kotlinx.coroutines.launch
 
-private enum class FeedbackStep { ONBOARDING, CATEGORY, CONSENT, REVIEW, SENDING }
+private enum class FeedbackStep { ONBOARDING, CATEGORY, CONSENT, REVIEW, SENDING, TICKETS }
 
 /** State of the feedback upload, driving the SENDING step. */
 private sealed interface UploadUiState {
@@ -98,6 +105,10 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
     var note by rememberSaveable { mutableStateOf("") }
     var uploadState by remember { mutableStateOf<UploadUiState>(UploadUiState.Sending) }
 
+    // The previously submitted tickets — read once per dialog open. Used to
+    // surface the "My feedback" entry and to populate the tracking screen.
+    val tickets = remember { SubmittedFeedbackStore.all(context) }
+
     fun send() {
         val recording = (FeedbackRecorder.state.value as? RecordingState.Done)?.recording
         val chosen = FeedbackRecorder.category ?: category ?: FeedbackCategory.BUG
@@ -116,7 +127,26 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
             } else {
                 UploadUiState.Failed
             }
-            if (result.ok) FeedbackRecorder.reset()
+            if (result.ok) {
+                // Index the new ticket locally so "My feedback" can track it.
+                // Skipped when the worker stored the feedback but opened no
+                // issue (e.g. its hourly issue quota was hit) — there is then
+                // nothing to link to.
+                if (result.issueNumber != null && result.issueUrl != null) {
+                    SubmittedFeedbackStore.add(
+                        context,
+                        SubmittedFeedback(
+                            feedbackId = result.feedbackId ?: "",
+                            issueNumber = result.issueNumber,
+                            issueUrl = result.issueUrl,
+                            category = chosen,
+                            title = text,
+                            createdAt = System.currentTimeMillis(),
+                        ),
+                    )
+                }
+                FeedbackRecorder.reset()
+            }
         }
     }
 
@@ -173,6 +203,8 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
                             category = it
                             step = FeedbackStep.CONSENT
                         },
+                        hasTickets = tickets.isNotEmpty(),
+                        onViewTickets = { step = FeedbackStep.TICKETS },
                     )
                     FeedbackStep.CONSENT -> ConsentStep(
                         category = category ?: FeedbackCategory.BUG,
@@ -186,6 +218,12 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
                             FeedbackRecorder.category = category
                             step = FeedbackStep.REVIEW
                         },
+                    )
+                    FeedbackStep.TICKETS -> TicketsStep(
+                        tickets = tickets,
+                        onClose = onDismiss,
+                        onBack = { step = FeedbackStep.CATEGORY },
+                        onOpenTicket = { openIssue(context, it.issueUrl) },
                     )
                     FeedbackStep.REVIEW, FeedbackStep.SENDING -> Unit // handled above
                 }
@@ -217,8 +255,22 @@ private fun OnboardingStep(onClose: () -> Unit, onContinue: () -> Unit) {
 }
 
 @Composable
-private fun CategoryStep(onClose: () -> Unit, onPick: (FeedbackCategory) -> Unit) {
-    FeedbackStepScaffold(onClose = onClose) {
+private fun CategoryStep(
+    onClose: () -> Unit,
+    onPick: (FeedbackCategory) -> Unit,
+    hasTickets: Boolean,
+    onViewTickets: () -> Unit,
+) {
+    FeedbackStepScaffold(
+        onClose = onClose,
+        actions = {
+            if (hasTickets) {
+                TextButton(onClick = onViewTickets, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.feedback_tickets_entry))
+                }
+            }
+        },
+    ) {
         Spacer(Modifier.height(8.dp))
         StepTitle(stringResource(R.string.feedback_category_title))
         Spacer(Modifier.height(24.dp))
@@ -420,6 +472,162 @@ private fun FailedStep(onClose: () -> Unit, onRetry: () -> Unit) {
         StepTitle(stringResource(R.string.feedback_record_failed_title))
         Spacer(Modifier.height(12.dp))
         StepBody(stringResource(R.string.feedback_record_failed_body))
+    }
+}
+
+@Composable
+private fun TicketsStep(
+    tickets: List<SubmittedFeedback>,
+    onClose: () -> Unit,
+    onBack: () -> Unit,
+    onOpenTicket: (SubmittedFeedback) -> Unit,
+) {
+    FeedbackStepScaffold(
+        onClose = onClose,
+        actions = {
+            TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.feedback_tickets_back))
+            }
+        },
+    ) {
+        Spacer(Modifier.height(8.dp))
+        StepTitle(stringResource(R.string.feedback_tickets_title))
+        Spacer(Modifier.height(12.dp))
+        StepBody(stringResource(R.string.feedback_tickets_body))
+        Spacer(Modifier.height(20.dp))
+        if (tickets.isEmpty()) {
+            StepBody(stringResource(R.string.feedback_tickets_empty))
+        } else {
+            tickets.forEachIndexed { index, ticket ->
+                if (index > 0) Spacer(Modifier.height(12.dp))
+                TicketRow(ticket = ticket, onClick = { onOpenTicket(ticket) })
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun TicketRow(ticket: SubmittedFeedback, onClick: () -> Unit) {
+    // The GitHub issue is the source of truth — the live state is read from it,
+    // never stored. null = still loading.
+    val state by produceState<TicketState?>(initialValue = null, ticket.issueNumber) {
+        value = FeedbackTicketStatus.fetch(ticket.issueNumber)
+    }
+    val isBug = ticket.category == FeedbackCategory.BUG
+    val tint = if (isBug) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 1.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(tint.copy(alpha = 0.18f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (isBug) Icons.Outlined.BugReport else Icons.Outlined.Lightbulb,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    ticketDisplayTitle(ticket),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    stringResource(
+                        R.string.feedback_tickets_row_meta,
+                        ticket.issueNumber,
+                        relativeTime(ticket.createdAt),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TicketStatusBadge(state)
+        }
+    }
+}
+
+@Composable
+private fun TicketStatusBadge(state: TicketState?) {
+    when (state) {
+        null -> CircularProgressIndicator(
+            modifier = Modifier.size(16.dp),
+            strokeWidth = 2.dp,
+        )
+        TicketState.OPEN -> StatusPill(
+            text = stringResource(R.string.feedback_tickets_open),
+            container = MaterialTheme.colorScheme.tertiaryContainer,
+            content = MaterialTheme.colorScheme.onTertiaryContainer,
+        )
+        TicketState.CLOSED -> StatusPill(
+            text = stringResource(R.string.feedback_tickets_closed),
+            container = MaterialTheme.colorScheme.surfaceContainerHighest,
+            content = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        // Status unavailable (offline / rate-limited) — show nothing rather
+        // than a misleading badge; the row still opens the real issue.
+        TicketState.UNKNOWN -> Unit
+    }
+}
+
+@Composable
+private fun StatusPill(text: String, container: Color, content: Color) {
+    Surface(shape = CircleShape, color = container) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = content,
+        )
+    }
+}
+
+@Composable
+private fun ticketDisplayTitle(ticket: SubmittedFeedback): String =
+    ticket.title.ifBlank {
+        stringResource(
+            if (ticket.category == FeedbackCategory.BUG) {
+                R.string.feedback_tickets_untitled_bug
+            } else {
+                R.string.feedback_tickets_untitled_idea
+            },
+        )
+    }
+
+private fun relativeTime(createdAt: Long): String =
+    DateUtils.getRelativeTimeSpanString(
+        createdAt,
+        System.currentTimeMillis(),
+        DateUtils.MINUTE_IN_MILLIS,
+    ).toString()
+
+/** Open the real GitHub issue — the GitHub app handles it if installed, else a
+ *  browser. A device with neither shows a toast rather than crashing. */
+private fun openIssue(context: Context, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }.onFailure {
+        Toast.makeText(context, R.string.feedback_tickets_no_app, Toast.LENGTH_LONG).show()
     }
 }
 

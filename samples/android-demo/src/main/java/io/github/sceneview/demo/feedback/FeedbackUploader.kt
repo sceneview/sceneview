@@ -25,8 +25,17 @@ object FeedbackUploader {
             .build()
     }
 
-    /** Outcome of an upload. [ok] is true when the worker accepted the feedback. */
-    data class Result(val ok: Boolean, val issueNumber: Int?)
+    /**
+     * Outcome of an upload. [ok] is true when the worker accepted the feedback.
+     * [issueNumber] / [issueUrl] are null when the worker stored the feedback
+     * but did not open a GitHub issue (e.g. the hourly issue quota was hit).
+     */
+    data class Result(
+        val ok: Boolean,
+        val issueNumber: Int?,
+        val issueUrl: String?,
+        val feedbackId: String?,
+    )
 
     /**
      * POST a feedback submission as multipart form data. Runs on
@@ -67,17 +76,21 @@ object FeedbackUploader {
         val request = Request.Builder().url(ENDPOINT).post(body).build()
         try {
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext Result(false, null)
+                if (!response.isSuccessful) {
+                    return@withContext Result(false, null, null, null)
+                }
                 val json = runCatching {
                     JSONObject(response.body.string())
                 }.getOrNull()
                 Result(
                     ok = json?.optBoolean("ok") == true,
                     issueNumber = json?.optInt("issue", 0)?.takeIf { it > 0 },
+                    issueUrl = json?.optString("url")?.takeIf { it.isNotBlank() },
+                    feedbackId = json?.optString("id")?.takeIf { it.isNotBlank() },
                 )
             }
         } catch (e: Exception) {
-            Result(false, null)
+            Result(false, null, null, null)
         }
     }
 }
