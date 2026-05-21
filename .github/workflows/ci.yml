@@ -16,7 +16,8 @@ name: CI
 #   - changes        path detection (one dorny/paths-filter run for the whole PR)
 #   - build          libraries + sample APKs        (gated on `android`)
 #   - lint           Android lint                   (gated on `android`)
-#   - unit-test      JVM unit tests + JaCoCo        (gated on `android`)
+#   - unit-test      JVM unit tests (PR-blocking gate) (gated on `android`)
+#   - coverage       JaCoCo coverage (advisory, off the critical path) (gated on `android`)
 #   - web-desktop    Kotlin/JS + Compose Desktop     (gated on `web`)
 #   - flutter-demo   flutter-demo APK               (gated on `flutter`)
 #   - compile-kmp    iOS Kotlin/Native targets       (gated on `kmp`)
@@ -237,15 +238,86 @@ jobs:
             arsceneview/build/reports/lint-results-debug.html
           if-no-files-found: ignore
 
+  # ── PR-blocking unit-test gate ───────────────────────────────────────────
+  # The actual pass/fail signal for every PR. Runs the plain
+  # `testDebugUnitTest` suite for the two libraries + the two samples
+  # modules — fast and deterministic. JaCoCo coverage instrumentation +
+  # report generation is deliberately NOT part of this job: it was the slow
+  # pole that tipped the combined "Unit tests + coverage" job over its
+  # 45-min timeout on slow/contended runners (#1554 → #1955), producing a
+  # confusing double-red on the `CI Gate` aggregator. Coverage now lives in
+  # the separate, non-blocking `coverage` job below — see #1955.
   unit-test:
-    name: Unit tests + coverage
+    name: Unit tests
     needs: changes
     if: inputs.force-all || needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
-    # 45 min: the full sceneview + arsceneview + samples JaCoCo pass runs
-    # close to 30 min on a slow/contended runner and tipped over once on a
-    # release PR (#1554), producing a confusing double-red. The extra
-    # headroom absorbs runner-speed variance without re-architecting.
+    # 30 min: the plain `testDebugUnitTest` suite (no JaCoCo instrumentation
+    # / report pass) completes well under 20 min even on a slow runner. The
+    # extra headroom absorbs runner-speed variance. The former 45-min ceiling
+    # was sized for the combined test+JaCoCo run that #1955 split apart.
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Unit tests
+        # Plain `testDebugUnitTest` — the PR pass/fail signal, no coverage
+        # instrumentation. JaCoCo runs separately in the `coverage` job.
+        #
+        # `:samples:android-demo:testDebugUnitTest` runs
+        # `ARBundledRecordingsTest` (the bundled-recording ftyp/avc1/mett
+        # contract suite from #1060/#1100).
+        #
+        # `:samples:common:testDebugUnitTest` runs the shared-helper
+        # regression suite — LifecycleAwareLaunchedEffect, LifecyclePauseGate,
+        # rememberMaterialInstance, InAppUpdateManager. See #972.
+        run: |
+          ./gradlew \
+            :sceneview:testDebugUnitTest \
+            :arsceneview:testDebugUnitTest \
+            :samples:common:testDebugUnitTest \
+            :samples:android-demo:testDebugUnitTest \
+            --stacktrace
+
+      - name: Upload unit test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-test-reports
+          path: |
+            sceneview/build/reports/tests/
+            arsceneview/build/reports/tests/
+            samples/common/build/reports/tests/
+            samples/android-demo/build/reports/tests/
+          if-no-files-found: ignore
+
+  # ── JaCoCo coverage (advisory — off the PR-critical path) ────────────────
+  # SEPARATE from the `unit-test` gate above (#1955). JaCoCo instrumentation
+  # + XML/HTML report generation is the slow pole that made the old combined
+  # "Unit tests + coverage" job structurally exceed its timeout on slow
+  # runners (#1554 band-aid was insufficient). Coverage does NOT need to gate
+  # every PR, so it runs here on its own runner with `continue-on-error:
+  # true` — a coverage hiccup is logged and surfaced in the step summary but
+  # never flips the job (and therefore never flips the `CI Gate` aggregator)
+  # red. The job is path-gated on `android` exactly like `unit-test`, so it
+  # is NOT one of ci-gate.yml's `REQUIRED_CHECKS` core checks and a docs-only
+  # PR simply reports it `skipped`.
+  #
+  # `jacocoTestReport` depends on `testDebugUnitTest`, so this job re-runs
+  # the library test suite under instrumentation on its own runner. That is
+  # intentional: the duplicate run is OFF the critical path and the Gradle
+  # build cache (org.gradle.caching=true, configuration-cache enabled, shared
+  # by setup-gradle@v6) keeps it cheap.
+  coverage:
+    name: Coverage (advisory)
+    needs: changes
+    if: inputs.force-all || needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    # `continue-on-error` so a coverage failure never blocks a PR — see #1955.
+    continue-on-error: true
     timeout-minutes: 45
 
     steps:
@@ -253,27 +325,15 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
 
-      - name: Unit tests + JaCoCo coverage
-        # Single invocation: jacocoTestReport depends on testDebugUnitTest so
-        # Gradle runs the tests, drops the exec file under
+      - name: JaCoCo coverage
+        # `jacocoTestReport` depends on `testDebugUnitTest` so Gradle runs
+        # the library tests under instrumentation, drops the exec file under
         # `outputs/unit_test_code_coverage/`, then generates XML + HTML
-        # reports. Replaces the previous `testDebugUnitTest`-only call so
-        # we don't run the test suite twice. See #964.
-        #
-        # `:samples:android-demo:testDebugUnitTest` runs
-        # `ARBundledRecordingsTest` (the bundled-recording ftyp/avc1/mett
-        # contract suite from #1060/#1100). Not under JaCoCo because the
-        # samples module has no coverage gate. See #1130.
-        #
-        # `:samples:common:testDebugUnitTest` runs the shared-helper
-        # regression suite — LifecycleAwareLaunchedEffect, LifecyclePauseGate,
-        # rememberMaterialInstance, InAppUpdateManager. See #972.
+        # reports. See #964.
         run: |
           ./gradlew \
             :sceneview:jacocoTestReport \
             :arsceneview:jacocoTestReport \
-            :samples:common:testDebugUnitTest \
-            :samples:android-demo:testDebugUnitTest \
             --stacktrace
 
       - name: Coverage summary
@@ -317,11 +377,12 @@ jobs:
         # dropped more than `threshold_pp` (0.5pp default). See #973.
         #
         # `continue-on-error: true` keeps it INFORMATIONAL for now — a real
-        # regression is logged loudly and surfaced in the job step summary,
-        # but the step failure does not flip the `unit-test` job (and
-        # therefore the `CI Gate` aggregator) red. Promote it to a hard gate
-        # by deleting this `continue-on-error` line once it has been green
-        # for two consecutive weeks (the #973 follow-up ratchet step).
+        # regression is logged loudly and surfaced in the job step summary.
+        # The enclosing `coverage` job is also `continue-on-error: true`
+        # (#1955), so coverage never gates a PR regardless; promote this to a
+        # hard gate by giving the `coverage` job its own required check once
+        # the delta numbers have been green for two consecutive weeks (the
+        # #973 follow-up ratchet step).
         continue-on-error: true
         run: |
           set +e
@@ -599,11 +660,12 @@ jobs:
         env:
           # Optional. Demo runtime disables Geospatial when unset.
           ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
-          # The `build` / `unit-test` jobs already run `assembleDebug` + the
-          # same unit-test set + JaCoCo coverage in parallel with this gate.
-          # Skipping the duplicate Android build/test work here keeps the gate
-          # focused on what it owns uniquely: version sync, security scans,
-          # asset CDN integrity, website rules, MCP tests, agent skill drift.
+          # The `build` / `unit-test` / `coverage` jobs already run
+          # `assembleDebug` + the same unit-test set + JaCoCo coverage in
+          # parallel with this gate. Skipping the duplicate Android
+          # build/test work here keeps the gate focused on what it owns
+          # uniquely: version sync, security scans, asset CDN integrity,
+          # website rules, MCP tests, agent skill drift.
           QUALITY_GATE_SKIP_ANDROID: "1"
         run: bash .claude/scripts/quality-gate.sh
 
