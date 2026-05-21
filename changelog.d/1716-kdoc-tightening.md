@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- `arsceneview`: Tighten `ARDepthOfField` KDoc with the upstream Filament verification (`colorPassOutput.depth` is the buffer `gl_FragDepth` writes to, so DoF post-pass + camera-stream depth occlusion compose without surprises) and surface three device-QA caveats that need eyeballing on real hardware: reverse-Z + early-Z culling around the `clip.z = 0.9999f` vertex hack, MSAA resolve filtering on the depth attachment, and `cocParams` calibration against the AR camera node's projection. Pure docs change; no API/behaviour delta (follow-up to #1716).

@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **QA harness: advisory web-perf scaffold ([#1879](https://github.com/sceneview/sceneview/issues/1879)).** New `.claude/scripts/web-perf-qa.sh` runs Lighthouse (mobile preset) against `samples/web-demo` and emits `web-perf-summary.json` with FCP / LCP / CLS + the Lighthouse performance score. Wired into `device-qa.sh` as an advisory sub-leg of the web run (continue-on-error, never blocks the release gate). Thresholds are deliberately deferred — follow-up tracked.
