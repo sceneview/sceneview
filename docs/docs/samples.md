@@ -30,6 +30,15 @@ git clone https://github.com/sceneview/sceneview.git
 ./gradlew :samples:android-demo:assembleDebug
 ```
 
+!!! info "In-app feedback"
+    The Android demo includes an opt-in **feedback button** for reporting a bug
+    or sharing an idea. When used, it records the screen and microphone and
+    uploads them to the SceneView feedback service, which transcribes the audio
+    and opens a pre-filled GitHub issue. The feature is consent-gated, the raw
+    recording stays private and is deleted after 90 days, and only the
+    transcript + device context appear on the public issue. See the
+    [Privacy Policy](privacy.md) for the full data flow.
+
 ### iOS Demo
 
 **`samples/ios-demo/`** — App Store ready, SwiftUI

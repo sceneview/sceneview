@@ -18,11 +18,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Privacy Policy — SceneView</title>
-  <meta name="description" content="Privacy Policy for the SceneView Demo app. No personal data collected, no tracking, no analytics.">
+  <meta name="description" content="Privacy Policy for the SceneView Demo app. No tracking, offline by default, and an opt-in in-app feedback feature.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://sceneview.github.io/privacy.html">
   <meta property="og:title" content="Privacy Policy — SceneView">
-  <meta property="og:description" content="SceneView Demo does not collect, store, or transmit any personal data.">
+  <meta property="og:description" content="SceneView Demo collects no personal data during normal use. The only exception is the opt-in in-app feedback feature.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://sceneview.github.io/privacy.html">
   <meta property="og:image" content="https://sceneview.github.io/og-image.png">
@@ -30,7 +30,7 @@
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Privacy Policy — SceneView">
-  <meta name="twitter:description" content="SceneView Demo privacy policy. No personal data collected.">
+  <meta name="twitter:description" content="SceneView Demo privacy policy. No tracking; opt-in feedback feature disclosed.">
   <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
   <meta name="theme-color" content="#005bc1">
   <meta property="og:site_name" content="SceneView">
@@ -266,7 +266,7 @@
     <section class="privacy-hero">
       <div class="privacy-hero__container">
         <h1 class="privacy-hero__title reveal">Privacy Policy</h1>
-        <p class="privacy-hero__updated reveal"><strong>SceneView Demo</strong> &mdash; Last updated: March 27, 2026</p>
+        <p class="privacy-hero__updated reveal"><strong>SceneView Demo</strong> &mdash; Last updated: May 21, 2026</p>
       </div>
     </section>
 
@@ -274,24 +274,31 @@
     <div class="privacy-content">
 
       <div class="privacy-content__summary reveal">
-        SceneView Demo does not collect, store, or transmit any personal data.
+        SceneView Demo collects no personal data during normal use &mdash; no accounts, no analytics, no tracking. The one exception is the optional in-app feedback feature: if you choose to send feedback, it records your screen and microphone audio and uploads them to the SceneView feedback service. Nothing is recorded or sent unless you explicitly start a feedback report and agree.
       </div>
 
-      <h2>Data Collection</h2>
+      <h2>Data Collection (Normal Use)</h2>
       <ul>
-        <li><strong>No personal data collected</strong> &mdash; The app does not collect names, email addresses, IP addresses, or any other personally identifiable information.</li>
+        <li><strong>No personal data collected</strong> &mdash; Outside the feedback feature, the app does not collect names, email addresses, IP addresses, or any other personally identifiable information.</li>
         <li><strong>No analytics or tracking</strong> &mdash; No analytics SDKs, telemetry, fingerprinting, or behavioral tracking of any kind.</li>
-        <li><strong>No network requests</strong> &mdash; The app operates entirely offline. All 3D models, textures, and environments are bundled locally.</li>
+        <li><strong>Offline by default</strong> &mdash; 3D models, textures, and environments are bundled locally or downloaded for demos; no personal data is sent during downloads. The only feature that uploads data is the opt-in feedback reporter below.</li>
         <li><strong>No accounts</strong> &mdash; The app does not require or support user accounts.</li>
       </ul>
 
       <h2>Camera Usage (AR Features)</h2>
       <ul>
         <li>The app uses the device camera <strong>exclusively</strong> for augmented reality features powered by Google ARCore.</li>
-        <li>Camera data is processed <strong>locally on-device</strong> in real time for plane detection and object placement.</li>
-        <li><strong>No camera images or video are stored, recorded, or transmitted</strong> to any server.</li>
-        <li>Camera access is only requested when the user navigates to the AR tab.</li>
+        <li>Camera data for AR is processed <strong>locally on-device</strong> in real time for plane detection and object placement.</li>
+        <li><strong>No camera images or AR video are stored, recorded, or transmitted</strong> to any server.</li>
+        <li>Camera access is only requested when the user navigates to the AR tab. A feedback screen recording may capture the AR viewfinder if an AR demo is open &mdash; only while you are actively recording feedback.</li>
       </ul>
+
+      <h2>In-App Feedback (Opt-In)</h2>
+      <p>The app includes a feedback button that lets you report a bug or share an idea by recording your screen and voice. It is <strong>opt-in and consent-gated</strong> &mdash; it does nothing until you tap the button, work through its consent screens, and approve Android's own screen-capture dialog. You can cancel at any point and discard a recording before it is sent.</p>
+      <p><strong>What is captured</strong> when you submit feedback: a short screen recording (<code>.mp4</code>), your microphone audio, any text you type, and device/app context (app version and build, Android version and API level, device manufacturer and model, locale, free RAM). No advertising ID, no IP address, no account identifier.</p>
+      <p><strong>Where it goes:</strong> the recording, audio, and context are uploaded over HTTPS to the SceneView feedback service &mdash; an open-source Cloudflare Worker operated by the SceneView project. The service stores the screen recording and audio <strong>privately</strong> in Cloudflare R2 object storage, transcribes the audio to text with Cloudflare Workers AI (the OpenAI Whisper model), and creates a <strong>public GitHub issue</strong> so maintainers can triage it.</p>
+      <p><strong>What becomes public:</strong> the GitHub issue contains only the transcript, any text you typed, and the device/app context table &mdash; the raw screen recording and audio are never attached to the public issue. Please avoid showing or saying personal information while recording.</p>
+      <p><strong>Access control &amp; retention:</strong> the screen recording and audio are accessible only to SceneView maintainers, through an admin-token-gated viewer. They are <strong>automatically deleted after 90 days</strong>; the transcript and context (already public on the issue) are kept. The service hashes the request IP for rate limiting only &mdash; the raw IP is never stored.</p>
 
       <h2>Third-Party SDKs</h2>
       <table>
@@ -302,11 +309,25 @@
           <tr><td>Google Filament</td><td>3D rendering engine</td><td>None</td></tr>
           <tr><td>Google ARCore</td><td>Augmented reality</td><td>Camera processed locally, no data sent</td></tr>
           <tr><td>Jetpack Compose</td><td>UI framework</td><td>None</td></tr>
+          <tr><td>Android MediaProjection / MediaRecorder</td><td>Screen + audio capture for the opt-in feedback feature</td><td>Only when you record feedback</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Third-Party Processors (Feedback Feature Only)</h2>
+      <p>These processors handle data <strong>only</strong> when you choose to submit feedback:</p>
+      <table>
+        <thead>
+          <tr><th>Service</th><th>Role</th><th>Data handled</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Cloudflare R2</td><td>Private object storage</td><td>Screen recording, audio</td></tr>
+          <tr><td>Cloudflare Workers AI (Whisper)</td><td>Speech-to-text transcription</td><td>Audio</td></tr>
+          <tr><td>GitHub</td><td>Public issue tracker</td><td>Transcript, typed text, device/app context</td></tr>
         </tbody>
       </table>
 
       <h2>Data Sharing</h2>
-      <p>No data is shared with third parties. No data is sold or used for advertising.</p>
+      <p>Outside the feedback feature, no data is shared with third parties. For the feedback feature, data is shared only with the processors above, and the feedback transcript and context become public on a GitHub issue. No data is sold or used for advertising.</p>
 
       <h2>Children's Privacy</h2>
       <p>The app does not knowingly collect any data from children under 13. The app is rated for ages 13 and older.</p>
