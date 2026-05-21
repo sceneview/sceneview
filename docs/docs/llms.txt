@@ -1162,6 +1162,35 @@ SceneView(
 )
 ```
 
+### Auto-fit camera framing
+
+Library-level helper (`io.github.sceneview`, #1439) that frames a model so it fills the
+viewport regardless of its intrinsic glTF size — no per-model `scaleToUnits` tuning.
+
+```kotlin
+// Pure trigonometry — bounds + camera projection → orbit distance. Fits the content
+// bounding SPHERE, so the result is yaw-invariant (an orbiting camera never clips).
+fun fitDistanceForBounds(
+    bounds: Aabb, verticalFovDegrees: Double, aspect: Double,
+    padding: Float = DEFAULT_FRAMING_PADDING  // 0.15 = 15% breathing room
+): Float
+
+// Reposition the camera in one call (main thread — reads/writes Filament state):
+cameraNode.frameToContent(modelNode)            // measures the node subtree's bounds
+cameraNode.frameToBounds(aabb)                  // explicit bounds
+cameraNode.fitDistanceForContent(modelNode)     // just the distance, no reposition
+
+// Helpers: Filament Box → Aabb, focal length → vertical FOV.
+val bounds = modelInstance.model.boundingBox.toAabb()
+val vfov = verticalFovDegreesForFocalLength(28.0)   // ≈ 46.4°
+
+// One-shot guard for a SceneView frame loop (analogue of SceneAutoCenterState):
+val fitState = remember { SceneAutoFitState() }
+SceneView(onFrame = { fitState.maybeFit(cameraNode, contentRoot) }) { … }
+```
+
+Android-only; iOS already auto-frames from `visualBounds` (#1026 / #1391).
+
 ---
 
 ## Render Quality
