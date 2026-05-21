@@ -19,12 +19,21 @@ git clone https://github.com/sceneview/sceneview.git
 
 **`samples/android-demo/`** — Play Store ready, Material 3 Expressive
 
-4-tab showcase with 14 interactive demos:
+4-tab showcase (**Explore / AR View / Samples / About**) backed by an
+append-only demo registry of **59 demos** (30 non-AR + 29 AR):
 
-- **3D tab**: 8 models, 6 HDR environments, orbit camera, animations
-- **AR tab**: Tap-to-place, plane detection, 4 AR models, gesture controls
-- **Samples tab**: Model viewer, geometry, animation, dynamic sky demos
-- **About tab**: Platform info, GitHub links
+- **Explore tab**: Featured 3D & AR demos and Sketchfab model streaming
+- **AR View tab**: Live `ARSceneView` camera with plane detection and tap-to-place
+- **Samples tab**: The full demo catalog, grouped into six categories —
+  3D Basics, Lighting & Environment, Content, Interaction, Advanced,
+  Augmented Reality
+- **About tab**: Platform info, version, and GitHub links
+
+Each demo is one append-only `*Fragment.kt` under
+`samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/` and is
+deep-link addressable as `sceneview://demo/<id>`. The collator
+(`samples/android-demo/scripts/collate-demos.sh`) generates the demo registry
+and the `llms.txt` demo list from those fragments, so the catalog never drifts.
 
 ```bash
 ./gradlew :samples:android-demo:assembleDebug
