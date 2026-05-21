@@ -59,6 +59,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         updateManager = InAppUpdateManager(this)
+        // Register the activity-result launcher for Google's FLEXIBLE consent
+        // modal BEFORE the activity reaches STARTED. Cancelling that modal is
+        // delivered here (RESULT_CANCELED) — without it a cancel would strand
+        // the in-app Update button as a permanent no-op (#1942 review).
+        updateManager.registerForResult(this)
         // Two ingress channels: (1) `--es demo <id>` from `adb shell am` for QA / instrumented
         // tests, (2) URL deep-links via the public sceneview://demo/<id> scheme parsed by
         // DeepLinkRouter. The QA channel takes precedence so a tester running adb against a
