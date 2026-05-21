@@ -89,8 +89,8 @@ import java.io.File
  * that slug as the next placed model; subsequent taps on a plane place a fresh instance.
  *
  * **Bundled model picker ([#1883](https://github.com/sceneview/sceneview/issues/1883)).** A
- * second chip row lets the user lock the bundled cycle to a single specific GLB (Damaged
- * Helmet / Fox / Lantern / Toy Car / Shiba) or keep the auto-cycle that rotates through all
+ * second chip row lets the user lock the bundled cycle to a single specific GLB (Soldier /
+ * Fox / Lantern / Toy Car / Shiba) or keep the auto-cycle that rotates through all
  * five on every tap. Bundled-mode chips are mutually exclusive with the streamed picker
  * above — selecting a streamed slug overrides the bundled choice for that tap.
  *
@@ -121,9 +121,12 @@ private data class CycleEntry(val assetPath: String, val displayName: String)
 // Curated list of bundled GLBs that look good as small AR objects on a plane.
 // Each has a distinct silhouette and material so the cycle visibly rotates through variety.
 // (Khronos Avocado dropped per audit #949 — 7.7 MB grey-green low-poly that read as
-// 2003-textbook quality next to the helmet/lantern/dragon brass-and-PBR neighbours.)
+// 2003-textbook quality next to the lantern brass-and-PBR neighbours.)
+// The floating Damaged Helmet was dropped per #2023 — every cycle entry is now a
+// grounded object (character / animal / household item) that reads as intentional
+// content sitting in the room, not a generic test payload hovering above the plane.
 private val MODEL_CYCLE = listOf(
-    CycleEntry("models/khronos_damaged_helmet.glb", "Damaged Helmet"),
+    CycleEntry("models/threejs_soldier.glb", "Soldier"),
     CycleEntry("models/khronos_fox.glb", "Fox"),
     CycleEntry("models/khronos_lantern.glb", "Lantern"),
     CycleEntry("models/khronos_toy_car.glb", "Toy Car"),
@@ -589,10 +592,13 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                                     modelInstance = it,
                                     scaleToUnits = 0.3f,
                                     centerOrigin = Position(0.0f, 0.0f, 0.0f),
-                                    // The bundled DamagedHelmet GLB carries a residual +90° X
-                                    // root rotation that lands it face-down on the plane.
-                                    // Keyed to the placed asset path so only the helmet is
-                                    // corrected; the other cycle models stay upright. See #1477.
+                                    // Per-asset placement correction. The Damaged Helmet GLB
+                                    // carries a residual +90° X root rotation that lands it
+                                    // face-down on the plane — it can still arrive here as a
+                                    // streamed-slug bundled fallback even though it left the
+                                    // bundled cycle in #2023. Keyed to the placed asset path so
+                                    // only the helmet is corrected; every grounded cycle model
+                                    // stays upright. See #1477.
                                     rotation = DemoMath.placementRotationFor(placed.assetLocation),
                                     isVisible = textured,
                                     isEditable = true

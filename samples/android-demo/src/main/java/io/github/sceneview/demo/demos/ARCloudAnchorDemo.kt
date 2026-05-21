@@ -42,7 +42,6 @@ import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
-import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -107,7 +106,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     // the Host button just updated the status text and nothing hit the Cloud Anchor API.
     var cloudNode by remember { mutableStateOf<CloudAnchorNodeImpl?>(null) }
 
-    val modelInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+    val modelInstance = rememberModelInstance(modelLoader, "models/khronos_lantern.glb")
 
     // Host the placed local anchor to the cloud. Hoisted so the on-screen
     // SceneActionBar can invoke it — Host is the demo's primary action (the
@@ -271,11 +270,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                             ModelNode(
                                 modelInstance = instance,
                                 scaleToUnits = 0.3f,
-                                centerOrigin = Position(0f, 0f, 0f),
-                                // The bundled DamagedHelmet GLB carries a residual +90° X
-                                // root rotation that lands it face-down on the plane —
-                                // correct it at placement time. See #1477.
-                                rotation = DemoMath.placementRotationFor(DemoMath.HELMET_ASSET)
+                                centerOrigin = Position(0f, 0f, 0f)
                             )
                         }
                     }

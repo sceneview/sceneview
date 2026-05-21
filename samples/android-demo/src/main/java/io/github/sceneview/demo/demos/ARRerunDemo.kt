@@ -105,7 +105,7 @@ fun ARRerunDemo(onBack: () -> Unit) {
     var sharing by remember { mutableStateOf(false) }
     var shareResult by remember { mutableStateOf<RerunBridge.ShareResult?>(null) }
 
-    val modelInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+    val modelInstance = rememberModelInstance(modelLoader, "models/shiba.glb")
 
     // Bridge auto-connects on first composition, auto-disconnects on
     // dispose — no Connect/Disconnect UI to confuse first-time users who

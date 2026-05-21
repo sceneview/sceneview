@@ -76,12 +76,12 @@ import io.github.sceneview.rememberOnGestureListener
  *    device (or an AR recording played back) doesn't support [Config.ImageStabilizationMode.EIS],
  *    [eisSupported] is set `false`, the switch is disabled, and a banner explains why. This
  *    replaces the previous `key(eisOn)` full-session-rebuild, which silently invalidated the
- *    placed anchor on every toggle — the helmet (the demo's whole reference object) vanished
+ *    placed anchor on every toggle — the lantern (the demo's whole reference object) vanished
  *    the instant the user switched EIS, so the on/off comparison was impossible (#1475).
  * 3. The status pill reflects what ARCore *actually applied* (the result of the last
  *    reconfigure), not just the requested toggle — so an unsupported device honestly reads
  *    "EIS OFF" with the banner rather than a misleading "ON".
- * 4. Tap-to-place a single helmet GLB on a detected plane, mirroring [ARDepthOcclusionDemo].
+ * 4. Tap-to-place a single lantern GLB on a detected plane, mirroring [ARDepthOcclusionDemo].
  *    The fixed reference object is what makes the stabilization difference visible: the
  *    model stays glued to its world pose while the camera image around it goes from shaky
  *    (EIS OFF) to smooth (EIS ON).
@@ -99,7 +99,7 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
     // Hoisted so the model loads once for the whole demo, not on every re-placement.
     // The remember slot survives anchor clears + re-drops, so re-tapping is instant
     // instead of paying the ~200 ms GLB parse hitch each time.
-    val helmetInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+    val lanternInstance = rememberModelInstance(modelLoader, "models/khronos_lantern.glb")
 
     // User toggle. Off by default so the user can flip it ON and *feel* the difference —
     // starting OFF is the more instructive cold-start state.
@@ -117,7 +117,7 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
 
     // Live ARCore session, captured from `onSessionUpdated`. Used by the LaunchedEffect below
     // to reconfigure EIS at runtime when the user flips the switch — no session teardown, so
-    // the placed helmet anchor stays valid across toggles.
+    // the placed lantern anchor stays valid across toggles.
     var arSession by remember { mutableStateOf<Session?>(null) }
 
     var placedAnchor by remember { mutableStateOf<Anchor?>(null) }
@@ -175,7 +175,7 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
             // the sheet is now just the real control (the EIS toggle) plus a
             // short explanation of what it does (#1620 thread 1).
             Text(
-                text = "A helmet auto-places in front of you; tap a plane to " +
+                text = "A lantern auto-places in front of you; tap a plane to " +
                     "relocate. Toggle EIS and move the phone — the camera feed " +
                     "is smoother with it on, juddery with it off.",
                 style = MaterialTheme.typography.bodySmall,
@@ -229,7 +229,7 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
             // `imageStabilizationMode` is runtime-reconfigurable, so the LaunchedEffect
             // above flips it live via `Session.configure`. The previous `key(eisOn)`
             // rebuilt the whole session on every toggle, which invalidated the placed
-            // helmet anchor — the demo's only reference object — making the on/off
+            // lantern anchor — the demo's only reference object — making the on/off
             // comparison impossible (#1475).
             ARSceneView(
                 modifier = Modifier.fillMaxSize(),
@@ -252,7 +252,7 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
                     latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
 
-                    // Auto-place the helmet ~1 m in front of the camera on the
+                    // Auto-place the lantern ~1 m in front of the camera on the
                     // first stable TRACKING frame. We don't wait for plane
                     // detection — the EIS demo doesn't need a plane-anchored
                     // pose to demonstrate "model stays glued while bg
@@ -261,7 +261,7 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
                     //
                     // The pose is built from the camera's world pose
                     // composed with a -1 m Z translation in the camera's
-                    // local frame, so the helmet appears straight ahead at
+                    // local frame, so the lantern appears straight ahead at
                     // eye-level regardless of camera tilt.
                     if (!autoPlaced &&
                         placedAnchor == null &&
@@ -309,7 +309,7 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
                 // background. After that load, the instance is reused across every
                 // re-placement (anchor clear + re-drop) without reloading.
                 placedAnchor?.let { anchor ->
-                    helmetInstance?.let { instance ->
+                    lanternInstance?.let { instance ->
                         AnchorNode(anchor = anchor) {
                             ModelNode(
                                 modelInstance = instance,

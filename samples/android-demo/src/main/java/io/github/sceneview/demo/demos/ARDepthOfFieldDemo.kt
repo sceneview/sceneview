@@ -88,7 +88,7 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
     // unchanged for real users.
     val arPlaybackDataset = rememberArPlaybackDataset()
 
-    val helmetInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+    val toyCarInstance = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
 
     // ── User-facing knobs ────────────────────────────────────────────────────────────────────
     var dofEnabled by remember { mutableStateOf(true) }
@@ -273,11 +273,11 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
                     }
                 )
             ) {
-                // A single placement-free helmet at 1 m in front of the user gives a stable
+                // A single placement-free toy car at 1 m in front of the user gives a stable
                 // virtual reference object to focus on against the real-world background. Plane
                 // tap-to-place is intentionally not wired here — the demo's point is the DoF
                 // effect, not anchor placement (which has its own dedicated demos).
-                helmetInstance?.let { instance ->
+                toyCarInstance?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = 0.3f,

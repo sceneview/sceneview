@@ -91,8 +91,10 @@ private data class InstantPlacedModel(
 private data class InstantCycleEntry(val assetPath: String, val displayName: String)
 
 // Avocado dropped per audit #949 — see ARPlacementDemo for the rationale.
+// Damaged Helmet dropped per #2023 — the cycle is now all grounded objects so
+// nothing reads as a floating generic test payload. See ARPlacementDemo.
 private val INSTANT_MODEL_CYCLE = listOf(
-    InstantCycleEntry("models/khronos_damaged_helmet.glb", "Damaged Helmet"),
+    InstantCycleEntry("models/threejs_soldier.glb", "Soldier"),
     InstantCycleEntry("models/khronos_fox.glb", "Fox"),
     InstantCycleEntry("models/khronos_lantern.glb", "Lantern"),
     InstantCycleEntry("models/khronos_toy_car.glb", "Toy Car"),
