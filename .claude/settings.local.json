@@ -36,7 +36,10 @@
       "mcp__stitch__edit_screens",
       "mcp__stitch__upload_design_md",
       "mcp__claude-code__Bash",
-      "mcp__claude-code__ToolSearch"
+      "mcp__claude-code__ToolSearch",
+      "Bash(mkdir -p /tmp/sv-ar-frames)",
+      "Bash(rm -f /tmp/sv-ar-frames/* /tmp/sv-ar-montage*.png)",
+      "Bash(ffmpeg -hide_banner -loglevel error -i '/Users/thomasgorisse/Downloads/ScreenRecording_05-16-2026 22-47-53_1.MP4' -vf fps=1/6 /tmp/sv-ar-frames/f%03d.png)"
     ]
   }
 }
