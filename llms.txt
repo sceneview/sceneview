@@ -2726,6 +2726,116 @@ ARSceneView(
 
 ---
 
+## Haptic Feedback
+
+`io.github.sceneview.haptic.SceneViewHaptic` (Android) and
+`SceneViewSwift.SceneViewHaptic` (iOS) wrap the platform vibration APIs
+behind a **semantic** preset table so cross-platform code paths stay
+symmetric. Seven presets cover the common gesture / AR confirmation
+vocabulary (`light`, `medium`, `heavy`, `success`, `warning`, `error`,
+`selection`) plus a `continuous(intensity, durationMs)` /
+`pattern(events)` escape hatch for richer feedback. The Web library
+exposes the same surface via `sceneview.haptic.*`, mapped to
+`navigator.vibrate(...)`.
+
+**Phase 1** ships the library API + sample-app migration; the
+**NodeGesture** modifiers (`Modifier.tapHaptic(...)`, drag-tick
+haptics) and **AR-event** modifiers (haptic on anchor placed, tracking
+degraded, plane detected) land in phase 2 / phase 3 of #1901.
+
+### Android (Jetpack Compose)
+
+```kotlin
+import io.github.sceneview.haptic.rememberHapticFeedback
+
+@Composable
+fun PlaceAnchorButton(onPlace: () -> Unit) {
+    val haptic = rememberHapticFeedback()
+    Button(onClick = {
+        haptic.medium()    // confirm the placement
+        onPlace()
+    }) {
+        Text("Place")
+    }
+}
+
+@Composable
+fun ARAnchorStatus(isStable: Boolean) {
+    val haptic = rememberHapticFeedback()
+    LaunchedEffect(isStable) {
+        if (isStable) haptic.success() else haptic.warning()
+    }
+}
+```
+
+**Permission policy.** The `sceneview` library does **NOT** auto-merge
+`android.permission.VIBRATE` — consumer apps opt in. Add to your
+`AndroidManifest.xml`:
+
+```xml
+<uses-permission android:name="android.permission.VIBRATE" />
+```
+
+When the permission is missing (or the device has no vibrator), every
+method becomes a silent no-op + one `Log.d("SceneViewHaptic", …)` line
+on the first call. The API never throws.
+
+### iOS (SwiftUI)
+
+```swift
+import SceneViewSwift
+
+struct PlaceAnchorButton: View {
+    @StateObject private var haptic = SceneViewHaptic()
+
+    var body: some View {
+        Button("Place") {
+            haptic.medium()
+        }
+    }
+}
+
+// or via the shared singleton:
+SceneViewHaptic.shared.success()
+```
+
+iOS uses `UIImpactFeedbackGenerator` / `UISelectionFeedbackGenerator` /
+`UINotificationFeedbackGenerator` for the presets, and `CHHapticEngine`
+for `continuous(intensity:duration:)` / `pattern(_:)`. The Core Haptics
+escape hatches gracefully fall back to the preset generators on
+devices without Core Haptics support — they never throw.
+
+### Web (plain JS)
+
+```js
+sceneview.haptic.light();
+sceneview.haptic.success();
+sceneview.haptic.pattern([10, 50, 20]);
+```
+
+Maps to `window.navigator.vibrate(...)`. Desktop browsers / Safari iOS
+that don't expose `navigator.vibrate` are silently no-ops.
+
+### Preset mapping table
+
+| Preset | Android (API 29+) | iOS | Web |
+|---|---|---|---|
+| `light()` | `EFFECT_CLICK` | `UIImpactFeedbackGenerator(.light)` | `vibrate(10)` |
+| `medium()` | `EFFECT_TICK` | `UIImpactFeedbackGenerator(.medium)` | `vibrate(20)` |
+| `heavy()` | `EFFECT_HEAVY_CLICK` | `UIImpactFeedbackGenerator(.heavy)` | `vibrate(40)` |
+| `success()` | `EFFECT_DOUBLE_CLICK` | `UINotificationFeedbackGenerator.success` | `vibrate([10,50,20])` |
+| `warning()` | waveform `[0,30,30,30]` | `UINotificationFeedbackGenerator.warning` | `vibrate([30,30,30])` |
+| `error()` | waveform `[0,50,30,50,30,50]` | `UINotificationFeedbackGenerator.error` | `vibrate([50,30,50])` |
+| `selection()` | `EFFECT_TICK` | `UISelectionFeedbackGenerator.selectionChanged` | `vibrate(5)` |
+
+Android API 24..28 fall back to short one-shots (`light` → 10 ms,
+`medium`/`selection` → 20 ms, `heavy` → 40 ms) when the predefined
+effects aren't available. The fallback table is encoded as part of the
+public contract — see `AndroidSceneViewHaptic` and pinned in
+`SceneViewHapticTest`.
+
+---
+
 ## Recipes — "I want to..."
 
 ### Show a 3D model with orbit camera
