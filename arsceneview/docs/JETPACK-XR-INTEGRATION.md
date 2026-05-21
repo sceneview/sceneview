@@ -150,9 +150,12 @@ Each slice is a separate PR.
 Cross-platform parity follow-ups:
 
 - iOS already covers hand tracking on visionOS via `HandTrackingProvider`
-  and face mesh via `ARFaceTrackingConfiguration`. Tracked in
-  [#1904](https://github.com/sceneview/sceneview/issues/1904) — pure
-  docs update once Slices 2 and 3 land.
+  and face mesh via `ARFaceTrackingConfiguration`. The cross-platform
+  parity table — mobile ARCore vs. Jetpack XR vs. ARKit phone vs.
+  visionOS vs. WebXR — lives in the iOS cheatsheet:
+  [`docs/docs/cheatsheet-ios.md`](../../docs/docs/cheatsheet-ios.md)
+  "Hand / Face / Body tracking parity (#1904)". Filed as
+  [#1904](https://github.com/sceneview/sceneview/issues/1904).
 - Web covers WebXR `hand-tracking` under issue #1778 — no work duplicated
   here.
 

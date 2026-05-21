@@ -43,6 +43,7 @@ import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
@@ -98,17 +99,22 @@ fun ARImageDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_ar_image_title),
         onBack = onBack,
-        controls = {
-            Text(
-                text = "Point the camera at the reference image displayed at the top of the " +
-                    "screen. ARCore will attach a 3D model to it once it locks on.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            // Developer-only debug toggle — visible when QA mode is on. Lets QA
-            // force-emit each TrackingFailureReason so the actionable-message
-            // overlay can be validated without staging a real failure. See
-            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
-            ForceTrackingFailureMenu()
+        // The on-screen "what to scan" card and the status overlay already tell
+        // the user exactly what to do, so the Settings sheet's lone help
+        // paragraph was redundant. The only other content was the dev-only
+        // ForceTrackingFailureMenu (invisible unless QA mode is on) — gate the
+        // whole `controls` block on qaMode so end users get no empty-sheet FAB
+        // while QA keeps the debug menu (#1620 thread 1).
+        controls = if (DemoSettings.qaMode) {
+            {
+                // Developer-only debug toggle — lets QA force-emit each
+                // TrackingFailureReason so the actionable-message overlay can be
+                // validated without staging a real failure. See
+                // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+                ForceTrackingFailureMenu()
+            }
+        } else {
+            null
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {

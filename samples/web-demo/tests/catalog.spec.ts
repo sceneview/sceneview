@@ -16,7 +16,7 @@ import {
  *
  * Slice 3 of the autonomous device-QA harness (umbrella #1560, issue #1564).
  *
- * The shipped web demo (`src/jsMain/resources/index.html`) is a self-contained
+ * The shipped web demo (`site/index.html`) is a self-contained
  * single-file app with four catalog tabs: Models, Geometry, Physics, Settings.
  * (The umbrella's "8 tabs" figure predates a check of the real demo — the
  * web-demo has 4 tabs; this suite covers all of them and every demo within.)

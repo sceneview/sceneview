@@ -26,7 +26,6 @@ plugins.withType(org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin) {
         //     publish — original repro that motivated #1791)
         //   • :sceneview-web:jsBrowserDistribution
         //   • :sceneview-web:jsTest (karma → webpack preprocessor)
-        //   • the same set on :samples:web-demo
         // Cap at <5.107.0 until kotlin-web-helpers ships a fix.
         resolution("webpack", ">=5.104.1 <5.107.0")
         resolution("webpack-dev-server", ">=5.2.1")

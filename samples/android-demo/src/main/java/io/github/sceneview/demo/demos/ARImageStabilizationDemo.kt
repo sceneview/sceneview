@@ -12,10 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -44,6 +41,8 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
+import io.github.sceneview.demo.common.SceneAction
+import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
@@ -172,30 +171,16 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_ar_image_stabilization_title),
         onBack = onBack,
         controls = {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Text(
-                    text = "How to test",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp)
-                )
-                Text(
-                    text = "A helmet auto-places ~1 m in front of you the moment " +
-                        "tracking stabilizes. Tap anywhere on a plane to relocate, " +
-                        "or use Clear to remove.\n\n" +
-                        "1. Toggle EIS on.\n" +
-                        "2. Move the phone around — notice the camera feed is much smoother.\n" +
-                        "3. Toggle off — judder returns.\n" +
-                        "4. The virtual model stays anchored either way; only the camera " +
-                        "background is stabilized.",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(12.dp)
-                )
-            }
+            // One-line hint instead of a multi-paragraph "How to test" card:
+            // the sheet is now just the real control (the EIS toggle) plus a
+            // short explanation of what it does (#1620 thread 1).
+            Text(
+                text = "A helmet auto-places in front of you; tap a plane to " +
+                    "relocate. Toggle EIS and move the phone — the camera feed " +
+                    "is smoother with it on, juddery with it off.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             if (eisSupported == false) {
                 Spacer(Modifier.height(8.dp))
@@ -232,17 +217,6 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
                 )
             }
 
-            OutlinedButton(
-                onClick = {
-                    placedAnchor?.let { runCatching { it.detach() } }
-                    placedAnchor = null
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-            ) {
-                Text("Clear")
-            }
             // Developer-only debug toggle — visible when QA mode is on. Lets QA
             // force-emit each TrackingFailureReason so the actionable-message
             // overlay can be validated without staging a real failure. See
@@ -400,6 +374,19 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
                     )
                 }
+            }
+
+            // Primary action on-screen (#1964) — Clear re-arms placement (a
+            // primary re-interaction), so it lives bottom-start instead of in
+            // the Settings sheet. The EIS Switch stays in the sheet — genuine
+            // secondary configuration. Hidden until something has been placed.
+            if (placedAnchor != null) {
+                SceneActionBar(
+                    SceneAction("Clear", onClick = {
+                        placedAnchor?.let { runCatching { it.detach() } }
+                        placedAnchor = null
+                    }),
+                )
             }
         }
     }

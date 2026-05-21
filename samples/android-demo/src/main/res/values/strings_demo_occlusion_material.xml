@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `occlusion-material` demo (registered by
+     `OcclusionMaterialFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_occlusion_material_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_occlusion_material_title">Occlusion Material</string>
+    <string name="demo_occlusion_material_subtitle">Invisible depth-writing surface hides content behind it</string>
+    <string name="demo_occlusion_material_toggle">Occluder visible</string>
+    <string name="demo_occlusion_material_explainer">A plane sits between the camera and the helmet. Toggle ON: a debug-tinted plate shows where the plane is. Toggle OFF: the same plane wears the occlusion material — invisible, but it still hides what is behind it.</string>
+</resources>

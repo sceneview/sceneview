@@ -3,7 +3,7 @@ name: Deploy website + docs
 # This is the SINGLE workflow that publishes the user-facing site at
 # https://sceneview.github.io. It assembles ONE complete `site/` tree —
 # marketing landing page (root) + MkDocs technical docs (/docs/) +
-# Kotlin/JS web-demo (/web-demo/) + Dokka API reference (/api/sceneview/) —
+# static-site web-demo (/web-demo/) + Dokka API reference (/api/sceneview/) —
 # and pushes it to the external `sceneview/sceneview.github.io` repo.
 #
 # Why a single workflow: `deploy-website.yml` previously published ONLY
@@ -68,6 +68,16 @@ jobs:
           # been removed from source; this guards against it returning.
           rm -rf site/docs
 
+          # Defensive: `site/llms.txt` must be the canonical root `llms.txt`
+          # copied in step 3, NOT a stale `website-static/llms.txt`. A copy
+          # of `llms.txt` under `website-static/` used to drift 12 versions
+          # behind and shadow the root file via the `[ ! -f site/llms.txt ]`
+          # guard in step 3 (#1956). The stale copy has been removed from
+          # source; this guards against it returning. (`llms-full.txt` is
+          # NOT removed here — `website-static/llms-full.txt` is a real,
+          # version-synced file with no canonical root counterpart.)
+          rm -f site/llms.txt
+
           touch site/.nojekyll
 
       # ── 2. Build MkDocs (technical docs — /docs/) ───────────────────────
@@ -108,38 +118,18 @@ jobs:
           # Root llms.txt
           [ ! -f "site/llms.txt" ] && [ -f "llms.txt" ] && cp llms.txt site/ || true
 
-      # ── 3b. Build and publish samples/web-demo to /web-demo/ ────────────
-      - uses: ./.github/actions/setup-gradle
-
-      - name: Build samples/web-demo (Kotlin/JS distribution)
+      # ── 3b. Publish samples/web-demo to /web-demo/ ──────────────────────
+      - name: Copy samples/web-demo static site
         run: |
-          # `:samples:web-demo:jsBrowserDistribution` runs the webpack
-          # production build AND copies HTML resources from
-          # `src/jsMain/resources/` into the same output dir — without
-          # `Distribution`, the webpack-only task drops JS only and
-          # `site/web-demo/index.html` would be missing. Gradle plugin
-          # writes to `build/dist/js/productionExecutable/` for the
-          # Distribution task (vs `build/kotlin-webpack/js/
-          # productionExecutable/` for the webpack-only one). Both
-          # locations were caught by an independent review; the
-          # Distribution task is the correct one for "deploy a static
-          # site" because it bundles the HTML next to the JS bundle.
-          # See #926.
-          ./gradlew :samples:web-demo:jsBrowserDistribution --stacktrace
+          # samples/web-demo is a plain static site — HTML + an inline
+          # <script> + a self-hosted sceneview.js, with self-hosted
+          # filament.js/.wasm, models and audio. The dead Kotlin/JS source
+          # set (which built a `web-model-viewer.js` bundle index.html never
+          # loaded) was removed in #1946, so there is nothing to compile:
+          # the files under `samples/web-demo/site/` ARE the deliverable.
+          # Copy them verbatim to the deployed `/web-demo/` route.
           mkdir -p site/web-demo
-          # Defensive: support both AGP/Gradle output layouts.
-          if [ -d samples/web-demo/build/dist/js/productionExecutable ]; then
-            cp -r samples/web-demo/build/dist/js/productionExecutable/* site/web-demo/
-          elif [ -d samples/web-demo/build/kotlin-webpack/js/productionExecutable ]; then
-            cp -r samples/web-demo/build/kotlin-webpack/js/productionExecutable/* site/web-demo/
-            # Webpack-only output may lack index.html — copy it from sources.
-            [ -f samples/web-demo/src/jsMain/resources/index.html ] && \
-              cp samples/web-demo/src/jsMain/resources/index.html site/web-demo/index.html
-          else
-            echo "::error::Neither expected web-demo output dir exists; aborting"
-            find samples/web-demo/build/ | head -50
-            exit 1
-          fi
+          cp -r samples/web-demo/site/. site/web-demo/
           [ -f site/web-demo/index.html ] || {
             echo "::error::site/web-demo/index.html missing — deploy would 404"; exit 1; }
 

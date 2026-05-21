@@ -116,6 +116,57 @@ class CameraConfigFilterBuilder {
         stereoCamera?.let { filter.setStereoCameraUsage(EnumSet.copyOf(it)) }
         return filter
     }
+
+    /**
+     * Scalar convenience for [targetFps] — the common "require only this FPS" case (#1957).
+     *
+     * Equivalent to `targetFps = setOf(value, *rest)`. Pass extra values for "any of" semantics.
+     * The [Set]-typed [targetFps] property stays the canonical API (#1844); this overload just
+     * removes the `setOf(…)` boilerplate at single-sensor call sites.
+     *
+     * ```kotlin
+     * cameraConfigFilter { targetFps(CameraConfig.TargetFps.TARGET_FPS_60) }
+     * ```
+     */
+    fun targetFps(value: CameraConfig.TargetFps, vararg rest: CameraConfig.TargetFps) {
+        targetFps = setOf(value, *rest)
+    }
+
+    /**
+     * Scalar convenience for [depthSensor] — the common "require only this usage" case (#1957).
+     *
+     * Equivalent to `depthSensor = setOf(value, *rest)`. The [Set]-typed [depthSensor] property
+     * stays the canonical API (#1844); this overload just removes the `setOf(…)` boilerplate at
+     * single-sensor call sites.
+     *
+     * ```kotlin
+     * cameraConfigFilter { depthSensor(CameraConfig.DepthSensorUsage.REQUIRE_AND_USE) }
+     * ```
+     */
+    fun depthSensor(
+        value: CameraConfig.DepthSensorUsage,
+        vararg rest: CameraConfig.DepthSensorUsage
+    ) {
+        depthSensor = setOf(value, *rest)
+    }
+
+    /**
+     * Scalar convenience for [stereoCamera] — the common "require only this usage" case (#1957).
+     *
+     * Equivalent to `stereoCamera = setOf(value, *rest)`. The [Set]-typed [stereoCamera] property
+     * stays the canonical API (#1844); this overload just removes the `setOf(…)` boilerplate at
+     * single-sensor call sites.
+     *
+     * ```kotlin
+     * cameraConfigFilter { stereoCamera(CameraConfig.StereoCameraUsage.REQUIRE_AND_USE) }
+     * ```
+     */
+    fun stereoCamera(
+        value: CameraConfig.StereoCameraUsage,
+        vararg rest: CameraConfig.StereoCameraUsage
+    ) {
+        stereoCamera = setOf(value, *rest)
+    }
 }
 
 /**

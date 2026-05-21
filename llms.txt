@@ -1979,6 +1979,14 @@ class MaterialLoader(engine: Engine, context: Context) {
     fun createUnlitColorInstance(color: androidx.compose.ui.graphics.Color): MaterialInstance
     fun createUnlitColorInstance(color: Int): MaterialInstance
 
+    // Invisible depth-writing material — punches the depth buffer, emits no colour.
+    // RealityKit `OcclusionMaterial` / Sceneform `makeOcclusionMaterial` parity.
+    // Use for virtual aquarium walls, window/door cutouts on photogrammetry, proxy
+    // walls that should hide virtual content behind them without rendering themselves.
+    // For AR depth from the camera image, use ARCameraStream.isDepthOcclusionEnabled
+    // instead (per-pixel depth from ARCore, not a static mesh).
+    fun createOcclusionInstance(): MaterialInstance
+
     // Texture material
     fun createTextureInstance(texture: Texture, ...): MaterialInstance
 
@@ -3325,6 +3333,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `debug-overlay` — Debug Overlay. Performance stats overlay.
 - `double-pendulum` — Double Pendulum. Chaotic two-link physics, shared KMP simulation.
 - `materials` — PBR Materials. PBR metallic and roughness spectrum.
+- `occlusion-material` — Occlusion Material. Invisible depth-writing surface hides content behind it.
 - `physics` — Physics. Gravity, collisions, and rigid bodies.
 - `post-processing` — Post Processing. SSAO, anti-aliasing, and tone mapping.
 - `reflection-probes` — Reflection Probes. Local cubemap reflections.

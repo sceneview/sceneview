@@ -14,7 +14,8 @@ object OpenGL {
     private const val EGL_OPENGL_ES3_BIT = 0x40
 
     fun createEglContext(): EGLContext {
-        return createEglContext(EGL14.EGL_NO_CONTEXT)!!
+        return createEglContext(EGL14.EGL_NO_CONTEXT)
+            ?: error("EGL context creation failed")
     }
 
     fun createEglContext(shareContext: EGLContext?): EGLContext? {
