@@ -1,0 +1,25 @@
+package io.github.sceneview.demo.fragments
+
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.runtime.Composable
+import io.github.sceneview.demo.DemoCategory
+import io.github.sceneview.demo.DemoEntry
+import io.github.sceneview.demo.R
+import io.github.sceneview.demo.demos.ARCollaborativeDemo
+
+/** Append-only fragment for the `ar-collaborative` demo. See [DemoFragment]. */
+object ArCollaborativeFragment : DemoFragment {
+    override val entry: DemoEntry = DemoEntry(
+        id = "ar-collaborative",
+        titleRes = R.string.demo_ar_collaborative_title,
+        subtitleRes = R.string.demo_ar_collaborative_subtitle,
+        category = DemoCategory.AUGMENTED_REALITY,
+        icon = Icons.Filled.Groups,
+    )
+
+    @Composable
+    override fun Screen(onBack: () -> Unit) {
+        ARCollaborativeDemo(onBack)
+    }
+}
