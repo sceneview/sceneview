@@ -9,6 +9,8 @@
 #     source "$(dirname "$0")/lib/android-cli.sh"
 #     android_cli_ensure                              # bootstraps install to ~/.local/bin if missing
 #     android_cli_screenshot /tmp/out.png             # device-aware screen capture
+#     rec=$(android_cli_screenrecord_start "$serial") # host-side emulator recording
+#     android_cli_screenrecord_stop "$serial"         # … stop it, WebM left at $rec
 #     android_cli_layout /tmp/ui.json [serial]        # JSON layout dump
 #     android_cli_resolve_tap /tmp/ui.json "Demo Name"  # echoes "x,y" for a text node
 #
@@ -138,6 +140,56 @@ android_cli_screenshot_annotated() {
     return 1
   fi
   "$ANDROID_CLI_BIN" "${ANDROID_CLI_GLOBAL_FLAGS[@]}" screen capture --annotate --output "$out"
+}
+
+# android_cli_screenrecord_start <serial> [time-limit-seconds]
+# Start a HOST-SIDE emulator screen recording via the emulator console
+# (`adb emu screenrecord`). Output goes to a WebM whose path is echoed on
+# stdout so the caller can pick it up after android_cli_screenrecord_stop.
+#
+# Why raw `adb`, not the `android` CLI: the `android` CLI v0.7 has NO
+# screenrecord subcommand, so `adb emu screenrecord` is the sanctioned
+# exception to the "android CLI not raw adb" rule. Crucially it is *host-side*:
+# it captures the emulator's presented framebuffer directly (the same engine as
+# the Extended Controls recorder), so unlike the guest-side `adb shell
+# screenrecord` it is immune to the Emulator 36.x gfxstream/SurfaceFlinger
+# regression that records `-gpu host` Filament/OpenGL content as near-empty
+# (~0.5 fps). See issue #1671.
+#
+# Returns 0 and echoes the WebM path on success, non-zero on failure.
+android_cli_screenrecord_start() {
+  local serial="${1:-${ANDROID_SERIAL:-}}"
+  local time_limit="${2:-180}"
+  if [[ -z "$serial" ]]; then
+    serial="$(android_cli_pick_serial)" || {
+      echo "[android-cli] screenrecord: multi-device and ANDROID_SERIAL unset" >&2
+      return 1
+    }
+  fi
+  # The emulator console recorder writes WebM. Use a serial-scoped temp path so
+  # parallel pool emulators (#1654) never trample each other's recording.
+  local out="${TMPDIR:-/tmp}/sceneview-rec-${serial}.webm"
+  rm -f "$out" 2>/dev/null || true
+  # `adb emu screenrecord` — HOST-SIDE emulator-console command (see note
+  # above). `--time-limit` is a hard cap so a crashed `stop` cannot leave the
+  # encoder running forever.
+  if ! adb -s "$serial" emu screenrecord start --time-limit "$time_limit" "$out" >/dev/null 2>&1; then
+    echo "[android-cli] screenrecord: 'adb emu screenrecord' failed on $serial" >&2
+    echo "[android-cli] screenrecord: needs a running emulator (not a physical device)" >&2
+    return 1
+  fi
+  echo "$out"
+}
+
+# android_cli_screenrecord_stop <serial>
+# Stop the host-side emulator recording started by android_cli_screenrecord_start.
+android_cli_screenrecord_stop() {
+  local serial="${1:-${ANDROID_SERIAL:-}}"
+  if [[ -z "$serial" ]]; then
+    serial="$(android_cli_pick_serial)" || return 1
+  fi
+  # Host-side emulator-console stop — see android_cli_screenrecord_start note.
+  adb -s "$serial" emu screenrecord stop >/dev/null 2>&1
 }
 
 # android_cli_layout <output.json> [serial]
