@@ -1,3 +1,10 @@
+// image_texture.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Unlit transparent material that draws a 2D image straight from a texture.
+// Used by:    MaterialLoader.createImageInstance / ImageNode.
+// Parameters:
+//   texture  — sampler2d, the RGBA image to display; alpha is preserved (transparent blending).
+// matc profile: A (heavy Android — "-p all -a all", see tools/GenerateFilamat.sh).
 material {
     "name" : "Transparent Textured",
 

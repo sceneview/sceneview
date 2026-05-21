@@ -1,3 +1,10 @@
+// unlit_colored.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Unlit (lighting-independent) flat-colour material for the web 3D viewer.
+// Used by:    sceneview.js web renderer (Filament.js / WebGL) — HUD overlays, debug visuals.
+// Parameters:
+//   baseColor — float4, base RGBA colour; rendered flat, ignores scene lighting.
+// matc profile: D (website-static / WebGL — "-p mobile -a opengl").
 material {
     "name" : "Unlit Colored",
     "parameters" : [
