@@ -134,6 +134,10 @@ extension ShapeNode: EntityProvider {
     public var sceneEntity: Entity { entity }
 }
 
+// `ViewNode` is deprecated (placeholder rendering only — see #1035 / #2042).
+// The extension itself is marked deprecated so conforming the type does not
+// emit a deprecation warning inside the library.
+@available(*, deprecated, message: "ViewNode renders a placeholder plane only — see #1035.")
 extension ViewNode: EntityProvider {
     public var sceneEntity: Entity { entity }
 }

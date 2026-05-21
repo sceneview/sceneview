@@ -39,6 +39,17 @@ final class CameraControlsTests: XCTestCase {
         XCTAssertEqual(fp.mode, .firstPerson)
     }
 
+    /// #2040: the convenience init must not silently re-introduce the
+    /// pre-v4.4.0 `minRadius = 0.5` (which clips the camera into geometry).
+    /// A caller using the convenience init purely to set `sensitivity` must
+    /// get the same `minRadius` as the primary `init(mode:)`.
+    func testConvenienceInitMinRadiusMatchesPrimaryInit() {
+        let viaConvenience = CameraControls(mode: .orbit, sensitivity: 0.01)
+        let viaPrimary = CameraControls(mode: .orbit)
+        XCTAssertEqual(viaConvenience.minRadius, viaPrimary.minRadius)
+        XCTAssertEqual(viaConvenience.minRadius, 1.0)
+    }
+
     // MARK: - Camera Position
 
     func testCameraPositionAtDefaults() {

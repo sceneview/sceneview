@@ -503,11 +503,9 @@ public struct ModelNode: @unchecked Sendable {
     /// Adds a grounding shadow beneath the model.
     @discardableResult
     public func withGroundingShadow() -> ModelNode {
-        #if os(iOS) || os(visionOS) || os(macOS)
         if #available(iOS 18.0, visionOS 2.0, *) {
             entity.components.set(GroundingShadowComponent(castsShadow: true))
         }
-        #endif
         return self
     }
 }

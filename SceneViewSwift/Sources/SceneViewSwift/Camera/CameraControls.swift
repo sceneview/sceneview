@@ -141,14 +141,18 @@ public struct CameraControls: Sendable {
     ///
     /// - Parameters:
     ///   - mode: Camera control mode.
-    ///   - minRadius: Minimum zoom distance.
+    ///   - minRadius: Minimum zoom distance. Defaults to `1.0` — the same
+    ///     value as the ``minRadius`` property default. Pre-v4.4.0 this
+    ///     defaulted to `0.5`, which clips the perspective camera into the
+    ///     bundled demo geometry on the true-camera orbit path (see the
+    ///     ``minRadius`` doc-comment). Closes #2040.
     ///   - maxRadius: Maximum zoom distance.
     ///   - minElevation: Minimum vertical angle in radians.
     ///   - maxElevation: Maximum vertical angle in radians.
     ///   - sensitivity: Drag sensitivity.
     public init(
         mode: CameraControlMode = .orbit,
-        minRadius: Float = 0.5,
+        minRadius: Float = 1.0,
         maxRadius: Float = 50.0,
         minElevation: Float = -(Float.pi / 2 - 0.087),
         maxElevation: Float = Float.pi / 2 - 0.087,
