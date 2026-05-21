@@ -35,6 +35,7 @@ object GeneratedDemos {
         ArMlObjectLabelFragment,
         ArOrbitalFragment,
         ArPlacementFragment,
+        ArPlaneNodeFragment,
         ArPoseFragment,
         ArRawDepthPointCloudFragment,
         ArRecordPlaybackFragment,
@@ -101,6 +102,7 @@ object GeneratedDemos {
             "ar-ml-object-label" -> ArMlObjectLabelFragment.Screen(onBack)
             "ar-orbital" -> ArOrbitalFragment.Screen(onBack)
             "ar-placement" -> ArPlacementFragment.Screen(onBack)
+            "ar-plane-node" -> ArPlaneNodeFragment.Screen(onBack)
             "ar-pose" -> ArPoseFragment.Screen(onBack)
             "ar-raw-depth-point-cloud" -> ArRawDepthPointCloudFragment.Screen(onBack)
             "ar-record-playback" -> ArRecordPlaybackFragment.Screen(onBack)

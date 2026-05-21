@@ -8,6 +8,7 @@ package io.github.sceneview.ar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.google.android.filament.Engine
@@ -42,6 +43,7 @@ import io.github.sceneview.ar.node.DepthMeshNode as DepthMeshNodeImpl
 import io.github.sceneview.ar.node.DepthMeshSnapshot
 import io.github.sceneview.ar.physics.DepthCollider
 import io.github.sceneview.ar.node.HitResultNode as HitResultNodeImpl
+import io.github.sceneview.ar.node.PlaneNode as PlaneNodeImpl
 import io.github.sceneview.ar.node.PoseNode as PoseNodeImpl
 import io.github.sceneview.ar.node.RooftopAnchorNode as RooftopAnchorNodeImpl
 import io.github.sceneview.ar.node.StreetscapeGeometryNode as StreetscapeGeometryNodeImpl
@@ -660,6 +662,72 @@ class ARSceneScope internal constructor(
         }
         SideEffect {
             node.trackable = trackable
+            node.onTrackingStateChanged = onTrackingStateChanged
+            node.onUpdated = onUpdated
+        }
+        NodeLifecycle(node, content)
+    }
+
+    // ── PlaneNode ─────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A node anchored to a detected ARCore [Plane] (#1774).
+     *
+     * Sceneform + AR Foundation parity: where AR Foundation surfaces detected planes through
+     * `ARPlaneManager` + a per-plane `ARPlane`, SceneView exposes one `PlaneNode` per tracked
+     * [Plane]. The node follows the plane's [Plane.getCenterPose] every frame, so any child
+     * content declared in the `content` block (a label, a snapped model, a debug marker) rides
+     * the plane as ARCore refines its extents.
+     *
+     * Pair this with [rememberDetectedPlanes][io.github.sceneview.ar.arcore.rememberDetectedPlanes]
+     * — the SceneView equivalent of `ARPlaneManager.planesChanged` — to declare one node per
+     * detected plane reactively, without writing a `frame.getUpdatedTrackables(Plane::class.java)`
+     * loop:
+     *
+     * ```kotlin
+     * ARSceneView(onSessionCreated = { arSession = it }) {
+     *     val planes by rememberDetectedPlanes(
+     *         session = arSession,
+     *         onAdded = { added -> detectedCount += added.size }
+     *     )
+     *     planes.forEach { plane ->
+     *         PlaneNode(plane = plane) {
+     *             ModelNode(modelInstance = rememberModelInstance(modelLoader, "marker.glb"))
+     *         }
+     *     }
+     * }
+     * ```
+     *
+     * The node is only visible while the plane's state is within [visibleTrackingStates] (default
+     * [TrackingState.TRACKING] only), so a subsumed plane — merged into a larger coplanar plane,
+     * see [io.github.sceneview.ar.arcore.subsumedBy] — naturally stops rendering.
+     *
+     * @param plane                   The ARCore [Plane] to follow.
+     * @param visibleTrackingStates   States in which the node (and children) are rendered.
+     * @param onTrackingStateChanged  Callback when the plane's tracking state changes.
+     * @param onUpdated               Callback invoked each frame while the plane is updated.
+     * @param apply                   Additional imperative configuration on the [PlaneNodeImpl].
+     * @param content                 Optional child nodes declared in a [NodeScope].
+     */
+    @Composable
+    fun PlaneNode(
+        plane: Plane,
+        visibleTrackingStates: Set<TrackingState> = setOf(TrackingState.TRACKING),
+        onTrackingStateChanged: ((TrackingState) -> Unit)? = null,
+        onUpdated: ((Plane) -> Unit)? = null,
+        apply: PlaneNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null
+    ) {
+        val node = remember(engine, plane) {
+            PlaneNodeImpl(
+                engine = engine,
+                plane = plane,
+                visibleTrackingStates = visibleTrackingStates,
+                onTrackingStateChanged = onTrackingStateChanged,
+                onUpdated = onUpdated
+            ).apply(apply)
+        }
+        SideEffect {
             node.onTrackingStateChanged = onTrackingStateChanged
             node.onUpdated = onUpdated
         }
