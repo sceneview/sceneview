@@ -336,7 +336,60 @@ jobs:
             echo "Pages staleness issue #$EXISTING already open — skipping duplicate."
           fi
 
-  # ── 7. Stale claude/* branch cleanup ──────────────────────────────────────
+  # ── 7. Deep-link verification health ──────────────────────────────────────
+  # The demo apps' QR-code → demo-screen flow rides on VERIFIED deep links:
+  # Android App Links (`assetlinks.json` + `android:autoVerify="true"`) and
+  # iOS/macOS Universal Links (`apple-app-site-association` + the `applinks:`
+  # entitlement). Verification fails SILENTLY — a fingerprint rotation, a Play
+  # App Signing change, a malformed AASA, or the `.well-known/*` files simply
+  # not being deployed to sceneview.github.io leaves the QR flow dead with no
+  # error anywhere (#1695). This job runs check-deeplink-health.sh, which
+  # cross-checks the hosted `.well-known/*` files against the committed
+  # source of truth and the demo apps' intent-filters / entitlements. It is
+  # NON-BLOCKING: a broken/stale link config opens a single tracking issue
+  # (same pattern as the Pages-freshness job above) instead of failing CI.
+  deeplink-health:
+    name: Deep-link verification health
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run deep-link health check
+        id: deeplink
+        shell: bash
+        run: |
+          if bash .claude/scripts/check-deeplink-health.sh > deeplink-health.log 2>&1; then
+            echo "broken=0" >> $GITHUB_OUTPUT
+          else
+            echo "broken=1" >> $GITHUB_OUTPUT
+          fi
+          cat deeplink-health.log
+
+      - name: Open or update tracking issue
+        if: steps.deeplink.outputs.broken == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="Deep-link verification is broken — QR → demo flow"
+          BODY=$'Automated maintenance detected that the demo apps'"'"' verified deep links\nare unhealthy. App Links / Universal Links verification fails silently —\nthe QR-code → demo-screen flow falls back to a browser with no error.\n\n```\n'"$(cat deeplink-health.log)"$'\n```\n\n**To fix:**\n- Confirm `https://sceneview.github.io/.well-known/assetlinks.json` and\n  `apple-app-site-association` are deployed and reachable (the files live\n  in `website-static/.well-known/` — they must be published by `docs.yml`).\n- If fingerprints drifted, regenerate `assetlinks.json` from the current\n  Play App Signing + upload-key SHA-256 (see\n  `website-static/.well-known/README.md`).\n- Run `bash .claude/scripts/check-deeplink-health.sh` locally to reproduce.\n\nBackground: #1695.'
+          EXISTING=$(gh issue list --repo "${{ github.repository }}" --state open \
+            --search "Deep-link verification is broken in:title" \
+            --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -z "$EXISTING" ]; then
+            gh issue create --repo "${{ github.repository }}" \
+              --title "$TITLE" \
+              --body "$BODY" \
+              --label "bug,maintenance" \
+              || echo "::warning::Could not create deep-link health issue"
+          else
+            echo "Deep-link health issue #$EXISTING already open — skipping duplicate."
+          fi
+
+  # ── 8. Stale claude/* branch cleanup ──────────────────────────────────────
   # PRIMARY mechanism is the repo's "Automatically delete head branches"
   # setting (deleteBranchOnMerge) — every PR branch is dropped the instant
   # its PR merges, so no backlog accumulates in normal operation.

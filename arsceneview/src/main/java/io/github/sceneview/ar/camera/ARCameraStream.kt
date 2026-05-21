@@ -297,6 +297,7 @@ open class ARCameraStream(
             if (field != value) {
                 field = value
                 applyOcclusionMaterial()
+                applyCameraStreamPriority()
             }
         }
 
@@ -345,6 +346,7 @@ open class ARCameraStream(
             if (field != value) {
                 field = value
                 applyOcclusionMaterial()
+                applyCameraStreamPriority()
             }
         }
 
@@ -359,6 +361,42 @@ open class ARCameraStream(
                 isPersonOcclusionEnabled -> personOcclusionMaterial.defaultInstance
                 isDepthOcclusionEnabled -> depthOcclusionMaterial.defaultInstance
                 else -> standardMaterial.defaultInstance
+            }
+        )
+    }
+
+    /**
+     * Coarse-level draw ordering for the camera-stream renderable (issue #1617).
+     *
+     * The two camera materials require **opposite** draw orders:
+     *
+     *  - **Flat** (`camera_stream_flat.mat`): an opaque background that does NOT
+     *    write `gl_FragDepth`. Drawing it **last** ([CAMERA_PRIORITY_BACKGROUND])
+     *    lets the early-Z reject every texel already covered by virtual geometry,
+     *    so the camera feed only fills the uncovered pixels — minimal overdraw.
+     *
+     *  - **Depth / person occlusion** (`camera_stream_depth.mat`,
+     *    `camera_stream_person_occlusion.mat`): writes the real-world per-pixel
+     *    depth into the z-buffer via `gl_FragDepth`. For virtual geometry to be
+     *    *occluded* by real surfaces (or by real people, #1761), that real-world
+     *    depth MUST already be in the buffer when the virtual objects are
+     *    depth-tested — i.e. the camera quad has to draw **first**
+     *    ([CAMERA_PRIORITY_DEPTH_PRIME]). Drawing it last (the old fixed
+     *    `priority(7)`) wrote the real-world depth *after* every virtual object
+     *    had already passed its depth test against an empty buffer, so nothing
+     *    was ever occluded — the user-visible symptom in #1617.
+     *
+     * Filament's `RenderableManager` priority runs 0 (drawn first) … 7 (drawn
+     * last); this is a JNI call so it must run on the main thread, which is
+     * guaranteed because [isDepthOcclusionEnabled] / [isPersonOcclusionEnabled]
+     * are only ever set from the composable / main-thread setup path.
+     */
+    private fun applyCameraStreamPriority() {
+        setPriority(
+            if (isDepthOcclusionEnabled || isPersonOcclusionEnabled) {
+                CAMERA_PRIORITY_DEPTH_PRIME
+            } else {
+                CAMERA_PRIORITY_BACKGROUND
             }
         )
     }
@@ -394,9 +432,13 @@ open class ARCameraStream(
         RenderableManager.Builder(1)
             .castShadows(false)
             .receiveShadows(false)
-            // Always draw the camera feed last to avoid overdraw
             .culling(false)
-            .priority(7)
+            // Initial priority matches the flat (non-depth) material — drawn
+            // last to minimise overdraw. `isDepthOcclusionEnabled`'s setter
+            // re-prioritises to `CAMERA_PRIORITY_DEPTH_PRIME` when occlusion is
+            // turned on so the depth material draws first and primes the
+            // z-buffer (issue #1617).
+            .priority(CAMERA_PRIORITY_BACKGROUND)
             .geometry(0,
                 RenderableManager.PrimitiveType.TRIANGLES,
                 vertexBuffer,
@@ -608,6 +650,25 @@ open class ARCameraStream(
     }
 
     companion object {
+        /**
+         * Camera-stream draw priority while depth occlusion is OFF (issue #1617).
+         *
+         * Filament priority 7 = drawn **last**. The flat camera material is an
+         * opaque background, so drawing it last lets early-Z skip every texel
+         * already covered by virtual geometry — minimal overdraw.
+         */
+        const val CAMERA_PRIORITY_BACKGROUND = 7
+
+        /**
+         * Camera-stream draw priority while depth occlusion is ON (issue #1617).
+         *
+         * Filament priority 0 = drawn **first**. The depth camera material writes
+         * the real-world per-pixel depth via `gl_FragDepth`; it must run before
+         * any virtual geometry so those objects are depth-tested against the
+         * real world and correctly occluded.
+         */
+        const val CAMERA_PRIORITY_DEPTH_PRIME = 0
+
         private const val VERTEX_COUNT = 3
         private const val POSITION_BUFFER_INDEX = 0
         private val CAMERA_VERTICES = floatArrayOf(

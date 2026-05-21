@@ -24,16 +24,16 @@ import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.common.Axes3DNode
-import io.github.sceneview.math.Size
+import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.sample.rememberMaterialInstance
 
 /**
  * AR pose placement demo.
@@ -47,54 +47,33 @@ fun ARPoseDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    val cameraNode = rememberARCameraNode(engine)
     // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
     // with `--es ar_playback_file <path>` (#1576). `null` for every normal launch - see
     // `rememberArPlaybackDataset` - so live AR is completely unchanged for real users.
     val arPlaybackDataset = rememberArPlaybackDataset()
 
+    // Real bundled GLB instead of the old placeholder cube/sphere (#1618). The Khronos
+    // Lantern is a hanging-light object — a model that intuitively "sits at a precise
+    // point in space", which is exactly the concept this pose-placement demo teaches.
+    // It is PBR-textured (metal + emissive) so it reads as a finished asset under
+    // ARCore's ENVIRONMENTAL_HDR estimation. `rememberModelInstance` loads on the main
+    // thread and returns null while the GLB decodes — handled below.
+    val lanternInstance = rememberModelInstance(modelLoader, "models/khronos_lantern.glb")
+
     // Sliders hold the user-tweakable *offset* from the pose captured in front of
     // the camera on first tracked frame. Keeping the offset small and centred means
-    // the cubes start where the user is already pointing — the previous version
-    // placed them at ARCore world origin (wherever the phone was at session-start),
+    // the lantern starts where the user is already pointing — the previous version
+    // placed it at ARCore world origin (wherever the phone was at session-start),
     // which is usually off-screen once the user moves.
     var x by remember { mutableFloatStateOf(0f) }
     var y by remember { mutableFloatStateOf(0f) }
     var z by remember { mutableFloatStateOf(0f) }
     var isTracking by remember { mutableStateOf(false) }
     // Base pose: 1 m in front of the camera at the moment the demo gained tracking.
-    // Captured once per session to keep the cubes anchored in world space (so sliders
-    // nudge them relative to that anchor, not to the moving camera).
+    // Captured once per session to keep the lantern anchored in world space (so sliders
+    // nudge it relative to that anchor, not to the moving camera).
     var basePose by remember { mutableStateOf<Pose?>(null) }
-
-    // Cube and sphere materials — distinct on-brand colours plus PBR settings tuned
-    // to read clearly under ARCore's `ENVIRONMENTAL_HDR` light estimation.
-    //
-    // The previous version went all the way to roughness=0.85 to avoid a Pixel 9 IBL
-    // blowout on the original metallic=0.5/roughness=0.3 setup, but that swung the
-    // dial too far the other way — the sphere lost all visible diffuse falloff and
-    // specular highlight on Pixel 9 (issue #1200) and read as a flat 2D disc next to
-    // a barely-shaded cube. Re-tuned to roughness=0.55 / reflectance=0.2: matte
-    // enough that the IBL can't blow out the highlight, but glossy enough that the
-    // sphere gradient (lit cap → shadowed underside) is unmistakable. Also adds an
-    // explicit dim DirectionalLight in the scene below so even ARCore's most
-    // featureless estimations (uniform low-light interior) still produce shading.
-    //
-    // Two materials so cube and sphere read as distinct objects, not a single white
-    // blob — matches the same brand-ramp split used elsewhere in the demos.
-    val cubeMaterial = rememberMaterialInstance(
-        materialLoader = materialLoader,
-        color = SceneViewColors.Accent,
-        metallic = 0.0f,
-        roughness = 0.55f,
-        reflectance = 0.2f,
-    )
-    val sphereMaterial = rememberMaterialInstance(
-        materialLoader = materialLoader,
-        color = SceneViewColors.Primary,
-        metallic = 0.0f,
-        roughness = 0.55f,
-        reflectance = 0.2f,
-    )
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_pose_title),
@@ -168,6 +147,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
+                cameraNode = cameraNode,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = true,
                 sessionConfiguration = { _: Session, config: Config ->
@@ -179,7 +159,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
                     if (isTracking && basePose == null) {
                         // Compute a pose 1 m in front of the camera, without tilt —
                         // keep the camera's yaw (facing direction) but zero-out
-                        // pitch/roll so the base pose is level and the cubes stay
+                        // pitch/roll so the base pose is level and the lantern stays
                         // upright on the horizon rather than matching the phone's
                         // exact orientation.
                         val cameraPose = frame.camera.pose
@@ -190,27 +170,29 @@ fun ARPoseDemo(onBack: () -> Unit) {
             ) {
                 val base = basePose
                 if (isTracking && base != null) {
-                    // Cache Pose objects across recompositions — without remember,
-                    // each slider drag allocates two new Pose + four FloatArray
-                    // instances per frame.
-                    val cubePose = remember(base, x, y, z) {
+                    // Cache the placed Pose across recompositions — without remember,
+                    // each slider drag allocates a new Pose + two FloatArray instances
+                    // per frame.
+                    val objectPose = remember(base, x, y, z) {
                         val t = base.translation
                         Pose(
                             floatArrayOf(t[0] + x, t[1] + y, t[2] + z),
                             floatArrayOf(0f, 0f, 0f, 1f),
                         )
                     }
-                    val spherePose = remember(base, x, y, z) {
+                    // Pose for the in-scene coordinate label: same XYZ as the object but
+                    // lifted 0.35 m so the text floats clearly above the lantern.
+                    val labelPose = remember(base, x, y, z) {
                         val t = base.translation
                         Pose(
-                            floatArrayOf(t[0] + x + 0.3f, t[1] + y, t[2] + z),
+                            floatArrayOf(t[0] + x, t[1] + y + 0.35f, t[2] + z),
                             floatArrayOf(0f, 0f, 0f, 1f),
                         )
                     }
                     // Blender-style XYZ axes anchored at the base pose so the user
                     // always sees where the pose's origin sits in the world. Sliders
-                    // nudge the cube/sphere relative to this anchor — the gizmo
-                    // makes that mapping visible (red = X, green = Y, blue = Z).
+                    // nudge the lantern relative to this anchor — the gizmo makes that
+                    // mapping visible (red = X, green = Y, blue = Z).
                     PoseNode(pose = base) {
                         Axes3DNode(
                             materialLoader = materialLoader,
@@ -218,21 +200,36 @@ fun ARPoseDemo(onBack: () -> Unit) {
                             thickness = 0.005f,
                         )
                     }
-                    // Cube is 0.2 m / sphere is 0.1 m — big enough to read clearly
-                    // at 1 m from the camera on a phone screen. The previous 0.1 m
-                    // cube was visible only as a couple of pixels at default FOV.
-                    PoseNode(pose = cubePose) {
-                        CubeNode(
-                            size = Size(0.2f),
-                            materialInstance = cubeMaterial,
-                        )
+                    // The lantern — a real bundled GLB placed at the slider-driven pose.
+                    // `scaleToUnits = 0.3f` fits it to a 0.3 m cube so it reads clearly
+                    // at 1 m from the camera. `rememberModelInstance` returns null while
+                    // the GLB is still decoding, so guard with `?.let`.
+                    lanternInstance?.let { instance ->
+                        PoseNode(pose = objectPose) {
+                            ModelNode(
+                                modelInstance = instance,
+                                scaleToUnits = 0.3f,
+                                centerOrigin = Position(0.0f, -1.0f, 0.0f),
+                            )
+                        }
                     }
-                    PoseNode(pose = spherePose) {
-                        SphereNode(
-                            radius = 0.1f,
-                            materialInstance = sphereMaterial,
-                        )
-                    }
+                    // In-scene coordinate text (#1618): the live X/Y/Z offsets rendered
+                    // as a camera-facing TextNode floating above the lantern, so the
+                    // numbers are visible in AR space — not only in the Settings sheet.
+                    TextNode(
+                        text = "X %.2f   Y %.2f   Z %.2f".format(x, y, z),
+                        fontSize = 40f,
+                        textColor = android.graphics.Color.WHITE,
+                        backgroundColor = 0xCC161B22.toInt(),  // SceneView SurfaceDim
+                        widthMeters = 0.5f,
+                        heightMeters = 0.12f,
+                        position = Position(
+                            x = labelPose.tx(),
+                            y = labelPose.ty(),
+                            z = labelPose.tz(),
+                        ),
+                        cameraPositionProvider = { cameraNode.worldPosition },
+                    )
                 }
             }
         }

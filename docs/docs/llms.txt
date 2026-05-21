@@ -838,6 +838,62 @@ SceneView {
 
 `ARSceneScope` extends `SceneScope` with AR-specific composables. All `SceneScope` nodes (ModelNode, CubeNode, etc.) are also available.
 
+### PlacementScene — one-line tap-to-place (v4.10.0+, #1765)
+
+**Start here for AR placement.** `PlacementScene` is the high-level composable that bundles the
+whole tap-to-place pipeline — Sceneform `ArFragment` parity in one call. It wires an `ARSceneView`
+with plane rendering, a built-in centre-screen reticle, tap-to-place anchor creation, and an
+instant-placement fallback. You only declare *what* rides each placed anchor:
+
+```kotlin
+import io.github.sceneview.ar.PlacementScene
+
+@Composable
+fun MyArScreen() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    PlacementScene(
+        modifier = Modifier.fillMaxSize(),
+        engine = engine,
+        modelLoader = modelLoader,
+    ) { anchor ->                            // invoked once per tap-created Anchor
+        AnchorNode(anchor = anchor) {
+            val instance = rememberModelInstance(modelLoader, "models/helmet.glb")
+            instance?.let {
+                ModelNode(modelInstance = it, scaleToUnits = 0.3f)
+            }
+        }
+    }
+}
+```
+
+Signature:
+```kotlin
+@Composable fun PlacementScene(
+    modifier: Modifier = Modifier,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    planeRenderer: Boolean = true,
+    planeFindingMode: Config.PlaneFindingMode = HORIZONTAL_AND_VERTICAL,
+    instantPlacement: Boolean = true,        // place before a plane converges (ArFragment parity)
+    showReticle: Boolean = true,             // built-in centre-screen placement reticle
+    reticleColor: Color = DEFAULT_RETICLE_COLOR,   // DESIGN.md primary cyan
+    playbackDataset: File? = null,
+    sessionConfiguration: ((Session, Config) -> Unit)? = null,
+    onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,   // required — what to place
+    content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
+)
+```
+
+The optional `content` block receives a `PlacementController` — call `controller.clear()` to
+detach every placed anchor (e.g. a "Clear All" button), or read `controller.count` /
+`controller.anchors` to drive a placement counter. Both are Compose-observable.
+
+`PlacementScene` accepts plane hits (inside the polygon) and — when `instantPlacement = true` —
+instant-placement hits. For placement against arbitrary real geometry (sofas, slopes) use
+`DepthHitResultNode`; for full manual control drop down to `ARSceneView` + `HitResultNode`.
+
 **⚠️ Important nesting rule:** AR composables (`AnchorNode`, `CloudAnchorNode`, `AugmentedImageNode`, etc.) can only be declared at the `ARSceneView { }` root level — they are NOT available inside `Node { content }` or other node's `content` blocks. To nest models under an anchor, use `AnchorNode(anchor) { ModelNode(...) }` — the `content` block of `AnchorNode` provides a regular `NodeScope`.
 
 **⚠️ ARCore Cloud API key — required for `CloudAnchorNode`, `StreetscapeGeometryNode`, and any `Config.GeospatialMode.ENABLED` session.** When generating code that uses these features, you MUST include both:
@@ -1736,6 +1792,49 @@ model, walk a person in front of it; a HUD shows the live `PERSON`-pixel fractio
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
+
+### RuntimeAugmentedImageDatabase — register reference images on-device at runtime
+```kotlin
+// Grows an AugmentedImageDatabase at runtime — no pre-bundled `arcoreimg` database needed.
+@Composable fun rememberRuntimeAugmentedImageDatabase(): RuntimeAugmentedImageDatabase
+
+class RuntimeAugmentedImageDatabase {
+    val size: Int
+    val imageNames: List<String>
+    fun bind(session: Session)                          // call from onSessionCreated
+    fun unbind()                                        // call from onSessionPaused/teardown
+    fun applyTo(config: Config, session: Session)       // MAIN thread — call from sessionConfiguration
+    suspend fun addImage(name: String, bitmap: Bitmap,  // bitmap must be ARGB_8888
+                         widthInMeters: Float? = null): AddImageResult
+    suspend fun clear()
+}
+// addImage runs ARCore feature extraction off the main thread, then re-applies the session
+// config ON the main thread itself. Returns a typed result:
+sealed class AddImageResult { object Added; object LowQuality; data class Error(cause: Throwable) }
+
+// Grab the live AR camera frame as an upright ARGB_8888 bitmap (run OFF the main thread):
+fun Frame.captureCameraBitmap(jpegQuality: Int = 90): Bitmap?
+fun Image.toArgbBitmap(rotationDegrees: Int = 0, jpegQuality: Int = 90): Bitmap?
+```
+Usage — capture a photo on-device and start tracking it (closes #1553):
+```kotlin
+val runtimeDb = rememberRuntimeAugmentedImageDatabase()
+ARSceneView(
+    sessionConfiguration = { session, config -> runtimeDb.applyTo(config, session) },
+    onSessionCreated = { runtimeDb.bind(it) },
+    onSessionUpdated = { _, frame -> latestFrame = frame }
+) { /* AugmentedImageNode per detected image */ }
+// From a "Capture" button:
+scope.launch {
+    val photo = withContext(Dispatchers.Default) { latestFrame?.captureCameraBitmap() }
+    when (runtimeDb.addImage("snapshot", photo!!)) {
+        is AddImageResult.Added      -> { /* now tracked */ }
+        is AddImageResult.LowQuality -> showRetryHint()   // textured, high-contrast scene needed
+        is AddImageResult.Error      -> showError()
+    }
+}
+```
+Sample: `ARImageDemo` (Android demo registry id `ar-image`) — "Capture this view" button.
 
 ### AugmentedFaceNode — face mesh
 ```kotlin
@@ -3708,6 +3807,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-streetscape` — Streetscape Geometry. Geospatial building and terrain meshes.
 - `ar-terrain` — Terrain Anchors. Anchor models on geospatial terrain.
 - `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
+- `placement-scene` — Placement Scene. One-line tap-to-place AR (Sceneform ArFragment parity).
 
 <!-- END GENERATED DEMOS -->
 

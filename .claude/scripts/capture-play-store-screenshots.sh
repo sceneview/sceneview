@@ -9,7 +9,7 @@
 # Usage:
 #   bash .claude/scripts/capture-play-store-screenshots.sh \
 #     [--demos model-viewer,ar-pose,reflection-probes,environment] \
-#     [--out samples/android-demo/play/listings/en-US/graphics] \
+#     [--out samples/android-demo/distribution/play-store/en-GB/graphics] \
 #     [--status-bar-px N | auto] \
 #     [--variance-threshold N] \
 #     [--no-build]
@@ -43,7 +43,9 @@ android_cli_ensure || true
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
 DEMOS_DEFAULT="model-viewer,ar-pose,reflection-probes,environment"
-OUT_DIR_DEFAULT="samples/android-demo/play/listings/en-US/graphics"
+# Canonical Play Store listing directory — the same `graphics/` subdir the
+# `play-store.yml` listing-sync job uploads to the store (#1710).
+OUT_DIR_DEFAULT="samples/android-demo/distribution/play-store/en-GB/graphics"
 PKG="io.github.sceneview.demo"
 APK_PATH="samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk"
 STATUS_BAR_PX_DEFAULT=96
