@@ -238,12 +238,12 @@ Recompile Filament materials using the [current Filament version](https://github
 
 Filament refuses any material whose binary version field does not match the runtime, with `Filament panic — material version N ≠ runtime M` on first frame. There is no compile-time check; the mismatch only manifests at runtime, demo by demo. v4.1.0 shipped with the runtime at 1.70.2 and blobs at 1.71 (two parallel branches each fixed half of the pair) — 10 demos crashed; v4.1.1 hot-fixed by realigning both sides to 1.71.
 
-**The 20 committed blobs that must stay in sync with their `.mat` sources**, spread across three modules:
+**The 22 committed blobs that must stay in sync with their `.mat` sources**, spread across three modules:
 
 ```
-sceneview/src/main/assets/materials/     (11) — image_texture, opaque/transparent
-                                                colored/textured/unlit, video_texture(_chroma_key),
-                                                view_texture_lit/_unlit
+sceneview/src/main/assets/materials/     (13) — image_texture, occlusion, opaque/transparent
+                                                colored/textured/unlit, semantics_overlay,
+                                                video_texture(_chroma_key), view_texture_lit/_unlit
 arsceneview/src/main/assets/materials/    (6) — camera_stream_flat/_depth, face_mesh(_occluder),
                                                 plane_renderer(_shadow)
 website-static/materials/                 (3) — lit_colored, transparent_colored, unlit_colored
@@ -252,7 +252,7 @@ website-static/materials/                 (3) — lit_colored, transparent_color
 **The `tools/GenerateFilamat.sh` workflow.** [`tools/GenerateFilamat.sh`](tools/GenerateFilamat.sh) is the single entry point for every Filament material in the repo. It auto-downloads the `matc` toolchain pinned to the Filament version in [`gradle/libs.versions.toml`](gradle/libs.versions.toml) and compiles each `.mat` to its `.filamat` blob — no manual `matc` install needed.
 
 ```
-bash tools/GenerateFilamat.sh                 # regenerate all 21 .filamat blobs in place
+bash tools/GenerateFilamat.sh                 # regenerate all 22 .filamat blobs in place
 bash tools/GenerateFilamat.sh --check         # diff against committed blobs; exit 1 on drift
 bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 bash tools/GenerateFilamat.sh --ci-tolerant   # treat a matc download failure as WARN, not FAIL
@@ -268,7 +268,7 @@ The `matc` binary is cached at `~/.cache/sceneview/matc-<version>/` (overridable
 |---|---|---|
 | **A** — heavy Android | `-p all -a all` | `sceneview/` lit/textured/video/view materials |
 | **B** — lean Android | `-a opengl -p mobile` | `sceneview/` unlit colored materials (2) |
-| **C** — ARCore | `--optimize-size -p mobile -a opengl -a vulkan` | `arsceneview/` (6) |
+| **C** — ARCore | `--optimize-size -p mobile -a opengl -a vulkan` | `arsceneview/` (6) + `sceneview/` semantics_overlay (1) |
 | **D** — website / WebGL | `-p mobile -a opengl` | `website-static/materials/` (3) |
 | **E** — Android occluder | `-a vulkan -a opengl -p mobile` | `sceneview/` occlusion material (1) |
 
