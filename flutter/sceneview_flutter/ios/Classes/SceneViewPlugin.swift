@@ -514,13 +514,20 @@ struct ARSceneViewSwiftUIWrapper: View {
     var body: some View {
         ARSceneView(
             planeDetection: .horizontal,
-            onTapOnPlane: { position, arView in
-                placement.placeModel(at: position, in: arView)
+            onTapOnPlane: { position, _ in
+                placement.placeModel(at: position)
             }
         )
+        // Capture the single reusable content anchor once the session starts,
+        // so every tap-placed model and `clearScene` operate on the same
+        // anchor instead of leaking a fresh one per tap (issue #2078).
+        .onSessionStarted { arView in
+            placement.attach(to: arView)
+        }
         // Pre-load the requested models so a plane tap can anchor them
         // immediately. Keyed on the model-id list so loadModel / clearScene
-        // from the Dart side re-run the loader.
+        // from the Dart side re-run the loader (and clear placed models when
+        // the list becomes empty).
         .task(id: state.models.map(\.id)) {
             await placement.sync(to: state.models)
         }
@@ -531,18 +538,52 @@ struct ARSceneViewSwiftUIWrapper: View {
 ///
 /// `ARSceneView` is anchor-driven — there is no "scene content list" to mutate
 /// (unlike the 3D `SceneView`). This controller pre-loads each requested model
-/// once and, on a plane tap, clones the most recently requested model under a
-/// world `AnchorNode` at the tapped position.
+/// once and, on a plane tap, clones the most recently requested model into a
+/// single reusable content `AnchorNode`.
+///
+/// Mirrors the React Native AR bridge (`RNARSceneViewContent`): all placed
+/// content lives under one `contentAnchor` added to the scene at the world
+/// origin. Tap-placed clones are positioned at the tapped world coordinate
+/// relative to that anchor. `clearScene` (a `sync(to: [])`) calls
+/// `removeAll()` on the anchor, so placed models are actually removed and no
+/// per-tap `AnchorEntity` accumulates in the scene (issue #2078).
 @MainActor
 final class ARPlacementController: ObservableObject {
     /// Loaded model entities, keyed by `FlutterModelData.id`, kept as
     /// templates that are cloned for each placement.
     private var templates: [(data: FlutterModelData, entity: ModelEntity)] = []
 
+    /// The single anchor that owns every tap-placed model. Created once when
+    /// the AR session starts; its children are torn down by `clearScene`.
+    private var contentAnchor: AnchorNode?
+
+    /// Captures the reusable content anchor once the AR session has started.
+    ///
+    /// Adds one `AnchorNode` at the world origin to the scene — every placed
+    /// model becomes its child, so the scene's anchor count stays at one
+    /// regardless of how many models the user taps into the world.
+    func attach(to arView: ARView) {
+        guard contentAnchor == nil else { return }
+        let anchor = AnchorNode.world(position: .zero)
+        arView.scene.addAnchor(anchor.entity)
+        contentAnchor = anchor
+    }
+
     /// Reconciles the loaded templates with the requested model list.
+    ///
+    /// When the model list becomes empty (the Dart `clearScene` path) the
+    /// reusable content anchor is emptied so already-placed models are removed
+    /// from the world — previously `clearScene` only dropped the load cache
+    /// and left placed models on screen (issue #2078).
     func sync(to models: [FlutterModelData]) async {
         let desired = Set(models.map(\.id))
         templates.removeAll { !desired.contains($0.data.id) }
+
+        // `clearScene` empties `state.models`; with no model to place, also
+        // tear down everything already placed in the world.
+        if models.isEmpty {
+            contentAnchor?.removeAll()
+        }
 
         let loadedIds = Set(templates.map(\.data.id))
         for data in models where !loadedIds.contains(data.id) {
@@ -561,15 +602,18 @@ final class ARPlacementController: ObservableObject {
         }
     }
 
-    /// Anchors a clone of the most recently requested model at `position`.
+    /// Places a clone of the most recently requested model at `position`.
     ///
-    /// Cloning lets the same model be tapped onto multiple planes. Does
-    /// nothing until at least one model has finished loading.
-    func placeModel(at position: SIMD3<Float>, in arView: ARView) {
-        guard let template = templates.last else { return }
+    /// The clone is added to the single reusable content anchor (positioned at
+    /// the tapped world coordinate), so repeated taps do not grow the scene's
+    /// anchor count. Cloning lets the same model be tapped onto multiple
+    /// planes. Does nothing until a model has loaded and the session has
+    /// provided the content anchor.
+    func placeModel(at position: SIMD3<Float>) {
+        guard let template = templates.last,
+              let contentAnchor else { return }
         let clone = template.entity.clone(recursive: true)
-        let anchor = AnchorNode.world(position: position)
-        anchor.add(clone)
-        arView.scene.addAnchor(anchor.entity)
+        clone.position = position
+        contentAnchor.add(clone)
     }
 }
