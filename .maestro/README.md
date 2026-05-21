@@ -159,3 +159,76 @@ omit `--install` and reuse an installed build.
   error` / `NSException`). The wrapper scripts (`qa-android-demos.sh`,
   `ios-device-qa.sh`) also do this sweep. Per-demo `assertVisible` crash
   detection works standalone.
+
+## Emulator boot snapshots — faster, deterministic Android QA
+
+[#1672](https://github.com/sceneview/sceneview/issues/1672)
+
+The QA AVD's userdata partition fills up after ~6 QA runs and Filament
+viewports turn black — a long-standing storage-degradation bug. The fix is a
+**golden boot snapshot**: a clean post-ARCore-install image seeded once, then
+cold-booted from on every subsequent run with `-no-snapshot-save` so QA runs
+*load* the warm state but never *write back* to it.
+
+```bash
+# Seed the golden snapshot once (or after a --clean rebuild):
+bash .claude/scripts/setup-ar-emulator.sh --clean --seed-snapshot
+
+# Every normal run now restores 'qa-clean' automatically — faster boot,
+# identical post-install state each time, userdata never degrades:
+bash .claude/scripts/setup-ar-emulator.sh
+
+# Inspect snapshot state without mutating anything:
+bash .claude/scripts/setup-ar-emulator.sh --check
+
+# Escape hatch — force a cold boot even when a snapshot exists:
+bash .claude/scripts/setup-ar-emulator.sh --no-snapshot
+```
+
+Why this is correct and bounded:
+
+- **Restore is read-only.** `-snapshot qa-clean -no-snapshot-save` loads the
+  golden RAM/disk image and discards every mutation at shutdown — the snapshot
+  is immutable, so it can never accumulate the run-to-run cruft that degrades
+  the partition.
+- **Pool peers cold-boot.** Only the base-port (`emulator-5554`) emulator
+  restores the snapshot. `-snapshot` is incompatible with `-read-only`, and the
+  RAM-budgeted adaptive pool (#1654) boots `-read-only` peers that share one
+  AVD — those always cold-boot. The snapshot is a per-AVD single-writer asset.
+- **`--clean` drops the snapshot.** A wipe-and-recreate also removes the stale
+  `qa-clean` snapshot directory, so a fresh AVD never restores a mismatched
+  image. Re-seed with `--seed-snapshot` afterwards.
+- **CI is unaffected.** GitHub-hosted device-QA uses
+  `ReactiveCircus/android-emulator-runner`, which already has its own
+  AVD-snapshot caching and a fresh runner per job. The golden snapshot is a
+  *local* QA speed-up; the CI emulator options are unchanged.
+
+## Android Studio Journeys — assessed, not adopted (yet)
+
+[#1672](https://github.com/sceneview/sceneview/issues/1672) also proposed
+[Android Studio Journeys](https://developer.android.com/studio/gemini/journeys)
+— natural-language functional tests (`.journey.xml`) executed by Gemini. They
+are an attractive fit for SceneView's "drive the demos like a real user, assert
+no crash" mandate, but **they are not adopted in this PR**:
+
+- **Hard AGP-version blocker.** Journeys' headless Gradle runner
+  (`testJourneysTestDefaultDebugTestSuite`) requires **AGP 9.0.0+**. This repo
+  is on **AGP 8.13.2** (`gradle/libs.versions.toml`). An AGP-9 major bump
+  touches every module, the Filament/`.filamat` ABI invariant, and CI — it is
+  its own scoped task, not in scope for a QA-tooling change.
+- **Preview, IDE-coupled.** Journeys is a Studio Labs *preview* feature. Its
+  execution still leans on Gemini-in-Studio; the headless CI path is new and
+  not yet a stable, version-pinnable artifact like Maestro's CLI.
+- **Maestro already covers the same ground.** The 42-demo Maestro catalog
+  already drives every demo as a real user and asserts no crash, runs headless
+  in CI, and is version-pinned (`lib/maestro.sh`). The marginal win from
+  Journeys is layout-drift resilience — real, but not worth an AGP-9 major bump
+  on its own.
+
+**Verdict:** revisit Journeys when an AGP 9.x bump lands for other reasons.
+At that point, prototype one `.journey.xml` (e.g. model-viewer orbit) and run
+it alongside the Maestro catalog. Until then the emulator-snapshot win above is
+the concrete, scriptable, CI-safe outcome of this issue. The other audit
+items (Gradle Managed Devices + ATD images, Firebase Test Lab Spark tier,
+emulator gRPC API) remain open backlog — none is blocked, but each is a
+separate change.

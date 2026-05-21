@@ -1,0 +1,2 @@
+<!-- category: Tests -->
+- **Android demo QA — emulator boot snapshots.** `setup-ar-emulator.sh` gains `--seed-snapshot` / `--no-snapshot`: a clean post-ARCore-install boot snapshot (`qa-clean`) is seeded once and cold-booted from on every subsequent QA run with `-no-snapshot-save`, so runs start from an identical warm state and the AVD userdata partition no longer degrades after ~6 runs. Faster, deterministic local QA. Android Studio Journeys was assessed but deferred — it requires an AGP 9.0.0 bump (#1672).

@@ -40,19 +40,44 @@
 #   clamps the guest to [4 GB, 8 GB]: ~6 GB on a 16 GB Mac, the full 8 GB on a
 #   24 GB+ Mac. The load-bearing ANR fix is the core count, not raw RAM.
 #
+# Emulator snapshots (#1672 — fixes the storage-degradation bug):
+#   The QA AVD's userdata partition fills up after ~6 QA runs and Filament
+#   viewports turn black (a known issue tracked in memory). The fix is a clean
+#   *boot snapshot* seeded ONCE right after ARCore is installed, then cold-booted
+#   from on every subsequent run with `-no-snapshot-save` — so QA runs LOAD the
+#   warm golden image but never WRITE back to it. Every run therefore starts from
+#   the identical post-install state: deterministic, and far faster than a cold
+#   boot (snapshot restore is seconds vs. a 60-90s cold boot).
+#     --seed-snapshot   Boot, install ARCore, then save the golden snapshot
+#                       `qa-clean` and exit. Run this once after `--clean`, or
+#                       whenever the golden image should be refreshed.
+#     --no-snapshot     Force a cold boot even when a golden snapshot exists
+#                       (escape hatch for debugging a stale snapshot).
+#   When a `qa-clean` snapshot exists a normal run boots from it automatically
+#   with `-no-snapshot-save`; otherwise it cold-boots as before. Snapshot
+#   restore only applies to the FIRST (port 5554) pool emulator — `-read-only`
+#   pool peers cannot safely share a snapshot, so they always cold-boot.
+#
 # Flags:
-#   --check   Read-only inspection: prints current AVD config + ARCore state +
-#             pool state (running emulator count, RAM-budgeted cap, free RAM,
-#             active leases). No mutation.
-#   --clean   Wipe the AVD's userdata and recreate config from scratch.
-#   --no-boot Skip the emulator boot (useful in CI where boot is deferred).
-#   --window  Boot the emulator VISIBLE (windowed) so a developer can glance at
-#             it. OPT-IN, local only. Default is headless (-no-window), which is
-#             marginally lighter on the host (skips the skin-window draw +
-#             window-server compositing). Equivalent to EMU_VISIBLE=1. The guest
-#             VM cost is identical either way — only the host window draw differs.
-#             CI never sets this; the device-QA workflow stays headless.
-#   -h|--help Show this help.
+#   --check          Read-only inspection: prints current AVD config + ARCore
+#                    state + pool state (running emulator count, RAM-budgeted
+#                    cap, free RAM, active leases) + golden-snapshot presence.
+#                    No mutation.
+#   --clean          Wipe the AVD's userdata and recreate config from scratch.
+#                    Also drops the golden `qa-clean` snapshot — re-seed it with
+#                    `--seed-snapshot` afterwards.
+#   --no-boot        Skip the emulator boot (useful in CI where boot is deferred).
+#   --seed-snapshot  Boot, install ARCore, save the golden `qa-clean` snapshot,
+#                    then exit. Run once to seed/refresh the warm QA image.
+#   --no-snapshot    Cold-boot even if a golden snapshot exists (debug escape).
+#   --window         Boot the emulator VISIBLE (windowed) so a developer can
+#                    glance at it. OPT-IN, local only. Default is headless
+#                    (-no-window), which is marginally lighter on the host (skips
+#                    the skin-window draw + window-server compositing).
+#                    Equivalent to EMU_VISIBLE=1. The guest VM cost is identical
+#                    either way — only the host window draw differs. CI never
+#                    sets this; the device-QA workflow stays headless.
+#   -h|--help        Show this help.
 #
 # Idempotent: re-running with no flag will skip work that's already done. Leases a
 # free already-running emulator when one exists. Stops nothing — caller closes the
@@ -85,6 +110,12 @@ ANDROID_CLI=(--no-metrics)   # global flags: never phone home from this repo
 AVD_NAME="Pixel_7a"
 AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
 AVD_CONFIG="$AVD_HOME/$AVD_NAME.avd/config.ini"
+# Golden boot-snapshot name (#1672). A clean post-ARCore-install snapshot seeded
+# once with --seed-snapshot; subsequent QA runs cold-boot from it (`-snapshot
+# qa-clean -no-snapshot-save`) so every run starts from the identical warm state
+# and the userdata partition never accumulates run-to-run cruft.
+GOLDEN_SNAPSHOT="qa-clean"
+SNAPSHOTS_DIR="$AVD_HOME/$AVD_NAME.avd/snapshots"
 SYSTEM_IMAGE="system-images;android-36;google_apis_playstore;arm64-v8a"
 
 # Detect arch for the system image
@@ -145,14 +176,18 @@ CHECK_ONLY=false
 CLEAN=false
 NO_BOOT=false
 STOP_AFTER=false
+SEED_SNAPSHOT=false
+NO_SNAPSHOT=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --check)   CHECK_ONLY=true; shift ;;
-    --clean)   CLEAN=true; shift ;;
-    --no-boot) NO_BOOT=true; shift ;;
-    --stop)    STOP_AFTER=true; shift ;;
-    --window)  EMU_VISIBLE=1; shift ;;
+    --check)          CHECK_ONLY=true; shift ;;
+    --clean)          CLEAN=true; shift ;;
+    --no-boot)        NO_BOOT=true; shift ;;
+    --stop)           STOP_AFTER=true; shift ;;
+    --seed-snapshot)  SEED_SNAPSHOT=true; shift ;;
+    --no-snapshot)    NO_SNAPSHOT=true; shift ;;
+    --window)         EMU_VISIBLE=1; shift ;;
     -h|--help)
       # Print the leading comment block (lines starting with #), stop at `set -`.
       # Skip the shebang (line 1).
@@ -162,7 +197,47 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# --seed-snapshot needs a freshly booted emulator — reject the contradictory
+# combinations up front (#1672) rather than failing late after side effects.
+if $SEED_SNAPSHOT; then
+  if $CHECK_ONLY; then
+    echo "[setup-ar] --seed-snapshot and --check are mutually exclusive" >&2; exit 2
+  fi
+  if $NO_BOOT; then
+    echo "[setup-ar] --seed-snapshot needs a boot — incompatible with --no-boot" >&2; exit 2
+  fi
+fi
+
 log() { echo "[setup-ar] $*"; }
+
+# --- snapshot helpers (#1672) -------------------------------------------------
+# A "golden" boot snapshot is a clean post-ARCore-install image. Once seeded,
+# QA runs cold-boot from it with `-no-snapshot-save` — load the warm state,
+# never write back — so every run is deterministic and the userdata partition
+# never accumulates the cruft that turns Filament viewports black after ~6 runs.
+#
+# golden_snapshot_exists — 0 if the AVD has a saved `qa-clean` snapshot. The
+# emulator stores each snapshot as a directory under <avd>/snapshots/<name>.
+golden_snapshot_exists() {
+  [[ -d "$SNAPSHOTS_DIR/$GOLDEN_SNAPSHOT" ]]
+}
+
+# save_golden_snapshot <serial> — persist the running emulator's state as the
+# golden snapshot via the emulator console `avd snapshot save`. The `android`
+# CLI has no snapshot subcommand in v0.7, and `adb emu` IS the documented
+# emulator-console transport (not raw `adb shell`), so this is the correct tool.
+save_golden_snapshot() {
+  local serial="$1"
+  log "saving golden snapshot '$GOLDEN_SNAPSHOT' on $serial (clean post-install state)"
+  if "$ADB_BIN" -s "$serial" emu avd snapshot save "$GOLDEN_SNAPSHOT" >/dev/null 2>&1; then
+    if golden_snapshot_exists; then
+      log "golden snapshot '$GOLDEN_SNAPSHOT' saved — future runs cold-boot from it"
+      return 0
+    fi
+  fi
+  log "WARNING: could not save golden snapshot '$GOLDEN_SNAPSHOT' — runs will cold-boot"
+  return 1
+}
 
 # --- step 1: verify SDK basics -------------------------------------------------
 [[ -x "$EMULATOR_BIN" ]] || { log "missing emulator at $EMULATOR_BIN"; exit 1; }
@@ -266,6 +341,10 @@ if $CLEAN; then
   fi
   log "removing existing AVD $AVD_NAME"
   "$AVDMANAGER_BIN" delete avd --name "$AVD_NAME" 2>/dev/null || true
+  # `avdmanager delete` removes the .avd directory and its snapshots with it,
+  # but be explicit so a stale golden snapshot can never survive a --clean
+  # (#1672) — re-seed it afterwards with --seed-snapshot.
+  rm -rf "$SNAPSHOTS_DIR" 2>/dev/null || true
 fi
 
 if $CHECK_ONLY; then
@@ -345,12 +424,23 @@ show_ram_and_emulator_status() {
   fi
 }
 
+# Report golden-snapshot state (#1672) — used by --check and before booting.
+show_snapshot_status() {
+  if golden_snapshot_exists; then
+    log "golden snapshot '$GOLDEN_SNAPSHOT' present — runs cold-boot from it (-no-snapshot-save)"
+  else
+    log "no golden snapshot '$GOLDEN_SNAPSHOT' — runs cold-boot; seed one with --seed-snapshot"
+  fi
+}
+
 if $CHECK_ONLY; then
   show_config
+  show_snapshot_status
   show_ram_and_emulator_status
 else
   apply_ar_config
   show_config
+  show_snapshot_status
 fi
 
 # --- step 5: lease or boot a pool emulator ------------------------------------
@@ -387,19 +477,45 @@ boot_new_emulator() {
     window_arg=""
     window_desc="windowed (EMU_VISIBLE)"
   fi
-  log "booting a new pool emulator $AVD_NAME on -port ${port} (${window_desc}, no snapshot, -memory ${mem} MB)"
-  # `-read-only` lets multiple emulators share the one AVD's disk images without
-  # clobbering each other's userdata; `-port` gives each a distinct serial.
-  # nohup + & so the emulator survives this script; per-port log for debugging.
+
+  # Snapshot policy (#1672):
+  #   - The base-port emulator (5554) RESTORES the golden `qa-clean` snapshot
+  #     when one exists and --no-snapshot was not passed: `-snapshot qa-clean
+  #     -no-snapshot-save` loads the warm post-install state but never writes
+  #     back, so every run starts identical and the userdata never degrades.
+  #     `-snapshot` is incompatible with `-read-only`, so the snapshot-loading
+  #     emulator drops `-read-only` (it is the sole writer of its own RAM image;
+  #     `-no-snapshot-save` still prevents disk mutation).
+  #   - Pool peers (port != 5554) always cold-boot `-read-only -no-snapshot`:
+  #     `-read-only` emulators share one AVD and cannot safely own a snapshot.
+  #   - With --seed-snapshot the base emulator boots WRITABLE (no -read-only)
+  #     and WITHOUT loading a stale snapshot (`-no-snapshot-load`), so the
+  #     subsequent `emu avd snapshot save` can persist the fresh golden image
+  #     to disk. `-no-snapshot-save` is omitted here on purpose — the explicit
+  #     console save IS the write we want.
+  local snapshot_args=("-read-only" "-no-snapshot")
+  local boot_desc="cold boot, -read-only"
+  if [[ "$port" == "$EMU_BASE_PORT" ]] && $SEED_SNAPSHOT; then
+    # Seed run: writable, no auto-load of an old snapshot, manual save later.
+    snapshot_args=("-no-snapshot-load")
+    boot_desc="seed boot (writable, -no-snapshot-load)"
+  elif [[ "$port" == "$EMU_BASE_PORT" ]] && ! $NO_SNAPSHOT && golden_snapshot_exists; then
+    # Restore the golden snapshot; no -read-only (incompatible with -snapshot).
+    snapshot_args=("-snapshot" "$GOLDEN_SNAPSHOT" "-no-snapshot-save")
+    boot_desc="restore '$GOLDEN_SNAPSHOT' snapshot, -no-snapshot-save"
+  fi
+
+  log "booting a new pool emulator $AVD_NAME on -port ${port} (${window_desc}, ${boot_desc}, -memory ${mem} MB)"
+  # `-port` gives each emulator a distinct serial; nohup + & so the emulator
+  # survives this script; per-port log for debugging.
   local emu_log="/tmp/sceneview-emulator-${AVD_NAME}-${port}.log"
   # shellcheck disable=SC2086 # window_arg is intentionally word-split (empty = visible)
   nohup "$EMULATOR_BIN" -avd "$AVD_NAME" \
     -port "$port" \
-    -read-only \
+    "${snapshot_args[@]}" \
     -gpu host \
     -memory "$mem" \
     $window_arg \
-    -no-snapshot-load \
     -no-audio \
     -no-boot-anim \
     -netdelay none -netspeed full \
@@ -496,7 +612,24 @@ wait_for_boot() {
   echo "$serial" > "$EMU_LEASE_DIR/last-booted.serial" 2>/dev/null || true
 }
 
-if ! $CHECK_ONLY && ! $NO_BOOT; then
+if ! $CHECK_ONLY && ! $NO_BOOT && $SEED_SNAPSHOT; then
+  # --seed-snapshot (#1672) bypasses the pool lease logic: it must boot a FRESH,
+  # WRITABLE base-port emulator (a leased running one or a -read-only peer could
+  # not be snapshotted). The base port 5554 must be free for this.
+  if emu_serial_alive "emulator-$EMU_BASE_PORT" "$ADB_BIN"; then
+    log "--seed-snapshot needs the base port $EMU_BASE_PORT free, but emulator-$EMU_BASE_PORT is running"
+    log "  stop it first: android emulator stop $AVD_NAME  (or: adb -s emulator-$EMU_BASE_PORT emu kill)"
+    exit 1
+  fi
+  if ! emu_ram_allows_boot; then
+    log "--seed-snapshot: not enough free RAM to boot the seed emulator"
+    exit 1
+  fi
+  boot_new_emulator "$EMU_BASE_PORT"
+  EMU_SERIAL="emulator-$EMU_BASE_PORT"
+  emu_lease_acquire "$EMU_SERIAL" || true
+  wait_for_boot || { log "--seed-snapshot: seed emulator failed to boot"; exit 1; }
+elif ! $CHECK_ONLY && ! $NO_BOOT; then
   # select_or_boot_emulator returns non-zero only when the pool is full AND no
   # lease freed within the bounded wait (or RAM stayed too tight to boot). In
   # that case there is no emulator to wait for — fail fast with a clear exit so
@@ -590,6 +723,29 @@ else
   log "(no emulator running — skipped ARCore check)"
 fi
 
+# --- step 6b: seed the golden snapshot (#1672) --------------------------------
+# With --seed-snapshot the emulator was cold-booted and ARCore installed above;
+# now persist that clean state as the golden `qa-clean` snapshot and exit. Every
+# subsequent run cold-boots from this snapshot with `-no-snapshot-save`, fixing
+# the storage-degradation bug (userdata never accumulates run-to-run cruft) and
+# slashing boot time (snapshot restore is seconds vs. a 60-90s cold boot).
+if $SEED_SNAPSHOT; then
+  # Flag conflicts (--check / --no-boot) were already rejected up front.
+  if [[ -z "${serial:-}" ]]; then
+    log "--seed-snapshot: no emulator to snapshot — boot failed earlier"
+    exit 1
+  fi
+  if save_golden_snapshot "$serial"; then
+    log "golden snapshot seeded. Stopping the emulator so the snapshot is consistent."
+    "$ADB_BIN" -s "$serial" emu kill >/dev/null 2>&1 || true
+    log "done — future 'setup-ar-emulator.sh' runs will restore '$GOLDEN_SNAPSHOT'."
+    exit 0
+  else
+    log "--seed-snapshot failed — emulator left running, fix the issue and retry."
+    exit 1
+  fi
+fi
+
 # --- step 7: optionally stop the emulator -------------------------------------
 # By default we leave the emulator warm so a QA script can run immediately after.
 # --stop kills it for hygiene-conscious callers (CI, one-shot config runs).
@@ -619,4 +775,9 @@ else
   log "  source .claude/scripts/lib/android-cli.sh && android_cli_ensure"
   log "  android run --apks <apk> --activity io.github.sceneview.demo/.MainActivity"
   log "  stop it with: android emulator stop $AVD_NAME"
+fi
+if ! $CHECK_ONLY && ! golden_snapshot_exists; then
+  log "tip: seed a warm QA boot snapshot once with:"
+  log "  bash .claude/scripts/setup-ar-emulator.sh --clean --seed-snapshot"
+  log "  -> future runs cold-boot from '$GOLDEN_SNAPSHOT' (faster, deterministic, #1672)"
 fi
