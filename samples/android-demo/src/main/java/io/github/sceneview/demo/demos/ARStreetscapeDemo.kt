@@ -58,6 +58,12 @@ import io.github.sceneview.sample.rememberMaterialInstance
 
 private const val TAG = "ARStreetscapeDemo"
 
+// How long the camera may track with zero streetscape geometry before the status
+// banner swaps the spinner text for explicit "go outdoors" guidance (#1615).
+// 15 s is long enough for a genuine outdoor VPS lookup to start returning meshes,
+// short enough that an indoor QA pass isn't left guessing for a full minute.
+private const val NO_GEOMETRY_HINT_DELAY_MS = 15_000L
+
 /**
  * Geospatial API streetscape geometry demo.
  *
@@ -214,6 +220,12 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
     var isTracking by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var geometryCount by remember { mutableStateOf(0) }
+    // After this long tracking with `geometryCount == 0` and no unsupported-device
+    // error, the spinner text is replaced with explicit "go outdoors" guidance
+    // (#1615). Streetscape Geometry can never produce meshes indoors — the most
+    // common QA setting — and the bare "Looking for streetscape geometry…" gave
+    // no hint that the user must step outside into a Street-View-covered area.
+    var noGeometryGuidance by remember { mutableStateOf(false) }
     // Tracks whether Geospatial / Streetscape mode could actually be enabled on the
     // current device + region. ARCore Geospatial requires a Cloud project key wired
     // through `arcore-cloud-anchor` config and VPS coverage from Google Street View;
@@ -247,6 +259,25 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
         roughness = 0.9f,
         reflectance = 0.1f,
     )
+
+    // Timeout-based outdoor guidance (#1615). When the camera is tracking, Geospatial
+    // is supported (no `geospatialUnavailable`) and no fatal error occurred, but no
+    // streetscape geometry has shown up after `NO_GEOMETRY_HINT_DELAY_MS`, the user
+    // is almost certainly indoors or outside VPS coverage. Surface a clear hint
+    // instead of the perpetual "Looking for streetscape geometry…" spinner. Keyed on
+    // the inputs so the timer re-arms whenever tracking drops or geometry appears.
+    LaunchedEffect(isTracking, geometryCount, geospatialUnavailable, sessionError, hasArcoreApiKey) {
+        noGeometryGuidance = false
+        if (isTracking &&
+            geometryCount == 0 &&
+            geospatialUnavailable == null &&
+            sessionError == null &&
+            hasArcoreApiKey
+        ) {
+            kotlinx.coroutines.delay(NO_GEOMETRY_HINT_DELAY_MS)
+            noGeometryGuidance = true
+        }
+    }
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_streetscape_title),
@@ -368,6 +399,11 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
                     geometryCount > 0 -> "Rendering $geometryCount structure(s)"
                     !isTracking -> trackingFailureMessage(effectiveReason)
                         ?: "Scanning environment\u2026"
+                    // Supported device, no VPS coverage / indoors (#1615): after a
+                    // timeout the perpetual spinner is replaced with explicit
+                    // guidance to step outside and point at buildings.
+                    noGeometryGuidance ->
+                        stringResource(R.string.demo_ar_streetscape_no_geometry_hint)
                     else -> "Looking for streetscape geometry\u2026"
                 }
                 Text(
