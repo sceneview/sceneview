@@ -203,18 +203,17 @@ jobs:
 
       # detekt is applied to every Kotlin Android/KMP subproject in
       # build.gradle with a hand-tuned config (buildSrc/config/detekt/detekt.yml),
-      # but nothing ever invoked a detekt task. Scoped to the three library
-      # modules — same scope as the Android Lint step above.
+      # scoped to the three library modules — same scope as the Android Lint step
+      # above.
       #
-      # ADVISORY (continue-on-error) pending a baseline: detekt 1.23.8 is built
-      # against an older Kotlin Gradle Plugin and on the current toolchain
-      # (Kotlin 2.3.x / AGP 8.13.x) it applies its extension but registers no
-      # `detekt` task, so the first invocation hard-fails with "task not found".
-      # Until detekt is upgraded to a Kotlin-2.3-compatible release and a
-      # baseline is generated (`./gradlew detektBaseline`), this step runs for
-      # visibility/reporting only and does not gate PRs. Tracked in #1740.
+      # BLOCKING: detekt was upgraded from 1.23.8 (which silently no-op'd task
+      # registration on Kotlin 2.3.x / AGP 8.13.x) to detekt 2.0.0-alpha.0 in
+      # #1740. Per-module baselines committed under buildSrc/config/detekt/
+      # grandfather the 200+ pre-existing violations on this legacy codebase;
+      # only NEW violations fail this step. To refresh a baseline after a
+      # cleanup PR, run `./gradlew :<module>:detektBaseline` locally and commit
+      # the regenerated XML.
       - name: Detekt
-        continue-on-error: true
         run: ./gradlew :sceneview:detekt :arsceneview:detekt :sceneview-core:detekt --stacktrace
 
       - name: Upload detekt reports
