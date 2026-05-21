@@ -1,0 +1,165 @@
+name: React Native iOS bridge compile
+
+# Compile-checks the React Native module's iOS Swift bridge against the REAL
+# `SceneViewSwift` public API.
+#
+# WHY THIS EXISTS (#2067)
+# -----------------------
+# `react-native/react-native-sceneview/ios/SceneViewModule.swift` shipped for
+# months referencing `SceneViewSwift` APIs that do not exist (`ModelNode(String)`,
+# an `ARSceneView { anchor in … }` trailing-closure content builder, an
+# `override`n `requiresMainQueueSetup` on a plain `NSObject`). No CI job ever
+# compiled the RN module's iOS target, so the breakage went unnoticed and the
+# bridge's iOS support was non-functional. This workflow closes that gap.
+#
+# WHY A TYPE-CHECK, NOT A FULL APP BUILD
+# --------------------------------------
+# The acceptance criterion asked for "a CI job that compiles the RN module's
+# iOS target". The natural target would be `samples/react-native-demo`, but a
+# full `npm install` + `pod install` + `xcodebuild` of that demo is NOT viable
+# as a deterministic gate:
+#   * `SceneViewSwift` is distributed via Swift Package Manager ONLY — there is
+#     no published CocoaPods spec — so `pod install` of the demo cannot resolve
+#     it. The host app must add `SceneViewSwift` via Xcode's SwiftPM integration
+#     (the demo's `.xcodeproj` currently does not), and the RN module's podspec
+#     therefore cannot declare it as a `s.dependency`.
+#   * `samples/react-native-demo` is documented (`SETUP.md`) as "scaffolded,
+#     NEVER built end-to-end" — wiring its full RN 0.73 toolchain is out of
+#     scope for a regression guard and would be flaky.
+#
+# So this job does the deterministic, fast, CocoaPods-free thing that DIRECTLY
+# catches the #2067 defect class: it builds the real `SceneViewSwift` package
+# for the iOS simulator, generates a tiny compile-only shim for the four React
+# Native Objective-C symbols the bridge imports (`RCTViewManager`,
+# `RCTDirectEventBlock`, `RCTPromiseResolveBlock`, `RCTPromiseRejectBlock`),
+# and `swiftc -typecheck`s the RN module's `ios/*.swift` against both. Any
+# future `SceneViewSwift` API drift fails this job.
+#
+# The React shim is a compile-only stand-in — it is never linked into a
+# shipped binary; the real React symbols come from CocoaPods in a host app.
+# What this job proves is the part #2067 is about: the bridge's use of
+# `SceneViewSwift` is real, existing API.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'react-native/react-native-sceneview/ios/**'
+      - 'react-native/react-native-sceneview/react-native-sceneview.podspec'
+      - 'SceneViewSwift/**'
+      - '.github/workflows/rn-ios-compile.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'react-native/react-native-sceneview/ios/**'
+      - 'react-native/react-native-sceneview/react-native-sceneview.podspec'
+      - 'SceneViewSwift/**'
+      - '.github/workflows/rn-ios-compile.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: rn-ios-compile-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    name: Compile RN iOS bridge against SceneViewSwift
+    runs-on: macos-15
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.1.1.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          echo "Using Xcode: $(xcode-select -p)"
+          xcodebuild -version
+
+      - name: Cache Swift Package dependencies
+        uses: actions/cache@v5
+        with:
+          path: SceneViewSwift/.build
+          key: spm-rn-ios-${{ runner.os }}-${{ hashFiles('SceneViewSwift/Package.resolved') }}
+          restore-keys: |
+            spm-rn-ios-${{ runner.os }}-
+
+      # Build the real SceneViewSwift package for the iOS simulator. The RN
+      # bridge is type-checked against the `.swiftmodule` this produces, so a
+      # genuine SceneViewSwift API breakage fails this step before the
+      # type-check even runs.
+      - name: Build SceneViewSwift (iOS Simulator)
+        working-directory: SceneViewSwift
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -scheme SceneViewSwift \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/sv-dd" \
+            -skipMacroValidation \
+            | xcpretty --color 2>/dev/null || cat
+          MODULE_DIR="$RUNNER_TEMP/sv-dd/Build/Products/Debug-iphonesimulator"
+          if [ ! -e "$MODULE_DIR/SceneViewSwift.swiftmodule" ]; then
+            echo "::error::SceneViewSwift.swiftmodule was not produced — build failed."
+            exit 1
+          fi
+          echo "SVMOD_DIR=$MODULE_DIR" >> "$GITHUB_ENV"
+
+      # Generate a compile-only shim for the React Native Objective-C symbols
+      # the bridge imports. NOT a shipped artifact — the real symbols come from
+      # CocoaPods in a host app. This lets `swiftc` resolve `import React`
+      # so the only thing the type-check can fail on is a SceneViewSwift API
+      # mismatch — exactly the #2067 defect class.
+      - name: Generate compile-only React shim
+        run: |
+          set -euo pipefail
+          SHIM_DIR="$RUNNER_TEMP/rn-react-shim"
+          mkdir -p "$SHIM_DIR"
+          cat > "$SHIM_DIR/React.swift" <<'SHIM'
+          // Compile-only shim of the React Native Objective-C symbols used by
+          // react-native-sceneview/ios/SceneViewModule.swift. Mirrors the public
+          // signatures from <React/RCTViewManager.h> + <React/RCTBridgeModule.h>.
+          // Used ONLY to type-check the RN bridge against the real SceneViewSwift
+          // API — never compiled into a shipped binary.
+          import UIKit
+
+          public typealias RCTDirectEventBlock = ([String: Any]) -> Void
+          public typealias RCTPromiseResolveBlock = (Any?) -> Void
+          public typealias RCTPromiseRejectBlock = (String?, String?, Error?) -> Void
+          public typealias RCTBubblingEventBlock = ([String: Any]) -> Void
+
+          open class RCTViewManager: NSObject {
+              open func view() -> UIView! { return UIView() }
+              open class func requiresMainQueueSetup() -> Bool { return true }
+              open class func moduleName() -> String! { return "" }
+          }
+          SHIM
+          xcrun --sdk iphonesimulator swiftc \
+            -emit-module \
+            -module-name React \
+            -target arm64-apple-ios18.0-simulator \
+            "$SHIM_DIR/React.swift" \
+            -emit-module-path "$SHIM_DIR/React.swiftmodule"
+          echo "SHIM_DIR=$SHIM_DIR" >> "$GITHUB_ENV"
+
+      # The actual regression guard: type-check the RN module's iOS Swift
+      # against the real SceneViewSwift module + the React shim. Fails the
+      # workflow if the bridge references any non-existent SceneViewSwift API.
+      - name: Type-check RN iOS bridge
+        run: |
+          set -o pipefail
+          echo "Type-checking against SceneViewSwift module at: $SVMOD_DIR"
+          xcrun --sdk iphonesimulator swiftc \
+            -typecheck \
+            -target arm64-apple-ios18.0-simulator \
+            -I "$SVMOD_DIR" \
+            -I "$SHIM_DIR" \
+            react-native/react-native-sceneview/ios/SceneViewModule.swift
+          echo "RN iOS bridge compiles against the real SceneViewSwift API."

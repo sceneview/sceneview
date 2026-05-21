@@ -168,23 +168,69 @@ class RNSceneViewWrapper: UIView {
     }
 }
 
-/// SwiftUI content view rendering SceneViewSwift.SceneView.
+/// SwiftUI content view rendering `SceneViewSwift.SceneView` (issue #2067).
+///
+/// `SceneViewSwift` loads models **asynchronously** (`ModelNode.load(_:)` is
+/// `async throws`) — there is no synchronous `ModelNode(String)` initialiser,
+/// and the `@NodeBuilder` content builder composes static `EntityProvider`
+/// values, not a SwiftUI `ForEach`. So the bridge loads each `RNModelData`
+/// off the main actor's `Task`, wraps the resulting `ModelEntity`s in a
+/// stable holder entity, and feeds that holder to `SceneView`'s **imperative**
+/// `init(_ content: (Entity) -> Void)`.
+///
+/// `SceneView`'s content closure runs once when the underlying `RealityView`
+/// is created, so the holder entity is built up front and re-populated in a
+/// `.task(id:)` whenever the JS `modelNodes` prop changes — RealityKit picks
+/// up the new children on its next render frame without recreating the view.
 struct RNSceneViewContent: View {
     @ObservedObject var state: RNSceneState
 
+    /// Stable parent entity handed to `SceneView`. Its children are the
+    /// loaded model entities; rebuilt by `loadModels()` on every prop change.
+    @State private var modelRoot = Entity()
+
     var body: some View {
-        SceneView {
-            ForEach(state.models) { model in
-                ModelNode(model.path)
-                    .position(model.position)
-                    .scale(model.scale)
-            }
+        SceneView { root in
+            root.addChild(modelRoot)
         }
         .cameraControls(state.cameraControlMode)
         .autoCenterContent(state.autoCenterContent)
         // Forward entity taps to React Native's `onTap` prop (issue #2053).
         .onEntityTapped { entity in
             state.onTap?(entity)
+        }
+        // Reload whenever the JS `modelNodes` prop changes. Keyed on the
+        // model identities so an unrelated re-render does not re-download.
+        .task(id: state.models.map(\.id)) {
+            await loadModels()
+        }
+    }
+
+    /// Loads every model in `state.models` and replaces `modelRoot`'s
+    /// children with the freshly loaded entities. `ModelNode.load(_:)` is
+    /// `@MainActor`-isolated, so this runs on the main actor as required by
+    /// RealityKit. A failed load is skipped (the others still render).
+    @MainActor
+    private func loadModels() async {
+        // Clear previous content before reloading.
+        for child in modelRoot.children {
+            child.removeFromParent()
+        }
+        for model in state.models {
+            do {
+                let node = try await ModelNode.load(model.path)
+                node.position(model.position)
+                node.scale(model.scale)
+                if let animation = model.animation {
+                    node.playAnimation(named: animation)
+                } else if node.animationCount > 0 {
+                    node.playAllAnimations()
+                }
+                modelRoot.addChild(node.entity)
+            } catch {
+                // A single bad path must not break the whole scene.
+                print("[RNSceneView] Failed to load model '\(model.path)': \(error)")
+            }
         }
     }
 }
@@ -330,9 +376,36 @@ class RNARSceneViewWrapper: UIView {
     }
 }
 
-/// SwiftUI content view rendering SceneViewSwift.ARSceneView.
+/// SwiftUI content view rendering `SceneViewSwift.ARSceneView` (issue #2067).
+///
+/// `SceneViewSwift.ARSceneView` is a `UIViewRepresentable` with **no content
+/// builder closure** — content is added imperatively to the underlying
+/// `ARView` once the session starts (`onSessionStarted`) or on tap
+/// (`onTapOnPlane`). The previous `ARSceneView(...) { anchor in ForEach … }`
+/// trailing closure referenced API that does not exist and never compiled.
+///
+/// This bridge captures the `ARView` in `onSessionStarted`, then loads each
+/// `RNModelData` (async, via `ModelNode.load(_:)`) into a single
+/// `AnchorNode` anchored at the world origin. The models are (re)placed in a
+/// `.task(id:)` keyed on the JS `modelNodes` prop so prop changes are honoured
+/// after the session has already started.
 struct RNARSceneViewContent: View {
     @ObservedObject var state: RNARSceneState
+
+    /// Captured once the AR session starts so prop-driven model reloads can
+    /// add / remove content after `makeUIView`. Held in a reference box so a
+    /// SwiftUI body re-evaluation does not lose it.
+    @State private var sessionBox = ARSessionBox()
+
+    /// Reference holder for the captured `ARView` + content anchor. A class
+    /// keeps the references stable across `RNARSceneViewContent` value copies.
+    @MainActor
+    final class ARSessionBox {
+        weak var arView: ARView?
+        /// Anchor that owns every placed model. Added to the scene the first
+        /// time the session starts; its children are rebuilt on prop changes.
+        var contentAnchor: AnchorNode?
+    }
 
     var body: some View {
         // Forward surface taps to React Native's `onTap` prop (issue #2053).
@@ -344,10 +417,50 @@ struct RNARSceneViewContent: View {
             onTapOnPlane: { worldPosition, _ in
                 state.onTap?(worldPosition)
             }
-        ) { anchor in
-            ForEach(state.models) { model in
-                ModelNode(model.path)
-                    .scale(model.scale)
+        )
+        .onSessionStarted { arView in
+            sessionBox.arView = arView
+            let anchor = AnchorNode.world(position: .zero)
+            arView.scene.addAnchor(anchor.entity)
+            sessionBox.contentAnchor = anchor
+        }
+        // (Re)load models whenever the JS `modelNodes` prop changes — runs
+        // after `onSessionStarted` too, so the initial set is placed once the
+        // session is up.
+        .task(id: state.models.map(\.id)) {
+            await placeModels()
+        }
+    }
+
+    /// Loads every model in `state.models` and replaces the content anchor's
+    /// children with the freshly loaded entities. Waits until the AR session
+    /// has provided a content anchor before placing anything.
+    @MainActor
+    private func placeModels() async {
+        // The session may not have started yet on the first invocation —
+        // poll briefly so the initial model set still lands.
+        var anchor = sessionBox.contentAnchor
+        var waited = 0
+        while anchor == nil && waited < 50 {           // up to ~5 s
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            waited += 1
+            anchor = sessionBox.contentAnchor
+        }
+        guard let anchor else { return }
+        anchor.removeAll()
+        for model in state.models {
+            do {
+                let node = try await ModelNode.load(model.path)
+                node.position(model.position)
+                node.scale(model.scale)
+                if let animation = model.animation {
+                    node.playAnimation(named: animation)
+                } else if node.animationCount > 0 {
+                    node.playAllAnimations()
+                }
+                anchor.add(node.entity)
+            } catch {
+                print("[RNARSceneView] Failed to load model '\(model.path)': \(error)")
             }
         }
     }
@@ -368,7 +481,11 @@ class RNARRecorder: NSObject {
     /// so multiple JS instances still drive one underlying recorder.
     @MainActor private lazy var recorder = ARRecorder()
 
-    override static func requiresMainQueueSetup() -> Bool {
+    /// `RNARRecorder` extends `NSObject` directly (it is registered as an
+    /// `RCT_EXTERN_MODULE`, not a view manager), so this is **not** an
+    /// `override` — `NSObject` has no `requiresMainQueueSetup`. React Native
+    /// reads the static method via the bridge-module protocol. (#2067)
+    @objc static func requiresMainQueueSetup() -> Bool {
         return true
     }
 
