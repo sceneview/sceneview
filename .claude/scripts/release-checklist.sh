@@ -353,6 +353,48 @@ else
 fi
 echo ""
 
+# ─── 15. Android Vitals (prod stability) gate ───────────────────────────────
+# Device-QA (section 14) validates the demo app on EMULATORS before release.
+# Android Vitals is the complementary signal: the REAL crash & ANR rate across
+# live Play Store users, queried from the Play Developer Reporting API
+# (#1691). `play-vitals.sh` grades the 28-day user-perceived rates against
+# Google Play's own bad-behaviour thresholds.
+#
+# ADVISORY-FIRST: the gate is non-blocking until a baseline is trusted. It
+# only hard-blocks (FAIL → release blocker) when invoked with `GATE_HARD=1`.
+# Any data-access problem — missing `PLAY_STORE_SERVICE_ACCOUNT_JSON`, the 403
+# you get before the read-only "View app quality information" Play Console
+# permission is granted, a fresh app with no data — degrades to WARN and never
+# freezes a release. Set `PLAY_VITALS_HARD=1` to promote a hard-threshold
+# breach to a release blocker once the numbers are trusted.
+echo -e "${CYAN}--- Android Vitals (prod stability) ---${NC}"
+
+VITALS_SCRIPT="$REPO_ROOT/.claude/scripts/play-vitals.sh"
+if [ -x "$VITALS_SCRIPT" ]; then
+    VITALS_JSON="$(mktemp 2>/dev/null || echo /tmp/play-vitals-$$.json)"
+    VITALS_LOG="$(mktemp 2>/dev/null || echo /tmp/play-vitals-$$.log)"
+    # GATE_HARD is opt-in via PLAY_VITALS_HARD so the default checklist run
+    # stays advisory (#1691).
+    if GATE_HARD="${PLAY_VITALS_HARD:-0}" VITALS_JSON_OUT="$VITALS_JSON" \
+        bash "$VITALS_SCRIPT" > "$VITALS_LOG" 2>&1; then
+        VITALS_VERDICT=$(python3 -c "import json; print(json.load(open('$VITALS_JSON')).get('verdict','?'))" 2>/dev/null || echo "?")
+        VITALS_DETAIL=$(python3 -c "import json; print(json.load(open('$VITALS_JSON')).get('detail','') or '')" 2>/dev/null || echo "")
+        case "$VITALS_VERDICT" in
+            pass)  check "Android Vitals (crash/ANR)" "PASS" "$VITALS_DETAIL" ;;
+            warn)  check "Android Vitals (crash/ANR)" "WARN" "${VITALS_DETAIL:-advisory — review prod stability}" ;;
+            *)     check "Android Vitals (crash/ANR)" "WARN" "advisory — verdict '$VITALS_VERDICT' (see log)" ;;
+        esac
+    else
+        # Non-zero exit only happens under PLAY_VITALS_HARD=1 on a real breach.
+        VITALS_DETAIL=$(python3 -c "import json; print(json.load(open('$VITALS_JSON')).get('detail','') or '')" 2>/dev/null || echo "")
+        check "Android Vitals (crash/ANR)" "FAIL" "hard-threshold breach — ${VITALS_DETAIL:-see play-vitals.sh output}"
+    fi
+    rm -f "$VITALS_JSON" "$VITALS_LOG"
+else
+    check "Android Vitals (crash/ANR)" "WARN" "play-vitals.sh missing — prod stability not checked"
+fi
+echo ""
+
 # ─── Summary ───────────────────────────────────────────────────────────
 echo -e "${CYAN}=== Release Readiness Summary ===${NC}"
 echo ""

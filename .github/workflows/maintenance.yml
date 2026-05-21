@@ -422,3 +422,162 @@ jobs:
           # The script's own guards (current branch, ahead>0, open PR)
           # protect every branch that still carries live work.
           bash .claude/scripts/cleanup-branches-worktrees.sh --yes --no-worktrees
+
+  # ── 9. Play Store reviews & ratings ingest ────────────────────────────────
+  # The empire dashboard aggregates npm downloads + GitHub stars, but the Play
+  # Store side of the demo app — rating + written reviews — was invisible to
+  # any automation. User reviews are a free, high-signal bug feed nobody was
+  # reading systematically (#1692).
+  #
+  # This job runs `play-reviews-ingest.sh`, which pulls recent reviews via the
+  # Android Publisher `reviews.list` API (the SAME `PLAY_STORE_SERVICE_ACCOUNT_JSON`
+  # service account play-store.yml already uses to publish — read-only, no new
+  # write scope). It computes the average rating + star histogram over the
+  # fetched window and flags reviews matching a crash/bug signal.
+  #
+  # For each flagged review it opens ONE de-duplicated tracking issue, keyed
+  # by the stable Play `reviewId` — same open/update tracking-issue pattern as
+  # the Pages-freshness (job 6) and deep-link-health (job 7) monitors above.
+  # Re-running the job never files the same review twice.
+  #
+  # NON-BLOCKING: the ingest script always exits 0; a missing secret, a 403
+  # before the read-only review permission is granted, or an API error all
+  # degrade to a WARN. Known API gap: `reviews.list` only returns reviews
+  # modified in roughly the last week, and install counts are NOT exposed by
+  # any queryable Play API — both are documented in the script header.
+  play-reviews:
+    name: Play Store reviews ingest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write       # open/update per-review triage issues
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Install Play API client
+        run: |
+          # Reuse play-store.yml's pinned requirements (google-auth + requests)
+          # — Dependabot already tracks that file via the `pip` ecosystem entry.
+          pip install --quiet -r .github/workflows/requirements/play-store.txt
+
+      - name: Ingest Play Store reviews
+        id: ingest
+        env:
+          PLAY_STORE_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          bash .claude/scripts/play-reviews-ingest.sh play-reviews.json | tee reviews-ingest.log
+
+      - name: Open de-duplicated triage issues for flagged reviews
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -f play-reviews.json ]; then
+            echo "::warning::play-reviews.json not produced — skipping triage."
+            exit 0
+          fi
+
+          # A degraded ingest (missing secret / 403 / API error) has no
+          # `flagged` entries — nothing to do, never fail the job.
+          FLAGGED_COUNT=$(python3 -c "import json;print(len(json.load(open('play-reviews.json')).get('flagged',[])))" 2>/dev/null || echo 0)
+          echo "Flagged reviews: $FLAGGED_COUNT"
+          [ "$FLAGGED_COUNT" -eq 0 ] && exit 0
+
+          # Emit one TSV line per flagged review: reviewId, star, signal,
+          # device, appVersion, language, text. The python side base64-encodes
+          # the text so newlines/tabs in a review body can't break the loop.
+          python3 - << 'PYEOF' > flagged.tsv
+          import base64, json
+          for r in json.load(open("play-reviews.json")).get("flagged", []):
+              text = base64.b64encode((r.get("text") or "").encode()).decode()
+              print("\t".join([
+                  r.get("reviewId", ""),
+                  str(r.get("starRating", "?")),
+                  r.get("signal", "?"),
+                  str(r.get("device", "unknown")),
+                  str(r.get("appVersion", "unknown")),
+                  str(r.get("language", "")),
+                  text,
+              ]))
+          PYEOF
+
+          while IFS=$'\t' read -r RID STAR SIGNAL DEVICE APPVER LANG TEXT_B64; do
+            [ -z "$RID" ] && continue
+            TEXT=$(echo "$TEXT_B64" | base64 -d 2>/dev/null || echo "(decode error)")
+            # De-dup key: the stable Play reviewId, carried verbatim in the
+            # issue title so a search is exact and idempotent.
+            SHORT_ID="${RID:0:18}"
+            TITLE="Play Store review — $SIGNAL signal (${STAR}★) [${SHORT_ID}]"
+            EXISTING=$(gh issue list --repo "${{ github.repository }}" --state all \
+              --search "${SHORT_ID} in:title" \
+              --json number --jq '.[0].number' 2>/dev/null || echo "")
+            if [ -n "$EXISTING" ]; then
+              echo "Review $SHORT_ID already tracked in #$EXISTING — skipping."
+              continue
+            fi
+            BODY=$(cat <<EOF
+          Automated Play Store review triage (#1692) flagged a user review as a
+          potential bug report.
+
+          | Field | Value |
+          |---|---|
+          | Star rating | ${STAR} / 5 |
+          | Bug signal | \`${SIGNAL}\` |
+          | Device | ${DEVICE} |
+          | App version | ${APPVER} |
+          | Language | ${LANG:-unknown} |
+          | Play review ID | \`${RID}\` |
+
+          **Review text**
+
+          > ${TEXT}
+
+          ---
+          Posted by the \`play-reviews\` maintenance job. De-duplicated by Play
+          review ID — this review will not be filed again. Triage: reproduce on
+          the listed device/version, then either fix or close as not-a-bug.
+          Replying to the review in the Play Console is a separate manual step
+          (this automation is read-only by design).
+          EOF
+            )
+            gh issue create --repo "${{ github.repository }}" \
+              --title "$TITLE" \
+              --body "$BODY" \
+              --label "bug,play-store,user-report" \
+              || echo "::warning::Could not create triage issue for review $SHORT_ID"
+          done < flagged.tsv
+
+      - name: Append review metrics to step summary
+        if: always()
+        run: |
+          {
+            echo "### Play Store reviews — $(date -u +%Y-%m-%d)"
+            echo ""
+            if [ -f play-reviews.json ]; then
+              python3 - << 'PYEOF'
+          import json
+          d = json.load(open("play-reviews.json"))
+          if d.get("degraded"):
+              print(f"_Ingest degraded: {d['degraded']}_")
+          else:
+              print(f"- Reviews fetched (≈last 7d window): **{d.get('reviewCount', 0)}**")
+              avg = d.get("averageRating")
+              print(f"- Average rating (fetched window): **{avg if avg is not None else 'n/a'} / 5**")
+              hist = d.get("starHistogram", {})
+              if hist:
+                  print("- Star histogram: " + "  ".join(f"{k}★={v}" for k, v in sorted(hist.items())))
+              print(f"- Flagged for triage: **{len(d.get('flagged', []))}**")
+          print("")
+          print("_Install base / lifetime rating are not exposed by a queryable "
+                "Play API — see play-reviews-ingest.sh._")
+          PYEOF
+            else
+              echo "_No review data produced this run._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
