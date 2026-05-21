@@ -10,13 +10,13 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (21 mats → 21 filamats):
-#   sceneview/src/main/materials/         (12) → sceneview/src/main/assets/materials/
+# Inventory (20 mats → 20 filamats):
+#   sceneview/src/main/materials/         (11) → sceneview/src/main/assets/materials/
 #   arsceneview/src/main/materials/        (6) → arsceneview/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/
 #
 # Usage:
-#   bash tools/GenerateFilamat.sh                 # regenerate all 21 filamats
+#   bash tools/GenerateFilamat.sh                 # regenerate all 20 filamats
 #   bash tools/GenerateFilamat.sh --check         # diff against committed blobs; exit 1 on drift
 #   bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 #   bash tools/GenerateFilamat.sh --ci-tolerant   # treat matc download failure as WARN, not FAIL
@@ -105,8 +105,11 @@ log "${CYAN}Filament version (pinned):${NC} $FILAMENT_VERSION"
 #     "-p mobile -a opengl"
 #
 # When adding a new material, pick a profile based on the deployment
-# target. Audit follow-up (#1912 Part A) will normalize Profile A vs B
-# inconsistency in sceneview/ if appropriate.
+# target. Audit #1918 (Part A) reviewed the A-vs-B split: Profile B
+# (`-a opengl -p mobile`) is a deliberate size optimisation for the two
+# tiny unlit colour mats — the rest of the sceneview set stays on
+# Profile A so the lit/textured shaders keep every backend. The split is
+# intentional, not drift; left as-is. See the audit summary in the #1918 PR.
 MATS=(
     "sceneview:image_texture:sceneview/src/main/materials/image_texture.mat:sceneview/src/main/assets/materials/image_texture.filamat:-p all -a all"
     "sceneview:opaque_colored:sceneview/src/main/materials/opaque_colored.mat:sceneview/src/main/assets/materials/opaque_colored.filamat:-p all -a all"
@@ -117,7 +120,6 @@ MATS=(
     "sceneview:transparent_unlit_colored:sceneview/src/main/materials/transparent_unlit_colored.mat:sceneview/src/main/assets/materials/transparent_unlit_colored.filamat:-a opengl -p mobile"
     "sceneview:video_texture:sceneview/src/main/materials/video_texture.mat:sceneview/src/main/assets/materials/video_texture.filamat:-p all -a all"
     "sceneview:video_texture_chroma_key:sceneview/src/main/materials/video_texture_chroma_key.mat:sceneview/src/main/assets/materials/video_texture_chroma_key.filamat:-p all -a all"
-    "sceneview:view_renderable:sceneview/src/main/materials/view_renderable.mat:sceneview/src/main/assets/materials/view_renderable.filamat:-p all -a all"
     "sceneview:view_texture_lit:sceneview/src/main/materials/view_texture_lit.mat:sceneview/src/main/assets/materials/view_texture_lit.filamat:-p all -a all"
     "sceneview:view_texture_unlit:sceneview/src/main/materials/view_texture_unlit.mat:sceneview/src/main/assets/materials/view_texture_unlit.filamat:-p all -a all"
     "arsceneview:camera_stream_depth:arsceneview/src/main/materials/camera_stream_depth.mat:arsceneview/src/main/assets/materials/camera_stream_depth.filamat:--optimize-size -p mobile -a opengl -a vulkan"
