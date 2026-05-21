@@ -160,6 +160,60 @@ describe("fetchKnownIssues", () => {
     expect(result).toContain("No open issues");
     vi.unstubAllGlobals();
   });
+
+  it("does not crash on items missing user / labels / updated_at", async () => {
+    // A malformed API item — valid `number` + `title` so it passes the type
+    // guard, but `user`, `labels` and `updated_at` are absent. Previously
+    // formatIssues read `issue.user.login` / `issue.labels.some` and threw a
+    // TypeError, killing the whole sceneview://known-issues resource.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            number: 999,
+            title: "Malformed issue with no user or labels",
+          },
+        ],
+      })
+    );
+
+    const { fetchKnownIssues } = await import("./issues.js");
+    const result = await fetchKnownIssues();
+
+    expect(result).toContain("#999");
+    expect(result).toContain("Malformed issue with no user or labels");
+    expect(result).toContain("@unknown");
+    vi.unstubAllGlobals();
+  });
+
+  it("normalizes string-form labels and unexpected label shapes", async () => {
+    // GitHub's classic API can return labels as bare strings; defensively
+    // accept both that and object form, dropping anything unrecognised.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            number: 1000,
+            title: "Issue with mixed label shapes",
+            labels: ["bug", { name: "priority" }, 42, null],
+            user: { login: "tester" },
+            updated_at: "2026-02-01T00:00:00Z",
+          },
+        ],
+      })
+    );
+
+    const { fetchKnownIssues } = await import("./issues.js");
+    const result = await fetchKnownIssues();
+
+    expect(result).toContain("Bug Reports");
+    expect(result).toContain("[bug, priority]");
+    vi.unstubAllGlobals();
+  });
 });
 
 describe("COMMON_ISSUES", () => {
