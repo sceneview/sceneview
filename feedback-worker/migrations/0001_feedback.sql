@@ -16,5 +16,5 @@ CREATE TABLE IF NOT EXISTS feedback (
   media_purged  INTEGER NOT NULL DEFAULT 0                        -- 1 once R2 media is deleted
 );
 
-CREATE INDEX idx_feedback_created ON feedback (created_at);
-CREATE INDEX idx_feedback_status  ON feedback (status);
+CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback (created_at);
+CREATE INDEX IF NOT EXISTS idx_feedback_status  ON feedback (status);

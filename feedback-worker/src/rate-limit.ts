@@ -14,17 +14,27 @@
 const MAX_REQUESTS_PER_MINUTE = 5;
 const BUCKET_TTL_SECONDS = 120;
 
-/** Non-cryptographic salt — only makes KV keys non-reversible at a glance. */
+/** Salt — keeps the salted-IP digest non-reversible without the worker secret. */
 const HASH_SALT = "sv-fb-2026:";
 
-function hashIp(ip: string): string {
-  const salted = HASH_SALT + ip;
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < salted.length; i++) {
-    hash ^= salted.charCodeAt(i);
-    hash = (hash * 0x01000193) >>> 0;
-  }
-  return hash.toString(36);
+/**
+ * Hash a client IP into a KV bucket key. SHA-256 (truncated to a wide hex
+ * prefix) — a 32-bit non-cryptographic hash collides in practice, so unrelated
+ * users could share a rate bucket or an attacker could mine a collision to
+ * dodge the limiter. 96 bits of digest is collision-safe for this use.
+ *
+ * `ip` comes from `cf-connecting-ip`, which Cloudflare's edge sets and
+ * overwrites on every request, so it is trustworthy (not spoofable by clients).
+ */
+async function hashIp(ip: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(HASH_SALT + ip),
+  );
+  const hex = [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return hex.slice(0, 24); // 96-bit prefix — collision-safe
 }
 
 function minuteBucket(): string {
@@ -35,7 +45,7 @@ export async function isRateLimited(
   ip: string,
   kv: KVNamespace,
 ): Promise<{ limited: boolean; remaining: number; limit: number }> {
-  const key = `rl:${hashIp(ip)}:${minuteBucket()}`;
+  const key = `rl:${await hashIp(ip)}:${minuteBucket()}`;
 
   try {
     const current = await kv.get(key);
@@ -63,6 +73,32 @@ export async function isRateLimited(
       remaining: MAX_REQUESTS_PER_MINUTE,
       limit: MAX_REQUESTS_PER_MINUTE,
     };
+  }
+}
+
+/**
+ * Per-IP cap on admin-token attempts against the viewer. Feedback UUIDs appear
+ * publicly on the GitHub issues, so the `/feedback/<id>?token=` viewer URL is
+ * guessable — without a cap an attacker can brute-force the admin token.
+ * Returns true once the per-minute attempt cap is reached; fails open on a KV
+ * error so an infrastructure failure never locks maintainers out.
+ */
+const MAX_ADMIN_ATTEMPTS_PER_MINUTE = 10;
+
+export async function adminAttemptLimited(
+  ip: string,
+  kv: KVNamespace,
+): Promise<boolean> {
+  const key = `adminrl:${await hashIp(ip)}:${minuteBucket()}`;
+  try {
+    const current = await kv.get(key);
+    const count = current ? parseInt(current, 10) : 0;
+    if (count >= MAX_ADMIN_ATTEMPTS_PER_MINUTE) return true;
+    await kv.put(key, String(count + 1), { expirationTtl: BUCKET_TTL_SECONDS });
+    return false;
+  } catch (e) {
+    console.error("admin-rate-limit KV error — failing open", e);
+    return false;
   }
 }
 

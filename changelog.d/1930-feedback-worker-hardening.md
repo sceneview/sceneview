@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- feedback-worker: closed security + correctness blockers from review — enforce the 30 MB upload cap before buffering the body (streaming guard + `Content-Length` validation), SHA-256 IP hashing in the rate limiter, fenced-code Markdown rendering of user text/transcripts on the public issue, base64 Whisper input verified + multi-MB-safe, orphaned-R2 cleanup on D1 failure, incremental retention cron, cached GitHub installation token, and admin-token brute-force rate limiting ([#1930](https://github.com/sceneview/sceneview/issues/1930)).

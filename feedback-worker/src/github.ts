@@ -47,11 +47,29 @@ async function appJwt(env: Env): Promise<string> {
   return `${signingInput}.${base64Url(new Uint8Array(sig))}`;
 }
 
-/** Exchange the App JWT for an installation access token. */
+/**
+ * Module-scope cache of installation tokens, keyed by installation id. A GitHub
+ * installation token lives ~1 hour; minting a fresh one means signing a JWT and
+ * a token round-trip on every feedback submission. The cached token is reused
+ * until `SKEW_MS` before its real `expires_at`, then re-minted.
+ *
+ * The cache lives only as long as the isolate — a cold start just re-mints.
+ */
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+/** Re-mint this far before the real expiry to absorb clock skew + latency. */
+const SKEW_MS = 5 * 60 * 1000;
+
+/** Exchange the App JWT for an installation access token (cached). */
 async function installationToken(env: Env): Promise<string> {
+  const installId = env.GITHUB_INSTALLATION_ID;
+  const cached = tokenCache.get(installId);
+  if (cached && cached.expiresAt - SKEW_MS > Date.now()) {
+    return cached.token;
+  }
+
   const jwt = await appJwt(env);
   const res = await fetch(
-    `${GH_API}/app/installations/${env.GITHUB_INSTALLATION_ID}/access_tokens`,
+    `${GH_API}/app/installations/${installId}/access_tokens`,
     {
       method: "POST",
       headers: {
@@ -65,7 +83,15 @@ async function installationToken(env: Env): Promise<string> {
     // Status only — the response body can echo request detail / secrets.
     throw new Error(`installation token request failed: ${res.status}`);
   }
-  const json = (await res.json()) as { token: string };
+  const json = (await res.json()) as { token: string; expires_at?: string };
+  // `expires_at` is an ISO-8601 string; fall back to a conservative 50 min if
+  // GitHub ever omits it so a missing field never produces a stale cache hit.
+  const expiresAt = json.expires_at
+    ? Date.parse(json.expires_at)
+    : Date.now() + 50 * 60 * 1000;
+  if (Number.isFinite(expiresAt)) {
+    tokenCache.set(installId, { token: json.token, expiresAt });
+  }
   return json.token;
 }
 

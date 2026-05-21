@@ -76,8 +76,56 @@ describe("buildIssue", () => {
       context: { appVersion: "4.11.1", demoId: "lighting" },
       viewerUrl: "https://w/feedback/abc",
     });
-    expect(r.body).toContain("| App version | 4.11.1 |");
+    // Context values are Markdown-escaped (dots in the version are escaped).
+    expect(r.body).toContain("| App version | 4\\.11\\.1 |");
     expect(r.body).toContain("| Demo | lighting |");
     expect(r.body).toContain("https://w/feedback/abc");
+  });
+
+  it("renders user text inside a fenced code block (no Markdown injection)", () => {
+    const r = buildIssue({
+      id: "abc",
+      category: "bug",
+      transcript: "",
+      text: "![pixel](https://evil.example/track.gif)",
+      context: {},
+      viewerUrl: "u",
+    });
+    // The image is rendered verbatim inside a fence, never as live Markdown.
+    expect(r.body).toContain("````text");
+    expect(r.body).toContain("![pixel](https://evil.example/track.gif)");
+    // The fenced description block keeps the literal text on its own line.
+    expect(r.body).toContain(
+      "\n![pixel](https://evil.example/track.gif)\n",
+    );
+  });
+
+  it("neutralises a fence-breakout attempt in the transcript", () => {
+    const r = buildIssue({
+      id: "abc",
+      category: "bug",
+      transcript: "ok\n```\n[phish](https://evil.example)\n```\nmore",
+      text: "",
+      context: {},
+      viewerUrl: "u",
+    });
+    // A raw 3-backtick run inside the content must not survive intact —
+    // it cannot terminate the 4-backtick fence early.
+    expect(r.body).not.toContain("\n```\n");
+    // The 4-backtick fence delimiter itself is still present.
+    expect(r.body).toContain("````text");
+  });
+
+  it("escapes Markdown link syntax in context values", () => {
+    const r = buildIssue({
+      id: "abc",
+      category: "bug",
+      transcript: "t",
+      text: "",
+      context: { device: "[click](https://evil.example)" },
+      viewerUrl: "u",
+    });
+    expect(r.body).not.toContain("[click](https://evil.example)");
+    expect(r.body).toContain("\\[click\\]");
   });
 });
