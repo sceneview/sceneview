@@ -407,6 +407,19 @@ model?.stopAllAnimations()
 | `rememberCameraManipulator()` | `.cameraControls(.orbit)` view modifier |
 | `AnchorNode(anchor)` | `AnchorNode.world(position:)` |
 | `PhysicsNode(node, mass)` | `PhysicsNode.dynamic(entity, mass:)` |
+| `SpatialAudioNode { }` composable (v4.12.0+, `#1900`) | `SpatialAudioNode.spatial(named:falloff:loop:)` — see [Spatial Audio & Haptic parity](#spatial-audio--haptic-parity-1900-1901) below |
+| `rememberHapticFeedback()` (v4.12.0+, `#1901`) | `SceneViewHaptic()` — see [Spatial Audio & Haptic parity](#spatial-audio--haptic-parity-1900-1901) below |
+
+### Spatial Audio & Haptic parity (#1900, #1901)
+
+v4.12.0 shipped Spatial Audio (#1900) and Haptic Feedback (#1901). **Both are
+implemented on iOS** — they are *not* Android-only — but with platform-native
+backends, so the API shape differs slightly:
+
+| Feature | Android | iOS | iOS maturity |
+|---|---|---|---|
+| **Spatial Audio** | `SpatialAudioNode { }` composable, `AudioSource`, `AudioFalloff`, `AudioController` | `SpatialAudioNode.spatial(named:in:falloff:loop:autoPlay:volume:pitch:)`, `.audioListener(_:)` view modifier — backed by RealityKit `SpatialAudioComponent` / `Entity.playAudio` | **Shipped (phase 1)**. Positional pan + distance falloff work natively. Known phase-1 limits: `pitch` is stored but not applied (no `AudioPlaybackController` pitch knob in RealityKit), `seek` only supports rewind-to-0, `.audioListener(.anchor)` falls back to `.camera`. Phase 2 (PHASE engine: occlusion, reverb, pitch) tracked in [#1900](https://github.com/sceneview/sceneview/issues/1900). |
+| **Haptic Feedback** | `rememberHapticFeedback()` → `SceneViewHaptic` (`light()`/`medium()`/`heavy()`/`success()`/`warning()`/`error()`/`selection()`, `continuous(intensity:durationMs:)`, `pattern(_:)`) | `SceneViewHaptic()` / `SceneViewHaptic.shared` — same semantic preset surface, `continuous(intensity:durationMs:)` + `pattern(_:)` backed by Core Haptics with `UIFeedbackGenerator` fallback | **Shipped — full parity**. All seven presets, `HapticEvent`/`HapticPreset`, and Core Haptics patterns are implemented. Gracefully degrades to the preset generators on devices without Core Haptics. iOS-only (no macOS/visionOS — guarded by `#if os(iOS)`). |
 
 ---
 

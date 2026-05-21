@@ -458,7 +458,6 @@ SPM_FILES=(
     docs/docs/codelabs/codelab-3d-swiftui.md
     docs/docs/codelabs/codelab-ar-swiftui.md
     docs/docs/llms.txt
-    website-static/llms.txt
     website-static/.well-known/llms.txt
     website-static/playground.html
     .github/copilot-instructions.md
@@ -555,7 +554,7 @@ done
 # geometry-demo.html, playground.html) and the AI-context llms.txt mirrors.
 for webfile in website-static/index.html website-static/web.html \
                website-static/geometry-demo.html website-static/playground.html \
-               website-static/llms.txt website-static/llms-full.txt \
+               website-static/llms-full.txt \
                website-static/.well-known/llms.txt; do
     F="$REPO_ROOT/$webfile"
     if [ -f "$F" ]; then
@@ -1070,7 +1069,7 @@ with open('$WEBSITE_JS_PKG', 'w') as f:
                  docs/docs/codelabs/codelab-3d-compose.md docs/docs/codelabs/codelab-ar-compose.md \
                  website-static/index.html website-static/web.html \
                  website-static/geometry-demo.html website-static/playground.html \
-                 website-static/llms.txt website-static/llms-full.txt \
+                 website-static/llms-full.txt \
                  website-static/.well-known/llms.txt; do
             F="$REPO_ROOT/$f"
             if [ -f "$F" ] && grep -q "io\.github\.sceneview:[^:]*:$OLD_V" "$F" 2>/dev/null; then

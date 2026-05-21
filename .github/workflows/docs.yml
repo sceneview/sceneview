@@ -68,6 +68,16 @@ jobs:
           # been removed from source; this guards against it returning.
           rm -rf site/docs
 
+          # Defensive: `site/llms.txt` must be the canonical root `llms.txt`
+          # copied in step 3, NOT a stale `website-static/llms.txt`. A copy
+          # of `llms.txt` under `website-static/` used to drift 12 versions
+          # behind and shadow the root file via the `[ ! -f site/llms.txt ]`
+          # guard in step 3 (#1956). The stale copy has been removed from
+          # source; this guards against it returning. (`llms-full.txt` is
+          # NOT removed here — `website-static/llms-full.txt` is a real,
+          # version-synced file with no canonical root counterpart.)
+          rm -f site/llms.txt
+
           touch site/.nojekyll
 
       # ── 2. Build MkDocs (technical docs — /docs/) ───────────────────────
