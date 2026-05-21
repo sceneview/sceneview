@@ -19,6 +19,8 @@ import io.github.sceneview.material.setMetallic
 import io.github.sceneview.material.setParameter
 import io.github.sceneview.material.setReflectance
 import io.github.sceneview.material.setRoughness
+import io.github.sceneview.material.setSemanticsOpacity
+import io.github.sceneview.material.setSemanticsTexture
 import io.github.sceneview.material.setTexture
 import io.github.sceneview.math.Color
 import io.github.sceneview.math.colorOf
@@ -89,6 +91,9 @@ class MaterialLoader(
     }
     private val occlusionMaterial by lazy {
         createMaterial("$kMaterialsAssetFolder/occlusion.filamat")
+    }
+    private val semanticsOverlayMaterial by lazy {
+        createMaterial("$kMaterialsAssetFolder/semantics_overlay.filamat")
     }
 
     private val materials = java.util.Collections.synchronizedList(mutableListOf<Material>())
@@ -428,6 +433,50 @@ class MaterialLoader(
      */
     @MainThread
     fun createOcclusionInstance(): MaterialInstance = createInstance(occlusionMaterial)
+
+    /**
+     * Creates a [MaterialInstance] of the **Scene Semantics overlay material** — a transparent,
+     * unlit material that color-codes ARCore's per-pixel semantic segmentation (#1730 / #1868).
+     *
+     * The material samples a single-channel `R8` texture whose red channel is a
+     * [`SemanticLabel`](https://developers.google.com/ar/reference/java/com/google/ar/core/SemanticLabel)
+     * ordinal (`0..11`, scaled to `[0, 1]` — i.e. `ordinal / 255f` on upload). Each pixel is
+     * mapped to one of the 12 fixed outdoor-class colours baked into the shader:
+     *
+     * `SKY` · `BUILDING` · `TREE` · `ROAD` · `SIDEWALK` · `TERRAIN` · `STRUCTURE` · `OBJECT` ·
+     * `VEHICLE` · `PERSON` · `WATER` · `UNLABELED`.
+     *
+     * `UNLABELED` pixels stay fully transparent so the live camera feed shows through any
+     * un-classified region — only confident classes are tinted.
+     *
+     * **Usage** — upload `Frame.semanticImage()` (an `R8` raster) into a Filament [Texture],
+     * then drive a full-screen quad with this instance. The [opacity] parameter blends the
+     * overlay against the camera feed (`0f` = camera only, `1f` = full overlay):
+     *
+     * ```kotlin
+     * val overlay = materialLoader.createSemanticsOverlayInstance(semanticTexture, opacity = 0.6f)
+     * // each frame: re-upload the semantic raster into `semanticTexture`, then
+     * overlay.setSemanticsOpacity(blendSlider)
+     * ```
+     *
+     * Android / ARCore only — the on-device Scene Semantics ML model has no iOS / Web
+     * equivalent. Outdoor scenes only (the model has no indoor training data). See the
+     * `ARSceneSemanticsDemo` sample for the full per-frame upload + blend wiring.
+     *
+     * @param semanticTexture single-channel `R8` texture holding the per-pixel label ordinal.
+     * @param opacity global overlay alpha in `[0, 1]`; clamped in-shader.
+     *
+     * @see io.github.sceneview.material.setSemanticsTexture
+     * @see io.github.sceneview.material.setSemanticsOpacity
+     */
+    @MainThread
+    fun createSemanticsOverlayInstance(
+        semanticTexture: Texture,
+        opacity: Float = 1.0f
+    ): MaterialInstance = createInstance(semanticsOverlayMaterial).apply {
+        setSemanticsTexture(semanticTexture)
+        setSemanticsOpacity(opacity)
+    }
 
     fun destroyMaterial(material: Material) {
         if (material in materials) {

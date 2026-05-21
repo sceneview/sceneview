@@ -1502,7 +1502,22 @@ probe; on unsupported devices `ARSceneView` silently downgrades to `DISABLED` ra
 throwing. **`semanticLabelFraction` returns 0f** when semantics are disabled or not yet
 available — making "place on TERRAIN" rules naturally wait for the first usable frame.
 
-Sample: `ARSceneSemanticsDemo` (Android demo registry id `ar-scene-semantics`).
+**Visualizing the segmentation (#1868).** To render the per-pixel labels as a tinted overlay
+instead of just reading them, use the built-in `semantics_overlay.filamat` material. Upload the
+`semanticImage()` R8 raster into a Filament `R8` `Texture`, then paint a quad with the overlay
+material instance — the shader maps each of the 12 label ordinals to a fixed colour (`UNLABELED`
+stays transparent):
+
+```kotlin
+import io.github.sceneview.material.setSemanticsOpacity
+
+// `opacity` blends camera (0f) ↔ semantic overlay (1f); re-upload the texture each frame.
+val overlay = materialLoader.createSemanticsOverlayInstance(semanticTexture, opacity = 0.6f)
+overlay.setSemanticsOpacity(blendSlider)   // MaterialInstance.setSemanticsTexture also exists
+```
+
+Sample: `ARSceneSemanticsDemo` (Android demo registry id `ar-scene-semantics`) — a camera ↔
+semantic blend slider over the overlay material, plus the top-3 label HUD.
 
 ### AugmentedImageNode — image tracking
 ```kotlin
@@ -1986,6 +2001,14 @@ class MaterialLoader(engine: Engine, context: Context) {
     // For AR depth from the camera image, use ARCameraStream.isDepthOcclusionEnabled
     // instead (per-pixel depth from ARCore, not a static mesh).
     fun createOcclusionInstance(): MaterialInstance
+
+    // Scene Semantics overlay material (#1868) — colour-codes ARCore's 12-class
+    // per-pixel outdoor segmentation. `semanticTexture` is an R8 Texture holding
+    // the `Frame.semanticImage()` label ordinals; `opacity` blends 0f..1f.
+    // Pair with MaterialInstance.setSemanticsTexture / setSemanticsOpacity.
+    fun createSemanticsOverlayInstance(
+        semanticTexture: Texture, opacity: Float = 1.0f
+    ): MaterialInstance
 
     // Texture material
     fun createTextureInstance(texture: Texture, ...): MaterialInstance
