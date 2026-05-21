@@ -5,19 +5,15 @@ import com.google.android.filament.Engine
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Scene
 import com.google.ar.core.Frame
-import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
-import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.PlaneVisualizer
 import io.github.sceneview.ar.arcore.firstByTypeOrNull
 import io.github.sceneview.ar.arcore.fps
 import io.github.sceneview.ar.arcore.getUpdatedPlanes
 import io.github.sceneview.ar.arcore.hitTest
 import io.github.sceneview.ar.arcore.isTracking
-import io.github.sceneview.ar.arcore.position
-import io.github.sceneview.ar.arcore.zDirection
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.material.setParameter
 import io.github.sceneview.material.setTexture
@@ -63,7 +59,6 @@ class PlaneRenderer(
             setParameter(MATERIAL_UV_SCALE, scaleX, scaleY)
 
             setParameter(MATERIAL_COLOR, Color(1.0f, 1.0f, 1.0f))
-            setParameter(MATERIAL_SPOTLIGHT_RADIUS, SPOTLIGHT_RADIUS)
         }
     }
 
@@ -85,9 +80,6 @@ class PlaneRenderer(
      * The default mode is `RENDER_TOP_MOST`
      */
     var planeRendererMode = PlaneRendererMode.RENDER_CENTER
-
-    // Distance from the camera to last plane hit, default value is 4 meters (standing height).
-    private var planeHitDistance = 4.0f
 
     /**
      * ### Adjust the max screen [ArFrame.hitTest] number per seconds
@@ -158,10 +150,8 @@ class PlaneRenderer(
                     if (planeRendererMode == PlaneRendererMode.RENDER_ALL) {
                         updatedPlanes.forEach { renderPlane(it) }
                     } else if (planeRendererMode == PlaneRendererMode.RENDER_CENTER) {
-                        // Do a hitTest on the current frame. The result is used to calculate a
-                        // focusPoint and to render the top most plane Trackable if planeRendererMode is
-                        // set to RENDER_TOP_MOST
-
+                        // Do a hitTest on the current frame. The result is used to render only
+                        // the top most plane Trackable visible at the centre of the screen.
                         val centerPlane = if (isVisible) {
                             // Don't make the hit test if we don't need to know the center plane
                             frame.hitTest(viewSize.width / 2.0f, viewSize.height / 2.0f)
@@ -169,16 +159,6 @@ class PlaneRenderer(
                                     planeTypes = setOf(Plane.Type.HORIZONTAL_UPWARD_FACING)
                                 )?.trackable as? Plane
                         } else null
-//                        if (centerPlane != null) {
-//                            // Calculate the focusPoint. It is used to determine the position of
-//                            // the visualized grid.
-//                                val focusPoint = getFocusPoint(arFrame.frame, hitResult)
-//                                materialInstance?.setParameter(
-//                                    MATERIAL_SPOTLIGHT_FOCUS_POINT,
-//                                    focusPoint
-//                                )
-//                            renderPlane(centerPlane)
-//                        }
                         updatedPlanes.forEach { renderPlane(it, visible = it == centerPlane) }
                         visualizers.forEach { (plane, visualizer) ->
                             if (plane !in updatedPlanes) {
@@ -255,26 +235,6 @@ class PlaneRenderer(
     }
 
     /**
-     * ### Calculate the FocusPoint based on a [HitResult] on the current [Frame]
-     *
-     * The FocusPoint is used to determine the position of the visualized plane.
-     * If the [HitResult] is null, we use the last known distance of the camera to the last hit
-     * plane.
-     */
-    private fun getFocusPoint(frame: Frame, hit: HitResult?): Float3 {
-        return if (hit != null) {
-            planeHitDistance = hit.distance
-            hit.hitPose.position
-        } else {
-            // If we didn't hit anything, project a point in front of the camera so that the spotlight
-            // rolls off the edge smoothly.
-            val cameraPose = frame.camera.pose
-            // -Z is in front of camera
-            cameraPose.position + cameraPose.zDirection * -planeHitDistance
-        }
-    }
-
-    /**
      * Use this enum to configure the Plane Rendering.
      *
      * For performance reasons use `RENDER_TOP_MOST`.
@@ -309,19 +269,8 @@ class PlaneRenderer(
         const val MATERIAL_COLOR = "color"
 
         /**
-         * Float material parameter to control the radius of the spotlight.
-         */
-        const val MATERIAL_SPOTLIGHT_RADIUS = "radius"
-
-        /**
-         * Float3 material parameter to control the grid visualization point.
-         */
-        private const val MATERIAL_SPOTLIGHT_FOCUS_POINT = "focusPoint"
-
-        /**
          * Used to control the UV Scale for the default texture.
          */
         private const val BASE_UV_SCALE = 8.0f
-        private const val SPOTLIGHT_RADIUS = 0.5f
     }
 }
