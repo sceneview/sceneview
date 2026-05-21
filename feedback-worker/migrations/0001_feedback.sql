@@ -5,8 +5,14 @@ CREATE TABLE IF NOT EXISTS feedback (
   id            TEXT    PRIMARY KEY,                              -- uuid v4
   created_at    TEXT    NOT NULL DEFAULT (datetime('now')),       -- server receipt time
   category      TEXT    NOT NULL CHECK (category IN ('bug', 'idea')),
+  -- 'new'    : received, issue not yet created
+  -- 'issued' : GitHub issue created (see github_issue / github_url)
+  -- 'error'  : issue creation skipped (quota) or failed (GitHub error)
+  -- Media expiry is tracked by media_purged, NOT status — a purged record
+  -- keeps its 'new'/'issued'/'error' status so it stays honest about whether
+  -- the GitHub issue was ever created.
   status        TEXT    NOT NULL DEFAULT 'new'
-                        CHECK (status IN ('new', 'issued', 'error', 'purged')),
+                        CHECK (status IN ('new', 'issued', 'error')),
   transcript    TEXT,                                            -- Whisper output (user's language)
   context_json  TEXT,                                            -- device / OS / app version / demo
   video_key     TEXT,                                            -- R2 key, NULL once purged

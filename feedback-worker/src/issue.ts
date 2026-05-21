@@ -59,6 +59,7 @@ const CONTEXT_LABELS: Record<string, string> = {
   demoTitle: "Demo title",
   locale: "Locale",
   freeRamMb: "Free RAM (MB)",
+  transcriptLanguage: "Transcript language",
 };
 
 const MAX_BODY = 60_000;

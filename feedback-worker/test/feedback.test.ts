@@ -67,8 +67,15 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
+/** Records the body of the POST /issues request so a test can assert on it. */
+const lastIssueBody: { value: string | null } = { value: null };
+
 function stubGitHub(opts: { issueFails?: boolean } = {}) {
-  globalThis.fetch = (async (input: unknown, init?: { method?: string }) => {
+  lastIssueBody.value = null;
+  globalThis.fetch = (async (
+    input: unknown,
+    init?: { method?: string; body?: unknown },
+  ) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     if (url.endsWith("/access_tokens") && method === "POST") {
@@ -83,6 +90,7 @@ function stubGitHub(opts: { issueFails?: boolean } = {}) {
       return new Response(JSON.stringify({ id: 1 }), { status: 201 });
     }
     if (url.endsWith("/issues") && method === "POST") {
+      if (typeof init?.body === "string") lastIssueBody.value = init.body;
       return opts.issueFails
         ? new Response("server error", { status: 500 })
         : new Response(
@@ -201,14 +209,32 @@ describe("feedback worker", () => {
     ).toBe(true);
   });
 
-  it("returns 202 and records an error when issue creation fails", async () => {
+  it("surfaces the Whisper-detected transcript language in the issue context", async () => {
+    stubGitHub();
+    const env = makeEnv();
+    // makeEnv()'s AI.run reports transcription_info.language = "en".
+    const res = await postFeedback(feedbackForm("bug"), asEnv(env));
+    expect(res.status).toBe(201);
+    expect(lastIssueBody.value).not.toBeNull();
+    const posted = JSON.parse(lastIssueBody.value!) as { body: string };
+    expect(posted.body).toContain("| Transcript language | en |");
+  });
+
+  it("returns 202 with reason 'github_error' when issue creation fails", async () => {
     stubGitHub({ issueFails: true });
     const env = makeEnv();
     const res = await postFeedback(feedbackForm("bug"), asEnv(env));
     expect(res.status).toBe(202);
-    const json = (await res.json()) as { ok: boolean; issue: number | null };
+    const json = (await res.json()) as {
+      ok: boolean;
+      issue: number | null;
+      reason: string;
+    };
     expect(json.ok).toBe(true);
     expect(json.issue).toBeNull();
+    // The reason field distinguishes a GitHub-side failure from a deliberate
+    // quota throttle — both share the 202 status.
+    expect(json.reason).toBe("github_error");
     expect(env.DB._statements.map((s) => s.sql).join(" | ")).toContain(
       "status = 'error'",
     );
@@ -387,7 +413,7 @@ describe("feedback worker", () => {
     expect(res.status).toBe(413);
   });
 
-  it("skips issue creation when the global hourly quota is exhausted", async () => {
+  it("skips issue creation with reason 'quota' when the global hourly quota is exhausted", async () => {
     stubGitHub();
     const env = makeEnv();
     // Pre-fill the current hour's global issue-quota bucket to the cap.
@@ -395,12 +421,34 @@ describe("feedback worker", () => {
     env.RL_KV._store.set(`issuequota:${bucket}`, "30");
     const res = await postFeedback(feedbackForm("bug"), asEnv(env));
     expect(res.status).toBe(202);
-    const json = (await res.json()) as { ok: boolean; issue: number | null };
+    const json = (await res.json()) as {
+      ok: boolean;
+      issue: number | null;
+      reason: string;
+    };
     expect(json.ok).toBe(true);
     expect(json.issue).toBeNull();
+    // A deliberate throttle reports 'quota' — distinct from 'github_error'.
+    expect(json.reason).toBe("quota");
     expect(env.DB._statements.map((s) => s.sql).join(" | ")).toContain(
       "status = 'error'",
     );
+  });
+
+  it("rejects an empty-string Content-Length header (411)", async () => {
+    // `Number("")` is `0`, so an empty header would otherwise slip through as
+    // a zero-length body — the guard rejects it explicitly.
+    const res = await postFeedback(feedbackForm("bug"), asEnv(makeEnv()), {
+      "content-length": "",
+    });
+    expect(res.status).toBe(411);
+  });
+
+  it("rejects a whitespace-only Content-Length header (411)", async () => {
+    const res = await postFeedback(feedbackForm("bug"), asEnv(makeEnv()), {
+      "content-length": "   ",
+    });
+    expect(res.status).toBe(411);
   });
 
   it("deletes orphaned R2 media when the D1 insert fails", async () => {

@@ -82,6 +82,18 @@ describe("buildIssue", () => {
     expect(r.body).toContain("https://w/feedback/abc");
   });
 
+  it("renders the Whisper-detected transcript language with a friendly label", () => {
+    const r = buildIssue({
+      id: "abc",
+      category: "bug",
+      transcript: "the spinner never stops",
+      text: "",
+      context: { transcriptLanguage: "en" },
+      viewerUrl: "https://w/feedback/abc",
+    });
+    expect(r.body).toContain("| Transcript language | en |");
+  });
+
   it("renders user text inside a fenced code block (no Markdown injection)", () => {
     const r = buildIssue({
       id: "abc",
