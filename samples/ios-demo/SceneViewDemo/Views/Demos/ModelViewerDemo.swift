@@ -121,7 +121,7 @@ struct ModelViewerDemo: View {
             guard !surpriseInFlight else { return }
             Task { await rollSurpriseModel() }
             #if os(iOS)
-            HapticManager.mediumTap()
+            SceneViewHaptic.shared.medium()
             #endif
         } label: {
             HStack(spacing: 8) {

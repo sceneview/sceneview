@@ -85,7 +85,7 @@ struct MaterialsDemo: View {
                         Button {
                             selectedIndex = index
                             #if os(iOS)
-                            HapticManager.lightTap()
+                            SceneViewHaptic.shared.light()
                             #endif
                         } label: {
                             Text(slug.displayName)

@@ -278,7 +278,7 @@ struct ExploreTab: View {
                 if !q.isEmpty {
                     recentSearches.push(q)
                     #if os(iOS)
-                    HapticManager.lightTap()
+                    SceneViewHaptic.shared.light()
                     #endif
                 }
             }
@@ -401,7 +401,7 @@ struct ExploreTab: View {
                 FilterChip(label: "Animated", systemImage: "wand.and.stars", isOn: animatedOnly) {
                     animatedOnly.toggle()
                     #if os(iOS)
-                    HapticManager.selectionChanged()
+                    SceneViewHaptic.shared.selection()
                     #endif
                     reloadWithFilters()
                 }
@@ -434,7 +434,7 @@ struct ExploreTab: View {
                             viewingFeedID = feedID
                             viewingSketchfabModel = model
                             #if os(iOS)
-                            HapticManager.lightTap()
+                            SceneViewHaptic.shared.light()
                             #endif
                         }
                     }
@@ -470,7 +470,7 @@ struct ExploreTab: View {
                         FeaturedCard(model: model) {
                             selectedModel = model
                             #if os(iOS)
-                            HapticManager.lightTap()
+                            SceneViewHaptic.shared.light()
                             #endif
                         }
                     }
@@ -494,7 +494,7 @@ struct ExploreTab: View {
                     CategoryChip(category: category) {
                         selectedCategory = category
                         #if os(iOS)
-                        HapticManager.selectionChanged()
+                        SceneViewHaptic.shared.selection()
                         #endif
                     }
                 }
@@ -1051,7 +1051,7 @@ struct ModelViewerScreen: View {
                 Button {
                     favoritesManager.toggle(model.id)
                     #if os(iOS)
-                    HapticManager.lightTap()
+                    SceneViewHaptic.shared.light()
                     #endif
                 } label: {
                     Image(systemName: favoritesManager.isFavorite(model.id) ? "heart.fill" : "heart")
@@ -1062,7 +1062,7 @@ struct ModelViewerScreen: View {
                 Button {
                     autoRotate.toggle()
                     #if os(iOS)
-                    HapticManager.selectionChanged()
+                    SceneViewHaptic.shared.selection()
                     #endif
                 } label: {
                     Image(systemName: autoRotate ? "rotate.3d.fill" : "rotate.3d")
@@ -1148,7 +1148,7 @@ struct ModelViewerScreen: View {
             if Bundle.main.url(forResource: model.asset, withExtension: "usdz") != nil {
                 Button {
                     arPreviewURL = Bundle.main.url(forResource: model.asset, withExtension: "usdz")
-                    HapticManager.lightTap()
+                    SceneViewHaptic.shared.light()
                 } label: {
                     Label("View in AR", systemImage: "arkit")
                         .font(.subheadline.weight(.semibold))
@@ -1168,7 +1168,7 @@ struct ModelViewerScreen: View {
                         Button {
                             selectedEnvironment = env
                             #if os(iOS)
-                            HapticManager.lightTap()
+                            SceneViewHaptic.shared.light()
                             #endif
                         } label: {
                             Text(env.name)
@@ -1349,7 +1349,7 @@ struct SketchfabModelViewerScreen: View {
                 Button {
                     autoRotate.toggle()
                     #if os(iOS)
-                    HapticManager.selectionChanged()
+                    SceneViewHaptic.shared.selection()
                     #endif
                 } label: {
                     Image(systemName: autoRotate ? "rotate.3d.fill" : "rotate.3d")
@@ -1379,7 +1379,7 @@ struct SketchfabModelViewerScreen: View {
                 try? await Task.sleep(for: .milliseconds(220))
                 withAnimation(.easeOut(duration: 0.6)) { sceneRevealed = true }
                 #if os(iOS)
-                HapticManager.lightTap()
+                SceneViewHaptic.shared.light()
                 #endif
             }
         }
@@ -1433,7 +1433,7 @@ struct SketchfabModelViewerScreen: View {
                 Button {
                     hasUserOpened = true
                     #if os(iOS)
-                    HapticManager.selectionChanged()
+                    SceneViewHaptic.shared.selection()
                     #endif
                 } label: {
                     Label(model.downloadable ? "Open in SceneView" : "Not downloadable",
@@ -1476,7 +1476,7 @@ struct SketchfabModelViewerScreen: View {
                 errorMessage = nil
                 hasUserOpened = false
                 #if os(iOS)
-                HapticManager.lightTap()
+                SceneViewHaptic.shared.light()
                 #endif
             }
             .buttonStyle(.borderedProminent)
@@ -1583,7 +1583,7 @@ struct SketchfabModelViewerScreen: View {
                         Button {
                             selectedEnvironment = env
                             #if os(iOS)
-                            HapticManager.lightTap()
+                            SceneViewHaptic.shared.light()
                             #endif
                         } label: {
                             Text(env.name)

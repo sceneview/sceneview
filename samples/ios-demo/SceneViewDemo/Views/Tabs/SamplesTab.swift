@@ -90,7 +90,7 @@ struct SamplesTab: View {
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
                                 Button {
-                                    HapticManager.lightTap()
+                                    SceneViewHaptic.shared.light()
                                     fullScreenScene = nil
                                 } label: {
                                     Label("Close", systemImage: "xmark")
@@ -114,7 +114,7 @@ struct SamplesTab: View {
                     Button {
                         filter = option
                         #if os(iOS)
-                        HapticManager.selectionChanged()
+                        SceneViewHaptic.shared.selection()
                         #endif
                     } label: {
                         HStack(spacing: 6) {
@@ -166,7 +166,7 @@ struct SamplesTab: View {
 
     private func handleTap(_ scene: DemoItem) {
         #if os(iOS)
-        HapticManager.lightTap()
+        SceneViewHaptic.shared.light()
         if Self.shouldOpenFullScreen(scene) {
             fullScreenScene = scene
         } else {
