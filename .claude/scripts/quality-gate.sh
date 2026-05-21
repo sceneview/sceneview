@@ -131,8 +131,12 @@ done
 LP_TRACKED=$(git ls-files "local.properties" 2>/dev/null | wc -l | tr -d ' ')
 [ "$LP_TRACKED" -eq 0 ] && check "local.properties not tracked" "PASS" "" || check "local.properties tracked" "FAIL" "Contains local paths/secrets"
 
-# Check for API keys in staged changes
-STAGED_KEYS=$(git diff --cached 2>/dev/null | grep -c "AIza\|sk-\|AKIA\|ghp_\|npm_\|PRIVATE_KEY" 2>/dev/null || true)
+# Check for API keys in ADDED lines of staged changes.
+# Patterns are anchored to each provider's real key shape — a bare `sk-`
+# substring matched `disk-full`, `task-*`, `npm_install`, etc. (false positives,
+# notably on large file deletions). Scan only added lines (`^+`) so removing a
+# secret never fails the gate.
+STAGED_KEYS=$(git diff --cached 2>/dev/null | grep '^+' | grep -cE 'AIza[A-Za-z0-9_-]{35}|sk-[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16}|ghp_[A-Za-z0-9]{36}|npm_[A-Za-z0-9]{36}|-----BEGIN [A-Z ]*PRIVATE KEY-----' 2>/dev/null || true)
 STAGED_KEYS=$(echo "$STAGED_KEYS" | tr -d '[:space:]' | head -c 10)
 [ -z "$STAGED_KEYS" ] && STAGED_KEYS=0
 [ "$STAGED_KEYS" -eq 0 ] 2>/dev/null && check "No API keys in staged changes" "PASS" "" || check "API keys in staged changes" "FAIL" "$STAGED_KEYS matches"
