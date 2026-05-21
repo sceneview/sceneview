@@ -774,9 +774,23 @@ fun ARSceneView(
 
     val nodeManager = remember(scene, collisionSystem) { SceneNodeManager(scene, collisionSystem) }
 
-    SideEffect {
+    // Baseline IBL + skybox setup. Applied ONCE per `environment` instance change,
+    // not on every recomposition (#1611). The per-frame `onARFrame` rebuild path
+    // overwrites `scene.indirectLight` with a fresh IBL each time ARCore surfaces
+    // a new light estimate; running this initialiser inside `SideEffect` instead
+    // would reset the rebuilt IBL on the *next* recomposition (which fires every
+    // frame in demos that surface `latestFrame` / `isTracking` to UI state) and
+    // collapse the scene back to the neutral baseline — which on KTX1-loaded IBLs
+    // is reflections-mostly with limited diffuse SH, producing visible-but-dim
+    // metals at best and flat-black models at worst. `LaunchedEffect(environment)`
+    // restores the baseline only when the env instance actually changes (initial
+    // composition, environment swap by the caller).
+    LaunchedEffect(environment, scene) {
         scene.indirectLight = environment.indirectLight
         scene.skybox = environment.skybox
+    }
+
+    SideEffect {
         view.scene = scene
         view.camera = cameraNode.camera
         cameraNode.collisionSystem = collisionSystem
@@ -1099,33 +1113,50 @@ private fun onARFrame(
         // "which texture/SH source do we use" is centralised in
         // [pickIndirectLightSources] so it can be exercised without a
         // Filament engine (see `IndirectLightRebuildDecisionTest`).
+        //
+        // #1611: skip the rebuild entirely when the resulting IBL would be
+        // incomplete — i.e. either irradiance or reflections cannot be sourced
+        // from estimation AND a baseline fallback is not available. Baseline
+        // KTX1-loaded IBLs typically expose SH coefficients via the native
+        // handle (no `getIrradianceTexture()`) so the legacy fallback
+        // `baseline.irradianceTexture` returned null on them — and the rebuilt
+        // IBL ended up with an explicit empty irradiance source, which
+        // Filament treats as "no diffuse IBL". The visible symptom on Pixel 9
+        // was placed PBR models rendering as flat-black silhouettes during
+        // every transient frame where ARCore surfaced reflections only or
+        // irradiance only. The new gate keeps `scene.indirectLight` on the
+        // last good build (which falls back to `environment.indirectLight`
+        // until the first FULL estimate lands), so partial estimations no
+        // longer collapse the scene to black.
         val indirectLight = environment.indirectLight
-        val sources = pickIndirectLightSources(estimation, indirectLight)
-        val newIbl = IndirectLight.Builder().apply {
-            if (sources.useEstimationIrradiance) {
-                estimation.irradiance?.let { irradiance(3, it) }
-            } else {
-                indirectLight?.irradianceTexture?.let { irradiance(it) }
+        if (shouldRebuildIndirectLight(estimation, indirectLight)) {
+            val sources = pickIndirectLightSources(estimation, indirectLight)
+            val newIbl = IndirectLight.Builder().apply {
+                if (sources.useEstimationIrradiance) {
+                    estimation.irradiance?.let { irradiance(3, it) }
+                } else {
+                    indirectLight?.irradianceTexture?.let { irradiance(it) }
+                }
+                if (sources.useEstimationReflections) {
+                    estimation.reflections?.let { reflections(it) }
+                } else {
+                    indirectLight?.reflectionsTexture?.let { reflections(it) }
+                }
+                indirectLight?.intensity?.let { intensity(it) }
+                indirectLight?.getRotation(null)?.let { rotation(it) }
+            }.build(engine)
+            scene.indirectLight = newIbl
+            // #1756: destroy the IBL we built on the previous estimation update
+            // (tracked via [builtIndirectLightRef]) — independent of what
+            // `scene.indirectLight` happens to be now. The old path captured
+            // `scene.indirectLight` and destroyed it unless it matched the
+            // environment's base IBL; a third party overwriting `scene.indirectLight`
+            // between updates orphaned our previously-built IBL in native heap.
+            // Self-contained ownership tracking closes that leak (the previous
+            // IBL is always destroyed exactly once, when superseded or on dispose).
+            builtIndirectLightRef.getAndSet(newIbl)?.let { previousBuiltIbl ->
+                engine.safeDestroyIndirectLight(previousBuiltIbl)
             }
-            if (sources.useEstimationReflections) {
-                estimation.reflections?.let { reflections(it) }
-            } else {
-                indirectLight?.reflectionsTexture?.let { reflections(it) }
-            }
-            indirectLight?.intensity?.let { intensity(it) }
-            indirectLight?.getRotation(null)?.let { rotation(it) }
-        }.build(engine)
-        scene.indirectLight = newIbl
-        // #1756: destroy the IBL we built on the previous estimation update
-        // (tracked via [builtIndirectLightRef]) — independent of what
-        // `scene.indirectLight` happens to be now. The old path captured
-        // `scene.indirectLight` and destroyed it unless it matched the
-        // environment's base IBL; a third party overwriting `scene.indirectLight`
-        // between updates orphaned our previously-built IBL in native heap.
-        // Self-contained ownership tracking closes that leak (the previous
-        // IBL is always destroyed exactly once, when superseded or on dispose).
-        builtIndirectLightRef.getAndSet(newIbl)?.let { previousBuiltIbl ->
-            engine.safeDestroyIndirectLight(previousBuiltIbl)
         }
     }
 
@@ -1187,6 +1218,59 @@ internal fun pickIndirectLightSources(
         useEstimationReflections = hasReflections,
         hasBaseIndirectLight = baseIndirectLight != null
     )
+}
+
+/**
+ * Returns `true` when the per-frame `IndirectLight` rebuild has enough source
+ * data to produce a visually complete IBL (#1611).
+ *
+ * The rebuild path at [onARFrame] composes a new IBL from a mix of ARCore's
+ * `LightEstimate` (irradiance SH + reflections cubemap) and the environment's
+ * baseline `IndirectLight`. When neither side provides usable data for one of
+ * the two channels, the resulting IBL has an empty source for that channel,
+ * which Filament renders as "no IBL contribution" — diffuse base color goes
+ * black on PBR materials and the placed model reads as a flat silhouette
+ * against the camera feed.
+ *
+ * Skip the rebuild instead. `scene.indirectLight` then keeps whatever the
+ * last good rebuild produced (or the environment baseline, set once per
+ * `environment` change inside [ARSceneView]). The next ARCore estimate that
+ * brings either channel back to a workable state triggers a fresh, complete
+ * rebuild.
+ *
+ * Specifically:
+ *  - **Irradiance is sourceable** when the estimation has SH coefficients, OR
+ *    the baseline exposes an `irradianceTexture`. KTX1-loaded IBLs typically
+ *    expose SH via the native handle (no `irradianceTexture`), so this gates
+ *    fallback only on data Filament can actually consume.
+ *  - **Reflections is sourceable** when the estimation has a freshly-uploaded
+ *    cubemap, OR the baseline exposes a `reflectionsTexture` (the KTX1
+ *    cubemap mip chain, present in the default `rememberAREnvironment`).
+ *
+ * Pure decision logic; extracted out of [onARFrame] so the rule can be pinned
+ * by `IndirectLightRebuildDecisionTest` without spinning up an engine. The
+ * texture nullity check requires a real `IndirectLight`, so the JVM matrix
+ * exercises the "no base IBL" path only — the "base IBL with one texture"
+ * branches are pinned by an instrumented test on a live engine.
+ *
+ * @param estimation the current frame's estimate (must be non-null — caller
+ *   already entered the `?.let { estimation ->` block).
+ * @param baseIndirectLight the environment's baseline IBL, may be null.
+ * @return `true` if a rebuild would produce a complete IBL.
+ */
+internal fun shouldRebuildIndirectLight(
+    estimation: LightEstimator.Estimation,
+    baseIndirectLight: IndirectLight?
+): Boolean {
+    val irradianceAvailable = estimation.irradiance != null ||
+        baseIndirectLight?.irradianceTexture != null
+    val reflectionsAvailable = estimation.reflections != null ||
+        baseIndirectLight?.reflectionsTexture != null
+    // Require at least one fresh estimation channel — otherwise rebuilding
+    // simply duplicates the baseline, wasting an `IndirectLight.Builder.build()`
+    // call per frame plus the destroy on the next update.
+    val anyFresh = estimation.irradiance != null || estimation.reflections != null
+    return anyFresh && irradianceAvailable && reflectionsAvailable
 }
 
 /**

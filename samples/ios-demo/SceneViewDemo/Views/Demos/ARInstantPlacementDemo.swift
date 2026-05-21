@@ -129,7 +129,7 @@ struct ARInstantPlacementDemo: View {
             arViewRef.value = arView
             placedAnchors.append(anchor.entity)
             #if os(iOS)
-            HapticManager.lightTap()
+            SceneViewHaptic.shared.light()
             #endif
         } catch {
             // Silently keep the user in tap-to-retry mode (Android parity).
@@ -147,7 +147,7 @@ struct ARInstantPlacementDemo: View {
         }
         placedAnchors.removeAll()
         #if os(iOS)
-        HapticManager.mediumTap()
+        SceneViewHaptic.shared.medium()
         #endif
     }
 
@@ -218,7 +218,7 @@ struct ARInstantPlacementDemo: View {
         Button {
             action()
             #if os(iOS)
-            HapticManager.selectionChanged()
+            SceneViewHaptic.shared.selection()
             #endif
         } label: {
             Text(label)

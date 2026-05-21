@@ -16,7 +16,7 @@ A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it
 
 ```swift
 // Package.swift or Xcode SPM
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.1")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.2")
 ```
 
 ```swift
@@ -463,6 +463,27 @@ silent stub.
 | `SurfaceType.texture` | RealityKit always renders to `MTKView` | N/A — no port needed |
 | `StreetscapeGeometry` | ARGeoTrackingConfiguration exists but no mesh equivalent | iOS-skip with doc warning |
 | `TerrainAnchor / RooftopAnchor` (geo-anchored to terrain or rooftop) | `ARGeoAnchor` only does ground; rooftop has no ARKit equivalent | iOS-skip with doc warning |
+| `Config.SemanticMode.ENABLED` + `Frame.semanticImage()` / `.semanticConfidenceImage()` / `.semanticLabelFraction(label)` (#1730) | ARKit has no equivalent per-pixel outdoor classifier — the closest primitive is `ARFrame.detectedBody.skeleton` (single-person joints, not pixel labels) | iOS-skip with doc warning. Apps that need semantic-aware placement on iOS must ship their own Vision/Core ML segmentation model; AR-engine integration is not on the SceneViewSwift roadmap. |
+
+### AR Depth & Cloud Anchors — May 2026 sprint (#1813)
+
+The May 2026 AR sprint shipped four new Android-only public surfaces. Each has a
+documented RealityKit / ARKit counterpart — the table below maps them so AI-generated
+SceneViewSwift code can pick the closest native primitive instead of asking for the
+Android API name. Implementation issues are tracked under `platform: ios`.
+
+| Android API | iOS counterpart | Migration note |
+|---|---|---|
+| `DepthMeshNode` + `rememberDepthMesh` (renderable depth mesh) | ARKit `ARMeshAnchor` via [Scene Reconstruction](https://developer.apple.com/documentation/arkit/arconfiguration/sceneReconstruction) (`ARWorldTrackingConfiguration.sceneReconstruction = .mesh`) — LiDAR-only (iPad Pro / iPhone Pro / Vision Pro). Not yet wrapped — tracked in [#1860](https://github.com/sceneview/sceneview/issues/1860). | iOS surfaces the real-world mesh as a stream of `ARMeshAnchor`s with `MTLBuffer`-backed geometry. There is no ARCore-style depth image; the mesh comes directly from the LiDAR fusion pipeline. Devices without LiDAR have no equivalent — fall back to plane detection. |
+| `DepthCollider` + `rememberDepthCollider` (depth → physics collider) | `ARMeshAnchor` geometry → `CollisionComponent` with a `ShapeResource.generateConvex(from:)` / `.generateStaticMesh(positions:faceIndices:)` per anchor. Not yet wrapped — tracked in [#1860](https://github.com/sceneview/sceneview/issues/1860). | Drive `PhysicsBodyComponent.dynamic` bodies in RealityKit; the static-mesh collider is rebuilt on `ARSession`-delivered mesh-anchor updates. Same LiDAR-only constraint as `DepthMeshNode`. |
+| `Frame.hitTestDepth(xPx, yPx)` (single-pixel depth raycast → position + normal) | `ARView.raycast(from:allowing:alignment:)` with `.estimatedPlane` + `.any`, or `ARView.scene.raycast(origin:direction:length:query:mask:)` against `CollisionComponent`s built from `ARMeshAnchor`. Use the returned `ARRaycastResult.worldTransform` for both position and normal. | The iOS API is already documented — use it directly. The pixel-screen → world ray conversion is `view.unprojectPoint` or just feed `CGPoint` from a `UITapGestureRecognizer`. No new library wrapper needed. |
+| `CloudAnchorNode.host` / `.resolve` returning `Future` + cancel-on-dispose (#1768) | `ARGeoAnchor` is not equivalent; iOS Cloud Anchors require Google's `arcore-ios-sdk` (Swift Package). The Future + cancel-on-dispose pattern needs porting to `SceneViewSwift.CloudAnchorNode` — tracked in [#1859](https://github.com/sceneview/sceneview/issues/1859). | The Future pattern matters because Cloud Anchor hosting is a billed network round-trip — cancelling on `View` disappearance avoids accruing Google Cloud charges. The iOS port wraps `GARSession.hostCloudAnchor` similarly. |
+
+**Why this matters for AI assistants:** when a developer asks for "real-world depth"
+or "cloud anchor" code on iOS, generate the RealityKit / ARKit primitive listed above
+rather than the Android-only SceneView symbol. The implementation issues (#1859,
+#1860) track when a SceneViewSwift wrapper will exist; until then, raw ARKit is the
+supported path.
 
 ### Approximated — iOS implements via different mechanism
 

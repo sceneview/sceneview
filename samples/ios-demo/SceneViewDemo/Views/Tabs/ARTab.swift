@@ -64,7 +64,7 @@ struct ARTab: View {
     private func resetScene() {
         arViewID = UUID()
         placedAnchors.removeAll()
-        HapticManager.mediumTap()
+        SceneViewHaptic.shared.medium()
     }
 
     /// Used by the top-right Close button AND a future system-back gesture
@@ -78,7 +78,7 @@ struct ARTab: View {
         showModelPicker = false
         showError = false
         sessionStarted = false
-        HapticManager.lightTap()
+        SceneViewHaptic.shared.light()
     }
 
     // `animated_dragon.usdz` (8.6 MB) was dropped in #1152 Stage 3 (IPA
@@ -108,11 +108,11 @@ struct ARTab: View {
                     arSupported: arSupported,
                     onStartArSession: {
                         sessionStarted = true
-                        HapticManager.lightTap()
+                        SceneViewHaptic.shared.light()
                     },
                     onDemoTap: { demo in
                         presentedDemo = demo
-                        HapticManager.lightTap()
+                        SceneViewHaptic.shared.light()
                     }
                 )
             }
@@ -215,11 +215,11 @@ struct ARTab: View {
                         // Track the anchor itself — the status-pill count is
                         // derived from `placedAnchors`, never mutated directly.
                         placedAnchors.append(anchor.entity)
-                        HapticManager.mediumTap()
+                        SceneViewHaptic.shared.medium()
                     } catch {
                         errorMessage = error.localizedDescription
                         showError = true
-                        HapticManager.error()
+                        SceneViewHaptic.shared.error()
                     }
                 }
             }
@@ -301,7 +301,7 @@ struct ARTab: View {
             // FAB "Pick model" — primary, takes most of the space.
             Button {
                 showModelPicker = true
-                HapticManager.lightTap()
+                SceneViewHaptic.shared.light()
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: selectedModel.icon)
@@ -340,7 +340,7 @@ struct ARTab: View {
             // Screenshot button (glass icon).
             glassIconButton(systemImage: "square.and.arrow.up", label: "Share AR screenshot") {
                 shareARScreenshot()
-                HapticManager.lightTap()
+                SceneViewHaptic.shared.light()
             }
         }
         .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
@@ -371,7 +371,7 @@ struct ARTab: View {
                     ForEach(Array(arModels.enumerated()), id: \.offset) { index, model in
                         Button {
                             selectedModelIndex = index
-                            HapticManager.selectionChanged()
+                            SceneViewHaptic.shared.selection()
                             showModelPicker = false
                         } label: {
                             VStack(spacing: 8) {

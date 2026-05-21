@@ -1,4 +1,6 @@
-import { Page, expect } from '@playwright/test';
+import { Page, expect, test as base } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * Shared helpers for the SceneView Web Demo Playwright suite.
@@ -7,6 +9,181 @@ import { Page, expect } from '@playwright/test';
  * (`catalog.spec.ts`) and the original visual-regression suite reuse the
  * same canvas-sampling and console-capture logic.
  */
+
+/**
+ * Per-test screencast recording — parity with the Maestro Android / iOS
+ * device-QA legs (issue #1748, item 3).
+ *
+ * Playwright 1.59 added `page.screencast.start({path, size})` /
+ * `page.screencast.stop()` plus `showChapter()` annotations. The legacy
+ * `video: 'on'` knob in `playwright.config.ts` writes a hidden-by-default
+ * `.webm` next to the trace and is awkward to surface to a human reviewer.
+ * The fixture below brackets EVERY test with a deterministic recording at
+ *
+ *     test-results/screencasts/<slugified-test-title>.webm
+ *
+ * and exposes a `screencast` handle so a test can drop a chapter annotation
+ * at meaningful boundaries (tab switch, model load, failure).
+ *
+ * On a GPU-less CI runner the recording is software-rendered — same caveat
+ * that already applies to the canvas itself. The recording is a human-review
+ * artefact; the hard regression signal is still `sampleCanvas` below.
+ *
+ * Usage:
+ *   import { test, expect } from './helpers';
+ *
+ *   test('...', async ({ page, screencast }) => {
+ *     await screencast.chapter('Models tab — first card');
+ *     // ... interactions ...
+ *   });
+ */
+const SCREENCAST_DIR = 'test-results/screencasts';
+
+function slugifyTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120) || 'untitled';
+}
+
+export interface ScreencastHandle {
+  /** Absolute path the .webm is being written to. */
+  path: string;
+  /**
+   * Drop a centred chapter overlay onto the recording. No-op if `showChapter`
+   * is unavailable (Playwright < 1.59 has neither the method nor the fixture
+   * — we'd fail to start the recording first).
+   */
+  chapter(title: string, description?: string): Promise<void>;
+}
+
+export const test = base.extend<{ screencast: ScreencastHandle }>({
+  screencast: [async ({ page }, use, testInfo) => {
+    const dir = path.resolve(testInfo.project.outputDir, '..', SCREENCAST_DIR);
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${slugifyTitle(testInfo.title)}.webm`);
+
+    // `page.screencast` is a Playwright 1.59+ surface. If a downstream consumer
+    // pins an older version the start call rejects — the fixture swallows that
+    // so the suite still runs without per-run video on legacy Playwright.
+    let started = false;
+    try {
+      await page.screencast.start({
+        path: file,
+        size: { width: 1280, height: 720 },
+      });
+      started = true;
+    } catch (e) {
+      console.warn(
+        `[screencast] page.screencast.start unavailable — recording skipped (${(e as Error).message}). ` +
+        `Upgrade @playwright/test to >= 1.59 (see samples/web-demo/package.json).`,
+      );
+    }
+
+    const handle: ScreencastHandle = {
+      path: file,
+      async chapter(title: string, description?: string) {
+        if (!started) return;
+        try {
+          await page.screencast.showChapter(title, {
+            description,
+            duration: 1200,
+          });
+        } catch {
+          /* showChapter is best-effort */
+        }
+      },
+    };
+
+    await handle.chapter(`▶ ${testInfo.title}`);
+    await use(handle);
+
+    if (started) {
+      // Annotate failure before stopping so the last second of the recording
+      // surfaces the reason. The .webm is finalised by stop().
+      if (testInfo.status !== testInfo.expectedStatus) {
+        await handle.chapter('✖ failed', testInfo.error?.message?.split('\n')[0]);
+      }
+      try {
+        await page.screencast.stop();
+        // Attach to the HTML report so the per-test page links the .webm.
+        if (fs.existsSync(file)) {
+          await testInfo.attach('screencast', { path: file, contentType: 'video/webm' });
+        }
+      } catch {
+        /* shutdown best-effort — the page may already be closed */
+      }
+    }
+  }, { auto: true }],
+});
+
+export { expect };
+
+/**
+ * Inject the IWER (Immersive Web Emulation Runtime) WebXR shim into the page
+ * before any page script runs, so that `navigator.xr.isSessionSupported(...)`
+ * and `requestSession(...)` resolve under a software-emulated Quest 3 device
+ * profile instead of being `undefined` on a headless Chromium with no real XR
+ * hardware (#1878).
+ *
+ * IWER ships a UMD bundle at `iwer/build/iwer.js` that exposes
+ * `globalThis.IWER` with `{ XRDevice, metaQuest3, metaQuest2, ... }`. We
+ * `addInitScript` it (Playwright runs it BEFORE the page's own scripts), then
+ * a second `addInitScript` instantiates the device and calls
+ * `installRuntime()` — both per the documented API in
+ * https://meta-quest.github.io/immersive-web-emulation-runtime/getting-started.html
+ *
+ * The injection is best-effort: if IWER fails to load (e.g. CI sandbox blocked
+ * the install or the package was hoisted to a node_modules path that
+ * `require.resolve` can't find), the helper logs a warning and the test
+ * continues — the DOM-presence assertions on `#enter-ar` / `#enter-vr` still
+ * run, mirroring the soft-skip pattern of `screencast`.
+ *
+ * Best-effort caveat (parity with the Android record/replay docs in
+ * `arsceneview/`): IWER is not a real headset. It validates wire-level WebXR
+ * API access — session creation, controller events, hit-test stubs — not real
+ * spatial tracking. A recorded session fixture is the next step (see
+ * follow-up issue tracked in the placeholder `webxr.spec.ts`).
+ */
+export async function installIwer(page: Page): Promise<{ injected: boolean; error?: string }> {
+  let iwerPath: string;
+  try {
+    // `require` is available in Playwright tests (node runtime) but the type
+    // signature in TS strict mode wants an explicit declaration — fall back to
+    // a `createRequire` via `module` if the global `require` is absent.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    iwerPath = require.resolve('iwer/build/iwer.js');
+  } catch (e) {
+    return { injected: false, error: `iwer package not resolvable: ${(e as Error).message}` };
+  }
+
+  // 1. Inject the UMD bundle — exposes window.IWER.
+  await page.addInitScript({ path: iwerPath });
+
+  // 2. Boot a Quest 3 emulated device and install the runtime hooks. Guard
+  //    every step: if the bundle didn't register IWER for any reason (e.g. a
+  //    later IWER version drops the UMD output), do NOT crash the page —
+  //    leave navigator.xr undefined and let the test fall through to its
+  //    soft-skip branch.
+  await page.addInitScript(() => {
+    try {
+      const I = (globalThis as any).IWER;
+      if (!I || !I.XRDevice || !I.metaQuest3) {
+        console.warn('[iwer] global IWER missing XRDevice/metaQuest3 — runtime not installed');
+        return;
+      }
+      const device = new I.XRDevice(I.metaQuest3);
+      device.installRuntime();
+      // Surface a flag tests can check to confirm the shim took.
+      (globalThis as any).__IWER_INSTALLED__ = true;
+    } catch (err) {
+      console.warn('[iwer] installRuntime threw: ' + (err as Error).message);
+    }
+  });
+
+  return { injected: true };
+}
 
 /** Collected console / page diagnostics for a single test. */
 export interface PageDiagnostics {
@@ -170,6 +347,39 @@ export async function sampleCanvas(
     // hundreds-to-thousands. 64 is a wide safety margin either side.
     return { hasContent: variance > 64, headlessGpuOk: true };
   }, dataUri);
+}
+
+/**
+ * Hard-assert the WebGL context backing `#scene-canvas` is still alive.
+ *
+ * Catches GPU-process crashes and lost contexts: the canvas DOM element is
+ * still in the page but nothing will ever paint to it again. Cheaper than a
+ * screenshot — call this first inside `assertRendered`.
+ *
+ * Why the `?? true` fallback: if the canvas has no WebGL context at all (e.g.
+ * the engine never initialised because `--enable-unsafe-swiftshader` is
+ * missing on a GPU-less runner — issue #1674), `getContext('webgl2')` returns
+ * `null`. Treating that as "lost" is the right outcome; we want the test to
+ * fail loudly instead of green-on-nothing.
+ */
+export async function assertCanvasContextAlive(
+  page: Page,
+  context: string,
+): Promise<void> {
+  const lost = await page.evaluate(() => {
+    const c = document.querySelector('#scene-canvas') as HTMLCanvasElement | null;
+    if (!c) return true;
+    const gl =
+      (c.getContext('webgl2') as WebGLRenderingContext | null) ??
+      (c.getContext('webgl') as WebGLRenderingContext | null);
+    if (!gl) return true;
+    return gl.isContextLost();
+  });
+  expect(
+    lost,
+    `[${context}] WebGL context is lost or missing — Filament can no longer ` +
+      `render to the canvas (GPU-process crash, or no context was ever created)`,
+  ).toBe(false);
 }
 
 /**

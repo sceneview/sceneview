@@ -454,9 +454,21 @@ open class DepthMeshNode(
      * Render-thread only (matches the rest of the upload path). Power-of-two growth amortises
      * the rare reallocations across many rebuilds — once the depth image's pixel count + edge
      * culling settle, this returns the same buffer on every call (#1810).
+     *
+     * **Cap (#1846):** the cached buffer is never reused above [MAX_UPLOAD_BUFFER_BYTES] (1 MB).
+     * A one-off oversized depth image (rare today, possible if a future ARCore exposes
+     * higher-res depth) would otherwise permanently inflate the cache — we prefer a fresh
+     * allocation in that case so the steady-state memory footprint matches the typical
+     * stride-4 mesh from a 160×90 depth image. Buffers under the cap retain the prior
+     * no-shrink reuse behaviour.
      */
     private fun acquireDirectBuffer(existing: ByteBuffer?, bytesNeeded: Int): ByteBuffer {
-        if (existing != null && existing.capacity() >= bytesNeeded) return existing
+        if (existing != null &&
+            existing.capacity() >= bytesNeeded &&
+            existing.capacity() <= MAX_UPLOAD_BUFFER_BYTES
+        ) {
+            return existing
+        }
         val capacity = nextPowerOfTwo(max(bytesNeeded, MIN_UPLOAD_BUFFER_BYTES))
         return ByteBuffer.allocateDirect(capacity).order(ByteOrder.nativeOrder())
     }
@@ -489,6 +501,16 @@ open class DepthMeshNode(
          * larger captures.
          */
         internal const val MIN_UPLOAD_BUFFER_BYTES: Int = 16 * 1024
+
+        /**
+         * Ceiling capacity (bytes) above which the cached upload [ByteBuffer]s are no longer
+         * reused — a one-off oversized depth image must not permanently inflate the cache
+         * (#1846). 1 MB comfortably covers a stride-1 vertex stream from a high-end 480×270
+         * depth image (~130k verts × 12 B = ~1.6 MB → triggers a fresh alloc), while a typical
+         * stride-4 mesh from a 160×90 capture stays well under the cap (~12 KB) and retains the
+         * no-shrink reuse path.
+         */
+        internal const val MAX_UPLOAD_BUFFER_BYTES: Int = 1 * 1024 * 1024
 
         private fun createInitialVertexBuffer(engine: Engine): VertexBuffer =
             VertexBuffer.Builder()
@@ -554,8 +576,23 @@ data class DepthMeshSnapshot(
     }
 }
 
-/** Computes an axis-aligned bounding box from a flat-packed `xyz` array. */
-private fun computeAabb(positions: FloatArray): Box {
+/**
+ * Computes an axis-aligned bounding box from a flat-packed `xyz` array.
+ *
+ * Filament rejects empty AABBs (any half-extent ≤ 0) with a `Precondition: AABB can't be empty`
+ * SIGABRT when culling is enabled or the renderable casts/receives shadows. Two degenerate paths
+ * trigger this:
+ *  1. Empty `positions` (no depth samples this frame) — guarded since #1783.
+ *  2. All samples share the same coordinate on at least one axis (e.g. a depth image where every
+ *     pixel reports the same range, or the first frame after a scene reset where only one
+ *     off-grid (0,0,0) vertex made it through). The min/max collapse and at least one half-extent
+ *     comes out as 0 — same SIGABRT (#1806).
+ *
+ * The clamp below substitutes [DepthMeshNode.DEGENERATE_AABB_HALF_EXTENT_M] for any half-extent
+ * below that threshold so the returned [Box] always satisfies Filament's `halfExtent > 0`
+ * precondition. The centre is preserved so frustum culling still localises the renderable.
+ */
+internal fun computeAabb(positions: FloatArray): Box {
     // Same precondition guard as the initial AABB — Filament rejects empty boxes (#1783).
     if (positions.isEmpty()) return Box(
         0f, 0f, 0f,
@@ -585,9 +622,13 @@ private fun computeAabb(positions: FloatArray): Box {
     val centerX = (minX + maxX) * 0.5f
     val centerY = (minY + maxY) * 0.5f
     val centerZ = (minZ + maxZ) * 0.5f
-    val halfX = (maxX - minX) * 0.5f
-    val halfY = (maxY - minY) * 0.5f
-    val halfZ = (maxZ - minZ) * 0.5f
+    // Clamp any half-extent below the degenerate threshold to the minimum half-extent so Filament
+    // never sees a zero-extent box (#1806). This catches the all-same-coordinate case that the
+    // empty-positions guard from #1783 misses.
+    val minHalf = DepthMeshNode.DEGENERATE_AABB_HALF_EXTENT_M
+    val halfX = ((maxX - minX) * 0.5f).coerceAtLeast(minHalf)
+    val halfY = ((maxY - minY) * 0.5f).coerceAtLeast(minHalf)
+    val halfZ = ((maxZ - minZ) * 0.5f).coerceAtLeast(minHalf)
     return Box(centerX, centerY, centerZ, halfX, halfY, halfZ)
 }
 

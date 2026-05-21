@@ -50,8 +50,16 @@ CONFLICT_FILES=$(git diff --name-only --diff-filter=U 2>/dev/null | wc -l | tr -
 [ "$CONFLICT_FILES" -eq 0 ] && check "No merge conflicts" "PASS" "" || check "No merge conflicts" "FAIL" "$CONFLICT_FILES files"
 
 # Check for large files being committed
+# Note: the inner per-file checks must NOT propagate a non-zero exit when the
+# file is under the threshold — pipefail + set -e would otherwise abort the
+# whole quality-gate run on the common case (see issue #1914).
 LARGE_FILES=$(git diff --cached --name-only 2>/dev/null | while read f; do
-    [ -f "$f" ] && SIZE=$(wc -c < "$f" 2>/dev/null | tr -d ' ') && [ "$SIZE" -gt 10485760 ] && echo "$f"
+    if [ -f "$f" ]; then
+        SIZE=$(wc -c < "$f" 2>/dev/null | tr -d ' ')
+        if [ "${SIZE:-0}" -gt 10485760 ]; then
+            echo "$f"
+        fi
+    fi
 done | wc -l | tr -d ' ')
 [ "$LARGE_FILES" -eq 0 ] && check "No large files (>10MB) staged" "PASS" "" || check "No large files staged" "WARN" "$LARGE_FILES files"
 
@@ -89,6 +97,20 @@ if [ -x ".claude/scripts/check-llms-drift.sh" ]; then
     else
         DRIFT_COUNT=$(grep -c '^MISMATCH:' /tmp/check-llms-drift.log 2>/dev/null || echo "?")
         check "llms.txt mirrors in sync" "FAIL" "$DRIFT_COUNT mirror(s) drifted; see /tmp/check-llms-drift.log"
+    fi
+fi
+
+# samples/android-demo append-only demo-fragments collator drift (issue #1797).
+# A new fragment added without re-running collate-demos.sh would compile but
+# leave GeneratedDemos.kt stale — the demo would still be invisible in
+# ALL_DEMOS / DemoRouter. The --check mode bit-compares the file against what
+# the collator would emit, blocking the PR on drift.
+COLLATOR="samples/android-demo/scripts/collate-demos.sh"
+if [ -x "$COLLATOR" ]; then
+    if bash "$COLLATOR" --check > /tmp/check-demos-drift.log 2>&1; then
+        check "android-demo GeneratedDemos.kt in sync" "PASS" ""
+    else
+        check "android-demo GeneratedDemos.kt drift" "FAIL" "Run $COLLATOR — see /tmp/check-demos-drift.log"
     fi
 fi
 
@@ -208,6 +230,64 @@ if [ -x ".claude/scripts/validate-demo-assets.sh" ]; then
     fi
 else
     check "Demo app asset refs resolve" "WARN" "validate-demo-assets.sh missing"
+fi
+
+echo ""
+
+# ─── 4c. Filament .mat → .filamat drift (issue #1912) ─────────────────
+# The Filament runtime ↔ .filamat ABI invariant has caused a real shipping
+# incident (v4.1.0 — 10 demos crashed at runtime because half the .filamat
+# blobs were compiled with a different matc than the runtime expected).
+# Each .filamat embeds the matc MATERIAL_VERSION + flag list in its header
+# chunks (SREV_TAM and MRPC_TAM). `tools/GenerateFilamat.sh --check`
+# regenerates every .filamat to a tmp dir with the pinned matc and the
+# committed per-profile flag list, then byte-diffs against the committed
+# blob. Exit 1 on drift blocks the PR.
+#
+# Failure modes (degraded gracefully):
+#   - Sandbox without network → matc cannot be downloaded → WARN, advisory.
+#   - matc version mismatch     → WARN, advisory.
+# A clean tree on a host with matc cached produces a hard PASS.
+echo -e "${CYAN}--- Filament .filamat blobs ---${NC}"
+if [ -x "tools/GenerateFilamat.sh" ]; then
+    if bash tools/GenerateFilamat.sh --check --ci-tolerant > /tmp/check-filamat-drift.log 2>&1; then
+        # --ci-tolerant turns matc unavailability into exit-0; distinguish.
+        if grep -q "All .* filamat blob" /tmp/check-filamat-drift.log; then
+            BLOB_COUNT=$(grep -oE 'All [0-9]+ filamat' /tmp/check-filamat-drift.log | grep -oE '[0-9]+' | head -1)
+            check "Filament .filamat blobs in sync" "PASS" "${BLOB_COUNT:-21} blob(s)"
+        elif grep -q "matc unavailable" /tmp/check-filamat-drift.log; then
+            check "Filament .filamat blobs" "WARN" "matc unavailable (no network?) — see /tmp/check-filamat-drift.log"
+        else
+            check "Filament .filamat blobs" "WARN" "see /tmp/check-filamat-drift.log"
+        fi
+    else
+        DRIFT_COUNT=$(grep -cE '^\[FAIL\] \[' /tmp/check-filamat-drift.log 2>/dev/null || echo "?")
+        check "Filament .filamat blobs in sync" "FAIL" "$DRIFT_COUNT blob(s) drifted — run tools/GenerateFilamat.sh"
+    fi
+else
+    check "Filament .filamat blobs" "WARN" "tools/GenerateFilamat.sh missing"
+fi
+
+echo ""
+
+# ─── 4d. Worktree-prune regression suite (advisory) ────────────────────
+# Pins the safety contract of `.claude/scripts/worktree-auto-prune.sh`
+# (locked-tree skip #1833, broad subprocess detect #1834, forensic log
+# #1839). Advisory: a CI host without `lsof`/`fuser` can't fully exercise
+# the active-session check — we surface a WARN instead of failing.
+if [ -f ".claude/scripts/test-worktree-auto-prune.sh" ]; then
+    if bash .claude/scripts/test-worktree-auto-prune.sh > /tmp/test-worktree-auto-prune.log 2>&1; then
+        check "Worktree-prune regression suite" "PASS"
+    else
+        # Distinguish "host lacks the tool" from "real regression".
+        if grep -q "neither lsof nor fuser" /tmp/test-worktree-auto-prune.log; then
+            check "Worktree-prune regression suite" "WARN" "host lacks lsof/fuser — see /tmp/test-worktree-auto-prune.log"
+        else
+            check "Worktree-prune regression suite" "WARN" "failures — see /tmp/test-worktree-auto-prune.log"
+        fi
+    fi
+else
+    check "Worktree-prune regression suite" "WARN" "test-worktree-auto-prune.sh missing"
 fi
 
 echo ""

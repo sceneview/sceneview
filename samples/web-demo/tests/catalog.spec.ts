@@ -1,9 +1,11 @@
-import { test, expect } from '@playwright/test';
 import {
+  test,
+  expect,
   captureDiagnostics,
   expectNoPageErrors,
   waitForEngineReady,
   sampleCanvas,
+  assertCanvasContextAlive,
   dragCanvas,
   switchTab,
   waitForModelChipIdle,
@@ -29,27 +31,29 @@ import {
  * WebXR/AR is out of scope (umbrella defers IWER to a future delta) — only the
  * `#enter-ar` DOM-presence check is kept.
  *
- * Headless-GPU note: on software-rasterised CI runners `gl.readPixels` may not
- * yield a readable framebuffer. When `sampleCanvas` reports `headlessGpuOk:
- * false` the pixel assertion is soft-skipped (logged, not failed) so the suite
- * stays green on GPU-less runners while still catching genuine blank scenes on
- * GPU-capable hosts.
+ * Headless-GPU note: Chromium is launched with `--enable-unsafe-swiftshader`
+ * (see `playwright.config.ts`), so even GPU-less CI runners get a real WebGL
+ * context via the SwiftShader software rasteriser. Combined with the
+ * compositor-screenshot variance signal in `sampleCanvas`, that lets us
+ * HARD-fail on a genuinely blank canvas (issues #1593 + #1674).
  */
 
 /**
- * Soft-check that the canvas rendered.
+ * Hard-assert that the canvas actually rendered after an interaction.
  *
- * WebGL framebuffer readback is unreliable in headless Chromium: depending on
- * the runner's GL backend `gl.readPixels` either throws (no readback at all —
- * `headlessGpuOk: false`) OR succeeds but returns an all-black buffer even
- * though the scene is on screen. Both the local macOS run and the Ubuntu CI
- * runner exhibit the all-black case, so a non-blank pixel result is NOT a
- * dependable headless signal — failing on it produces false negatives.
+ * Two complementary signals — both must hold or the test fails:
  *
- * The authoritative visual-render signal lives in `render.spec.ts`, which
- * captures and diffs full-page screenshots. Here we only WARN on a blank
- * sample (mirroring `render.spec.ts`'s own soft pixel check) so the catalog
- * suite stays deterministic across runners (issue #1586).
+ * 1. WebGL context is alive: `gl.isContextLost() === false`. This catches a
+ *    GPU-process crash / lost context — the canvas is still in the DOM but
+ *    nothing will ever paint to it again.
+ * 2. Pixels were drawn: compositor screenshot of the canvas centre shows a
+ *    non-flat luminance variance (see `sampleCanvas` for why we use a
+ *    compositor screenshot instead of `canvas.toDataURL()` — Filament.js
+ *    creates its context with `preserveDrawingBuffer: false`, so any direct
+ *    WebGL readback returns zeros after present).
+ *
+ * Network noise (Sketchfab 401s, model-CDN parse errors) is still filtered
+ * via `isIgnorableNoise()` in `helpers.ts` — that is a separate concern.
  */
 async function assertRendered(
   page: import('@playwright/test').Page,
@@ -57,17 +61,21 @@ async function assertRendered(
 ): Promise<void> {
   // Let Filament render a few frames after the interaction settled.
   await page.waitForTimeout(1500);
+  // 1. WebGL context must still be alive — catches GPU-process crashes.
+  await assertCanvasContextAlive(page, context);
+  // 2. Compositor screenshot must show non-flat pixels — catches the
+  //    blank/black-canvas regression class that the old soft-warn missed
+  //    (issue #1593).
   const { hasContent, headlessGpuOk } = await sampleCanvas(page);
-  if (!headlessGpuOk) {
-    console.warn(`[${context}] headless GPU cannot read pixels — render assertion skipped`);
-    return;
-  }
-  if (!hasContent) {
-    console.warn(
-      `[${context}] canvas pixel sample is blank — headless WebGL readback is ` +
-        `unreliable; visual coverage is provided by render.spec.ts screenshots`,
-    );
-  }
+  expect(
+    headlessGpuOk,
+    `[${context}] cannot sample canvas — element missing or zero-sized`,
+  ).toBe(true);
+  expect(
+    hasContent,
+    `[${context}] canvas appears blank — Filament rendered nothing visible ` +
+      `(SwiftShader CI context loss, asset load failure, or genuine blank-scene regression)`,
+  ).toBe(true);
 }
 
 test.describe('Web Demo — catalog coverage', () => {

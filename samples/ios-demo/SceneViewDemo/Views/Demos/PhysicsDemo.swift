@@ -68,7 +68,7 @@ struct PhysicsDemo: View {
                         sceneKey = UUID()
                         bodyCount = 5
                         #if os(iOS)
-                        HapticManager.mediumTap()
+                        SceneViewHaptic.shared.medium()
                         #endif
                     } label: {
                         Label("Reset", systemImage: "arrow.counterclockwise")
@@ -173,7 +173,7 @@ struct PhysicsDemo: View {
                     bodyCount = min(bodyCount + 1, 20)
                     sceneKey = UUID()
                     #if os(iOS)
-                    HapticManager.lightTap()
+                    SceneViewHaptic.shared.light()
                     #endif
                 } label: {
                     Text("Drop")
@@ -188,7 +188,7 @@ struct PhysicsDemo: View {
                     bodyCount = min(bodyCount + 10, 20)
                     sceneKey = UUID()
                     #if os(iOS)
-                    HapticManager.mediumTap()
+                    SceneViewHaptic.shared.medium()
                     #endif
                 } label: {
                     Text("Drop 10")
@@ -241,7 +241,7 @@ struct PhysicsDemo: View {
         Button {
             action()
             #if os(iOS)
-            HapticManager.selectionChanged()
+            SceneViewHaptic.shared.selection()
             #endif
         } label: {
             Text(label)
