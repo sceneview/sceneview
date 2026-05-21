@@ -35,7 +35,7 @@ Open your **app-level** `build.gradle.kts` and add SceneView:
 
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.11.1")
+    implementation("io.github.sceneview:sceneview:4.12.0")
 }
 ```
 

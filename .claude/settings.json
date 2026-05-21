@@ -146,6 +146,15 @@
         ]
       },
       {
+        "matcher": "Edit(*.mat)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'FILAMENT MATERIAL EDITED — Remember to run: bash tools/GenerateFilamat.sh && commit both the .mat source AND the regenerated .filamat blob together. The Filament runtime ↔ .filamat ABI invariant blocks PRs that ship one without the other (issue #1912).'"
+          }
+        ]
+      },
+      {
         "matcher": "Edit(*/website-static/**)",
         "hooks": [
           {

@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- `DepthMeshNode` no longer leaks the old `VertexBuffer` / `IndexBuffer` when an upload step throws mid-frame (engine teardown is the realistic trigger). `rebuildBuffersIfNeeded` returns the freshly-built buffers without mutating the `owned*` fields; `uploadGeometry` commits the swap + destroys the old buffers ONLY after `setGeometryAt` returns. On any exception the new buffers are `safeDestroy`-rolled-back and the owned* fields remain reachable for `destroy()`. Closes a latent leak introduced by the #1805 UAF fix (#1840).

@@ -1,3 +1,10 @@
+// plane_renderer_shadow.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Shadow-receiver material for detected ARCore planes — a transparent surface
+//             that catches virtual-object shadows so they ground onto the real plane.
+// Used by:    PlaneRenderer (shadowMaterial) — ARSceneView plane shadow path.
+// Parameters: none (shadowMultiplier = true; baseColor is a fixed 60%-alpha black).
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
 material {
     name : "AR Core Plane Shadow Material",
     shadingModel : unlit,

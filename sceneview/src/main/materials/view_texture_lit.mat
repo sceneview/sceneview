@@ -1,3 +1,12 @@
+// view_texture_lit.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Lit transparent material that draws a rendered Android View as a 3D quad,
+//             receiving scene lighting and shadows.
+// Used by:    MaterialLoader.createViewInstance (unlit = false) / ViewNode.
+// Parameters:
+//   uvOffset — float2, per-axis UV mirror offset (1,0) flips X for front-camera use.
+//   texture  — samplerExternal, the View's hardware-rendered surface texture.
+// matc profile: A (heavy Android — "-p all -a all", see tools/GenerateFilamat.sh).
 material {
     name : view,
     shadingModel : lit,

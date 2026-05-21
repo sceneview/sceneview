@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `text` demo (registered by
+     `TextFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_text_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_text_title">3D Text</string>
+    <string name="demo_text_subtitle">Extruded text with styles and sizes</string>
+    <string name="demo_text_labels">Text Labels</string>
+    <string name="demo_text_labels_desc">3D text rendering with billboard facing</string>
+</resources>

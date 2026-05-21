@@ -259,7 +259,7 @@ struct DoublePendulumDemo: View {
             Button {
                 restart()
                 #if os(iOS)
-                HapticManager.mediumTap()
+                SceneViewHaptic.shared.medium()
                 #endif
             } label: {
                 Label("Reset & drop", systemImage: "arrow.counterclockwise")

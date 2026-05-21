@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- `samples/android-demo`: `ARDepthColliderDemo` now spawns balls in front of the **current** camera pose instead of the AR-session origin, so the balls are always visible regardless of how the user has moved before tapping Drop (#1874), and hides the underlying `DepthMeshNode` renderable by default — the cream dotted grid that the default material drew on every real surface was distracting and ambiguous. A new "Show depth mesh (dev)" Settings switch re-enables the visualization for collider debugging (#1875).

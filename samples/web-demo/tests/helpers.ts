@@ -120,6 +120,71 @@ export const test = base.extend<{ screencast: ScreencastHandle }>({
 
 export { expect };
 
+/**
+ * Inject the IWER (Immersive Web Emulation Runtime) WebXR shim into the page
+ * before any page script runs, so that `navigator.xr.isSessionSupported(...)`
+ * and `requestSession(...)` resolve under a software-emulated Quest 3 device
+ * profile instead of being `undefined` on a headless Chromium with no real XR
+ * hardware (#1878).
+ *
+ * IWER ships a UMD bundle at `iwer/build/iwer.js` that exposes
+ * `globalThis.IWER` with `{ XRDevice, metaQuest3, metaQuest2, ... }`. We
+ * `addInitScript` it (Playwright runs it BEFORE the page's own scripts), then
+ * a second `addInitScript` instantiates the device and calls
+ * `installRuntime()` — both per the documented API in
+ * https://meta-quest.github.io/immersive-web-emulation-runtime/getting-started.html
+ *
+ * The injection is best-effort: if IWER fails to load (e.g. CI sandbox blocked
+ * the install or the package was hoisted to a node_modules path that
+ * `require.resolve` can't find), the helper logs a warning and the test
+ * continues — the DOM-presence assertions on `#enter-ar` / `#enter-vr` still
+ * run, mirroring the soft-skip pattern of `screencast`.
+ *
+ * Best-effort caveat (parity with the Android record/replay docs in
+ * `arsceneview/`): IWER is not a real headset. It validates wire-level WebXR
+ * API access — session creation, controller events, hit-test stubs — not real
+ * spatial tracking. A recorded session fixture is the next step (see
+ * follow-up issue tracked in the placeholder `webxr.spec.ts`).
+ */
+export async function installIwer(page: Page): Promise<{ injected: boolean; error?: string }> {
+  let iwerPath: string;
+  try {
+    // `require` is available in Playwright tests (node runtime) but the type
+    // signature in TS strict mode wants an explicit declaration — fall back to
+    // a `createRequire` via `module` if the global `require` is absent.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    iwerPath = require.resolve('iwer/build/iwer.js');
+  } catch (e) {
+    return { injected: false, error: `iwer package not resolvable: ${(e as Error).message}` };
+  }
+
+  // 1. Inject the UMD bundle — exposes window.IWER.
+  await page.addInitScript({ path: iwerPath });
+
+  // 2. Boot a Quest 3 emulated device and install the runtime hooks. Guard
+  //    every step: if the bundle didn't register IWER for any reason (e.g. a
+  //    later IWER version drops the UMD output), do NOT crash the page —
+  //    leave navigator.xr undefined and let the test fall through to its
+  //    soft-skip branch.
+  await page.addInitScript(() => {
+    try {
+      const I = (globalThis as any).IWER;
+      if (!I || !I.XRDevice || !I.metaQuest3) {
+        console.warn('[iwer] global IWER missing XRDevice/metaQuest3 — runtime not installed');
+        return;
+      }
+      const device = new I.XRDevice(I.metaQuest3);
+      device.installRuntime();
+      // Surface a flag tests can check to confirm the shim took.
+      (globalThis as any).__IWER_INSTALLED__ = true;
+    } catch (err) {
+      console.warn('[iwer] installRuntime threw: ' + (err as Error).message);
+    }
+  });
+
+  return { injected: true };
+}
+
 /** Collected console / page diagnostics for a single test. */
 export interface PageDiagnostics {
   /** `console.error(...)` messages emitted by the page. */
@@ -282,6 +347,39 @@ export async function sampleCanvas(
     // hundreds-to-thousands. 64 is a wide safety margin either side.
     return { hasContent: variance > 64, headlessGpuOk: true };
   }, dataUri);
+}
+
+/**
+ * Hard-assert the WebGL context backing `#scene-canvas` is still alive.
+ *
+ * Catches GPU-process crashes and lost contexts: the canvas DOM element is
+ * still in the page but nothing will ever paint to it again. Cheaper than a
+ * screenshot — call this first inside `assertRendered`.
+ *
+ * Why the `?? true` fallback: if the canvas has no WebGL context at all (e.g.
+ * the engine never initialised because `--enable-unsafe-swiftshader` is
+ * missing on a GPU-less runner — issue #1674), `getContext('webgl2')` returns
+ * `null`. Treating that as "lost" is the right outcome; we want the test to
+ * fail loudly instead of green-on-nothing.
+ */
+export async function assertCanvasContextAlive(
+  page: Page,
+  context: string,
+): Promise<void> {
+  const lost = await page.evaluate(() => {
+    const c = document.querySelector('#scene-canvas') as HTMLCanvasElement | null;
+    if (!c) return true;
+    const gl =
+      (c.getContext('webgl2') as WebGLRenderingContext | null) ??
+      (c.getContext('webgl') as WebGLRenderingContext | null);
+    if (!gl) return true;
+    return gl.isContextLost();
+  });
+  expect(
+    lost,
+    `[${context}] WebGL context is lost or missing — Filament can no longer ` +
+      `render to the canvas (GPU-process crash, or no context was ever created)`,
+  ).toBe(false);
 }
 
 /**

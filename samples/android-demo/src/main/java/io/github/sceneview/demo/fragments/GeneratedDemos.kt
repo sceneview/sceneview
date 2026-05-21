@@ -25,11 +25,14 @@ object GeneratedDemos {
         ArCloudAnchorFragment,
         ArDepthColliderFragment,
         ArDepthOcclusionFragment,
+        ArDepthOfFieldFragment,
         ArDepthVisualizationFragment,
         ArFaceFragment,
+        ArFogFragment,
         ArImageFragment,
         ArImageStabilizationFragment,
         ArInstantPlacementFragment,
+        ArMlObjectLabelFragment,
         ArOrbitalFragment,
         ArPlacementFragment,
         ArPoseFragment,
@@ -64,6 +67,7 @@ object GeneratedDemos {
         SceneGalleryFragment,
         SecondaryCameraFragment,
         ShapeFragment,
+        SpatialAudioFragment,
         TextFragment,
         TextureStreamingFragment,
         VideoFragment,
@@ -86,11 +90,14 @@ object GeneratedDemos {
             "ar-cloud-anchor" -> ArCloudAnchorFragment.Screen(onBack)
             "ar-depth-collider" -> ArDepthColliderFragment.Screen(onBack)
             "ar-depth-occlusion" -> ArDepthOcclusionFragment.Screen(onBack)
+            "ar-depth-of-field" -> ArDepthOfFieldFragment.Screen(onBack)
             "ar-depth-visualization" -> ArDepthVisualizationFragment.Screen(onBack)
             "ar-face" -> ArFaceFragment.Screen(onBack)
+            "ar-fog" -> ArFogFragment.Screen(onBack)
             "ar-image" -> ArImageFragment.Screen(onBack)
             "ar-image-stabilization" -> ArImageStabilizationFragment.Screen(onBack)
             "ar-instant-placement" -> ArInstantPlacementFragment.Screen(onBack)
+            "ar-ml-object-label" -> ArMlObjectLabelFragment.Screen(onBack)
             "ar-orbital" -> ArOrbitalFragment.Screen(onBack)
             "ar-placement" -> ArPlacementFragment.Screen(onBack)
             "ar-pose" -> ArPoseFragment.Screen(onBack)
@@ -125,6 +132,7 @@ object GeneratedDemos {
             "scene-gallery" -> SceneGalleryFragment.Screen(onBack)
             "secondary-camera" -> SecondaryCameraFragment.Screen(onBack)
             "shape" -> ShapeFragment.Screen(onBack)
+            "spatial-audio" -> SpatialAudioFragment.Screen(onBack)
             "text" -> TextFragment.Screen(onBack)
             "texture-streaming" -> TextureStreamingFragment.Screen(onBack)
             "video" -> VideoFragment.Screen(onBack)

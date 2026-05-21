@@ -330,11 +330,16 @@ run_web() {
 
   # Playwright + the chromium browser binary are installed on demand. The
   # webServer block in playwright.config.ts auto-starts http-server.
+  # `iwer` (Immersive Web Emulation Runtime) is a best-effort WebXR shim
+  # injected by `tests/webxr.spec.ts` via `page.addInitScript()` — same
+  # caveat as the Android record/replay harness: it validates wire-level XR
+  # API access, not real spatial tracking. The rich replay test soft-skips
+  # until a recorded session fixture lands (follow-up of #1878).
   log "ensuring Playwright + chromium are installed (samples/web-demo)"
   (
     cd "$webdir"
     [[ -f package.json ]] || npm init -y >/dev/null 2>&1 || true
-    npm install --no-audit --no-fund --save-dev @playwright/test http-server >/dev/null 2>&1
+    npm install --no-audit --no-fund --save-dev @playwright/test http-server iwer >/dev/null 2>&1
     npx playwright install chromium --with-deps >/dev/null 2>&1 \
       || npx playwright install chromium >/dev/null 2>&1
   ) || {
@@ -377,6 +382,25 @@ run_web() {
     record web passed "${FAST:+fast }playwright" "$kept" "$(( $(date +%s) - started ))"
   else
     record web failed "playwright rc=$rc" "$kept" "$(( $(date +%s) - started ))"
+  fi
+
+  # Optional ADVISORY perf-QA sub-leg (item 5 of #1748, scaffolded in #1879).
+  # Runs Lighthouse against the web-demo and writes web-perf-summary.json
+  # alongside web-qa-summary.json. Continue-on-error: the perf scaffold is
+  # advisory until thresholds settle (tracked in the #1879 follow-up), so a
+  # missing tool / slow run NEVER blocks the device-QA gate. The perf summary
+  # is mirrored into $ARTIFACTS/ but is NOT embedded in the recorded `web`
+  # verdict above — its release-gate weight is decided by the follow-up.
+  if [[ -x "$SCRIPT_DIR/web-perf-qa.sh" ]]; then
+    log "running advisory web-perf-qa (Lighthouse, scaffold from #1879)"
+    bash "$SCRIPT_DIR/web-perf-qa.sh" --out "$webdir/test-results" \
+      >> "$ARTIFACTS/web-output.txt" 2>&1 \
+      || warn "web-perf-qa.sh exited non-zero — advisory, continuing"
+    local perf_summary="$webdir/test-results/web-perf-summary.json"
+    if [[ -f "$perf_summary" ]]; then
+      cp "$perf_summary" "$ARTIFACTS/web-perf-summary.json"
+      log "advisory perf summary: $ARTIFACTS/web-perf-summary.json"
+    fi
   fi
 }
 

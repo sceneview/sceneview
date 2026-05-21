@@ -164,6 +164,23 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 [Config.FlashMode.TORCH]). Default `OFF`. Support-gated —
  *                                 unsupported devices / front-camera configs silently downgrade
  *                                 to `OFF` (#1732).
+ * @param planeFindingMode         Typed [Config.PlaneFindingMode] (#1766). Default
+ *                                 `HORIZONTAL_AND_VERTICAL`.
+ * @param depthMode                Typed [Config.DepthMode] (#1766). Default `DISABLED`.
+ *                                 Support-gated.
+ * @param instantPlacementMode     Typed [Config.InstantPlacementMode] (#1766). Default `DISABLED`.
+ * @param geospatialMode           Typed [Config.GeospatialMode] (#1766). Default `DISABLED`.
+ *                                 Requires ARCore Cloud API key + `ACCESS_FINE_LOCATION`.
+ * @param streetscapeGeometryMode  Typed [Config.StreetscapeGeometryMode] (#1766). Default
+ *                                 `DISABLED`. Requires `geospatialMode = ENABLED`.
+ * @param cloudAnchorMode          Typed [Config.CloudAnchorMode] (#1766). Default `DISABLED`.
+ *                                 Requires ARCore Cloud API key.
+ * @param augmentedFaceMode        Typed [Config.AugmentedFaceMode] (#1766). Default `DISABLED`.
+ *                                 Requires `Session.Feature.FRONT_CAMERA`.
+ * @param imageStabilizationMode   Typed [Config.ImageStabilizationMode] (#1766). Default `OFF`.
+ * @param semanticMode             Typed [Config.SemanticMode] (#1766). Default `DISABLED`.
+ * @param updateMode               Typed [Config.UpdateMode] (#1766). Default `LATEST_CAMERA_IMAGE`.
+ * @param focusMode                Typed [Config.FocusMode] (#1766). Default `AUTO`.
  * @param sessionConfiguration     Callback to configure the ARCore [Session] and [Config].
  *                                 SceneView pre-sets `config.lightEstimationMode = ENVIRONMENTAL_HDR`
  *                                 (replacing ARCore's `AMBIENT_INTENSITY` default) BEFORE invoking
@@ -201,8 +218,11 @@ import java.util.concurrent.atomic.AtomicReference
  * @param onSessionResumed         Called each time the session is resumed.
  * @param onSessionPaused          Called each time the session is paused.
  * @param onSessionFailed          Called if ARCore fails to initialize (missing ARCore or permission).
- *                                 Receives a raw [Exception]. Prefer [onSessionFailure] for
- *                                 typed, exhaustive `when` matching (#1759).
+ *                                 Receives a raw [Exception]. **Soft-deprecated (#1844)** in favour
+ *                                 of [onSessionFailure] for typed, exhaustive `when` matching
+ *                                 (#1759). The legacy callback stays available indefinitely for
+ *                                 backwards compatibility — both fire when set — but new code
+ *                                 should wire [onSessionFailure] only.
  * @param onSessionFailure         Typed [ARSessionFailure] callback (#1759). Fires alongside
  *                                 [onSessionFailed]; pick the one that matches your codebase.
  * @param onSessionUpdated         Called once per AR frame before the scene is updated.
@@ -358,8 +378,92 @@ fun ARSceneView(
      */
     flashMode: Config.FlashMode = Config.FlashMode.OFF,
     /**
+     * ARCore [Config.PlaneFindingMode] — controls which plane orientations the session tracks.
+     * Defaults to [Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL] (ARCore's recommended value
+     * for surface-tap demos). Applied BEFORE [sessionConfiguration], so the callback still wins
+     * (#1766).
+     */
+    planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
+    /**
+     * ARCore [Config.DepthMode] — enables motion-stereo depth so [Frame.acquireDepthImage16Bits],
+     * `Frame.hitTestDepth`, [io.github.sceneview.ar.node.DepthMeshNode] and ARCameraStream
+     * occlusion all see real-world depth. Defaults to [Config.DepthMode.DISABLED] (ARCore's
+     * stock default — the depth pipeline is opt-in for power reasons). Support-gated — if
+     * the device does not support the requested mode, [ARSession.configure] silently downgrades
+     * to `DISABLED`. Pair with [Config.GeospatialMode.ENABLED] +
+     * [Config.StreetscapeGeometryMode.ENABLED] to unlock ARCore 1.54's Geospatial Depth (~65 m,
+     * see #1731). Applied BEFORE [sessionConfiguration] (#1766).
+     */
+    depthMode: Config.DepthMode = Config.DepthMode.DISABLED,
+    /**
+     * ARCore [Config.InstantPlacementMode] — places anchors before a plane has been found by
+     * estimating the surface from screen-space cues. Defaults to
+     * [Config.InstantPlacementMode.DISABLED]. Applied BEFORE [sessionConfiguration] (#1766).
+     */
+    instantPlacementMode: Config.InstantPlacementMode = Config.InstantPlacementMode.DISABLED,
+    /**
+     * ARCore [Config.GeospatialMode] — unlocks Earth-anchored tracking (Terrain/Rooftop
+     * anchors, [GeospatialPose], the VPS-backed coordinate frame). Requires the ARCore Cloud
+     * API key and `ACCESS_FINE_LOCATION` permission — without those, ARCore throws
+     * `FineLocationPermissionNotGrantedException` on resume. Defaults to
+     * [Config.GeospatialMode.DISABLED]. Applied BEFORE [sessionConfiguration] (#1766).
+     */
+    geospatialMode: Config.GeospatialMode = Config.GeospatialMode.DISABLED,
+    /**
+     * ARCore [Config.StreetscapeGeometryMode] — exposes Geospatial Streetscape Geometry
+     * (buildings + terrain meshes around the user). Requires
+     * `geospatialMode = Config.GeospatialMode.ENABLED`; otherwise ARCore rejects the config.
+     * Defaults to [Config.StreetscapeGeometryMode.DISABLED]. Applied BEFORE
+     * [sessionConfiguration] (#1766).
+     */
+    streetscapeGeometryMode: Config.StreetscapeGeometryMode = Config.StreetscapeGeometryMode.DISABLED,
+    /**
+     * ARCore [Config.CloudAnchorMode] — enables host/resolve of [CloudAnchorNode]s. Requires
+     * the ARCore Cloud API key. Defaults to [Config.CloudAnchorMode.DISABLED]. Applied BEFORE
+     * [sessionConfiguration] (#1766).
+     */
+    cloudAnchorMode: Config.CloudAnchorMode = Config.CloudAnchorMode.DISABLED,
+    /**
+     * ARCore [Config.AugmentedFaceMode] — enables face mesh tracking through
+     * [AugmentedFaceNode][io.github.sceneview.ar.node.AugmentedFaceNode]. Requires a
+     * front-facing camera session feature (`Session.Feature.FRONT_CAMERA`). Defaults to
+     * [Config.AugmentedFaceMode.DISABLED]. Applied BEFORE [sessionConfiguration] (#1766).
+     */
+    augmentedFaceMode: Config.AugmentedFaceMode = Config.AugmentedFaceMode.DISABLED,
+    /**
+     * ARCore [Config.ImageStabilizationMode] — enables EIS-aligned camera-stream rendering.
+     * Defaults to [Config.ImageStabilizationMode.OFF]. Applied BEFORE [sessionConfiguration]
+     * (#1766).
+     */
+    imageStabilizationMode: Config.ImageStabilizationMode = Config.ImageStabilizationMode.OFF,
+    /**
+     * ARCore [Config.SemanticMode] — exposes Scene Semantics segmentation labels via
+     * `Frame.acquireSemanticImage` / `acquireSemanticConfidenceImage`. Defaults to
+     * [Config.SemanticMode.DISABLED]. Applied BEFORE [sessionConfiguration] (#1766).
+     */
+    semanticMode: Config.SemanticMode = Config.SemanticMode.DISABLED,
+    /**
+     * ARCore [Config.UpdateMode] — controls whether [Session.update] blocks until a new camera
+     * frame is available (`LATEST_CAMERA_IMAGE`) or returns immediately (`BLOCKING`). Defaults
+     * to [Config.UpdateMode.LATEST_CAMERA_IMAGE], the value SceneView's render loop is built
+     * for. Applied BEFORE [sessionConfiguration] (#1766).
+     */
+    updateMode: Config.UpdateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE,
+    /**
+     * ARCore [Config.FocusMode] — `FIXED` to disable auto-focus (best for sharp far-field
+     * tracking — what ARCore recommends for most AR experiences), `AUTO` to let the camera
+     * driver autofocus. SceneView defaults to [Config.FocusMode.AUTO] for parity with previous
+     * behaviour. Applied BEFORE [sessionConfiguration] (#1766).
+     */
+    focusMode: Config.FocusMode = Config.FocusMode.AUTO,
+    /**
      * Configures the session and verifies that the enabled features in the specified session
      * config are supported with the currently set camera config.
+     *
+     * **Precedence (#1766):** all typed `*Mode` params above are applied to the [Config]
+     * BEFORE this callback runs, so the callback still wins. Use the typed params for the
+     * common cases (AI codegen, demo boilerplate) and this callback as the escape hatch for
+     * any [Config] property without a dedicated param.
      */
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     /**
@@ -471,6 +575,12 @@ fun ARSceneView(
      * Playback-dataset failures (`PlaybackFailedException` or any exception thrown by
      * [Session.setPlaybackDataset]) are routed here ONLY when [onPlaybackFailed] is `null`.
      * Set [onPlaybackFailed] for fine-grained handling of "bad MP4 path" vs "AR unavailable".
+     *
+     * **Soft-deprecated (#1844):** prefer [onSessionFailure] which delivers a sealed
+     * [ARSessionFailure] subtype so the compiler enforces exhaustive `when` matching
+     * (#1759). The raw callback is kept un-deprecated at the Kotlin level for
+     * backwards compatibility — both fire when set — but new code should wire only
+     * [onSessionFailure].
      */
     onSessionFailed: ((exception: Exception) -> Unit)? = null,
     /**
@@ -554,6 +664,20 @@ fun ARSceneView(
     val sessionCameraConfigRef = remember { AtomicReference(sessionCameraConfig) }
     val flashModeRef = remember { AtomicReference(flashMode) }
 
+    // Typed Config.*Mode params (#1766) — applied BEFORE sessionConfiguration so the callback
+    // still wins. Held in AtomicReferences for the same reactive update pattern as flashMode.
+    val planeFindingModeRef = remember { AtomicReference(planeFindingMode) }
+    val depthModeRef = remember { AtomicReference(depthMode) }
+    val instantPlacementModeRef = remember { AtomicReference(instantPlacementMode) }
+    val geospatialModeRef = remember { AtomicReference(geospatialMode) }
+    val streetscapeGeometryModeRef = remember { AtomicReference(streetscapeGeometryMode) }
+    val cloudAnchorModeRef = remember { AtomicReference(cloudAnchorMode) }
+    val augmentedFaceModeRef = remember { AtomicReference(augmentedFaceMode) }
+    val imageStabilizationModeRef = remember { AtomicReference(imageStabilizationMode) }
+    val semanticModeRef = remember { AtomicReference(semanticMode) }
+    val updateModeRef = remember { AtomicReference(updateMode) }
+    val focusModeRef = remember { AtomicReference(focusMode) }
+
     SideEffect {
         onSessionCreatedRef.set(onSessionCreated)
         onSessionResumedRef.set(onSessionResumed)
@@ -566,6 +690,17 @@ fun ARSceneView(
         sessionConfigurationRef.set(sessionConfiguration)
         sessionCameraConfigRef.set(sessionCameraConfig)
         flashModeRef.set(flashMode)
+        planeFindingModeRef.set(planeFindingMode)
+        depthModeRef.set(depthMode)
+        instantPlacementModeRef.set(instantPlacementMode)
+        geospatialModeRef.set(geospatialMode)
+        streetscapeGeometryModeRef.set(streetscapeGeometryMode)
+        cloudAnchorModeRef.set(cloudAnchorMode)
+        augmentedFaceModeRef.set(augmentedFaceMode)
+        imageStabilizationModeRef.set(imageStabilizationMode)
+        semanticModeRef.set(semanticMode)
+        updateModeRef.set(updateMode)
+        focusModeRef.set(focusMode)
     }
 
     val prevTrackingFailureRef = remember { AtomicReference<TrackingFailureReason?>(null) }
@@ -692,7 +827,11 @@ fun ARSceneView(
                 bindUri()
                 sessionCameraConfigRef.get()?.let { session.cameraConfig = it(session) }
                 session.configure { config ->
-                    config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                    // Apply the typed `*Mode` params (#1766) BEFORE the user callback so the
+                    // callback still wins. Each param defaults to ARCore's recommended value
+                    // (or SceneView's existing default for `updateMode` / `lightEstimationMode`
+                    // / `focusMode`), so passing nothing keeps existing behaviour.
+                    config.updateMode = updateModeRef.get() ?: Config.UpdateMode.LATEST_CAMERA_IMAGE
                     // Default to ENVIRONMENTAL_HDR (#1063 acceptance). ARCore's stock default is
                     // AMBIENT_INTENSITY which only returns a pixel-intensity scalar, so the IBL
                     // baseline shipped by `rememberAREnvironment` would never be replaced by the
@@ -707,13 +846,35 @@ fun ARSceneView(
                     // ArSession.configure (silently downgraded to OFF if unsupported). Set BEFORE
                     // the user callback so callers can opt back into a different mode.
                     config.flashMode = flashModeRef.get() ?: Config.FlashMode.OFF
+                    config.planeFindingMode = planeFindingModeRef.get()
+                        ?: Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
+                    // depthMode support-gating is already centralised inside ArSession.configure
+                    // (auto-downgrades unsupported requests to DISABLED).
+                    config.depthMode = depthModeRef.get() ?: Config.DepthMode.DISABLED
+                    config.instantPlacementMode = instantPlacementModeRef.get()
+                        ?: Config.InstantPlacementMode.DISABLED
+                    config.geospatialMode = geospatialModeRef.get() ?: Config.GeospatialMode.DISABLED
+                    config.streetscapeGeometryMode = streetscapeGeometryModeRef.get()
+                        ?: Config.StreetscapeGeometryMode.DISABLED
+                    config.cloudAnchorMode = cloudAnchorModeRef.get() ?: Config.CloudAnchorMode.DISABLED
+                    config.augmentedFaceMode = augmentedFaceModeRef.get()
+                        ?: Config.AugmentedFaceMode.DISABLED
+                    config.imageStabilizationMode = imageStabilizationModeRef.get()
+                        ?: Config.ImageStabilizationMode.OFF
+                    config.semanticMode = semanticModeRef.get() ?: Config.SemanticMode.DISABLED
+                    config.focusMode = focusModeRef.get() ?: Config.FocusMode.AUTO
                     sessionConfigurationRef.get()?.invoke(session, config)
                 }
                 cameraStream?.let { scene.addEntity(it.entity) }
                 onSessionCreatedRef.get()?.invoke(session)
             },
             onSessionResumed = { session ->
-                session.configure { config -> config.focusMode = Config.FocusMode.AUTO }
+                // Honour the typed `focusMode` param (#1766) — previously this was force-set
+                // to AUTO on every resume; that overrode any caller opt-in to FIXED for sharp
+                // far-field tracking. Falls back to AUTO for parity with the prior behaviour.
+                session.configure { config ->
+                    config.focusMode = focusModeRef.get() ?: Config.FocusMode.AUTO
+                }
                 onSessionResumedRef.get()?.invoke(session)
             },
             onSessionPaused = { session ->
@@ -761,13 +922,100 @@ fun ARSceneView(
         }
     }
 
+    // ── Typed Config.*Mode reactivity (#1766) ─────────────────────────────────────────────────────
+    //
+    // Apps that flip these via Compose state (e.g. a "toggle depth occlusion" switch) get a live
+    // reconfigure without having to recreate the ARSceneView. Each effect keys on a single param,
+    // and the equality guard skips a JNI `configure()` round-trip when the param re-emits with the
+    // same value (idempotent recompose).
+    LaunchedEffect(planeFindingMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.planeFindingMode != planeFindingMode) {
+            session.configure { config -> config.planeFindingMode = planeFindingMode }
+        }
+    }
+    LaunchedEffect(depthMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.depthMode != depthMode) {
+            session.configure { config -> config.depthMode = depthMode }
+        }
+    }
+    LaunchedEffect(instantPlacementMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.instantPlacementMode != instantPlacementMode) {
+            session.configure { config -> config.instantPlacementMode = instantPlacementMode }
+        }
+    }
+    LaunchedEffect(geospatialMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.geospatialMode != geospatialMode) {
+            session.configure { config -> config.geospatialMode = geospatialMode }
+        }
+    }
+    LaunchedEffect(streetscapeGeometryMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.streetscapeGeometryMode != streetscapeGeometryMode) {
+            session.configure { config -> config.streetscapeGeometryMode = streetscapeGeometryMode }
+        }
+    }
+    LaunchedEffect(cloudAnchorMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.cloudAnchorMode != cloudAnchorMode) {
+            session.configure { config -> config.cloudAnchorMode = cloudAnchorMode }
+        }
+    }
+    LaunchedEffect(augmentedFaceMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.augmentedFaceMode != augmentedFaceMode) {
+            session.configure { config -> config.augmentedFaceMode = augmentedFaceMode }
+        }
+    }
+    LaunchedEffect(imageStabilizationMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.imageStabilizationMode != imageStabilizationMode) {
+            session.configure { config -> config.imageStabilizationMode = imageStabilizationMode }
+        }
+    }
+    LaunchedEffect(semanticMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.semanticMode != semanticMode) {
+            session.configure { config -> config.semanticMode = semanticMode }
+        }
+    }
+    LaunchedEffect(updateMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.updateMode != updateMode) {
+            session.configure { config -> config.updateMode = updateMode }
+        }
+    }
+    LaunchedEffect(focusMode) {
+        val session = arCore.session ?: return@LaunchedEffect
+        if (session.config.focusMode != focusMode) {
+            session.configure { config -> config.focusMode = focusMode }
+        }
+    }
+
     // ── Scene / camera / environment setup ───────────────────────────────────────────────────────
 
     val nodeManager = remember(scene, collisionSystem) { SceneNodeManager(scene, collisionSystem) }
 
-    SideEffect {
+    // Baseline IBL + skybox setup. Applied ONCE per `environment` instance change,
+    // not on every recomposition (#1611). The per-frame `onARFrame` rebuild path
+    // overwrites `scene.indirectLight` with a fresh IBL each time ARCore surfaces
+    // a new light estimate; running this initialiser inside `SideEffect` instead
+    // would reset the rebuilt IBL on the *next* recomposition (which fires every
+    // frame in demos that surface `latestFrame` / `isTracking` to UI state) and
+    // collapse the scene back to the neutral baseline — which on KTX1-loaded IBLs
+    // is reflections-mostly with limited diffuse SH, producing visible-but-dim
+    // metals at best and flat-black models at worst. `LaunchedEffect(environment)`
+    // restores the baseline only when the env instance actually changes (initial
+    // composition, environment swap by the caller).
+    LaunchedEffect(environment, scene) {
         scene.indirectLight = environment.indirectLight
         scene.skybox = environment.skybox
+    }
+
+    SideEffect {
         view.scene = scene
         view.camera = cameraNode.camera
         cameraNode.collisionSystem = collisionSystem
@@ -1090,33 +1338,50 @@ private fun onARFrame(
         // "which texture/SH source do we use" is centralised in
         // [pickIndirectLightSources] so it can be exercised without a
         // Filament engine (see `IndirectLightRebuildDecisionTest`).
+        //
+        // #1611: skip the rebuild entirely when the resulting IBL would be
+        // incomplete — i.e. either irradiance or reflections cannot be sourced
+        // from estimation AND a baseline fallback is not available. Baseline
+        // KTX1-loaded IBLs typically expose SH coefficients via the native
+        // handle (no `getIrradianceTexture()`) so the legacy fallback
+        // `baseline.irradianceTexture` returned null on them — and the rebuilt
+        // IBL ended up with an explicit empty irradiance source, which
+        // Filament treats as "no diffuse IBL". The visible symptom on Pixel 9
+        // was placed PBR models rendering as flat-black silhouettes during
+        // every transient frame where ARCore surfaced reflections only or
+        // irradiance only. The new gate keeps `scene.indirectLight` on the
+        // last good build (which falls back to `environment.indirectLight`
+        // until the first FULL estimate lands), so partial estimations no
+        // longer collapse the scene to black.
         val indirectLight = environment.indirectLight
-        val sources = pickIndirectLightSources(estimation, indirectLight)
-        val newIbl = IndirectLight.Builder().apply {
-            if (sources.useEstimationIrradiance) {
-                estimation.irradiance?.let { irradiance(3, it) }
-            } else {
-                indirectLight?.irradianceTexture?.let { irradiance(it) }
+        if (shouldRebuildIndirectLight(estimation, indirectLight)) {
+            val sources = pickIndirectLightSources(estimation, indirectLight)
+            val newIbl = IndirectLight.Builder().apply {
+                if (sources.useEstimationIrradiance) {
+                    estimation.irradiance?.let { irradiance(3, it) }
+                } else {
+                    indirectLight?.irradianceTexture?.let { irradiance(it) }
+                }
+                if (sources.useEstimationReflections) {
+                    estimation.reflections?.let { reflections(it) }
+                } else {
+                    indirectLight?.reflectionsTexture?.let { reflections(it) }
+                }
+                indirectLight?.intensity?.let { intensity(it) }
+                indirectLight?.getRotation(null)?.let { rotation(it) }
+            }.build(engine)
+            scene.indirectLight = newIbl
+            // #1756: destroy the IBL we built on the previous estimation update
+            // (tracked via [builtIndirectLightRef]) — independent of what
+            // `scene.indirectLight` happens to be now. The old path captured
+            // `scene.indirectLight` and destroyed it unless it matched the
+            // environment's base IBL; a third party overwriting `scene.indirectLight`
+            // between updates orphaned our previously-built IBL in native heap.
+            // Self-contained ownership tracking closes that leak (the previous
+            // IBL is always destroyed exactly once, when superseded or on dispose).
+            builtIndirectLightRef.getAndSet(newIbl)?.let { previousBuiltIbl ->
+                engine.safeDestroyIndirectLight(previousBuiltIbl)
             }
-            if (sources.useEstimationReflections) {
-                estimation.reflections?.let { reflections(it) }
-            } else {
-                indirectLight?.reflectionsTexture?.let { reflections(it) }
-            }
-            indirectLight?.intensity?.let { intensity(it) }
-            indirectLight?.getRotation(null)?.let { rotation(it) }
-        }.build(engine)
-        scene.indirectLight = newIbl
-        // #1756: destroy the IBL we built on the previous estimation update
-        // (tracked via [builtIndirectLightRef]) — independent of what
-        // `scene.indirectLight` happens to be now. The old path captured
-        // `scene.indirectLight` and destroyed it unless it matched the
-        // environment's base IBL; a third party overwriting `scene.indirectLight`
-        // between updates orphaned our previously-built IBL in native heap.
-        // Self-contained ownership tracking closes that leak (the previous
-        // IBL is always destroyed exactly once, when superseded or on dispose).
-        builtIndirectLightRef.getAndSet(newIbl)?.let { previousBuiltIbl ->
-            engine.safeDestroyIndirectLight(previousBuiltIbl)
         }
     }
 
@@ -1178,6 +1443,59 @@ internal fun pickIndirectLightSources(
         useEstimationReflections = hasReflections,
         hasBaseIndirectLight = baseIndirectLight != null
     )
+}
+
+/**
+ * Returns `true` when the per-frame `IndirectLight` rebuild has enough source
+ * data to produce a visually complete IBL (#1611).
+ *
+ * The rebuild path at [onARFrame] composes a new IBL from a mix of ARCore's
+ * `LightEstimate` (irradiance SH + reflections cubemap) and the environment's
+ * baseline `IndirectLight`. When neither side provides usable data for one of
+ * the two channels, the resulting IBL has an empty source for that channel,
+ * which Filament renders as "no IBL contribution" — diffuse base color goes
+ * black on PBR materials and the placed model reads as a flat silhouette
+ * against the camera feed.
+ *
+ * Skip the rebuild instead. `scene.indirectLight` then keeps whatever the
+ * last good rebuild produced (or the environment baseline, set once per
+ * `environment` change inside [ARSceneView]). The next ARCore estimate that
+ * brings either channel back to a workable state triggers a fresh, complete
+ * rebuild.
+ *
+ * Specifically:
+ *  - **Irradiance is sourceable** when the estimation has SH coefficients, OR
+ *    the baseline exposes an `irradianceTexture`. KTX1-loaded IBLs typically
+ *    expose SH via the native handle (no `irradianceTexture`), so this gates
+ *    fallback only on data Filament can actually consume.
+ *  - **Reflections is sourceable** when the estimation has a freshly-uploaded
+ *    cubemap, OR the baseline exposes a `reflectionsTexture` (the KTX1
+ *    cubemap mip chain, present in the default `rememberAREnvironment`).
+ *
+ * Pure decision logic; extracted out of [onARFrame] so the rule can be pinned
+ * by `IndirectLightRebuildDecisionTest` without spinning up an engine. The
+ * texture nullity check requires a real `IndirectLight`, so the JVM matrix
+ * exercises the "no base IBL" path only — the "base IBL with one texture"
+ * branches are pinned by an instrumented test on a live engine.
+ *
+ * @param estimation the current frame's estimate (must be non-null — caller
+ *   already entered the `?.let { estimation ->` block).
+ * @param baseIndirectLight the environment's baseline IBL, may be null.
+ * @return `true` if a rebuild would produce a complete IBL.
+ */
+internal fun shouldRebuildIndirectLight(
+    estimation: LightEstimator.Estimation,
+    baseIndirectLight: IndirectLight?
+): Boolean {
+    val irradianceAvailable = estimation.irradiance != null ||
+        baseIndirectLight?.irradianceTexture != null
+    val reflectionsAvailable = estimation.reflections != null ||
+        baseIndirectLight?.reflectionsTexture != null
+    // Require at least one fresh estimation channel — otherwise rebuilding
+    // simply duplicates the baseline, wasting an `IndirectLight.Builder.build()`
+    // call per frame plus the destroy on the next update.
+    val anyFresh = estimation.irradiance != null || estimation.reflections != null
+    return anyFresh && irradianceAvailable && reflectionsAvailable
 }
 
 /**

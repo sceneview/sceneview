@@ -1,4 +1,5 @@
 import SwiftUI
+import SceneViewSwift
 
 /// iOS counterpart of Android's `DemoScaffold` settings sheet.
 ///
@@ -52,7 +53,7 @@ public struct DemoSettingsSheetModifier<SheetContent: View>: ViewModifier {
                     if !isPresented {
                         Button {
                             #if os(iOS)
-                            HapticManager.selectionChanged()
+                            SceneViewHaptic.shared.selection()
                             #endif
                             isPresented = true
                         } label: {
@@ -74,7 +75,7 @@ public struct DemoSettingsSheetModifier<SheetContent: View>: ViewModifier {
 
                     Button {
                         #if os(iOS)
-                        HapticManager.selectionChanged()
+                        SceneViewHaptic.shared.selection()
                         #endif
                         isPresented = true
                     } label: {

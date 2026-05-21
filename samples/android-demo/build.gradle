@@ -172,6 +172,13 @@ dependencies {
     // Streetscape demo renders a black screen.
     implementation libs.play.services.location
 
+    // ML Kit Object Detection — bundled model so ARMLObjectLabelDemo works
+    // offline. The default options classify generic categories (Home good,
+    // Fashion good, Food, Place, Plant). For finer labels callers can plug
+    // in a custom TFLite model via ObjectDetectorOptions / CustomObjectDetectorOptions.
+    // See ARMLObjectLabelDemo (#1737).
+    implementation libs.mlkit.object.detection
+
     // Screenshot testing (Roborazzi — JVM, no emulator needed)
     testImplementation libs.robolectric
     testImplementation libs.roborazzi

@@ -29,12 +29,12 @@ SceneView.create(
 )
 ```
 
-## JavaScript API (sceneview.js v4.11.1)
+## JavaScript API (sceneview.js v4.12.0)
 
 For browser usage without Kotlin, use `sceneview.js` directly:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.11.1/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.12.0/sceneview.js"></script>
 <script>
   SceneView.modelViewer("canvas", "model.glb", {
     backgroundColor: [0.05, 0.05, 0.08, 1],

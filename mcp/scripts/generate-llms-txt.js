@@ -15,9 +15,12 @@
  * Running the script:
  *   node scripts/generate-llms-txt.js
  *
- * It is wired into the `prebuild` npm script so `npm run build` keeps
- * the generated file in sync, and committed to git so tests / gateway
- * imports work without a build step.
+ * It is wired into the `prebuild`, `prepare` and `test` npm scripts, so
+ * `npm install`, `npm run build`, `npm test` and `npm publish` all keep
+ * the generated file in sync. The file is NOT committed to git (it is
+ * `.gitignore`d) — committing it produced a guaranteed merge conflict on
+ * every parallel PR that touched the root `llms.txt` (issue #1928). It is
+ * generated fresh by these lifecycle scripts before anything imports it.
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";

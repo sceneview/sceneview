@@ -21,6 +21,13 @@ coroutines = "1.11.0"
 kotlinMath = "1.8.0"
 
 # 3D / AR
+# Jetpack XR ARCore — preview SDK for hand & face tracking on Android XR
+# (headsets, glasses). Distinct runtime from mobile `com.google.ar:core`.
+# Wired as `compileOnly` in arsceneview/ so phone-only apps pay nothing
+# at runtime. See arsceneview/docs/JETPACK-XR-INTEGRATION.md for the
+# integration approach and slicing plan (issue #1738).
+jetpackXrArCore = "1.0.0-alpha14"
+
 # Filament 1.71.0 — must match the binary version of .filamat files committed
 # under sceneview/src/main/assets/materials/ and website-static/materials/.
 # Those were recompiled to material-binary version 71 in commit `efd296f1`
@@ -53,6 +60,9 @@ tvMaterial = "1.1.0"
 # Play Services
 playAppUpdate = "2.1.0"
 playServicesLocation = "21.3.0"
+
+# ML Kit (object detection demo — see ARMLObjectLabelDemo, #1737)
+mlkitObjectDetection = "17.0.2"
 
 # Publishing & Docs
 mavenPublish = "0.36.0"
@@ -106,6 +116,11 @@ filament-utils = { group = "com.google.android.filament", name = "filament-utils
 # AR
 arcore = { group = "com.google.ar", name = "core", version.ref = "arCore" }
 
+# Jetpack XR ARCore (preview) — opt-in for headsets / glasses. Consumers add
+# this themselves; arsceneview/ wires it as compileOnly so non-XR apps don't
+# pull it. See arsceneview/docs/JETPACK-XR-INTEGRATION.md (#1738).
+androidx-xr-arcore = { group = "androidx.xr.arcore", name = "arcore", version.ref = "jetpackXrArCore" }
+
 # Fuel (HTTP client)
 fuel = { group = "com.github.kittinunf.fuel", name = "fuel", version.ref = "fuel" }
 fuel-android = { group = "com.github.kittinunf.fuel", name = "fuel-android", version.ref = "fuel" }
@@ -132,6 +147,11 @@ androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.re
 play-app-update = { group = "com.google.android.play", name = "app-update", version.ref = "playAppUpdate" }
 play-app-update-ktx = { group = "com.google.android.play", name = "app-update-ktx", version.ref = "playAppUpdate" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
+
+# ML Kit Object Detection — bundled (offline-capable) model used by ARMLObjectLabelDemo.
+# The bundled artifact carries the detector weights inside the APK, so the demo works
+# without the on-device dynamic ML provider being available (#1737).
+mlkit-object-detection = { group = "com.google.mlkit", name = "object-detection", version.ref = "mlkitObjectDetection" }
 
 # Testing
 androidx-test-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestJunit" }

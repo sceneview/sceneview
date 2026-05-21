@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-05-15'
+  last-updated: '2026-05-21'
   keywords:
   - sceneview
   - sceneview-web
@@ -38,7 +38,7 @@ SceneView for Web is the browser half of the SceneView SDK. It renders with
   registers itself on `window.sceneview`, exposing `createViewer`,
   `modelViewer`, etc. for use with no bundler and no Kotlin.
 
-- **npm package** — `sceneview-web` (currently `4.11.1`).
+- **npm package** — `sceneview-web` (currently `4.12.0`).
 - **Renderer** — Filament.js (WebGL2/WASM). Requires Chrome 79+, Edge 79+,
   Firefox 78+, Safari 15+.
 
@@ -77,7 +77,7 @@ filament.js MUST load before sceneview-web.js:
 ```html
 <canvas id="viewer" style="width:100%;height:100vh;display:block"></canvas>
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.11.1/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.12.0/sceneview-web.js"></script>
 <script>
   sceneview.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/DamagedHelmet.glb')
     .then(function (sv) { sv.setAutoRotate(true); });
@@ -197,6 +197,31 @@ lower-level unified AR+VR API. See `llms.txt § WebXR`.
 6. **WebXR support is partial.** AR: Chrome Android 79+, Meta Quest Browser,
    Safari iOS 18+. VR: Meta Quest Browser, desktop Chrome with a headset.
    Always gate on `checkSupport` and provide a non-XR fallback.
+
+## Haptic feedback
+
+`sceneview-web` exposes a `SceneViewHaptic` class that wraps the browser
+[Vibration API](https://developer.mozilla.org/docs/Web/API/Vibration_API)
+(`navigator.vibrate(...)`) behind the same seven semantic presets as the
+Android and iOS libraries, so cross-platform code paths stay symmetric.
+
+```js
+// Plain JS — `sceneview.haptic` is a ready-to-use singleton:
+sceneview.haptic.light();              // tap
+sceneview.haptic.success();            // confirmation
+sceneview.haptic.continuous(1.0, 200); // 200 ms; intensity ignored on Web
+sceneview.haptic.pattern([10, 50, 20]);// custom on/off durations (ms)
+```
+
+- Presets: `light()` `medium()` `heavy()` `success()` `warning()`
+  `error()` `selection()`. Plus `continuous(intensity, durationMs)` and
+  `pattern(durationsMs[])`.
+- The Web Vibration API exposes **durations only** — there is no intensity
+  knob — so the `intensity` argument is accepted for cross-platform parity
+  but ignored at runtime.
+- Desktop browsers and Safari on iOS do not expose `navigator.vibrate`;
+  every call is then a silent no-op. Some browsers also restrict
+  vibration to user-gesture handlers. See `llms.txt § Haptic Feedback`.
 
 ## Resources
 

@@ -8,6 +8,12 @@
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Required by `SceneViewHaptic` (rememberHapticFeedback) — the sceneview
+         library deliberately doesn't auto-merge this permission, the demo app
+         opts in so the controls sheet, AR placement confirmations, and shutter
+         button can vibrate (#1901 phase 1). When absent, every haptic call
+         becomes a silent no-op + one Log.d. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Required by the Streetscape Geometry / Geospatial demos (3 of 35). ARCore
          throws FineLocationPermissionNotGrantedException if Geospatial mode is
          enabled without this permission — the demo composable requests it at

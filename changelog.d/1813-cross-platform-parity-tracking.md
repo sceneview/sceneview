@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- docs: cross-platform parity table in `cheatsheet-ios.md` mapping the four May 2026 Android-only AR surfaces (`DepthMeshNode` / `DepthCollider` / `Frame.hitTestDepth` / `CloudAnchorNode.host` Future-cancel) to their RealityKit / ARKit counterparts; root `llms.txt` cross-platform notes added in each section pointing readers to the cheatsheet. SceneViewSwift implementation work split into #1859 (CloudAnchorNode Future) + #1860 (Scene Reconstruction). #1813

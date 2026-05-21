@@ -684,7 +684,7 @@
         <a href="https://sceneview.github.io" target="_blank" class="logo" title="SceneView — 3D and AR for Compose and SwiftUI">
             <div class="logo-icon">S</div>
             <span class="logo-text">SceneView Web Demo</span>
-            <span class="logo-version">v4.11.1</span>
+            <span class="logo-version">v4.12.0</span>
         </a>
         <div class="top-right">
             <button id="auto-rotate-toggle" class="auto-rotate-btn active" title="Toggle auto-rotation">Auto-rotate</button>
@@ -703,6 +703,7 @@
         <button class="tab-btn" data-tab="text">Text</button>
         <button class="tab-btn" data-tab="environment">Environment</button>
         <button class="tab-btn" data-tab="physics">Physics</button>
+        <button class="tab-btn" data-tab="audio">Spatial Audio</button>
         <button class="tab-btn" data-tab="settings">Settings</button>
     </nav>
 
@@ -922,6 +923,35 @@
         </p>
     </div>
 
+    <!-- Spatial Audio panel — Web Audio PannerNode HRTF -->
+    <div id="panel-audio" class="panel geometry-panel">
+        <div class="geo-card">
+            <div class="geo-card-header">
+                <span class="geo-card-title">Orbiting Bell</span>
+            </div>
+            <div class="geo-controls">
+                <label>Falloff
+                    <select id="audio-falloff" class="quality-select">
+                        <option value="inverse" selected>Inverse (realistic)</option>
+                        <option value="linear">Linear (silent at max)</option>
+                        <option value="none">None (no attenuation)</option>
+                    </select>
+                </label>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <button id="audio-play" class="geo-add-btn" style="flex:1">Play</button>
+                <button id="audio-stop" class="geo-clear-btn" style="flex:1;margin:0">Stop</button>
+            </div>
+        </div>
+        <p style="font-size:12px;color:var(--sv-text-dim);line-height:1.5;padding:0 4px">
+            A looping bell tone orbits the scene as a <code>SpatialAudioNode</code>.
+            The sound pans between your ears and fades with distance — driven by a
+            Web Audio <code>PannerNode</code> in <code>HRTF</code> mode. The audio
+            listener tracks the orbit camera, so the same code maps 1:1 onto the
+            Android and iOS Spatial Audio demos. Headphones recommended.
+        </p>
+    </div>
+
     <!-- Settings panel -->
     <div id="panel-settings" class="panel env-panel">
         <div class="env-card">
@@ -1055,6 +1085,7 @@
         setupText();
         setupEnvironment();
         setupPhysics();
+        setupAudio();
         setupSettings();
         setupXR();
         showCDNModels();
@@ -1114,7 +1145,7 @@
             instance.setAutoRotate(autoRotate);
             instance.setQuality('medium');
             loadingOverlay.classList.add('hidden');
-            console.log('SceneView Web Demo initialized — v4.11.1');
+            console.log('SceneView Web Demo initialized — v4.12.0');
             // Engine init complete — surface any update snackbar deferred
             // while the loading overlay was still covering the viewport.
             flushPendingUpdateSnackbar();
@@ -1181,7 +1212,7 @@
           var btn = buttons[i];
           btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
         }
-        var panels = ['models', 'geometry', 'lighting', 'animation', 'text', 'environment', 'physics', 'settings'];
+        var panels = ['models', 'geometry', 'lighting', 'animation', 'text', 'environment', 'physics', 'audio', 'settings'];
         panels.forEach(function(p) {
           var panel = document.getElementById('panel-' + p);
           if (panel) {
@@ -1194,7 +1225,8 @@
         });
         // Adjust controls-info position — left-anchored panels push it right.
         var sidePanel = (tab === 'models' || tab === 'geometry' || tab === 'physics' ||
-                         tab === 'lighting' || tab === 'animation' || tab === 'text');
+                         tab === 'lighting' || tab === 'animation' || tab === 'text' ||
+                         tab === 'audio');
         controlsInfo.style.left = sidePanel ? '380px' : '20px';
         // The Double Pendulum runs its own physics scene; entering or leaving
         // the Physics tab swaps the scene in/out so it never lingers behind
@@ -1204,6 +1236,8 @@
         } else {
           stopDoublePendulum();
         }
+        // Leaving the Spatial Audio tab stops the orbiting bell.
+        stopAudioIfHidden(tab);
       }
 
       // ---- Source toggle (CDN / Sketchfab) ----
@@ -1961,6 +1995,208 @@
         document.getElementById('dp-reset').addEventListener('click', dpReset);
       }
 
+      // ---- Spatial Audio ----
+      //
+      // The Spatial Audio panel's Play/Stop buttons are wired HERE, in the
+      // inline-JS runtime, because that — not the Kotlin/JS bundle — is the
+      // shipped runtime for this page (see issue #1541: `index.html` loads
+      // `js/sceneview.js`, the hand-written plain-JS library, NOT the
+      // Kotlin/JS `web-model-viewer.js` output). `Main.kt::setupSpatialAudio()`
+      // never executes at runtime, so before this every click on `#audio-play`
+      // was a dead no-op — zero Web Audio API activity (issue #1944).
+      //
+      // The graph mirrors `sceneview-web`'s `SpatialAudioNode`:
+      //   AudioBufferSourceNode -> PannerNode("HRTF") -> GainNode -> speakers
+      // with the panner position orbiting the listener, so this maps 1:1 onto
+      // the Android and iOS Spatial Audio demos (#1900).
+
+      var audioCtx = null;          // shared AudioContext, created on first Play
+      var audioBuffer = null;       // decoded bell.wav, cached across plays
+      var audioSource = null;       // current AudioBufferSourceNode (single-use)
+      var audioPanner = null;       // PannerNode applying HRTF + distance falloff
+      var audioGain = null;         // master GainNode
+      var audioOrbitFrame = null;   // requestAnimationFrame handle for the orbit
+      var audioOrbitAngle = 0;      // current orbit angle, radians
+      var audioLastTs = 0;          // last RAF timestamp, for dt
+
+      // Falloff presets map 1:1 onto the Web Audio PannerNode distance model,
+      // matching `sceneview-web`'s `AudioFalloff` (Inverse / Linear / None).
+      function applyAudioFalloff(panner, mode) {
+        if (mode === 'linear') {
+          panner.distanceModel = 'linear';
+          panner.refDistance = 0.2;
+          panner.maxDistance = 4;
+          panner.rolloffFactor = 1;
+        } else if (mode === 'none') {
+          // "linear" model with rolloffFactor 0 is provably flat at unity gain
+          // for every distance — see SpatialAudioNode.applyFalloff.
+          panner.distanceModel = 'linear';
+          panner.refDistance = 1;
+          panner.maxDistance = 2;
+          panner.rolloffFactor = 0;
+        } else {
+          panner.distanceModel = 'inverse';
+          panner.refDistance = 0.5;
+          panner.maxDistance = 6;
+          panner.rolloffFactor = 1;
+        }
+      }
+
+      function setAudioPosition(panner, x, y, z) {
+        var ctx = panner.context;
+        if (panner.positionX) {
+          panner.positionX.setValueAtTime(x, ctx.currentTime);
+          panner.positionY.setValueAtTime(y, ctx.currentTime);
+          panner.positionZ.setValueAtTime(z, ctx.currentTime);
+        } else if (panner.setPosition) {
+          panner.setPosition(x, y, z); // legacy Safari
+        }
+      }
+
+      function startAudioOrbit() {
+        if (audioOrbitFrame != null) return;
+        audioLastTs = 0;
+        var step = function(ts) {
+          if (audioPanner == null) { audioOrbitFrame = null; return; }
+          var dt = audioLastTs ? (ts - audioLastTs) / 1000 : 0;
+          audioLastTs = ts;
+          // Quarter-revolution per second, 2 m orbit radius.
+          audioOrbitAngle = (audioOrbitAngle + dt * 2 * Math.PI * 0.25) % (2 * Math.PI);
+          var radius = 2;
+          setAudioPosition(
+            audioPanner,
+            Math.cos(audioOrbitAngle) * radius,
+            0,
+            Math.sin(audioOrbitAngle) * radius
+          );
+          audioOrbitFrame = requestAnimationFrame(step);
+        };
+        audioOrbitFrame = requestAnimationFrame(step);
+      }
+
+      function stopAudio() {
+        if (audioOrbitFrame != null) {
+          cancelAnimationFrame(audioOrbitFrame);
+          audioOrbitFrame = null;
+        }
+        if (audioSource) {
+          try { audioSource.stop(0); } catch (e) { /* already stopped */ }
+          try { audioSource.disconnect(); } catch (e) { /* not connected */ }
+          audioSource = null;
+        }
+      }
+
+      // Builds (or rebuilds) the Web Audio graph and starts the orbiting bell.
+      // MUST be called from a user-gesture handler — browsers keep an
+      // AudioContext suspended until then (autoplay policy).
+      function startAudio() {
+        stopAudio();
+
+        // The AudioContext is created lazily, inside this click handler, so it
+        // starts un-suspended under the browser autoplay policy.
+        if (audioCtx == null) {
+          var Ctx = window.AudioContext || window.webkitAudioContext;
+          if (!Ctx) {
+            console.error('Spatial Audio demo: Web Audio API is not supported in this browser.');
+            return;
+          }
+          audioCtx = new Ctx();
+        }
+        // A context resumed from a prior Stop / tab-switch may be suspended.
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        // Park the listener at the origin facing -Z, matching the Android /
+        // iOS Spatial Audio demos' fixed listener pose.
+        var listener = audioCtx.listener;
+        if (listener.positionX) {
+          var t = audioCtx.currentTime;
+          listener.positionX.setValueAtTime(0, t);
+          listener.positionY.setValueAtTime(0, t);
+          listener.positionZ.setValueAtTime(0, t);
+          listener.forwardX.setValueAtTime(0, t);
+          listener.forwardY.setValueAtTime(0, t);
+          listener.forwardZ.setValueAtTime(-1, t);
+          listener.upX.setValueAtTime(0, t);
+          listener.upY.setValueAtTime(1, t);
+          listener.upZ.setValueAtTime(0, t);
+        } else if (listener.setPosition) {
+          listener.setPosition(0, 0, 0);
+          listener.setOrientation(0, 0, -1, 0, 1, 0);
+        }
+
+        var falloffSelect = document.getElementById('audio-falloff');
+        var falloffMode = falloffSelect ? falloffSelect.value : 'inverse';
+
+        // PannerNode (HRTF) -> GainNode -> speakers. Built once, reused.
+        if (audioPanner == null) {
+          audioPanner = audioCtx.createPanner();
+          audioPanner.panningModel = 'HRTF';
+          audioGain = audioCtx.createGain();
+          audioGain.gain.value = 1;
+          audioPanner.connect(audioGain);
+          audioGain.connect(audioCtx.destination);
+        }
+        applyAudioFalloff(audioPanner, falloffMode);
+        setAudioPosition(audioPanner, 2, 0, 0); // orbit start
+
+        var playGraph = function() {
+          // AudioBufferSourceNode is single-use — a fresh one per Play.
+          audioSource = audioCtx.createBufferSource();
+          audioSource.buffer = audioBuffer;
+          audioSource.loop = true;
+          audioSource.connect(audioPanner);
+          audioSource.start(0);
+          startAudioOrbit();
+          console.log('Spatial Audio demo started — bell.wav orbiting via PannerNode (HRTF)');
+        };
+
+        if (audioBuffer) {
+          playGraph();
+          return;
+        }
+
+        // First Play: fetch + decode bell.wav, then start.
+        fetch('audio/bell.wav')
+          .then(function(response) {
+            if (!response.ok) {
+              throw new Error('Failed to fetch audio/bell.wav: HTTP ' + response.status);
+            }
+            return response.arrayBuffer();
+          })
+          .then(function(bytes) { return audioCtx.decodeAudioData(bytes); })
+          .then(function(decoded) {
+            audioBuffer = decoded;
+            playGraph();
+          })
+          .catch(function(error) {
+            console.error('Failed to start Spatial Audio demo:', error);
+            window.alert('Could not load the audio clip — check the console for details.');
+          });
+      }
+
+      function setupAudio() {
+        var playBtn = document.getElementById('audio-play');
+        var stopBtn = document.getElementById('audio-stop');
+        var falloffSelect = document.getElementById('audio-falloff');
+        if (!playBtn || !stopBtn) return;
+
+        playBtn.addEventListener('click', startAudio);
+        stopBtn.addEventListener('click', stopAudio);
+
+        // Changing the falloff while playing re-applies it live.
+        if (falloffSelect) {
+          falloffSelect.addEventListener('change', function() {
+            if (audioPanner) applyAudioFalloff(audioPanner, falloffSelect.value);
+          });
+        }
+      }
+
+      // Leaving the Spatial Audio tab stops the bell so it does not keep
+      // orbiting (and ringing) behind another panel.
+      function stopAudioIfHidden(tab) {
+        if (tab !== 'audio') stopAudio();
+      }
+
       // ---- Settings ----
 
       function setupSettings() {
@@ -2116,7 +2352,7 @@
       // No-op if version.json is missing (dev mode, no deploy yet, fetch
       // blocked by an ad-blocker, …) — the snackbar just stays hidden.
 
-      var BUILD_VERSION = '4.11.1';
+      var BUILD_VERSION = '4.12.0';
       var VERSION_URL = '/version.json';
       var UPDATE_THROTTLE_MS = 12 * 60 * 60 * 1000;     // 12 hours
       var UPDATE_LAST_CHECK_KEY = 'sceneview.update.lastCheckAt';

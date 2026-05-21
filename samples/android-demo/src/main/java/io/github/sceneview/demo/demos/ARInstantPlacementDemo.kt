@@ -41,11 +41,12 @@ import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.InstantPlacementPoint
 import com.google.ar.core.Plane
-import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.demos.internal.ArPlacement
@@ -208,6 +209,11 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(top = 8.dp)
             )
+            // Developer-only debug toggle — visible when QA mode is on. Lets QA
+            // force-emit each TrackingFailureReason so the actionable-message
+            // overlay can be validated without staging a real failure. See
+            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+            ForceTrackingFailureMenu()
         }
     ) {
         // `key(instantEnabled)` rebuilds the entire ARSceneView (and its ARCore session) when
@@ -274,14 +280,13 @@ private fun InstantPlacementScene(
             materialLoader = materialLoader,
             playbackDataset = playbackDataset,
             planeRenderer = !instantEnabled,
-            sessionConfiguration = { _: Session, config: Config ->
-                config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-                config.instantPlacementMode = if (instantEnabled) {
-                    Config.InstantPlacementMode.LOCAL_Y_UP
-                } else {
-                    Config.InstantPlacementMode.DISABLED
-                }
+            // Typed Config.*Mode params (#1766) — reactive: flipping `instantEnabled` recomposes
+            // the session config without a sessionConfiguration callback. planeFindingMode +
+            // lightEstimationMode are already the defaults.
+            instantPlacementMode = if (instantEnabled) {
+                Config.InstantPlacementMode.LOCAL_Y_UP
+            } else {
+                Config.InstantPlacementMode.DISABLED
             },
             onSessionUpdated = { _, frame: Frame ->
                 latestFrame = frame
@@ -533,8 +538,12 @@ private fun InstantPlacementScene(
                 // session start so there's no longer any visual collision.
                 .padding(top = 56.dp)
         ) {
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
-                visible = !isTracking,
+                visible = !isTracking || ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -544,7 +553,7 @@ private fun InstantPlacementScene(
                     shape = MaterialTheme.shapes.large
                 ) {
                     Text(
-                        text = trackingFailureMessage(trackingFailureReason)
+                        text = trackingFailureMessage(effectiveReason)
                             ?: if (instantEnabled) {
                                 "Initializing camera — you can already tap to place"
                             } else {

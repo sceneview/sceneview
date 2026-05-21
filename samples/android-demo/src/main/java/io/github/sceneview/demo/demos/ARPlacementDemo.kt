@@ -14,10 +14,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,17 +36,18 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Anchor
-import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
-import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.AssetSourceState
+import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.DemoScaffold
@@ -65,11 +68,19 @@ import io.github.sceneview.rememberOnGestureListener
 import java.io.File
 
 /**
- * Interactive AR tap-to-place demo with a "Pick what to place" picker.
+ * Interactive AR tap-to-place demo with a "Pick what to place" picker and a screen-center
+ * placement reticle.
  *
  * Plane detection is rendered as a translucent overlay. Each tap on a detected horizontal or
  * vertical plane spawns a NEW [ModelNode] instance attached to its own
  * [AnchorNode][io.github.sceneview.ar.node.AnchorNode].
+ *
+ * **Placement reticle ([#1882](https://github.com/sceneview/sceneview/issues/1882)).** A small
+ * disc tracks the centre-of-screen hit-test result each frame so the user can see *where* their
+ * next tap will land before committing. The reticle is purely visual — taps still resolve their
+ * own hit at the tap coordinates, so the user can place anywhere on screen, not only at centre.
+ * When no surface is detected under the centre pixel, a "Aim at a surface…" prompt is shown
+ * instead. Wired via the AR-scope [io.github.sceneview.ar.ARSceneScope.HitResultNode] composable.
  *
  * **Picker — Stage 2 ([#1152](https://github.com/sceneview/sceneview/issues/1152)).** The
  * controls sheet exposes a chip row sourced from [SampleAssets.byCategory]`["ar_placement"]`
@@ -77,20 +88,23 @@ import java.io.File
  * streamed CC-BY models from Sketchfab via [SketchfabAssetResolver]. Tapping a chip arms
  * that slug as the next placed model; subsequent taps on a plane place a fresh instance.
  *
- * **Bundled fallback.** The default chip "Bundled cycle" preserves the v4.3.1 behaviour —
- * each tap places the next entry of the 5-model bundled GLB cycle (helmet → fox → lantern
- * → toy car → shiba). This keeps the demo useful even when the app launched with no
- * Sketchfab API key or with the network down — the resolver's per-slug fallback path will
- * also serve a bundled GLB, but the explicit cycle gives a deterministic "no surprises"
- * mode for QA / offline / store-listing screenshots.
+ * **Bundled model picker ([#1883](https://github.com/sceneview/sceneview/issues/1883)).** A
+ * second chip row lets the user lock the bundled cycle to a single specific GLB (Damaged
+ * Helmet / Fox / Lantern / Toy Car / Shiba) or keep the auto-cycle that rotates through all
+ * five on every tap. Bundled-mode chips are mutually exclusive with the streamed picker
+ * above — selecting a streamed slug overrides the bundled choice for that tap.
+ *
+ * **Settings ([#1883](https://github.com/sceneview/sceneview/issues/1883)).** The sheet also
+ * exposes a Snap-to-plane toggle (default ON — accept only detected plane hits) and a Show
+ * reticle toggle (default ON — dev-only). The "Clear All" button wipes every placed model and
+ * detaches the underlying ARCore anchors.
  *
  * Each placed model is **editable** — `isEditable = true` on the [ModelNode] enables
  * pinch-to-scale, two-finger rotate, and one-finger drag. Because the parent [AnchorNode] is
  * locked to its ARCore [Anchor] pose, the editable child node transforms relative to the anchor:
  * the anchor stays glued to the plane while the user manipulates the model on top of it.
  *
- * Top-center pill shows the live "X models placed" count. The "Clear All" control wipes every
- * placed model and detaches the underlying ARCore anchors.
+ * Top-center pill shows the live "X models placed" count.
  */
 
 private data class PlacedModel(
@@ -137,6 +151,32 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     val placementSlugs = remember { SampleAssets.byCategory["ar_placement"].orEmpty() }
     var selectedSlug by remember { mutableStateOf<SketchfabSlug?>(null) }
 
+    // Bundled-model picker (#1883). Locks the cycle to a single GLB so the
+    // user can predict exactly what each tap places. `null` ⇒ keep the
+    // auto-cycle that rotates through all five on every tap (v4.3.1
+    // behaviour). Mutually exclusive with the streamed `selectedSlug`
+    // chip row above — if a streamed slug is selected and resolved, that
+    // wins regardless of `selectedBundledIndex`.
+    var selectedBundledIndex by remember { mutableStateOf<Int?>(null) }
+
+    // Settings toggles (#1883). Defaults preserve the previous strict
+    // plane-only behaviour. Show-reticle is wired to the in-scene reticle
+    // node's `isVisible`; dev users can disable it for screenshots.
+    var snapToPlane by remember { mutableStateOf(true) }
+    var showReticle by remember { mutableStateOf(true) }
+
+    // Viewport pixels (#1882). Captured via `onSizeChanged` on the outer
+    // Box. `HitResultNode(xPx, yPx)` needs view-space pixel coordinates to
+    // continuously hit-test the scene at the screen centre — without a
+    // measured viewport the reticle would race a zero pose at composition
+    // time and stay parked at the AR origin.
+    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
+    // Latest centre-pixel hit, surfaced from the HitResultNode lambda
+    // below. Drives the "Aim at a surface…" prompt: `null` ⇒ nothing
+    // detected → hide the reticle disc + show the prompt; non-null ⇒
+    // reticle disc is at a real surface.
+    var reticleHit by remember { mutableStateOf<HitResult?>(null) }
+
     // Warm the `ar_placement` cache so taps land instantly once the user picks
     // a chip. The resolver dedupes concurrent calls, so when the per-tap
     // resolve fires below it picks up the already-staged file.
@@ -163,20 +203,6 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     // Keep a reference to the latest Frame for hit testing in the gesture callback.
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
-    // Placement reticle state (#1882). The reticle continuously hit-tests at
-    // screen center; `reticleHit` is the most-recent successful hit, surfaced
-    // back into Compose state by `ReticleNode`'s `onHitResultChanged`. Tap-to-
-    // place reads this value so the placed model lands exactly where the
-    // reticle was — what-you-see-is-what-you-get placement. Cleared when the
-    // ray misses every trackable, which drives the "aim at a surface" hint.
-    var reticleHit by remember { mutableStateOf<HitResult?>(null) }
-    // View size in pixels — captured via `onSizeChanged` and used to position
-    // the library-level `ReticleNode` at screen center. Initial `null` keeps
-    // the reticle out of the scene until layout completes (first non-zero
-    // size triggers the recomp that inserts the node).
-    var viewWidthPx by remember { mutableStateOf(0) }
-    var viewHeightPx by remember { mutableStateOf(0) }
-
     // Active-gesture label (shown while the user is mid-manipulating a placed
     // model). `null` ⇒ no overlay. Mirrors the GestureEditingDemo pattern so
     // both demos share the same visual language for "what is my touch doing
@@ -199,9 +225,9 @@ fun ARPlacementDemo(onBack: () -> Unit) {
         assetSource = assetSource,
         controls = {
             Text(
-                text = "Tap a detected plane to drop a model. Each model is editable: drag to " +
-                    "translate, pinch to scale, twist to rotate — the active gesture is shown " +
-                    "in the top-center pill.",
+                text = "Aim the centre reticle at a surface, then tap to drop a model. Each model " +
+                    "is editable: drag to translate, pinch to scale, twist to rotate — the active " +
+                    "gesture is shown in the top-center pill.",
                 style = MaterialTheme.typography.bodyMedium
             )
 
@@ -250,7 +276,93 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 style = MaterialTheme.typography.labelSmall,
             )
 
-            OutlinedButton(
+            // Bundled-model picker (#1883). Lets the user lock the cycle to a
+            // single GLB so each tap places exactly what they picked.
+            // "Auto-cycle" is the v4.3.1 default. Bundled chips are ignored
+            // when a streamed slug above is selected and resolved.
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Bundled model",
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    selected = selectedBundledIndex == null,
+                    onClick = { selectedBundledIndex = null },
+                    label = { Text("Auto-cycle") },
+                )
+                MODEL_CYCLE.forEachIndexed { index, entry ->
+                    FilterChip(
+                        selected = selectedBundledIndex == index,
+                        onClick = { selectedBundledIndex = index },
+                        label = { Text(entry.displayName) },
+                    )
+                }
+            }
+
+            // Settings toggles (#1883). Snap-to-plane gates the tap handler:
+            // ON ⇒ only detected planes accept placements (v4.3.1 behaviour);
+            // OFF ⇒ accept any tracked hit (points, depth, instant placement).
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = "Snap to plane",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Switch(
+                    checked = snapToPlane,
+                    onCheckedChange = { snapToPlane = it },
+                )
+            }
+            Text(
+                text = if (snapToPlane) {
+                    "Only detected planes accept placements (recommended)."
+                } else {
+                    "Free placement — any tracked surface accepts placements (points, depth)."
+                },
+                style = MaterialTheme.typography.labelSmall,
+            )
+
+            // Show-reticle toggle (#1882 / #1883). Dev-only: hide the centre
+            // disc for screenshots without losing the underlying hit-test
+            // pipeline.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = "Show reticle (dev)",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Switch(
+                    checked = showReticle,
+                    onCheckedChange = { showReticle = it },
+                )
+            }
+
+            // Clear-all: prominent filled Button so it stands out from the
+            // chip rows and toggles (#1883). Solid container instead of an
+            // OutlinedButton — over the controls sheet the outline read as
+            // disabled at a glance.
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
                 onClick = {
                     // Detach every ARCore anchor so the session stops tracking them, then drop
                     // the Compose state — recomposition removes the AnchorNodes from the graph.
@@ -258,9 +370,7 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                     placedModels.clear()
                     cycleIndex = 0
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Clear All")
             }
@@ -269,35 +379,35 @@ fun ARPlacementDemo(onBack: () -> Unit) {
             val nextLabel = selectedSlug?.let { slug ->
                 if (selectedFile != null) slug.displayName
                 else stringResource(R.string.demo_ar_placement_picker_streaming, slug.displayName)
-            } ?: MODEL_CYCLE[cycleIndex % MODEL_CYCLE.size].displayName
+            } ?: selectedBundledIndex?.let { MODEL_CYCLE[it].displayName }
+                ?: MODEL_CYCLE[cycleIndex % MODEL_CYCLE.size].displayName
             Text(
                 text = "Next tap places: $nextLabel",
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(top = 8.dp)
             )
+            // Developer-only debug toggle — visible when QA mode is on. Lets QA
+            // force-emit each TrackingFailureReason so the actionable-message
+            // overlay can be validated without staging a real failure. See
+            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+            ForceTrackingFailureMenu()
         }
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onSizeChanged { viewportSize = it },
+        ) {
             ARSceneView(
-                modifier = Modifier
-                    .fillMaxSize()
-                    // Track view size so we can position the placement reticle
-                    // at screen center each frame (#1882). The reticle Composable
-                    // is only emitted once `viewWidthPx`/`viewHeightPx` are
-                    // non-zero — see the content block below.
-                    .onSizeChanged { size ->
-                        viewWidthPx = size.width
-                        viewHeightPx = size.height
-                    },
+                modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = true,
-                sessionConfiguration = { _: Session, config: Config ->
-                    config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                    config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-                },
+                // Typed Config.*Mode params (#1766) — both planeFindingMode and
+                // lightEstimationMode are already the ARSceneView defaults, so the demo can drop
+                // its sessionConfiguration callback entirely.
                 onSessionUpdated = { _, frame: Frame ->
                     latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
@@ -316,37 +426,51 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                             return@rememberOnGestureListener
                         }
 
-                        // Placement strategy: prefer the reticle's last-known hit
-                        // (what-you-see-is-what-you-get placement, #1882) so the
-                        // model lands exactly where the on-screen marker is. Fall
-                        // back to a tap-coordinate hit test when the reticle has
-                        // no hit (e.g. user disabled the reticle in settings) so
-                        // existing tap behaviour still works.
-                        val hit = reticleHit?.takeIf {
-                            val trackable = it.trackable
-                            trackable is Plane &&
-                                trackable.isPoseInPolygon(it.hitPose) &&
-                                it.distance <= 5.0f
-                        } ?: frame.hitTest(event).firstOrNull { result ->
+                        // Perform an ARCore hit test at the tap coordinates. With Snap-to-plane
+                        // ON (default), only detected planes accept placements — the v4.3.1
+                        // behaviour. With Snap-to-plane OFF, any tracked hit is accepted
+                        // (Plane, Point, DepthPoint, InstantPlacementPoint) so the user can
+                        // place on arbitrary geometry the depth/feature pipeline can see (#1883).
+                        val hitResults = frame.hitTest(event)
+                        val hit = hitResults.firstOrNull { result ->
                             val trackable = result.trackable
-                            trackable is Plane &&
-                                trackable.isPoseInPolygon(result.hitPose) &&
-                                result.distance <= 5.0f // limit placement distance
+                            if (trackable.trackingState != TrackingState.TRACKING) return@firstOrNull false
+                            if (result.distance > 5.0f) return@firstOrNull false
+                            if (snapToPlane) {
+                                trackable is Plane && trackable.isPoseInPolygon(result.hitPose)
+                            } else {
+                                // Free placement: any tracked surface, including the plane
+                                // path above. Still require Plane hits to fall inside the
+                                // polygon so we don't anchor floating off the edge of a half-
+                                // converged plane.
+                                if (trackable is Plane) trackable.isPoseInPolygon(result.hitPose)
+                                else true
+                            }
                         }
                         if (hit != null) {
-                            // Resolve the asset location based on the picker. A selected slug
-                            // whose download has landed → its file URI. A selected slug whose
-                            // download is still in flight → silently fall back to the bundled
-                            // cycle so the tap isn't lost. No selection → cycle through
-                            // MODEL_CYCLE as before.
+                            // Resolve the asset location based on the picker. Priority order:
+                            //   1. A selected streamed slug whose download has landed → its
+                            //      file URI.
+                            //   2. A bundled-model lock chosen in Settings (#1883) → that
+                            //      specific GLB on every tap.
+                            //   3. Fall back to the rotating MODEL_CYCLE (v4.3.1 behaviour).
+                            // A streamed slug whose download is still in flight silently
+                            // demotes to (2) or (3) so the tap is never lost.
                             val slug = selectedSlug
                             val pendingFile = selectedFile
-                            val (location, name) = if (slug != null && pendingFile != null) {
-                                "file://${pendingFile.absolutePath}" to slug.displayName
-                            } else {
-                                val entry = MODEL_CYCLE[cycleIndex % MODEL_CYCLE.size]
-                                cycleIndex = (cycleIndex + 1) % MODEL_CYCLE.size
-                                entry.assetPath to entry.displayName
+                            val bundledLock = selectedBundledIndex
+                            val (location, name) = when {
+                                slug != null && pendingFile != null ->
+                                    "file://${pendingFile.absolutePath}" to slug.displayName
+                                bundledLock != null -> {
+                                    val entry = MODEL_CYCLE[bundledLock]
+                                    entry.assetPath to entry.displayName
+                                }
+                                else -> {
+                                    val entry = MODEL_CYCLE[cycleIndex % MODEL_CYCLE.size]
+                                    cycleIndex = (cycleIndex + 1) % MODEL_CYCLE.size
+                                    entry.assetPath to entry.displayName
+                                }
                             }
                             placedModels.add(
                                 PlacedModel(
@@ -377,39 +501,68 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                     onScaleEnd = { _, _, _ -> gestureMode = null }
                 )
             ) {
-                // Placement reticle (#1882). Centred on the live view in pixels —
-                // only emitted once `onSizeChanged` has measured the surface so
-                // the hit test runs against a real screen coordinate. The
-                // visual marker is a small unlit cyan disc; the library-level
-                // `ReticleNode` handles auto-hide on no-hit and surfaces the
-                // current hit back into Compose state via `onHitResultChanged`,
-                // which the `onSingleTapConfirmed` handler above consults to
-                // place the model exactly under the reticle.
-                if (viewWidthPx > 0 && viewHeightPx > 0) {
-                    val reticleMaterial = remember(materialLoader) {
-                        materialLoader.createUnlitColorInstance(
-                            Color(red = 0.40f, green = 0.85f, blue = 1.00f, alpha = 0.85f)
-                        )
-                    }
-                    ReticleNode(
-                        xPx = viewWidthPx / 2f,
-                        yPx = viewHeightPx / 2f,
-                        // Place against real planes only — reflects the tap-to-
-                        // place rule above so the reticle never points at an
-                        // instant-placement ghost the user can't actually place on.
-                        instantPlacementPoint = false,
-                        depthPoint = false,
-                        point = false,
-                        onHitResultChanged = { reticleHit = it }
+                // Placement reticle (#1882). A thin unlit cyan disc that follows the centre-of-
+                // screen hit-test result each frame. The reticle is purely visual — the tap
+                // handler above runs its own hit-test at the tap coordinates, so the user can
+                // still place anywhere on screen, not only at the centre dot.
+                //
+                // Hidden when:
+                //   - The viewport hasn't been measured yet (`viewportSize == Zero`), to avoid
+                //     racing a (0, 0) hit-test on first composition.
+                //   - The Settings "Show reticle (dev)" toggle is OFF.
+                //   - No hit landed under the centre pixel (`reticleHit == null`). The "Aim at
+                //     a surface…" prompt below covers that state.
+                //
+                // The `HitResultNode(hitTest = …)` overload gives us full control over which
+                // hits feed the reticle, mirroring the snap-to-plane policy of the tap handler
+                // so the on-screen disc and the next-tap behaviour stay in sync. The lambda
+                // also writes the latest hit to `reticleHit` so the "Aim at a surface…" prompt
+                // outside the AR scope can recompose on each new state.
+                // Allocate the reticle material once and unconditionally so toggling
+                // `showReticle` doesn't leak a fresh MaterialInstance on every flip — the
+                // `remember` slot must stay stable across recompositions.
+                val reticleMaterial = remember(materialLoader) {
+                    materialLoader.createUnlitColorInstance(
+                        Color(0x99_44_E7_FF)  // semi-transparent cyan
+                    )
+                }
+                if (viewportSize != IntSize.Zero && showReticle) {
+                    val centreX = viewportSize.width / 2f
+                    val centreY = viewportSize.height / 2f
+                    HitResultNode(
+                        hitTest = { frame ->
+                            val candidate = frame.hitTest(centreX, centreY).firstOrNull { result ->
+                                val trackable = result.trackable
+                                if (trackable.trackingState != TrackingState.TRACKING) {
+                                    return@firstOrNull false
+                                }
+                                if (result.distance > 5.0f) return@firstOrNull false
+                                if (snapToPlane) {
+                                    trackable is Plane && trackable.isPoseInPolygon(result.hitPose)
+                                } else {
+                                    if (trackable is Plane) trackable.isPoseInPolygon(result.hitPose)
+                                    else true
+                                }
+                            }
+                            // Push the hit out to Compose state so the "Aim at a surface…"
+                            // prompt can react. Only write on change to avoid churning the
+                            // snapshot at 60 Hz with the same value.
+                            if (reticleHit !== candidate) {
+                                reticleHit = candidate
+                            }
+                            candidate
+                        },
                     ) {
-                        // Flat disc (1 mm thick, 4 cm radius) lying along the
-                        // surface normal that ARCore returned. The reticle node
-                        // already orients itself along the surface, so the
-                        // disc renders parallel to the detected plane.
+                        // Thin disc — 7 cm radius, 5 mm tall — sits flush on the detected
+                        // surface. The CylinderNode's local +Y axis is its height axis;
+                        // HitResultNode's pose orients +Y along the surface normal for Plane
+                        // hits, so the disc naturally lays flat. For Point/Depth hits the
+                        // pose's +Y is the estimated surface normal — still correct.
                         CylinderNode(
-                            radius = 0.04f,
-                            height = 0.002f,
-                            materialInstance = reticleMaterial
+                            radius = 0.07f,
+                            height = 0.005f,
+                            sideCount = 48,
+                            materialInstance = reticleMaterial,
                         )
                     }
                 }
@@ -495,36 +648,40 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 }
             }
 
-            // Reticle "aim at a surface" hint (#1882). Visible only while
-            // tracking IS working but the reticle has no hit — distinguishes
-            // "ARCore isn't ready yet" (the scanning indicator below) from
-            // "ARCore is ready but you need to point at a real surface". The
-            // gap is small (just below the count + gesture pills) so the user
-            // sees the prompt without occluding the camera view.
+            // "Aim at a surface…" prompt (#1882). Visible only when the camera is tracking
+            // (no tracking-failure pill below) but the centre-pixel hit-test came back empty
+            // — the user is panning across nothing the depth/plane pipeline can grab onto, so
+            // the reticle is hidden and we surface a one-liner so the screen never looks broken.
+            // Bottom-centred above the scanning pill so the two never collide.
             AnimatedVisibility(
-                visible = isTracking && reticleHit == null,
+                visible = isTracking && reticleHit == null && showReticle,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(top = 96.dp)
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 96.dp),
             ) {
                 Surface(
-                    color = Color.Black.copy(alpha = 0.6f),
+                    color = Color.Black.copy(alpha = 0.7f),
                     contentColor = Color.White,
-                    shape = MaterialTheme.shapes.large
+                    tonalElevation = 4.dp,
+                    shape = MaterialTheme.shapes.small,
                 ) {
                     Text(
-                        text = "Aim at a surface",
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.labelMedium
+                        text = "Aim at a surface…",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelLarge,
                     )
                 }
             }
 
             // Scanning indicator overlay
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
-                visible = !isTracking,
+                visible = !isTracking || ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
@@ -536,7 +693,7 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                     shape = MaterialTheme.shapes.large
                 ) {
                     Text(
-                        text = trackingFailureMessage(trackingFailureReason)
+                        text = trackingFailureMessage(effectiveReason)
                             ?: stringResource(R.string.ar_status_scanning),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)

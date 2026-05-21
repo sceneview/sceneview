@@ -231,8 +231,8 @@ class ARSceneScope internal constructor(
      * A node that follows real-time AR hit-test results at the given view coordinates.
      *
      * On each [Frame] update, the node performs a hit test at ([xPx], [yPx]) in view space and
-     * moves to the intersection with detected scene geometry (planes, depth, instant placement).
-     * Useful for placement cursors or interactive positioning UIs.
+     * moves to the intersection with detected scene geometry. Useful for placement cursors or
+     * interactive positioning UIs.
      *
      * ```kotlin
      * ARSceneView {
@@ -242,16 +242,28 @@ class ARSceneScope internal constructor(
      * }
      * ```
      *
+     * **Defaults are plane-only ([#1891](https://github.com/sceneview/sceneview/issues/1891)).**
+     * [point], [depthPoint], and [instantPlacementPoint] all default to `false` because
+     * depth / feature-point hits before motion-stereo convergence return positions
+     * extremely close to the camera (often <10 cm), which causes a child placement disc
+     * to render as a fullscreen overlay that blanks the camera feed on session start. Opt
+     * each filter back in explicitly once your scene is tracking-stable.
+     *
+     * [minCameraDistance] is an additional defensive floor (meters) — hits closer than this
+     * are dropped, so even a re-enabled depth/point filter can't snap to the lens. Defaults
+     * to `0.3f` (30 cm); pass `null` to disable.
+     *
      * @param xPx                       View X coordinate in pixels for the hit test.
      * @param yPx                       View Y coordinate in pixels for the hit test.
      * @param planeTypes                Which plane types to include in results.
-     * @param point                     Include [Point] trackable results.
-     * @param depthPoint                Include depth-based hit results.
-     * @param instantPlacementPoint     Include instant placement results.
+     * @param point                     Include [Point] trackable results. Default `false` (#1891).
+     * @param depthPoint                Include depth-based hit results. Default `false` (#1891).
+     * @param instantPlacementPoint     Include instant placement results. Default `false` (#1891).
      * @param trackingStates            Only accept results where the trackable has these states.
      * @param pointOrientationModes     Filter by point orientation mode.
      * @param planePoseInPolygon        Require the pose to lie inside the plane polygon.
-     * @param minCameraDistance         Minimum camera distance filter.
+     * @param minCameraDistance         Camera-to-hit floor (meters). Default `0.3f`; `null` to disable.
+     * @param minCameraDistanceFromPlane Legacy plane-only distance gate. Prefer [minCameraDistance].
      * @param predicate                 Custom filter applied to each [HitResult].
      * @param apply                     Additional imperative configuration on [HitResultNodeImpl].
      * @param content                   Optional child nodes declared in a [NodeScope].
@@ -261,15 +273,16 @@ class ARSceneScope internal constructor(
         xPx: Float,
         yPx: Float,
         planeTypes: Set<Plane.Type> = Plane.Type.entries.toSet(),
-        point: Boolean = true,
-        depthPoint: Boolean = true,
-        instantPlacementPoint: Boolean = true,
+        point: Boolean = false,
+        depthPoint: Boolean = false,
+        instantPlacementPoint: Boolean = false,
         trackingStates: Set<TrackingState> = setOf(TrackingState.TRACKING),
         pointOrientationModes: Set<Point.OrientationMode> = setOf(
             Point.OrientationMode.ESTIMATED_SURFACE_NORMAL
         ),
         planePoseInPolygon: Boolean = true,
-        minCameraDistance: Pair<Camera, Float>? = null,
+        minCameraDistance: Float? = 0.3f,
+        minCameraDistanceFromPlane: Pair<Camera, Float>? = null,
         predicate: ((HitResult) -> Boolean)? = null,
         apply: HitResultNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null
@@ -287,6 +300,7 @@ class ARSceneScope internal constructor(
                 pointOrientationModes = pointOrientationModes,
                 planePoseInPolygon = planePoseInPolygon,
                 minCameraDistance = minCameraDistance,
+                minCameraDistanceFromPlane = minCameraDistanceFromPlane,
                 predicate = predicate
             ).apply(apply)
         }
@@ -318,18 +332,22 @@ class ARSceneScope internal constructor(
     // ── ReticleNode ───────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Placement reticle — a [HitResultNode] specialised for "tap to place" UX
-     * that continuously hit-tests at a fixed screen-space coordinate (typically
-     * screen center) and auto-hides when no valid surface is found (#1882).
+     * Placement reticle — a **thin wrapper** over [HitResultNode] specialised for
+     * "tap to place" UX (#1882).
      *
-     * Unlike the bare [HitResultNode], the reticle:
-     *  - flips [io.github.sceneview.node.Node.isVisible] to `false` when the ray
-     *    misses every trackable, so the visual marker doesn't ghost at the last
-     *    known pose;
-     *  - surfaces every hit-result change (including transitions to / from
-     *    `null`) via [onHitResultChanged], so the caller can drive an
-     *    "aim at a surface" hint and capture the last-known hit on tap-to-place
-     *    without attaching a duplicate hit test in [ARScene.onSessionUpdated].
+     * [ReticleNode] is a [HitResultNodeImpl] subclass: it delegates the whole
+     * screen-coordinate hit test — including
+     * [#1891](https://github.com/sceneview/sceneview/issues/1891)'s plane-only
+     * defaults and the 30 cm [minCameraDistance] floor — to [HitResultNode]. The
+     * only behaviour it adds is the [onHitResultChanged] callback. **Auto-hide on
+     * no-hit comes for free** from [HitResultNode]: a `null` hit clears the
+     * trackable, dropping `trackingState` out of the visible set, so a child
+     * marker stops rendering with no manual visibility juggling.
+     *
+     * Use [ReticleNode] when you want a one-call callback on every hit change
+     * (to drive "aim at a surface" hint text and capture the last-known hit on
+     * tap-to-place). Use [HitResultNode] directly when you don't need that
+     * callback, or want a fully custom `hitTest` lambda.
      *
      * Provide a visual marker as the [content] block — a small `CylinderNode`
      * disc, a `SphereNode`, or any other geometry — and it will follow the
@@ -357,38 +375,44 @@ class ARSceneScope internal constructor(
      * }
      * ```
      *
-     * @param xPx                    View X coordinate in pixels for the hit test (screen center
-     *                               on most placement UIs).
-     * @param yPx                    View Y coordinate in pixels for the hit test.
-     * @param planeTypes             Which plane types to include in results.
-     * @param point                  Include [Point] trackable results.
-     * @param depthPoint             Include depth-based hit results.
-     * @param instantPlacementPoint  Include instant placement results — off by default for the
-     *                               reticle so the visible marker only appears on real geometry.
-     * @param trackingStates         Only accept results where the trackable has these states.
-     * @param pointOrientationModes  Filter by point orientation mode.
-     * @param planePoseInPolygon     Require the pose to lie inside the plane polygon.
-     * @param predicate              Custom filter applied to each candidate [HitResult].
-     * @param onHitResultChanged     Invoked whenever the resolved hit changes (including
-     *                               `null` ↔ value transitions).
-     * @param apply                  Additional imperative configuration on the underlying
-     *                               [ReticleNodeImpl].
-     * @param content                Optional child nodes (the visual marker geometry) declared
-     *                               in a [NodeScope].
+     * @param xPx                       View X coordinate in pixels for the hit test (screen center
+     *                                  on most placement UIs).
+     * @param yPx                       View Y coordinate in pixels for the hit test.
+     * @param planeTypes                Which plane types to include in results.
+     * @param point                     Include [Point] trackable results. Default `false`
+     *                                  (#1891 plane-only).
+     * @param depthPoint                Include depth-based hit results. Default `false`
+     *                                  (#1891 plane-only).
+     * @param instantPlacementPoint     Include instant placement results — off by default for the
+     *                                  reticle so the visible marker only appears on real geometry.
+     * @param trackingStates            Only accept results where the trackable has these states.
+     * @param pointOrientationModes     Filter by point orientation mode.
+     * @param planePoseInPolygon        Require the pose to lie inside the plane polygon.
+     * @param minCameraDistance         Camera-to-hit floor (meters). Default `0.3f`; `null` to disable.
+     * @param minCameraDistanceFromPlane Legacy plane-only distance gate. Prefer [minCameraDistance].
+     * @param predicate                 Custom filter applied to each candidate [HitResult].
+     * @param onHitResultChanged        Invoked whenever the resolved hit changes (including
+     *                                  `null` ↔ value transitions).
+     * @param apply                     Additional imperative configuration on the underlying
+     *                                  [ReticleNodeImpl].
+     * @param content                   Optional child nodes (the visual marker geometry) declared
+     *                                  in a [NodeScope].
      */
     @Composable
     fun ReticleNode(
         xPx: Float,
         yPx: Float,
         planeTypes: Set<Plane.Type> = Plane.Type.entries.toSet(),
-        point: Boolean = true,
-        depthPoint: Boolean = true,
+        point: Boolean = false,
+        depthPoint: Boolean = false,
         instantPlacementPoint: Boolean = false,
         trackingStates: Set<TrackingState> = setOf(TrackingState.TRACKING),
         pointOrientationModes: Set<Point.OrientationMode> = setOf(
             Point.OrientationMode.ESTIMATED_SURFACE_NORMAL
         ),
         planePoseInPolygon: Boolean = true,
+        minCameraDistance: Float? = 0.3f,
+        minCameraDistanceFromPlane: Pair<Camera, Float>? = null,
         predicate: ((HitResult) -> Boolean)? = null,
         onHitResultChanged: ((HitResult?) -> Unit)? = null,
         apply: ReticleNodeImpl.() -> Unit = {},
@@ -406,6 +430,8 @@ class ARSceneScope internal constructor(
                 trackingStates = trackingStates,
                 pointOrientationModes = pointOrientationModes,
                 planePoseInPolygon = planePoseInPolygon,
+                minCameraDistance = minCameraDistance,
+                minCameraDistanceFromPlane = minCameraDistanceFromPlane,
                 predicate = predicate,
                 onHitResultChanged = onHitResultChanged
             ).apply(apply)
@@ -465,6 +491,46 @@ class ARSceneScope internal constructor(
     ) {
         val node = remember(engine, xPx, yPx) {
             DepthHitResultNodeImpl(engine = engine, xPx = xPx, yPx = yPx).apply(apply)
+        }
+        NodeLifecycle(node, content)
+    }
+
+    /**
+     * A node that follows depth-based AR hit-test results computed by a caller-supplied
+     * [hitTest] lambda — lambda-overload sibling of the screen-pixel composable above
+     * (#1844). Mirrors the 2-overload surface that [HitResultNode] already exposes
+     * (`xPx/yPx` + custom-lambda) so apps can sample multiple pixels, raycast at a moving
+     * reticle, or skip frames cheaply without subclassing [DepthHitResultNodeImpl].
+     *
+     * The [hitTest] lambda runs on the AR frame thread once per frame (when `update` is true)
+     * and is expected to return `null` to keep the previous pose — same fallback semantics as
+     * the screen-pixel overload.
+     *
+     * ```kotlin
+     * DepthHitResultNode(
+     *     hitTest = { frame ->
+     *         // Sample a 3×3 grid and return the closest valid hit
+     *         (-1..1).flatMap { dx -> (-1..1).map { dy -> dx to dy } }
+     *             .mapNotNull { (dx, dy) -> frame.hitTestDepth(cx + dx * 8f, cy + dy * 8f) }
+     *             .minByOrNull { it.distance }
+     *     },
+     * ) {
+     *     CubeNode(size = Float3(0.05f))
+     * }
+     * ```
+     *
+     * @param hitTest Selector — receives the live [Frame] and returns a depth hit, or `null`.
+     * @param apply   Additional imperative configuration on the underlying node.
+     * @param content Optional child nodes declared in a [NodeScope].
+     */
+    @Composable
+    fun DepthHitResultNode(
+        hitTest: DepthHitResultNodeImpl.(Frame) -> io.github.sceneview.ar.arcore.DepthHitResult?,
+        apply: DepthHitResultNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null,
+    ) {
+        val node = remember(engine) {
+            DepthHitResultNodeImpl(engine = engine, hitTest = hitTest).apply(apply)
         }
         NodeLifecycle(node, content)
     }
