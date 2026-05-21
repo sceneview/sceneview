@@ -62,6 +62,14 @@ class WebXRSession private constructor(
     private var hitTestSource: XRHitTestSource? = null
     private var isRunning = false
 
+    /**
+     * Guards against double-freeing the Filament [SceneView]: [stop] ends the
+     * session and `session.end()` later fires `onend`, which also tears the
+     * scene down. Both paths route through [destroySceneView]; this flag makes
+     * the second call a no-op (#2045).
+     */
+    private var sceneViewDestroyed = false
+
     /** Whether this is an AR session. */
     val isAR: Boolean get() = mode == XRSessionMode.IMMERSIVE_AR
 
@@ -185,6 +193,22 @@ class WebXRSession private constructor(
         hitTestSource?.cancel()
         hitTestSource = null
         xrSession.end()
+        // #2045: ending the session does not free the Filament SceneView the
+        // session allocated — destroy it explicitly so the engine + WebGL2
+        // context are released. Idempotent: the `onend` handler also calls
+        // this (covers the user ending the session from the system UI).
+        destroySceneView()
+    }
+
+    /**
+     * Tear down the Filament [SceneView] created for this session — the engine,
+     * renderer, WebGL2 context and every GPU resource. Idempotent so a [stop]
+     * followed by an `onend` (or vice versa) does not double-free (#2045).
+     */
+    private fun destroySceneView() {
+        if (sceneViewDestroyed) return
+        sceneViewDestroyed = true
+        sceneView.destroy()
     }
 
     /**
@@ -217,6 +241,9 @@ class WebXRSession private constructor(
         xrSession.onend = {
             isRunning = false
             onSessionEnd?.invoke()
+            // #2045: also covers the user ending the session from the system
+            // UI / headset menu (not via stop()). Idempotent with stop().
+            destroySceneView()
         }
 
         xrSession.onselect = { event ->
@@ -261,24 +288,6 @@ class WebXRSession private constructor(
 
         val pose = frame.getViewerPose(referenceSpace)
 
-        // Update Filament camera from XR pose
-        if (pose != null) {
-            val views = pose.views
-            if (views.isNotEmpty()) {
-                val primaryView = views[0]
-
-                // Set camera projection from XR view
-                sceneView.camera.setModelMatrix(primaryView.transform.matrix)
-
-                // For stereo VR, set projection per-eye
-                // (Filament's single-pass stereo is configured via the View)
-                val viewport = glLayer.getViewport(primaryView)
-                val viewportArray = js("[]")
-                viewportArray.push(viewport.x, viewport.y, viewport.width, viewport.height)
-                sceneView.view.setViewport(viewportArray)
-            }
-        }
-
         // Process hit tests (AR only)
         hitTestSource?.let { source ->
             val results = frame.getHitTestResults(source)
@@ -296,12 +305,53 @@ class WebXRSession private constructor(
         // Process pending Filament async operations
         sceneView.engine.execute()
 
-        // Render with Filament
-        if (sceneView.renderer.beginFrame(sceneView.swapChain)) {
-            sceneView.renderer.renderView(sceneView.view)
-            sceneView.renderer.endFrame()
+        // Render every XRView (#2046): one for AR, two eyes for stereo VR.
+        // Each view contributes its own pose + projection + viewport, so the
+        // image registers with the device optics / passthrough.
+        if (pose != null) {
+            val views = pose.views
+            if (views.isNotEmpty()) {
+                if (sceneView.renderer.beginFrame(sceneView.swapChain)) {
+                    for (view in views) {
+                        renderView(view)
+                    }
+                    sceneView.renderer.endFrame()
+                }
+            }
         }
 
         xrSession.requestAnimationFrame(::renderFrame)
+    }
+
+    /**
+     * Render a single [XRView] (#2046).
+     *
+     * Filament.js has no single-pass stereo binding here, so each eye is a
+     * separate [Renderer.renderView] pass — the camera's model and projection
+     * matrices are set from this eye, the Filament viewport is clipped to the
+     * eye's region of the shared `XRWebGLLayer` framebuffer, and the scene is
+     * drawn once per eye. For mono AR this loop runs exactly once.
+     */
+    private fun renderView(view: XRView) {
+        // Pose: XRView.transform.matrix is the eye's model (camera-to-world)
+        // matrix — feed it straight to the Filament camera.
+        sceneView.camera.setModelMatrix(view.transform.matrix)
+
+        // Projection: apply the device-supplied per-eye projection so the FOV
+        // matches the headset optics / camera passthrough instead of the fixed
+        // 45° perspective from SceneView.create.
+        sceneView.camera.setCustomProjection(
+            view.projectionMatrix,
+            sceneView.camera.getNear(),
+            sceneView.camera.getCullingFar(),
+        )
+
+        // Viewport: clip rendering to this eye's region of the XR framebuffer.
+        val viewport = glLayer.getViewport(view)
+        val viewportArray = js("[]")
+        viewportArray.push(viewport.x, viewport.y, viewport.width, viewport.height)
+        sceneView.view.setViewport(viewportArray)
+
+        sceneView.renderer.renderView(sceneView.view)
     }
 }

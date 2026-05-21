@@ -151,6 +151,14 @@ external class Camera {
 
     fun setLensProjection(focalLength: Double, aspect: Double, near: Double, far: Double)
 
+    /**
+     * Set an explicit, externally-supplied projection matrix (column-major
+     * flat 16-element `number[]`). Used by the WebXR render loop to apply the
+     * per-eye [io.github.sceneview.web.xr.XRView.projectionMatrix] the headset
+     * runtime provides, instead of the fixed perspective from [setProjectionFov].
+     */
+    fun setCustomProjection(projection: dynamic, near: Double, far: Double)
+
     /** @param eye float3 [x,y,z], @param center float3, @param up float3 */
     fun lookAt(eye: dynamic, center: dynamic, up: dynamic)
 

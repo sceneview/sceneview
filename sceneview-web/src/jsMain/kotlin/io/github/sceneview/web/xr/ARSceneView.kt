@@ -33,6 +33,7 @@ class ARSceneView private constructor(
     val sceneView: SceneView,
     val session: XRSession,
     val referenceSpace: XRReferenceSpace,
+    private val glLayer: XRWebGLLayer,
 ) {
     /** Callback when user taps and a hit test result is found. */
     var onHitTest: ((XRPose) -> Unit)? = null
@@ -45,6 +46,13 @@ class ARSceneView private constructor(
 
     private var hitTestSource: XRHitTestSource? = null
     private var isRunning = false
+
+    /**
+     * Idempotency guard for [destroySceneView] — `stop()` and the `onend`
+     * handler both tear the Filament [SceneView] down, this prevents a
+     * double-free (#2045).
+     */
+    private var sceneViewDestroyed = false
 
     companion object {
 
@@ -105,7 +113,7 @@ class ARSceneView private constructor(
                         session.updateRenderState(renderStateInit)
 
                         session.requestReferenceSpace(XRReferenceSpaceType.LOCAL_FLOOR).then { refSpace: XRReferenceSpace ->
-                            val arView = ARSceneView(sceneView, session, refSpace)
+                            val arView = ARSceneView(sceneView, session, refSpace, xrLayer)
 
                             // Set up hit test source from viewer space
                             session.requestReferenceSpace(XRReferenceSpaceType.VIEWER).then { viewerSpace: XRReferenceSpace ->
@@ -127,6 +135,9 @@ class ARSceneView private constructor(
                             session.onend = {
                                 arView.isRunning = false
                                 arView.onSessionEnd?.invoke()
+                                // #2045: free the Filament SceneView when the
+                                // session ends from the system UI, not stop().
+                                arView.destroySceneView()
                             }
 
                             onReady(arView)
@@ -153,6 +164,9 @@ class ARSceneView private constructor(
         hitTestSource?.cancel()
         hitTestSource = null
         session.end()
+        // #2045: destroy the Filament SceneView the session allocated so the
+        // engine + WebGL2 context are freed. Idempotent with the `onend` path.
+        destroySceneView()
     }
 
     /** Load a 3D model into the AR scene. */
@@ -160,17 +174,21 @@ class ARSceneView private constructor(
         sceneView.loadModel(url, onLoaded)
     }
 
+    /**
+     * Tear down the Filament [SceneView] — engine, renderer, WebGL2 context and
+     * GPU resources. Idempotent so `stop()` and `onend` cannot double-free
+     * (#2045).
+     */
+    private fun destroySceneView() {
+        if (sceneViewDestroyed) return
+        sceneViewDestroyed = true
+        sceneView.destroy()
+    }
+
     private fun renderFrame(timestamp: Double, frame: XRFrame) {
         if (!isRunning) return
 
         val pose = frame.getViewerPose(referenceSpace)
-        if (pose != null) {
-            // Update Filament camera from WebXR pose
-            val view = pose.views.firstOrNull()
-            if (view != null) {
-                sceneView.camera.setModelMatrix(view.transform.matrix)
-            }
-        }
 
         // Process hit tests
         hitTestSource?.let { source ->
@@ -183,16 +201,46 @@ class ARSceneView private constructor(
             }
         }
 
-        // Render with Filament
         // Process pending Filament async operations (texture uploads, etc.)
         sceneView.engine.execute()
 
-        if (sceneView.renderer.beginFrame(sceneView.swapChain)) {
-            sceneView.renderer.renderView(sceneView.view)
-            sceneView.renderer.endFrame()
+        // Render every XRView (#2046). AR is mono — one view — but the loop is
+        // shared with the stereo path: each view sets its own pose, the
+        // device-supplied projection, and its viewport before being drawn.
+        if (pose != null) {
+            val views = pose.views
+            if (views.isNotEmpty()) {
+                if (sceneView.renderer.beginFrame(sceneView.swapChain)) {
+                    for (view in views) {
+                        renderView(view)
+                    }
+                    sceneView.renderer.endFrame()
+                }
+            }
         }
 
         session.requestAnimationFrame(::renderFrame)
+    }
+
+    /**
+     * Render a single [XRView] (#2046): apply the eye's pose and the
+     * device-supplied projection matrix, clip the Filament viewport to the
+     * eye's region of the `XRWebGLLayer` framebuffer, then draw the scene.
+     */
+    private fun renderView(view: XRView) {
+        sceneView.camera.setModelMatrix(view.transform.matrix)
+        sceneView.camera.setCustomProjection(
+            view.projectionMatrix,
+            sceneView.camera.getNear(),
+            sceneView.camera.getCullingFar(),
+        )
+
+        val viewport = glLayer.getViewport(view)
+        val viewportArray = js("[]")
+        viewportArray.push(viewport.x, viewport.y, viewport.width, viewport.height)
+        sceneView.view.setViewport(viewportArray)
+
+        sceneView.renderer.renderView(sceneView.view)
     }
 }
 
@@ -236,6 +284,12 @@ class VRSceneView private constructor(
     var onSessionEnd: (() -> Unit)? = null
 
     private var isRunning = false
+
+    /**
+     * Idempotency guard for [destroySceneView] — `stop()` and the `onend`
+     * handler both tear the Filament [SceneView] down (#2045).
+     */
+    private var sceneViewDestroyed = false
 
     companion object {
 
@@ -316,6 +370,9 @@ class VRSceneView private constructor(
                             session.onend = {
                                 vrView.isRunning = false
                                 vrView.onSessionEnd?.invoke()
+                                // #2045: free the Filament SceneView when the
+                                // session ends from the headset menu, not stop().
+                                vrView.destroySceneView()
                             }
 
                             onReady(vrView)
@@ -340,6 +397,9 @@ class VRSceneView private constructor(
     fun stop() {
         isRunning = false
         session.end()
+        // #2045: destroy the Filament SceneView the session allocated so the
+        // engine + WebGL2 context are freed. Idempotent with the `onend` path.
+        destroySceneView()
     }
 
     /** Load a 3D model into the VR scene. */
@@ -347,37 +407,66 @@ class VRSceneView private constructor(
         sceneView.loadModel(url, onLoaded)
     }
 
+    /**
+     * Tear down the Filament [SceneView] — engine, renderer, WebGL2 context and
+     * GPU resources. Idempotent so `stop()` and `onend` cannot double-free
+     * (#2045).
+     */
+    private fun destroySceneView() {
+        if (sceneViewDestroyed) return
+        sceneViewDestroyed = true
+        sceneView.destroy()
+    }
+
     private fun renderFrame(timestamp: Double, frame: XRFrame) {
         if (!isRunning) return
 
         val pose = frame.getViewerPose(referenceSpace)
 
-        if (pose != null) {
-            val views = pose.views
-            if (views.isNotEmpty()) {
-                // For stereo VR, update camera from the first view
-                val primaryView = views[0]
-                sceneView.camera.setModelMatrix(primaryView.transform.matrix)
-
-                val viewport = glLayer.getViewport(primaryView)
-                val viewportArray = js("[]")
-                viewportArray.push(viewport.x, viewport.y, viewport.width, viewport.height)
-                sceneView.view.setViewport(viewportArray)
-            }
-        }
-
         // Dispatch frame callback
         onFrame?.invoke(frame, pose)
 
-        // Render with Filament
         // Process pending Filament async operations
         sceneView.engine.execute()
 
-        if (sceneView.renderer.beginFrame(sceneView.swapChain)) {
-            sceneView.renderer.renderView(sceneView.view)
-            sceneView.renderer.endFrame()
+        // Render BOTH eyes (#2046). A stereo headset reports two XRViews; the
+        // previous code rendered only views[0], leaving the other eye on the
+        // clear colour. Each eye gets its own pose, device projection and
+        // viewport, then a dedicated renderView pass — Filament.js has no
+        // single-pass stereo binding here, so two passes is the honest result.
+        if (pose != null) {
+            val views = pose.views
+            if (views.isNotEmpty()) {
+                if (sceneView.renderer.beginFrame(sceneView.swapChain)) {
+                    for (view in views) {
+                        renderView(view)
+                    }
+                    sceneView.renderer.endFrame()
+                }
+            }
         }
 
         session.requestAnimationFrame(::renderFrame)
+    }
+
+    /**
+     * Render a single [XRView] / eye (#2046): apply the eye pose and the
+     * device-supplied projection matrix, clip the Filament viewport to the
+     * eye's half of the `XRWebGLLayer` framebuffer, then draw the scene.
+     */
+    private fun renderView(view: XRView) {
+        sceneView.camera.setModelMatrix(view.transform.matrix)
+        sceneView.camera.setCustomProjection(
+            view.projectionMatrix,
+            sceneView.camera.getNear(),
+            sceneView.camera.getCullingFar(),
+        )
+
+        val viewport = glLayer.getViewport(view)
+        val viewportArray = js("[]")
+        viewportArray.push(viewport.x, viewport.y, viewport.width, viewport.height)
+        sceneView.view.setViewport(viewportArray)
+
+        sceneView.renderer.renderView(sceneView.view)
     }
 }
