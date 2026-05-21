@@ -339,8 +339,10 @@ run_web() {
   # `iwer` (Immersive Web Emulation Runtime) is a best-effort WebXR shim
   # injected by `tests/webxr.spec.ts` via `page.addInitScript()` — same
   # caveat as the Android record/replay harness: it validates wire-level XR
-  # API access, not real spatial tracking. The rich replay test soft-skips
-  # until a recorded session fixture lands (follow-up of #1878).
+  # API access, not real spatial tracking. The webxr spec now DRIVES a full
+  # immersive-ar / immersive-vr session programmatically (request, XR frame
+  # loop, pose/controller nudge, end) against IWER's programmable XRDevice —
+  # no recorded fixture or real headset needed (#1674/#1748 item 4).
   log "ensuring Playwright + chromium are installed (samples/web-demo)"
   (
     cd "$webdir"

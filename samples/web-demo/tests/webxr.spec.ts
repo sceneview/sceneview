@@ -1,13 +1,12 @@
-import * as fs from 'fs';
-import * as path from 'path';
-
 import {
   test,
   expect,
   captureDiagnostics,
   expectNoPageErrors,
   waitForEngineReady,
+  assertCanvasContextAlive,
   installIwer,
+  driveWebXrSession,
 } from './helpers';
 
 /**
@@ -16,33 +15,31 @@ import {
  * Item 4 of the autonomous device-QA harness umbrella (issue #1748), filed as
  * the dedicated follow-up issue #1878.
  *
- * Scope of THIS spec — scaffold only:
+ * Scope of THIS spec:
  *  - Inject IWER's UMD bundle via `installIwer(page)` (see `helpers.ts`).
  *  - Click `#enter-ar` / `#enter-vr` and assert the click does NOT throw,
  *    does NOT lose the WebGL context, and does NOT emit a real page error.
- *  - SOFT-SKIP the rich replay assertions when a recorded XR session fixture
- *    is missing — recording requires real WebXR hardware (Quest, Vision Pro)
- *    and lands in a separate PR with the fixture file. See the follow-up
- *    issue referenced at the top of this file.
+ *  - Drive a FULL WebXR session programmatically with `driveWebXrSession()`:
+ *    request the session (same option shape the demo uses), pump XR animation
+ *    frames, nudge the emulated device pose / controllers, end the session.
  *
- * Why the recording is deferred: a real WebXR session (controller-driven
- * model selection + scene orbit) can only be recorded on a real WebXR-capable
- * device — impossible from an agent sandbox or a headless CI runner. The
- * IWER infrastructure + this skeleton land NOW so that the fixture, when it
- * arrives, has somewhere to plug in.
+ * Why no recorded fixture: IWER's `XRDevice` is a *programmable* emulator —
+ * pose, controllers and the rAF pump are all script-driven, so a deterministic
+ * session is synthesised in-test. An `ActionRecorder` `.json` capture still
+ * needs a real Quest / Vision Pro to author, but it is NOT a prerequisite for
+ * exercising the demo's WebXR code path. The earlier "fixture pending"
+ * soft-skip is therefore replaced by a real runnable session-drive test
+ * (issue #1674 item 4 / #1748 item 4).
  *
  * Best-effort caveat (parity with the Android AR record/replay docs in
  * `arsceneview/`): IWER is not a real headset. It emulates the wire-level
  * WebXR API — session lifecycle, controller input events, hit-test stubs —
- * not real spatial tracking. The hard regression signal is the recorded
- * replay; this scaffold only proves the runtime shim is wired correctly and
- * the AR/VR buttons don't crash the page when clicked.
+ * not real spatial tracking or real-world geometry. It validates that the
+ * demo's WebXR plumbing is correct and survives a session round-trip; it
+ * cannot validate real spatial accuracy.
  */
 
-/** Where a recorded WebXR session fixture WOULD live once we have one. */
-const RECORDING_PATH = path.resolve(__dirname, 'fixtures', 'webxr-session-models.json');
-
-test.describe('Web Demo — WebXR (IWER scaffold)', () => {
+test.describe('Web Demo — WebXR (IWER)', () => {
 
   test('IWER runtime installs and enter-ar click does not crash the page', async ({ page }) => {
     // 1. Inject the IWER UMD bundle + boot a Quest 3 emulated device. The
@@ -111,31 +108,67 @@ test.describe('Web Demo — WebXR (IWER scaffold)', () => {
     expectNoPageErrors(diag, 'WebXR scaffold — enter-ar click');
   });
 
-  test('Recorded XR session replay — fixture pending', async ({ page }) => {
-    // The rich replay test only runs when a recorded WebXR session fixture
-    // is shipped alongside it. Recording requires a real WebXR-capable
-    // device (Quest 3, Vision Pro, ...), which is impossible from an agent
-    // sandbox or a headless CI runner.
-    //
-    // TODO(follow-up of #1878): once a recorded fixture exists at
-    // `RECORDING_PATH`, replace this soft-skip body with:
-    //   await installIwer(page);
-    //   const recording = JSON.parse(fs.readFileSync(RECORDING_PATH, 'utf8'));
-    //   await page.evaluate((r) => (globalThis as any).IWER.replay(r), recording);
-    //   await page.goto('/');
-    //   await waitForEngineReady(page);
-    //   await page.locator('#enter-ar').click();
-    //   // assert scene-state checkpoints from the recording...
-    //   expectNoPageErrors(diag, 'WebXR replay');
-    const hasRecording = fs.existsSync(RECORDING_PATH);
+  test('IWER drives a full immersive-ar session — request, frame loop, end', async ({ page }) => {
+    // 1. Inject IWER + boot the emulated Quest 3 device before any page script.
+    const iwer = await installIwer(page);
+    test.skip(!iwer.injected, `IWER not installed in this environment: ${iwer.error}`);
+
+    const diag = captureDiagnostics(page);
+    await page.goto('/');
+    await waitForEngineReady(page);
+
+    // 2. Drive the session end-to-end against the emulated device — request it
+    //    with the same `requiredFeatures: ['hit-test']` shape the demo uses,
+    //    pump XR animation frames, nudge pose / controllers, then end it. No
+    //    recorded fixture: IWER's XRDevice is a programmable emulator.
+    const run = await driveWebXrSession(page, 'immersive-ar');
+
+    // If the emulated device legitimately could not run the session (a future
+    // IWER version dropping immersive-ar support, etc.) surface it as a skip
+    // with a discoverable reason rather than a hard fail.
     test.skip(
-      !hasRecording,
-      'TODO: recorded WebXR session fixture pending — see follow-up issue of #1878. ' +
-        `Drop the recording at ${path.relative(process.cwd(), RECORDING_PATH)} to enable.`,
+      !run.sessionStarted && run.note !== undefined,
+      `immersive-ar session could not be driven: ${run.note}`,
     );
 
-    // Body unreachable until the fixture lands; keep a no-op assertion so the
-    // shape is obviously a real test body and not a forgotten stub.
-    expect(hasRecording).toBe(true);
+    // 3. Hard assertions — the WebXR code path actually ran.
+    expect(run.sessionStarted, 'immersive-ar requestSession() must resolve under IWER').toBe(true);
+    expect(
+      run.framesObserved,
+      'the XR session animation loop must produce at least one frame',
+    ).toBeGreaterThan(0);
+    expect(run.sessionEnded, 'session.end() must fire the session "end" event').toBe(true);
+
+    // 4. The Filament WebGL context must survive a full session round-trip —
+    //    entering and leaving XR must not lose or crash the canvas context.
+    await assertCanvasContextAlive(page, 'after immersive-ar session round-trip');
+
+    // 5. No uncaught errors / script-level console errors across the run.
+    expectNoPageErrors(diag, 'IWER immersive-ar session drive');
+  });
+
+  test('IWER drives an immersive-vr session — request, frame loop, end', async ({ page }) => {
+    const iwer = await installIwer(page);
+    test.skip(!iwer.injected, `IWER not installed in this environment: ${iwer.error}`);
+
+    const diag = captureDiagnostics(page);
+    await page.goto('/');
+    await waitForEngineReady(page);
+
+    const run = await driveWebXrSession(page, 'immersive-vr');
+    test.skip(
+      !run.sessionStarted && run.note !== undefined,
+      `immersive-vr session could not be driven: ${run.note}`,
+    );
+
+    expect(run.sessionStarted, 'immersive-vr requestSession() must resolve under IWER').toBe(true);
+    expect(
+      run.framesObserved,
+      'the XR session animation loop must produce at least one frame',
+    ).toBeGreaterThan(0);
+    expect(run.sessionEnded, 'session.end() must fire the session "end" event').toBe(true);
+
+    await assertCanvasContextAlive(page, 'after immersive-vr session round-trip');
+    expectNoPageErrors(diag, 'IWER immersive-vr session drive');
   });
 });
