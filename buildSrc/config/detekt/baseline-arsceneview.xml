@@ -71,6 +71,7 @@
     <ID>TopLevelPropertyNaming:ARCameraStream.kt:const val kFogDensityParameter = "fogDensity"</ID>
     <ID>TopLevelPropertyNaming:ARCameraStream.kt:const val kFogEndParameter = "fogEnd"</ID>
     <ID>TopLevelPropertyNaming:ARCameraStream.kt:const val kFogStartParameter = "fogStart"</ID>
+    <ID>TopLevelPropertyNaming:ARCameraStream.kt:// People occlusion (issue #1761). The `personTexture` sampler holds the binary PERSON mask // derived from ARCore Scene Semantics — see `camera_stream_person_occlusion.mat`. const val kPersonTextureParameter = "personTexture"</ID>
     <ID>TopLevelPropertyNaming:ARCameraStream.kt:const val kUVTransformParameter = "uvTransform"</ID>
     <ID>TopLevelPropertyNaming:ARCore.kt:/** * Assumed distance in meters from the device camera to the surface on which the user will * try to place models. * * This value affects the apparent scale of objects while the tracking method of the Instant * Placement point is `SCREENSPACE_WITH_APPROXIMATE_DISTANCE`. Values in the [0.2, 2.0] meter * range are a good choice for most AR experiences. */ const val kDefaultHitTestInstantDistance = 2.0f</ID>
     <ID>UnusedParameter:ARRecorderTest.kt:ARRecorderTest.ShadowCameraConfigFilter$direction: CameraConfig.FacingDirection?</ID>

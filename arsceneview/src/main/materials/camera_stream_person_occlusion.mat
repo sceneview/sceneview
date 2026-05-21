@@ -1,0 +1,123 @@
+// camera_stream_person_occlusion.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Full-screen AR camera passthrough that occludes virtual content behind real
+//             people (issue #1761). Strict superset of `camera_stream_depth.mat`: keeps the
+//             ARCore depth-occlusion path and the environment-aware fog (#1717) verbatim, and
+//             adds a Scene Semantics PERSON-class segmentation mask that pushes the camera
+//             pixel to the near plane wherever a real person is detected — so virtual
+//             geometry behind the person is depth-tested away.
+// Used by:    ARCameraStream (personOcclusionMaterialFile) — ARSceneView people-occlusion path.
+// Parameters:
+//   cameraTexture — samplerExternal, the live ARCore camera feed.
+//   depthTexture  — sampler2d, ARCore packed depth (mm) in the .xy channels.
+//   personTexture — sampler2d, R8 binary PERSON mask (255 = person, 0 = background).
+//   uvTransform   — float4x4, ARCore display-rotation UV transform.
+//   fogEnabled    — float, 0/1 branchless gate multiplied into the fog factor.
+//   fogColor      — float3, RGB haze colour (mirrors FogNode.color).
+//   fogDensity    — float [0,1], exponential falloff coefficient in 1/m.
+//   fogStart      — float, distance in metres where fog begins to accumulate.
+//   fogEnd        — float, distance in metres where fog is fully opaque.
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
+material {
+    name : personOcclusion,
+    shadingModel : unlit,
+    blending : opaque,
+    culling : none,
+    vertexDomain : device,
+    parameters : [
+        {
+            type : samplerExternal,
+            name : cameraTexture
+        },
+        {
+            type : sampler2d,
+            name : depthTexture
+        },
+        // Scene Semantics PERSON mask (issue #1761). A single-channel R8 raster: each texel
+        // is 255 where ARCore classified the pixel as PERSON, 0 elsewhere. The CPU side
+        // (`PersonMask.build`) bakes the 12-class semantic ordinal raster down to this
+        // binary mask so the shader test is a branchless `step()` — no per-fragment
+        // multiply-and-integer-compare.
+        {
+            type : sampler2d,
+            name : personTexture
+        },
+        {
+            type : float4x4,
+            name : uvTransform
+        },
+        // Environment-aware AR fog (issue #1717). Identical declarations to
+        // `camera_stream_depth.mat` so a single fog-parameter binding path drives either
+        // material.
+        {
+            type : float,
+            name : fogEnabled
+        },
+        {
+            type : float3,
+            name : fogColor
+        },
+        {
+            type : float,
+            name : fogDensity
+        },
+        {
+            type : float,
+            name : fogStart
+        },
+        {
+            type : float,
+            name : fogEnd
+        }
+    ],
+    requires : [
+        uv0
+    ]
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec3 camera = inverseTonemapSRGB(texture(materialParams_cameraTexture, getUV0()).rgb);
+        vec2 packed_depth = texture(materialParams_depthTexture, getUV0()).xy;
+        float depth_mm = dot(packed_depth, vec2(255.f, 256.f * 255.f));
+        float depth_m = depth_mm / 1000.f;
+
+        // Environment-aware fog blend — copied verbatim from `camera_stream_depth.mat`.
+        float depth_valid = step(0.001f, depth_m);
+        float adjusted = clamp(depth_m - materialParams.fogStart, 0.f,
+                               max(materialParams.fogEnd - materialParams.fogStart, 0.001f));
+        float factor = 1.f - exp(-materialParams.fogDensity * adjusted);
+        factor = clamp(factor, 0.f, 1.f) * depth_valid * materialParams.fogEnabled;
+
+        vec3 fogged = mix(camera, materialParams.fogColor, factor);
+        material.baseColor.rgb = fogged;
+
+        // Depth-occlusion path — the camera quad writes the real-world depth so virtual
+        // geometry farther than the depth pixel fails the depth test.
+        vec4 view = mulMat4x4Float3(getClipFromViewMatrix(), vec3(0.f, 0.f, (-depth_mm / 1000.f)));
+        float ndc_depth = view.z / view.w;
+
+        // People-occlusion path (#1761). `personTexture` is a binary R8 mask; the GPU
+        // normalises 255 → 1.0 and 0 → 0.0. `step(0.5, …)` recovers the boolean
+        // branch-free. Where a real person is detected we force the camera fragment to the
+        // near clip plane (NDC depth 0.0) so EVERY virtual fragment behind it — regardless
+        // of its real-world distance — fails the depth test and the person occludes it.
+        //
+        // This is intentionally more aggressive than the depth path: ARCore's coarse motion-
+        // stereo depth is unreliable on a moving person (thin limbs, fast motion), so the
+        // semantic mask is the authoritative people cue. Where there is NO person we keep
+        // the genuine `ndc_depth`, so static real-world geometry still occludes correctly.
+        float is_person = step(0.5f, texture(materialParams_personTexture, getUV0()).r);
+        gl_FragDepth = mix(ndc_depth, 0.f, is_person);
+    }
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.uv0 = mulMat4x4Float3(materialParams.uvTransform, vec3(material.uv0.x, material.uv0.y, 0.f)).xy;
+        vec4 clip = getPosition();
+        clip.z = 0.9999f;
+        material.worldPosition = mulMat4x4Float3(getWorldFromClipMatrix(), clip.xyz);
+    }
+}
