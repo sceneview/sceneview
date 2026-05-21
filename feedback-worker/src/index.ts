@@ -111,9 +111,16 @@ app.post("/v1/feedback", async (c) => {
   // present numeric value over the cap is rejected outright; a missing or
   // non-numeric value is also rejected (a well-behaved multipart upload always
   // sends one). The streaming guard below is the real backstop for the rest.
+  // An empty-string value is rejected explicitly — `Number("")` is `0`, so an
+  // empty header would otherwise slip through as a zero-length body.
   const clHeader = c.req.header("content-length");
   const cl = Number(clHeader);
-  if (clHeader === undefined || !Number.isFinite(cl) || cl < 0) {
+  if (
+    clHeader === undefined ||
+    clHeader.trim() === "" ||
+    !Number.isFinite(cl) ||
+    cl < 0
+  ) {
     return c.json({ error: "length_required" }, 411);
   }
   if (cl > MAX_UPLOAD) return c.json({ error: "payload_too_large" }, 413);
@@ -207,7 +214,17 @@ app.post("/v1/feedback", async (c) => {
   }
 
   // Transcribe the audio (best-effort — never throws).
-  const transcript = audioBuf ? (await transcribe(c.env, audioBuf)).text : "";
+  // Surface the Whisper-detected language in the context so a maintainer can
+  // tell which language the transcript is in (it is auto-detected — the user
+  // may speak in any language).
+  let transcript = "";
+  if (audioBuf) {
+    const transcription = await transcribe(c.env, audioBuf);
+    transcript = transcription.text;
+    if (transcription.language && context.transcriptLanguage === undefined) {
+      context.transcriptLanguage = transcription.language;
+    }
+  }
 
   // Persist the record.
   try {
@@ -244,10 +261,12 @@ app.post("/v1/feedback", async (c) => {
 
   // Repo-wide backstop: if issue creation is being flooded this hour, keep the
   // feedback (media + transcript are already stored) but skip opening the issue.
+  // The `reason` field lets a caller distinguish a deliberate throttle
+  // (`quota`) from a GitHub-side failure (`github_error`) — both still 202.
   if (await issueQuotaExceeded(c.env.RL_KV)) {
     console.error("global issue quota exceeded — feedback stored, issue skipped");
     await markError(c.env, id).catch(() => {});
-    return c.json({ ok: true, id, issue: null }, 202);
+    return c.json({ ok: true, id, issue: null, reason: "quota" }, 202);
   }
 
   try {
@@ -259,7 +278,7 @@ app.post("/v1/feedback", async (c) => {
     // from the viewer even though the issue was not opened.
     console.error("GitHub issue creation failed", e);
     await markError(c.env, id).catch(() => {});
-    return c.json({ ok: true, id, issue: null }, 202);
+    return c.json({ ok: true, id, issue: null, reason: "github_error" }, 202);
   }
 });
 
