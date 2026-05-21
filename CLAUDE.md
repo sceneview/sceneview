@@ -109,6 +109,35 @@ green; then promote them to blocking by shrinking the `--advisory=` set. A red
 *blocking* leg means a demo crashes for a real user — fix it before tagging,
 no exceptions.
 
+#### Android Vitals release-gate (#1691)
+
+Device-QA validates the demo app on **emulators** *before* release. Android
+Vitals is the complementary post-release signal: the **real crash & ANR rate**
+across live Play Store users.
+
+- `release-checklist.sh` **section 15** runs `.claude/scripts/play-vitals.sh`,
+  which queries the **Play Developer Reporting API** for
+  `io.github.sceneview.demo` and grades the 28-day user-perceived crash & ANR
+  rates against Google Play's bad-behaviour thresholds (crash 1.09%, ANR 0.47%).
+- **Advisory-first**: the gate is `WARN`-only by default and never freezes a
+  release. A missing `PLAY_STORE_SERVICE_ACCOUNT_JSON` secret, the 403 you get
+  before the read-only **"View app quality information"** Play Console
+  permission is granted, or a fresh app with no data all degrade to `WARN`.
+  Set `PLAY_VITALS_HARD=1` to promote a hard-threshold breach to a release
+  blocker once the numbers are trusted.
+- Reuses the existing deploy service account — **no new write scope**.
+
+#### Play Store reviews → triage issues (#1692)
+
+`maintenance.yml`'s `play-reviews` job runs daily, ingesting Play Store
+ratings + written reviews via the Android Publisher `reviews.list` API (same
+deploy service account, read-only). Reviews matching a crash/bug signal —
+or 1-star reviews with a real comment — auto-open a **de-duplicated** triage
+issue (keyed by the stable Play `reviewId`) with the review text, device, and
+app version. **Documented API gaps:** `reviews.list` only returns reviews from
+≈the last week, and install counts are not exposed by any queryable Play API
+(only bulk CSV reports) — both are surfaced honestly rather than faked.
+
 ## About
 
 SceneView provides 3D and AR as declarative UI for Android (Jetpack Compose, Filament,
