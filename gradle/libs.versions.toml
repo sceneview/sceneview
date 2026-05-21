@@ -64,6 +64,9 @@ playServicesLocation = "21.3.0"
 # ML Kit (object detection demo — see ARMLObjectLabelDemo, #1737)
 mlkitObjectDetection = "17.0.2"
 
+# MediaPipe Tasks Vision (body-tracking demo — see ARBodyTrackerDemo, #1763)
+mediapipeTasksVision = "0.10.14"
+
 # Publishing & Docs
 mavenPublish = "0.36.0"
 dokka = "2.2.0"
@@ -160,6 +163,7 @@ play-services-location = { group = "com.google.android.gms", name = "play-servic
 # The bundled artifact carries the detector weights inside the APK, so the demo works
 # without the on-device dynamic ML provider being available (#1737).
 mlkit-object-detection = { group = "com.google.mlkit", name = "object-detection", version.ref = "mlkitObjectDetection" }
+mediapipe-tasks-vision = { group = "com.google.mediapipe", name = "tasks-vision", version.ref = "mediapipeTasksVision" }
 
 # Testing
 androidx-test-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestJunit" }
