@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.Feedback
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.Button
@@ -258,6 +259,9 @@ fun FeedbackFlow(
 
                 recState is RecordingState.Failed -> FailedStep(
                     micPermanentlyDenied = micPermanentlyDenied,
+                    projectionRevoked =
+                        (recState as RecordingState.Failed).reason ==
+                            FeedbackRecorder.FAILURE_REVOKED,
                     onClose = onDismiss,
                     onRetry = {
                         FeedbackRecorder.reset()
@@ -603,6 +607,7 @@ private fun SendingStep(
 @Composable
 private fun FailedStep(
     micPermanentlyDenied: Boolean,
+    projectionRevoked: Boolean,
     onClose: () -> Unit,
     onRetry: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -659,9 +664,28 @@ private fun FailedStep(
             error = true,
         )
         Spacer(Modifier.height(24.dp))
-        StepTitle(stringResource(R.string.feedback_record_failed_title))
+        // A revoked projection (the system, or the user dismissing the cast
+        // chip) is not a genuine failure — say so plainly instead of the
+        // generic "recording didn't work" copy (#2030).
+        StepTitle(
+            stringResource(
+                if (projectionRevoked) {
+                    R.string.feedback_record_revoked_title
+                } else {
+                    R.string.feedback_record_failed_title
+                },
+            ),
+        )
         Spacer(Modifier.height(12.dp))
-        StepBody(stringResource(R.string.feedback_record_failed_body))
+        StepBody(
+            stringResource(
+                if (projectionRevoked) {
+                    R.string.feedback_record_revoked_body
+                } else {
+                    R.string.feedback_record_failed_body
+                },
+            ),
+        )
     }
 }
 
@@ -672,6 +696,10 @@ private fun TicketsStep(
     onBack: () -> Unit,
     onOpenTicket: (SubmittedFeedback) -> Unit,
 ) {
+    // Bumped by the manual refresh action — clears the 5-minute status cache and
+    // re-keys every row's GitHub fetch so a user can re-check a ticket
+    // immediately rather than waiting out the TTL (#2030).
+    var refreshNonce by rememberSaveable { mutableStateOf(0) }
     FeedbackStepScaffold(
         onClose = onClose,
         actions = {
@@ -682,7 +710,27 @@ private fun TicketsStep(
         scrollableContent = false,
     ) {
         Spacer(Modifier.height(8.dp))
-        StepTitle(stringResource(R.string.feedback_tickets_title))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                StepTitle(stringResource(R.string.feedback_tickets_title))
+            }
+            if (tickets.isNotEmpty()) {
+                IconButton(
+                    onClick = {
+                        FeedbackTicketStatus.invalidateCache()
+                        refreshNonce++
+                    },
+                ) {
+                    Icon(
+                        Icons.Outlined.Refresh,
+                        contentDescription = stringResource(R.string.feedback_tickets_refresh),
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(12.dp))
         StepBody(stringResource(R.string.feedback_tickets_body))
         Spacer(Modifier.height(20.dp))
@@ -699,7 +747,11 @@ private fun TicketsStep(
                 contentPadding = PaddingValues(bottom = 8.dp),
             ) {
                 items(tickets, key = { it.issueNumber }) { ticket ->
-                    TicketRow(ticket = ticket, onClick = { onOpenTicket(ticket) })
+                    TicketRow(
+                        ticket = ticket,
+                        refreshNonce = refreshNonce,
+                        onClick = { onOpenTicket(ticket) },
+                    )
                 }
             }
         }
@@ -707,10 +759,15 @@ private fun TicketsStep(
 }
 
 @Composable
-private fun TicketRow(ticket: SubmittedFeedback, onClick: () -> Unit) {
+private fun TicketRow(ticket: SubmittedFeedback, refreshNonce: Int, onClick: () -> Unit) {
     // The GitHub issue is the source of truth — the live state is read from it,
-    // never stored. null = still loading.
-    val state by produceState<TicketState?>(initialValue = null, ticket.issueNumber) {
+    // never stored. null = still loading. Re-keyed on [refreshNonce] so the
+    // manual "Refresh status" action re-fetches every row (#2030).
+    val state by produceState<TicketState?>(
+        initialValue = null,
+        ticket.issueNumber,
+        refreshNonce,
+    ) {
         value = FeedbackTicketStatus.fetch(ticket.issueNumber)
     }
     val isBug = ticket.category == FeedbackCategory.BUG

@@ -70,6 +70,20 @@ object FeedbackTicketStatus {
         apiBaseUrl = "https://api.github.com"
     }
 
+    /**
+     * Drop every cached ticket state so the next [fetch] re-reads each ticket
+     * straight from GitHub. Backs the manual "Refresh status" action on the
+     * "My feedback" screen — a user who just had a ticket closed should not
+     * have to wait out the 5-minute TTL to see it (#2030).
+     *
+     * The process-wide rate-limit sentinel is intentionally **not** cleared:
+     * if the GitHub budget is genuinely exhausted, a manual refresh must not
+     * make the app hammer the dead budget again.
+     */
+    fun invalidateCache() {
+        synchronized(cache) { cache.clear() }
+    }
+
     /** Fetch (or return cached) the state of issue [issueNumber]; never throws. */
     suspend fun fetch(issueNumber: Int): TicketState = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()

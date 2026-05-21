@@ -351,4 +351,9 @@
     <string name="feedback_notif_warning">If you can\'t see a notification, use the Stop button at the top of the screen to finish recording.</string>
     <string name="feedback_sending_cancel">Cancel</string>
     <string name="feedback_action_cd">Send feedback</string>
+    <!-- In-app feedback — lower-priority review follow-ups (issue #2030) -->
+    <string name="feedback_record_revoked_title">Recording stopped early</string>
+    <string name="feedback_record_revoked_body">Screen recording was stopped before there was enough to capture. This can happen when another app takes over the screen. You can try again, or send a written note instead.</string>
+    <string name="feedback_tickets_refresh">Refresh status</string>
+    <string name="feedback_tickets_refreshing">Refreshing status</string>
 </resources>

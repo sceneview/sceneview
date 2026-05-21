@@ -119,4 +119,23 @@ class FeedbackTicketStatusTest {
 
         assertEquals(2, server.requestCount)
     }
+
+    @Test
+    fun `invalidateCache forces the next fetch to re-read from GitHub`() = runTest {
+        // The ticket starts OPEN, then is closed on GitHub.
+        server.enqueue(MockResponse.Builder().code(200).body("""{"state":"open"}""").build())
+        server.enqueue(MockResponse.Builder().code(200).body("""{"state":"closed"}""").build())
+
+        assertEquals(TicketState.OPEN, FeedbackTicketStatus.fetch(40))
+        // Without a manual refresh the 5-minute TTL would keep serving OPEN.
+        assertEquals(TicketState.OPEN, FeedbackTicketStatus.fetch(40))
+        assertEquals("the cached result served the second fetch", 1, server.requestCount)
+
+        // The manual "Refresh status" action drops the cache.
+        FeedbackTicketStatus.invalidateCache()
+
+        // The next fetch re-reads GitHub and sees the new CLOSED state.
+        assertEquals(TicketState.CLOSED, FeedbackTicketStatus.fetch(40))
+        assertEquals("invalidateCache forced a fresh request", 2, server.requestCount)
+    }
 }

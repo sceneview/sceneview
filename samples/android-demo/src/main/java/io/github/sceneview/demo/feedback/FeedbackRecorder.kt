@@ -39,6 +39,15 @@ object FeedbackRecorder {
     val state: StateFlow<RecordingState> = _state.asStateFlow()
 
     /**
+     * Sentinel [RecordingState.Failed.reason] used when the recording ended
+     * because the system (or another app) revoked the MediaProjection — as
+     * opposed to a genuine encoder failure. The feedback flow shows a distinct,
+     * accurate message for it instead of the generic "recording didn't work"
+     * copy (#2030).
+     */
+    const val FAILURE_REVOKED = "projection-revoked"
+
+    /**
      * Monotonic id for the current recording attempt. Bumped on every
      * [setRecording]; the recording service captures it before its background
      * demux and a [setDone] / [setFailed] from a superseded attempt — e.g. when

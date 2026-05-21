@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.hardware.display.VirtualDisplay
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
@@ -37,6 +38,14 @@ class FeedbackRecordingService : Service() {
     private var videoFile: File? = null
     private var startedAt = 0L
 
+    /** Encoder surface dimensions, fixed at [startRecording]. The recorder's
+     *  video size cannot change mid-clip, so on a rotation the VirtualDisplay is
+     *  resized to the rotated screen aspect *fitted into* this surface — the
+     *  clip stays correctly proportioned (deliberate letterboxing) instead of
+     *  stretched (#2030). */
+    private var encoderWidth = 0
+    private var encoderHeight = 0
+
     /** True once the recorder auto-stopped at the size/duration cap. */
     private var cappedHit = false
 
@@ -51,6 +60,12 @@ class FeedbackRecordingService : Service() {
     /** Guards [stopRecording] against the notification / pill / projection-callback
      *  all triggering a stop. */
     private var stopping = false
+
+    /** True once the system / another app revoked the MediaProjection
+     *  ([MediaProjection.Callback.onStop]). Lets [stopRecording] tell a
+     *  too-short-capture-after-revocation apart from a genuine encoder failure
+     *  so the user gets an accurate message (#2030). */
+    private var projectionRevoked = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -215,6 +230,8 @@ class FeedbackRecordingService : Service() {
                 null,
             )
             recorder = rec
+            encoderWidth = width
+            encoderHeight = height
             startedAt = System.currentTimeMillis()
             session = FeedbackRecorder.beginSession()
         } catch (e: Exception) {
@@ -264,15 +281,59 @@ class FeedbackRecordingService : Service() {
             }
         } else {
             out?.delete()
-            FeedbackRecorder.setFailed("recording incomplete", recordingSession)
+            // A revoked projection that yields a too-short clip is not a
+            // genuine failure — the user (or the system) stopped the capture
+            // before enough frames were recorded. Tell them what happened so
+            // the generic "recording didn't work" copy isn't misleading (#2030).
+            val reason = if (projectionRevoked) {
+                FeedbackRecorder.FAILURE_REVOKED
+            } else {
+                "recording incomplete"
+            }
+            FeedbackRecorder.setFailed(reason, recordingSession)
         }
         stopForegroundAndSelf()
     }
 
+    /**
+     * The screen was rotated (or otherwise reconfigured) mid-recording. The
+     * MediaRecorder's encoder surface dimensions are fixed at [startRecording]
+     * and cannot change, but the VirtualDisplay is a logical mirror that *can*
+     * be resized live. Without this, the rotated screen keeps being mirrored at
+     * the original portrait/landscape dimensions, so the post-rotation portion
+     * of the clip is stretched.
+     *
+     * Re-fit the VirtualDisplay to the current screen aspect, scaled to fit
+     * inside the fixed encoder surface — the rotated content stays correctly
+     * proportioned with deliberate, centred letterboxing instead of distortion
+     * (#2030). Runs on the main thread (service callback); [VirtualDisplay.resize]
+     * is a cheap, thread-confined call.
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val display = virtualDisplay ?: return
+        if (encoderWidth <= 0 || encoderHeight <= 0) return
+        val dm = resources.displayMetrics
+        val screenW = dm.widthPixels
+        val screenH = dm.heightPixels
+        if (screenW <= 0 || screenH <= 0) return
+        // Fit the current screen aspect inside the fixed encoder surface.
+        val fit = minOf(
+            encoderWidth.toFloat() / screenW,
+            encoderHeight.toFloat() / screenH,
+        )
+        val fittedW = (screenW * fit).toInt().coerceIn(2, encoderWidth)
+        val fittedH = (screenH * fit).toInt().coerceIn(2, encoderHeight)
+        runCatching { display.resize(fittedW, fittedH, dm.densityDpi) }
+    }
+
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
-            // Projection revoked externally (system / another app) — finalize
-            // the recording rather than leaving the service stuck.
+            // Projection revoked externally (system / another app) — note it so
+            // a too-short clip is reported as a revocation rather than a
+            // generic failure, then finalize rather than leaving the service
+            // stuck (#2030).
+            projectionRevoked = true
             stopRecording()
         }
     }
