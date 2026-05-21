@@ -1131,6 +1131,18 @@ arSceneView.frame?.depthImage()?.use { depth ->
     // sample depth.planes[0].buffer (DEPTH16 16-bit per pixel)
 }
 
+// ML Kit object detection on the CPU image — see ARMLObjectLabelDemo
+// (samples/android-demo/.../demos/ARMLObjectLabelDemo.kt) for the full pattern:
+// throttled per-frame dispatch, anchor de-dup, label bitmap caching, anchor cleanup.
+onSessionUpdated = { _, frame ->
+    val cameraImage = frame.cameraImage() ?: return@onSessionUpdated
+    val rotation = mapDisplayRotationDegrees(context.display.rotation)
+    val input = InputImage.fromMediaImage(cameraImage, rotation)
+    detector.process(input)
+        .addOnSuccessListener { results -> /* spawn anchors; close image */ }
+        .addOnFailureListener { /* close image */ }
+}
+
 // Non-blocking ARCore availability probe
 LaunchedEffect(Unit) {
     val availability = ArCoreApk.getInstance().awaitAvailability(context)
@@ -3216,6 +3228,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-image` — Image Tracking. Detect and track reference images.
 - `ar-image-stabilization` — Image Stabilization (EIS). EIS for smoother AR camera feed.
 - `ar-instant-placement` — Instant Placement. Place models before plane detection converges.
+- `ar-ml-object-label` — ML Kit Object Labels. ML Kit object detection with 3D labels anchored on real-world hits.
 - `ar-orbital` — Orbital AR. Models orbit around you in a personal solar system.
 - `ar-placement` — Tap to Place. Place 3D models in AR.
 - `ar-pose` — Pose Placement. Free pose positioning.

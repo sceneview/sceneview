@@ -89,11 +89,11 @@ fun Frame.intervalSeconds(other: Frame?): Double = timestamp.intervalSeconds(oth
 fun Frame.fps(other: Frame?): Double = timestamp.fps(other?.timestamp)
 
 /**
- * Acquires the **CPU camera image** for this frame in YUV_420_888 layout (#1733).
+ * Acquires the **CPU camera image** for this frame in YUV_420_888 layout (#1733, #1737).
  *
  * Wraps [Frame.acquireCameraImage] — the standard ARCore entry-point for any custom computer
- * vision pipeline: ML Kit barcode/face/text detection, OpenCV processing, custom temporal
- * filters, screenshot helpers, etc. The resolution matches the active
+ * vision pipeline: ML Kit barcode / face / text / object detection, OpenCV processing, custom
+ * temporal filters, screenshot helpers, etc. The resolution matches the active
  * [com.google.ar.core.CameraConfig], so apps that need 1080p / 60 FPS / depth-sensor-paired
  * configs should pair this accessor with the `cameraConfigFilter { … }` DSL on `ARSceneView`
  * (or pass a custom `sessionCameraConfig`).
@@ -110,6 +110,7 @@ fun Frame.fps(other: Frame?): Double = timestamp.fps(other?.timestamp)
  * onSessionUpdated = { _, frame ->
  *     frame.cameraImage()?.use { image ->
  *         // YUV_420_888 — image.planes[0] is the Y plane, [1] is U, [2] is V.
+ *         // e.g. ML Kit: detector.process(InputImage.fromMediaImage(image, rotationDegrees))
  *         myCvPipeline.process(image)
  *     }
  * }

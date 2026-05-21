@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- New `ARMLObjectLabelDemo` in the Android demo app — ML Kit object detection on the AR camera feed, with 3D billboard labels anchored at detected real-world objects via depth hit-tests. Uses the bundled offline ML Kit model (`com.google.mlkit:object-detection`), so the demo works without any extra asset download. Ships alongside a new `Frame.cameraImage()` extension on `arsceneview` exposing the YUV CPU image for ML / CV pipelines. (#1737, #1733)

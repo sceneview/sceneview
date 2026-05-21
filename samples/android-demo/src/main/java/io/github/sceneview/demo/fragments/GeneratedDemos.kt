@@ -32,6 +32,7 @@ object GeneratedDemos {
         ArImageFragment,
         ArImageStabilizationFragment,
         ArInstantPlacementFragment,
+        ArMlObjectLabelFragment,
         ArOrbitalFragment,
         ArPlacementFragment,
         ArPoseFragment,
@@ -95,6 +96,7 @@ object GeneratedDemos {
             "ar-image" -> ArImageFragment.Screen(onBack)
             "ar-image-stabilization" -> ArImageStabilizationFragment.Screen(onBack)
             "ar-instant-placement" -> ArInstantPlacementFragment.Screen(onBack)
+            "ar-ml-object-label" -> ArMlObjectLabelFragment.Screen(onBack)
             "ar-orbital" -> ArOrbitalFragment.Screen(onBack)
             "ar-placement" -> ArPlacementFragment.Screen(onBack)
             "ar-pose" -> ArPoseFragment.Screen(onBack)
