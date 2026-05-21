@@ -58,15 +58,40 @@ jobs:
       - name: Build Swift Package (iOS)
         working-directory: SceneViewSwift
         run: |
+          # `pipefail` so a failing xcodebuild is not masked by xcpretty's
+          # exit 0 (the `|| cat` fallback also exits 0) — see #1515.
+          set -o pipefail
           xcodebuild build \
             -scheme SceneViewSwift \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
             -skipMacroValidation \
             | xcpretty --color 2>/dev/null || cat
 
+      # Build the visionOS target so a visionOS-only API breakage can't slip
+      # into main silently (#1366 — the xrOS target was broken on main for
+      # multiple releases because no CI job built it). `swift build` against
+      # the XROS SDK does not need the visionOS simulator runtime installed
+      # on the runner — only the SDK, which ships with Xcode — so this works
+      # on a stock `macos-15` image without a `Download visionOS platform`
+      # step. If the SDK is genuinely absent the step fails loudly rather
+      # than skipping (no `|| true`).
+      - name: Build Swift Package (visionOS)
+        working-directory: SceneViewSwift
+        run: |
+          set -o pipefail
+          XROS_SDK="$(xcrun --sdk xros --show-sdk-path)"
+          echo "visionOS SDK: $XROS_SDK"
+          swift build \
+            --sdk "$XROS_SDK" \
+            -Xswiftc -target -Xswiftc arm64-apple-xros2.0
+
       - name: Run tests
         working-directory: SceneViewSwift
         run: |
+          # `pipefail` so an iOS-simulator test-build failure actually fails
+          # CI — without it the AugmentedImageNodeTests breakage in #1515
+          # slipped past a "green" run.
+          set -o pipefail
           xcodebuild test \
             -scheme SceneViewSwift \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
@@ -127,6 +152,8 @@ jobs:
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
         working-directory: samples/ios-demo
         run: |
+          # `pipefail` so a failing xcodebuild is not masked by xcpretty — #1515.
+          set -o pipefail
           xcodebuild test \
             -project SceneViewDemo.xcodeproj \
             -scheme SceneViewDemo \

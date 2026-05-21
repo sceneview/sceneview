@@ -440,7 +440,7 @@ struct ARTab: View {
         }
 
         let activityVC = UIActivityViewController(
-            activityItems: [image, "Check out what I placed in my space with 3D & AR Explorer!"],
+            activityItems: [image, "Check out what I placed in my space with SceneView!"],
             applicationActivities: nil
         )
 

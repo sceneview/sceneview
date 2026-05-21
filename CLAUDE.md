@@ -34,6 +34,81 @@ the documentation until it can.
 
 ### Quality plan: `.claude/plans/v4.0-quality-plan.md`
 
+## Device QA
+
+The **autonomous device-QA harness** (umbrella [#1560](https://github.com/sceneview/sceneview/issues/1560))
+drives the demo apps **like a real user** — taps, swipes, camera-orbit drags,
+navigation — and asserts no crash across every platform, unattended (no
+screenshot-by-screenshot loop). CI-green plus self-review is not enough: a demo
+can compile, pass unit tests, and still crash the moment it renders on a device.
+
+### Run it
+
+```bash
+# Full cross-platform pass — every platform feasible on this host.
+bash .claude/scripts/device-qa.sh --platform=all
+
+# One platform, or a fast per-category subset.
+bash .claude/scripts/device-qa.sh --platform=android
+bash .claude/scripts/device-qa.sh --platform=web --fast
+```
+
+`device-qa.sh` is the single orchestrator entrypoint. It boots the
+emulator/simulator each leg needs, builds + installs the demo app, delegates to
+the per-platform harness, and aggregates every verdict into one
+`device-qa-report.json` at the repo root (override the directory with `--out`).
+Exit status is non-zero if any selected platform failed. Flags: `--platform=android|ios|web|ar|all`,
+`--fast` (per-category subset, not the full catalog), `--ci` (treat a skipped
+platform as a failure), `--out <dir>`.
+
+### What each leg covers
+
+| Leg | Harness | Drives | Report |
+|---|---|---|---|
+| `android` | Maestro flows `.maestro/android/` via `qa-android-demos.sh` | All 42 demos on an emulator | `device-qa-report.json` |
+| `ios` | Maestro flows `.maestro/ios/` via `ios-device-qa.sh` | 24 deep-linkable demos on a simulator (AR = launch-only smoke) | `device-qa-report.json` |
+| `web` | Playwright suite `samples/web-demo/tests/` | Browser 3D viewer + every catalog tab | `web-qa-summary.json` |
+| `ar` | `ar-replay-qa.sh` + `ARReplayHarnessTest` | Every Android AR demo replayed against recorded ARCore sessions — no physical device | `ar-qa-summary.json` |
+
+See [`.maestro/README.md`](.maestro/README.md) for the Maestro flow layout and
+known limitations (no pinch gesture → 3D zoom is driven via deep-link param).
+
+### Release-checkpoint mandate
+
+**A full device-QA pass runs at every release checkpoint, before tagging.**
+No release ships with a red *blocking* leg in `device-qa-report.json`. The
+gate is enforced in two places — keep both honest:
+
+- `release-checklist.sh` **section 14** reads the report's graded
+  `releaseGate.verdict` and fails the checklist on a `blocked` verdict (or a
+  missing report).
+- The `/release` skill (**Step 6.5**) runs `device-qa.sh --platform=all`
+  before the tag step.
+
+#### Release-gate policy for `continue-on-error` legs (#1651)
+
+The legs are **graded**, because they are not equally reliable:
+
+| Leg | CI behaviour | Release gate |
+|---|---|---|
+| `web` | NOT `continue-on-error` — a red leg fails the workflow | **BLOCKING** — a red web leg is a release `FAIL` |
+| `android`, `ar` | `continue-on-error: true` (flaky SwiftShader emulator, #1643) | **ADVISORY** — a red leg is a `WARN`, never a silent pass, never a hard block |
+
+`device-qa.sh` tags each leg `advisory: true|false` (default advisory set:
+`android,ar`, override with `--advisory=<csv>`) and pre-computes
+`releaseGate.verdict` in `device-qa-report.json`:
+
+- `clear` — every leg passed → checklist `PASS`.
+- `warn` — an advisory leg (android/ar) did not pass → checklist `WARN`
+  ("advisory leg(s) did not pass: … — review before tagging"). A human sees
+  it, but it does not block the release.
+- `blocked` — a blocking leg (web) failed → checklist `FAIL`, hard block.
+
+Advisory legs stay non-blocking until #1643/#1645 make the emulator reliably
+green; then promote them to blocking by shrinking the `--advisory=` set. A red
+*blocking* leg means a demo crashes for a real user — fix it before tagging,
+no exceptions.
+
 ## About
 
 SceneView provides 3D and AR as declarative UI for Android (Jetpack Compose, Filament,
@@ -61,8 +136,8 @@ To set up: `npm install @google/stitch-sdk`, then add the Stitch MCP server in C
 
 ## When writing any SceneView code
 
-- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.9.0`)
-- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.9.0`)
+- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.11.2`)
+- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.11.2`)
 - Declare nodes as composables inside the trailing content block — not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — returns `null`
   while loading, always handle the null case
@@ -142,6 +217,52 @@ and AR UI/state QA. AR features that need real world tracking (Cloud Anchor,
 Streetscape/VPS, face mesh against a live face) still need a physical-device
 AR Record — request one rather than driving someone's personal phone over USB.
 
+**Visible (windowed) emulator — opt-in (#1660).** The emulator boots **headless
+by default** (`-no-window`), which is marginally lighter on the host (skips the
+skin-window draw + window-server compositing). To watch it locally, opt in:
+
+```bash
+bash .claude/scripts/setup-ar-emulator.sh --window   # windowed, this run
+EMU_VISIBLE=1 bash .claude/scripts/setup-ar-emulator.sh   # equivalent env var
+```
+
+`--window` simply sets `EMU_VISIBLE=1`. The guest VM cost (RAM, pool, leases) is
+identical either way — only the host window draw differs — so the default stays
+headless and resource-safe. **Local only:** CI (`device-qa.yml`) never sets this
+and stays headless (GitHub runners have no display).
+
+**RAM-budgeted adaptive emulator pool (#1647 → #1654).** The harness runs an
+**adaptive pool** of emulators — as many as live host RAM safely allows, with a
+floor of 1 and never a rigid barrier. #1647's strict-single design is superseded:
+parallel sessions / agents no longer serialise behind one emulator when the host
+has RAM to spare. `setup-ar-emulator.sh` (via `lib/emulator-select.sh`):
+- **computes a RAM-budgeted cap** —
+  `max_emulators = floor((free_RAM − EMU_HOST_HEADROOM_MB) / EMU_RAM_BUDGET_PER_EMU_MB)`,
+  clamped to `[1, EMU_POOL_MAX]` (defaults: headroom 2048 MB, budget 3072 MB/emu,
+  `EMU_POOL_MAX=3`). On a RAM-tight host this resolves to 1 naturally — physics,
+  not policy;
+- **leases from a per-emulator pool** — each running emulator has a lease file
+  (`${TMPDIR:-/tmp}/sceneview-device-qa-emu/<serial>.lease`, owner pid inside). A
+  caller leases a free running emulator; else, if the running count is below the
+  live cap, boots a new one on a distinct `-port` (5554, 5556, …) so emulators
+  coexist; else waits (bounded) for a lease to free;
+- **re-gates RAM before every boot** — free RAM is re-read immediately before
+  each boot and the boot is refused below `EMU_MIN_FREE_RAM_MB` (default 3072 MB)
+  even when the cap said there was room. Memory safety is the hard invariant —
+  the pool never pushes the host into RAM exhaustion;
+- **right-sizes `-memory`** — scales the guest memory flag to RAM headroom,
+  clamped to `[EMU_MEMORY_FLOOR_MB, EMU_MEMORY_CEILING_MB]` (2048–4096 MB);
+- **reclaims stale leases** — a lease whose owner pid is dead AND whose serial is
+  gone from `adb devices` is reclaimed automatically.
+Every threshold is env-overridable. `setup-ar-emulator.sh --check` reports pool
+state (running count, computed cap, free RAM, active leases). The QA scripts
+(`device-qa.sh`, `qa-android-demos.sh`, `ar-replay-qa.sh`) pin `ANDROID_SERIAL`
+to the leased emulator so the right device is targeted when the pool has several.
+
+`--check` now also reports host free RAM and whether a running emulator would be
+reused. This is why parallel Claude Code sessions running device-QA on the same
+RAM-constrained Mac no longer contend for emulator resources.
+
 ## Samples
 
 One unified showcase app per platform — all features integrated into tabs.
@@ -202,9 +323,7 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 | | `sceneview/gradle.properties` | `VERSION_NAME=X.Y.Z` |
 | | `arsceneview/gradle.properties` | `VERSION_NAME=X.Y.Z` |
 | | `sceneview-core/gradle.properties` | `VERSION_NAME=X.Y.Z` |
-| **npm** | `mcp/package.json` | `"version": "X.Y.Z"` |
-| | `mcp/src/index.ts` | version in server info |
-| | `sceneview-web/package.json` | `"version": "X.Y.Z"` |
+| **npm** | `sceneview-web/package.json` | `"version": "X.Y.Z"` |
 | | `react-native/react-native-sceneview/package.json` | `"version": "X.Y.Z"` |
 | **Flutter** | `flutter/sceneview_flutter/pubspec.yaml` | `version: X.Y.Z` |
 | | `flutter/.../android/build.gradle` | `version 'X.Y.Z'` |
@@ -236,6 +355,16 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 > `package.json`) bump to the release version. `sync-versions.sh` reports these
 > consumed-dep coordinates WARN-only and never auto-bumps them (issue #1494).
 
+> ⚠️ **`mcp/package.json` and `mcp/src/index.ts` follow an INDEPENDENT version
+> track — do NOT sync them to `VERSION_NAME`.**
+> `sceneview-mcp` (npm) has its own release cadence (e.g. `4.0.12` while the
+> SDK is at `4.10.0`) and is published independently of the Maven Central
+> artifacts. `sync-versions.sh` deliberately **excludes** `mcp/package.json`
+> from the version check — forcing them to match once caused a regression
+> where the sync agent downgraded `mcp/package.json` behind the published npm
+> `@next` tag. When releasing `sceneview-mcp`, bump these two files to the
+> next *MCP* version, never to the SDK `VERSION_NAME` (issue #1705).
+
 **Automation:**
 - `bash .claude/scripts/sync-versions.sh` — checks all 30+ locations
 - `bash .claude/scripts/sync-versions.sh --fix` — auto-fixes mismatches
@@ -255,7 +384,49 @@ Never say "everything is good" without verifying published packages.
 
 ### Latest release: see `gradle.properties`
 
-**The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.8.0`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
+**The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.9.0`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
+
+### Current state (last updated: 2026-05-20 night, session post-vibrant-shtern — v4.11.1 patch SHIPPED end-to-end)
+
+- 🚀 **v4.11.1 released** — tag `v4.11.1` pushed at HEAD `d55ab7d13`. release.yml ✅, play-store.yml ✅, docs.yml ✅, app-store.yml iOS TestFlight upload ✅ (macOS leg failed on #1794, explicitly out of scope). 24 changelog fragments collated (3 new patch fixes + 21 post-v4.11.0 follow-ups). [GitHub Release v4.11.1](https://github.com/sceneview/sceneview/releases/tag/v4.11.1).
+- 🛠️ **3 deploy-time fixes** that motivated the patch:
+  - [#1795](https://github.com/sceneview/sceneview/issues/1795) — `app-store.yml`'s submit step now reads `VERSION_NAME` from `gradle.properties` on `workflow_dispatch` fallback (was `build_version` = `CFBundleVersion` = `367`, which produced nonsense App Store version records). Validated in v4.11.1's run: `Target App Store versionString: 4.11.1` then `Reused editable draft …: retargeted 367 → 4.11.1`. The #1687 + #1795 retargeting works end-to-end.
+  - [#1788](https://github.com/sceneview/sceneview/issues/1788) — `react-native/react-native-sceneview/package.json` declares `publishConfig.access=public` as belt-and-suspenders to the workflow's `--access public` flag. v4.11.0's original 404 cascaded from the webpack build failure (resolved by main's #1791 webpack pin), but the declarative anchor closes the ambiguity.
+  - [#1789](https://github.com/sceneview/sceneview/issues/1789) — `sceneview-web jsBrowserProductionWebpack` regression on v4.11.0 (kotlin-web-helpers vs webpack 5.107.0 `ModuleNotFoundError` path move). Already fixed on main by [#1791](https://github.com/sceneview/sceneview/pull/1791) (`webpack <5.107.0` resolution pin); v4.11.1 re-validates the publish path. Build green locally + on tag-push.
+- 🟢 **App Store version record 367 résorbé** — the stranded 4.11.0 draft was renamed to `4.11.1` and now carries the v4.11.1 TestFlight build. The version record is clean.
+- 🔴 **App Store submission still 403s** on CREATE because the stale submission attached to the (renamed) draft persists: `"The resource 'appStoreVersionSubmissions' does not allow 'CREATE'. Allowed operation is: DELETE"`. Step exits 0 (workflow stays green) but the build isn't auto-submitted for review. Filed [#1831](https://github.com/sceneview/sceneview/issues/1831) — extend the submit step to GET the existing `appStoreVersionSubmission` relationship and DELETE it before POST. Manual click in App Store Connect web UI works as a one-off.
+- 🍎 **macOS App Store still failing on #1794** — `Theme.swift` / `ExploreTab.swift` use iOS-only SwiftUI APIs (`Color(.systemBackground)`, `.secondarySystemBackground`, `.tertiarySystemBackground`). Explicitly scoped out of v4.11.1 per Thomas; tied to the v2.2.0 Beta Testing rejection refactor.
+- ⚙️ **Worktree note**: the v4.11.1 patch worktree was deleted automatically by `worktree-auto-prune.sh` after the push (likely from the daily maintenance hook). Everything is on `origin/main` (`d55ab7d13`) + tag `v4.11.1` (`d553148d7`); the handoff worktree (`.claude/worktrees/v4.11.1-handoff`) only carries this CLAUDE.md edit.
+- 📦 **Two commits landed on main right after v4.11.1**: [#1828](https://github.com/sceneview/sceneview/pull/1828) (`SceneViewJS.SCENEVIEW_VERSION` bumped to 4.11.1 + sync-versions WARN promoted to ERROR — closes a regression latch) and [#1829](https://github.com/sceneview/sceneview/pull/1829) (recording/playback completeness — `PlaybackStatus`, `IO_ERROR`, custom tracks, scoped-storage Uri). Both for the next release (v4.11.2 or v4.12).
+
+### Followups for next session
+
+1. **Land [#1831](https://github.com/sceneview/sceneview/issues/1831)** so the next absorbed-draft release auto-deletes the stale `appStoreVersionSubmission` and the submit POST returns 201 — closes the last loose end of the #1795/#1687 saga.
+2. **Tackle #1794 macOS SwiftUI** (cross-platform `Color(.systemBackground)` etc. in `Theme.swift` + `ExploreTab.swift`) — paired with the v2.2.0 Beta Testing rejection refactor.
+3. **Manually click "Submit for Review"** in App Store Connect on the existing `4.11.1` draft (or fix #1831 + re-trigger `app-store.yml` via `workflow_dispatch`).
+4. **Coordination check** — the `claude/qa-1439-autofit-framing-v2` session was still dirty in the primary checkout when v4.11.1 was cut. Confirm it lands / pauses / merges before the next release.
+
+### Previous state (last updated: 2026-05-20 evening, session vibrant-shtern-147a5c — v4.11.0 SHIPPED + store-deploy correctness sweep)
+
+- 🚀 **v4.11.0 released** — tag `v4.11.0` pushed at HEAD `f55b43e1e`. release.yml + play-store.yml + app-store.yml + docs.yml all fired. 20 changelog entries (19 collated fragments + #1380 picked up post-rebase). [GitHub Release v4.11.0](https://github.com/sceneview/sceneview/releases/tag/v4.11.0).
+- 🛠️ **Store-deploy correctness sweep, 5 PRs**:
+  - [#1678](https://github.com/sceneview/sceneview/pull/1678) — Play Store deploy self-heals a corrupt release AAB (fixes the silent loss of v4.6.0+v4.6.1 from a flaky CI runner).
+  - [#1680](https://github.com/sceneview/sceneview/pull/1680) — **App Store submission step was silently `pip`-failing on every release** (working-directory `samples/ios-demo` made the requirements file path unresolvable since #1286) + Play Store sync targets the actual `en-GB` locale + listing copy aligned with the live app names.
+  - [#1687](https://github.com/sceneview/sceneview/pull/1687) — iOS deploy absorbs a stale `PREPARE_FOR_SUBMISSION` draft by PATCHing its versionString to the release version (the comment promised this fallback; the code now does it).
+  - [#1688](https://github.com/sceneview/sceneview/pull/1688) — demo app unified on **"SceneView"** everywhere (`CFBundleDisplayName`/`CFBundleName` literal so the macOS menu name no longer depends on per-target `PRODUCT_NAME`; Android Play title + manifest intent-filter labels; resolves Apple 2.3.8 name-mismatch rejection).
+  - Plus 2 in-band fixes to `release-checklist.sh` (pipefail-vulnerable `grep` patterns + SECURITY.md under `.github/`).
+- 📋 **4 follow-up issues filed**: [#1691](https://github.com/sceneview/sceneview/issues/1691) Vitals release-gate · [#1692](https://github.com/sceneview/sceneview/issues/1692) Play Store reviews ingestion · [#1695](https://github.com/sceneview/sceneview/issues/1695) deep-link verification monitoring (all platforms) · [#1710](https://github.com/sceneview/sceneview/issues/1710) consolidate `play/` vs `distribution/play-store/` + sync graphics.
+- 🔓 **Play Console service-account permission "Manage store presence"** granted by Thomas during the session — the listing-sync 403 is unblocked. The deploy SA also has `View app information / bulk reports` + `View app quality information` (read-only, enabling #1691/#1692) + `Manage deep links` + `Manage policy declarations`. Admin explicitly NOT granted.
+- 🍎 **macOS App Store**: 1.0 was REFUSÉE under 2.3.8 (app-name mismatch ASC "SceneView" vs installed "SceneViewDemo"). Metadata corrected directly in ASC during the session (description without AR/Sketchfab claims, keywords without "AR" / "augmented reality"). Resubmission still needs a NEW build carrying the unified "SceneView" name (#1688 delivered the rename; v4.11.0 produces that build) — Thomas will resubmit from the Soumission macOS page. `MACOS_PROVISIONING_PROFILE_BASE64` secret is still missing → macOS deploy job stays `skipped` until that's set.
+- 🛍️ **Play Store visuals** still pending manual upload: `samples/android-demo/play/listings/en-US/graphics/` has a real `feature-graphic.png` (SceneView cube on starfield) + 4 phone screenshots + `icon-512.png` that have never reached the live store because the CI listing-sync syncs text only. #1710 captures the consolidation + auto-sync. Tablet screenshots + promo video genuinely don't exist.
+
+### Followups for next session
+
+1. **Watch v4.11.0's deploy workflows complete** — Maven Central, npm, GitHub Release, Play Store, App Store. If `app-store.yml`'s submit step actually creates the 4.11.0 version record and absorbs the stranded 4.3.0 draft, that validates the #1680+#1687 fix end-to-end.
+2. **Resubmit macOS** (manual ASC click) once the v4.11.0 macOS build is available — the metadata is already corrected.
+3. **Upload Play Store graphics manually** (feature graphic + phone screenshots from `play/listings/en-US/graphics/`) or land [#1710](https://github.com/sceneview/sceneview/issues/1710) so the next release auto-syncs them.
+4. **Pick up #1691 (Vitals gate) or #1692 (Play reviews → triage issues)** — both are real-user post-release telemetry that complements the device-QA harness; permissions are already granted.
+5. Coordination: 3 parallel sessions were active during this work (`claude/qa-1439-autofit-framing-v2`, `claude/cool-nightingale`, `claude/sharp-bhaskara`) — main moved by 24 commits in a few hours. Confirm they've landed/paused before the next release.
 
 ### Historical state (last updated: 2026-05-14 night, session upbeat-kare-a31ed4 — v4.2.0 SHIPPED end-to-end + handoff for new session)
 
@@ -559,7 +730,8 @@ Hooks trigger automatically on specific Claude Code actions:
 | `cross-platform-check.sh` | Compare Android vs iOS vs Web API surface, report gaps |
 | `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.) |
 | `lib/android-cli.sh` | Shared helpers for Google's `android` CLI (screenshot, layout, install+launch) with `adb` fallback |
-| `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only), `--clean` (wipe+recreate). **Use this for routine QA — never QA on a personal device.** |
+| `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool state), `--clean` (wipe+recreate). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. **Use this for routine QA — never QA on a personal device.** |
+| `lib/emulator-select.sh` | Sourced helper for `setup-ar-emulator.sh` / `device-qa.sh` / `qa-android-demos.sh` — RAM monitoring (`vm_stat`/`/proc/meminfo`), RAM-budgeted pool-cap computation, a per-emulator lease registry, RAM-scaled `-memory`, multi-port boot, and stale-lease reclaim. The adaptive pool runs as many emulators as live host RAM safely allows (floor 1, `EMU_POOL_MAX` ceiling), superseding #1647's strict-single design (#1654). |
 | `qa-android-demos.sh` | QA loop over every demo — uses `android layout`/`screen capture` for the UI dump and screenshots |
 | `capture-play-store-screenshots.sh` | Play Store screenshot capture — `android screen capture` (no LF/CRLF corruption) |
 | `visual-check.sh` | Before/after baseline capture — Android via `android` CLI, iOS via `xcrun simctl` |
@@ -581,10 +753,13 @@ Source of truth: `gradle.properties` → `VERSION_NAME=X.Y.Z`
 | `sceneview/gradle.properties` | `VERSION_NAME=` |
 | `arsceneview/gradle.properties` | `VERSION_NAME=` |
 | `sceneview-core/gradle.properties` | `VERSION_NAME=` |
-| `mcp/package.json` | `"version":` |
 | `llms.txt` | Artifact version references |
 | `README.md` | Install snippets |
 | `CLAUDE.md` | "Latest release" in session state |
+
+> ⚠️ `mcp/package.json` / `mcp/src/index.ts` are **not** in this map —
+> `sceneview-mcp` has its own independent npm version track. `sync-versions.sh`
+> excludes it on purpose. See the Version Location Map note above (issue #1705).
 
 ### Published artifact registry
 

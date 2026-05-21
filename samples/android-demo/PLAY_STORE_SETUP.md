@@ -1,6 +1,6 @@
-# Google Play Store Setup — SceneView Demo
+# Google Play Store Setup — SceneView
 
-Step-by-step guide to publish the SceneView Demo app on Google Play.
+Step-by-step guide to publish the SceneView app on Google Play.
 
 ---
 
@@ -16,7 +16,7 @@ Step-by-step guide to publish the SceneView Demo app on Google Play.
 1. Go to [Google Play Console](https://play.google.com/console)
 2. Click **"Create app"**
 3. Fill in:
-   - **App name:** `SceneView Demo`
+   - **App name:** `SceneView`
    - **Default language:** English (United States)
    - **App or game:** App
    - **Free or paid:** Free

@@ -2,7 +2,15 @@ name: Daily Maintenance
 
 on:
   schedule:
-    - cron: '0 7 * * *'   # 07:00 UTC every day
+    # 07:11 UTC daily. Deliberately OFF the top-of-hour: GitHub queues all
+    # `0 * * * *` crons in one burst and drops the overflow on busy
+    # infrastructure, so `0 7 * * *` runs were silently skipped (#1646).
+    # Editing this `schedule:` block also re-registers the cron under the
+    # committing account — the original registration was bound to an account
+    # that is no longer active, which is why this workflow had never fired
+    # on schedule despite being marked active. Keep it distinct from
+    # nightly-ci.yml (04:00 UTC).
+    - cron: '11 7 * * *'
   workflow_dispatch:
 
 permissions:
@@ -252,8 +260,13 @@ jobs:
           fi
 
   # ── 6. Stale claude/* branch cleanup ──────────────────────────────────────
-  # An orchestrator marathon leaves dozens of merged `claude/*` branches on
-  # `origin`. This job deletes the ones that are provably dead — fully merged
+  # PRIMARY mechanism is the repo's "Automatically delete head branches"
+  # setting (deleteBranchOnMerge) — every PR branch is dropped the instant
+  # its PR merges, so no backlog accumulates in normal operation.
+  # This job is the BACKSTOP for the cases that setting can't reach:
+  # branches whose PR merged before the setting was on, orphan branches
+  # fully merged into main with no PR (ahead=0), and merged-PR branches
+  # left over from API merges. It deletes the provably-dead ones — merged
   # into origin/main (ahead=0) OR carrying a MERGED PR (squash-merge case) —
   # in a SINGLE `git push --delete` call. Branches with an OPEN PR or genuine
   # unmerged commits are never touched. Worktrees are skipped (they only

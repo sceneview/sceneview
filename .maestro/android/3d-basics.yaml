@@ -1,0 +1,43 @@
+# Maestro flow — "3D Basics" demo category (5 demos).
+#
+# Run a fast subset of the device-QA harness:
+#   maestro test .maestro/android/3d-basics.yaml
+#
+# Each demo is exercised by the reusable flows/demo.yaml subflow (deep-link
+# launch, camera orbit, tap, one screenshot, crash assertion, navigate back).
+# Demo ids mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
+#
+# Zoom QA (#1571): the model-viewer entry below also passes CAMERA_DISTANCE, so
+# flows/demo.yaml additionally re-launches it at a near + far framing via the
+# `--ef camera_distance` deep-link param — Maestro has no pinch gesture, so this
+# is the only way the harness can exercise 3D camera zoom. model-viewer is the
+# natural host: it drives the shared hero-orbit camera the param overrides.
+appId: io.github.sceneview.demo
+---
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: model-viewer
+      DEMO_NAME: Model Viewer
+      # Near framing (metres). flows/demo.yaml pairs this with a 40 m far shot.
+      CAMERA_DISTANCE: "0.6"
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: geometry
+      DEMO_NAME: Geometry Primitives
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: animation
+      DEMO_NAME: Animation
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: multi-model
+      DEMO_NAME: Multi Model
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: scene-gallery
+      DEMO_NAME: Scene Gallery

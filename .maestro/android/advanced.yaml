@@ -1,0 +1,59 @@
+# Maestro flow — "Advanced" demo category (10 demos).
+#
+# Run a fast subset of the device-QA harness:
+#   maestro test .maestro/android/advanced.yaml
+#
+# Each demo is exercised by the reusable flows/demo.yaml subflow. Demo ids
+# mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
+appId: io.github.sceneview.demo
+---
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: materials
+      DEMO_NAME: Materials
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: physics
+      DEMO_NAME: Physics
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: double-pendulum
+      DEMO_NAME: Double Pendulum
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: post-processing
+      DEMO_NAME: Post Processing
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: custom-mesh
+      DEMO_NAME: Custom Mesh
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: texture-streaming
+      DEMO_NAME: Texture Streaming
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: shape
+      DEMO_NAME: Shape
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: reflection-probes
+      DEMO_NAME: Reflection Probes
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: secondary-camera
+      DEMO_NAME: Secondary Camera
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: debug-overlay
+      DEMO_NAME: Debug Overlay

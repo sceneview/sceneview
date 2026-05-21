@@ -81,6 +81,24 @@ struct SamplesTab: View {
             .fullScreenCover(item: $fullScreenScene) { scene in
                 NavigationStack {
                     sheetDestination(for: scene)
+                        // A `.fullScreenCover` has no drag-to-dismiss handle
+                        // (unlike the `.sheet` path), so it needs an explicit
+                        // Close affordance or the user gets stuck inside the
+                        // demo with no way back to the Samples list — see
+                        // #1580. Matches the Close button the deep-link
+                        // placeholder already uses (DemoDeepLinkRegistry).
+                        .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button {
+                                    HapticManager.lightTap()
+                                    fullScreenScene = nil
+                                } label: {
+                                    Label("Close", systemImage: "xmark")
+                                }
+                                .accessibilityLabel("Close demo")
+                                .accessibilityIdentifier("demo-close")
+                            }
+                        }
                 }
             }
             #endif
@@ -140,7 +158,6 @@ struct SamplesTab: View {
                         SceneRow(scene: scene)
                     }
                     .buttonStyle(.plain)
-                    .disabled(!scene.status.isAvailable && scene.status.comingSoonVersion != nil ? false : !scene.status.isAvailable)
                     .accessibilityLabel(accessibilityLabel(for: scene))
                 }
             }
@@ -169,12 +186,11 @@ struct SamplesTab: View {
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
-        case let .comingSoon(version):
+        case .comingSoon:
             ComingSoonScreen(
                 title: scene.title,
                 subtitle: scene.subtitle,
-                icon: scene.icon,
-                version: version
+                icon: scene.icon
             )
         }
     }
@@ -183,8 +199,8 @@ struct SamplesTab: View {
         switch scene.status {
         case .available:
             return "\(scene.title): \(scene.subtitle)"
-        case let .comingSoon(version):
-            return "\(scene.title): \(scene.subtitle). Coming soon in version \(version)."
+        case .comingSoon:
+            return "\(scene.title): \(scene.subtitle). Coming soon."
         }
     }
 
@@ -224,7 +240,7 @@ struct SamplesTab: View {
             DemoItem(title: "Dynamic Sky", icon: "sun.horizon.fill", subtitle: "Time-of-day sun simulation", category: .lighting) {
                 DynamicSkyDemo()
             },
-            DemoItem(title: "Fog", icon: "cloud.fog.fill", subtitle: "Linear, exponential, and height fog", category: .lighting) {
+            DemoItem(title: "Fog", icon: "cloud.fog.fill", subtitle: "Linear and exponential fog", category: .lighting) {
                 FogDemo()
             },
 
@@ -312,8 +328,7 @@ struct SamplesTab: View {
                 comingSoonTitle: "Secondary Camera (PiP)",
                 icon: "pip.fill",
                 subtitle: "Picture-in-picture camera view",
-                category: .advanced,
-                version: "4.4"
+                category: .advanced
             ),
         ]
 
@@ -435,8 +450,8 @@ private struct SceneRow: View {
                         .foregroundStyle(scene.status.isAvailable ? Color.primary : Color.secondary)
                         .lineLimit(1)
 
-                    if let version = scene.status.comingSoonVersion {
-                        Text("v\(version)")
+                    if scene.status.isComingSoon {
+                        Text("Soon")
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)

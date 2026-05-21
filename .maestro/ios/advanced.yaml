@@ -1,0 +1,37 @@
+# Maestro flow — "Advanced" iOS demo category.
+#
+# Run a fast subset of the iOS device-QA harness:
+#   maestro test .maestro/ios/advanced.yaml
+#
+# Each demo is exercised by the reusable flows/demo.yaml subflow. The iOS
+# Advanced demos reachable via `sceneview://demo/<id>` are physics,
+# double-pendulum and custom-mesh; `shape` is a registered deep-link id that
+# routes to `GeometryDemo` (DemoDeepLinkRegistry maps `shape -> GeometryDemo`).
+#
+# Demo ids mirror Android `DemoRegistry.kt` ALL_DEMOS.
+appId: io.github.sceneview.demo
+---
+- runFlow:
+    file: flows/demo-settings.yaml
+    env:
+      DEMO_ID: physics
+      DEMO_NAME: Physics
+      ASSERT_TEXT: "Crash-test mesh"
+- runFlow:
+    file: flows/demo-settings.yaml
+    env:
+      DEMO_ID: double-pendulum
+      DEMO_NAME: Double Pendulum
+      ASSERT_TEXT: "Reset & drop"
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: custom-mesh
+      DEMO_NAME: Custom Mesh
+      ASSERT_TEXT: "MeshNode.fromVertices -- raw vertex data"
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: shape
+      DEMO_NAME: Shape (Geometry)
+      ASSERT_TEXT: "5 built-in geometry types with PBR materials"

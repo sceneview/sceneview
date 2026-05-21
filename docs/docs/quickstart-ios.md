@@ -16,7 +16,7 @@ description: "Set up SceneViewSwift in your Xcode project in 10 minutes. Build a
 ## Prerequisites
 
 - **Xcode 15** or newer
-- An Apple device or simulator running **iOS 17+**, **macOS 14+**, or **visionOS 1+**
+- An Apple device or simulator running **iOS 18+**, **macOS 15+**, or **visionOS 1+**
 - Basic familiarity with Swift and SwiftUI
 
 ---
@@ -49,7 +49,7 @@ https://github.com/sceneview/sceneview.git
 !!! tip
     You can also add the dependency manually in your `Package.swift`:
     ```swift
-    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.9.0")
+    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.2")
     ```
 
 ---
@@ -159,9 +159,9 @@ Point the camera at a flat surface, wait for plane detection, then tap to place 
 
 | Platform | Minimum version | Renderer |
 |---|---|---|
-| iOS | 17.0 | RealityKit + ARKit |
-| macOS | 14.0 | RealityKit |
-| visionOS | 1.0 | RealityKit |
+| iOS | 18.0 | RealityKit + ARKit |
+| macOS | 15.0 | RealityKit |
+| visionOS | 2.0 | RealityKit |
 
 !!! tip "AR is iOS-only"
     `ARSceneView` uses `ARView` from ARKit, which is only available on iOS. `SceneView` (3D without AR) works on all three platforms.

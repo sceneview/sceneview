@@ -33,9 +33,11 @@ final class AugmentedImageNodeTests: XCTestCase {
         XCTAssertNotNil(ref.cgImage)
     }
 
-    func testReferenceImageInitWithUIImage() {
+    func testReferenceImageInitWithUIImage() throws {
         let uiImage = UIImage(systemName: "star.fill")!
-        let ref = AugmentedImageNode.ReferenceImage(
+        // `ReferenceImage(name:image:physicalWidth:)` is throwing since #883
+        // (recoverable error when the UIImage has no cgImage representation).
+        let ref = try AugmentedImageNode.ReferenceImage(
             name: "star",
             image: uiImage,
             physicalWidth: 0.15
@@ -53,12 +55,12 @@ final class AugmentedImageNodeTests: XCTestCase {
         XCTAssertTrue(database.isEmpty)
     }
 
-    func testCreateImageDatabaseMultipleImages() {
+    func testCreateImageDatabaseMultipleImages() throws {
         let uiImage = UIImage(systemName: "star.fill")!
 
         let refs = [
-            AugmentedImageNode.ReferenceImage(name: "poster", image: uiImage, physicalWidth: 0.3),
-            AugmentedImageNode.ReferenceImage(name: "logo", image: uiImage, physicalWidth: 0.1),
+            try AugmentedImageNode.ReferenceImage(name: "poster", image: uiImage, physicalWidth: 0.3),
+            try AugmentedImageNode.ReferenceImage(name: "logo", image: uiImage, physicalWidth: 0.1),
         ]
 
         let database = AugmentedImageNode.createImageDatabase(refs)
@@ -69,9 +71,9 @@ final class AugmentedImageNodeTests: XCTestCase {
         XCTAssertTrue(names.contains("logo"))
     }
 
-    func testCreateImageDatabasePhysicalWidth() {
+    func testCreateImageDatabasePhysicalWidth() throws {
         let uiImage = UIImage(systemName: "star.fill")!
-        let ref = AugmentedImageNode.ReferenceImage(
+        let ref = try AugmentedImageNode.ReferenceImage(
             name: "card",
             image: uiImage,
             physicalWidth: 0.086 // credit card width

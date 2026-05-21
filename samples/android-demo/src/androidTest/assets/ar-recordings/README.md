@@ -4,6 +4,23 @@ This folder holds MP4 files captured by `ARRecorder.start(...)` then exported vi
 `ARRecorder.exportToDownloads(...)`. Each file is replayed by
 `ARDemoPlaybackSmokeTest` to drive the corresponding AR demo deterministically.
 
+## Current fixture status
+
+This directory is **README-only** today — no MP4 fixtures are committed yet, so
+`ARDemoPlaybackSmokeTest` is `assumeTrue`-skipped on a fresh checkout. Issue
+[#1442](https://github.com/sceneview/sceneview/issues/1442) tracks bundling a
+curated subset of the 8 real ARCore Record datasets captured in the 2026-05-16
+QA session (in-car drive, outdoor walks, ground markings, kitchen) here as
+deterministic CI fixtures. **Until #1442 lands, drop the in-car + outdoor MP4s
+into this directory** following the workflow below — the discovery code in
+`ARDemoPlaybackSmokeTest.discoverFixtures()` auto-enrols every `.mp4` it finds,
+so no test edit is needed.
+
+The autonomous AR replay harness (`ARReplayHarnessTest`, slice #1565) does
+**not** depend on fixtures in this directory — it replays the bundled recording
+that ships in the `debug` sourceSet (`src/debug/assets/ar-recordings/`), so the
+breadth-coverage harness works on a fresh checkout before #1442's fixtures land.
+
 ## How to add a new fixture
 
 See [`samples/android-demo/AR_TESTING.md`](../../../AR_TESTING.md) for the full

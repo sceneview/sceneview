@@ -5,13 +5,13 @@
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>SceneView</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleDisplayName</key>
-	<string>3D &amp; AR Explorer</string>
+	<string>SceneView</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
@@ -36,11 +36,11 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>3D &amp; AR Explorer uses the camera to place 3D objects in your real-world space using augmented reality.</string>
+	<string>SceneView uses the camera to place 3D objects in your real-world space using augmented reality.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>3D &amp; AR Explorer uses motion sensors to track your device orientation for augmented reality.</string>
+	<string>SceneView uses motion sensors to track your device orientation for augmented reality.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>3D &amp; AR Explorer saves AR session recordings (videos) you capture to your Photos library so you can share or revisit them later.</string>
+	<string>SceneView saves AR session recordings (videos) you capture to your Photos library so you can share or revisit them later.</string>
 	<key>UIRequiresFullScreen</key>
 	<false/>
 	<key>UILaunchScreen</key>

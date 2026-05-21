@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `secondary-camera` demo (registered by
+     `SecondaryCameraFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_secondary_camera_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_secondary_camera_title">Secondary Camera (PiP)</string>
+    <string name="demo_secondary_camera_subtitle">Picture-in-picture camera view</string>
+    <string name="demo_secondary_camera_chip_corner">Corner</string>
+    <string name="demo_secondary_camera_chip_front">Front</string>
+    <string name="demo_secondary_camera_chip_section">PiP Camera Angle</string>
+    <string name="demo_secondary_camera_chip_selected">Selected camera angle</string>
+    <string name="demo_secondary_camera_chip_side">Side</string>
+    <string name="demo_secondary_camera_chip_top">Top</string>
+    <string name="demo_secondary_camera_pip_cd">Picture-in-picture camera view: %1$s</string>
+</resources>

@@ -8,7 +8,10 @@
 # command to reclaim all three at once, safely.
 #
 # What it does (in order):
-#   1. `git fetch origin --prune` so every ref is current.
+#   1. `git fetch origin --prune`, then ONE bulk `gh pr list` per state
+#      (open / merged) so PR status is a pure in-memory lookup — no
+#      per-branch `gh pr view` (that's O(branches) API calls and times the
+#      CI job out before it can delete anything).
 #   2. Deletes MERGED local `claude/*` branches — "merged" means
 #      `git rev-list --count origin/main..<branch> == 0` (zero commits the
 #      branch carries that origin/main doesn't). Never the current branch.
@@ -102,12 +105,23 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     GH_AVAILABLE=true
 fi
 
-# pr_state <branch> — echoes the PR state (OPEN / MERGED / CLOSED) or "" if
-# none / gh unavailable. Degrades safely on any failure.
+# Bulk PR state — fetched ONCE, not per-branch. A repo with hundreds of
+# stale branches would otherwise fire hundreds of sequential `gh pr view`
+# calls and blow the CI timeout — exactly why the daily job never managed
+# to drain a 190-branch backlog. Two `gh pr list` calls cover everything.
+OPEN_PR_BRANCHES=""
+MERGED_PR_BRANCHES=""
+
+# pr_state <branch> — echoes OPEN / MERGED or "" (no PR, closed-unmerged,
+# or gh unavailable). Pure in-memory lookup against the bulk lists above.
+# A closed-unmerged PR returns "" — callers treat that identically: ahead>0
+# keeps it as unmerged work, ahead=0 makes it deletable.
 pr_state() {
     local branch="$1"
     [ "$GH_AVAILABLE" = "true" ] || { echo ""; return 0; }
-    gh pr view "$branch" --json state --jq .state 2>/dev/null || echo ""
+    if printf '%s\n' "$OPEN_PR_BRANCHES"   | grep -Fxq -- "$branch"; then echo "OPEN";   return 0; fi
+    if printf '%s\n' "$MERGED_PR_BRANCHES" | grep -Fxq -- "$branch"; then echo "MERGED"; return 0; fi
+    echo ""
 }
 
 echo -e "${CYAN}=== Branch + worktree cleanup ===${NC}"
@@ -124,9 +138,24 @@ echo ""
 
 # --- 1. refresh refs -------------------------------------------------------
 echo -e "${CYAN}--- Fetching origin --prune ---${NC}"
-git -C "$REPO_ROOT" fetch origin --prune --quiet 2>/dev/null \
-    || echo -e "${YELLOW}Warning: fetch failed — working from local refs.${NC}"
+FETCH_FAILED=false
+if ! git -C "$REPO_ROOT" fetch origin --prune --quiet 2>/dev/null; then
+    echo -e "${YELLOW}Warning: fetch failed — working from local refs.${NC}"
+    FETCH_FAILED=true
+fi
 echo ""
+
+# --- 1b. bulk PR state -----------------------------------------------------
+if [ "$GH_AVAILABLE" = "true" ]; then
+    echo -e "${CYAN}--- Fetching PR states (bulk) ---${NC}"
+    OPEN_PR_BRANCHES="$(gh pr list --state open --limit 1000 \
+        --json headRefName --jq '.[].headRefName' 2>/dev/null || echo "")"
+    MERGED_PR_BRANCHES="$(gh pr list --state merged --limit 2000 \
+        --json headRefName --jq '.[].headRefName' 2>/dev/null || echo "")"
+    echo "  open PRs:   $(printf '%s\n' "$OPEN_PR_BRANCHES"   | grep -c . || true)"
+    echo "  merged PRs: $(printf '%s\n' "$MERGED_PR_BRANCHES" | grep -c . || true)"
+    echo ""
+fi
 
 # ===========================================================================
 # 2. MERGED LOCAL claude/* branches
@@ -253,6 +282,10 @@ if [ "$DO_WORKTREES" = "true" ]; then
         echo -e "${CYAN}--- Worktrees (delegating to worktree-auto-prune.sh) ---${NC}"
         PRUNE_ARGS=()
         [ "$DRY_RUN" = "true" ] && PRUNE_ARGS+=(--dry-run) || PRUNE_ARGS+=(--yes)
+        # If our own fetch above failed, pass --allow-stale so the
+        # delegate doesn't abort on its own re-fetch attempt (we've
+        # already accepted local refs at the wrapper level).
+        [ "$FETCH_FAILED" = "true" ] && PRUNE_ARGS+=(--allow-stale)
         # Always spare the current worktree, plus any --keep paths.
         PRUNE_ARGS+=(--keep "$(git rev-parse --show-toplevel)")
         for k in "${KEEP[@]:-}"; do

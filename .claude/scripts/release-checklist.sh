@@ -144,7 +144,7 @@ echo ""
 # ─── 7. Git state ───────────────────────────────────────────────────────
 echo -e "${CYAN}--- Git State ---${NC}"
 
-DIRTY=$(git status --porcelain | grep -v '??' | wc -l | tr -d ' ')
+DIRTY=$(git status --porcelain | { grep -v '??' || true; } | wc -l | tr -d ' ')
 [ "$DIRTY" -eq 0 ] && check "Working tree clean" "PASS" "" || check "Working tree clean" "FAIL" "$DIRTY uncommitted changes"
 
 BRANCH=$(git branch --show-current)
@@ -196,8 +196,8 @@ done
 [ "$SECRETS_FOUND" -eq 0 ] && check "No secrets in tracked files" "PASS" ""
 
 # Check for API keys in source
-API_KEY_HITS=$(grep -rn "AIza\|sk-\|AKIA\|ghp_\|npm_" --include="*.kt" --include="*.swift" --include="*.ts" --include="*.js" \
-    sceneview/ arsceneview/ SceneViewSwift/ mcp/src/ 2>/dev/null | grep -v "node_modules\|\.test\." | wc -l | tr -d ' ')
+API_KEY_HITS=$({ grep -rn "AIza\|sk-\|AKIA\|ghp_\|npm_" --include="*.kt" --include="*.swift" --include="*.ts" --include="*.js" \
+    sceneview/ arsceneview/ SceneViewSwift/ mcp/src/ 2>/dev/null || true; } | { grep -v "node_modules\|\.test\." || true; } | wc -l | tr -d ' ')
 [ "$API_KEY_HITS" -eq 0 ] && check "No hardcoded API keys" "PASS" "" || check "No hardcoded API keys" "FAIL" "$API_KEY_HITS hit(s)"
 echo ""
 
@@ -228,8 +228,129 @@ echo ""
 echo -e "${CYAN}--- Essential Files ---${NC}"
 
 for f in llms.txt README.md CLAUDE.md CHANGELOG.md LICENSE CONTRIBUTING.md SECURITY.md; do
-    [ -f "$f" ] && check "$f exists" "PASS" "" || check "$f exists" "FAIL" "Missing"
+    # GitHub also looks under .github/ for community-health files (SECURITY.md,
+    # CONTRIBUTING.md, CODE_OF_CONDUCT.md) — treat that location as equivalent.
+    if [ -f "$f" ] || [ -f ".github/$f" ]; then
+        check "$f exists" "PASS" ""
+    else
+        check "$f exists" "FAIL" "Missing"
+    fi
 done
+echo ""
+
+# ─── 14. Device-QA gate ─────────────────────────────────────────────────
+# The autonomous cross-platform device-QA harness (umbrella #1560, slice
+# #1566) informs the release — but it must NEVER be able to block it
+# indefinitely.
+#
+# RELEASE-GATE POLICY (#1683 — deterministic, non-blocking)
+# ---------------------------------------------------------
+# History: the gate used to HARD-block on a pre-existing green
+# `device-qa-report.json`. In practice that froze the release for 58+
+# commits — a push-triggered Device QA run on `main` is killed by
+# `cancel-in-progress` concurrency before the long android Maestro leg
+# finishes, so no verdict was ever produced, and the orchestrator waited
+# forever. The android leg is `continue-on-error` / advisory and should
+# never have been able to block anything.
+#
+# The gate is therefore DETERMINISTIC and NON-BLOCKING:
+#   - It triggers its OWN Device QA run via `gh workflow run "Device QA"`.
+#     A `workflow_dispatch` run is isolated from push-concurrency
+#     cancellation (#1665/#1667) — it cannot be killed by a later push.
+#   - It polls THAT specific run id with a BOUNDED loop and a HARD TIMEOUT
+#     (RELEASE_QA_TIMEOUT_MIN, default 60 min). No unbounded poll.
+#   - REQUIRED legs = web (Playwright) + ar (ARCore replay): a genuine FAIL
+#     on either => release-gate FAIL (the ONLY blocking outcome).
+#   - ADVISORY leg  = android (Maestro emulator): a failure/cancel/skip is a
+#     WARN line only, never a block — matches device-qa.yml's
+#     `continue-on-error: true` on the android job (#1670/#1676).
+#   - TIMEOUT FALLBACK: if the run does not complete within the timeout the
+#     gate emits `device-qa: TIMEOUT (advisory) — proceeding` and returns
+#     SUCCESS. A flaky / stuck / cancelled harness can NEVER freeze a
+#     release. The release always proceeds; Device QA INFORMS it.
+#
+# The full logic lives in `.claude/scripts/release-device-qa-gate.sh`.
+# Env overrides: RELEASE_QA_TIMEOUT_MIN, RELEASE_QA_POLL_SEC,
+# RELEASE_QA_REQUIRED, RELEASE_QA_ADVISORY, RELEASE_QA_REF.
+#
+# Two modes:
+#   - If a `device-qa-report.json` is already present (e.g. a CI artifact
+#     downloaded into the workspace, or a fresh local `device-qa.sh` run),
+#     this section reads it directly — the fast path, no dispatch.
+#     `DEVICE_QA_REPORT=<path>` overrides the location. A schemaVersion-1
+#     report without `releaseGate` falls back to the legacy `status`.
+#   - Otherwise it delegates to `release-device-qa-gate.sh`, which
+#     dispatches + waits + grades, and can never block on a stuck harness.
+echo -e "${CYAN}--- Device-QA Gate ---${NC}"
+
+DQ_REPORT="${DEVICE_QA_REPORT:-device-qa-report.json}"
+GATE_SCRIPT="$REPO_ROOT/.claude/scripts/release-device-qa-gate.sh"
+if [ ! -f "$DQ_REPORT" ] && [ -x "$GATE_SCRIPT" ]; then
+    # No local report — run the deterministic, non-blocking gate. It
+    # dispatches its own uncancellable Device QA run, waits with a hard
+    # timeout, and grades web+ar as required / android as advisory. It
+    # exits 1 ONLY on a genuine required-leg FAIL; timeout / advisory red /
+    # dispatch failure all proceed-with-warning.
+    echo -e "  No local device-qa-report.json — invoking release-device-qa-gate.sh"
+    if bash "$GATE_SCRIPT"; then
+        check "device-qa gate" "PASS" "deterministic gate passed (required legs green or proceed-with-warning)"
+    else
+        check "device-qa gate" "FAIL" "a required device-QA leg (web/ar) failed — fix before tagging"
+    fi
+elif [ -f "$DQ_REPORT" ]; then
+    DQ_STATUS=$(python3 -c "import json; print(json.load(open('$DQ_REPORT')).get('status','?'))" 2>/dev/null || echo "?")
+    DQ_FAILED=$(python3 -c "import json; print(json.load(open('$DQ_REPORT')).get('totals',{}).get('failed','?'))" 2>/dev/null || echo "?")
+    DQ_SKIPPED=$(python3 -c "import json; print(json.load(open('$DQ_REPORT')).get('totals',{}).get('skipped','?'))" 2>/dev/null || echo "?")
+    # releaseGate is present from schemaVersion 2 (#1651); empty on older reports.
+    DQ_GATE=$(python3 -c "import json; print(json.load(open('$DQ_REPORT')).get('releaseGate',{}).get('verdict',''))" 2>/dev/null || echo "")
+    DQ_BLOCKING=$(python3 -c "import json; print(','.join(json.load(open('$DQ_REPORT')).get('releaseGate',{}).get('blockingFailed',[])))" 2>/dev/null || echo "")
+    DQ_ADVISORY=$(python3 -c "import json; print(','.join(json.load(open('$DQ_REPORT')).get('releaseGate',{}).get('advisoryFailed',[])))" 2>/dev/null || echo "")
+
+    if [ -n "$DQ_GATE" ]; then
+        # schemaVersion >= 2 — graded gate.
+        case "$DQ_GATE" in
+            clear)
+                if [ "$DQ_SKIPPED" = "0" ]; then
+                    check "device-qa-report.json" "PASS" "all platforms green"
+                else
+                    check "device-qa-report.json" "WARN" "green but $DQ_SKIPPED platform(s) skipped — re-run device-qa.sh --ci"
+                fi
+                ;;
+            warn)
+                # Advisory leg(s) red — never silent, never a hard block (#1651).
+                check "device-qa-report.json" "WARN" "advisory leg(s) did not pass: $DQ_ADVISORY — review before tagging (non-blocking, flaky emulator #1643)"
+                ;;
+            blocked)
+                check "device-qa-report.json" "FAIL" "blocking leg(s) failed: $DQ_BLOCKING — fix before tagging"
+                ;;
+            *)
+                check "device-qa-report.json" "FAIL" "unreadable releaseGate verdict ($DQ_GATE)"
+                ;;
+        esac
+    else
+        # schemaVersion 1 — legacy all-or-nothing reading.
+        case "$DQ_STATUS" in
+            passed)
+                if [ "$DQ_SKIPPED" = "0" ]; then
+                    check "device-qa-report.json" "PASS" "all platforms green (legacy report — no releaseGate)"
+                else
+                    check "device-qa-report.json" "WARN" "green but $DQ_SKIPPED platform(s) skipped — re-run device-qa.sh --ci"
+                fi
+                ;;
+            failed)
+                check "device-qa-report.json" "FAIL" "$DQ_FAILED platform(s) failed — fix before tagging"
+                ;;
+            *)
+                check "device-qa-report.json" "FAIL" "unreadable status ($DQ_STATUS)"
+                ;;
+        esac
+    fi
+else
+    # No local report AND release-device-qa-gate.sh is not available — the
+    # deterministic gate path is unreachable. Surface a WARN, not a hard
+    # block: a missing harness must never freeze the release (#1683).
+    check "device-qa gate" "WARN" "no report and release-device-qa-gate.sh missing — run: bash .claude/scripts/device-qa.sh --platform=all"
+fi
 echo ""
 
 # ─── Summary ───────────────────────────────────────────────────────────

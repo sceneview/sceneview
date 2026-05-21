@@ -1,0 +1,86 @@
+# Maestro flow — "Augmented Reality" demo category (14 demos).
+#
+# Run a fast subset of the device-QA harness:
+#   maestro test .maestro/android/ar.yaml
+#
+# AR demos need the ARCore-friendly emulator from
+# `.claude/scripts/setup-ar-emulator.sh` (virtualscene back camera, host GPU,
+# Google Play Services for AR installed). They launch a live `ARSceneView`;
+# the deep-link flow still exercises tap + drag on the camera surface and
+# asserts the process stays alive — AR tracking quality itself is covered by
+# the ARCore MP4 replay harness (umbrella #1560, slice #1565), not here.
+#
+# Each demo is exercised by the reusable flows/demo.yaml subflow. Demo ids
+# mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
+appId: io.github.sceneview.demo
+---
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-placement
+      DEMO_NAME: AR Placement
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-image
+      DEMO_NAME: AR Image
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-face
+      DEMO_NAME: AR Face
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-cloud-anchor
+      DEMO_NAME: AR Cloud Anchor
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-streetscape
+      DEMO_NAME: AR Streetscape
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-pose
+      DEMO_NAME: AR Pose
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-rerun
+      DEMO_NAME: AR Rerun Debug
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-record-playback
+      DEMO_NAME: AR Record & Playback
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-depth-occlusion
+      DEMO_NAME: AR Depth Occlusion
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-instant-placement
+      DEMO_NAME: AR Instant Placement
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-terrain
+      DEMO_NAME: AR Terrain Anchors
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-rooftop
+      DEMO_NAME: AR Rooftop Anchors
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-image-stabilization
+      DEMO_NAME: AR Image Stabilization
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-orbital
+      DEMO_NAME: AR Orbital

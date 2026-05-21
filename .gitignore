@@ -130,12 +130,18 @@ docs/docs/*-contribution.md
 
 # ── Platform demo assets (copied via .claude/scripts/sync-assets.sh) ──
 # Note: android-demo-assets is NOT ignored (Play Asset Delivery, must be in git)
+# Note: samples/web-demo/src/jsMain/resources/{models,environments}/ are NOT
+# ignored — the web demo self-hosts its curated GLB catalog and IBL so it
+# never depends on a third-party CDN (#1573); they ride into the Kotlin/JS
+# jsBrowserDistribution output and the Playwright dev server serves them too.
 samples/android-tv-demo/src/main/assets/
 samples/flutter-demo/models/
 samples/react-native-demo/assets/models/
 samples/react-native-demo/ios/Models/
-samples/web-demo/src/jsMain/resources/models/
-samples/web-demo/src/jsMain/resources/environments/
+
+# ── Playwright web-demo QA artifacts ──
+samples/web-demo/test-results/
+samples/web-demo/playwright-report/
 
 # Local MCP workspace artifacts (not canonical — canonical code is in mcp/packages/)
 mcp-automotive/

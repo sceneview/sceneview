@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import io.github.sceneview.sample.common.update.UpdateBanner
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -124,10 +126,17 @@ private fun TvModelViewerScreen(updateManager: InAppUpdateManager? = null) {
 
     val focusRequester = remember { FocusRequester() }
 
+    // Android TV is entirely D-pad driven with no touch. The root Box owns the
+    // whole control scheme via onKeyEvent, but onKeyEvent only fires when its
+    // node holds focus — so the Box must be focusable() AND must actually grab
+    // focus on first composition, or every D-pad key is inert from launch.
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .focusRequester(focusRequester)
+            .focusable()
             .onKeyEvent { event ->
                 if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onKeyEvent false
                 when (event.nativeKeyEvent.keyCode) {

@@ -242,10 +242,15 @@ public struct ARSceneView: UIViewRepresentable {
         arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
         arView.session.delegate = context.coordinator
 
-        // Plane visualization
-        if showPlaneOverlay && planeDetection != .none {
-            arView.debugOptions.insert(.showAnchorGeometry)
-        }
+        // Plane visualization.
+        //
+        // `arView.debugOptions.insert(.showAnchorGeometry)` is a *developer
+        // debug* aid — RealityKit renders detected `ARPlaneAnchor`s as a solid,
+        // fully-opaque fluorescent-green fill that overpaints the camera feed.
+        // It must never ship to end users (#1557). Instead the coordinator
+        // tracks `ARPlaneAnchor` add/update/remove events and renders a subtle
+        // translucent overlay entity per plane — see `PlaneVisualizer`.
+        context.coordinator.showPlaneOverlay = showPlaneOverlay && planeDetection != .none
 
         // Coaching overlay
         if showCoachingOverlay {
@@ -486,6 +491,14 @@ public struct ARSceneView: UIViewRepresentable {
         weak var arView: ARView?
         private var detectedImageNames: Set<String> = []
 
+        /// Whether detected planes should be visualized with a translucent
+        /// overlay. Set from `makeUIView` once plane detection is known.
+        var showPlaneOverlay: Bool = false
+
+        /// Translucent overlay entities keyed by their `ARPlaneAnchor` id, so
+        /// `didUpdate` can resize them and `didRemove` can tear them down.
+        private var planeOverlays: [UUID: PlaneVisualizer] = [:]
+
         // Light-slot reactive plumbing — same pattern as ``SceneView`` (#1017)
         // adapted for AR. The anchor refs let the diff in `refreshARLightSlot`
         // tear down the previous light's `AnchorEntity` before adding a new one.
@@ -539,10 +552,20 @@ public struct ARSceneView: UIViewRepresentable {
         }
 
         public func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
-            guard let arView = arView, let onImageDetected = onImageDetected else { return }
+            guard let arView = arView else { return }
 
             for anchor in anchors {
-                guard let imageAnchor = anchor as? ARImageAnchor,
+                // Detected-plane visualization — a subtle translucent overlay,
+                // never the opaque `.showAnchorGeometry` debug fill (#1557).
+                if showPlaneOverlay, let planeAnchor = anchor as? ARPlaneAnchor {
+                    let visualizer = PlaneVisualizer(planeAnchor: planeAnchor)
+                    planeOverlays[planeAnchor.identifier] = visualizer
+                    arView.scene.addAnchor(visualizer.anchor)
+                    continue
+                }
+
+                guard let onImageDetected = onImageDetected,
+                      let imageAnchor = anchor as? ARImageAnchor,
                       let imageName = imageAnchor.referenceImage.name,
                       !detectedImageNames.contains(imageName) else { continue }
 
@@ -550,6 +573,22 @@ public struct ARSceneView: UIViewRepresentable {
                 let anchorEntity = AnchorEntity(anchor: imageAnchor)
                 let anchorNode = AnchorNode(entity: anchorEntity)
                 onImageDetected(imageName, anchorNode, arView)
+            }
+        }
+
+        public func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
+            for anchor in anchors {
+                guard let planeAnchor = anchor as? ARPlaneAnchor,
+                      let visualizer = planeOverlays[planeAnchor.identifier] else { continue }
+                visualizer.update(with: planeAnchor)
+            }
+        }
+
+        public func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
+            for anchor in anchors {
+                guard let planeAnchor = anchor as? ARPlaneAnchor,
+                      let visualizer = planeOverlays.removeValue(forKey: planeAnchor.identifier) else { continue }
+                arView?.scene.removeAnchor(visualizer.anchor)
             }
         }
 
@@ -589,6 +628,70 @@ public struct ARSceneView: UIViewRepresentable {
             detectedImageNames.removeAll()
             session.run(config)
         }
+    }
+}
+
+// MARK: - Detected-plane visualization (#1557)
+
+/// Renders a single detected `ARPlaneAnchor` as a *subtle, translucent*
+/// overlay so the user can see where surfaces have been found without the
+/// real-world camera feed being obscured.
+///
+/// This replaces RealityKit's `.showAnchorGeometry` debug option, which
+/// renders detected planes as a solid, fully-opaque fluorescent-green fill —
+/// a developer debug aid that must never reach end users (#1557, part of
+/// #1373). The overlay here uses a low-opacity tinted material (~12 %),
+/// matching how a polished ARKit app surfaces plane detection.
+///
+/// The overlay is purely cosmetic — it carries no `CollisionComponent`, so
+/// it never interferes with the tap-to-place raycast in `handleTap`, which
+/// raycasts against ARKit's `.estimatedPlane`, not scene geometry.
+///
+/// Not `@MainActor`-isolated: it is only ever constructed and mutated from
+/// `ARSessionDelegate` callbacks, which ARKit delivers on the session's
+/// delegate queue (the main thread for `ARSceneView`). This matches the
+/// surrounding image-anchor handling in `session(_:didAdd:)`.
+final class PlaneVisualizer {
+    /// The world-anchored entity that hosts the overlay mesh. Added to /
+    /// removed from `arView.scene` by the coordinator.
+    let anchor: AnchorEntity
+
+    /// The translucent fill entity, regenerated on each `update` because the
+    /// plane's `extent` grows as ARKit refines its estimate.
+    private let fill: ModelEntity
+
+    /// Low-opacity tint for the plane fill. A faint white keeps the overlay
+    /// readable against any background without overpainting the camera feed.
+    private static let overlayColor: SimpleMaterial.Color =
+        .init(white: 1.0, alpha: 0.12)
+
+    init(planeAnchor: ARPlaneAnchor) {
+        anchor = AnchorEntity(anchor: planeAnchor)
+        fill = ModelEntity()
+        anchor.addChild(fill)
+        update(with: planeAnchor)
+    }
+
+    /// Resizes and re-centers the overlay to match the latest plane estimate.
+    func update(with planeAnchor: ARPlaneAnchor) {
+        let extent = planeAnchor.planeExtent
+        // A thin (1 mm) box gives the overlay a flat footprint that conforms
+        // to the detected surface. The plane's local frame is X/Z, so the
+        // box width maps to X and depth to Z.
+        let mesh = MeshResource.generateBox(
+            size: [extent.width, 0.001, extent.height]
+        )
+        var material = UnlitMaterial(color: Self.overlayColor)
+        // Transparent blending so the camera feed shows through — the core of
+        // the #1557 fix. Without this the overlay is an opaque fill.
+        material.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+        fill.model = ModelComponent(mesh: mesh, materials: [material])
+        // `center` is the plane center relative to the anchor's transform.
+        fill.position = [
+            planeAnchor.center.x,
+            planeAnchor.center.y,
+            planeAnchor.center.z,
+        ]
     }
 }
 

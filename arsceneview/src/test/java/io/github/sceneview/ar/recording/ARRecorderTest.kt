@@ -1,6 +1,7 @@
 package io.github.sceneview.ar.recording
 
 import android.util.Size
+import android.view.Surface
 import com.google.ar.core.CameraConfig
 import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.PlaybackStatus
@@ -437,18 +438,36 @@ class ARRecorderTest {
     }
 
     @Test
-    fun `start with recordingRotation calls setRecordingRotation with that exact value`() {
+    fun `start converts Surface ROTATION ordinal to degrees for setRecordingRotation`() {
+        // Regression for #1648: callers pass a Surface.ROTATION_* constant (ordinal 0/1/2/3);
+        // ARCore's RecordingConfig.setRecordingRotation wants degrees (0/90/180/270). The
+        // recorder must convert — forwarding ROTATION_90 (ordinal 1) verbatim recorded the
+        // dataset as 1°, i.e. sideways.
         val recorder = ARRecorder()
         val session = FakeSession()
         recorder.attach(session)
 
-        recorder.start(outFile, recordingRotation = 90)
+        recorder.start(outFile, recordingRotation = Surface.ROTATION_90)
 
         val captured = ShadowRecordingConfig.lastInstance
         assertNotNull(captured)
         assertEquals(outFile.absolutePath, captured!!.mp4Path)
         assertEquals(true, captured.autoStopOnPause)
-        assertEquals(90, captured.rotation)
+        assertEquals(
+            "ROTATION_90 (ordinal 1) must reach ARCore as 90 degrees",
+            90,
+            captured.rotation,
+        )
+    }
+
+    @Test
+    fun `surfaceRotationToDegrees maps every Surface ROTATION constant to degrees`() {
+        assertEquals(0, ARRecorder.surfaceRotationToDegrees(Surface.ROTATION_0))
+        assertEquals(90, ARRecorder.surfaceRotationToDegrees(Surface.ROTATION_90))
+        assertEquals(180, ARRecorder.surfaceRotationToDegrees(Surface.ROTATION_180))
+        assertEquals(270, ARRecorder.surfaceRotationToDegrees(Surface.ROTATION_270))
+        // Unrecognised input falls back to ARCore's own default of 0.
+        assertEquals(0, ARRecorder.surfaceRotationToDegrees(42))
     }
 
     @Test
@@ -456,7 +475,7 @@ class ARRecorderTest {
         val recorder = ARRecorder()
         val session = FakeSession()
         recorder.attach(session)
-        recorder.start(outFile, recordingRotation = 270)
+        recorder.start(outFile, recordingRotation = Surface.ROTATION_270)
         assertEquals(true, ShadowRecordingConfig.lastInstance!!.autoStopOnPause)
     }
 
@@ -685,7 +704,7 @@ class ARRecorderTest {
      * can be created in tests without going through the JNI-backed `Session(Context)` path.
      * We only override the methods [ARRecorder] actually calls.
      */
-    private class FakeSession(
+    internal class FakeSession(
         private val playbackStatus: PlaybackStatus = PlaybackStatus.NONE,
         private val startRecordingException: Lazy<RecordingFailedException>? = null,
         /**
@@ -700,6 +719,9 @@ class ARRecorderTest {
         private val getSupportedCameraConfigsThrows: Boolean = false,
         /** The config in effect before recording — what a `recordingResolution` swap must restore. */
         initialCameraConfig: CameraConfig? = null,
+        /** Current recording status — what `Session.getRecordingStatus()` reports. */
+        var recordingStatusValue: com.google.ar.core.RecordingStatus =
+            com.google.ar.core.RecordingStatus.NONE,
     ) : Session() {
 
         var startRecordingCount: Int = 0
@@ -715,6 +737,8 @@ class ARRecorderTest {
         private var currentCameraConfig: CameraConfig? = initialCameraConfig
 
         override fun getPlaybackStatus(): PlaybackStatus = playbackStatus
+
+        override fun getRecordingStatus(): com.google.ar.core.RecordingStatus = recordingStatusValue
 
         override fun startRecording(config: RecordingConfig?) {
             startRecordingCount += 1

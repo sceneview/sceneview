@@ -31,6 +31,26 @@ object DemoSettings {
     var qaMode: Boolean by mutableStateOf(false)
 
     /**
+     * Optional camera-to-model distance, in metres, the 3D demos should frame the model at
+     * when they start — i.e. a zoom level. When non-null, the shared hero-orbit camera
+     * ([rememberHeroOrbitCameraManipulator]) uses this value as its orbit radius instead of
+     * the per-demo auto-fit distance, so a smaller value zooms in and a larger value zooms
+     * out. When `null` the demo keeps its own framing.
+     *
+     * This exists because Maestro — the engine behind the Android device-QA harness
+     * (`.maestro/android/`) — has no pinch gesture, so the flows cannot exercise 3D camera
+     * zoom by touch. Wired via the `--ef camera_distance <f>` intent extra and the
+     * `sceneview://demo/<id>?cameraDistance=<f>` deep-link query parameter so a Maestro flow
+     * can launch a demo at a near or far framing and assert the scene reframes correctly.
+     * See [issue #1571](https://github.com/sceneview/sceneview/issues/1571).
+     *
+     * [MainActivity] clamps the incoming value to a sane positive range
+     * (`DeepLinkRouter.validateCameraDistance`) before storing it here — absent, non-finite,
+     * or out-of-range values resolve to `null` (default framing, no crash).
+     */
+    var cameraDistance: Float? by mutableStateOf(null)
+
+    /**
      * Optional ARCore playback file the AR Record & Playback demo should auto-load when it
      * starts. When non-null, the demo skips Mode.LIVE and enters Mode.PLAYBACK with this
      * file pre-selected — the same path a tester would take by tapping "Playback" then

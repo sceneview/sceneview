@@ -7,13 +7,13 @@ import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
 import com.google.android.filament.utils.TextureType
 import dev.romainguy.kotlin.math.normalize
+import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.geometries.Plane
 import io.github.sceneview.geometries.UvScale
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
-import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.texture.ImageTexture
 import io.github.sceneview.texture.TextureSampler2D
 import io.github.sceneview.texture.setBitmap
@@ -157,23 +157,21 @@ open class ImageNode private constructor(
     }
 
     /**
-     * Releases the [MaterialInstance] but intentionally retains the GPU [Texture] —
-     * destroying the texture before Filament has reclaimed the bound MaterialInstance
-     * triggers a native SIGABRT (`Invalid texture still bound to MaterialInstance`),
-     * and MI reclamation is coupled to the render loop, not to this call.
+     * Releases the [MaterialInstance] and frame-defers destruction of the GPU [Texture].
      *
-     * **GPU-memory implication:** each destroyed [ImageNode] keeps its texture alive
-     * until the parent [com.google.android.filament.Engine] is torn down. For typical
-     * one-Activity, single-Engine usage this is harmless — Engine teardown reclaims
-     * everything. **Do not** create more than ~100 short-lived ImageNodes per Engine
-     * lifetime (feeds, infinite scrollers, particle emitters): for high-churn use
-     * cases recycle a single ImageNode via the `bitmap = newBitmap` setter, which
-     * reuses the same Texture, instead of destroying and recreating.
+     * Destroying the texture eagerly — before Filament has reclaimed the bound
+     * [MaterialInstance] — triggers a native SIGABRT (`Invalid texture still bound to
+     * MaterialInstance`), because MI reclamation is coupled to the render loop, not to this
+     * call. To avoid both that crash and a GPU-memory leak, the texture is handed to the
+     * per-`Engine` [io.github.sceneview.EngineDestroyQueue], which destroys it a few rendered
+     * frames later (and immediately at Engine teardown). This makes high-churn UIs (feeds,
+     * infinite scrollers, particle emitters) safe — see sceneview/sceneview#874.
      */
     override fun destroy() {
         val mi = materialInstance
         super.destroy()
         materialLoader.destroyMaterialInstance(mi)
-        // DELIBERATE: do NOT destroy the texture — see KDoc above.
+        // Frame-defer the texture destroy so Filament reclaims the MI first (see KDoc, #874).
+        EngineDestroyQueue.of(engine).enqueueTexture(texture)
     }
 }

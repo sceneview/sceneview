@@ -1,0 +1,350 @@
+name: Device QA
+
+# Autonomous cross-platform device-QA harness (umbrella #1560, slice #1566).
+#
+# WHY THIS EXISTS
+# ---------------
+# The four platform harnesses (Maestro Android #1562, Maestro iOS #1563,
+# Playwright web #1564, AR replay #1565) are tied together by the
+# `.claude/scripts/device-qa.sh` orchestrator. This workflow runs that
+# orchestrator for the platforms feasible on GitHub-hosted runners so a demo
+# regression that crashes on a real emulator / browser surfaces in CI.
+#
+# Three legs run here: web (Playwright), android (Maestro), and ar (ARCore
+# MP4 replay). The iOS Maestro leg has no GitHub-hosted equivalent (it needs a
+# macOS runner + simulator) and is covered by the local device-QA pass. The
+# `ar` leg was added in #1592 — until then the AR replay harness had no
+# automated coverage.
+#
+# COST CONTROL
+# ------------
+# Device-QA boots emulators and a browser — it is expensive. It is therefore
+# NOT in the per-PR `CI Gate`. It runs only when:
+#   - a harness script, Maestro flow, or demo app actually changes (push to
+#     main, path-gated), OR
+#   - manually via workflow_dispatch (vet a feature branch / pre-tag), OR
+#   - reused via workflow_call (nightly-ci.yml safety net).
+#
+# Each leg invokes `device-qa.sh --platform=<p> --ci`: in `--ci` mode a
+# skipped platform (missing toolchain) is a FAILURE, so a silently-degraded
+# runner cannot produce a falsely-green report. The aggregated
+# `device-qa-report.json` is uploaded as an artifact for the release
+# checkpoint (`release-checklist.sh` reads its `status`).
+#
+# PREBUILT ANDROID APK — BUILD/EMULATOR SPLIT (#1652)
+# ---------------------------------------------------
+# The `android` and `ar` emulator jobs do NOT build the demo APK themselves.
+# A cold `:samples:android-demo:assembleDebug` on a 2-core runner is slow
+# (~20-30 min) AND competes with the running emulator for CPU — a major cause
+# of the Android leg's slowness and instability (#1642 silent hang, #1643
+# emulator offline). Instead, a dedicated `build-android-apk` job (no emulator,
+# Gradle build-cache) compiles the APK once and uploads it as an artifact; the
+# emulator jobs `download-artifact` it into the path `qa-android-demos.sh`
+# expects (`samples/android-demo/build/outputs/apk/debug/`). That script
+# already skips its own build when the APK is present (`if [[ ! -f "$APK" ]]`),
+# so the emulator jobs become install + Maestro only — faster, and the build
+# no longer fights the emulator for cores.
+#
+# RELEASE-GATE POLICY FOR continue-on-error LEGS (#1651)
+# ------------------------------------------------------
+# The `android` and `ar` jobs are `continue-on-error: true` — a red leg does
+# NOT fail this workflow (the SwiftShader emulator is chronically flaky, #1643,
+# and this is not a required PR check). The `web` job is NOT continue-on-error:
+# it is cheap and reliable, so a red web leg DOES fail the workflow.
+#
+# This split has a release-gate consequence. `release-checklist.sh` section 14
+# reads the aggregated `device-qa-report.json`. The policy is:
+#   - web        — BLOCKING. A failed web leg hard-blocks the release.
+#   - android/ar — ADVISORY. A failed android/ar leg surfaces as a WARN in the
+#                  release checklist ("android leg: WARN — did not pass"), so a
+#                  human sees it before tagging, but it does NOT hard-block.
+# Advisory legs stay non-blocking until #1643/#1645 make the emulator reliably
+# green; at that point promote them to blocking. `device-qa.sh` tags each leg's
+# record with `advisory: true|false` so the gate's behaviour is intentional,
+# not accidental — see `device-qa.sh` and `release-checklist.sh` section 14.
+#
+# FOUR-LEG SPLIT — PER-PUSH vs NIGHTLY-ONLY (#1601)
+# -------------------------------------------------
+# `device-qa.sh` orchestrates FOUR platform legs: web / android / ios / ar.
+# This workflow deliberately defines only the `web` and `android` jobs:
+#
+#   web      — Playwright on ubuntu-latest. Cheap, always feasible. Per-push.
+#   android  — Maestro on a KVM-accelerated emulator (ubuntu-latest). Heavy
+#              but feasible on GitHub-hosted runners. Per-push.
+#   ios      — Maestro on an iOS Simulator. NIGHTLY-ONLY: needs a `macos-*`
+#              runner, which is ~10x the per-minute cost and has no KVM —
+#              not worth spending on every demo-source push.
+#   ar       — ARCore replay harness. NIGHTLY-ONLY: needs an ARCore-capable
+#              emulator plus committed AR recordings; setup is too slow and
+#              flaky to gate routine pushes on.
+#
+# The `ios` and `ar` legs therefore run ONLY via the nightly `workflow_call`
+# (nightly-ci.yml), which executes `device-qa.sh --platform=all` on the
+# appropriate runners. A broken / always-skipped iOS or AR job in THIS
+# workflow would be worse than documenting the split, so they are omitted
+# here by design rather than stubbed.
+#
+# Path trigger consequence: `samples/ios-demo/**` is intentionally absent
+# from the `paths:` filter below — adding it would spin up the web+android
+# jobs for an iOS-only change while no iOS job exists to actually exercise
+# it. iOS demo changes are covered by the nightly run instead.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.claude/scripts/device-qa.sh'
+      - '.claude/scripts/qa-android-demos.sh'
+      - '.claude/scripts/ios-device-qa.sh'
+      - '.claude/scripts/ar-replay-qa.sh'
+      - '.claude/scripts/setup-ar-emulator.sh'
+      - '.claude/scripts/sideload-arcore.sh'
+      - '.claude/scripts/lib/maestro.sh'
+      - '.claude/scripts/lib/android-cli.sh'
+      - '.github/workflows/device-qa.yml'
+      - '.maestro/**'
+      - 'samples/android-demo/**'
+      - 'samples/web-demo/**'
+      # NOTE: `samples/ios-demo/**` is deliberately NOT listed — the iOS leg
+      # is nightly-only (see the FOUR-LEG SPLIT block above, #1601).
+  workflow_dispatch:
+  # Reused by nightly-ci.yml so the scheduled full-validation run exercises
+  # the device-QA legs too — see #1324.
+  workflow_call:
+
+# A Device QA run is ~50 min (emulator + Maestro). A `workflow_dispatch` run is
+# a deliberate release gate — keying its concurrency group on `github.run_id`
+# makes it unique so a later push to the same ref can never cancel it (#1665).
+# `push` (and the nightly `workflow_call`) runs share the `push` group, so a
+# stale push run is still auto-cancelled — desirable, no point burning a 50-min
+# emulator run on a superseded SHA.
+concurrency:
+  group: device-qa-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'push' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Web leg — Playwright (cheap, always feasible on ubuntu) ───────────────
+  web:
+    name: Device QA — web (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Run device-qa.sh (web leg)
+        run: bash .claude/scripts/device-qa.sh --platform=web --ci
+
+      - name: Upload web device-QA report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: device-qa-report-web
+          path: |
+            device-qa-report.json
+            device-qa-artifacts/
+          if-no-files-found: ignore
+
+  # ── Build leg — compile the android-demo APK once, in a cached job ────────
+  # No emulator here: this is a pure Gradle build that produces the demo APK
+  # as a workflow artifact for the `android` and `ar` emulator jobs (#1652).
+  # Splitting the build out keeps the cold compile off the 2-core emulator
+  # runners, where it competed with the booted emulator for CPU. The
+  # setup-gradle composite action wires the Gradle build cache, so a warm run
+  # is fast. NOT continue-on-error: if the APK fails to compile there is
+  # nothing for the emulator jobs to install — the failure must be visible.
+  build-android-apk:
+    name: Device QA — build android-demo APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Build android-demo debug APK
+        run: ./gradlew :samples:android-demo:assembleDebug --console=plain
+
+      - name: Upload android-demo APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-demo-debug-apk
+          # qa-android-demos.sh expects the APK at this exact path and skips
+          # its own build when it is present — the emulator jobs restore the
+          # artifact into this directory before invoking device-qa.sh.
+          path: samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk
+          if-no-files-found: error
+
+  # ── Android leg — Maestro on the KVM-accelerated emulator ─────────────────
+  # The orchestrator's own emulator boot (setup-ar-emulator.sh) targets a
+  # local AVD; on GitHub-hosted runners the ReactiveCircus action provides the
+  # emulator, so device-qa.sh detects the already-booted device and skips its
+  # own boot. Non-blocking: SwiftShader emulator + Maestro timing is flaky and
+  # this workflow is not a required PR check.
+  #
+  # This job does NOT build the APK — it downloads the artifact produced by
+  # `build-android-apk` into the path qa-android-demos.sh expects, so the
+  # emulator job is install + Maestro only (#1652). The release-gate treats a
+  # red leg here as ADVISORY (WARN, not a hard block) — see the header block.
+  android:
+    name: Device QA — android (Maestro)
+    runs-on: ubuntu-latest
+    needs: build-android-apk
+    # 35 min: with the APK prebuilt the heavy work is emulator boot + the
+    # Maestro flow. The per-step `timeout` inside maestro.sh still aborts a
+    # genuine hang fast (Maestro 15 min) — see #1560.
+    timeout-minutes: 35
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Download prebuilt android-demo APK
+        uses: actions/download-artifact@v7
+        with:
+          name: android-demo-debug-apk
+          # qa-android-demos.sh / device-qa.sh look for the APK here and skip
+          # the cold Gradle build when it exists (#1652).
+          path: samples/android-demo/build/outputs/apk/debug
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install Maestro
+        # `curl … | bash`: the curl exit status is masked by the pipe — `bash`
+        # on the right side exits 0 even when curl wrote nothing — so a DNS /
+        # network failure here would silently "succeed". The qa-android-demos.sh
+        # step would then fail much later with the opaque
+        # `rc=1 (flow=3d-basics)` because maestro.sh found no `maestro` binary
+        # (it never auto-installs in CI). `set -o pipefail` makes the curl
+        # failure abort THIS step where the error is obvious, and the explicit
+        # `test -x` catches an installer that ran but produced no binary.
+        # The canonical installer host is `get.maestro.mobile.dev` —
+        # `get.maestro.dev` does not resolve (run 25979438767: `curl: (6)
+        # Could not resolve host: get.maestro.dev`).
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          test -x "$HOME/.maestro/bin/maestro"
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Run device-qa.sh (android leg) on emulator
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          # -memory 4096: the SceneView Filament 3D demo is GPU/RAM-heavy; the
+          # default emulator RAM let the device go offline mid-Maestro-flow on
+          # the software-GPU CI runner (#1643).
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096
+          disable-animations: true
+          script: |
+            export PATH="$HOME/.maestro/bin:$PATH"
+            # Every wait below is `timeout`-bounded so a flaky CI emulator
+            # produces a clean step FAILURE — which continue-on-error absorbs —
+            # instead of letting the job run to `timeout-minutes`. A job killed
+            # by `timeout-minutes` ends `cancelled`, and continue-on-error does
+            # NOT neutralise a cancellation: the whole Device QA run conclusion
+            # then goes red even though web/ar/build passed (#1643). Bare
+            # `adb wait-for-device` in particular blocks forever if the emulator
+            # never comes online. Internal bounds (150s + 1500s + ~120s boot
+            # poll ≈ 29 min) always fire before `timeout-minutes: 35`.
+            timeout 150 adb wait-for-device || { echo "::warning::android leg — emulator never came online"; exit 1; }
+            attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 60 ]; do sleep 2; attempts=$((attempts + 1)); done
+            # --fast: one representative category, keeps the emulator job lean.
+            timeout 1500 bash .claude/scripts/device-qa.sh --platform=android --fast --ci
+
+      - name: Upload android device-QA report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: device-qa-report-android
+          path: |
+            device-qa-report.json
+            device-qa-artifacts/
+          if-no-files-found: ignore
+
+  # ── AR leg — ARCore MP4 replay on the KVM-accelerated emulator ────────────
+  # The AR replay harness (#1565: ar-replay-qa.sh + ARReplayHarnessTest) was
+  # the one device-QA leg with no CI coverage (#1592) — a per-release device-QA
+  # pass effectively skipped AR. This job closes that gap.
+  #
+  # It mirrors the `android` job's emulator setup, with one extra requirement:
+  # the AR replay harness needs Google Play Services for AR (com.google.ar.core)
+  # on the emulator. The ReactiveCircus action provides its own AVD (no Play
+  # Store, so ARCore is absent), so the `sideload-arcore.sh` helper fetches the
+  # x86 emulator build of ARCore from the public google-ar SDK GitHub release
+  # and `adb install`s it before we delegate to `device-qa.sh --platform=ar`.
+  # device-qa.sh detects the already-booted device and skips its own boot.
+  #
+  # Like the android job this is continue-on-error: the SwiftShader emulator +
+  # ARCore replay timing is flaky and this workflow is not a required PR check.
+  ar:
+    name: Device QA — ar (ARCore replay)
+    runs-on: ubuntu-latest
+    needs: build-android-apk
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Download prebuilt android-demo APK
+        uses: actions/download-artifact@v7
+        with:
+          name: android-demo-debug-apk
+          # The AR replay leg reuses the same demo APK — restore it into the
+          # path qa-android-demos.sh expects so device-qa.sh skips the build.
+          path: samples/android-demo/build/outputs/apk/debug
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run device-qa.sh (ar leg) on ARCore emulator
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          # -memory 4096: the SceneView Filament 3D demo is GPU/RAM-heavy; the
+          # default emulator RAM let the device go offline mid-Maestro-flow on
+          # the software-GPU CI runner (#1643).
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096
+          disable-animations: true
+          # NOTE: ReactiveCircus/android-emulator-runner runs each LINE of this
+          # `script:` as a separate `sh -c` invocation — env vars do NOT persist
+          # across lines and a multi-line `if … fi` block is a syntax error
+          # ("end of file unexpected"). Every step below must therefore be a
+          # single self-contained logical line (matching the `android` job).
+          script: |
+            timeout 150 adb wait-for-device || { echo "::warning::ar leg — emulator never came online"; exit 1; }
+            attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 60 ]; do sleep 2; attempts=$((attempts + 1)); done
+            bash .claude/scripts/sideload-arcore.sh || echo "[ar-leg] ARCore sideload failed — harness will assumeTrue-skip"
+            timeout 1800 bash .claude/scripts/device-qa.sh --platform=ar --ci
+
+      - name: Upload ar device-QA report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: device-qa-report-ar
+          path: |
+            device-qa-report.json
+            device-qa-artifacts/
+          if-no-files-found: ignore

@@ -11,7 +11,7 @@ description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer,
 These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. Each example is a self-contained SwiftUI view you can drop into an Xcode project after adding the SceneViewSwift package.
 
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.9.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.11.2")
 ```
 
 ---
@@ -427,14 +427,14 @@ struct ARTapToPlaceSample: View {
 
 ### 3D samples
 
-3D samples run on iOS 17+, macOS 14+, and visionOS 1+. They work in both the Simulator and on physical devices.
+3D samples run on iOS 18+, macOS 15+, and visionOS 1+. They work in both the Simulator and on physical devices.
 
 ### AR samples
 
 AR samples require:
 
 - A physical iPhone or iPad with ARKit support (A9 chip or later)
-- iOS 17 or later
+- iOS 18 or later
 - Camera permission granted
 
 !!! tip

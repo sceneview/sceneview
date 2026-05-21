@@ -18,7 +18,7 @@ code — the demo is the authoritative recipe.
 — `.cameraControls(.orbit)` modifier.
 
 ## 4. Auto-rotate turntable
-[`AutoRotateDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/AutoRotateDemo.swift)
+[`AnimationDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/AnimationDemo.swift)
 — `.autoRotate(speed:)` modifier.
 
 ## 5. Light types

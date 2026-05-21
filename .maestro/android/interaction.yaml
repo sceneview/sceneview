@@ -1,0 +1,29 @@
+# Maestro flow — "Interaction" demo category (4 demos).
+#
+# Run a fast subset of the device-QA harness:
+#   maestro test .maestro/android/interaction.yaml
+#
+# Each demo is exercised by the reusable flows/demo.yaml subflow. Demo ids
+# mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
+appId: io.github.sceneview.demo
+---
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: camera-controls
+      DEMO_NAME: Camera Controls
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: gesture-editing
+      DEMO_NAME: Gesture Editing
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: collision
+      DEMO_NAME: Collision
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: view-node
+      DEMO_NAME: ViewNode

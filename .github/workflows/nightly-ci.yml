@@ -59,6 +59,17 @@ jobs:
     uses: ./.github/workflows/render-tests.yml
     secrets: inherit
 
+  # ── Device-QA harness (Maestro Android + Playwright web) ──────────────────
+  # The autonomous cross-platform device-QA orchestrator (umbrella #1560,
+  # slice #1566). Path-gated on `main` so it does not run per-push for
+  # unrelated changes; the nightly run forces it so a harness/demo regression
+  # still surfaces within 24h. Its Android leg is `continue-on-error`
+  # internally (SwiftShader/Maestro flake), so it does not spam issues.
+  device-qa:
+    name: Device QA
+    uses: ./.github/workflows/device-qa.yml
+    secrets: inherit
+
   # ── Failure surfacing ─────────────────────────────────────────────────────
   # If any of the reused workflows fail, open (or update) a tracking issue so
   # the regression is visible without anyone watching the Actions tab.

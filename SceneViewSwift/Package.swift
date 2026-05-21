@@ -7,7 +7,11 @@ let package = Package(
     platforms: [
         .iOS("18.0"),
         .macOS("15.0"),
-        .visionOS(.v1)
+        // visionOS 2.0: RealityKit's light entities (DirectionalLight,
+        // PointLight, SpotLight) and the per-entity `shadow` API are all
+        // `@available(visionOS 2.0, *)`. The 3D node layer depends on them,
+        // so v1 cannot build the target. Closes #1366.
+        .visionOS("2.0")
     ],
     products: [
         .library(

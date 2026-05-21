@@ -216,6 +216,55 @@ class OrbitCameraControllerTest {
         assertEquals(3, cam.lookAtCalls, "every update() must push a fresh lookAt to the camera")
     }
 
+    /**
+     * Dispatch a synthetic cancelable `wheel` event with the given `deltaY`
+     * onto [canvas]. Built via `js` so `deltaY` is populated under ChromeHeadless.
+     */
+    private fun dispatchWheel(canvas: HTMLCanvasElement, deltaY: Double) {
+        val event = js("new WheelEvent('wheel', { deltaY: deltaY, cancelable: true })")
+        canvas.dispatchEvent(event.unsafeCast<org.w3c.dom.events.Event>())
+    }
+
+    @Test
+    fun wheelEventChangesDistanceBeforeDispose() {
+        // Sanity: while listeners are live a wheel event must zoom (change distance).
+        val canvas = newCanvas()
+        val controller = OrbitCameraController(canvas, FakeCamera().toCamera())
+        val before = controller.distance
+        dispatchWheel(canvas, 100.0)
+        assertTrue(
+            controller.distance != before,
+            "a live wheel listener must change distance — was $before, still ${controller.distance}",
+        )
+    }
+
+    @Test
+    fun disposeDetachesWheelListenerSoEventsNoLongerMutateController() {
+        // #1698: after dispose() the canvas must no longer drive the controller.
+        val canvas = newCanvas()
+        val controller = OrbitCameraController(canvas, FakeCamera().toCamera())
+        controller.dispose()
+        val frozen = controller.distance
+        dispatchWheel(canvas, 100.0)
+        dispatchWheel(canvas, -100.0)
+        assertEquals(
+            frozen,
+            controller.distance,
+            "after dispose() a wheel event must not mutate the dead controller's distance",
+        )
+    }
+
+    @Test
+    fun disposeIsIdempotent() {
+        // Calling dispose() twice must not throw (e.g. double-destroy of a SceneView).
+        val canvas = newCanvas()
+        val controller = OrbitCameraController(canvas, FakeCamera().toCamera())
+        controller.dispose()
+        controller.dispose()
+        dispatchWheel(canvas, 100.0)
+        assertTrue(true, "dispose() must be safe to call twice")
+    }
+
     @Test
     fun fullOrbitReturnsToSameEyePosition() {
         // theta + 2π is geometrically identical -> eye position must match.

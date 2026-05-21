@@ -1,0 +1,34 @@
+# Maestro flow — "Content" demo category (5 demos).
+#
+# Run a fast subset of the device-QA harness:
+#   maestro test .maestro/android/content.yaml
+#
+# Each demo is exercised by the reusable flows/demo.yaml subflow. Demo ids
+# mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
+appId: io.github.sceneview.demo
+---
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: text
+      DEMO_NAME: Text Labels
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: lines-paths
+      DEMO_NAME: Lines & Paths
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: image
+      DEMO_NAME: Image
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: billboard
+      DEMO_NAME: Billboard
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: video
+      DEMO_NAME: Video

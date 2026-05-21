@@ -2,8 +2,9 @@ package io.github.sceneview.web
 
 import io.github.sceneview.web.bindings.Camera
 import io.github.sceneview.web.bindings.float3
-import kotlinx.browser.window
 import org.w3c.dom.HTMLCanvasElement
+import org.w3c.dom.events.Event
+import org.w3c.dom.events.EventListener
 import org.w3c.dom.events.MouseEvent
 import org.w3c.dom.events.WheelEvent
 import kotlin.math.PI
@@ -66,6 +67,11 @@ class OrbitCameraController(
     private var isRightDragging = false
     private var lastX = 0.0
     private var lastY = 0.0
+    private var lastPinchDistance = -1.0
+
+    /** Tracks every (type, handler) pair so [dispose] can detach all of them. */
+    private val listeners = mutableListOf<Pair<String, EventListener>>()
+    private var disposed = false
 
     init {
         setupEventListeners()
@@ -113,14 +119,37 @@ class OrbitCameraController(
         )
     }
 
-    /** Remove all event listeners. Call when destroying the SceneView. */
+    /**
+     * Remove every DOM event listener this controller registered on the canvas.
+     *
+     * Must be called when destroying the SceneView — the listener lambdas
+     * capture `this` (and therefore the Filament [Camera]), so leaving them
+     * attached pins the destroyed controller + camera to a canvas that
+     * typically outlives the SceneView, and stale `wheel`/`mousemove` events
+     * keep mutating a dead controller (#1698).
+     */
     fun dispose() {
-        // Event listeners are attached to the canvas and will be GC'd with it
+        if (disposed) return
+        disposed = true
+        listeners.forEach { (type, handler) ->
+            // Options must match the add call; `wheel`/`touch*` were registered
+            // with {passive: false}. removeEventListener ignores a mismatch
+            // silently, so always pass the same options object shape.
+            canvas.removeEventListener(type, handler, js("{passive: false}"))
+        }
+        listeners.clear()
+    }
+
+    /** Register [handler] on the canvas and record it for later removal. */
+    private fun listen(type: String, handler: (Event) -> Unit) {
+        val listener = EventListener { handler(it) }
+        listeners.add(type to listener)
+        canvas.addEventListener(type, listener, js("{passive: false}"))
     }
 
     private fun setupEventListeners() {
         // Mouse down
-        canvas.addEventListener("mousedown", { event ->
+        listen("mousedown") { event ->
             val e = event as MouseEvent
             when (e.button.toInt()) {
                 0 -> { isDragging = true }    // Left button = orbit
@@ -129,10 +158,10 @@ class OrbitCameraController(
             lastX = e.clientX.toDouble()
             lastY = e.clientY.toDouble()
             e.preventDefault()
-        })
+        }
 
         // Mouse move
-        canvas.addEventListener("mousemove", { event ->
+        listen("mousemove") { event ->
             val e = event as MouseEvent
             val dx = e.clientX.toDouble() - lastX
             val dy = e.clientY.toDouble() - lastY
@@ -153,35 +182,35 @@ class OrbitCameraController(
                 targetX += dx * panSensitivity * distance
                 targetY -= dy * panSensitivity * distance
             }
-        })
+        }
 
         // Mouse up
-        canvas.addEventListener("mouseup", {
+        listen("mouseup") {
             isDragging = false
             isRightDragging = false
-        })
+        }
 
-        canvas.addEventListener("mouseleave", {
+        listen("mouseleave") {
             isDragging = false
             isRightDragging = false
-        })
+        }
 
         // Scroll wheel = zoom
-        canvas.addEventListener("wheel", { event ->
+        listen("wheel") { event ->
             val e = event as WheelEvent
             val delta = if (e.deltaY > 0) 1.0 else -1.0
             distance *= 1.0 + delta * zoomSensitivity
             distance = max(minDistance, min(maxDistance, distance))
             e.preventDefault()
-        }, js("{passive: false}"))
+        }
 
         // Prevent context menu on right-click
-        canvas.addEventListener("contextmenu", { event ->
+        listen("contextmenu") { event ->
             event.preventDefault()
-        })
+        }
 
         // Touch support
-        canvas.addEventListener("touchstart", { event ->
+        listen("touchstart") { event ->
             val e = event.asDynamic()
             if (e.touches.length == 1) {
                 isDragging = true
@@ -189,9 +218,9 @@ class OrbitCameraController(
                 lastY = (e.touches[0].clientY as Number).toDouble()
             }
             event.preventDefault()
-        }, js("{passive: false}"))
+        }
 
-        canvas.addEventListener("touchmove", { event ->
+        listen("touchmove") { event ->
             val e = event.asDynamic()
             if (isDragging && e.touches.length == 1) {
                 val dx = (e.touches[0].clientX as Number).toDouble() - lastX
@@ -220,13 +249,11 @@ class OrbitCameraController(
                 lastPinchDistance = pinchDistance
             }
             event.preventDefault()
-        }, js("{passive: false}"))
+        }
 
-        canvas.addEventListener("touchend", {
+        listen("touchend") {
             isDragging = false
             lastPinchDistance = -1.0
-        })
+        }
     }
-
-    private var lastPinchDistance = -1.0
 }

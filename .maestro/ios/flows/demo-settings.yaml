@@ -1,0 +1,81 @@
+# Reusable Maestro subflow — exercises ONE iOS demo that carries its per-demo
+# controls in a `demoSettingsSheet` (the floating-gear settings sheet).
+#
+# This is the settings-sheet variant of `flows/demo.yaml`. Most iOS demos with
+# sliders / pickers / toggles put them inside `demoSettingsSheet { ... }`
+# (DemoSheet.swift) — a sheet that is CLOSED on launch. Only a floating gear
+# FAB and a "Settings" peek chip are visible at first; the control labels
+# (`Density`, `Subject`, …) are not. So this subflow:
+#   1. asserts the always-present FAB (`demo-settings-fab` accessibility id) —
+#      a launch crash makes that fail;
+#   2. taps the FAB to OPEN the settings sheet — real user interaction that
+#      also surfaces the control labels;
+#   3. asserts ASSERT_TEXT, a known control label inside the sheet — proof the
+#      sheet's content composed without crashing;
+#   4. dismisses the sheet, exercises the 3D viewport, screenshots, and
+#      re-asserts the FAB as the post-interaction crash gate.
+#
+# Required parameters (passed by the caller):
+#   DEMO_ID      Stable demo id from DemoDeepLinkRegistry.allowedIds.
+#   DEMO_NAME    Human label, used only for screenshot file naming / logs.
+#   ASSERT_TEXT  A control label the demo's settings sheet is guaranteed to
+#                render (e.g. "Density" for fog, "Subject" for animation).
+appId: io.github.sceneview.demo
+---
+- launchApp:
+    appId: io.github.sceneview.demo
+    stopApp: true
+    clearState: false
+
+- openLink: "sceneview://demo/${DEMO_ID}"
+
+# The floating gear FAB is on screen as soon as the demo composes — a launch
+# crash drops us to SpringBoard and this fails fast.
+- extendedWaitUntil:
+    visible:
+      id: "demo-settings-fab"
+    timeout: 12000
+
+# --- Real user interaction: open the settings sheet ------------------------
+- tapOn:
+    id: "demo-settings-fab"
+
+# The sheet content scrolls in — assert a known control label is present.
+- extendedWaitUntil:
+    visible: "${ASSERT_TEXT}"
+    timeout: 4000
+
+# Close the sheet again (swipe the drag-indicator handle down) so the 3D
+# viewport is fully visible for the orbit interaction + screenshot.
+- swipe:
+    start: 50%, 35%
+    end: 50%, 95%
+    duration: 500
+- waitForAnimationToEnd:
+    timeout: 1500
+
+# --- Real user interaction: orbit the camera -------------------------------
+- swipe:
+    start: 30%, 50%
+    end: 70%, 50%
+    duration: 600
+- swipe:
+    start: 70%, 50%
+    end: 30%, 50%
+    duration: 600
+- swipe:
+    start: 50%, 60%
+    end: 50%, 40%
+    duration: 600
+- tapOn:
+    point: 50%, 45%
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# --- One screenshot per demo ----------------------------------------------
+- takeScreenshot: "demo-${DEMO_ID}"
+
+# --- Liveness assertion (per-demo crash gate) ------------------------------
+# The gear FAB is content-agnostic and always present while the demo is alive.
+- assertVisible:
+    id: "demo-settings-fab"

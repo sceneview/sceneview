@@ -294,23 +294,35 @@ private final class PendulumCoordinator {
     private var state = DoublePendulumState()
     private weak var link1: Entity?
     private weak var link2: Entity?
+    /// Wall-clock timestamp of the previous tick, relative to the timer's
+    /// start `Date`. Kept as a main-actor-isolated property (rather than a
+    /// captured `var`) so the `@Sendable` timer closure mutates it safely.
+    private var lastTick: TimeInterval = 0
 
     func start(state: DoublePendulumState, link1: Entity, link2: Entity) {
         stop()
         self.state = state
         self.link1 = link1
         self.link2 = link2
+        self.lastTick = 0
         // Place the links correctly on frame 0 so there's no initial pop.
         apply()
         let start = Date()
-        var last = TimeInterval(0)
+        // The Timer fires on the main run loop, but its closure is `@Sendable`,
+        // so the body must explicitly hop onto the main actor before touching
+        // `self.state` / `self.lastTick` and calling `apply()`.
+        // `MainActor.assumeIsolated` is correct here — the closure already runs
+        // on the main thread (the timer is added to `RunLoop.main`) — and it
+        // keeps the physics step synchronous, with no scheduling latency.
         let t = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            let now = Date().timeIntervalSince(start)
-            let dt = Float(now - last)
-            last = now
-            self.state = DoublePendulum.step(self.state, deltaSeconds: dt)
-            self.apply()
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let now = Date().timeIntervalSince(start)
+                let dt = Float(now - self.lastTick)
+                self.lastTick = now
+                self.state = DoublePendulum.step(self.state, deltaSeconds: dt)
+                self.apply()
+            }
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t

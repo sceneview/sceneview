@@ -551,4 +551,89 @@ enum ContentBounds {
     }
 }
 
+// MARK: - Framing stability tracker (#1391 retry)
+
+/// Decides when the content-union AABB has been stable *long enough* that the
+/// fit-to-bounds camera pass may stop re-framing and latch.
+///
+/// ### Why a duration-based latch (not "two consecutive ticks")
+///
+/// #1514's first attempt latched as soon as two consecutive framing ticks
+/// (~33 ms apart) saw an unchanged union diagonal. `Multi-Model Park` streams
+/// four glTF models concurrently over **30–70 s** — there is almost always a
+/// multi-second gap between one model landing and the next. Two adjacent ticks
+/// inside such a gap trivially see an unchanged diagonal, so #1514 latched on a
+/// partial 1–2-model union and the camera then framed empty space while the
+/// remaining models streamed in off-screen (issue #1391, reopened).
+///
+/// This tracker instead requires the diagonal to hold steady for a sustained
+/// **wall-clock window** (`stableHoldSeconds`) that comfortably exceeds the
+/// inter-model streaming gap. Any growth resets the hold timer, so every
+/// streamed model that enlarges the union re-arms the latch. Once no model has
+/// grown the union for the full hold window, the scene is genuinely settled.
+///
+/// Pure value type — no RealityKit *view* state — so it is unit-testable on any
+/// platform. Kept `internal` for `@testable import`; it is an implementation
+/// detail of `SceneView`'s built-in framing.
+struct FramingStabilityTracker {
+
+    /// Diagonal of the union AABB the most recent framing pass fitted to.
+    /// `0` until the first valid sample.
+    private(set) var lastDiagonal: Float = 0
+
+    /// Wall-clock timestamp (seconds, monotonic source) at which `lastDiagonal`
+    /// last changed materially — i.e. when a streamed model last grew or
+    /// shrank the union. `nil` until the first sample.
+    private(set) var lastChangeTime: Double?
+
+    /// Relative diagonal change below which two samples count as "the same
+    /// size". Tolerant of sub-millimetre jitter, tight enough that a freshly
+    /// streamed model (which grows the union materially) always registers.
+    let epsilon: Float
+
+    /// How long (seconds) the union diagonal must hold steady before the
+    /// scene counts as stable. Must exceed the worst-case gap between two
+    /// streamed models landing — `Multi-Model Park` loads four models over
+    /// 30–70 s, so a multi-second hold reliably spans the inter-model gaps
+    /// without making single-model demos feel sluggish.
+    let stableHoldSeconds: Double
+
+    init(epsilon: Float = 0.01, stableHoldSeconds: Double = 2.5) {
+        self.epsilon = epsilon
+        self.stableHoldSeconds = stableHoldSeconds
+    }
+
+    /// Feeds a fresh union-diagonal sample taken at `now`.
+    ///
+    /// - Parameters:
+    ///   - diagonal: The current content-union AABB diagonal length.
+    ///   - now: Monotonic wall-clock time in seconds (e.g.
+    ///     `CFAbsoluteTimeGetCurrent()`).
+    /// - Returns: `true` once the diagonal has held steady (within `epsilon`)
+    ///   for at least `stableHoldSeconds`. Any growth/shrink resets the hold
+    ///   timer and returns `false`, so the framing pass keeps re-fitting as
+    ///   each streamed model lands.
+    mutating func register(diagonal: Float, now: Double) -> Bool {
+        guard diagonal.isFinite, diagonal > 0 else { return false }
+        defer { lastDiagonal = diagonal }
+
+        guard let changedAt = lastChangeTime else {
+            // First valid sample — start the hold window now.
+            lastChangeTime = now
+            return false
+        }
+
+        let changed = abs(diagonal - lastDiagonal)
+            > epsilon * max(diagonal, lastDiagonal)
+        if changed {
+            // A streamed model grew/shrank the union — re-arm the hold timer.
+            lastChangeTime = now
+            return false
+        }
+        // Diagonal unchanged since `changedAt`; stable once the full hold
+        // window has elapsed.
+        return (now - changedAt) >= stableHoldSeconds
+    }
+}
+
 #endif // os(iOS) || os(macOS) || os(visionOS)

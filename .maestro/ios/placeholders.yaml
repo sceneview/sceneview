@@ -1,0 +1,30 @@
+# Maestro flow — deep-link placeholder smoke (non-AR).
+#
+# Run a fast subset of the iOS device-QA harness:
+#   maestro test .maestro/ios/placeholders.yaml
+#
+# Some Android demo ids are registered in `DemoDeepLinkRegistry.allowedIds`
+# (so the cross-platform `sceneview://demo/<id>` QR-code contract holds) but
+# have no iOS destination yet — they route to the `DeepLinkPlaceholder`. This
+# flow smoke-tests that router + placeholder path for the non-AR ids:
+#   environment / video / gesture-editing.
+# (The AR placeholder ids `ar-image` / `ar-face` are smoked from ar.yaml so
+# every AR id lives in one place.)
+#
+# Each id is exercised by flows/placeholder.yaml. When an id gains a real iOS
+# destination, move it into the matching per-category flow with a real
+# ASSERT_TEXT and drop it from here.
+appId: io.github.sceneview.demo
+---
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: environment
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: video
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: gesture-editing

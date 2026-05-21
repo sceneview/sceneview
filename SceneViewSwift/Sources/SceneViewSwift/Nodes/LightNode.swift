@@ -59,11 +59,23 @@ public struct LightNode {
         castsShadow: Bool = true
     ) -> LightNode {
         let light = DirectionalLight()
+        // The `isRealWorldProxy:` initializer is `@available(visionOS, unavailable)`
+        // — that parameter models a light standing in for real-world illumination
+        // in passthrough AR, which has no analogue on a virtual visionOS scene.
+        // visionOS gets the plain `init(color:intensity:)` (equivalent to
+        // `isRealWorldProxy: false`).
+        #if os(visionOS)
+        light.light = DirectionalLightComponent(
+            color: color.platformColor,
+            intensity: intensity
+        )
+        #else
         light.light = DirectionalLightComponent(
             color: color.platformColor,
             intensity: intensity,
             isRealWorldProxy: false
         )
+        #endif
         if castsShadow {
             light.shadow = DirectionalLightComponent.Shadow(
                 maximumDistance: 8,
@@ -114,11 +126,23 @@ public struct LightNode {
         castsShadow: Bool = false
     ) -> LightNode {
         let light = DirectionalLight()
+        // The `isRealWorldProxy:` initializer is `@available(visionOS, unavailable)`
+        // — that parameter models a light standing in for real-world illumination
+        // in passthrough AR, which has no analogue on a virtual visionOS scene.
+        // visionOS gets the plain `init(color:intensity:)` (equivalent to
+        // `isRealWorldProxy: false`).
+        #if os(visionOS)
+        light.light = DirectionalLightComponent(
+            color: color.platformColor,
+            intensity: intensity
+        )
+        #else
         light.light = DirectionalLightComponent(
             color: color.platformColor,
             intensity: intensity,
             isRealWorldProxy: false
         )
+        #endif
         if castsShadow {
             light.shadow = DirectionalLightComponent.Shadow(
                 maximumDistance: 8,

@@ -49,7 +49,6 @@ class PhysicsBodyTest {
             }
             val body = PhysicsBody(
                 node = node,
-                mass = 1f,
                 restitution = 0f,
                 floorY = 0f,
                 radius = 0f,
@@ -170,6 +169,34 @@ class PhysicsBodyTest {
                 node.position.y >= radius - 0.01f)
 
             node.destroy()
+        }
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun mass_doesNotAffectFall() {
+        // #1599: gravity is an acceleration and therefore mass-independent. A heavy body and a
+        // light body released from the same height must fall identically. This pins the honest
+        // contract behind the now-deprecated `mass` parameter (it is a documented no-op).
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val lightNode = Node(engine).apply { position = Position(0f, 5f, 0f) }
+            val heavyNode = Node(engine).apply { position = Position(0f, 5f, 0f) }
+            val light = PhysicsBody(node = lightNode, mass = 0.1f, restitution = 0f, floorY = -100f)
+            val heavy = PhysicsBody(node = heavyNode, mass = 1000f, restitution = 0f, floorY = -100f)
+
+            var t = 0L
+            repeat(30) {
+                light.step(t + 16_000_000L, t)
+                heavy.step(t + 16_000_000L, t)
+                t += 16_000_000L
+            }
+
+            assertEquals(
+                "mass must not affect a gravity-only fall (mass is a no-op)",
+                lightNode.position.y, heavyNode.position.y, 0.0001f
+            )
+            lightNode.destroy()
+            heavyNode.destroy()
         }
     }
 

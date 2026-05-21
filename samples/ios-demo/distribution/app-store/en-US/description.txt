@@ -1,4 +1,4 @@
-3D & AR Explorer lets you discover and interact with stunning 3D models — and bring them into your real world using augmented reality.
+SceneView lets you discover and interact with stunning 3D models — and bring them into your real world using augmented reality.
 
 EXPLORE 3D MODELS
 Browse a curated gallery of high-quality 3D models rendered in real-time with RealityKit. Rotate, zoom, and inspect every detail with intuitive touch gestures. Switch between HDR environments to see how lighting affects materials — from studio setups to outdoor scenes.

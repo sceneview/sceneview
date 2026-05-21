@@ -184,9 +184,28 @@ jobs:
           # samples/android-demo/.../sketchfab/ for the BuildConfig wiring.
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
         run: |
-          ./gradlew :samples:android-demo:bundleRelease \
-            -PversionCode=${{ steps.version.outputs.code }} \
-            -PversionName=${{ steps.version.outputs.name }}
+          build_aab() {
+            ./gradlew :samples:android-demo:bundleRelease \
+              -PversionCode=${{ steps.version.outputs.code }} \
+              -PversionName=${{ steps.version.outputs.name }}
+          }
+          aab_ok() {
+            local aab
+            aab=$(ls samples/android-demo/build/outputs/bundle/release/*.aab 2>/dev/null | head -n1)
+            [ -n "$aab" ] && [ -s "$aab" ] && unzip -tq "$aab" >/dev/null 2>&1
+          }
+          # An .aab is a zip. A truncated / zero-byte artifact from a flaky
+          # runner (seen on v4.6.0 + v4.6.1, #1412/#1415) sails past gradle's
+          # exit 0 and only blows up at upload — a lost release. Verify zip
+          # integrity here and rebuild once from clean if the artifact is
+          # unreadable, so a transient I/O flake never costs a release.
+          build_aab
+          if ! aab_ok; then
+            echo "::warning::release AAB missing or corrupt after first build — cleaning and rebuilding once"
+            ./gradlew :samples:android-demo:clean
+            build_aab
+            aab_ok || { echo "::error::release AAB still corrupt after a clean rebuild — aborting"; exit 1; }
+          fi
 
       # Manifest validation gate (#1301) — fail fast on a stale or wrong-variant
       # AAB before it reaches the Play Store. Asserts the built bundle's
@@ -258,7 +277,7 @@ jobs:
 
       # Populate Play Store's "What's new in this version" from the matching
       # `## vX.Y.Z` section in CHANGELOG.md. Writes a single
-      # `whatsnew/whatsnew-en-US` file consumed by `r0adkll/upload-google-play`
+      # `whatsnew/whatsnew-en-GB` file consumed by `r0adkll/upload-google-play`
       # via `whatsNewDirectory:`. Snapshot builds (version_name like
       # `4.4.0-abcd1234`) strip the suffix to find the base release section.
       #
@@ -298,7 +317,7 @@ jobs:
           # Strip markdown → plain text (stores render literally). Order matters:
           # links first (`[label](url)` → `label`), then bold/italic/code, then
           # heading hashes, then squeeze blank-line runs.
-          python3 - << 'PYEOF' > whatsnew/whatsnew-en-US
+          python3 - << 'PYEOF' > whatsnew/whatsnew-en-GB
           import re, sys
           text = open('whatsnew/raw.md').read()
           text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)   # [label](url) → label
@@ -313,8 +332,8 @@ jobs:
           PYEOF
           rm -f whatsnew/raw.md
           echo "extracted=true" >> "$GITHUB_OUTPUT"
-          echo "What's new payload ($(wc -c < whatsnew/whatsnew-en-US) chars):"
-          cat whatsnew/whatsnew-en-US
+          echo "What's new payload ($(wc -c < whatsnew/whatsnew-en-GB) chars):"
+          cat whatsnew/whatsnew-en-GB
 
       # Two-mode publish:
       #
@@ -449,7 +468,7 @@ jobs:
   #   - Listing text rarely changes between patches; pushing identical
   #     copy on every `vX.Y.1` would clutter the Play Console's "Recent
   #     changes" tab with no signal.
-  #   - The `whatsnew-en-US` payload (set above by the publish job)
+  #   - The `whatsnew-en-GB` payload (set above by the publish job)
   #     remains the per-release surface for "what changed".
   #
   # Runs as a separate job (not a publish-matrix step) so it fires
@@ -457,7 +476,7 @@ jobs:
   # Uses its own Edit — independent of the upload + promote Edits — so
   # a listing-sync failure cannot block the AAB rollout.
   sync-listing:
-    name: Sync Play Store listing (en-US)
+    name: Sync Play Store listing (en-GB)
     needs: [build, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -1,0 +1,22 @@
+SceneView lets you discover and interact with stunning 3D models — and bring them into your real world using augmented reality.
+
+EXPLORE 3D MODELS
+Browse a curated gallery of high-quality 3D models rendered in real-time. Rotate, zoom, and inspect every detail with intuitive touch gestures. Switch between HDR environments to see how lighting affects materials — from studio setups to outdoor scenes.
+
+AUGMENTED REALITY
+Place 3D objects in your real world using your camera. Point your camera at a flat surface, tap to place, then drag, pinch, and twist to position your model perfectly. Supports depth occlusion and environmental light estimation for a natural look.
+
+DISCOVER MORE
+Explore interactive showcases:
+- Dynamic Sky: Watch the sky shift from dawn to dusk with atmospheric scattering
+- Volumetric Fog: Height-based atmospheric fog for immersive scenes
+- Physics: Rigid body simulation with bouncing balls
+- Post-Processing: Bloom, SSAO, FXAA, tone mapping
+- Image Detection: ARCore image recognition with 3D overlay
+- And more: geometry, animations, lighting, camera controls, reflection probes
+
+EFFECTS PLAYGROUND
+Experiment with real-time rendering effects. Adjust time of day, toggle volumetric fog, tune atmospheric haze, and enable screen-space ambient occlusion — all with instant visual feedback.
+
+Open source under the Apache License 2.0.
+https://github.com/sceneview/sceneview

@@ -43,6 +43,12 @@ enum DemoDeepLinkRegistry {
     /// have an iOS destination wired up — this keeps the QR / deep-link
     /// path working as soon as a new id is published, even if the iOS
     /// catalogue lags behind.
+    ///
+    /// `@MainActor`-isolated because it constructs SwiftUI `View` values,
+    /// which are themselves main-actor-isolated; the only call site
+    /// (`ContentView`'s `.fullScreenCover` / `.sheet`) already runs on the
+    /// main actor.
+    @MainActor
     @ViewBuilder
     static func destination(for id: String) -> some View {
         switch id {

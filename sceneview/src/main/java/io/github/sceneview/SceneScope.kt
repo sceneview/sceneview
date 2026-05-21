@@ -1620,7 +1620,6 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * ```
      *
      * @param node           The [Node] whose position is driven by the simulation. Must be in scene.
-     * @param mass           Mass in kg (reserved for future impulse API).
      * @param restitution    Bounciness in [0, 1]. 0 = inelastic, 1 = perfectly elastic.
      * @param linearVelocity Initial velocity in m/s (world space).
      * @param floorY         World Y coordinate of the floor plane. Default 0.
@@ -1629,7 +1628,6 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
     @Composable
     fun PhysicsNode(
         node: NodeImpl,
-        mass: Float = 1f,
         restitution: Float = 0.6f,
         linearVelocity: Position = Position(0f, 0f, 0f),
         floorY: Float = 0f,
@@ -1638,7 +1636,6 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         val body = remember(node) {
             PhysicsBody(
                 node = node,
-                mass = mass,
                 restitution = restitution,
                 floorY = floorY,
                 radius = radius,
@@ -1654,6 +1651,34 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
             onDispose { node.onFrame = null }
         }
     }
+
+    /**
+     * Deprecated overload kept for source compatibility — the `mass` parameter is a no-op.
+     *
+     * The Euler integration applies only gravity, which is an acceleration and therefore
+     * mass-independent. Use the [PhysicsNode] overload without `mass`.
+     */
+    @Deprecated(
+        "The 'mass' parameter is currently a no-op (the Euler integration applies only " +
+            "gravity, which is mass-independent). Use the PhysicsNode overload without 'mass'.",
+        ReplaceWith("PhysicsNode(node, restitution, linearVelocity, floorY, radius)"),
+        DeprecationLevel.WARNING
+    )
+    @Composable
+    fun PhysicsNode(
+        node: NodeImpl,
+        @Suppress("UNUSED_PARAMETER") mass: Float,
+        restitution: Float = 0.6f,
+        linearVelocity: Position = Position(0f, 0f, 0f),
+        floorY: Float = 0f,
+        radius: Float = 0f
+    ) = PhysicsNode(
+        node = node,
+        restitution = restitution,
+        linearVelocity = linearVelocity,
+        floorY = floorY,
+        radius = radius
+    )
 
     // ── Internal lifecycle helper ─────────────────────────────────────────────────────────────────
 

@@ -1,0 +1,37 @@
+# Maestro flow — "3D Basics" iOS demo category.
+#
+# Run a fast subset of the iOS device-QA harness:
+#   maestro test .maestro/ios/3d-basics.yaml
+#
+# Each demo is exercised by the matching reusable subflow (see flows/demo.yaml
+# header for the variant map): inline-overlay demos use flows/demo.yaml,
+# settings-sheet demos use flows/demo-settings.yaml, and `model-viewer`
+# (no Maestro-visible chrome on a key-less simulator) uses flows/demo-noassert.yaml.
+#
+# Demo ids are the subset of Android `DemoRegistry.kt` ALL_DEMOS ids that
+# `DemoDeepLinkRegistry.allowedIds` exposes for `sceneview://demo/<id>` on iOS.
+appId: io.github.sceneview.demo
+---
+- runFlow:
+    file: flows/demo-noassert.yaml
+    env:
+      DEMO_ID: model-viewer
+      DEMO_NAME: Model Viewer
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: geometry
+      DEMO_NAME: Geometry Primitives
+      ASSERT_TEXT: "5 built-in geometry types with PBR materials"
+- runFlow:
+    file: flows/demo-settings.yaml
+    env:
+      DEMO_ID: animation
+      DEMO_NAME: Animation
+      ASSERT_TEXT: "Subject"
+- runFlow:
+    file: flows/demo-settings.yaml
+    env:
+      DEMO_ID: multi-model
+      DEMO_NAME: Multi Model
+      ASSERT_TEXT: "Visibility"

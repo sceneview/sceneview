@@ -1,0 +1,57 @@
+# Reusable Maestro subflow — exercises ONE iOS 3D demo that renders NO overlaid
+# SwiftUI chrome (a pure RealityView scene with no control strip or status pill).
+#
+# This is the assertion-free variant of `flows/demo.yaml`. A handful of iOS
+# demos — `text` (TextDemo, a bare 3D-text scene) and `model-viewer`
+# (ModelViewerDemo, whose only overlay is a "Surprise me" button hidden when no
+# Sketchfab key is configured, i.e. on CI / a clean simulator) — render nothing
+# that Maestro's view-hierarchy `assertVisible` can latch onto. There is no
+# stable on-screen SwiftUI string to use as the per-demo crash gate.
+#
+# So this variant does launch + real interaction + one screenshot, but skips
+# the `assertVisible` crash gate. Crash detection for these demos is delegated
+# to the orchestrator runner's FATAL/exception log sweep (umbrella #1560,
+# slice #1566) — exactly the Android slice's fallback for log-only crash modes.
+# `extendedWaitUntil` is still NOT possible (nothing to wait for); a fixed
+# `waitForAnimationToEnd` lets the first frame settle instead.
+#
+# Required parameters (passed by the caller):
+#   DEMO_ID    Stable demo id from DemoDeepLinkRegistry.allowedIds.
+#   DEMO_NAME  Human label, used only for screenshot file naming / logs.
+#
+# Adding an iOS `qa_mode`-style overlay (even a tiny invisible accessibility
+# marker per demo) would let every demo use the asserting `flows/demo.yaml` —
+# tracked as a slice #1563 follow-up.
+appId: io.github.sceneview.demo
+---
+- launchApp:
+    appId: io.github.sceneview.demo
+    stopApp: true
+    clearState: false
+
+- openLink: "sceneview://demo/${DEMO_ID}"
+
+# No overlay text to wait on — let the RealityView first frame render.
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# --- Real user interaction -------------------------------------------------
+- swipe:
+    start: 30%, 55%
+    end: 70%, 55%
+    duration: 600
+- swipe:
+    start: 70%, 55%
+    end: 30%, 55%
+    duration: 600
+- swipe:
+    start: 50%, 65%
+    end: 50%, 40%
+    duration: 600
+- tapOn:
+    point: 50%, 55%
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# --- One screenshot per demo ----------------------------------------------
+- takeScreenshot: "demo-${DEMO_ID}"

@@ -109,6 +109,40 @@ ALL checks must pass. If any mismatch, fix before proceeding.
 bash .claude/scripts/quality-gate.sh --quick
 ```
 
+## Step 6.5: Device QA gate (deterministic, non-blocking — #1683)
+
+The cross-platform device-QA harness (umbrella #1560) **informs** the release;
+it can **never** block it indefinitely. Two ways to satisfy the gate:
+
+**A. Let the release gate dispatch its own run (recommended).** Skip this step
+— `release-checklist.sh` (Step 7) calls `release-device-qa-gate.sh`, which:
+
+- triggers its OWN Device QA run via `gh workflow run "Device QA"` — a
+  `workflow_dispatch` run is isolated from push-concurrency cancellation
+  (#1665/#1667), so it can never be killed by a later push (the root cause of
+  the 58-commit freeze in #1683);
+- polls **that specific run id** with a **bounded loop + hard timeout**
+  (`RELEASE_QA_TIMEOUT_MIN`, default 60 min);
+- grades the result by leg.
+
+**B. Run it locally first.** `bash .claude/scripts/device-qa.sh --platform=all`
+produces `device-qa-report.json` at the repo root; if that file is present the
+gate reads it directly (fast path, no dispatch).
+
+### Gate policy
+
+| Leg | Role | A failure means |
+|---|---|---|
+| **web** (Playwright) | **REQUIRED** | release-gate **FAIL** (hard block) |
+| **ar** (ARCore replay) | **REQUIRED** | release-gate **FAIL** (hard block) |
+| **android** (Maestro emulator) | **ADVISORY** | **WARN** only — never blocks (flaky SwiftShader #1643/#1676) |
+| _timeout / dispatch failure / missing artifact_ | — | `device-qa: TIMEOUT (advisory)` — **proceeds with warning** |
+
+A genuine FAIL on `web` or `ar` is the **only** outcome that blocks tagging.
+Everything else (advisory red, timeout, stuck harness) yields
+`RELEASE-GATE: PASS-WITH-WARNINGS` and the release proceeds. A flaky or
+cancelled harness can never hold shipping hostage.
+
 ## Step 7: Commit and tag
 
 ```bash

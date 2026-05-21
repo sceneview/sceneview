@@ -1,0 +1,161 @@
+# Reusable Maestro subflow — exercises ONE SceneView demo like a real user.
+#
+# Called by the per-category flows and by catalog.yaml via `runFlow` with an
+# `env:` block. It never appears in a flow runner by itself.
+#
+# Required parameters (passed by the caller):
+#   DEMO_ID    Stable demo id from ALL_DEMOS (e.g. "model-viewer", "ar-pose").
+#   DEMO_NAME  Human label, used only for screenshot file naming / readable logs.
+#
+# Optional parameters:
+#   CAMERA_DISTANCE  Camera-to-model distance (zoom level), in metres. When set
+#                    (non-empty), an extra section at the end of this subflow
+#                    re-launches the demo twice more — once near, once far — to
+#                    exercise 3D camera zoom, which Maestro cannot do by pinch
+#                    (#1571). Leave unset for the plain single-screenshot sweep.
+#
+# Strategy:
+#   - launchApp with the `demo` + `qa_mode` intent extras so we jump straight
+#     to the demo screen — no tab navigation, no list scrolling. Maestro's
+#     `launchApp` has no `deepLink` property (that key is silently unparsed and
+#     aborts the flow on Maestro 1.39); instead `arguments:` are delivered as
+#     intent extras on the launch intent — strings via `--es`, booleans via
+#     `--ez`, floats via `--ef`. `MainActivity` reads `--es demo <id>` (the QA
+#     ingress channel, `DeepLinkRouter.validate`) before any URL deep link, so
+#     this routes through the very same closed-registry allow-list the public
+#     `sceneview://demo/<id>` scheme uses (DeepLinkRouter.parse / .validate).
+#   - the `qa_mode` boolean extra freezes auto-rotation / orbit / animations so
+#     the single screenshot is deterministic frame-to-frame.
+#   - Exercise REAL interaction: drag to orbit the camera, swipe to pan, tap
+#     the centre of the viewport (hits demo controls / picks nodes). 3D zoom
+#     has no Maestro pinch gesture, so it is driven by the `--ef camera_distance`
+#     deep-link param instead — see the optional zoom section below (#1571).
+#   - Capture exactly ONE screenshot per demo (no screenshot-by-screenshot
+#     loop — that was the slow pattern in the old qa-android-demos.sh). The
+#     optional zoom section adds two more (near + far) when CAMERA_DISTANCE set.
+#   - Assert the app process is still foregrounded afterwards. A crash would
+#     drop us out of the app; `assertVisible` on any app element then fails the
+#     flow. A FATAL/ANR sweep of logcat is done once, globally, by catalog.yaml.
+appId: io.github.sceneview.demo
+env:
+  # Default the optional zoom param to empty so callers that don't set it skip
+  # the zoom section. Per-flow `env:` blocks override this when zoom is wanted.
+  CAMERA_DISTANCE: ""
+---
+# Cold-launch straight into the demo. `arguments:` become intent extras on the
+# launch intent — `demo` (string, `--es`) drives MainActivity's QA ingress
+# channel (DeepLinkRouter.validate against ALL_DEMOS), `qa_mode` (boolean,
+# `--ez`) freezes animation for a deterministic screenshot. `stopApp: true`
+# guarantees a cold start so the new extras are read in onCreate.
+- launchApp:
+    appId: io.github.sceneview.demo
+    clearState: false
+    stopApp: true
+    arguments:
+      demo: ${DEMO_ID}
+      qa_mode: true
+
+# Let the first frame render. The demo scaffold shows a scrim for up to 12 s
+# while the engine warms up; 6 s is plenty for the deep-linked demo to be
+# interactive on the ARCore emulator.
+- waitForAnimationToEnd:
+    timeout: 6000
+
+# --- Real user interaction -------------------------------------------------
+# Orbit the camera: drag across the viewport. Two opposite drags so we exercise
+# the manipulator in both directions and return roughly to the start framing.
+- swipe:
+    start: 30%, 55%
+    end: 70%, 55%
+    duration: 600
+- swipe:
+    start: 70%, 55%
+    end: 30%, 55%
+    duration: 600
+
+# Vertical drag — tilts the orbit camera / pans 2D-content demos.
+- swipe:
+    start: 50%, 65%
+    end: 50%, 40%
+    duration: 600
+
+# Tap the centre of the viewport: in interaction demos this picks a node, in
+# control-strip demos it is a harmless empty-space tap. Either way it must not
+# crash.
+- tapOn:
+    point: 50%, 55%
+
+# Give any tap-triggered work (node selection, gesture handlers, AR hit-test)
+# a moment to settle before the screenshot.
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# --- One screenshot per demo ----------------------------------------------
+# Maestro writes screenshots to its output dir; the file name keys off DEMO_ID
+# so a category run produces one PNG per demo with no overwrites.
+- takeScreenshot: "demo-${DEMO_ID}"
+
+# --- Liveness assertion ----------------------------------------------------
+# If the demo had crashed, the process would be gone and we'd be on the
+# launcher / a system dialog — the back button's content description would not
+# be present. This is the per-demo crash gate.
+- assertVisible:
+    id: "io.github.sceneview.demo:id/decor_content_parent"
+    optional: true
+# Belt-and-braces: the demo scaffold always renders a "Navigate back" button.
+# Its presence proves the demo Activity is still foregrounded and composed.
+- assertVisible: "Navigate back"
+
+# --- Navigate back ---------------------------------------------------------
+# Return to the demo list so a subsequent flow step starts from a known state.
+- tapOn: "Navigate back"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# --- Optional: 3D camera zoom QA (#1571) -----------------------------------
+# Maestro has no pinch gesture, so 3D camera zoom is driven by a deep-link
+# param instead. When the caller sets CAMERA_DISTANCE (non-empty), re-launch
+# the demo at a NEAR framing then a FAR framing — the `camera_distance` float
+# extra (`--ef`) feeds DemoSettings.cameraDistance via DeepLinkRouter, and the
+# shared hero-orbit camera frames the model at that distance. Each launch is a
+# cold start (stopApp: true) so the extra is read fresh in onCreate. Two extra
+# screenshots (-zoom-near / -zoom-far) let a visual diff confirm the scene
+# reframes. The whole section is skipped when CAMERA_DISTANCE is empty.
+- runFlow:
+    when:
+      true: ${CAMERA_DISTANCE != ""}
+    commands:
+      # Near framing — a small camera distance zooms IN on the model.
+      - launchApp:
+          appId: io.github.sceneview.demo
+          clearState: false
+          stopApp: true
+          arguments:
+            demo: ${DEMO_ID}
+            qa_mode: true
+            camera_distance: ${CAMERA_DISTANCE}
+      - waitForAnimationToEnd:
+          timeout: 6000
+      - assertVisible: "Navigate back"
+      - takeScreenshot: "demo-${DEMO_ID}-zoom-near"
+      - tapOn: "Navigate back"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      # Far framing — a large camera distance zooms OUT. 40 m is comfortably
+      # within DeepLinkRouter.CAMERA_DISTANCE_MAX (100 m); the model shrinks
+      # but stays framed, proving the orbit-radius override took effect.
+      - launchApp:
+          appId: io.github.sceneview.demo
+          clearState: false
+          stopApp: true
+          arguments:
+            demo: ${DEMO_ID}
+            qa_mode: true
+            camera_distance: "40"
+      - waitForAnimationToEnd:
+          timeout: 6000
+      - assertVisible: "Navigate back"
+      - takeScreenshot: "demo-${DEMO_ID}-zoom-far"
+      - tapOn: "Navigate back"
+      - waitForAnimationToEnd:
+          timeout: 2000

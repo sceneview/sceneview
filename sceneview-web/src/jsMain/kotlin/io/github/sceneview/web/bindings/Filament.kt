@@ -233,6 +233,12 @@ external class LightManager {
 
     fun hasComponent(entity: Entity): Boolean
     fun getInstance(entity: Entity): dynamic // LightManager$Instance
+    /**
+     * Destroy the light component attached to [entity]. The component is a
+     * separately-managed native allocation — `Engine.destroyEntity` alone
+     * leaks it (#1700). Call this before destroying the entity.
+     */
+    fun destroy(entity: Entity)
     fun setPosition(instance: dynamic, value: dynamic) // float3
     fun getPosition(instance: dynamic): dynamic
     fun setDirection(instance: dynamic, value: dynamic) // float3
@@ -333,11 +339,14 @@ external class FilamentInstance {
 }
 
 // --- Animator (gltfio) ---
-// NOTE: applyAnimation takes only index. Time is advanced externally.
+// applyAnimation(index, time) — the second `time` argument is required for the
+// animation to advance. The Filament.js `.d.ts` historically omitted it, but
+// the underlying C++ `Animator::applyAnimation(size_t, float)` and the runtime
+// both accept it (Filament's own filament-viewer.js calls it with two args).
 
 @JsName("gltfio\$Animator")
 external class Animator {
-    fun applyAnimation(index: Int)
+    fun applyAnimation(index: Int, time: Double)
     fun applyCrossFade(previousAnimIndex: Int, previousAnimTime: Double, alpha: Double)
     fun updateBoneMatrices()
     fun resetBoneMatrices()

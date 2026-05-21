@@ -45,6 +45,18 @@ internal object DeepLinkRouter {
     /** Query parameter name carrying the demo id on the App-Links host. */
     const val QUERY_PARAM: String = "demo"
 
+    /**
+     * Query parameter name carrying the optional camera-to-model distance (zoom level),
+     * in metres — `sceneview://demo/<id>?cameraDistance=<f>`. See [parseCameraDistance].
+     */
+    const val QUERY_PARAM_CAMERA_DISTANCE: String = "cameraDistance"
+
+    /** Smallest accepted camera distance, in metres. Anything below resolves to `null`. */
+    const val CAMERA_DISTANCE_MIN: Float = 0.05f
+
+    /** Largest accepted camera distance, in metres. Anything above resolves to `null`. */
+    const val CAMERA_DISTANCE_MAX: Float = 100f
+
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {
         if (data == null) return null
         val candidate = extractCandidate(data) ?: return null
@@ -65,6 +77,39 @@ internal object DeepLinkRouter {
     fun validate(id: String?, registry: List<DemoEntry> = ALL_DEMOS): String? {
         val candidate = id?.takeIf { it.isNotBlank() } ?: return null
         return if (registry.any { it.id == candidate }) candidate else null
+    }
+
+    /**
+     * Parses an optional camera-to-model distance (zoom level) from a deep-link URI's
+     * `cameraDistance` query parameter — `sceneview://demo/<id>?cameraDistance=<f>`.
+     *
+     * Used by the device-QA harness to launch a demo at a near or far framing, since
+     * Maestro has no pinch gesture (see #1571). Robust by construction: a missing
+     * parameter, an unparseable string, a non-finite value (NaN / ±∞), or a value
+     * outside `[CAMERA_DISTANCE_MIN, CAMERA_DISTANCE_MAX]` all return `null`, which the
+     * caller treats as "keep the demo's default framing". Never throws.
+     *
+     * Mirrors [validateCameraDistance] — both ingress channels (URL deep link and the
+     * `--ef camera_distance` intent extra) apply the identical clamp.
+     */
+    fun parseCameraDistance(data: Uri?): Float? {
+        if (data == null) return null
+        val raw = runCatching { data.getQueryParameter(QUERY_PARAM_CAMERA_DISTANCE) }
+            .getOrNull() ?: return null
+        return validateCameraDistance(raw.toFloatOrNull())
+    }
+
+    /**
+     * Validates an already-parsed camera distance against the accepted range. Shared by
+     * the URL deep-link path ([parseCameraDistance]) and the `--ef camera_distance`
+     * intent-extra path so both ingress channels behave identically.
+     *
+     * Returns [value] iff it is non-null, finite, and within
+     * `[CAMERA_DISTANCE_MIN, CAMERA_DISTANCE_MAX]`; otherwise `null`.
+     */
+    fun validateCameraDistance(value: Float?): Float? {
+        if (value == null || !value.isFinite()) return null
+        return value.takeIf { it in CAMERA_DISTANCE_MIN..CAMERA_DISTANCE_MAX }
     }
 
     /**

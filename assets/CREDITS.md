@@ -12,7 +12,7 @@ Source of truth: [`assets/catalog.json`](catalog.json). This file is generated
 by [`.claude/scripts/generate-credits.py`](../.claude/scripts/generate-credits.py).
 Re-run the script after any catalog edit to keep both files in sync.
 
-Total models: **68** (plus 17 pending metadata, 7 pending license review).
+Total models: **70** (plus 17 pending metadata, 7 pending license review).
 
 ---
 
@@ -90,11 +90,16 @@ Total models: **68** (plus 17 pending metadata, 7 pending license review).
 
 ## Poly Haven
 
+- **[Chinese Garden](https://polyhaven.com/a/chinese_garden)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Night Sky (Dikhololo Night)](https://polyhaven.com/a/dikhololo_night)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ## Fab
 
 - **[A Red Car](https://www.fab.com/listings/c86be43c-3923-4c98-b752-40bedb121239)** by SerjogaSan — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+
+## Threejs
+
+- **[Soldier](https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb)** by Tomás Laulhé (modified by Don McCurdy) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ---
 

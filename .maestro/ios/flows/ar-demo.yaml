@@ -1,0 +1,51 @@
+# Reusable Maestro subflow — LAUNCH-ONLY smoke for ONE iOS AR demo.
+#
+# Called by ar.yaml via `runFlow` with an `env:` block. It never appears in a
+# flow runner by itself.
+#
+# Required parameters (passed by the caller):
+#   DEMO_ID      Stable demo id from DemoDeepLinkRegistry.allowedIds.
+#   DEMO_NAME    Human label, used only for screenshot file naming / logs.
+#   ASSERT_TEXT  A SwiftUI text/label string the AR screen is guaranteed to
+#                render once loaded (a status pill, a coaching string, or the
+#                deep-link placeholder copy). Used as the crash gate.
+#
+# Why launch-only:
+#   RealityKit AR (ARKit world tracking) cannot run on the iOS simulator —
+#   there is no camera feed and `ARWorldTrackingConfiguration.isSupported` is
+#   false. So this subflow does NOT tap a plane or place a model. It asserts
+#   the AR demo *screen* loads — view hierarchy mounts, `SceneViewSwift` AR
+#   surface is created, no crash on entry — and captures one screenshot. AR
+#   tracking behaviour itself is out of scope for the simulator harness (the
+#   issue #1560 decision: iOS AR = launch-only smoke).
+#
+# Two kinds of AR id reach this subflow:
+#   - Ported AR demos (`ar-placement`, `ar-rerun`) → DemoDeepLinkRegistry
+#     routes to the real iOS AR demo view. On the simulator the AR surface
+#     mounts but tracking never starts; the demo's own coaching / status copy
+#     is the ASSERT_TEXT.
+#   - AR ids registered for deep-link but not yet ported (`ar-image`,
+#     `ar-face`) → DemoDeepLinkRegistry routes to `DeepLinkPlaceholder`. The
+#     smoke still has value: it proves the router + placeholder path does not
+#     crash. ASSERT_TEXT is then the placeholder's "Demo:" copy.
+appId: io.github.sceneview.demo
+---
+- launchApp:
+    appId: io.github.sceneview.demo
+    stopApp: true
+    clearState: false
+
+- openLink: "sceneview://demo/${DEMO_ID}"
+
+# Allow the AR screen (or the deep-link placeholder) to mount. AR demos spin up
+# a RealityKit ARView which is heavier than a plain SceneView, so the timeout
+# is generous.
+- extendedWaitUntil:
+    visible: "${ASSERT_TEXT}"
+    timeout: 15000
+
+# One screenshot — proof the AR screen rendered without crashing on entry.
+- takeScreenshot: "ar-${DEMO_ID}"
+
+# Crash gate: a crash on AR entry drops us to SpringBoard and this fails.
+- assertVisible: "${ASSERT_TEXT}"

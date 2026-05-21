@@ -1,0 +1,71 @@
+# Maestro MASTER flow — full SceneView iOS demo catalog QA.
+#
+#   maestro test .maestro/ios/catalog.yaml
+#
+# This is the iOS leg of the autonomous device-QA harness (umbrella #1560,
+# slice #1563). It drives every iOS demo reachable via the public
+# `sceneview://demo/<id>` deep link in `samples/ios-demo` like a real user —
+# custom-scheme deep-link launch, camera orbit drag, viewport tap, one
+# screenshot per demo — and asserts each demo's screen stays alive (a crash
+# drops the app to SpringBoard, failing the per-demo `assertVisible`).
+#
+# It delegates to the per-category flows so the demo list lives in exactly one
+# place per category and a fast subset can be run on its own.
+#
+# Coverage vs the Android slice (#1562, 42 demos):
+#   iOS coverage is the subset of Android `DemoRegistry.kt` ALL_DEMOS ids that
+#   `DemoDeepLinkRegistry.allowedIds` exposes for `sceneview://demo/<id>` —
+#   24 ids at the time slice #1563 landed:
+#     3D Basics ............ 4   (model-viewer, geometry, animation, multi-model)
+#     Lighting ............. 4   (lighting, movable-light, dynamic-sky, fog)
+#     Content .............. 4   (text, lines-paths, image, billboard)
+#     Interaction .......... 1   (camera-controls)
+#     Advanced ............. 4   (physics, double-pendulum, custom-mesh, shape)
+#     Augmented Reality .... 2   (ar-placement, ar-rerun — launch-only smoke)
+#     Deep-link placeholders 5   (environment, video, gesture-editing,
+#                                 ar-image, ar-face — router + placeholder smoke)
+#                                --
+#     Total ................ 24
+#
+# Why deep-link ingress, not Samples-tab navigation:
+#   The iOS Samples-tab presents demos in a `.fullScreenCover` with NO Close
+#   affordance — a real iOS-demo UX gap (filed as a slice #1563 follow-up).
+#   There is no in-app way to leave a full-screen demo, so a UI-navigation
+#   walk of the catalog could not advance past the first demo. Deep-link
+#   launch + `stopApp: true` cold-restart per demo (flows/demo.yaml) sidesteps
+#   this entirely and matches the Android subflow's per-demo isolation. The
+#   trade-off: only the `allowedIds` subset is reachable. Widening `allowedIds`
+#   to the full catalog (or adding a Close button) is a tracked follow-up.
+#
+# Crash detection (per-demo, see flows/demo.yaml for the variant map):
+#   - Inline-overlay demos — flows/demo.yaml asserts an always-on viewport
+#     caption / button-strip label.
+#   - Settings-sheet demos — flows/demo-settings.yaml asserts the always-present
+#     gear FAB (`demo-settings-fab` accessibility id), opens the sheet and
+#     asserts a control label inside it.
+#   - AR demos — flows/ar-demo.yaml asserts the simulator-placeholder copy.
+#   - `text` and `model-viewer` render no Maestro-visible SwiftUI chrome on a
+#     key-less simulator, so they use the assertion-free flows/demo-noassert
+#     .yaml; their crash detection falls to the log sweep below.
+#   A crash drops the app to SpringBoard so the `assertVisible` fails the flow.
+#   - FATAL / NSException log sweep: Maestro 1.39 cannot read the iOS device
+#     log from a flow. The orchestrator runner (umbrella slice #1566,
+#     `device-qa.sh`) tails the simulator log and greps it for crash markers.
+#     Run this flow through `ios-device-qa.sh` for the full crash gate; run it
+#     directly for a quick interactive smoke.
+#
+# Zoom limitation:
+#   Maestro has no pinch gesture, so 3D camera zoom is not exercised here — the
+#   same limitation as the Android slice. iOS additionally has no `qa_mode`
+#   deep-link argument to freeze auto-rotation; both are tracked follow-ups.
+#
+# AR demos are launch-only smoke — RealityKit AR cannot run on the simulator.
+appId: io.github.sceneview.demo
+---
+- runFlow: 3d-basics.yaml
+- runFlow: lighting.yaml
+- runFlow: content.yaml
+- runFlow: interaction.yaml
+- runFlow: advanced.yaml
+- runFlow: ar.yaml
+- runFlow: placeholders.yaml

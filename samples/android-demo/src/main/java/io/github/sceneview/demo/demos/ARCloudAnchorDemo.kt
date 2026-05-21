@@ -39,6 +39,10 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.CloudAnchorNode as CloudAnchorNodeImpl
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.ForcedTrackingFailure
+import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
@@ -62,6 +66,10 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
+    // with `--es ar_playback_file <path>` (#1576). `null` for every normal launch - see
+    // `rememberArPlaybackDataset` - so live AR is completely unchanged for real users.
+    val arPlaybackDataset = rememberArPlaybackDataset()
 
     // Detect at runtime whether the build wired an ARCore Cloud API key into
     // the manifest. If absent (e.g. running a fork without the GitHub secret,
@@ -189,6 +197,11 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.primary
                 )
             }
+            // Developer-only debug toggle — visible when QA mode is on. Lets QA
+            // force-emit each TrackingFailureReason so the actionable-message
+            // overlay can be validated without staging a real failure. See
+            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+            ForceTrackingFailureMenu()
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -197,6 +210,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
+                playbackDataset = arPlaybackDataset,
                 planeRenderer = true,
                 sessionConfiguration = { _: Session, config: Config ->
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
@@ -276,6 +290,15 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             }
 
             // Status overlay
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately. The forced
+            // reason wins over the live status message so QA can validate the
+            // tracking-failure mappings even while hosting/resolving.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+            val forcedMessage = ForcedTrackingFailure.override?.let {
+                trackingFailureMessage(effectiveReason)
+            }
             AnimatedVisibility(
                 visible = true,
                 enter = fadeIn(),
@@ -283,7 +306,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 Text(
-                    text = statusMessage,
+                    text = forcedMessage ?: statusMessage,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier

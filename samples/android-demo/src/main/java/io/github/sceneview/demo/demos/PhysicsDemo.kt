@@ -34,8 +34,10 @@ import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
+import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
+import io.github.sceneview.model.Model
 import io.github.sceneview.node.ModelNode as ModelNodeImpl
 import io.github.sceneview.node.SphereNode as SphereNodeImpl
 import io.github.sceneview.rememberCameraManipulator
@@ -43,9 +45,10 @@ import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.rememberMaterialInstance
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -240,10 +243,16 @@ fun PhysicsDemo(onBack: () -> Unit) {
 
                 // Streamed mesh path. The model file is `null` until the
                 // resolver returns (or the user picked "Bundled spheres").
-                // The model is loaded once and re-used as a `ModelInstance`
-                // attached underneath each falling SphereNode.
-                val streamedInstance = selectedFile?.let { file ->
-                    rememberModelInstance(modelLoader, "file://${file.absolutePath}")
+                // The GLB is parsed once into a single `Model` (geometry +
+                // materials live here, shared by every instance); each falling
+                // body then gets its OWN `ModelInstance` spawned from it below.
+                // A `ModelInstance` wraps exactly one Filament entity / one
+                // TransformManager slot, so it can only ride one body at a
+                // time — sharing it across bodies meant every ModelNode wrote
+                // the same entity transform (last-write-wins) and only one
+                // mesh was ever visible (#1706).
+                val streamedModel: Model? = selectedFile?.let { file ->
+                    rememberStreamedModel(modelLoader, file)
                 }
 
                 // collisionRadius is the bouncing-sphere radius PhysicsNode uses
@@ -276,15 +285,26 @@ fun PhysicsDemo(onBack: () -> Unit) {
                         // Streamed mesh child — only rendered when a streamed
                         // slug is selected AND its download has landed. The
                         // child inherits the sphere's transform so it rides
-                        // the simulation.
-                        val instance = streamedInstance
+                        // the simulation. Each body spawns its OWN
+                        // `ModelInstance` from the shared `Model` so it has an
+                        // independent Filament entity — `createInstance` only
+                        // duplicates the lightweight entity tree, geometry and
+                        // materials stay shared (#1706). Keyed on `i` so the
+                        // instance is created once per body, on the main
+                        // composition thread (Filament JNI is @MainThread).
+                        val model = streamedModel
                         val slug = selectedSlug
-                        if (instance != null && slug != null) {
-                            ModelNode(
-                                modelInstance = instance,
-                                scaleToUnits = slug.scaleToUnits,
-                                centerOrigin = Position(0f, 0f, 0f),
-                            )
+                        if (model != null && slug != null) {
+                            val instance = remember(i, model) {
+                                modelLoader.createInstance(model)
+                            }
+                            if (instance != null) {
+                                ModelNode(
+                                    modelInstance = instance,
+                                    scaleToUnits = slug.scaleToUnits,
+                                    centerOrigin = Position(0f, 0f, 0f),
+                                )
+                            }
                         }
                     }
 
@@ -305,3 +325,40 @@ fun PhysicsDemo(onBack: () -> Unit) {
         }
     }
 }
+
+/**
+ * Parses the streamed GLB at [file] once into a single [Model] that every
+ * dropped body then spawns its own [ModelInstance] from.
+ *
+ * `releaseSourceData = false` is mandatory here: [ModelLoader.createInstance]
+ * cannot run after the source glTF data has been released, so we keep it
+ * resident for as long as new bodies may still be dropped.
+ *
+ * Threading mirrors `rememberModelInstance`: the file bytes are read on
+ * [Dispatchers.IO], then `createModel` (a `@MainThread` Filament JNI call)
+ * runs back on the composition's main dispatcher inside [produceState].
+ * Returns `null` while loading.
+ */
+@Composable
+private fun rememberStreamedModel(
+    modelLoader: ModelLoader,
+    file: File,
+): Model? = produceState<Model?>(initialValue = null, key1 = modelLoader, key2 = file.absolutePath) {
+    // Read the GLB bytes (and any external glTF resources) off the main
+    // thread, then call `createModel` — a @MainThread Filament JNI call —
+    // back on the composition's main dispatcher (produceState's context).
+    val buffer = withContext(Dispatchers.IO) {
+        runCatching { java.nio.ByteBuffer.wrap(file.readBytes()) }.getOrNull()
+    } ?: return@produceState
+    value = runCatching {
+        modelLoader.createModel(
+            buffer = buffer,
+            releaseSourceData = false,
+            resourceResolver = { resourceFile ->
+                runCatching {
+                    java.nio.ByteBuffer.wrap(File(file.parent, resourceFile).readBytes())
+                }.getOrNull()
+            },
+        )
+    }.getOrNull()
+}.value

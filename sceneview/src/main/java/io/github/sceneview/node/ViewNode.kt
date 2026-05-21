@@ -30,12 +30,11 @@ import com.google.android.filament.RenderableManager
 import com.google.android.filament.Scene
 import com.google.android.filament.Stream
 import com.google.android.filament.Texture
+import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Size
 import io.github.sceneview.node.ViewNode.WindowManager
-import io.github.sceneview.safeDestroyStream
-import io.github.sceneview.safeDestroyTexture
 
 /**
  * A Node that can display an Android [View]
@@ -198,13 +197,18 @@ class ViewNode(
     override fun destroy() {
         windowManager.removeView(layout)
         // Capture MI before super.destroy() removes the renderable component (after which
-        // getMaterialInstanceAt would fail). Destroy in order: renderable (via super) → MI → texture
-        // → stream, so Filament never sees a live texture binding on a dead MI or renderable.
+        // getMaterialInstanceAt would fail). Order: renderable (via super) → MI → texture → stream.
+        // The texture/stream destroys are frame-deferred via EngineDestroyQueue so Filament has
+        // reclaimed the MaterialInstance before the external Texture it was bound to is freed —
+        // destroying it eagerly can race that reclamation, mirroring the ImageNode crash that
+        // sceneview/sceneview#874 fixes. The queue keeps the FIFO texture-before-stream order.
         val mi = materialInstance
         super.destroy()
         materialLoader.destroyMaterialInstance(mi)
-        engine.safeDestroyTexture(texture)
-        engine.safeDestroyStream(stream)
+        EngineDestroyQueue.of(engine).apply {
+            enqueueTexture(texture)
+            enqueueStream(stream)
+        }
     }
 
     /**

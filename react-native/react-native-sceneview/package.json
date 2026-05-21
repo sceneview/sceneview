@@ -1,6 +1,6 @@
 {
   "name": "@sceneview-sdk/react-native",
-  "version": "4.9.0",
+  "version": "4.11.2",
   "description": "React Native bindings for SceneView \u2014 3D and AR scenes powered by Filament (Android) and RealityKit (iOS)",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
@@ -18,6 +18,7 @@
   "scripts": {
     "typescript": "tsc --noEmit",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "test": "jest",
     "build": "bob build",
     "prepare": "bob build"
   },
@@ -42,17 +43,31 @@
     "url": "https://github.com/sceneview/sceneview/issues"
   },
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "peerDependencies": {
     "react": ">=18.0.0",
     "react-native": ">=0.72.0"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.0",
     "@types/react": "^18.2.0",
     "@types/react-native": "^0.72.0",
+    "jest": "^29.7.0",
     "react": "^18.2.0",
     "react-native": "^0.72.0",
     "react-native-builder-bob": "^0.23.0",
+    "ts-jest": "^29.1.0",
     "typescript": "^5.3.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": [
+      "<rootDir>/__tests__/**/*.test.ts",
+      "<rootDir>/__tests__/**/*.test.tsx"
+    ]
   },
   "overrides": {
     "fast-xml-parser": "^5.7.0"

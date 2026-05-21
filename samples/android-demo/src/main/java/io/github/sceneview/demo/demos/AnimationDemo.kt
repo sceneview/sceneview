@@ -281,7 +281,6 @@ fun AnimationDemo(onBack: () -> Unit) {
         for (i in 0 until node.animationCount) node.stopAnimation(i)
         if (DemoSettings.qaMode) return@LaunchedEffect
         if (isPlaying && selectedAnim < node.animationCount) {
-            // TODO(audit-2026-05-04): SDK playAnimation may ignore loop= param — verify.
             node.playAnimation(selectedAnim, speed = speed, loop = loop)
         }
     }

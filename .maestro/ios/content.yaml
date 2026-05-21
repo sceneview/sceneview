@@ -1,0 +1,36 @@
+# Maestro flow — "Content" iOS demo category.
+#
+# Run a fast subset of the iOS device-QA harness:
+#   maestro test .maestro/ios/content.yaml
+#
+# Each demo is exercised by the reusable flows/demo.yaml subflow. `text`
+# (TextDemo) is a bare 3D-text scene with no overlaid SwiftUI chrome, so it
+# uses the assertion-free flows/demo-noassert.yaml variant.
+#
+# Demo ids are the subset of Android `DemoRegistry.kt` ALL_DEMOS that
+# `DemoDeepLinkRegistry.allowedIds` exposes for `sceneview://demo/<id>` on iOS.
+appId: io.github.sceneview.demo
+---
+- runFlow:
+    file: flows/demo-noassert.yaml
+    env:
+      DEMO_ID: text
+      DEMO_NAME: 3D Text
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: lines-paths
+      DEMO_NAME: Lines & Paths
+      ASSERT_TEXT: "PathNode"
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: image
+      DEMO_NAME: Image Planes
+      ASSERT_TEXT: "ImageNode.color -- solid-color planes in an arc"
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: billboard
+      DEMO_NAME: Billboard
+      ASSERT_TEXT: "Orbit the camera -- labels always face you"

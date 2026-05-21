@@ -1,0 +1,44 @@
+# Maestro flow — "Augmented Reality" iOS demo category — LAUNCH-ONLY smoke.
+#
+# Run a fast subset of the iOS device-QA harness:
+#   maestro test .maestro/ios/ar.yaml
+#
+# RealityKit AR (ARKit world tracking) cannot run on the iOS simulator — there
+# is no camera feed. So every AR id here is a LAUNCH-ONLY smoke (umbrella #1560
+# decision: iOS AR = launch-only): the flow asserts the AR demo screen mounts
+# without crashing and captures one screenshot. It does NOT scan a plane or
+# place a model. AR tracking behaviour is verified by the iOS QA session on a
+# physical device, not by this simulator harness.
+#
+# Two kinds of AR id reach this flow (see flows/ar-demo.yaml):
+#   - Ported AR demos — `ar-placement`, `ar-rerun` — route to the real iOS AR
+#     demo view, which renders a `simulatorPlaceholder` ("AR requires a
+#     physical device" / "ARKit is not available in the simulator.") on the
+#     simulator. That copy is the crash gate.
+#   - Registered-but-unported AR ids — `ar-image`, `ar-face` — route to the
+#     `DeepLinkPlaceholder`; flows/placeholder.yaml handles those, included
+#     here so the AR flow is the single place every AR deep-link id is smoked.
+#
+# Demo ids mirror Android `DemoRegistry.kt` ALL_DEMOS.
+appId: io.github.sceneview.demo
+---
+- runFlow:
+    file: flows/ar-demo.yaml
+    env:
+      DEMO_ID: ar-placement
+      DEMO_NAME: AR Placement
+      ASSERT_TEXT: "AR requires a physical device"
+- runFlow:
+    file: flows/ar-demo.yaml
+    env:
+      DEMO_ID: ar-rerun
+      DEMO_NAME: AR Rerun Debug
+      ASSERT_TEXT: "ARKit is not available in the simulator."
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-image
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-face

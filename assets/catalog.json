@@ -80,20 +80,24 @@
       "cameraDistance": 3.5
     },
     {
-      "id": "toy_car",
+      "id": "khronos_toy_car",
       "name": "Toy Car",
-      "source": "sketchfab",
-      "sourceId": null,
+      "source": "khronos",
+      "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar",
+      "author": "KhronosGroup",
+      "license": "CC-BY-4.0",
       "formats": {
         "glb": {
-          "file": "models/glb/toy_car.glb",
-          "size": "~3MB"
+          "file": "models/glb/khronos_toy_car.glb",
+          "size": "1.2MB"
         }
       },
       "tags": [
         "toy",
         "vehicle",
-        "colorful"
+        "colorful",
+        "khronos",
+        "reference"
       ],
       "usedIn": [
         "android-demo"
@@ -2808,6 +2812,142 @@
       ],
       "defaultScale": 0.6,
       "cameraDistance": 3.0
+    },
+    {
+      "id": "khronos_sheen_chair",
+      "name": "Sheen Chair",
+      "source": "khronos",
+      "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair",
+      "author": "KhronosGroup",
+      "license": "CC-BY-4.0",
+      "formats": {
+        "glb": {
+          "file": "models/glb/khronos_sheen_chair.glb",
+          "size": "1.0MB"
+        }
+      },
+      "tags": [
+        "chair",
+        "furniture",
+        "sheen",
+        "fabric",
+        "khronos",
+        "reference"
+      ],
+      "usedIn": [
+        "android-tv-demo"
+      ],
+      "defaultScale": 0.8,
+      "cameraDistance": 3.0
+    },
+    {
+      "id": "khronos_iridescent_dish",
+      "name": "Iridescence Dish With Olives",
+      "source": "khronos",
+      "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceDishWithOlives",
+      "author": "KhronosGroup",
+      "license": "CC-BY-4.0",
+      "formats": {
+        "glb": {
+          "file": "models/glb/khronos_iridescent_dish.glb",
+          "size": "3.8MB"
+        }
+      },
+      "tags": [
+        "dish",
+        "iridescence",
+        "pbr",
+        "khronos",
+        "reference"
+      ],
+      "usedIn": [
+        "android-tv-demo"
+      ],
+      "defaultScale": 1.0,
+      "cameraDistance": 2.0
+    },
+    {
+      "id": "sheen_chair",
+      "name": "Sheen Chair (web demo)",
+      "_comment": "Sheen Chair bundled under a short filename by the web demo's curated catalog.",
+      "source": "khronos",
+      "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair",
+      "author": "KhronosGroup",
+      "license": "CC-BY-4.0",
+      "formats": {
+        "glb": {
+          "file": "models/glb/sheen_chair.glb",
+          "size": "1.0MB"
+        }
+      },
+      "tags": [
+        "chair",
+        "furniture",
+        "sheen",
+        "fabric",
+        "khronos",
+        "reference"
+      ],
+      "usedIn": [
+        "web-demo"
+      ],
+      "defaultScale": 0.8,
+      "cameraDistance": 3.0
+    },
+    {
+      "id": "chronograph_watch",
+      "name": "Chronograph Watch (web demo)",
+      "_comment": "Chronograph Watch bundled under a short filename by the web demo's curated catalog.",
+      "source": "khronos",
+      "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch",
+      "author": "KhronosGroup",
+      "license": "CC-BY-4.0",
+      "formats": {
+        "glb": {
+          "file": "models/glb/chronograph_watch.glb",
+          "size": "7.1MB"
+        }
+      },
+      "tags": [
+        "watch",
+        "luxury",
+        "detailed",
+        "pbr",
+        "khronos",
+        "reference"
+      ],
+      "usedIn": [
+        "web-demo"
+      ],
+      "defaultScale": 1.0,
+      "cameraDistance": 1.5
+    },
+    {
+      "id": "threejs_soldier",
+      "name": "Soldier",
+      "source": "threejs",
+      "sourceUrl": "https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb",
+      "author": "Tomás Laulhé (modified by Don McCurdy)",
+      "license": "CC0-1.0",
+      "formats": {
+        "glb": {
+          "file": "models/glb/threejs_soldier.glb",
+          "size": "1.3MB"
+        }
+      },
+      "tags": [
+        "character",
+        "animated",
+        "humanoid",
+        "reference"
+      ],
+      "usedIn": [
+        "android-demo",
+        "android-tv-demo",
+        "ios-demo"
+      ],
+      "defaultScale": 0.3,
+      "cameraDistance": 2.5
     }
   ],
   "environments": [
@@ -2913,6 +3053,25 @@
       "usedIn": [
         "android-demo",
         "ios-demo"
+      ]
+    },
+    {
+      "id": "chinese_garden",
+      "name": "Chinese Garden",
+      "source": "polyhaven",
+      "sourceId": "chinese_garden",
+      "sourceUrl": "https://polyhaven.com/a/chinese_garden",
+      "author": "Sergej Majboroda",
+      "license": "CC0-1.0",
+      "file": "environments/hdr/chinese_garden_2k.hdr",
+      "tags": [
+        "garden",
+        "nature",
+        "outdoor",
+        "day"
+      ],
+      "usedIn": [
+        "android-demo"
       ]
     }
   ],

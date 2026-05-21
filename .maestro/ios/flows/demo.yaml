@@ -1,0 +1,104 @@
+# Reusable Maestro subflow — exercises ONE iOS demo that renders its own
+# INLINE viewport overlay (an always-on caption, legend or button strip drawn
+# directly over the SceneView — not inside the closed `demoSettingsSheet`).
+#
+# Variant map — pick the subflow that matches the demo's UI:
+#   flows/demo.yaml          inline overlay text  (this file)
+#   flows/demo-settings.yaml controls live in the `demoSettingsSheet`
+#   flows/demo-noassert.yaml no Maestro-visible SwiftUI chrome at all
+#   flows/ar-demo.yaml       AR demo — launch-only smoke
+#   flows/placeholder.yaml   deep-link id with no iOS destination
+#
+# Called by the per-category flows via `runFlow` with an `env:` block. It never
+# appears in a flow runner by itself.
+#
+# Required parameters (passed by the caller):
+#   DEMO_ID      Stable demo id from DemoDeepLinkRegistry.allowedIds
+#                (e.g. "geometry", "billboard"). Must match the Android
+#                ALL_DEMOS id byte-for-byte — the deep-link contract is shared.
+#   DEMO_NAME    Human label, used only for screenshot file naming / logs.
+#   ASSERT_TEXT  An inline-overlay SwiftUI text/label string the demo is
+#                guaranteed to render. Used as the per-demo crash gate — after
+#                a crash the app drops to SpringBoard and this `assertVisible`
+#                fails the flow.
+#
+# Strategy:
+#   - launchApp cold-starts the app, then `openLink` fires the public
+#     `sceneview://demo/<id>` custom-scheme deep link (DeepLinkRouter
+#     .schemeCustom). The app's `.onOpenURL` switches to the Samples tab and
+#     presents the demo as a `.fullScreenCover` — so we jump straight to the
+#     demo screen with no tab navigation or list scrolling. This is the same
+#     ingress `DeepLinkRouter.parse` validates.
+#   - `stopApp: true` cold-restarts the app per demo. The iOS Samples-tab
+#     `.fullScreenCover` has no Close affordance (a known iOS-demo UX gap — see
+#     `.maestro/README.md` and the slice #1563 follow-ups), so a cold relaunch
+#     is the deterministic way to leave one demo and start the next, and it
+#     doubles as the cleanest possible per-demo isolation.
+#   - Exercise REAL interaction: drag to orbit the camera, swipe to pan, tap
+#     the centre of the viewport. 3D zoom has no Maestro pinch gesture — see
+#     the catalog header note.
+#   - Capture exactly ONE screenshot per demo (no screenshot-by-screenshot
+#     loop).
+#   - Assert ASSERT_TEXT is still visible — the per-demo crash gate.
+#
+# Note — iOS has no `qa_mode` deep-link argument (the Android subflow passes
+# one to freeze auto-rotation for a deterministic screenshot). Adding an iOS
+# equivalent is a tracked follow-up; until then the screenshot is a smoke
+# artefact, not a pixel baseline.
+appId: io.github.sceneview.demo
+---
+# Cold-launch the app. `.onOpenURL` is only delivered to a running app, so the
+# deep link is fired as a discrete step once the process is up.
+- launchApp:
+    appId: io.github.sceneview.demo
+    stopApp: true
+    clearState: false
+
+- openLink: "sceneview://demo/${DEMO_ID}"
+
+# Wait for the demo to actually appear — `extendedWaitUntil` fails fast on a
+# launch-time crash instead of silently swiping an empty screen. The demo
+# mounts a full-screen SceneView (RealityView); RealityKit needs a moment to
+# warm up, so allow a generous timeout.
+- extendedWaitUntil:
+    visible: "${ASSERT_TEXT}"
+    timeout: 12000
+
+# --- Real user interaction -------------------------------------------------
+# Orbit the camera: drag across the viewport. Two opposite drags so we exercise
+# the manipulator in both directions and return roughly to the start framing.
+- swipe:
+    start: 30%, 55%
+    end: 70%, 55%
+    duration: 600
+- swipe:
+    start: 70%, 55%
+    end: 30%, 55%
+    duration: 600
+
+# Vertical drag — tilts the orbit camera / pans 2D-content demos.
+- swipe:
+    start: 50%, 65%
+    end: 50%, 40%
+    duration: 600
+
+# Tap the centre of the viewport: in interaction demos this picks a node, in
+# control-strip demos it is a harmless empty-space tap. Either way it must not
+# crash.
+- tapOn:
+    point: 50%, 55%
+
+# Give any tap-triggered work (node selection, gesture handlers) a moment to
+# settle before the screenshot.
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# --- One screenshot per demo ----------------------------------------------
+# Maestro writes screenshots to its output dir; the file name keys off DEMO_ID
+# so a category run produces one PNG per demo with no overwrites.
+- takeScreenshot: "demo-${DEMO_ID}"
+
+# --- Liveness assertion (per-demo crash gate) ------------------------------
+# If the demo had crashed during interaction, the process would be gone and we
+# would be on SpringBoard — ASSERT_TEXT would no longer be present.
+- assertVisible: "${ASSERT_TEXT}"

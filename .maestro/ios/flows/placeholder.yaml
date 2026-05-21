@@ -1,0 +1,37 @@
+# Reusable Maestro subflow — smoke for a deep-link id that is REGISTERED in
+# `DemoDeepLinkRegistry.allowedIds` but has NO iOS destination wired up.
+#
+# Such ids (`environment`, `video`, `gesture-editing`, `ar-image`, `ar-face`
+# at the time slice #1563 landed) route through `DemoDeepLinkRegistry
+# .destination(for:)` to the `DeepLinkPlaceholder` view — a friendly "this
+# demo isn't available in the iOS app yet" screen. They exist as deep-link
+# ids because website / README QR codes may point at them and the cross-
+# platform `sceneview://demo/<id>` contract must not 404.
+#
+# This subflow proves the router + placeholder path itself does not crash:
+# launch, fire the deep link, assert the placeholder rendered (its "Demo:"
+# title is keyed on the id, so it doubles as a routing assertion).
+#
+# Required parameters (passed by the caller):
+#   DEMO_ID    Stable deep-link id (must be in `allowedIds` but un-wired).
+#
+# When one of these ids gains a real iOS destination, move it out of the
+# placeholder set into the matching per-category flow with a real ASSERT_TEXT.
+appId: io.github.sceneview.demo
+---
+- launchApp:
+    appId: io.github.sceneview.demo
+    stopApp: true
+    clearState: false
+
+- openLink: "sceneview://demo/${DEMO_ID}"
+
+# The placeholder renders `Text("Demo: <id>")` — keyed on the id, so this is
+# both a liveness check and a routing assertion.
+- extendedWaitUntil:
+    visible: "Demo: ${DEMO_ID}"
+    timeout: 8000
+
+- takeScreenshot: "placeholder-${DEMO_ID}"
+
+- assertVisible: "Demo: ${DEMO_ID}"

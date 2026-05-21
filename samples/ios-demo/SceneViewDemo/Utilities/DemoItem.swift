@@ -6,16 +6,16 @@ import SwiftUI
 /// "Coming soon" badge and route to ``ComingSoonScreen`` instead of crashing or hiding.
 enum DemoStatus: Equatable {
     case available
-    case comingSoon(version: String)
+    case comingSoon
 
     var isAvailable: Bool {
         if case .available = self { return true }
         return false
     }
 
-    var comingSoonVersion: String? {
-        if case let .comingSoon(version) = self { return version }
-        return nil
+    var isComingSoon: Bool {
+        if case .comingSoon = self { return true }
+        return false
     }
 }
 
@@ -53,14 +53,13 @@ struct DemoItem: Identifiable {
         comingSoonTitle title: String,
         icon: String,
         subtitle: String,
-        category: DemoCategory,
-        version: String = "1.1"
+        category: DemoCategory
     ) {
         self.title = title
         self.icon = icon
         self.subtitle = subtitle
         self.category = category
-        self.status = .comingSoon(version: version)
+        self.status = .comingSoon
         self.destination = AnyView(EmptyView())
     }
 }

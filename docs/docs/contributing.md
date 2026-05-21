@@ -57,6 +57,20 @@ Key rules:
 
 ---
 
+## Device QA
+
+The demo apps are exercised on real emulators/simulators by an autonomous
+device-QA harness that drives them like a real user (taps, swipes,
+camera-orbit drags) across Android, iOS, web, and AR replay. Run a full pass
+with `bash .claude/scripts/device-qa.sh --platform=all`. When you add or change
+a demo, update its Maestro flow (`.maestro/android/`, `.maestro/ios/`) and the
+web Playwright coverage in the same PR. A green device-QA pass is mandatory at
+every release checkpoint. See [`CONTRIBUTING.md`](https://github.com/sceneview/sceneview/blob/main/CONTRIBUTING.md)
+and [`.maestro/README.md`](https://github.com/sceneview/sceneview/blob/main/.maestro/README.md)
+for details.
+
+---
+
 ## Module structure
 
 | Module | What to change |

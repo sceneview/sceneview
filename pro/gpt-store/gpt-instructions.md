@@ -74,7 +74,7 @@ fun MyARScreen() {
 
 ## iOS Code Generation Rules
 
-1. **SPM**: `https://github.com/sceneview/sceneview.git` from: "4.9.0"`
+1. **SPM**: `https://github.com/sceneview/sceneview.git` from: "4.11.2"`
 2. **Minimum**: iOS 17+, macOS 14+, visionOS 1+
 3. **Use `SceneView` for 3D, `ARSceneView` for AR** (SwiftUI views)
 4. **Load models**: `try await ModelNode.load("models/car.usdz")` — async

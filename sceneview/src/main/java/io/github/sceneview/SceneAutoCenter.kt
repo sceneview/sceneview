@@ -7,6 +7,9 @@ import io.github.sceneview.math.times
 import io.github.sceneview.math.toPosition
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.RenderableNode
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.sqrt
 
 /**
  * Library-level auto-centering of `SceneView` content — the Android counterpart of the iOS
@@ -52,6 +55,18 @@ data class Aabb(
 
     /** Full side lengths of the box along x / y / z. */
     val extents: Position get() = halfExtent * 2.0f
+
+    /**
+     * Length of the box's space diagonal — `sqrt(x² + y² + z²)` of [extents]. `0` for an empty
+     * box. This single scalar is what [FramingGate] tracks frame-to-frame to detect an async model
+     * landing and growing the scene's union bounds.
+     */
+    val diagonal: Float
+        get() {
+            if (isEmpty) return 0f
+            val e = extents
+            return sqrt(e.x * e.x + e.y * e.y + e.z * e.z)
+        }
 
     /**
      * `true` when this box carries no measurable volume — either a freshly created zero box or
@@ -170,42 +185,188 @@ private fun renderableAabbsRelativeTo(
 }
 
 /**
- * Mutable holder for the one-shot auto-centring pass. Lives in a Compose `remember` so the
- * "already centred" flag survives recomposition. Mirrors the iOS `didCenterContent` `@State`.
+ * Union-diagonal-stability gate shared by the library-level auto-centre ([SceneAutoCenterState])
+ * and auto-fit ([SceneAutoFitState]) passes.
+ *
+ * This is the Android port of the web `AutoCenterGate` (#1391 / #1540) and the iOS
+ * `lastFramedDiagonal` + `framingStabilityEpsilon` logic.
+ *
+ * ## Why the old first-frame latch was wrong (#1596 / #1540)
+ *
+ * The previous design latched `didCenter` / `didFit` on the **first** render frame with
+ * non-degenerate bounds and relied on an explicit [reset] at content-change time. That works for
+ * models loaded all at once, but an async model that finishes loading *after* a sibling has
+ * already framed never re-frames — by the time its bounds populate the latch is already set. The
+ * result is the multi-model "bunched-in-the-corner" regression #1391 fixed on the other platforms.
+ *
+ * ## The fix
+ *
+ * Every frame the pass measures the content's union AABB diagonal and calls [shouldFrame]: it
+ * re-frames whenever the diagonal moved by more than [STABILITY_EPSILON] (relative) since the last
+ * framed diagonal — a freshly streamed model always grows the union materially, so it always
+ * re-frames. [recordFraming] latches [latched] only once a frame sees the diagonal stable versus
+ * the previous framed diagonal, so deferred async models keep the pass alive until the whole scene
+ * has settled.
+ *
+ * ## Why an unconditional ceiling is also needed (Tier-2 #1596 review)
+ *
+ * The diagonal-stability latch alone is unbounded: a scene whose union diagonal jitters by *more*
+ * than [STABILITY_EPSILON] every single frame — an animated / skeletal model, a physics demo, or
+ * two async models alternately growing the union — satisfies [shouldFrame] forever and *never*
+ * latches. The pass would then re-apply the camera / centroid every frame indefinitely, fighting
+ * user interaction and burning a `computeContentBounds` walk per frame. So [recordFraming] also
+ * latches unconditionally once it has framed [MAX_FRAMING_PASSES] times: a scene that has not
+ * settled by then is genuinely animated, and re-framing it every frame is wrong.
+ *
+ * Isolating the state machine from any Filament binding keeps it directly unit-testable in pure
+ * JVM — see `FramingGateTest`.
  */
-class SceneAutoCenterState {
-    /** `true` once [maybeCenter] has translated the content root. */
-    var didCenter: Boolean = false
+class FramingGate {
+
+    companion object {
+        /**
+         * Fraction of the union diagonal below which a frame-to-frame change is treated as
+         * sub-millimetre float jitter rather than a genuine content change. Tolerant enough to
+         * ignore floating-point noise, tight enough that a freshly streamed model (which grows the
+         * union materially) always re-frames. Mirrors web `AutoCenterGate.STABILITY_EPSILON` and
+         * iOS `framingStabilityEpsilon`.
+         */
+        const val STABILITY_EPSILON: Float = 0.01f
+
+        /**
+         * Hard ceiling on how many times the gate will (re-)frame before latching unconditionally.
+         * The diagonal-stability check handles a scene that genuinely settles; this ceiling caps
+         * the pathological case where the union diagonal jitters above [STABILITY_EPSILON] every
+         * frame (animated / skeletal models, physics demos, alternating async loads) and would
+         * otherwise re-frame forever. Generous enough to absorb a handful of staggered async model
+         * loads (the #1391 case the gate exists for), small enough that an animated scene stops
+         * fighting the user almost immediately.
+         */
+        const val MAX_FRAMING_PASSES: Int = 10
+    }
+
+    /** `true` once the union diagonal has stabilised and the pass has latched. */
+    var latched: Boolean = false
         private set
 
     /**
-     * Runs the centring pass against [contentRoot]. No-op once [didCenter] is `true`, or while the
-     * content bounds are still empty / degenerate (async loads not finished). On success the
-     * content root is translated so the content centroid lands at its parent origin, and
-     * [didCenter] flips to `true`.
+     * Union diagonal of the content the pass last framed, or `< 0` when no frame has run yet.
+     * Compared against the current diagonal to decide whether a streamed model just landed.
+     */
+    private var lastFramedDiagonal: Float = -1f
+
+    /**
+     * How many times [recordFraming] has framed the content since the last [reset]. Once this
+     * reaches [MAX_FRAMING_PASSES] the gate latches unconditionally so a perpetually-jittering
+     * scene stops re-framing.
+     */
+    private var framingPasses: Int = 0
+
+    /**
+     * Whether the pass should run at all this frame. Returns `false` once the gate has [latched]
+     * (so later frames are a cheap no-op) or while no content is loaded.
+     *
+     * @param hasContent whether any non-degenerate content bounds are present this frame.
+     */
+    fun shouldRun(hasContent: Boolean): Boolean = hasContent && !latched
+
+    /**
+     * Whether the pass should (re-)apply the framing for the given union [diagonal] this frame.
+     *
+     * A freshly streamed model grows the union, moving the diagonal by more than
+     * [STABILITY_EPSILON] — that always re-frames. Once the diagonal is within tolerance of the
+     * last framed diagonal the scene has settled, so the frame is skipped (the latch itself
+     * happens in [recordFraming]).
+     */
+    fun shouldFrame(diagonal: Float): Boolean {
+        if (lastFramedDiagonal < 0f) return true
+        val delta = abs(diagonal - lastFramedDiagonal)
+        return delta > STABILITY_EPSILON * max(diagonal, lastFramedDiagonal)
+    }
+
+    /**
+     * Record that the pass framed the content at union [diagonal]. Latches [latched] once either:
+     *
+     * - this diagonal is stable versus the previously recorded one — i.e. the scene has settled
+     *   across consecutive ticks and no more async models are growing the union; or
+     * - the gate has now framed [MAX_FRAMING_PASSES] times — a hard ceiling that stops a scene
+     *   whose diagonal jitters above [STABILITY_EPSILON] every frame (animated / skeletal models,
+     *   physics demos) from re-framing forever and fighting user interaction.
+     *
+     * Until one of those triggers the pass keeps running so deferred async models re-frame the
+     * scene.
+     */
+    fun recordFraming(diagonal: Float) {
+        val stable = lastFramedDiagonal >= 0f &&
+            abs(diagonal - lastFramedDiagonal) <=
+            STABILITY_EPSILON * max(diagonal, lastFramedDiagonal)
+        lastFramedDiagonal = diagonal
+        framingPasses++
+        if (stable || framingPasses >= MAX_FRAMING_PASSES) latched = true
+    }
+
+    /**
+     * Start a fresh content generation — clears the latch, the recorded diagonal and the framing
+     * pass counter so the next frame re-frames from scratch.
+     *
+     * With the diagonal-stability logic the pass already re-frames automatically whenever an async
+     * model grows the union, so an explicit `reset()` is no longer required for the deferred-async
+     * case. It is still called when content is *replaced* so a shrinking union (which would
+     * otherwise look stable) re-frames.
+     */
+    fun reset() {
+        latched = false
+        lastFramedDiagonal = -1f
+        framingPasses = 0
+    }
+}
+
+/**
+ * Mutable holder for the library-level auto-centring pass. Lives in a Compose `remember` so the
+ * gate state survives recomposition. Mirrors the iOS `autoCenterContent` framing state.
+ *
+ * Backed by a [FramingGate]: the pass re-runs whenever an async model grows the content's union
+ * bounds and only latches once the union diagonal has settled — so a model that finishes loading
+ * after a sibling already centred still triggers a re-centre (#1596 / #1540).
+ */
+class SceneAutoCenterState {
+    private val gate = FramingGate()
+
+    /** `true` once the union diagonal has settled and the centring pass has latched. */
+    val didCenter: Boolean get() = gate.latched
+
+    /**
+     * Runs the centring pass against [contentRoot]. No-op once the gate has latched on a settled
+     * union, or while the content bounds are still empty / degenerate (async loads not finished).
+     * On a frame where the union diagonal materially changed, the content root is translated so
+     * the content centroid lands at its parent origin; the gate latches once that diagonal settles
+     * across consecutive frames.
      *
      * **Threading:** must run on the main thread — it reads and writes Filament transforms.
      *
      * @return `true` if this call performed the centring translation.
      */
     fun maybeCenter(contentRoot: Node): Boolean {
-        if (didCenter) return false
+        if (!gate.shouldRun(hasContent = true)) return false
         // Bounds in content-root-local space so they are invariant of any rotation / scale the
         // camera manipulator applies to the scene each frame.
         val bounds = computeContentBounds(contentRoot, relativeTo = contentRoot)
         if (bounds.isEmpty) return false
         val maxExtent = maxOf(bounds.extents.x, bounds.extents.y, bounds.extents.z)
         if (!maxExtent.isFinite() || maxExtent <= AUTO_CENTER_MIN_VISUAL_EXTENT) return false
-        contentRoot.position = -bounds.center
-        didCenter = true
-        return true
+        val diagonal = bounds.diagonal
+        val framed = gate.shouldFrame(diagonal)
+        if (framed) contentRoot.position = -bounds.center
+        gate.recordFraming(diagonal)
+        return framed
     }
 
     /**
-     * Resets the one-shot flag so the next frame re-runs the centring pass. Call this when the
-     * scene content changes (a new content-hash) so newly loaded models get re-centred.
+     * Resets the gate so the next frame re-runs the centring pass from scratch. Call this when the
+     * scene content is *replaced* so a shrinking union still re-centres — a growing union already
+     * re-frames automatically via the diagonal-stability gate.
      */
     fun reset() {
-        didCenter = false
+        gate.reset()
     }
 }

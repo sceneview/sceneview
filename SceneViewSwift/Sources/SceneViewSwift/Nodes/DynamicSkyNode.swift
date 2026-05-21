@@ -297,11 +297,20 @@ public struct DynamicSkyNode: Sendable {
         )
         #endif
 
+        // `isRealWorldProxy:` is `@available(visionOS, unavailable)` — visionOS
+        // uses the plain `init(color:intensity:)` (equivalent to `false`).
+        #if os(visionOS)
+        light.light = DirectionalLightComponent(
+            color: color,
+            intensity: state.intensity
+        )
+        #else
         light.light = DirectionalLightComponent(
             color: color,
             intensity: state.intensity,
             isRealWorldProxy: false
         )
+        #endif
         if castsShadow {
             light.shadow = DirectionalLightComponent.Shadow(
                 maximumDistance: 8,

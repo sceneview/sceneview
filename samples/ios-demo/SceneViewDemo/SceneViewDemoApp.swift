@@ -13,7 +13,7 @@ extension NSColor {
 }
 #endif
 
-/// 3D & AR Explorer — Explore, visualize, and interact with 3D models.
+/// SceneView — Explore, visualize, and interact with 3D models.
 ///
 /// Browse a curated gallery of 3D models, view them in augmented reality,
 /// save favorites, and share screenshots with friends.
@@ -99,7 +99,7 @@ struct ContentView: View {
                 .accessibilityLabel("About This App")
         }
         .tint(SceneViewTheme.primary)
-        .onChange(of: pendingDeepLinkDemo) { newId in
+        .onChange(of: pendingDeepLinkDemo) { _, newId in
             guard let id = newId else { return }
             // Switch to the Samples tab so the deep-link surface feels
             // contextual; then present the demo above it as a modal so we

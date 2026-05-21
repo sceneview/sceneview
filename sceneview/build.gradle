@@ -122,6 +122,9 @@ dependencies {
 
     // Unit tests (JVM)
     testImplementation 'junit:junit:4.13.2'
+    // Kotlin reflection — used by SceneAutoFitWiringTest to assert the public `SceneView`
+    // composable actually declares the `autoFitContent` parameter (#1595 regression pin).
+    testImplementation "org.jetbrains.kotlin:kotlin-reflect"
 
     // Instrumented tests
     androidTestImplementation libs.androidx.test.junit

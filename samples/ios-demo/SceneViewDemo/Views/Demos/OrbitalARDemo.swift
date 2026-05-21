@@ -208,28 +208,36 @@ struct OrbitalARDemo: View {
         // Invalidate any prior timer (e.g. session re-start) to avoid stacking ticks.
         orbitTimer?.invalidate()
         let start = Date()
+        // The Timer fires on the main run loop, but its closure is `@Sendable`,
+        // so the body must explicitly hop onto the main actor before touching
+        // main-actor state (`Self.planets`, `loadedNodes`, `position(for:time:)`).
+        // `MainActor.assumeIsolated` is correct here — the closure already runs
+        // on the main thread (the timer is added to `RunLoop.main`) — and it
+        // keeps the per-frame update synchronous, with no scheduling latency.
         let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
-            let now = Date().timeIntervalSince(start)
-            for (index, planet) in Self.planets.enumerated() {
-                guard let node = loadedNodes[index] else { continue }
-                node.entity.position = position(for: planet, time: Float(now))
-                // Models with a baked animation (dragon, phoenix) face the tangent
-                // of the orbit (= direction of motion) instead of spinning on Y —
-                // a flying creature pirouetting on itself breaks the illusion.
-                // The orbit angle modulo 2π is the same precision guard as #978.
-                let orbitAngle = (planet.initialAngle + planet.orbitSpeed * Float(now))
-                    .truncatingRemainder(dividingBy: 2 * .pi)
-                let yawAngle: Float
-                if planet.hasBakedAnimation {
-                    // For position (R·cos θ, h, R·sin θ) on a CCW orbit, the tangent
-                    // is (-sin θ, 0, cos θ). For a USDZ whose forward is -Z, that
-                    // maps to a Y-rotation of θ + π.
-                    yawAngle = orbitAngle + .pi
-                } else {
-                    yawAngle = (planet.spinSpeed * Float(now))
+            MainActor.assumeIsolated {
+                let now = Date().timeIntervalSince(start)
+                for (index, planet) in Self.planets.enumerated() {
+                    guard let node = loadedNodes[index] else { continue }
+                    node.entity.position = position(for: planet, time: Float(now))
+                    // Models with a baked animation (dragon, phoenix) face the tangent
+                    // of the orbit (= direction of motion) instead of spinning on Y —
+                    // a flying creature pirouetting on itself breaks the illusion.
+                    // The orbit angle modulo 2π is the same precision guard as #978.
+                    let orbitAngle = (planet.initialAngle + planet.orbitSpeed * Float(now))
                         .truncatingRemainder(dividingBy: 2 * .pi)
+                    let yawAngle: Float
+                    if planet.hasBakedAnimation {
+                        // For position (R·cos θ, h, R·sin θ) on a CCW orbit, the tangent
+                        // is (-sin θ, 0, cos θ). For a USDZ whose forward is -Z, that
+                        // maps to a Y-rotation of θ + π.
+                        yawAngle = orbitAngle + .pi
+                    } else {
+                        yawAngle = (planet.spinSpeed * Float(now))
+                            .truncatingRemainder(dividingBy: 2 * .pi)
+                    }
+                    node.entity.orientation = simd_quatf(angle: yawAngle, axis: .init(0, 1, 0))
                 }
-                node.entity.orientation = simd_quatf(angle: yawAngle, axis: .init(0, 1, 0))
             }
         }
         RunLoop.main.add(timer, forMode: .common)

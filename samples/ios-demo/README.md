@@ -1,4 +1,4 @@
-# 3D & AR Explorer
+# SceneView
 
 SwiftUI app for iOS and macOS — browse 3D models, view them in augmented reality, save favorites, and share screenshots.
 
@@ -37,8 +37,8 @@ xcrun simctl openurl booted sceneview://demo/ar-rerun
 xcrun simctl openurl booted sceneview://demo/model-viewer
 ```
 
-This is what the `qa-ios-demos.sh` capture flow (parallel to the Android
-one) uses to script through every demo for screenshot automation.
+This is what the `.claude/scripts/ios-device-qa.sh` capture flow (parallel to
+the Android one) uses to script through every demo for screenshot automation.
 
 ### Universal Link (works on device once App-Links verification ships)
 

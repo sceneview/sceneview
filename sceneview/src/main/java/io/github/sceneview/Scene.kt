@@ -126,6 +126,14 @@ import io.github.sceneview.node.findActivity
  *                              separate parameters, never DSL children, so they are unaffected.
  *                              Mirrors the iOS `autoCenterContent` feature (#1026). Pass `false`
  *                              for scenes with intentional off-centre placement.
+ * @param autoFitContent        When `true`, the library moves [cameraNode] so the DSL [content]
+ *                              fills the viewport — regardless of the model's intrinsic glTF size,
+ *                              with no per-model `scaleToUnits` tuning (#1439). The pass re-frames
+ *                              whenever an async model grows the content's union bounds and
+ *                              latches once that union has settled, then leaves the camera alone
+ *                              so subsequent user zoom / pan is never fought. Default `false` so
+ *                              callers that position [cameraNode] explicitly keep full control;
+ *                              opt in for model-viewer style scenes.
  * @param renderer              Filament [Renderer]. Use [rememberRenderer].
  * @param scene                 Filament [Scene] graph, shareable across views. Use [rememberScene].
  * @param environment           IBL + skybox environment. Use [rememberEnvironment].
@@ -197,6 +205,16 @@ fun SceneView(
      * strict per-node placement semantics for scenes with intentional off-centre composition.
      */
     autoCenterContent: Boolean = true,
+    /**
+     * When `true`, the library moves [cameraNode] each frame the DSL [content]'s union bounds
+     * materially change so the content fills the viewport — regardless of the model's intrinsic
+     * glTF size, no per-model `scaleToUnits` tuning (#1439). The auto-fit pass latches once the
+     * content's union diagonal has settled across consecutive frames, then leaves the camera alone
+     * so the user's zoom / pan is never fought. An async model that finishes loading after a
+     * sibling already framed still triggers a re-frame. Default `false` so callers that position
+     * [cameraNode] explicitly keep full control — opt in for model-viewer style scenes.
+     */
+    autoFitContent: Boolean = false,
     /**
      * A [Renderer] instance represents an operating system's window.
      * Typically, applications create a [Renderer] per window.
@@ -349,6 +367,15 @@ fun SceneView(
     val contentRoot = remember(engine) { Node(engine) }
     val autoCenterState = remember { SceneAutoCenterState() }
 
+    // ── Auto-fit camera framing (#1439 — drives the autoFitContent parameter) ────────────────────
+    //
+    // One-shot-per-content auto-fit: each frame the content's union bounds materially change the
+    // camera is moved so the content fills the viewport, then the pass latches once that union has
+    // settled (diagonal-stability gate — #1596). When `autoCenterContent` is on, framing measures
+    // the single `contentRoot` subtree; when it is off the DSL nodes register directly so framing
+    // unions every registered child node instead.
+    val autoFitState = remember { SceneAutoFitState() }
+
     DisposableEffect(autoCenterContent, contentRoot) {
         if (autoCenterContent) {
             nodeManager.addNode(contentRoot)
@@ -373,11 +400,15 @@ fun SceneView(
                     if (node.parent == contentRoot) node.parent = null
                 }
                 (newNodes - prevNodes.toSet()).forEach { node -> node.parent = contentRoot }
-                // Content changed — re-run the one-shot centering on the next non-empty frame.
+                // Content changed — re-arm centering / framing so a replaced (possibly smaller)
+                // scene re-frames. A growing union already re-frames via the diagonal gate.
                 autoCenterState.reset()
+                autoFitState.reset()
             } else {
                 (prevNodes - newNodes.toSet()).forEach { nodeManager.removeNode(it) }
                 (newNodes - prevNodes.toSet()).forEach { nodeManager.addNode(it) }
+                // Content changed — re-arm framing so a replaced scene re-frames.
+                autoFitState.reset()
             }
             prevNodes = newNodes
             childNodesRef.set(newNodes)
@@ -510,6 +541,9 @@ fun SceneView(
     // frame loop without restarting it (the loop's LaunchedEffect is keyed on engine/renderer/
     // view/scene only).
     val currentAutoCenterContent = rememberUpdatedState(autoCenterContent)
+    // Same for `autoFitContent` — the auto-fit pass is read through this ref so toggling the
+    // parameter at runtime is picked up by the frame loop without restarting it.
+    val currentAutoFitContent = rememberUpdatedState(autoFitContent)
 
     LaunchedEffect(engine, renderer, view, scene) {
         while (true) {
@@ -522,12 +556,31 @@ fun SceneView(
                     modelLoader.updateLoad()
                     childNodesRef.get().forEach { it.onFrame(frameTimeNanos) }
 
-                    // Library-level auto-center (#1026). One-shot: no-op once the content has been
-                    // centred, and skipped while the content bounds are still empty (async model
-                    // loads not finished). Runs here so it sees post-`updateLoad` geometry, on the
-                    // main render thread — Filament transform / renderable reads require it.
+                    // Library-level auto-center (#1026). No-op once the content union has settled
+                    // and the gate latched, and skipped while the content bounds are still empty
+                    // (async model loads not finished). Runs here so it sees post-`updateLoad`
+                    // geometry, on the main render thread — Filament transform / renderable reads
+                    // require it. The diagonal-stability gate (#1596) re-runs the pass when an
+                    // async model grows the union, so deferred models still re-centre.
                     if (currentAutoCenterContent.value) {
                         autoCenterState.maybeCenter(contentRoot)
+                    }
+
+                    // Library-level auto-fit camera framing (#1439). Drives the `autoFitContent`
+                    // parameter: moves the camera so the content fills the viewport. Only applied
+                    // when there is NO camera manipulator — an active orbit manipulator owns the
+                    // camera transform every frame (it is overwritten just below from
+                    // `manipulator.getTransform()`), so a static auto-fit reposition cannot
+                    // coexist with it without manipulator re-seeding. With no manipulator, this is
+                    // the canonical model-viewer one-shot framing. Runs after auto-center so it
+                    // frames the already-centred content; the diagonal-stability gate re-frames
+                    // when a deferred async model grows the union (#1596).
+                    if (currentAutoFitContent.value && currentCameraManipulator.value == null) {
+                        if (currentAutoCenterContent.value) {
+                            autoFitState.maybeFit(cameraNode, contentRoot)
+                        } else {
+                            autoFitState.maybeFit(cameraNode, childNodesRef.get())
+                        }
                     }
 
                     currentCameraManipulator.value?.let { manipulator ->
@@ -1399,6 +1452,7 @@ fun Scene(
     isOpaque: Boolean = true,
     renderQuality: RenderQuality = RenderQuality.Default,
     autoCenterContent: Boolean = true,
+    autoFitContent: Boolean = false,
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
@@ -1427,6 +1481,7 @@ fun Scene(
     isOpaque = isOpaque,
     renderQuality = renderQuality,
     autoCenterContent = autoCenterContent,
+    autoFitContent = autoFitContent,
     renderer = renderer,
     scene = scene,
     environment = environment,

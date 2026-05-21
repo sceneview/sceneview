@@ -90,7 +90,7 @@
             -->
 
             <!-- Custom scheme — works on every install, no verification needed. -->
-            <intent-filter android:label="Open in SceneView Demo">
+            <intent-filter android:label="Open in SceneView">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -107,7 +107,7 @@
                 io.github.sceneview.demo` (expected: "sceneview.github.io:
                 verified"); `pm verify-app-links` re-runs verification.
             -->
-            <intent-filter android:label="Open in SceneView Demo" android:autoVerify="true">
+            <intent-filter android:label="Open in SceneView" android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />

@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **CI: raise `Unit tests + coverage` and `CI Gate` timeouts ([#1554](https://github.com/sceneview/sceneview/issues/1554)).** The full JaCoCo pass runs close to the old 30-min job timeout on a slow runner; it tipped over on a release PR and cascaded a confusing double-red. The `Unit tests + coverage` job timeout is now 45 min, and the `CI Gate` aggregator's internal poll deadline (50 min) and job timeout (60 min) comfortably exceed it so a slow-but-succeeding job is seen as completing.

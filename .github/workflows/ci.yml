@@ -101,7 +101,7 @@ jobs:
       kmp: ${{ steps.filter.outputs.kmp }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           # Conservative bias (#1295): when unsure whether a path is in
@@ -196,6 +196,33 @@ jobs:
 
       - name: Lint
         run: ./gradlew :sceneview:lintDebug :arsceneview:lintDebug --stacktrace
+
+      # detekt is applied to every Kotlin Android/KMP subproject in
+      # build.gradle with a hand-tuned config (buildSrc/config/detekt/detekt.yml),
+      # but nothing ever invoked a detekt task. Scoped to the three library
+      # modules — same scope as the Android Lint step above.
+      #
+      # ADVISORY (continue-on-error) pending a baseline: detekt 1.23.8 is built
+      # against an older Kotlin Gradle Plugin and on the current toolchain
+      # (Kotlin 2.3.x / AGP 8.13.x) it applies its extension but registers no
+      # `detekt` task, so the first invocation hard-fails with "task not found".
+      # Until detekt is upgraded to a Kotlin-2.3-compatible release and a
+      # baseline is generated (`./gradlew detektBaseline`), this step runs for
+      # visibility/reporting only and does not gate PRs. Tracked in #1740.
+      - name: Detekt
+        continue-on-error: true
+        run: ./gradlew :sceneview:detekt :arsceneview:detekt :sceneview-core:detekt --stacktrace
+
+      - name: Upload detekt reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: detekt-reports
+          path: |
+            sceneview/build/reports/detekt/
+            arsceneview/build/reports/detekt/
+            sceneview-core/build/reports/detekt/
+          if-no-files-found: ignore
 
       - name: Upload lint reports
         if: failure()
@@ -552,17 +579,11 @@ jobs:
         # git history.
         uses: actions/checkout@v6
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          # PRs read the cache (no writes from forks). Pushes to main repopulate it.
-          cache-read-only: ${{ github.event_name != 'push' }}
+      # Shared composite: JDK 21 + Gradle cache + gradle-wrapper.jar SHA
+      # validation + chmod +x ./gradlew. Replaces the formerly hand-rolled
+      # setup-java / setup-gradle / chmod steps so this job also gets the
+      # wrapper-validation supply-chain guard every other Gradle job has (#1708).
+      - uses: ./.github/actions/setup-gradle
 
       - uses: ./.github/actions/setup-mcp
 
@@ -572,9 +593,6 @@ jobs:
       - name: Write local.properties
         # quality-gate.sh invokes ./gradlew, which needs sdk.dir on Linux runners.
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
 
       - name: Run quality gate
         shell: bash

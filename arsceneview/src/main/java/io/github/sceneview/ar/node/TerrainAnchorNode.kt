@@ -63,6 +63,11 @@ open class TerrainAnchorNode private constructor(
          * This launches an asynchronous operation used to query the Google Cloud ARCore API.
          * See [Future] for information on obtaining results and cancelling the operation.
          *
+         * Terrain anchor resolution hits Google Cloud and accrues a billing event whether
+         * the caller is still listening or not. **Always cancel the returned future when the
+         * UI scope is leaving** — e.g. from `DisposableEffect.onDispose { future?.cancel() }`
+         * in a Compose host.
+         *
          * You may resolve multiple anchors at a time, but a session cannot be tracking more than
          * 100 Terrain and Rooftop anchors at time. Attempting to resolve more than 100 Terrain or
          * Rooftop anchors will throw [ResourceExhaustedException].
@@ -109,7 +114,7 @@ open class TerrainAnchorNode private constructor(
             altitudeAboveTerrain: Double,
             eusQuaternion: Quaternion,
             onCompleted: (state: TerrainAnchorState, node: TerrainAnchorNode?) -> Unit
-        ) = session.earth?.resolveAnchorOnTerrainAsync(
+        ): com.google.ar.core.ResolveAnchorOnTerrainFuture? = session.earth?.resolveAnchorOnTerrainAsync(
             latitude,
             longitude,
             altitudeAboveTerrain,

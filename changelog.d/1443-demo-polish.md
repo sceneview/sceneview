@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- Android demo polish (#1443): demo-grid cards now carry a hairline `outlineVariant` border so their boundaries stay visible against the dark ParticleBackground; the Image Planes demo is staged as a three-picture wall gallery (framed procedural landscapes at varying depth and angle) instead of a single floating logo; the Billboard demo plants its billboard and fixed signs on a ground plane with an angled camera and explanatory caption so the orbit-time difference between the two node types is obvious.

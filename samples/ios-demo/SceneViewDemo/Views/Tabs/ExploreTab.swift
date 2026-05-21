@@ -1211,7 +1211,7 @@ struct ModelViewerScreen: View {
         }
 
         let activityVC = UIActivityViewController(
-            activityItems: [image, "Check out this 3D model in 3D & AR Explorer!"],
+            activityItems: [image, "Check out this 3D model in SceneView!"],
             applicationActivities: nil
         )
 

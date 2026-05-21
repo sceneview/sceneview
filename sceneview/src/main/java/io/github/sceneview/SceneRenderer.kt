@@ -176,6 +176,13 @@ class SceneRenderer(
             renderer.render(view)
             renderer.endFrame()
         }
+
+        // Destroy GPU resources whose grace period has elapsed. Runs after endFrame on the main
+        // (render) thread so Filament has reclaimed any MaterialInstance the texture was bound to —
+        // see EngineDestroyQueue (sceneview/sceneview#874). Driven here rather than from a
+        // Choreographer callback so it advances in lock-step with real rendered frames, and stops
+        // the moment the surface (and thus the render loop) goes away.
+        EngineDestroyQueue.of(engine).drain()
     }
 
     // ── Viewport ────────────────────────────────────────────────────────────────────────────────

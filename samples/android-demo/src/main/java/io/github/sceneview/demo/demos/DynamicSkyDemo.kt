@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -16,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.math.Position
@@ -100,37 +102,43 @@ fun DynamicSkyDemo(onBack: () -> Unit) {
             )
         }
     ) {
-        SceneView(
-            modifier = Modifier.fillMaxSize(),
-            onFrame = firstFrame.onFrame,
-            engine = engine,
-            modelLoader = modelLoader,
-            environmentLoader = environmentLoader,
-            environment = environment,
-            // Disable the constant 110 klx default main light so the DynamicSkyNode's SUN is
-            // the only directional contribution. The HDR IBL ambient fill keeps the helmet
-            // visible at night when the sun is below the horizon, and the matching skybox
-            // gives the user a clear visual feedback that time-of-day actually changed.
-            mainLightNode = null,
-            cameraManipulator = rememberCameraManipulator()
-        ) {
-            DynamicSkyNode(
-                timeOfDay = timeOfDay,
-                turbidity = turbidity,
-                // 500 klx (5x the default) so the sun visibly dominates even with the
-                // default IBL ambient — otherwise the neutral IBL's constant ~30 klx
-                // contribution masks the time-of-day changes on the metallic helmet
-                // (PBR reflections = mostly IBL). Bright sun = visible difference.
-                sunIntensity = 500_000f,
-            )
-
-            modelInstance?.let { instance ->
-                ModelNode(
-                    modelInstance = instance,
-                    scaleToUnits = 0.5f,
-                    position = Position(y = 0f)
+        Box(modifier = Modifier.fillMaxSize()) {
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                onFrame = firstFrame.onFrame,
+                engine = engine,
+                modelLoader = modelLoader,
+                environmentLoader = environmentLoader,
+                environment = environment,
+                // Disable the constant 110 klx default main light so the DynamicSkyNode's SUN is
+                // the only directional contribution. The HDR IBL ambient fill keeps the helmet
+                // visible at night when the sun is below the horizon, and the matching skybox
+                // gives the user a clear visual feedback that time-of-day actually changed.
+                mainLightNode = null,
+                cameraManipulator = rememberCameraManipulator()
+            ) {
+                DynamicSkyNode(
+                    timeOfDay = timeOfDay,
+                    turbidity = turbidity,
+                    // 500 klx (5x the default) so the sun visibly dominates even with the
+                    // default IBL ambient — otherwise the neutral IBL's constant ~30 klx
+                    // contribution masks the time-of-day changes on the metallic helmet
+                    // (PBR reflections = mostly IBL). Bright sun = visible difference.
+                    sunIntensity = 500_000f,
                 )
+
+                modelInstance?.let { instance ->
+                    ModelNode(
+                        modelInstance = instance,
+                        scaleToUnits = 0.5f,
+                        position = Position(y = 0f)
+                    )
+                }
             }
+            // Mirror every other helmet-loading demo: hold a scrim until the
+            // model instance is ready so the helmet's async pop-in is hidden
+            // behind a labelled placeholder instead of appearing on a bare sky.
+            LoadingScrim(loading = modelInstance == null, label = "Loading helmet…")
         }
     }
 }

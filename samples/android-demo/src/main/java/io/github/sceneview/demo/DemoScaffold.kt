@@ -120,6 +120,13 @@ enum class AssetSourceState { Streamed, Streaming, Bundled }
  *   timeout dismisses the scrim even if `onFrame` never fires. Demos that load
  *   models can still layer their own [LoadingScrim] spinner on top.
  *
+ *   All 3D (non-AR) demos wire `firstFrameRendered`. The AR demos
+ *   (`ARSceneView`-based: `AR*Demo` + `OrbitalARDemo`) **intentionally skip it**
+ *   — their viewport is the live camera feed, which appears instantly with no
+ *   cold-start black frame, and they already gate behind their own ARCore
+ *   permission / availability screens. Passing `firstFrameRendered = null`
+ *   from an AR demo is correct, not an oversight (#1361).
+ *
  * Stage 3 polish (#1154):
  * - `peekHeader` → a short status string (e.g. `"3 anchors placed"`) rendered on
  *   the closed peek chip in place of the generic "Settings" label. Mirrors the
@@ -262,9 +269,9 @@ private fun BoxScope.AssetSourceChip(state: AssetSourceState) {
 
 /**
  * Surface-tinted scrim that covers the 3D viewport until the SceneView presents
- * its first Filament frame (#1022). Without it, 13 of the demos render a black
+ * its first Filament frame (#1022). Without it, a 3D demo renders a black
  * viewport for 5–12 s on a cold start while shaders compile — which reads as a
- * crash to a first-time user.
+ * crash to a first-time user. All 3D demos wire it; AR demos skip it (#1361).
  *
  * The scrim is an opaque [MaterialTheme.colorScheme.surface] fill (light + dark
  * both covered by the theme token) carrying a small centred progress indicator.

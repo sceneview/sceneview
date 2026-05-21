@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `model-viewer` demo (registered by
+     `ModelViewerFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_model_viewer` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_model_viewer">Model Viewer</string>
+    <string name="demo_model_viewer_subtitle">Load and display 3D models</string>
+    <string name="demo_model_viewer_desc">Load and render glTF/GLB 3D models with orbit camera</string>
+    <string name="demo_model_viewer_loading">Loading model…</string>
+    <string name="demo_model_viewer_surprise">Surprise me</string>
+    <string name="demo_model_viewer_surprise_loading">Finding…</string>
+</resources>

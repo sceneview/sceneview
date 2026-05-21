@@ -235,30 +235,37 @@ private fun normalizeOrDefault(v: Position): Position {
 }
 
 /**
- * Mutable holder for the one-shot auto-fit framing pass. Lives in a Compose `remember` so the
- * "already framed" flag survives recomposition — the framing analogue of [SceneAutoCenterState].
+ * Mutable holder for the library-level auto-fit framing pass. Lives in a Compose `remember` so the
+ * gate state survives recomposition — the framing analogue of [SceneAutoCenterState].
  *
- * Drives the [SceneView] `autoFitContent` parameter: once the content's bounding box is
- * non-degenerate the camera is moved so the content fills the viewport, then the pass becomes a
- * no-op so the user's subsequent zoom / pan is never fought.
+ * Drives the [io.github.sceneview.SceneView] `autoFitContent` parameter: each frame the content's
+ * union bounds materially change the camera is moved so the content fills the viewport, then the
+ * pass latches once the union diagonal has settled so the user's subsequent zoom / pan is never
+ * fought.
+ *
+ * Backed by a [FramingGate]: the pass re-runs whenever an async model grows the content's union
+ * bounds, so a model that finishes loading after a sibling already framed still triggers a
+ * re-frame (#1596 / #1540) — it is not frozen on a stale first-frame latch.
  */
 class SceneAutoFitState {
-    /** `true` once [maybeFit] has framed the content. */
-    var didFit: Boolean = false
-        private set
+    private val gate = FramingGate()
+
+    /** `true` once the union diagonal has settled and the auto-fit pass has latched. */
+    val didFit: Boolean get() = gate.latched
 
     /**
-     * The orbit distance the last successful [maybeFit] computed. `0` until the content has been
+     * The orbit distance the last [maybeFit] framing computed. `0` until the content has been
      * framed. Camera manipulators can read this to seed their orbit radius.
      */
     var fitDistance: Float = 0f
         private set
 
     /**
-     * Runs the auto-fit pass against [contentRoot] for [cameraNode]. No-op once [didFit] is
-     * `true`, or while the content bounds are still empty / degenerate (async loads not
-     * finished). On success the camera is repositioned via [CameraNode.frameToContent], the
-     * computed [fitDistance] is recorded, and [didFit] flips to `true`.
+     * Runs the auto-fit pass against [contentRoot] for [cameraNode]. No-op once the gate has
+     * latched on a settled union, or while the content bounds are still empty / degenerate (async
+     * loads not finished). On a frame where the union diagonal materially changed the camera is
+     * repositioned via [CameraNode.frameToBounds] and the computed [fitDistance] is recorded; the
+     * gate latches once that diagonal settles across consecutive frames.
      *
      * **Threading:** must run on the main thread — reads and writes Filament state.
      *
@@ -286,8 +293,8 @@ class SceneAutoFitState {
         contentRoots: List<Node>,
         padding: Float = DEFAULT_FRAMING_PADDING
     ): Boolean {
-        if (didFit) return false
         if (contentRoots.isEmpty()) return false
+        if (!gate.shouldRun(hasContent = true)) return false
         // Measure each root's subtree against a shared reference: the first root. Single-root is
         // the common case (a SceneView content-root node); multi-root unions correctly because
         // `computeContentBounds` re-expresses each subtree in the reference's local space.
@@ -303,18 +310,23 @@ class SceneAutoFitState {
             padding = padding
         )
         if (distance <= 0f) return false
-        if (!cameraNode.frameToBounds(bounds, padding = padding)) return false
-        fitDistance = distance
-        didFit = true
-        return true
+        val diagonal = bounds.diagonal
+        val framed = gate.shouldFrame(diagonal)
+        if (framed) {
+            if (!cameraNode.frameToBounds(bounds, padding = padding)) return false
+            fitDistance = distance
+        }
+        gate.recordFraming(diagonal)
+        return framed
     }
 
     /**
-     * Resets the one-shot flag so the next frame re-runs the auto-fit pass. Call this when the
-     * scene content changes (a new content-hash) so newly loaded models get re-framed.
+     * Resets the gate so the next frame re-runs the auto-fit pass from scratch. Call this when the
+     * scene content is *replaced* so a shrinking union still re-frames — a growing union already
+     * re-frames automatically via the diagonal-stability gate.
      */
     fun reset() {
-        didFit = false
+        gate.reset()
         fitDistance = 0f
     }
 }

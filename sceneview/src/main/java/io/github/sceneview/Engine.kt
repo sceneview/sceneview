@@ -52,6 +52,10 @@ fun AssetLoader.safeDestroyModel(model: Model) {
 }
 
 fun Engine.safeDestroy() = runCatching {
+    // Drain the frame-deferred destroy queue first: once the Engine is gone the queued
+    // textures/streams can no longer be destroyed individually (sceneview/sceneview#874).
+    // The Engine reclaims everything below anyway, so the grace period no longer applies.
+    runCatching { EngineDestroyQueue.of(this).drainAll() }
     destroy()
     Log.d("Sceneview", "Engine destroyed")
 }

@@ -2,13 +2,12 @@ import SwiftUI
 
 /// Placeholder shown when the user taps a demo that is not yet ported to iOS.
 ///
-/// Mirrors an Android-only feature with a friendly "Coming soon" message, a version target,
-/// and links to track progress or try the equivalent on the Android demo app.
+/// Mirrors an Android-only feature with a friendly "Coming soon" message and
+/// links to track progress or try the equivalent on the Android demo app.
 struct ComingSoonScreen: View {
     let title: String
     let subtitle: String
     let icon: String
-    let version: String
 
     @Environment(\.dismiss) private var dismiss
 
@@ -42,7 +41,7 @@ struct ComingSoonScreen: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
 
-                    Text("Coming in v\(version)")
+                    Text("Coming soon")
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
@@ -91,8 +90,7 @@ struct ComingSoonScreen: View {
         ComingSoonScreen(
             title: "Gesture Editing",
             subtitle: "Move, scale, and rotate models with one-finger drag, pinch, and rotate gestures.",
-            icon: "hand.pinch.fill",
-            version: "1.1"
+            icon: "hand.pinch.fill"
         )
     }
 }

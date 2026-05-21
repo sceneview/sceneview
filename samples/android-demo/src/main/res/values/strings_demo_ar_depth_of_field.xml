@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `ar-depth-of-field` demo (registered by `ArDepthOfFieldFragment.kt`).
+     Android's resource merger fans every `res/values/*.xml` file in, so
+     `R.string.demo_ar_depth_of_field_title` etc. remains globally resolvable. -->
+<resources>
+    <string name="demo_ar_depth_of_field_title">AR Depth of Field</string>
+    <string name="demo_ar_depth_of_field_subtitle">Tap to focus — real-world bokeh blur</string>
+</resources>

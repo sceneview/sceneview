@@ -1,0 +1,20 @@
+# Maestro flow — "Interaction" iOS demo category.
+#
+# Run a fast subset of the iOS device-QA harness:
+#   maestro test .maestro/ios/interaction.yaml
+#
+# Only `camera-controls` is ported to iOS today; the Android Interaction
+# category's `gesture-editing` / `collision` / `view-node` demos are still
+# "Coming soon" on iOS (see SamplesTab.allScenes()). `gesture-editing` is a
+# registered deep-link id without a destination, so it routes to the
+# `DeepLinkPlaceholder` and is covered by placeholders.yaml.
+#
+# Demo ids mirror Android `DemoRegistry.kt` ALL_DEMOS.
+appId: io.github.sceneview.demo
+---
+- runFlow:
+    file: flows/demo-settings.yaml
+    env:
+      DEMO_ID: camera-controls
+      DEMO_NAME: Camera Controls
+      ASSERT_TEXT: "Recenter pivot on orbit"

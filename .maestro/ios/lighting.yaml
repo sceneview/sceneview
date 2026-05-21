@@ -1,0 +1,39 @@
+# Maestro flow — "Lighting & Environment" iOS demo category.
+#
+# Run a fast subset of the iOS device-QA harness:
+#   maestro test .maestro/ios/lighting.yaml
+#
+# Each demo is exercised by the reusable flows/demo.yaml subflow. Demo ids are
+# the subset of Android `DemoRegistry.kt` ALL_DEMOS that
+# `DemoDeepLinkRegistry.allowedIds` exposes for `sceneview://demo/<id>` on iOS.
+#
+# Note — `environment` is a registered deep-link id but has no iOS destination
+# wired in `DemoDeepLinkRegistry`, so it routes to the `DeepLinkPlaceholder`
+# (not a real demo). It is covered by content.yaml's placeholder smoke set
+# rather than here, to keep this flow purely the lighting demos that exist.
+appId: io.github.sceneview.demo
+---
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: lighting
+      DEMO_NAME: Light Types
+      ASSERT_TEXT: "Directional"
+- runFlow:
+    file: flows/demo-settings.yaml
+    env:
+      DEMO_ID: movable-light
+      DEMO_NAME: Movable Light
+      ASSERT_TEXT: "Show light source"
+- runFlow:
+    file: flows/demo-settings.yaml
+    env:
+      DEMO_ID: dynamic-sky
+      DEMO_NAME: Dynamic Sky
+      ASSERT_TEXT: "12:00"
+- runFlow:
+    file: flows/demo-settings.yaml
+    env:
+      DEMO_ID: fog
+      DEMO_NAME: Fog
+      ASSERT_TEXT: "Density"

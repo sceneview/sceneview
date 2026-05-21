@@ -241,7 +241,12 @@ jobs:
           # Pinned exact versions — this job runs with APP_STORE_CONNECT_API_KEY
           # in env, so a compromised PyPI release must not be pullable here (#1230).
           # Deps live in a requirements file so Dependabot can track/bump them (#1286).
-          $RUNNER_TEMP/asc-venv/bin/pip install -r .github/workflows/requirements/app-store.txt --quiet
+          # Absolute path via $GITHUB_WORKSPACE — this job sets
+          # `working-directory: samples/ios-demo`, so a repo-root-relative
+          # path would not resolve and the pip install would fail (silently,
+          # since this step is `continue-on-error`), skipping every App Store
+          # submission since #1286.
+          $RUNNER_TEMP/asc-venv/bin/pip install -r "$GITHUB_WORKSPACE/.github/workflows/requirements/app-store.txt" --quiet
 
           # Wait for Apple to process the build
           echo "Waiting 120s for Apple to process the build..."
@@ -287,10 +292,14 @@ jobs:
           # ASC_VERSION_STRING via env (e.g. "v4.2.0"). Drop the leading "v"
           # via `removeprefix` (Py 3.9+, exact single-occurrence strip — we
           # don't want `lstrip("v")` which would eat any number of leading
-          # v's). Fall back to the build's own version (which xcodebuild
-          # stamps from the Marketing Version field — itself bumped per
-          # release) when ASC_VERSION_STRING is empty (manual
-          # workflow_dispatch case).
+          # v's). On manual workflow_dispatch (no tag, ASC_VERSION_STRING
+          # empty), fall back to the marketing version declared in the
+          # repo's root `gradle.properties` (`VERSION_NAME=X.Y.Z`) — that
+          # is also what `MARKETING_VERSION` is built from. The earlier
+          # fallback to the build's own version was wrong: xcodebuild's
+          # `build_version` returns CFBundleVersion (the build number,
+          # e.g. `367`), not MARKETING_VERSION — which produced nonsense
+          # App Store version records named `367` (#1795).
           #
           # Apple's versionString validator accepts only clean `X` or `X.Y`
           # or `X.Y.Z` — pre-release suffixes like `4.2.0-rc.1` are rejected
@@ -300,11 +309,38 @@ jobs:
           # below would need a stripping step.
           version_string = (os.environ.get("ASC_VERSION_STRING") or "").removeprefix("v")
           if not version_string:
-              version_string = build_version
+              workspace = os.environ.get("GITHUB_WORKSPACE", os.path.join(os.path.dirname(__file__), "..", ".."))
+              gradle_properties = os.path.join(workspace, "gradle.properties")
+              try:
+                  with open(gradle_properties) as f:
+                      for line in f:
+                          if line.startswith("VERSION_NAME="):
+                              version_string = line.split("=", 1)[1].strip()
+                              break
+              except OSError as e:
+                  print(f"::warning::Could not read VERSION_NAME from {gradle_properties}: {e}")
+              if not version_string:
+                  # Last-resort fallback: build's own version (CFBundleVersion).
+                  # Should never be hit in practice — gradle.properties is the
+                  # single source of truth and is always present in the repo.
+                  print(f"::warning::Falling back to build version {build_version} — VERSION_NAME not resolvable")
+                  version_string = build_version
           print(f"Target App Store versionString: {version_string}")
 
           # 3. Get or create the app store version
-          r = requests.get(f"{BASE}/apps/{app_id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW", headers=headers)
+          # Embed the linked appStoreVersionSubmission in the response via
+          # `include` (JSON:API). This is the only Apple-supported way for
+          # this service-account tier to learn the submission's ID — both
+          # the to-one related-resource endpoint
+          # (`/appStoreVersions/{id}/appStoreVersionSubmission`) and a
+          # filter on the top-level collection
+          # (`/appStoreVersionSubmissions?filter[appStoreVersion]={id}`)
+          # were tested in #1831 v1/v2 and return 404 / 403 respectively
+          # for our key.
+          r = requests.get(
+              f"{BASE}/apps/{app_id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW&include=appStoreVersionSubmission",
+              headers=headers,
+          )
           versions = r.json().get("data", [])
           # Pick a version record that already targets our versionString,
           # otherwise fall back to the first editable one if any, otherwise
@@ -312,11 +348,42 @@ jobs:
           # previously-hardcoded "4.0.3" trap where any unrelated editable
           # version would get hijacked for an unrelated build.
           version_id = None
+          matched_version = None
           for v in versions:
               if v.get("attributes", {}).get("versionString") == version_string:
                   version_id = v["id"]
+                  matched_version = v
                   print(f"Using matching version record: {version_id}")
                   break
+          if not version_id:
+              # No record for our versionString. Apple allows only ONE
+              # version in an editable state at a time, so if a stale
+              # PREPARE_FOR_SUBMISSION draft exists (e.g. a release whose
+              # submission never completed), creating a second one would
+              # 409. Reuse that draft and retarget its versionString
+              # instead — this is the "fall back to the first editable
+              # one" behaviour, and it lets a release absorb an abandoned
+              # draft without a manual App Store Connect cleanup.
+              stale = next(
+                  (v for v in versions
+                   if v.get("attributes", {}).get("appStoreState") == "PREPARE_FOR_SUBMISSION"),
+                  None,
+              )
+              if stale:
+                  version_id = stale["id"]
+                  matched_version = stale
+                  stale_vs = stale.get("attributes", {}).get("versionString")
+                  r = requests.patch(
+                      f"{BASE}/appStoreVersions/{version_id}",
+                      headers=headers,
+                      json={"data": {
+                          "type": "appStoreVersions",
+                          "id": version_id,
+                          "attributes": {"versionString": version_string},
+                      }},
+                  )
+                  r.raise_for_status()
+                  print(f"Reused editable draft {version_id}: retargeted {stale_vs} → {version_string}")
           if not version_id:
               payload = {
                   "data": {
@@ -479,6 +546,49 @@ jobs:
               print(f"::warning::Failed to update App Store localization: {e}")
 
           # 5. Submit for review
+          # If a previous run already POST'd a submission against this same
+          # version record (typical when the #1687 + #1795 absorption
+          # retargets a stranded draft — its old submission stays attached),
+          # a second CREATE returns 403 FORBIDDEN_ERROR with
+          # "Allowed operation is: DELETE". DELETE the existing submission
+          # first so the POST below is idempotent (#1831).
+          #
+          # Both probe attempts in earlier #1831 versions failed because of
+          # service-account permission limits:
+          #   v1 used `/appStoreVersions/{id}/relationships/...` (404 — not
+          #     exposed by Apple).
+          #   v2 used `/appStoreVersionSubmissions?filter[...]` (403 — not
+          #     permitted for this key) and the related-resource form
+          #     `/appStoreVersions/{id}/appStoreVersionSubmission` (404 —
+          #     ditto when no submission attached, but also when one IS
+          #     attached if the key can't read it directly).
+          #
+          # v3 uses Apple-standard JSON:API `include`: the initial GET of
+          # the appStoreVersions list (above) passes
+          # `&include=appStoreVersionSubmission`, which embeds the linked
+          # submission's `id` inside the version's `relationships` block.
+          # No extra round-trip, no probe endpoint required.
+          existing_sub_id = None
+          if matched_version:
+              try:
+                  rel = matched_version.get("relationships", {}).get("appStoreVersionSubmission", {})
+                  data = rel.get("data")
+                  if isinstance(data, dict):
+                      existing_sub_id = data.get("id")
+              except Exception as e:
+                  print(f"::warning::Failed to read submission relationship from version record: {e}")
+          if existing_sub_id:
+              try:
+                  d = requests.delete(f"{BASE}/appStoreVersionSubmissions/{existing_sub_id}", headers=headers)
+                  if d.status_code in (200, 204):
+                      print(f"Deleted stale submission {existing_sub_id} before re-creating")
+                  else:
+                      print(f"::warning::Stale submission {existing_sub_id} DELETE returned {d.status_code} - {d.text[:200]} — CREATE may still 403")
+              except Exception as e:
+                  print(f"::warning::DELETE of stale submission {existing_sub_id} failed: {e}")
+          else:
+              print("No stale appStoreVersionSubmission attached — proceeding with fresh CREATE")
+
           payload = {
               "data": {
                   "type": "appStoreVersionSubmissions",

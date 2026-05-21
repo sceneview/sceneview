@@ -47,6 +47,10 @@ class SceneView private constructor(
     private var isRunning = false
     private var lastTimestamp = 0.0
 
+    /** Monotonic counter for synthesising unique tracker keys for un-keyed
+     *  (procedural geometry) assets — see [loadedAssets]. */
+    private var assetKeySeq = 0
+
     private val models = mutableListOf<LoadedModel>()
     private var assetLoader: AssetLoader? = null
     private val lightEntities = mutableListOf<Entity>()
@@ -68,6 +72,20 @@ class SceneView private constructor(
      */
     private val skybox = EnvironmentResourceTracker<Skybox> {
         engine.destroySkybox(it)
+    }
+
+    /**
+     * Single owner of every gltfio [FilamentAsset] live in the scene — both
+     * URL-loaded models ([loadModel], keyed by URL) and procedural geometry
+     * ([addGeometry], keyed by a synthetic id). Destroying a replaced asset
+     * before adopting its successor stops the #1597 GPU leak (a 2nd `loadModel`
+     * of the same URL previously orphaned the prior asset), and [release] tears
+     * down everything still held at [destroy] time. Mirrors the
+     * [indirectLight] / [skybox] leak-free-swap pattern of #1496.
+     */
+    private val loadedAssets = AssetResourceTracker<FilamentAsset> { asset ->
+        scene.removeEntities(asset.getEntities())
+        assetLoader?.destroyAsset(asset)
     }
 
     /**
@@ -101,6 +119,15 @@ class SceneView private constructor(
         var animationTime: Double = 0.0
     ) {
         /**
+         * `false` until `loadResources` has finished populating this asset's
+         * renderable buffers/textures. While `false` the model's
+         * `getBoundingBox()` reports a degenerate/wrong box, so the auto-center
+         * pass ([refreshContentCentering] via [contentBoxes]) must exclude it —
+         * otherwise it frames the scene on an unreadable diagonal (#1597).
+         */
+        var loaded: Boolean = false
+
+        /**
          * The asset's root-entity transform *before* any auto-center offset
          * was applied — captured the first frame [refreshContentCentering]
          * touches this model. The auto-center pass re-runs every time a
@@ -110,6 +137,20 @@ class SceneView private constructor(
          * Filament.js represents a mat4 as a flat 16-element `number[]`.
          */
         var baseTransform: dynamic = null
+
+        /**
+         * `true` once this model's [asset] has been destroyed — either
+         * replaced by a 2nd `loadModel` of the same URL, or torn down by
+         * [destroy]. Set the instant the asset is freed so the still-pending
+         * `loadResources(onDone=...)` callback can detect it: a stale `onDone`
+         * for a superseded model must become a safe no-op and never touch the
+         * freed `FilamentAsset` (`releaseSourceData()`), never flip [loaded],
+         * and never re-arm the auto-center gate. Without this guard a quick
+         * `loadModel(url)` → `loadModel(url)` (or `destroy()`) before the
+         * first load's resources finish is a use-after-free on the WASM
+         * heap (#1597 Tier-2 review).
+         */
+        var superseded: Boolean = false
     }
 
     /** Orbit camera controller -- initialized when cameraControls is enabled. */
@@ -307,6 +348,23 @@ class SceneView private constructor(
         }.then { buffer ->
             val asset = loader.createAsset(buffer)
             if (asset != null) {
+                // #1597: a 2nd loadModel of the same URL must release the prior
+                // asset for this logical model before adopting the replacement,
+                // otherwise the previous FilamentAsset leaks on the GPU. The
+                // tracker's destroyer also removes the old entities from the
+                // scene. Drop the stale LoadedModel from `models` here too so
+                // the render loop / auto-center pass never touch a freed asset.
+                //
+                // #1597 (Tier-2): the prior model's `loadResources` may still
+                // be in flight — flag it `superseded` so its pending `onDone`
+                // becomes a no-op instead of touching the asset we destroy
+                // below via `replaceWith` (use-after-free on the WASM heap).
+                loadedAssets.current(url)?.let { prior ->
+                    models.removeAll { stale ->
+                        (stale.asset == prior).also { if (it) stale.superseded = true }
+                    }
+                }
+
                 // Add all entities to the scene so they become visible
                 val entities = asset.getEntities()
                 scene.addEntities(entities)
@@ -320,6 +378,7 @@ class SceneView private constructor(
 
                 val loadedModel = LoadedModel(asset, animator)
                 models.add(loadedModel)
+                loadedAssets.replaceWith(url, asset)
 
                 // A new model changes the content bounds, so the auto-center pass
                 // must re-frame. The #1391-style diagonal-stability gate already
@@ -333,8 +392,28 @@ class SceneView private constructor(
                 // This is REQUIRED for models to render with correct materials.
                 asset.loadResources(
                     onDone = {
+                        // #1597 (Tier-2): if a 2nd loadModel of this URL — or
+                        // destroy() — replaced/freed `asset` before its
+                        // resources finished, this callback is stale. Bail out
+                        // before touching the freed FilamentAsset: no
+                        // releaseSourceData() on a dead handle, no `loaded`
+                        // flip, no gate reset, no onLoaded for a model that is
+                        // no longer in the scene.
+                        if (loadedModel.superseded) {
+                            console.log(
+                                "SceneView: dropped stale loadResources for $url " +
+                                    "(asset superseded before resources finished)",
+                            )
+                            return@loadResources
+                        }
                         // Release the source glTF data now that resources are loaded
                         asset.releaseSourceData()
+                        // #1597: only now is getBoundingBox() readable — mark the
+                        // model loaded so the auto-center pass starts including it.
+                        loadedModel.loaded = true
+                        // The model just became framable — re-arm the gate so the
+                        // auto-center pass re-frames on this freshly readable box.
+                        autoCenterGate.reset()
                         console.log("SceneView: Model loaded from $url (${entities.size} entities)")
                         onLoaded?.invoke(asset)
                     },
@@ -460,7 +539,12 @@ class SceneView private constructor(
                     null
                 }
 
-                models.add(LoadedModel(asset, animator))
+                val loadedModel = LoadedModel(asset, animator)
+                models.add(loadedModel)
+                // Track for leak-free teardown (#1597). Geometry has no logical
+                // URL identity, so synthesise a unique key — each primitive is
+                // a distinct asset, never a replacement.
+                loadedAssets.replaceWith("geometry#${assetKeySeq++}", asset)
 
                 // Re-arm the auto-center pass — a new primitive grows the union
                 // bounds. The diagonal-stability gate also re-frames on its own
@@ -471,7 +555,19 @@ class SceneView private constructor(
                 // Finalize the asset — loadResources uploads vertex/index buffers to GPU.
                 // Even for self-contained GLBs (no external resources), this step is required.
                 asset.loadResources(
-                    onDone = { asset.releaseSourceData() },
+                    onDone = {
+                        // #1597 (Tier-2): destroy() can free this geometry
+                        // asset before its buffers finish uploading — guard
+                        // the stale callback so it never touches a dead
+                        // FilamentAsset. (Geometry has a unique key so it is
+                        // never replaced, but teardown still races it.)
+                        if (loadedModel.superseded) return@loadResources
+                        asset.releaseSourceData()
+                        // #1597: getBoundingBox() is only readable post-load —
+                        // mark loaded so the auto-center pass includes it.
+                        loadedModel.loaded = true
+                        autoCenterGate.reset()
+                    },
                     onFetched = null,
                     basePath = "",
                     asyncInterval = null
@@ -495,15 +591,21 @@ class SceneView private constructor(
     }
 
     /**
-     * Read every loaded asset's asset-space AABB as [ContentCentering.Aabb]s.
+     * Read every *fully loaded* asset's asset-space AABB as
+     * [ContentCentering.Aabb]s.
      *
-     * `getBoundingBox()` reports a degenerate/empty box until `loadResources()`
-     * has populated the renderables; an unreadable box (resources still in
-     * flight) is surfaced once and skipped so the pass retries next frame.
+     * `getBoundingBox()` reports a degenerate/wrong box until `loadResources()`
+     * has populated the renderables, so a model whose [LoadedModel.loaded] flag
+     * is still `false` is excluded entirely — this is the #1597 fix: the
+     * auto-center pass must never frame the scene on a not-yet-loaded model's
+     * unreadable diagonal. The defensive `try/catch` stays as a second guard.
      * Shared by [fitToModels] and [refreshContentCentering] so the union-AABB
      * read happens exactly once per call site instead of being duplicated.
      */
     private fun contentBoxes(): List<ContentCentering.Aabb> = models.mapNotNull { model ->
+        // #1597: skip models whose resources are still in flight — their box is
+        // not yet readable, so including them would frame on a wrong diagonal.
+        if (!model.loaded) return@mapNotNull null
         try {
             val aabb = model.asset.getBoundingBox()
             val mn: dynamic = aabb.min
@@ -662,15 +764,30 @@ class SceneView private constructor(
         stopRendering()
         cameraController?.dispose()
 
-        // Destroy loaded assets
-        assetLoader?.let { loader ->
-            models.forEach { loader.destroyAsset(it.asset) }
-            loader.delete()
-        }
+        // #1597 (Tier-2): mark every model superseded BEFORE releasing its
+        // asset so any in-flight loadResources callback that fires after
+        // teardown is a no-op instead of a use-after-free on a freed
+        // FilamentAsset.
+        models.forEach { it.superseded = true }
+
+        // Destroy every loaded gltfio asset (#1597). The tracker is the single
+        // owner of all live FilamentAssets — URL models and geometry alike —
+        // so this releases each exactly once, including any not yet covered by
+        // the per-replace destroy. The `models` list is then purely render
+        // state and just needs clearing.
+        loadedAssets.release()
+        assetLoader?.delete()
         models.clear()
 
-        // Destroy light entities
-        lightEntities.forEach { engine.destroyEntity(it) }
+        // Destroy light entities. The LightManager component is a separately
+        // managed native allocation — destroying the entity alone leaks it
+        // (#1700), mirroring the Android LightNode.destroy() teardown. Destroy
+        // the component first, then the entity.
+        val lightManager = engine.getLightManager()
+        lightEntities.forEach { entity ->
+            if (lightManager.hasComponent(entity)) lightManager.destroy(entity)
+            engine.destroyEntity(entity)
+        }
         lightEntities.clear()
 
         // Destroy the environment GPU resources — IBL + skybox (issue #1496).
@@ -736,14 +853,11 @@ class SceneView private constructor(
                         // Loop the animation
                         model.animationTime = model.animationTime % duration
                     }
-                    // In Filament.js, applyAnimation only takes the index.
-                    // The animation time is set by calling the animator at the right moment.
-                    // Actually, the gltfio$Animator.applyAnimation(index) applies the animation
-                    // at the CURRENT time set internally -- we need to advance it.
-                    // The proper way is: animator.applyAnimation(index) after setting time
-                    // via the asset's animation system.
-                    // For Filament.js, we use the asset instance animator which tracks time internally.
-                    animator.applyAnimation(0)
+                    // Apply animation 0 at the accumulated (looped) time so
+                    // skeletal/keyframe animations actually advance. The time
+                    // argument is mandatory — without it the animator re-applies
+                    // every frame at t=0 and the model renders frozen (#1697).
+                    animator.applyAnimation(0, model.animationTime)
                     animator.updateBoneMatrices()
                 }
             }

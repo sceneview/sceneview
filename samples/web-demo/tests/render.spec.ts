@@ -1,13 +1,17 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, sampleCanvas } from './helpers';
 
 /**
- * SceneView Web Demo — visual regression tests.
+ * SceneView Web Demo — visual regression / smoke tests.
  *
  * These tests load the web demo page, wait for the Filament engine to
  * initialize, and capture screenshots for visual comparison.
  *
  * Screenshots are stored in `tests/render.spec.ts-snapshots/` and compared
  * on subsequent runs. Update baselines with `--update-snapshots`.
+ *
+ * Full per-tab / per-demo catalog coverage lives in `catalog.spec.ts`
+ * (issue #1564). This file stays as the lightweight load + branding +
+ * tab-regression smoke layer.
  */
 
 test.describe('SceneView Web Demo Rendering', () => {
@@ -40,32 +44,9 @@ test.describe('SceneView Web Demo Rendering', () => {
     // Give Filament a moment to render frames
     await page.waitForTimeout(2000);
 
-    // Check that the canvas is not all-black by sampling pixel data
-    const canvasHasContent = await page.evaluate(() => {
-      const canvas = document.getElementById('scene-canvas') as HTMLCanvasElement;
-      if (!canvas) return false;
-      const ctx = canvas.getContext('2d') || canvas.getContext('webgl2') || canvas.getContext('webgl');
-      if (!ctx) return false;
-
-      // For WebGL contexts, read pixels
-      if ('readPixels' in ctx) {
-        const gl = ctx as WebGL2RenderingContext;
-        const pixels = new Uint8Array(4 * 100);
-        gl.readPixels(
-          Math.floor(canvas.width / 2) - 5,
-          Math.floor(canvas.height / 2) - 5,
-          10, 10,
-          gl.RGBA, gl.UNSIGNED_BYTE, pixels
-        );
-        // Check if any pixel is non-zero (not all black)
-        let nonZero = 0;
-        for (let i = 0; i < pixels.length; i += 4) {
-          if (pixels[i] > 5 || pixels[i+1] > 5 || pixels[i+2] > 5) nonZero++;
-        }
-        return nonZero > 0;
-      }
-      return true; // 2D context — assume content
-    });
+    // Check that the canvas is not all-black by sampling pixel data via the
+    // shared helper (also used by the catalog-coverage suite).
+    const { hasContent, headlessGpuOk } = await sampleCanvas(page);
 
     // Capture screenshot regardless of content check
     await page.screenshot({
@@ -73,9 +54,9 @@ test.describe('SceneView Web Demo Rendering', () => {
       fullPage: false,
     });
 
-    // This assertion may be soft — WebGL in headless mode may not produce
-    // visible output depending on the GPU driver
-    if (!canvasHasContent) {
+    // This assertion stays soft — headless WebGL on a GPU-less runner may not
+    // produce a readable framebuffer (`headlessGpuOk: false`).
+    if (headlessGpuOk && !hasContent) {
       console.warn('Canvas appears blank — headless WebGL may not produce visible output');
     }
   });
@@ -110,7 +91,13 @@ test.describe('SceneView Web Demo Rendering', () => {
     // `panel-*` div, not just `panel-models`/`panel-geometry`. A blank side
     // panel on Models / Physics / Settings shipped because the panel-ID list
     // drifted out of sync with the `data-tab` attributes.
-    const tabs = ['models', 'geometry', 'physics', 'settings'];
+    //
+    // Issue #1362: the catalog gained Lighting / Animation / Text /
+    // Environment tabs — every one must activate its matching panel.
+    const tabs = [
+      'models', 'geometry', 'lighting', 'animation',
+      'text', 'environment', 'physics', 'settings',
+    ];
 
     for (const tab of tabs) {
       await page.locator(`.tab-btn[data-tab="${tab}"]`).click();
@@ -136,6 +123,44 @@ test.describe('SceneView Web Demo Rendering', () => {
     });
   });
 
+  test('catalog tabs expose working controls (issue #1362)', async ({ page }) => {
+    await page.goto('/');
+
+    const overlay = page.locator('#loading-overlay');
+    await expect(overlay).toHaveClass(/hidden/, { timeout: 45_000 });
+
+    // Lighting — add a directional light, then clear added lights.
+    await page.locator('.tab-btn[data-tab="lighting"]').click();
+    await page.locator('.geo-add-btn[data-light="directional"]').click();
+    await page.locator('.geo-add-btn[data-light="point"]').click();
+    await expect(page.locator('#light-clear')).toBeVisible();
+    await page.locator('#light-clear').click();
+
+    // Animation — model selector + Play/Stop controls present.
+    await page.locator('.tab-btn[data-tab="animation"]').click();
+    await expect(page.locator('#anim-model-select')).toBeVisible();
+    await expect(page.locator('#anim-play')).toBeEnabled();
+    await expect(page.locator('#anim-stop')).toBeEnabled();
+
+    // Text — type and add a text node.
+    await page.locator('.tab-btn[data-tab="text"]').click();
+    await page.locator('#text-input').fill('Hello SceneView');
+    await page.locator('#text-add').click();
+    await expect(page.locator('#text-clear')).toBeVisible();
+
+    // Environment — preset select, intensity and bloom controls present.
+    await page.locator('.tab-btn[data-tab="environment"]').click();
+    await expect(page.locator('#env-preset')).toBeVisible();
+    await page.locator('#env-preset').selectOption('cool');
+    await page.locator('#env-bloom-toggle').click();
+    await expect(page.locator('#env-bloom-toggle')).toHaveClass(/active/);
+
+    await page.screenshot({
+      path: 'test-results/07_catalog_tabs.png',
+      fullPage: false,
+    });
+  });
+
   test('switching models updates the scene', async ({ page }) => {
     await page.goto('/');
 
@@ -143,17 +168,15 @@ test.describe('SceneView Web Demo Rendering', () => {
     await expect(overlay).toHaveClass(/hidden/, { timeout: 45_000 });
     await page.waitForTimeout(1000);
 
-    // Capture initial state
-    const screenshot1 = await page.screenshot();
+    // The CDN gallery renders `.result-card` entries — the demo has no
+    // `.model-chip` element (the old selector silently matched nothing).
+    const cards = page.locator('#model-results .result-card');
+    const count = await cards.count();
+    expect(count, 'CDN model gallery should list models').toBeGreaterThan(1);
 
-    // Click the second model chip if available
-    const chips = page.locator('#model-selector .model-chip');
-    const count = await chips.count();
-    if (count > 1) {
-      await chips.nth(1).click();
-      // Wait for model loading
-      await page.waitForTimeout(3000);
-    }
+    // Click the second model card and wait for the model to load.
+    await cards.nth(1).click();
+    await page.waitForTimeout(3000);
 
     // Capture after switch
     await page.screenshot({

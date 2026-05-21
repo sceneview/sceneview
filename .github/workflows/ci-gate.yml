@@ -51,6 +51,19 @@ name: CI Gate
 # a genuinely light docs-only PR while still catching a core check that is
 # simply slow to register.
 #
+# DEVICE QA EXCLUSION (#1588)
+# ---------------------------
+# `Device QA — *` check runs are deliberately excluded from the aggregation.
+# `device-qa.yml` is intentionally NOT a per-PR gate — it has no
+# `pull_request` trigger and runs only on push-to-main / `workflow_dispatch`
+# / nightly schedule (see its header comment "NOT in the per-PR CI Gate").
+# But when an agent manually `workflow_dispatch`-es `Device QA` on a branch
+# head SHA to validate it, the resulting `Device QA — web (Playwright)` /
+# `Device QA — android (Maestro)` check runs attach to that SHA, and the
+# corresponding PR's `CI Gate` would otherwise pick them up. Any check run
+# whose name starts with `Device QA` is therefore filtered out of the
+# `others` set — the same treatment as the gate's own `SELF_CHECK`.
+#
 # Branch protection on `main` requires ONLY this `CI Gate` check.
 
 on:
@@ -142,8 +155,12 @@ jobs:
               "repos/$REPO/commits/$HEAD_SHA/check-runs" \
               --jq '.check_runs[] | {name: .name, status: .status, conclusion: .conclusion}')
 
-            # Drop this gate's own check run from consideration.
-            others=$(echo "$runs" | jq -c --arg self "$SELF_CHECK" 'select(.name != $self)')
+            # Drop this gate's own check run from consideration, plus every
+            # `Device QA — *` run: Device QA is deliberately NOT a per-PR gate
+            # (see header comment + device-qa.yml), so a manually-dispatched
+            # Device QA run on a branch SHA must never count here (#1588).
+            others=$(echo "$runs" | jq -c --arg self "$SELF_CHECK" \
+              'select((.name != $self) and (.name | startswith("Device QA") | not))')
 
             if [ -z "$others" ]; then
               if [ "$(date +%s)" -ge "$deadline" ]; then
