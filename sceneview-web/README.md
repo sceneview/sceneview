@@ -29,52 +29,61 @@ SceneView.create(
 )
 ```
 
-## JavaScript API (sceneview.js v4.13.0)
+## JavaScript API
 
-For browser usage without Kotlin, use `sceneview.js` directly:
+For browser usage without Kotlin, load the `sceneview-web.js` bundle and use the
+global `sceneview` object it registers on `window`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.13.0/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.13.0/build/dist/js/productionExecutable/sceneview-web.js"></script>
 <script>
-  SceneView.modelViewer("canvas", "model.glb", {
-    backgroundColor: [0.05, 0.05, 0.08, 1],
-    lightIntensity: 150000,
-    fov: 35
+  sceneview.modelViewer("scene-canvas", "model.glb").then((viewer) => {
+    viewer.setBackgroundColor(0.05, 0.05, 0.08, 1);
   });
 </script>
 ```
 
-### Full API
+> TypeScript declarations ship with the package (`sceneview-web.d.ts`) — the
+> `sceneview` global is typed automatically when you `import "sceneview-web"`.
+
+### Factory functions (`sceneview.*`)
+
+| Function | Description |
+|---|---|
+| `sceneview.createViewer(canvasId)` | Create a viewer attached to the canvas with that DOM id |
+| `sceneview.createViewerAutoRotate(canvasId, autoRotate)` | Like `createViewer` with explicit auto-rotate override |
+| `sceneview.createViewerFull(canvasId, autoRotate, cameraControls, cameraX, cameraY, cameraZ, fov, lightIntensity)` | Full factory — every option in one call |
+| `sceneview.modelViewer(canvasId, modelUrl)` | One-call helper: create a viewer AND load a model |
+| `sceneview.modelViewerAutoRotate(canvasId, modelUrl, autoRotate)` | Like `modelViewer` with explicit auto-rotate override |
+| `sceneview.version` | Library version string |
+
+Every factory returns a `Promise<SceneViewer>`.
+
+### Viewer instance methods
 
 | Method | Description |
 |---|---|
-| `SceneView.modelViewer(canvas, url, options?)` | One-line 3D model viewer |
-| `SceneView.create(canvas, options?)` | Create instance for full API |
-| `instance.loadModel(url)` | Load glTF/GLB model |
-| `instance.setAutoRotate(enabled)` | Toggle auto-rotation |
-| `instance.setCameraDistance(d)` | Set orbit camera distance |
-| `instance.setBackgroundColor(r, g, b, a?)` | Set clear color |
-| `instance.setQuality('low'\|'medium'\|'high')` | AO + anti-aliasing quality |
-| `instance.setBloom(true\|false\|options)` | Bloom post-processing |
-| `instance.addLight(options)` | Add directional/point/spot light |
-| `instance.createText(options)` | Render text as 3D quad |
-| `instance.createImage(options)` | Render image as 3D quad |
-| `instance.createVideo(options)` | Stream video to 3D quad |
-| `instance.removeNode(entity)` | Remove node from scene |
-| `instance.dispose()` | Clean up resources |
+| `viewer.loadModel(url)` | Load a glTF/GLB model — resolves when decoded |
+| `viewer.setEnvironment(iblUrl)` | Apply IBL environment lighting (KTX1) |
+| `viewer.setEnvironmentWithSkybox(iblUrl, skyboxUrl)` | Apply environment lighting AND skybox |
+| `viewer.setCameraOrbit(theta, phi, distance)` | Set camera orbit in spherical coordinates |
+| `viewer.setCameraTarget(x, y, z)` | Set the camera look-at point |
+| `viewer.setAutoRotate(enabled)` | Toggle auto-rotation |
+| `viewer.setAutoRotateSpeed(speed)` | Auto-rotate angular speed (radians/sec) |
+| `viewer.setZoomLimits(min, max)` | Constrain pinch-zoom range (metres) |
+| `viewer.setBackgroundColor(r, g, b, a)` | Set clear color (components `0..1`) |
+| `viewer.startRendering()` / `viewer.stopRendering()` | Start/stop the render loop |
+| `viewer.resize(width, height)` | Resize the underlying canvas |
+| `viewer.fitToModels()` | Frame the camera so every loaded model is visible |
+| `viewer.dispose()` | Release Filament resources |
 
 ## Features
 
 - Same Filament PBR renderer as Android (compiled to WASM)
 - glTF 2.0 / GLB model loading
-- IBL environment lighting (KTX)
-- Camera configuration (FOV, position, exposure)
-- Directional, point, and spot lights
-- Animation playback
-- Quality presets (low/medium/high)
-- Bloom post-processing
-- Text, image, and video nodes
-- Billboard mode (always face camera)
+- IBL environment lighting + skybox (KTX)
+- Camera configuration (FOV, position, orbit, zoom limits)
+- Auto-rotation with configurable speed
 - Kotlin/JS DSL API + vanilla JavaScript API
 
 ## Requirements

@@ -190,13 +190,15 @@ export async function fetchKnownIssues(): Promise<string> {
       if (!Array.isArray(json)) {
         fetchError = "GitHub API returned unexpected response format (expected array).";
       } else {
-        issues = json.filter(
-          (item: unknown): item is GitHubIssue =>
-            typeof item === "object" &&
-            item !== null &&
-            typeof (item as Record<string, unknown>).number === "number" &&
-            typeof (item as Record<string, unknown>).title === "string"
-        );
+        issues = json
+          .filter(
+            (item: unknown): item is Record<string, unknown> =>
+              typeof item === "object" &&
+              item !== null &&
+              typeof (item as Record<string, unknown>).number === "number" &&
+              typeof (item as Record<string, unknown>).title === "string"
+          )
+          .map(normalizeIssue);
       }
     }
   } catch (err) {
@@ -206,6 +208,54 @@ export async function fetchKnownIssues(): Promise<string> {
   const result = formatIssues(issues, fetchError);
   cache = { data: result, fetchedAt: now };
   return result;
+}
+
+/**
+ * Coerce a loosely-validated GitHub API item into a complete {@link GitHubIssue}.
+ *
+ * The upstream type guard only asserts `number` + `title`. A malformed API
+ * response — or a partial item served during a GitHub incident — can be
+ * missing `user`, `labels` or `updated_at`. Reading those unconditionally in
+ * `formatIssues` throws a `TypeError` and takes down the whole
+ * `sceneview://known-issues` resource. Default every optional field here so
+ * formatting can never crash.
+ */
+function normalizeIssue(item: Record<string, unknown>): GitHubIssue {
+  const rawLabels = item.labels;
+  const labels: Array<{ name: string }> = Array.isArray(rawLabels)
+    ? rawLabels
+        .map((l): { name: string } | null => {
+          if (typeof l === "string") return { name: l };
+          if (l !== null && typeof l === "object") {
+            const name = (l as Record<string, unknown>).name;
+            if (typeof name === "string") return { name };
+          }
+          return null;
+        })
+        .filter((l): l is { name: string } => l !== null)
+    : [];
+
+  const rawUser = item.user;
+  const login =
+    rawUser !== null &&
+    typeof rawUser === "object" &&
+    typeof (rawUser as Record<string, unknown>).login === "string"
+      ? ((rawUser as Record<string, unknown>).login as string)
+      : "unknown";
+
+  const updatedAt = typeof item.updated_at === "string" ? item.updated_at : "";
+  const createdAt = typeof item.created_at === "string" ? item.created_at : "";
+
+  return {
+    number: item.number as number,
+    title: item.title as string,
+    html_url: typeof item.html_url === "string" ? item.html_url : "",
+    body: typeof item.body === "string" ? item.body : null,
+    labels,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    user: { login },
+  };
 }
 
 function formatIssues(issues: GitHubIssue[], fetchError: string | null): string {

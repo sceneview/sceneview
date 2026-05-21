@@ -151,10 +151,12 @@ export async function fetchKnownIssues() {
                 fetchError = "GitHub API returned unexpected response format (expected array).";
             }
             else {
-                issues = json.filter((item) => typeof item === "object" &&
+                issues = json
+                    .filter((item) => typeof item === "object" &&
                     item !== null &&
                     typeof item.number === "number" &&
-                    typeof item.title === "string");
+                    typeof item.title === "string")
+                    .map(normalizeIssue);
             }
         }
     }
@@ -164,6 +166,51 @@ export async function fetchKnownIssues() {
     const result = formatIssues(issues, fetchError);
     cache = { data: result, fetchedAt: now };
     return result;
+}
+/**
+ * Coerce a loosely-validated GitHub API item into a complete {@link GitHubIssue}.
+ *
+ * The upstream type guard only asserts `number` + `title`. A malformed API
+ * response — or a partial item served during a GitHub incident — can be
+ * missing `user`, `labels` or `updated_at`. Reading those unconditionally in
+ * `formatIssues` throws a `TypeError` and takes down the whole
+ * `sceneview://known-issues` resource. Default every optional field here so
+ * formatting can never crash.
+ */
+function normalizeIssue(item) {
+    const rawLabels = item.labels;
+    const labels = Array.isArray(rawLabels)
+        ? rawLabels
+            .map((l) => {
+            if (typeof l === "string")
+                return { name: l };
+            if (l !== null && typeof l === "object") {
+                const name = l.name;
+                if (typeof name === "string")
+                    return { name };
+            }
+            return null;
+        })
+            .filter((l) => l !== null)
+        : [];
+    const rawUser = item.user;
+    const login = rawUser !== null &&
+        typeof rawUser === "object" &&
+        typeof rawUser.login === "string"
+        ? rawUser.login
+        : "unknown";
+    const updatedAt = typeof item.updated_at === "string" ? item.updated_at : "";
+    const createdAt = typeof item.created_at === "string" ? item.created_at : "";
+    return {
+        number: item.number,
+        title: item.title,
+        html_url: typeof item.html_url === "string" ? item.html_url : "",
+        body: typeof item.body === "string" ? item.body : null,
+        labels,
+        created_at: createdAt,
+        updated_at: updatedAt,
+        user: { login },
+    };
 }
 function formatIssues(issues, fetchError) {
     const lines = ["# SceneView — Open GitHub Issues\n"];
