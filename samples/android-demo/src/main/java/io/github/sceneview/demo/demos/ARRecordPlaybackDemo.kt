@@ -129,6 +129,10 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
     // Last file saved by the recorder this session — drives the green "Recording saved"
     // callout in RECORD mode + its Replay / Share buttons. Null until the first stop.
     var lastSavedFile by remember { mutableStateOf<File?>(null) }
+    // Tracking-quality summary of the last completed recording (#1650) — the percentage
+    // of recorded frames where ARCore was actually TRACKING. Surfaced in the post-stop
+    // callout so the user can judge a take at a glance. Null until the first stop.
+    var lastTrackingHealth by remember { mutableStateOf<TrackingHealth?>(null) }
     LaunchedEffect(Unit) {
         // Consume so a config change / process recreation doesn't re-trigger.
         io.github.sceneview.demo.DemoSettings.arPendingPlaybackFile = null
@@ -303,6 +307,7 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
                         SavedRecordingCallout(
                             file = file,
                             recordingsCount = recordings.size,
+                            trackingHealth = lastTrackingHealth,
                             onReplay = {
                                 currentPlaybackFile = file
                                 currentMode = Mode.PLAYBACK
@@ -379,11 +384,12 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
                     engine = engine,
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
-                    onRecordingFinished = { savedFile ->
+                    onRecordingFinished = { savedFile, trackingHealth ->
                         refreshRecordings()
                         // Drive the post-stop callout in the controls panel.
                         if (savedFile != null && savedFile.exists() && savedFile.length() > 0) {
                             lastSavedFile = savedFile
+                            lastTrackingHealth = trackingHealth
                         }
                     },
                     recordingsDir = recordingsDir
@@ -415,7 +421,7 @@ private fun ModeContent(
     engine: com.google.android.filament.Engine,
     modelLoader: io.github.sceneview.loaders.ModelLoader,
     materialLoader: io.github.sceneview.loaders.MaterialLoader,
-    onRecordingFinished: (File?) -> Unit,
+    onRecordingFinished: (File?, TrackingHealth?) -> Unit,
     recordingsDir: File
 ) {
     val context = LocalContext.current
@@ -423,6 +429,15 @@ private fun ModeContent(
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
     var isTracking by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    // Per-recording tracking-quality accumulator (#1650). While the recorder is RECORDING,
+    // every consumed ARCore frame ticks one of these counters depending on whether the
+    // camera was TRACKING. After Stop, the ratio drives the "tracking healthy X%" stat in
+    // the saved-recording callout. Reset on each fresh start() below.
+    val trackingTracker = remember { TrackingHealthTracker() }
+    // Wall-clock of the last frame ARCore reported TRACKING — drives the live "tracking
+    // lost for Ns" soft warning so a stalled capture is obvious in real time. 0 = never
+    // tracked yet this composition.
+    var lastTrackingMillis by remember { mutableStateOf(0L) }
     // Flipped true on the first onSessionUpdated — i.e. once ARCore has opened the
     // camera (or started replaying the dataset) and delivered a frame. Until then the
     // ARSceneView surface is bare black, so we cover it with ARCameraInitScrim rather
@@ -454,7 +469,7 @@ private fun ModeContent(
         onDispose {
             if (recorder.state == ARRecorder.State.RECORDING) {
                 recorder.stop()
-                onRecordingFinished(pendingRecordingFile)
+                onRecordingFinished(pendingRecordingFile, trackingTracker.snapshot())
             }
         }
     }
@@ -488,10 +503,21 @@ private fun ModeContent(
         onSessionUpdated = { session: Session, frame: Frame ->
             cameraReady = true
             latestFrame = frame
-            isTracking = frame.camera.trackingState == TrackingState.TRACKING
+            val frameTracking = frame.camera.trackingState == TrackingState.TRACKING
+            isTracking = frameTracking
             // Stateless side-channel pattern (#876) — recordFrame publishes the
             // session per call, mirroring RerunBridge.logFrame. Idempotent.
             recorder.recordFrame(session)
+            // Tracking-quality accounting while a capture is in progress (#1650):
+            // count this frame as healthy / unhealthy so the post-stop callout can
+            // report what fraction of the recording ARCore was actually tracking,
+            // and stamp the wall-clock so the live "tracking lost" warning knows how
+            // long tracking has been gone. onSessionUpdated runs on the main thread,
+            // so the plain-counter accumulator needs no synchronisation.
+            if (recorder.state == ARRecorder.State.RECORDING) {
+                trackingTracker.tick(frameTracking)
+            }
+            if (frameTracking) lastTrackingMillis = System.currentTimeMillis()
             // Frame-indexed screenshot regression hook (#1050): bump the
             // cross-thread counter once per consumed ARCore frame during
             // playback so ARPlaybackScreenshotTest can capture at deterministic
@@ -534,9 +560,33 @@ private fun ModeContent(
     // ── Mode-specific overlays ─────────────────────────────────────────────
 
     if (mode == Mode.RECORD) {
+        // While recording, surface the live ARCore tracking quality (#1650): a soft
+        // warning once tracking has been lost for more than a few seconds so a doomed
+        // capture — e.g. shooting from inside a moving vehicle — is obvious in real
+        // time instead of being discovered only on playback.
+        val isRecording = recorder.state == ARRecorder.State.RECORDING
+        var trackingLostSeconds by remember { mutableStateOf(0L) }
+        LaunchedEffect(isRecording) {
+            while (isRecording) {
+                trackingLostSeconds = if (isTracking || lastTrackingMillis == 0L) {
+                    0L
+                } else {
+                    (System.currentTimeMillis() - lastTrackingMillis) / 1000
+                }
+                delay(500)
+            }
+            trackingLostSeconds = 0L
+        }
+        // ForcedTrackingFailure lets QA stage a tracking loss without a real one (#1881);
+        // honour it here too so the recording status pill / warning can be validated.
+        val recordingReason = ForcedTrackingFailure.override ?: trackingFailureReason
+        val recordingTracking = isTracking && ForcedTrackingFailure.override == null
         RecordOverlay(
             recorder = recorder,
             elapsedSeconds = elapsedSeconds,
+            isTracking = recordingTracking,
+            trackingFailureReason = recordingReason,
+            trackingLostSeconds = trackingLostSeconds,
             // Disable the shutter until ARCore is actually tracking — without
             // a tracked frame, recorder.start() returns false and transitions
             // to ERROR with the dev-flavoured "call attach(session) first"
@@ -549,6 +599,9 @@ private fun ModeContent(
                 val name = "ar-session-${TIMESTAMP_FORMAT.format(Date())}.mp4"
                 val file = File(recordingsDir, name)
                 pendingRecordingFile = file
+                // Zero the tracking-quality accumulator so the next take's stat
+                // reflects only this recording (#1650).
+                trackingTracker.reset()
                 recorder.start(
                     file = file,
                     recordingRotation = currentDisplayRotation(context)
@@ -556,8 +609,9 @@ private fun ModeContent(
             },
             onStop = {
                 val saved = pendingRecordingFile
+                val health = trackingTracker.snapshot()
                 recorder.stop()
-                onRecordingFinished(saved)
+                onRecordingFinished(saved, health)
             }
         )
     }
@@ -589,13 +643,17 @@ private fun ModeContent(
 private fun RecordOverlay(
     recorder: ARRecorder,
     elapsedSeconds: Long,
+    isTracking: Boolean,
+    trackingFailureReason: TrackingFailureReason?,
+    trackingLostSeconds: Long,
     startEnabled: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        // Elapsed-time pill, top-center, only while recording. Inset below the
-        // system bars so it never overlaps the status bar / notch / camera cutout.
+        // Elapsed-time pill + live tracking-quality pill, top-center, only while
+        // recording. Inset below the system bars so they never overlap the status
+        // bar / notch / camera cutout.
         AnimatedVisibility(
             visible = recorder.state == ARRecorder.State.RECORDING,
             enter = fadeIn(),
@@ -605,17 +663,54 @@ private fun RecordOverlay(
                 .windowInsetsPadding(WindowInsets.systemBars)
                 .padding(top = 8.dp)
         ) {
-            Surface(
-                color = Color.Red.copy(alpha = 0.85f),
-                contentColor = Color.White,
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Text(
-                    text = "REC  ${formatElapsed(elapsedSeconds)}",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(
+                    color = Color.Red.copy(alpha = 0.85f),
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Text(
+                        text = "REC  ${formatElapsed(elapsedSeconds)}",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                // Tracking-quality pill (#1650): green "AR tracking OK" while ARCore
+                // is TRACKING, amber/red with the failure reason when it isn't — so a
+                // capture going bad is visible during the recording, not only after.
+                TrackingQualityPill(
+                    isTracking = isTracking,
+                    reason = trackingFailureReason
                 )
+            }
+        }
+
+        // Soft warning when tracking has been lost for more than a few seconds —
+        // e.g. a capture shot from inside a moving vehicle never tracks (#1650).
+        if (recorder.state == ARRecorder.State.RECORDING &&
+            trackingLostSeconds >= TRACKING_LOST_WARNING_SECONDS
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 24.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = "AR tracking lost for ${trackingLostSeconds}s — this " +
+                            "recording may be unusable. Point at a well-lit, textured " +
+                            "scene and move slowly.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    )
+                }
             }
         }
 
@@ -693,6 +788,47 @@ private fun RecordOverlay(
                 }
             }
         }
+    }
+}
+
+/**
+ * Compact live tracking-quality pill shown under the REC timer while recording (#1650).
+ *
+ * - **Green** "AR tracking OK" when ARCore reports [TrackingState.TRACKING].
+ * - **Amber/red** with the [TrackingFailureReason] (or a generic "tracking lost") when it
+ *   does not — so the user sees a degraded capture in real time instead of discovering an
+ *   empty playback afterwards.
+ */
+@Composable
+private fun TrackingQualityPill(
+    isTracking: Boolean,
+    reason: TrackingFailureReason?
+) {
+    val healthy = isTracking
+    val label = if (healthy) {
+        "● AR tracking OK"
+    } else {
+        "▲ ${trackingFailureMessage(reason) ?: "AR tracking lost"}"
+    }
+    Surface(
+        color = if (healthy) {
+            Color(0xFF1B5E20).copy(alpha = 0.9f)
+        } else {
+            MaterialTheme.colorScheme.errorContainer
+        },
+        contentColor = if (healthy) {
+            Color.White
+        } else {
+            MaterialTheme.colorScheme.onErrorContainer
+        },
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
+        )
     }
 }
 
@@ -903,6 +1039,7 @@ private fun RecordingRow(
 private fun SavedRecordingCallout(
     file: File,
     recordingsCount: Int,
+    trackingHealth: TrackingHealth?,
     onReplay: () -> Unit,
     onOpenInPlayback: () -> Unit,
     onShare: () -> Unit,
@@ -940,6 +1077,38 @@ private fun SavedRecordingCallout(
                 text = "${formatBytes(file.length())} • saved to the app's private storage",
                 style = MaterialTheme.typography.labelSmall
             )
+            // Tracking-quality summary of this take (#1650): the percentage of recorded
+            // frames where ARCore was actually TRACKING. A low number means the capture
+            // is likely unusable on playback — e.g. shot from a moving vehicle.
+            trackingHealth?.takeIf { it.totalFrames > 0 }?.let { health ->
+                Spacer(Modifier.height(6.dp))
+                val good = health.healthPercent >= TRACKING_HEALTH_GOOD_PERCENT
+                Surface(
+                    color = if (good) {
+                        Color(0xFF1B5E20).copy(alpha = 0.9f)
+                    } else {
+                        MaterialTheme.colorScheme.errorContainer
+                    },
+                    contentColor = if (good) {
+                        Color.White
+                    } else {
+                        MaterialTheme.colorScheme.onErrorContainer
+                    },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = if (good) {
+                            "✓ Tracking healthy ${health.healthPercent}% of frames"
+                        } else {
+                            "▲ Tracking healthy only ${health.healthPercent}% of frames — " +
+                                "this recording may have little usable AR content"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
             Spacer(Modifier.height(6.dp))
             Text(
                 text = "This is a standard MP4 carrying ARCore data tracks (camera, IMU, " +
@@ -1062,6 +1231,57 @@ private fun currentDisplayRotation(context: Context): Int {
         @Suppress("DEPRECATION")
         (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation
     }
+}
+
+/**
+ * After how many continuous seconds without ARCore tracking the RECORD overlay surfaces
+ * the "tracking lost — recording may be unusable" soft warning (#1650). Short enough to
+ * catch a doomed capture early, long enough not to flash on a momentary hiccup.
+ */
+private const val TRACKING_LOST_WARNING_SECONDS = 4L
+
+/**
+ * Tracking-health percentage at or above which a finished recording's quality stat is
+ * shown in green rather than as a warning (#1650).
+ */
+private const val TRACKING_HEALTH_GOOD_PERCENT = 70
+
+/**
+ * Immutable tracking-quality summary of one finished recording (#1650): how many ARCore
+ * frames were consumed while recording and how many of those reported [TrackingState.TRACKING].
+ */
+private data class TrackingHealth(val trackedFrames: Int, val totalFrames: Int) {
+    /** Percentage of recorded frames where ARCore was actually tracking (0..100). */
+    val healthPercent: Int
+        get() = if (totalFrames == 0) 0 else (trackedFrames * 100) / totalFrames
+}
+
+/**
+ * Mutable per-recording accumulator for [TrackingHealth] (#1650).
+ *
+ * Ticked once per consumed ARCore frame from `onSessionUpdated` — which runs on the main
+ * thread — so plain `Int` counters need no synchronisation. [reset] zeroes it at the start
+ * of each take; [snapshot] produces the immutable summary handed to the saved-recording
+ * callout on Stop.
+ */
+private class TrackingHealthTracker {
+    private var trackedFrames = 0
+    private var totalFrames = 0
+
+    /** Record one consumed frame; [tracking] is whether ARCore reported TRACKING. */
+    fun tick(tracking: Boolean) {
+        totalFrames++
+        if (tracking) trackedFrames++
+    }
+
+    /** Zero the counters — call on each fresh `recorder.start()`. */
+    fun reset() {
+        trackedFrames = 0
+        totalFrames = 0
+    }
+
+    /** Immutable summary of the frames counted since the last [reset]. */
+    fun snapshot(): TrackingHealth = TrackingHealth(trackedFrames, totalFrames)
 }
 
 private val TIMESTAMP_FORMAT = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
