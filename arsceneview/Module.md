@@ -139,7 +139,7 @@ android {
 
 Add `<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />` to the manifest **and** request it at runtime (e.g. via `RequestMultiplePermissions`) before mounting any `ARSceneView` that uses Geospatial mode.
 
-Step-by-step setup with Cloud Console screenshots: see [`samples/android-demo/STREETSCAPE_SETUP.md`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/STREETSCAPE_SETUP.md) in the repo.
+Step-by-step setup with Cloud Console screenshots: see [`samples/android-demo/ARCORE_CLOUD_SETUP.md`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/ARCORE_CLOUD_SETUP.md) in the repo.
 
 > **Pure plane-finding / hit-testing / AR camera streaming does NOT need an API key** — only the three modes above. The SDK works fully offline for everything else.
 

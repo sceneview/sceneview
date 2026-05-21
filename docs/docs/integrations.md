@@ -260,7 +260,7 @@ android.defaultConfig {
 ```
 
 Step-by-step Cloud Console setup (project, billing, API enable, key restrictions):
-[`samples/android-demo/STREETSCAPE_SETUP.md`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/STREETSCAPE_SETUP.md).
+[`samples/android-demo/ARCORE_CLOUD_SETUP.md`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/ARCORE_CLOUD_SETUP.md).
 
 > Plain plane-finding, hit-testing, face mesh, image detection, and AR camera streaming do
 > NOT need the API key. Only the three modes above hit the Cloud backend.

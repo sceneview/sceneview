@@ -907,7 +907,7 @@ instant-placement hits. For placement against arbitrary real geometry (sofas, sl
 2. The `manifestPlaceholders["arcoreApiKey"] = ...` injection in `app/build.gradle` (read from env var `ARCORE_API_KEY` or `local.properties` — never hardcoded).
 3. `<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />` and a runtime `RequestMultiplePermissions` flow asking for `CAMERA + ACCESS_FINE_LOCATION` BEFORE mounting `ARSceneView`. Geospatial throws `FineLocationPermissionNotGrantedException` otherwise.
 
-Plain plane-finding / hit-testing / face mesh / image detection does NOT require the API key — only Cloud Anchors / Geospatial / Streetscape do. Setup guide with Cloud Console steps: `samples/android-demo/STREETSCAPE_SETUP.md`.
+Plain plane-finding / hit-testing / face mesh / image detection does NOT require the API key — only Cloud Anchors / Geospatial / Streetscape do. Setup guide with Cloud Console steps: `samples/android-demo/ARCORE_CLOUD_SETUP.md`.
 
 ### AnchorNode — pin to real world
 ```kotlin
@@ -2093,7 +2093,7 @@ ARSceneView(...) {
 }
 ```
 
-Demo: `samples/android-demo/.../ARStreetscapeDemo.kt`. Setup guide (Cloud project + API key): `samples/android-demo/STREETSCAPE_SETUP.md`.
+Demo: `samples/android-demo/.../ARStreetscapeDemo.kt`. Setup guide (Cloud project + API key): `samples/android-demo/ARCORE_CLOUD_SETUP.md`.
 
 ### Geospatial Depth — extend environment depth accuracy to ~65 m
 

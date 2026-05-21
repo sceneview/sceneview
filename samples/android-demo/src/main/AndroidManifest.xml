@@ -58,7 +58,7 @@
              env var) at build time via the manifestPlaceholders in build.gradle.
              Empty by default — when blank, the demo's runtime check disables the
              features that need it and shows a clear status message instead of
-             crashing. See arsceneview/STREETSCAPE_SETUP.md. -->
+             crashing. See samples/android-demo/ARCORE_CLOUD_SETUP.md. -->
         <meta-data
             android:name="com.google.android.ar.API_KEY"
             android:value="${arcoreApiKey}" />
