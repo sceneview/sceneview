@@ -1,2 +1,0 @@
-<!-- category: Tests -->
-- **Device-QA screen recording moved to the host-side emulator console ([#1671](https://github.com/sceneview/sceneview/issues/1671)).** New `android_cli_screenrecord_*` helpers use `adb emu screenrecord`, which is immune to the Emulator 36.x gfxstream regression that recorded `-gpu host` Filament content as near-empty — so the QA emulator drops the 35.6.11 version pin and runs the latest emulator.

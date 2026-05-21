@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Post-Processing demo now makes SSAO visibly flagrant ([#1443](https://github.com/sceneview/sceneview/issues/1443)).** The damaged-helmet model is staged sitting on a plain matte ground plane instead of floating in the void, and the camera is raised to an angle that frames the floor. SSAO darkens the contact zone between the helmet and the plane, so toggling the SSAO switch now makes a soft contact shadow plainly appear and disappear — the post-processing difference reads at a glance instead of being a subtle change easy to miss.

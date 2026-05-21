@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **Play Store CI observability.** A new `play-vitals.sh` release-gate (wired into `release-checklist.sh` section 15) grades the real-world crash & ANR rate from the Play Developer Reporting API — advisory by default, blocking under `PLAY_VITALS_HARD=1` (#1691). A new daily `play-reviews` job in `maintenance.yml` ingests Play Store ratings + reviews via the Android Publisher API and auto-opens a de-duplicated triage issue for any review matching a crash/bug signal (#1692). Both reuse the existing deploy service account read-only — no new write scope.
