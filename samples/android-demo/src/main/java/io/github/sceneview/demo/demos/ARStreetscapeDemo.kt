@@ -44,6 +44,7 @@ import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
@@ -250,12 +251,21 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_ar_streetscape_title),
         onBack = onBack,
-        controls = {
-            // Developer-only debug toggle — visible when QA mode is on. Lets QA
-            // force-emit each TrackingFailureReason so the actionable-message
-            // overlay can be validated without staging a real failure. See
-            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
-            ForceTrackingFailureMenu()
+        // The only thing this sheet ever held is the dev-only
+        // ForceTrackingFailureMenu, which renders nothing unless QA mode is on —
+        // so end users got a Settings FAB that opened an empty sheet. Gate the
+        // whole `controls` block on qaMode: no FAB for end users, the debug
+        // menu still reachable for QA (#1620 thread 1).
+        controls = if (DemoSettings.qaMode) {
+            {
+                // Developer-only debug toggle — lets QA force-emit each
+                // TrackingFailureReason so the actionable-message overlay can be
+                // validated without staging a real failure. See
+                // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+                ForceTrackingFailureMenu()
+            }
+        } else {
+            null
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {

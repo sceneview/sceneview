@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- CI: split JaCoCo coverage off the PR-blocking unit-test job (#1955) — the blocking `Unit tests` job now runs the plain `testDebugUnitTest` suite (fast, deterministic, 30-min timeout), while JaCoCo instrumentation + reports run in a separate non-blocking `Coverage (advisory)` job, so a slow runner can no longer push the unit-test gate over its timeout and turn `CI Gate` double-red.

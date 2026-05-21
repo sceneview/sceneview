@@ -407,6 +407,19 @@ model?.stopAllAnimations()
 | `rememberCameraManipulator()` | `.cameraControls(.orbit)` view modifier |
 | `AnchorNode(anchor)` | `AnchorNode.world(position:)` |
 | `PhysicsNode(node, mass)` | `PhysicsNode.dynamic(entity, mass:)` |
+| `SpatialAudioNode { }` composable (v4.12.0+, `#1900`) | `SpatialAudioNode.spatial(named:falloff:loop:)` — see [Spatial Audio & Haptic parity](#spatial-audio--haptic-parity-1900-1901) below |
+| `rememberHapticFeedback()` (v4.12.0+, `#1901`) | `SceneViewHaptic()` — see [Spatial Audio & Haptic parity](#spatial-audio--haptic-parity-1900-1901) below |
+
+### Spatial Audio & Haptic parity (#1900, #1901)
+
+v4.12.0 shipped Spatial Audio (#1900) and Haptic Feedback (#1901). **Both are
+implemented on iOS** — they are *not* Android-only — but with platform-native
+backends, so the API shape differs slightly:
+
+| Feature | Android | iOS | iOS maturity |
+|---|---|---|---|
+| **Spatial Audio** | `SpatialAudioNode { }` composable, `AudioSource`, `AudioFalloff`, `AudioController` | `SpatialAudioNode.spatial(named:in:falloff:loop:autoPlay:volume:pitch:)`, `.audioListener(_:)` view modifier — backed by RealityKit `SpatialAudioComponent` / `Entity.playAudio` | **Shipped (phase 1)**. Positional pan + distance falloff work natively. Known phase-1 limits: `pitch` is stored but not applied (no `AudioPlaybackController` pitch knob in RealityKit), `seek` only supports rewind-to-0, `.audioListener(.anchor)` falls back to `.camera`. Phase 2 (PHASE engine: occlusion, reverb, pitch) tracked in [#1900](https://github.com/sceneview/sceneview/issues/1900). |
+| **Haptic Feedback** | `rememberHapticFeedback()` → `SceneViewHaptic` (`light()`/`medium()`/`heavy()`/`success()`/`warning()`/`error()`/`selection()`, `continuous(intensity:durationMs:)`, `pattern(_:)`) | `SceneViewHaptic()` / `SceneViewHaptic.shared` — same semantic preset surface, `continuous(intensity:durationMs:)` + `pattern(_:)` backed by Core Haptics with `UIFeedbackGenerator` fallback | **Shipped — full parity**. All seven presets, `HapticEvent`/`HapticPreset`, and Core Haptics patterns are implemented. Gracefully degrades to the preset generators on devices without Core Haptics. iOS-only (no macOS/visionOS — guarded by `#if os(iOS)`). |
 
 ---
 
@@ -500,6 +513,31 @@ Use as you would on Android; expect minor visual differences.
 code, treat the Deprecated row as no-ops to avoid; Android-only entries
 as iOS-not-implemented; Approximated entries are fine to use as-is and
 will compile + render with visual fidelity differences only.
+
+---
+
+## Hand / Face / Body tracking parity (#1904)
+
+SceneView spans two ARCore runtimes on Android plus ARKit on Apple, and
+each surfaces hand / face / body perception differently. This table maps
+every tracking primitive across all five SceneView surfaces so an AI
+assistant picks the right API for the requested platform. The Android
+Jetpack XR foundation landed in [#1738](https://github.com/sceneview/sceneview/issues/1738);
+the design notes live in [`arsceneview/docs/JETPACK-XR-INTEGRATION.md`](https://github.com/sceneview/sceneview/blob/main/arsceneview/docs/JETPACK-XR-INTEGRATION.md).
+
+| Feature | Mobile ARCore (Android phone) | Jetpack XR (Android XR headset) | ARKit phone (`SceneViewSwift`) | visionOS | WebXR |
+|---|---|---|---|---|---|
+| **Hand tracking** | Not available — ARCore phones have no hand perception | `XrHandNode` over `androidx.xr.arcore` `Hand` perception. Foundation (`XrFeatures` gate) shipped in #1738; node tracked in [#1902](https://github.com/sceneview/sceneview/issues/1902) (preview, `1.0.0-alpha14`) | Not available on iPhone/iPad — ARKit has no hand-tracking config; hand tracking is a visionOS-only `ARKit` provider | ARKit `HandTrackingProvider` + `ARKitSession` give per-joint skeletons in an `ImmersiveSpace`. **Not yet wrapped** by `SceneViewSwift` — tracked in [#1902](https://github.com/sceneview/sceneview/issues/1902); drop to raw `HandTrackingProvider` today | WebXR `hand-tracking` feature — tracked in [#1778](https://github.com/sceneview/sceneview/issues/1778) |
+| **Face tracking** | `AugmentedFaceNode` — front-camera, stable, includes the 468-point morphing face mesh | `XrFaceNode` over `androidx.xr.arcore` `Face` perception (headset, alpha). Tracked in [#1903](https://github.com/sceneview/sceneview/issues/1903) (preview, `1.0.0-alpha14`) | `AnchorNode.face()` — **shipped**. Wraps RealityKit `AnchorEntity(.face)` (`ARFaceTrackingConfiguration`); provides face *pose* only, **no mesh**. For the morphing-mesh overlay drop to a raw `ARFaceAnchor` + custom mesh entity | Same `AnchorNode.face()` path — `ARFaceTrackingConfiguration` runs on Vision Pro's front sensors | Not exposed by WebXR |
+| **Body tracking** | Not available — ARCore has no body perception (ML Kit / MediaPipe would be needed) | Not available — `androidx.xr.arcore` exposes only `Hand` + `Face`, no body. Deferred-scope decision recorded in #1738 | `AnchorNode.body()` — **shipped**. Wraps RealityKit `AnchorEntity(.body)` (`ARBodyTrackingConfiguration`); anchors at the detected body's root joint. **ARKit-only** — no Android counterpart on either runtime | `ARBodyTrackingConfiguration` is unavailable on visionOS; no body-tracking path | Not exposed by WebXR |
+
+**iOS maturity summary.** Face and body anchoring are **shipped today** in
+`SceneViewSwift` as `AnchorNode.face()` / `AnchorNode.body()` (pose-level
+anchors — no morphing face mesh, no per-joint skeleton). visionOS **hand
+tracking** is **not yet wrapped**: the ARKit `HandTrackingProvider` exists
+but a `SceneViewSwift` node is still pending — tracked in
+[#1902](https://github.com/sceneview/sceneview/issues/1902). Body tracking
+is an ARKit-exclusive feature with no equivalent on either Android runtime.
 
 ---
 

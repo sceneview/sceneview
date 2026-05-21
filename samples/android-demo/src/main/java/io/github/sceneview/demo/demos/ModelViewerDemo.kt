@@ -7,6 +7,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,6 +29,7 @@ import io.github.sceneview.toAabb
 import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberFirstFrameState
@@ -137,13 +140,27 @@ fun ModelViewerDemo(onBack: () -> Unit) {
         }
     }
 
+    // Auto-fit orbit radius for the current model — falls back to 1.4 m while
+    // the bounds are not yet measurable. The "Camera distance" slider below
+    // lets the user override this; `null` slider state means "use auto-fit".
+    val autoFitRadius = framing?.radius ?: 1.4f
+
+    // Camera-distance slider state. Wired directly to [DemoSettings.cameraDistance]
+    // — the SAME global override that `rememberHeroOrbitCameraManipulator` reads
+    // for the `--ef camera_distance <f>` / `?cameraDistance=<f>` deep-link hook
+    // (#1571). So a deep link launches this demo at the requested zoom AND the
+    // slider reflects it; dragging the slider drives the live camera distance.
+    // `null` ⇒ no override, the auto-fit `radius` is used. Maestro has no pinch
+    // gesture, so this slider is the only way QA flows can exercise zoom.
+    val sliderDistance = DemoSettings.cameraDistance
+
     // Camera orbits; model stays fixed. The orbit radius is auto-fit to the
     // model's intrinsic size (see `framing` above) so every model — bundled
-    // helmet or streamed Sketchfab pick — is framed identically. Falls back to
-    // 1.4 m while the model bounds are not yet measurable.
+    // helmet or streamed Sketchfab pick — is framed identically. A non-null
+    // `DemoSettings.cameraDistance` (slider or deep link) overrides it.
     val cameraManipulator = rememberHeroOrbitCameraManipulator(
         trigger = activeModelInstance != null,
-        radius = framing?.radius ?: 1.4f,
+        radius = autoFitRadius,
         yHeight = 0f,
         durationMillis = 20_000,
     )
@@ -166,6 +183,20 @@ fun ModelViewerDemo(onBack: () -> Unit) {
         onBack = onBack,
         assetSource = assetSource,
         firstFrameRendered = firstFrame.rendered,
+        controls = {
+            // Camera-distance slider — makes zoom discoverable without a pinch
+            // gesture (and Maestro-testable, see #1571). The displayed value is
+            // the slider override when set, otherwise the live auto-fit radius.
+            Text(
+                "Camera distance: %.1f m".format(sliderDistance ?: autoFitRadius),
+                style = MaterialTheme.typography.labelLarge
+            )
+            Slider(
+                value = sliderDistance ?: autoFitRadius,
+                onValueChange = { DemoSettings.cameraDistance = it },
+                valueRange = 0.5f..10f
+            )
+        }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             SceneView(

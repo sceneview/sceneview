@@ -43,41 +43,41 @@ Also:
 
 ## Run
 
-Open `src/jsMain/resources/index.html` directly in a browser, or:
+This demo is a **plain static site** — no Gradle, no build step. Open
+`site/index.html` directly in a browser, or serve the folder:
 
 ```bash
-./gradlew :samples:web-demo:jsBrowserRun
+npx http-server site -p 8080
 ```
 
 ## Architecture
 
-- `index.html` — self-contained single-file app (HTML + CSS + inline JS). This
-  is the shipped demo; it loads a self-hosted `sceneview.js`.
+- `site/index.html` — self-contained single-file app (HTML + CSS + inline JS).
+  This **is** the demo; it loads a self-hosted `sceneview.js`. There is one
+  source of truth for the runtime wiring: the inline `<script>` (issue #1946
+  removed the dead Kotlin/JS `Main.kt` that never executed in the browser).
 - Uses `SceneView.js` (`SceneView.modelViewer()`, `createBox()`,
   `setQuality()`, `setBloom()`, `setBackgroundColor()`, `addLight()`,
   `removeNode()`, `playAnimation()`, `stopAnimation()`, `createText()`,
   `setEnvironmentSH()`, etc.).
 - Engine: `filament.js`, `filament.wasm`, and `sceneview.js` are self-hosted
-  under `src/jsMain/resources/js/` and referenced by relative path, so the
-  demo never depends on a third-party CDN for its engine (issue #1586).
+  under `site/js/` and referenced by relative path, so the demo never depends
+  on a third-party CDN for its engine (issue #1586).
 - Sketchfab API: `GET /v3/search?type=models&downloadable=true&q={query}`.
-- Curated models: self-hosted GLBs under `src/jsMain/resources/models/`, loaded
-  from the relative `models/` path. They are copied verbatim into the
-  `jsBrowserDistribution` output and served by the Playwright dev server, so
-  the demo never depends on a third-party CDN for its assets. jsDelivr's
-  gh-proxy returns HTTP 403 for large GLB blobs under `assets/`, which is why
-  the catalog is self-hosted (issue #1573).
-- IBL environment: `src/jsMain/resources/environments/neutral_ibl.ktx`,
-  self-hosted so `SceneView.js` finds it via the relative `environments/` path
-  with no 404 — works on both domain-root and subpath deploys (issues #1586,
-  #1631).
-- `src/jsMain/kotlin/.../web/Main.kt` is an alternative Kotlin/JS entry point
-  built against the `sceneview-web` module; the shipped page uses the inline JS.
+- Curated models: self-hosted GLBs under `site/models/`, loaded from the
+  relative `models/` path. The whole `site/` folder is copied verbatim to the
+  deployed `/web-demo/` route by `docs.yml` and served by the Playwright dev
+  server, so the demo never depends on a third-party CDN for its assets.
+  jsDelivr's gh-proxy returns HTTP 403 for large GLB blobs under `assets/`,
+  which is why the catalog is self-hosted (issue #1573).
+- IBL environment: `site/environments/neutral_ibl.ktx`, self-hosted so
+  `SceneView.js` finds it via the relative `environments/` path with no 404 —
+  works on both domain-root and subpath deploys (issues #1586, #1631).
 
 ## Tests
 
-Playwright tests run headless against the shipped `index.html` (served by
-`http-server` — no Gradle build needed for the inline-JS path):
+Playwright tests run headless against the shipped `site/index.html` (served
+by `http-server` straight from the `site/` folder — no build step):
 
 - `tests/render.spec.ts` — load + branding + tab-regression smoke layer.
 - `tests/catalog.spec.ts` — full per-tab / per-demo QA: exercises every Models

@@ -155,7 +155,7 @@ extract_refs() {
         # caught. The filter is applied to the extracted refs below.
         local skip_placeholder=""
         case "$file" in
-            */web-demo/src/jsMain/resources/js/*) skip_placeholder="model.glb" ;;
+            */web-demo/site/js/*) skip_placeholder="model.glb" ;;
         esac
         # 1. Quoted literals with a known extension ("models/foo.glb", "bar.hdr")
         # Skip strings containing `$`, `\` (Swift `\(slug.uid).usdz`
@@ -317,15 +317,15 @@ fi
 
 if [ "$platforms" = "all" ] || [ "$platforms" = "web" ]; then
     # The web demo self-hosts its curated GLB catalog + IBL under
-    # src/jsMain/resources/{models,environments}/ — that directory is both the
-    # Playwright dev-server root (playwright.config.ts: `http-server
-    # src/jsMain/resources`) and what Kotlin/JS copies into
-    # jsBrowserDistribution. check_bundled_ref also probes the models/ and
-    # environments/ sub-roots, so a bare `khronos_damaged_helmet.glb` resolves.
+    # site/{models,environments}/ — that directory is both the static-site
+    # deliverable (copied verbatim to /web-demo/ by docs.yml) and the
+    # Playwright dev-server root (playwright.config.ts: `http-server site`).
+    # check_bundled_ref also probes the models/ and environments/ sub-roots,
+    # so a bare `khronos_damaged_helmet.glb` resolves.
     process_platform_refs \
         "web-demo" \
-        "samples/web-demo/src" \
-        "samples/web-demo/src/jsMain/resources" \
+        "samples/web-demo/site" \
+        "samples/web-demo/site" \
         "glb|gltf|hdr|ktx"
 fi
 
@@ -392,12 +392,12 @@ run_catalog_check() {
     fi
 
     # Bundled asset roots, one per platform. Mirrors the process_platform_refs
-    # bundle roots above; iOS uses Models/ and the web demo uses jsMain resources.
+    # bundle roots above; iOS uses Models/ and the web demo uses site/.
     local bundle_roots=(
         "samples/android-demo/src/main/assets"
         "samples/android-tv-demo/src/main/assets"
         "samples/ios-demo/SceneViewDemo/Models"
-        "samples/web-demo/src/jsMain/resources"
+        "samples/web-demo/site"
     )
 
     local before=$catalog_undeclared

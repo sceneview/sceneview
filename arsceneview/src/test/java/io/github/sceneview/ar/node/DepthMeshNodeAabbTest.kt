@@ -78,6 +78,33 @@ class DepthMeshNodeAabbTest {
     }
 
     @Test
+    fun `computeAabb identical-Z depth frame clamps only the Z axis (#1957)`() {
+        // The exact case named in #1957 — every depth pixel reports the same range, so Z is
+        // constant while the unprojected X/Y still spread across the image. Only Z is degenerate;
+        // the clamp must lift halfZ above the threshold and leave halfX / halfY untouched, so the
+        // returned Box still satisfies Filament's `halfExtent > 0` precondition without inflating
+        // a real, well-spread mesh.
+        val flat = floatArrayOf(
+            -1.5f, -2.0f, -4.0f,
+            0.5f, 0.0f, -4.0f,
+            2.5f, 3.0f, -4.0f,
+            -0.5f, 1.0f, -4.0f,
+        )
+        val aabb = computeAabb(flat)
+        // X spans -1.5..2.5 → halfX = 2.0 (real spread, must NOT clamp).
+        assertEquals("halfX must keep the real spread", 2.0f, aabb.halfExtent[0], 1e-6f)
+        // Y spans -2.0..3.0 → halfY = 2.5 (real spread, must NOT clamp).
+        assertEquals("halfY must keep the real spread", 2.5f, aabb.halfExtent[1], 1e-6f)
+        // Z is constant at -4.0 → halfZ would be 0 without the clamp.
+        assertTrue(
+            "halfZ must be clamped above DEGENERATE_AABB_HALF_EXTENT_M",
+            aabb.halfExtent[2] >= DepthMeshNode.DEGENERATE_AABB_HALF_EXTENT_M,
+        )
+        // Centre: X (-1.5+2.5)/2 = 0.5, Y (-2.0+3.0)/2 = 0.5, Z = -4.0
+        assertCenter(aabb, 0.5f, 0.5f, -4.0f)
+    }
+
+    @Test
     fun `computeAabb single-vertex returns degenerate cube around the vertex (#1806)`() {
         val flat = floatArrayOf(3.14f, -2.71f, 1.41f)
         val aabb = computeAabb(flat)

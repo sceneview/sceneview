@@ -103,3 +103,33 @@ fun rememberUnlitMaterialInstance(
     }
     return instance
 }
+
+/**
+ * Occlusion variant of [rememberMaterialInstance] — invisible, depth-writing.
+ *
+ * Same disposal contract as [rememberMaterialInstance] (#1776). Wears
+ * `MaterialLoader.createOcclusionInstance()` on any node that should
+ * **occlude** virtual content behind it without painting any colour itself —
+ * the SceneView equivalent of RealityKit's `OcclusionMaterial` and Sceneform
+ * legacy's `MaterialFactory.makeOcclusionMaterial(...)`.
+ *
+ * No `color` key — the material has nothing to tint, and skipping the
+ * remember key means the instance is allocated exactly once per composition.
+ *
+ * For AR scenes that need to occlude virtual content against the **live
+ * depth camera** rather than a static mesh, use
+ * [`ARCameraStream.isDepthOcclusionEnabled`][io.github.sceneview.ar.camera.ARCameraStream]
+ * — that path samples ARCore's per-pixel depth image.
+ */
+@Composable
+fun rememberOcclusionMaterialInstance(
+    materialLoader: MaterialLoader,
+): MaterialInstance {
+    val instance = remember(materialLoader) {
+        materialLoader.createOcclusionInstance()
+    }
+    DisposableEffect(instance) {
+        onDispose { materialLoader.destroyMaterialInstance(instance) }
+    }
+    return instance
+}

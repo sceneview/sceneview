@@ -7,14 +7,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -41,6 +38,8 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
+import io.github.sceneview.demo.common.SceneAction
+import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.demos.internal.DemoMath
@@ -110,91 +109,87 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
 
     val modelInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
 
+    // Host the placed local anchor to the cloud. Hoisted so the on-screen
+    // SceneActionBar can invoke it — Host is the demo's primary action (the
+    // banner literally tells the user to "tap Host"), so it lives on-screen
+    // rather than buried in the Settings sheet (#1964 / #1614).
+    val onHost = {
+        val node = cloudNode
+        val session = arSession
+        when {
+            localAnchor == null -> Toast.makeText(
+                context, "Place an anchor first", Toast.LENGTH_SHORT
+            ).show()
+            node == null || session == null -> Toast.makeText(
+                context, "AR session not ready", Toast.LENGTH_SHORT
+            ).show()
+            else -> {
+                statusMessage = "Hosting anchor…"
+                node.host(session)
+            }
+        }
+        Unit
+    }
+    // Resolve a cloud anchor id (typed into the sheet's text field) back into a
+    // local anchor. Also primary — moved on-screen alongside Host (#1964).
+    val onResolve = onResolve@{
+        val session = arSession
+        if (resolveId.isBlank()) return@onResolve
+        if (session == null) {
+            Toast.makeText(
+                context, "AR session not ready", Toast.LENGTH_SHORT
+            ).show()
+            return@onResolve
+        }
+        statusMessage = "Resolving $resolveId…"
+        CloudAnchorNodeImpl.resolve(engine, session, resolveId) { state, node ->
+            if (state == Anchor.CloudAnchorState.SUCCESS && node != null) {
+                localAnchor = node.anchor
+                cloudAnchorId = resolveId
+                statusMessage = "Resolved $resolveId"
+            } else {
+                statusMessage = when (state) {
+                    Anchor.CloudAnchorState.ERROR_NOT_AUTHORIZED ->
+                        "Resolve failed: ERROR_NOT_AUTHORIZED. The ARCore Cloud " +
+                            "API key is rejecting this APK. Check SHA-1 + billing " +
+                            "+ ARCore API restrictions in STREETSCAPE_SETUP.md."
+                    else -> "Resolve failed: $state"
+                }
+            }
+        }
+    }
+
     DemoScaffold(
         title = stringResource(R.string.demo_ar_cloud_anchor_title),
         onBack = onBack,
+        // Host / Resolve are the demo's primary actions and live on-screen via
+        // SceneActionBar (#1964 / #1614). The sheet keeps only the Cloud Anchor
+        // ID input (config that feeds Resolve) and the hosted-ID readout \u2014
+        // both genuinely secondary.
         controls = {
-            Text("Cloud Anchor Controls", style = MaterialTheme.typography.labelLarge)
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = {
-                        val node = cloudNode
-                        val session = arSession
-                        when {
-                            localAnchor == null -> Toast.makeText(
-                                context, "Place an anchor first", Toast.LENGTH_SHORT
-                            ).show()
-                            node == null || session == null -> Toast.makeText(
-                                context, "AR session not ready", Toast.LENGTH_SHORT
-                            ).show()
-                            else -> {
-                                statusMessage = "Hosting anchor\u2026"
-                                node.host(session)
-                            }
-                        }
-                    },
-                    // Without an ARCore Cloud API key the SDK returns
-                    // ERROR_NOT_AUTHORIZED silently \u2014 disable the action so the
-                    // status text is the single source of truth, mirroring how
-                    // ARTerrainAnchorDemo / ARRooftopAnchorDemo already gate the
-                    // "Drop" button on `hasArcoreApiKey`.
-                    enabled = hasArcoreApiKey && localAnchor != null && hostedId == null
-                ) {
-                    Text("Host")
-                }
-
-                Button(
-                    onClick = {
-                        val session = arSession
-                        if (resolveId.isBlank()) return@Button
-                        if (session == null) {
-                            Toast.makeText(
-                                context, "AR session not ready", Toast.LENGTH_SHORT
-                            ).show()
-                            return@Button
-                        }
-                        statusMessage = "Resolving $resolveId\u2026"
-                        CloudAnchorNodeImpl.resolve(engine, session, resolveId) { state, node ->
-                            if (state == Anchor.CloudAnchorState.SUCCESS && node != null) {
-                                localAnchor = node.anchor
-                                cloudAnchorId = resolveId
-                                statusMessage = "Resolved $resolveId"
-                            } else {
-                                statusMessage = when (state) {
-                                    Anchor.CloudAnchorState.ERROR_NOT_AUTHORIZED ->
-                                        "Resolve failed: ERROR_NOT_AUTHORIZED. The ARCore Cloud " +
-                                            "API key is rejecting this APK. Check SHA-1 + billing " +
-                                            "+ ARCore API restrictions in STREETSCAPE_SETUP.md."
-                                    else -> "Resolve failed: $state"
-                                }
-                            }
-                        }
-                    },
-                    // Same API-key gate as Host \u2014 Resolve also needs the Cloud
-                    // backend.
-                    enabled = hasArcoreApiKey && resolveId.isNotBlank()
-                ) {
-                    Text("Resolve")
-                }
-            }
+            Text(
+                text = "Tap a surface to place an anchor, then use the on-screen Host " +
+                    "button to share it. To load a shared anchor, paste its id below " +
+                    "and tap Resolve.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
 
             OutlinedTextField(
                 value = resolveId,
                 onValueChange = { resolveId = it },
                 label = { Text("Cloud Anchor ID") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp)
             )
 
             hostedId?.let {
                 Text(
                     text = "Hosted ID: $it",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 8.dp)
                 )
             }
             // Developer-only debug toggle — visible when QA mode is on. Lets QA
@@ -316,6 +311,23 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                         .padding(horizontal = 24.dp, vertical = 12.dp)
                 )
             }
+
+            // Primary actions on-screen (#1964 / #1614) — the banner tells the
+            // user to "tap Host", so Host (and Resolve) must be on-screen
+            // buttons, not buried in the Settings sheet. Same enabled gates as
+            // the previous in-sheet buttons.
+            SceneActionBar(
+                SceneAction(
+                    label = "Host",
+                    onClick = onHost,
+                    enabled = hasArcoreApiKey && localAnchor != null && hostedId == null,
+                ),
+                SceneAction(
+                    label = "Resolve",
+                    onClick = onResolve,
+                    enabled = hasArcoreApiKey && resolveId.isNotBlank(),
+                ),
+            )
         }
     }
 }
