@@ -32,6 +32,15 @@ class _ModelViewerPageState extends State<ModelViewerPage> {
   final _controller = SceneViewController();
 
   @override
+  void dispose() {
+    // This page created the controller, so this page disposes it. The
+    // SceneView widget no longer disposes caller-supplied controllers
+    // (issue #2050).
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('3D Model Viewer')),

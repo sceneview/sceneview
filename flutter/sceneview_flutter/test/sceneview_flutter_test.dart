@@ -4,6 +4,7 @@
 // a platform view — the native rendering paths are exercised by the demo app.
 // See issue #909.
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sceneview_flutter/sceneview_flutter.dart';
 
@@ -120,6 +121,46 @@ void main() {
       expect(controller.isAttached, isTrue);
       controller.dispose();
       expect(controller.isAttached, isFalse);
+    });
+  });
+
+  // Regression coverage for issue #2050: a SceneView/ARSceneView widget must
+  // dispose only the controller it created itself, never a caller-supplied one.
+  group('controller ownership (#2050)', () {
+    testWidgets('SceneView does not dispose a caller-supplied controller',
+        (tester) async {
+      final controller = SceneViewController();
+      controller.attach(7);
+      expect(controller.isAttached, isTrue);
+
+      await tester.pumpWidget(
+        MaterialApp(home: SceneView(controller: controller)),
+      );
+      // Remove the SceneView from the tree — its State.dispose() runs.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+
+      // The caller still owns the controller; it must remain usable.
+      expect(controller.isAttached, isTrue,
+          reason: 'widget must not dispose a controller it does not own');
+
+      controller.dispose(); // caller cleans up its own controller
+    });
+
+    testWidgets('ARSceneView does not dispose a caller-supplied controller',
+        (tester) async {
+      final controller = SceneViewController();
+      controller.attach(8);
+      expect(controller.isAttached, isTrue);
+
+      await tester.pumpWidget(
+        MaterialApp(home: ARSceneView(controller: controller)),
+      );
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+
+      expect(controller.isAttached, isTrue,
+          reason: 'widget must not dispose a controller it does not own');
+
+      controller.dispose();
     });
   });
 }

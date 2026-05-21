@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import SwiftUI
+import RealityKit
 import SceneViewSwift
 
 /// Flutter plugin entry point for SceneView on iOS.
@@ -87,16 +88,25 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
     private let sceneState = SceneState()
 
     init(frame: CGRect, viewId: Int64, args: [String: Any], messenger: FlutterBinaryMessenger) {
-        self.hostingController = UIHostingController(
-            rootView: SceneViewSwiftUIWrapper(state: sceneState)
-        )
-        self.hostingController.view.frame = frame
-        self.hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-
         self.channel = FlutterMethodChannel(
             name: "io.github.sceneview.flutter/scene_\(viewId)",
             binaryMessenger: messenger
         )
+
+        // Capture the channel weakly so the tap closure forwarded into the
+        // SwiftUI wrapper does not extend the platform view's lifetime.
+        let channel = self.channel
+        self.hostingController = UIHostingController(
+            rootView: SceneViewSwiftUIWrapper(
+                state: sceneState,
+                onTap: { [weak channel] nodeName in
+                    channel?.invokeMethod("onTap", arguments: nodeName)
+                }
+            )
+        )
+        self.hostingController.view.frame = frame
+        self.hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+
         super.init()
 
         // Apply v4.3.0 creation params (camera mode + auto-centre).
@@ -108,6 +118,14 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
         }
 
         channel.setMethodCallHandler(handleMethodCall)
+    }
+
+    deinit {
+        // Detach the channel handler so the retained handler block (which
+        // captures `self`) is released — otherwise the platform view, its
+        // UIHostingController, and the RealityKit scene leak on every
+        // create/dispose cycle (issue #2052).
+        channel.setMethodCallHandler(nil)
     }
 
     func view() -> UIView {
@@ -172,9 +190,27 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
     }
 }
 
+/// Derives the node name reported to Flutter for a tapped entity, matching the
+/// Android bridge convention: the model file's base name without extension.
+/// Walks up the entity tree past anonymous mesh children to the first named
+/// ancestor, since `SpatialTapGesture` may report a deep child whose `name`
+/// is empty. Falls back to the empty string when no name is available.
+func flutterTappedNodeName(_ entity: Entity) -> String {
+    var node: Entity? = entity
+    while let current = node {
+        let stem = (current.name as NSString).deletingPathExtension
+        if !stem.isEmpty { return stem }
+        node = current.parent
+    }
+    return ""
+}
+
 /// SwiftUI wrapper for SceneViewSwift.SceneView, driven by observable state.
 struct SceneViewSwiftUIWrapper: View {
     @ObservedObject var state: SceneState
+
+    /// Forwards a model tap to the Flutter method channel as `onTap`.
+    let onTap: (String) -> Void
 
     var body: some View {
         SceneView {
@@ -185,6 +221,11 @@ struct SceneViewSwiftUIWrapper: View {
         }
         .cameraControls(state.cameraControlMode)
         .autoCenterContent(state.autoCenterContent)
+        .onEntityTapped { entity in
+            // Wire SceneViewSwift's entity hit-test to the Flutter channel so
+            // the Dart `onTap` callback fires on iOS, matching Android (#2051).
+            onTap(flutterTappedNodeName(entity))
+        }
     }
 }
 
@@ -246,6 +287,14 @@ class ARSceneViewPlatformView: NSObject, FlutterPlatformView {
         super.init()
 
         channel.setMethodCallHandler(handleMethodCall)
+    }
+
+    deinit {
+        // Detach the channel handler so the retained handler block (which
+        // captures `self`) is released — otherwise the platform view, its
+        // UIHostingController, the ARSession, and the RealityKit scene leak
+        // on every create/dispose cycle (issue #2052).
+        channel.setMethodCallHandler(nil)
     }
 
     func view() -> UIView {
