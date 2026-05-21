@@ -30,6 +30,11 @@ fun main() {
     api["modelViewer"] = ::jsModelViewer
     api["modelViewerAutoRotate"] = ::jsModelViewerAutoRotate
 
+    // Cross-platform haptic facade (mirrors Android `SceneViewHaptic` and iOS
+    // `SceneViewSwift.SceneViewHaptic`) — exposed as `sceneview.haptic.*` so
+    // plain JS callsites match the Kotlin / Swift APIs 1:1.
+    api["haptic"] = io.github.sceneview.web.haptic.SceneViewHaptic()
+
     js("window")["sceneview"] = api
 
     console.log("SceneView Web v$SCENEVIEW_VERSION loaded")
