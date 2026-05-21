@@ -1,0 +1,46 @@
+// Invisible depth-writing material — the SceneView equivalent of
+// RealityKit's `OcclusionMaterial` and Sceneform legacy's `MaterialFactory.makeOcclusionMaterial`.
+//
+// Contract:
+//   * `depthWrite = true`  → every drawn fragment punches into the depth buffer.
+//   * `colorWrite = false` → no colour ever lands on the framebuffer.
+//
+// The combination means any virtual node behind the wearer is occluded (its
+// fragments fail the depth test) while the wearer itself paints zero pixels —
+// a perfect cutout for window/door frames, virtual aquarium walls, or any
+// "I want this real-world surface to hide what's behind it" use case
+// (see #1776, parity with ARKit / legacy Sceneform).
+//
+// `shadingModel : "unlit"` skips every PBR pass (no IBL sample, no lighting
+// loop) — there's no colour output, so any work the PBR path would do is
+// wasted. The vertex shader still runs (we need the depth value) and that's
+// the entire cost.
+//
+// `blending : "opaque"` keeps the renderable in the opaque queue, before
+// transparents, so virtual transparent objects behind it (e.g. a tinted
+// glass) still see the depth cutout and skip their fragment shading.
+//
+// `doubleSided : true` because occluder geometry is typically authored as
+// single-sided planes — users place them as a wall/window and the back face
+// is just as eligible to cut out content behind it.
+material {
+    "name" : "Occlusion",
+    "shadingModel" : "unlit",
+    "blending" : "opaque",
+    "depthWrite" : true,
+    "colorWrite" : false,
+    "doubleSided" : true,
+    "requires" : [
+        "position"
+    ]
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        // No colour is written (colorWrite = false), but Filament's material
+        // pipeline still requires a baseColor assignment for prepareMaterial
+        // to validate. Output transparent black — purely cosmetic since the
+        // colour mask blocks every write.
+        material.baseColor = vec4(0.0, 0.0, 0.0, 0.0);
+    }
+}
