@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- Removed the stale `website-static/llms.txt` (pinned at v4.0.9, 12 versions behind the canonical root `llms.txt`) so the deployed `sceneview.github.io/llms.txt` always serves the current API reference (#1956); added cross-platform parity rows for v4.12.0 Spatial Audio (#1900) and Haptic Feedback (#1901) to the iOS and Android cheatsheets, stating the real iOS / Web maturity (#1958).

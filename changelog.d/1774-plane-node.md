@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- `PlaneNode` composable + `rememberDetectedPlanes` lifecycle helper for `arsceneview` (#1774): react to ARCore detected-plane lifecycle (`onAdded`/`onUpdated`/`onRemoved`) declaratively from Compose — the SceneView equivalent of AR Foundation's `ARPlaneManager.planesChanged` — instead of hand-rolling a `frame.getUpdatedTrackables(Plane::class.java)` loop. New "Plane Lifecycle" demo in `samples/android-demo`.
