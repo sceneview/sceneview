@@ -139,7 +139,7 @@ struct ARPlacementDemo: View {
                 arViewRef.value = arView
                 placedAnchors.append(anchor.entity)
                 #if os(iOS)
-                HapticManager.lightTap()
+                SceneViewHaptic.shared.light()
                 #endif
                 return
             }
@@ -152,7 +152,7 @@ struct ARPlacementDemo: View {
             arViewRef.value = arView
             placedAnchors.append(anchor.entity)
             #if os(iOS)
-            HapticManager.lightTap()
+            SceneViewHaptic.shared.light()
             #endif
             _ = displayName
         } catch {
@@ -171,7 +171,7 @@ struct ARPlacementDemo: View {
         }
         placedAnchors.removeAll()
         #if os(iOS)
-        HapticManager.mediumTap()
+        SceneViewHaptic.shared.medium()
         #endif
     }
 
@@ -238,7 +238,7 @@ struct ARPlacementDemo: View {
         Button {
             action()
             #if os(iOS)
-            HapticManager.selectionChanged()
+            SceneViewHaptic.shared.selection()
             #endif
         } label: {
             Text(label)
