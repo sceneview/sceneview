@@ -50,6 +50,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -86,7 +87,7 @@ private sealed interface UploadUiState {
      */
     data class Sending(val progress: Float? = null) : UploadUiState
     data class Sent(val issueNumber: Int?) : UploadUiState
-    data object Failed : UploadUiState
+    data class Failed(val errorKind: FeedbackUploader.ErrorKind) : UploadUiState
 }
 
 /**
@@ -97,14 +98,28 @@ private sealed interface UploadUiState {
  * The recording itself happens with the dialog dismissed (so the user can
  * demonstrate the bug); [FeedbackRecorder] bridges the recording state back in.
  *
- * @param onStartRecording requests the screen + mic permissions and starts the
- *   recording service; see [rememberFeedbackRecordingLauncher].
+ * @param launcher requests the screen + mic permissions and starts the
+ *   recording service; see [rememberFeedbackRecordingLauncher]. Also exposes
+ *   an [FeedbackRecordingLauncher.openAppSettings] path for a permanently-denied
+ *   microphone permission.
+ * @param micPermanentlyDenied `true` when the microphone permission is
+ *   "Don't ask again"-denied — the flow then routes the user to app settings
+ *   instead of looping a no-op "Retry".
+ * @param notificationControlAvailable `false` when the foreground-service
+ *   notification (a documented stop affordance) will be silent — the flow then
+ *   surfaces a one-time hint that the in-app Stop pill is the way to finish.
  */
 @Composable
-fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
+fun FeedbackFlow(
+    onDismiss: () -> Unit,
+    launcher: FeedbackRecordingLauncher,
+    micPermanentlyDenied: Boolean = false,
+    notificationControlAvailable: Boolean = true,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val recState by FeedbackRecorder.state.collectAsState()
+    val onStartRecording: () -> Unit = launcher.startRecording
 
     var step by rememberSaveable {
         mutableStateOf(
@@ -112,65 +127,105 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
             else FeedbackStep.ONBOARDING,
         )
     }
-    var category by rememberSaveable { mutableStateOf<FeedbackCategory?>(null) }
+    var category by rememberSaveable {
+        // Restore the in-flight category if the process was killed during the
+        // MediaProjection consent dialog — otherwise an "Idea" silently becomes
+        // a "Bug" on the way back (#1930 review).
+        mutableStateOf(FeedbackRecorder.category ?: FeedbackCategoryStore.load(context))
+    }
     var note by rememberSaveable { mutableStateOf("") }
+    // uploadState is rememberSaveable-friendly only as an enum-ish marker: the
+    // actual upload coroutine cannot survive a process death. On restore, if
+    // `step` was SENDING but there is no live upload, we drop back to REVIEW so
+    // the user is never stranded on a spinner with no way out (handled below).
     var uploadState by remember { mutableStateOf<UploadUiState>(UploadUiState.Sending()) }
+    // True once the user actually launched an upload coroutine in THIS
+    // composition — distinguishes "genuinely sending" from "step==SENDING was
+    // restored after process death".
+    var uploadLaunched by remember { mutableStateOf(false) }
 
-    // The previously submitted tickets — read once per dialog open. Used to
-    // surface the "My feedback" entry and to populate the tracking screen.
-    val tickets = remember { SubmittedFeedbackStore.all(context) }
+    // Recover from a process death mid-send: `step` is rememberSaveable, the
+    // upload coroutine is not. Without this the user is stuck on the SENDING
+    // spinner forever (#1930 review).
+    LaunchedEffect(Unit) {
+        if (step == FeedbackStep.SENDING && !uploadLaunched) {
+            step = FeedbackStep.REVIEW
+        }
+    }
+
+    // The previously submitted tickets — re-read whenever the flow shows the
+    // category or tickets step, so a just-submitted ticket appears without
+    // having to close and re-open the dialog (#1930 review).
+    var ticketsRefresh by remember { mutableStateOf(0) }
+    val tickets = remember(ticketsRefresh) { SubmittedFeedbackStore.all(context) }
+    LaunchedEffect(step) {
+        if (step == FeedbackStep.CATEGORY || step == FeedbackStep.TICKETS) {
+            ticketsRefresh++
+        }
+    }
 
     fun send() {
         val recording = (FeedbackRecorder.state.value as? RecordingState.Done)?.recording
         val chosen = FeedbackRecorder.category ?: category ?: FeedbackCategory.BUG
         val text = note.trim()
-        // Capture the context — including the current demo route (#1934) —
+        // Capture the context — including the current demo id (#1934) —
         // before switching to the SENDING step.
         val feedbackContext = captureFeedbackContext(context)
         uploadState = UploadUiState.Sending()
+        uploadLaunched = true
         step = FeedbackStep.SENDING
         scope.launch {
-            val result = FeedbackUploader.upload(
-                category = chosen,
-                note = text,
-                context = feedbackContext,
-                recording = recording,
-                onProgress = { fraction ->
-                    // Keep showing the determinate bar only while still
-                    // uploading; once at 100% the worker is processing, so
-                    // fall back to the indeterminate spinner.
-                    val current = uploadState
-                    if (current is UploadUiState.Sending) {
-                        uploadState = UploadUiState.Sending(
-                            progress = fraction.takeIf { it < 1f },
+            // Mark the recording media as held so a dialog dismiss during
+            // SENDING cannot delete the file out from under the upload read.
+            if (recording != null) FeedbackRecorder.beginUpload()
+            try {
+                val result = FeedbackUploader.upload(
+                    category = chosen,
+                    note = text,
+                    context = feedbackContext,
+                    recording = recording,
+                    onProgress = { fraction ->
+                        // Keep showing the determinate bar only while still
+                        // uploading; once at 100% the worker is processing, so
+                        // fall back to the indeterminate spinner.
+                        val current = uploadState
+                        if (current is UploadUiState.Sending) {
+                            uploadState = UploadUiState.Sending(
+                                progress = fraction.takeIf { it < 1f },
+                            )
+                        }
+                    },
+                )
+                uploadState = if (result.ok) {
+                    UploadUiState.Sent(result.issueNumber)
+                } else {
+                    UploadUiState.Failed(result.errorKind)
+                }
+                if (result.ok) {
+                    // Index the new ticket locally so "My feedback" can track
+                    // it. Skipped when the worker stored the feedback but
+                    // opened no issue (e.g. its hourly issue quota was hit) —
+                    // there is then nothing to link to.
+                    if (result.issueNumber != null && result.issueUrl != null) {
+                        SubmittedFeedbackStore.add(
+                            context,
+                            SubmittedFeedback(
+                                feedbackId = result.feedbackId ?: "",
+                                issueNumber = result.issueNumber,
+                                issueUrl = result.issueUrl,
+                                category = chosen,
+                                title = text,
+                                createdAt = System.currentTimeMillis(),
+                            ),
                         )
                     }
-                },
-            )
-            uploadState = if (result.ok) {
-                UploadUiState.Sent(result.issueNumber)
-            } else {
-                UploadUiState.Failed
-            }
-            if (result.ok) {
-                // Index the new ticket locally so "My feedback" can track it.
-                // Skipped when the worker stored the feedback but opened no
-                // issue (e.g. its hourly issue quota was hit) — there is then
-                // nothing to link to.
-                if (result.issueNumber != null && result.issueUrl != null) {
-                    SubmittedFeedbackStore.add(
-                        context,
-                        SubmittedFeedback(
-                            feedbackId = result.feedbackId ?: "",
-                            issueNumber = result.issueNumber,
-                            issueUrl = result.issueUrl,
-                            category = chosen,
-                            title = text,
-                            createdAt = System.currentTimeMillis(),
-                        ),
-                    )
+                    FeedbackRecorder.reset()
+                    FeedbackCategoryStore.save(context, null)
                 }
-                FeedbackRecorder.reset()
+            } finally {
+                // Release the media: deletes the files if a reset() landed
+                // while the upload was in flight.
+                if (recording != null) FeedbackRecorder.endUpload()
             }
         }
     }
@@ -187,6 +242,13 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
             color = MaterialTheme.colorScheme.surface,
         ) {
             val doneRecording = (recState as? RecordingState.Done)?.recording
+            // Set the in-flight category on the process-wide recorder AND
+            // mirror it to prefs, so it survives a process death during the
+            // MediaProjection consent dialog (#1930 review).
+            fun rememberCategory(value: FeedbackCategory?) {
+                FeedbackRecorder.category = value
+                FeedbackCategoryStore.save(context, value)
+            }
             when {
                 step == FeedbackStep.SENDING -> SendingStep(
                     state = uploadState,
@@ -195,10 +257,18 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
                 )
 
                 recState is RecordingState.Failed -> FailedStep(
+                    micPermanentlyDenied = micPermanentlyDenied,
                     onClose = onDismiss,
                     onRetry = {
                         FeedbackRecorder.reset()
                         onStartRecording()
+                    },
+                    onOpenSettings = launcher.openAppSettings,
+                    onSkipRecording = {
+                        // Drop the failed recording state and continue with a
+                        // text-only submission rather than dead-ending.
+                        FeedbackRecorder.reset()
+                        step = FeedbackStep.REVIEW
                     },
                 )
 
@@ -233,14 +303,15 @@ fun FeedbackFlow(onDismiss: () -> Unit, onStartRecording: () -> Unit) {
                     )
                     FeedbackStep.CONSENT -> ConsentStep(
                         category = category ?: FeedbackCategory.BUG,
+                        notificationControlAvailable = notificationControlAvailable,
                         onClose = onDismiss,
                         onBack = { step = FeedbackStep.CATEGORY },
                         onAgree = {
-                            FeedbackRecorder.category = category
+                            rememberCategory(category)
                             onStartRecording()
                         },
                         onSkip = {
-                            FeedbackRecorder.category = category
+                            rememberCategory(category)
                             step = FeedbackStep.REVIEW
                         },
                     )
@@ -320,6 +391,7 @@ private fun CategoryStep(
 @Composable
 private fun ConsentStep(
     category: FeedbackCategory,
+    notificationControlAvailable: Boolean,
     onClose: () -> Unit,
     onBack: () -> Unit,
     onAgree: () -> Unit,
@@ -361,6 +433,12 @@ private fun ConsentStep(
         }
         Spacer(Modifier.height(16.dp))
         PrivacyNote()
+        if (!notificationControlAvailable) {
+            // The foreground-service notification is silenced — tell the user
+            // the in-app Stop pill is the way to finish (#1930 review).
+            Spacer(Modifier.height(12.dp))
+            NotificationWarning()
+        }
     }
 }
 
@@ -417,7 +495,19 @@ private fun SendingStep(
     onRetry: () -> Unit,
 ) {
     when (state) {
-        is UploadUiState.Sending -> FeedbackStepScaffold(onClose = null) {
+        is UploadUiState.Sending -> FeedbackStepScaffold(
+            // A close affordance is always present while sending — the upload
+            // runs in a coroutine that is cancelled when the dialog is
+            // dismissed, so the user is never trapped on the spinner (#1930
+            // review). It also doubles as the recovery exit if a process death
+            // dropped the upload.
+            onClose = onClose,
+            actions = {
+                TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.feedback_sending_cancel))
+                }
+            },
+        ) {
             Spacer(Modifier.height(64.dp))
             CircularProgressIndicator(
                 modifier = Modifier
@@ -474,7 +564,7 @@ private fun SendingStep(
             )
         }
 
-        UploadUiState.Failed -> FeedbackStepScaffold(
+        is UploadUiState.Failed -> FeedbackStepScaffold(
             onClose = onClose,
             actions = {
                 PrimaryButton(
@@ -491,13 +581,65 @@ private fun SendingStep(
             Spacer(Modifier.height(24.dp))
             StepTitle(stringResource(R.string.feedback_send_failed_title))
             Spacer(Modifier.height(12.dp))
-            StepBody(stringResource(R.string.feedback_send_failed_body))
+            // Tailored copy per failure kind — a 413 user must not be told to
+            // "check your connection" forever (#1930 review).
+            StepBody(
+                stringResource(
+                    when (state.errorKind) {
+                        FeedbackUploader.ErrorKind.TOO_LARGE ->
+                            R.string.feedback_send_failed_too_large
+                        FeedbackUploader.ErrorKind.RATE_LIMITED ->
+                            R.string.feedback_send_failed_rate_limited
+                        FeedbackUploader.ErrorKind.SERVER ->
+                            R.string.feedback_send_failed_server
+                        else -> R.string.feedback_send_failed_body
+                    },
+                ),
+            )
         }
     }
 }
 
 @Composable
-private fun FailedStep(onClose: () -> Unit, onRetry: () -> Unit) {
+private fun FailedStep(
+    micPermanentlyDenied: Boolean,
+    onClose: () -> Unit,
+    onRetry: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onSkipRecording: () -> Unit,
+) {
+    // When the microphone permission is "Don't ask again"-denied, a plain
+    // "Retry" just loops a no-op (the system shows no dialog). Route the user to
+    // app settings, or let them continue with a text-only note (#1930 review).
+    if (micPermanentlyDenied) {
+        FeedbackStepScaffold(
+            onClose = onClose,
+            actions = {
+                PrimaryButton(
+                    text = stringResource(R.string.feedback_record_open_settings),
+                    onClick = onOpenSettings,
+                )
+                TextButton(
+                    onClick = onSkipRecording,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.feedback_record_skip))
+                }
+            },
+        ) {
+            Spacer(Modifier.height(16.dp))
+            FeedbackHeroIcon(
+                Icons.Outlined.Mic,
+                Modifier.align(Alignment.CenterHorizontally),
+                error = true,
+            )
+            Spacer(Modifier.height(24.dp))
+            StepTitle(stringResource(R.string.feedback_record_denied_title))
+            Spacer(Modifier.height(12.dp))
+            StepBody(stringResource(R.string.feedback_record_denied_body))
+        }
+        return
+    }
     FeedbackStepScaffold(
         onClose = onClose,
         actions = {
@@ -505,6 +647,9 @@ private fun FailedStep(onClose: () -> Unit, onRetry: () -> Unit) {
                 text = stringResource(R.string.feedback_record_retry),
                 onClick = onRetry,
             )
+            TextButton(onClick = onSkipRecording, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.feedback_record_skip))
+            }
         },
     ) {
         Spacer(Modifier.height(16.dp))
@@ -913,6 +1058,33 @@ private fun PrivacyNote() {
     }
 }
 
+/** One-time hint shown on the consent step when the foreground-service
+ *  notification will be silent — the in-app Stop pill is then the stop path. */
+@Composable
+private fun NotificationWarning() {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                Icons.Outlined.ErrorOutline,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                stringResource(R.string.feedback_notif_warning),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 @Composable
 private fun RecordingSummary(recording: FeedbackRecording) {
     Surface(
@@ -944,6 +1116,15 @@ private fun RecordingSummary(recording: FeedbackRecording) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (recording.capped) {
+                    // The clip hit the size/duration cap and was auto-stopped —
+                    // tell the user so the cut-off is not a surprise (#1930).
+                    Text(
+                        stringResource(R.string.feedback_recording_capped),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
             }
         }
     }

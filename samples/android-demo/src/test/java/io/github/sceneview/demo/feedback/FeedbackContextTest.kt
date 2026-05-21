@@ -37,36 +37,37 @@ class FeedbackContextTest {
     }
 
     @Test
-    fun `on a tab screen the route is list and no demo id is set`() {
+    fun `on a tab screen no demoId is set`() {
         val ctx = captureFeedbackContext(context, demoId = null)
 
-        assertEquals("list", ctx["route"])
-        assertFalse(ctx.containsKey("demo"))
+        // The worker only renders the named "Demo" row when `demoId` is present,
+        // so a tab-screen report simply omits the key — no `route` key exists.
+        assertFalse(ctx.containsKey("demoId"))
+        assertFalse(ctx.containsKey("route"))
     }
 
     @Test
-    fun `inside a demo the demo id and the demo route are both captured`() {
+    fun `inside a demo the demoId is captured under the worker's key`() {
         val ctx = captureFeedbackContext(context, demoId = "model-viewer")
 
-        assertEquals("model-viewer", ctx["demo"])
-        assertEquals("demo/model-viewer", ctx["route"])
+        assertEquals("model-viewer", ctx["demoId"])
+        // `route` is never emitted — the worker has no label for it.
+        assertFalse(ctx.containsKey("route"))
     }
 
     @Test
     fun `a blank demo id is treated as a tab screen`() {
         val ctx = captureFeedbackContext(context, demoId = "  ")
 
-        assertEquals("list", ctx["route"])
-        assertFalse(ctx.containsKey("demo"))
+        assertFalse(ctx.containsKey("demoId"))
     }
 
     @Test
-    fun `the demo id defaults to the recorder's tracked route`() {
+    fun `the demoId defaults to the recorder's tracked demo`() {
         FeedbackRecorder.currentDemoId = "lighting"
 
         val ctx = captureFeedbackContext(context)
 
-        assertEquals("lighting", ctx["demo"])
-        assertEquals("demo/lighting", ctx["route"])
+        assertEquals("lighting", ctx["demoId"])
     }
 }

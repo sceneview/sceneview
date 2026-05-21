@@ -10,6 +10,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.Response
 import okio.Buffer
 import okio.BufferedSink
 import okio.ForwardingSink
@@ -24,9 +25,9 @@ object FeedbackUploader {
     /**
      * Endpoint of the feedback worker — `<base>/v1/feedback`. The base URL is a
      * single configurable [BuildConfig] field (`FEEDBACK_WORKER_URL`), set in
-     * `samples/android-demo/build.gradle`. The worker is not deployed yet; until
-     * the maintainer sets the real URL there, this points at the planned
-     * workers.dev subdomain.
+     * `samples/android-demo/build.gradle`. The worker is deployed at
+     * `sceneview-feedback.mcp-tools-lab.workers.dev`; the build can still point
+     * the field at a staging URL via the env var / `local.properties`.
      */
     private val endpoint: String by lazy {
         BuildConfig.FEEDBACK_WORKER_URL.trimEnd('/') + "/v1/feedback"
@@ -41,16 +42,42 @@ object FeedbackUploader {
             .build()
     }
 
+    /** Why an upload failed — drives a tailored error message in the UI. */
+    enum class ErrorKind {
+        /** No failure. */
+        NONE,
+
+        /** Network unreachable / timeout — "check your connection". */
+        NETWORK,
+
+        /** 413 — the recording was too large for the worker's upload cap. */
+        TOO_LARGE,
+
+        /** 429 — too many submissions; retry later (see [Result.retryAfterSeconds]). */
+        RATE_LIMITED,
+
+        /** 5xx — a transient worker-side error. */
+        SERVER,
+
+        /** Any other non-success (4xx) or an unparseable success body. */
+        OTHER,
+    }
+
     /**
      * Outcome of an upload. [ok] is true when the worker accepted the feedback.
      * [issueNumber] / [issueUrl] are null when the worker stored the feedback
      * but did not open a GitHub issue (e.g. the hourly issue quota was hit).
+     * On a failure, [errorKind] explains what went wrong so the UI can show
+     * tailored copy, and [retryAfterSeconds] carries the worker's `Retry-After`
+     * hint for a 429.
      */
     data class Result(
         val ok: Boolean,
         val issueNumber: Int?,
         val issueUrl: String?,
         val feedbackId: String?,
+        val errorKind: ErrorKind = ErrorKind.NONE,
+        val retryAfterSeconds: Int? = null,
     )
 
     /**
@@ -101,22 +128,46 @@ object FeedbackUploader {
             .build()
         try {
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext Result(false, null, null, null)
-                }
-                val json = runCatching {
-                    JSONObject(response.body.string())
-                }.getOrNull()
-                Result(
-                    ok = json?.optBoolean("ok") == true,
-                    issueNumber = json?.optInt("issue", 0)?.takeIf { it > 0 },
-                    issueUrl = json?.optString("url")?.takeIf { it.isNotBlank() },
-                    feedbackId = json?.optString("id")?.takeIf { it.isNotBlank() },
-                )
+                parseResponse(response)
             }
         } catch (e: Exception) {
-            Result(false, null, null, null)
+            Result(false, null, null, null, ErrorKind.NETWORK)
         }
+    }
+
+    /**
+     * Map an HTTP [Response] to a [Result]. Extracted so the status-code →
+     * [ErrorKind] mapping and the JSON parsing are unit-testable. Reads (and
+     * therefore consumes) the response body.
+     */
+    internal fun parseResponse(response: Response): Result {
+        if (!response.isSuccessful) {
+            val kind = when (response.code) {
+                413 -> ErrorKind.TOO_LARGE
+                429 -> ErrorKind.RATE_LIMITED
+                in 500..599 -> ErrorKind.SERVER
+                else -> ErrorKind.OTHER
+            }
+            val retryAfter = response.header("Retry-After")
+                ?.trim()
+                ?.toIntOrNull()
+                ?.takeIf { it in 1..3600 }
+            return Result(false, null, null, null, kind, retryAfter)
+        }
+        val json = runCatching {
+            JSONObject(response.body.string())
+        }.getOrNull()
+        if (json == null) {
+            // A 200 with an unparseable body — treat as a failure rather than a
+            // silent success that strands the user with no issue link.
+            return Result(false, null, null, null, ErrorKind.OTHER)
+        }
+        return Result(
+            ok = json.optBoolean("ok"),
+            issueNumber = json.optInt("issue", 0).takeIf { it > 0 },
+            issueUrl = json.optString("url").takeIf { it.isNotBlank() },
+            feedbackId = json.optString("id").takeIf { it.isNotBlank() },
+        )
     }
 
     /**
@@ -150,7 +201,7 @@ object FeedbackUploader {
     }
 
     /** A [ForwardingSink] that reports the running fraction of [total] written. */
-    private class CountingSink(
+    internal class CountingSink(
         delegate: Sink,
         private val total: Long,
         private val onProgress: (Float) -> Unit,

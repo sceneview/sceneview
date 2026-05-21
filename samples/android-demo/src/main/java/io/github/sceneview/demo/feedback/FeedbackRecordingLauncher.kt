@@ -2,22 +2,76 @@ package io.github.sceneview.demo.feedback
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 /**
- * Provides a `startRecording` lambda that requests the microphone (and, on
- * Android 13+, the notification) permission, then the screen-capture
- * permission, and finally hands the granted MediaProjection token to
- * [FeedbackRecordingService]. Any denial publishes a [RecordingState.Failed].
+ * Controls returned by [rememberFeedbackRecordingLauncher].
+ *
+ * @property startRecording requests the mic (and, on Android 13+, the
+ *   notification) permission, then the screen-capture permission, then hands
+ *   the granted MediaProjection token to [FeedbackRecordingService]. Any denial
+ *   publishes a [RecordingState.Failed].
+ * @property openAppSettings opens this app's system settings page so a user who
+ *   permanently denied the microphone permission can grant it by hand. The
+ *   per-app-permission picker has no in-app dialog once a runtime permission is
+ *   "Don't ask again"-denied, so this is the only recovery path (#1933 review).
  */
+class FeedbackRecordingLauncher(
+    val startRecording: () -> Unit,
+    val openAppSettings: () -> Unit,
+)
+
+/** Opens the system app-details settings page for [context]'s package. */
+private fun openAppDetailsSettings(context: Context) {
+    runCatching {
+        context.startActivity(
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", context.packageName, null),
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+}
+
+/**
+ * True when [Manifest.permission.RECORD_AUDIO] is permanently denied — i.e. it
+ * is not granted and the system will not show a request dialog again (the user
+ * chose "Don't ask again", or it is policy-restricted). The system permission
+ * request then returns instantly with no UI, so the flow must route the user to
+ * app settings instead of looping a no-op "Retry".
+ */
+fun isMicPermanentlyDenied(activity: Activity): Boolean {
+    val granted = ContextCompat.checkSelfPermission(
+        activity,
+        Manifest.permission.RECORD_AUDIO,
+    ) == PackageManager.PERMISSION_GRANTED
+    if (granted) return false
+    // After at least one denial, `shouldShowRequestPermissionRationale` is
+    // false only when the user picked "Don't ask again". On a never-asked
+    // permission it is also false — but that case is harmless: the first
+    // request still shows the dialog. The flow only consults this after a
+    // denial has already been observed.
+    return !ActivityCompat.shouldShowRequestPermissionRationale(
+        activity,
+        Manifest.permission.RECORD_AUDIO,
+    )
+}
+
 @Composable
-fun rememberFeedbackRecordingLauncher(): () -> Unit {
+fun rememberFeedbackRecordingLauncher(): FeedbackRecordingLauncher {
     val context = LocalContext.current
 
     val projectionLauncher = rememberLauncherForActivityResult(
@@ -46,15 +100,18 @@ fun rememberFeedbackRecordingLauncher(): () -> Unit {
         }
     }
 
-    return remember(permissionLauncher) {
-        {
-            val perms = buildList {
-                add(Manifest.permission.RECORD_AUDIO)
-                if (Build.VERSION.SDK_INT >= 33) {
-                    add(Manifest.permission.POST_NOTIFICATIONS)
+    return remember(permissionLauncher, context) {
+        FeedbackRecordingLauncher(
+            startRecording = {
+                val perms = buildList {
+                    add(Manifest.permission.RECORD_AUDIO)
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        add(Manifest.permission.POST_NOTIFICATIONS)
+                    }
                 }
-            }
-            permissionLauncher.launch(perms.toTypedArray())
-        }
+                permissionLauncher.launch(perms.toTypedArray())
+            },
+            openAppSettings = { openAppDetailsSettings(context) },
+        )
     }
 }

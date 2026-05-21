@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 import io.github.sceneview.demo.MainActivity
 import io.github.sceneview.demo.R
 import java.io.File
+import java.util.concurrent.Executors
 
 /**
  * Foreground service that captures the screen + microphone with MediaProjection
@@ -35,6 +36,17 @@ class FeedbackRecordingService : Service() {
     private var recorder: MediaRecorder? = null
     private var videoFile: File? = null
     private var startedAt = 0L
+
+    /** True once the recorder auto-stopped at the size/duration cap. */
+    private var cappedHit = false
+
+    /** Session id of this recording — captured before the post-stop demux so a
+     *  stale callback from a superseded recording is dropped (#1933 review). */
+    private var session = 0L
+
+    /** Single-thread executor for the post-stop audio demux. Cancelled in
+     *  [onDestroy] so a demux can never outlive the service (#1933 review). */
+    private val demuxExecutor = Executors.newSingleThreadExecutor()
 
     /** Guards [stopRecording] against the notification / pill / projection-callback
      *  all triggering a stop. */
@@ -81,7 +93,11 @@ class FeedbackRecordingService : Service() {
             NotificationChannel(
                 CHANNEL_ID,
                 getString(R.string.feedback_recording_channel),
-                NotificationManager.IMPORTANCE_LOW,
+                // DEFAULT (not LOW) so the stop control is more prominent — the
+                // notification is a documented stop affordance and on a
+                // full-screen demo it may be the only one if the user denied
+                // POST_NOTIFICATIONS-adjacent visibility (#1933 review).
+                NotificationManager.IMPORTANCE_DEFAULT,
             ),
         )
 
@@ -161,9 +177,33 @@ class FeedbackRecordingService : Service() {
             rec.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             rec.setVideoSize(width, height)
             rec.setVideoFrameRate(30)
-            rec.setVideoEncodingBitRate(3_500_000)
+            rec.setVideoEncodingBitRate(VIDEO_BITRATE)
+            // Hard caps so the clip can never exceed the worker's 30 MB upload
+            // limit (a silent 413). The size cap leaves headroom for the
+            // multipart envelope and the separately-uploaded demuxed audio; the
+            // duration cap is a secondary guard. Both must be set after
+            // setOutputFile and before prepare(). On the cap being approached /
+            // reached the recorder auto-stops gracefully (#1933 review).
+            rec.setMaxFileSize(MAX_FILE_SIZE_BYTES)
+            rec.setMaxDuration(MAX_DURATION_MS)
+            rec.setOnInfoListener { _, what, _ ->
+                when (what) {
+                    MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_APPROACHING,
+                    MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED,
+                    MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED -> {
+                        cappedHit = true
+                        // Finish the clip on the main thread — stopRecording
+                        // touches the MediaRecorder which is not thread-safe.
+                        Handler(Looper.getMainLooper()).post { stopRecording() }
+                    }
+                }
+            }
             rec.prepare()
+            rec.start()
 
+            // Create the VirtualDisplay only AFTER start() succeeds — an
+            // encoder-busy start() failure must not leave a display feeding a
+            // dead recorder (#1933 review).
             virtualDisplay = mp.createVirtualDisplay(
                 "feedback-capture",
                 width,
@@ -174,10 +214,9 @@ class FeedbackRecordingService : Service() {
                 null,
                 null,
             )
-            rec.start()
             recorder = rec
             startedAt = System.currentTimeMillis()
-            FeedbackRecorder.setRecording()
+            session = FeedbackRecorder.beginSession()
         } catch (e: Exception) {
             FeedbackRecorder.setFailed(e.message ?: "could not start recording")
             cleanup()
@@ -190,6 +229,8 @@ class FeedbackRecordingService : Service() {
         stopping = true
 
         val out = videoFile
+        val capped = cappedHit
+        val recordingSession = session
         val duration = if (startedAt > 0) System.currentTimeMillis() - startedAt else 0L
         val stopped = try {
             recorder?.stop()
@@ -200,17 +241,30 @@ class FeedbackRecordingService : Service() {
         }
         cleanup()
         if (stopped && out != null && out.exists() && out.length() > 0L) {
-            // Demux the audio track off the main thread, then publish the result.
+            // Demux the audio track off the main thread, then publish the
+            // result. The work runs on a managed executor (cancelled in
+            // onDestroy) and is wrapped so an exception is reported as a
+            // recording failure rather than crashing the process (#1933 review).
             val cache = cacheDir
-            Thread {
-                val audio = File(cache, "feedback-audio-${System.currentTimeMillis()}.m4a")
-                FeedbackRecorder.setDone(
-                    FeedbackRecording(out, demuxAudioTrack(out, audio), duration),
-                )
-            }.start()
+            demuxExecutor.execute {
+                runCatching {
+                    val audio = File(cache, "feedback-audio-${System.currentTimeMillis()}.m4a")
+                    FeedbackRecorder.setDone(
+                        FeedbackRecording(out, demuxAudioTrack(out, audio), duration, capped),
+                        recordingSession,
+                    )
+                }.onFailure {
+                    // Demux failed — the video alone is still useful; publish it
+                    // without an audio track rather than losing the recording.
+                    FeedbackRecorder.setDone(
+                        FeedbackRecording(out, null, duration, capped),
+                        recordingSession,
+                    )
+                }
+            }
         } else {
             out?.delete()
-            FeedbackRecorder.setFailed("recording incomplete")
+            FeedbackRecorder.setFailed("recording incomplete", recordingSession)
         }
         stopForegroundAndSelf()
     }
@@ -224,6 +278,7 @@ class FeedbackRecordingService : Service() {
     }
 
     private fun cleanup() {
+        runCatching { recorder?.setOnInfoListener(null) }
         runCatching { recorder?.release() }
         recorder = null
         runCatching { virtualDisplay?.release() }
@@ -241,6 +296,8 @@ class FeedbackRecordingService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         cleanup()
+        // Cancel any in-flight demux so it cannot outlive the service.
+        demuxExecutor.shutdownNow()
     }
 
     companion object {
@@ -249,6 +306,18 @@ class FeedbackRecordingService : Service() {
         private const val ACTION_STOP = "io.github.sceneview.demo.feedback.STOP"
         private const val EXTRA_RESULT_CODE = "result_code"
         private const val EXTRA_DATA = "data"
+
+        private const val VIDEO_BITRATE = 3_500_000
+
+        /**
+         * Hard cap on the recorded mp4 (28 MB). The worker rejects uploads over
+         * 30 MB with a 413; this leaves ~2 MB of headroom for the multipart
+         * envelope and the separately-uploaded demuxed audio track.
+         */
+        private const val MAX_FILE_SIZE_BYTES = 28L * 1024 * 1024
+
+        /** Secondary cap on the clip length (~120 s). */
+        private const val MAX_DURATION_MS = 120_000
 
         /** Start recording with a granted MediaProjection token. */
         fun start(context: Context, resultCode: Int, data: Intent) {
