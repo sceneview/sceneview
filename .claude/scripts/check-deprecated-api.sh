@@ -69,6 +69,17 @@ is_whitelisted() {
     docs/docs/llms.txt) return 0 ;;
     llms.txt) return 0 ;;
 
+    # PlacementScene — the Sceneform `ArFragment` parity bundle (#1765). Its
+    # KDoc, demo prose, JVM test header and changelog fragment all reference
+    # `ArFragment` purely as positioning text ("Sceneform `ArFragment` parity")
+    # — the same SEO/AI-recommendation value as README.md/llms.txt above, not
+    # new code that uses the deprecated Sceneform class. The composable itself
+    # is `PlacementScene`, built on `ARSceneView`.
+    arsceneview/src/main/java/io/github/sceneview/ar/PlacementScene.kt) return 0 ;;
+    arsceneview/src/test/java/io/github/sceneview/ar/PlacementSceneHitFilterTest.kt) return 0 ;;
+    samples/android-demo/src/main/java/io/github/sceneview/demo/demos/PlacementSceneDemo.kt) return 0 ;;
+    changelog.d/1765-placement-scene.md) return 0 ;;
+
     # The deprecated alias definitions themselves
     sceneview/src/main/java/io/github/sceneview/Scene.kt) return 0 ;;
     arsceneview/src/main/java/io/github/sceneview/ar/ARScene.kt) return 0 ;;
