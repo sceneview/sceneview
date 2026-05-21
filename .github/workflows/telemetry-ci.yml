@@ -5,6 +5,11 @@ name: Telemetry Worker CI
 
 on:
   push:
+    # `branches: [main]` is required — `paths:` alone does NOT scope the push
+    # trigger to a branch, so without it this workflow runs on every push to
+    # every branch (each `claude/*` worktree branch). PR coverage is already
+    # provided by the `pull_request` trigger below.
+    branches: [main]
     paths:
       - 'telemetry-worker/**'
   pull_request:

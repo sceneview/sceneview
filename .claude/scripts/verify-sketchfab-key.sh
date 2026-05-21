@@ -77,7 +77,15 @@ if [ "$errors" -eq 0 ] && [ -z "${SKIP_SKETCHFAB_LIVE_CHECK:-}" ]; then
   if ! command -v curl >/dev/null 2>&1; then
     echo -e "${YELLOW}⚠️  curl not available — skipping Sketchfab live probe.${NC}"
   else
-    http_status=$(curl -fsS -o /dev/null -w "%{http_code}" \
+    # NOTE: no `-f`. With `curl -f`, curl exits non-zero on any 4xx AND
+    # prints nothing, so `%{http_code}` is lost and `|| echo "000"` would
+    # override the real status — making the 401|403 "token revoked" branch
+    # below unreachable (a revoked key would silently pass as transient).
+    # Without `-f`, curl exits 0 for any HTTP response and `%{http_code}`
+    # carries the real status (4xx included) into the case statement; the
+    # `|| echo "000"` then only triggers on a genuine connection failure
+    # (DNS / connect timeout / no network).
+    http_status=$(curl -sS -o /dev/null -w "%{http_code}" \
       --connect-timeout 10 --max-time 20 \
       -H "Authorization: Token ${stripped_key}" \
       "https://api.sketchfab.com/v3/me" || echo "000")

@@ -37,9 +37,15 @@ on:
   workflow_call:
   workflow_dispatch:
 
-# Allow only one concurrent deployment, skip in-progress runs
+# Dedup concurrent deployments per ref. The group MUST be ref-scoped: on a
+# release tag this workflow fires twice for the SAME ref (the `push: paths`
+# trigger AND `release: types:[published]`). A plain `group: pages` would put
+# both in one bucket and `cancel-in-progress: true` would cancel the first run
+# mid-deploy → partial-publish risk. Scoping by `github.ref` keeps the
+# legitimate same-ref dedup (two pushes to main still collapse) while letting a
+# tag run and a main run proceed independently.
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
