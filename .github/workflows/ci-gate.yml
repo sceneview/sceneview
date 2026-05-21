@@ -64,6 +64,22 @@ name: CI Gate
 # whose name starts with `Device QA` is therefore filtered out of the
 # `others` set — the same treatment as the gate's own `SELF_CHECK`.
 #
+# ADVISORY CHECK EXCLUSION (#1984)
+# --------------------------------
+# `Coverage` was deliberately moved OFF the PR-blocking path and made
+# advisory/nightly by #1959 (#1955) — the `coverage` job carries
+# `continue-on-error: true`. But `continue-on-error` only masks an
+# in-job *step* failure; it does NOT mask a `cancelled` conclusion when
+# the whole job is concurrency-cancelled. On PR #1889 a transient
+# concurrency-cancel left `Coverage (advisory): CANCELLED`, and the gate's
+# failure filter (`failure`/`cancelled`/`timed_out`) flipped `CI Gate` red
+# even though the only non-success check was advisory. An advisory check
+# must NEVER affect the gate verdict — for ALL conclusions, including
+# `CANCELLED` / `SKIPPED` / `FAILURE`. So any check run whose name is in
+# `ADVISORY_CHECKS` (substring match) is filtered out of the `failed` set
+# entirely, regardless of conclusion. It is still allowed to register and
+# is still waited on while pending — it just cannot red-light the gate.
+#
 # Branch protection on `main` requires ONLY this `CI Gate` check.
 
 on:
@@ -121,6 +137,16 @@ jobs:
             Detect changed paths
             Repo hygiene checks
             Quality gate (full)
+          # Advisory check-run names — substring-matched, newline-separated.
+          # An advisory check (e.g. `Coverage (advisory)`, made advisory by
+          # #1959/#1955) must NEVER affect the gate verdict, for ANY
+          # conclusion including `CANCELLED` / `SKIPPED` / `FAILURE`. Any
+          # check run whose name CONTAINS one of these strings is dropped
+          # from the pass/fail decision (#1984). It is still permitted to
+          # register and is still waited on while pending — it just cannot
+          # red-light the gate.
+          ADVISORY_CHECKS: |
+            Coverage
         shell: bash
         run: |
           set -euo pipefail
@@ -156,6 +182,12 @@ jobs:
 
           # Normalise REQUIRED_CHECKS into a clean, non-empty list.
           required_checks=$(echo "${REQUIRED_CHECKS:-}" | sed '/^[[:space:]]*$/d')
+
+          # Normalise ADVISORY_CHECKS into a clean, non-empty list of
+          # substrings (#1984). A check run whose name CONTAINS any of these
+          # is advisory and is excluded from the pass/fail decision below,
+          # regardless of conclusion.
+          advisory_checks=$(echo "${ADVISORY_CHECKS:-}" | sed '/^[[:space:]]*$/d')
 
           while :; do
             # All check runs for the head commit (handles >100 via paging).
@@ -265,15 +297,31 @@ jobs:
           # the wait loop above. The loop only breaks once no check is in
           # `action_required` any more, so it cannot reach this set — but it
           # is excluded here too for defence in depth.
+          #
+          # ADVISORY EXCLUSION (#1984): a check run whose name CONTAINS any
+          # ADVISORY_CHECKS substring is dropped from the failure decision
+          # for EVERY conclusion (`failure`/`cancelled`/`timed_out` all
+          # included). An advisory check — e.g. `Coverage (advisory)` — that
+          # is concurrency-CANCELLED must not red-light the gate.
+          #
+          # The actual pass/fail decision is delegated to the standalone
+          # `.github/scripts/ci-gate-aggregate.sh` so it is unit-tested in
+          # isolation (test-ci-gate-aggregation.sh covers the #1984
+          # CANCELLED-advisory case). The helper takes `<conclusion>\t<name>`
+          # on stdin, `ADVISORY_CHECKS` from the env, prints the gating
+          # failures, and exits 0 (pass) / 1 (fail).
+          set +e
           failed=$(echo "$others" \
-            | jq -r 'select(.conclusion == "failure"
-                          or .conclusion == "cancelled"
-                          or .conclusion == "timed_out") | .name')
+            | jq -r '[.conclusion // "", .name] | @tsv' \
+            | ADVISORY_CHECKS="$advisory_checks" bash .github/scripts/ci-gate-aggregate.sh)
+          gate_rc=$?
+          set -e
 
-          if [ -n "$failed" ]; then
+          if [ "$gate_rc" -ne 0 ]; then
             echo ""
             echo "::error::One or more required CI checks failed:"
-            echo "$failed" | sort -u | while IFS= read -r n; do echo "  - $n"; done
+            echo "$failed" | sed '/^[[:space:]]*$/d' | sort -u \
+              | while IFS= read -r n; do echo "  - $n"; done
             exit 1
           fi
 
