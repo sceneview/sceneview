@@ -362,15 +362,25 @@ if [ -f "$IOS_ABOUT" ]; then
     fi
 fi
 
-# samples/ios-demo Xcode project — MARKETING_VERSION is the user-visible iOS demo
-# version. Was a release blind spot until v4.0.8 (caught by an audit). Bump this
-# in lockstep with the Android demo versionName + AboutView.swift.
+# samples/ios-demo Xcode project — MARKETING_VERSION drives CFBundleShortVersionString,
+# i.e. the marketing version the iOS AND macOS App Store records carry (the single
+# SceneViewDemo target ships to both — SUPPORTED_PLATFORMS includes macosx). It was a
+# release blind spot: the pipeline only bumped CURRENT_PROJECT_VERSION (the build
+# number), so every build since v4.9.0 reported marketing version 4.9.0 to the App
+# Store (issue #2085, surfaced by an App Store Connect audit). Bump this in lockstep
+# with the Android demo versionName + AboutView.swift.
+#
+# The 3-component `[0-9]+\.[0-9]+\.[0-9]+` regex deliberately skips the test target's
+# `MARKETING_VERSION = 1.0` (2 components) — test bundles are not shipped, so their
+# placeholder 1.0 must NOT be flagged or rewritten. Every shipping (3-component)
+# MARKETING_VERSION line is checked, not just the first, so a partial drift between
+# the Debug and Release configs is still caught.
 IOS_DEMO_PBXPROJ="$REPO_ROOT/samples/ios-demo/SceneViewDemo.xcodeproj/project.pbxproj"
 if [ -f "$IOS_DEMO_PBXPROJ" ]; then
-    V=$(grep -oE 'MARKETING_VERSION = [0-9]+\.[0-9]+\.[0-9]+' "$IOS_DEMO_PBXPROJ" | head -1 | awk '{print $NF}' || echo "NOT FOUND")
-    if [ "$V" != "NOT FOUND" ]; then
-        add_check "samples/ios-demo MARKETING_VERSION" "$V" "false"
-    fi
+    while IFS= read -r V; do
+        [ -n "$V" ] && add_check "samples/ios-demo MARKETING_VERSION" "$V" "false"
+    done < <(grep -oE 'MARKETING_VERSION = [0-9]+\.[0-9]+\.[0-9]+' "$IOS_DEMO_PBXPROJ" \
+        | awk '{print $NF}' | sort -u)
 fi
 
 # ─── 9. Website (static) ────────────────────────────────────────────────
@@ -914,6 +924,21 @@ with open('$PKG_JSON', 'w') as f:
             _sed_inplace "s/versionName \"$CURRENT\"/versionName \"$SOURCE_VERSION\"/" "$DEMO_GRADLE"
             echo -e "  Fixed: samples/android-demo/build.gradle versionName ($CURRENT -> $SOURCE_VERSION)"
         fi
+    fi
+
+    # Fix samples/ios-demo MARKETING_VERSION (iOS + macOS App Store marketing
+    # version — issue #2085). Rewrites every shipping (3-component) occurrence,
+    # so both the Debug and Release configs of the SceneViewDemo target are
+    # swept; the test target's 2-component `MARKETING_VERSION = 1.0` placeholder
+    # is left untouched because the regex anchors on three components.
+    if [ -f "$IOS_DEMO_PBXPROJ" ]; then
+        for CURRENT in $(grep -oE 'MARKETING_VERSION = [0-9]+\.[0-9]+\.[0-9]+' "$IOS_DEMO_PBXPROJ" \
+            | awk '{print $NF}' | sort -u); do
+            if [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+                _sed_inplace "s/MARKETING_VERSION = $CURRENT;/MARKETING_VERSION = $SOURCE_VERSION;/g" "$IOS_DEMO_PBXPROJ"
+                echo -e "  Fixed: samples/ios-demo MARKETING_VERSION ($CURRENT -> $SOURCE_VERSION)"
+            fi
+        done
     fi
 
     # Fix docs files (replace old version pattern in Maven artifact refs).
