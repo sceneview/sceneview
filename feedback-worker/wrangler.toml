@@ -1,0 +1,70 @@
+# ─── SceneView Feedback Worker ────────────────────────────────────────────────
+#
+# Receives in-app feedback (screen recording + voice) from the SceneView demo
+# apps, transcribes the audio with Workers AI (Whisper), stores the media
+# privately in R2, and opens a pre-filled GitHub issue.
+#
+# The public GitHub issue carries only the transcript + context. The raw
+# audio/video stay private in R2, viewable only through the admin-gated viewer.
+#
+# Deploy: wrangler deploy
+# Dev:    wrangler dev
+#
+# Before first deploy, provision the bindings (see DEPLOY.md):
+#   wrangler d1 create sceneview-feedback
+#   wrangler kv namespace create RL_KV
+#   wrangler r2 bucket create sceneview-feedback-media
+# Then fill in the IDs below, and set the secrets:
+#   wrangler secret put GITHUB_APP_ID
+#   wrangler secret put GITHUB_INSTALLATION_ID
+#   wrangler secret put GITHUB_PRIVATE_KEY      # PKCS#8 PEM — see DEPLOY.md
+#   wrangler secret put ADMIN_TOKEN
+
+name = "sceneview-feedback"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+
+# ── Local development ─────────────────────────────────────────────────────────
+[dev]
+port = 8788
+local_protocol = "http"
+
+# ── D1 database (feedback records + transcripts) ─────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "sceneview-feedback"
+database_id = "4b903de8-efb1-4a78-b35e-ba55e43410d8"
+migrations_dir = "migrations"
+
+# ── KV namespace (rate-limit counters) ───────────────────────────────────────
+[[kv_namespaces]]
+binding = "RL_KV"
+id = "5598b0f12d2d4c21ba1cae2f1392f359"
+
+# ── R2 bucket (private media — screen recordings + audio) ────────────────────
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "sceneview-feedback-media"
+
+# ── Workers AI (Whisper transcription) ───────────────────────────────────────
+[ai]
+binding = "AI"
+
+# ── Observability (Workers Logs — surfaces console.error in the dashboard) ───
+[observability]
+enabled = true
+
+# ── Environment variables ────────────────────────────────────────────────────
+[vars]
+ENVIRONMENT = "production"
+GITHUB_REPO = "sceneview/sceneview"
+
+# Secrets (NOT in this file — set via `wrangler secret put`):
+#   GITHUB_APP_ID           GitHub App id
+#   GITHUB_INSTALLATION_ID  installation id on sceneview/sceneview
+#   GITHUB_PRIVATE_KEY      GitHub App private key, PKCS#8 PEM
+#   ADMIN_TOKEN             gates media playback in the /feedback/<id> viewer
+
+# ── Cron trigger (daily media retention purge) ───────────────────────────────
+[triggers]
+crons = ["0 3 * * *"]
