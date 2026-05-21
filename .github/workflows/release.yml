@@ -217,8 +217,15 @@ jobs:
           head -c 400 /tmp/pages-build.json || true
           echo
           if [ "$HTTP" != "201" ]; then
-            echo "::error::Pages build request failed (HTTP $HTTP) — see #1826."
-            exit 1
+            # NON-fatal (#2014): the Dokka deploy above already pushed the new
+            # docs to sceneview.github.io — a failed Pages-REBUILD trigger
+            # must never red-light a release whose artifacts all published.
+            # A dead/expired PAGES_REBUILD_TOKEN PAT surfaces as a loud
+            # warning; renew the secret per #2014 to restore auto-rebuild.
+            echo "::warning::Pages build request failed (HTTP $HTTP) — see #1826/#2014."
+            echo "::warning::Release is unaffected; sceneview.github.io /api docs may"
+            echo "::warning::show a stale version until PAGES_REBUILD_TOKEN is renewed."
+            exit 0
           fi
           echo "Pages build queued — sceneview.github.io will rebuild shortly."
 
