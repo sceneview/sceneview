@@ -593,6 +593,14 @@ jobs:
         shell: bash
         run: bash .claude/scripts/check-workflow-scripts.sh
 
+      # CI Gate aggregation regression suite — pins the advisory-exclusion
+      # rule so a concurrency-CANCELLED advisory check can never red-light
+      # the `CI Gate` aggregator again (#1984, found unsticking PR #1889).
+      - name: Test CI Gate aggregation logic
+        if: always()
+        shell: bash
+        run: bash .github/scripts/test-ci-gate-aggregation.sh
+
       # Demo app asset integrity — catches broken model/HDR references in
       # any samples/* demo app, both for bundled file paths and CDN URLs.
       # Self-test first so a regressed validator can't report a false PASS.
