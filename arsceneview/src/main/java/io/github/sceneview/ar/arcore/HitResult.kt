@@ -116,3 +116,16 @@ fun HitResult.isValid(
 fun HitResult.createAnchorOrNull(): Anchor? = runCatching {
     createAnchor()
 }.getOrNull()
+
+/**
+ * Distance from the camera to the hit location, in meters.
+ *
+ * Direct wrapper around [HitResult.getDistance]; exposed as a Kotlin property so apps don't
+ * have to write the same one-liner every time they gate placement on a max distance
+ * (e.g. `hit.distance < 2f`).
+ *
+ * This is the camera-to-hit-pose distance as computed by ARCore at the time of the hit
+ * test — it is not re-evaluated as the camera moves. Re-run the hit test (or compute
+ * `frame.camera.pose.distance(hit.hitPose)` manually) for a live distance.
+ */
+val HitResult.distance: Float get() = getDistance()

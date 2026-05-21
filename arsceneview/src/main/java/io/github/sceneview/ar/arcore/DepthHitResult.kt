@@ -59,6 +59,14 @@ private const val NORMAL_SAMPLE_RADIUS = 2
  *
  * @param xPx screen X in pixels.
  * @param yPx screen Y in pixels.
+ *
+ * @return a single [DepthHitResult] — the real-world point under the queried pixel — or `null`
+ *         when depth is unavailable. **This is intentionally not a list, unlike
+ *         [Frame.hitTest]**: the depth at one screen pixel is by definition a unique point in
+ *         space (the depth image stores one Z per pixel), whereas a standard
+ *         [Frame.hitTest] casts a ray that can pierce multiple parallel planes / surfaces at
+ *         increasing distances. A list return would always have at most one element here, so
+ *         the API is flattened to `DepthHitResult?` for ergonomics.
  */
 fun Frame.hitTestDepth(xPx: Float, yPx: Float): DepthHitResult? {
     val camera = camera
@@ -93,10 +101,19 @@ fun Frame.hitTestDepth(xPx: Float, yPx: Float): DepthHitResult? {
         // ARCore reports intrinsics for the full-resolution CPU image; scale them to the
         // (much smaller) depth image resolution.
         val intrinsics = camera.imageIntrinsics
-        val scaleX = depthWidth / intrinsics.imageDimensions[0].toFloat()
-        val scaleY = depthHeight / intrinsics.imageDimensions[1].toFloat()
-        val fx = intrinsics.focalLength[0] * scaleX
-        val fy = intrinsics.focalLength[1] * scaleY
+        // Defensive guard (#1812): without this, degenerate intrinsics (zero width or zero focal
+        // length) would propagate `Inf` into world-space coordinates; `estimateNormal` then sees
+        // Inf inputs and `normalize(normal)` returns NaN. We surface `null` instead so callers
+        // can fall back to a regular hit-test path.
+        val intrinsicWidth = intrinsics.imageDimensions[0]
+        val intrinsicHeight = intrinsics.imageDimensions[1]
+        val rawFx = intrinsics.focalLength[0]
+        val rawFy = intrinsics.focalLength[1]
+        if (intrinsicWidth <= 0 || intrinsicHeight <= 0 || rawFx == 0f || rawFy == 0f) return null
+        val scaleX = depthWidth / intrinsicWidth.toFloat()
+        val scaleY = depthHeight / intrinsicHeight.toFloat()
+        val fx = rawFx * scaleX
+        val fy = rawFy * scaleY
         val cx = intrinsics.principalPoint[0] * scaleX
         val cy = intrinsics.principalPoint[1] * scaleY
 
@@ -162,6 +179,10 @@ private fun java.nio.ShortBuffer.depthMetersAt(
  * distance) mapping to a negative Z.
  *
  * `internal` so the projection math can be unit-tested without an ARCore [Frame].
+ *
+ * @throws IllegalArgumentException when [fx] or [fy] is `0f` — degenerate ARCore intrinsics
+ *         would otherwise propagate `Inf` into world-space coordinates and poison every
+ *         downstream consumer (#1812).
  */
 internal fun unprojectDepthPixel(
     pixelX: Int,
@@ -171,11 +192,16 @@ internal fun unprojectDepthPixel(
     fy: Float,
     cx: Float,
     cy: Float
-): Position = Position(
-    x = (pixelX - cx) * depthMeters / fx,
-    y = -(pixelY - cy) * depthMeters / fy,
-    z = -depthMeters
-)
+): Position {
+    require(fx != 0f && fy != 0f) {
+        "Invalid focal length: fx=$fx, fy=$fy. ARCore intrinsics must have non-zero focal length."
+    }
+    return Position(
+        x = (pixelX - cx) * depthMeters / fx,
+        y = -(pixelY - cy) * depthMeters / fy,
+        z = -depthMeters
+    )
+}
 
 /**
  * Estimates a unit surface normal from a [center] point and its four neighbours, oriented to face

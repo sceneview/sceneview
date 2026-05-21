@@ -101,7 +101,11 @@ class _FeaturesPageState extends State<FeaturesPage> {
             subtitle: 'Imperative scene control',
             description:
                 'Controller for loading models, clearing the scene, '
-                'setting environments, and adding nodes after creation.',
+                'setting environments, and adding nodes after creation. '
+                'Android wires every method to a real Filament call; on iOS, '
+                '`loadModel` and `clearScene` work today while `addGeometry`, '
+                '`addLight` and `setEnvironment` are accepted but not yet '
+                'rendered — tracked in the #909 umbrella.',
             codeSnippet: '''final controller = SceneViewController();
 
 // After onViewCreated:
@@ -119,14 +123,16 @@ controller.clearScene();''',
             subtitle: 'Position, rotation, scale',
             description:
                 'Load glTF/GLB models with full transform control. '
-                'Supports both asset paths and URLs.',
+                'Supports both asset paths and URLs. '
+                'iOS currently honours path + scale only; position and rotation '
+                'are tracked in the #909 bridge-parity umbrella.',
             codeSnippet: '''ModelNode(
   modelPath: 'https://example.com/model.glb',
   x: 0.0, y: -0.5, z: -2.0,
   rotationX: 0.0, rotationY: 45.0, rotationZ: 0.0,
   scale: 1.5,
 )''',
-            status: FeatureStatus.implemented,
+            status: FeatureStatus.androidOnly,
           ),
 
           _FeatureCard(
@@ -135,7 +141,9 @@ controller.clearScene();''',
             subtitle: 'Node tap detection',
             description:
                 'Receive callbacks when users tap on model nodes. '
-                'The node name is derived from the model file name.',
+                'The node name is derived from the model file name. '
+                'iOS does not yet forward node taps through the bridge — '
+                'tracked in the #909 umbrella.',
             codeSnippet: '''SceneView(
   onTap: (String nodeName) {
     showDialog(
@@ -146,7 +154,7 @@ controller.clearScene();''',
     );
   },
 )''',
-            status: FeatureStatus.implemented,
+            status: FeatureStatus.androidOnly,
           ),
 
           _FeatureCard(
@@ -155,7 +163,9 @@ controller.clearScene();''',
             subtitle: 'AR plane detection events',
             description:
                 'Receive callbacks when ARCore/ARKit detects planes. '
-                'Plane types: horizontal_upward, horizontal_downward, vertical.',
+                'Plane types: horizontal_upward, horizontal_downward, vertical. '
+                'iOS does not yet forward plane events through the bridge — '
+                'tracked in the #909 umbrella.',
             codeSnippet: '''ARSceneView(
   onPlaneDetected: (String planeType) {
     // planeType: 'horizontal_upward', 'horizontal_downward',
@@ -163,7 +173,7 @@ controller.clearScene();''',
     setState(() => detectedPlanes.add(planeType));
   },
 )''',
-            status: FeatureStatus.implemented,
+            status: FeatureStatus.androidOnly,
           ),
 
           _FeatureCard(
@@ -206,11 +216,14 @@ controller.clearScene();''',
             subtitle: 'Image-based lighting',
             description:
                 'Set an HDR environment for image-based lighting and skybox. '
-                'AR scenes use camera feed instead.',
+                'AR scenes use camera feed instead. '
+                'The iOS bridge currently acknowledges the call but does not '
+                'apply the HDR to the RealityKit scene — tracked in the #909 '
+                'umbrella.',
             codeSnippet: '''controller.setEnvironment(
   'environments/studio_small.hdr',
 )''',
-            status: FeatureStatus.implemented,
+            status: FeatureStatus.androidOnly,
           ),
 
           // Live demo section

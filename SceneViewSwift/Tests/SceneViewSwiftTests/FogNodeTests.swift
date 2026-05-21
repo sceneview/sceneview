@@ -24,6 +24,7 @@ final class FogNodeTests: XCTestCase {
         XCTAssertNotNil(fog.entity.model)
     }
 
+    @available(*, deprecated)
     func testHeightBasedFogCreatesEntity() {
         let fog = FogNode.heightBased(density: 0.1, height: 2.0)
         XCTAssertNotNil(fog.entity)
@@ -46,6 +47,7 @@ final class FogNodeTests: XCTestCase {
         XCTAssertEqual(fog.endDistance, 40.0, accuracy: 0.001)
     }
 
+    @available(*, deprecated)
     func testHeightBasedDefaultValues() {
         let fog = FogNode.heightBased()
         XCTAssertEqual(fog.density, 0.05, accuracy: 0.001)
@@ -149,18 +151,20 @@ final class FogNodeTests: XCTestCase {
         XCTAssertEqual(fog.position.z, 1.0, accuracy: 0.001)
     }
 
-    // MARK: - Height-based specific
+    // MARK: - Height-based specific (deprecated, see #1380)
 
-    // `heightFalloff` is stored for Android API parity but the height gradient is
-    // not rendered on iOS (RealityKit has no native fog API; a uniform translucent
-    // sphere cannot vary opacity by world height). See FogNode.heightFalloff docs
-    // and issue #1380. These tests pin the documented store-only behavior.
+    // `heightFalloff` and `heightBased(...)` are deprecated on iOS — RealityKit has
+    // no per-pixel fog gradient equivalent to Filament's `View.fogOptions.heightFalloff`.
+    // The setter remains as a no-op pass-through purely so the getter round-trips
+    // (source compatibility). These tests pin that store-only contract.
 
+    @available(*, deprecated)
     func testHeightBasedFogSetsHeightFalloff() {
         let fog = FogNode.heightBased(density: 0.1, height: 5.0)
         XCTAssertEqual(fog.heightFalloff, 5.0, accuracy: 0.001)
     }
 
+    @available(*, deprecated)
     func testHeightFalloffPropertySet() {
         var fog = FogNode.heightBased(density: 0.1, height: 1.0)
         fog.heightFalloff = 3.0
@@ -170,7 +174,8 @@ final class FogNodeTests: XCTestCase {
     /// Height-based fog renders identically to exponential fog on iOS: the height
     /// gradient is a documented RealityKit parity gap (#1380). Verifies that
     /// changing `heightFalloff` does not alter the rendered material/mesh, so the
-    /// API is honestly a store-only no-op rather than silently pretending.
+    /// API is honestly a deprecated store-only no-op rather than silently pretending.
+    @available(*, deprecated)
     func testHeightFalloffDoesNotAffectRenderedMaterial() {
         let exponential = FogNode.exponential(density: 0.1)
         let heightBased = FogNode.heightBased(density: 0.1, height: 5.0)
@@ -282,12 +287,14 @@ final class FogNodeTests: XCTestCase {
 
     // MARK: - Height falloff mutable property
 
+    @available(*, deprecated)
     func testHeightFalloffNegativeValue() {
         var fog = FogNode.heightBased()
         fog.heightFalloff = -5.0
         XCTAssertEqual(fog.heightFalloff, -5.0, accuracy: 0.001)
     }
 
+    @available(*, deprecated)
     func testHeightFalloffZero() {
         var fog = FogNode.heightBased()
         fog.heightFalloff = 0.0

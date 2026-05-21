@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `debug-overlay` demo (registered by
+     `DebugOverlayFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_debug_overlay_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_debug_overlay_title">Debug Overlay</string>
+    <string name="demo_debug_overlay_subtitle">Performance stats overlay</string>
+</resources>

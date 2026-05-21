@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- Corrected stale version references that the v4.10.0 release left behind — the docs landing-page "Latest Release" stat, `llms-full.txt`'s SceneView version line, the iOS deployment-target docs (now iOS 18 / macOS 15 / visionOS 2), the SwiftUI codelabs' SPM version rule, and an overstated web-demo changelog entry — and hardened `sync-versions.sh` to scan these files so future releases bump them automatically (#1693).

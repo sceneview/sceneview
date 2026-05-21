@@ -44,6 +44,9 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.ForcedTrackingFailure
+import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
@@ -94,7 +97,19 @@ fun ARImageDemo(onBack: () -> Unit) {
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_image_title),
-        onBack = onBack
+        onBack = onBack,
+        controls = {
+            Text(
+                text = "Point the camera at the reference image displayed at the top of the " +
+                    "screen. ARCore will attach a 3D model to it once it locks on.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            // Developer-only debug toggle — visible when QA mode is on. Lets QA
+            // force-emit each TrackingFailureReason so the actionable-message
+            // overlay can be validated without staging a real failure. See
+            // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
+            ForceTrackingFailureMenu()
+        }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -224,18 +239,20 @@ fun ARImageDemo(onBack: () -> Unit) {
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
+                // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+                // when a developer has picked one in the debug menu (#1881). Read it here
+                // (not inside `onTrackingFailureChanged`) so flipping the override from
+                // the debug menu re-renders the overlay immediately, without waiting for
+                // the next ARCore tracking-failure callback. The forced reason wins over
+                // the live tracking state so QA can validate the message overlay even
+                // while a real image is being tracked.
+                val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+                val trackingHint = trackingFailureMessage(effectiveReason)
                 val statusText = when {
+                    ForcedTrackingFailure.override != null ->
+                        trackingHint ?: "Scanning for images\u2026"
                     imageCount > 0 -> "Tracking $imageCount image(s)"
-                    !isTracking -> trackingFailureReason?.let { reason ->
-                        when (reason) {
-                            TrackingFailureReason.NONE -> "Point camera at reference image"
-                            TrackingFailureReason.BAD_STATE -> "AR session error"
-                            TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
-                            TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
-                            TrackingFailureReason.INSUFFICIENT_FEATURES -> "Not enough detail"
-                            TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
-                        }
-                    } ?: "Scanning for images\u2026"
+                    !isTracking -> trackingHint ?: "Scanning for images\u2026"
                     else -> "Looking for reference image\u2026"
                 }
                 Text(
