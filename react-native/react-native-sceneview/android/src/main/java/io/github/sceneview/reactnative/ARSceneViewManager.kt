@@ -3,6 +3,7 @@ package io.github.sceneview.reactnative
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,7 +18,9 @@ import com.facebook.react.uimanager.annotations.ReactProp
 import com.google.android.filament.LightManager
 import com.google.ar.core.Config
 import com.google.ar.core.Plane
+import com.google.ar.core.Session
 import io.github.sceneview.SurfaceType
+import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.getUpdatedPlanes
 import io.github.sceneview.gesture.GestureDetector
 import io.github.sceneview.math.Size
@@ -25,6 +28,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Per-instance AR scene state stored as a tag on the FrameLayout container.
@@ -59,6 +63,37 @@ class ARSceneViewManager : SimpleViewManager<FrameLayout>() {
 
     private fun getState(view: FrameLayout): ARSceneViewState {
         return view.tag as? ARSceneViewState ?: ARSceneViewState().also { view.tag = it }
+    }
+
+    /**
+     * Applies the `depthOcclusion` / `instantPlacement` JS props to an ARCore
+     * [Config]. Shared by the session-creation `sessionConfiguration` callback
+     * and the live-session re-configure path so the two never diverge.
+     *
+     * `depthMode` is support-gated: enabling `Config.DepthMode.AUTOMATIC` on a
+     * device that does not support depth would make `Session.configure` throw,
+     * so it falls back to `DISABLED` when unsupported.
+     */
+    private fun applyArConfig(
+        session: Session,
+        config: Config,
+        depthOcclusion: Boolean,
+        instantPlacement: Boolean,
+    ) {
+        config.depthMode =
+            if (depthOcclusion &&
+                session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
+            ) {
+                Config.DepthMode.AUTOMATIC
+            } else {
+                Config.DepthMode.DISABLED
+            }
+        config.instantPlacementMode =
+            if (instantPlacement) {
+                Config.InstantPlacementMode.LOCAL_Y_UP
+            } else {
+                Config.InstantPlacementMode.DISABLED
+            }
     }
 
     /**
@@ -97,12 +132,18 @@ class ARSceneViewManager : SimpleViewManager<FrameLayout>() {
                 val modelLoader = rememberModelLoader(engine)
                 val materialLoader = rememberMaterialLoader(engine)
 
-                // Read the AR config flags here so the `sessionConfiguration`
-                // lambda below captures them by value — its identity then
-                // changes whenever JS toggles the prop, which re-applies the
-                // ARCore Config on the live session (issue #2055).
+                // Read the AR config flags so they recompose this content when
+                // JS toggles a prop (issue #2055).
                 val depthOcclusion = state.depthOcclusion.value
                 val instantPlacement = state.instantPlacement.value
+
+                // Live ARCore session, captured once it is created. The
+                // consumed `arsceneview:4.7.0` invokes `sessionConfiguration`
+                // ONLY at session creation — it never re-runs the lambda on a
+                // later recomposition — so a JS prop toggle would otherwise be
+                // a silent no-op. Holding the Session lets the LaunchedEffect
+                // below re-apply the Config to the running session (#2070).
+                val sessionRef = remember { AtomicReference<Session?>(null) }
 
                 io.github.sceneview.ar.ARSceneView(
                     modifier = Modifier.fillMaxSize(),
@@ -112,26 +153,21 @@ class ARSceneViewManager : SimpleViewManager<FrameLayout>() {
                     materialLoader = materialLoader,
                     planeRenderer = state.planeDetection.value,
                     onGestureListener = gestureListener,
-                    // depthOcclusion / instantPlacement → ARCore Config. The
-                    // typed `depthMode` / `instantPlacementMode` composable
-                    // params (#1766) post-date the consumed arsceneview
-                    // artifact, so the flags are applied via the stable
-                    // `sessionConfiguration` callback instead (issue #2055).
+                    // depthOcclusion / instantPlacement → ARCore Config at
+                    // session creation. The typed `depthMode` /
+                    // `instantPlacementMode` composable params (#1766) post-date
+                    // the consumed arsceneview artifact, so the INITIAL values
+                    // are applied via the stable `sessionConfiguration`
+                    // callback. `sessionConfiguration` runs only once (at
+                    // creation); runtime toggles are re-applied by the
+                    // LaunchedEffect below (issue #2070).
                     sessionConfiguration = { session, config ->
-                        config.depthMode =
-                            if (depthOcclusion &&
-                                session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
-                            ) {
-                                Config.DepthMode.AUTOMATIC
-                            } else {
-                                Config.DepthMode.DISABLED
-                            }
-                        config.instantPlacementMode =
-                            if (instantPlacement) {
-                                Config.InstantPlacementMode.LOCAL_Y_UP
-                            } else {
-                                Config.InstantPlacementMode.DISABLED
-                            }
+                        applyArConfig(session, config, depthOcclusion, instantPlacement)
+                    },
+                    // Capture the live Session so prop toggles can re-configure
+                    // it after creation (issue #2070).
+                    onSessionCreated = { session ->
+                        sessionRef.set(session)
                     },
                     // Per-frame plane diff → JS `onPlaneDetected`. Fires once
                     // per newly-tracked ARCore plane (issue #2053).
@@ -235,6 +271,30 @@ class ARSceneViewManager : SimpleViewManager<FrameLayout>() {
                                 }
                             },
                         )
+                    }
+                }
+
+                // Re-apply the AR config to the LIVE session whenever JS
+                // toggles `depthOcclusion` / `instantPlacement` after the
+                // session was created. `sessionConfiguration` only runs once
+                // (at creation), so without this the toggle is a silent no-op
+                // on the running session (issue #2070). Keyed on the flag
+                // values so it re-runs on every change; `Session.configure`
+                // is a no-op for the initial values already applied at
+                // creation. ARCore's `configure` is safe to call on a
+                // resumed session.
+                LaunchedEffect(depthOcclusion, instantPlacement) {
+                    sessionRef.get()?.let { session ->
+                        runCatching {
+                            session.configure { config ->
+                                applyArConfig(
+                                    session,
+                                    config,
+                                    depthOcclusion,
+                                    instantPlacement,
+                                )
+                            }
+                        }
                     }
                 }
             }
