@@ -95,13 +95,21 @@ import java.util.Locale
  * - **Pair with the Rerun debug demo** — replay a recording while streaming to Rerun for a
  *   stable, repeatable visual inspection loop.
  *
- * The demo has three modes wired to a top segmented control:
+ * The demo has four modes wired to a top segmented control:
  *
  * - **LIVE** — plain AR, tap a plane to drop a helmet (sanity check the session works).
  * - **RECORD** — same as LIVE, plus a record button. While recording, an elapsed-time pill
  *   is shown. Stopping reveals the saved MP4 in the Recordings card.
  * - **PLAYBACK** — lists the MP4s on disk; tapping one re-mounts the [ARSceneView] with
  *   `playbackDataset = file` so ARCore replays the dataset.
+ * - **ANALYSE** — replay a recording *and interpret it*: every replayed frame is fed to an
+ *   [io.github.sceneview.ar.recording.ARRecordInterpreter] which folds the dataset into a
+ *   quantified [io.github.sceneview.ar.recording.ARRecordInterpretation] — trajectory
+ *   length, tracked-frame ratio, dominant [TrackingFailureReason], plane count/area. The
+ *   live numbers are overlaid on the replay; when the dataset ends
+ *   (`rememberARPlaybackStatus == PlaybackStatus.FINISHED`) a final **report card** sums
+ *   up the take. This is the desk-side counterpart to on-device QA — record a hard
+ *   tracking stress-case once, then replay + measure it on every iteration.
  *
  * Switching mode forces the [ARSceneView] to be rebuilt via `key(currentMode, …)` because
  * ARCore binds the playback source at session-creation time and cannot be toggled after
@@ -271,7 +279,10 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
                                     chipHaptic.selection()
                                 }
                                 currentMode = mode
-                                if (mode != Mode.PLAYBACK) currentPlaybackFile = null
+                                // PLAYBACK and ANALYSE both replay the selected file —
+                                // keep it across that pair so toggling between "just
+                                // watch" and "watch + measure" doesn't drop the dataset.
+                                if (!mode.isPlayback) currentPlaybackFile = null
                             }
                         },
                         label = { Text(mode.label) },
@@ -363,6 +374,34 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
                         onRefresh = { refreshRecordings() }
                     )
                 }
+                Mode.ANALYSE -> {
+                    Text(
+                        text = "Pick a recording to replay AND interpret. Every replayed frame " +
+                            "is folded into a quantified report — trajectory length, the " +
+                            "percentage of frames ARCore tracked, the dominant tracking-failure " +
+                            "reason, and how many planes were found. The live numbers overlay " +
+                            "the replay; a final report card appears when the dataset ends. " +
+                            "This is the desk-side counterpart to on-device QA — replay a hard " +
+                            "tracking stress-case and measure it without holding a phone.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    RecordingsList(
+                        recordings = recordings,
+                        selected = currentPlaybackFile,
+                        justRecorded = lastSavedFile,
+                        onSelect = { file -> currentPlaybackFile = file },
+                        onExport = { file ->
+                            ARRecorder.exportToDownloads(context, file)?.let { uri ->
+                                exportToast = "Exported to Downloads/SceneView/${file.name}"
+                            } ?: run { exportToast = "Export failed — see logs" }
+                        },
+                        onShare = { file -> shareRecording(context, file) },
+                        onOpen = { file -> openRecordingAsVideo(context, file) },
+                        onRefresh = { refreshRecordings() }
+                    )
+                }
             }
 
             // Developer-only debug toggle — visible when QA mode is on. Lets QA
@@ -400,12 +439,20 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
 }
 
 /**
- * Top-level 3-way segmented control values.
+ * Top-level 4-way segmented control values.
+ *
+ * [ANALYSE] is a second playback mode: it replays a recording exactly like [PLAYBACK] but
+ * additionally feeds every frame to an [io.github.sceneview.ar.recording.ARRecordInterpreter]
+ * and overlays the running interpretation + an end-of-replay report card.
  */
 private enum class Mode(val label: String) {
     LIVE("Live"),
     RECORD("Record"),
-    PLAYBACK("Playback")
+    PLAYBACK("Playback"),
+    ANALYSE("Analyse");
+
+    /** `true` for the two modes that bind a `playbackDataset` and replay an MP4. */
+    val isPlayback: Boolean get() = this == PLAYBACK || this == ANALYSE
 }
 
 /**
@@ -476,7 +523,22 @@ private fun ModeContent(
 
     val helmet = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
 
-    val playbackDataset: File? = if (mode == Mode.PLAYBACK) playbackFile else null
+    // PLAYBACK and ANALYSE both bind the selected MP4 as the replay source.
+    val playbackDataset: File? = if (mode.isPlayback) playbackFile else null
+
+    // ── ANALYSE mode — replay interpretation (#2027) ────────────────────────
+    // ARRecordInterpreter folds every replayed frame into a quantified
+    // ARRecordInterpretation. Only fed in ANALYSE mode; held unconditionally so the
+    // composable structure stays stable across mode switches (the outer key(...)
+    // remounts on a real mode change anyway).
+    val interpreter = io.github.sceneview.ar.recording.rememberARRecordInterpreter()
+    // The ARCore Session captured from onSessionUpdated — needed by
+    // rememberARPlaybackStatus, which has no other handle on the session. Published as
+    // Compose state so the status poller re-keys once the session exists.
+    var arSession by remember { mutableStateOf<Session?>(null) }
+    val playbackStatus by io.github.sceneview.ar.recording.rememberARPlaybackStatus(
+        if (mode == Mode.ANALYSE) arSession else null
+    )
 
     // Reset the cross-thread frame counter whenever a playback ARSceneView is
     // (re-)mounted, so a fresh `connectedDebugAndroidTest` run — or a re-tapped
@@ -508,6 +570,14 @@ private fun ModeContent(
             // Stateless side-channel pattern (#876) — recordFrame publishes the
             // session per call, mirroring RerunBridge.logFrame. Idempotent.
             recorder.recordFrame(session)
+            // ANALYSE mode (#2027): fold this replayed frame into the running
+            // ARRecordInterpretation, and publish the Session so rememberARPlaybackStatus
+            // can poll its PlaybackStatus. ingest() is required to run on the render
+            // thread that owns the Frame — onSessionUpdated is exactly that thread.
+            if (mode == Mode.ANALYSE) {
+                interpreter.ingest(session, frame)
+                if (arSession !== session) arSession = session
+            }
             // Tracking-quality accounting while a capture is in progress (#1650):
             // count this frame as healthy / unhealthy so the post-stop callout can
             // report what fraction of the recording ARCore was actually tracking,
@@ -523,7 +593,8 @@ private fun ModeContent(
             // playback so ARPlaybackScreenshotTest can capture at deterministic
             // frame indices instead of wall-clock sleeps. No-op for live mode —
             // a live session has no reproducible frame timeline to gate on.
-            if (mode == Mode.PLAYBACK) {
+            // Both replay modes have a reproducible frame timeline.
+            if (mode.isPlayback) {
                 io.github.sceneview.demo.DemoSettings.arPlaybackFrameCount++
             }
         },
@@ -616,8 +687,20 @@ private fun ModeContent(
         )
     }
 
-    if (mode == Mode.PLAYBACK && playbackFile != null) {
+    if (mode.isPlayback && playbackFile != null) {
         PlaybackBanner(playbackFile.name)
+    }
+
+    // ── ANALYSE mode overlays (#2027) ──────────────────────────────────────
+    // While a dataset replays, overlay the running interpretation; once it ends
+    // (PlaybackStatus.FINISHED) swap it for a full report card.
+    if (mode == Mode.ANALYSE && playbackFile != null) {
+        val finished = playbackStatus == com.google.ar.core.PlaybackStatus.FINISHED
+        if (finished) {
+            AnalysisReportCard(interpretation = interpreter.interpretation)
+        } else {
+            AnalysisLiveOverlay(interpretation = interpreter.interpretation)
+        }
     }
 
     // Tracking failure overlay — uses its own fillMaxSize Box internally so it can align to
@@ -626,7 +709,10 @@ private fun ModeContent(
     // has picked one in the debug menu (#1881). Read it here so flipping the override
     // re-renders the overlay immediately.
     val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-    if (!isTracking || ForcedTrackingFailure.override != null) {
+    // Suppress the generic "point your camera at a surface" banner in ANALYSE mode —
+    // there the failure breakdown is part of the interpretation overlay / report card,
+    // and a second banner stacked on top would just clutter the analysis (#2027).
+    if ((!isTracking || ForcedTrackingFailure.override != null) && mode != Mode.ANALYSE) {
         TrackingFailureBanner(reason = effectiveReason)
     }
 
@@ -635,7 +721,11 @@ private fun ModeContent(
     // entry doesn't read as a frozen screen with a dimmed record button (#1473).
     ARCameraInitScrim(
         initializing = !cameraReady,
-        label = if (mode == Mode.PLAYBACK) "Starting playback…" else "Starting camera…",
+        label = when (mode) {
+            Mode.PLAYBACK -> "Starting playback…"
+            Mode.ANALYSE -> "Starting analysis…"
+            else -> "Starting camera…"
+        },
     )
 }
 
@@ -850,6 +940,238 @@ private fun PlaybackBanner(filename: String) {
             )
         }
     }
+}
+
+/**
+ * Live interpretation overlay shown over the replayed video in ANALYSE mode (#2027).
+ *
+ * A translucent bottom-left card with the four headline metrics from the running
+ * [ARRecordInterpretation], updating every frame as [ARRecordInterpreter.ingest] folds in
+ * the dataset: tracked-frame %, trajectory length, dominant tracking-failure reason, and
+ * plane count. Stays compact so it never hides the camera feed it annotates — the full
+ * breakdown lands in [AnalysisReportCard] when the dataset ends.
+ */
+@Composable
+private fun AnalysisLiveOverlay(
+    interpretation: io.github.sceneview.ar.recording.ARRecordInterpretation
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .windowInsetsPadding(WindowInsets.systemBars)
+                .padding(start = 12.dp, bottom = 12.dp),
+            color = Color.Black.copy(alpha = 0.62f),
+            contentColor = Color.White,
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Text(
+                    text = "◉ Analysing replay",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Tracked  ${formatTrackedPercent(interpretation)}  " +
+                        "(${interpretation.trackedFrameCount}/${interpretation.frameCount})",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "Trajectory  ${"%.2f".format(interpretation.trajectoryLengthMeters)} m",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "Planes  ${interpretation.planeCount}  " +
+                        "(${interpretation.horizontalPlaneCount}H / ${interpretation.verticalPlaneCount}V)",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = FontFamily.Monospace
+                )
+                dominantFailureLabel(interpretation)?.let { failure ->
+                    Text(
+                        text = "Worst fault  $failure",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontFamily = FontFamily.Monospace,
+                        color = Color(0xFFFFCDD2)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * End-of-replay report card shown in ANALYSE mode once `rememberARPlaybackStatus` reports
+ * [com.google.ar.core.PlaybackStatus.FINISHED] (#2027).
+ *
+ * Sums up the whole replayed dataset from the final [ARRecordInterpretation]: how long it
+ * ran, the tracked-frame ratio (with a green/amber verdict), trajectory length + extent,
+ * plane count + area, and the full per-[TrackingFailureReason] breakdown. This is the
+ * deterministic "did this capture track well?" verdict the issue calls a report card.
+ */
+@Composable
+private fun AnalysisReportCard(
+    interpretation: io.github.sceneview.ar.recording.ARRecordInterpretation
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Card(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .windowInsetsPadding(WindowInsets.systemBars)
+                .padding(horizontal = 20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Replay analysis complete",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "${interpretation.frameCount} frames • " +
+                        "${"%.1f".format(interpretation.durationSeconds)} s",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+
+                // Headline tracking verdict — green when most frames tracked, amber/red
+                // when the dataset is a hard tracking case worth flagging.
+                val trackedPercent = (interpretation.trackedFrameRatio * 100).toInt()
+                val healthy = trackedPercent >= TRACKING_HEALTH_GOOD_PERCENT
+                Surface(
+                    color = if (healthy) {
+                        Color(0xFF1B5E20)
+                    } else {
+                        MaterialTheme.colorScheme.errorContainer
+                    },
+                    contentColor = if (healthy) {
+                        Color.White
+                    } else {
+                        MaterialTheme.colorScheme.onErrorContainer
+                    },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = if (healthy) {
+                            "✓ Tracked $trackedPercent% of frames"
+                        } else {
+                            "▲ Tracked only $trackedPercent% of frames — hard tracking case"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+
+                ReportRow(
+                    "Trajectory length",
+                    "${"%.2f".format(interpretation.trajectoryLengthMeters)} m"
+                )
+                ReportRow(
+                    "Trajectory extent",
+                    "${"%.2f".format(interpretation.trajectoryExtentMeters)} m"
+                )
+                ReportRow(
+                    "Planes found",
+                    "${interpretation.planeCount} " +
+                        "(${interpretation.horizontalPlaneCount}H / ${interpretation.verticalPlaneCount}V)"
+                )
+                ReportRow(
+                    "Plane area",
+                    "${"%.2f".format(interpretation.planeAreaMeters2)} m²"
+                )
+
+                if (interpretation.failureReasonFrameCounts.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Tracking-failure breakdown",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    // Worst-first so the dominant failure reason is read at a glance.
+                    interpretation.failureReasonFrameCounts.entries
+                        .sortedByDescending { it.value }
+                        .forEach { (reason, count) ->
+                            ReportRow(
+                                trackingFailureReasonName(reason),
+                                "$count frames"
+                            )
+                        }
+                } else {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "No tracking-failure frames — the whole dataset tracked.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One label/value line in the [AnalysisReportCard]. */
+@Composable
+private fun ReportRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelMedium,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+/** Tracked-frame ratio of an [ARRecordInterpretation] as a `NN%` string (`—` before any frame). */
+private fun formatTrackedPercent(
+    interpretation: io.github.sceneview.ar.recording.ARRecordInterpretation
+): String = if (interpretation.frameCount == 0) {
+    "—"
+} else {
+    "${(interpretation.trackedFrameRatio * 100).toInt()}%"
+}
+
+/**
+ * Short label for the [TrackingFailureReason] that lost the most frames in an
+ * interpretation, or `null` when nothing failed yet. Drives the "Worst fault" line of the
+ * live overlay (#2027).
+ */
+private fun dominantFailureLabel(
+    interpretation: io.github.sceneview.ar.recording.ARRecordInterpretation
+): String? = interpretation.failureReasonFrameCounts.maxByOrNull { it.value }
+    ?.let { (reason, count) -> "${trackingFailureReasonName(reason)} ($count)" }
+
+/**
+ * Concise human-readable name for a [TrackingFailureReason] — a few words, suitable for a
+ * metrics row, not the full actionable sentence
+ * [io.github.sceneview.demo.common.trackingFailureMessage] returns. Falls back to the enum
+ * name so every reason is still labelled.
+ */
+private fun trackingFailureReasonName(reason: TrackingFailureReason): String = when (reason) {
+    TrackingFailureReason.BAD_STATE -> "Bad state"
+    TrackingFailureReason.INSUFFICIENT_LIGHT -> "Insufficient light"
+    TrackingFailureReason.EXCESSIVE_MOTION -> "Excessive motion"
+    TrackingFailureReason.INSUFFICIENT_FEATURES -> "Insufficient features"
+    TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
+    TrackingFailureReason.NONE -> "None"
 }
 
 @Composable
