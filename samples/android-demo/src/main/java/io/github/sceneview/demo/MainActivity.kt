@@ -50,6 +50,7 @@ import io.github.sceneview.demo.feedback.FeedbackRecordingService
 import io.github.sceneview.demo.feedback.RecordingState
 import io.github.sceneview.demo.feedback.RecordingStopPill
 import io.github.sceneview.demo.feedback.rememberFeedbackRecordingLauncher
+import io.github.sceneview.demo.feedback.sweepStaleFeedbackMedia
 
 class MainActivity : ComponentActivity() {
 
@@ -72,6 +73,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Clean up any feedback recording stranded in the cache by a prior run.
+        sweepStaleFeedbackMedia(this)
         updateManager = InAppUpdateManager(this)
         // Two ingress channels: (1) `--es demo <id>` from `adb shell am` for QA / instrumented
         // tests, (2) URL deep-links via the public sceneview://demo/<id> scheme parsed by
@@ -302,9 +305,9 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             RecordingStopPill(
                 onStop = { FeedbackRecordingService.stop(context) },
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(bottom = 24.dp),
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = 24.dp),
             )
         }
 

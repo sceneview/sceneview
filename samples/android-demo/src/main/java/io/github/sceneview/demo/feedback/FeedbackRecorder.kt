@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.feedback
 
+import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -58,5 +59,18 @@ object FeedbackRecorder {
         }
         category = null
         _state.value = RecordingState.Idle
+    }
+}
+
+/**
+ * Delete any feedback recordings left in the cache by a previous run — call on
+ * app start so a crash, an OOM-kill or a failed upload never strands a screen +
+ * microphone capture on disk.
+ */
+fun sweepStaleFeedbackMedia(context: Context) {
+    runCatching {
+        context.cacheDir
+            .listFiles { file -> file.name.startsWith("feedback-") }
+            ?.forEach { it.delete() }
     }
 }

@@ -302,6 +302,7 @@ private fun ReviewStep(
             PrimaryButton(
                 text = stringResource(R.string.feedback_review_send),
                 onClick = onSend,
+                enabled = recording != null || note.isNotBlank(),
             )
             TextButton(onClick = onRerecord, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.feedback_review_rerecord))
@@ -339,7 +340,7 @@ private fun SendingStep(
     onRetry: () -> Unit,
 ) {
     when (state) {
-        UploadUiState.Sending -> FeedbackStepScaffold(onClose = onClose) {
+        UploadUiState.Sending -> FeedbackStepScaffold(onClose = null) {
             Spacer(Modifier.height(64.dp))
             CircularProgressIndicator(
                 modifier = Modifier
@@ -410,7 +411,11 @@ private fun FailedStep(onClose: () -> Unit, onRetry: () -> Unit) {
         },
     ) {
         Spacer(Modifier.height(16.dp))
-        FeedbackHeroIcon(Icons.Outlined.ErrorOutline, Modifier.align(Alignment.CenterHorizontally))
+        FeedbackHeroIcon(
+            Icons.Outlined.ErrorOutline,
+            Modifier.align(Alignment.CenterHorizontally),
+            error = true,
+        )
         Spacer(Modifier.height(24.dp))
         StepTitle(stringResource(R.string.feedback_record_failed_title))
         Spacer(Modifier.height(12.dp))
@@ -423,7 +428,7 @@ private fun FailedStep(onClose: () -> Unit, onRetry: () -> Unit) {
 /** Close row, scrolling content area, and a pinned action area at the bottom. */
 @Composable
 private fun FeedbackStepScaffold(
-    onClose: () -> Unit,
+    onClose: (() -> Unit)?,
     actions: @Composable ColumnScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -435,14 +440,17 @@ private fun FeedbackStepScaffold(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .height(56.dp)
                 .padding(4.dp),
             horizontalArrangement = Arrangement.End,
         ) {
-            IconButton(onClick = onClose) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = stringResource(R.string.feedback_cd_close),
-                )
+            if (onClose != null) {
+                IconButton(onClick = onClose) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = stringResource(R.string.feedback_cd_close),
+                    )
+                }
             }
         }
         Column(
@@ -464,9 +472,14 @@ private fun FeedbackStepScaffold(
 }
 
 @Composable
-private fun ColumnScope.PrimaryButton(text: String, onClick: () -> Unit) {
+private fun ColumnScope.PrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
             .height(52.dp),
@@ -496,17 +509,27 @@ private fun StepBody(text: String) {
 }
 
 @Composable
-private fun FeedbackHeroIcon(icon: ImageVector, modifier: Modifier = Modifier) {
+private fun FeedbackHeroIcon(
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    error: Boolean = false,
+) {
+    val container =
+        if (error) MaterialTheme.colorScheme.errorContainer
+        else MaterialTheme.colorScheme.secondaryContainer
+    val content =
+        if (error) MaterialTheme.colorScheme.onErrorContainer
+        else MaterialTheme.colorScheme.onSecondaryContainer
     Box(
         modifier = modifier
             .size(72.dp)
-            .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+            .background(container, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            tint = content,
             modifier = Modifier.size(34.dp),
         )
     }

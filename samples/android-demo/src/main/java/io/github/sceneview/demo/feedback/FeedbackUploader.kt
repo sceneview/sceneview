@@ -18,7 +18,10 @@ object FeedbackUploader {
 
     private val client by lazy {
         OkHttpClient.Builder()
-            .callTimeout(90, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(120, TimeUnit.SECONDS)
             .build()
     }
 

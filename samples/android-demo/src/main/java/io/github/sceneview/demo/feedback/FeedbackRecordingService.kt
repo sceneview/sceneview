@@ -7,13 +7,14 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import io.github.sceneview.demo.MainActivity
@@ -23,8 +24,9 @@ import java.io.File
 /**
  * Foreground service that captures the screen + microphone with MediaProjection
  * while the user demonstrates a bug. Started once the user has granted the
- * screen-capture permission; stopped from its notification action. The result
- * is published through [FeedbackRecorder].
+ * screen-capture permission; stopped from its notification action, the in-app
+ * Stop pill, or when the system revokes the projection. The result is published
+ * through [FeedbackRecorder].
  */
 class FeedbackRecordingService : Service() {
 
@@ -33,6 +35,10 @@ class FeedbackRecordingService : Service() {
     private var recorder: MediaRecorder? = null
     private var videoFile: File? = null
     private var startedAt = 0L
+
+    /** Guards [stopRecording] against the notification / pill / projection-callback
+     *  all triggering a stop. */
+    private var stopping = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -59,12 +65,17 @@ class FeedbackRecordingService : Service() {
 
         // The service must be foreground (with the mediaProjection type) BEFORE
         // the MediaProjection is acquired — required on Android 14+.
-        goForeground()
+        if (!goForeground()) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         startRecording(resultCode, data)
         return START_NOT_STICKY
     }
 
-    private fun goForeground() {
+    /** Promote to a foreground service. Returns false (and publishes a failure)
+     *  if the system refuses the foreground start. */
+    private fun goForeground(): Boolean {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(
@@ -100,14 +111,20 @@ class FeedbackRecordingService : Service() {
             )
             .build()
 
-        if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(
-                NOTIF_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
-            )
-        } else {
-            startForeground(NOTIF_ID, notification)
+        return try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                startForeground(
+                    NOTIF_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+                )
+            } else {
+                startForeground(NOTIF_ID, notification)
+            }
+            true
+        } catch (e: Exception) {
+            FeedbackRecorder.setFailed("could not start the recording service")
+            false
         }
     }
 
@@ -117,7 +134,7 @@ class FeedbackRecordingService : Service() {
             val mp = mpm.getMediaProjection(resultCode, data)
                 ?: error("could not acquire the screen-capture session")
             projection = mp
-            mp.registerCallback(projectionCallback, null)
+            mp.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
 
             val dm = resources.displayMetrics
             // Downscale so the longer edge is <= 1280 px — keeps the clip small
@@ -152,7 +169,7 @@ class FeedbackRecordingService : Service() {
                 width,
                 height,
                 dm.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                0, // a projection-backed display mirrors implicitly — no flags
                 rec.surface,
                 null,
                 null,
@@ -169,6 +186,9 @@ class FeedbackRecordingService : Service() {
     }
 
     private fun stopRecording() {
+        if (stopping) return
+        stopping = true
+
         val out = videoFile
         val duration = if (startedAt > 0) System.currentTimeMillis() - startedAt else 0L
         val stopped = try {
@@ -180,21 +200,26 @@ class FeedbackRecordingService : Service() {
         }
         cleanup()
         if (stopped && out != null && out.exists() && out.length() > 0L) {
-            val audio = File(cacheDir, "feedback-audio-${System.currentTimeMillis()}.m4a")
-            FeedbackRecorder.setDone(
-                FeedbackRecording(out, demuxAudioTrack(out, audio), duration),
-            )
+            // Demux the audio track off the main thread, then publish the result.
+            val cache = cacheDir
+            Thread {
+                val audio = File(cache, "feedback-audio-${System.currentTimeMillis()}.m4a")
+                FeedbackRecorder.setDone(
+                    FeedbackRecording(out, demuxAudioTrack(out, audio), duration),
+                )
+            }.start()
         } else {
             out?.delete()
-            FeedbackRecorder.setFailed("recording too short")
+            FeedbackRecorder.setFailed("recording incomplete")
         }
         stopForegroundAndSelf()
     }
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
-            // Projection revoked externally (system / another app) — the
-            // recording is finalized by stopRecording() / onDestroy().
+            // Projection revoked externally (system / another app) — finalize
+            // the recording rather than leaving the service stuck.
+            stopRecording()
         }
     }
 

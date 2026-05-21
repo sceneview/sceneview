@@ -311,7 +311,7 @@
     <string name="feedback_review_rerecord">Record again</string>
     <string name="feedback_review_send">Send feedback</string>
     <string name="feedback_record_failed_title">Recording didn\'t work</string>
-    <string name="feedback_record_failed_body">The screen recording was interrupted or not granted. You can try again.</string>
+    <string name="feedback_record_failed_body">The recording didn\'t finish. You can try again.</string>
     <string name="feedback_record_retry">Try again</string>
     <string name="feedback_sending">Sending your feedback…</string>
     <string name="feedback_sent_title">Thank you!</string>
