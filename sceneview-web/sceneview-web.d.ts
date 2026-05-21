@@ -12,7 +12,7 @@
 
 export as namespace sceneview;
 
-/** Compile-time version string, e.g. `"4.0.9"`. Same value the
+/** Compile-time version string (e.g. `"4.14.0"`). Same value the
  *  Kotlin sources advertise via `SCENEVIEW_VERSION`. */
 export const version: string;
 
@@ -65,7 +65,9 @@ export interface SceneViewer {
   /** Turn auto-rotation on/off at runtime. */
   setAutoRotate(enabled: boolean): void;
 
-  /** Auto-rotate angular speed in radians per second. */
+  /** Auto-rotate angular speed in **radians per frame** — the controller
+   *  advances the orbit angle by this amount once per `requestAnimationFrame`
+   *  tick. At 60 fps the default is `30° / 60 ≈ 0.00873` rad/frame. */
   setAutoRotateSpeed(speed: number): void;
 
   /** Constrain pinch-zoom to `[min, max]` metres from the target. */
@@ -85,6 +87,13 @@ export interface SceneViewer {
 
   /** Frame the camera so every loaded model is fully visible. */
   fitToModels(): void;
+
+  /** Toggle library-level auto-centring of loaded content. When enabled
+   *  (the default), content is translated so its bounding box is centred
+   *  on the orbit-camera target the first frame it finishes loading.
+   *  Pass `false` for narrative scenes with intentional off-centre
+   *  placement. Port of iOS `autoCenterContent` (#1026). */
+  setAutoCenterContent(enabled: boolean): void;
 
   /** Release Filament resources. The viewer is unusable after this. */
   dispose(): void;

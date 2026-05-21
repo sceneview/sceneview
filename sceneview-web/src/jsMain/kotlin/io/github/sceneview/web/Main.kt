@@ -1,7 +1,6 @@
 package io.github.sceneview.web
 
 import kotlinx.browser.document
-import kotlinx.browser.window
 import org.w3c.dom.HTMLCanvasElement
 import kotlin.js.Promise
 
@@ -120,11 +119,14 @@ internal fun createViewerImpl(
                 onReady = { sceneView ->
                     sceneView.startRendering()
 
-                    // Auto-resize on window resize
-                    window.addEventListener("resize", {
-                        canvas.width = canvas.clientWidth
-                        canvas.height = canvas.clientHeight
-                    })
+                    // #2048: no `window` resize listener here. SceneView's
+                    // render loop already auto-resizes when the canvas CSS
+                    // size changes (`autoResize = true`) and does it correctly
+                    // — it also updates the Filament viewport + projection,
+                    // which a bare `canvas.width/height` mutation does not.
+                    // A `window`-scoped listener would also leak: it captures
+                    // `canvas` and is untracked, so `dispose()` cannot detach
+                    // it (same class of bug as #1698).
 
                     val viewer = SceneViewJS()
                     viewer.attach(sceneView)
