@@ -3901,8 +3901,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `dynamic-sky` — Dynamic Sky. Time-of-day sun simulation.
 - `environment` — Environment Gallery. HDR environment switching.
 - `fog` — Fog. Linear, exponential, and height fog.
-- `lighting` — Light Types. Directional, point, and spot lights.
-- `movable-light` — Movable Light. Drag to orbit the light around the model.
+- `lighting` — Lighting. Light types, plus a movable orbiting light.
 
 ### Content
 

@@ -214,4 +214,52 @@ class DeepLinkRouterTest {
             )
         }
     }
+
+    // ── Demo-id aliases: retired ids redirect to consolidated demos (#1444) ──
+
+    @Test
+    fun `retired alias id resolves to the consolidated demo that absorbed it`() {
+        // `movable-light` was merged into `lighting` in #1444. An incoming
+        // deep link to the retired id must resolve to the consolidated demo.
+        val registry = listOf(
+            DemoEntry(
+                "lighting",
+                R.string.demo_lighting_title,
+                R.string.demo_lighting_subtitle,
+                "Lighting & Environment",
+                Icons.Filled.ViewInAr,
+            ),
+        )
+        assertEquals("lighting", DeepLinkRouter.validate("movable-light", registry))
+        assertEquals(
+            "lighting",
+            DeepLinkRouter.parse(Uri.parse("sceneview://demo/movable-light"), registry),
+        )
+    }
+
+    @Test
+    fun `alias returns null when its target demo is not registered`() {
+        // The alias must not conjure a navigation target out of thin air — if
+        // the consolidated demo itself is missing from the registry, the link
+        // still falls through to null (same as any unknown id).
+        assertNull(DeepLinkRouter.validate("movable-light", knownRegistry))
+    }
+
+    @Test
+    fun `every DEMO_ID_ALIASES target is a live registered demo`() {
+        // Invariant: an alias value must point at a real, currently-registered
+        // demo id, otherwise the redirect would 404. Keys must be retired ids
+        // that are NOT themselves registered (else the alias is dead code).
+        DeepLinkRouter.DEMO_ID_ALIASES.forEach { (retired, target) ->
+            assertEquals(
+                "alias target '$target' for retired id '$retired' must be a live demo",
+                target,
+                ALL_DEMOS.find { it.id == target }?.id,
+            )
+            assertNull(
+                "retired alias id '$retired' must not also be a registered demo",
+                ALL_DEMOS.find { it.id == retired },
+            )
+        }
+    }
 }

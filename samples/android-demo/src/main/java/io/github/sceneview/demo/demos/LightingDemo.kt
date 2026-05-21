@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -13,20 +14,29 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -40,18 +50,92 @@ import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.colorOf
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.rememberMaterialInstance
+import io.github.sceneview.sample.rememberUnlitMaterialInstance
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sin
 
 /**
- * Demonstrates directional, point, and spot lights with interactive controls.
+ * Consolidated **Lighting** demo — issue #1444.
+ *
+ * Two formerly-separate demos (`lighting` "Light Types" and `movable-light`
+ * "Movable Light") are merged here behind a single in-demo mode switch so the
+ * Samples tab carries one lighting entry instead of two near-identical cards.
+ * No feature is lost — both modes are still fully interactive:
+ *
+ * - **[LightingMode.Types]** — pick directional / point / spot, scrub the
+ *   intensity, and choose a colour preset; a backdrop wall makes the light's
+ *   *shape in space* visible.
+ * - **[LightingMode.Movable]** — drag anywhere on the scene to orbit a single
+ *   point light around the helmet and watch the specular highlights track it.
+ *
+ * The old `movable-light` deep link still resolves: `DeepLinkRouter` aliases
+ * it to `lighting`, so `sceneview://demo/movable-light` keeps working.
  */
+private enum class LightingMode { Types, Movable }
+
 @Composable
 fun LightingDemo(onBack: () -> Unit) {
+    // rememberSaveable so the chosen mode survives configuration changes /
+    // process death — consistent with the rest of the demo catalogue.
+    var mode by rememberSaveable { mutableStateOf(LightingMode.Types) }
+
+    when (mode) {
+        LightingMode.Types -> LightTypesScene(
+            onBack = onBack,
+            mode = mode,
+            onModeChange = { mode = it },
+        )
+        LightingMode.Movable -> MovableLightScene(
+            onBack = onBack,
+            mode = mode,
+            onModeChange = { mode = it },
+        )
+    }
+}
+
+/** Shared mode switcher rendered at the top of each mode's controls panel. */
+@Composable
+private fun LightingModeSelector(
+    mode: LightingMode,
+    onModeChange: (LightingMode) -> Unit,
+) {
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        val labels = listOf(
+            LightingMode.Types to stringResource(R.string.demo_lighting_mode_types),
+            LightingMode.Movable to stringResource(R.string.demo_lighting_mode_movable),
+        )
+        labels.forEachIndexed { index, (value, label) ->
+            SegmentedButton(
+                selected = mode == value,
+                onClick = { onModeChange(value) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = labels.size),
+            ) {
+                Text(label)
+            }
+        }
+    }
+}
+
+/**
+ * "Light Types" mode — directional, point, and spot lights with interactive
+ * controls. Formerly the standalone `LightingDemo`.
+ */
+@Composable
+private fun LightTypesScene(
+    onBack: () -> Unit,
+    mode: LightingMode,
+    onModeChange: (LightingMode) -> Unit,
+) {
     data class LightTypeOption(val label: String, val type: LightManager.Type)
 
     val lightTypes = remember {
@@ -130,6 +214,9 @@ fun LightingDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         controls = {
+            LightingModeSelector(mode = mode, onModeChange = onModeChange)
+            Spacer(modifier = Modifier.height(12.dp))
+
             // Light type selector
             Text("Light Type", style = MaterialTheme.typography.labelLarge)
             Spacer(modifier = Modifier.height(8.dp))
@@ -183,7 +270,7 @@ fun LightingDemo(onBack: () -> Unit) {
             }
         }
     ) {
-        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize()) {
             SceneView(
                 modifier = Modifier.fillMaxSize(),
                 onFrame = firstFrame.onFrame,
@@ -240,33 +327,234 @@ fun LightingDemo(onBack: () -> Unit) {
                     )
                 }
 
-            LightNode(
-                type = selectedType.type,
-                intensity = intensity,
-                color = io.github.sceneview.math.colorOf(
-                    r = selectedColor.r,
-                    g = selectedColor.g,
-                    b = selectedColor.b
-                ),
-                // Direction points from lightPosition toward the helmet at origin so
-                // the spot cone hits the helmet front and the wall behind, making the
-                // disc clearly visible. Used for Directional + Spot.
-                direction = Direction(0f, -1.4f, -1.0f),
-                position = lightPosition,
-                apply = {
-                    // Spot: very narrow cone (≈11° outer) so the disc on the wall
-                    // reads as a sharp circle, not a wide wash. Falloff 4 m keeps
-                    // the cone visible all the way to the backdrop wall.
-                    // Point: aggressive 2 m falloff so the wall shows the radial
-                    // gradient (helmet front bright, wall corners dark).
-                    if (selectedType.type == LightManager.Type.FOCUSED_SPOT) {
-                        spotLightCone(0.05f, 0.2f)
-                        falloff(4f)
-                    } else if (selectedType.type == LightManager.Type.POINT) {
-                        falloff(2.5f)
+                LightNode(
+                    type = selectedType.type,
+                    intensity = intensity,
+                    color = colorOf(
+                        r = selectedColor.r,
+                        g = selectedColor.g,
+                        b = selectedColor.b
+                    ),
+                    // Direction points from lightPosition toward the helmet at origin so
+                    // the spot cone hits the helmet front and the wall behind, making the
+                    // disc clearly visible. Used for Directional + Spot.
+                    direction = Direction(0f, -1.4f, -1.0f),
+                    position = lightPosition,
+                    apply = {
+                        // Spot: very narrow cone (≈11° outer) so the disc on the wall
+                        // reads as a sharp circle, not a wide wash. Falloff 4 m keeps
+                        // the cone visible all the way to the backdrop wall.
+                        // Point: aggressive 2 m falloff so the wall shows the radial
+                        // gradient (helmet front bright, wall corners dark).
+                        if (selectedType.type == LightManager.Type.FOCUSED_SPOT) {
+                            spotLightCone(0.05f, 0.2f)
+                            falloff(4f)
+                        } else if (selectedType.type == LightManager.Type.POINT) {
+                            falloff(2.5f)
+                        }
+                    }
+                )
+            }
+            LoadingScrim(loading = modelInstance == null, label = "Loading helmet…")
+        }
+    }
+}
+
+/**
+ * "Movable Light" mode — drag-to-orbit a single point light. Formerly the
+ * standalone `MovableLightDemo`.
+ *
+ * The user drags anywhere on the scene to move a point light in an orbit
+ * (azimuth / elevation, fixed radius) around the PBR helmet model; the
+ * specular highlights track the light in real time.
+ */
+@Composable
+private fun MovableLightScene(
+    onBack: () -> Unit,
+    mode: LightingMode,
+    onModeChange: (LightingMode) -> Unit,
+) {
+    // Spherical-orbit state. Start with the light up-and-to-the-right of the
+    // helmet so the user sees a strong highlight on first paint, not a flat
+    // helmet they have to discover by dragging.
+    var azimuth by remember { mutableFloatStateOf((PI / 4).toFloat()) }      // 45°
+    var elevation by remember { mutableFloatStateOf((PI / 6).toFloat()) }    // 30°
+    var intensity by remember { mutableFloatStateOf(30_000f) }
+    var showLightSource by remember { mutableStateOf(true) }
+
+    // Fixed orbit radius. Kept deliberately small (#1467): the helmet is fit to
+    // a 0.6 m bounding cube (≈ 0.35 m diagonal half-extent) and the default
+    // camera (`DefaultCameraNode`) sits at z = 2.75 m with a 28 mm lens — its
+    // frame was tuned in #1427 to show a 0.6 m origin-placed model with only
+    // modest headroom. The old 1.5 m orbit swung the yellow handle far outside
+    // the camera frustum for most of the azimuth/elevation sweep, so the user
+    // was dragging an invisible target. 0.75 m clears the helmet (no clipping
+    // into the model) yet keeps the handle on-screen for the whole orbit, while
+    // the moving highlight on the metal stays sharp.
+    val orbitRadius = 0.75f
+    // Clamp elevation to ±50° so the handle never climbs/drops out of the camera
+    // frustum vertically (#1467). At 0.75 m orbit, sin(50°)·0.75 ≈ 0.57 m, well
+    // within the vertical FOV. This also keeps the light off the gimbal poles.
+    val minElevation = -((PI / 180) * 50).toFloat()
+    val maxElevation = ((PI / 180) * 50).toFloat()
+    // Drag sensitivity in radians-per-pixel. 0.005 rad/px gives ≈ a half-turn
+    // per full screen-width swipe on a typical 1080p phone — feels responsive
+    // without being twitchy.
+    val sensitivity = 0.005f
+
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val materialLoader = rememberMaterialLoader(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
+    val modelInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+
+    // Compute Cartesian position from spherical. We do this in the composition
+    // so reading `azimuth`/`elevation` triggers a recomposition → the LightNode
+    // SideEffect re-pushes the new `position` on the Filament side.
+    val lightPos = remember(azimuth, elevation) {
+        val cosE = cos(elevation)
+        Position(
+            x = orbitRadius * cosE * sin(azimuth),
+            y = orbitRadius * sin(elevation),
+            z = orbitRadius * cosE * cos(azimuth),
+        )
+    }
+    // Direction from light → origin (the helmet centre). Spot/directional
+    // ignore this for our chosen Point type but we keep it in case the user
+    // experiments — defensive parity with the Light Types mode.
+    val lightDir = remember(lightPos) {
+        Direction(-lightPos.x, -lightPos.y, -lightPos.z)
+    }
+
+    // Yellow unlit material for the marker sphere — see iOS rationale. Unlit
+    // = always glowing, regardless of the user-light's position. Helper has
+    // a DisposableEffect-backed onDispose → no JNI MaterialInstance leak on
+    // recompose / navigate-away (#979).
+    val markerMaterial = rememberUnlitMaterialInstance(materialLoader, Color(0xFFFFEB3B))
+
+    val firstFrame = rememberFirstFrameState()
+
+    DemoScaffold(
+        title = stringResource(R.string.demo_lighting_title),
+        onBack = onBack,
+        firstFrameRendered = firstFrame.rendered,
+        controls = {
+            LightingModeSelector(mode = mode, onModeChange = onModeChange)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.WbSunny, contentDescription = null)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Intensity: ${intensity.toInt()}",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Slider(
+                value = intensity,
+                onValueChange = { intensity = it },
+                valueRange = 1_000f..100_000f
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Show light source",
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Switch(
+                    checked = showLightSource,
+                    onCheckedChange = { showLightSource = it }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                "Drag anywhere on the scene to orbit the light around the helmet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                // Capture drag input *before* SceneView's gesture detector
+                // sees it. Because `cameraManipulator = null` below disables
+                // the camera pinch/drag detector anyway, this is the only
+                // consumer of drag events and the gesture stays smooth even
+                // on small fast motions.
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        azimuth += dragAmount.x * sensitivity
+                        // Screen Y grows downwards → invert so "drag down" =
+                        // "light goes down" (matches iOS behaviour).
+                        elevation -= dragAmount.y * sensitivity
+                        elevation = min(max(elevation, minElevation), maxElevation)
                     }
                 }
-            )
+        ) {
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                onFrame = firstFrame.onFrame,
+                engine = engine,
+                modelLoader = modelLoader,
+                environmentLoader = environmentLoader,
+                // No camera gestures — fixes the camera so the user's drag is
+                // unambiguously interpreted as "move the light".
+                cameraManipulator = null,
+                // Disable the default 110 klx main directional light so the
+                // ONLY light shaping the helmet is the user-controlled one.
+                // The IBL from environmentLoader stays on for a tiny bit of
+                // ambient fill so the helmet is never pitch-black even if the
+                // user drags the light behind it.
+                mainLightNode = null,
+            ) {
+                modelInstance?.let { instance ->
+                    ModelNode(
+                        modelInstance = instance,
+                        scaleToUnits = 0.6f,
+                    )
+                }
+
+                // User-controlled point light orbiting the helmet at origin.
+                LightNode(
+                    type = LightManager.Type.POINT,
+                    intensity = intensity,
+                    direction = lightDir,
+                    position = lightPos,
+                    color = colorOf(r = 1.0f, g = 0.95f, b = 0.8f),
+                    apply = {
+                        // 4 m attenuation radius — beyond this the light has
+                        // no effect. Comfortably larger than orbitRadius (0.75 m)
+                        // so the light always reaches the helmet.
+                        falloff(4f)
+                    },
+                )
+
+                // Yellow marker sphere — the draggable light handle. Only
+                // rendered when the toggle is on. Radius 0.09 m (#1467): the
+                // old 0.05 m disc was a barely-visible speck at the camera's
+                // ≈ 2 m working distance; 0.09 m reads as a clear glowing
+                // handle the user can confidently aim a drag at.
+                if (showLightSource) {
+                    SphereNode(
+                        materialInstance = markerMaterial,
+                        radius = 0.09f,
+                        position = lightPos,
+                    )
+                }
             }
             LoadingScrim(loading = modelInstance == null, label = "Loading helmet…")
         }

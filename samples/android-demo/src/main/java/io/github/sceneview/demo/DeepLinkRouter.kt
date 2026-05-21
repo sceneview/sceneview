@@ -57,6 +57,24 @@ internal object DeepLinkRouter {
     /** Largest accepted camera distance, in metres. Anything above resolves to `null`. */
     const val CAMERA_DISTANCE_MAX: Float = 100f
 
+    /**
+     * Retired demo ids mapped to the consolidated demo that absorbed them.
+     *
+     * A demo id is part of the public deep-link surface (`sceneview://demo/<id>`),
+     * so when two demos are merged into one (issue #1444) the old ids must keep
+     * resolving rather than falling through to the demo list. [validate] consults
+     * this table when a candidate id is not itself registered: an incoming
+     * `movable-light` link is rewritten to the live `lighting` demo that now
+     * hosts it as an in-demo mode.
+     *
+     * Keys are retired ids that no longer appear in [ALL_DEMOS]; values MUST be
+     * live registered ids — `DeepLinkRouterTest` asserts this invariant.
+     */
+    val DEMO_ID_ALIASES: Map<String, String> = mapOf(
+        // #1444 — `movable-light` was merged into the consolidated `lighting` demo.
+        "movable-light" to "lighting",
+    )
+
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {
         if (data == null) return null
         val candidate = extractCandidate(data) ?: return null
@@ -73,10 +91,19 @@ internal object DeepLinkRouter {
      *
      * Returns the candidate iff it is non-blank AND matches a registered
      * demo; otherwise `null`, which the caller treats as "no deep-link".
+     *
+     * A non-blank candidate that is not itself registered is given one more
+     * chance through [DEMO_ID_ALIASES] — a retired id (e.g. `movable-light`)
+     * resolves to the consolidated demo that absorbed it (e.g. `lighting`),
+     * provided that target is itself registered. This keeps old deep links
+     * working after demo consolidation (#1444). Truly unknown ids still
+     * return `null`, so the fuzzing guard is unchanged.
      */
     fun validate(id: String?, registry: List<DemoEntry> = ALL_DEMOS): String? {
         val candidate = id?.takeIf { it.isNotBlank() } ?: return null
-        return if (registry.any { it.id == candidate }) candidate else null
+        if (registry.any { it.id == candidate }) return candidate
+        val aliased = DEMO_ID_ALIASES[candidate] ?: return null
+        return if (registry.any { it.id == aliased }) aliased else null
     }
 
     /**
