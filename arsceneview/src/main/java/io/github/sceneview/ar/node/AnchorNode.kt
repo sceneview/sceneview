@@ -44,9 +44,19 @@ open class AnchorNode(
      *
      * Anchors incur ongoing processing overhead within ARCore. To release unneeded anchors use
      * [destroy].
+     *
+     * Reassigning this property detaches the previously held anchor — the node owns the
+     * lifecycle of its anchor. An anchor still attached to the [Session] keeps accruing
+     * per-frame tracking cost, so a caller that wants to keep the old anchor must retain a
+     * reference and re-attach it before this setter runs (#2043). `Anchor.detach()` is
+     * idempotent, so the internal move-gesture path (which already detaches in
+     * [onMoveBegin]) is safe.
      */
     var anchor: Anchor = anchor
         set(value) {
+            if (field == value) return
+            // Detach the replaced anchor so it stops accruing ARCore tracking cost.
+            field.detach()
             field = value
             trackingState = value.trackingState
             pose = value.pose

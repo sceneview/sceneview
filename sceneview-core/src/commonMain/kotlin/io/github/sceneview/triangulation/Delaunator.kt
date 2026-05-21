@@ -32,8 +32,14 @@ private val kEpsilon = 2.0.pow(-52.0)
  */
 class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
 
-    /** Per-instance scratch buffer used by [legalize]; replaces the old file-level mutable array. */
-    private val edgeStack = IntArray(512)
+    /**
+     * Per-instance scratch buffer used by [legalize]; replaces the old file-level mutable array.
+     *
+     * Grows on demand (see [legalize]). A previous fixed 512-slot version silently dropped
+     * overflowing edges, producing a non-Delaunay triangulation for complex shapes (#2041);
+     * growing the buffer matches the upstream Mapbox/delaunator-sharp behaviour.
+     */
+    private var edgeStack = IntArray(512)
 
     var triangles: Array<Int>
     var halfEdges: Array<Int>
@@ -145,7 +151,7 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
         var i2y = coordinates[2 * i2 + 1]
 
         if (minRadius == Double.POSITIVE_INFINITY) {
-            throw Exception("No Delaunay triangulation exists for this input.")
+            throw IllegalArgumentException("No Delaunay triangulation exists for this input.")
         }
 
         if (orient(i0x, i0y, i1x, i1y, i2x, i2y)) {
@@ -389,9 +395,12 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
 
                 val br = b0 + (b + 1) % 3
 
-                if (i < edgeStack.size) {
-                    edgeStack[i++] = br
+                // Grow the scratch buffer instead of dropping the edge: a dropped edge
+                // skips a recursive Delaunay flip and silently corrupts the result (#2041).
+                if (i >= edgeStack.size) {
+                    edgeStack = edgeStack.copyOf(edgeStack.size * 2)
                 }
+                edgeStack[i++] = br
             } else {
                 if (i == 0) break
                 a = edgeStack[--i]

@@ -25,6 +25,7 @@ import io.github.sceneview.material.setExternalTexture
 import io.github.sceneview.material.setParameter
 import io.github.sceneview.material.setTexture
 import io.github.sceneview.math.Transform
+import io.github.sceneview.safeDestroyIndexBuffer
 import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.utils.OpenGL
@@ -428,6 +429,19 @@ open class ARCameraStream(
     // Note: ARCore expects the UV buffers to be direct or will assert in transformDisplayUvCoords
     private var transformedUvCoordinates: FloatBuffer? = null
 
+    // Hoisted into a field so destroy() can free it — building it inline in the
+    // RenderableManager.Builder.geometry(...) call dropped the reference and leaked
+    // one IndexBuffer per ARSceneView lifecycle (#2039).
+    private val indexBuffer: IndexBuffer =
+        IndexBuffer.Builder()
+            .indexCount(INDICES.size)
+            .bufferType(IndexType.USHORT)
+            .build(engine)
+            .apply {
+                // Create screen quad geometry to camera stream to
+                setBuffer(engine, ShortBuffer.wrap(INDICES))
+            }
+
     init {
         RenderableManager.Builder(1)
             .castShadows(false)
@@ -442,14 +456,7 @@ open class ARCameraStream(
             .geometry(0,
                 RenderableManager.PrimitiveType.TRIANGLES,
                 vertexBuffer,
-                IndexBuffer.Builder()
-                    .indexCount(INDICES.size)
-                    .bufferType(IndexType.USHORT)
-                    .build(engine)
-                    .apply {
-                        // Create screen quad geometry to camera stream to
-                        setBuffer(engine, ShortBuffer.wrap(INDICES))
-                    })
+                indexBuffer)
             .material(0, standardMaterial.defaultInstance)
             .build(engine, entity)
     }
@@ -638,6 +645,7 @@ open class ARCameraStream(
         // See: https://github.com/sceneview/sceneview/issues/773
         renderableManager.safeDestroy(entity)
         engine.safeDestroyVertexBuffer(vertexBuffer)
+        engine.safeDestroyIndexBuffer(indexBuffer)
         materialLoader.destroyMaterial(standardMaterial)
         materialLoader.destroyMaterial(depthOcclusionMaterial)
         materialLoader.destroyMaterial(personOcclusionMaterial)
