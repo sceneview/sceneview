@@ -17,8 +17,13 @@ import io.github.sceneview.components.CameraComponent
  * `camera_stream_depth.mat`). Filament's DoF samples that same z-buffer, so the bokeh blur kicks
  * in for both the virtual scene and the camera background without any extra render passes.
  *
- * Inspired by Google's
- * [arcore-depth-lab](https://github.com/googlesamples/arcore-depth-lab) "Depth-of-Field" sample.
+ * **Why this works** (verified against upstream Filament — search `colorPassOutput.depth` in
+ * [`filament/src/details/Renderer.cpp`](https://github.com/google/filament/blob/main/filament/src/details/Renderer.cpp)):
+ * the DoF pass receives the *geometric-pass depth attachment* — exactly the buffer
+ * `camera_stream_depth.mat` writes `gl_FragDepth` into. The separate "Structure Pass" linear-depth
+ * target is reserved for SSAO and contact shadows, not DoF. `dofCoc.mat`'s `getCOC()` consumes the
+ * raw NDC reverse-Z value and rescales it via `cocParams` derived from the active projection
+ * matrix, so the AR camera's projection is the single source of truth for both focus and CoC.
  *
  * **Hard requirements** (callers must satisfy both, otherwise the effect degrades silently):
  *
@@ -28,6 +33,22 @@ import io.github.sceneview.components.CameraComponent
  *     depth image and the z-buffer holds only virtual content, so the background never blurs.
  *  2. [io.github.sceneview.ar.camera.ARCameraStream.isDepthOcclusionEnabled] is `true` — that's
  *     the toggle that swaps in the depth-aware camera material that writes `gl_FragDepth`.
+ *
+ * **Device-QA caveats** (the static reasoning checks out, but these need verification on real
+ * hardware before claiming the effect is correct end-to-end):
+ *
+ *  - **Reverse-Z + early-Z.** Filament uses reverse-Z (`1.0` = near, `0.0` = far).
+ *    `camera_stream_depth.mat` sets `clip.z = 0.9999f` in the vertex shader and overwrites
+ *    `gl_FragDepth` per fragment. Depth-occlusion already ships against this convention, so the
+ *    rasterizer path is known good — but DoF sampling at non-occluded background pixels is a new
+ *    code path and should be eyeballed on a Pixel-class device.
+ *  - **MSAA resolve.** When MSAA is on, Filament inserts a "Resolved Depth Buffer" min-reduce
+ *    before the DoF pass; `gl_FragDepth` values survive but may be filtered. Test with MSAA off
+ *    first to isolate any resolve-time artefact.
+ *  - **CoC calibration.** Filament's `cocParams` is derived from the active camera projection.
+ *    If the AR camera node's near/far diverge from the projection used to compute `ndc_depth`
+ *    from `depth_mm` in `camera_stream_depth.mat`, [focusDepth] will not land at exactly the
+ *    requested meters in screen space.
  *
  * **Off by default.** Apps opt in by passing this struct to [applyARDepthOfField] (or wiring it
  * via the [arDepthOfField] composable). When [enabled] is `false`, [applyARDepthOfField] clears
