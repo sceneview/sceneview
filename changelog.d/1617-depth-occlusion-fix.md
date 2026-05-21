@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- Depth occlusion now actually occludes (#1617): `ARCameraStream` draws the depth-aware camera quad **first** (Filament priority 0) when occlusion is enabled so the real-world depth written via `gl_FragDepth` primes the z-buffer before virtual geometry is depth-tested — previously the quad was always drawn last (priority 7), writing real-world depth too late to ever hide a virtual model behind real furniture.
