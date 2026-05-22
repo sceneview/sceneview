@@ -48,6 +48,11 @@
     <string name="explore_sketchfab_disabled_dialog_body">This build was published without a Sketchfab API key, so the Staff Picks, Most Liked and Recently Added carousels are hidden and search is disabled.\n\nThe curated samples and category grid below still work — they bundle local 3D models.\n\nIf you\'re building locally, add the line below to <b>local.properties</b> and rebuild:\n\n  sketchfab.api.key=&lt;your-token&gt;\n\nGrab a token at Sketchfab → Settings → Password &amp; API → API Token.</string>
     <string name="explore_sketchfab_disabled_dismiss">Got it</string>
     <string name="explore_sketchfab_search_hint">Search needs a Sketchfab API key — see banner above.</string>
+    <!-- Shown instead of the "key missing" copy when the key is present but the
+         Sketchfab API rejected it with HTTP 401/403 — see issue #2095. -->
+    <string name="explore_sketchfab_rejected_title">Sketchfab unavailable</string>
+    <string name="explore_sketchfab_rejected_subtitle">The Sketchfab API key was rejected — search and trending feeds can\'t load.</string>
+    <string name="explore_sketchfab_rejected_dialog_body">The Sketchfab API key for this build was rejected by the server (HTTP 401/403). The key is most likely revoked, expired, lacks the required scope, or hit a temporary rate limit.\n\nThe curated samples and category grid below still work — they bundle local 3D models.\n\nIf you\'re building locally, check the token in <b>local.properties</b>:\n\n  sketchfab.api.key=&lt;your-token&gt;\n\nGet a fresh token at Sketchfab → Settings → Password &amp; API → API Token.</string>
 
     <!-- Sketchfab model viewer screen -->
     <string name="sketchfab_animated">Animated</string>

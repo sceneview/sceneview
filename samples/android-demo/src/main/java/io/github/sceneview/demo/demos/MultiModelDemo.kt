@@ -86,10 +86,10 @@ fun MultiModelDemo(onBack: () -> Unit) {
     // Falling back to the first slug-by-category if an explicit uid is somehow
     // missing keeps the demo running at degraded fidelity rather than crashing.
     val parkSlugs = SampleAssets.byCategory["park"].orEmpty()
-    val tree = SampleAssets.byUid["1ca42d9da4e62fadcf9eaece7d7c4b3e"] ?: parkSlugs.getOrNull(0)
-    val bench = SampleAssets.byUid["92a4c3ad32c1ca3a3d4f0db8e7a3a8b8"] ?: parkSlugs.getOrNull(1)
-    val dog = SampleAssets.byUid["62fadcf9eaece1ca3a3d4f0db8e7a3b9"] ?: parkSlugs.getOrNull(2)
-    val bird = SampleAssets.byUid["8e7a3a8a78a4d9292a4c3ad32c1ca3b4"] ?: parkSlugs.getOrNull(3)
+    val tree = SampleAssets.byUid["d841c3bcc5324daebee50f45619e05fc"] ?: parkSlugs.getOrNull(0)
+    val bench = SampleAssets.byUid["6d1aeea748f147789004bc03e1930d32"] ?: parkSlugs.getOrNull(1)
+    val dog = SampleAssets.byUid["4f6ab5594a8a415aba3f958682b9ced5"] ?: parkSlugs.getOrNull(2)
+    val bird = SampleAssets.byUid["fd582b0d4a8c4af1a1b5c4f21a481c93"] ?: parkSlugs.getOrNull(3)
 
     // Warm-up the park category in parallel on first composition. The resolver
     // dedupes concurrent calls for the same slug so the per-node `resolve`

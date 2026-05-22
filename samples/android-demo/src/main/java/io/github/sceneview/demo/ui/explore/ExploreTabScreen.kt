@@ -116,6 +116,12 @@ fun ExploreTabScreen(
     var recent by remember { mutableStateOf<List<SketchfabModel>>(emptyList()) }
     var loadingFeeds by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
+    // `true` once a feed/search request fails with HTTP 401/403 — the API key
+    // is present but rejected (revoked, wrong scope, typo'd secret). Drives the
+    // SketchfabDisabledBanner so the user sees "Sketchfab unavailable" instead
+    // of a silently empty feed (#2095). Reset to `false` at the start of every
+    // (re)load so a recovered key clears the banner.
+    var keyRejected by remember { mutableStateOf(false) }
     // Bumped on each pull-to-refresh so the LaunchedEffect below re-keys and
     // cancels its previous run. This avoids the race where (a) the user pulls
     // to refresh, then (b) toggles the "Animated" filter chip before the
@@ -130,18 +136,24 @@ fun ExploreTabScreen(
     LaunchedEffect(animatedOnly, refreshTick) {
         if (SketchfabConfig.apiKey == null) return@LaunchedEffect
         loadingFeeds = true
+        // Reset before every (re)load so a recovered key (e.g. a corrected
+        // secret on the next build, or a transient 403 that clears) drops the
+        // "Sketchfab unavailable" banner instead of latching it forever.
+        keyRejected = false
         val animatedParam: Boolean? = if (animatedOnly) true else null
         // supervisorScope so a single feed failure (transient 429, network
         // blip) doesn't cancel the other two — surviving feeds still render
         // (#980). Each `catchingFeed` re-throws CancellationException so the
         // parent LaunchedEffect cancellation (toggle re-keys, pull-to-refresh
         // re-keys, navigation away) still tears down the in-flight requests
-        // cleanly.
+        // cleanly. A 401/403 from any feed flips `keyRejected` so the banner
+        // shows rather than the feed silently self-hiding (#2095).
         try {
             supervisorScope {
-                val a = async { catchingFeed { sketchfabService.staffPicks(animated = animatedParam, limit = 10) } }
-                val b = async { catchingFeed { sketchfabService.featured(animated = animatedParam, limit = 10) } }
-                val c = async { catchingFeed { sketchfabService.recentlyAdded(animated = animatedParam, limit = 10) } }
+                val onRejected = { keyRejected = true }
+                val a = async { catchingFeed(onRejected) { sketchfabService.staffPicks(animated = animatedParam, limit = 10) } }
+                val b = async { catchingFeed(onRejected) { sketchfabService.featured(animated = animatedParam, limit = 10) } }
+                val c = async { catchingFeed(onRejected) { sketchfabService.recentlyAdded(animated = animatedParam, limit = 10) } }
                 staffPicks = a.await()
                 mostLiked = b.await()
                 recent = c.await()
@@ -175,8 +187,12 @@ fun ExploreTabScreen(
         } catch (ce: kotlinx.coroutines.CancellationException) {
             throw ce
         } catch (t: Throwable) {
-            // 429 / network blip / transient API error — surface an empty
+            // A rejected key (401/403) flips `keyRejected` so the banner
+            // shows; a transient 429 / network blip just surfaces an empty
             // result set rather than a crash. The empty-state UI explains.
+            if (t is SketchfabService.SketchfabError.KeyRejected) {
+                keyRejected = true
+            }
             emptyList()
         }
     }
@@ -193,6 +209,7 @@ fun ExploreTabScreen(
         ExploreBody(
             scroll = scroll,
             apiKeyAvailable = apiKeyAvailable,
+            keyRejected = keyRejected,
             searchQuery = searchQuery,
             onSearchQueryChange = { newValue ->
                 searchQuery = newValue
@@ -255,6 +272,7 @@ fun ExploreTabScreen(
 private fun ExploreBody(
     scroll: androidx.compose.foundation.ScrollState,
     apiKeyAvailable: Boolean,
+    keyRejected: Boolean,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onSearchSubmit: (String) -> Unit,
@@ -295,14 +313,18 @@ private fun ExploreBody(
             apiKeyAvailable = apiKeyAvailable,
         )
 
-        // Defensive banner (#1909) — when the release build shipped without a
-        // valid SKETCHFAB_API_KEY secret, every Sketchfab-backed surface below
-        // (carousels + search) is silent dead UI. Surface that explicitly so
-        // QA + curious users see WHY the page looks empty, instead of
-        // assuming "the app is broken". The banner is intentionally outlined
-        // (not error-colored) — disabled is not the same as crashed.
-        if (!apiKeyAvailable) {
-            SketchfabDisabledBanner()
+        // Defensive banner (#1909, #2095) — Sketchfab-backed surfaces below
+        // (carousels + search) become silent dead UI in two cases:
+        //   • the release build shipped without a SKETCHFAB_API_KEY secret
+        //     (apiKey == null), or
+        //   • the key is present but the API rejected it with 401/403
+        //     (`keyRejected`) — revoked, wrong scope, or a typo.
+        // Either way, surface it explicitly so QA + curious users see WHY the
+        // page looks empty instead of assuming "the app is broken". The banner
+        // is intentionally outlined (not error-colored) — unavailable is not
+        // the same as crashed.
+        if (!apiKeyAvailable || keyRejected) {
+            SketchfabDisabledBanner(keyRejected = keyRejected)
         }
 
         if (apiKeyAvailable) {
@@ -447,9 +469,13 @@ private fun SearchField(
 }
 
 /**
- * Defensive banner shown in the Explore tab when [SketchfabConfig.apiKey] is
- * `null` — typically because the release build was published without (or with
- * a revoked) `SKETCHFAB_API_KEY` secret. See #1909.
+ * Defensive banner shown in the Explore tab when Sketchfab is unavailable.
+ *
+ * Two cases, distinguished by [keyRejected]:
+ *  - [keyRejected] == `false` — [SketchfabConfig.apiKey] is `null`: the build
+ *    shipped without a `SKETCHFAB_API_KEY` secret (#1909).
+ *  - [keyRejected] == `true`  — the key is present but the API rejected it with
+ *    HTTP 401/403 (revoked, wrong scope, typo, or a rate-limit burst) (#2095).
  *
  * The banner is intentionally outlined (neutral container) rather than error-
  * colored — the app is degraded but functional: the curated samples + category
@@ -458,8 +484,23 @@ private fun SearchField(
  * contributors building from source.
  */
 @Composable
-private fun SketchfabDisabledBanner() {
+private fun SketchfabDisabledBanner(keyRejected: Boolean = false) {
     var showDialog by remember { mutableStateOf(false) }
+    val titleRes = if (keyRejected) {
+        R.string.explore_sketchfab_rejected_title
+    } else {
+        R.string.explore_sketchfab_disabled_title
+    }
+    val subtitleRes = if (keyRejected) {
+        R.string.explore_sketchfab_rejected_subtitle
+    } else {
+        R.string.explore_sketchfab_disabled_subtitle
+    }
+    val dialogBodyRes = if (keyRejected) {
+        R.string.explore_sketchfab_rejected_dialog_body
+    } else {
+        R.string.explore_sketchfab_disabled_dialog_body
+    }
     OutlinedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -480,13 +521,13 @@ private fun SketchfabDisabledBanner() {
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.explore_sketchfab_disabled_title),
+                    text = stringResource(titleRes),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = stringResource(R.string.explore_sketchfab_disabled_subtitle),
+                    text = stringResource(subtitleRes),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -509,7 +550,7 @@ private fun SketchfabDisabledBanner() {
                 // now — keeps the dialog accessible without an extra
                 // dependency on HtmlCompat.fromHtml.
                 Text(
-                    text = stringResource(R.string.explore_sketchfab_disabled_dialog_body)
+                    text = stringResource(dialogBodyRes)
                         .replace("<b>", "")
                         .replace("</b>", ""),
                     style = MaterialTheme.typography.bodyMedium,
@@ -568,14 +609,24 @@ private fun CarouselSection(
  * re-throw `CancellationException` so structured concurrency stays intact
  * (the parent `LaunchedEffect` cancellation must propagate through the
  * `supervisorScope` `await` calls).
+ *
+ * A [SketchfabService.SketchfabError.KeyRejected] (HTTP 401/403) additionally
+ * fires [onKeyRejected] so the caller can surface the "Sketchfab unavailable"
+ * banner instead of letting the feed silently collapse to an empty list
+ * (#2095). All other failures (429 / network blip / decode error) just yield
+ * an empty list as before.
  */
 private suspend inline fun <T> catchingFeed(
+    onKeyRejected: () -> Unit = {},
     crossinline block: suspend () -> List<T>,
 ): List<T> = try {
     block()
 } catch (e: CancellationException) {
     throw e
-} catch (_: Throwable) {
+} catch (t: Throwable) {
+    if (t is SketchfabService.SketchfabError.KeyRejected) {
+        onKeyRejected()
+    }
     emptyList()
 }
 

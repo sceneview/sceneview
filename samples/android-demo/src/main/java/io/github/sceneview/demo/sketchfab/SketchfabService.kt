@@ -5,6 +5,7 @@ import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import okhttp3.Cache
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -40,8 +41,29 @@ class SketchfabService private constructor(
             }
     }
 
+    /**
+     * A modest on-disk HTTP cache for the JSON metadata responses (search,
+     * staff-picks, featured, recently-added, model detail). The Sketchfab API
+     * sends `Cache-Control` headers OkHttp honours, so an identical feed/search
+     * request inside the cache window is served from disk instead of hitting
+     * the network — which directly cuts the rate-limit (HTTP 429) pressure a
+     * "basic"-plan Sketchfab key suffers from when the Explore tab reloads its
+     * three feeds on every recomposition / pull-to-refresh (#2095).
+     *
+     * Lives under `cacheDir/sketchfab-http/`, separate from the GLB binary
+     * cache (`cacheDir/sketchfab/`) so the two LRU policies don't fight. Sized
+     * small (10 MB) — JSON metadata is tiny; the binaries are the bulk and have
+     * their own [pruneCacheIfNeeded].
+     */
+    private val httpCache: Cache = Cache(
+        directory = File(context.cacheDir, SketchfabConfig.HTTP_CACHE_DIR_NAME),
+        maxSize = SketchfabConfig.HTTP_CACHE_MAX_BYTES,
+    )
+
     @VisibleForTesting
-    internal val client: OkHttpClient = OkHttpClient.Builder().build()
+    internal val client: OkHttpClient = OkHttpClient.Builder()
+        .cache(httpCache)
+        .build()
 
     @VisibleForTesting
     internal val json: Json = Json {
@@ -226,6 +248,15 @@ class SketchfabService private constructor(
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
+                // 401 Unauthorized / 403 Forbidden mean the API key itself was
+                // rejected (missing scope, revoked, or a typo'd secret) — a
+                // distinct failure from a transient 429 / 5xx. Surface it as
+                // its own error so the Explore feed can show the
+                // "Sketchfab unavailable" banner instead of silently
+                // collapsing into an empty feed (#2095).
+                if (response.code == 401 || response.code == 403) {
+                    throw SketchfabError.KeyRejected(response.code)
+                }
                 throw SketchfabError.RequestFailed(response.code)
             }
             // Force UTF-8 decoding regardless of the Content-Type charset.
@@ -311,6 +342,18 @@ class SketchfabService private constructor(
         /** The Sketchfab API returned a non-2xx status. */
         class RequestFailed(val statusCode: Int) : SketchfabError() {
             override val message: String get() = "Sketchfab request failed with HTTP $statusCode."
+        }
+
+        /**
+         * The Sketchfab API key was rejected — HTTP 401 (Unauthorized) or 403
+         * (Forbidden). The key is present but invalid, revoked, or lacks the
+         * required scope. Distinct from a transient [RequestFailed] (429 / 5xx)
+         * so the UI can tell the user "Sketchfab unavailable" rather than
+         * silently showing an empty feed (#2095).
+         */
+        class KeyRejected(val statusCode: Int) : SketchfabError() {
+            override val message: String
+                get() = "Sketchfab API key was rejected (HTTP $statusCode)."
         }
 
         /** Failure while streaming the GLB from the signed CDN URL. */

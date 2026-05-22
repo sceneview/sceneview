@@ -83,7 +83,7 @@ The registry is small and reviewed by hand. To add an entry:
 3. Compute a realistic `scaleToUnits` (the resolver's bounds sanity check rejects outside `[0.05 m, 5 m]`).
 4. Pick a bundled fallback that visually resembles the streamed model so an offline render isn't broken.
 5. Add the entry to **both** `SampleAssets.kt` and `SampleAssets.swift`, grouped by category.
-6. Run `./gradlew :samples:android-demo:testDebugUnitTest --tests "io.github.sceneview.demo.sketchfab.SampleAssetsTest"` — the test enforces CC-BY validation, 32-char hex uids, no duplicate uids, and every Stage 2 category present.
+6. Run `./gradlew :samples:android-demo:testDebugUnitTest --tests "io.github.sceneview.demo.sketchfab.SampleAssetsTest"` — the test enforces CC-BY validation, 32-char hex uids, no duplicate uids, and every demo category present.
 
 ## API key wiring
 

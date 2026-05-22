@@ -9,13 +9,13 @@ import org.junit.Test
 /**
  * Curation invariants for [SampleAssets]. None of these touch the network or
  * filesystem — they run on the bare JVM in milliseconds and guard the rules
- * that Stage 1 promises:
+ * the registry promises:
  *
  *  - Every entry is CC-BY (no NC/ND/SA, no Sketchfab Standard).
  *  - Every entry has a bundled fallback path.
  *  - Every entry has a sane scale + non-empty author.
  *  - The registry has no duplicate uids.
- *  - The category set matches the Stage 2 demo migration plan.
+ *  - Every demo category is represented.
  */
 class SampleAssetsTest {
 
@@ -116,17 +116,16 @@ class SampleAssetsTest {
     }
 
     @Test
-    fun `every Stage 2 category is represented`() {
-        // If a category disappears the corresponding Stage 2 demo migration
-        // would silently start running on an empty list — better to fail at
-        // CI time.
+    fun `every demo category is represented`() {
+        // If a category disappears the corresponding demo would silently start
+        // running on an empty list — better to fail at CI time.
         val expected = setOf(
             "solar", "gallery", "animation", "park",
             "ar_placement", "physics", "materials",
         )
         val missing = expected - SampleAssets.byCategory.keys
         assertTrue(
-            "Missing Stage 2 categories from SampleAssets: $missing",
+            "Missing demo categories from SampleAssets: $missing",
             missing.isEmpty(),
         )
     }

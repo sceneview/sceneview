@@ -84,12 +84,12 @@ struct OrbitalARDemo: View {
 
     private static let planets: [Planet] = {
         // The four streamed entries — order matches the SampleAssets `solar`
-        // category (butterfly, hummingbird, bee, koi fish). Looked up by uid
-        // so a registry re-ordering doesn't silently break the per-slot tuning.
-        let butterfly = SampleAssets.byUID["78d8345fffe54a55ae62fadcf9eaece6"]!
-        let hummingbird = SampleAssets.byUID["9c54b62d3c2f4f0db8e7a3a8a78a4d92"]!
-        let bee = SampleAssets.byUID["6cb9f9a4c6e94f9da5b7c8a85e8a5c2d"]!
-        let koi = SampleAssets.byUID["d1ca3a3ddf3845abb98f4e5d62ae34c6"]!
+        // category (four animated butterflies). Looked up by uid so a registry
+        // re-ordering doesn't silently break the per-slot tuning.
+        let butterfly = SampleAssets.byUID["0f24b085e8654e4db09c2fe681a79e3f"]!
+        let hummingbird = SampleAssets.byUID["80f8d9a6dadc411e89ca366cb0cfb0d9"]!
+        let bee = SampleAssets.byUID["d4fbcbaab845402999f30c5aa75851e6"]!
+        let koi = SampleAssets.byUID["8ca3b9aa82694e6b8bc53a69b4529539"]!
 
         return [
             // Slot 0 — bundled red car, static spinning (hero anchor at angle 0).

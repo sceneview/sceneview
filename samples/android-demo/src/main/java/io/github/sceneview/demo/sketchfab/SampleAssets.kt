@@ -1,20 +1,18 @@
 package io.github.sceneview.demo.sketchfab
 
 /**
- * ⚠️ **Stage 1 status (2026-05-14)** — the uid + author values below are
- * placeholders curated from the Sketchfab "Animals", "Furniture",
- * "Characters" and "Pottery" categories at registry-design time. They are
- * not yet validated against `GET /v3/models/<uid>` because Stage 1 ships
- * **foundations only** — no demo migrates to streamed assets in this PR.
- * Stage 2 PRs will:
+ * ✅ **Validated registry (2026-05-22, #2095)** — every `uid` below was
+ * verified against `GET /v3/models/<uid>`: each returns **HTTP 200**, is
+ * **`isDownloadable: true`**, and carries a **CC-BY 4.0** license. The earlier
+ * Stage 1 placeholders all 404'd, which silently broke every streamed sample
+ * demo; they have been replaced with real, downloadable Sketchfab models.
  *
- *  1. Replace each `uid` with one verified by an actual Sketchfab API hit
- *     against a SceneView maintainer account that has the model's downloadable
- *     flag confirmed.
- *  2. Add a CI maintenance cron (`.github/workflows/maintenance.yml`) that
- *     pings each slug weekly and opens a GitHub issue on 404 / license drift.
+ * If a model is later deleted or relicensed by its author the resolver still
+ * falls back to `fallbackBundledPath`, so the demo never shows a broken state.
+ * Re-validate the registry by re-running `GET /v3/models/<uid>` for every entry
+ * if a streamed demo starts failing.
  *
- * The `fallbackBundledPath` + `licenseURL` columns ARE authoritative — they
+ * The `fallbackBundledPath` + `licenseUrl` columns are authoritative — they
  * decide what the resolver hands a demo when the network/key is unavailable,
  * and the constructor's CC-BY check fires unconditionally.
  *
@@ -26,19 +24,17 @@ package io.github.sceneview.demo.sketchfab
  * deliberately rejected by [SketchfabSlug]'s constructor and surfaced by
  * [requireValid] so the registry can't silently regress.
  *
- * Entries are grouped by [SketchfabSlug.category] to match the Stage 2 demo
- * migrations:
+ * Entries are grouped by [SketchfabSlug.category] to match the demo that
+ * streams them:
  *
- *  - `solar` — themed planets / orbital decoration for `OrbitalARDemo`.
+ *  - `solar` — animated companions / orbital decoration for `OrbitalARDemo`.
  *  - `gallery` — variety pack for `SceneGalleryDemo`.
  *  - `animation` — skeletal-animated models for `AnimationDemo`.
- *  - `park` — outdoor scene composition (tree + bench + dog + bird) for
- *    `MultiModelDemo`. Mixes static props with one or two skeletal animations
- *    so the composed scene reads as "alive".
+ *  - `park` — outdoor tree set for the `MultiModelDemo` park composition.
  *  - `ar_placement` — household-scale items for `ARPlacementDemo` /
  *    `ARInstantPlacementDemo`.
  *  - `physics` — crash-test bodies for `PhysicsDemo`.
- *  - `materials` — KHR_materials_* showcase models for `MaterialsDemo`.
+ *  - `materials` — PBR-material showcase models for `MaterialsDemo`.
  *
  * **Adding a new entry — checklist.** This list is small and reviewed by hand
  * because each entry implies a permanent third-party dependency on a model
@@ -48,9 +44,8 @@ package io.github.sceneview.demo.sketchfab
  *     Commons" badge is not enough — click through to confirm "Attribution").
  *  2. Verify the model is marked downloadable in `glb` format (the resolver
  *     prefers glb > gltf > usdz; iOS can also consume usdz).
- *  3. Compute a realistic [SketchfabSlug.scaleToUnits]. Eyeball a Sketchfab
- *     viewer reading then refine the value once Stage 2 ships the first
- *     visual smoke screenshot. Out-of-range models are rejected by
+ *  3. Compute a realistic [SketchfabSlug.scaleToUnits] by eyeballing a
+ *     Sketchfab viewer reading. Out-of-range models are rejected by
  *     [SketchfabAssetResolver.boundsAreSane].
  *  4. Pick an existing bundled fallback that visually resembles the streamed
  *     model — the user should not see a "broken" demo if the network is down.
@@ -68,12 +63,11 @@ object SampleAssets {
      */
     val all: List<SketchfabSlug> = listOf(
         // ── Solar / Orbital scene (OrbitalARDemo) ──────────────────────────
-        // 4 animated companions that replace the duplicate dragons + soldiers
-        // currently bundled. Each carries a single skeletal animation.
+        // 4 animated companions. Each carries a skeletal animation.
         SketchfabSlug(
-            uid = "78d8345fffe54a55ae62fadcf9eaece6",
-            displayName = "Animated Butterfly",
-            author = "AzazelTheUnbeliever",
+            uid = "0f24b085e8654e4db09c2fe681a79e3f",
+            displayName = "Fantasy Butterfly",
+            author = "lunequinox",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/threejs_soldier.glb",
             scaleToUnits = 0.25f,
@@ -82,20 +76,20 @@ object SampleAssets {
             tags = listOf("insect", "low-poly"),
         ),
         SketchfabSlug(
-            uid = "9c54b62d3c2f4f0db8e7a3a8a78a4d92",
-            displayName = "Hummingbird",
-            author = "DigitalLife3D",
+            uid = "80f8d9a6dadc411e89ca366cb0cfb0d9",
+            displayName = "Fluttering Butterfly",
+            author = "LasquetiSpice",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/threejs_soldier.glb",
             scaleToUnits = 0.18f,
             hasBakedAnimation = true,
             category = "solar",
-            tags = listOf("bird", "wings"),
+            tags = listOf("insect", "wings"),
         ),
         SketchfabSlug(
-            uid = "6cb9f9a4c6e94f9da5b7c8a85e8a5c2d",
-            displayName = "Honey Bee",
-            author = "alban",
+            uid = "d4fbcbaab845402999f30c5aa75851e6",
+            displayName = "Animated Butterfly",
+            author = "leorehman333",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/threejs_soldier.glb",
             scaleToUnits = 0.12f,
@@ -104,42 +98,37 @@ object SampleAssets {
             tags = listOf("insect"),
         ),
         SketchfabSlug(
-            uid = "d1ca3a3ddf3845abb98f4e5d62ae34c6",
-            displayName = "Koi Fish",
-            author = "willpatrick",
+            uid = "8ca3b9aa82694e6b8bc53a69b4529539",
+            displayName = "Animated Butterflies",
+            author = "bestgamekits",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/threejs_soldier.glb",
             scaleToUnits = 0.35f,
             hasBakedAnimation = true,
             category = "solar",
-            tags = listOf("fish", "aquatic"),
+            tags = listOf("insect", "swarm"),
         ),
 
         // ── Gallery (SceneGalleryDemo) ─────────────────────────────────────
-        // 4 variety-pack bundles. The Sketchfab uids below are still Stage 1
-        // placeholders (`GET /v3/models/<uid>` returns 404), so until a Stage 2
-        // PR verifies real downloadable uids the resolver always serves the
-        // `fallbackBundledPath`. Each gallery chip MUST therefore point at a
-        // *distinct* bundled GLB — otherwise two chips render the identical
-        // model and the demo reads as "stuck in a loop / chips do nothing"
-        // (#1433). `displayName` / `author` describe the bundled fallback that
-        // actually renders so the chip label, the credits byline and the
-        // on-screen model stay honest and consistent offline.
+        // 4 variety-pack models. Each gallery chip points at a *distinct*
+        // bundled GLB so two chips never render the identical fallback model
+        // when offline (#1433). `displayName` / `author` describe the streamed
+        // Sketchfab model; the chosen fallback visually resembles it.
         SketchfabSlug(
-            uid = "92f1d1eea16d422d8593f1e8c3e0ee37",
-            displayName = "Toy Car",
-            author = "Khronos Group",
+            uid = "42e02439c61049d681c897441d40aaa1",
+            displayName = "Nile (Classical Statue)",
+            author = "rigsters",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_toy_car.glb",
-            scaleToUnits = 0.12f,
+            scaleToUnits = 0.85f,
             hasBakedAnimation = false,
             category = "gallery",
-            tags = listOf("retro", "vehicle"),
+            tags = listOf("sculpture", "scan"),
         ),
         SketchfabSlug(
-            uid = "5cf2d5dd1a40451595dcc0fef5dcb6a8",
-            displayName = "Low-Poly Fox",
-            author = "Khronos Group",
+            uid = "88ed6191446749b9a9e24b995bcb5e1d",
+            displayName = "PBR Low-Poly Fox",
+            author = "Ida..Faber",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_fox.glb",
             scaleToUnits = 0.40f,
@@ -148,9 +137,9 @@ object SampleAssets {
             tags = listOf("animal", "low-poly"),
         ),
         SketchfabSlug(
-            uid = "61bd9ee5e30946fab26d3f8e7ef9da4f",
-            displayName = "Reading Lamp",
-            author = "Khronos Group",
+            uid = "7377ec591df04445a1aae370017aaa13",
+            displayName = "Desk Lamp",
+            author = "BlueHour",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_lantern.glb",
             scaleToUnits = 0.45f,
@@ -159,23 +148,23 @@ object SampleAssets {
             tags = listOf("furniture", "lighting"),
         ),
         SketchfabSlug(
-            uid = "ac4e6b6f6e7a4f9da4e62fadcf9eaece",
-            displayName = "Damaged Helmet",
-            author = "Khronos Group",
+            uid = "eeb9d9f0627f4783b5d16a8732f0d1a4",
+            displayName = "Vintage Camera",
+            author = "MartijnVaes",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_damaged_helmet.glb",
-            scaleToUnits = 0.85f,
+            scaleToUnits = 0.20f,
             hasBakedAnimation = false,
             category = "gallery",
             tags = listOf("hard-surface", "pbr"),
         ),
 
         // ── Animation (AnimationDemo) ──────────────────────────────────────
-        // 4 skeletal-animated models for the Stage 2 carousel.
+        // 4 skeletal-animated models for the carousel.
         SketchfabSlug(
-            uid = "1eaa978c12d147d9a4e62fadcf9eaece",
-            displayName = "Walking Robot",
-            author = "Daniel_Mejia",
+            uid = "574e006a4e50408d9565e82fafe8ef19",
+            displayName = "Retro TV Robot",
+            author = "ArtsByKev",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/threejs_soldier.glb",
             scaleToUnits = 1.30f,
@@ -184,48 +173,46 @@ object SampleAssets {
             tags = listOf("character", "loop"),
         ),
         SketchfabSlug(
-            uid = "f1d75e7a4f9d4f0db8e7a3a8a78a4d92",
-            displayName = "Dancing Knight",
-            author = "DJMaesen",
+            uid = "ad9bc16464744935b1ac9b7768a17474",
+            displayName = "Catfish Mech",
+            author = "jungle_jim",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/threejs_soldier.glb",
             scaleToUnits = 1.45f,
             hasBakedAnimation = true,
             category = "animation",
-            tags = listOf("character", "dance"),
+            tags = listOf("character", "mech"),
         ),
         SketchfabSlug(
-            uid = "ad32c1ca3a3d4f0db8e7a3a8a78a4d92",
-            displayName = "Idle Cat",
-            author = "fritter",
+            uid = "7190ff66cb3d4e729a2ab95aeb9e797f",
+            displayName = "Walking Robot",
+            author = "ArtsByKev",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/shiba.glb",
             scaleToUnits = 0.40f,
             hasBakedAnimation = true,
             category = "animation",
-            tags = listOf("animal", "loop"),
+            tags = listOf("character", "loop"),
         ),
         SketchfabSlug(
-            uid = "f0e7a4f9d4f0db8e7a3a8a78a4d92ad3",
-            displayName = "Sleeping Fox",
-            author = "JKaragiozov",
+            uid = "cc4ab41731cc4c94a6adf2983821d1a8",
+            displayName = "Enforcer Mk1",
+            author = "Mr0btainable",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_fox.glb",
             scaleToUnits = 0.55f,
             hasBakedAnimation = true,
             category = "animation",
-            tags = listOf("animal"),
+            tags = listOf("character", "mech"),
         ),
 
         // ── Park scene composition (MultiModelDemo) ────────────────────────
-        // 4 models that compose the "park" scene: a static oak tree + a static
-        // park bench (the "scenery"), plus a sleeping/idle dog and a perched
-        // bird (the "occupants"). One or two carry a skeletal animation so the
-        // composed shot reads as alive rather than as a still life.
+        // 4 outdoor trees that compose the "park" scene — a small grove the
+        // MultiModelDemo arranges around the placement reticle.
         SketchfabSlug(
-            uid = "1ca42d9da4e62fadcf9eaece7d7c4b3e",
-            displayName = "Oak Tree",
-            author = "Quaternius",
+            uid = "d841c3bcc5324daebee50f45619e05fc",
+            displayName = "Oak Trees",
+            author = "bumstrum",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_lantern.glb",
             scaleToUnits = 2.40f,
@@ -234,50 +221,49 @@ object SampleAssets {
             tags = listOf("nature", "tree"),
         ),
         SketchfabSlug(
-            uid = "92a4c3ad32c1ca3a3d4f0db8e7a3a8b8",
-            displayName = "Park Bench",
-            author = "Loïc Norgeot",
+            uid = "6d1aeea748f147789004bc03e1930d32",
+            displayName = "Stylized Tree",
+            author = "yonimantz09",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_lantern.glb",
-            scaleToUnits = 0.90f,
+            scaleToUnits = 1.80f,
             hasBakedAnimation = false,
             category = "park",
-            tags = listOf("furniture", "outdoor"),
+            tags = listOf("nature", "tree"),
         ),
         SketchfabSlug(
-            uid = "62fadcf9eaece1ca3a3d4f0db8e7a3b9",
-            displayName = "Idle Dog",
-            author = "blackthread",
+            uid = "4f6ab5594a8a415aba3f958682b9ced5",
+            displayName = "Mighty Oak Trees",
+            author = "Jagobo",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/shiba.glb",
-            scaleToUnits = 0.55f,
-            hasBakedAnimation = true,
+            scaleToUnits = 2.60f,
+            hasBakedAnimation = false,
             category = "park",
-            tags = listOf("animal", "loop"),
+            tags = listOf("nature", "tree"),
         ),
         SketchfabSlug(
-            uid = "8e7a3a8a78a4d9292a4c3ad32c1ca3b4",
-            displayName = "Songbird",
-            author = "LasquetiSpice",
+            uid = "fd582b0d4a8c4af1a1b5c4f21a481c93",
+            displayName = "Skovfogedegen Oak",
+            author = "rigsters",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/threejs_soldier.glb",
-            scaleToUnits = 0.15f,
-            hasBakedAnimation = true,
+            scaleToUnits = 2.30f,
+            hasBakedAnimation = false,
             category = "park",
-            tags = listOf("animal", "bird"),
+            tags = listOf("nature", "tree", "scan"),
         ),
 
         // ── AR placement (ARPlacementDemo / ARInstantPlacementDemo) ────────
         // Real-world-scale household items + furniture so the placement reticle
-        // reads as grounded. The Stage 2 "Pick what to place" sheet exposes
-        // this whole category as a chip row — 6 entries balances variety
-        // against the curation surface (each new entry implies a permanent
-        // third-party dependency on a model an author can delete or
-        // relicense).
+        // reads as grounded. The "Pick what to place" sheet exposes this whole
+        // category as a chip row — 6 entries balances variety against the
+        // curation surface (each new entry implies a permanent third-party
+        // dependency on a model an author can delete or relicense).
         SketchfabSlug(
-            uid = "7d7c4b3e1ca42d9da4e62fadcf9eaece",
+            uid = "5f5ccee1514c440887c072fae8e0d699",
             displayName = "Coffee Mug",
-            author = "AndrosV",
+            author = "FrenchBaguette",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_toy_car.glb",
             scaleToUnits = 0.10f,
@@ -286,9 +272,9 @@ object SampleAssets {
             tags = listOf("kitchen", "prop"),
         ),
         SketchfabSlug(
-            uid = "92a4c3ad32c1ca3a3d4f0db8e7a3a8a7",
-            displayName = "Houseplant",
-            author = "abramsdesign",
+            uid = "1ab9bf841df04c07b1819be596327629",
+            displayName = "Potted Monstera",
+            author = "ChubbyPanda",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_lantern.glb",
             scaleToUnits = 0.45f,
@@ -297,9 +283,9 @@ object SampleAssets {
             tags = listOf("plant", "decor"),
         ),
         SketchfabSlug(
-            uid = "62fadcf9eaece1ca3a3d4f0db8e7a3a8",
-            displayName = "Wooden Crate",
-            author = "Quaternius",
+            uid = "5ae3c72285474862a89d69c2f2ad2246",
+            displayName = "Crates & Barrels",
+            author = "jeandiz",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_damaged_helmet.glb",
             scaleToUnits = 0.60f,
@@ -307,12 +293,12 @@ object SampleAssets {
             category = "ar_placement",
             tags = listOf("prop", "low-poly"),
         ),
-        // Furniture trio — chair / table / floor lamp — make the picker
-        // feel like a tiny IKEA showroom for the AR-placement demos.
+        // Furniture trio — table / floor lamp / picture frame — make the
+        // picker feel like a tiny IKEA showroom for the AR-placement demos.
         SketchfabSlug(
-            uid = "3a8a78a4d9292a4c3ad32c1ca3a3d4f0",
-            displayName = "Side Table",
-            author = "Quaternius",
+            uid = "7fab655234e84e0ea6a3ada36ece2ad1",
+            displayName = "Wooden End Table",
+            author = "mozillareality",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_lantern.glb",
             scaleToUnits = 0.60f,
@@ -321,9 +307,9 @@ object SampleAssets {
             tags = listOf("furniture"),
         ),
         SketchfabSlug(
-            uid = "4d9292a4c3ad32c1ca3a3d4f0db8e7a3",
+            uid = "ca1cf1c435ec4012b9b6d5128333ad83",
             displayName = "Floor Lamp",
-            author = "EvgenyRodygin",
+            author = "Mad_Lobster_Workshop",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_lantern.glb",
             scaleToUnits = 1.55f,
@@ -332,9 +318,9 @@ object SampleAssets {
             tags = listOf("furniture", "lighting"),
         ),
         SketchfabSlug(
-            uid = "5e7a3a8a78a4d9292a4c3ad32c1ca3a4",
+            uid = "b54984abe2394345a81621719bf8bf1a",
             displayName = "Picture Frame",
-            author = "lambertcommercial",
+            author = "jamiemcfarlane",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_damaged_helmet.glb",
             scaleToUnits = 0.40f,
@@ -344,13 +330,12 @@ object SampleAssets {
         ),
 
         // ── Physics (PhysicsDemo) ──────────────────────────────────────────
-        // Pre-broken / crash-test bodies for Stage 2 dynamics demos. Stage 2
-        // grows this from 2 to 4 so the carousel has more silhouette variety
-        // (pottery / furniture / barrel / amphora) when the user taps "Drop".
+        // Crash-test bodies for the dynamics demo — pottery / barrel silhouette
+        // variety in the carousel when the user taps "Drop".
         SketchfabSlug(
-            uid = "8e7a3a8a78a4d9292a4c3ad32c1ca3a3",
-            displayName = "Ceramic Vase",
-            author = "EvgenyRodygin",
+            uid = "f91f4cf36fec4e5e8fabda6deda315bc",
+            displayName = "Decorated Vase",
+            author = "apariciosilva3D",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_lantern.glb",
             scaleToUnits = 0.30f,
@@ -359,31 +344,31 @@ object SampleAssets {
             tags = listOf("pottery"),
         ),
         SketchfabSlug(
-            uid = "d4f0db8e7a3a8a78a4d9292a4c3ad32c",
-            displayName = "Wooden Stool",
-            author = "ScansFromOldGames",
+            uid = "5b7aefe2295f4ea5953bccb970ae76c0",
+            displayName = "Wine Barrel",
+            author = "niver_mk",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_damaged_helmet.glb",
             scaleToUnits = 0.50f,
             hasBakedAnimation = false,
             category = "physics",
-            tags = listOf("furniture"),
+            tags = listOf("prop"),
         ),
         SketchfabSlug(
-            uid = "9292a4c3ad32c1ca3a3d4f0db8e7a3a8",
-            displayName = "Wooden Barrel",
-            author = "Quaternius",
+            uid = "7bea362f018a4b39a66efdf126992926",
+            displayName = "Pottery Vases",
+            author = "local.yany",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_damaged_helmet.glb",
             scaleToUnits = 0.45f,
             hasBakedAnimation = false,
             category = "physics",
-            tags = listOf("prop"),
+            tags = listOf("pottery"),
         ),
         SketchfabSlug(
-            uid = "a4c3ad32c1ca3a3d4f0db8e7a3a8a787",
-            displayName = "Clay Amphora",
-            author = "ArtIntellect",
+            uid = "024a0d26f2ab4be8bacf86127e23e6aa",
+            displayName = "Ancient Potteries",
+            author = "skodvirr",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_lantern.glb",
             scaleToUnits = 0.35f,
@@ -393,39 +378,39 @@ object SampleAssets {
         ),
 
         // ── Materials (MaterialsDemo) ──────────────────────────────────────
-        // KHR_materials_* extension showcase — sheen, transmission, iridescence.
+        // PBR material showcase — scanned insect, transparency, fabric.
         SketchfabSlug(
-            uid = "62fadcf9eaecead32c1ca3a3d4f0db8e",
+            uid = "b13a625c2e3b4b6aa26a27711a0cac39",
             displayName = "Iridescent Beetle",
-            author = "KhronosGroup",
+            author = "disc3d",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_damaged_helmet.glb",
             scaleToUnits = 0.15f,
             hasBakedAnimation = false,
             category = "materials",
-            tags = listOf("KHR_materials_iridescence"),
+            tags = listOf("scan", "iridescence"),
         ),
         SketchfabSlug(
-            uid = "7a3a8a78a4d9292a4c3ad32c1ca3a3d4",
-            displayName = "Glass Decanter",
-            author = "KhronosGroup",
+            uid = "72a1583116e049e1adce28b2baf5527c",
+            displayName = "Crystal Glass Decanter",
+            author = "Antrea",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_damaged_helmet.glb",
             scaleToUnits = 0.35f,
             hasBakedAnimation = false,
             category = "materials",
-            tags = listOf("KHR_materials_transmission"),
+            tags = listOf("transmission", "glass"),
         ),
         SketchfabSlug(
-            uid = "ad32c1ca3a3d4f0db8e7a3a8a78a4d93",
-            displayName = "Velvet Cushion",
-            author = "KhronosGroup",
+            uid = "a54b2ac109d146fb80cfc37c9da26cfb",
+            displayName = "Cushioned Sofa",
+            author = "klava88",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
             fallbackBundledPath = "models/khronos_damaged_helmet.glb",
-            scaleToUnits = 0.40f,
+            scaleToUnits = 0.90f,
             hasBakedAnimation = false,
             category = "materials",
-            tags = listOf("KHR_materials_sheen"),
+            tags = listOf("sheen", "fabric"),
         ),
     )
 

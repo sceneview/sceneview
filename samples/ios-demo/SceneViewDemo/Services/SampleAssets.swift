@@ -1,10 +1,10 @@
 import Foundation
 
-/// ⚠️ **Stage 1 status (2026-05-14)** — the uid + author values below are
-/// placeholders curated at registry-design time. They are NOT yet validated
-/// against `GET /v3/models/<uid>`. Stage 1 ships foundations only; no demo
-/// migrates to streamed assets in this PR. Stage 2 will replace each `uid`
-/// with one verified live and add a weekly CI cron to surface slug drift.
+/// ✅ **Validated registry (2026-05-22, #2095)** — every `uid` below was
+/// verified against `GET /v3/models/<uid>`: each returns HTTP 200, is
+/// `isDownloadable: true`, and carries a CC-BY 4.0 license. The earlier
+/// Stage 1 placeholders all 404'd; they have been replaced with real,
+/// downloadable Sketchfab models. Mirrors `SampleAssets.kt` 1:1.
 ///
 /// Curated registry of Sketchfab models streamed by the iOS demo app.
 ///
@@ -38,9 +38,9 @@ enum SampleAssets {
     static let all: [SketchfabSlug] = [
         // ── Solar / Orbital scene (OrbitalARDemo) ──────────────────────────
         SketchfabSlug(
-            uid: "78d8345fffe54a55ae62fadcf9eaece6",
-            displayName: "Animated Butterfly",
-            author: "AzazelTheUnbeliever",
+            uid: "0f24b085e8654e4db09c2fe681a79e3f",
+            displayName: "Fantasy Butterfly",
+            author: "lunequinox",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/animated_butterfly.usdz",
             scaleToUnits: 0.25,
@@ -49,20 +49,20 @@ enum SampleAssets {
             tags: ["insect", "low-poly"]
         ),
         SketchfabSlug(
-            uid: "9c54b62d3c2f4f0db8e7a3a8a78a4d92",
-            displayName: "Hummingbird",
-            author: "DigitalLife3D",
+            uid: "80f8d9a6dadc411e89ca366cb0cfb0d9",
+            displayName: "Fluttering Butterfly",
+            author: "LasquetiSpice",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/animated_butterfly.usdz",
             scaleToUnits: 0.18,
             hasBakedAnimation: true,
             category: "solar",
-            tags: ["bird", "wings"]
+            tags: ["insect", "wings"]
         ),
         SketchfabSlug(
-            uid: "6cb9f9a4c6e94f9da5b7c8a85e8a5c2d",
-            displayName: "Honey Bee",
-            author: "alban",
+            uid: "d4fbcbaab845402999f30c5aa75851e6",
+            displayName: "Animated Butterfly",
+            author: "leorehman333",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/animated_butterfly.usdz",
             scaleToUnits: 0.12,
@@ -71,44 +71,44 @@ enum SampleAssets {
             tags: ["insect"]
         ),
         SketchfabSlug(
-            uid: "d1ca3a3ddf3845abb98f4e5d62ae34c6",
-            displayName: "Koi Fish",
-            author: "willpatrick",
+            uid: "8ca3b9aa82694e6b8bc53a69b4529539",
+            displayName: "Animated Butterflies",
+            author: "bestgamekits",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/animated_butterfly.usdz",
             scaleToUnits: 0.35,
             hasBakedAnimation: true,
             category: "solar",
-            tags: ["fish", "aquatic"]
+            tags: ["insect", "swarm"]
         ),
 
         // ── Gallery (SceneGalleryDemo) ─────────────────────────────────────
         SketchfabSlug(
-            uid: "92f1d1eea16d422d8593f1e8c3e0ee37",
-            displayName: "Vintage Cassette",
-            author: "Stefano-Tax",
+            uid: "42e02439c61049d681c897441d40aaa1",
+            displayName: "Nile (Classical Statue)",
+            author: "rigsters",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/retro_piano.usdz",
-            scaleToUnits: 0.12,
+            scaleToUnits: 0.85,
             hasBakedAnimation: false,
             category: "gallery",
-            tags: ["retro", "audio"]
+            tags: ["sculpture", "scan"]
         ),
         SketchfabSlug(
-            uid: "5cf2d5dd1a40451595dcc0fef5dcb6a8",
-            displayName: "Polly the Parrot",
-            author: "lambertcommercial",
+            uid: "88ed6191446749b9a9e24b995bcb5e1d",
+            displayName: "PBR Low-Poly Fox",
+            author: "Ida..Faber",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/phoenix_bird.usdz",
             scaleToUnits: 0.40,
             hasBakedAnimation: false,
             category: "gallery",
-            tags: ["animal", "bird"]
+            tags: ["animal", "low-poly"]
         ),
         SketchfabSlug(
-            uid: "61bd9ee5e30946fab26d3f8e7ef9da4f",
-            displayName: "Reading Lamp",
-            author: "ArtIntellect",
+            uid: "7377ec591df04445a1aae370017aaa13",
+            displayName: "Desk Lamp",
+            author: "BlueHour",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
             scaleToUnits: 0.45,
@@ -117,22 +117,22 @@ enum SampleAssets {
             tags: ["furniture", "lighting"]
         ),
         SketchfabSlug(
-            uid: "ac4e6b6f6e7a4f9da4e62fadcf9eaece",
-            displayName: "Wooden Chair",
-            author: "EvgenyRodygin",
+            uid: "eeb9d9f0627f4783b5d16a8732f0d1a4",
+            displayName: "Vintage Camera",
+            author: "MartijnVaes",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/fantasy_book.usdz",
-            scaleToUnits: 0.85,
+            fallbackBundledPath: "Models/game_boy_classic.usdz",
+            scaleToUnits: 0.20,
             hasBakedAnimation: false,
             category: "gallery",
-            tags: ["furniture"]
+            tags: ["hard-surface", "pbr"]
         ),
 
         // ── Animation (AnimationDemo) ──────────────────────────────────────
         SketchfabSlug(
-            uid: "1eaa978c12d147d9a4e62fadcf9eaece",
-            displayName: "Walking Robot",
-            author: "Daniel_Mejia",
+            uid: "574e006a4e50408d9565e82fafe8ef19",
+            displayName: "Retro TV Robot",
+            author: "ArtsByKev",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/cyberpunk_character.usdz",
             scaleToUnits: 1.30,
@@ -141,44 +141,44 @@ enum SampleAssets {
             tags: ["character", "loop"]
         ),
         SketchfabSlug(
-            uid: "f1d75e7a4f9d4f0db8e7a3a8a78a4d92",
-            displayName: "Dancing Knight",
-            author: "DJMaesen",
+            uid: "ad9bc16464744935b1ac9b7768a17474",
+            displayName: "Catfish Mech",
+            author: "jungle_jim",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/cyberpunk_character.usdz",
             scaleToUnits: 1.45,
             hasBakedAnimation: true,
             category: "animation",
-            tags: ["character", "dance"]
+            tags: ["character", "mech"]
         ),
         SketchfabSlug(
-            uid: "ad32c1ca3a3d4f0db8e7a3a8a78a4d92",
-            displayName: "Idle Cat",
-            author: "fritter",
+            uid: "7190ff66cb3d4e729a2ab95aeb9e797f",
+            displayName: "Walking Robot",
+            author: "ArtsByKev",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/animated_butterfly.usdz",
             scaleToUnits: 0.40,
             hasBakedAnimation: true,
             category: "animation",
-            tags: ["animal", "loop"]
+            tags: ["character", "loop"]
         ),
         SketchfabSlug(
-            uid: "f0e7a4f9d4f0db8e7a3a8a78a4d92ad3",
-            displayName: "Sleeping Fox",
-            author: "JKaragiozov",
+            uid: "cc4ab41731cc4c94a6adf2983821d1a8",
+            displayName: "Enforcer Mk1",
+            author: "Mr0btainable",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/animated_butterfly.usdz",
             scaleToUnits: 0.55,
             hasBakedAnimation: true,
             category: "animation",
-            tags: ["animal"]
+            tags: ["character", "mech"]
         ),
 
         // ── Park scene composition (MultiModelDemo) ────────────────────────
         SketchfabSlug(
-            uid: "1ca42d9da4e62fadcf9eaece7d7c4b3e",
-            displayName: "Oak Tree",
-            author: "Quaternius",
+            uid: "d841c3bcc5324daebee50f45619e05fc",
+            displayName: "Oak Trees",
+            author: "bumstrum",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/tree_scene.usdz",
             scaleToUnits: 2.40,
@@ -187,55 +187,55 @@ enum SampleAssets {
             tags: ["nature", "tree"]
         ),
         SketchfabSlug(
-            uid: "92a4c3ad32c1ca3a3d4f0db8e7a3a8b8",
-            displayName: "Park Bench",
-            author: "Loïc Norgeot",
+            uid: "6d1aeea748f147789004bc03e1930d32",
+            displayName: "Stylized Tree",
+            author: "yonimantz09",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/fantasy_book.usdz",
-            scaleToUnits: 0.90,
+            fallbackBundledPath: "Models/tree_scene.usdz",
+            scaleToUnits: 1.80,
             hasBakedAnimation: false,
             category: "park",
-            tags: ["furniture", "outdoor"]
+            tags: ["nature", "tree"]
         ),
         SketchfabSlug(
-            uid: "62fadcf9eaece1ca3a3d4f0db8e7a3b9",
-            displayName: "Idle Dog",
-            author: "blackthread",
+            uid: "4f6ab5594a8a415aba3f958682b9ced5",
+            displayName: "Mighty Oak Trees",
+            author: "Jagobo",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/animated_butterfly.usdz",
-            scaleToUnits: 0.55,
-            hasBakedAnimation: true,
+            fallbackBundledPath: "Models/tree_scene.usdz",
+            scaleToUnits: 2.60,
+            hasBakedAnimation: false,
             category: "park",
-            tags: ["animal", "loop"]
+            tags: ["nature", "tree"]
         ),
         SketchfabSlug(
-            uid: "8e7a3a8a78a4d9292a4c3ad32c1ca3b4",
-            displayName: "Songbird",
-            author: "LasquetiSpice",
+            uid: "fd582b0d4a8c4af1a1b5c4f21a481c93",
+            displayName: "Skovfogedegen Oak",
+            author: "rigsters",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/phoenix_bird.usdz",
-            scaleToUnits: 0.15,
-            hasBakedAnimation: true,
+            fallbackBundledPath: "Models/tree_scene.usdz",
+            scaleToUnits: 2.30,
+            hasBakedAnimation: false,
             category: "park",
-            tags: ["animal", "bird"]
+            tags: ["nature", "tree", "scan"]
         ),
 
         // ── AR placement (ARPlacementDemo) ─────────────────────────────────
         SketchfabSlug(
-            uid: "7d7c4b3e1ca42d9da4e62fadcf9eaece",
+            uid: "5f5ccee1514c440887c072fae8e0d699",
             displayName: "Coffee Mug",
-            author: "AndrosV",
+            author: "FrenchBaguette",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/retro_piano.usdz",
             scaleToUnits: 0.10,
             hasBakedAnimation: false,
             category: "ar_placement",
-            tags: ["kitchen"]
+            tags: ["kitchen", "prop"]
         ),
         SketchfabSlug(
-            uid: "92a4c3ad32c1ca3a3d4f0db8e7a3a8a7",
-            displayName: "Houseplant",
-            author: "abramsdesign",
+            uid: "1ab9bf841df04c07b1819be596327629",
+            displayName: "Potted Monstera",
+            author: "ChubbyPanda",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/tree_scene.usdz",
             scaleToUnits: 0.45,
@@ -244,9 +244,9 @@ enum SampleAssets {
             tags: ["plant", "decor"]
         ),
         SketchfabSlug(
-            uid: "62fadcf9eaece1ca3a3d4f0db8e7a3a8",
-            displayName: "Wooden Crate",
-            author: "Quaternius",
+            uid: "5ae3c72285474862a89d69c2f2ad2246",
+            displayName: "Crates & Barrels",
+            author: "jeandiz",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/game_boy_classic.usdz",
             scaleToUnits: 0.60,
@@ -254,11 +254,11 @@ enum SampleAssets {
             category: "ar_placement",
             tags: ["prop", "low-poly"]
         ),
-        // Furniture trio — chair / table / floor lamp — Stage 2 picker.
+        // Furniture trio — table / floor lamp / picture frame — placement picker.
         SketchfabSlug(
-            uid: "3a8a78a4d9292a4c3ad32c1ca3a3d4f0",
-            displayName: "Side Table",
-            author: "Quaternius",
+            uid: "7fab655234e84e0ea6a3ada36ece2ad1",
+            displayName: "Wooden End Table",
+            author: "mozillareality",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/tree_scene.usdz",
             scaleToUnits: 0.60,
@@ -267,9 +267,9 @@ enum SampleAssets {
             tags: ["furniture"]
         ),
         SketchfabSlug(
-            uid: "4d9292a4c3ad32c1ca3a3d4f0db8e7a3",
+            uid: "ca1cf1c435ec4012b9b6d5128333ad83",
             displayName: "Floor Lamp",
-            author: "EvgenyRodygin",
+            author: "Mad_Lobster_Workshop",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/tree_scene.usdz",
             scaleToUnits: 1.55,
@@ -278,9 +278,9 @@ enum SampleAssets {
             tags: ["furniture", "lighting"]
         ),
         SketchfabSlug(
-            uid: "5e7a3a8a78a4d9292a4c3ad32c1ca3a4",
+            uid: "b54984abe2394345a81621719bf8bf1a",
             displayName: "Picture Frame",
-            author: "lambertcommercial",
+            author: "jamiemcfarlane",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/game_boy_classic.usdz",
             scaleToUnits: 0.40,
@@ -290,12 +290,10 @@ enum SampleAssets {
         ),
 
         // ── Physics (PhysicsDemo) ──────────────────────────────────────────
-        // Stage 2 grows this from 2 to 4 entries for silhouette variety in the
-        // drop carousel (pottery / furniture / barrel / amphora).
         SketchfabSlug(
-            uid: "8e7a3a8a78a4d9292a4c3ad32c1ca3a3",
-            displayName: "Ceramic Vase",
-            author: "EvgenyRodygin",
+            uid: "f91f4cf36fec4e5e8fabda6deda315bc",
+            displayName: "Decorated Vase",
+            author: "apariciosilva3D",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
             scaleToUnits: 0.30,
@@ -304,31 +302,31 @@ enum SampleAssets {
             tags: ["pottery"]
         ),
         SketchfabSlug(
-            uid: "d4f0db8e7a3a8a78a4d9292a4c3ad32c",
-            displayName: "Wooden Stool",
-            author: "ScansFromOldGames",
+            uid: "5b7aefe2295f4ea5953bccb970ae76c0",
+            displayName: "Wine Barrel",
+            author: "niver_mk",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
             scaleToUnits: 0.50,
             hasBakedAnimation: false,
             category: "physics",
-            tags: ["furniture"]
+            tags: ["prop"]
         ),
         SketchfabSlug(
-            uid: "9292a4c3ad32c1ca3a3d4f0db8e7a3a8",
-            displayName: "Wooden Barrel",
-            author: "Quaternius",
+            uid: "7bea362f018a4b39a66efdf126992926",
+            displayName: "Pottery Vases",
+            author: "local.yany",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
             scaleToUnits: 0.45,
             hasBakedAnimation: false,
             category: "physics",
-            tags: ["prop"]
+            tags: ["pottery"]
         ),
         SketchfabSlug(
-            uid: "a4c3ad32c1ca3a3d4f0db8e7a3a8a787",
-            displayName: "Clay Amphora",
-            author: "ArtIntellect",
+            uid: "024a0d26f2ab4be8bacf86127e23e6aa",
+            displayName: "Ancient Potteries",
+            author: "skodvirr",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
             scaleToUnits: 0.35,
@@ -339,37 +337,37 @@ enum SampleAssets {
 
         // ── Materials (MaterialsDemo) ──────────────────────────────────────
         SketchfabSlug(
-            uid: "62fadcf9eaecead32c1ca3a3d4f0db8e",
+            uid: "b13a625c2e3b4b6aa26a27711a0cac39",
             displayName: "Iridescent Beetle",
-            author: "KhronosGroup",
+            author: "disc3d",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/mosquito_amber.usdz",
             scaleToUnits: 0.15,
             hasBakedAnimation: false,
             category: "materials",
-            tags: ["KHR_materials_iridescence"]
+            tags: ["scan", "iridescence"]
         ),
         SketchfabSlug(
-            uid: "7a3a8a78a4d9292a4c3ad32c1ca3a3d4",
-            displayName: "Glass Decanter",
-            author: "KhronosGroup",
+            uid: "72a1583116e049e1adce28b2baf5527c",
+            displayName: "Crystal Glass Decanter",
+            author: "Antrea",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/mosquito_amber.usdz",
             scaleToUnits: 0.35,
             hasBakedAnimation: false,
             category: "materials",
-            tags: ["KHR_materials_transmission"]
+            tags: ["transmission", "glass"]
         ),
         SketchfabSlug(
-            uid: "ad32c1ca3a3d4f0db8e7a3a8a78a4d93",
-            displayName: "Velvet Cushion",
-            author: "KhronosGroup",
+            uid: "a54b2ac109d146fb80cfc37c9da26cfb",
+            displayName: "Cushioned Sofa",
+            author: "klava88",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/mosquito_amber.usdz",
-            scaleToUnits: 0.40,
+            scaleToUnits: 0.90,
             hasBakedAnimation: false,
             category: "materials",
-            tags: ["KHR_materials_sheen"]
+            tags: ["sheen", "fabric"]
         ),
     ]
 

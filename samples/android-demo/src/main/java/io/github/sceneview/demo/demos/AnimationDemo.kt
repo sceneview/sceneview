@@ -146,10 +146,10 @@ private data class AnimationModel(
  * `khronos_fox.glb` — those still ship in the APK).
  */
 private val ANIMATION_MODELS: List<AnimationModel> = run {
-    val walkingRobot = SampleAssets.byUid["1eaa978c12d147d9a4e62fadcf9eaece"]
-    val dancingKnight = SampleAssets.byUid["f1d75e7a4f9d4f0db8e7a3a8a78a4d92"]
-    val idleCat = SampleAssets.byUid["ad32c1ca3a3d4f0db8e7a3a8a78a4d92"]
-    val sleepingFox = SampleAssets.byUid["f0e7a4f9d4f0db8e7a3a8a78a4d92ad3"]
+    val walkingRobot = SampleAssets.byUid["574e006a4e50408d9565e82fafe8ef19"]
+    val dancingKnight = SampleAssets.byUid["ad9bc16464744935b1ac9b7768a17474"]
+    val idleCat = SampleAssets.byUid["7190ff66cb3d4e729a2ab95aeb9e797f"]
+    val sleepingFox = SampleAssets.byUid["cc4ab41731cc4c94a6adf2983821d1a8"]
     listOf(
         AnimationModel(
             displayName = "Soldier",
