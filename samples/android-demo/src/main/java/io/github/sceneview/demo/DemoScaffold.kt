@@ -53,6 +53,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -65,6 +66,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.haptic.SceneViewHaptic
 import io.github.sceneview.haptic.rememberHapticFeedback
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -104,7 +107,10 @@ enum class AssetSourceState { Streamed, Streaming, Bundled }
  *   `null` so legacy demos stay untouched.
  *
  * Gestures:
- * - **Tap FAB / tap peek chip** → opens the sheet at its partial detent.
+ * - **Tap FAB / tap peek chip** → opens the sheet at the detent this demo was
+ *   last left at — partial for a demo never opened before, or whatever detent
+ *   the user last settled it on (#2084, persisted per demo across process
+ *   death via [DemoSheetDetentStore]).
  * - **Long-press peek chip** → toggles `DemoSettings.qaMode` (deterministic
  *   captures for screenshot suites). Previously this gesture lived on the
  *   top-app-bar title; moved to the peek chip so the title can carry the demo
@@ -292,6 +298,7 @@ fun DemoScaffold(
 
             if (controls != null) {
                 DemoSettingsLayer(
+                    demoTitle = title,
                     controlsContent = controls,
                     haptic = haptic,
                     peekHeader = peekHeader,
@@ -424,15 +431,32 @@ object DemoScaffoldTestTags {
  * Peek chip + FAB + ModalBottomSheet — pulled into its own composable so the
  * sheet `LaunchedEffect`s scope to the `expanded` state without re-running on
  * every recomposition of the parent Scaffold body.
+ *
+ * [demoTitle] keys the per-demo last-detent memory (#2084): when the sheet is
+ * (re-)created it opens at the detent the user last settled it at for *this*
+ * demo, persisted in [DemoSheetDetentStore] so it survives navigation away from
+ * the demo and full process death — a demo never seen before defaults to the
+ * partial detent (unchanged behaviour).
  */
 @Composable
 private fun BoxScope.DemoSettingsLayer(
+    demoTitle: String,
     controlsContent: @Composable ColumnScope.() -> Unit,
     haptic: SceneViewHaptic,
     peekHeader: String? = null,
     onResetSettings: (() -> Unit)? = null,
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var expanded by rememberSaveable { mutableStateOf(false) }
+    // Per-demo last-detent memory (#2084): read the persisted detent so the
+    // sheet can reopen where the user last left it for this demo. Resolved
+    // against the persistent settings store ([DemoSheetDetentStore]), so it
+    // survives navigating away from the demo and process death — not just
+    // config changes. A demo never opened before resolves to
+    // `PartiallyExpanded`, the unchanged default.
+    val restoredDetent: SheetValue = remember(demoTitle) {
+        DemoSheetDetentStore.lastDetent(context, demoTitle)
+    }
     val sheetState: SheetState = rememberModalBottomSheetState(
         // partially expanded is the default open state — keeps ~45 % of viewport
         // visible so the showcase stays alive while you tweak settings.
@@ -452,7 +476,8 @@ private fun BoxScope.DemoSettingsLayer(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // Peek chip — only shown while the sheet is closed. Tap opens the sheet
-        // at the partial detent (same as tapping the FAB). Long-press toggles
+        // at this demo's last-used detent (#2084, same as tapping the FAB).
+        // Long-press toggles
         // QA mode (deterministic captures for screenshot suites — previously
         // on the top-bar title). The chip is intentionally semi-transparent so
         // it disappears against busy 3D scenes but stays legible on plain
@@ -575,8 +600,9 @@ private fun BoxScope.DemoSettingsLayer(
 
         // Medium-tick haptic when the user moves between detents.
         //
-        // `rememberModalBottomSheetState` starts at `SheetValue.Hidden`, so this
-        // effect fires once with `Hidden` *before* the sheet has animated open.
+        // The `SheetState` starts at `SheetValue.Hidden` (the sheet animates
+        // open from hidden to its restored #2084 detent), so this effect fires
+        // once with `Hidden` *before* the sheet has animated open.
         // Treating that initial value as a dismiss would slam `expanded = false`
         // and kill the sheet on every demo (#1420). Only honour `Hidden` as a
         // dismiss after the sheet has actually settled in a shown detent at
@@ -584,12 +610,39 @@ private fun BoxScope.DemoSettingsLayer(
         // handled by `onDismissRequest`, this branch just keeps `expanded` in
         // sync if the sheet collapses by any other path.
         var hasShown by remember { mutableStateOf(false) }
+
+        // #2084: restore this demo's last-used detent. `rememberModalBottomSheetState`
+        // always animates open to `PartiallyExpanded`, so when the persisted
+        // detent is `Expanded` we expand the sheet the rest of the way as a
+        // one-shot, right after it first settles in a shown detent. Keyed to
+        // `expanded` so it re-arms each time the sheet is (re-)opened. A
+        // never-seen demo resolves to `PartiallyExpanded` → this is a no-op and
+        // the unchanged default behaviour holds.
+        LaunchedEffect(expanded) {
+            if (restoredDetent == SheetValue.Expanded) {
+                snapshotFlow { sheetState.currentValue }
+                    .filter { it != SheetValue.Hidden }
+                    .first()
+                if (sheetState.currentValue != SheetValue.Expanded) {
+                    sheetState.expand()
+                }
+            }
+        }
+
         LaunchedEffect(sheetState.currentValue) {
             when (sheetState.currentValue) {
                 SheetValue.Expanded,
                 SheetValue.PartiallyExpanded -> {
                     hasShown = true
                     haptic.selection()
+                    // #2084: persist the detent the user just settled on so this
+                    // demo's sheet reopens here next time — including after the
+                    // demo screen leaves composition or the process is killed.
+                    DemoSheetDetentStore.setLastDetent(
+                        context,
+                        demoTitle,
+                        sheetState.currentValue,
+                    )
                 }
                 SheetValue.Hidden -> {
                     if (hasShown) {
