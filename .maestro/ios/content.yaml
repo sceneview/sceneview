@@ -34,3 +34,9 @@ appId: io.github.sceneview.demo
       DEMO_ID: billboard
       DEMO_NAME: Billboard
       ASSERT_TEXT: "Orbit the camera -- labels always face you"
+- runFlow:
+    file: flows/demo-settings.yaml
+    env:
+      DEMO_ID: video
+      DEMO_NAME: Video Texture
+      ASSERT_TEXT: "Playing"
