@@ -683,7 +683,14 @@ private struct SceneViewRepresentation: View {
         case .dolly:
             realityViewContent.realityViewCameraControls(.dolly)
         case .gimbal:
+            #if os(visionOS)
+            // .gimbal is unavailable on visionOS — fall back to orbit gestures.
+            realityViewContent
+                .gesture(dragGesture)
+                .gesture(pinchGesture)
+            #else
             realityViewContent.realityViewCameraControls(.gimbal)
+            #endif
         }
     }
 
