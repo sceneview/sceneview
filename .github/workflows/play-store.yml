@@ -325,7 +325,7 @@ jobs:
     name: Publish to ${{ matrix.track }}
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     # Track list comes from the build job — see its `Compute target tracks` step.
     #
@@ -611,7 +611,8 @@ jobs:
                   )
                   with open(aab_path, "rb") as fh:
                       r = sess.post(upload_url, data=fh,
-                                    headers={"Content-Type": "application/octet-stream"})
+                                    headers={"Content-Type": "application/octet-stream"},
+                                    timeout=(30, 600))  # 30s connect, 600s read for large AAB
                   r.raise_for_status()
                   vc = int(r.json()["versionCode"])
                   print(f"[promote/fallback] uploaded versionCode={vc}")

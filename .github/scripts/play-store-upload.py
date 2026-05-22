@@ -114,6 +114,7 @@ def upload_bundle(sess: AuthorizedSession, package: str, edit_id: str, aab_path:
             upload_url,
             data=f,
             headers={"Content-Type": "application/octet-stream"},
+            timeout=(30, 600),  # 30s connect, 600s read for large AAB upload
         )
     r.raise_for_status()
     version_code = r.json()["versionCode"]
