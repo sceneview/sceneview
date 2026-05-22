@@ -25,11 +25,13 @@ enum SceneViewTheme {
 
     // MARK: - Semantic Colors
 
-    /// Surface for elevated cards/sheets
-    static let surfaceElevated = Color(.systemBackground)
+    /// Surface for elevated cards/sheets — `systemBackground` on iOS,
+    /// `windowBackgroundColor` on macOS.
+    static let surfaceElevated = Color.systemBackground
 
-    /// Secondary surface (grouped backgrounds)
-    static let surfaceGrouped = Color(.secondarySystemBackground)
+    /// Secondary surface (grouped backgrounds) — `secondarySystemBackground`
+    /// on iOS, `underPageBackgroundColor` on macOS.
+    static let surfaceGrouped = Color.secondarySystemBackground
 
     // MARK: - Typography
 
@@ -98,9 +100,60 @@ extension Color {
     }
 }
 
+// MARK: - Cross-platform System Colors
+
+extension Color {
+    /// `UIColor.systemBackground` on iOS; `NSColor.windowBackgroundColor` on macOS.
+    static var systemBackground: Color {
+        #if canImport(UIKit)
+        Color(uiColor: .systemBackground)
+        #elseif canImport(AppKit)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color(white: 1)
+        #endif
+    }
+
+    /// `UIColor.secondarySystemBackground` on iOS;
+    /// `NSColor.underPageBackgroundColor` on macOS.
+    static var secondarySystemBackground: Color {
+        #if canImport(UIKit)
+        Color(uiColor: .secondarySystemBackground)
+        #elseif canImport(AppKit)
+        Color(nsColor: .underPageBackgroundColor)
+        #else
+        Color(white: 0.95)
+        #endif
+    }
+
+    /// `UIColor.tertiarySystemBackground` on iOS;
+    /// `NSColor.controlBackgroundColor` on macOS.
+    static var tertiarySystemBackground: Color {
+        #if canImport(UIKit)
+        Color(uiColor: .tertiarySystemBackground)
+        #elseif canImport(AppKit)
+        Color(nsColor: .controlBackgroundColor)
+        #else
+        Color(white: 0.92)
+        #endif
+    }
+}
+
 // MARK: - View Modifiers
 
 extension View {
+    /// Applies `.navigationBarTitleDisplayMode(.inline)` on iOS; a no-op on
+    /// macOS, where the modifier is unavailable. Lets shared SwiftUI code
+    /// request an inline navigation title without per-call-site `#if os`.
+    @ViewBuilder
+    func navigationBarTitleInline() -> some View {
+        #if os(iOS)
+        self.navigationBarTitleDisplayMode(.inline)
+        #else
+        self
+        #endif
+    }
+
     /// Apply SceneView card styling
     func sceneViewCard() -> some View {
         self
