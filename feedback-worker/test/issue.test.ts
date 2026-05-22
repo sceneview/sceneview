@@ -64,7 +64,24 @@ describe("buildIssue", () => {
       context: {},
       viewerUrl: "u",
     });
+    // Generic no-content message when isEmulator is not set.
     expect(r.body).toContain("No transcript available");
+    // Maintainer note is always present on empty submissions.
+    expect(r.body).toContain("Note for maintainers");
+  });
+
+  it("explains the silent-emulator reason when isEmulator context flag is set (#2123)", () => {
+    const r = buildIssue({
+      id: "abc",
+      category: "bug",
+      transcript: "",
+      text: "",
+      context: { isEmulator: "true" },
+      viewerUrl: "u",
+    });
+    expect(r.body).toContain("emulator");
+    expect(r.body).toContain("no physical mic");
+    expect(r.body).toContain("Note for maintainers");
   });
 
   it("renders the context table and the viewer link", () => {

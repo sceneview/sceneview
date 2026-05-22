@@ -318,6 +318,8 @@
     <string name="feedback_review_note_placeholder">Anything else the team should know?</string>
     <string name="feedback_review_rerecord">Record again</string>
     <string name="feedback_review_send">Send feedback</string>
+    <!-- Emulator hint: mic is silent, typed note needed for the issue to be useful (#2123) -->
+    <string name="feedback_review_emulator_hint">Running on an emulator — the mic is silent. Add a note so maintainers know what you observed.</string>
     <string name="feedback_record_failed_title">Recording didn\'t work</string>
     <string name="feedback_record_failed_body">The recording didn\'t finish. You can try again.</string>
     <string name="feedback_record_retry">Try again</string>
