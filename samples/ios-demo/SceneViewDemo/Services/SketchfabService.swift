@@ -205,16 +205,23 @@ actor SketchfabService {
         to destination: URL,
         progress: (@Sendable (Double) -> Void)?
     ) async throws {
+        // Use URLSessionDownloadDelegate so intermediate progress values are
+        // surfaced via the `progress` callback instead of always emitting 1.0
+        // at completion (#982). `URLSession.download(from:)` in async mode does
+        // not expose per-byte callbacks — the delegate path is the only way.
+        let delegate = DownloadProgressDelegate(onProgress: progress)
+        let delegateSession = URLSession(
+            configuration: .default,
+            delegate: delegate,
+            delegateQueue: nil
+        )
+        defer { delegateSession.invalidateAndCancel() }
+
         // The signed CDN URL must NOT carry the Sketchfab auth header.
-        let (tempURL, response) = try await session.download(from: remoteURL)
-        guard let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode) else {
-            throw SketchfabError.downloadFailed
+        let tempURL = try await withCheckedThrowingContinuation { continuation in
+            delegate.continuation = continuation
+            delegateSession.downloadTask(with: remoteURL).resume()
         }
-        // 0..1 progress callback (URLSession.download has no native progress
-        // in `async` mode — fire 1.0 once when complete; richer hooks come
-        // in V1.1 via URLSessionDownloadDelegate).
-        progress?(1.0)
 
         try FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(),
@@ -277,6 +284,68 @@ actor SketchfabService {
             if running <= SketchfabConfig.maxCacheBytes { break }
             try? fm.removeItem(at: url)
             running -= size
+        }
+    }
+}
+
+// MARK: - DownloadProgressDelegate
+
+/// `URLSessionDownloadDelegate` bridge that surfaces intermediate download
+/// progress to the `SketchfabService.downloadBinary` caller via the `progress`
+/// closure and completes the async continuation when the download finishes.
+///
+/// Required because `URLSession.download(from:)` in `async` mode does not
+/// expose per-byte callbacks — `URLSessionDownloadDelegate` is the only path
+/// for intermediate progress on Apple platforms (#982).
+private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
+    var continuation: CheckedContinuation<URL, Error>?
+    private let onProgress: (@Sendable (Double) -> Void)?
+
+    init(onProgress: (@Sendable (Double) -> Void)?) {
+        self.onProgress = onProgress
+    }
+
+    // MARK: Progress
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        guard totalBytesExpectedToWrite > 0 else { return }
+        let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        onProgress?(max(0.0, min(1.0, fraction)))
+    }
+
+    // MARK: Completion
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {
+        // Verify HTTP status before resolving the continuation.
+        if let http = downloadTask.response as? HTTPURLResponse,
+           !(200..<300).contains(http.statusCode) {
+            continuation?.resume(throwing: SketchfabError.downloadFailed)
+            continuation = nil
+            return
+        }
+        onProgress?(1.0)
+        continuation?.resume(returning: location)
+        continuation = nil
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        if let error {
+            continuation?.resume(throwing: error)
+            continuation = nil
         }
     }
 }
