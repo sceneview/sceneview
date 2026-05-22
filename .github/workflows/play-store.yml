@@ -403,16 +403,22 @@ jobs:
           creds.refresh(Request())
           token = creds.token
 
-          # Numeric app ID for io.github.sceneview.demo in Play Console.
+          # Play Console internal API identifiers.
+          DEV_ID = "4638313286439917620"
           APP_ID = "4976357948291389972"
-          # Proto payload: declare mediaProjection FGS type as in-use.
-          # Field 1 = repeated list of type declarations
-          # Each element: field 1 = FGS type ID (21 = mediaProjection in
-          # Play Console's internal enum), field 2 = 1 (declared as used).
-          payload = {"1": [{"1": 21, "2": 1}]}
+          # permissionDeclarationData:update payload (#2120).
+          # Confirmed correct endpoint via browser network capture (GET→200).
+          # Field 3 = list of FGS type declarations:
+          #   field 1 = type ID (21 = MEDIA_PROJECTION), field 2 = 1 (in-use)
+          # Field 5 = submission status: {1: 2} = SUBMITTED
+          payload = {"3": [{"1": 21, "2": 1}], "5": {"1": 2}}
 
+          url = (
+              f"https://playconsoleapps-pa.clients6.google.com"
+              f"/v1/developers/{DEV_ID}/apps/{APP_ID}/permissionDeclarationData:update"
+          )
           r = requests.post(
-              f"https://playconsoleapps-pa.clients6.google.com/v1/apps/{APP_ID}/foregroundServiceTypes:save",
+              url,
               headers={
                   "Authorization": f"Bearer {token}",
                   "Content-Type": "application/json+protobuf",
@@ -424,7 +430,7 @@ jobs:
           if r.text:
               print(f"Response: {r.text[:300]}")
           if r.status_code == 200:
-              print("FGS declaration submitted — mediaProjection declared as in-use.")
+              print("FGS declaration submitted — MEDIA_PROJECTION declared as in-use.")
           else:
               print(f"FGS declaration returned {r.status_code} — commit may still fail with FGS error.",
                     file=sys.stderr)
