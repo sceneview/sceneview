@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +35,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
+import kotlinx.coroutines.delay
 
 /**
  * Augmented face mesh tracking demo.
@@ -63,6 +65,13 @@ fun ARFaceDemo(onBack: () -> Unit) {
     var detectedFaces by remember { mutableStateOf<List<AugmentedFace>>(emptyList()) }
     var faceCount by remember { mutableStateOf(0) }
 
+    // Frame-received sentinel — set to true on the first onSessionUpdated call so
+    // the timeout diagnostic knows the camera feed is live. On devices where
+    // frontCameraConfig fails to open the selfie camera (e.g. Pixel 9, #1612),
+    // this stays false and the error pill appears after CAMERA_TIMEOUT_MS.
+    var cameraActive by remember { mutableStateOf(false) }
+    var cameraUnavailable by remember { mutableStateOf(false) }
+
     // Unlit translucent overlay for the face mesh. ARCore disables `ENVIRONMENTAL_HDR`
     // light estimation when the front camera is in use, so any lit material falls
     // back to whatever neutral IBL is in scope — which historically rendered the
@@ -79,6 +88,18 @@ fun ARFaceDemo(onBack: () -> Unit) {
     // We use a translucent overlay (not opaque blue) so the user can SEE their face
     // through the fitted topology — that's the entire point of a face-mesh demo.
     val faceMaterial = rememberUnlitMaterialInstance(materialLoader, SceneViewColors.PrimaryOverlay)
+
+    // Diagnostic timeout: if the camera feed does not start within 5 s the
+    // front camera is likely unavailable on this device (e.g. frontCameraConfig
+    // returned the BACK camera because no FRONT CameraConfig was found — #1612).
+    // Reset when cameraActive flips so a device that just takes a moment to open
+    // the front camera doesn't falsely report unavailability.
+    LaunchedEffect(cameraActive) {
+        if (!cameraActive) {
+            delay(5_000L)
+            if (!cameraActive) cameraUnavailable = true
+        }
+    }
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_face_title),
@@ -129,6 +150,9 @@ fun ARFaceDemo(onBack: () -> Unit) {
                     config.planeFindingMode = Config.PlaneFindingMode.DISABLED
                 },
                 onSessionUpdated = { session: Session, _: Frame ->
+                    // Mark camera as active on the first frame so the timeout
+                    // diagnostic knows the front camera opened successfully.
+                    if (!cameraActive) cameraActive = true
                     detectedFaces = session.getAllTrackables(AugmentedFace::class.java)
                         .filter { it.trackingState == TrackingState.TRACKING }
                     faceCount = detectedFaces.size
@@ -152,25 +176,35 @@ fun ARFaceDemo(onBack: () -> Unit) {
                 }
             }
 
-            // Status overlay
+            // Status overlay — tracks face count and surfaces camera errors.
             AnimatedVisibility(
                 visible = true,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
+                val (statusText, statusColor) = when {
+                    cameraUnavailable ->
+                        // Front camera failed to produce frames within the timeout.
+                        // Likely cause: frontCameraConfig returned the BACK camera
+                        // because no FRONT CameraConfig was found on this device (#1612).
+                        Pair(
+                            "Front camera unavailable on this device",
+                            MaterialTheme.colorScheme.error
+                        )
+                    faceCount > 0 ->
+                        Pair("Tracking $faceCount face(s)", MaterialTheme.colorScheme.primary)
+                    else ->
+                        Pair("Point the front camera at a face", MaterialTheme.colorScheme.primary)
+                }
                 Text(
-                    text = if (faceCount > 0) {
-                        "Tracking $faceCount face(s)"
-                    } else {
-                        "Point the front camera at a face"
-                    },
+                    text = statusText,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier
                         .padding(bottom = 32.dp)
                         .background(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                            color = statusColor.copy(alpha = 0.8f),
                             shape = RoundedCornerShape(24.dp)
                         )
                         .padding(horizontal = 24.dp, vertical = 12.dp)
