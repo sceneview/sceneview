@@ -328,10 +328,14 @@ struct ExploreTab: View {
                     // matchedTransitionSource lives on the FeaturedSketchfabCard
                     // identified by `(viewingFeedID, model.uid)` since the same
                     // Sketchfab model can appear in more than one carousel.
+                    // `.zoom(sourceID:in:)` is unavailable on macOS, where the
+                    // destination simply pushes with the default transition.
+                    #if os(iOS)
                     .navigationTransition(.zoom(
                         sourceID: "sketchfab-hero-\(viewingFeedID ?? "any")-\(model.uid)",
                         in: heroNamespace
                     ))
+                    #endif
             }
             .sheet(item: $selectedCategory) { category in
                 CategorySheet(category: category) { query in
@@ -684,7 +688,7 @@ private struct FeaturedSketchfabCard: View {
                         switch phase {
                         case .empty:
                             ZStack {
-                                Color(.tertiarySystemBackground)
+                                Color.tertiarySystemBackground
                                 ProgressView()
                                     .controlSize(.small)
                             }
@@ -694,13 +698,13 @@ private struct FeaturedSketchfabCard: View {
                                 .aspectRatio(contentMode: .fill)
                         case .failure:
                             ZStack {
-                                Color(.tertiarySystemBackground)
+                                Color.tertiarySystemBackground
                                 Image(systemName: "photo")
                                     .font(.title2)
                                     .foregroundStyle(.secondary)
                             }
                         @unknown default:
-                            Color(.tertiarySystemBackground)
+                            Color.tertiarySystemBackground
                         }
                     }
                     .frame(width: 200, height: 160)
@@ -813,9 +817,7 @@ private struct SamplePromoCard: View {
         NavigationLink {
             destination()
                 .navigationTitle(title)
-                #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-                #endif
+                .navigationBarTitleInline()
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .bottomLeading) {
@@ -982,9 +984,7 @@ private struct CategorySheet: View {
                 Spacer()
             }
             .navigationTitle("Category")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
+            .navigationBarTitleInline()
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Done") { dismiss() }
@@ -1045,7 +1045,7 @@ private struct ModelCard: View {
                 .padding(.horizontal, 4)
             }
             .padding(8)
-            .background(Color(.secondarySystemBackground))
+            .background(Color.secondarySystemBackground)
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
@@ -1122,9 +1122,7 @@ struct ModelViewerScreen: View {
             }
         }
         .navigationTitle(model.name)
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .navigationBarTitleInline()
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -1420,9 +1418,7 @@ struct SketchfabModelViewerScreen: View {
             }
         }
         .navigationTitle(model.name)
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .navigationBarTitleInline()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

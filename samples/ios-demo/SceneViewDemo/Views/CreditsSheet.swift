@@ -56,11 +56,17 @@ struct CreditsSheet: View {
                 .padding(.vertical, 16)
             }
             .navigationTitle("Streamed model credits")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleInline()
             .toolbar {
+                #if os(iOS)
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
+                #else
+                ToolbarItem(placement: .automatic) {
+                    Button("Done") { dismiss() }
+                }
+                #endif
             }
         }
     }

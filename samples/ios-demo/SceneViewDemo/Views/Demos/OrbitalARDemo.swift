@@ -135,7 +135,7 @@ struct OrbitalARDemo: View {
             }
         }
         .navigationTitle("Orbital AR")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleInline()
         .onDisappear {
             orbitTimer?.invalidate()
             orbitTimer = nil

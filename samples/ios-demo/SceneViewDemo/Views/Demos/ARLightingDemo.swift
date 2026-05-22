@@ -88,7 +88,7 @@ struct ARLightingDemo: View {
             }
         }
         .navigationTitle("AR Lighting")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleInline()
     }
 
     // MARK: - AR Scene

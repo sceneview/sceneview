@@ -133,7 +133,7 @@ struct ARTab: View {
             NavigationStack {
                 demo.destination
                     .navigationTitle(demo.title)
-                    .navigationBarTitleDisplayMode(.inline)
+                    .navigationBarTitleInline()
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Close") { presentedDemo = nil }
@@ -418,7 +418,7 @@ struct ARTab: View {
                 .padding(16)
             }
             .navigationTitle("Pick a model")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleInline()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { showModelPicker = false }
