@@ -324,6 +324,64 @@ jobs:
           user_name: github-actions[bot]
           user_email: github-actions[bot]@users.noreply.github.com
 
+      # `peaceiris/actions-gh-pages` internally uses `shelljs cp` with the
+      # glob pattern `${publishDir}/.*`, which (under Node.js/shelljs) does NOT
+      # expand to dot-prefixed subdirectories like `.well-known/` — only plain
+      # dotfiles (`.nojekyll`, `.gitignore`, …) survive. The result: every
+      # docs deploy was silently dropping `.well-known/assetlinks.json` and
+      # `.well-known/apple-app-site-association` from the live site, causing
+      # Android App Links and iOS Universal Links auto-verification to return
+      # HTTP 404 (#2155). Fix: after the peaceiris push, clone the deployed
+      # repo via the same SSH deploy key and add the missing directory in a
+      # follow-up commit. The peaceiris push lands first (full site replace),
+      # then this step adds what it missed.
+      - name: Patch .well-known/ into deployed repo (peaceiris cp drops dotdirs)
+        env:
+          PAGES_DEPLOY_KEY: ${{ secrets.PAGES_DEPLOY_KEY }}
+        run: |
+          # Write the SSH deploy key and configure git to use it.
+          mkdir -p ~/.ssh
+          echo "$PAGES_DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+
+          # Clone the deployed repo (shallow — we only need HEAD).
+          git clone --depth=1 --branch main \
+            git@github.com:sceneview/sceneview.github.io.git \
+            /tmp/sceneview-pages
+
+          # Verify our source .well-known/ is present and non-empty.
+          if [ ! -f "site/.well-known/assetlinks.json" ]; then
+            echo "::error::site/.well-known/assetlinks.json missing — build artifact is broken."
+            exit 1
+          fi
+
+          # Overwrite .well-known/ in the cloned repo.
+          rm -rf /tmp/sceneview-pages/.well-known
+          cp -r site/.well-known /tmp/sceneview-pages/.well-known
+
+          cd /tmp/sceneview-pages
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Only commit if something actually changed (first deploy has no
+          # .well-known at all; subsequent deploys overwrite with fresh content).
+          if git diff --quiet && git diff --cached --quiet; then
+            # No staged changes yet — stage and re-check.
+            git add .well-known/
+          fi
+          git add .well-known/
+          if git diff --cached --quiet; then
+            echo ".well-known/ is already up-to-date in deployed repo — no patch needed."
+          else
+            git commit -m "deploy: patch .well-known/ (peaceiris cp drops dotdirs, #2155)"
+            git push origin main
+            echo ".well-known/ patched and pushed."
+          fi
+
+          # Clean up key.
+          rm -f ~/.ssh/deploy_key
+
       # GitHub Pages' legacy auto-build on `sceneview/sceneview.github.io`
       # does NOT fire for the push above. The deploy uses an SSH deploy key
       # (`github-actions[bot]`), and GitHub deliberately skips the legacy
