@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `ar-scene-mesh` demo (registered by ArSceneMeshFragment.kt).
+     Android's resource merger fans every res/values/*.xml file in, so
+     R.string.demo_ar_scene_mesh_title etc. remains globally resolvable.
+     Adding a new demo never needs to touch strings.xml — see #1870. -->
+<resources>
+    <string name="demo_ar_scene_mesh_title">Scene Mesh</string>
+    <string name="demo_ar_scene_mesh_subtitle">Color-coded real-world geometry with ARKit ARMeshAnchor parity</string>
+    <!-- Shown after ~15 s of tracking with no geometry found (#1615). -->
+    <string name="demo_ar_scene_mesh_no_geometry_hint">No scene mesh found. This demo needs an outdoor location with Google Street View coverage — point at nearby buildings. It will not find geometry indoors.</string>
+</resources>
