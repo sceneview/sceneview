@@ -111,13 +111,14 @@ enum DemoDeepLinkRegistry {
         case "gesture-editing":  GestureEditingDemo()
 
         // ── Advanced ─────────────────────────────────────────────────
-        case "custom-mesh":     CustomMeshDemo()
-        case "double-pendulum": DoublePendulumDemo()
-        case "materials":       MaterialsDemo()
-        case "physics":         PhysicsDemo()
-        case "shape":           ShapeExtrudeDemo()
-        case "reflection-probes": ReflectionProbesDemo()
-        case "spatial-audio":   SpatialAudioDemo()
+        case "custom-mesh":         CustomMeshDemo()
+        case "double-pendulum":     DoublePendulumDemo()
+        case "materials":           MaterialsDemo()
+        case "occlusion-material":  OcclusionMaterialDemo()
+        case "physics":             PhysicsDemo()
+        case "shape":               ShapeExtrudeDemo()
+        case "reflection-probes":   ReflectionProbesDemo()
+        case "spatial-audio":       SpatialAudioDemo()
 
         // ── AR (iOS device-only) ──────────────────────────────────────
         case "ar-instant-placement":

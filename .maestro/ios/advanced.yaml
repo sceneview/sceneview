@@ -51,3 +51,9 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: spatial-audio
       DEMO_NAME: Spatial Audio
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: occlusion-material
+      DEMO_NAME: Occlusion Material
+      ASSERT_TEXT: "Show occluder plane"
