@@ -13,9 +13,9 @@ code — the demo is the authoritative recipe.
 [`AllShapesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/AllShapesDemo.swift)
 — `GeometryNode.cube / .sphere / .cylinder / .plane / .cone / .torus / .capsule`.
 
-## 3. Camera controls (orbit / pan)
+## 3. Camera controls (orbit / pan / native Apple modes)
 [`CameraControlsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/CameraControlsDemo.swift)
-— `.cameraControls(.orbit)` modifier.
+— `.cameraControls(.orbit)` modifier; native Apple modes (`.none`, `.tilt`, `.dolly`) available on iOS 18+ via `realityViewCameraControls(_:)`, unavailable on visionOS.
 
 ## 4. Auto-rotate turntable
 [`AnimationDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/AnimationDemo.swift)
