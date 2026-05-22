@@ -676,19 +676,28 @@ private struct SceneViewRepresentation: View {
             realityViewContent
                 .gesture(dragGesture)
                 .gesture(pinchGesture)
-        case .none:
-            // `.none` disables all gesture interaction.
-            // `RealityKit.CameraControls.none` is available on all three
-            // supported platforms (iOS 18+, macOS 15+, visionOS 2+).
-            realityViewContent.realityViewCameraControls(.none)
-        case .tilt:
-            // `RealityKit.CameraControls.tilt` is available on iOS, macOS,
-            // and visionOS 2+ (verified in Xcode SDK swiftinterface).
-            realityViewContent.realityViewCameraControls(.tilt)
-        case .dolly:
-            // `RealityKit.CameraControls.dolly` is available on iOS, macOS,
-            // and visionOS 2+ (verified in Xcode SDK swiftinterface).
-            realityViewContent.realityViewCameraControls(.dolly)
+        case .none, .tilt, .dolly:
+            // `realityViewCameraControls(_:)` is @available(iOS 18, macOS 15, *)
+            // and @available(visionOS, unavailable). On visionOS, fall back to
+            // the custom gesture path — orbit/pan/firstPerson semantics apply.
+            #if !os(visionOS)
+            switch cameraControlMode {
+            case .none:
+                realityViewContent.realityViewCameraControls(.none)
+            case .tilt:
+                realityViewContent.realityViewCameraControls(.tilt)
+            case .dolly:
+                realityViewContent.realityViewCameraControls(.dolly)
+            default:
+                realityViewContent
+                    .gesture(dragGesture)
+                    .gesture(pinchGesture)
+            }
+            #else
+            realityViewContent
+                .gesture(dragGesture)
+                .gesture(pinchGesture)
+            #endif
         }
     }
 
