@@ -14,11 +14,7 @@
 # ASSERT_TEXT and drop it from here.
 appId: io.github.sceneview.demo
 ---
-# ── Advanced / Interaction (no iOS destination yet) ──────────────────────────
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: collision
+# ── Advanced (no iOS destination yet) ───────────────────────────────────────
 - runFlow:
     file: flows/placeholder.yaml
     env:
