@@ -57,3 +57,9 @@ appId: io.github.sceneview.demo
       DEMO_ID: occlusion-material
       DEMO_NAME: Occlusion Material
       ASSERT_TEXT: "Show occluder plane"
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: debug-overlay
+      DEMO_NAME: Debug Overlay
+      ASSERT_TEXT: "FPS:"
