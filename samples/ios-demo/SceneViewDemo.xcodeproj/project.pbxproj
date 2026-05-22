@@ -7,6 +7,49 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7E28E9DEA941B656301CDA67 /* DemoScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3DDC7D4F688438DB5EBE4ED /* DemoScene.swift */; };
+		F962AD205078EAFC5201865B /* AnimationScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85C649EB882E1792036DA612 /* AnimationScene.swift */; };
+		96C00DAEDB204FF3E420ED1B /* ArAugmentedFacesScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63582A5C1EEB276B6E9CA85 /* ArAugmentedFacesScene.swift */; };
+		3DC54357982F78B8C2E02FC8 /* ArCloudAnchorsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8550BB2028D4FF4056AEBB75 /* ArCloudAnchorsScene.swift */; };
+		88B30D69A8295299DB46B027 /* ArDepthOcclusionScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF95C7E0A3E7A2D62A427A8 /* ArDepthOcclusionScene.swift */; };
+		F8F105D8987BA5BE425F235B /* ArEisScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC170938E2C9FC35AB334CA3 /* ArEisScene.swift */; };
+		0556583EF5AF44854433ED30 /* ArImageTrackingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9894E9E0B48C546F7045302 /* ArImageTrackingScene.swift */; };
+		AB01222A63039941E8E2398B /* ArInstantPlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEEA6C6F0910C858DADF4F25 /* ArInstantPlacementScene.swift */; };
+		5E207E2F7A55D2D96DBD1814 /* ArLightingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD64719EA56EB8B83AAC04D4 /* ArLightingScene.swift */; };
+		E3564B14080F27209FF35DC5 /* ArOrbitalScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 600043FF3AFFE79411B7DD8A /* ArOrbitalScene.swift */; };
+		50708BAB945D780C4BB6300A /* ArPlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127E970FECE22BF0FC5D8867 /* ArPlacementScene.swift */; };
+		D173BD9A8BA6B6CAB5E32796 /* ArPosePlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15A57335287821ECC80BC2A0 /* ArPosePlacementScene.swift */; };
+		AFB627071014C9E0F4C577BC /* ArRecordingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = E722280A1A01A2AA17A2137A /* ArRecordingScene.swift */; };
+		A6AA5F59463038402CB1B9CF /* ArRerunScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D804E81126D31E56CEECA9 /* ArRerunScene.swift */; };
+		4D7BABB3B6EF11E48A1622BF /* ArRooftopAnchorsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D34E4A9940EE1E38BB98F41 /* ArRooftopAnchorsScene.swift */; };
+		AEF19CE1A2D316F8EC29748A /* ArStreetscapeScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 844945EE3EA49B82A5B88E3E /* ArStreetscapeScene.swift */; };
+		D514B18E4CCB2105995036DC /* ArTerrainAnchorsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AE6912B454203A39DEDE823 /* ArTerrainAnchorsScene.swift */; };
+		935E1D835EF073D4BF37115D /* BillboardScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73DB874D6CFA8760B3686E8C /* BillboardScene.swift */; };
+		20ECEDB5700B0025654413E5 /* CameraControlsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB7DDF01D482113A0E2E422 /* CameraControlsScene.swift */; };
+		142DB7943F0D5AAC072D8C3D /* CollisionHitTestScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E9CA43653623095A5607B33 /* CollisionHitTestScene.swift */; };
+		4174B93766B7BD3B8D98783F /* CustomMeshScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C735A08AAE451562DEFBAF5 /* CustomMeshScene.swift */; };
+		BD016517EAC148510B51E258 /* DoublePendulumScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3AB5B3BF75EEDAC30A88D74 /* DoublePendulumScene.swift */; };
+		CDDC40367454570BA7AF147F /* DynamicSkyScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1E32030EDEC9FCFD1E4FB0 /* DynamicSkyScene.swift */; };
+		FED589255E75D35A9DACBA0A /* FogScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A2252AA18DB87570FD8BEB /* FogScene.swift */; };
+		A8F7A49A69BCF88DD6C97314 /* GeometryScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 290876CFB45E70811AA137B6 /* GeometryScene.swift */; };
+		0FE3731854F188786E79ED57 /* GestureEditingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B57E9A1481A8D84910B567A /* GestureEditingScene.swift */; };
+		4B652988C6421C693CCF45A4 /* ImageScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF935D57FC86051DD436E4D9 /* ImageScene.swift */; };
+		A25E3658944E30160600F6B7 /* LightTypesScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = B09C88C7204B3AF37EC6BE5B /* LightTypesScene.swift */; };
+		B6101BF6825F0337CEC97910 /* LinesPathsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFF5DD3C1C1D21F4F20CA0C9 /* LinesPathsScene.swift */; };
+		D215E74EDFD5224A0D611C49 /* MaterialsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC97EA31B851CDE641C29F3C /* MaterialsScene.swift */; };
+		63639070635D8E5F607E8E11 /* ModelViewerScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B05E7EA7457BA4E219A3B18 /* ModelViewerScene.swift */; };
+		7F3779F3EAE0CB8A8E2163A8 /* MovableLightScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74E53E9763AF7F1FAC9F526D /* MovableLightScene.swift */; };
+		C6718D6992125E496CA5E387 /* MultiModelScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0144763A2AAFBA2F921AA6C /* MultiModelScene.swift */; };
+		BEA1469B6B63E6A1C636864B /* PhysicsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24EDDD0A932E79C5088AEF26 /* PhysicsScene.swift */; };
+		2EDA814DF8E000720E47B6D0 /* PostProcessingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7DC3F5EC4E236A2116CB086 /* PostProcessingScene.swift */; };
+		D5304A7821A99E09C8746927 /* ReflectionProbesScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC5EEABA6D7A33E6E4C2ED2 /* ReflectionProbesScene.swift */; };
+		922DE8B725A90B5B9D794809 /* SceneGalleryScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EA61BCBF55BC370123347AE /* SceneGalleryScene.swift */; };
+		A082675FB1DC8B7A933C3EB0 /* SecondaryCameraScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 599FF550976F81CB5AFE68BF /* SecondaryCameraScene.swift */; };
+		DD3FF7C0836D9DD90C767D6D /* ShapeExtrudeScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B0C8E686D511E4A17E75291 /* ShapeExtrudeScene.swift */; };
+		A3BAB0EC281F966421D8019A /* SpatialAudioScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C1442A5E282461B7581066 /* SpatialAudioScene.swift */; };
+		1CFD879D196F1D23142D7ACD /* TextScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1600DF1563900D4EB6820A33 /* TextScene.swift */; };
+		A928A0266FD0B8196F11DF4A /* VideoTextureScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27FB250D0AE339DB0EB9C6C7 /* VideoTextureScene.swift */; };
+		9D72C9CAE331B90315010DC3 /* ViewNodeScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EC5EFF554D692141E61884F /* ViewNodeScene.swift */; };
 		0C0448E495F77BF795D1C647 /* ComingSoonScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FA64989921B8BD7A9F30B31 /* ComingSoonScreen.swift */; };
 		593E4FADBA93AF1190A3A67E /* SketchfabModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C214F8F9A1B35560E551895 /* SketchfabModels.swift */; };
 		95BE47B4B9B828745697FB4B /* SketchfabConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = D77142EC848C995EDE06546D /* SketchfabConfig.swift */; };
@@ -190,6 +233,49 @@
 		E20000000000000000000006 /* autumn_field.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = autumn_field.hdr; sourceTree = "<group>"; };
 		E20000000000000000000007 /* night_sky.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = night_sky.hdr; sourceTree = "<group>"; };
 		E6E3457CB732DF2AE71757CC /* MovableLightDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovableLightDemo.swift; path = SceneViewDemo/Views/Demos/MovableLightDemo.swift; sourceTree = SOURCE_ROOT; };
+		F3DDC7D4F688438DB5EBE4ED /* DemoScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoScene.swift; path = SceneViewDemo/Utilities/DemoScene.swift; sourceTree = SOURCE_ROOT; };
+		85C649EB882E1792036DA612 /* AnimationScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AnimationScene.swift; path = SceneViewDemo/Views/Demos/Scenes/AnimationScene.swift; sourceTree = SOURCE_ROOT; };
+		F63582A5C1EEB276B6E9CA85 /* ArAugmentedFacesScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArAugmentedFacesScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArAugmentedFacesScene.swift; sourceTree = SOURCE_ROOT; };
+		8550BB2028D4FF4056AEBB75 /* ArCloudAnchorsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArCloudAnchorsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArCloudAnchorsScene.swift; sourceTree = SOURCE_ROOT; };
+		CEF95C7E0A3E7A2D62A427A8 /* ArDepthOcclusionScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthOcclusionScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthOcclusionScene.swift; sourceTree = SOURCE_ROOT; };
+		CC170938E2C9FC35AB334CA3 /* ArEisScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArEisScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArEisScene.swift; sourceTree = SOURCE_ROOT; };
+		F9894E9E0B48C546F7045302 /* ArImageTrackingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArImageTrackingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArImageTrackingScene.swift; sourceTree = SOURCE_ROOT; };
+		DEEA6C6F0910C858DADF4F25 /* ArInstantPlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArInstantPlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArInstantPlacementScene.swift; sourceTree = SOURCE_ROOT; };
+		FD64719EA56EB8B83AAC04D4 /* ArLightingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArLightingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArLightingScene.swift; sourceTree = SOURCE_ROOT; };
+		600043FF3AFFE79411B7DD8A /* ArOrbitalScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArOrbitalScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArOrbitalScene.swift; sourceTree = SOURCE_ROOT; };
+		127E970FECE22BF0FC5D8867 /* ArPlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArPlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArPlacementScene.swift; sourceTree = SOURCE_ROOT; };
+		15A57335287821ECC80BC2A0 /* ArPosePlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArPosePlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArPosePlacementScene.swift; sourceTree = SOURCE_ROOT; };
+		E722280A1A01A2AA17A2137A /* ArRecordingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArRecordingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArRecordingScene.swift; sourceTree = SOURCE_ROOT; };
+		54D804E81126D31E56CEECA9 /* ArRerunScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArRerunScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArRerunScene.swift; sourceTree = SOURCE_ROOT; };
+		4D34E4A9940EE1E38BB98F41 /* ArRooftopAnchorsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArRooftopAnchorsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArRooftopAnchorsScene.swift; sourceTree = SOURCE_ROOT; };
+		844945EE3EA49B82A5B88E3E /* ArStreetscapeScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArStreetscapeScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArStreetscapeScene.swift; sourceTree = SOURCE_ROOT; };
+		2AE6912B454203A39DEDE823 /* ArTerrainAnchorsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArTerrainAnchorsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArTerrainAnchorsScene.swift; sourceTree = SOURCE_ROOT; };
+		73DB874D6CFA8760B3686E8C /* BillboardScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BillboardScene.swift; path = SceneViewDemo/Views/Demos/Scenes/BillboardScene.swift; sourceTree = SOURCE_ROOT; };
+		2DB7DDF01D482113A0E2E422 /* CameraControlsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CameraControlsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/CameraControlsScene.swift; sourceTree = SOURCE_ROOT; };
+		8E9CA43653623095A5607B33 /* CollisionHitTestScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CollisionHitTestScene.swift; path = SceneViewDemo/Views/Demos/Scenes/CollisionHitTestScene.swift; sourceTree = SOURCE_ROOT; };
+		1C735A08AAE451562DEFBAF5 /* CustomMeshScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CustomMeshScene.swift; path = SceneViewDemo/Views/Demos/Scenes/CustomMeshScene.swift; sourceTree = SOURCE_ROOT; };
+		F3AB5B3BF75EEDAC30A88D74 /* DoublePendulumScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DoublePendulumScene.swift; path = SceneViewDemo/Views/Demos/Scenes/DoublePendulumScene.swift; sourceTree = SOURCE_ROOT; };
+		0A1E32030EDEC9FCFD1E4FB0 /* DynamicSkyScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DynamicSkyScene.swift; path = SceneViewDemo/Views/Demos/Scenes/DynamicSkyScene.swift; sourceTree = SOURCE_ROOT; };
+		E7A2252AA18DB87570FD8BEB /* FogScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FogScene.swift; path = SceneViewDemo/Views/Demos/Scenes/FogScene.swift; sourceTree = SOURCE_ROOT; };
+		290876CFB45E70811AA137B6 /* GeometryScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GeometryScene.swift; path = SceneViewDemo/Views/Demos/Scenes/GeometryScene.swift; sourceTree = SOURCE_ROOT; };
+		2B57E9A1481A8D84910B567A /* GestureEditingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GestureEditingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/GestureEditingScene.swift; sourceTree = SOURCE_ROOT; };
+		BF935D57FC86051DD436E4D9 /* ImageScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImageScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ImageScene.swift; sourceTree = SOURCE_ROOT; };
+		B09C88C7204B3AF37EC6BE5B /* LightTypesScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LightTypesScene.swift; path = SceneViewDemo/Views/Demos/Scenes/LightTypesScene.swift; sourceTree = SOURCE_ROOT; };
+		FFF5DD3C1C1D21F4F20CA0C9 /* LinesPathsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LinesPathsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/LinesPathsScene.swift; sourceTree = SOURCE_ROOT; };
+		BC97EA31B851CDE641C29F3C /* MaterialsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MaterialsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/MaterialsScene.swift; sourceTree = SOURCE_ROOT; };
+		4B05E7EA7457BA4E219A3B18 /* ModelViewerScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ModelViewerScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ModelViewerScene.swift; sourceTree = SOURCE_ROOT; };
+		74E53E9763AF7F1FAC9F526D /* MovableLightScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovableLightScene.swift; path = SceneViewDemo/Views/Demos/Scenes/MovableLightScene.swift; sourceTree = SOURCE_ROOT; };
+		E0144763A2AAFBA2F921AA6C /* MultiModelScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MultiModelScene.swift; path = SceneViewDemo/Views/Demos/Scenes/MultiModelScene.swift; sourceTree = SOURCE_ROOT; };
+		24EDDD0A932E79C5088AEF26 /* PhysicsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PhysicsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/PhysicsScene.swift; sourceTree = SOURCE_ROOT; };
+		D7DC3F5EC4E236A2116CB086 /* PostProcessingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PostProcessingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/PostProcessingScene.swift; sourceTree = SOURCE_ROOT; };
+		BAC5EEABA6D7A33E6E4C2ED2 /* ReflectionProbesScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ReflectionProbesScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ReflectionProbesScene.swift; sourceTree = SOURCE_ROOT; };
+		0EA61BCBF55BC370123347AE /* SceneGalleryScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SceneGalleryScene.swift; path = SceneViewDemo/Views/Demos/Scenes/SceneGalleryScene.swift; sourceTree = SOURCE_ROOT; };
+		599FF550976F81CB5AFE68BF /* SecondaryCameraScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SecondaryCameraScene.swift; path = SceneViewDemo/Views/Demos/Scenes/SecondaryCameraScene.swift; sourceTree = SOURCE_ROOT; };
+		1B0C8E686D511E4A17E75291 /* ShapeExtrudeScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShapeExtrudeScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ShapeExtrudeScene.swift; sourceTree = SOURCE_ROOT; };
+		04C1442A5E282461B7581066 /* SpatialAudioScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpatialAudioScene.swift; path = SceneViewDemo/Views/Demos/Scenes/SpatialAudioScene.swift; sourceTree = SOURCE_ROOT; };
+		1600DF1563900D4EB6820A33 /* TextScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TextScene.swift; path = SceneViewDemo/Views/Demos/Scenes/TextScene.swift; sourceTree = SOURCE_ROOT; };
+		27FB250D0AE339DB0EB9C6C7 /* VideoTextureScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VideoTextureScene.swift; path = SceneViewDemo/Views/Demos/Scenes/VideoTextureScene.swift; sourceTree = SOURCE_ROOT; };
+		1EC5EFF554D692141E61884F /* ViewNodeScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewNodeScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ViewNodeScene.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -398,6 +484,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A70000010000000000000003 /* Build configuration list for PBXNativeTarget "SceneViewDemo" */;
 			buildPhases = (
+				A60000010000000000000004 /* Collate iOS demos */,
 				A60000010000000000000003 /* Validate store secrets */,
 				A60000010000000000000001 /* Sources */,
 				A30000010000000000000001 /* Frameworks */,
@@ -528,6 +615,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		A60000010000000000000004 /* Collate iOS demos */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 0;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/SceneViewDemo/Views/Demos/Scenes/*.swift",
+			);
+			name = "Collate iOS demos";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/SceneViewDemo/Views/Demos/GeneratedScenes.swift",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Regenerate GeneratedScenes.swift from per-demo *Scene.swift files.\n# See samples/ios-demo/scripts/collate-ios-demos.sh for full details.\n# Adding a new demo: create Views/Demos/Scenes/<Name>Scene.swift and build.\nset -euo pipefail\nSCRIPT=\"${SRCROOT}/../scripts/collate-ios-demos.sh\"\nif [ ! -f \"$SCRIPT\" ]; then\n  echo \"warning: collate-ios-demos.sh not found at $SCRIPT — GeneratedScenes.swift may be stale.\"\n  exit 0\nfi\nbash \"$SCRIPT\"\n";
+		};
 		A60000010000000000000003 /* Validate store secrets */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -600,6 +708,49 @@
 				C10000000000000000000051 /* CreditsSheet.swift in Sources */,
 				C10000000000000000000060 /* AppStoreUpdater.swift in Sources */,
 				C10000000000000000000061 /* UpdateBanner.swift in Sources */,
+				7E28E9DEA941B656301CDA67 /* DemoScene.swift in Sources */,
+				F962AD205078EAFC5201865B /* AnimationScene.swift in Sources */,
+				96C00DAEDB204FF3E420ED1B /* ArAugmentedFacesScene.swift in Sources */,
+				3DC54357982F78B8C2E02FC8 /* ArCloudAnchorsScene.swift in Sources */,
+				88B30D69A8295299DB46B027 /* ArDepthOcclusionScene.swift in Sources */,
+				F8F105D8987BA5BE425F235B /* ArEisScene.swift in Sources */,
+				0556583EF5AF44854433ED30 /* ArImageTrackingScene.swift in Sources */,
+				AB01222A63039941E8E2398B /* ArInstantPlacementScene.swift in Sources */,
+				5E207E2F7A55D2D96DBD1814 /* ArLightingScene.swift in Sources */,
+				E3564B14080F27209FF35DC5 /* ArOrbitalScene.swift in Sources */,
+				50708BAB945D780C4BB6300A /* ArPlacementScene.swift in Sources */,
+				D173BD9A8BA6B6CAB5E32796 /* ArPosePlacementScene.swift in Sources */,
+				AFB627071014C9E0F4C577BC /* ArRecordingScene.swift in Sources */,
+				A6AA5F59463038402CB1B9CF /* ArRerunScene.swift in Sources */,
+				4D7BABB3B6EF11E48A1622BF /* ArRooftopAnchorsScene.swift in Sources */,
+				AEF19CE1A2D316F8EC29748A /* ArStreetscapeScene.swift in Sources */,
+				D514B18E4CCB2105995036DC /* ArTerrainAnchorsScene.swift in Sources */,
+				935E1D835EF073D4BF37115D /* BillboardScene.swift in Sources */,
+				20ECEDB5700B0025654413E5 /* CameraControlsScene.swift in Sources */,
+				142DB7943F0D5AAC072D8C3D /* CollisionHitTestScene.swift in Sources */,
+				4174B93766B7BD3B8D98783F /* CustomMeshScene.swift in Sources */,
+				BD016517EAC148510B51E258 /* DoublePendulumScene.swift in Sources */,
+				CDDC40367454570BA7AF147F /* DynamicSkyScene.swift in Sources */,
+				FED589255E75D35A9DACBA0A /* FogScene.swift in Sources */,
+				A8F7A49A69BCF88DD6C97314 /* GeometryScene.swift in Sources */,
+				0FE3731854F188786E79ED57 /* GestureEditingScene.swift in Sources */,
+				4B652988C6421C693CCF45A4 /* ImageScene.swift in Sources */,
+				A25E3658944E30160600F6B7 /* LightTypesScene.swift in Sources */,
+				B6101BF6825F0337CEC97910 /* LinesPathsScene.swift in Sources */,
+				D215E74EDFD5224A0D611C49 /* MaterialsScene.swift in Sources */,
+				63639070635D8E5F607E8E11 /* ModelViewerScene.swift in Sources */,
+				7F3779F3EAE0CB8A8E2163A8 /* MovableLightScene.swift in Sources */,
+				C6718D6992125E496CA5E387 /* MultiModelScene.swift in Sources */,
+				BEA1469B6B63E6A1C636864B /* PhysicsScene.swift in Sources */,
+				2EDA814DF8E000720E47B6D0 /* PostProcessingScene.swift in Sources */,
+				D5304A7821A99E09C8746927 /* ReflectionProbesScene.swift in Sources */,
+				922DE8B725A90B5B9D794809 /* SceneGalleryScene.swift in Sources */,
+				A082675FB1DC8B7A933C3EB0 /* SecondaryCameraScene.swift in Sources */,
+				DD3FF7C0836D9DD90C767D6D /* ShapeExtrudeScene.swift in Sources */,
+				A3BAB0EC281F966421D8019A /* SpatialAudioScene.swift in Sources */,
+				1CFD879D196F1D23142D7ACD /* TextScene.swift in Sources */,
+				A928A0266FD0B8196F11DF4A /* VideoTextureScene.swift in Sources */,
+				9D72C9CAE331B90315010DC3 /* ViewNodeScene.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

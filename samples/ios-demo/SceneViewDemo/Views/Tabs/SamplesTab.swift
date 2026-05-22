@@ -12,7 +12,11 @@ import SceneViewSwift
 ///
 /// A `3D / AR` filter chip at the top filters the visible categories.
 struct SamplesTab: View {
-    private let scenes: [DemoItem] = Self.allScenes()
+    // Lazy initialization on first access so the @MainActor constraint of
+    // GeneratedScenes.all() is satisfied — View init runs on the main actor
+    // but Swift requires the @MainActor annotation at the call site for
+    // nonisolated stored property defaults.
+    @State private var scenes: [DemoItem] = []
 
     @State private var selectedScene: DemoItem?
     @State private var fullScreenScene: DemoItem?
@@ -68,6 +72,11 @@ struct SamplesTab: View {
                 .padding(.bottom, 24)
             }
             .navigationTitle("Samples")
+            .onAppear {
+                if scenes.isEmpty {
+                    scenes = Self.allScenes()
+                }
+            }
             .sheet(item: $selectedScene) { scene in
                 sheetDestination(for: scene)
                     #if os(iOS)
@@ -206,218 +215,16 @@ struct SamplesTab: View {
 
     // MARK: - Scene catalog
 
+    /// Returns all demos, sourced from the append-only `GeneratedScenes` registry.
+    ///
+    /// To add a demo, create a `*Scene.swift` file under
+    /// `Views/Demos/Scenes/` and run (or let Xcode run)
+    /// `samples/ios-demo/scripts/collate-ios-demos.sh`. No other file
+    /// needs to be edited — this function delegates entirely to the
+    /// generated aggregate (issue #1872).
+    @MainActor
     private static func allScenes() -> [DemoItem] {
-        // Category + per-demo category assignment mirror Android's
-        // `DemoRegistry.ALL_DEMOS` (`samples/android-demo/.../DemoRegistry.kt`)
-        // verbatim — see #1377.
-        var items: [DemoItem] = [
-            // MARK: 3D Basics
-
-            DemoItem(title: "Model Viewer", icon: "cube.transparent.fill", subtitle: "Load and display 3D models", category: .basics3D) {
-                ModelViewerDemo()
-            },
-            DemoItem(title: "Geometry Primitives", icon: "cube.fill", subtitle: "Cube, sphere, cylinder, cone, plane", category: .basics3D) {
-                GeometryDemo()
-            },
-            DemoItem(title: "Animation", icon: "figure.run", subtitle: "Play, pause, and control animations", category: .basics3D) {
-                AnimationDemo()
-            },
-            DemoItem(title: "Multi-Model Scene", icon: "tree.fill", subtitle: "Multiple models in one scene", category: .basics3D) {
-                MultiModelDemo()
-            },
-            DemoItem(title: "Scene Gallery", icon: "square.grid.3x3.fill", subtitle: "Themed Sketchfab bundles streamed on demand", category: .basics3D) {
-                SceneGalleryDemo()
-            },
-
-            // MARK: Lighting & Environment
-
-            DemoItem(title: "Light Types", icon: "lightbulb.fill", subtitle: "Directional, point, and spot lights", category: .lighting) {
-                LightingDemo()
-            },
-            DemoItem(title: "Movable Light", icon: "sun.dust.fill", subtitle: "Drag to orbit the light around the model", category: .lighting) {
-                MovableLightDemo()
-            },
-            DemoItem(title: "Dynamic Sky", icon: "sun.horizon.fill", subtitle: "Time-of-day sun simulation", category: .lighting) {
-                DynamicSkyDemo()
-            },
-            DemoItem(title: "Fog", icon: "cloud.fog.fill", subtitle: "Linear and exponential fog", category: .lighting) {
-                FogDemo()
-            },
-
-            // MARK: Content
-
-            DemoItem(title: "3D Text", icon: "textformat", subtitle: "Extruded text with styles and sizes", category: .content) {
-                TextDemo()
-            },
-            DemoItem(title: "Lines & Paths", icon: "point.topleft.down.to.point.bottomright.curvepath", subtitle: "Polylines, helix, grids, and circles", category: .content) {
-                LinesPathsDemo()
-            },
-            DemoItem(title: "Image Planes", icon: "photo.fill", subtitle: "Image planes in 3D space", category: .content) {
-                ImageDemo()
-            },
-            DemoItem(title: "Billboard", icon: "person.fill.viewfinder", subtitle: "Labels that face the camera", category: .content) {
-                BillboardDemo()
-            },
-            DemoItem(
-                comingSoonTitle: "Video Texture",
-                icon: "video.fill",
-                subtitle: "Video playback on a 3D surface",
-                category: .content
-            ),
-
-            // MARK: Interaction
-            // CameraControlsDemo ships here with the full 3-way mode picker
-            // (orbit / pan / firstPerson) since v4.3.0 (#1034). Gesture-editing
-            // demos below are still pending iOS port.
-
-            DemoItem(title: "Camera Controls", icon: "camera.fill", subtitle: "Orbit, pan, and free camera modes", category: .interaction) {
-                CameraControlsDemo()
-            },
-            DemoItem(
-                comingSoonTitle: "Gesture Editing",
-                icon: "hand.pinch.fill",
-                subtitle: "Move, scale, and rotate with gestures",
-                category: .interaction
-            ),
-            DemoItem(
-                comingSoonTitle: "Collision & Hit Test",
-                icon: "capsule.fill",
-                subtitle: "Hit testing and collision detection",
-                category: .interaction
-            ),
-            DemoItem(
-                comingSoonTitle: "ViewNode",
-                icon: "rectangle.stack.fill",
-                subtitle: "Native UI embedded in 3D space",
-                category: .interaction
-            ),
-
-            // MARK: Advanced
-
-            DemoItem(title: "PBR Materials", icon: "paintpalette.fill", subtitle: "PBR metallic and roughness spectrum", category: .advanced) {
-                MaterialsDemo()
-            },
-            DemoItem(title: "Physics", icon: "figure.walk", subtitle: "Gravity, collisions, and rigid bodies", category: .advanced) {
-                PhysicsDemo()
-            },
-            DemoItem(title: "Double Pendulum", icon: "waveform.path", subtitle: "Chaotic two-link physics, shared KMP simulation", category: .advanced) {
-                DoublePendulumDemo()
-            },
-            DemoItem(title: "Custom Mesh", icon: "diamond.fill", subtitle: "Custom vertex and index buffers", category: .advanced) {
-                CustomMeshDemo()
-            },
-            DemoItem(title: "Spatial Audio", icon: "speaker.wave.3.fill", subtitle: "Positional 3D audio with distance falloff", category: .advanced) {
-                SpatialAudioDemo()
-            },
-            DemoItem(
-                comingSoonTitle: "Post Processing",
-                icon: "sparkles",
-                subtitle: "SSAO, anti-aliasing, and tone mapping",
-                category: .advanced
-            ),
-            DemoItem(
-                comingSoonTitle: "Shape Extrude",
-                icon: "scribble.variable",
-                subtitle: "Extrude 2D polygons into 3D meshes",
-                category: .advanced
-            ),
-            DemoItem(
-                comingSoonTitle: "Reflection Probes",
-                icon: "circle.lefthalf.filled",
-                subtitle: "Local cubemap reflections",
-                category: .advanced
-            ),
-            DemoItem(
-                comingSoonTitle: "Secondary Camera (PiP)",
-                icon: "pip.fill",
-                subtitle: "Picture-in-picture camera view",
-                category: .advanced
-            ),
-        ]
-
-        // MARK: AR -- iOS only platform-wise; most features still ported from Android
-        #if os(iOS)
-        items.append(contentsOf: [
-            DemoItem(title: "Rerun Debug", icon: "antenna.radiowaves.left.and.right", subtitle: "Stream camera pose and planes to the Rerun viewer", category: .ar) {
-                RerunDebugDemo()
-            },
-            DemoItem(title: "Orbital AR", icon: "circle.dotted", subtitle: "Models orbit around you in a personal solar system", category: .ar) {
-                OrbitalARDemo()
-            },
-            DemoItem(title: "AR Recording", icon: "record.circle", subtitle: "Capture the AR session as a screen video (record-only on iOS)", category: .ar) {
-                ARRecorderDemo()
-            },
-            DemoItem(title: "AR Lighting", icon: "lightbulb.max.fill", subtitle: "Compare .mainLight / .fillLight modifier presets", category: .ar) {
-                ARLightingDemo()
-            },
-            DemoItem(title: "Tap to Place", icon: "arkit", subtitle: "Tap a detected plane to place a model", category: .ar) {
-                ARPlacementDemo()
-            },
-            DemoItem(
-                comingSoonTitle: "Image Tracking",
-                icon: "viewfinder.circle.fill",
-                subtitle: "Detect and track reference images",
-                category: .ar
-            ),
-            DemoItem(
-                comingSoonTitle: "Augmented Faces",
-                icon: "face.smiling.inverse",
-                subtitle: "Face mesh tracking and overlays",
-                category: .ar
-            ),
-            DemoItem(
-                comingSoonTitle: "Cloud Anchors",
-                icon: "icloud.fill",
-                subtitle: "Persistent multi-user anchors",
-                category: .ar
-            ),
-            DemoItem(
-                comingSoonTitle: "Streetscape Geometry",
-                icon: "map.fill",
-                subtitle: "Geospatial building and terrain meshes",
-                category: .ar
-            ),
-            DemoItem(
-                comingSoonTitle: "Pose Placement",
-                icon: "move.3d",
-                subtitle: "Free pose positioning",
-                category: .ar
-            ),
-            // "AR Record & Playback" coming-soon entry dropped in #1378 — it
-            // duplicated the shipped "AR Recording" demo above. ARKit does not
-            // expose ARCore-style session replay, so the iOS demo ships
-            // record-only and does not promise a playback feature.
-            DemoItem(
-                comingSoonTitle: "Depth Occlusion",
-                icon: "square.3.layers.3d.down.right",
-                subtitle: "Real-world depth masks virtual objects",
-                category: .ar
-            ),
-            DemoItem(title: "Instant Placement", icon: "bolt.fill", subtitle: "Place models before plane detection converges", category: .ar) {
-                ARInstantPlacementDemo()
-            },
-            DemoItem(
-                comingSoonTitle: "Terrain Anchors",
-                icon: "mountain.2.fill",
-                subtitle: "Anchor models on geospatial terrain",
-                category: .ar
-            ),
-            DemoItem(
-                comingSoonTitle: "Rooftop Anchors",
-                icon: "house.fill",
-                subtitle: "Anchor models on geospatial rooftops",
-                category: .ar
-            ),
-            DemoItem(
-                comingSoonTitle: "Image Stabilization (EIS)",
-                icon: "camera.metering.matrix",
-                subtitle: "EIS for smoother AR camera feed",
-                category: .ar
-            ),
-        ])
-        #endif
-
-        return items
+        GeneratedScenes.all()
     }
 }
 
