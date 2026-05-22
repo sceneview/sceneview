@@ -27,6 +27,7 @@ import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.ErrorScrim
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.sketchfab.SampleAssets
@@ -194,6 +195,7 @@ fun SceneGalleryDemo(onBack: () -> Unit) {
                 engine = engine,
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
+                environment = rememberModelDemoEnvironment(environmentLoader),
                 cameraManipulator = cameraManipulator,
             ) {
                 val instance = modelInstance

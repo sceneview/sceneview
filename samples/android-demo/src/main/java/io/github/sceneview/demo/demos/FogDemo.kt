@@ -33,9 +33,11 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.LoadingScrim
+import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.node.FogNode
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberView
@@ -71,6 +73,7 @@ fun FogDemo(onBack: () -> Unit) {
 
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
     val view = rememberView(engine)
     val modelInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
 
@@ -155,6 +158,8 @@ fun FogDemo(onBack: () -> Unit) {
                 onFrame = firstFrame.onFrame,
                 engine = engine,
                 modelLoader = modelLoader,
+                environmentLoader = environmentLoader,
+                environment = rememberModelDemoEnvironment(environmentLoader),
                 view = view,
                 cameraManipulator = cameraManipulator,
             ) {
