@@ -508,7 +508,10 @@ jobs:
     # (patch), AND `4.3.10` (would slip past a naive `endsWith('.0')`
     # check). The gate is computed via bash regex on `VERSION_NAME` in
     # the build job's `is_minor_bump` output.
-    if: needs.build.outputs.is_minor_bump == 'true'
+    # Also run on `workflow_dispatch` so a manual trigger can force a
+    # listing refresh (e.g. to push new screenshots/feature-graphic) without
+    # waiting for the next minor release.
+    if: needs.build.outputs.is_minor_bump == 'true' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout (for distribution/play-store/* files)
         uses: actions/checkout@v6
