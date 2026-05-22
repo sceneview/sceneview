@@ -50,7 +50,7 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: ar-recording
       DEMO_NAME: AR Recording
-      ASSERT_TEXT: "AR requires a physical device"
+      ASSERT_TEXT: "AR recording is device-only"
 - runFlow:
     file: flows/ar-demo.yaml
     env:
