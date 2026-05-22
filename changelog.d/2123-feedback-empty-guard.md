@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+- **Feedback (Android demo):** detect emulator in `FeedbackContext` (`isEmulator` flag). The review screen now shows a warning hint when submitting from an emulator without a typed note, since emulator mics are silent and Whisper returns an empty transcript. (#2123)
+- **Feedback (worker):** the GitHub issue body now explains *why* there is no transcript when both transcript and typed text are empty: emulator submissions get a specific "no physical mic" message; other silent-audio cases get a generic explanation. A maintainer note is added to avoid confusion when an issue has no actionable content. (#2123)

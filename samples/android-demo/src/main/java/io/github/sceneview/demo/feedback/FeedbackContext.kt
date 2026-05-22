@@ -7,6 +7,27 @@ import io.github.sceneview.demo.BuildConfig
 import java.util.Locale
 
 /**
+ * Detects whether the app is running on an Android emulator.
+ *
+ * Emulators have no real microphone — the audio track captured by the
+ * feedback recorder will be silent and Whisper will return an empty
+ * transcript. This is used to annotate the GitHub issue body so a maintainer
+ * understands why no transcript is available (#2123).
+ */
+internal fun isEmulator(): Boolean =
+    Build.FINGERPRINT.startsWith("generic") ||
+        Build.FINGERPRINT.contains("emulator") ||
+        Build.MODEL.contains("Emulator") ||
+        Build.MODEL.contains("Android SDK built for") ||
+        Build.MANUFACTURER.contains("Genymotion") ||
+        Build.BRAND.startsWith("generic") ||
+        Build.DEVICE.startsWith("generic") ||
+        "google_sdk" == Build.PRODUCT ||
+        Build.PRODUCT.contains("sdk_gphone") ||
+        Build.HARDWARE == "goldfish" ||
+        Build.HARDWARE == "ranchu"
+
+/**
  * Snapshot of device / app context attached to a feedback submission. This is
  * what the maintainer sees in the GitHub issue's context table — it tells them
  * exactly which app build, OS and device the feedback came from.
@@ -36,6 +57,11 @@ fun captureFeedbackContext(
         put("sdkInt", Build.VERSION.SDK_INT.toString())
         put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
         put("locale", Locale.getDefault().toLanguageTag())
+        // Emulator detection — emulators have no real microphone, so Whisper
+        // will receive a silent audio track and return an empty transcript.
+        // The worker reads this flag to annotate the "No transcript available"
+        // message in the GitHub issue body (#2123).
+        if (isEmulator()) put("isEmulator", "true")
         if (freeRamMb != null) put("freeRamMb", freeRamMb.toString())
         // The exact demo the feedback is about, under the `demoId` key the
         // worker recognises (rendered as the named "Demo" row in the issue's

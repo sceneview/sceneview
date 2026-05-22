@@ -286,6 +286,7 @@ fun FeedbackFlow(
                         onStartRecording()
                     },
                     onSend = { send() },
+                    emulator = isEmulator(),
                 )
 
                 else -> when (step) {
@@ -454,7 +455,12 @@ private fun ReviewStep(
     onClose: () -> Unit,
     onRerecord: () -> Unit,
     onSend: () -> Unit,
+    emulator: Boolean = false,
 ) {
+    // On an emulator the audio track is silent — Whisper will return an
+    // empty transcript, so the GitHub issue will have no actionable content
+    // unless the user types a note. Warn if no text yet (#2123).
+    val showEmulatorHint = emulator && note.isBlank()
     FeedbackStepScaffold(
         onClose = onClose,
         actions = {
@@ -488,6 +494,13 @@ private fun ReviewStep(
             placeholder = { Text(stringResource(R.string.feedback_review_note_placeholder)) },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
+            // On an emulator the mic is silent — show a supporting text hint so
+            // the user knows a typed note is needed for the issue to be useful.
+            supportingText = if (showEmulatorHint) {
+                { Text(stringResource(R.string.feedback_review_emulator_hint)) }
+            } else {
+                null
+            },
         )
     }
 }

@@ -121,8 +121,20 @@ export function buildIssue(input: {
   }
 
   if (!transcript.trim() && !text.trim()) {
+    // Provide context about WHY there is no content (#2123).
+    // If the `isEmulator` context flag is set, the mic was definitively silent
+    // (emulators have no physical microphone — Whisper returned nothing).
+    // Otherwise the recording may have captured silence for another reason
+    // (mic permission denied, very quiet room, etc.).
+    const isEmulator = String(context["isEmulator"]) === "true";
+    const noContentReason = isEmulator
+      ? "_No transcript — submitted from an emulator (no physical mic). Whisper received a silent audio track._"
+      : "_No transcript available and no typed description — Whisper may have received a silent audio track, or no audio was captured._";
     lines.push(
-      "_No transcript available — see the recording in the viewer below._",
+      noContentReason,
+      "",
+      "> **Note for maintainers:** there is no actionable content in this submission. " +
+        "The recording (if any) is linked below — check it before closing.",
       "",
     );
   }
