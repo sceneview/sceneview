@@ -438,6 +438,14 @@ jobs:
 
       - name: Publish to Play Store (${{ matrix.track }}) — direct upload
         if: matrix.track == 'internal' || !contains(needs.build.outputs.tracks, '"internal"')
+        # continue-on-error for internal: FGS declaration via service-account Bearer
+        # token is rejected by the Play Console internal API (#2120), so the commit
+        # fails with "You must let us know whether your app uses any Foreground Service
+        # permissions." When that happens the internal upload fails but the workflow
+        # continues — the production promote step falls back to a direct upload with
+        # changesNotSentForReview=true. Once FGS is declared in Play Console the
+        # normal path (internal succeeds → production promotes) resumes automatically.
+        continue-on-error: ${{ matrix.track == 'internal' }}
         uses: r0adkll/upload-google-play@v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
@@ -450,14 +458,6 @@ jobs:
           # The promote step downstream re-reads `releaseNotes` from the source
           # track, so populating internal once propagates to production.
           whatsNewDirectory: ${{ steps.notes.outputs.extracted == 'true' && 'whatsnew' || '' }}
-          # Workaround for #2120: if the FGS declaration step above didn't
-          # persist (service-account Bearer token rejected by the internal API),
-          # edits.commit fails with "You must let us know whether your app uses
-          # any Foreground Service permissions." Setting changesNotSentForReview
-          # defers the policy review gate so the AAB is committed and the bundle
-          # appears in Play Console, allowing Thomas to declare FGS manually and
-          # then send for review from the UI. Remove once FGS is permanently
-          # declared (the Bearer-token step above should handle subsequent runs).
           # changesNotSentForReview is only valid for tracks with deferred
           # review (production/alpha/beta). Internal uses auto-review and
           # rejects this parameter. Conditional on track to avoid the
@@ -516,10 +516,57 @@ jobs:
                   None,
               )
               if not hit:
-                  print(f"[promote] versionCode {CODE} not found on {SOURCE} track — found:")
+                  # Internal upload likely failed due to undeclared FGS (#2120).
+                  # Fall back to a direct upload of the AAB to the target track
+                  # with changesNotSentForReview=true so the deployment still lands.
+                  print(f"[promote] versionCode {CODE} not on {SOURCE} — FGS likely blocked "
+                        f"internal commit. Falling back to direct {TARGET} upload (#2120).")
                   for rel in releases:
                       print(f"  - codes={rel.get('versionCodes')} status={rel.get('status')}")
-                  sys.exit(1)
+
+                  # Abandon the current edit (no changes made yet).
+                  sess.delete(f"{BASE}/edits/{edit_id}")
+
+                  # Open a fresh edit for the direct upload.
+                  r = sess.post(f"{BASE}/edits", json={})
+                  r.raise_for_status()
+                  edit_id = r.json()["id"]
+                  print(f"[promote/fallback] new edit_id={edit_id}")
+
+                  import glob
+                  aab_files = sorted(glob.glob("aab/*.aab"))
+                  if not aab_files:
+                      print("[promote/fallback] ERROR: no AAB in aab/*.aab", file=sys.stderr)
+                      sys.exit(1)
+                  aab_path = aab_files[0]
+                  aab_size = os.path.getsize(aab_path)
+                  print(f"[promote/fallback] uploading {aab_path} ({aab_size // 1024 // 1024} MB)…")
+
+                  upload_url = (
+                      f"https://androidpublisher.googleapis.com/upload/androidpublisher/v3"
+                      f"/applications/{PACKAGE}/edits/{edit_id}/bundles?uploadType=media"
+                  )
+                  with open(aab_path, "rb") as fh:
+                      r = sess.post(upload_url, data=fh,
+                                    headers={"Content-Type": "application/octet-stream"})
+                  r.raise_for_status()
+                  vc = int(r.json()["versionCode"])
+                  print(f"[promote/fallback] uploaded versionCode={vc}")
+
+                  r = sess.put(
+                      f"{BASE}/edits/{edit_id}/tracks/{TARGET}",
+                      json={"releases": [{"name": NAME, "versionCodes": [str(vc)],
+                                          "status": "completed"}]},
+                  )
+                  r.raise_for_status()
+
+                  r = sess.post(f"{BASE}/edits/{edit_id}:commit",
+                                params={"changesNotSentForReview": "true"})
+                  r.raise_for_status()
+                  print(f"[promote/fallback] direct upload to {TARGET} committed with "
+                        f"changesNotSentForReview=true. Declare FGS in Play Console to send for review.")
+                  sys.exit(0)
+
               print(f"[promote] source release codes={hit.get('versionCodes')} status={hit.get('status')} name={hit.get('name')}")
 
               # 3. PATCH the target track with the same release reference. This
