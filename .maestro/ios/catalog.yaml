@@ -20,7 +20,7 @@
 #                                 scene-gallery)
 #     Lighting ............. 4   (lighting, movable-light, dynamic-sky, fog)
 #     Content .............. 4   (text, lines-paths, image, billboard)
-#     Interaction .......... 2   (camera-controls, collision*)
+#     Interaction .......... 2   (camera-controls, collision)
 #     Advanced ............. 9   (physics, double-pendulum, custom-mesh, shape,
 #                                 materials, spatial-audio, post-processing*,
 #                                 reflection-probes*, secondary-camera*)
