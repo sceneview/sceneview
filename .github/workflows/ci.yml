@@ -68,9 +68,21 @@ on:
         type: boolean
         default: false
 
-# Cancel in-progress runs for the same branch/PR to save resources
+# Cancel only a genuinely superseded run, never an unrelated PR's CI (#2089).
+#
+# The old `group: ci-${{ github.ref }}` keyed on `refs/pull/N/merge` for PRs.
+# Merging any PR to `main` makes GitHub recompute EVERY other open PR's merge
+# ref, re-firing their `pull_request` event under the SAME group key — so
+# `cancel-in-progress` killed their in-flight ~30-49 min `Unit tests` job, a
+# cancelled check that left `CI Gate` red and blocked squash auto-merge
+# (bit #2062 and #1818).
+#
+# Keying on the PR HEAD sha instead means a run is cancelled ONLY when a new
+# commit is genuinely pushed to that same PR — a base-ref recompute keeps the
+# head sha unchanged, so other PRs' runs are left alone. `push`/`dispatch`
+# events have no `pull_request` context and fall back to `github.ref`.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.head.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
