@@ -558,61 +558,68 @@ jobs:
           except Exception as e:
               print(f"::warning::Failed to update App Store localization: {e}")
 
-          # 5. Submit for review
-          # If a previous run already POST'd a submission against this same
-          # version record (typical when the #1687 + #1795 absorption
-          # retargets a stranded draft — its old submission stays attached),
-          # a second CREATE returns 403 FORBIDDEN_ERROR with
-          # "Allowed operation is: DELETE". DELETE the existing submission
-          # first so the POST below is idempotent (#1831).
+          # 5. Submit for review via reviewSubmissions (v4 — closes #1831).
           #
-          # Both probe attempts in earlier #1831 versions failed because of
-          # service-account permission limits:
-          #   v1 used `/appStoreVersions/{id}/relationships/...` (404 — not
-          #     exposed by Apple).
-          #   v2 used `/appStoreVersionSubmissions?filter[...]` (403 — not
-          #     permitted for this key) and the related-resource form
-          #     `/appStoreVersions/{id}/appStoreVersionSubmission` (404 —
-          #     ditto when no submission attached, but also when one IS
-          #     attached if the key can't read it directly).
+          # The old `POST /v1/appStoreVersionSubmissions` flow was brittle:
+          # a stale submission attached to an absorbed draft returned 403
+          # "Allowed operation is: DELETE" even when the submission couldn't
+          # be retrieved via GET (all three probe variants tried in v1–v3
+          # returned 404 or 403 from the service account). The new
+          # `reviewSubmissions` API (App Store Connect API v3, 2023+) avoids
+          # the problem entirely — it creates a fresh review request,
+          # independently of any legacy appStoreVersionSubmission state.
           #
-          # v3 uses Apple-standard JSON:API `include`: the initial GET of
-          # the appStoreVersions list (above) passes
-          # `&include=appStoreVersionSubmission`, which embeds the linked
-          # submission's `id` inside the version's `relationships` block.
-          # No extra round-trip, no probe endpoint required.
-          existing_sub_id = None
-          if matched_version:
-              try:
-                  rel = matched_version.get("relationships", {}).get("appStoreVersionSubmission", {})
-                  data = rel.get("data")
-                  if isinstance(data, dict):
-                      existing_sub_id = data.get("id")
-              except Exception as e:
-                  print(f"::warning::Failed to read submission relationship from version record: {e}")
-          if existing_sub_id:
-              try:
-                  d = requests.delete(f"{BASE}/appStoreVersionSubmissions/{existing_sub_id}", headers=headers)
-                  if d.status_code in (200, 204):
-                      print(f"Deleted stale submission {existing_sub_id} before re-creating")
-                  else:
-                      print(f"::warning::Stale submission {existing_sub_id} DELETE returned {d.status_code} - {d.text[:200]} — CREATE may still 403")
-              except Exception as e:
-                  print(f"::warning::DELETE of stale submission {existing_sub_id} failed: {e}")
-          else:
-              print("No stale appStoreVersionSubmission attached — proceeding with fresh CREATE")
-
-          payload = {
-              "data": {
-                  "type": "appStoreVersionSubmissions",
-                  "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}}}
+          # Flow: POST /v1/reviewSubmissions (IOS) →
+          #       POST /v1/reviewSubmissionItems (attach version) →
+          #       PATCH /v1/reviewSubmissions/{id} {submitted: true}
+          try:
+              # Create review submission
+              rs_payload = {
+                  "data": {
+                      "type": "reviewSubmissions",
+                      "attributes": {"platform": "IOS"},
+                      "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}
+                  }
               }
-          }
-          r = requests.post(f"{BASE}/appStoreVersionSubmissions", headers=headers, json=payload)
-          if r.status_code in (200, 201):
-              print("Successfully submitted for App Store review!")
-          else:
-              print(f"Submission response: {r.status_code} - {r.text[:500]}")
+              rs = requests.post(f"{BASE}/reviewSubmissions", headers=headers, json=rs_payload)
+              if rs.status_code not in (200, 201):
+                  print(f"::error::reviewSubmissions CREATE failed: {rs.status_code} {rs.text[:300]}")
+                  raise SystemExit(1)
+              rs_id = rs.json()["data"]["id"]
+              print(f"Created reviewSubmission {rs_id}")
+
+              # Add version to submission
+              item_payload = {
+                  "data": {
+                      "type": "reviewSubmissionItems",
+                      "relationships": {
+                          "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": rs_id}},
+                          "appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}}
+                      }
+                  }
+              }
+              ri = requests.post(f"{BASE}/reviewSubmissionItems", headers=headers, json=item_payload)
+              if ri.status_code not in (200, 201):
+                  print(f"::error::reviewSubmissionItems CREATE failed: {ri.status_code} {ri.text[:300]}")
+                  raise SystemExit(1)
+              print(f"Added version {version_id} to review submission")
+
+              # Submit for review
+              patch_payload = {
+                  "data": {
+                      "id": rs_id,
+                      "type": "reviewSubmissions",
+                      "attributes": {"submitted": True}
+                  }
+              }
+              rp = requests.patch(f"{BASE}/reviewSubmissions/{rs_id}", headers=headers, json=patch_payload)
+              if rp.status_code in (200, 201):
+                  state = rp.json()["data"]["attributes"].get("state", "?")
+                  print(f"Successfully submitted for App Store review! State: {state}")
+              else:
+                  print(f"Submission PATCH response: {rp.status_code} - {rp.text[:300]}")
+          except SystemExit:
+              print("::warning::App Store review submission failed (non-fatal, see errors above)")
           PYEOF
         continue-on-error: true
 
