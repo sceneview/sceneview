@@ -276,6 +276,13 @@ jobs:
           name: sceneview-site
           path: site
           retention-days: 1
+          # Include dot-prefixed directories (e.g. `.well-known/`) in the
+          # artifact. By default upload-artifact@v4+ uses @actions/glob which
+          # excludes hidden files/dirs, so `.well-known/assetlinks.json` and
+          # `apple-app-site-association` would be silently stripped from the
+          # archive — causing the DEPLOY job's patch step to error with
+          # "site/.well-known/assetlinks.json missing" (#2155).
+          include-hidden-files: true
 
   deploy:
     name: Deploy to sceneview.github.io
