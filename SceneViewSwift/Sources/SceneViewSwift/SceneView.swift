@@ -391,12 +391,22 @@ private final class SceneEntities: ObservableObject {
         // from every entity in this scene's subtree when the scene's
         // `SceneEntities` is released breaks that cycle, so the content
         // entities and their resources deallocate with the scene instead
-        // of leaking for the process lifetime. `deinit` of a non-Sendable
-        // class runs on whatever thread released the last reference, but
-        // `removeAllHandlers(under:)` only mutates RealityKit components
-        // and SwiftUI tears `@StateObject`s down on the main actor.
-        MainActor.assumeIsolated {
+        // of leaking for the process lifetime.
+        //
+        // `deinit` of a non-`@MainActor` class runs on whatever thread
+        // released the last reference. `MainActor.assumeIsolated` traps
+        // the process if called off-main (#2068). In practice SwiftUI
+        // tears `@StateObject`s down on the main actor, but that is not a
+        // hard Apple contract. Guard with `Thread.isMainThread`: if we are
+        // already on main, call directly (same as `assumeIsolated`); if not,
+        // dispatch synchronously so the handler components are stripped
+        // before `self` is fully deallocated — no task, no heap escape.
+        if Thread.isMainThread {
             NodeGesture.removeAllHandlers(under: root)
+        } else {
+            DispatchQueue.main.sync {
+                NodeGesture.removeAllHandlers(under: root)
+            }
         }
     }
 }
