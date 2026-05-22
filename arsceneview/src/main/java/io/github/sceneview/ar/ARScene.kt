@@ -622,6 +622,26 @@ fun ARSceneView(
      */
     onPlaybackFailed: ((exception: Exception) -> Unit)? = null,
     /**
+     * Fires when a requested AR session capability is **not supported on the device** and
+     * SceneView silently downgraded it to a working fallback (#2096).
+     *
+     * Several `Config` knobs are support-gated inside the session pipeline — e.g. an unsupported
+     * [depthMode] is reconfigured to [Config.DepthMode.DISABLED], and a [sessionCameraConfig]
+     * selector returning a config absent from
+     * [Session.getSupportedCameraConfigs][com.google.ar.core.Session.getSupportedCameraConfigs]
+     * is ignored in favour of ARCore's default. That keeps the app running on every device, but
+     * without this callback the consumer has no way to detect that its request was not honoured —
+     * behaviour silently diverges across devices.
+     *
+     * Each callback delivers an [ARConfigDowngrade] subtype carrying both the `requested` and the
+     * `effective` value, so the app can adapt its UI (hide an occlusion toggle, warn the user,
+     * report to analytics). It fires once per downgrade detected, right after the session is
+     * configured at creation time, on the main thread (consistent with the sibling
+     * `onSession*` callbacks). When `null` (default) downgrades stay silent — the callback is
+     * purely additive and non-breaking.
+     */
+    onConfigDowngraded: ((downgrade: ARConfigDowngrade) -> Unit)? = null,
+    /**
      * Updates of the state of the ARCore system.
      * Invoked once per [Frame] immediately before the Scene is updated.
      */
@@ -675,6 +695,7 @@ fun ARSceneView(
     val onSessionFailedRef = remember { AtomicReference(onSessionFailed) }
     val onSessionFailureRef = remember { AtomicReference(onSessionFailure) }
     val onPlaybackFailedRef = remember { AtomicReference(onPlaybackFailed) }
+    val onConfigDowngradedRef = remember { AtomicReference(onConfigDowngraded) }
     val onSessionUpdatedRef = remember { AtomicReference(onSessionUpdated) }
     val onTrackingFailureChangedRef = remember { AtomicReference(onTrackingFailureChanged) }
     val sessionConfigurationRef = remember { AtomicReference(sessionConfiguration) }
@@ -702,6 +723,7 @@ fun ARSceneView(
         onSessionFailedRef.set(onSessionFailed)
         onSessionFailureRef.set(onSessionFailure)
         onPlaybackFailedRef.set(onPlaybackFailed)
+        onConfigDowngradedRef.set(onConfigDowngraded)
         onSessionUpdatedRef.set(onSessionUpdated)
         onTrackingFailureChangedRef.set(onTrackingFailureChanged)
         sessionConfigurationRef.set(sessionConfiguration)
@@ -842,7 +864,12 @@ fun ARSceneView(
                 }
                 bindFile()
                 bindUri()
-                sessionCameraConfigRef.get()?.let { session.cameraConfig = it(session) }
+                // Capture the requested camera config + depth mode so that — once the session is
+                // configured — we can diff them against the values ARCore actually applied and
+                // surface any silent support-gated downgrade to `onConfigDowngraded` (#2096).
+                val requestedCameraConfig = sessionCameraConfigRef.get()?.invoke(session)
+                requestedCameraConfig?.let { session.cameraConfig = it }
+                val requestedDepthMode = depthModeRef.get()
                 session.configure { config ->
                     // Apply the typed `*Mode` params (#1766) BEFORE the user callback so the
                     // callback still wins. Each param defaults to ARCore's recommended value
@@ -867,7 +894,7 @@ fun ARSceneView(
                         ?: Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     // depthMode support-gating is already centralised inside ArSession.configure
                     // (auto-downgrades unsupported requests to DISABLED).
-                    config.depthMode = depthModeRef.get() ?: Config.DepthMode.DISABLED
+                    config.depthMode = requestedDepthMode ?: Config.DepthMode.DISABLED
                     config.instantPlacementMode = instantPlacementModeRef.get()
                         ?: Config.InstantPlacementMode.DISABLED
                     config.geospatialMode = geospatialModeRef.get() ?: Config.GeospatialMode.DISABLED
@@ -881,6 +908,18 @@ fun ARSceneView(
                     config.semanticMode = semanticModeRef.get() ?: Config.SemanticMode.DISABLED
                     config.focusMode = focusModeRef.get() ?: Config.FocusMode.AUTO
                     sessionConfigurationRef.get()?.invoke(session, config)
+                }
+                // Surface any silent support-gated downgrade (#2096). The session has just been
+                // configured: diff the requested camera config / depth mode against what ARCore
+                // actually applied and notify the consumer once per downgrade. Runs on the same
+                // (main) thread as the sibling `onSessionCreated` dispatch below.
+                onConfigDowngradedRef.get()?.let { onDowngraded ->
+                    detectConfigDowngrades(
+                        requestedDepthMode = requestedDepthMode,
+                        effectiveDepthMode = session.config.depthMode,
+                        requestedCameraConfig = requestedCameraConfig,
+                        effectiveCameraConfig = session.cameraConfig
+                    ).forEach(onDowngraded)
                 }
                 cameraStream?.let { scene.addEntity(it.entity) }
                 onSessionCreatedRef.get()?.invoke(session)
