@@ -70,7 +70,7 @@ jobs:
   # ~2 min instead of the ~50 min full build+upload cycle.
   commit-edit:
     name: Commit preserved edit (FGS fast-path)
-    if: github.event.inputs.commit_edit_id != ''
+    if: github.event.inputs.commit_edit_id
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
