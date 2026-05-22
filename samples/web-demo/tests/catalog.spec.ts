@@ -16,10 +16,11 @@ import {
  *
  * Slice 3 of the autonomous device-QA harness (umbrella #1560, issue #1564).
  *
- * The shipped web demo (`site/index.html`) is a self-contained
- * single-file app with four catalog tabs: Models, Geometry, Physics, Settings.
- * (The umbrella's "8 tabs" figure predates a check of the real demo — the
- * web-demo has 4 tabs; this suite covers all of them and every demo within.)
+ * The shipped web demo (`site/index.html`) is a self-contained single-file app
+ * with nine catalog tabs: Models, Geometry, Lighting, Animation, Text,
+ * Environment, Physics, Spatial Audio, Settings. This suite covers all of them
+ * and every demo within. (The Spatial Audio panel additionally has a dedicated
+ * Web Audio API regression suite in `audio.spec.ts` — issue #1944.)
  *
  * Each test:
  *  - switches the relevant tab,
@@ -58,6 +59,7 @@ import {
 async function assertRendered(
   page: import('@playwright/test').Page,
   context: string,
+  region: 'centre' | 'full' = 'centre',
 ): Promise<void> {
   // Let Filament render a few frames after the interaction settled.
   await page.waitForTimeout(1500);
@@ -65,8 +67,10 @@ async function assertRendered(
   await assertCanvasContextAlive(page, context);
   // 2. Compositor screenshot must show non-flat pixels — catches the
   //    blank/black-canvas regression class that the old soft-warn missed
-  //    (issue #1593).
-  const { hasContent, headlessGpuOk } = await sampleCanvas(page);
+  //    (issue #1593). `region` is 'centre' for tightly-framed scenes and
+  //    'full' for scenes whose auto-frame legitimately off-centres the subject
+  //    (the skinned-model Animation tab) — both are equally hard signals.
+  const { hasContent, headlessGpuOk } = await sampleCanvas(page, region);
   expect(
     headlessGpuOk,
     `[${context}] cannot sample canvas — element missing or zero-sized`,
@@ -175,6 +179,161 @@ test.describe('Web Demo — catalog coverage', () => {
     expectNoPageErrors(diag, 'Geometry tab — clear');
   });
 
+  // One test per light type: adding a Filament light rebuilds the lighting
+  // pipeline and forces a re-render, so each is a heavy WebGL-interaction pass.
+  // Splitting per type gives every light its own `test.slow()` budget on
+  // GPU-less CI runners (#1560, #2099).
+  for (const light of ['directional', 'point', 'spot']) {
+    test(`Lighting tab — ${light} light adds, recolours and renders`, async ({ page }) => {
+      test.slow();
+      const diag = captureDiagnostics(page);
+      await page.goto('/');
+      await waitForEngineReady(page);
+      await switchTab(page, 'lighting');
+
+      // Tweak intensity + colour before adding.
+      const intensity = page.locator(`[data-light-intensity="${light}"]`);
+      await intensity.focus();
+      await page.keyboard.press('ArrowRight');
+      await page.locator(`[data-light-color="${light}"]`).evaluate((el: HTMLInputElement) => {
+        el.value = '#ff8800';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+
+      await page.locator(`.geo-add-btn[data-light="${light}"]`).click();
+      await page.waitForTimeout(600);
+      await dragCanvas(page);
+      await assertRendered(page, `Lighting tab — ${light}`);
+
+      expectNoPageErrors(diag, `Lighting tab — ${light}`);
+    });
+  }
+
+  test('Lighting tab — Remove Added Lights does not throw', async ({ page }) => {
+    test.slow();
+    const diag = captureDiagnostics(page);
+    await page.goto('/');
+    await waitForEngineReady(page);
+    await switchTab(page, 'lighting');
+
+    // Add one light so the clear has something to remove.
+    await page.locator('.geo-add-btn[data-light="point"]').click();
+    await page.waitForTimeout(600);
+    await page.locator('#light-clear').click();
+    await page.waitForTimeout(500);
+
+    expectNoPageErrors(diag, 'Lighting tab — clear');
+  });
+
+  test('Animation tab — animated model plays, loops and stops', async ({ page }) => {
+    // Loads a skinned glTF model + drives keyframe animation — a heavy WebGL
+    // pass that overruns the default budget on software-rasterised CI (#2099).
+    test.slow();
+    const diag = captureDiagnostics(page);
+    await page.goto('/');
+    await waitForEngineReady(page);
+    await switchTab(page, 'animation');
+
+    // Pick a model, then play it.
+    await page.locator('#anim-model-select').selectOption('animated_dragon.glb');
+    await page.locator('#anim-play').click();
+    // The model is downloaded + parsed + uploaded to WASM before the clip runs.
+    // The Animation panel reports completion through `#anim-status` (not the
+    // shared `#loading-chip`), so wait for the "Playing" status text — a
+    // deterministic signal across a fast local GPU and a slow CI rasteriser.
+    await expect(page.locator('#anim-status')).toContainText('Playing', {
+      timeout: 30_000,
+    });
+    await dragCanvas(page);
+    // The animated-model auto-frame uses the skinned mesh's static rest-pose
+    // bounding box, which legitimately off-centres the subject — sample the
+    // full canvas so a real render still hard-asserts (the demo's animated-model
+    // framing quirk is tracked separately, not by this coverage suite).
+    await assertRendered(page, 'Animation tab — playing', 'full');
+
+    // Stop must not throw and the scene must still be alive.
+    await page.locator('#anim-stop').click();
+    await page.waitForTimeout(500);
+    await assertRendered(page, 'Animation tab — stopped', 'full');
+
+    expectNoPageErrors(diag, 'Animation tab');
+  });
+
+  test('Text tab — 3D text adds, restyles, renders and clears', async ({ page }) => {
+    test.slow();
+    const diag = captureDiagnostics(page);
+    await page.goto('/');
+    await waitForEngineReady(page);
+    await switchTab(page, 'text');
+
+    // Edit the text, recolour and resize before adding.
+    await page.locator('#text-input').fill('Hello SceneView');
+    await page.locator('#text-color').evaluate((el: HTMLInputElement) => {
+      el.value = '#ffcc00';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const size = page.locator('#text-size');
+    await size.focus();
+    await page.keyboard.press('ArrowRight');
+
+    await page.locator('#text-add').click();
+    await page.waitForTimeout(800);
+    await dragCanvas(page);
+    await assertRendered(page, 'Text tab — added');
+
+    // Remove Added Text must not throw.
+    await page.locator('#text-clear').click();
+    await page.waitForTimeout(500);
+
+    expectNoPageErrors(diag, 'Text tab');
+  });
+
+  test('Environment tab — IBL preset, intensity, background and bloom all apply', async ({
+    page,
+  }) => {
+    // Cycling IBL presets rebuilds the indirect-lighting environment, plus
+    // bloom forces a post-process re-render — heavy enough to need the tripled
+    // budget on GPU-less CI runners (#2099).
+    test.slow();
+    const diag = captureDiagnostics(page);
+    await page.goto('/');
+    await waitForEngineReady(page);
+    await switchTab(page, 'environment');
+
+    // IBL preset — cycle every option.
+    for (const preset of ['cool', 'dramatic', 'warm']) {
+      await page.locator('#env-preset').selectOption(preset);
+      await page.waitForTimeout(500);
+    }
+
+    // IBL intensity slider.
+    const intensity = page.locator('#env-intensity');
+    await intensity.focus();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+
+    // Background colour.
+    await page.locator('#env-bg-color').evaluate((el: HTMLInputElement) => {
+      el.value = '#112233';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForTimeout(400);
+
+    // Bloom toggle + strength.
+    await page.locator('#env-bloom-toggle').click();
+    const strength = page.locator('#env-bloom-strength');
+    await strength.focus();
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(500);
+
+    await dragCanvas(page);
+    await assertRendered(page, 'Environment tab');
+    expectNoPageErrors(diag, 'Environment tab');
+  });
+
   test('Physics tab — Double Pendulum runs, sliders + reset work', async ({ page }) => {
     const diag = captureDiagnostics(page);
     await page.goto('/');
@@ -214,6 +373,30 @@ test.describe('Web Demo — catalog coverage', () => {
     await expect(page.locator('#panel-physics')).toHaveClass(/active/);
 
     expectNoPageErrors(diag, 'Physics deep link');
+  });
+
+  test('Spatial Audio tab — orbiting bell scene builds and renders', async ({ page }) => {
+    // The Spatial Audio panel renders a 3D bell that orbits the scene; the
+    // Web Audio graph itself (PannerNode/HRTF) has dedicated coverage in
+    // `audio.spec.ts` (#1944). Here we only assert the catalog tab switches
+    // cleanly and its scene renders — mirroring the other tab tests (#2099).
+    const diag = captureDiagnostics(page);
+    await page.goto('/');
+    await waitForEngineReady(page);
+    await switchTab(page, 'audio');
+
+    // The orbiting-bell scene needs a moment to build.
+    await page.waitForTimeout(1500);
+
+    // Cycle the falloff model — re-seeds the audio attenuation without errors.
+    for (const falloff of ['linear', 'none', 'inverse']) {
+      await page.locator('#audio-falloff').selectOption(falloff);
+      await page.waitForTimeout(300);
+    }
+
+    await dragCanvas(page);
+    await assertRendered(page, 'Spatial Audio tab');
+    expectNoPageErrors(diag, 'Spatial Audio tab');
   });
 
   test('Settings tab — quality, bloom, auto-rotate and background all apply', async ({ page }) => {
@@ -274,7 +457,17 @@ test.describe('Web Demo — catalog coverage', () => {
 
     // Round-trip every tab twice to catch teardown/re-entry leaks
     // (the Physics tab swaps the whole scene in/out — #1503 class of bug).
-    const tabs = ['models', 'geometry', 'physics', 'settings'];
+    const tabs = [
+      'models',
+      'geometry',
+      'lighting',
+      'animation',
+      'text',
+      'environment',
+      'physics',
+      'audio',
+      'settings',
+    ];
     for (let pass = 0; pass < 2; pass++) {
       for (const tab of tabs) {
         await switchTab(page, tab);
