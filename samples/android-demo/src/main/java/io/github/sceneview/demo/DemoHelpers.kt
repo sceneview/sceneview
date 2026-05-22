@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -65,6 +66,67 @@ fun LoadingScrim(loading: Boolean, label: String = "Loading…") {
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
             )
+        }
+    }
+}
+
+/**
+ * Error overlay that covers the 3D viewport when a model fails to resolve or load.
+ *
+ * Streamed demos ([io.github.sceneview.demo.demos.SceneGalleryDemo],
+ * [io.github.sceneview.demo.demos.MaterialsDemo]) used to wrap their
+ * `resolver.resolve()` call in `runCatching { … }.getOrNull()`. On a
+ * `FallbackUnavailable` throw (or any failure) the resolved path stayed `null`
+ * forever and the [LoadingScrim] hung on "Streaming…" with nothing surfaced to
+ * the user (#2088). [ErrorScrim] replaces that dead-end with an honest error
+ * card and a [onRetry] button — the Android counterpart of the iOS demo's
+ * `loadError` state.
+ *
+ * Render it as the last child of the [Box] that wraps the SceneView, mutually
+ * exclusive with [LoadingScrim] (show the error scrim when an error state is
+ * set, the loading scrim otherwise).
+ *
+ * @param message Short human-readable failure reason (e.g. the exception
+ *                message). Shown under the headline.
+ * @param onRetry Invoked when the user taps the retry button — re-trigger the
+ *                resolve/load by clearing the error state.
+ */
+@Composable
+fun ErrorScrim(
+    message: String,
+    onRetry: () -> Unit,
+    label: String = "Couldn't load model",
+    retryLabel: String = "Retry",
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Button(onClick = onRetry) {
+                Text(retryLabel)
+            }
         }
     }
 }

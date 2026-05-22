@@ -24,6 +24,7 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
+import io.github.sceneview.demo.ErrorScrim
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberFirstFrameState
@@ -76,6 +77,11 @@ fun SceneGalleryDemo(onBack: () -> Unit) {
     var selectedIndex by remember { mutableStateOf(0) }
     val selectedSlug = slugs.getOrNull(selectedIndex)
 
+    // Bumped by the error scrim's Retry button. It is a `produceState` key so a
+    // tap re-runs the resolve coroutine for the same slug instead of leaving the
+    // demo stuck on a failed resolution forever (#2088).
+    var retryTick by remember { mutableStateOf(0) }
+
     // Warm every gallery slug in parallel on first frame so chip taps switch
     // instantly after the cold-start download. The resolver is idempotent
     // (cache-hit -> touches lastModified only) so re-running is cheap.
@@ -89,19 +95,26 @@ fun SceneGalleryDemo(onBack: () -> Unit) {
 
     // Resolve the slug to a local file. produceState delegates IO + retries to
     // the resolver; the `key1 = selectedSlug` rebinds the file when the user
-    // picks a new chip without leaking any prior coroutine.
-    val resolvedPath: String? by produceState<String?>(
-        initialValue = null,
+    // picks a new chip without leaking any prior coroutine. A failed resolve is
+    // surfaced as [ResolveState.Error] instead of being swallowed into a `null`
+    // path that hangs the loading scrim forever (#2088). `retryTick` re-runs the
+    // resolve when the user taps Retry.
+    val resolveState: ResolveState by produceState<ResolveState>(
+        initialValue = ResolveState.Loading,
         key1 = resolver,
         key2 = selectedSlug?.uid,
+        key3 = retryTick,
     ) {
-        value = null
+        value = ResolveState.Loading
         val slug = selectedSlug ?: return@produceState
         value = runCatching { resolver.resolve(slug) }
-            .getOrNull()
-            ?.toURI()
-            ?.toString()
+            .fold(
+                onSuccess = { ResolveState.Resolved(it.toURI().toString()) },
+                onFailure = { ResolveState.Error(it.message ?: it.javaClass.simpleName) },
+            )
     }
+    val resolvedPath = (resolveState as? ResolveState.Resolved)?.path
+    val resolveError = (resolveState as? ResolveState.Error)?.message
 
     val modelInstance = resolvedPath?.let { path ->
         // `rememberModelInstance(modelLoader, fileLocation)` accepts a `file://`
@@ -196,10 +209,33 @@ fun SceneGalleryDemo(onBack: () -> Unit) {
                     )
                 }
             }
-            LoadingScrim(
-                loading = modelInstance == null,
-                label = stringResource(R.string.demo_scene_gallery_loading),
-            )
+            // Mutually exclusive with LoadingScrim: a resolve failure shows the
+            // error scrim (with Retry) instead of hanging on "Streaming…" (#2088).
+            if (resolveError != null) {
+                ErrorScrim(
+                    message = resolveError,
+                    onRetry = { retryTick++ },
+                    label = stringResource(R.string.demo_scene_gallery_error),
+                    retryLabel = stringResource(R.string.demo_scene_gallery_retry),
+                )
+            } else {
+                LoadingScrim(
+                    loading = modelInstance == null,
+                    label = stringResource(R.string.demo_scene_gallery_loading),
+                )
+            }
         }
     }
+}
+
+/** Resolution lifecycle for a streamed gallery slug. See [SceneGalleryDemo]. */
+private sealed interface ResolveState {
+    /** Resolve coroutine in flight. */
+    data object Loading : ResolveState
+
+    /** Resolve succeeded — [path] is a `file://` URL ready for the model loader. */
+    data class Resolved(val path: String) : ResolveState
+
+    /** Resolve failed — [message] is a short human-readable reason. */
+    data class Error(val message: String) : ResolveState
 }
