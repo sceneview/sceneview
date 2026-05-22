@@ -18,17 +18,19 @@ Font: Inter (Material Design 3 Expressive)
 
 ## Google Play Store
 
+Assets live in `samples/android-demo/distribution/play-store/en-GB/graphics/` and are synced by `play-store.yml` on every release.
+
 | Asset | Size | Status | Notes |
 |---|---|---|---|
-| App icon (hi-res) | 512x512 PNG | NEEDED | Export from `logo.svg` on blue background |
-| Feature graphic | 1024x500 PNG | NEEDED | Blue gradient bg, cube logo, "SceneView" text, tagline |
-| Phone screenshots (16:9) | 1080x1920 PNG | NEEDED | At least 4, max 8. Show: 3D model viewer, AR placement, Material 3 UI, code snippet overlay |
-| 7" tablet screenshots | 1200x1920 PNG | NEEDED | Same scenes at tablet scale |
-| 10" tablet screenshots | 1600x2560 PNG | NEEDED | Same scenes at tablet scale |
+| App icon (hi-res) | 512x512 PNG | **DONE** | `icon-512.png` — SceneView cube on navy |
+| Feature graphic | 1024x500 PNG | **DONE** | `feature-graphic.png` — cube logo, "SceneView" tagline |
+| Phone screenshots | 1080x2304 PNG | **DONE** | 4 screenshots: 3D viewer, AR, Sketchfab gallery, samples |
+| 7" tablet screenshots | 2560x1440 PNG | **DONE** | 6 Chromebook/tablet landscape screenshots (#2092) |
+| 10" tablet screenshots | 2560x1440 PNG | **DONE** | 6 Chromebook/tablet landscape screenshots (#2092) |
 | TV banner | 1280x720 PNG | NEEDED | For Android TV demo app |
 | TV screenshots | 1920x1080 PNG | NEEDED | At least 3. D-pad navigation, model showcase, rotation |
-| Short description | max 80 chars | DONE | "3D & AR for Jetpack Compose — load models, place objects in AR" |
-| Full description | max 4000 chars | NEEDED | Features, platform support, open source note |
+| Short description | max 80 chars | **DONE** | "3D & AR for Jetpack Compose — load models, place objects in AR" |
+| Full description | max 4000 chars | **DONE** | Synced via `play-store.yml` from `distribution/play-store/en-GB/` |
 
 ### Screenshot content suggestions
 
@@ -47,11 +49,11 @@ Font: Inter (Material Design 3 Expressive)
 
 | Asset | Size | Status | Notes |
 |---|---|---|---|
-| App icon | 1024x1024 PNG | NEEDED | No transparency, no rounded corners (iOS auto-rounds) |
-| 6.7" iPhone screenshots | 1290x2796 PNG | NEEDED | iPhone 15 Pro Max. Min 3, max 10 |
-| 6.1" iPhone screenshots | 1179x2556 PNG | NEEDED | iPhone 15 Pro |
-| iPad Pro 12.9" screenshots | 2048x2732 PNG | NEEDED | 6th gen |
-| iPad Pro 11" screenshots | 1668x2388 PNG | NEEDED | Optional but recommended |
+| App icon | 1024x1024 PNG | **DONE** | Set in Xcode asset catalog (`AppIcon`) |
+| 6.9" iPhone screenshots | 1284x2778 PNG | **DONE** | 4 screenshots uploaded to v4.15.1 draft (#917, #2121) |
+| 6.1" iPhone screenshots | 1179x2556 PNG | OPTIONAL | 6.9" shots used as fallback in ASC |
+| iPad Pro 13" screenshots | 2048x2732 PNG | **DONE** | 4 screenshots uploaded to v4.15.1 draft (#917, #2121) |
+| iPad Pro 11" screenshots | 1668x2388 PNG | OPTIONAL | Optional but recommended |
 | App preview video | 1920x1080 MOV | OPTIONAL | 15-30s showing AR placement |
 
 ### App Store notes
