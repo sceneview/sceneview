@@ -64,4 +64,19 @@ object SketchfabConfig {
 
     /** Maximum cache size on disk, in bytes (500 MB). */
     const val CACHE_MAX_BYTES: Long = 500L * 1024 * 1024
+
+    /**
+     * Subdirectory under `Context.cacheDir` for the OkHttp HTTP response cache
+     * (JSON metadata only — search / feeds / model detail). Kept separate from
+     * [CACHE_DIR_NAME] so the GLB binary LRU and the HTTP LRU don't interfere.
+     */
+    const val HTTP_CACHE_DIR_NAME: String = "sketchfab-http"
+
+    /**
+     * Maximum size of the OkHttp HTTP response cache, in bytes (10 MB). JSON
+     * metadata responses are small; this is sized to comfortably hold many
+     * feed/search pages so a "basic"-plan key hits the network — and its rate
+     * limit — far less often (#2095).
+     */
+    const val HTTP_CACHE_MAX_BYTES: Long = 10L * 1024 * 1024
 }

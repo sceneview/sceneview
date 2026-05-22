@@ -17,10 +17,10 @@ object MaterialsFragment : DemoFragment {
         subtitleRes = R.string.demo_materials_subtitle,
         category = DemoCategory.ADVANCED,
         icon = Icons.Filled.Palette,
-        // Streamed Sketchfab slugs can fail to resolve; the demo now surfaces an
-        // error scrim with Retry rather than hanging, but the model may still be
-        // unavailable, so the grid carries a known-issue chip (#2088).
-        status = DemoStatus.KnownIssue,
+        // The `materials` Sketchfab slugs are now real, validated, downloadable
+        // models (#2095) — the demo streams them successfully and falls back to
+        // bundled assets when offline. The #2088 known-issue chip is removed.
+        status = DemoStatus.Working,
     )
 
     @Composable

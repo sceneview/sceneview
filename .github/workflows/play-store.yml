@@ -170,14 +170,17 @@ jobs:
           ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
         run: bash .claude/scripts/verify-arcore-key.sh
 
-      # Tag pushes only — see #1909. The empty/blank `SKETCHFAB_API_KEY`
-      # secret silently broke the Explore tab's carousels + search for every
-      # Play Store user since v4.11.x. This guard fails the build before the
-      # AAB ships so the same regression is loud at CI time, not silent on
-      # phones. Skipped on `workflow_dispatch` so snapshots / interim builds
-      # can still go to the `internal` track when the secret is being rotated.
-      - name: Verify Sketchfab API key wiring (#1909)
-        if: startsWith(github.ref, 'refs/tags/v')
+      # Runs on every release path — tag pushes AND `workflow_dispatch` —
+      # see #1909, #2095. The empty/blank `SKETCHFAB_API_KEY` secret silently
+      # broke the Explore tab's carousels + search for every Play Store user
+      # since v4.11.x. This guard fails the build before the AAB ships so the
+      # same regression is loud at CI time, not silent on phones.
+      # `workflow_dispatch` interim builds also reach the Play Store (at least
+      # the `internal` track, and `production` when the track input asks for
+      # it), so they must be guarded too — the earlier tag-only gate let a
+      # broken key through any manually dispatched release.
+      - name: Verify Sketchfab API key wiring (#1909, #2095)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         env:
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
         run: bash .claude/scripts/verify-sketchfab-key.sh

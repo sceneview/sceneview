@@ -44,11 +44,11 @@ struct MultiModelDemo: View {
     /// Falls back to category-by-index if a uid is somehow missing.
     private static let slots: [ParkSlot] = {
         let park = SampleAssets.byCategory["park"] ?? []
-        // Indices follow the Android order (tree / bench / dog / bird).
-        let tree = SampleAssets.byUID["1ca42d9da4e62fadcf9eaece7d7c4b3e"] ?? (park.indices.contains(0) ? park[0] : nil)
-        let bench = SampleAssets.byUID["92a4c3ad32c1ca3a3d4f0db8e7a3a8b8"] ?? (park.indices.contains(1) ? park[1] : nil)
-        let dog = SampleAssets.byUID["62fadcf9eaece1ca3a3d4f0db8e7a3b9"] ?? (park.indices.contains(2) ? park[2] : nil)
-        let bird = SampleAssets.byUID["8e7a3a8a78a4d9292a4c3ad32c1ca3b4"] ?? (park.indices.contains(3) ? park[3] : nil)
+        // Indices follow the Android order — four `park` oak trees.
+        let tree = SampleAssets.byUID["d841c3bcc5324daebee50f45619e05fc"] ?? (park.indices.contains(0) ? park[0] : nil)
+        let bench = SampleAssets.byUID["6d1aeea748f147789004bc03e1930d32"] ?? (park.indices.contains(1) ? park[1] : nil)
+        let dog = SampleAssets.byUID["4f6ab5594a8a415aba3f958682b9ced5"] ?? (park.indices.contains(2) ? park[2] : nil)
+        let bird = SampleAssets.byUID["fd582b0d4a8c4af1a1b5c4f21a481c93"] ?? (park.indices.contains(3) ? park[3] : nil)
 
         return [
             // Tree — back-centre, towering. Scale chosen so silhouette dominates

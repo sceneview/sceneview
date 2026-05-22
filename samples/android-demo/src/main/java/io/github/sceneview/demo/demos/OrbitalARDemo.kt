@@ -136,12 +136,12 @@ private data class Planet(
 // design duplicated the dragon and soldier just to fill the ring).
 private val ORBITAL_PLANETS: List<Planet> = run {
     // The four streamed entries — order matches the SampleAssets `solar` category
-    // (butterfly, hummingbird, bee, fish). We look them up by uid so a registry
+    // (four animated butterflies). We look them up by uid so a registry
     // re-ordering doesn't silently break the per-slot orbit tuning below.
-    val butterfly = SampleAssets.byUid["78d8345fffe54a55ae62fadcf9eaece6"]
-    val hummingbird = SampleAssets.byUid["9c54b62d3c2f4f0db8e7a3a8a78a4d92"]
-    val bee = SampleAssets.byUid["6cb9f9a4c6e94f9da5b7c8a85e8a5c2d"]
-    val koi = SampleAssets.byUid["d1ca3a3ddf3845abb98f4e5d62ae34c6"]
+    val butterfly = SampleAssets.byUid["0f24b085e8654e4db09c2fe681a79e3f"]
+    val hummingbird = SampleAssets.byUid["80f8d9a6dadc411e89ca366cb0cfb0d9"]
+    val bee = SampleAssets.byUid["d4fbcbaab845402999f30c5aa75851e6"]
+    val koi = SampleAssets.byUid["8ca3b9aa82694e6b8bc53a69b4529539"]
 
     // Per-slot tuning kept compatible with the previous bundle-only design — same
     // orbit radius (1.5 m), same height spread (±0.5 m), same speed range
