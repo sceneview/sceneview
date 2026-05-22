@@ -8,7 +8,7 @@
 # settings-sheet demos use flows/demo-settings.yaml, and `model-viewer`
 # (no Maestro-visible chrome on a key-less simulator) uses flows/demo-noassert.yaml.
 #
-# Demo ids are the subset of Android `DemoRegistry.kt` ALL_DEMOS ids that
+# Demo ids mirror Android `DemoRegistry.kt` ALL_DEMOS ids that
 # `DemoDeepLinkRegistry.allowedIds` exposes for `sceneview://demo/<id>` on iOS.
 appId: io.github.sceneview.demo
 ---
@@ -35,3 +35,8 @@ appId: io.github.sceneview.demo
       DEMO_ID: multi-model
       DEMO_NAME: Multi Model
       ASSERT_TEXT: "Visibility"
+- runFlow:
+    file: flows/demo-noassert.yaml
+    env:
+      DEMO_ID: scene-gallery
+      DEMO_NAME: Scene Gallery
