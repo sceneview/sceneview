@@ -33,10 +33,10 @@
 #                                 ar-image, ar-face, ar-depth-occlusion,
 #                                 ar-people-occlusion, ar-body-tracker, ar-scene-mesh
 #                                 — show device-required screen on simulator)
-#     Deep-link placeholders 25  (3 non-AR: post-processing*, secondary-camera*,
-#                                 view-node*; 22 AR-only ids)
+#     Deep-link placeholders 23  (3 non-AR: post-processing*, secondary-camera*,
+#                                 view-node*; 20 AR-only ids)
 #                                --  (* = routes to DeepLinkPlaceholder)
-#     Total ................ 49
+#     Total ................ 47
 #
 # Why deep-link ingress, not Samples-tab navigation:
 #   The iOS Samples-tab presents demos in a `.fullScreenCover` with NO Close
