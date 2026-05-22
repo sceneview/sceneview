@@ -4440,7 +4440,7 @@ Signature:
 public struct SceneView: View {
     public init(_ content: @escaping @Sendable (Entity) -> Void)
     public func environment(_ environment: SceneEnvironment) -> SceneView
-    public func cameraControls(_ mode: CameraControlMode) -> SceneView  // .orbit | .pan | .firstPerson
+    public func cameraControls(_ mode: CameraControlMode) -> SceneView  // .orbit | .pan | .firstPerson | native (iOS 18+): .none | .tilt | .dolly
     public func onEntityTapped(_ handler: @escaping (Entity) -> Void) -> SceneView
     public func autoRotate(speed: Float = 0.3) -> SceneView
 }
