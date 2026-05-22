@@ -46,9 +46,11 @@ public struct BillboardNode: Sendable {
     public init(child: Entity) {
         let container = Entity()
         container.addChild(child)
-        if #available(iOS 18.0, visionOS 2.0, *) {
-            container.components.set(BillboardComponent())
-        }
+        // `BillboardComponent` is available on every platform SceneViewSwift
+        // supports (iOS 18+, macOS 15+, visionOS 2+). The old availability
+        // guard `#available(iOS 18.0, visionOS 2.0, *)` silently excluded
+        // macOS, so billboard rotation was a no-op on Mac — issue #914.
+        container.components.set(BillboardComponent())
         self.entity = container
     }
 
