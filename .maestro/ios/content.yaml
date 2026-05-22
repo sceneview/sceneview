@@ -40,3 +40,9 @@ appId: io.github.sceneview.demo
       DEMO_ID: video
       DEMO_NAME: Video Texture
       ASSERT_TEXT: "Playing"
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: texture-streaming
+      DEMO_NAME: Texture Streaming
+      ASSERT_TEXT: "Material"
