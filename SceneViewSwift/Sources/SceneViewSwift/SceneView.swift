@@ -1358,6 +1358,12 @@ private struct SceneViewRepresentation: View {
             // the camera). Rotate the scene root to simulate look-around.
             entities.root.orientation = camera.sceneRotation()
             #endif
+
+        case .none, .tilt, .dolly, .gimbal:
+            // Native modes are guarded out above by `isCustom` — this branch
+            // is unreachable at runtime. The exhaustive case keeps the Swift
+            // compiler satisfied when the `isCustom` guard is inlined here.
+            break
         }
     }
 
@@ -1410,6 +1416,11 @@ private struct SceneViewRepresentation: View {
                             camera.maxFov
                         )
                     }
+                case .none, .tilt, .dolly, .gimbal:
+                    // This gesture is only applied for custom modes (see
+                    // cameraInteractionView). Unreachable, but required for
+                    // exhaustive switch.
+                    break
                 }
             }
             .onEnded { _ in

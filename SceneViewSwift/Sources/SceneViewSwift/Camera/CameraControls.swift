@@ -434,6 +434,11 @@ public struct CameraControls: Sendable {
             azimuth -= Float(delta.width) * sensitivity
             elevation += Float(delta.height) * sensitivity
             clampElevation()
+
+        case .none, .tilt, .dolly, .gimbal:
+            // Native modes are handled by Apple's realityViewCameraControls(_:)
+            // modifier — SceneView's gesture math is bypassed entirely.
+            break
         }
 
         // Store velocity for inertia
@@ -458,6 +463,9 @@ public struct CameraControls: Sendable {
             // Pinch out (scale > 1) ⇒ user wants to zoom IN ⇒ smaller FOV.
             fov /= Float(scale)
             fov = Swift.min(Swift.max(fov, minFov), maxFov)
+        case .none, .tilt, .dolly, .gimbal:
+            // Native modes: Apple's realityViewCameraControls(_:) handles pinch.
+            break
         }
     }
 
@@ -493,6 +501,9 @@ public struct CameraControls: Sendable {
             let up = SIMD3<Float>(0, 1, 0)
             target += right * Float(inertiaVelocity.width) * panSpeed
             target += up * Float(-inertiaVelocity.height) * panSpeed
+        case .none, .tilt, .dolly, .gimbal:
+            // Native modes: Apple's realityViewCameraControls(_:) handles inertia.
+            break
         }
 
         inertiaVelocity.width *= CGFloat(inertiaDamping)
