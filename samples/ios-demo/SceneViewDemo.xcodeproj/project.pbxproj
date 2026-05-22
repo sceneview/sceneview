@@ -12,13 +12,13 @@
 		96C00DAEDB204FF3E420ED1B /* ArAugmentedFacesScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63582A5C1EEB276B6E9CA85 /* ArAugmentedFacesScene.swift */; };
 		3DC54357982F78B8C2E02FC8 /* ArCloudAnchorsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8550BB2028D4FF4056AEBB75 /* ArCloudAnchorsScene.swift */; };
 		88B30D69A8295299DB46B027 /* ArDepthOcclusionScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF95C7E0A3E7A2D62A427A8 /* ArDepthOcclusionScene.swift */; };
-		F8F105D8987BA5BE425F235B /* ArEisScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC170938E2C9FC35AB334CA3 /* ArEisScene.swift */; };
+		D5DD1737713F4BE9511234D8 /* ArImageStabilizationScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139814091E71EF04428D632C /* ArImageStabilizationScene.swift */; };
 		0556583EF5AF44854433ED30 /* ArImageTrackingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9894E9E0B48C546F7045302 /* ArImageTrackingScene.swift */; };
 		AB01222A63039941E8E2398B /* ArInstantPlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEEA6C6F0910C858DADF4F25 /* ArInstantPlacementScene.swift */; };
 		5E207E2F7A55D2D96DBD1814 /* ArLightingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD64719EA56EB8B83AAC04D4 /* ArLightingScene.swift */; };
 		E3564B14080F27209FF35DC5 /* ArOrbitalScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 600043FF3AFFE79411B7DD8A /* ArOrbitalScene.swift */; };
 		50708BAB945D780C4BB6300A /* ArPlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127E970FECE22BF0FC5D8867 /* ArPlacementScene.swift */; };
-		D173BD9A8BA6B6CAB5E32796 /* ArPosePlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15A57335287821ECC80BC2A0 /* ArPosePlacementScene.swift */; };
+		1E9AB7FFE1217027A6D3D792 /* ArPoseScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E303E39EE615A5EEC66FBD /* ArPoseScene.swift */; };
 		AFB627071014C9E0F4C577BC /* ArRecordingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = E722280A1A01A2AA17A2137A /* ArRecordingScene.swift */; };
 		A6AA5F59463038402CB1B9CF /* ArRerunScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D804E81126D31E56CEECA9 /* ArRerunScene.swift */; };
 		4D7BABB3B6EF11E48A1622BF /* ArRooftopAnchorsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D34E4A9940EE1E38BB98F41 /* ArRooftopAnchorsScene.swift */; };
@@ -271,13 +271,13 @@
 		F63582A5C1EEB276B6E9CA85 /* ArAugmentedFacesScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArAugmentedFacesScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArAugmentedFacesScene.swift; sourceTree = SOURCE_ROOT; };
 		8550BB2028D4FF4056AEBB75 /* ArCloudAnchorsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArCloudAnchorsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArCloudAnchorsScene.swift; sourceTree = SOURCE_ROOT; };
 		CEF95C7E0A3E7A2D62A427A8 /* ArDepthOcclusionScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthOcclusionScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthOcclusionScene.swift; sourceTree = SOURCE_ROOT; };
-		CC170938E2C9FC35AB334CA3 /* ArEisScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArEisScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArEisScene.swift; sourceTree = SOURCE_ROOT; };
+		139814091E71EF04428D632C /* ArImageStabilizationScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArImageStabilizationScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArImageStabilizationScene.swift; sourceTree = SOURCE_ROOT; };
 		F9894E9E0B48C546F7045302 /* ArImageTrackingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArImageTrackingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArImageTrackingScene.swift; sourceTree = SOURCE_ROOT; };
 		DEEA6C6F0910C858DADF4F25 /* ArInstantPlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArInstantPlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArInstantPlacementScene.swift; sourceTree = SOURCE_ROOT; };
 		FD64719EA56EB8B83AAC04D4 /* ArLightingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArLightingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArLightingScene.swift; sourceTree = SOURCE_ROOT; };
 		600043FF3AFFE79411B7DD8A /* ArOrbitalScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArOrbitalScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArOrbitalScene.swift; sourceTree = SOURCE_ROOT; };
 		127E970FECE22BF0FC5D8867 /* ArPlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArPlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArPlacementScene.swift; sourceTree = SOURCE_ROOT; };
-		15A57335287821ECC80BC2A0 /* ArPosePlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArPosePlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArPosePlacementScene.swift; sourceTree = SOURCE_ROOT; };
+		D9E303E39EE615A5EEC66FBD /* ArPoseScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArPoseScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArPoseScene.swift; sourceTree = SOURCE_ROOT; };
 		E722280A1A01A2AA17A2137A /* ArRecordingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArRecordingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArRecordingScene.swift; sourceTree = SOURCE_ROOT; };
 		54D804E81126D31E56CEECA9 /* ArRerunScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArRerunScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArRerunScene.swift; sourceTree = SOURCE_ROOT; };
 		4D34E4A9940EE1E38BB98F41 /* ArRooftopAnchorsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArRooftopAnchorsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArRooftopAnchorsScene.swift; sourceTree = SOURCE_ROOT; };
@@ -795,13 +795,13 @@
 				96C00DAEDB204FF3E420ED1B /* ArAugmentedFacesScene.swift in Sources */,
 				3DC54357982F78B8C2E02FC8 /* ArCloudAnchorsScene.swift in Sources */,
 				88B30D69A8295299DB46B027 /* ArDepthOcclusionScene.swift in Sources */,
-				F8F105D8987BA5BE425F235B /* ArEisScene.swift in Sources */,
+				D5DD1737713F4BE9511234D8 /* ArImageStabilizationScene.swift in Sources */,
 				0556583EF5AF44854433ED30 /* ArImageTrackingScene.swift in Sources */,
 				AB01222A63039941E8E2398B /* ArInstantPlacementScene.swift in Sources */,
 				5E207E2F7A55D2D96DBD1814 /* ArLightingScene.swift in Sources */,
 				E3564B14080F27209FF35DC5 /* ArOrbitalScene.swift in Sources */,
 				50708BAB945D780C4BB6300A /* ArPlacementScene.swift in Sources */,
-				D173BD9A8BA6B6CAB5E32796 /* ArPosePlacementScene.swift in Sources */,
+				1E9AB7FFE1217027A6D3D792 /* ArPoseScene.swift in Sources */,
 				AFB627071014C9E0F4C577BC /* ArRecordingScene.swift in Sources */,
 				A6AA5F59463038402CB1B9CF /* ArRerunScene.swift in Sources */,
 				4D7BABB3B6EF11E48A1622BF /* ArRooftopAnchorsScene.swift in Sources */,

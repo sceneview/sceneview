@@ -1,4 +1,4 @@
-// @sceneId     ar-eis
+// @sceneId     ar-image-stabilization
 // @title       Image Stabilization (EIS)
 // @subtitle    EIS for smoother AR camera feed
 // @category    ar
@@ -7,6 +7,6 @@
 // @iosOnly     true
 import SwiftUI
 
-enum ArEisScene: DemoScene {
+enum ArImageStabilizationScene: DemoScene {
     @MainActor static var destination: AnyView { AnyView(EmptyView()) }
 }
