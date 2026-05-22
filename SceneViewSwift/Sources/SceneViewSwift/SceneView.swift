@@ -677,20 +677,18 @@ private struct SceneViewRepresentation: View {
                 .gesture(dragGesture)
                 .gesture(pinchGesture)
         case .none:
+            // `.none` disables all gesture interaction.
+            // `RealityKit.CameraControls.none` is available on all three
+            // supported platforms (iOS 18+, macOS 15+, visionOS 2+).
             realityViewContent.realityViewCameraControls(.none)
         case .tilt:
+            // `RealityKit.CameraControls.tilt` is available on iOS, macOS,
+            // and visionOS 2+ (verified in Xcode SDK swiftinterface).
             realityViewContent.realityViewCameraControls(.tilt)
         case .dolly:
+            // `RealityKit.CameraControls.dolly` is available on iOS, macOS,
+            // and visionOS 2+ (verified in Xcode SDK swiftinterface).
             realityViewContent.realityViewCameraControls(.dolly)
-        case .gimbal:
-            #if os(visionOS)
-            // .gimbal is unavailable on visionOS — fall back to orbit gestures.
-            realityViewContent
-                .gesture(dragGesture)
-                .gesture(pinchGesture)
-            #else
-            realityViewContent.realityViewCameraControls(.gimbal)
-            #endif
         }
     }
 
@@ -1366,7 +1364,7 @@ private struct SceneViewRepresentation: View {
             entities.root.orientation = camera.sceneRotation()
             #endif
 
-        case .none, .tilt, .dolly, .gimbal:
+        case .none, .tilt, .dolly:
             // Native modes are guarded out above by `isCustom` — this branch
             // is unreachable at runtime. The exhaustive case keeps the Swift
             // compiler satisfied when the `isCustom` guard is inlined here.
@@ -1423,7 +1421,7 @@ private struct SceneViewRepresentation: View {
                             camera.maxFov
                         )
                     }
-                case .none, .tilt, .dolly, .gimbal:
+                case .none, .tilt, .dolly:
                     // This gesture is only applied for custom modes (see
                     // cameraInteractionView). Unreachable, but required for
                     // exhaustive switch.
