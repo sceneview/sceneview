@@ -77,11 +77,29 @@ struct CameraControlsDemo: View {
     @ViewBuilder
     private var controlsSheet: some View {
         VStack(spacing: 16) {
-            // Mode picker — segmented so users feel the live mode switch.
+            // Custom SceneView modes — full SceneView gesture math.
+            Text("SceneView modes")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Picker("Camera mode", selection: $mode) {
                 Text("Orbit").tag(CameraControlMode.orbit)
                 Text("Pan").tag(CameraControlMode.pan)
                 Text("Look").tag(CameraControlMode.firstPerson)
+            }
+            .pickerStyle(.segmented)
+
+            // Native Apple RealityKit modes (iOS 18+, macOS 15+).
+            // These delegate to realityViewCameraControls(_:) so
+            // gesture handling is owned by Apple's RealityKit SDK.
+            Text("Apple RealityKit modes (iOS 18+)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Picker("Native mode", selection: $mode) {
+                Text("None").tag(CameraControlMode.none)
+                Text("Tilt").tag(CameraControlMode.tilt)
+                Text("Dolly").tag(CameraControlMode.dolly)
             }
             .pickerStyle(.segmented)
 
@@ -106,6 +124,10 @@ struct CameraControlsDemo: View {
         case .orbit:       return "arrow.triangle.2.circlepath"
         case .pan:         return "hand.draw.fill"
         case .firstPerson: return "eye.fill"
+        // Native Apple modes — RealityKit owns the camera gesture.
+        case .none:        return "hand.raised.slash.fill"
+        case .tilt:        return "arrow.up.and.down"
+        case .dolly:       return "arrow.forward.and.backward"
         }
     }
 
@@ -114,6 +136,10 @@ struct CameraControlsDemo: View {
         case .orbit:       return "Drag — orbit around object"
         case .pan:         return "Drag — translate scene"
         case .firstPerson: return "Drag — look around"
+        // Native Apple modes — gesture hint provided by RealityKit.
+        case .none:        return "Camera locked — no gestures"
+        case .tilt:        return "Apple native tilt — pan up/down"
+        case .dolly:       return "Apple native dolly — move forward/back"
         }
     }
 
@@ -121,6 +147,8 @@ struct CameraControlsDemo: View {
         switch mode {
         case .orbit, .pan: return "Pinch — zoom in / out"
         case .firstPerson: return "Pinch — zoom field of view"
+        // Native Apple modes — pinch handled by RealityKit internally.
+        case .none, .tilt, .dolly: return "Gestures handled by Apple RealityKit"
         }
     }
 
