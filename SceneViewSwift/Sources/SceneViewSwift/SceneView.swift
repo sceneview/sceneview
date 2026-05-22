@@ -398,14 +398,20 @@ private final class SceneEntities: ObservableObject {
         // the process if called off-main (#2068). In practice SwiftUI
         // tears `@StateObject`s down on the main actor, but that is not a
         // hard Apple contract. Guard with `Thread.isMainThread`: if we are
-        // already on main, call directly (same as `assumeIsolated`); if not,
-        // dispatch synchronously so the handler components are stripped
-        // before `self` is fully deallocated — no task, no heap escape.
+        // already on main, use `assumeIsolated` (satisfies the Swift 6
+        // strict-concurrency checker — the isolation is real); if not,
+        // dispatch synchronously to main first, then `assumeIsolated` inside
+        // the sync block (we just ensured we're on main, so the assumption
+        // holds). No task, no heap escape — safe in deinit.
         if Thread.isMainThread {
-            NodeGesture.removeAllHandlers(under: root)
+            MainActor.assumeIsolated {
+                NodeGesture.removeAllHandlers(under: root)
+            }
         } else {
             DispatchQueue.main.sync {
-                NodeGesture.removeAllHandlers(under: root)
+                MainActor.assumeIsolated {
+                    NodeGesture.removeAllHandlers(under: root)
+                }
             }
         }
     }
