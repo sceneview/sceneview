@@ -1430,7 +1430,7 @@ must run on the AR frame / GL-main thread. The composable handles this for you (
 `node.latestSnapshot` consumers from a background coroutine. See also: `Frame.hitTestDepth`
 (raycast against the same depth image) and `rememberDepthCollider` (depth → physics collider).
 
-**Cross-platform:** Android-only. iOS equivalent is `ARMeshAnchor` via `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). SceneViewSwift wrapper tracked in #1860 — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+**Cross-platform:** Android-only. iOS equivalent is `SceneReconstructionNode.enableReconstruction(in:)` which enables `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). Physics colliders use `SceneReconstructionNode.enablePhysics(in:)`. See [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813/#1860). Web tracked in #1778.
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthMesh(
