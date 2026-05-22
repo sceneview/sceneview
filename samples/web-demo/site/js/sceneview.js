@@ -412,6 +412,7 @@
       this._mediaNodes = new Map(); // entity -> { type, asset, texture, ... }
       this._billboards = new Set(); // entities that should always face camera
       this._videoElements = new Map(); // entity -> { video, canvas, ctx, rafId }
+      this._lightEntities = new Set(); // light entities created via addLight()
       this._quadGLB = null; // Cached quad GLB bytes
 
       // Animation state — glTF skinning / keyframe playback
@@ -680,16 +681,41 @@
         .intensity(intensity)
         .direction(direction);
 
+      builder.build(this._engine, entity);
+
       if (type === 'point' || type === 'spot') {
-        builder.falloff(falloff);
-        // Position point/spot lights via transform
+        // Position point/spot lights via transform. A bare light entity has
+        // no transform component, so create one before getInstance() — calling
+        // getInstance() on an entity without a transform component returns an
+        // invalid instance and setTransform() then corrupts memory (the light
+        // renders at the origin and later transform reads throw
+        // "Cannot read properties of undefined").
         var tm = this._engine.getTransformManager();
+        // A bare light entity has no transform component; getInstance() on an
+        // entity without one returns an invalid instance and setTransform()
+        // then corrupts memory. Create the component first.
+        var hasComp = typeof tm.hasComponent === 'function'
+          ? tm.hasComponent(entity)
+          : false;
+        if (!hasComp && typeof tm.create === 'function') {
+          tm.create(entity);
+        }
         var inst = tm.getInstance(entity);
-        tm.setTransform(inst, Filament.mat4.translation(position));
+        // Column-major 4x4 translation matrix. `Filament.mat4` does not exist
+        // (the Filament.js binding exposes glMatrix, not a `mat4` namespace) —
+        // `Filament.mat4.translation()` threw "Cannot read properties of
+        // undefined". Build the matrix as a plain array, matching how the rest
+        // of this file sets transforms.
+        tm.setTransform(inst, [
+          1, 0, 0, 0,
+          0, 1, 0, 0,
+          0, 0, 1, 0,
+          position[0], position[1], position[2], 1
+        ]);
       }
 
-      builder.build(this._engine, entity);
       this._scene.addEntity(entity);
+      this._lightEntities.add(entity);
       return entity;
     }
 
@@ -1362,6 +1388,20 @@
      * @param {number} entity - Entity handle
      */
     removeNode(entity) {
+      // Light entities (created via addLight()) are tracked separately — they
+      // are not media nodes, so handle them before the _mediaNodes lookup.
+      if (this._lightEntities.has(entity)) {
+        try {
+          this._scene.remove(entity);
+        } catch (e) { /* ignore */ }
+        try {
+          var lm = this._engine.getLightManager();
+          if (lm && lm.hasComponent(entity)) lm.destroy(entity);
+        } catch (e) { /* ignore */ }
+        this._lightEntities.delete(entity);
+        return;
+      }
+
       var nodeInfo = this._mediaNodes.get(entity);
       if (!nodeInfo) return;
 
