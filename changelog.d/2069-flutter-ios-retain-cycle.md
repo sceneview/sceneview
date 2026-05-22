@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **flutter ios: actually break the method-channel retain cycle ([#2069](https://github.com/sceneview/sceneview/issues/2069)).** the platform-view's `setMethodCallHandler` now installs the handler with a `[weak self]` capture; a bare method reference strong-held `self`, so the previously added `deinit` could never run and the platform view, hosting controller, and RealityKit/AR scene still leaked on every create/dispose cycle.
