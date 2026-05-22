@@ -31,6 +31,14 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: secondary-camera
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: occlusion-material
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: debug-overlay
 # ── Content / other (no iOS destination yet) ────────────────────────────────
 - runFlow:
     file: flows/placeholder.yaml
@@ -44,3 +52,12 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: view-node
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: texture-streaming
+# ── Lighting (no iOS destination yet) ───────────────────────────────────────
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: environment
