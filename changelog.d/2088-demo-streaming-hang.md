@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **`materials` and `scene-gallery` Android demos no longer hang on "Streaming…" ([#2088](https://github.com/sceneview/sceneview/issues/2088)).** A failed model resolution is now captured into an error state and surfaced with an error scrim and a Retry button, instead of being swallowed into a `null` path that left the loading scrim spinning forever. Both demos are flagged `DemoStatus.KnownIssue` so the Samples grid shows an honest known-issue chip.

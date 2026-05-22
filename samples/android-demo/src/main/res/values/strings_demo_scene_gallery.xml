@@ -9,4 +9,6 @@
     <string name="demo_scene_gallery_subtitle">Themed Sketchfab bundles streamed on demand</string>
     <string name="demo_scene_gallery_credit">by %1$s · CC-BY 4.0</string>
     <string name="demo_scene_gallery_loading">Streaming model…</string>
+    <string name="demo_scene_gallery_error">Couldn\'t load this model</string>
+    <string name="demo_scene_gallery_retry">Retry</string>
 </resources>

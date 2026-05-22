@@ -5,6 +5,7 @@ import androidx.compose.material.icons.filled.Collections
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
+import io.github.sceneview.demo.DemoStatus
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.SceneGalleryDemo
 
@@ -16,6 +17,10 @@ object SceneGalleryFragment : DemoFragment {
         subtitleRes = R.string.demo_scene_gallery_subtitle,
         category = DemoCategory.BASICS_3D,
         icon = Icons.Filled.Collections,
+        // Streamed Sketchfab slugs can fail to resolve; the demo now surfaces an
+        // error scrim with Retry rather than hanging, but the model may still be
+        // unavailable, so the grid carries a known-issue chip (#2088).
+        status = DemoStatus.KnownIssue,
     )
 
     @Composable
