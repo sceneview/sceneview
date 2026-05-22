@@ -3,7 +3,7 @@
 #   maestro test .maestro/android/catalog.yaml
 #
 # This is the Android leg of the autonomous device-QA harness (umbrella #1560,
-# slice #1562). It drives every one of the 43 demos in `samples/android-demo`
+# slice #1562). It drives every one of the 58 demos in `samples/android-demo`
 # like a real user — deep-link launch, camera orbit drag, viewport tap, one
 # screenshot per demo, navigate back — and asserts each demo's Activity stays
 # alive (a crash drops the "Navigate back" affordance, failing the flow).
@@ -12,13 +12,13 @@
 # one place per category and a fast subset (one category) can be run on its
 # own. Demo ids mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt:
 #   3D Basics ............ 5
-#   Lighting & Environment 5
+#   Lighting & Environment 4
 #   Content .............. 5
 #   Interaction .......... 4
-#   Advanced ............. 10
-#   Augmented Reality .... 14
+#   Advanced ............. 12
+#   Augmented Reality .... 28
 #                          --
-#   Total ................ 43
+#   Total ................ 58
 #
 # Crash detection:
 #   - Per-demo: flows/demo.yaml asserts the "Navigate back" button is visible

@@ -1,0 +1,2 @@
+<!-- category: Tests -->
+- **Android Maestro**: expanded demo coverage from 43 to 58 demos — added 13 missing AR demos (`ar-depth-of-field`, `ar-fog`, `ar-depth-collider`, `ar-depth-visualization`, `ar-people-occlusion`, `ar-point-cloud`, `ar-raw-depth-point-cloud`, `ar-plane-node`, `ar-scene-mesh`, `ar-scene-semantics`, `ar-ml-object-label`, `placement-scene`, `ar-collaborative`, `ar-body-tracker`) and 2 Advanced demos (`occlusion-material`, `spatial-audio`) to the device-QA harness (#1913).

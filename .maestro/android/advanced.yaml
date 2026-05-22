@@ -1,4 +1,4 @@
-# Maestro flow — "Advanced" demo category (10 demos).
+# Maestro flow — "Advanced" demo category (12 demos).
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/advanced.yaml
@@ -57,3 +57,13 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: debug-overlay
       DEMO_NAME: Debug Overlay
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: occlusion-material
+      DEMO_NAME: Occlusion Material
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: spatial-audio
+      DEMO_NAME: Spatial Audio
