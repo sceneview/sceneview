@@ -60,6 +60,7 @@ async function assertRendered(
   page: import('@playwright/test').Page,
   context: string,
   region: 'centre' | 'full' = 'centre',
+  minVariance = 64,
 ): Promise<void> {
   // Let Filament render a few frames after the interaction settled.
   await page.waitForTimeout(1500);
@@ -70,7 +71,15 @@ async function assertRendered(
   //    (issue #1593). `region` is 'centre' for tightly-framed scenes and
   //    'full' for scenes whose auto-frame legitimately off-centres the subject
   //    (the skinned-model Animation tab) — both are equally hard signals.
-  const { hasContent, headlessGpuOk } = await sampleCanvas(page, region);
+  //    `minVariance` defaults to 64; a caller may lower it modestly for a
+  //    scene that renders legitimately dim on the SwiftShader software
+  //    rasteriser (e.g. a single point light) — it must still stay clear of
+  //    a genuinely blank/black canvas (variance < ~20).
+  const { hasContent, headlessGpuOk, variance } = await sampleCanvas(
+    page,
+    region,
+    minVariance,
+  );
   expect(
     headlessGpuOk,
     `[${context}] cannot sample canvas — element missing or zero-sized`,
@@ -78,7 +87,8 @@ async function assertRendered(
   expect(
     hasContent,
     `[${context}] canvas appears blank — Filament rendered nothing visible ` +
-      `(SwiftShader CI context loss, asset load failure, or genuine blank-scene regression)`,
+      `(luminance variance ${variance.toFixed(1)} <= ${minVariance}; ` +
+      `SwiftShader CI context loss, asset load failure, or genuine blank-scene regression)`,
   ).toBe(true);
 }
 
@@ -202,9 +212,22 @@ test.describe('Web Demo — catalog coverage', () => {
       });
 
       await page.locator(`.geo-add-btn[data-light="${light}"]`).click();
-      await page.waitForTimeout(600);
+      // A point light's inverse-square falloff leaves the scene markedly
+      // darker than a directional/spot light, and the SwiftShader software
+      // rasteriser dims it further still — its tightly-framed centre block
+      // can dip below the default variance floor even though the canvas is
+      // genuinely rendering (#1643). Give that one light extra render-settle
+      // time, sample the FULL canvas (more lit geometry in frame than the
+      // 200px centre crop), and apply a modestly lower variance floor of 28
+      // — still well clear of a flat/black block (variance < ~20), so the
+      // assertion keeps hard-failing on a genuinely blank canvas.
+      await page.waitForTimeout(light === 'point' ? 1200 : 600);
       await dragCanvas(page);
-      await assertRendered(page, `Lighting tab — ${light}`);
+      if (light === 'point') {
+        await assertRendered(page, 'Lighting tab — point', 'full', 28);
+      } else {
+        await assertRendered(page, `Lighting tab — ${light}`);
+      }
 
       expectNoPageErrors(diag, `Lighting tab — ${light}`);
     });
@@ -451,6 +474,11 @@ test.describe('Web Demo — catalog coverage', () => {
   });
 
   test('every tab switches cleanly with no console errors', async ({ page }) => {
+    // 9 tabs × 2 passes — every switch rebuilds a Filament scene (the Physics
+    // tab swaps the whole scene in/out). On a GPU-less CI runner each rebuild
+    // is software-rasterised and several times slower, so the 18 switches
+    // overran the default 60s budget. `test.slow()` triples it (#1560, #1643).
+    test.slow();
     const diag = captureDiagnostics(page);
     await page.goto('/');
     await waitForEngineReady(page);
