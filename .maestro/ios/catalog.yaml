@@ -28,14 +28,15 @@
 #                                 materials, spatial-audio, reflection-probes,
 #                                 occlusion-material, post-processing*,
 #                                 secondary-camera*, debug-overlay*)
-#     Augmented Reality .... 6   (ar-placement, ar-instant-placement, ar-orbital,
-#                                 ar-lighting, ar-recording, ar-rerun — launch-only)
-#     Deep-link placeholders 10  (ar-image*, ar-face*, ar-cloud-anchor*,
-#                                 ar-depth-occlusion*, ar-eis*, ar-pose-placement*,
-#                                 ar-rooftop*, ar-streetscape*, ar-terrain*,
-#                                 video*, view-node*)
+#     Augmented Reality .... 12  (ar-placement, ar-instant-placement, ar-orbital,
+#                                 ar-lighting, ar-recording, ar-rerun — launch-only;
+#                                 ar-image, ar-face, ar-depth-occlusion,
+#                                 ar-people-occlusion, ar-body-tracker, ar-scene-mesh
+#                                 — show device-required screen on simulator)
+#     Deep-link placeholders 26  (4 non-AR: post-processing*, secondary-camera*,
+#                                 debug-overlay*, view-node*; 22 AR-only ids)
 #                                --  (* = routes to DeepLinkPlaceholder)
-#     Total ................ 43
+#     Total ................ 49
 #
 # Why deep-link ingress, not Samples-tab navigation:
 #   The iOS Samples-tab presents demos in a `.fullScreenCover` with NO Close
