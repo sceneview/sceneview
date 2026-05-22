@@ -233,5 +233,22 @@ final class CameraControlsModeTests: XCTestCase {
         XCTAssertTrue(active)
         XCTAssertNotEqual(c.azimuth, initialAz, "firstPerson inertia must rotate yaw")
     }
+
+    // MARK: - isCustom gate (#1049)
+
+    func testIsCustom_customModes() {
+        XCTAssertTrue(CameraControlMode.orbit.isCustom)
+        XCTAssertTrue(CameraControlMode.pan.isCustom)
+        XCTAssertTrue(CameraControlMode.firstPerson.isCustom)
+    }
+
+    func testIsCustom_nativeModes() {
+        // Native Apple modes — SDK provides: .none, .tilt, .dolly
+        // (.gimbal does not exist in RealityKit as of Xcode 16/26 SDK).
+        XCTAssertFalse(CameraControlMode.none.isCustom)
+        XCTAssertFalse(CameraControlMode.tilt.isCustom)
+        XCTAssertFalse(CameraControlMode.dolly.isCustom)
+    }
+
 }
 #endif

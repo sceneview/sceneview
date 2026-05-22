@@ -4440,7 +4440,7 @@ Signature:
 public struct SceneView: View {
     public init(_ content: @escaping @Sendable (Entity) -> Void)
     public func environment(_ environment: SceneEnvironment) -> SceneView
-    public func cameraControls(_ mode: CameraControlMode) -> SceneView  // .orbit | .pan | .firstPerson
+    public func cameraControls(_ mode: CameraControlMode) -> SceneView  // .orbit | .pan | .firstPerson | native (iOS 18+): .none | .tilt | .dolly
     public func onEntityTapped(_ handler: @escaping (Entity) -> Void) -> SceneView
     public func autoRotate(speed: Float = 0.3) -> SceneView
 }
@@ -5351,7 +5351,7 @@ public struct SceneView: View {
 View modifiers (chainable):
 ```swift
 .environment(_ environment: SceneEnvironment) -> SceneView  // IBL lighting
-.cameraControls(_ mode: CameraControlMode) -> SceneView     // .orbit (default), .pan, .firstPerson
+.cameraControls(_ mode: CameraControlMode) -> SceneView     // .orbit (default), .pan, .firstPerson | native Apple modes: .none, .tilt, .dolly
 .recentersTargetOnOrbit(_ enabled: Bool) -> SceneView       // v4.4.0+ — re-pivot on content centroid when (re-)entering orbit; default false
 .onEntityTapped(_ handler: @escaping (Entity) -> Void) -> SceneView   // real entity hit-test (v4.2.0+)
 .autoRotate(speed: Float = 0.3) -> SceneView                // radians/s, default 0.3
@@ -5817,9 +5817,17 @@ public protocol EntityProvider {
 
 ```swift
 public enum CameraControlMode: Sendable {
+    // Cross-platform modes (custom gesture math — orbit inertia, auto-rotate, fit-to-bounds)
     case orbit         // drag rotates the scene around the orbit pivot, pinch dollies (default)
     case pan           // drag translates the target laterally, pinch dollies
     case firstPerson   // v4.4.0+ true look-around: drag yaws/pitches the camera IN PLACE (no orbit, no teleport on mode switch), pinch adjusts FOV
+
+    // Native Apple modes — delegate to Apple's realityViewCameraControls(_:) modifier (#1049)
+    // Custom gesture math (orbit inertia, auto-rotate, fit-to-bounds) is bypassed for these.
+    // Available SDK modes: .none, .tilt, .dolly (verified in Xcode 16/26 SDK — no .gimbal).
+    case none          // disables all gesture interaction
+    case tilt          // tilt camera up/down about horizontal axis
+    case dolly         // zoom along look direction
 }
 
 public struct CameraControls: Sendable {
