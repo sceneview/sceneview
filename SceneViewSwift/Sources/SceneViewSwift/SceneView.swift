@@ -663,17 +663,27 @@ private struct SceneViewRepresentation: View {
     ///   directly — `applyCamera()` is a no-op for these modes (#1049 Phase 2).
     @ViewBuilder
     private var cameraInteractionView: some View {
-        if cameraControlMode.isCustom {
-            // Hand-rolled gesture path — orbit, pan, firstPerson.
+        // The mode switch is inlined here to let Swift infer the
+        // `CameraControls` type for `realityViewCameraControls(_:)` from the
+        // call site, avoiding the ambiguity between `RealityKit.CameraControls`
+        // and `SceneViewSwift.CameraControls` that arises from an explicit
+        // return-type annotation on a helper property. (#1049)
+        switch cameraControlMode {
+        case .orbit, .pan, .firstPerson:
+            // Hand-rolled gesture path. Apple's `realityViewCameraControls`
+            // is not applied — our custom math drives orbit inertia,
+            // auto-rotate, and fit-to-bounds framing.
             realityViewContent
                 .gesture(dragGesture)
                 .gesture(pinchGesture)
-        } else {
-            // Native iOS camera path — none, tilt, dolly, gimbal.
-            // `realityViewCameraControls` owns the camera; skip our custom
-            // drag / pinch gestures so they don't fight Apple's modifier.
-            realityViewContent
-                .realityViewCameraControls(cameraControlMode.toRealityKit)
+        case .none:
+            realityViewContent.realityViewCameraControls(.none)
+        case .tilt:
+            realityViewContent.realityViewCameraControls(.tilt)
+        case .dolly:
+            realityViewContent.realityViewCameraControls(.dolly)
+        case .gimbal:
+            realityViewContent.realityViewCameraControls(.gimbal)
         }
     }
 

@@ -88,30 +88,6 @@ public enum CameraControlMode: Sendable {
         }
     }
 
-    /// Maps this mode to the equivalent `RealityKit.CameraControls`
-    /// value for use with `realityViewCameraControls(_:)`.
-    ///
-    /// Only valid for the four native-only modes (``none``, ``tilt``,
-    /// ``dolly``, ``gimbal``). Custom modes (``orbit``, ``pan``,
-    /// ``firstPerson``) have no `RealityKit.CameraControls` equivalent —
-    /// calling this on them returns `.orbit` as a safe default (the caller
-    /// should gate on `isCustom` first).
-    ///
-    /// Note: `RealityKit.CameraControls` is distinct from the
-    /// `SceneViewSwift.CameraControls` struct in this file. The return type
-    /// uses the `RealityKit.` module prefix to resolve the name ambiguity.
-    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    var toRealityKit: RealityKit.CameraControls {
-        switch self {
-        case .orbit:       return .orbit
-        case .pan:         return .pan
-        case .firstPerson: return .firstPerson
-        case .none:        return .none
-        case .tilt:        return .tilt
-        case .dolly:       return .dolly
-        case .gimbal:      return .gimbal
-        }
-    }
 }
 
 /// Manages camera orbit, pan, and zoom via SwiftUI gestures.

@@ -249,22 +249,5 @@ final class CameraControlsModeTests: XCTestCase {
         XCTAssertFalse(CameraControlMode.gimbal.isCustom)
     }
 
-    // MARK: - toRealityKit mapper (#1049)
-
-    func testToRealityKitMapper_customModes() {
-        // Custom modes still have a reasonable mapping (orbit/pan/firstPerson
-        // correspond directly to Apple's equivalents) even though the custom
-        // gesture path does not use this mapper at runtime.
-        XCTAssertEqual(CameraControlMode.orbit.toRealityKit,    .orbit)
-        XCTAssertEqual(CameraControlMode.pan.toRealityKit,      .pan)
-        XCTAssertEqual(CameraControlMode.firstPerson.toRealityKit, .firstPerson)
-    }
-
-    func testToRealityKitMapper_nativeModes() {
-        XCTAssertEqual(CameraControlMode.none.toRealityKit,    .none)
-        XCTAssertEqual(CameraControlMode.tilt.toRealityKit,    .tilt)
-        XCTAssertEqual(CameraControlMode.dolly.toRealityKit,   .dolly)
-        XCTAssertEqual(CameraControlMode.gimbal.toRealityKit,  .gimbal)
-    }
 }
 #endif
