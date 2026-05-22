@@ -1,4 +1,4 @@
-# Maestro flow — "Augmented Reality" demo category (14 demos).
+# Maestro flow — "Augmented Reality" demo category (27 demos).
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/ar.yaml
@@ -84,3 +84,73 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: ar-orbital
       DEMO_NAME: AR Orbital
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-depth-of-field
+      DEMO_NAME: AR Depth of Field
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-fog
+      DEMO_NAME: AR Fog
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-depth-collider
+      DEMO_NAME: Depth Collider
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-depth-visualization
+      DEMO_NAME: Depth Visualization
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-people-occlusion
+      DEMO_NAME: People Occlusion
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-point-cloud
+      DEMO_NAME: Point Cloud
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-raw-depth-point-cloud
+      DEMO_NAME: Raw Depth Point Cloud
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-plane-node
+      DEMO_NAME: Plane Lifecycle
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-scene-mesh
+      DEMO_NAME: Scene Mesh
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-scene-semantics
+      DEMO_NAME: Scene Semantics
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-ml-object-label
+      DEMO_NAME: ML Kit Object Labels
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: placement-scene
+      DEMO_NAME: Placement Scene
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-collaborative
+      DEMO_NAME: Collaborative AR
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-body-tracker
+      DEMO_NAME: AR Body Tracker
