@@ -371,11 +371,12 @@ class FeedbackRecordingService : Service() {
         private const val VIDEO_BITRATE = 3_500_000
 
         /**
-         * Hard cap on the recorded mp4 (28 MB). The worker rejects uploads over
-         * 30 MB with a 413; this leaves ~2 MB of headroom for the multipart
-         * envelope and the separately-uploaded demuxed audio track.
+         * Hard cap on the recorded mp4 (25 MB). The worker rejects uploads over
+         * 30 MB with a 413; this leaves ~5 MB of headroom for the multipart
+         * envelope + the separately-uploaded demuxed AAC audio track + metadata
+         * (#2032 — the previous 28 MB cap was too close to the 30 MB ceiling).
          */
-        private const val MAX_FILE_SIZE_BYTES = 28L * 1024 * 1024
+        private const val MAX_FILE_SIZE_BYTES = 25L * 1024 * 1024
 
         /** Secondary cap on the clip length (~120 s). */
         private const val MAX_DURATION_MS = 120_000
