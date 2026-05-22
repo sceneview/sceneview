@@ -99,11 +99,12 @@ enum DemoDeepLinkRegistry {
         case "fog":           FogDemo()
 
         // ── Content ──────────────────────────────────────────────────
-        case "billboard":     BillboardDemo()
-        case "image":         ImageDemo()
-        case "lines-paths":   LinesPathsDemo()
-        case "text":          TextDemo()
-        case "video":         VideoTextureDemo()
+        case "billboard":         BillboardDemo()
+        case "image":             ImageDemo()
+        case "lines-paths":       LinesPathsDemo()
+        case "text":              TextDemo()
+        case "texture-streaming": TextureStreamingDemo()
+        case "video":             VideoTextureDemo()
 
         // ── Interaction ──────────────────────────────────────────────
         case "camera-controls":  CameraControlsDemo()
