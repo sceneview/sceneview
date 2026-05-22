@@ -560,11 +560,37 @@ jobs:
                   )
                   r.raise_for_status()
 
-                  r = sess.post(f"{BASE}/edits/{edit_id}:commit",
-                                params={"changesNotSentForReview": "true"})
-                  r.raise_for_status()
-                  print(f"[promote/fallback] direct upload to {TARGET} committed with "
-                        f"changesNotSentForReview=true. Declare FGS in Play Console to send for review.")
+                  # Commit WITHOUT changesNotSentForReview — triggers review,
+                  # which is the desired end-state once FGS is declared.
+                  # If FGS is not yet declared, the commit returns a "foreground
+                  # service" error; we then exit via sys.exit(1) which raises
+                  # SystemExit (BaseException, NOT Exception) and escapes the
+                  # outer `except Exception` block, so the edit is NOT deleted.
+                  # The staged build makes the FGS section visible in Play Console
+                  # App content → Foreground service type declarations.
+                  r = sess.post(f"{BASE}/edits/{edit_id}:commit")
+                  if r.status_code == 200:
+                      print(f"[promote/fallback] direct upload to {TARGET} committed — submitted for review.")
+                      sys.exit(0)
+
+                  body = r.text
+                  print(f"[promote/fallback] commit HTTP {r.status_code}: {body[:300]}", file=sys.stderr)
+
+                  if "foreground service" in body.lower() or "Foreground Service" in body:
+                      print(
+                          "\n[FGS] *** ACTION REQUIRED — edit PRESERVED (#2120) ***\n"
+                          f"[FGS] Edit {edit_id} kept alive in Play Console with the staged AAB.\n"
+                          "[FGS] The staged build makes the FGS declaration section visible:\n"
+                          "[FGS]  1. Play Console → App content → Foreground service type declarations\n"
+                          "[FGS]  2. Declare FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION (screen recording)\n"
+                          "[FGS]  3. Re-run play-store.yml → internal+production will both succeed\n",
+                          file=sys.stderr,
+                      )
+                      # sys.exit raises SystemExit (BaseException) — escapes
+                      # `except Exception` so delete is NOT called. Edit lives.
+                      sys.exit(1)
+
+                  r.raise_for_status()  # any other error: clean up via except
                   sys.exit(0)
 
               print(f"[promote] source release codes={hit.get('versionCodes')} status={hit.get('status')} name={hit.get('name')}")
@@ -588,16 +614,10 @@ jobs:
               r.raise_for_status()
               print(f"[promote] target track {TARGET} now carries versionCode {CODE}")
 
-              # 4. Commit the edit.
-              # changesNotSentForReview=true: workaround for #2120 (FGS check).
-              # The promote only changes track membership — no new AAB upload —
-              # so the FGS compliance check at commit time should be moot, but
-              # some versions of the Edits API enforce it regardless. Remove once
-              # FGS is permanently declared in Play Console.
-              r = sess.post(
-                  f"{BASE}/edits/{edit_id}:commit",
-                  params={"changesNotSentForReview": "true"},
-              )
+              # 4. Commit the edit (track-membership change only — no new AAB).
+              # No changesNotSentForReview: the promote path only runs when internal
+              # succeeded, meaning FGS was already declared. Submit for review normally.
+              r = sess.post(f"{BASE}/edits/{edit_id}:commit")
               r.raise_for_status()
               print(f"[promote] commit OK — {SOURCE}@{CODE} → {TARGET}")
           except Exception:
