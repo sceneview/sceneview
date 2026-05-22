@@ -1,3 +1,39 @@
+## 4.15.1
+
+- Version alignment with SceneView v4.15.1. iOS demo parity sprint complete (umbrella #910 — iOS app now at full 59-demo parity with Android). Native `CameraControlMode` cases added (`.none`, `.tilt`, `.dolly` via `realityViewCameraControls(_:)`, iOS 18+). `SceneReconstructionNode` / `DepthMeshNode` available on device. Play Store deploy fix for Foreground Service permissions (#2120). No breaking Flutter API change.
+
+## 4.15.0
+
+- Version alignment with SceneView v4.15.0. iOS AR demo parity additions, DebugOverlay demo, TextureStreaming demo, Maestro iOS test coverage expansion, `ios-axe.sh` QA helper. No breaking Flutter API change.
+
+## 4.14.0
+
+- Version alignment with SceneView v4.14.0. Android Maestro test coverage expanded to 58 demos (#2144), ARFace demo front-camera diagnostic surface (#1612), docs well-known deep-link verification (#1695/#2155). No breaking Flutter API change.
+
+## 4.13.0
+
+- Version alignment with SceneView v4.13.0. Android + iOS demo parity sprint continued (collision/gesture-editing/image-tracking/augmented-faces/depth-occlusion demos added on iOS). No breaking Flutter API change.
+
+## 4.12.0
+
+- Version alignment with SceneView v4.12.0. iOS demo sprint: HDR Environment demo, Shape Extrude, Reflection Probes, Video Texture fix, AR People Occlusion, Body Tracker, Scene Mesh demos added. No breaking Flutter API change.
+
+## 4.11.2
+
+- Version alignment with SceneView v4.11.2. App Store submit step now uses `reviewSubmissions` API (#1831). iOS append-only demo registry pattern (#1872). No breaking Flutter API change.
+
+## 4.11.1
+
+- Version alignment with SceneView v4.11.1. Deploy fixes: `VERSION_NAME` on `workflow_dispatch` fallback (#1795), `publishConfig.access=public` for React Native (#1788), webpack <5.107.0 pin for sceneview-web (#1789). No breaking Flutter API change.
+
+## 4.11.0
+
+- Version alignment with SceneView v4.11.0. Store-deploy correctness sweep (5 PRs: #1678, #1680, #1687, #1688). Play Store listing sync, App Store draft absorption, unified "SceneView" app name. No breaking Flutter API change.
+
+## 4.10.0
+
+- Version alignment with SceneView v4.10.0. iOS visibility improvements, Filament 1.71.4 bump, CI hardening. No breaking Flutter API change.
+
 ## 4.9.0
 
 - Version alignment with SceneView v4.9.0. Web-demo catalog expansion, React Native and Flutter demo catalogs, web auto-center parity port, MaterialInstance teardown safety, CI hygiene, and docs refresh. The native `io.github.sceneview` dependency coordinates continue to track the last published SceneView release. No breaking Flutter API change.

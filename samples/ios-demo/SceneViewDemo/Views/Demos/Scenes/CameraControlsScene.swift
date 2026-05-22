@@ -1,6 +1,6 @@
 // @sceneId     camera-controls
 // @title       Camera Controls
-// @subtitle    Orbit, pan, and free camera modes
+// @subtitle    Orbit, pan, look-around, and native Apple modes
 // @category    interaction
 // @available   true
 // @icon        camera.fill

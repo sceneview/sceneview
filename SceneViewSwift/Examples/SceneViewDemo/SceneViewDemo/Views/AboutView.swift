@@ -7,7 +7,7 @@ struct AboutView: View {
             List {
                 // SDK info
                 Section {
-                    LabeledContent("Version", value: "4.9.0")
+                    LabeledContent("Version", value: "4.15.1")
                     LabeledContent("Platform", value: "iOS 17+ / visionOS 1+")
                     LabeledContent("Engine", value: "RealityKit + ARKit")
                     LabeledContent("License", value: "Apache 2.0")

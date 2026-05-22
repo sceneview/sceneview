@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-05-15'
+  last-updated: '2026-05-22'
   keywords:
   - sceneview
   - sceneviewswift
@@ -103,7 +103,7 @@ struct ModelViewerScreen: View {
             }
         }
         .environment(.studio)          // IBL lighting preset
-        .cameraControls(.orbit)        // .orbit | .pan | .firstPerson
+        .cameraControls(.orbit)        // .orbit | .pan | .firstPerson | native (iOS 18+): .none | .tilt | .dolly
         .autoCenterContent(true)
         .task {
             model = try? await ModelNode.load("models/helmet.usdz")

@@ -13,9 +13,9 @@ code — the demo is the authoritative recipe.
 [`AllShapesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/AllShapesDemo.swift)
 — `GeometryNode.cube / .sphere / .cylinder / .plane / .cone / .torus / .capsule`.
 
-## 3. Camera controls (orbit / pan)
+## 3. Camera controls (orbit / pan / native Apple modes)
 [`CameraControlsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/CameraControlsDemo.swift)
-— `.cameraControls(.orbit)` modifier.
+— `.cameraControls(.orbit)` modifier; native Apple modes (`.none`, `.tilt`, `.dolly`) available on iOS 18+ via `realityViewCameraControls(_:)`, unavailable on visionOS.
 
 ## 4. Auto-rotate turntable
 [`AnimationDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/AnimationDemo.swift)
@@ -92,6 +92,60 @@ and [`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/mai
 ## 21. AR debugging (Rerun)
 [`RerunDebugDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/RerunDebugDemo.swift)
 — stream AR frame data to a Rerun viewer via `ARSceneView.onFrame`.
+
+## 22. Collision & hit testing
+[`CollisionHitTestDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/CollisionHitTestDemo.swift)
+— ray-casting against geometry shapes, highlight on tap.
+
+## 23. Gesture editing
+[`GestureEditingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/GestureEditingDemo.swift)
+— drag, scale, and rotate entities with multi-touch gestures.
+
+## 24. Shape extrude
+[`ShapeExtrudeDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ShapeExtrudeDemo.swift)
+— `ShapeNode` — extrude a 2D path into a 3D solid.
+
+## 25. Reflection probes
+[`ReflectionProbesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ReflectionProbesDemo.swift)
+— `ReflectionProbeNode.box / .sphere` — local cubemap reflections.
+
+## 26. Occlusion material
+[`OcclusionMaterialDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/OcclusionMaterialDemo.swift)
+— an invisible occluder plane hides entities behind virtual geometry.
+
+## 27. Texture streaming
+[`TextureStreamingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/TextureStreamingDemo.swift)
+— swap `PhysicallyBasedMaterial` presets at runtime — no geometry rebuild.
+
+## 28. Debug overlay (live FPS)
+[`DebugOverlayDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DebugOverlayDemo.swift)
+— RealityKit `Statistics` FPS counter + sphere stress test.
+
+## AR recipes (continued)
+
+## 29. AR image tracking
+[`ARImageTrackingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARImageTrackingDemo.swift)
+— `ARImageTrackingConfiguration` — track printed reference images.
+
+## 30. Augmented Faces
+[`ARAugmentedFacesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARAugmentedFacesDemo.swift)
+— `AnchorNode.face()` — front-camera face pose tracking.
+
+## 31. AR depth occlusion
+[`ARDepthOcclusionDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARDepthOcclusionDemo.swift)
+— LiDAR depth occlusion (A14+ devices).
+
+## 32. AR people occlusion
+[`ARPeopleOcclusionDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPeopleOcclusionDemo.swift)
+— `ARFrameSemantics.personSegmentationWithDepth` — hide AR content behind real people.
+
+## 33. AR body tracker
+[`ARBodyTrackerDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARBodyTrackerDemo.swift)
+— `ARBodyTrackingConfiguration` — full-body skeleton tracking.
+
+## 34. AR scene mesh
+[`ARSceneMeshDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARSceneMeshDemo.swift)
+— LiDAR scene reconstruction mesh (`SceneReconstructionNode`).
 
 ## Cross-platform parity
 
