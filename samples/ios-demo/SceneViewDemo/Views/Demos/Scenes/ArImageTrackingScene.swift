@@ -2,11 +2,11 @@
 // @title       Image Tracking
 // @subtitle    Detect and track reference images
 // @category    ar
-// @available   false
+// @available   true
 // @icon        viewfinder.circle.fill
 // @iosOnly     true
 import SwiftUI
 
 enum ArImageTrackingScene: DemoScene {
-    @MainActor static var destination: AnyView { AnyView(EmptyView()) }
+    @MainActor static var destination: AnyView { AnyView(ARImageTrackingDemo()) }
 }

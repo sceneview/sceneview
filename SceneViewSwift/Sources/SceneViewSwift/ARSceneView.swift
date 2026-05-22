@@ -35,6 +35,7 @@ public struct ARSceneView: UIViewRepresentable {
     private var imageTrackingDatabase: Set<ARReferenceImage>?
     private var onImageDetected: ((String, AnchorNode, ARView) -> Void)?
     private var onFrame: ((ARFrame, ARView) -> Void)?
+    private var faceTracking: Bool
 
     // Light slot overrides — read once during scene setup and re-applied via
     // `updateUIView` when the caller mutates the modifier value. Defaults to
@@ -93,12 +94,16 @@ public struct ARSceneView: UIViewRepresentable {
     ///   - onImageDetected: Called with (imageName, anchorNode, arView) when a reference
     ///     image is detected. Add content to the anchor and call
     ///     `arView.scene.addAnchor(anchor.entity)`.
+    ///   - faceTracking: When `true`, switches to `ARFaceTrackingConfiguration` (uses the
+    ///     front TrueDepth camera). Requires a device with a TrueDepth camera (iPhone X+).
+    ///     Plane detection and tap-to-place are not available in face-tracking mode.
     public init(
         planeDetection: PlaneDetectionMode = .horizontal,
         showPlaneOverlay: Bool = true,
         showCoachingOverlay: Bool = true,
         cameraExposure: Float? = nil,
         imageTrackingDatabase: Set<ARReferenceImage>? = nil,
+        faceTracking: Bool = false,
         onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)? = nil,
         onImageDetected: ((String, AnchorNode, ARView) -> Void)? = nil,
         onFrame: ((ARFrame, ARView) -> Void)? = nil
@@ -108,6 +113,7 @@ public struct ARSceneView: UIViewRepresentable {
         self.showCoachingOverlay = showCoachingOverlay
         self.cameraExposure = cameraExposure
         self.imageTrackingDatabase = imageTrackingDatabase
+        self.faceTracking = faceTracking
         self.onTapOnPlane = onTapOnPlane
         self.onImageDetected = onImageDetected
         self.onFrame = onFrame
@@ -218,28 +224,34 @@ public struct ARSceneView: UIViewRepresentable {
         let arView = ARView(frame: .zero)
         arView.automaticallyConfigureSession = false
 
-        // Configure AR session
-        let config = ARWorldTrackingConfiguration()
-        config.planeDetection = planeDetection.arPlaneDetection
-        // RealityKit's `.automatic` environment texturing is the functional
-        // equivalent of ARCore's `Config.LightEstimationMode.ENVIRONMENTAL_HDR`
-        // (Android default since v4.3.0 / `#1063`) — ARKit auto-builds the
-        // runtime cubemap that drives PBR reflections on metallic + glossy
-        // materials. There is no enum to toggle: it's on by default, off when
-        // unsupported. Closes the env-texturing half of #1138.
-        config.environmentTexturing = .automatic
+        // Configure AR session — face tracking uses the front TrueDepth camera;
+        // world tracking uses the rear camera for plane detection / image tracking.
+        if faceTracking, ARFaceTrackingConfiguration.isSupported {
+            let faceConfig = ARFaceTrackingConfiguration()
+            arView.session.run(faceConfig, options: [.resetTracking, .removeExistingAnchors])
+        } else {
+            let config = ARWorldTrackingConfiguration()
+            config.planeDetection = planeDetection.arPlaneDetection
+            // RealityKit's `.automatic` environment texturing is the functional
+            // equivalent of ARCore's `Config.LightEstimationMode.ENVIRONMENTAL_HDR`
+            // (Android default since v4.3.0 / `#1063`) — ARKit auto-builds the
+            // runtime cubemap that drives PBR reflections on metallic + glossy
+            // materials. There is no enum to toggle: it's on by default, off when
+            // unsupported. Closes the env-texturing half of #1138.
+            config.environmentTexturing = .automatic
 
-        // Image tracking
-        if let images = imageTrackingDatabase, !images.isEmpty {
-            config.detectionImages = images
-            config.maximumNumberOfTrackedImages = images.count
+            // Image tracking
+            if let images = imageTrackingDatabase, !images.isEmpty {
+                config.detectionImages = images
+                config.maximumNumberOfTrackedImages = images.count
+            }
+
+            if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+                config.sceneReconstruction = .mesh
+            }
+
+            arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
         }
-
-        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
-            config.sceneReconstruction = .mesh
-        }
-
-        arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
         arView.session.delegate = context.coordinator
 
         // Plane visualization.
@@ -461,7 +473,8 @@ public struct ARSceneView: UIViewRepresentable {
             // supported; mirror the flag here so it's re-applied after an
             // interruption (closes part of #928).
             enableMeshReconstruction: true,
-            environmentTexturing: .automatic
+            environmentTexturing: .automatic,
+            faceTracking: faceTracking
         )
     }
 
@@ -488,6 +501,7 @@ public struct ARSceneView: UIViewRepresentable {
         var imageTrackingDatabase: Set<ARReferenceImage>?
         var enableMeshReconstruction: Bool = true
         var environmentTexturing: ARWorldTrackingConfiguration.EnvironmentTexturing = .automatic
+        var faceTracking: Bool = false
         weak var arView: ARView?
         private var detectedImageNames: Set<String> = []
 
@@ -516,7 +530,8 @@ public struct ARSceneView: UIViewRepresentable {
             onFrame: ((ARFrame, ARView) -> Void)? = nil,
             imageTrackingDatabase: Set<ARReferenceImage>? = nil,
             enableMeshReconstruction: Bool = true,
-            environmentTexturing: ARWorldTrackingConfiguration.EnvironmentTexturing = .automatic
+            environmentTexturing: ARWorldTrackingConfiguration.EnvironmentTexturing = .automatic,
+            faceTracking: Bool = false
         ) {
             self.onTapOnPlane = onTapOnPlane
             self.planeDetection = planeDetection
@@ -524,6 +539,7 @@ public struct ARSceneView: UIViewRepresentable {
             self.onFrame = onFrame
             self.imageTrackingDatabase = imageTrackingDatabase
             self.enableMeshReconstruction = enableMeshReconstruction
+            self.faceTracking = faceTracking
             self.environmentTexturing = environmentTexturing
         }
 
@@ -605,6 +621,10 @@ public struct ARSceneView: UIViewRepresentable {
 
         public func sessionInterruptionEnded(_ session: ARSession) {
             print("[SceneViewSwift] AR session interruption ended — resuming with full config")
+            if faceTracking, ARFaceTrackingConfiguration.isSupported {
+                session.run(ARFaceTrackingConfiguration())
+                return
+            }
             // Re-apply the FULL tracking configuration that was active before the
             // interruption — previously only `planeDetection` survived, so consumers
             // doing image tracking / mesh reconstruction / non-default environment

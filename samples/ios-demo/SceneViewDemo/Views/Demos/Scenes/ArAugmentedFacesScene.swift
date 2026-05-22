@@ -2,11 +2,11 @@
 // @title       Augmented Faces
 // @subtitle    Face mesh tracking and overlays
 // @category    ar
-// @available   false
+// @available   true
 // @icon        face.smiling.inverse
 // @iosOnly     true
 import SwiftUI
 
 enum ArAugmentedFacesScene: DemoScene {
-    @MainActor static var destination: AnyView { AnyView(EmptyView()) }
+    @MainActor static var destination: AnyView { AnyView(ARAugmentedFacesDemo()) }
 }

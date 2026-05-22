@@ -95,6 +95,10 @@
 		C10000000000000000000038 /* SpatialAudioDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000038 /* SpatialAudioDemo.swift */; };
 		C10000000000000000000039 /* EnvironmentDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000039 /* EnvironmentDemo.swift */; };
 		595BE7B36EE44F0893381277 /* EnvironmentScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3B8B5CCC5464FAB8141C76F /* EnvironmentScene.swift */; };
+		C100000000000000000000F0 /* ARImageTrackingDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000F0 /* ARImageTrackingDemo.swift */; };
+		C100000000000000000000F1 /* ARAugmentedFacesDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000F1 /* ARAugmentedFacesDemo.swift */; };
+		C100000000000000000000F2 /* ARDepthOcclusionDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000F2 /* ARDepthOcclusionDemo.swift */; };
+		E500000000000000000000F3 /* qrcode.png in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000F3 /* qrcode.png */; };
 		C10000000000000000000030 /* FavoritesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000030 /* FavoritesManager.swift */; };
 		C10000000000000000000050 /* DemoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000050 /* DemoSheet.swift */; };
 		C10000000000000000000051 /* CreditsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000051 /* CreditsSheet.swift */; };
@@ -197,6 +201,10 @@
 		C20000000000000000000037 /* ARInstantPlacementDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARInstantPlacementDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000038 /* SpatialAudioDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialAudioDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000039 /* EnvironmentDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentDemo.swift; sourceTree = "<group>"; };
+		C200000000000000000000F0 /* ARImageTrackingDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARImageTrackingDemo.swift; sourceTree = "<group>"; };
+		C200000000000000000000F1 /* ARAugmentedFacesDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARAugmentedFacesDemo.swift; sourceTree = "<group>"; };
+		C200000000000000000000F2 /* ARDepthOcclusionDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARDepthOcclusionDemo.swift; sourceTree = "<group>"; };
+		E600000000000000000000F3 /* qrcode.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = qrcode.png; sourceTree = "<group>"; };
 		F60000000000000000000001 /* bell.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = bell.wav; sourceTree = "<group>"; };
 		F60000000000000000000002 /* CREDITS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CREDITS.md; sourceTree = "<group>"; };
 		C20000000000000000000030 /* FavoritesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesManager.swift; sourceTree = "<group>"; };
@@ -342,6 +350,7 @@
 				D40000000000000000000001 /* Models */,
 				E40000000000000000000001 /* Environments */,
 				F40000000000000000000001 /* Audio */,
+				E40000000000000000000003 /* Resources */,
 				A20000010000000000000002 /* Assets.xcassets */,
 				A20000010000000000000003 /* Info.plist */,
 			);
@@ -418,6 +427,9 @@
 				C20000000000000000000037 /* ARInstantPlacementDemo.swift */,
 				C20000000000000000000038 /* SpatialAudioDemo.swift */,
 				C20000000000000000000039 /* EnvironmentDemo.swift */,
+				C200000000000000000000F0 /* ARImageTrackingDemo.swift */,
+				C200000000000000000000F1 /* ARAugmentedFacesDemo.swift */,
+				C200000000000000000000F2 /* ARDepthOcclusionDemo.swift */,
 			);
 			path = Demos;
 			sourceTree = "<group>";
@@ -486,6 +498,14 @@
 				F60000000000000000000002 /* CREDITS.md */,
 			);
 			path = Audio;
+			sourceTree = "<group>";
+		};
+		E40000000000000000000003 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				E600000000000000000000F3 /* qrcode.png */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -579,6 +599,7 @@
 			files = (
 				A10000010000000000000002 /* Assets.xcassets in Resources */,
 				F50000000000000000000001 /* bell.wav in Resources */,
+				E500000000000000000000F3 /* qrcode.png in Resources */,
 				D10000000000000000000001 /* game_boy_classic.usdz in Resources */,
 				D10000000000000000000002 /* tree_scene.usdz in Resources */,
 				D10000000000000000000003 /* red_car.usdz in Resources */,
@@ -717,6 +738,9 @@
 				C10000000000000000000037 /* ARInstantPlacementDemo.swift in Sources */,
 				C10000000000000000000038 /* SpatialAudioDemo.swift in Sources */,
 				C10000000000000000000039 /* EnvironmentDemo.swift in Sources */,
+				C100000000000000000000F0 /* ARImageTrackingDemo.swift in Sources */,
+				C100000000000000000000F1 /* ARAugmentedFacesDemo.swift in Sources */,
+				C100000000000000000000F2 /* ARDepthOcclusionDemo.swift in Sources */,
 				ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */,
 				C10000000000000000000050 /* DemoSheet.swift in Sources */,
 				C10000000000000000000051 /* CreditsSheet.swift in Sources */,

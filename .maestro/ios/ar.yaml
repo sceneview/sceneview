@@ -57,23 +57,29 @@ appId: io.github.sceneview.demo
       DEMO_ID: ar-rerun
       DEMO_NAME: AR Rerun Debug
       ASSERT_TEXT: "ARKit is not available in the simulator."
+- runFlow:
+    file: flows/ar-demo.yaml
+    env:
+      DEMO_ID: ar-image
+      DEMO_NAME: Image Tracking
+      ASSERT_TEXT: "AR requires a physical device"
+- runFlow:
+    file: flows/ar-demo.yaml
+    env:
+      DEMO_ID: ar-face
+      DEMO_NAME: Augmented Faces
+      ASSERT_TEXT: "AR requires a physical device"
+- runFlow:
+    file: flows/ar-demo.yaml
+    env:
+      DEMO_ID: ar-depth-occlusion
+      DEMO_NAME: Depth Occlusion
+      ASSERT_TEXT: "AR requires a physical device"
 # ── Coming-soon AR demos (route to DeepLinkPlaceholder) ─────────────────────
 - runFlow:
     file: flows/placeholder.yaml
     env:
-      DEMO_ID: ar-image
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: ar-face
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
       DEMO_ID: ar-cloud-anchor
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: ar-depth-occlusion
 - runFlow:
     file: flows/placeholder.yaml
     env:
