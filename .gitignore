@@ -108,6 +108,14 @@ samples/ios-demo/.build/
 # `:samples:android-demo` Kotlin compilation.
 samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/GeneratedDemos.kt
 
+# `GeneratedScenes.swift` is the iOS counterpart of `GeneratedDemos.kt` —
+# collated from per-demo `*Scene.swift` files by
+# `samples/ios-demo/scripts/collate-ios-demos.sh`. Same rationale: committing
+# it causes guaranteed merge conflicts on parallel demo-adding PRs (issue #1872).
+# Xcode regenerates it before each build via the "Collate iOS demos" Run Script
+# phase in `SceneViewDemo.xcodeproj`.
+samples/ios-demo/SceneViewDemo/Views/Demos/GeneratedScenes.swift
+
 # ── MkDocs ────────────────────────────────────────────────
 docs/.cache/
 docs/site/
