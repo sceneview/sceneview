@@ -35,6 +35,12 @@ struct SceneViewDemoApp: App {
         let args = CommandLine.arguments
         guard let idx = args.firstIndex(of: "-demo"), idx + 1 < args.count else { return nil }
         let id = args[idx + 1]
+        // Propagate `-qa_mode 1` launch arg so the screenshot harness can
+        // freeze auto-rotation — mirrors the `?qa_mode=1` deep-link param.
+        if let qIdx = args.firstIndex(of: "-qa_mode"),
+           qIdx + 1 < args.count, args[qIdx + 1] == "1" {
+            UserDefaults.standard.set(true, forKey: DeepLinkRouter.qaModeDefaultsKey)
+        }
         return DemoDeepLinkRegistry.allowedIds.contains(id) ? id : nil
     }()
 

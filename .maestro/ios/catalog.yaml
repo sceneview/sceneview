@@ -15,17 +15,23 @@
 # Coverage vs the Android slice (#1562, 42 demos):
 #   iOS coverage is the subset of Android `DemoRegistry.kt` ALL_DEMOS ids that
 #   `DemoDeepLinkRegistry.allowedIds` exposes for `sceneview://demo/<id>` —
-#   24 ids at the time slice #1563 landed:
-#     3D Basics ............ 4   (model-viewer, geometry, animation, multi-model)
+#   42 ids (#1579 widened the registry to the full Android catalog):
+#     3D Basics ............ 5   (model-viewer, geometry, animation, multi-model,
+#                                 scene-gallery)
 #     Lighting ............. 4   (lighting, movable-light, dynamic-sky, fog)
 #     Content .............. 4   (text, lines-paths, image, billboard)
-#     Interaction .......... 1   (camera-controls)
-#     Advanced ............. 4   (physics, double-pendulum, custom-mesh, shape)
-#     Augmented Reality .... 2   (ar-placement, ar-rerun — launch-only smoke)
-#     Deep-link placeholders 5   (environment, video, gesture-editing,
-#                                 ar-image, ar-face — router + placeholder smoke)
-#                                --
-#     Total ................ 24
+#     Interaction .......... 2   (camera-controls, collision*)
+#     Advanced ............. 9   (physics, double-pendulum, custom-mesh, shape,
+#                                 materials, spatial-audio, post-processing*,
+#                                 reflection-probes*, secondary-camera*)
+#     Augmented Reality .... 6   (ar-placement, ar-instant-placement, ar-orbital,
+#                                 ar-lighting, ar-recording, ar-rerun — launch-only)
+#     Deep-link placeholders 12  (ar-image*, ar-face*, ar-cloud-anchor*,
+#                                 ar-depth-occlusion*, ar-eis*, ar-pose-placement*,
+#                                 ar-rooftop*, ar-streetscape*, ar-terrain*,
+#                                 gesture-editing*, video*, view-node*)
+#                                --  (* = routes to DeepLinkPlaceholder)
+#     Total ................ 42
 #
 # Why deep-link ingress, not Samples-tab navigation:
 #   The iOS Samples-tab presents demos in a `.fullScreenCover` with NO Close
@@ -56,8 +62,9 @@
 #
 # Zoom limitation:
 #   Maestro has no pinch gesture, so 3D camera zoom is not exercised here — the
-#   same limitation as the Android slice. iOS additionally has no `qa_mode`
-#   deep-link argument to freeze auto-rotation; both are tracked follow-ups.
+#   same limitation as the Android slice. iOS `qa_mode` is now supported via
+#   `?qa_mode=1` on any `sceneview://demo/<id>` URL or `-qa_mode 1` launch arg
+#   (#1579); pinch-zoom remains the only outstanding gap.
 #
 # AR demos are launch-only smoke — RealityKit AR cannot run on the simulator.
 appId: io.github.sceneview.demo

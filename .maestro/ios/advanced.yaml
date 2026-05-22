@@ -35,3 +35,13 @@ appId: io.github.sceneview.demo
       DEMO_ID: shape
       DEMO_NAME: Shape (Geometry)
       ASSERT_TEXT: "5 built-in geometry types with PBR materials"
+- runFlow:
+    file: flows/demo-noassert.yaml
+    env:
+      DEMO_ID: materials
+      DEMO_NAME: PBR Materials
+- runFlow:
+    file: flows/demo-noassert.yaml
+    env:
+      DEMO_ID: spatial-audio
+      DEMO_NAME: Spatial Audio
