@@ -51,7 +51,7 @@ enum DemoDeepLinkRegistry {
         "ar-recording", "ar-rerun",
         // Coming-soon AR (routed to placeholder)
         "ar-image", "ar-face", "ar-cloud-anchor", "ar-depth-occlusion",
-        "ar-eis", "ar-pose-placement", "ar-rooftop", "ar-streetscape",
+        "ar-rooftop", "ar-streetscape",
         "ar-terrain",
         // Newer AR demos (Android-side additions, routed to placeholder on iOS)
         "ar-pose", "ar-record-playback", "ar-image-stabilization",
