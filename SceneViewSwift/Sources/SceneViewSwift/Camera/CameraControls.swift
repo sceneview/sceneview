@@ -1,11 +1,19 @@
 #if os(iOS) || os(macOS) || os(visionOS)
 import SwiftUI
 import RealityKit
+import RealityFoundation
 
 /// Camera interaction mode for the 3D scene.
 ///
 /// Mirrors SceneView Android's camera manipulator modes
 /// (`CameraGestureDetector` + `FovZoomCameraManipulator`).
+///
+/// Three modes (``orbit``, ``pan``, ``firstPerson``) are implemented with
+/// SceneView's own gesture math, giving identical behaviour across Android
+/// and iOS. Four additional iOS-only modes (``none``, ``tilt``, ``dolly``,
+/// ``gimbal``) delegate directly to Apple's ``realityViewCameraControls(_:)``
+/// modifier — they have no Android equivalent and are iOS enrichments only.
+/// Closes #1049 (Phase 2 — expose the 4 Apple-only modes).
 public enum CameraControlMode: Sendable {
     /// Orbit around a target point. Drag rotates the scene around the orbit
     /// pivot; pinch dollies in/out by scaling the scene root.
@@ -35,6 +43,72 @@ public enum CameraControlMode: Sendable {
     /// the orbit angles from the look direction, so the transition is
     /// continuous in both directions. Closes #1236 / #1034.
     case firstPerson
+
+    // MARK: - iOS-only native modes (#1049)
+    //
+    // The four modes below delegate to Apple's `realityViewCameraControls(_:)`
+    // modifier (iOS 18+, macOS 15+). They have no Android equivalent and
+    // are iOS enrichments only. SceneView's custom gesture math (orbit
+    // inertia, auto-rotate, fit-to-bounds framing) is bypassed — Apple's
+    // modifier drives the camera directly.
+
+    /// Disables all camera gesture interaction.
+    ///
+    /// Equivalent to `RealityFoundation.CameraControls.none`. iOS / macOS only —
+    /// no Android equivalent.
+    case none
+
+    /// Tilt camera up / down about the horizontal axis.
+    ///
+    /// Equivalent to `RealityFoundation.CameraControls.tilt`. iOS / macOS only —
+    /// no Android equivalent.
+    case tilt
+
+    /// Dolly (zoom) the camera along its look direction.
+    ///
+    /// Equivalent to `RealityFoundation.CameraControls.dolly`. iOS / macOS only —
+    /// no Android equivalent.
+    case dolly
+
+    /// Gimbal rotation — rotate the camera about all three axes independently
+    /// (no orbit pivot).
+    ///
+    /// Equivalent to `RealityFoundation.CameraControls.gimbal`. iOS / macOS only —
+    /// no Android equivalent.
+    case gimbal
+
+    // MARK: - Internal helpers
+
+    /// Returns `true` for modes that are handled by SceneView's own gesture
+    /// math (orbit, pan, firstPerson). Returns `false` for modes that delegate
+    /// to Apple's `realityViewCameraControls(_:)` modifier.
+    var isCustom: Bool {
+        switch self {
+        case .orbit, .pan, .firstPerson: return true
+        case .none, .tilt, .dolly, .gimbal: return false
+        }
+    }
+
+    /// Maps this mode to the equivalent `RealityFoundation.CameraControls`
+    /// value for use with `realityViewCameraControls(_:)`.
+    ///
+    /// Only valid for the four native-only modes (``none``, ``tilt``,
+    /// ``dolly``, ``gimbal``). Custom modes (``orbit``, ``pan``,
+    /// ``firstPerson``) have no `RealityFoundation.CameraControls` equivalent —
+    /// calling this on them returns `.orbit` as a safe default (the caller
+    /// should gate on `isCustom` first).
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    var toRealityKit: RealityFoundation.CameraControls {
+        switch self {
+        case .orbit:       return .orbit
+        case .pan:         return .pan
+        case .firstPerson: return .firstPerson
+        case .none:        return .none
+        case .tilt:        return .tilt
+        case .dolly:       return .dolly
+        case .gimbal:      return .gimbal
+        }
+    }
 }
 
 /// Manages camera orbit, pan, and zoom via SwiftUI gestures.
