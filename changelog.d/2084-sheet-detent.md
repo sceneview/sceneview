@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo settings sheet remembers its last detent per demo ([#2084](https://github.com/sceneview/sceneview/issues/2084)).** The demo-app settings bottom sheet now reopens at the detent (partially-expanded vs fully-expanded) the user last left it at, individually for each demo. The detent is persisted in `SharedPreferences` keyed by demo title, so it survives navigating away from the demo and full process death. A demo never opened before still defaults to the partial detent.

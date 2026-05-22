@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **Surface AR camera-config / depth-mode downgrades ([#2096](https://github.com/sceneview/sceneview/issues/2096)).** `ARSceneView` now exposes an `onConfigDowngraded` callback that fires with a typed `ARConfigDowngrade` (`DepthMode` or `CameraConfig`) when a requested capability is unsupported on the device and is silently downgraded to a working fallback — so apps can adapt their UI instead of behaviour diverging silently across devices.
