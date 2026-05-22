@@ -94,3 +94,80 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: ar-terrain
+# ── Newer Android AR demos (added after the 42-id widening, routed to placeholder) ──
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-pose
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-record-playback
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-image-stabilization
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-depth-of-field
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-fog
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-depth-collider
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-depth-visualization
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-people-occlusion
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-point-cloud
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-raw-depth-point-cloud
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-plane-node
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-scene-mesh
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-scene-semantics
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-ml-object-label
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: placement-scene
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-collaborative
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-body-tracker
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-hand-tracking
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: ar-xr-face
