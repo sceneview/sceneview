@@ -157,6 +157,20 @@ let title = TextNode(text: "SceneView", fontSize: 0.08, depth: 0.02)
 | `CameraControls` | Orbit camera with inertia and auto-rotation |
 | `GeometryMaterial` | PBR material: `.simple`, `.pbr`, `.unlit` |
 
+## Platform Support
+
+| Feature | iOS 18+ | macOS 15+ | visionOS 2+ |
+|---|---|---|---|
+| `SceneView` — 3D scene | ✅ | ✅ | ✅ |
+| `ARSceneView` — AR/camera passthrough | ✅ | ❌ AR requires device camera | ❌ AR requires device camera |
+| All 3D nodes (`ModelNode`, `GeometryNode`, lights, etc.) | ✅ | ✅ | ✅ |
+| `BillboardNode` — always faces camera | ✅ | ✅ | ✅ |
+| `CameraNode` field-of-view / clip planes | ✅ | ⚠️ RealityKit `PerspectiveCameraComponent` not available on macOS | ✅ |
+| `SceneViewHaptic` | ✅ | ❌ iOS-only | ❌ |
+| `AnchorNode` / `AugmentedImageNode` | ✅ | ❌ ARKit is iOS/iPadOS-only | ❌ |
+
+**macOS:** `SceneView` (3D rendering) is fully supported on macOS 15+. `ARSceneView` is iOS/iPadOS-only and is not available on macOS — `ARSceneView.swift` is wrapped in `#if os(iOS)`. The same applies to all ARKit-dependent features.
+
 ## Platform Mapping (Android ↔ iOS)
 
 | Android (Compose) | iOS (SwiftUI) |
