@@ -30,11 +30,17 @@ appId: io.github.sceneview.demo
       DEMO_NAME: Custom Mesh
       ASSERT_TEXT: "MeshNode.fromVertices -- raw vertex data"
 - runFlow:
-    file: flows/demo.yaml
+    file: flows/demo-settings.yaml
     env:
       DEMO_ID: shape
-      DEMO_NAME: Shape (Geometry)
-      ASSERT_TEXT: "5 built-in geometry types with PBR materials"
+      DEMO_NAME: Shape Extrude
+      ASSERT_TEXT: "Shape Preset"
+- runFlow:
+    file: flows/demo-settings.yaml
+    env:
+      DEMO_ID: reflection-probes
+      DEMO_NAME: Reflection Probes
+      ASSERT_TEXT: "Probe Environment"
 - runFlow:
     file: flows/demo-noassert.yaml
     env:
