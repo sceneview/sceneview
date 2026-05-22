@@ -78,6 +78,7 @@
 		C10000000000000000000062 /* DoublePendulumDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000062 /* DoublePendulumDemo.swift */; };
 		C10000000000000000000018 /* CameraControlsDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000018 /* CameraControlsDemo.swift */; };
 		C100000000000000000000C1 /* CollisionHitTestDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000C1 /* CollisionHitTestDemo.swift */; };
+		C100000000000000000000CE /* GestureEditingDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000CE /* GestureEditingDemo.swift */; };
 		C10000000000000000000020 /* SceneGalleryDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000020 /* SceneGalleryDemo.swift */; };
 		C10000000000000000000021 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000021 /* Theme.swift */; };
 		C10000000000000000000022 /* RerunDebugDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000022 /* RerunDebugDemo.swift */; };
@@ -180,6 +181,7 @@
 		C20000000000000000000062 /* DoublePendulumDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoublePendulumDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000018 /* CameraControlsDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraControlsDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000C1 /* CollisionHitTestDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollisionHitTestDemo.swift; sourceTree = "<group>"; };
+		C200000000000000000000CE /* GestureEditingDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureEditingDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000020 /* SceneGalleryDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneGalleryDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000021 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		C20000000000000000000022 /* RerunDebugDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RerunDebugDemo.swift; sourceTree = "<group>"; };
@@ -403,6 +405,7 @@
 				C20000000000000000000062 /* DoublePendulumDemo.swift */,
 				C20000000000000000000018 /* CameraControlsDemo.swift */,
 				C200000000000000000000C1 /* CollisionHitTestDemo.swift */,
+				C200000000000000000000CE /* GestureEditingDemo.swift */,
 				C20000000000000000000020 /* SceneGalleryDemo.swift */,
 				C20000000000000000000022 /* RerunDebugDemo.swift */,
 				C20000000000000000000025 /* OrbitalARDemo.swift */,
@@ -691,6 +694,7 @@
 				C10000000000000000000062 /* DoublePendulumDemo.swift in Sources */,
 				C10000000000000000000018 /* CameraControlsDemo.swift in Sources */,
 				C100000000000000000000C1 /* CollisionHitTestDemo.swift in Sources */,
+				C100000000000000000000CE /* GestureEditingDemo.swift in Sources */,
 				C10000000000000000000020 /* SceneGalleryDemo.swift in Sources */,
 				C10000000000000000000021 /* Theme.swift in Sources */,
 				C10000000000000000000022 /* RerunDebugDemo.swift in Sources */,

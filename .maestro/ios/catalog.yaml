@@ -18,19 +18,21 @@
 #   42 ids (#1579 widened the registry to the full Android catalog):
 #     3D Basics ............ 5   (model-viewer, geometry, animation, multi-model,
 #                                 scene-gallery)
-#     Lighting ............. 5   (lighting, movable-light, dynamic-sky, environment,
-                                fog)
-#     Content .............. 4   (text, lines-paths, image, billboard)
-#     Interaction .......... 2   (camera-controls, collision*)
+#     Lighting ............. 5   (lighting, movable-light, dynamic-sky, fog,
+#                                 environment)
+#     Content .............. 6   (text, lines-paths, image, billboard,
+#                                 video, texture-streaming*)
+#     Interaction .......... 4   (camera-controls, collision, gesture-editing,
+#                                 view-node*)
 #     Advanced ............. 9   (physics, double-pendulum, custom-mesh, shape,
 #                                 materials, spatial-audio, post-processing*,
 #                                 reflection-probes*, secondary-camera*)
 #     Augmented Reality .... 6   (ar-placement, ar-instant-placement, ar-orbital,
 #                                 ar-lighting, ar-recording, ar-rerun — launch-only)
-#     Deep-link placeholders 12  (ar-image*, ar-face*, ar-cloud-anchor*,
+#     Deep-link placeholders 10  (ar-image*, ar-face*, ar-cloud-anchor*,
 #                                 ar-depth-occlusion*, ar-eis*, ar-pose-placement*,
 #                                 ar-rooftop*, ar-streetscape*, ar-terrain*,
-#                                 gesture-editing*, video*, view-node*)
+#                                 video*, view-node*)
 #                                --  (* = routes to DeepLinkPlaceholder)
 #     Total ................ 43
 #
