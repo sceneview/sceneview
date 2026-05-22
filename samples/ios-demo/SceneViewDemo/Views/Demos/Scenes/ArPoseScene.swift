@@ -1,4 +1,4 @@
-// @sceneId     ar-pose-placement
+// @sceneId     ar-pose
 // @title       Pose Placement
 // @subtitle    Free pose positioning
 // @category    ar
@@ -7,6 +7,6 @@
 // @iosOnly     true
 import SwiftUI
 
-enum ArPosePlacementScene: DemoScene {
+enum ArPoseScene: DemoScene {
     @MainActor static var destination: AnyView { AnyView(EmptyView()) }
 }
