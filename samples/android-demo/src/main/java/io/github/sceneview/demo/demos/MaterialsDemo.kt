@@ -106,6 +106,8 @@ fun MaterialsDemo(onBack: () -> Unit) {
     // A failed resolve is surfaced as [MaterialResolveState.Error] instead of
     // being swallowed into a `null` path that hangs the loading scrim forever
     // (#2088). `retryTick` re-runs the resolve when the user taps Retry.
+    // A null slug (empty registry category) exits to [MaterialResolveState.Empty]
+    // so the loading scrim is not shown forever (#2122).
     val resolveState: MaterialResolveState by produceState<MaterialResolveState>(
         initialValue = MaterialResolveState.Loading,
         key1 = resolver,
@@ -113,7 +115,10 @@ fun MaterialsDemo(onBack: () -> Unit) {
         key3 = retryTick,
     ) {
         value = MaterialResolveState.Loading
-        val slug = selectedSlug ?: return@produceState
+        val slug = selectedSlug ?: run {
+            value = MaterialResolveState.Empty
+            return@produceState
+        }
         value = runCatching { resolver.resolve(slug) }
             .fold(
                 onSuccess = { MaterialResolveState.Resolved(it.toURI().toString()) },
@@ -122,6 +127,7 @@ fun MaterialsDemo(onBack: () -> Unit) {
     }
     val resolvedPath = (resolveState as? MaterialResolveState.Resolved)?.path
     val resolveError = (resolveState as? MaterialResolveState.Error)?.message
+    val isEmpty = resolveState is MaterialResolveState.Empty
 
     val modelInstance = resolvedPath?.let { path ->
         rememberModelInstance(modelLoader, path)
@@ -200,6 +206,8 @@ fun MaterialsDemo(onBack: () -> Unit) {
             }
             // Mutually exclusive with LoadingScrim: a resolve failure shows the
             // error scrim (with Retry) instead of hanging on "Streaming…" (#2088).
+            // An empty registry category (no slugs) shows nothing — the viewport
+            // is already blank; do not show "Loading…" forever (#2122).
             if (resolveError != null) {
                 ErrorScrim(
                     message = resolveError,
@@ -207,7 +215,7 @@ fun MaterialsDemo(onBack: () -> Unit) {
                     label = stringResource(R.string.demo_materials_error),
                     retryLabel = stringResource(R.string.demo_materials_retry),
                 )
-            } else {
+            } else if (!isEmpty) {
                 LoadingScrim(
                     loading = modelInstance == null,
                     label = stringResource(R.string.demo_materials_loading),
@@ -221,6 +229,12 @@ fun MaterialsDemo(onBack: () -> Unit) {
 private sealed interface MaterialResolveState {
     /** Resolve coroutine in flight. */
     data object Loading : MaterialResolveState
+
+    /**
+     * No slug available (empty registry category — the materials category has no entries).
+     * The viewport stays blank; the loading scrim is not shown (#2122).
+     */
+    data object Empty : MaterialResolveState
 
     /** Resolve succeeded — [path] is a `file://` URL ready for the model loader. */
     data class Resolved(val path: String) : MaterialResolveState

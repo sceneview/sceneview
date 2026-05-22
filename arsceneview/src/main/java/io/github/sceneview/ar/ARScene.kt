@@ -869,7 +869,11 @@ fun ARSceneView(
                 // surface any silent support-gated downgrade to `onConfigDowngraded` (#2096).
                 val requestedCameraConfig = sessionCameraConfigRef.get()?.invoke(session)
                 requestedCameraConfig?.let { session.cameraConfig = it }
-                val requestedDepthMode = depthModeRef.get()
+                // Snapshot the requested depth mode AFTER the user `sessionConfiguration`
+                // callback runs, so a callback-driven override is captured (#2122 / #2096 gap 1).
+                // Initialise from the typed param; the configure lambda overwrites this after the
+                // callback executes.
+                var effectiveRequestedDepthMode: Config.DepthMode? = depthModeRef.get()
                 session.configure { config ->
                     // Apply the typed `*Mode` params (#1766) BEFORE the user callback so the
                     // callback still wins. Each param defaults to ARCore's recommended value
@@ -894,7 +898,7 @@ fun ARSceneView(
                         ?: Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     // depthMode support-gating is already centralised inside ArSession.configure
                     // (auto-downgrades unsupported requests to DISABLED).
-                    config.depthMode = requestedDepthMode ?: Config.DepthMode.DISABLED
+                    config.depthMode = effectiveRequestedDepthMode ?: Config.DepthMode.DISABLED
                     config.instantPlacementMode = instantPlacementModeRef.get()
                         ?: Config.InstantPlacementMode.DISABLED
                     config.geospatialMode = geospatialModeRef.get() ?: Config.GeospatialMode.DISABLED
@@ -908,14 +912,26 @@ fun ARSceneView(
                     config.semanticMode = semanticModeRef.get() ?: Config.SemanticMode.DISABLED
                     config.focusMode = focusModeRef.get() ?: Config.FocusMode.AUTO
                     sessionConfigurationRef.get()?.invoke(session, config)
+                    // Capture the post-callback depth mode — this is what the consumer
+                    // ultimately requested (the callback may have overridden the typed param).
+                    effectiveRequestedDepthMode = config.depthMode.takeIf {
+                        it != Config.DepthMode.DISABLED
+                    }
                 }
                 // Surface any silent support-gated downgrade (#2096). The session has just been
                 // configured: diff the requested camera config / depth mode against what ARCore
                 // actually applied and notify the consumer once per downgrade. Runs on the same
                 // (main) thread as the sibling `onSessionCreated` dispatch below.
+                //
+                // `effectiveRequestedDepthMode` now reflects the post-callback requested value
+                // (#2122 gap 1). `session.cameraConfig` is what ARCore last committed; comparing
+                // it against `requestedCameraConfig` (the selector's return value, set before
+                // configure) detects a camera-config mismatch (#2122 gap 2 — limited to the
+                // selector-driven path; callback-driven camera config changes are not tracked
+                // because ARCore validates on assignment, not silently post-configure).
                 onConfigDowngradedRef.get()?.let { onDowngraded ->
                     detectConfigDowngrades(
-                        requestedDepthMode = requestedDepthMode,
+                        requestedDepthMode = effectiveRequestedDepthMode,
                         effectiveDepthMode = session.config.depthMode,
                         requestedCameraConfig = requestedCameraConfig,
                         effectiveCameraConfig = session.cameraConfig
