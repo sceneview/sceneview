@@ -26,17 +26,10 @@ appId: io.github.sceneview.demo
 - runFlow:
     file: flows/placeholder.yaml
     env:
-      DEMO_ID: occlusion-material
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
       DEMO_ID: debug-overlay
 # ── Content / Interaction (no iOS destination yet) ──────────────────────────
 - runFlow:
     file: flows/placeholder.yaml
     env:
       DEMO_ID: view-node
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: texture-streaming
+# texture-streaming — live in content.yaml (iOS destination added in #2164)

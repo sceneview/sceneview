@@ -75,6 +75,24 @@ appId: io.github.sceneview.demo
       DEMO_ID: ar-depth-occlusion
       DEMO_NAME: Depth Occlusion
       ASSERT_TEXT: "AR requires a physical device"
+- runFlow:
+    file: flows/ar-demo.yaml
+    env:
+      DEMO_ID: ar-people-occlusion
+      DEMO_NAME: People Occlusion
+      ASSERT_TEXT: "AR requires a physical device"
+- runFlow:
+    file: flows/ar-demo.yaml
+    env:
+      DEMO_ID: ar-body-tracker
+      DEMO_NAME: Body Tracker
+      ASSERT_TEXT: "AR requires a physical device"
+- runFlow:
+    file: flows/ar-demo.yaml
+    env:
+      DEMO_ID: ar-scene-mesh
+      DEMO_NAME: Scene Mesh
+      ASSERT_TEXT: "AR requires a physical device"
 # ── Coming-soon AR demos (route to DeepLinkPlaceholder) ─────────────────────
 - runFlow:
     file: flows/placeholder.yaml
@@ -132,10 +150,6 @@ appId: io.github.sceneview.demo
 - runFlow:
     file: flows/placeholder.yaml
     env:
-      DEMO_ID: ar-people-occlusion
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
       DEMO_ID: ar-point-cloud
 - runFlow:
     file: flows/placeholder.yaml
@@ -145,10 +159,6 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: ar-plane-node
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: ar-scene-mesh
 - runFlow:
     file: flows/placeholder.yaml
     env:
@@ -165,10 +175,6 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: ar-collaborative
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: ar-body-tracker
 - runFlow:
     file: flows/placeholder.yaml
     env:
