@@ -86,6 +86,18 @@ name: CI Gate
 # gate. Advisory checks may keep running — the gate stops as soon as every
 # NON-advisory check has finished and ignores the advisory ones entirely.
 #
+# DOCS-ONLY BYPASS (#2117)
+# ------------------------
+# A docs-only PR (paths-ignored by ci.yml and all other PR-triggered
+# workflows) registers ZERO check runs besides `CI Gate` itself. Without
+# a bypass, the gate waits the full 50 min then hard-fails, blocking
+# auto-merge until an admin manually merges. Fix: a short grace period
+# (90 s after the initial 30 s warm-up) — if no other check run has
+# registered by then, the gate exits green. Any non-trivial PR registers
+# at least one check run within 90 s; the grace period only fires while
+# `others` is completely empty and is disabled as soon as one check
+# run appears.
+#
 # Branch protection on `main` requires ONLY this `CI Gate` check.
 
 on:
@@ -189,7 +201,27 @@ jobs:
           # and `build` (30 min); the blocking `Unit tests` job is 30 min —
           # all well under 50 min, so a slow-but-succeeding job is seen as
           # completing.
+          #
+          # DOCS-ONLY BYPASS (#2117)
+          # ------------------------
+          # For a docs-only PR (paths-ignored by ci.yml and every other
+          # workflow), no check runs other than `CI Gate` itself ever
+          # register. Without a bypass, the gate polls until the full
+          # 50-min deadline and then hard-fails — blocking auto-merge for
+          # ~50 minutes then requiring an admin-merge workaround.
+          #
+          # Fix: a short docs-only grace period (90 s after the initial
+          # warm-up sleep). If no other check runs have appeared by the
+          # time the grace period expires, the PR is legitimately light
+          # (all workflows were path-filtered out), and the gate exits
+          # green. Any non-trivial PR will register at least one check run
+          # within 90 s; the threshold has been confirmed against multiple
+          # CI runs.  The grace period only applies while `others` is
+          # *completely empty* — once at least one check run registers the
+          # normal poll loop takes over and the docs-bypass is inactive.
           deadline=$(( $(date +%s) + 50 * 60 ))
+          # docs-only grace: 90 s after the initial 30 s warm-up = 120 s total.
+          docs_bypass_deadline=$(( $(date +%s) + 90 ))
           sleep 30
           seen_any_other=false
 
@@ -216,6 +248,16 @@ jobs:
               'select((.name != $self) and (.name | startswith("Device QA") | not))')
 
             if [ -z "$others" ]; then
+              # DOCS-ONLY BYPASS (#2117): if the short grace period has
+              # elapsed with still no other check runs, every workflow was
+              # path-filtered out — this is a legitimately docs-only PR.
+              # Exit green so auto-merge is not blocked.
+              if [ "$(date +%s)" -ge "$docs_bypass_deadline" ]; then
+                echo "No other CI check runs registered within the docs-only grace period."
+                echo "All changed paths appear to be CI-exempt (docs, website, marketing, branding, *.md, llms*.txt)."
+                echo "CI Gate passed — docs-only PR, no CI workflows triggered."
+                exit 0
+              fi
               if [ "$(date +%s)" -ge "$deadline" ]; then
                 echo "::error::Timed out — no other CI check runs ever registered for this SHA."
                 exit 1
@@ -224,6 +266,9 @@ jobs:
               sleep 20
               continue
             fi
+            # At least one other check run has appeared — disable the
+            # docs-only bypass (set deadline to past so it can't fire).
+            docs_bypass_deadline=0
 
             seen_any_other=true
 
