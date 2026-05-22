@@ -452,7 +452,11 @@ jobs:
           # appears in Play Console, allowing Thomas to declare FGS manually and
           # then send for review from the UI. Remove once FGS is permanently
           # declared (the Bearer-token step above should handle subsequent runs).
-          changesNotSentForReview: 'true'
+          # changesNotSentForReview is only valid for tracks with deferred
+          # review (production/alpha/beta). Internal uses auto-review and
+          # rejects this parameter. Conditional on track to avoid the
+          # "must not be set" error on internal uploads (#2120).
+          changesNotSentForReview: ${{ matrix.track != 'internal' && 'true' || 'false' }}
 
       - name: Promote internal release to ${{ matrix.track }}
         if: matrix.track != 'internal' && contains(needs.build.outputs.tracks, '"internal"')
