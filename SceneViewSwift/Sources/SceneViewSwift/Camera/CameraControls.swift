@@ -1,7 +1,6 @@
 #if os(iOS) || os(macOS) || os(visionOS)
 import SwiftUI
 import RealityKit
-import RealityFoundation
 
 /// Camera interaction mode for the 3D scene.
 ///
@@ -54,26 +53,26 @@ public enum CameraControlMode: Sendable {
 
     /// Disables all camera gesture interaction.
     ///
-    /// Equivalent to `RealityFoundation.CameraControls.none`. iOS / macOS only —
+    /// Equivalent to `RealityKit.CameraControls.none`. iOS / macOS only —
     /// no Android equivalent.
     case none
 
     /// Tilt camera up / down about the horizontal axis.
     ///
-    /// Equivalent to `RealityFoundation.CameraControls.tilt`. iOS / macOS only —
+    /// Equivalent to `RealityKit.CameraControls.tilt`. iOS / macOS only —
     /// no Android equivalent.
     case tilt
 
     /// Dolly (zoom) the camera along its look direction.
     ///
-    /// Equivalent to `RealityFoundation.CameraControls.dolly`. iOS / macOS only —
+    /// Equivalent to `RealityKit.CameraControls.dolly`. iOS / macOS only —
     /// no Android equivalent.
     case dolly
 
     /// Gimbal rotation — rotate the camera about all three axes independently
     /// (no orbit pivot).
     ///
-    /// Equivalent to `RealityFoundation.CameraControls.gimbal`. iOS / macOS only —
+    /// Equivalent to `RealityKit.CameraControls.gimbal`. iOS / macOS only —
     /// no Android equivalent.
     case gimbal
 
@@ -89,16 +88,20 @@ public enum CameraControlMode: Sendable {
         }
     }
 
-    /// Maps this mode to the equivalent `RealityFoundation.CameraControls`
+    /// Maps this mode to the equivalent `RealityKit.CameraControls`
     /// value for use with `realityViewCameraControls(_:)`.
     ///
     /// Only valid for the four native-only modes (``none``, ``tilt``,
     /// ``dolly``, ``gimbal``). Custom modes (``orbit``, ``pan``,
-    /// ``firstPerson``) have no `RealityFoundation.CameraControls` equivalent —
+    /// ``firstPerson``) have no `RealityKit.CameraControls` equivalent —
     /// calling this on them returns `.orbit` as a safe default (the caller
     /// should gate on `isCustom` first).
+    ///
+    /// Note: `RealityKit.CameraControls` is distinct from the
+    /// `SceneViewSwift.CameraControls` struct in this file. The return type
+    /// uses the `RealityKit.` module prefix to resolve the name ambiguity.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    var toRealityKit: RealityFoundation.CameraControls {
+    var toRealityKit: RealityKit.CameraControls {
         switch self {
         case .orbit:       return .orbit
         case .pan:         return .pan
