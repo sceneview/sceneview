@@ -24,6 +24,14 @@ struct ARTab: View {
     @State private var showError = false
     @State private var showModelPicker = false
     @State private var arViewID = UUID()
+    /// Captured from `ARSceneView.onSessionStarted` so `shareARScreenshot` can
+    /// call `ARView.snapshot(saveToHDR:completion:)` — the Metal-aware path that
+    /// correctly captures 3D content. `UIView.drawHierarchy` misses the Metal
+    /// layer and produces a transparent / black hole where the AR content should
+    /// be (issue #983).
+    #if !targetEnvironment(simulator)
+    @State private var capturedARView: RealityKit.ARView?
+    #endif
 
     /// Live count of placed models, derived from `placedAnchors` so it stays
     /// authoritative — never a separately-mutated `Int`.
@@ -64,6 +72,9 @@ struct ARTab: View {
     private func resetScene() {
         arViewID = UUID()
         placedAnchors.removeAll()
+        #if !targetEnvironment(simulator)
+        capturedARView = nil
+        #endif
         SceneViewHaptic.shared.medium()
     }
 
@@ -78,6 +89,9 @@ struct ARTab: View {
         showModelPicker = false
         showError = false
         sessionStarted = false
+        #if !targetEnvironment(simulator)
+        capturedARView = nil
+        #endif
         SceneViewHaptic.shared.light()
     }
 
@@ -224,6 +238,11 @@ struct ARTab: View {
                 }
             }
         )
+        // Capture the underlying ARView so shareARScreenshot can call
+        // ARView.snapshot(saveToHDR:completion:) — the Metal-aware path.
+        .onSessionStarted { arView in
+            capturedARView = arView
+        }
     }
     #endif
 
@@ -431,13 +450,33 @@ struct ARTab: View {
 
     @MainActor
     private func shareARScreenshot() {
+        #if !targetEnvironment(simulator)
+        // Use ARView.snapshot — the Metal-aware path that correctly captures
+        // both the AR camera background and 3D content. UIView.drawHierarchy
+        // skips the Metal layer and produces a black / transparent hole where
+        // the 3D content lives (issue #983).
+        guard let arView = capturedARView else {
+            // Session not yet started — nothing to capture.
+            return
+        }
+        arView.snapshot(saveToHDR: false) { [self] image in
+            guard let image else { return }
+            DispatchQueue.main.async {
+                self.presentShareSheet(image: image)
+            }
+        }
+        #else
+        // Simulator: ARView is unavailable — show an informational message.
+        errorMessage = "AR screenshots require a physical device."
+        showError = true
+        #endif
+    }
+
+    /// Presents `UIActivityViewController` for a captured image.
+    @MainActor
+    private func presentShareSheet(image: UIImage) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else { return }
-
-        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
-        let image = renderer.image { ctx in
-            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-        }
 
         let activityVC = UIActivityViewController(
             activityItems: [image, "Check out what I placed in my space with SceneView!"],
