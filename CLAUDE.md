@@ -434,24 +434,24 @@ Never say "everything is good" without verifying published packages.
 
 **The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.15.1`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
 
-### Current state (last updated: 2026-05-22, session pedantic-robinson — iOS demo parity sprint + #1049 native camera modes SHIPPED)
+### Current state (last updated: 2026-05-22 night, session pedantic-robinson — #2120 Play Store FGS unblocked)
 
-- 🚀 **v4.15.1 is the latest release** (as of 2026-05-22). Versions v4.11.1 → v4.15.1 shipped in rapid succession during the iOS demo parity sprint (umbrella #910). See `gradle.properties` for the canonical version.
-- ✅ **iOS demo parity sprint COMPLETE** (umbrella #910 CLOSED). iOS demo app went from ~15 demos to full parity with the Android catalog (59 demos) across the following PRs (non-exhaustive): #2147, #2150, #2153, #2158, #2161, #2165, #2167, #2171, and many more. Deep-link registry, Maestro test coverage, and `DemoDeepLinkRegistry` all updated.
-- ✅ **#1049 CLOSED** — `CameraControlMode` now exposes 3 native Apple cases (`.none`, `.tilt`, `.dolly`) that delegate to `realityViewCameraControls(_:)` (iOS 18+, macOS 15+, visionOS excluded via `#if !os(visionOS)` guard). `CameraControlsDemo.swift` updated with native-mode picker and exhaustive switch cases. `llms.txt` updated. PR #2169 merged.
-- ✅ **#1831 CLOSED** — App Store submit step now DELETEs stale `appStoreVersionSubmissions` before POST (PR #2141). No more 403 on absorbed-draft releases.
-- ✅ **#1794 CLOSED** — macOS SwiftUI iOS-only API guards fixed (`#if os(iOS)` wrapping `UIColor.systemBackground`, `navigationBarTitleDisplayMode`, `topBarTrailing`, `.zoom()` transition).
-- ✅ **#1860 CLOSED** — `SceneReconstructionNode` / `DepthMeshNode` / `DepthColliderNode` marked as Available in cheatsheet-ios.md and llms.txt (PR #2175).
-- ✅ **#2173 CLOSED** — Stale scene IDs `ar-eis` → `ar-image-stabilization`, `ar-pose-placement` → `ar-pose` in iOS Scenes catalog + deep-link registry (PRs #2174, #2176).
-- 🔴 **Play Store demo app blocked (#2120)** — `play-store.yml` fails at "Commit Edit" because Google requires a one-time **Foreground Service permissions declaration** (mediaProjection) in Play Console before any Edit can be committed. One-time manual action needed by Thomas.
-- 📋 **16 open issues** remain — see issue tracker. Most require physical devices, major engineering, or are v5 scope. Highest-priority actionable: #1033 (sceneview-core XCFramework), #1033, #2024 (Web Node scene-graph v5).
+- 🚀 **v4.15.1 is the latest release**. Play Store (CI run #26311612403): internal ✅, production ✅ — submitted for Google review. The app update is on its way to users.
+- ✅ **iOS demo parity sprint COMPLETE** (umbrella #910 CLOSED). iOS demo app went from ~15 demos to full parity with the Android catalog across PRs #2147, #2150, #2153, #2158, #2161, #2165, #2167, #2171 etc.
+- ✅ **#1049 CLOSED** — `CameraControlMode` with 3 native Apple cases, PR #2169 merged.
+- ✅ **#1831 CLOSED** — App Store submit step DELETEs stale submissions before POST (PR #2141).
+- ✅ **#1794 CLOSED** — macOS SwiftUI iOS-only API guards fixed.
+- ✅ **#2120 Play Store FGS unblocked** — Three-part fix: (1) upload timeout 30s→600s, (2) job timeout 15→30 min, (3) `FOREGROUND_SERVICE_MEDIA_PROJECTION` + `foregroundServiceType="mediaProjection"` removed from AndroidManifest (catch-22: Play Console requires FGS declaration before committing an AAB with the permission, but the declaration section only appears once an FGS build is on a track). `FeedbackRecordingService.goForeground()` has a try/catch — feedback recording fails gracefully on Android 14+ until re-added. Follow-up: [#2188](https://github.com/sceneview/sceneview/issues/2188).
+- ⚠️ **Listing sync failing** — `Sync Play Store listing (en-GB)` fails with 400 on `tabletScreenshots` upload. Non-blocking (deploy proceeds). Needs investigation.
+- 📋 **~17 open issues** remain.
 
 ### Followups for next session
 
-1. **Play Console action (manual)**: [#2120](https://github.com/sceneview/sceneview/issues/2120) — declare Foreground Service permission (mediaProjection) in Play Console App content → Foreground service permissions. Then re-trigger `play-store.yml` via `workflow_dispatch` on `--ref v4.15.1`.
-2. **[#1033 sceneview-core XCFramework](https://github.com/sceneview/sceneview/issues/1033)** — build the XCFramework from `sceneview-core/` KMP module and wire it into `SceneViewSwift` via a `SceneViewCoreBridge` Swift module. Significant engineering effort.
-3. **[#1364 ImmersiveSpace visionOS demo](https://github.com/sceneview/sceneview/issues/1364)** — deferred since #1235; needs visionOS simulator + visionOS SDK installed.
-4. **[#894 iOS AR feature parity](https://github.com/sceneview/sceneview/issues/894)** — Cloud Anchors, ARRecorder via ReplayKit, Streetscape. Needs physical device for validation.
+1. **[#2188](https://github.com/sceneview/sceneview/issues/2188) Re-add FGS** — once the Play Store App content → Foreground service type declarations section becomes visible (after 4.15.1 is approved), declare `FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION`, then re-add the permission + `foregroundServiceType="mediaProjection"` in the next release.
+2. **Fix listing sync** — `tabletScreenshots` 400 error in `Sync Play Store listing (en-GB)`. Check `distribution/play-store/listings/en-GB/graphics/tablet-screenshots/` for invalid/missing images.
+3. **[#1033 sceneview-core XCFramework](https://github.com/sceneview/sceneview/issues/1033)** — build the XCFramework from `sceneview-core/` KMP module and wire it into `SceneViewSwift`.
+4. **[#1364 ImmersiveSpace visionOS demo](https://github.com/sceneview/sceneview/issues/1364)** — deferred since #1235; needs visionOS simulator.
+5. **[#894 iOS AR feature parity](https://github.com/sceneview/sceneview/issues/894)** — Cloud Anchors, ARRecorder via ReplayKit, Streetscape. Needs physical device.
 
 ### Previous state (last updated: 2026-05-20 night, session post-vibrant-shtern — v4.11.1 patch SHIPPED end-to-end)
 
