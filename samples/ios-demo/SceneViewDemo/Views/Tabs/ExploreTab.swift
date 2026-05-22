@@ -1058,6 +1058,10 @@ private struct ModelCard: View {
 
 struct ModelViewerScreen: View {
     let model: ModelItem
+    /// Frozen to `false` when `qa_mode` is active (set by `?qa_mode=1`
+    /// deep-link or `-qa_mode 1` launch argument) so QA screenshots are
+    /// deterministic — mirrors Android's `qa_mode` intent extra.
+    @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
     @State private var autoRotate = true
     @State private var loadedModel: ModelNode?
     @State private var isLoading = false
@@ -1190,7 +1194,8 @@ struct ModelViewerScreen: View {
 
     @ViewBuilder
     private var sceneView: some View {
-        if autoRotate {
+        // qa_mode freezes auto-rotation for deterministic QA screenshots.
+        if autoRotate && !qaMode {
             SceneView { root in
                 if let loadedModel {
                     loadedModel.entity.position = .zero
@@ -1327,6 +1332,8 @@ struct SketchfabModelViewerScreen: View {
     @State private var downloadProgress: Double = 0
     @State private var errorMessage: String?
     @State private var selectedEnvironment: SceneEnvironment = .studio
+    /// Frozen to `false` when `qa_mode` is active — see `DeepLinkRouter.qaModeDefaultsKey`.
+    @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
     @State private var autoRotate = true
     /// Drives the thumbnail Ken-Burns zoom during download, and the post-reveal
     /// cross-fade once the SceneView is ready.
@@ -1591,7 +1598,7 @@ struct SketchfabModelViewerScreen: View {
 
     @ViewBuilder
     private var sceneView: some View {
-        if autoRotate {
+        if autoRotate && !qaMode {
             SceneView { root in
                 if let loadedNode {
                     loadedNode.entity.position = .zero

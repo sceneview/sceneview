@@ -23,19 +23,32 @@ enum DemoDeepLinkRegistry {
     /// `sceneview://demo/<id>` on iOS. Add ids here as new QR codes are
     /// published; new ids should always be a *subset* of the canonical
     /// list (see `DeepLinkRouter` Kotlin).
+    /// Full demo catalog — mirrors Android's `DemoRegistry.kt` id set so
+    /// every `sceneview://demo/<id>` QR code resolves on iOS.  Coming-soon
+    /// demos are included and route to a placeholder so the deep-link URL
+    /// is never silently ignored (closed-registry + placeholder  > silent
+    /// 404). Add new ids here whenever a new demo is published on any platform.
     static let allowedIds: Set<String> = [
-        // 3D Basics
-        "model-viewer", "geometry", "animation", "multi-model",
-        // Lighting
-        "lighting", "movable-light", "fog", "environment", "dynamic-sky",
-        // Content
-        "text", "lines-paths", "image", "billboard", "video",
-        // Interaction
-        "camera-controls", "gesture-editing",
-        // Advanced
-        "physics", "double-pendulum", "custom-mesh", "shape", "spatial-audio",
-        // AR
-        "ar-placement", "ar-image", "ar-face", "ar-rerun",
+        // ── 3D Basics ───────────────────────────────────────────────────
+        "model-viewer", "geometry", "animation", "multi-model", "scene-gallery",
+        // ── Lighting ────────────────────────────────────────────────────
+        "lighting", "movable-light", "fog", "dynamic-sky",
+        // ── Content ─────────────────────────────────────────────────────
+        "text", "lines-paths", "image", "billboard",
+        // ── Interaction ─────────────────────────────────────────────────
+        "camera-controls", "collision",
+        // ── Advanced ────────────────────────────────────────────────────
+        "physics", "double-pendulum", "custom-mesh", "materials", "spatial-audio",
+        "post-processing", "reflection-probes", "secondary-camera", "shape",
+        // ── AR (iOS-only on device) ──────────────────────────────────────
+        "ar-placement", "ar-instant-placement", "ar-orbital", "ar-lighting",
+        "ar-recording", "ar-rerun",
+        // Coming-soon AR (routed to placeholder)
+        "ar-image", "ar-face", "ar-cloud-anchor", "ar-depth-occlusion",
+        "ar-eis", "ar-pose-placement", "ar-rooftop", "ar-streetscape",
+        "ar-terrain",
+        // Coming-soon 3D (routed to placeholder)
+        "gesture-editing", "video", "view-node",
     ]
 
     /// Resolve a demo id to its presented `View`. Returns a fallback
@@ -52,9 +65,7 @@ enum DemoDeepLinkRegistry {
     @ViewBuilder
     static func destination(for id: String) -> some View {
         switch id {
-        // The most important deep-link target today: the AR Rerun debug
-        // demo, paired with the hosted Save & Share viewer at
-        // sceneview.github.io/rerun/.
+        // ── AR Rerun debug ───────────────────────────────────────────
         case "ar-rerun":
             #if os(iOS)
             RerunDebugDemo()
@@ -62,46 +73,71 @@ enum DemoDeepLinkRegistry {
             DeepLinkPlaceholder(id: id, reason: "AR Rerun is iOS-only on this build.")
             #endif
 
-        // 3D basics + content — covered by the Scenes tab gallery already.
-        case "geometry":      GeometryDemo()
-        case "custom-mesh":   CustomMeshDemo()
-        case "shape":         GeometryDemo()
-        case "text":          TextDemo()
-        case "billboard":     BillboardDemo()
-        case "lines-paths":   LinesPathsDemo()
-        case "image":         ImageDemo()
+        // ── 3D Basics ────────────────────────────────────────────────
         case "animation":     AnimationDemo()
-
-        // iOS now ships dedicated `ModelViewerDemo` and `MultiModelDemo` (#1194
-        // Stage 2 parity catch-up). Both route to real ports of the Android
-        // demos rather than the Scene Gallery fallback that was used in
-        // v4.3.x as a temporary placeholder. Closes #1015 properly.
+        case "geometry":      GeometryDemo()
         case "model-viewer":  ModelViewerDemo()
         case "multi-model":   MultiModelDemo()
+        case "scene-gallery": SceneGalleryDemo()
 
-        // Lighting + effects.
+        // ── Lighting ─────────────────────────────────────────────────
         case "lighting":      LightingDemo()
         case "movable-light": MovableLightDemo()
         case "dynamic-sky":   DynamicSkyDemo()
         case "fog":           FogDemo()
-        case "physics":       PhysicsDemo()
-        case "double-pendulum": DoublePendulumDemo()
-        case "spatial-audio": SpatialAudioDemo()
 
-        // Interaction.
+        // ── Content ──────────────────────────────────────────────────
+        case "billboard":     BillboardDemo()
+        case "image":         ImageDemo()
+        case "lines-paths":   LinesPathsDemo()
+        case "text":          TextDemo()
+
+        // ── Interaction ──────────────────────────────────────────────
         case "camera-controls": CameraControlsDemo()
 
-        // AR placement (#1194 Stage 2). Route the well-known `ar-placement`
-        // deep-link id to the dedicated iOS port.
+        // ── Advanced ─────────────────────────────────────────────────
+        case "custom-mesh":     CustomMeshDemo()
+        case "double-pendulum": DoublePendulumDemo()
+        case "materials":       MaterialsDemo()
+        case "physics":         PhysicsDemo()
+        case "shape":           GeometryDemo()    // routed to shapes gallery
+        case "spatial-audio":   SpatialAudioDemo()
+
+        // ── AR (iOS device-only) ──────────────────────────────────────
+        case "ar-instant-placement":
+            #if os(iOS)
+            ARInstantPlacementDemo()
+            #else
+            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
+            #endif
+        case "ar-lighting":
+            #if os(iOS)
+            ARLightingDemo()
+            #else
+            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
+            #endif
+        case "ar-orbital":
+            #if os(iOS)
+            OrbitalARDemo()
+            #else
+            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
+            #endif
         case "ar-placement":
             #if os(iOS)
             ARPlacementDemo()
             #else
             DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
             #endif
+        case "ar-recording":
+            #if os(iOS)
+            ARRecorderDemo()
+            #else
+            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
+            #endif
 
+        // ── Coming-soon — placeholder keeps URL live ──────────────────
         default:
-            DeepLinkPlaceholder(id: id, reason: "This demo isn't available in the iOS app yet — open it on Android, or browse the Scenes tab for the full iOS catalog.")
+            DeepLinkPlaceholder(id: id, reason: "This demo isn't available in the iOS app yet — open it on Android, or browse the Samples tab for the full iOS catalog.")
         }
     }
 }
