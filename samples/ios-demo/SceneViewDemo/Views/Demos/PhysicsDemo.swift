@@ -52,6 +52,7 @@ struct PhysicsDemo: View {
                 setupScene(root: root)
             }
             .cameraControls(.orbit)
+            .environment(.studio) // parity with android-demo IBL fix (#2114)
             .id(sceneKey)
             .ignoresSafeArea()
 

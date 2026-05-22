@@ -77,6 +77,7 @@ struct ModelViewerDemo: View {
             }
             .cameraControls(.orbit)
             .autoRotate(speed: 0.3)
+            .environment(.studio) // parity with android-demo IBL fix (#2114)
             .ignoresSafeArea()
             .id("model-viewer-\(streamedDisplayName ?? "bundled")")
         } else {
