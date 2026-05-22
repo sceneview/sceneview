@@ -70,10 +70,9 @@ struct DebugOverlayDemo: View {
 
             // Directional light so spheres are shaded — without an explicit
             // light they render as flat silhouettes against the grey backdrop.
-            var lightComponent = DirectionalLightComponent(color: .white,
-                                                           intensity: 1_500,
-                                                           isRealWorldProxy: false)
-            lightComponent.canCastShadow = false
+            let lightComponent = DirectionalLightComponent(color: .white,
+                                                            intensity: 1_500,
+                                                            isRealWorldProxy: false)
             let lightEntity = Entity()
             lightEntity.components.set(lightComponent)
             lightEntity.orientation = simd_quatf(angle: -.pi / 4, axis: [1, 0, 0])
