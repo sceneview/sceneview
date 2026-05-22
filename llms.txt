@@ -3992,7 +3992,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Interaction
 
-- `camera-controls` — Camera Controls. Orbit, pan, and free camera modes.
+- `camera-controls` — Camera Controls. Orbit, pan, and free camera modes; native Apple modes (iOS 18+): .none, .tilt, .dolly.
 - `collision` — Collision & Hit Test. Hit testing and collision detection.
 - `gesture-editing` — Gesture Editing. Move, scale, and rotate with gestures.
 - `view-node` — ViewNode. Native UI embedded in 3D space.
