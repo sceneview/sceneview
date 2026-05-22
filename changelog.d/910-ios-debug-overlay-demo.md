@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **iOS demo: Debug Overlay** — RealityKit sphere stress test with live FPS stats, frame time, node/triangle counts, and a rolling FPS sparkline. Matches Android's `DebugOverlayDemo`: preset buttons (1/10/100/500/1 000 spheres), progressive spawn, and a 10-second stress ramp from 1 → 1 000 spheres. `sceneview://demo/debug-overlay` now routes to the real demo instead of the coming-soon placeholder. (#910)

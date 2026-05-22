@@ -23,10 +23,6 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: secondary-camera
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: debug-overlay
 # ── Content / Interaction (no iOS destination yet) ──────────────────────────
 - runFlow:
     file: flows/placeholder.yaml
