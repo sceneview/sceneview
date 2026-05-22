@@ -44,9 +44,8 @@ enum DemoDeepLinkRegistry {
         // ── Advanced ────────────────────────────────────────────────────
         "physics", "double-pendulum", "custom-mesh", "materials", "spatial-audio",
         "post-processing", "reflection-probes", "secondary-camera", "shape",
-        "occlusion-material",
+        "occlusion-material", "debug-overlay",
         // Coming-soon Advanced (routed to placeholder)
-        "debug-overlay",
         // ── AR (iOS-only on device) ──────────────────────────────────────
         "ar-placement", "ar-instant-placement", "ar-orbital", "ar-lighting",
         "ar-recording", "ar-rerun",
@@ -117,6 +116,7 @@ enum DemoDeepLinkRegistry {
         case "double-pendulum": DoublePendulumDemo()
         case "materials":       MaterialsDemo()
         case "physics":         PhysicsDemo()
+        case "debug-overlay":     DebugOverlayDemo()
         case "occlusion-material": OcclusionMaterialDemo()
         case "shape":           ShapeExtrudeDemo()
         case "reflection-probes": ReflectionProbesDemo()

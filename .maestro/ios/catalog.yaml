@@ -24,17 +24,17 @@
 #                                 video, texture-streaming)
 #     Interaction .......... 4   (camera-controls, collision, gesture-editing,
 #                                 view-node*)
-#     Advanced ............. 11  (physics, double-pendulum, custom-mesh, shape,
+#     Advanced ............. 12  (physics, double-pendulum, custom-mesh, shape,
 #                                 materials, spatial-audio, reflection-probes,
-#                                 occlusion-material, post-processing*,
-#                                 secondary-camera*, debug-overlay*)
+#                                 occlusion-material, debug-overlay,
+#                                 post-processing*, secondary-camera*)
 #     Augmented Reality .... 12  (ar-placement, ar-instant-placement, ar-orbital,
 #                                 ar-lighting, ar-recording, ar-rerun — launch-only;
 #                                 ar-image, ar-face, ar-depth-occlusion,
 #                                 ar-people-occlusion, ar-body-tracker, ar-scene-mesh
 #                                 — show device-required screen on simulator)
-#     Deep-link placeholders 26  (4 non-AR: post-processing*, secondary-camera*,
-#                                 debug-overlay*, view-node*; 22 AR-only ids)
+#     Deep-link placeholders 25  (3 non-AR: post-processing*, secondary-camera*,
+#                                 view-node*; 22 AR-only ids)
 #                                --  (* = routes to DeepLinkPlaceholder)
 #     Total ................ 49
 #

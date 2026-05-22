@@ -106,6 +106,8 @@
 		C100000000000000000000D2 /* VideoTextureDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D2 /* VideoTextureDemo.swift */; };
 		C100000000000000000000D3 /* OcclusionMaterialDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D3 /* OcclusionMaterialDemo.swift */; };
 		C100000000000000000000D4 /* OcclusionMaterialScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D4 /* OcclusionMaterialScene.swift */; };
+		C100000000000000000000D5 /* DebugOverlayDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D5 /* DebugOverlayDemo.swift */; };
+		C100000000000000000000D6 /* DebugOverlayScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D6 /* DebugOverlayScene.swift */; };
 		E500000000000000000000D3 /* sample.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000D3 /* sample.mp4 */; };
 		C10000000000000000000030 /* FavoritesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000030 /* FavoritesManager.swift */; };
 		C10000000000000000000050 /* DemoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000050 /* DemoSheet.swift */; };
@@ -219,6 +221,7 @@
 		C200000000000000000000D1 /* ReflectionProbesDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectionProbesDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000D2 /* VideoTextureDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTextureDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000D3 /* OcclusionMaterialDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OcclusionMaterialDemo.swift; sourceTree = "<group>"; };
+		C200000000000000000000D5 /* DebugOverlayDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlayDemo.swift; sourceTree = "<group>"; };
 		E600000000000000000000D3 /* sample.mp4 */ = {isa = PBXFileReference; lastKnownFileType = video.mpeg4; path = sample.mp4; sourceTree = "<group>"; };
 		F60000000000000000000001 /* bell.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = bell.wav; sourceTree = "<group>"; };
 		F60000000000000000000002 /* CREDITS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CREDITS.md; sourceTree = "<group>"; };
@@ -301,6 +304,7 @@
 		D7DC3F5EC4E236A2116CB086 /* PostProcessingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PostProcessingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/PostProcessingScene.swift; sourceTree = SOURCE_ROOT; };
 		BAC5EEABA6D7A33E6E4C2ED2 /* ReflectionProbesScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ReflectionProbesScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ReflectionProbesScene.swift; sourceTree = SOURCE_ROOT; };
 		C200000000000000000000D4 /* OcclusionMaterialScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OcclusionMaterialScene.swift; path = SceneViewDemo/Views/Demos/Scenes/OcclusionMaterialScene.swift; sourceTree = SOURCE_ROOT; };
+		C200000000000000000000D6 /* DebugOverlayScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugOverlayScene.swift; path = SceneViewDemo/Views/Demos/Scenes/DebugOverlayScene.swift; sourceTree = SOURCE_ROOT; };
 		0EA61BCBF55BC370123347AE /* SceneGalleryScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SceneGalleryScene.swift; path = SceneViewDemo/Views/Demos/Scenes/SceneGalleryScene.swift; sourceTree = SOURCE_ROOT; };
 		599FF550976F81CB5AFE68BF /* SecondaryCameraScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SecondaryCameraScene.swift; path = SceneViewDemo/Views/Demos/Scenes/SecondaryCameraScene.swift; sourceTree = SOURCE_ROOT; };
 		1B0C8E686D511E4A17E75291 /* ShapeExtrudeScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShapeExtrudeScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ShapeExtrudeScene.swift; sourceTree = SOURCE_ROOT; };
@@ -451,6 +455,7 @@
 				C200000000000000000000D1 /* ReflectionProbesDemo.swift */,
 				C200000000000000000000D2 /* VideoTextureDemo.swift */,
 				C200000000000000000000D3 /* OcclusionMaterialDemo.swift */,
+				C200000000000000000000D5 /* DebugOverlayDemo.swift */,
 				C200000000000000000000E0 /* TextureStreamingDemo.swift */,
 			);
 			path = Demos;
@@ -778,6 +783,8 @@
 				C100000000000000000000D3 /* OcclusionMaterialDemo.swift in Sources */,
 				C100000000000000000000D4 /* OcclusionMaterialScene.swift in Sources */,
 				C100000000000000000000E0 /* TextureStreamingDemo.swift in Sources */,
+				C100000000000000000000D5 /* DebugOverlayDemo.swift in Sources */,
+				C100000000000000000000D6 /* DebugOverlayScene.swift in Sources */,
 				ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */,
 				C10000000000000000000050 /* DemoSheet.swift in Sources */,
 				C10000000000000000000051 /* CreditsSheet.swift in Sources */,
