@@ -7,6 +7,43 @@ description: "Migration guides for SceneView: 3.6.x to 4.0.0 Rerun integration, 
 
 ---
 
+## SceneView 4.14.x to 4.15.1 (iOS) — native Apple camera modes added to `CameraControlMode`
+
+### Three new `CameraControlMode` cases — `.none`, `.tilt`, `.dolly` ([#1049](https://github.com/sceneview/sceneview/issues/1049))
+
+`CameraControlMode` now exposes three **native Apple** cases that delegate to
+`realityViewCameraControls(_:)` introduced in iOS 18 / macOS 15:
+
+| New case | Behaviour | SDK requirement |
+|---|---|---|
+| `.none` | Disables all gesture interaction | iOS 18+, macOS 15+ |
+| `.tilt` | Tilt camera up/down about horizontal axis | iOS 18+, macOS 15+ |
+| `.dolly` | Move camera forward/back along look direction | iOS 18+, macOS 15+ |
+
+**This is additive.** Existing code using `.orbit`, `.pan`, or `.firstPerson`
+compiles and runs unchanged.
+
+**visionOS note.** `realityViewCameraControls(_:)` is `@available(visionOS, unavailable)`.
+On visionOS, `SceneView` automatically falls back to its custom gesture handlers.
+No `#if os()` guards are required in app code.
+
+```swift
+// Before v4.15.1 — only 3 modes
+.cameraControls(.orbit)    // .orbit | .pan | .firstPerson
+
+// v4.15.1+ — 6 modes; native Apple modes available on iOS 18+ / macOS 15+
+.cameraControls(.orbit)    // existing modes unchanged
+.cameraControls(.none)     // lock all camera gestures (iOS 18+ / macOS 15+)
+.cameraControls(.tilt)     // native tilt — Apple's realityViewCameraControls (iOS 18+ / macOS 15+)
+.cameraControls(.dolly)    // native dolly — Apple's realityViewCameraControls (iOS 18+ / macOS 15+)
+```
+
+**Action:** no migration required. If you previously worked around the absence of
+a "no gestures" mode by disabling the modifier entirely, you can now use
+`.cameraControls(.none)`.
+
+---
+
 ## SceneView 4.10.x to 4.11.0 (Android) — `CloudAnchorNode.host()` returns `HostCloudAnchorFuture`
 
 ### `CloudAnchorNode.host()` now returns the underlying ARCore `HostCloudAnchorFuture` ([#1768](https://github.com/sceneview/sceneview/pull/1768))
