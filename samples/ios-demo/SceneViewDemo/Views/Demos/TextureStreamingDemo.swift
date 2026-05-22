@@ -61,7 +61,7 @@ struct TextureStreamingDemo: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    // MARK: — Scene (RealityView)
+    // MARK: — RealityView overlay
 
     @ViewBuilder
     private var sphereOverlay: some View {
