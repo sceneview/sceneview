@@ -91,6 +91,10 @@
 		C10000000000000000000036 /* ARPlacementDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000036 /* ARPlacementDemo.swift */; };
 		C10000000000000000000037 /* ARInstantPlacementDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000037 /* ARInstantPlacementDemo.swift */; };
 		C10000000000000000000038 /* SpatialAudioDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000038 /* SpatialAudioDemo.swift */; };
+		C100000000000000000000D0 /* ShapeExtrudeDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D0 /* ShapeExtrudeDemo.swift */; };
+		C100000000000000000000D1 /* ReflectionProbesDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D1 /* ReflectionProbesDemo.swift */; };
+		C100000000000000000000D2 /* VideoTextureDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D2 /* VideoTextureDemo.swift */; };
+		E500000000000000000000D3 /* sample.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000D3 /* sample.mp4 */; };
 		C10000000000000000000030 /* FavoritesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000030 /* FavoritesManager.swift */; };
 		C10000000000000000000050 /* DemoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000050 /* DemoSheet.swift */; };
 		C10000000000000000000051 /* CreditsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000051 /* CreditsSheet.swift */; };
@@ -133,6 +137,7 @@
 		E10000000000000000000007 /* night_sky.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000007 /* night_sky.hdr */; };
 		ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E3457CB732DF2AE71757CC /* MovableLightDemo.swift */; };
 		F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000002 /* AppStoreUpdaterTests.swift */; };
+		C10000000000000000000070 /* VideoTextureDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000070 /* VideoTextureDemo.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -190,6 +195,10 @@
 		C20000000000000000000036 /* ARPlacementDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARPlacementDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000037 /* ARInstantPlacementDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARInstantPlacementDemo.swift; sourceTree = "<group>"; };
 		C20000000000000000000038 /* SpatialAudioDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialAudioDemo.swift; sourceTree = "<group>"; };
+		C200000000000000000000D0 /* ShapeExtrudeDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShapeExtrudeDemo.swift; sourceTree = "<group>"; };
+		C200000000000000000000D1 /* ReflectionProbesDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectionProbesDemo.swift; sourceTree = "<group>"; };
+		C200000000000000000000D2 /* VideoTextureDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTextureDemo.swift; sourceTree = "<group>"; };
+		E600000000000000000000D3 /* sample.mp4 */ = {isa = PBXFileReference; lastKnownFileType = video.mpeg4; path = sample.mp4; sourceTree = "<group>"; };
 		F60000000000000000000001 /* bell.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = bell.wav; sourceTree = "<group>"; };
 		F60000000000000000000002 /* CREDITS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CREDITS.md; sourceTree = "<group>"; };
 		C20000000000000000000030 /* FavoritesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesManager.swift; sourceTree = "<group>"; };
@@ -276,6 +285,7 @@
 		1600DF1563900D4EB6820A33 /* TextScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TextScene.swift; path = SceneViewDemo/Views/Demos/Scenes/TextScene.swift; sourceTree = SOURCE_ROOT; };
 		27FB250D0AE339DB0EB9C6C7 /* VideoTextureScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VideoTextureScene.swift; path = SceneViewDemo/Views/Demos/Scenes/VideoTextureScene.swift; sourceTree = SOURCE_ROOT; };
 		1EC5EFF554D692141E61884F /* ViewNodeScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewNodeScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ViewNodeScene.swift; sourceTree = SOURCE_ROOT; };
+		C20000000000000000000070 /* VideoTextureDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTextureDemo.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -334,6 +344,7 @@
 				D40000000000000000000001 /* Models */,
 				E40000000000000000000001 /* Environments */,
 				F40000000000000000000001 /* Audio */,
+				E40000000000000000000002 /* Videos */,
 				A20000010000000000000002 /* Assets.xcassets */,
 				A20000010000000000000003 /* Info.plist */,
 			);
@@ -395,6 +406,7 @@
 				C20000000000000000000016 /* FogDemo.swift */,
 				C20000000000000000000017 /* PhysicsDemo.swift */,
 				C20000000000000000000062 /* DoublePendulumDemo.swift */,
+				C20000000000000000000070 /* VideoTextureDemo.swift */,
 				C20000000000000000000018 /* CameraControlsDemo.swift */,
 				C20000000000000000000020 /* SceneGalleryDemo.swift */,
 				C20000000000000000000022 /* RerunDebugDemo.swift */,
@@ -407,6 +419,9 @@
 				C20000000000000000000036 /* ARPlacementDemo.swift */,
 				C20000000000000000000037 /* ARInstantPlacementDemo.swift */,
 				C20000000000000000000038 /* SpatialAudioDemo.swift */,
+				C200000000000000000000D0 /* ShapeExtrudeDemo.swift */,
+				C200000000000000000000D1 /* ReflectionProbesDemo.swift */,
+				C200000000000000000000D2 /* VideoTextureDemo.swift */,
 			);
 			path = Demos;
 			sourceTree = "<group>";
@@ -475,6 +490,14 @@
 				F60000000000000000000002 /* CREDITS.md */,
 			);
 			path = Audio;
+			sourceTree = "<group>";
+		};
+		E40000000000000000000002 /* Videos */ = {
+			isa = PBXGroup;
+			children = (
+				E600000000000000000000D3 /* sample.mp4 */,
+			);
+			path = Videos;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -568,6 +591,7 @@
 			files = (
 				A10000010000000000000002 /* Assets.xcassets in Resources */,
 				F50000000000000000000001 /* bell.wav in Resources */,
+				E500000000000000000000D3 /* sample.mp4 in Resources */,
 				D10000000000000000000001 /* game_boy_classic.usdz in Resources */,
 				D10000000000000000000002 /* tree_scene.usdz in Resources */,
 				D10000000000000000000003 /* red_car.usdz in Resources */,
@@ -703,6 +727,9 @@
 				C10000000000000000000036 /* ARPlacementDemo.swift in Sources */,
 				C10000000000000000000037 /* ARInstantPlacementDemo.swift in Sources */,
 				C10000000000000000000038 /* SpatialAudioDemo.swift in Sources */,
+				C100000000000000000000D0 /* ShapeExtrudeDemo.swift in Sources */,
+				C100000000000000000000D1 /* ReflectionProbesDemo.swift in Sources */,
+				C100000000000000000000D2 /* VideoTextureDemo.swift in Sources */,
 				ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */,
 				C10000000000000000000050 /* DemoSheet.swift in Sources */,
 				C10000000000000000000051 /* CreditsSheet.swift in Sources */,

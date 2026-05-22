@@ -22,12 +22,12 @@
 #     Lighting ............. 5   (lighting, movable-light, dynamic-sky, fog,
 #                                 environment*)
 #     Content .............. 6   (text, lines-paths, image, billboard,
-#                                 video*, texture-streaming*)
+#                                 video, texture-streaming*)
 #     Interaction .......... 4   (camera-controls, collision*, gesture-editing*,
 #                                 view-node*)
 #     Advanced ............. 11  (physics, double-pendulum, custom-mesh, shape,
-#                                 materials, spatial-audio, post-processing*,
-#                                 reflection-probes*, secondary-camera*,
+#                                 materials, spatial-audio, reflection-probes,
+#                                 post-processing*, secondary-camera*,
 #                                 occlusion-material*, debug-overlay*)
 #     Augmented Reality .... 6   (ar-placement, ar-instant-placement, ar-orbital,
 #                                 ar-lighting, ar-recording, ar-rerun — launch-only)

@@ -104,6 +104,7 @@ enum DemoDeepLinkRegistry {
         case "image":         ImageDemo()
         case "lines-paths":   LinesPathsDemo()
         case "text":          TextDemo()
+        case "video":         VideoTextureDemo()
 
         // ── Interaction ──────────────────────────────────────────────
         case "camera-controls": CameraControlsDemo()
@@ -113,7 +114,8 @@ enum DemoDeepLinkRegistry {
         case "double-pendulum": DoublePendulumDemo()
         case "materials":       MaterialsDemo()
         case "physics":         PhysicsDemo()
-        case "shape":           GeometryDemo()    // routed to shapes gallery
+        case "shape":           ShapeExtrudeDemo()
+        case "reflection-probes": ReflectionProbesDemo()
         case "spatial-audio":   SpatialAudioDemo()
 
         // ── AR (iOS device-only) ──────────────────────────────────────
