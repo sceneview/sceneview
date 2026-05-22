@@ -32,20 +32,14 @@ enum DemoDeepLinkRegistry {
         // ── 3D Basics ───────────────────────────────────────────────────
         "model-viewer", "geometry", "animation", "multi-model", "scene-gallery",
         // ── Lighting ────────────────────────────────────────────────────
-        "lighting", "movable-light", "fog", "dynamic-sky", "environment",
+        "lighting", "movable-light", "fog", "dynamic-sky",
         // ── Content ─────────────────────────────────────────────────────
         "text", "lines-paths", "image", "billboard",
-        // Coming-soon Content (routed to placeholder)
-        "video", "texture-streaming",
         // ── Interaction ─────────────────────────────────────────────────
         "camera-controls", "collision",
-        // Coming-soon Interaction (routed to placeholder)
-        "gesture-editing", "view-node",
         // ── Advanced ────────────────────────────────────────────────────
         "physics", "double-pendulum", "custom-mesh", "materials", "spatial-audio",
         "post-processing", "reflection-probes", "secondary-camera", "shape",
-        // Coming-soon Advanced (routed to placeholder)
-        "occlusion-material", "debug-overlay",
         // ── AR (iOS-only on device) ──────────────────────────────────────
         "ar-placement", "ar-instant-placement", "ar-orbital", "ar-lighting",
         "ar-recording", "ar-rerun",
@@ -53,13 +47,8 @@ enum DemoDeepLinkRegistry {
         "ar-image", "ar-face", "ar-cloud-anchor", "ar-depth-occlusion",
         "ar-eis", "ar-pose-placement", "ar-rooftop", "ar-streetscape",
         "ar-terrain",
-        // Newer AR demos (Android-side additions, routed to placeholder on iOS)
-        "ar-pose", "ar-record-playback", "ar-image-stabilization",
-        "ar-depth-of-field", "ar-fog", "ar-depth-collider", "ar-depth-visualization",
-        "ar-people-occlusion", "ar-point-cloud", "ar-raw-depth-point-cloud",
-        "ar-plane-node", "ar-scene-mesh", "ar-scene-semantics", "ar-ml-object-label",
-        "placement-scene", "ar-collaborative", "ar-body-tracker",
-        "ar-hand-tracking", "ar-xr-face",
+        // Coming-soon 3D (routed to placeholder)
+        "gesture-editing", "video", "view-node",
     ]
 
     /// Resolve a demo id to its presented `View`. Returns a fallback
@@ -95,7 +84,6 @@ enum DemoDeepLinkRegistry {
         case "lighting":      LightingDemo()
         case "movable-light": MovableLightDemo()
         case "dynamic-sky":   DynamicSkyDemo()
-        case "environment":   EnvironmentDemo()
         case "fog":           FogDemo()
 
         // ── Content ──────────────────────────────────────────────────
@@ -105,7 +93,9 @@ enum DemoDeepLinkRegistry {
         case "text":          TextDemo()
 
         // ── Interaction ──────────────────────────────────────────────
-        case "camera-controls": CameraControlsDemo()
+        case "camera-controls":  CameraControlsDemo()
+        case "collision":        CollisionHitTestDemo()
+        case "gesture-editing":  GestureEditingDemo()
 
         // ── Advanced ─────────────────────────────────────────────────
         case "custom-mesh":     CustomMeshDemo()
