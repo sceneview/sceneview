@@ -146,6 +146,24 @@ enum DemoDeepLinkRegistry {
             #else
             DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
             #endif
+        case "ar-image":
+            #if os(iOS)
+            ARImageTrackingDemo()
+            #else
+            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
+            #endif
+        case "ar-face":
+            #if os(iOS)
+            ARAugmentedFacesDemo()
+            #else
+            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
+            #endif
+        case "ar-depth-occlusion":
+            #if os(iOS)
+            ARDepthOcclusionDemo()
+            #else
+            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
+            #endif
 
         // ── Coming-soon — placeholder keeps URL live ──────────────────
         default:
