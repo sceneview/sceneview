@@ -14,11 +14,7 @@
 # ASSERT_TEXT and drop it from here.
 appId: io.github.sceneview.demo
 ---
-# ── Advanced / Interaction (no iOS destination yet) ──────────────────────────
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: collision
+# ── Advanced (no iOS destination yet) ───────────────────────────────────────
 - runFlow:
     file: flows/placeholder.yaml
     env:
@@ -39,11 +35,7 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: debug-overlay
-# ── Content / other (no iOS destination yet) ────────────────────────────────
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: gesture-editing
+# ── Content / Interaction (no iOS destination yet) ──────────────────────────
 - runFlow:
     file: flows/placeholder.yaml
     env:
@@ -56,8 +48,3 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: texture-streaming
-# ── Lighting (no iOS destination yet) ───────────────────────────────────────
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: environment
