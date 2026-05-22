@@ -20,16 +20,16 @@
 #                                 scene-gallery)
 #     Lighting ............. 4   (lighting, movable-light, dynamic-sky, fog)
 #     Content .............. 4   (text, lines-paths, image, billboard)
-#     Interaction .......... 2   (camera-controls, collision)
+#     Interaction .......... 3   (camera-controls, collision, gesture-editing)
 #     Advanced ............. 9   (physics, double-pendulum, custom-mesh, shape,
 #                                 materials, spatial-audio, post-processing*,
 #                                 reflection-probes*, secondary-camera*)
 #     Augmented Reality .... 6   (ar-placement, ar-instant-placement, ar-orbital,
 #                                 ar-lighting, ar-recording, ar-rerun — launch-only)
-#     Deep-link placeholders 12  (ar-image*, ar-face*, ar-cloud-anchor*,
+#     Deep-link placeholders 11  (ar-image*, ar-face*, ar-cloud-anchor*,
 #                                 ar-depth-occlusion*, ar-eis*, ar-pose-placement*,
 #                                 ar-rooftop*, ar-streetscape*, ar-terrain*,
-#                                 gesture-editing*, video*, view-node*)
+#                                 video*, view-node*)
 #                                --  (* = routes to DeepLinkPlaceholder)
 #     Total ................ 42
 #

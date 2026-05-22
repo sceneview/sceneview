@@ -27,11 +27,7 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: secondary-camera
-# ── Content / other (no iOS destination yet) ────────────────────────────────
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: gesture-editing
+# ── Content / Interaction (no iOS destination yet) ──────────────────────────
 - runFlow:
     file: flows/placeholder.yaml
     env:

@@ -3,8 +3,8 @@
 # Run a fast subset of the iOS device-QA harness:
 #   maestro test .maestro/ios/interaction.yaml
 #
-# `camera-controls` and `collision` are live on iOS; `gesture-editing` and
-# `view-node` are still "Coming soon" and are covered by placeholders.yaml.
+# `camera-controls`, `collision`, and `gesture-editing` are live on iOS;
+# `view-node` is still "Coming soon" and is covered by placeholders.yaml.
 #
 # Demo ids mirror Android `DemoRegistry.kt` ALL_DEMOS.
 appId: io.github.sceneview.demo
@@ -21,3 +21,9 @@ appId: io.github.sceneview.demo
       DEMO_ID: collision
       DEMO_NAME: Collision & Hit Test
       ASSERT_TEXT: "Tap a shape to highlight it"
+- runFlow:
+    file: flows/demo-settings.yaml
+    env:
+      DEMO_ID: gesture-editing
+      DEMO_NAME: Gesture Editing
+      ASSERT_TEXT: "Edit Mode"
