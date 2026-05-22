@@ -23,7 +23,7 @@
 #                                 environment*)
 #     Content .............. 6   (text, lines-paths, image, billboard,
 #                                 video*, texture-streaming*)
-#     Interaction .......... 4   (camera-controls, collision*, gesture-editing*,
+#     Interaction .......... 4   (camera-controls, collision, gesture-editing,
 #                                 view-node*)
 #     Advanced ............. 11  (physics, double-pendulum, custom-mesh, shape,
 #                                 materials, spatial-audio, post-processing*,

@@ -106,8 +106,9 @@ enum DemoDeepLinkRegistry {
         case "text":          TextDemo()
 
         // ── Interaction ──────────────────────────────────────────────
-        case "camera-controls": CameraControlsDemo()
-        case "collision":       CollisionHitTestDemo()
+        case "camera-controls":  CameraControlsDemo()
+        case "collision":        CollisionHitTestDemo()
+        case "gesture-editing":  GestureEditingDemo()
 
         // ── Advanced ─────────────────────────────────────────────────
         case "custom-mesh":     CustomMeshDemo()
