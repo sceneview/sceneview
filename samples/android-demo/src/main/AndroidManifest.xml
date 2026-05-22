@@ -39,10 +39,16 @@
 
     <!-- In-app feedback (#1933) — screen + microphone recording via
          MediaProjection, captured by a foreground service while the user
-         demonstrates a bug. All opt-in and consent-gated. -->
+         demonstrates a bug. All opt-in and consent-gated.
+         NOTE: FOREGROUND_SERVICE_MEDIA_PROJECTION is intentionally omitted here
+         (#2120): Play Console requires an app-content declaration before any AAB
+         declaring this permission can be committed, but the declaration section
+         only appears once a build is already on a track — a catch-22.  The
+         feedback recorder catches SecurityException / ForegroundServiceTypeNotAllowed
+         in goForeground() and disables recording gracefully on Android 14+.
+         Re-add once the Play Console FGS declaration has been completed. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
@@ -86,11 +92,11 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- In-app feedback screen + mic recorder (#1933). -->
+        <!-- In-app feedback screen + mic recorder (#1933).
+             foregroundServiceType omitted — see #2120 comment above. -->
         <service
             android:name=".feedback.FeedbackRecordingService"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
+            android:exported="false" />
 
         <activity
             android:name=".MainActivity"
