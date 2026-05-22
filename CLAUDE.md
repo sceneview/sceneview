@@ -432,27 +432,32 @@ Never say "everything is good" without verifying published packages.
 
 ### Latest release: see `gradle.properties`
 
-**The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.9.0`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
+**The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.15.1`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
 
-### Current state (last updated: 2026-05-20 night, session post-vibrant-shtern — v4.11.1 patch SHIPPED end-to-end)
+### Current state (last updated: 2026-05-22, session pedantic-robinson — iOS demo parity sprint + #1049 native camera modes SHIPPED)
 
-- 🚀 **v4.11.1 released** — tag `v4.11.1` pushed at HEAD `d55ab7d13`. release.yml ✅, play-store.yml ✅, docs.yml ✅, app-store.yml iOS TestFlight upload ✅ (macOS leg failed on #1794, explicitly out of scope). 24 changelog fragments collated (3 new patch fixes + 21 post-v4.11.0 follow-ups). [GitHub Release v4.11.1](https://github.com/sceneview/sceneview/releases/tag/v4.11.1).
-- 🛠️ **3 deploy-time fixes** that motivated the patch:
-  - [#1795](https://github.com/sceneview/sceneview/issues/1795) — `app-store.yml`'s submit step now reads `VERSION_NAME` from `gradle.properties` on `workflow_dispatch` fallback (was `build_version` = `CFBundleVersion` = `367`, which produced nonsense App Store version records). Validated in v4.11.1's run: `Target App Store versionString: 4.11.1` then `Reused editable draft …: retargeted 367 → 4.11.1`. The #1687 + #1795 retargeting works end-to-end.
-  - [#1788](https://github.com/sceneview/sceneview/issues/1788) — `react-native/react-native-sceneview/package.json` declares `publishConfig.access=public` as belt-and-suspenders to the workflow's `--access public` flag. v4.11.0's original 404 cascaded from the webpack build failure (resolved by main's #1791 webpack pin), but the declarative anchor closes the ambiguity.
-  - [#1789](https://github.com/sceneview/sceneview/issues/1789) — `sceneview-web jsBrowserProductionWebpack` regression on v4.11.0 (kotlin-web-helpers vs webpack 5.107.0 `ModuleNotFoundError` path move). Already fixed on main by [#1791](https://github.com/sceneview/sceneview/pull/1791) (`webpack <5.107.0` resolution pin); v4.11.1 re-validates the publish path. Build green locally + on tag-push.
-- 🟢 **App Store version record 367 résorbé** — the stranded 4.11.0 draft was renamed to `4.11.1` and now carries the v4.11.1 TestFlight build. The version record is clean.
-- 🔴 **App Store submission still 403s** on CREATE because the stale submission attached to the (renamed) draft persists: `"The resource 'appStoreVersionSubmissions' does not allow 'CREATE'. Allowed operation is: DELETE"`. Step exits 0 (workflow stays green) but the build isn't auto-submitted for review. Filed [#1831](https://github.com/sceneview/sceneview/issues/1831) — extend the submit step to GET the existing `appStoreVersionSubmission` relationship and DELETE it before POST. Manual click in App Store Connect web UI works as a one-off.
-- 🍎 **macOS App Store still failing on #1794** — `Theme.swift` / `ExploreTab.swift` use iOS-only SwiftUI APIs (`Color(.systemBackground)`, `.secondarySystemBackground`, `.tertiarySystemBackground`). Explicitly scoped out of v4.11.1 per Thomas; tied to the v2.2.0 Beta Testing rejection refactor.
-- ⚙️ **Worktree note**: the v4.11.1 patch worktree was deleted automatically by `worktree-auto-prune.sh` after the push (likely from the daily maintenance hook). Everything is on `origin/main` (`d55ab7d13`) + tag `v4.11.1` (`d553148d7`); the handoff worktree (`.claude/worktrees/v4.11.1-handoff`) only carries this CLAUDE.md edit.
-- 📦 **Two commits landed on main right after v4.11.1**: [#1828](https://github.com/sceneview/sceneview/pull/1828) (`SceneViewJS.SCENEVIEW_VERSION` bumped to 4.11.1 + sync-versions WARN promoted to ERROR — closes a regression latch) and [#1829](https://github.com/sceneview/sceneview/pull/1829) (recording/playback completeness — `PlaybackStatus`, `IO_ERROR`, custom tracks, scoped-storage Uri). Both for the next release (v4.11.2 or v4.12).
+- 🚀 **v4.15.1 is the latest release** (as of 2026-05-22). Versions v4.11.1 → v4.15.1 shipped in rapid succession during the iOS demo parity sprint (umbrella #910). See `gradle.properties` for the canonical version.
+- ✅ **iOS demo parity sprint COMPLETE** (umbrella #910 CLOSED). iOS demo app went from ~15 demos to full parity with the Android catalog (59 demos) across the following PRs (non-exhaustive): #2147, #2150, #2153, #2158, #2161, #2165, #2167, #2171, and many more. Deep-link registry, Maestro test coverage, and `DemoDeepLinkRegistry` all updated.
+- ✅ **#1049 CLOSED** — `CameraControlMode` now exposes 3 native Apple cases (`.none`, `.tilt`, `.dolly`) that delegate to `realityViewCameraControls(_:)` (iOS 18+, macOS 15+, visionOS excluded via `#if !os(visionOS)` guard). `CameraControlsDemo.swift` updated with native-mode picker and exhaustive switch cases. `llms.txt` updated. PR #2169 merged.
+- ✅ **#1831 CLOSED** — App Store submit step now DELETEs stale `appStoreVersionSubmissions` before POST (PR #2141). No more 403 on absorbed-draft releases.
+- ✅ **#1794 CLOSED** — macOS SwiftUI iOS-only API guards fixed (`#if os(iOS)` wrapping `UIColor.systemBackground`, `navigationBarTitleDisplayMode`, `topBarTrailing`, `.zoom()` transition).
+- ✅ **#1860 CLOSED** — `SceneReconstructionNode` / `DepthMeshNode` / `DepthColliderNode` marked as Available in cheatsheet-ios.md and llms.txt (PR #2175).
+- ✅ **#2173 CLOSED** — Stale scene IDs `ar-eis` → `ar-image-stabilization`, `ar-pose-placement` → `ar-pose` in iOS Scenes catalog + deep-link registry (PRs #2174, #2176).
+- 🔴 **Play Store demo app blocked (#2120)** — `play-store.yml` fails at "Commit Edit" because Google requires a one-time **Foreground Service permissions declaration** (mediaProjection) in Play Console before any Edit can be committed. One-time manual action needed by Thomas.
+- 📋 **16 open issues** remain — see issue tracker. Most require physical devices, major engineering, or are v5 scope. Highest-priority actionable: #1033 (sceneview-core XCFramework), #1033, #2024 (Web Node scene-graph v5).
 
 ### Followups for next session
 
-1. **Land [#1831](https://github.com/sceneview/sceneview/issues/1831)** so the next absorbed-draft release auto-deletes the stale `appStoreVersionSubmission` and the submit POST returns 201 — closes the last loose end of the #1795/#1687 saga.
-2. **Tackle #1794 macOS SwiftUI** (cross-platform `Color(.systemBackground)` etc. in `Theme.swift` + `ExploreTab.swift`) — paired with the v2.2.0 Beta Testing rejection refactor.
-3. **Manually click "Submit for Review"** in App Store Connect on the existing `4.11.1` draft (or fix #1831 + re-trigger `app-store.yml` via `workflow_dispatch`).
-4. **Coordination check** — the `claude/qa-1439-autofit-framing-v2` session was still dirty in the primary checkout when v4.11.1 was cut. Confirm it lands / pauses / merges before the next release.
+1. **Play Console action (manual)**: [#2120](https://github.com/sceneview/sceneview/issues/2120) — declare Foreground Service permission (mediaProjection) in Play Console App content → Foreground service permissions. Then re-trigger `play-store.yml` via `workflow_dispatch` on `--ref v4.15.1`.
+2. **[#1033 sceneview-core XCFramework](https://github.com/sceneview/sceneview/issues/1033)** — build the XCFramework from `sceneview-core/` KMP module and wire it into `SceneViewSwift` via a `SceneViewCoreBridge` Swift module. Significant engineering effort.
+3. **[#1364 ImmersiveSpace visionOS demo](https://github.com/sceneview/sceneview/issues/1364)** — deferred since #1235; needs visionOS simulator + visionOS SDK installed.
+4. **[#894 iOS AR feature parity](https://github.com/sceneview/sceneview/issues/894)** — Cloud Anchors, ARRecorder via ReplayKit, Streetscape. Needs physical device for validation.
+
+### Previous state (last updated: 2026-05-20 night, session post-vibrant-shtern — v4.11.1 patch SHIPPED end-to-end)
+
+- 🚀 **v4.11.1 released** — tag `v4.11.1` pushed at HEAD `d55ab7d13`. 24 changelog fragments collated. [GitHub Release v4.11.1](https://github.com/sceneview/sceneview/releases/tag/v4.11.1).
+- 🛠️ **3 deploy-time fixes**: #1795 (VERSION_NAME on workflow_dispatch fallback), #1788 (publishConfig.access=public), #1789 (webpack <5.107.0 pin).
+- 🟢 **App Store version record 367 absorbed** into `4.11.1`. The retargeting (#1687 + #1795) works end-to-end.
 
 ### Previous state (last updated: 2026-05-20 evening, session vibrant-shtern-147a5c — v4.11.0 SHIPPED + store-deploy correctness sweep)
 
