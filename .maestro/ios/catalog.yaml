@@ -18,7 +18,8 @@
 #   42 ids (#1579 widened the registry to the full Android catalog):
 #     3D Basics ............ 5   (model-viewer, geometry, animation, multi-model,
 #                                 scene-gallery)
-#     Lighting ............. 4   (lighting, movable-light, dynamic-sky, fog)
+#     Lighting ............. 5   (lighting, movable-light, dynamic-sky, environment,
+                                fog)
 #     Content .............. 4   (text, lines-paths, image, billboard)
 #     Interaction .......... 2   (camera-controls, collision*)
 #     Advanced ............. 9   (physics, double-pendulum, custom-mesh, shape,
@@ -31,7 +32,7 @@
 #                                 ar-rooftop*, ar-streetscape*, ar-terrain*,
 #                                 gesture-editing*, video*, view-node*)
 #                                --  (* = routes to DeepLinkPlaceholder)
-#     Total ................ 42
+#     Total ................ 43
 #
 # Why deep-link ingress, not Samples-tab navigation:
 #   The iOS Samples-tab presents demos in a `.fullScreenCover` with NO Close

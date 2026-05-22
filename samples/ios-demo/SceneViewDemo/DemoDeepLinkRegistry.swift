@@ -32,7 +32,7 @@ enum DemoDeepLinkRegistry {
         // ── 3D Basics ───────────────────────────────────────────────────
         "model-viewer", "geometry", "animation", "multi-model", "scene-gallery",
         // ── Lighting ────────────────────────────────────────────────────
-        "lighting", "movable-light", "fog", "dynamic-sky",
+        "lighting", "movable-light", "fog", "dynamic-sky", "environment",
         // ── Content ─────────────────────────────────────────────────────
         "text", "lines-paths", "image", "billboard",
         // ── Interaction ─────────────────────────────────────────────────
@@ -84,6 +84,7 @@ enum DemoDeepLinkRegistry {
         case "lighting":      LightingDemo()
         case "movable-light": MovableLightDemo()
         case "dynamic-sky":   DynamicSkyDemo()
+        case "environment":   EnvironmentDemo()
         case "fog":           FogDemo()
 
         // ── Content ──────────────────────────────────────────────────
