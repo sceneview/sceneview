@@ -466,18 +466,28 @@ export async function waitForEngineReady(page: Page): Promise<void> {
  * `headlessGpuOk` stays in the return shape for callers that soft-skip on
  * GPU-less runners; it is `false` only when the canvas itself is missing /
  * zero-sized (a genuine "cannot sample" state), `true` otherwise.
+ *
+ * `minVariance` is the luminance-variance floor a region must clear to count
+ * as "rendered content". It defaults to 64 — a wide margin above a flat dark
+ * block (variance < ~20) and far below a normally-lit model (hundreds to
+ * thousands). A caller may pass a *modestly* lower floor for a scene that
+ * renders legitimately dim on the SwiftShader software rasteriser (e.g. a
+ * single point light, whose inverse-square falloff leaves the canvas much
+ * darker than a directional light); the floor must still stay clear of a
+ * genuinely blank block so the assertion keeps catching a black canvas.
  */
 export async function sampleCanvas(
   page: Page,
   region: 'centre' | 'full' = 'centre',
-): Promise<{ hasContent: boolean; headlessGpuOk: boolean }> {
+  minVariance = 64,
+): Promise<{ hasContent: boolean; headlessGpuOk: boolean; variance: number }> {
   const canvas = page.locator('#scene-canvas');
   if ((await canvas.count()) === 0) {
-    return { hasContent: false, headlessGpuOk: false };
+    return { hasContent: false, headlessGpuOk: false, variance: 0 };
   }
   const box = await canvas.boundingBox();
   if (!box || box.width === 0 || box.height === 0) {
-    return { hasContent: false, headlessGpuOk: false };
+    return { hasContent: false, headlessGpuOk: false, variance: 0 };
   }
 
   // Screenshot a block of the canvas as a lossless PNG, then decode it back to
@@ -508,18 +518,18 @@ export async function sampleCanvas(
   // A blank / uniform region has near-zero luminance variance; a rendered
   // scene (model shading, the pendulum links, geometry edges) shows a wide
   // spread of luminance values. Variance is robust to the demo's dark theme.
-  return page.evaluate(async (uri: string) => {
+  return page.evaluate(async (args: { uri: string; minVariance: number }) => {
     const img = new Image();
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve();
       img.onerror = () => reject(new Error('decode failed'));
-      img.src = uri;
+      img.src = args.uri;
     });
     const c = document.createElement('canvas');
     c.width = img.width;
     c.height = img.height;
     const ctx = c.getContext('2d');
-    if (!ctx) return { hasContent: false, headlessGpuOk: false };
+    if (!ctx) return { hasContent: false, headlessGpuOk: false, variance: 0 };
     ctx.drawImage(img, 0, 0);
     const { data } = ctx.getImageData(0, 0, c.width, c.height);
     let sum = 0;
@@ -535,9 +545,11 @@ export async function sampleCanvas(
     const mean = sum / n;
     const variance = sumSq / n - mean * mean;
     // A flat dark block has variance < ~20; a rendered model is in the
-    // hundreds-to-thousands. 64 is a wide safety margin either side.
-    return { hasContent: variance > 64, headlessGpuOk: true };
-  }, dataUri);
+    // hundreds-to-thousands. `minVariance` (default 64) is a wide safety
+    // margin either side — a caller may lower it modestly for a legitimately
+    // dim scene, but never below the flat-block ceiling.
+    return { hasContent: variance > args.minVariance, headlessGpuOk: true, variance };
+  }, { uri: dataUri, minVariance });
 }
 
 /**
