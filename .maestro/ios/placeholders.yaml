@@ -44,7 +44,4 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: view-node
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: texture-streaming
+# texture-streaming: live demo since #2163 — moved to content.yaml
