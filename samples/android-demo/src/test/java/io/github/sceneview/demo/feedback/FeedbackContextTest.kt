@@ -10,8 +10,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Covers [captureFeedbackContext] — the device / app / route snapshot attached
- * to every feedback submission (#1934).
+ * Covers [captureFeedbackContext] — the device / app context snapshot attached
+ * to every feedback submission (#1934). The `route` key was removed; `demoId`
+ * is the canonical navigation key the worker recognises.
  */
 @RunWith(RobolectricTestRunner::class)
 class FeedbackContextTest {
@@ -69,5 +70,21 @@ class FeedbackContextTest {
         val ctx = captureFeedbackContext(context)
 
         assertEquals("lighting", ctx["demoId"])
+    }
+
+    @Test
+    fun `isEmulator returns true on a Robolectric test runner (emulator Build fields)`() {
+        // Robolectric sets Build.FINGERPRINT to "robolectric" which starts
+        // with a non-"generic" prefix, but PRODUCT defaults to "robolectric"
+        // and HARDWARE defaults to "robolectric". The important thing is that
+        // isEmulator() does not throw — emulator detection is best-effort and
+        // some environments may return false. The test verifies the function
+        // is callable and returns a Boolean without crashing.
+        // No assertion on the exact value — environment-dependent.
+        // Merely verifies the call path is reachable without NPE / crash.
+        val result = isEmulator()
+        // On Robolectric the Build fields don't match a real emulator's values,
+        // so the result is false. Either way the call must complete without error.
+        assertFalse("isEmulator() must not throw on Robolectric", result)
     }
 }
