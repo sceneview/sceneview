@@ -183,9 +183,7 @@ struct SamplesTab: View {
         case .available:
             scene.destination
                 .navigationTitle(scene.title)
-                #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-                #endif
+                .navigationBarTitleInline()
         case .comingSoon:
             ComingSoonScreen(
                 title: scene.title,

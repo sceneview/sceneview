@@ -258,7 +258,17 @@ dependencies {
     // ARKit-parity Joint enum. The .task model is bundled in src/main/assets. Demo-only
     // dependency — the published arsceneview artifact carries no MediaPipe code, just the
     // renderer-agnostic BodyPose / Joint value types. See ARBodyTrackerDemo (#1763).
-    implementation libs.mediapipe.tasks.vision
+    //
+    // MediaPipe's tasks-vision POM declares `com.google.auto.value:auto-value`
+    // (the *full* annotation processor, not just `-annotations`) as a regular
+    // runtime dependency. AutoValue is compile-time-only — it pulls a shaded
+    // JavaPoet that references compile-time-only `javax.lang.model.**` JDK
+    // classes. On the release minify classpath R8 full-mode promotes those
+    // missing classes to a hard error, failing `minifyReleaseWithR8` and the
+    // Play Store deploy. Exclude it — it is never used at runtime (#2106).
+    implementation(libs.mediapipe.tasks.vision) {
+        exclude group: 'com.google.auto.value', module: 'auto-value'
+    }
 
     // Screenshot testing (Roborazzi — JVM, no emulator needed)
     testImplementation libs.robolectric

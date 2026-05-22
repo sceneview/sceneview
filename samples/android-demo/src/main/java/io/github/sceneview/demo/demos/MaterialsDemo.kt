@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.ErrorScrim
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberFirstFrameState
@@ -77,6 +78,11 @@ fun MaterialsDemo(onBack: () -> Unit) {
     var selectedIndex by remember { mutableStateOf(0) }
     val selectedSlug = slugs.getOrNull(selectedIndex)
 
+    // Bumped by the error scrim's Retry button. It is a `produceState` key so a
+    // tap re-runs the resolve coroutine for the same slug instead of leaving the
+    // demo stuck on a failed resolution forever (#2088).
+    var retryTick by remember { mutableStateOf(0) }
+
     LaunchedEffect(resolver) {
         runCatching { resolver.prefetchAll("materials") }
     }
@@ -97,18 +103,25 @@ fun MaterialsDemo(onBack: () -> Unit) {
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
     val activeEnvironment = hdrEnvironment ?: fallbackEnvironment
 
-    val resolvedPath: String? by produceState<String?>(
-        initialValue = null,
+    // A failed resolve is surfaced as [MaterialResolveState.Error] instead of
+    // being swallowed into a `null` path that hangs the loading scrim forever
+    // (#2088). `retryTick` re-runs the resolve when the user taps Retry.
+    val resolveState: MaterialResolveState by produceState<MaterialResolveState>(
+        initialValue = MaterialResolveState.Loading,
         key1 = resolver,
         key2 = selectedSlug?.uid,
+        key3 = retryTick,
     ) {
-        value = null
+        value = MaterialResolveState.Loading
         val slug = selectedSlug ?: return@produceState
         value = runCatching { resolver.resolve(slug) }
-            .getOrNull()
-            ?.toURI()
-            ?.toString()
+            .fold(
+                onSuccess = { MaterialResolveState.Resolved(it.toURI().toString()) },
+                onFailure = { MaterialResolveState.Error(it.message ?: it.javaClass.simpleName) },
+            )
     }
+    val resolvedPath = (resolveState as? MaterialResolveState.Resolved)?.path
+    val resolveError = (resolveState as? MaterialResolveState.Error)?.message
 
     val modelInstance = resolvedPath?.let { path ->
         rememberModelInstance(modelLoader, path)
@@ -185,10 +198,33 @@ fun MaterialsDemo(onBack: () -> Unit) {
                     )
                 }
             }
-            LoadingScrim(
-                loading = modelInstance == null,
-                label = stringResource(R.string.demo_materials_loading),
-            )
+            // Mutually exclusive with LoadingScrim: a resolve failure shows the
+            // error scrim (with Retry) instead of hanging on "Streaming…" (#2088).
+            if (resolveError != null) {
+                ErrorScrim(
+                    message = resolveError,
+                    onRetry = { retryTick++ },
+                    label = stringResource(R.string.demo_materials_error),
+                    retryLabel = stringResource(R.string.demo_materials_retry),
+                )
+            } else {
+                LoadingScrim(
+                    loading = modelInstance == null,
+                    label = stringResource(R.string.demo_materials_loading),
+                )
+            }
         }
     }
+}
+
+/** Resolution lifecycle for a streamed material slug. See [MaterialsDemo]. */
+private sealed interface MaterialResolveState {
+    /** Resolve coroutine in flight. */
+    data object Loading : MaterialResolveState
+
+    /** Resolve succeeded — [path] is a `file://` URL ready for the model loader. */
+    data class Resolved(val path: String) : MaterialResolveState
+
+    /** Resolve failed — [message] is a short human-readable reason. */
+    data class Error(val message: String) : MaterialResolveState
 }

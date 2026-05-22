@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **macOS demo target archives again ([#1794](https://github.com/sceneview/sceneview/issues/1794)).** Guarded iOS-only SwiftUI APIs in the shared `samples/ios-demo` Swift source so the `SceneViewDemo` macOS target compiles: added cross-platform `Color.systemBackground` / `secondarySystemBackground` / `tertiarySystemBackground` helpers and a `navigationBarTitleInline()` modifier in `Theme.swift`, `#if os(iOS)`-guarded the iOS 18 `.zoom(sourceID:in:)` navigation transition and the `topBarTrailing` toolbar placement.

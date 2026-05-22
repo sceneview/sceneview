@@ -30,6 +30,7 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.LoadingScrim
+import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -139,6 +140,7 @@ fun PostProcessingDemo(onBack: () -> Unit) {
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
+                environment = rememberModelDemoEnvironment(environmentLoader),
                 view = view,
                 cameraManipulator = cameraManipulator,
             ) {

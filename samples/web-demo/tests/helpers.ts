@@ -469,6 +469,7 @@ export async function waitForEngineReady(page: Page): Promise<void> {
  */
 export async function sampleCanvas(
   page: Page,
+  region: 'centre' | 'full' = 'centre',
 ): Promise<{ hasContent: boolean; headlessGpuOk: boolean }> {
   const canvas = page.locator('#scene-canvas');
   if ((await canvas.count()) === 0) {
@@ -479,21 +480,29 @@ export async function sampleCanvas(
     return { hasContent: false, headlessGpuOk: false };
   }
 
-  // Screenshot a block at the centre of the canvas — that is where the framed
-  // model / pendulum / geometry sits — as a lossless PNG, then decode it back
-  // to pixels inside the browser (an <img> + 2D canvas natively decodes PNG;
-  // this never touches the WebGL context so the `preserveDrawingBuffer`
-  // problem above does not apply).
+  // Screenshot a block of the canvas as a lossless PNG, then decode it back to
+  // pixels inside the browser (an <img> + 2D canvas natively decodes PNG; this
+  // never touches the WebGL context so the `preserveDrawingBuffer` problem
+  // above does not apply).
+  //
+  // `region: 'centre'` (default) samples a 200px block at the canvas centre —
+  // where a tightly auto-framed model / pendulum / geometry sits. `'full'`
+  // samples the entire canvas: the same variance methodology, but it does not
+  // assume the rendered subject is centred. Use `'full'` for scenes whose
+  // auto-framing legitimately places the subject off-centre (e.g. the
+  // skinned-model Animation tab, whose rest-pose bounding box offsets the
+  // frame) — it is an equally hard blank-canvas signal, not a weaker one.
   const side = 200;
-  const png = await page.screenshot({
-    type: 'png',
-    clip: {
-      x: box.x + box.width / 2 - side / 2,
-      y: box.y + box.height / 2 - side / 2,
-      width: side,
-      height: side,
-    },
-  });
+  const clip =
+    region === 'full'
+      ? { x: box.x, y: box.y, width: box.width, height: box.height }
+      : {
+          x: box.x + box.width / 2 - side / 2,
+          y: box.y + box.height / 2 - side / 2,
+          width: side,
+          height: side,
+        };
+  const png = await page.screenshot({ type: 'png', clip });
   const dataUri = 'data:image/png;base64,' + png.toString('base64');
 
   // A blank / uniform region has near-zero luminance variance; a rendered

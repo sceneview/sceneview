@@ -6,7 +6,9 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_materials_title">PBR Materials</string>
-    <string name="demo_materials_subtitle">PBR metallic and roughness spectrum</string>
+    <string name="demo_materials_subtitle">KHR_materials_* extension showcase — sheen, transmission, iridescence</string>
     <string name="demo_materials_credit">by %1$s · CC-BY 4.0</string>
     <string name="demo_materials_loading">Streaming material…</string>
+    <string name="demo_materials_error">Couldn\'t load this material</string>
+    <string name="demo_materials_retry">Retry</string>
 </resources>

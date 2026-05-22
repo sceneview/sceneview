@@ -131,6 +131,10 @@ dependencies {
     // Unit tests (JVM — no device required)
     testImplementation 'junit:junit:4.13.2'
     testImplementation libs.robolectric
+    // Virtual-time coroutine testing (runTest / TestDispatcher) — lets
+    // CollaborativeSessionTest drive the session's I/O scope deterministically
+    // instead of racing Dispatchers.Default against a wall-clock timeout (#2091).
+    testImplementation libs.kotlin.coroutines.test
     // The Xr*Node JVM tests exercise pure-Kotlin mesh/joint math on SceneView's
     // own `Position` type and never load `androidx.xr.arcore`, so the XR artifact
     // is intentionally NOT a test dependency — keeping the test classpath identical

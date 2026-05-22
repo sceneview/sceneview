@@ -34,3 +34,15 @@
 # ── Suppress known harmless warnings ─────────────────────────────────────────
 -dontwarn com.google.android.filament.**
 -dontwarn com.google.ar.**
+
+# ── AutoValue / javax.lang.model (compile-time-only) ─────────────────────────
+# MediaPipe's tasks-vision POM drags com.google.auto.value:auto-value (the full
+# annotation processor + a shaded JavaPoet) onto the runtime/minify classpath.
+# AutoValue and JavaPoet reference compile-time-only JDK classes
+# (javax.lang.model.**) that don't exist on Android. The build.gradle exclude
+# already drops auto-value, but these -dontwarn rules — exactly what R8's
+# missing_rules.txt generates — keep the AAB build safe if any transitive
+# reference survives. None of these classes are used at runtime (#2106).
+-dontwarn javax.lang.model.**
+-dontwarn autovalue.shaded.**
+-dontwarn com.google.auto.value.**

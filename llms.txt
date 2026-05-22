@@ -3962,7 +3962,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `custom-mesh` — Custom Mesh. Custom vertex and index buffers.
 - `debug-overlay` — Debug Overlay. Performance stats overlay.
 - `double-pendulum` — Double Pendulum. Chaotic two-link physics, shared KMP simulation.
-- `materials` — PBR Materials. PBR metallic and roughness spectrum.
+- `materials` — PBR Materials. KHR_materials_* extension showcase — sheen, transmission, iridescence.
 - `occlusion-material` — Occlusion Material. Invisible depth-writing surface hides content behind it.
 - `physics` — Physics. Gravity, collisions, and rigid bodies.
 - `post-processing` — Post Processing. SSAO, anti-aliasing, and tone mapping.

@@ -79,9 +79,7 @@ struct ComingSoonScreen: View {
             .frame(maxWidth: .infinity)
         }
         .navigationTitle("Coming soon")
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .navigationBarTitleInline()
     }
 }
 
