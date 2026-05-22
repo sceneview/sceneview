@@ -25,10 +25,12 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
 
-# Cancel in-progress runs for the same branch/PR
+# This workflow uploads GitHub Release assets via softprops/action-gh-release on
+# tag pushes. A re-pushed/moved tag must NOT cancel an in-flight asset upload, or
+# the Release is left partial. Matches release.yml / play-store.yml / app-store.yml.
 concurrency:
   group: build-apks-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:

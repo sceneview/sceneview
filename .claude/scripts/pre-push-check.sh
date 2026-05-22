@@ -83,12 +83,23 @@ fi
 
 # 5. Version sync
 echo -e "\n${YELLOW}[7/10] Checking version sync...${NC}"
-MISMATCHES=$(bash .claude/scripts/sync-versions.sh 2>/dev/null | grep "MISMATCH" | grep -v "migration.md" | grep -v "Errors" | wc -l | tr -d ' ')
-if [ "$MISMATCHES" = "0" ]; then
-    echo -e "${GREEN}  ✓ All versions aligned${NC}"
-else
-    echo -e "${RED}  ✗ $MISMATCHES version mismatch(es)${NC}"
+# Capture sync-versions.sh output and exit code separately, so a crash of the
+# script is not swallowed by the pipeline (a piped crash would falsely report
+# "0 mismatches"). `set -o pipefail` is deliberately NOT used globally — many
+# grep-no-match pipes elsewhere in this script rely on the lenient default.
+# sync-versions.sh exits 0 (aligned), 1 (mismatches found — expected), or 2+ (crash).
+SYNC_OUTPUT=$(bash .claude/scripts/sync-versions.sh 2>/dev/null) && SYNC_EXIT=0 || SYNC_EXIT=$?
+if [ "$SYNC_EXIT" -gt 1 ]; then
+    echo -e "${RED}  ✗ sync-versions.sh crashed (exit $SYNC_EXIT) — cannot verify versions${NC}"
     ERRORS=$((ERRORS + 1))
+else
+    MISMATCHES=$(echo "$SYNC_OUTPUT" | grep "MISMATCH" | grep -v "migration.md" | grep -v "Errors" | wc -l | tr -d ' ')
+    if [ "$MISMATCHES" = "0" ]; then
+        echo -e "${GREEN}  ✓ All versions aligned${NC}"
+    else
+        echo -e "${RED}  ✗ $MISMATCHES version mismatch(es)${NC}"
+        ERRORS=$((ERRORS + 1))
+    fi
 fi
 
 # 6. Website JS syntax
