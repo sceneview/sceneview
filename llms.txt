@@ -2255,6 +2255,46 @@ ARSceneView(...) {
 
 Demo: `samples/android-demo/.../ARStreetscapeDemo.kt`. Setup guide (Cloud project + API key): `samples/android-demo/ARCORE_CLOUD_SETUP.md`.
 
+### SceneMeshNode — classified building / terrain mesh (ARKit ARMeshAnchor parity)
+
+A `StreetscapeGeometryNode` subclass that exposes a unified `MeshClassification` enum for every face of the underlying mesh, providing ARKit `ARMeshAnchor` parity on Android. On ARCore the label is coarse (one classification per geometry — `TERRAIN` or `BUILDING`); on ARKit it is per-face (fine-grained indoor labels). The `onClassifiedFace` callback uses the same per-face signature on both platforms so classification-driven rendering code compiles unchanged.
+
+`MeshClassification` values: `FLOOR`, `WALL`, `CEILING`, `TABLE`, `SEAT`, `WINDOW`, `DOOR`, `TERRAIN`, `BUILDING`, `UNLABELED`.
+
+```kotlin
+@Composable fun SceneMeshNode(
+    streetscapeGeometry: StreetscapeGeometry,
+    types: Set<StreetscapeGeometry.Type> = setOf(BUILDING, TERRAIN),
+    minQuality: StreetscapeGeometry.Quality = StreetscapeGeometry.Quality.NONE,
+    meshMaterialInstance: MaterialInstance? = null,
+    onTrackingStateChanged: ((TrackingState) -> Unit)? = null,
+    onUpdated: ((StreetscapeGeometry) -> Unit)? = null,
+    onClassifiedFace: ((faceIndex: Int, classification: MeshClassification) -> Unit)? = null,
+    apply: SceneMeshNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null
+)
+```
+
+Use `SceneMeshNode` instead of `StreetscapeGeometryNode` when you need per-face classification for colour coding, physics layer masks, or audio-zone filters. Use `onClassifiedFace` to build a per-face map at construction time (called once, not every frame):
+
+```kotlin
+val classificationColors = mapOf(
+    MeshClassification.TERRAIN to terrainMat,
+    MeshClassification.BUILDING to buildingMat,
+)
+
+ARSceneView(...) {
+    geometries.forEach { geo ->
+        SceneMeshNode(
+            streetscapeGeometry = geo,
+            meshMaterialInstance = classificationColors[geo.type.toMeshClassification()]
+        )
+    }
+}
+```
+
+Demo: `samples/android-demo/.../ARSceneMeshDemo.kt`.
+
 ### Geospatial Depth — extend environment depth accuracy to ~65 m
 
 Standard ARCore motion-stereo depth (`Config.DepthMode.AUTOMATIC`) is reliable to roughly **8 m**. When the session also has Geospatial enabled, ARCore **automatically** fuses motion depth with Streetscape Geometry + device sensors and extends accurate depth out to **~65 m** — essential for outdoor or large-scale AR (placing virtual signage on a far building façade, occluding a virtual character behind a distant wall, depth-aware hit-tests across a city block). This is the **Geospatial Depth** feature shipped in ARCore 1.54.
