@@ -93,6 +93,18 @@ appId: io.github.sceneview.demo
       DEMO_ID: ar-scene-mesh
       DEMO_NAME: Scene Mesh
       ASSERT_TEXT: "AR requires a physical device"
+- runFlow:
+    file: flows/ar-demo.yaml
+    env:
+      DEMO_ID: ar-plane-node
+      DEMO_NAME: AR Plane Node
+      ASSERT_TEXT: "Plane detection requires a physical device"
+- runFlow:
+    file: flows/ar-demo.yaml
+    env:
+      DEMO_ID: ar-point-cloud
+      DEMO_NAME: AR Point Cloud
+      ASSERT_TEXT: "Feature-point detection requires a physical device"
 # ── Coming-soon AR demos (route to DeepLinkPlaceholder) ─────────────────────
 - runFlow:
     file: flows/placeholder.yaml
@@ -150,15 +162,7 @@ appId: io.github.sceneview.demo
 - runFlow:
     file: flows/placeholder.yaml
     env:
-      DEMO_ID: ar-point-cloud
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
       DEMO_ID: ar-raw-depth-point-cloud
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: ar-plane-node
 - runFlow:
     file: flows/placeholder.yaml
     env:

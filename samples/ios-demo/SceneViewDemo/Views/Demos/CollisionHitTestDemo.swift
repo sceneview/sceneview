@@ -42,7 +42,7 @@ struct CollisionHitTestDemo: View {
                 buildScene(root: root)
             }
             .onEntityTapped { entity in
-                guard let idxStr = entity.name?.components(separatedBy: "_").last,
+                guard let idxStr = entity.name.components(separatedBy: "_").last,
                       let idx = Int(idxStr) else { return }
                 if highlightedIndices.contains(idx) {
                     highlightedIndices.remove(idx)

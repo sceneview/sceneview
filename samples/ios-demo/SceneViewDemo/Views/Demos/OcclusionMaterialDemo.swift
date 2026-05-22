@@ -54,7 +54,7 @@ struct OcclusionMaterialDemo: View {
             // Default material = OcclusionMaterial (invisible, depth-writing).
             let planeSize: Float = 0.5
             let planeMesh   = MeshResource.generatePlane(width: planeSize, height: planeSize / 2)
-            let occluderMat: Material = showOccluder
+            let occluderMat: any RealityKit.Material = showOccluder
                 ? SimpleMaterial(color: .init(red: 0.4, green: 0.4, blue: 0.45, alpha: 0.6), isMetallic: false)
                 : OcclusionMaterial()
             let planeEntity = ModelEntity(mesh: planeMesh, materials: [occluderMat])
@@ -68,7 +68,7 @@ struct OcclusionMaterialDemo: View {
             // Hot-swap the occluder material when the toggle changes.
             guard let occluder = content.entities.first(where: { $0.name == "occluder" }),
                   var model = occluder.components[ModelComponent.self] else { return }
-            let newMat: Material = showOccluder
+            let newMat: any RealityKit.Material = showOccluder
                 ? SimpleMaterial(color: .init(red: 0.4, green: 0.4, blue: 0.45, alpha: 0.6), isMetallic: false)
                 : OcclusionMaterial()
             model.materials = [newMat]

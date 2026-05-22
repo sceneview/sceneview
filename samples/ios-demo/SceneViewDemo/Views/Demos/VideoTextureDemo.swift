@@ -47,8 +47,8 @@ struct VideoTextureDemo: View {
                 root.addChild(videoNode.entity)
             }
         }
-        .id("video-\(videoNode != nil)")
         .cameraControls(.orbit)
+        .id("video-\(videoNode != nil)")
         .ignoresSafeArea()
     }
 

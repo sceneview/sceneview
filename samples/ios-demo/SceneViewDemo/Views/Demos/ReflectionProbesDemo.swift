@@ -95,7 +95,7 @@ struct ReflectionProbesDemo: View {
             .font(.headline)
             .padding(.top, 4)
 
-        ForEach(ProbeEnvironment.allCases) { env in
+        ForEach(ProbeEnvironment.allCases) { (env: ProbeEnvironment) in
             Button {
                 selectedEnvironment = env
             } label: {
@@ -106,7 +106,7 @@ struct ReflectionProbesDemo: View {
                     Spacer()
                     if selectedEnvironment == env {
                         Image(systemName: "checkmark")
-                            .foregroundStyle(.accentColor)
+                            .foregroundStyle(.tint)
                     }
                 }
                 .contentShape(Rectangle())

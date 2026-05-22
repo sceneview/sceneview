@@ -28,10 +28,11 @@
 #                                 materials, spatial-audio, reflection-probes,
 #                                 occlusion-material, debug-overlay,
 #                                 post-processing*, secondary-camera*)
-#     Augmented Reality .... 12  (ar-placement, ar-instant-placement, ar-orbital,
+#     Augmented Reality .... 14  (ar-placement, ar-instant-placement, ar-orbital,
 #                                 ar-lighting, ar-recording, ar-rerun — launch-only;
 #                                 ar-image, ar-face, ar-depth-occlusion,
-#                                 ar-people-occlusion, ar-body-tracker, ar-scene-mesh
+#                                 ar-people-occlusion, ar-body-tracker, ar-scene-mesh,
+#                                 ar-plane-node, ar-point-cloud
 #                                 — show device-required screen on simulator)
 #     Deep-link placeholders 23  (3 non-AR: post-processing*, secondary-camera*,
 #                                 view-node*; 20 AR-only ids)

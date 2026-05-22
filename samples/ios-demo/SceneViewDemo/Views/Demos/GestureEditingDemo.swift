@@ -84,9 +84,10 @@ struct GestureEditingDemo: View {
             floor.entity.position = SIMD3(0, -0.45, -2)
             root.addChild(floor.entity)
         }
-        // Don't include isEditable in the id — camera mode changes without scene rebuild
-        .id("gesture-\(loadedModel != nil)")
+        // .cameraControls must precede .id — .id wraps to some View which loses the modifier.
         .cameraControls(isEditable ? .none : .orbit)
+        // Don't include isEditable in the id — camera mode changes without scene rebuild.
+        .id("gesture-\(loadedModel != nil)")
         .ignoresSafeArea()
     }
 
