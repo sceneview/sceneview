@@ -42,6 +42,15 @@ on:
           - beta
           - alpha
           - internal
+      commit_edit_id:
+        description: |
+          Fast path for #2120 FGS catch-22: paste the edit_id printed by a preserved FGS-failed
+          edit (see "ACTION REQUIRED" block in CI logs). When set, skips the 40-min build and
+          just commits the existing edit — supply AFTER declaring FGS in Play Console App content.
+          Leave blank for a normal build+upload run.
+        required: false
+        default: ''
+        type: string
 
 # Only one Play Store deploy at a time.
 concurrency:
@@ -52,8 +61,62 @@ permissions:
   contents: read
 
 jobs:
+  # ── Fast path: commit a previously-preserved edit without rebuilding (#2120)
+  # ────────────────────────────────────────────────────────────────────────────
+  # When the normal deploy is blocked by an undeclared FGS permission, the
+  # production fallback preserves the edit in Play Console (edit NOT deleted).
+  # Once FGS is declared in Play Console App content, trigger this workflow
+  # with commit_edit_id = <id from CI logs> to commit the existing edit in
+  # ~2 min instead of the ~50 min full build+upload cycle.
+  commit-edit:
+    name: Commit preserved edit (FGS fast-path)
+    if: github.event.inputs.commit_edit_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Commit edit ${{ github.event.inputs.commit_edit_id }}
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+          EDIT_ID: ${{ github.event.inputs.commit_edit_id }}
+          PACKAGE_NAME: io.github.sceneview.demo
+        run: |
+          python3 -m venv /tmp/commit-venv
+          /tmp/commit-venv/bin/pip install --quiet -r .github/workflows/requirements/play-store.txt
+          /tmp/commit-venv/bin/python3 << 'PYEOF'
+          import json, os, sys
+          from google.oauth2 import service_account
+          from google.auth.transport.requests import AuthorizedSession
+
+          PKG     = os.environ["PACKAGE_NAME"]
+          EDIT_ID = os.environ["EDIT_ID"].strip()
+          BASE    = f"https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{PKG}"
+
+          creds = service_account.Credentials.from_service_account_info(
+              json.loads(os.environ["SERVICE_ACCOUNT_JSON"]),
+              scopes=["https://www.googleapis.com/auth/androidpublisher"],
+          )
+          sess = AuthorizedSession(creds)
+
+          print(f"[commit-edit] Committing edit_id={EDIT_ID} for {PKG}")
+          r = sess.post(f"{BASE}/edits/{EDIT_ID}:commit")
+          print(f"[commit-edit] HTTP {r.status_code}: {r.text[:400]}")
+          if r.status_code == 200:
+              print("[commit-edit] ✅ Committed — submitted for review. FGS catch-22 resolved.")
+              sys.exit(0)
+          if "foreground service" in r.text.lower():
+              print(
+                  "\n[FGS] Still failing — FGS not yet declared? Go to:\n"
+                  "  Play Console → App content → Foreground service type declarations\n"
+                  "  Declare FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION, then re-run.",
+                  file=sys.stderr,
+              )
+          r.raise_for_status()
+          PYEOF
+
   build:
     name: Build release AAB
+    if: "!github.event.inputs.commit_edit_id"
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
