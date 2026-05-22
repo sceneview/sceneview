@@ -48,6 +48,8 @@ import io.github.sceneview.ar.node.PointCloudNode as PointCloudNodeImpl
 import io.github.sceneview.ar.node.PoseNode as PoseNodeImpl
 import io.github.sceneview.ar.node.ReticleNode as ReticleNodeImpl
 import io.github.sceneview.ar.node.RooftopAnchorNode as RooftopAnchorNodeImpl
+import io.github.sceneview.ar.node.MeshClassification
+import io.github.sceneview.ar.node.SceneMeshNode as SceneMeshNodeImpl
 import io.github.sceneview.ar.node.StreetscapeGeometryNode as StreetscapeGeometryNodeImpl
 import io.github.sceneview.ar.node.TerrainAnchorNode as TerrainAnchorNodeImpl
 import io.github.sceneview.ar.node.TrackableNode as TrackableNodeImpl
@@ -928,6 +930,84 @@ class ARSceneScope internal constructor(
                 meshMaterialInstance = meshMaterialInstance,
                 onTrackingStateChanged = onTrackingStateChanged,
                 onUpdated = onUpdated
+            ).apply(apply)
+        }
+        SideEffect {
+            node.onTrackingStateChanged = onTrackingStateChanged
+            node.onUpdated = onUpdated
+        }
+        NodeLifecycle(node, content)
+    }
+
+    // ── SceneMeshNode ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A composable scene-mesh node with [MeshClassification] semantics, providing ARKit
+     * `ARMeshAnchor` parity on Android.
+     *
+     * Unlike [StreetscapeGeometryNode], [SceneMeshNode] exposes a [MeshClassification] label for
+     * every face of the underlying mesh and lets you drive colour coding, physics layer masks, or
+     * audio zones off the surface type. The same [onClassifiedFace] callback signature is used on
+     * both Android (ARCore Streetscape Geometry) and iOS (ARKit Scene Reconstruction) so
+     * classification-driven logic compiles unchanged on both platforms.
+     *
+     * ```kotlin
+     * ARSceneView(
+     *     sessionConfiguration = { _, config ->
+     *         config.geospatialMode = Config.GeospatialMode.ENABLED
+     *         config.streetscapeGeometryMode = Config.StreetscapeGeometryMode.ENABLED
+     *     },
+     *     onSessionUpdated = { _, frame ->
+     *         geometries = frame.getUpdatedTrackables(StreetscapeGeometry::class.java).toList()
+     *     }
+     * ) {
+     *     geometries.forEach { geo ->
+     *         SceneMeshNode(
+     *             streetscapeGeometry = geo,
+     *             meshMaterialInstance = materialByClassification[geo.type.toMeshClassification()]
+     *         )
+     *     }
+     * }
+     * ```
+     *
+     * @param streetscapeGeometry     The [StreetscapeGeometry] mesh to render.
+     * @param types                   Filter — only geometries whose [StreetscapeGeometry.getType]
+     *                                is in this set are rendered. Defaults to all types.
+     * @param minQuality              Filter — geometries whose quality ordinal is below this
+     *                                value are skipped. Default [StreetscapeGeometry.Quality.NONE].
+     * @param meshMaterialInstance    Optional material applied to the geometry mesh.
+     * @param onTrackingStateChanged  Callback when tracking state changes.
+     * @param onUpdated               Callback invoked each frame while the geometry is updated.
+     * @param onClassifiedFace        Invoked once per triangle face when the node is first built.
+     *                                Receives the zero-based face index and its [MeshClassification].
+     * @param apply                   Additional imperative configuration on the underlying node.
+     * @param content                 Optional child nodes.
+     */
+    @Composable
+    fun SceneMeshNode(
+        streetscapeGeometry: StreetscapeGeometry,
+        types: Set<StreetscapeGeometry.Type> = setOf(
+            StreetscapeGeometry.Type.BUILDING,
+            StreetscapeGeometry.Type.TERRAIN
+        ),
+        minQuality: StreetscapeGeometry.Quality = StreetscapeGeometry.Quality.NONE,
+        meshMaterialInstance: MaterialInstance? = null,
+        onTrackingStateChanged: ((TrackingState) -> Unit)? = null,
+        onUpdated: ((StreetscapeGeometry) -> Unit)? = null,
+        onClassifiedFace: ((faceIndex: Int, classification: MeshClassification) -> Unit)? = null,
+        apply: SceneMeshNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null
+    ) {
+        if (!streetscapeGeometryPasses(streetscapeGeometry, types, minQuality)) return
+
+        val node = remember(engine, streetscapeGeometry) {
+            SceneMeshNodeImpl(
+                engine = engine,
+                streetscapeGeometry = streetscapeGeometry,
+                meshMaterialInstance = meshMaterialInstance,
+                onTrackingStateChanged = onTrackingStateChanged,
+                onUpdated = onUpdated,
+                onClassifiedFace = onClassifiedFace,
             ).apply(apply)
         }
         SideEffect {
