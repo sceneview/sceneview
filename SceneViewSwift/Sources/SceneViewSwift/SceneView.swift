@@ -676,6 +676,14 @@ private struct SceneViewRepresentation: View {
             realityViewContent
                 .gesture(dragGesture)
                 .gesture(pinchGesture)
+        #if os(visionOS)
+        case .none, .tilt, .dolly, .gimbal:
+            // `realityViewCameraControls(_:)` is entirely unavailable on
+            // visionOS — fall back to the hand-rolled orbit gesture path.
+            realityViewContent
+                .gesture(dragGesture)
+                .gesture(pinchGesture)
+        #else
         case .none:
             realityViewContent.realityViewCameraControls(.none)
         case .tilt:
@@ -683,14 +691,8 @@ private struct SceneViewRepresentation: View {
         case .dolly:
             realityViewContent.realityViewCameraControls(.dolly)
         case .gimbal:
-            #if os(visionOS)
-            // .gimbal is unavailable on visionOS — fall back to orbit gestures.
-            realityViewContent
-                .gesture(dragGesture)
-                .gesture(pinchGesture)
-            #else
             realityViewContent.realityViewCameraControls(.gimbal)
-            #endif
+        #endif
         }
     }
 
