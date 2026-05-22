@@ -79,6 +79,7 @@ struct SpatialAudioDemo: View {
                 coordinator.attach(to: root)
             }
             .cameraControls(.orbit)
+            .environment(.studio) // parity with android-demo IBL fix (#2114)
             .ignoresSafeArea()
 
             if let loadError {
