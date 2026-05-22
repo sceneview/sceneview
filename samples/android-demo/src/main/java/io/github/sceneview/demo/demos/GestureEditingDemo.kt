@@ -34,6 +34,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.common.Axes3DNode
+import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberCameraManipulator
@@ -242,6 +243,7 @@ fun GestureEditingDemo(onBack: () -> Unit) {
             modelLoader = modelLoader,
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
+            environment = rememberModelDemoEnvironment(environmentLoader),
             cameraManipulator = rememberCameraManipulator(),
             // Distinguish per-node gestures from camera gestures via the `node`
             // parameter: when the gesture system identifies a target node, it's a

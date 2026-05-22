@@ -47,6 +47,7 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
+import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.gesture.orbitHomePosition
@@ -211,6 +212,7 @@ fun CameraControlsDemo(onBack: () -> Unit) {
                     engine = engine,
                     modelLoader = modelLoader,
                     environmentLoader = environmentLoader,
+                    environment = rememberModelDemoEnvironment(environmentLoader),
                     cameraNode = cameraNode,
                     cameraManipulator = cameraManipulator
                 ) {

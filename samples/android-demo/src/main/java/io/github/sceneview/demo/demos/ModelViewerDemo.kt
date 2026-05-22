@@ -32,6 +32,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
@@ -205,6 +206,7 @@ fun ModelViewerDemo(onBack: () -> Unit) {
                 engine = engine,
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
+                environment = rememberModelDemoEnvironment(environmentLoader),
                 cameraManipulator = cameraManipulator,
             ) {
                 activeModelInstance?.let { instance ->
