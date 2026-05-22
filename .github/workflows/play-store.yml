@@ -444,6 +444,15 @@ jobs:
           # The promote step downstream re-reads `releaseNotes` from the source
           # track, so populating internal once propagates to production.
           whatsNewDirectory: ${{ steps.notes.outputs.extracted == 'true' && 'whatsnew' || '' }}
+          # Workaround for #2120: if the FGS declaration step above didn't
+          # persist (service-account Bearer token rejected by the internal API),
+          # edits.commit fails with "You must let us know whether your app uses
+          # any Foreground Service permissions." Setting changesNotSentForReview
+          # defers the policy review gate so the AAB is committed and the bundle
+          # appears in Play Console, allowing Thomas to declare FGS manually and
+          # then send for review from the UI. Remove once FGS is permanently
+          # declared (the Bearer-token step above should handle subsequent runs).
+          changesNotSentForReview: 'true'
 
       - name: Promote internal release to ${{ matrix.track }}
         if: matrix.track != 'internal' && contains(needs.build.outputs.tracks, '"internal"')
@@ -523,7 +532,15 @@ jobs:
               print(f"[promote] target track {TARGET} now carries versionCode {CODE}")
 
               # 4. Commit the edit.
-              r = sess.post(f"{BASE}/edits/{edit_id}:commit")
+              # changesNotSentForReview=true: workaround for #2120 (FGS check).
+              # The promote only changes track membership — no new AAB upload —
+              # so the FGS compliance check at commit time should be moot, but
+              # some versions of the Edits API enforce it regardless. Remove once
+              # FGS is permanently declared in Play Console.
+              r = sess.post(
+                  f"{BASE}/edits/{edit_id}:commit",
+                  params={"changesNotSentForReview": "true"},
+              )
               r.raise_for_status()
               print(f"[promote] commit OK — {SOURCE}@{CODE} → {TARGET}")
           except Exception:
