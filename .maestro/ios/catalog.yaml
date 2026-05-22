@@ -24,9 +24,10 @@
 #                                 video, texture-streaming*)
 #     Interaction .......... 4   (camera-controls, collision, gesture-editing,
 #                                 view-node*)
-#     Advanced ............. 9   (physics, double-pendulum, custom-mesh, shape,
-#                                 materials, spatial-audio, post-processing*,
-#                                 reflection-probes*, secondary-camera*)
+#     Advanced ............. 11  (physics, double-pendulum, custom-mesh, shape,
+#                                 materials, spatial-audio, reflection-probes,
+#                                 post-processing*, secondary-camera*,
+#                                 occlusion-material*, debug-overlay*)
 #     Augmented Reality .... 6   (ar-placement, ar-instant-placement, ar-orbital,
 #                                 ar-lighting, ar-recording, ar-rerun — launch-only)
 #     Deep-link placeholders 10  (ar-image*, ar-face*, ar-cloud-anchor*,

@@ -22,10 +22,6 @@ appId: io.github.sceneview.demo
 - runFlow:
     file: flows/placeholder.yaml
     env:
-      DEMO_ID: reflection-probes
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
       DEMO_ID: secondary-camera
 - runFlow:
     file: flows/placeholder.yaml
@@ -36,10 +32,6 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: debug-overlay
 # ── Content / Interaction (no iOS destination yet) ──────────────────────────
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: video
 - runFlow:
     file: flows/placeholder.yaml
     env:

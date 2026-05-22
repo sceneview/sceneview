@@ -99,6 +99,10 @@
 		C100000000000000000000F1 /* ARAugmentedFacesDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000F1 /* ARAugmentedFacesDemo.swift */; };
 		C100000000000000000000F2 /* ARDepthOcclusionDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000F2 /* ARDepthOcclusionDemo.swift */; };
 		E500000000000000000000F3 /* qrcode.png in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000F3 /* qrcode.png */; };
+		C100000000000000000000D0 /* ShapeExtrudeDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D0 /* ShapeExtrudeDemo.swift */; };
+		C100000000000000000000D1 /* ReflectionProbesDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D1 /* ReflectionProbesDemo.swift */; };
+		C100000000000000000000D2 /* VideoTextureDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D2 /* VideoTextureDemo.swift */; };
+		E500000000000000000000D3 /* sample.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000D3 /* sample.mp4 */; };
 		C10000000000000000000030 /* FavoritesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000030 /* FavoritesManager.swift */; };
 		C10000000000000000000050 /* DemoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000050 /* DemoSheet.swift */; };
 		C10000000000000000000051 /* CreditsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000051 /* CreditsSheet.swift */; };
@@ -205,6 +209,10 @@
 		C200000000000000000000F1 /* ARAugmentedFacesDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARAugmentedFacesDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000F2 /* ARDepthOcclusionDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARDepthOcclusionDemo.swift; sourceTree = "<group>"; };
 		E600000000000000000000F3 /* qrcode.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = qrcode.png; sourceTree = "<group>"; };
+		C200000000000000000000D0 /* ShapeExtrudeDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShapeExtrudeDemo.swift; sourceTree = "<group>"; };
+		C200000000000000000000D1 /* ReflectionProbesDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectionProbesDemo.swift; sourceTree = "<group>"; };
+		C200000000000000000000D2 /* VideoTextureDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTextureDemo.swift; sourceTree = "<group>"; };
+		E600000000000000000000D3 /* sample.mp4 */ = {isa = PBXFileReference; lastKnownFileType = video.mpeg4; path = sample.mp4; sourceTree = "<group>"; };
 		F60000000000000000000001 /* bell.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = bell.wav; sourceTree = "<group>"; };
 		F60000000000000000000002 /* CREDITS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CREDITS.md; sourceTree = "<group>"; };
 		C20000000000000000000030 /* FavoritesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesManager.swift; sourceTree = "<group>"; };
@@ -351,6 +359,7 @@
 				E40000000000000000000001 /* Environments */,
 				F40000000000000000000001 /* Audio */,
 				E40000000000000000000003 /* Resources */,
+				E40000000000000000000002 /* Videos */,
 				A20000010000000000000002 /* Assets.xcassets */,
 				A20000010000000000000003 /* Info.plist */,
 			);
@@ -430,6 +439,9 @@
 				C200000000000000000000F0 /* ARImageTrackingDemo.swift */,
 				C200000000000000000000F1 /* ARAugmentedFacesDemo.swift */,
 				C200000000000000000000F2 /* ARDepthOcclusionDemo.swift */,
+				C200000000000000000000D0 /* ShapeExtrudeDemo.swift */,
+				C200000000000000000000D1 /* ReflectionProbesDemo.swift */,
+				C200000000000000000000D2 /* VideoTextureDemo.swift */,
 			);
 			path = Demos;
 			sourceTree = "<group>";
@@ -506,6 +518,14 @@
 				E600000000000000000000F3 /* qrcode.png */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		E40000000000000000000002 /* Videos */ = {
+			isa = PBXGroup;
+			children = (
+				E600000000000000000000D3 /* sample.mp4 */,
+			);
+			path = Videos;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -600,6 +620,7 @@
 				A10000010000000000000002 /* Assets.xcassets in Resources */,
 				F50000000000000000000001 /* bell.wav in Resources */,
 				E500000000000000000000F3 /* qrcode.png in Resources */,
+				E500000000000000000000D3 /* sample.mp4 in Resources */,
 				D10000000000000000000001 /* game_boy_classic.usdz in Resources */,
 				D10000000000000000000002 /* tree_scene.usdz in Resources */,
 				D10000000000000000000003 /* red_car.usdz in Resources */,
@@ -741,6 +762,9 @@
 				C100000000000000000000F0 /* ARImageTrackingDemo.swift in Sources */,
 				C100000000000000000000F1 /* ARAugmentedFacesDemo.swift in Sources */,
 				C100000000000000000000F2 /* ARDepthOcclusionDemo.swift in Sources */,
+				C100000000000000000000D0 /* ShapeExtrudeDemo.swift in Sources */,
+				C100000000000000000000D1 /* ReflectionProbesDemo.swift in Sources */,
+				C100000000000000000000D2 /* VideoTextureDemo.swift in Sources */,
 				ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */,
 				C10000000000000000000050 /* DemoSheet.swift in Sources */,
 				C10000000000000000000051 /* CreditsSheet.swift in Sources */,
