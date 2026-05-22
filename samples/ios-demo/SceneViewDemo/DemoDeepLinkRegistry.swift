@@ -44,8 +44,9 @@ enum DemoDeepLinkRegistry {
         // ── Advanced ────────────────────────────────────────────────────
         "physics", "double-pendulum", "custom-mesh", "materials", "spatial-audio",
         "post-processing", "reflection-probes", "secondary-camera", "shape",
+        "occlusion-material",
         // Coming-soon Advanced (routed to placeholder)
-        "occlusion-material", "debug-overlay",
+        "debug-overlay",
         // ── AR (iOS-only on device) ──────────────────────────────────────
         "ar-placement", "ar-instant-placement", "ar-orbital", "ar-lighting",
         "ar-recording", "ar-rerun",
@@ -115,6 +116,7 @@ enum DemoDeepLinkRegistry {
         case "double-pendulum": DoublePendulumDemo()
         case "materials":       MaterialsDemo()
         case "physics":         PhysicsDemo()
+        case "occlusion-material": OcclusionMaterialDemo()
         case "shape":           ShapeExtrudeDemo()
         case "reflection-probes": ReflectionProbesDemo()
         case "spatial-audio":   SpatialAudioDemo()
@@ -165,6 +167,24 @@ enum DemoDeepLinkRegistry {
         case "ar-depth-occlusion":
             #if os(iOS)
             ARDepthOcclusionDemo()
+            #else
+            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
+            #endif
+        case "ar-people-occlusion":
+            #if os(iOS)
+            ARPeopleOcclusionDemo()
+            #else
+            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
+            #endif
+        case "ar-body-tracker":
+            #if os(iOS)
+            ARBodyTrackerDemo()
+            #else
+            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
+            #endif
+        case "ar-scene-mesh":
+            #if os(iOS)
+            ARSceneMeshDemo()
             #else
             DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
             #endif
