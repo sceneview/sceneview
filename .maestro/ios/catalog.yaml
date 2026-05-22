@@ -12,40 +12,27 @@
 # It delegates to the per-category flows so the demo list lives in exactly one
 # place per category and a fast subset can be run on its own.
 #
-# Coverage vs the Android slice (#1562, 60 demos):
-#   iOS coverage mirrors Android's `DemoRegistry.kt` id set — all 60 ids are
-#   registered in `DemoDeepLinkRegistry.allowedIds` so every
-#   `sceneview://demo/<id>` QR code resolves on iOS (coming-soon demos route
-#   to a placeholder instead of silently 404-ing):
+# Coverage vs the Android slice (#1562, 42 demos):
+#   iOS coverage is the subset of Android `DemoRegistry.kt` ALL_DEMOS ids that
+#   `DemoDeepLinkRegistry.allowedIds` exposes for `sceneview://demo/<id>` —
+#   42 ids (#1579 widened the registry to the full Android catalog):
 #     3D Basics ............ 5   (model-viewer, geometry, animation, multi-model,
 #                                 scene-gallery)
-#     Lighting ............. 5   (lighting, movable-light, dynamic-sky, fog,
-#                                 environment*)
-#     Content .............. 6   (text, lines-paths, image, billboard,
-#                                 video*, texture-streaming*)
-#     Interaction .......... 4   (camera-controls, collision*, gesture-editing*,
-#                                 view-node*)
-#     Advanced ............. 11  (physics, double-pendulum, custom-mesh, shape,
+#     Lighting ............. 5   (lighting, movable-light, dynamic-sky, environment,
+                                fog)
+#     Content .............. 4   (text, lines-paths, image, billboard)
+#     Interaction .......... 2   (camera-controls, collision*)
+#     Advanced ............. 9   (physics, double-pendulum, custom-mesh, shape,
 #                                 materials, spatial-audio, post-processing*,
-#                                 reflection-probes*, secondary-camera*,
-#                                 occlusion-material*, debug-overlay*)
+#                                 reflection-probes*, secondary-camera*)
 #     Augmented Reality .... 6   (ar-placement, ar-instant-placement, ar-orbital,
 #                                 ar-lighting, ar-recording, ar-rerun — launch-only)
-#     AR placeholders ...... 28  (ar-image*, ar-face*, ar-cloud-anchor*,
+#     Deep-link placeholders 12  (ar-image*, ar-face*, ar-cloud-anchor*,
 #                                 ar-depth-occlusion*, ar-eis*, ar-pose-placement*,
 #                                 ar-rooftop*, ar-streetscape*, ar-terrain*,
-#                                 ar-pose*, ar-record-playback*, ar-image-stabilization*,
-#                                 ar-depth-of-field*, ar-fog*, ar-depth-collider*,
-#                                 ar-depth-visualization*, ar-people-occlusion*,
-#                                 ar-point-cloud*, ar-raw-depth-point-cloud*,
-#                                 ar-plane-node*, ar-scene-mesh*, ar-scene-semantics*,
-#                                 ar-ml-object-label*, placement-scene*,
-#                                 ar-collaborative*, ar-body-tracker*,
-#                                 ar-hand-tracking*, ar-xr-face*)
+#                                 gesture-editing*, video*, view-node*)
 #                                --  (* = routes to DeepLinkPlaceholder)
-#     Total ................ 65  (includes 5 iOS-specific ids: ar-lighting,
-#                                 ar-eis, ar-pose-placement, ar-recording,
-#                                 movable-light)
+#     Total ................ 43
 #
 # Why deep-link ingress, not Samples-tab navigation:
 #   The iOS Samples-tab presents demos in a `.fullScreenCover` with NO Close

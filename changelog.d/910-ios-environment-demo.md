@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **iOS — HDR Environment demo**: port the `environment` demo from placeholder to a full SwiftUI implementation — `SceneViewDemo` now shows a `.demoSettingsSheet` with a grid of environment presets (`.studio`, `.outdoor`, `.sunset`, `.night`, `.warm`, `.autumn`, `.nightSky`) switchable at runtime; Maestro `lighting.yaml` promoted from placeholder to `demo-settings.yaml` smoke (#910).
