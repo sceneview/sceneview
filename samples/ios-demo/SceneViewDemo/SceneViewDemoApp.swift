@@ -24,6 +24,20 @@ struct SceneViewDemoApp: App {
     /// Reset to `nil` after presentation so a config change doesn't replay it.
     @State private var pendingDeepLinkDemo: String?
 
+    /// Demo id pre-seeded from a launch argument (`-demo <id>`), used by the
+    /// reproducible App Store screenshot capture pipeline. Launching with a
+    /// `-demo` argument routes straight to the demo on first frame, with no
+    /// SpringBoard "Open in …?" confirmation dialog that `simctl openurl`
+    /// otherwise raises — see `samples/ios-demo/appstore-screenshots/README.md`
+    /// and `capture-appstore-screenshots.sh`. Unknown / absent ids are ignored
+    /// and the app launches normally.
+    private static let launchArgDemo: String? = {
+        let args = CommandLine.arguments
+        guard let idx = args.firstIndex(of: "-demo"), idx + 1 < args.count else { return nil }
+        let id = args[idx + 1]
+        return DemoDeepLinkRegistry.allowedIds.contains(id) ? id : nil
+    }()
+
     /// App Store update checker — queried on every `.active` ScenePhase
     /// transition. The published state drives `UpdateBanner` overlaid on
     /// `ContentView`. See [AppStoreUpdater] for the throttle/snooze rules.
@@ -33,7 +47,10 @@ struct SceneViewDemoApp: App {
 
     var body: some SwiftUI.Scene {
         WindowGroup {
-            ContentView(pendingDeepLinkDemo: $pendingDeepLinkDemo)
+            ContentView(
+                pendingDeepLinkDemo: $pendingDeepLinkDemo,
+                launchArgDemo: Self.launchArgDemo
+            )
                 .environmentObject(updater)
                 .overlay(alignment: .top) {
                     UpdateBanner()
@@ -58,6 +75,11 @@ struct SceneViewDemoApp: App {
 
 struct ContentView: View {
     @Binding var pendingDeepLinkDemo: String?
+
+    /// Demo id supplied via the `-demo <id>` launch argument (screenshot
+    /// pipeline). Presented once, on the first `.task`, then never replayed.
+    let launchArgDemo: String?
+
     @State private var selectedTab = 0
 
     /// Wraps a demo id so SwiftUI's `.fullScreenCover(item:)` accepts it.
@@ -65,6 +87,10 @@ struct ContentView: View {
         let id: String
     }
     @State private var presentedDemo: DemoLink?
+
+    /// Guards the one-shot launch-argument presentation so a view refresh
+    /// doesn't re-present the demo.
+    @State private var didConsumeLaunchArg = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -99,6 +125,15 @@ struct ContentView: View {
                 .accessibilityLabel("About This App")
         }
         .tint(SceneViewTheme.primary)
+        .task {
+            // One-shot: route to the launch-argument demo on first frame so
+            // the App Store screenshot pipeline lands directly on a rendered
+            // scene — no SpringBoard confirmation dialog.
+            guard !didConsumeLaunchArg, let id = launchArgDemo else { return }
+            didConsumeLaunchArg = true
+            selectedTab = 2
+            presentedDemo = DemoLink(id: id)
+        }
         .onChange(of: pendingDeepLinkDemo) { _, newId in
             guard let id = newId else { return }
             // Switch to the Samples tab so the deep-link surface feels
