@@ -47,7 +47,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import io.github.sceneview.demo.feedback.FEEDBACK_FAB_BOTTOM_OFFSET
 import io.github.sceneview.demo.feedback.FeedbackButton
+import io.github.sceneview.demo.feedback.FeedbackChrome
 import io.github.sceneview.demo.feedback.FeedbackFlow
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.feedback.FeedbackRecorder
@@ -199,12 +201,6 @@ class MainActivity : ComponentActivity() {
         updateManager.destroy()
     }
 }
-
-/**
- * Bottom inset for the feedback FAB on the tab screens — clears the 80 dp M3
- * `NavigationBar` plus a 16 dp gap.
- */
-private val FEEDBACK_FAB_BOTTOM_INSET = 96.dp
 
 @Composable
 fun SceneViewDemoApp(activity: MainActivity? = null) {
@@ -361,13 +357,17 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             FeedbackRecordingService.isRecordingAvailable(context)
         }
 
-        if (onListScreen && !isRecording) {
+        // FeedbackChrome.chipVisible is flipped to false by tab content that
+        // fully occupies the bottom of the screen (e.g. ArViewTabContent while
+        // the live ARSceneView is running), so the chip never masks the AR
+        // model picker pill or any other bottom-anchored interaction (#2194).
+        if (onListScreen && !isRecording && FeedbackChrome.chipVisible) {
             FeedbackButton(
                 onClick = { feedbackOpen = true },
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(start = 16.dp, bottom = FEEDBACK_FAB_BOTTOM_INSET),
+                    .padding(start = 16.dp, bottom = FEEDBACK_FAB_BOTTOM_OFFSET),
             )
         }
 
