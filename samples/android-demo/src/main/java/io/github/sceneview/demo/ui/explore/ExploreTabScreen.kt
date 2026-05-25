@@ -61,6 +61,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.sketchfab.SketchfabModel
 import io.github.sceneview.demo.sketchfab.SketchfabService
@@ -299,7 +300,16 @@ private fun ExploreBody(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scroll)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            // Bottom padding reserves a gutter for the floating feedback FAB
+            // so the chip floats over empty space instead of masking the
+            // "Trending models" / "Staff picks" carousel titles when those
+            // sections render below the search field (#2194).
+            .padding(
+                start = 16.dp,
+                end = 16.dp,
+                top = 8.dp,
+                bottom = FEEDBACK_FAB_RESERVED_SPACE,
+            ),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         Spacer(Modifier.height(0.dp))
