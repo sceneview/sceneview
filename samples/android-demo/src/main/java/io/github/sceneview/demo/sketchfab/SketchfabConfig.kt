@@ -35,7 +35,7 @@ object SketchfabConfig {
      * decoder fails with `Expected start of the object '{', but had 'EOF'
      * instead`, every Explore-tab carousel collapses to "empty", and the
      * user sees a half-rendered Explore tab with no carousels and no
-     * error banner (#2194).
+     * error banner (#2191).
      *
      * Send an explicit app-identifying UA so the request reads as a real
      * mobile app instead of an HTTP library, AND so Sketchfab support can

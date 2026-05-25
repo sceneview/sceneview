@@ -631,7 +631,7 @@ private suspend inline fun <T> catchingFeed(
     // Both KeyRejected (401/403) and WafChallenge (202 + empty body from
     // the AWS CloudFront WAF in front of Sketchfab) surface the
     // "Sketchfab unavailable" banner so the user sees an explanation
-    // rather than three silently self-hiding feed sections (#2095, #2194).
+    // rather than three silently self-hiding feed sections (#2095, #2191).
     if (t is SketchfabService.SketchfabError.KeyRejected ||
         t is SketchfabService.SketchfabError.WafChallenge
     ) {

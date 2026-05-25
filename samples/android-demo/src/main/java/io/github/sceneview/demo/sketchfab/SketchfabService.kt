@@ -68,7 +68,7 @@ class SketchfabService private constructor(
         // bot traffic and returns HTTP 202 + empty body + `x-amzn-waf-action:
         // challenge` (a JS challenge the OkHttp client can't solve), which
         // would otherwise leave the Explore-tab carousels silently empty
-        // (#2194). HTTP/1.1 + the explicit `User-Agent` header set on every
+        // (#2191). HTTP/1.1 + the explicit `User-Agent` header set on every
         // request side-step that particular WAF rule. The remaining WAF
         // failure paths (IP-reputation throttles, sustained traffic from one
         // egress) are caught explicitly as [SketchfabError.WafChallenge] so
@@ -266,7 +266,7 @@ class SketchfabService private constructor(
             // the JSON decoder would otherwise throw `Expected start of the
             // object '{', but had 'EOF' instead`. Surface it as a typed error
             // so the UI shows the SketchfabDisabledBanner instead of three
-            // silent self-hiding feeds (#2194). The companion fix is the
+            // silent self-hiding feeds (#2191). The companion fix is the
             // app-identifying User-Agent injected above — sending
             // `okhttp/<version>` is the bot signature that triggered the
             // challenge in the first place.
@@ -401,7 +401,7 @@ class SketchfabService private constructor(
          * that the WAF treats as bot traffic, or by sustained high request
          * volume from a single source IP. The UI surfaces this via the
          * "Sketchfab unavailable" banner so the user sees an explanation
-         * instead of three silently self-hiding carousels (#2194).
+         * instead of three silently self-hiding carousels (#2191).
          */
         class WafChallenge(val action: String) : SketchfabError() {
             override val message: String
