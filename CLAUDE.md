@@ -310,6 +310,72 @@ to the leased emulator so the right device is targeted when the pool has several
 reused. This is why parallel Claude Code sessions running device-QA on the same
 RAM-constrained Mac no longer contend for emulator resources.
 
+## Self-hosted macOS runner (opt-in)
+
+GitHub-hosted `macos-15` runners cost ~10x ubuntu per-minute and have no KVM.
+SceneView ships **6 jobs on `macos-15`** (`ios.yml`, `bridge-ios-compile.yml`,
+`rn-ios-compile.yml`, `app-store.yml` × 2, `render-tests.yml`) plus a
+NIGHTLY-ONLY iOS device-QA leg (#1601) deliberately skipped on per-push runs
+because of the macOS cost. A self-hosted runner on a Mac removes that
+multiplier and unblocks per-push iOS device-QA.
+
+Inspired by [Zach Rattner's M4 Mac cluster
+playbook](https://zachrattner.com/projects/m4-mac-cluster) (8 Mac minis, $35k/yr
+saved vs GCP, 4-min builds → 40s) — SceneView's scale doesn't justify a
+cluster, but a single self-hosted Mac with **transparent fallback** is a
+strict win.
+
+### Install
+
+```bash
+brew install gh
+gh auth login --scopes "repo,workflow"   # PAT needs Variables:write
+bash .claude/scripts/setup-self-hosted-runner.sh
+bash .claude/scripts/setup-self-hosted-runner.sh --check
+```
+
+The installer (a) downloads `actions/runner` for `osx-arm64`/`osx-x64`,
+(b) registers it with label `sceneview-mac`, (c) installs it as a launchd
+service that auto-starts on login, (d) installs a launchd heartbeat that
+fires `runner-heartbeat.sh` every 300s. The heartbeat pings the
+`/repos/.../actions/runners` API to confirm the runner is *actually* online,
+then updates two repo variables: `SELF_HOSTED_MACOS_ONLINE` (`"true"`/`"false"`)
+and `SELF_HOSTED_MACOS_LAST_SEEN` (ISO 8601 UTC).
+
+### Opt a workflow in — single line
+
+Workflows route to self-hosted only when the heartbeat is fresh, and fall
+back to `macos-15` automatically when the Mac is asleep, off, or the runner
+process is dead (heartbeat sets `ONLINE=false` if `runner.status != "online"`):
+
+```yaml
+jobs:
+  build:
+    # Was:  runs-on: macos-15
+    runs-on: ${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && 'sceneview-mac' || 'macos-15' }}
+    steps:
+      - ...
+```
+
+That's the whole change per workflow. **No composite action, no reusable
+workflow, no pre-job** — `runs-on` accepts expressions since GitHub Actions
+late-2024. Thomas opts workflows in one at a time as confidence grows; no
+existing workflow is modified by this commit.
+
+### Safety net
+
+- Heartbeat refuses to mark `ONLINE=true` when the runner service status is
+  anything other than `"online"` (dead service / failed boot → workflows route
+  to `macos-15`).
+- On `--uninstall`, the heartbeat is unloaded and `ONLINE` is forced to
+  `false` so no stale routing survives.
+- `--check` prints the runner registration, heartbeat status, recent heartbeat
+  log, and both repo variables — single source of truth.
+- The heartbeat interval (300s) is well under any reasonable workflow queue
+  timeout. Worst case after `pmset sleepnow`: a ~5-min window where workflows
+  might still route to the sleeping Mac and queue → GitHub auto-aborts after
+  the per-job `timeout-minutes`.
+
 ## Samples
 
 One unified showcase app per platform — all features integrated into tabs.

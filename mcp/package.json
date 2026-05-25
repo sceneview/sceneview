@@ -64,12 +64,15 @@
     "prepare": "node scripts/generate-llms-txt.js && node scripts/generate-version.js && tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "test": "node scripts/generate-llms-txt.js && node scripts/generate-version.js && vitest run"
+    "test": "node scripts/generate-llms-txt.js && node scripts/generate-version.js && vitest run",
+    "biome": "cd .. && mcp/node_modules/.bin/biome check",
+    "biome:fix": "cd .. && mcp/node_modules/.bin/biome check --write"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.0.0",
     "@types/node": "^25.5.0",
     "tsx": "^4.0.0",
     "typescript": "^6.0.2",
