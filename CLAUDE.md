@@ -434,24 +434,31 @@ Never say "everything is good" without verifying published packages.
 
 **The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.15.1`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
 
-### Current state (last updated: 2026-05-22 night, session pedantic-robinson — #2120 Play Store FGS unblocked)
+### Current state (last updated: 2026-05-25, session pedantic-robinson — maintenance sweep + v4.16.0 PROPOSED)
 
-- 🚀 **v4.15.1 is the latest release**. Play Store (CI run #26311612403): internal ✅, production ✅ — submitted for Google review. The app update is on its way to users.
-- ✅ **iOS demo parity sprint COMPLETE** (umbrella #910 CLOSED). iOS demo app went from ~15 demos to full parity with the Android catalog across PRs #2147, #2150, #2153, #2158, #2161, #2165, #2167, #2171 etc.
-- ✅ **#1049 CLOSED** — `CameraControlMode` with 3 native Apple cases, PR #2169 merged.
-- ✅ **#1831 CLOSED** — App Store submit step DELETEs stale submissions before POST (PR #2141).
-- ✅ **#1794 CLOSED** — macOS SwiftUI iOS-only API guards fixed.
-- ✅ **#2120 Play Store FGS unblocked** — Three-part fix: (1) upload timeout 30s→600s, (2) job timeout 15→30 min, (3) `FOREGROUND_SERVICE_MEDIA_PROJECTION` + `foregroundServiceType="mediaProjection"` removed from AndroidManifest (catch-22: Play Console requires FGS declaration before committing an AAB with the permission, but the declaration section only appears once an FGS build is on a track). `FeedbackRecordingService.goForeground()` has a try/catch — feedback recording fails gracefully on Android 14+ until re-added. Follow-up: [#2188](https://github.com/sceneview/sceneview/issues/2188).
-- ⚠️ **Listing sync failing** — `Sync Play Store listing (en-GB)` fails with 400 on `tabletScreenshots` upload. Non-blocking (deploy proceeds). Needs investigation.
-- 📋 **~17 open issues** remain.
+- 🚀 **v4.15.1 is the latest release**. Play Store (CI run #26311612403): internal ✅, production ✅. Android demo on Google Play.
+- ✅ **iOS demo parity sprint COMPLETE** (umbrella #910 CLOSED). iOS demo app went from ~15 demos to full parity with the Android catalog.
+- ✅ **#2120 Play Store FGS fully resolved** — #2120 closed. FGS permission removed from manifest; CI green. Follow-up: #2188.
+- ✅ **Maintenance sweep 2026-05-25 COMPLETE** — all 12 sections done:
+  - Compose BOM bumped 2026.05.00 → 2026.05.01 (commit `6a2b4b4d1`)
+  - `lib/maestro.sh` macOS timeout fix — #2184 closed
+  - #2185 (QA report) closed; #2182, #2183 iOS compile errors fixed in prior session
+  - sceneview.github.io local clone refreshed to 4.15.1 (was stale at 4.0.1)
+  - 1 merged worktree pruned
+  - MCP tests: 1850/1850 ✅; AI skills drift check ✅; android CLI v0.7.15411012 ✅
+- 🔵 **v4.16.0 READY TO CUT** — 36 meaningful commits since v4.15.1. Key features: full iOS demo parity (20+ new demos), macOS SwiftUI fix (#1794), Play Store unblock (#2120), Compose BOM bump. Await CI green on main (run in_progress at push time) then run `/release`.
+- ⚠️ **Listing sync failing** — `Sync Play Store listing (en-GB)` fails with 400 on `tabletScreenshots`. Non-blocking. Needs investigation.
+- 📋 **~15 open issues** (down from 21 at start of sweep — 5 closed today).
 
 ### Followups for next session
 
-1. **[#2188](https://github.com/sceneview/sceneview/issues/2188) Re-add FGS** — once the Play Store App content → Foreground service type declarations section becomes visible (after 4.15.1 is approved), declare `FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION`, then re-add the permission + `foregroundServiceType="mediaProjection"` in the next release.
-2. **Fix listing sync** — `tabletScreenshots` 400 error in `Sync Play Store listing (en-GB)`. Check `distribution/play-store/listings/en-GB/graphics/tablet-screenshots/` for invalid/missing images.
-3. **[#1033 sceneview-core XCFramework](https://github.com/sceneview/sceneview/issues/1033)** — build the XCFramework from `sceneview-core/` KMP module and wire it into `SceneViewSwift`.
-4. **[#1364 ImmersiveSpace visionOS demo](https://github.com/sceneview/sceneview/issues/1364)** — deferred since #1235; needs visionOS simulator.
-5. **[#894 iOS AR feature parity](https://github.com/sceneview/sceneview/issues/894)** — Cloud Anchors, ARRecorder via ReplayKit, Streetscape. Needs physical device.
+1. **Cut v4.16.0** — `CI.yml` needs to be green on current main. Run `/release` to tag + deploy.
+2. **[#2188](https://github.com/sceneview/sceneview/issues/2188) Re-add FGS** — once Play Console App content → FGS declarations section visible after 4.15.1 approval, declare `FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION`, then re-add permission + `foregroundServiceType="mediaProjection"` in the next release.
+3. **Fix listing sync** — `tabletScreenshots` 400 error. Check `distribution/play-store/listings/en-GB/graphics/tablet-screenshots/`.
+4. **AGP 9.x migration** — current 8.13.2, latest stable 9.2.1. Major version, plan a dedicated session.
+5. **[#1033 sceneview-core XCFramework](https://github.com/sceneview/sceneview/issues/1033)** — KMP → XCFramework → SceneViewSwift.
+6. **[#1364 ImmersiveSpace visionOS demo](https://github.com/sceneview/sceneview/issues/1364)** — needs visionOS simulator.
+7. **[#894 iOS AR feature parity](https://github.com/sceneview/sceneview/issues/894)** — Cloud Anchors, ARRecorder via ReplayKit, Streetscape. Needs physical device.
 
 ### Previous state (last updated: 2026-05-20 night, session post-vibrant-shtern — v4.11.1 patch SHIPPED end-to-end)
 
