@@ -1,0 +1,98 @@
+// plane_renderer_v2.mat — V2 plane renderer (#2203). Identical to V1 today; will gain PBR/HDR/scan-effect in PR #3.
+//
+// Purpose:    Unlit transparent material that draws detected ARCore planes as a modern,
+//             procedural soft grid (issue #1616). The old dense white dot-grid PNG read
+//             as low-fidelity next to apps like Reality Composer / Polycam; this shader
+//             draws thin anti-aliased grid lines with a feathered edge fade instead.
+// Used by:    PlaneRendererV2 (planeMaterial) — ARSceneView plane visualization, V2 path.
+// Parameters:
+//   texture    — sampler2d, kept for binary/API compatibility with PlaneRenderer; the
+//                shader is now procedural and does NOT sample it.
+//   color      — float3, RGB tint of the grid lines.
+//   uvScale    — float2, tiling factor mapping local plane X/Z to grid-cell coordinates.
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
+material {
+    name : "AR Core Plane Material V2",
+
+    "parameters": [
+        {
+            "type": "sampler2d",
+            "name": "texture"
+        },
+        {
+            "type": "float3",
+            "name": "color"
+        },
+        {
+            "type": "float2",
+            "name": "uvScale"
+        }
+    ],
+    "variables" : [
+        "texCoordsAlpha"
+    ],
+    "requires" : [
+        "position"
+    ],
+    shadingModel : unlit,
+    "blending": "transparent"
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        float3 pos = getPosition().xyz;
+
+        // The Y position of the vertex represents the Alpha of the plane at this Vertex.
+        material.texCoordsAlpha.z = pos.y;
+
+        // Zero out the Y vertex and compute the world position.
+        pos.y = 0.0;
+        material.worldPosition = mulMat4x4Float3(getWorldFromModelMatrix(), pos);
+
+        // Compute the texture coordinates.
+        // The X axis of the texture corresponds to the local X axis of the plane.
+        // The Y axis of the texture corresponds to the local Z axis of the plane.
+        // Scale the texture coordinates by the scale parameter passed into the material.
+        material.texCoordsAlpha.x = pos.x * materialParams.uvScale.x;
+        material.texCoordsAlpha.y = pos.z * materialParams.uvScale.y;
+    }
+}
+
+fragment {
+    // Anti-aliased distance-to-nearest-grid-line, in grid-cell units.
+    // Uses screen-space derivatives so the line stays ~1px wide at any
+    // distance/angle — no shimmer, unlike the fixed-size dot PNG.
+    float gridLine(float2 uv) {
+        float2 grid = abs(fract(uv - 0.5) - 0.5);
+        float2 fw = fwidth(uv);
+        // Half-width of the line in cell units (~1.1 device px once divided by fwidth).
+        float2 d = grid / max(fw, vec2(1e-5));
+        float line = 1.0 - min(min(d.x, d.y) * 0.65, 1.0);
+        return clamp(line, 0.0, 1.0);
+    }
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        // Procedural soft grid — replaces the dated dense dot-grid PNG (#1616).
+        float2 uv = variable_texCoordsAlpha.xy;
+
+        // Thin anti-aliased grid lines.
+        float line = gridLine(uv);
+
+        // Soft cell glow: a faint fill inside each cell so the plane reads as a
+        // surface, not just wireframe — gives the modern "feathered overlay" look.
+        float2 cell = abs(fract(uv) - 0.5) * 2.0;
+        float fill = (1.0 - max(cell.x, cell.y)) * 0.10;
+
+        // Per-vertex edge feather: PlaneVisualizer writes the boundary->interior
+        // ramp into texCoordsAlpha.z (0 at the plane edge, 1 in the interior).
+        // Smooth it so detected planes fade out softly instead of a hard cut.
+        float edge = smoothstep(0.0, 0.6, variable_texCoordsAlpha.z);
+
+        float alpha = clamp(line * 0.85 + fill, 0.0, 1.0) * edge;
+
+        material.baseColor.rgb = materialParams.color;
+        material.baseColor.a = alpha;
+    }
+}

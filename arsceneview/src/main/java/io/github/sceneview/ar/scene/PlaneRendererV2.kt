@@ -8,7 +8,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
-import io.github.sceneview.ar.PlaneVisualizer
+import io.github.sceneview.ar.PlaneVisualizerV2
 import io.github.sceneview.ar.arcore.firstByTypeOrNull
 import io.github.sceneview.ar.arcore.fps
 import io.github.sceneview.ar.arcore.getUpdatedPlanes
@@ -18,35 +18,35 @@ import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.material.setParameter
 import io.github.sceneview.material.setTexture
 import io.github.sceneview.math.Color
-import io.github.sceneview.safeDestroyMaterial
 import io.github.sceneview.safeDestroyMaterialInstance
 import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.texture.ImageTexture
 
 /**
- * Control rendering of ARCore planes — V1 implementation.
+ * Control rendering of ARCore planes — V2 implementation (skeleton).
  *
- * Used to visualize detected planes and to control whether Renderables cast shadows on them.
- * Each detected plane is drawn as a flat polygon textured with a procedural soft grid
- * (`plane_renderer.mat`).
+ * **PR #1 status:** byte-equivalent to [PlaneRenderer] (V1). Same constructor, same
+ * public surface (via [PlaneRendererBase]), same flat-polygon + procedural soft grid look.
+ * The only on-disk difference is that V2 loads `plane_renderer_v2.mat` (a verbatim copy of
+ * V1's material today) so subsequent PRs in the umbrella sprint can mutate the V2 material
+ * without touching the V1 path.
  *
- * ### V2 is on its way
+ * **Coming in follow-up PRs** of [#2203](https://github.com/sceneview/sceneview/issues/2203):
  *
- * SceneView is rebuilding the plane renderer under umbrella issue
- * [#2203](https://github.com/sceneview/sceneview/issues/2203). The new
- * [PlaneRendererV2] gains depth-driven micro-relief, PBR materials lit by ARCore's HDR
- * cubemap, type-aware shading (floor / ceiling / wall) and an animated scan-in.
+ * | PR  | Effect                                                                       |
+ * |-----|------------------------------------------------------------------------------|
+ * | #2  | Depth-driven tessellation + displacement (`PlaneVisualizerV2`).              |
+ * | #3  | PBR + HDR reflections sampled from ARCore's environmental cubemap + scan-in. |
+ * | #4  | Type-aware shading: floor / ceiling / wall get distinct material identities. |
+ * | #5  | V2 becomes the default. V1 gets `@Deprecated` for one release cycle.         |
  *
- * Opt into the next-generation renderer via `ARSceneView(planeRendererVersion =
- * PlaneRendererBase.Version.V2)`. Once V2 is feature-complete (PR #5 of the sprint), it
- * will become the default and this V1 class will be annotated `@Deprecated` with a
- * `ReplaceWith` hint — kept available for one release cycle so apps that override
- * `plane_renderer.mat` have time to port their custom styling.
+ * Opt in today via `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)` —
+ * useful to preview the V2 visuals as they land, but otherwise indistinguishable from V1.
  *
  * @see PlaneRendererBase
- * @see PlaneRendererV2
+ * @see PlaneRenderer
  */
-class PlaneRenderer(
+class PlaneRendererV2(
     val engine: Engine,
     private val materialLoader: MaterialLoader,
     private val scene: Scene
@@ -54,7 +54,7 @@ class PlaneRenderer(
 
     override lateinit var viewSize: Size
 
-    private val visualizers = mutableMapOf<Plane, PlaneVisualizer>()
+    private val visualizers = mutableMapOf<Plane, PlaneVisualizerV2>()
 
     val planeTexture = ImageTexture.Builder()
         .bitmap(materialLoader.assets, "textures/plane_renderer.png")
@@ -64,7 +64,7 @@ class PlaneRenderer(
      * Default material instance used to render the planes.
      */
     val planeMaterial = materialLoader.createMaterial(
-        "materials/plane_renderer.filamat"
+        "materials/plane_renderer_v2.filamat"
     ).apply {
         defaultInstance.apply {
             setTexture(MATERIAL_TEXTURE, planeTexture)
@@ -96,7 +96,7 @@ class PlaneRenderer(
      *
      * The default mode is `RENDER_TOP_MOST`
      */
-    var planeRendererMode = PlaneRendererMode.RENDER_CENTER
+    var planeRendererMode = PlaneRenderer.PlaneRendererMode.RENDER_CENTER
 
     /**
      * ### Adjust the max screen [ArFrame.hitTest] number per seconds
@@ -164,9 +164,9 @@ class PlaneRenderer(
 
                 try {
                     val updatedPlanes = frame.getUpdatedPlanes()
-                    if (planeRendererMode == PlaneRendererMode.RENDER_ALL) {
+                    if (planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_ALL) {
                         updatedPlanes.forEach { renderPlane(it) }
-                    } else if (planeRendererMode == PlaneRendererMode.RENDER_CENTER) {
+                    } else if (planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_CENTER) {
                         // Do a hitTest on the current frame. The result is used to render only
                         // the top most plane Trackable visible at the centre of the screen.
                         val centerPlane = if (isVisible) {
@@ -187,7 +187,7 @@ class PlaneRenderer(
                     // Check for not tracking Plane-Trackables and remove them.
                     cleanupOldPlaneVisualizer()
                 } catch (e: Exception) {
-                    android.util.Log.e("SceneView", "PlaneRenderer update error", e)
+                    android.util.Log.e("SceneView", "PlaneRendererV2 update error", e)
                 }
             }
         }
@@ -204,8 +204,8 @@ class PlaneRenderer(
 
     /**
      * This function is responsible to update the rendering
-     * of a [PlaneVisualizer]. If for the given [Plane]
-     * no [PlaneVisualizer] exists, create a new one and add
+     * of a [PlaneVisualizerV2]. If for the given [Plane]
+     * no [PlaneVisualizerV2] exists, create a new one and add
      * it to the [visualizers].
      *
      * @param plane [Plane]
@@ -215,7 +215,7 @@ class PlaneRenderer(
         // If not, create a new plane visualizer for this plane.
         if (plane.trackingState == TrackingState.TRACKING || plane.subsumedBy == null) {
             val planeVisualizer = visualizers[plane]
-                ?: PlaneVisualizer(engine, scene, plane).apply {
+                ?: PlaneVisualizerV2(engine, scene, plane).apply {
                     setPlaneMaterial(planeMaterial.createInstance().also {
                         materialInstances += it
                     })
@@ -249,23 +249,6 @@ class PlaneRenderer(
                 false
             }
         }
-    }
-
-    /**
-     * Use this enum to configure the Plane Rendering.
-     *
-     * For performance reasons use `RENDER_TOP_MOST`.
-     */
-    enum class PlaneRendererMode {
-        /**
-         * Render all possible [Plane]s which are visible to the camera.
-         */
-        RENDER_ALL,
-
-        /**
-         * Render only the top most [Plane] which is visible to the camera.
-         */
-        RENDER_CENTER
     }
 
     companion object {

@@ -64,6 +64,8 @@ import io.github.sceneview.ar.node.DepthMeshNode
 import io.github.sceneview.ar.node.PointCloudNode
 import io.github.sceneview.ar.node.PoseNode
 import io.github.sceneview.ar.scene.PlaneRenderer
+import io.github.sceneview.ar.scene.PlaneRendererBase
+import io.github.sceneview.ar.scene.PlaneRendererV2
 import io.github.sceneview.ar.scene.SceneUnderstanding
 import io.github.sceneview.collision.CollisionSystem
 import io.github.sceneview.collision.HitResult
@@ -190,6 +192,11 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 Front-camera sessions still force `DISABLED` regardless. Override
  *                                 inside this callback to choose a different mode if needed (#1063).
  * @param planeRenderer            Whether to render the AR plane grid overlay.
+ * @param planeRendererVersion     Selects which plane-renderer implementation backs the AR
+ *                                 session — see [PlaneRendererBase.Version]. Defaults to V1
+ *                                 (the original flat-polygon + procedural-grid renderer);
+ *                                 V2 is opt-in until [#2203](https://github.com/sceneview/sceneview/issues/2203)
+ *                                 PR #5 flips the default.
  * @param cameraStream             [ARCameraStream] for camera texture rendering and occlusion.
  * @param view                     Filament [View] for this scene. Use [rememberARView] (default),
  *                                 which is tuned so the live camera background round-trips back to
@@ -488,6 +495,24 @@ fun ARSceneView(
      */
     planeRenderer: Boolean = true,
     /**
+     * Selects which plane-renderer implementation backs the AR session — see
+     * [PlaneRendererBase.Version].
+     *
+     * Defaults to [PlaneRendererBase.Version.V1] (the original flat-polygon + procedural-grid
+     * renderer). Opt into [PlaneRendererBase.Version.V2] to preview the next-generation
+     * renderer being built under
+     * [#2203](https://github.com/sceneview/sceneview/issues/2203) — today V2 is
+     * byte-equivalent to V1 (skeleton), but it will gain depth-driven micro-relief, PBR
+     * materials lit by ARCore's HDR estimate, type-aware shading and an animated scan-in
+     * in follow-up PRs. V2 becomes the default once the sprint's PR #5 ships; until then
+     * V1 stays in place behind this flag for backwards compatibility.
+     *
+     * Changing this value triggers a renderer rebuild (it is wired into the surrounding
+     * `remember(...)` keys), so toggling is safe but **not free** — pick once at the
+     * composition root.
+     */
+    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V1,
+    /**
      * Grouped scene-understanding flags (#1767) — mirrors RealityKit's
      * `ARView.environment.sceneUnderstanding.options`. When non-null, the four
      * inner flags (`occlusion`, `lighting`, `physics`, `planeVisualization`)
@@ -673,8 +698,11 @@ fun ARSceneView(
 
     // ── AR subsystems ─────────────────────────────────────────────────────────────────────────────
 
-    val arPlaneRenderer = remember(engine, materialLoader, scene) {
-        PlaneRenderer(engine, materialLoader, scene)
+    val arPlaneRenderer: PlaneRendererBase = remember(engine, materialLoader, scene, planeRendererVersion) {
+        when (planeRendererVersion) {
+            PlaneRendererBase.Version.V1 -> PlaneRenderer(engine, materialLoader, scene)
+            PlaneRendererBase.Version.V2 -> PlaneRendererV2(engine, materialLoader, scene)
+        }
     }
     val lightEstimator = remember(engine, environmentLoader) {
         LightEstimator(engine, environmentLoader.iblPrefilter)
@@ -1366,7 +1394,7 @@ private fun onARFrame(
     lightEstimator: LightEstimator?,
     mainLightNode: LightNode?,
     environment: Environment,
-    arPlaneRenderer: PlaneRenderer,
+    arPlaneRenderer: PlaneRendererBase,
     childNodes: List<Node>,
     prevTrackingFailureRef: AtomicReference<TrackingFailureReason?>,
     onTrackingFailureChangedRef: AtomicReference<((TrackingFailureReason?) -> Unit)?>,
@@ -1799,7 +1827,7 @@ private fun ARScenePreview(modifier: Modifier) {
  * @deprecated Use [ARSceneView] instead. This function is a direct alias provided for backward
  * compatibility with code written against earlier SceneView versions.
  */
-@Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, flashMode, sessionConfiguration, planeRenderer, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))
+@Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, flashMode, sessionConfiguration, planeRenderer, planeRendererVersion, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))
 @Composable
 fun ARScene(
     modifier: Modifier = Modifier,
@@ -1814,6 +1842,7 @@ fun ARScene(
     flashMode: Config.FlashMode = Config.FlashMode.OFF,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     planeRenderer: Boolean = true,
+    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V1,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
     view: View = rememberARView(engine),
     isOpaque: Boolean = true,
@@ -1853,6 +1882,7 @@ fun ARScene(
     flashMode = flashMode,
     sessionConfiguration = sessionConfiguration,
     planeRenderer = planeRenderer,
+    planeRendererVersion = planeRendererVersion,
     cameraStream = cameraStream,
     view = view,
     isOpaque = isOpaque,

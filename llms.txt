@@ -137,6 +137,7 @@ fun ARSceneView(
     focusMode: Config.FocusMode = Config.FocusMode.AUTO,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,  // Escape hatch — runs AFTER all typed params above.
     planeRenderer: Boolean = true,
+    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V1,  // #2203 — V2 is opt-in skeleton today (byte-equiv to V1); becomes default in PR #5 after depth/PBR/HDR/scan-in land.
     sceneUnderstanding: SceneUnderstanding? = null,  // v4.10.0+ — grouped occlusion/lighting/physics/planeVisualization (#1767, RealityKit parity). null = use the individual flags.
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
     view: View = rememberARView(engine),
@@ -262,6 +263,19 @@ ARSceneView(
 ```
 
 When `sceneUnderstanding` is non-null, its four flags override the individual ones on every recomposition. When null, the individual flags retain their pre-#1767 defaults verbatim.
+
+### Plane rendering — V1 (default) vs V2 (opt-in, #2203)
+
+Two plane-renderer implementations ship side-by-side, selectable via the new `planeRendererVersion` parameter on `ARSceneView` (and on the legacy `ARScene` alias):
+
+```kotlin
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    planeRendererVersion = PlaneRendererBase.Version.V2,  // opt-in; default is V1
+) { /* ... */ }
+```
+
+V2 is **byte-equivalent to V1 today** (skeleton only) — same flat polygon, same procedural grid, same shadow receiver. The V2 path exists so the [#2203](https://github.com/sceneview/sceneview/issues/2203) sprint can land its real upgrades (depth-driven mesh + PBR + HDR-cubemap reflections + type-aware floor / ceiling / wall shading + animated scan-in on first detection) without touching the V1 code path. V2 becomes the default once the sprint's PR #5 ships; V1 stays in place for one release cycle behind `@Deprecated` so apps that override `plane_renderer.mat` have time to port their custom styling.
 
 ### ARFogNode — environment-aware AR fog (v4.10.0+, #1717)
 

@@ -10,14 +10,14 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (23 mats → 23 filamats):
+# Inventory (24 mats → 24 filamats):
 #   sceneview/src/main/materials/         (13) → sceneview/src/main/assets/materials/
-#   arsceneview/src/main/materials/        (7) → arsceneview/src/main/assets/materials/
+#   arsceneview/src/main/materials/        (8) → arsceneview/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/
 #
 # Usage:
-#   bash tools/GenerateFilamat.sh                 # regenerate all 23 filamats
-#   bash tools/GenerateFilamat.sh --check         # diff all 23 against committed blobs; exit 1 on drift
+#   bash tools/GenerateFilamat.sh                 # regenerate all 24 filamats
+#   bash tools/GenerateFilamat.sh --check         # diff all 24 against committed blobs; exit 1 on drift
 #   bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 #   bash tools/GenerateFilamat.sh --ci-tolerant   # treat matc download failure as WARN, not FAIL
 #   bash tools/GenerateFilamat.sh --help
@@ -98,7 +98,7 @@ log "${CYAN}Filament version (pinned):${NC} $FILAMENT_VERSION"
 #   Profile B — lean Android (sceneview unlit, 2 mats):
 #     "-a opengl -p mobile"   (note flag order!)
 #
-#   Profile C — ARCore (arsceneview 6 mats + sceneview semantics_overlay):
+#   Profile C — ARCore (arsceneview 7 mats + sceneview semantics_overlay):
 #     "--optimize-size -p mobile -a opengl -a vulkan"
 #
 #   Profile D — website-static (Filament.js / WebGL, 3 mats):
@@ -133,6 +133,7 @@ MATS=(
     "arsceneview:face_mesh:arsceneview/src/main/materials/face_mesh.mat:arsceneview/src/main/assets/materials/face_mesh.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:face_mesh_occluder:arsceneview/src/main/materials/face_mesh_occluder.mat:arsceneview/src/main/assets/materials/face_mesh_occluder.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:plane_renderer:arsceneview/src/main/materials/plane_renderer.mat:arsceneview/src/main/assets/materials/plane_renderer.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "arsceneview:plane_renderer_v2:arsceneview/src/main/materials/plane_renderer_v2.mat:arsceneview/src/main/assets/materials/plane_renderer_v2.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:plane_renderer_shadow:arsceneview/src/main/materials/plane_renderer_shadow.mat:arsceneview/src/main/assets/materials/plane_renderer_shadow.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "website-static:lit_colored:website-static/materials/lit_colored.mat:website-static/materials/lit_colored.filamat:-p mobile -a opengl"
     "website-static:transparent_colored:website-static/materials/transparent_colored.mat:website-static/materials/transparent_colored.filamat:-p mobile -a opengl"
