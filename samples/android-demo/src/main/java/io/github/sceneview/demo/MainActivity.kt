@@ -350,6 +350,16 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 NotificationManagerCompat.from(context).areNotificationsEnabled()
             }
         }
+        // Whether the foreground-service-backed screen recorder is usable on
+        // this build. False on Android 14+ when the manifest omits the
+        // FOREGROUND_SERVICE_MEDIA_PROJECTION permission — the catch-22 from
+        // #2120 left the permission out to unblock Play Store, so the consent
+        // step would dead-end in a system FGS crash. The feedback flow
+        // detects this and routes the user straight to a text-only review
+        // (#2188).
+        val recordingAvailable = remember(feedbackOpen) {
+            FeedbackRecordingService.isRecordingAvailable(context)
+        }
 
         if (onListScreen && !isRecording) {
             FeedbackButton(
@@ -382,6 +392,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 launcher = feedbackLauncher,
                 micPermanentlyDenied = micPermanentlyDenied,
                 notificationControlAvailable = notificationControlAvailable,
+                recordingAvailable = recordingAvailable,
             )
         }
     }

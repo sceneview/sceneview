@@ -103,6 +103,22 @@ fun rememberFeedbackRecordingLauncher(): FeedbackRecordingLauncher {
     return remember(permissionLauncher, context) {
         FeedbackRecordingLauncher(
             startRecording = {
+                // Short-circuit on a build where screen recording is unavailable
+                // (manifest omits FOREGROUND_SERVICE_MEDIA_PROJECTION on
+                // Android 14+ — see #2120). Don't ask for mic / notification
+                // permissions, don't open the screen-capture consent dialog,
+                // don't start the foreground service — any of those would
+                // strand the user in front of a system prompt that ends in a
+                // ForegroundServiceDidNotStartInTimeException crash.
+                // Publishing a failure lets the FeedbackFlow surface the
+                // "skip recording" path so the user can still submit a
+                // text-only note.
+                if (!FeedbackRecordingService.isRecordingAvailable(context)) {
+                    FeedbackRecorder.setFailed(
+                        FeedbackRecorder.FAILURE_RECORDING_UNAVAILABLE,
+                    )
+                    return@FeedbackRecordingLauncher
+                }
                 val perms = buildList {
                     add(Manifest.permission.RECORD_AUDIO)
                     if (Build.VERSION.SDK_INT >= 33) {

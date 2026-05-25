@@ -1,11 +1,13 @@
 package io.github.sceneview.demo.feedback
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.hardware.display.VirtualDisplay
@@ -16,6 +18,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import io.github.sceneview.demo.MainActivity
@@ -381,22 +384,75 @@ class FeedbackRecordingService : Service() {
         /** Secondary cap on the clip length (~120 s). */
         private const val MAX_DURATION_MS = 120_000
 
-        /** Start recording with a granted MediaProjection token. */
-        fun start(context: Context, resultCode: Int, data: Intent) {
-            ContextCompat.startForegroundService(
+        /**
+         * Whether screen recording (foreground service + MediaProjection) is
+         * available on this build. False when the manifest omits
+         * [Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION] AND the
+         * device is Android 14+ — the FGS would throw
+         * `MissingForegroundServiceTypeException` / `SecurityException` and
+         * also miss the 5 s `startForeground` watchdog from
+         * `startForegroundService`, crashing the calling process with
+         * `ForegroundServiceDidNotStartInTimeException` (#2120 catch-22 left
+         * the permission out of the AndroidManifest to unblock Play Store).
+         *
+         * Pre-Android-14 the typed FGS is best-effort — the catch in
+         * [goForeground] degrades gracefully and the recording works without
+         * the new typed permission.
+         */
+        fun isRecordingAvailable(context: Context): Boolean {
+            if (Build.VERSION.SDK_INT < 34) return true
+            // The permission is a normal "manifest" permission — the system
+            // grants it at install time if (and only if) it's declared in the
+            // AndroidManifest. So this check tells us whether the manifest
+            // declared it, without ever prompting the user.
+            return ContextCompat.checkSelfPermission(
                 context,
-                Intent(context, FeedbackRecordingService::class.java)
-                    .putExtra(EXTRA_RESULT_CODE, resultCode)
-                    .putExtra(EXTRA_DATA, data),
-            )
+                Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION,
+            ) == PackageManager.PERMISSION_GRANTED
+        }
+
+        /**
+         * Start recording with a granted MediaProjection token.
+         *
+         * Returns `true` if the service was scheduled to start, `false` if the
+         * call was refused or threw (in which case [FeedbackRecorder] has been
+         * published with a failure reason).
+         *
+         * Wrapped in try/catch as a belt-and-suspenders against
+         * `ForegroundServiceStartNotAllowedException` /
+         * `MissingForegroundServiceTypeException` that the system may raise in
+         * the calling process on Android 14+ when the FGS type isn't declared —
+         * even [isRecordingAvailable] returning true is no guarantee the
+         * system won't refuse for an unrelated app-standby-bucket reason.
+         */
+        fun start(context: Context, resultCode: Int, data: Intent): Boolean {
+            if (!isRecordingAvailable(context)) {
+                FeedbackRecorder.setFailed("screen recording is unavailable on this build")
+                return false
+            }
+            return try {
+                ContextCompat.startForegroundService(
+                    context,
+                    Intent(context, FeedbackRecordingService::class.java)
+                        .putExtra(EXTRA_RESULT_CODE, resultCode)
+                        .putExtra(EXTRA_DATA, data),
+                )
+                true
+            } catch (e: Exception) {
+                Log.w("FeedbackRecording", "startForegroundService refused", e)
+                FeedbackRecorder.setFailed("could not start the recording service")
+                false
+            }
         }
 
         /** Stop an in-progress recording. */
         fun stop(context: Context) {
-            context.startService(
-                Intent(context, FeedbackRecordingService::class.java)
-                    .setAction(ACTION_STOP),
-            )
+            runCatching {
+                context.startService(
+                    Intent(context, FeedbackRecordingService::class.java)
+                        .setAction(ACTION_STOP),
+                )
+            }
         }
     }
 }
