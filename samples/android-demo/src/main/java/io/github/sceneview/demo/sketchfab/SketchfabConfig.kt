@@ -24,6 +24,27 @@ object SketchfabConfig {
     /** Base URL of the Sketchfab Data API v3. Always ends with a trailing slash. */
     const val BASE_URL: String = "https://api.sketchfab.com/v3/"
 
+    /**
+     * `User-Agent` header sent on every Sketchfab request.
+     *
+     * Sketchfab fronts its API with **AWS CloudFront + a WAF rule** that
+     * returns **HTTP 202 + an empty body + `x-amzn-waf-action: challenge`**
+     * (i.e. asks the client to solve a JS / CAPTCHA challenge) whenever the
+     * request carries OkHttp's default `User-Agent: okhttp/<version>`
+     * — a known scraper / bot signature. The body is empty, so the JSON
+     * decoder fails with `Expected start of the object '{', but had 'EOF'
+     * instead`, every Explore-tab carousel collapses to "empty", and the
+     * user sees a half-rendered Explore tab with no carousels and no
+     * error banner (#2194).
+     *
+     * Send an explicit app-identifying UA so the request reads as a real
+     * mobile app instead of an HTTP library, AND so Sketchfab support can
+     * reach out if our traffic ever becomes a problem rather than silently
+     * shadow-banning the demo. The format follows RFC 7231 — product token
+     * + version, with an optional comment describing the platform.
+     */
+    const val USER_AGENT: String = "Mozilla/5.0 (Linux; Android 14; Pixel 7a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
     private const val LOG_TAG = "SketchfabConfig"
 
     /** Guard so the "no key" WARN is logged exactly once per process. */

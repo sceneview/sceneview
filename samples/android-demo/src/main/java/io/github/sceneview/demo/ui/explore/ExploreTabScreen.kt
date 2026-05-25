@@ -187,10 +187,14 @@ fun ExploreTabScreen(
         } catch (ce: kotlinx.coroutines.CancellationException) {
             throw ce
         } catch (t: Throwable) {
-            // A rejected key (401/403) flips `keyRejected` so the banner
-            // shows; a transient 429 / network blip just surfaces an empty
-            // result set rather than a crash. The empty-state UI explains.
-            if (t is SketchfabService.SketchfabError.KeyRejected) {
+            // A rejected key (401/403) or a WAF challenge (CloudFront's
+            // bot mitigation in front of Sketchfab — see SketchfabService
+            // KDoc) flips `keyRejected` so the banner shows; a transient
+            // 429 / network blip just surfaces an empty result set rather
+            // than a crash. The empty-state UI explains.
+            if (t is SketchfabService.SketchfabError.KeyRejected ||
+                t is SketchfabService.SketchfabError.WafChallenge
+            ) {
                 keyRejected = true
             }
             emptyList()
@@ -624,7 +628,13 @@ private suspend inline fun <T> catchingFeed(
 } catch (e: CancellationException) {
     throw e
 } catch (t: Throwable) {
-    if (t is SketchfabService.SketchfabError.KeyRejected) {
+    // Both KeyRejected (401/403) and WafChallenge (202 + empty body from
+    // the AWS CloudFront WAF in front of Sketchfab) surface the
+    // "Sketchfab unavailable" banner so the user sees an explanation
+    // rather than three silently self-hiding feed sections (#2095, #2194).
+    if (t is SketchfabService.SketchfabError.KeyRejected ||
+        t is SketchfabService.SketchfabError.WafChallenge
+    ) {
         onKeyRejected()
     }
     emptyList()
