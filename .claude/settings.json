@@ -2,6 +2,11 @@
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
+  "statusLine": {
+    "type": "command",
+    "command": "bash $CLAUDE_PROJECT_DIR/.claude/scripts/statusline.sh",
+    "padding": 0
+  },
   "hooks": {
     "PreToolUse": [
       {

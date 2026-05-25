@@ -1,0 +1,56 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "mcp/src/**/*.ts",
+      "mcp/scripts/**/*.js",
+      "website-static/js/sceneview.js",
+      "!mcp/dist/**",
+      "!mcp/src/generated/**",
+      "!mcp/src/**/__fixtures__/**",
+      "!website-static/js/sceneview-web.js",
+      "!website-static/js/sceneview-web.js.map",
+      "!website-static/js/qrcode-min.js",
+      "!website-static/js/qrcode-vendor.js",
+      "!website-static/js/filament/**"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "trailingCommas": "es5",
+      "semicolons": "always",
+      "arrowParentheses": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noExplicitAny": "warn",
+        "noConsole": "off"
+      },
+      "style": {
+        "useNodejsImportProtocol": "error",
+        "useTemplate": "warn"
+      },
+      "correctness": {
+        "noUnusedVariables": "warn",
+        "noUnusedImports": "warn"
+      }
+    }
+  }
+}
