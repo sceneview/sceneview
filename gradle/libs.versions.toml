@@ -10,7 +10,7 @@ appcompat = "1.7.1"
 fragmentKtx = "1.8.9"
 
 # Compose
-composeBom = "2026.05.00"
+composeBom = "2026.05.01"
 composeMaterial3Expressive = "1.5.0-alpha18"
 activityCompose = "1.13.0"
 navigationCompose = "2.9.8"

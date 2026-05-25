@@ -121,5 +121,13 @@ maestro_run() {
   # Bound the run: a flow that hangs (e.g. waiting on an element that never
   # appears) must fail fast instead of silently eating the CI job budget
   # (#1560). `timeout` exit 124 propagates as a normal non-zero failure.
-  timeout "${MAESTRO_TEST_TIMEOUT:-900}" "$MAESTRO_BIN" test "$flow" "$@"
+  # On macOS, `timeout` is not available by default — use `gtimeout` (from
+  # homebrew coreutils) if present, otherwise run unbounded (#2184).
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "${MAESTRO_TEST_TIMEOUT:-900}" "$MAESTRO_BIN" test "$flow" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "${MAESTRO_TEST_TIMEOUT:-900}" "$MAESTRO_BIN" test "$flow" "$@"
+  else
+    "$MAESTRO_BIN" test "$flow" "$@"
+  fi
 }
