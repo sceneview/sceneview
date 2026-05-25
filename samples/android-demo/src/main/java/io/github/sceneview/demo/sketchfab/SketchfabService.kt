@@ -63,6 +63,18 @@ class SketchfabService private constructor(
     @VisibleForTesting
     internal val client: OkHttpClient = OkHttpClient.Builder()
         .cache(httpCache)
+        // Force HTTP/1.1 — the AWS WAF in front of `api.sketchfab.com`
+        // (CloudFront) flags OkHttp's HTTP/2 + default TLS fingerprint as
+        // bot traffic and returns HTTP 202 + empty body + `x-amzn-waf-action:
+        // challenge` (a JS challenge the OkHttp client can't solve), which
+        // would otherwise leave the Explore-tab carousels silently empty
+        // (#2191). HTTP/1.1 + the explicit `User-Agent` header set on every
+        // request side-step that particular WAF rule. The remaining WAF
+        // failure paths (IP-reputation throttles, sustained traffic from one
+        // egress) are caught explicitly as [SketchfabError.WafChallenge] so
+        // the UI shows the "Sketchfab unavailable" banner instead of three
+        // self-hiding feeds.
+        .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
         .build()
 
     @VisibleForTesting
@@ -244,9 +256,24 @@ class SketchfabService private constructor(
             .header("Authorization", "Token $apiKey")
             .header("Accept", "application/json")
             .header("Accept-Charset", "utf-8")
+            .header("User-Agent", SketchfabConfig.USER_AGENT)
             .get()
             .build()
         client.newCall(request).execute().use { response ->
+            // AWS WAF in front of Sketchfab returns HTTP 202 + empty body +
+            // `x-amzn-waf-action: challenge` (or `block`) when it wants the
+            // client to solve a JS / CAPTCHA challenge. The body is empty, so
+            // the JSON decoder would otherwise throw `Expected start of the
+            // object '{', but had 'EOF' instead`. Surface it as a typed error
+            // so the UI shows the SketchfabDisabledBanner instead of three
+            // silent self-hiding feeds (#2191). The companion fix is the
+            // app-identifying User-Agent injected above — sending
+            // `okhttp/<version>` is the bot signature that triggered the
+            // challenge in the first place.
+            val wafAction = response.header("x-amzn-waf-action")
+            if (wafAction != null) {
+                throw SketchfabError.WafChallenge(wafAction)
+            }
             if (!response.isSuccessful) {
                 // 401 Unauthorized / 403 Forbidden mean the API key itself was
                 // rejected (missing scope, revoked, or a typo'd secret) — a
@@ -365,6 +392,20 @@ class SketchfabService private constructor(
         object ModelNotFound : SketchfabError() {
             private fun readResolve(): Any = ModelNotFound
             override val message: String get() = "No downloadable format available for the requested model."
+        }
+
+        /**
+         * AWS CloudFront's WAF (in front of `api.sketchfab.com`) returned a
+         * challenge response (`x-amzn-waf-action: challenge` / `block`) with
+         * an empty body. Typically caused by a `User-Agent: okhttp/<version>`
+         * that the WAF treats as bot traffic, or by sustained high request
+         * volume from a single source IP. The UI surfaces this via the
+         * "Sketchfab unavailable" banner so the user sees an explanation
+         * instead of three silently self-hiding carousels (#2191).
+         */
+        class WafChallenge(val action: String) : SketchfabError() {
+            override val message: String
+                get() = "Sketchfab CloudFront WAF returned action='$action' — request blocked or challenged."
         }
     }
 }

@@ -109,6 +109,13 @@ private sealed interface UploadUiState {
  * @param notificationControlAvailable `false` when the foreground-service
  *   notification (a documented stop affordance) will be silent — the flow then
  *   surfaces a one-time hint that the in-app Stop pill is the way to finish.
+ * @param recordingAvailable `false` when screen recording is unavailable on
+ *   this build (e.g. the manifest omits `FOREGROUND_SERVICE_MEDIA_PROJECTION`
+ *   on Android 14+ — the catch-22 from #2120 / #2188). The flow then skips the
+ *   consent step entirely and goes straight from CATEGORY to REVIEW so the
+ *   user can submit a text-only note. Without this, attempting to start the
+ *   foreground service crashes the app with
+ *   `ForegroundServiceDidNotStartInTimeException`.
  */
 @Composable
 fun FeedbackFlow(
@@ -116,6 +123,7 @@ fun FeedbackFlow(
     launcher: FeedbackRecordingLauncher,
     micPermanentlyDenied: Boolean = false,
     notificationControlAvailable: Boolean = true,
+    recordingAvailable: Boolean = true,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -257,6 +265,21 @@ fun FeedbackFlow(
                     onRetry = { send() },
                 )
 
+                recState is RecordingState.Failed &&
+                    (recState as RecordingState.Failed).reason ==
+                        FeedbackRecorder.FAILURE_RECORDING_UNAVAILABLE -> {
+                    // Screen recording is unavailable on this build (the #2120
+                    // catch-22). Drop the failure silently and route the user
+                    // straight to the text-only REVIEW — surfacing a generic
+                    // "recording didn't work" screen would be misleading
+                    // because no attempt was even made. The user keeps the
+                    // category they picked.
+                    LaunchedEffect(Unit) {
+                        FeedbackRecorder.reset()
+                        step = FeedbackStep.REVIEW
+                    }
+                }
+
                 recState is RecordingState.Failed -> FailedStep(
                     micPermanentlyDenied = micPermanentlyDenied,
                     projectionRevoked =
@@ -301,7 +324,17 @@ fun FeedbackFlow(
                         onClose = onDismiss,
                         onPick = {
                             category = it
-                            step = FeedbackStep.CONSENT
+                            // When screen recording is unavailable on this
+                            // build (the #2120 / #2188 catch-22), skip the
+                            // consent step — it advertises screen + mic
+                            // capture that cannot actually happen — and go
+                            // straight to a text-only review.
+                            step = if (recordingAvailable) {
+                                FeedbackStep.CONSENT
+                            } else {
+                                rememberCategory(category)
+                                FeedbackStep.REVIEW
+                            }
                         },
                         hasTickets = tickets.isNotEmpty(),
                         onViewTickets = { step = FeedbackStep.TICKETS },

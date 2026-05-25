@@ -67,6 +67,7 @@ import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.DemoListScreen
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.ui.explore.ExploreTabScreen
 
 /**
@@ -176,7 +177,15 @@ private fun AboutTabContent() {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            // Bottom padding reserves a gutter for the floating feedback FAB
+            // so it does not mask the bottom "Help keep the project free &
+            // active" sponsor row on first render (#2194).
+            .padding(
+                start = 16.dp,
+                end = 16.dp,
+                top = 12.dp,
+                bottom = FEEDBACK_FAB_RESERVED_SPACE,
+            ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         AboutHeroCard()

@@ -43,10 +43,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.LocationCity
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.ViewInAr
@@ -67,6 +73,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -95,7 +102,10 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
+import io.github.sceneview.demo.feedback.FeedbackChrome
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.demo.R
 import io.github.sceneview.math.Position
@@ -218,6 +228,16 @@ fun ArViewTabContent(
             onArDemoClick = onDemoClick,
         )
         return
+    }
+
+    // Hide the floating feedback FAB while the live ARSceneView is on screen
+    // — the AR-View bottom action bar (model picker + Reset + Share) would
+    // otherwise be masked on its left side by the chip (#2194). The chip
+    // re-appears as soon as the user exits the AR session (back gesture /
+    // Close button) or switches tabs (DisposableEffect cleanup).
+    DisposableEffect(Unit) {
+        FeedbackChrome.chipVisible = false
+        onDispose { FeedbackChrome.chipVisible = true }
     }
 
     // From this point the user has tapped "Start AR Camera". Re-request the
@@ -688,7 +708,14 @@ private fun ArLauncherScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            // Bottom padding leaves a gutter for the floating feedback FAB so
+            // it does not mask the last row of the AR demo grid (#2194).
+            .padding(
+                start = 20.dp,
+                end = 20.dp,
+                top = 12.dp,
+                bottom = FEEDBACK_FAB_RESERVED_SPACE,
+            ),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         // Compact hero — icon + title on one line, tagline below. Cards
@@ -841,6 +868,7 @@ private fun ArLauncherScreen(
                         ArDemoCard(
                             title = stringResource(demo.titleRes),
                             subtitle = stringResource(demo.subtitleRes),
+                            icon = demo.icon,
                             dark = dark,
                             onClick = { onArDemoClick(demo.id) },
                             modifier = Modifier.weight(1f),
@@ -865,6 +893,7 @@ private fun ArLauncherScreen(
 private fun ArDemoCard(
     title: String,
     subtitle: String,
+    icon: ImageVector,
     dark: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -898,7 +927,7 @@ private fun ArDemoCard(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    Icons.Filled.ViewInAr,
+                    icon,
                     contentDescription = null,
                     tint = accent,
                     modifier = Modifier.size(28.dp),
@@ -933,15 +962,51 @@ private data class FeaturedArDemo(
     val id: String,
     @StringRes val titleRes: Int,
     @StringRes val subtitleRes: Int,
+    val icon: ImageVector,
 )
 
+// Per-demo icons differentiate the AR-View grid tiles at a glance — pre-#2195
+// every tile rendered the same generic `Icons.Filled.ViewInAr` and the user
+// could not tell them apart. Choices mirror the semantic intent rather than
+// the demo's literal subject so a quick visual scan reads "place / face /
+// cloud / city / layers / pose" without needing to read the title.
 private val FEATURED_AR_DEMOS = listOf(
-    FeaturedArDemo("ar-placement", R.string.featured_ar_placement_title, R.string.featured_ar_placement_subtitle),
-    FeaturedArDemo("ar-face", R.string.featured_ar_face_title, R.string.featured_ar_face_subtitle),
-    FeaturedArDemo("ar-cloud-anchor", R.string.featured_ar_cloud_anchor_title, R.string.featured_ar_cloud_anchor_subtitle),
-    FeaturedArDemo("ar-streetscape", R.string.featured_ar_streetscape_title, R.string.featured_ar_streetscape_subtitle),
-    FeaturedArDemo("ar-depth-occlusion", R.string.featured_ar_depth_occlusion_title, R.string.featured_ar_depth_occlusion_subtitle),
-    FeaturedArDemo("ar-pose", R.string.featured_ar_pose_title, R.string.featured_ar_pose_subtitle),
+    FeaturedArDemo(
+        id = "ar-placement",
+        titleRes = R.string.featured_ar_placement_title,
+        subtitleRes = R.string.featured_ar_placement_subtitle,
+        icon = Icons.Filled.AddLocationAlt,
+    ),
+    FeaturedArDemo(
+        id = "ar-face",
+        titleRes = R.string.featured_ar_face_title,
+        subtitleRes = R.string.featured_ar_face_subtitle,
+        icon = Icons.Filled.Face,
+    ),
+    FeaturedArDemo(
+        id = "ar-cloud-anchor",
+        titleRes = R.string.featured_ar_cloud_anchor_title,
+        subtitleRes = R.string.featured_ar_cloud_anchor_subtitle,
+        icon = Icons.Filled.Cloud,
+    ),
+    FeaturedArDemo(
+        id = "ar-streetscape",
+        titleRes = R.string.featured_ar_streetscape_title,
+        subtitleRes = R.string.featured_ar_streetscape_subtitle,
+        icon = Icons.Filled.LocationCity,
+    ),
+    FeaturedArDemo(
+        id = "ar-depth-occlusion",
+        titleRes = R.string.featured_ar_depth_occlusion_title,
+        subtitleRes = R.string.featured_ar_depth_occlusion_subtitle,
+        icon = Icons.Filled.Layers,
+    ),
+    FeaturedArDemo(
+        id = "ar-pose",
+        titleRes = R.string.featured_ar_pose_title,
+        subtitleRes = R.string.featured_ar_pose_subtitle,
+        icon = Icons.Filled.SelfImprovement,
+    ),
 )
 
 @Composable

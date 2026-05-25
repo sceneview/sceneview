@@ -48,6 +48,17 @@ object FeedbackRecorder {
     const val FAILURE_REVOKED = "projection-revoked"
 
     /**
+     * Sentinel [RecordingState.Failed.reason] used when screen recording is
+     * unavailable on this build — typically because the manifest omits the
+     * [android.Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION]
+     * permission required on Android 14+ (the catch-22 from #2120). The flow
+     * then routes the user straight to a text-only review step rather than
+     * letting the foreground service crash the app with
+     * `ForegroundServiceDidNotStartInTimeException` (#2188).
+     */
+    const val FAILURE_RECORDING_UNAVAILABLE = "recording-unavailable"
+
+    /**
      * Monotonic id for the current recording attempt. Bumped on every
      * [setRecording]; the recording service captures it before its background
      * demux and a [setDone] / [setFailed] from a superseded attempt — e.g. when

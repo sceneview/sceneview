@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.ui.ParticleBackground
 
 /**
@@ -133,11 +134,15 @@ fun DemoListScreen(
     ) { padding ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
+            // Bottom contentPadding reserves a gutter for the floating
+            // feedback FAB so short categories (3D Basics with only Animation
+            // + Geometry, e.g.) don't have their last row masked by the chip
+            // (#2194).
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
                 top = 8.dp,
-                bottom = 48.dp,
+                bottom = FEEDBACK_FAB_RESERVED_SPACE,
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
