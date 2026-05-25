@@ -1,78 +1,105 @@
 #!/usr/bin/env bash
-# Self-hosted macOS GitHub Actions runner for SceneView.
+# Self-hosted macOS GitHub Actions runner for SceneView (v2 — launchctl bootstrap).
 #
-# WHY
-#   GitHub-hosted macos-15 runners cost ~10x ubuntu per-minute and have no KVM.
-#   SceneView ships ~6 iOS/macOS jobs (ios.yml, bridge-ios-compile.yml,
-#   rn-ios-compile.yml, app-store.yml × 2, render-tests.yml) plus a NIGHTLY-ONLY
-#   iOS device-QA leg (#1601) that is too expensive to gate on every push.
-#   A self-hosted runner on Thomas's M-series Mac runs the same workflows on
-#   bare metal, faster, free — and when the Mac is asleep / off, workflows
-#   fall back transparently to macos-15 via the heartbeat pattern.
+# WHY V2 (and not actions/runner svc.sh):
+#   svc.sh shells out to `launchctl load`, which is broken on macOS 11+ for
+#   user-scoped LaunchAgents (it returns `Load failed: 5: Input/output error`
+#   and silently leaves no plist behind — see actions/runner issue 1424).
+#   v2 bypasses svc.sh, writes the LaunchAgent plist itself, and uses the
+#   modern `launchctl bootstrap` API. Same result, actually works.
 #
-# HOW IT WORKS
-#   1. actions/runner downloads + registers with label `sceneview-mac`.
-#   2. svc.sh installs it as a launchd service (auto-starts on login).
-#   3. A second launchd job runs runner-heartbeat.sh every 300s to update
-#      the repo variables SELF_HOSTED_MACOS_ONLINE and
-#      SELF_HOSTED_MACOS_LAST_SEEN.
-#   4. Workflows that opt in route via:
-#        runs-on: ${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && 'sceneview-mac' || 'macos-15' }}
+# WHAT IT INSTALLS
+#   ~/Library/Application Support/sceneview-runner/      actions/runner files
+#   ~/Library/LaunchAgents/io.github.sceneview.runner.plist            runner
+#   ~/Library/LaunchAgents/io.github.sceneview.runner-heartbeat.plist  heartbeat
+#
+# OPT IN A WORKFLOW (one line per job in any .github/workflows/*.yml):
+#   runs-on: ${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && 'sceneview-mac' || 'macos-15' }}
 #
 # USAGE
 #   bash .claude/scripts/setup-self-hosted-runner.sh             # install
 #   bash .claude/scripts/setup-self-hosted-runner.sh --check     # status
 #   bash .claude/scripts/setup-self-hosted-runner.sh --uninstall # remove
-#
-# PREREQUISITES
-#   - gh CLI installed + authenticated with `repo` + `Variables:write` scopes
-#     on sceneview/sceneview (gh auth login --scopes "repo,workflow")
-#   - Xcode + Xcode CLI tools installed (the runner just executes workflow
-#     steps — Xcode is needed by ios.yml etc., not by this installer)
 
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 REPO="sceneview/sceneview"
-RUNNER_VERSION="2.328.0"
+RUNNER_VERSION="2.334.0"   # baseline; the runner auto-updates after first connect
 RUNNER_LABEL="sceneview-mac"
 RUNNER_HOME="${HOME}/Library/Application Support/sceneview-runner"
 RUNNER_NAME="sceneview-mac-$(hostname -s)"
 
+# Runner LaunchAgent (replaces broken svc.sh)
+RUNNER_PLIST="${HOME}/Library/LaunchAgents/io.github.sceneview.runner.plist"
+RUNNER_PLIST_LABEL="io.github.sceneview.runner"
+
+# Heartbeat LaunchAgent (unchanged from v1)
 HEARTBEAT_PLIST="${HOME}/Library/LaunchAgents/io.github.sceneview.runner-heartbeat.plist"
 HEARTBEAT_LABEL="io.github.sceneview.runner-heartbeat"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HEARTBEAT_SCRIPT="${SCRIPT_DIR}/runner-heartbeat.sh"
 
+UID_NUM="$(id -u)"
+GUI_DOMAIN="gui/${UID_NUM}"
+
 ACTION="${1:-install}"
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+log() { printf '%s\n' "$*"; }
+err() { printf 'ERROR: %s\n' "$*" >&2; }
+
+# Reports whether a LaunchAgent is loaded in the user GUI domain.
+print_service_status() {
+  local label="$1"
+  if launchctl print "${GUI_DOMAIN}/${label}" >/dev/null 2>&1; then
+    log "  loaded: yes"
+    launchctl print "${GUI_DOMAIN}/${label}" 2>/dev/null \
+      | grep -E "state =|last exit code" | head -3 | sed 's/^/    /'
+  else
+    log "  loaded: no"
+  fi
+}
 
 # ── --check ───────────────────────────────────────────────────────────────────
 if [[ "${ACTION}" == "--check" ]]; then
-  echo "Runner home:     ${RUNNER_HOME}"
+  log "Runner home:     ${RUNNER_HOME}"
   if [[ -f "${RUNNER_HOME}/.runner" ]]; then
-    echo "  configured:    yes"
-    cat "${RUNNER_HOME}/.runner" | sed 's/^/    /'
+    log "  configured:    yes"
+    sed 's/^/    /' "${RUNNER_HOME}/.runner" 2>/dev/null || true
   else
-    echo "  configured:    no"
+    log "  configured:    no"
   fi
 
-  echo "Heartbeat plist: ${HEARTBEAT_PLIST}"
-  if launchctl print "gui/$(id -u)/${HEARTBEAT_LABEL}" >/dev/null 2>&1; then
-    echo "  loaded:        yes"
-  else
-    echo "  loaded:        no"
-  fi
+  log ""
+  log "Runner LaunchAgent: ${RUNNER_PLIST}"
+  print_service_status "${RUNNER_PLIST_LABEL}"
+
+  log ""
+  log "Heartbeat LaunchAgent: ${HEARTBEAT_PLIST}"
+  print_service_status "${HEARTBEAT_LABEL}"
 
   if [[ -f /tmp/sceneview-runner-heartbeat.log ]]; then
-    echo "Recent heartbeat log:"
+    log ""
+    log "Recent heartbeat log:"
     tail -3 /tmp/sceneview-runner-heartbeat.log | sed 's/^/  /'
   fi
 
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    echo "Repo variables (${REPO}):"
+    log ""
+    log "Runner status (GitHub API):"
+    if ! gh api "/repos/${REPO}/actions/runners" \
+        --jq ".runners[] | select(.name == \"${RUNNER_NAME}\") | \"  \\(.name): \\(.status)\"" \
+        2>/dev/null; then
+      log "  (API call failed)"
+    fi
+
+    log ""
+    log "Repo variables (${REPO}):"
     for var in SELF_HOSTED_MACOS_ONLINE SELF_HOSTED_MACOS_LAST_SEEN; do
       val="$(gh variable get "${var}" --repo "${REPO}" 2>/dev/null || echo '<unset>')"
-      echo "  ${var}=${val}"
+      log "  ${var}=${val}"
     done
   fi
   exit 0
@@ -80,18 +107,19 @@ fi
 
 # ── --uninstall ───────────────────────────────────────────────────────────────
 if [[ "${ACTION}" == "--uninstall" ]]; then
-  echo "Stopping heartbeat..."
-  launchctl unload "${HEARTBEAT_PLIST}" 2>/dev/null || true
+  log "Unloading runner LaunchAgent..."
+  launchctl bootout "${GUI_DOMAIN}/${RUNNER_PLIST_LABEL}" 2>/dev/null || true
+  rm -f "${RUNNER_PLIST}"
+
+  log "Unloading heartbeat LaunchAgent..."
+  launchctl bootout "${GUI_DOMAIN}/${HEARTBEAT_LABEL}" 2>/dev/null || true
   rm -f "${HEARTBEAT_PLIST}"
 
-  if [[ -f "${RUNNER_HOME}/svc.sh" ]]; then
-    echo "Stopping runner service..."
-    (cd "${RUNNER_HOME}" && sudo ./svc.sh stop 2>/dev/null || true)
-    (cd "${RUNNER_HOME}" && sudo ./svc.sh uninstall 2>/dev/null || true)
-  fi
+  # Kill any rogue run.sh started outside launchd (e.g., v1 nohup migration)
+  pkill -f "${RUNNER_HOME}/run.sh" 2>/dev/null || true
 
   if [[ -f "${RUNNER_HOME}/config.sh" ]]; then
-    echo "Removing runner registration from GitHub..."
+    log "De-registering runner from GitHub..."
     REM_TOKEN="$(gh api -X POST "/repos/${REPO}/actions/runners/remove-token" --jq .token 2>/dev/null || echo "")"
     if [[ -n "${REM_TOKEN}" ]]; then
       (cd "${RUNNER_HOME}" && ./config.sh remove --token "${REM_TOKEN}" 2>/dev/null || true)
@@ -102,56 +130,56 @@ if [[ "${ACTION}" == "--uninstall" ]]; then
     gh variable set SELF_HOSTED_MACOS_ONLINE --repo "${REPO}" --body "false" >/dev/null 2>&1 || true
   fi
 
-  echo "Uninstalled. Runner files left in ${RUNNER_HOME} — remove manually if desired."
+  log "Uninstalled. Runner files left in ${RUNNER_HOME} — remove manually if desired."
   exit 0
 fi
 
 # ── install ───────────────────────────────────────────────────────────────────
 if [[ "${ACTION}" != "install" ]]; then
-  echo "Unknown action: ${ACTION}"
-  echo "Usage: bash $(basename "$0") [install|--check|--uninstall]"
+  err "Unknown action: ${ACTION}"
+  err "Usage: bash $(basename "$0") [install|--check|--uninstall]"
   exit 1
 fi
 
-# Pre-flight checks
+# Pre-flight
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "ERROR: this installer is macOS-only." >&2
+  err "This installer is macOS-only."
   exit 1
 fi
 
 if ! command -v gh >/dev/null 2>&1; then
-  echo "ERROR: gh CLI not found. Install with: brew install gh" >&2
+  err "gh CLI not found. Install with: brew install gh"
   exit 1
 fi
 
 if ! gh auth status >/dev/null 2>&1; then
-  echo "ERROR: gh not authenticated. Run: gh auth login --scopes 'repo,workflow'" >&2
+  err "gh not authenticated. Run: gh auth login --scopes 'repo,workflow'"
   exit 1
 fi
 
 ARCH="$(uname -m)"
 case "${ARCH}" in
-  arm64) RUNNER_ARCH="osx-arm64" ;;
-  x86_64) RUNNER_ARCH="osx-x64" ;;
-  *) echo "ERROR: unsupported arch: ${ARCH}" >&2; exit 1 ;;
+  arm64)  RUNNER_ARCH="osx-arm64" ;;
+  x86_64) RUNNER_ARCH="osx-x64"   ;;
+  *) err "Unsupported arch: ${ARCH}"; exit 1 ;;
 esac
 
-# Idempotency: skip the download if already extracted
 mkdir -p "${RUNNER_HOME}"
 cd "${RUNNER_HOME}"
 
+# 1. Download runner if missing (the runner self-updates after first connect)
 if [[ ! -f "./run.sh" ]]; then
   TARBALL="actions-runner-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz"
   URL="https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${TARBALL}"
-  echo "Downloading ${TARBALL}..."
+  log "Downloading ${TARBALL}..."
   curl -fsSL -o "${TARBALL}" "${URL}"
   tar xzf "${TARBALL}"
   rm "${TARBALL}"
 fi
 
-# Idempotency: skip registration if already configured
+# 2. Register the runner if not already registered
 if [[ ! -f ".runner" ]]; then
-  echo "Fetching runner registration token..."
+  log "Fetching runner registration token..."
   REG_TOKEN="$(gh api -X POST "/repos/${REPO}/actions/runners/registration-token" --jq .token)"
   ./config.sh \
     --url "https://github.com/${REPO}" \
@@ -163,25 +191,51 @@ if [[ ! -f ".runner" ]]; then
     --replace
 fi
 
-# Install + start launchd service (idempotent via svc.sh)
-if [[ ! -f "./svc.sh" ]]; then
-  echo "ERROR: svc.sh missing — runner extraction failed" >&2
-  exit 1
-fi
+# 3. Kill any rogue run.sh outside launchd (e.g., v1 nohup migration)
+#    so the launchd-managed instance can take over the registration cleanly.
+pkill -f "${RUNNER_HOME}/run.sh" 2>/dev/null || true
+sleep 1
 
-# svc.sh status returns non-zero when not installed
-if ! ./svc.sh status >/dev/null 2>&1; then
-  echo "Installing runner as launchd service..."
-  ./svc.sh install "${USER}"
-  ./svc.sh start
-else
-  echo "Runner service already installed."
-fi
+# 4. Write the runner LaunchAgent plist (replaces broken svc.sh install)
+mkdir -p "$(dirname "${RUNNER_PLIST}")"
+cat > "${RUNNER_PLIST}" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${RUNNER_PLIST_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>${RUNNER_HOME}/run.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${RUNNER_HOME}</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>30</integer>
+  <key>ProcessType</key><string>Interactive</string>
+  <key>StandardOutPath</key><string>${RUNNER_HOME}/runner.log</string>
+  <key>StandardErrorPath</key><string>${RUNNER_HOME}/runner.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key><string>${HOME}</string>
+  </dict>
+</dict>
+</plist>
+PLIST
 
-# Install heartbeat launchd job
+# bootout the previous instance if any (idempotent), then bootstrap fresh.
+# KeepAlive=true relaunches the runner after auto-update or crash. The runner
+# manages its own update lifecycle (exit -> launchd restart -> new version).
+launchctl bootout    "${GUI_DOMAIN}/${RUNNER_PLIST_LABEL}" 2>/dev/null || true
+launchctl bootstrap  "${GUI_DOMAIN}" "${RUNNER_PLIST}"
+launchctl enable     "${GUI_DOMAIN}/${RUNNER_PLIST_LABEL}"
+launchctl kickstart  "${GUI_DOMAIN}/${RUNNER_PLIST_LABEL}"
+
+# 5. Heartbeat LaunchAgent (same shape as v1, kept here for idempotency)
 mkdir -p "$(dirname "${HEARTBEAT_PLIST}")"
-PATH_ENTRIES="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
-
 cat > "${HEARTBEAT_PLIST}" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -197,7 +251,7 @@ cat > "${HEARTBEAT_PLIST}" <<PLIST
   <key>StartInterval</key><integer>300</integer>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>${PATH_ENTRIES}</string>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>GITHUB_REPO</key><string>${REPO}</string>
     <key>RUNNER_NAME</key><string>${RUNNER_NAME}</string>
     <key>HOME</key><string>${HOME}</string>
@@ -208,15 +262,16 @@ cat > "${HEARTBEAT_PLIST}" <<PLIST
 </plist>
 PLIST
 
-launchctl unload "${HEARTBEAT_PLIST}" 2>/dev/null || true
-launchctl load -w "${HEARTBEAT_PLIST}"
+launchctl bootout    "${GUI_DOMAIN}/${HEARTBEAT_LABEL}" 2>/dev/null || true
+launchctl bootstrap  "${GUI_DOMAIN}" "${HEARTBEAT_PLIST}"
+launchctl enable     "${GUI_DOMAIN}/${HEARTBEAT_LABEL}"
 
-echo ""
-echo "✅ Installed."
-echo "   Runner home:  ${RUNNER_HOME}"
-echo "   Runner name:  ${RUNNER_NAME}"
-echo "   Label:        ${RUNNER_LABEL}"
-echo "   Heartbeat:    every 300s → /tmp/sceneview-runner-heartbeat.log"
-echo ""
-echo "Verify:  bash $(basename "$0") --check"
-echo "Opt in:  add to a workflow job: runs-on: \${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && '${RUNNER_LABEL}' || 'macos-15' }}"
+log ""
+log "Installed."
+log "  Runner home:  ${RUNNER_HOME}"
+log "  Runner name:  ${RUNNER_NAME}"
+log "  Label:        ${RUNNER_LABEL}"
+log "  LaunchAgent:  ${RUNNER_PLIST_LABEL} (KeepAlive, auto-restart on exit/update)"
+log "  Heartbeat:    every 300s -> /tmp/sceneview-runner-heartbeat.log"
+log ""
+log "Verify with: bash $(basename "$0") --check"

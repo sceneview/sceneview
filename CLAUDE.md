@@ -335,12 +335,19 @@ bash .claude/scripts/setup-self-hosted-runner.sh --check
 ```
 
 The installer (a) downloads `actions/runner` for `osx-arm64`/`osx-x64`,
-(b) registers it with label `sceneview-mac`, (c) installs it as a launchd
-service that auto-starts on login, (d) installs a launchd heartbeat that
-fires `runner-heartbeat.sh` every 300s. The heartbeat pings the
-`/repos/.../actions/runners` API to confirm the runner is *actually* online,
-then updates two repo variables: `SELF_HOSTED_MACOS_ONLINE` (`"true"`/`"false"`)
-and `SELF_HOSTED_MACOS_LAST_SEEN` (ISO 8601 UTC).
+(b) registers it with label `sceneview-mac`, (c) writes a user
+LaunchAgent plist directly and `launchctl bootstrap`s it (the v1
+attempt to delegate to `actions/runner`'s `svc.sh` was a dead end —
+`svc.sh` shells out to the deprecated `launchctl load` which fails with
+`Input/output error` on macOS 11+, see actions/runner issue 1424).
+The plist uses `KeepAlive=true` so the runner survives reboots, login,
+sleep/wake, and the runner's own auto-update cycle (the runner exits
+to install a new version, launchd restarts it, new version takes over —
+verified working). (d) installs a second launchd heartbeat plist that
+fires `runner-heartbeat.sh` every 300s. The heartbeat pings
+`/repos/.../actions/runners` to confirm the runner is *actually*
+online, then updates two repo variables: `SELF_HOSTED_MACOS_ONLINE`
+(`"true"`/`"false"`) and `SELF_HOSTED_MACOS_LAST_SEEN` (ISO 8601 UTC).
 
 ### Opt a workflow in — single line
 
@@ -365,16 +372,23 @@ existing workflow is modified by this commit.
 ### Safety net
 
 - Heartbeat refuses to mark `ONLINE=true` when the runner service status is
-  anything other than `"online"` (dead service / failed boot → workflows route
-  to `macos-15`).
-- On `--uninstall`, the heartbeat is unloaded and `ONLINE` is forced to
-  `false` so no stale routing survives.
-- `--check` prints the runner registration, heartbeat status, recent heartbeat
-  log, and both repo variables — single source of truth.
-- The heartbeat interval (300s) is well under any reasonable workflow queue
-  timeout. Worst case after `pmset sleepnow`: a ~5-min window where workflows
-  might still route to the sleeping Mac and queue → GitHub auto-aborts after
-  the per-job `timeout-minutes`.
+  anything other than `"online"` (dead service / failed boot / runner mid
+  auto-update → workflows route to `macos-15`).
+- `KeepAlive=true` on the runner LaunchAgent means a crashed runner is
+  re-launched within `ThrottleInterval` (30s). The runner's auto-update
+  cycle (exit → launchd restart → new version) is invisible to consumers.
+- On `--uninstall`, both LaunchAgents are `launchctl bootout`-ed, any
+  rogue `run.sh` is `pkill`-ed, and `ONLINE` is forced to `false` so no
+  stale routing survives.
+- `--check` prints `.runner` config, both LaunchAgent loaded states with
+  `state =` + `last exit code` excerpts, recent heartbeat log, GitHub-side
+  runner status (live API call), and both repo variables — single source
+  of truth.
+- Heartbeat interval (300s) is well under any reasonable workflow queue
+  timeout. After `pmset sleepnow` the runner is paused; on wake launchd
+  re-validates `KeepAlive` and the runner re-connects to GitHub within a
+  few seconds; the heartbeat picks up the offline → online transition at
+  the next tick.
 
 ## @claude mention bot (GitHub Action)
 
