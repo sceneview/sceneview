@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **AR-View "Try an AR demo" tiles (Android demo):** stop rendering the same generic `Icons.Filled.ViewInAr` on every tile. `FeaturedArDemo` now carries a per-demo `ImageVector` (`AddLocationAlt`, `Face`, `Cloud`, `LocationCity`, `Layers`, `SelfImprovement`) so users can tell the 6 demos apart at a glance — matching the Samples-tab grid where each demo already had a unique icon. (#2195)

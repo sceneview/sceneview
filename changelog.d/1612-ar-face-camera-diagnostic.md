@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **ARFaceDemo: front-camera unavailability diagnostic.** Added a 5-second timeout after which, if no AR frame has been received, the status pill turns red and reads "Front camera unavailable on this device". This surfaces the silent black-screen regression on Pixel 9 (#1612) where `frontCameraConfig` may fall back to the BACK camera, leaving the selfie feed dead without any user-visible error.

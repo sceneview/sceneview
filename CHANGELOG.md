@@ -2,6 +2,114 @@
 
 ## Unreleased
 
+## v4.15.2 — 2026-05-25
+
+### Added
+
+- **iOS — native camera modes** (`CameraControlMode`): three new native cases
+  (`.none`, `.tilt`, `.dolly`) delegate directly to Apple's
+  `realityViewCameraControls(_:)` modifier (iOS 18+, macOS 15+, visionOS 2+)
+  instead of SceneView's custom gesture math. The existing cross-platform modes
+  (`.orbit`, `.pan`, `.firstPerson`) are unchanged — they keep orbit inertia,
+  auto-rotate, and fit-to-bounds framing. Closes #1049 (Phase 2 — exposing
+  the native Apple camera modes as verified in the Xcode SDK).
+- **iOS deep-link registry widened to full demo catalog.** `DemoDeepLinkRegistry.allowedIds` now contains all 42 demo IDs (matching Android's `DemoRegistry.kt`), so every `sceneview://demo/<id>` QR code is reachable on iOS — available demos open their real destination; coming-soon demos route to a `DeepLinkPlaceholder` instead of silently dropping the link. Added missing `destination(for:)` cases for `AnimationDemo`, `ARInstantPlacementDemo`, `ARLightingDemo`, `ARRecorderDemo`, `MaterialsDemo`, `OrbitalARDemo`, `SceneGalleryDemo` and `MultiModelDemo` (#1579).
+- **iOS QA mode deep-link arg.** Appending `?qa_mode=1` to any `sceneview://demo/<id>` URL (or passing `-qa_mode 1` as a launch argument) writes `UserDefaults["qa_mode"]`, which freezes auto-rotation in `ModelViewerScreen` and `SketchfabModelViewerScreen` for deterministic QA screenshots — mirrors Android's `qa_mode` intent extra. Read from any view via `@AppStorage(DeepLinkRouter.qaModeDefaultsKey)` ([#1579](https://github.com/sceneview/sceneview/issues/1579)).
+- **iOS QA: `lib/ios-axe.sh`** — helper script wrapping AXe (accessibility-driven iOS Simulator automation) for label-based taps, JSON UI-tree dumps, and screenshots. Mirrors `lib/android-cli.sh`'s pattern; falls back gracefully to `xcrun simctl` when AXe is not installed. Implements slice 1 of the iOS device-QA parity plan. (#1673)
+- **`SceneMeshNode`** — new ARCore node wrapping `StreetscapeGeometry` meshes with unified
+  `MeshClassification` semantics ([#1760](https://github.com/sceneview/sceneview/issues/1760)).
+  Provides ARKit `ARMeshAnchor` parity on Android: every face in the mesh is labelled with a
+  `MeshClassification` (FLOOR, WALL, CEILING, TABLE, SEAT, WINDOW, DOOR, TERRAIN, BUILDING,
+  UNLABELED) and an `onClassifiedFace(faceIndex, classification)` callback lets callers build
+  per-face colour maps, physics layer masks, or audio zones. On ARCore the label is coarse (one
+  classification per geometry — TERRAIN or BUILDING); on ARKit it is per-face (fine-grained
+  indoor labels). The callback signature is identical on both platforms so the same consumer
+  code compiles unchanged.
+  `ARSceneScope.SceneMeshNode(streetscapeGeometry, …)` composable wired in `ARSceneScope`; demo
+  added as `ar-scene-mesh` in the Samples tab.
+- **iOS demo: append-only demo registry pattern.** Adding a new iOS demo now requires creating a single `*Scene.swift` file with six header directives (`@sceneId`, `@title`, `@subtitle`, `@icon`, `@category`, `@available`); no other file needs editing. `samples/ios-demo/scripts/collate-ios-demos.sh` discovers all scene files, sorts them by `@sceneId` for a stable diff, and emits `GeneratedScenes.swift` automatically before each Xcode build via a "Collate iOS demos" Run Script phase. `GeneratedScenes.swift` is `.gitignore`d — parallel PRs adding different demos can never conflict on it ([#1872](https://github.com/sceneview/sceneview/issues/1872)).
+- **iOS Augmented Faces demo** (`ar-face`): new `ARAugmentedFacesDemo` using `ARFaceTrackingConfiguration` + `AnchorEntity(.face)`; ring of coloured spheres orbiting the face pose tracked by TrueDepth camera (iPhone X+); simulator placeholder for non-device builds. Promotes `ar-face` from deep-link placeholder to a full iOS demo.
+- **iOS AR Depth Occlusion demo** (`ar-depth-occlusion`): new `ARDepthOcclusionDemo` using `SceneReconstructionNode.enableOcclusion()` for LiDAR-powered real-world depth masking; toggle to enable/disable occlusion at runtime; graceful fallback banner for non-LiDAR devices; simulator placeholder. Promotes `ar-depth-occlusion` from deep-link placeholder to a full iOS demo.
+- **iOS AR Image Tracking demo** (`ar-image`): new `ARImageTrackingDemo` using `AugmentedImageNode.createImageDatabase()` with a bundled QR code reference image; 3D cube overlaid on detected image; simulator placeholder shown on non-device builds. Promotes `ar-image` from deep-link placeholder to a full iOS demo.
+- **iOS AR Plane Node demo** (`ar-plane-node`): detects ARKit horizontal and vertical planes, places a translucent blue marker cube at each plane centre, and displays a live plane-count pill. Mirrors Android `ARPlaneNodeDemo`. (#910)
+- **iOS AR Point Cloud demo** (`ar-point-cloud`): renders ARKit live tracking feature points via `ARView.debugOptions.showFeaturePoints`, shows a live point-count pill, and offers a toggle to enable/disable the overlay. Mirrors Android `ARPointCloudDemo`. (#910)
+- **Fix pre-existing pbxproj bug**: `ARPeopleOcclusionDemo`, `ARBodyTrackerDemo`, `ARSceneMeshDemo`, and their scene-registry files were not registered in the Xcode project's Sources build phase — now fixed alongside the new demos. (#910)
+- **iOS — Collision & Hit Test demo**: port the `collision` demo from placeholder to a full implementation — five `GeometryNode` shapes (cubes and spheres) are tap-highlighted via `SceneView.onEntityTapped`; an on-screen "Reset Colors" button clears all highlights; Maestro `interaction.yaml` promoted from `placeholder.yaml` smoke to a real `demo.yaml` flow (#910).
+- **iOS demo: Debug Overlay** — RealityKit sphere stress test with live FPS stats, frame time, node/triangle counts, and a rolling FPS sparkline. Matches Android's `DebugOverlayDemo`: preset buttons (1/10/100/500/1 000 spheres), progressive spawn, and a 10-second stress ramp from 1 → 1 000 spheres. `sceneview://demo/debug-overlay` now routes to the real demo instead of the coming-soon placeholder. (#910)
+- **iOS — HDR Environment demo**: port the `environment` demo from placeholder to a full SwiftUI implementation — `SceneViewDemo` now shows a `.demoSettingsSheet` with a grid of environment presets (`.studio`, `.outdoor`, `.sunset`, `.night`, `.warm`, `.autumn`, `.nightSky`) switchable at runtime; Maestro `lighting.yaml` promoted from placeholder to `demo-settings.yaml` smoke (#910).
+- **iOS — Gesture Editing demo**: port the `gesture-editing` demo from placeholder to a full implementation — a `ModelNode` (ferrari_f40) is draggable, pinch-scalable, and two-finger-rotatable in Edit Mode; camera orbits freely in View Mode; settings sheet shows a mode toggle, Reset button, and live transform readout (#910).
+- **iOS demo — Occlusion Material**: new `OcclusionMaterialDemo` shows RealityKit's built-in
+  `OcclusionMaterial` in action — an invisible, depth-writing plane that cuts a sphere, with a
+  toggle to reveal the occluder as a semi-transparent slab. Reachable via
+  `sceneview://demo/occlusion-material`. Closes the last pure-3D gap in the iOS Advanced
+  category relative to the Android catalog (#910).
+- iOS AR People Occlusion demo (`ar-people-occlusion`): toggle ARKit `personSegmentationWithDepth` to hide virtual cubes behind real people walking in front; requires A12+ chip (#910).
+- iOS AR Body Tracker demo (`ar-body-tracker`): `ARBodyTrackingConfiguration` + RealityKit `BodyTrackedEntity` marks the detected skeleton root joint in real time; requires A12+ chip (#910).
+- iOS AR Scene Mesh demo (`ar-scene-mesh`): `ARWorldTrackingConfiguration.sceneReconstruction = .meshWithClassification` builds a live LiDAR mesh with a debug wireframe toggle; requires LiDAR device (#910).
+- **iOS — Reflection Probes demo**: port the `reflection-probes` demo from a placeholder to a full SwiftUI implementation using `ReflectionProbeNode`. Shows a metallic sphere and cubes with varying metallic values inside a box probe zone; an environment picker switches between four IBL presets (Sunset, Night Sky, Studio, Outdoor) with a live intensity slider.
+- **iOS — Shape Extrude demo**: port the `shape` demo from a placeholder to a full SwiftUI implementation using `ShapeNode`. Six preset shapes (Triangle, Star, Pentagon, Hexagon, L-Shape, Arrow) with adjustable extrusion depth slider (0–0.4 m) and a PBR/unlit material toggle.
+- iOS demo: add Texture Streaming demo (`sceneview://demo/texture-streaming`) — interactive PBR material preset switcher (Gold/Silver/Copper/Ceramic/Plastic/Rubber) on a sphere using `PhysicallyBasedMaterial`; teaches runtime material swap without geometry rebuild (#910).
+
+### Changed
+
+- Bump Filament from 1.71.0 to 1.71.4 (patch — no `.filamat` recompile needed; includes Metal async resource loading, bounds-check fixes in `filaflat`, and iOS arm64 simulator support in Xcode 16+) (#2156).
+- Refresh store listing assets: update app icon (Android + iOS) to the canonical 3D isometric cube branding, regenerate feature graphic (v4.15.1, "3D and AR for Android, iOS & Web"), and replace all App Store / Play Store screenshots with fresh captures.
+- Bump Compose BOM to `2026.05.01`.
+
+### Fixed
+
+- **ARFaceDemo: front-camera unavailability diagnostic.** Added a 5-second timeout after which, if no AR frame has been received, the status pill turns red and reads "Front camera unavailable on this device". This surfaces the silent black-screen regression on Pixel 9 (#1612) where `frontCameraConfig` may fall back to the BACK camera, leaving the selfie feed dead without any user-visible error.
+- **CI (quality-gate):** `feedback-worker` `npm test` is now run as part of the quality gate — a future regression in the worker is caught on every PR that touches `feedback-worker/`. (#2032)
+- **Feedback (Android demo):** lower the screen-recording size cap from 28 MB to 25 MB to give 5 MB of headroom for the AAC audio track + multipart envelope (vs the previous ~2 MB) before the worker's 30 MB 413 threshold. (#2032)
+- **Feedback (FeedbackContextTest):** fix stale KDoc mentioning the removed `route` key; add `isEmulator()` reachability test. (#2032)
+- **iOS (SceneViewSwift):** `SceneEntities.deinit` no longer traps if the instance is released off the main thread. Replaced `MainActor.assumeIsolated` with an explicit `Thread.isMainThread` guard + `DispatchQueue.main.sync` fallback so an off-main release degrades gracefully instead of crashing. (#2068)
+- **iOS demo (samples):** `ModelViewerDemo`, `PhysicsDemo`, and `SpatialAudioDemo` now set `.environment(.studio)` on their `SceneView` — matching the android-demo IBL fix (#2110) so metallic glTF models are consistently lit across the iOS demo catalog. (#2114)
+- **CI:** CI Gate no longer hard-fails on docs-only PRs. A 90-second grace period replaces the previous 50-minute timeout — if no other check runs register (because every workflow was path-filtered out), the gate exits green immediately. (#2117)
+- Fix Play Store CI deploys blocked by undeclared Foreground Service (FGS) permission (#2120).
+  The production fallback now preserves the staged edit in Play Console (instead of deleting it
+  on FGS failure), making the FGS declaration section visible under App content. A new
+  `commit_edit_id` fast-path in `workflow_dispatch` lets you commit the preserved edit in ~2 min
+  after declaring FGS — no 40-min rebuild needed.
+- **ARSceneView:** `detectConfigDowngrades` now captures the post-`sessionConfiguration`-callback depth mode, so a callback-driven depth-mode request that gets silently downgraded is correctly surfaced as `ARConfigDowngrade.DepthMode`. (#2122 / #2096 gap 1)
+- **MaterialsDemo:** fixed infinite "Loading…" scrim when the `materials` registry category is empty (null selected slug now exits to an `Empty` state instead of staying in `Loading` forever). (#2122)
+- **Feedback (Android demo):** detect emulator in `FeedbackContext` (`isEmulator` flag). The review screen now shows a warning hint when submitting from an emulator without a typed note, since emulator mics are silent and Whisper returns an empty transcript. (#2123)
+- **Feedback (worker):** the GitHub issue body now explains *why* there is no transcript when both transcript and typed text are empty: emulator submissions get a specific "no physical mic" message; other silent-audio cases get a generic explanation. A maintainer note is added to avoid confusion when an issue has no actionable content. (#2123)
+- `samples/android-demo/build.gradle`: honour `-PversionName` from Play Store workflow — versionName was hardcoded, causing Play Console to show the stale name from the build.gradle source instead of the release tag.
+- Fix `.well-known/assetlinks.json` and `apple-app-site-association` returning HTTP 404 on `sceneview.github.io` — `upload-artifact@v7` silently stripped dot-prefixed directories unless `include-hidden-files: true` is set, causing the deploy job's patch step to fail (#2155).
+- `docs.yml`: fix `/.well-known/` files returning HTTP 404 on `sceneview.github.io` — `peaceiris/actions-gh-pages`'s internal `shelljs cp` glob does not expand dot-prefixed subdirectories, so `assetlinks.json` and `apple-app-site-association` were silently dropped on every deploy; a post-deploy patch step now adds the missing directory via a direct SSH git commit (#2155).
+- **iOS registry: remove stale `ar-eis` / `ar-pose-placement` deep-link aliases** — the canonical Android IDs (`ar-image-stabilization`, `ar-pose`) were already present in `allowedIds`; the aliases were unreachable duplicates that silently dropped `sceneview://demo/ar-image-stabilization` QR-code taps. (#2173)
+- **iOS demo** — renamed placeholder scenes `ArEisScene` → `ArImageStabilizationScene` and `ArPosePlacementScene` → `ArPoseScene` so their `@sceneId` directives match the canonical Android IDs (`ar-image-stabilization`, `ar-pose`) used by QR codes and deep links; closes the gap left by #2174 which fixed `allowedIds` but not the scene catalogue.
+- Fix `device-qa.sh` crash on macOS (`timeout: command not found`): `lib/maestro.sh` now falls back to `gtimeout` (homebrew coreutils) or runs unbounded when neither GNU `timeout` variant is available (#2184).
+- **Feedback (Android demo):** stop crashing the app when the user triggers screen recording on a Play Store build that ships without `FOREGROUND_SERVICE_MEDIA_PROJECTION` (the #2120 catch-22). `FeedbackRecordingService.isRecordingAvailable()` now detects the missing typed-FGS permission on Android 14+; the flow short-circuits to text + audio before `startForegroundService` raises `ForegroundServiceDidNotStartInTimeException`. `start()` / `stop()` are also belt-and-suspenders try/caught. Robolectric regression suite locks the SDK-gated behaviour. (#2188)
+- **Sketchfab (Android demo Explore tab):** repair the silently-empty Discover/Gallery/Tutorials carousels. AWS CloudFront's WAF in front of `api.sketchfab.com` was returning HTTP 202 + an empty body + `x-amzn-waf-action: challenge` to any request carrying OkHttp's default `User-Agent: okhttp/<version>` (treated as bot traffic), so the JSON decoder threw `Expected start of the object '{', but had 'EOF' instead`, each feed swallowed the error, and the user saw a half-rendered Explore tab. Now sends an explicit app-identifying `SceneViewDemo/<version> (Android; +https://sceneview.github.io)` User-Agent and surfaces a typed `WafChallenge` error so the "Sketchfab unavailable" banner explains the state instead of three self-hiding carousels. (#2191)
+- **Sketchfab (Android demo):** stop the 5+ second ANR when opening the model preview sheet. The Filament `Engine` is now allocated inside the Rendering stage instead of at the sheet root, so the synchronous JNI cost no longer blocks the main thread on the user's tap that opens the sheet — Preview + Downloading stages don't need Filament at all. (#2193)
+- **Feedback chip (Android demo):** stop masking the bottom row of content across tabs. Introduces a shared `FEEDBACK_FAB_RESERVED_SPACE` constant (in the new `feedback/FeedbackChrome.kt`) applied as bottom `contentPadding` on the Samples grid, the About column, and the AR-View launcher column, so the floating chip floats over a gutter rather than over the last items. The chip is also hidden while the live `ARSceneView` is on screen (via a `DisposableEffect` toggling `FeedbackChrome.chipVisible`), so the AR-View bottom action bar (model picker + Reset + Share) is no longer half-masked on the left. (#2194)
+- **AR-View "Try an AR demo" tiles (Android demo):** stop rendering the same generic `Icons.Filled.ViewInAr` on every tile. `FeaturedArDemo` now carries a per-demo `ImageVector` (`AddLocationAlt`, `Face`, `Cloud`, `LocationCity`, `Layers`, `SelfImprovement`) so users can tell the 6 demos apart at a glance — matching the Samples-tab grid where each demo already had a unique icon. (#2195)
+- **iOS — Video Texture demo**: add `VideoTextureDemo.swift` and `Videos/sample.mp4` to the Xcode project (`project.pbxproj`) so the `video` demo that was already implemented (but orphaned) now compiles and runs. Fixes `GeometryNode.plane(width:height:)` call to use the correct `width:depth:` parameter.
+- **Fixed `BillboardNode` silently ignoring billboard rotation on macOS.** The `#available(iOS 18.0, visionOS 2.0, *)` guard in `BillboardNode.init(child:)` excluded macOS, so `BillboardComponent` was never applied and entities faced a fixed direction instead of the camera. Since `SceneViewSwift` requires macOS 15+ (which ships `BillboardComponent`), the guard is removed. Added a Platform Support table to `SceneViewSwift/README.md` documenting that `SceneView` (3D) is fully supported on macOS but `ARSceneView` is iOS-only ([#914](https://github.com/sceneview/sceneview/issues/914)).
+- **iOS demo (SketchfabService):** `downloadBinary` now surfaces real download progress instead of always emitting `1.0` at completion. Replaced `URLSession.download(from:)` (no intermediate callbacks) with a `URLSessionDownloadDelegate` that reports per-byte progress, so the model viewer's progress bar animates smoothly on slow connections. (#982)
+- **Fixed iOS AR screenshot capturing a black hole instead of 3D content.** `ARTab.shareARScreenshot` previously used `UIView.drawHierarchy`, which skips the Metal layer and produces a transparent / black hole where the 3D AR content lives. Now uses `ARView.snapshot(saveToHDR:completion:)` — RealityKit's Metal-aware capture path — which correctly captures both the camera background and 3D content. The simulator path shows a user-friendly "AR screenshots require a physical device" message instead of producing a broken image ([#983](https://github.com/sceneview/sceneview/issues/983)).
+- **`sceneview-web` README CDN/API mismatch fixed.** The README marketed a non-existent `sceneview.js` CDN file and a `SceneView.modelViewer(...)` global with methods (`setQuality`, `setBloom`, `addLight`, `createText/Image/Video`, …) the build never exposed — every `<script>` snippet 404'd and the API table was fiction. It now documents the real `sceneview-web.js` artifact path and the actual `window.sceneview` API surface (`createViewer`, `modelViewer`, and the `SceneViewer` instance methods), matching `sceneview-web.d.ts`.
+- **`sceneview-web` now ships its TypeScript declarations.** `package.json` gained a `"types": "sceneview-web.d.ts"` field and the hand-written `.d.ts` is now in `files[]`, so TS consumers get typings instead of `any`.
+- **`sceneview-mcp` `sceneview://known-issues` resource no longer crashes on malformed GitHub API items.** The issue type guard validated only `number`/`title`, then `formatIssues` unconditionally read `issue.user.login`, `issue.labels` and `issue.updated_at` — a partial API item (e.g. during a GitHub incident) threw a `TypeError` and took down the whole resource. Items are now normalized with safe defaults for `user`, `labels` and `updated_at`.
+
+### Tests
+
+- **iOS deep-link registry**: sync `DemoDeepLinkRegistry.allowedIds` to the full Android catalog (65 IDs covering all 60 Android demo IDs) — 23 new AR and 3D demo IDs added so QR codes for newer demos no longer silently 404 on iOS; corresponding placeholder flows added to Maestro `.maestro/ios/` for CI smoke coverage.
+- **Android Maestro**: expanded demo coverage from 43 to 58 demos — added 13 missing AR demos (`ar-depth-of-field`, `ar-fog`, `ar-depth-collider`, `ar-depth-visualization`, `ar-people-occlusion`, `ar-point-cloud`, `ar-raw-depth-point-cloud`, `ar-plane-node`, `ar-scene-mesh`, `ar-scene-semantics`, `ar-ml-object-label`, `placement-scene`, `ar-collaborative`, `ar-body-tracker`) and 2 Advanced demos (`occlusion-material`, `spatial-audio`) to the device-QA harness (#1913).
+
+### Docs
+
+- **iOS — Scene Reconstruction parity**: update `cheatsheet-ios.md` and `llms.txt` to mark
+  `SceneReconstructionNode` (renderable mesh) and `enablePhysics(in:)` (physics collider) as
+  **Available** — closes the documentation gap from #1860. The library wrapper ships since
+  the earlier `SceneReconstructionNode.swift` implementation.
+- **docs(ios)** — `samples-ios.md` refreshed with the full 59-demo iOS catalog
+  table (3D Basics, Lighting, Content, Interaction, Advanced, AR) and updated
+  minimal working examples including the new `CameraControlMode` native Apple
+  modes (`.none`, `.tilt`, `.dolly`, iOS 18+). Closes the documentation gap
+  left after the iOS parity sprint (umbrella [#910](https://github.com/sceneview/sceneview/issues/910)).
+
 ## v4.15.1 — Play Store R8 deploy fix + burn-down sweep: black-model IBL, Sketchfab repair, demo-hang & macOS-archive fixes (2026-05-22)
 
 ### Added

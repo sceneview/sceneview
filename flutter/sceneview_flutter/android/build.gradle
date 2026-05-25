@@ -1,5 +1,5 @@
 group 'io.github.sceneview.flutter'
-version '4.15.1'
+version '4.15.2'
 
 buildscript {
     ext.kotlin_version = '2.0.21'
