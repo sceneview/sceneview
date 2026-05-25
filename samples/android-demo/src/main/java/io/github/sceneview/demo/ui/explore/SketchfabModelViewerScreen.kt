@@ -76,10 +76,7 @@ import io.github.sceneview.demo.ui.explore.components.AsyncNetworkImage
 import io.github.sceneview.demo.ui.explore.components.formattedFaceCount
 import io.github.sceneview.demo.ui.explore.components.preferredThumbnailUrl
 import io.github.sceneview.demo.ui.explore.components.primaryTagDisplay
-import com.google.android.filament.Engine
 import io.github.sceneview.environment.Environment
-import io.github.sceneview.loaders.EnvironmentLoader
-import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
@@ -111,16 +108,6 @@ fun SketchfabModelViewerScreen(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var stage by remember(model.uid) { mutableStateOf<Stage>(Stage.Preview) }
-
-    // Hoist Engine + loaders ABOVE the SharedTransitionLayout so the Filament
-    // engine survives stage transitions. Previously every Crossfade swap
-    // (Preview → Downloading → Rendering) tore down and recreated the Engine
-    // inside RenderContent (200-400 ms freeze + black flash). With the engine
-    // remembered here it outlives the transition tween and only releases when
-    // the sheet closes.
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val environmentLoader = rememberEnvironmentLoader(engine)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -183,9 +170,6 @@ fun SketchfabModelViewerScreen(
                     is Stage.Rendering -> RenderContent(
                         file = s.file,
                         model = model,
-                        engine = engine,
-                        modelLoader = modelLoader,
-                        environmentLoader = environmentLoader,
                         heroModifier = heroModifier,
                     )
                     is Stage.Error -> ErrorContent(message = s.message, onRetry = { stage = Stage.Preview })
@@ -443,11 +427,31 @@ private fun DownloadingContent(
 private fun RenderContent(
     file: File,
     model: SketchfabModel,
-    engine: Engine,
-    modelLoader: ModelLoader,
-    environmentLoader: EnvironmentLoader,
     heroModifier: Modifier = Modifier,
 ) {
+    // Engine + loaders are allocated HERE (inside the Rendering stage) instead
+    // of at the top of [SketchfabModelViewerScreen] (issue #2193). Creating the
+    // Filament `Engine` is a synchronous JNI call on the main thread that
+    // takes 300 ms+ on the emulator and 5+ seconds on real devices (the user
+    // saw Choreographer "Skipped 349 frames!" and a 5.0 s ANR
+    // dialog). The original placement was at the sheet root for a sensible
+    // reason — to survive Preview → Downloading → Rendering transitions
+    // without re-creating the engine — but it paid for it with an ANR the
+    // *first* time the sheet opened, because the user's tap on a card forced
+    // Engine creation BEFORE the Preview stage could even render.
+    //
+    // Moving the allocation inside Rendering is safe because:
+    //   1. Preview shows a static thumbnail + stats + CTA — no Filament needed.
+    //   2. Downloading shows a Ken-Burns thumbnail + spinner — no Filament needed.
+    //   3. The Engine cost is now overlapped with the (already-async) glTF
+    //      parse via `rememberModelInstance` — the `instance` is null until the
+    //      model is loaded, so we already show the placeholder during that
+    //      window. Engine creation simply joins that wait instead of stalling
+    //      the tap that opens the sheet.
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
+
     // `rememberModelInstance` accepts asset paths or URIs; we pass a `file://`
     // URI so Filament reads from the local on-disk cache without re-decoding
     // through the asset pipeline.
