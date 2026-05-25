@@ -3,3 +3,12 @@
 
 <!-- category: Added -->
 - Biome v2 linter wired for `mcp/src/**/*.ts` + `mcp/scripts/**/*.js` + `website-static/js/sceneview.js` via a repo-root `biome.json`. Use `cd mcp && npm run biome` (advisory) or `npm run biome:fix` (auto-fix). Excludes generated `dist/`, `mcp/src/generated/`, `__fixtures__/`, vendored `qrcode-*.js`, and Kotlin/JS-emitted `sceneview-web.js`. Not wired to CI for now — baseline reveals 216 errors / 236 warnings to clean up first. Adoption inspired by the same Mac-cluster playbook (Biome replaces ESLint/Prettier at Yembo).
+
+<!-- category: Added -->
+- `@claude` mention bot — `.github/workflows/claude.yml` runs the official `anthropics/claude-code-action@v1` whenever a contributor drops `@claude` in an issue body/title, issue comment, PR review, or PR review comment. Auth via `CLAUDE_CODE_OAUTH_TOKEN` (Claude Max subscription, no per-call API spend). Concurrency keyed per issue/PR so duelling replies are impossible. Setup is one-time: `claude setup-token` + `gh secret set CLAUDE_CODE_OAUTH_TOKEN -b "<token>"`. Open-source contributors benefit too — they don't need an Anthropic account to ask Claude for help on a SceneView issue.
+
+<!-- category: Added -->
+- SceneView statusline (`/.claude/scripts/statusline.sh`, wired via `.claude/settings.json`) — shows branch, `~worktree-slug` marker (so parallel sessions never confuse which checkout they're editing), `VERSION_NAME` from `gradle.properties`, free RAM in GB (useful for the emulator pool — flags when free RAM drops below the 3 GB `EMU_MIN_FREE_RAM_MB` floor), and the active Claude model. No network calls; runs fast.
+
+<!-- category: Changed -->
+- CLAUDE.md trimmed 992 → 746 lines by deleting the nested "Previous state" session-state snapshots (lines 529-779 in the old file) — they were already mirrored chronologically in `.claude/handoff.md`. CLAUDE.md now keeps only the **current** state + a stub pointing to `handoff.md` for everything older. Every future session loads ~250 fewer lines of dead session log.

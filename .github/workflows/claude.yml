@@ -1,0 +1,58 @@
+name: Claude Code
+
+# @claude mention bot — drop "@claude" in an issue body, issue comment, PR review
+# comment, or PR review and the official anthropics/claude-code-action runs
+# Claude Opus against the repo to answer / propose a fix / open a PR.
+#
+# AUTH
+#   Uses CLAUDE_CODE_OAUTH_TOKEN tied to Thomas's Claude Max subscription —
+#   no per-call API spend. Generate with `claude setup-token` on a logged-in
+#   machine, then `gh secret set CLAUDE_CODE_OAUTH_TOKEN -b "<token>"`.
+#   The token is long-lived; rotate via the same flow if revoked.
+#
+# COST
+#   Every fired job consumes Claude Max quota. The job is gated by an explicit
+#   `@claude` mention so Dependabot / bot comments never trigger it.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+
+# Concurrency: one @claude run per issue/PR. A second mention while one is
+# in-flight cancels the earlier run (avoids dueling replies on a back-and-forth).
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  claude:
+    # Gate: the trigger event must actually contain "@claude". Each event type
+    # surfaces the text at a different path — explicit OR avoids silent misses.
+    if: |
+      (github.event_name == 'issue_comment'              && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review'        && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues'                     && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write           # for PR proposals / commits Claude opens
+      pull-requests: write      # for PR replies + creating PRs
+      issues: write             # for issue replies
+      id-token: write           # OIDC for the action
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so Claude can read git log / blame when context demands.
+          fetch-depth: 0
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
