@@ -128,9 +128,24 @@ dependencies {
     // arsceneview/docs/JETPACK-XR-INTEGRATION.md (#1738) — Slices 2 (#1902) / 3 (#1903).
     compileOnly libs.androidx.xr.arcore
 
+    // Nearby Connections — backs the optional `NearbyCollaborativeTransport`
+    // reference transport for collaborative AR (#2008). Declared `compileOnly`
+    // so the `io.github.sceneview.ar.collaborative` package can reference
+    // `com.google.android.gms.nearby.*` types at compile time WITHOUT bundling
+    // Play Services into the runtime classpath of apps that never touch
+    // collaborative AR. Apps that use `NearbyCollaborativeTransport` add
+    // `implementation(libs.play.services.nearby)` themselves. The rest of the
+    // collaborative stack stays transport-agnostic.
+    compileOnly libs.play.services.nearby
+
     // Unit tests (JVM — no device required)
     testImplementation 'junit:junit:4.13.2'
     testImplementation libs.robolectric
+    // `NearbyCollaborativeTransport` references `compileOnly` Nearby types, so the
+    // test classpath needs them on `testCompileOnly` for the file to compile under
+    // `testDebugUnitTest`. The unit tests themselves exercise only the SDK-free
+    // payload-framing + peer-roster logic and never instantiate the Nearby client.
+    testCompileOnly libs.play.services.nearby
     // Virtual-time coroutine testing (runTest / TestDispatcher) — lets
     // CollaborativeSessionTest drive the session's I/O scope deterministically
     // instead of racing Dispatchers.Default against a wall-clock timeout (#2091).

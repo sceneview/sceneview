@@ -2044,7 +2044,18 @@ fun MultiplayerARScreen() {
 - **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`placeNode` are non-blocking (conflated channel) so they are safe in the AR render callback. All merge work runs on a supervisor IO scope.
 - **Privacy** — the shared anchor is an ARCore Cloud Anchor; the same disclosure requirement as `CloudAnchorNode.host` applies (feature points uploaded to Google).
 
-**Cross-platform:** Android-only today. The `CollaborativeTransport` abstraction maps cleanly onto RealityKit's `MultipeerConnectivityService` on iOS — the interface shape is kept cross-platform-friendly. A production **Nearby Connections** transport (offline same-room, no backend) is tracked as a follow-up — see the `ar-collaborative` sample demo, which proves the full sync end-to-end on one device via the loopback transport.
+- **Production transport — `NearbyCollaborativeTransport`** (`io.github.sceneview.ar.collaborative`). A real peer-to-peer `CollaborativeTransport` backed by Google's Nearby Connections API — offline, same-room, no backend, no API keys. Uses the `P2P_CLUSTER` strategy (every device advertises *and* discovers, so N peers form one mesh) and frames messages as the same JSON-lines wire format. `LoopbackCollaborativeTransport` stays the unit-test / single-device transport; this is the cross-device one. Play Services Nearby is a `compileOnly` dependency of `arsceneview` (same pattern as `androidx.xr.arcore`) — an app that uses this class adds `implementation("com.google.android.gms:play-services-nearby:19.3.0")` itself, and must request the nearby-device runtime permissions (`NearbyCollaborativeTransport.REQUIRED_PERMISSIONS_API_31_PLUS` / `REQUIRED_PERMISSIONS_PRE_API_31`) before `start()`.
+
+```kotlin
+// After the nearby-device permissions are granted:
+val transport = NearbyCollaborativeTransport(context, serviceId = "my.ar.app")
+val session = CollaborativeSession(transport, displayName = "Alice")
+transport.start()   // begin advertising + discovering
+session.start()
+// teardown: session.stop(); transport.close()
+```
+
+**Cross-platform:** Android-only today. The `CollaborativeTransport` abstraction maps cleanly onto RealityKit's `MultipeerConnectivityService` on iOS — the interface shape is kept cross-platform-friendly. The `ar-collaborative` sample demo proves the full sync end-to-end on one device via the loopback transport.
 
 ### TrackableNode — generic trackable
 ```kotlin
