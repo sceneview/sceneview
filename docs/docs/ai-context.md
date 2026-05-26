@@ -9,8 +9,8 @@ Paste this at the start of your conversation:
 
 ```
 I'm building with SceneView — the Compose-native 3D & AR SDK for Android.
-- 3D only: io.github.sceneview:sceneview:4.15.4
-- 3D + AR: io.github.sceneview:arsceneview:4.15.4
+- 3D only: io.github.sceneview:sceneview:4.16.0
+- 3D + AR: io.github.sceneview:arsceneview:4.16.0
 - Use SceneView { } or ARSceneView { } composables
 - Nodes are composables inside the content block
 - Load models with rememberModelInstance(modelLoader, "models/file.glb")

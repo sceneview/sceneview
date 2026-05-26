@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+## v4.16.0 — 2026-05-26
+
+### Added
+
+- **Plane Renderer V2** — detected ARCore planes now render as a depth-driven PBR mesh
+  lit by ARCore's HDR estimate ([#2203](https://github.com/sceneview/sceneview/issues/2203)).
+  Floors, ceilings and walls each carry a distinct material identity, a brief scan-in
+  animation runs the first time a plane is detected, and the reflection ramps in over
+  ~1 s to mask the HDR estimate stabilisation. The legacy flat-polygon renderer remains
+  available via `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V1)` for one
+  release cycle and is now `@Deprecated`. Includes a new `ar-plane-renderer-v2` demo in
+  `samples/android-demo` with a live V1 ↔ V2 toggle so the difference reads instantly.
+- Plane Renderer V2 — type-aware shading per `Plane.Type`: a floor, a ceiling and a wall visible at once now read as three distinct surfaces. Floor (`HORIZONTAL_UPWARD_FACING`) renders cool-white with `roughness 0.35`; ceiling (`HORIZONTAL_DOWNWARD_FACING`) renders warm-white with `roughness 0.65`; wall (`VERTICAL`) renders neutral grey with `roughness 0.80`. Same single `Material`, one `MaterialInstance` per plane — no extra Filament objects. ARCore re-classifications mid-tracking re-apply the preset on the next frame; unknown future plane types fall back to the floor preset rather than crashing. Opt in via `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)`. PR #4 of #2203.
+
+### Changed
+
+- `setup-self-hosted-runner.sh` v3 — install path moved from `~/Library/Application Support/sceneview-runner/` to `~/sceneview-runner/`. v2 picked the macOS-convention location which contains a space, breaking the runner's step-script invocation (`/bin/bash -e <path>` splits on the space → `No such file or directory`). The pilot `bridge-ios-compile` PR [#2204](https://github.com/sceneview/sceneview/pull/2204) failed in 34 seconds on the `Select Xcode` step because of this exact issue (run id 26418464635). v3 keeps the LaunchAgent bootstrap design unchanged, only relocates the runner files. The installer auto-detects an existing v2 install at the legacy path, de-registers it from GitHub, and unloads its LaunchAgent before installing fresh — old files are left in place for manual `rm -rf`.
+
+- Until the v3 runner is reinstalled, set the repo variable `SELF_HOSTED_MACOS_ONLINE=false` (`gh variable set SELF_HOSTED_MACOS_ONLINE -R sceneview/sceneview --body "false"`) so every opted-in workflow falls back to `macos-15`. Re-running the v3 installer marks it `true` again automatically via the heartbeat.
+
+### Fixed
+
+- **[Android AR]** Fix `DepthMeshNode` never rendering its depth mesh — `lastRebuildTimestampMs` was
+  initialised to `Long.MIN_VALUE`, causing the throttle guard (`now - lastRebuildTimestampMs <
+  refreshIntervalMs`) to overflow to a large negative number on every frame and always return early.
+  Changed to `0L` so the first rebuild fires immediately as designed. (#2186)
+- **[Android 3D]** Fix `Node` transform floating-point drift when updating `position`, `quaternion`,
+  or `scale` at high frame rates (60–120 Hz) — e.g. `node.quaternion = newQ` in an `onFrame` loop
+  (#2187). The root cause was that each individual-property setter decomposed the Filament 4×4
+  matrix to read the other two components, feeding float imprecision back on every tick. After
+  ~10 000 frames the scale drifted visibly and the mesh warped. Fix: cache pristine TRS backing
+  fields (`_position`, `_quaternion`, `_scale`) updated once on every `transform` write; individual
+  getters and setters use the caches, eliminating the matrix-decomposition round-trip.
+- **`catmullRom()`**: Fix centripetal/chordal parameterisation — the `alpha != 0` path now uses the Barry-Goldman pyramidal recurrence over chord-length knots instead of the uniform matrix formula, so `alpha = 0.5` (centripetal) genuinely avoids cusps and self-intersections near sharp turns. The uniform path (`alpha = 0`) is unchanged.
+- **`ModelLoader.createInstance()`**: Annotate with `@MainThread` — Filament's `AssetLoader.createInstance()` is a JNI call that must run on the Filament main thread; the annotation surfaces a warning in the IDE and lint when called from a background coroutine.
+
 ## v4.15.4 — 2026-05-26
 
 ### Fixed
