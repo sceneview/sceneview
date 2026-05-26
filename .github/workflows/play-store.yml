@@ -705,12 +705,52 @@ jobs:
               # succeeded, meaning FGS was already declared. Submit for review normally.
               r = sess.post(f"{BASE}/edits/{edit_id}:commit")
               # Surface the response body BEFORE raise_for_status so a 4xx is
-              # actionable. The previous swallow-then-traceback flow lost the
-              # Play Console error message that explained the 403 on v4.15.3
-              # production commit (#2211).
+              # actionable. v4.15.3 production commit 403'd and the previous
+              # swallow-then-traceback flow lost the Play Console error
+              # message (#2211). v4.15.4 attempt: dumping `r.text[:600]`
+              # showed `[promote] commit HTTP 403: ***` — GitHub Actions
+              # redacted the body because it matched a substring of
+              # `PLAY_STORE_SERVICE_ACCOUNT_JSON` (likely `project_id` /
+              # `client_email`). Extract only the structured fields that
+              # cannot match a secret: status code, error.code, error.status,
+              # the list of error.details `@type` / `reason` pairs, and the
+              # first ~80 chars of error.message stripped of identifiers
+              # (project ids, emails, edit ids) so the redactor leaves them
+              # alone (#2211 follow-up).
               if r.status_code >= 400:
-                  print(f"[promote] commit HTTP {r.status_code}: {r.text[:600]}",
-                        file=sys.stderr)
+                  print(f"[promote] commit HTTP {r.status_code}", file=sys.stderr)
+                  try:
+                      err = r.json().get("error", {})
+                      print(f"[promote] error.code={err.get('code')} "
+                            f"status={err.get('status')}", file=sys.stderr)
+                      msg = str(err.get("message", ""))[:80]
+                      # Strip emails (anything@domain), project ids
+                      # (lowercase-with-dashes), and 16+ digit ids — these
+                      # are the substrings most likely to hit the secret
+                      # redactor and blank out the whole line.
+                      import re
+                      msg = re.sub(r"\S+@\S+", "<email>", msg)
+                      msg = re.sub(r"[a-z0-9-]{12,}", "<id>", msg)
+                      msg = re.sub(r"\d{12,}", "<num>", msg)
+                      print(f"[promote] error.message (sanitized): {msg}",
+                            file=sys.stderr)
+                      details = err.get("details", [])
+                      print(f"[promote] error.details count: {len(details)}",
+                            file=sys.stderr)
+                      for i, det in enumerate(details[:4]):
+                          atype = str(det.get("@type", ""))[-50:]
+                          reason = det.get("reason", "")
+                          fail = det.get("failingComponent", "")
+                          print(f"[promote] detail[{i}]: type=...{atype} "
+                                f"reason={reason} failing={fail}",
+                                file=sys.stderr)
+                      print(f"[promote] error.keys: {list(err.keys())}",
+                            file=sys.stderr)
+                  except Exception as parse_err:
+                      print(f"[promote] could not parse error body: {parse_err}",
+                            file=sys.stderr)
+                      print(f"[promote] raw text length: {len(r.text)}",
+                            file=sys.stderr)
               r.raise_for_status()
               print(f"[promote] commit OK — {SOURCE}@{CODE} → {TARGET}")
           except Exception:
