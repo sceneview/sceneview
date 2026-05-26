@@ -74,7 +74,7 @@ fun MyARScreen() {
 
 ## iOS (SceneViewSwift)
 ```swift
-// SPM: https://github.com/sceneview/sceneview-swift.git from: "4.15.2"
+// SPM: https://github.com/sceneview/sceneview-swift.git from: "4.15.3"
 import SceneViewSwift
 
 struct ContentView: View {
