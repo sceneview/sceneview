@@ -683,6 +683,19 @@ private struct SceneViewRepresentation: View {
             realityViewContent
                 .gesture(dragGesture)
                 .gesture(pinchGesture)
+        #elseif os(macOS)
+        case .none:
+            realityViewContent.realityViewCameraControls(.none)
+        case .tilt:
+            realityViewContent.realityViewCameraControls(.tilt)
+        case .dolly:
+            realityViewContent.realityViewCameraControls(.dolly)
+        case .gimbal:
+            // CameraControls.gimbal is iOS/iPadOS-only — RealityKit on macOS
+            // does not expose this mode. Fall back to the orbit gesture path.
+            realityViewContent
+                .gesture(dragGesture)
+                .gesture(pinchGesture)
         #else
         case .none:
             realityViewContent.realityViewCameraControls(.none)
