@@ -427,7 +427,13 @@ class FeedbackRecordingService : Service() {
          */
         fun start(context: Context, resultCode: Int, data: Intent): Boolean {
             if (!isRecordingAvailable(context)) {
-                FeedbackRecorder.setFailed("screen recording is unavailable on this build")
+                // Must use the FAILURE_RECORDING_UNAVAILABLE sentinel (not a
+                // free-form string) so FeedbackFlow's silent-reroute branch
+                // matches and the user lands on the text-only review screen
+                // instead of a dead "Retry" loop (#2188 review follow-up).
+                FeedbackRecorder.setFailed(
+                    FeedbackRecorder.FAILURE_RECORDING_UNAVAILABLE,
+                )
                 return false
             }
             return try {
@@ -440,7 +446,13 @@ class FeedbackRecordingService : Service() {
                 true
             } catch (e: Exception) {
                 Log.w("FeedbackRecording", "startForegroundService refused", e)
-                FeedbackRecorder.setFailed("could not start the recording service")
+                // Same sentinel — the system refused to start the typed FGS
+                // for an unrelated reason (app-standby-bucket, etc.), but the
+                // user's recovery path is the same: skip recording, route to
+                // text-only review.
+                FeedbackRecorder.setFailed(
+                    FeedbackRecorder.FAILURE_RECORDING_UNAVAILABLE,
+                )
                 false
             }
         }
