@@ -526,6 +526,15 @@ jobs:
           # rejects this parameter. Conditional on track to avoid the
           # "must not be set" error on internal uploads (#2120).
           changesNotSentForReview: ${{ matrix.track != 'internal' && 'true' || 'false' }}
+          # inAppUpdatePriority drives the urgency hint AppUpdateManager
+          # returns to in-app `getAppUpdateInfo()` consumers. The Play default
+          # is 0 ("Google's discretion" — can take days to surface), which
+          # silently broke our in-app UpdateBanner on v4.15.2 (#2209): users
+          # on v4.15.1 opened the app and never saw the upgrade prompt. 3 is
+          # the project default for patch releases ("high priority — surface
+          # within a day"); crash-fix releases can raise to 5 ("immediate")
+          # by editing the workflow once.
+          inAppUpdatePriority: 3
 
       - name: Promote internal release to ${{ matrix.track }}
         if: matrix.track != 'internal' && contains(needs.build.outputs.tracks, '"internal"')
@@ -620,7 +629,10 @@ jobs:
                   r = sess.put(
                       f"{BASE}/edits/{edit_id}/tracks/{TARGET}",
                       json={"releases": [{"name": NAME, "versionCodes": [str(vc)],
-                                          "status": "completed"}]},
+                                          "status": "completed",
+                                          # See r0adkll/upload-google-play step
+                                          # above for the priority rationale (#2209).
+                                          "inAppUpdatePriority": 3}]},
                   )
                   r.raise_for_status()
 
@@ -667,6 +679,13 @@ jobs:
                   "versionCodes": [str(CODE)],
                   "status": "completed",
                   "releaseNotes": hit.get("releaseNotes", []),
+                  # inAppUpdatePriority does NOT inherit from the source track
+                  # on promote — it defaults back to 0 ("Google's discretion")
+                  # unless explicitly carried over. Without this, AppUpdateManager
+                  # consumers on the v_prev release never see UPDATE_AVAILABLE
+                  # for v_new and the in-app UpdateBanner silently stays
+                  # dormant for days (#2209). 3 = "high — surface within a day".
+                  "inAppUpdatePriority": 3,
               }
               # The target track name is in the URL path; including it
               # in the body too is redundant but accepted by the API.
