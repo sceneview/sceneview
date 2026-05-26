@@ -41,9 +41,17 @@ object SketchfabConfig {
      * mobile app instead of an HTTP library, AND so Sketchfab support can
      * reach out if our traffic ever becomes a problem rather than silently
      * shadow-banning the demo. The format follows RFC 7231 — product token
-     * + version, with an optional comment describing the platform.
+     * + version, with an optional comment describing the platform. The
+     * version is read from [BuildConfig.VERSION_NAME] so a future bump
+     * cannot drift this constant out of sync.
+     *
+     * If a CloudFront WAF tightening reinstates the challenge for our app
+     * UA in the future, the typed `SketchfabError.WafChallenge` thrown in
+     * [SketchfabService.authenticatedGet] surfaces the "Sketchfab
+     * unavailable" banner — a honest "this is broken, here's why" beat
+     * spoofing a browser to evade a third party's bot mitigation.
      */
-    const val USER_AGENT: String = "Mozilla/5.0 (Linux; Android 14; Pixel 7a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    val USER_AGENT: String = "SceneViewDemo/${BuildConfig.VERSION_NAME} (Android; +https://sceneview.github.io)"
 
     private const val LOG_TAG = "SketchfabConfig"
 

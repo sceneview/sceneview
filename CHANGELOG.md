@@ -2,7 +2,25 @@
 
 ## Unreleased
 
-## v4.15.2 — 2026-05-25
+## v4.15.2 — iOS demo catalog parity sprint complete + Android crash burn-down (2026-05-26)
+
+A double-headline release. **iOS** closes umbrella [#910](https://github.com/sceneview/sceneview/issues/910):
+13 new SwiftUI demos (Augmented Faces, Depth Occlusion, Image Tracking, Plane Node, Point Cloud,
+Collision, Debug Overlay, HDR Environment, Gesture Editing, People Occlusion, Body Tracker, Scene
+Mesh, Reflection Probes, Shape Extrude, Texture Streaming, Video Texture) plus an append-only
+demo-registry pattern (#1872) so future iOS demos can land as a single `*Scene.swift` file with
+no `project.pbxproj` merge conflicts. **Android** ships a sweep of 5 user-visible regression
+fixes ([#2188](https://github.com/sceneview/sceneview/issues/2188),
+[#2191](https://github.com/sceneview/sceneview/issues/2191),
+[#2193](https://github.com/sceneview/sceneview/issues/2193),
+[#2194](https://github.com/sceneview/sceneview/issues/2194),
+[#2195](https://github.com/sceneview/sceneview/issues/2195)) — the in-app feedback crash on
+Play Store builds, an empty Sketchfab Explore tab (CloudFront WAF), a 5-second ANR on Sketchfab
+preview, and chip-overlap UI papercuts. New cross-platform `SceneMeshNode` ([#1760](https://github.com/sceneview/sceneview/issues/1760))
+brings ARKit `ARMeshAnchor` parity to Android via ARCore StreetscapeGeometry. iOS gains three
+native `CameraControlMode` cases ([#1049](https://github.com/sceneview/sceneview/issues/1049)
+Phase 2) that delegate to Apple's `realityViewCameraControls(_:)` modifier. Install on Android via
+Play Store internal track within minutes of tagging; iOS via TestFlight.
 
 ### Added
 
@@ -33,7 +51,6 @@
 - **iOS AR Image Tracking demo** (`ar-image`): new `ARImageTrackingDemo` using `AugmentedImageNode.createImageDatabase()` with a bundled QR code reference image; 3D cube overlaid on detected image; simulator placeholder shown on non-device builds. Promotes `ar-image` from deep-link placeholder to a full iOS demo.
 - **iOS AR Plane Node demo** (`ar-plane-node`): detects ARKit horizontal and vertical planes, places a translucent blue marker cube at each plane centre, and displays a live plane-count pill. Mirrors Android `ARPlaneNodeDemo`. (#910)
 - **iOS AR Point Cloud demo** (`ar-point-cloud`): renders ARKit live tracking feature points via `ARView.debugOptions.showFeaturePoints`, shows a live point-count pill, and offers a toggle to enable/disable the overlay. Mirrors Android `ARPointCloudDemo`. (#910)
-- **Fix pre-existing pbxproj bug**: `ARPeopleOcclusionDemo`, `ARBodyTrackerDemo`, `ARSceneMeshDemo`, and their scene-registry files were not registered in the Xcode project's Sources build phase — now fixed alongside the new demos. (#910)
 - **iOS — Collision & Hit Test demo**: port the `collision` demo from placeholder to a full implementation — five `GeometryNode` shapes (cubes and spheres) are tap-highlighted via `SceneView.onEntityTapped`; an on-screen "Reset Colors" button clears all highlights; Maestro `interaction.yaml` promoted from `placeholder.yaml` smoke to a real `demo.yaml` flow (#910).
 - **iOS demo: Debug Overlay** — RealityKit sphere stress test with live FPS stats, frame time, node/triangle counts, and a rolling FPS sparkline. Matches Android's `DebugOverlayDemo`: preset buttons (1/10/100/500/1 000 spheres), progressive spawn, and a 10-second stress ramp from 1 → 1 000 spheres. `sceneview://demo/debug-overlay` now routes to the real demo instead of the coming-soon placeholder. (#910)
 - **iOS — HDR Environment demo**: port the `environment` demo from placeholder to a full SwiftUI implementation — `SceneViewDemo` now shows a `.demoSettingsSheet` with a grid of environment presets (`.studio`, `.outdoor`, `.sunset`, `.night`, `.warm`, `.autumn`, `.nightSky`) switchable at runtime; Maestro `lighting.yaml` promoted from placeholder to `demo-settings.yaml` smoke (#910).
@@ -53,11 +70,13 @@
 ### Changed
 
 - Bump Filament from 1.71.0 to 1.71.4 (patch — no `.filamat` recompile needed; includes Metal async resource loading, bounds-check fixes in `filaflat`, and iOS arm64 simulator support in Xcode 16+) (#2156).
-- Refresh store listing assets: update app icon (Android + iOS) to the canonical 3D isometric cube branding, regenerate feature graphic (v4.15.1, "3D and AR for Android, iOS & Web"), and replace all App Store / Play Store screenshots with fresh captures.
-- Bump Compose BOM to `2026.05.01`.
+- Refresh store listing assets: update app icon (Android + iOS) to the canonical 3D isometric cube branding, regenerate feature graphic ("3D and AR for Android, iOS & Web"), and replace all App Store / Play Store screenshots with fresh captures (#2180).
+- Bump Compose BOM to `2026.05.01` (commit `6a2b4b4d1`).
 
 ### Fixed
 
+- **Xcode project registration for new AR demos.** `ARPeopleOcclusionDemo`, `ARBodyTrackerDemo`, `ARSceneMeshDemo`, and their scene-registry files were not registered in the Xcode project's Sources build phase — fixed alongside the new demos so the iOS targets actually compile them. (#910)
+- **CI (`app-store.yml` submit step):** switch from the legacy `appStoreVersionSubmissions` API to App Store Connect's `reviewSubmissions` API v3 (2023+). The old endpoint returned `403 "Allowed operation is: DELETE"` whenever a stale submission was attached to an absorbed draft (the #1687 / #1795 retargeting pattern); the read permission needed to find that stale submission was not in scope on our deploy service account. The new flow (`POST /v1/reviewSubmissions` + `POST /v1/reviewSubmissionItems` + `PATCH submitted: true`) is independent of any legacy submission state, so the 403 class is eliminated entirely. Closes the long-running #1831 saga end-to-end (#2141 closes #1831).
 - **ARFaceDemo: front-camera unavailability diagnostic.** Added a 5-second timeout after which, if no AR frame has been received, the status pill turns red and reads "Front camera unavailable on this device". This surfaces the silent black-screen regression on Pixel 9 (#1612) where `frontCameraConfig` may fall back to the BACK camera, leaving the selfie feed dead without any user-visible error.
 - **CI (quality-gate):** `feedback-worker` `npm test` is now run as part of the quality gate — a future regression in the worker is caught on every PR that touches `feedback-worker/`. (#2032)
 - **Feedback (Android demo):** lower the screen-recording size cap from 28 MB to 25 MB to give 5 MB of headroom for the AAC audio track + multipart envelope (vs the previous ~2 MB) before the worker's 30 MB 413 threshold. (#2032)
@@ -82,7 +101,7 @@
 - Fix `device-qa.sh` crash on macOS (`timeout: command not found`): `lib/maestro.sh` now falls back to `gtimeout` (homebrew coreutils) or runs unbounded when neither GNU `timeout` variant is available (#2184).
 - **Feedback (Android demo):** stop crashing the app when the user triggers screen recording on a Play Store build that ships without `FOREGROUND_SERVICE_MEDIA_PROJECTION` (the #2120 catch-22). `FeedbackRecordingService.isRecordingAvailable()` now detects the missing typed-FGS permission on Android 14+; the flow short-circuits to text + audio before `startForegroundService` raises `ForegroundServiceDidNotStartInTimeException`. `start()` / `stop()` are also belt-and-suspenders try/caught. Robolectric regression suite locks the SDK-gated behaviour. (#2188)
 - **Sketchfab (Android demo Explore tab):** repair the silently-empty Discover/Gallery/Tutorials carousels. AWS CloudFront's WAF in front of `api.sketchfab.com` was returning HTTP 202 + an empty body + `x-amzn-waf-action: challenge` to any request carrying OkHttp's default `User-Agent: okhttp/<version>` (treated as bot traffic), so the JSON decoder threw `Expected start of the object '{', but had 'EOF' instead`, each feed swallowed the error, and the user saw a half-rendered Explore tab. Now sends an explicit app-identifying `SceneViewDemo/<version> (Android; +https://sceneview.github.io)` User-Agent and surfaces a typed `WafChallenge` error so the "Sketchfab unavailable" banner explains the state instead of three self-hiding carousels. (#2191)
-- **Sketchfab (Android demo):** stop the 5+ second ANR when opening the model preview sheet. The Filament `Engine` is now allocated inside the Rendering stage instead of at the sheet root, so the synchronous JNI cost no longer blocks the main thread on the user's tap that opens the sheet — Preview + Downloading stages don't need Filament at all. (#2193)
+- **Sketchfab (Android demo):** stop the 5+ second ANR when opening the model preview sheet. The Filament `Engine` is now pre-warmed at the sheet root on the first transition out of `Preview` (gated by `stage !is Preview`), so the ~5 s synchronous JNI cost overlaps with the Ken-Burns + spinner UI of the `Downloading` stage instead of (a) blocking the user's card-tap on a stale Explore-tab background (the original ANR) or (b) freezing on a stopped-spinner moment between `Downloading` completion and `Rendering` (an earlier partial fix). The Engine slot survives the Downloading → Rendering transition, so the model appears the instant `rememberModelInstance` finishes parsing the GLB — no second freeze. (#2193)
 - **Feedback chip (Android demo):** stop masking the bottom row of content across tabs. Introduces a shared `FEEDBACK_FAB_RESERVED_SPACE` constant (in the new `feedback/FeedbackChrome.kt`) applied as bottom `contentPadding` on the Samples grid, the About column, and the AR-View launcher column, so the floating chip floats over a gutter rather than over the last items. The chip is also hidden while the live `ARSceneView` is on screen (via a `DisposableEffect` toggling `FeedbackChrome.chipVisible`), so the AR-View bottom action bar (model picker + Reset + Share) is no longer half-masked on the left. (#2194)
 - **AR-View "Try an AR demo" tiles (Android demo):** stop rendering the same generic `Icons.Filled.ViewInAr` on every tile. `FeaturedArDemo` now carries a per-demo `ImageVector` (`AddLocationAlt`, `Face`, `Cloud`, `LocationCity`, `Layers`, `SelfImprovement`) so users can tell the 6 demos apart at a glance — matching the Samples-tab grid where each demo already had a unique icon. (#2195)
 - **iOS — Video Texture demo**: add `VideoTextureDemo.swift` and `Videos/sample.mp4` to the Xcode project (`project.pbxproj`) so the `video` demo that was already implemented (but orphaned) now compiles and runs. Fixes `GeometryNode.plane(width:height:)` call to use the correct `width:depth:` parameter.

@@ -1,6 +1,6 @@
 name: sceneview_flutter_demo
 description: Feature showcase for the SceneView Flutter bridge — 3D and AR.
-version: 4.15.1
+version: 4.15.2
 publish_to: 'none'
 
 environment:

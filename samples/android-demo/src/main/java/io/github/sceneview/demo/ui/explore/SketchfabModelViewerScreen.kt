@@ -76,7 +76,10 @@ import io.github.sceneview.demo.ui.explore.components.AsyncNetworkImage
 import io.github.sceneview.demo.ui.explore.components.formattedFaceCount
 import io.github.sceneview.demo.ui.explore.components.preferredThumbnailUrl
 import io.github.sceneview.demo.ui.explore.components.primaryTagDisplay
+import com.google.android.filament.Engine
 import io.github.sceneview.environment.Environment
+import io.github.sceneview.loaders.EnvironmentLoader
+import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
@@ -108,6 +111,30 @@ fun SketchfabModelViewerScreen(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var stage by remember(model.uid) { mutableStateOf<Stage>(Stage.Preview) }
+
+    // Pre-warm the Filament Engine on the first transition out of Preview.
+    //
+    // Engine creation is a synchronous JNI call on the main thread; on a real
+    // device it freezes the UI for ~5 s (Choreographer "Skipped 349 frames!"
+    // on Thomas's Pixel for #2193). Previous fix attempts:
+    //   - Engine at sheet root → 5 s freeze the instant the user taps the
+    //     model card. Frozen Explore tab + ANR dialog. #2193 BLOCKER.
+    //   - Engine inside `RenderContent` → freeze shifts to the moment the
+    //     download completes. Frozen Ken-Burns + stopped spinner = the user
+    //     sees a "loaded but stuck" UI before the model appears.
+    //
+    // Anchoring the `rememberEngine` slot here, gated on `stage !is Preview`,
+    // moves the freeze to the Preview → Downloading transition. The user
+    // taps "Open in SceneView", sees the spinner / Ken-Burns appear, and the
+    // freeze happens while a "loading" affordance is already on screen.
+    // Compose Engine slot survives the subsequent Downloading → Rendering
+    // transition (parent composition is stable), so the model renders the
+    // instant `rememberModelInstance` finishes parsing the GLB — no second
+    // freeze. (#2193 follow-up review.)
+    val engineNeeded = stage !is Stage.Preview
+    val engine: Engine? = if (engineNeeded) rememberEngine() else null
+    val modelLoader: ModelLoader? = engine?.let { rememberModelLoader(it) }
+    val environmentLoader: EnvironmentLoader? = engine?.let { rememberEnvironmentLoader(it) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -170,6 +197,11 @@ fun SketchfabModelViewerScreen(
                     is Stage.Rendering -> RenderContent(
                         file = s.file,
                         model = model,
+                        // Engine + loaders are guaranteed non-null whenever
+                        // `stage` is past Preview (see `engineNeeded` above).
+                        engine = engine!!,
+                        modelLoader = modelLoader!!,
+                        environmentLoader = environmentLoader!!,
                         heroModifier = heroModifier,
                     )
                     is Stage.Error -> ErrorContent(message = s.message, onRetry = { stage = Stage.Preview })
@@ -427,30 +459,17 @@ private fun DownloadingContent(
 private fun RenderContent(
     file: File,
     model: SketchfabModel,
+    engine: Engine,
+    modelLoader: ModelLoader,
+    environmentLoader: EnvironmentLoader,
     heroModifier: Modifier = Modifier,
 ) {
-    // Engine + loaders are allocated HERE (inside the Rendering stage) instead
-    // of at the top of [SketchfabModelViewerScreen] (issue #2193). Creating the
-    // Filament `Engine` is a synchronous JNI call on the main thread that
-    // takes 300 ms+ on the emulator and 5+ seconds on real devices (the user
-    // saw Choreographer "Skipped 349 frames!" and a 5.0 s ANR
-    // dialog). The original placement was at the sheet root for a sensible
-    // reason — to survive Preview → Downloading → Rendering transitions
-    // without re-creating the engine — but it paid for it with an ANR the
-    // *first* time the sheet opened, because the user's tap on a card forced
-    // Engine creation BEFORE the Preview stage could even render.
-    //
-    // Moving the allocation inside Rendering is safe because:
-    //   1. Preview shows a static thumbnail + stats + CTA — no Filament needed.
-    //   2. Downloading shows a Ken-Burns thumbnail + spinner — no Filament needed.
-    //   3. The Engine cost is now overlapped with the (already-async) glTF
-    //      parse via `rememberModelInstance` — the `instance` is null until the
-    //      model is loaded, so we already show the placeholder during that
-    //      window. Engine creation simply joins that wait instead of stalling
-    //      the tap that opens the sheet.
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val environmentLoader = rememberEnvironmentLoader(engine)
+    // Engine + loaders are now hoisted to the sheet root and pre-warmed on
+    // Preview → Downloading transition (see KDoc on `engineNeeded` in
+    // [SketchfabModelViewerScreen]). By the time RenderContent enters the
+    // composition, Filament is already initialised; this composable just
+    // wires the (already-async) glTF parse into the live SceneView surface.
+    // #2193 root-cause + follow-up review.
 
     // `rememberModelInstance` accepts asset paths or URIs; we pass a `file://`
     // URI so Filament reads from the local on-disk cache without re-decoding

@@ -2,12 +2,22 @@ import SwiftUI
 
 /// About page showing SDK info, links, and the SceneView logo.
 struct AboutView: View {
+    /// Marketing version read at runtime from the bundle's Info.plist
+    /// (`CFBundleShortVersionString`). Pre-#review-2026-05-26 this was a
+    /// hard-coded literal that drifted every release; tying the user-visible
+    /// "Version" line to the same `MARKETING_VERSION` Xcode bumps keeps the
+    /// two surfaces in lockstep with zero release-day discipline.
+    private var marketingVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+            ?? "unknown"
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 // SDK info
                 Section {
-                    LabeledContent("Version", value: "4.15.1")
+                    LabeledContent("Version", value: marketingVersion)
                     LabeledContent("Platform", value: "iOS 17+ / visionOS 1+")
                     LabeledContent("Engine", value: "RealityKit + ARKit")
                     LabeledContent("License", value: "Apache 2.0")

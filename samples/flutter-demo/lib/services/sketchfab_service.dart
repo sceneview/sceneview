@@ -62,6 +62,22 @@ class SketchfabModel {
 class SketchfabService {
   static const _baseUrl = 'https://api.sketchfab.com/v3';
 
+  /// `User-Agent` header sent on every Sketchfab request.
+  ///
+  /// AWS CloudFront's WAF fronting `api.sketchfab.com` returns HTTP 202 +
+  /// empty body + `x-amzn-waf-action: challenge` to any request carrying
+  /// Dart's default `User-Agent: Dart/<version> (dart:io)` — a known
+  /// scraper signature. The empty body crashes `jsonDecode` with
+  /// `FormatException: Unexpected end of input`, leaving Flutter demo's
+  /// Sketchfab browse silently empty. Mirrors the Android #2191 fix.
+  static const _userAgent =
+      'SceneViewDemo/4.15.2 (Flutter; Android/iOS; +https://sceneview.github.io)';
+
+  static const _defaultHeaders = <String, String>{
+    'User-Agent': _userAgent,
+    'Accept': 'application/json',
+  };
+
   final http.Client _client;
 
   SketchfabService({http.Client? client}) : _client = client ?? http.Client();
@@ -86,7 +102,7 @@ class SketchfabService {
     }
 
     final uri = Uri.parse('$_baseUrl/search').replace(queryParameters: params);
-    final response = await _client.get(uri);
+    final response = await _client.get(uri, headers: _defaultHeaders);
 
     if (response.statusCode != 200) {
       throw SketchfabException(
