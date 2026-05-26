@@ -1,15 +1,22 @@
-// plane_renderer_v2.mat — V2 plane renderer (#2203). Identical to V1 today; will gain PBR/HDR/scan-effect in PR #3.
+// plane_renderer_v2.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
 //
-// Purpose:    Unlit transparent material that draws detected ARCore planes as a modern,
-//             procedural soft grid (issue #1616). The old dense white dot-grid PNG read
-//             as low-fidelity next to apps like Reality Composer / Polycam; this shader
-//             draws thin anti-aliased grid lines with a feathered edge fade instead.
-// Used by:    PlaneRendererV2 (planeMaterial) — ARSceneView plane visualization, V2 path.
+// Purpose:    PR #2 of #2203 — depth-driven mesh with a slope-aware procedural grid.
+//             The vertex stream is a tessellated, polygon-clipped sample of the ARCore
+//             depth image displaced along the plane normal; this shader renders that
+//             mesh as thin anti-aliased grid lines with cell-glow fill, darkened on
+//             slopes so the displacement reads visibly. Unlit at PR #2 fidelity —
+//             PBR + HDR cubemap reflections + scan-in arrive in PR #3.
+//
+// Used by:    PlaneVisualizerV2 — depth-driven OR flat-fallback path. The flat fallback
+//             feeds the same shader with vertices at y=0; the slope read then resolves
+//             to 0 and the grid renders at full brightness, matching V1's look.
+//
 // Parameters:
-//   texture    — sampler2d, kept for binary/API compatibility with PlaneRenderer; the
-//                shader is now procedural and does NOT sample it.
+//   texture    — sampler2d, kept for binary/API compatibility with PlaneRendererV2; the
+//                shader is procedural and does NOT sample it.
 //   color      — float3, RGB tint of the grid lines.
 //   uvScale    — float2, tiling factor mapping local plane X/Z to grid-cell coordinates.
+//
 // matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
 material {
     name : "AR Core Plane Material V2",
@@ -29,7 +36,8 @@ material {
         }
     ],
     "variables" : [
-        "texCoordsAlpha"
+        "texCoords",
+        "modelPos"
     ],
     "requires" : [
         "position"
@@ -40,32 +48,33 @@ material {
 
 vertex {
     void materialVertex(inout MaterialVertexInputs material) {
+        // The vertex POSITION is now in plane-local (a.k.a. model) space — X-Z is the
+        // plane surface, +Y is the displacement along the plane normal set by the depth
+        // pipeline. We do NOT zero out Y the way V1 did; that data is the whole point
+        // of PR #2.
         float3 pos = getPosition().xyz;
-
-        // The Y position of the vertex represents the Alpha of the plane at this Vertex.
-        material.texCoordsAlpha.z = pos.y;
-
-        // Zero out the Y vertex and compute the world position.
-        pos.y = 0.0;
         material.worldPosition = mulMat4x4Float3(getWorldFromModelMatrix(), pos);
 
-        // Compute the texture coordinates.
-        // The X axis of the texture corresponds to the local X axis of the plane.
-        // The Y axis of the texture corresponds to the local Z axis of the plane.
-        // Scale the texture coordinates by the scale parameter passed into the material.
-        material.texCoordsAlpha.x = pos.x * materialParams.uvScale.x;
-        material.texCoordsAlpha.y = pos.z * materialParams.uvScale.y;
+        // Pass the plane-local position to the fragment stage so the slope read can
+        // operate in plane space (where +Y is the actual plane normal). Doing the
+        // derivative in plane space rather than world space sidesteps any model-matrix
+        // skew and the result is the magnitude of the local Y tilt directly. (Material
+        // variables are float4 — store xyz, leave w = 0.)
+        material.modelPos = vec4(pos, 0.0);
+
+        // Grid UVs are still derived from the plane-local X-Z so the grid stays glued
+        // to the surface regardless of how much it has been pushed up or down.
+        material.texCoords.x = pos.x * materialParams.uvScale.x;
+        material.texCoords.y = pos.z * materialParams.uvScale.y;
     }
 }
 
 fragment {
-    // Anti-aliased distance-to-nearest-grid-line, in grid-cell units.
-    // Uses screen-space derivatives so the line stays ~1px wide at any
-    // distance/angle — no shimmer, unlike the fixed-size dot PNG.
+    // Anti-aliased distance-to-nearest-grid-line, in grid-cell units. Same screen-space
+    // derivative trick as V1: the line stays ~1px wide at any distance/angle.
     float gridLine(float2 uv) {
         float2 grid = abs(fract(uv - 0.5) - 0.5);
         float2 fw = fwidth(uv);
-        // Half-width of the line in cell units (~1.1 device px once divided by fwidth).
         float2 d = grid / max(fw, vec2(1e-5));
         float line = 1.0 - min(min(d.x, d.y) * 0.65, 1.0);
         return clamp(line, 0.0, 1.0);
@@ -74,25 +83,30 @@ fragment {
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
 
-        // Procedural soft grid — replaces the dated dense dot-grid PNG (#1616).
-        float2 uv = variable_texCoordsAlpha.xy;
+        float2 uv = variable_texCoords.xy;
 
-        // Thin anti-aliased grid lines.
+        // Procedural soft grid — thin anti-aliased lines + cell fill so the plane reads
+        // as a surface rather than a wireframe (the "feathered overlay" look from V1).
         float line = gridLine(uv);
-
-        // Soft cell glow: a faint fill inside each cell so the plane reads as a
-        // surface, not just wireframe — gives the modern "feathered overlay" look.
         float2 cell = abs(fract(uv) - 0.5) * 2.0;
         float fill = (1.0 - max(cell.x, cell.y)) * 0.10;
 
-        // Per-vertex edge feather: PlaneVisualizer writes the boundary->interior
-        // ramp into texCoordsAlpha.z (0 at the plane edge, 1 in the interior).
-        // Smooth it so detected planes fade out softly instead of a hard cut.
-        float edge = smoothstep(0.0, 0.6, variable_texCoordsAlpha.z);
+        // Slope-aware shading. Unlit shaders cannot call `getWorldGeometricNormal()`, so
+        // we derive the geometric normal directly from screen-space derivatives of the
+        // plane-local position. In plane-local space the unrotated up axis is (0,1,0),
+        // so `normal.y` is the cosine of the surface tilt — `1 - |normal.y|` is how
+        // much it leans away from horizontal. Darken by up to 40% on the steepest
+        // slopes so micro-relief reads at PR #2 fidelity (unlit). PR #3 swaps this for
+        // a real lit shader with IBL.
+        float3 dPosDx = dFdx(variable_modelPos.xyz);
+        float3 dPosDy = dFdy(variable_modelPos.xyz);
+        float3 localGeoN = normalize(cross(dPosDx, dPosDy));
+        float slope = 1.0 - abs(localGeoN.y);
+        float slopeShade = 1.0 - slope * 0.4;
 
-        float alpha = clamp(line * 0.85 + fill, 0.0, 1.0) * edge;
+        float alpha = clamp(line * 0.85 + fill, 0.0, 1.0);
 
-        material.baseColor.rgb = materialParams.color;
+        material.baseColor.rgb = materialParams.color * slopeShade;
         material.baseColor.a = alpha;
     }
 }

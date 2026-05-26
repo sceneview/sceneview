@@ -23,28 +23,33 @@ import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.texture.ImageTexture
 
 /**
- * Control rendering of ARCore planes — V2 implementation (skeleton).
+ * Control rendering of ARCore planes — V2 implementation.
  *
- * **PR #1 status:** byte-equivalent to [PlaneRenderer] (V1). Same constructor, same
- * public surface (via [PlaneRendererBase]), same flat-polygon + procedural soft grid look.
- * The only on-disk difference is that V2 loads `plane_renderer_v2.mat` (a verbatim copy of
- * V1's material today) so subsequent PRs in the umbrella sprint can mutate the V2 material
- * without touching the V1 path.
+ * **PR #2 status** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): the
+ * detected plane is no longer a flat polygon. When ARCore depth is available, V2 tessellates
+ * the polygon-visible region of the depth image and displaces each vertex along the plane
+ * normal by `(measuredDepth - expectedPlaneDepth)`. The floor visibly conforms to a rug,
+ * the lip of a step, a slight slope. Polygon-clip + max-displacement clamp keep the mesh
+ * tied to the detected surface — a cabinet 80 cm above the floor does not stretch the floor
+ * mesh up to it. Rebuilds rate-limited to 5 Hz.
+ *
+ * Without depth — device unsupported, first frames after resume, raw frame not yet ready —
+ * V2 falls back transparently to the V1 flat-polygon mesh. Never crashes, never blanks.
  *
  * **Coming in follow-up PRs** of [#2203](https://github.com/sceneview/sceneview/issues/2203):
  *
  * | PR  | Effect                                                                       |
  * |-----|------------------------------------------------------------------------------|
- * | #2  | Depth-driven tessellation + displacement (`PlaneVisualizerV2`).              |
+ * | #2  | Depth-driven tessellation + polygon clip + slope-aware unlit grid. **DONE.** |
  * | #3  | PBR + HDR reflections sampled from ARCore's environmental cubemap + scan-in. |
  * | #4  | Type-aware shading: floor / ceiling / wall get distinct material identities. |
  * | #5  | V2 becomes the default. V1 gets `@Deprecated` for one release cycle.         |
  *
- * Opt in today via `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)` —
- * useful to preview the V2 visuals as they land, but otherwise indistinguishable from V1.
+ * Opt in today via `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)`.
  *
  * @see PlaneRendererBase
  * @see PlaneRenderer
+ * @see io.github.sceneview.ar.PlaneVisualizerV2
  */
 class PlaneRendererV2(
     val engine: Engine,
@@ -164,8 +169,9 @@ class PlaneRendererV2(
 
                 try {
                     val updatedPlanes = frame.getUpdatedPlanes()
+                    val camera = frame.camera
                     if (planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_ALL) {
-                        updatedPlanes.forEach { renderPlane(it) }
+                        updatedPlanes.forEach { renderPlane(it, frame = frame, camera = camera) }
                     } else if (planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_CENTER) {
                         // Do a hitTest on the current frame. The result is used to render only
                         // the top most plane Trackable visible at the centre of the screen.
@@ -176,7 +182,9 @@ class PlaneRendererV2(
                                     planeTypes = setOf(Plane.Type.HORIZONTAL_UPWARD_FACING)
                                 )?.trackable as? Plane
                         } else null
-                        updatedPlanes.forEach { renderPlane(it, visible = it == centerPlane) }
+                        updatedPlanes.forEach {
+                            renderPlane(it, frame = frame, camera = camera, visible = it == centerPlane)
+                        }
                         visualizers.forEach { (plane, visualizer) ->
                             if (plane !in updatedPlanes) {
                                 visualizer.setVisible(isVisible && plane == centerPlane)
@@ -203,14 +211,15 @@ class PlaneRendererV2(
     }
 
     /**
-     * This function is responsible to update the rendering
-     * of a [PlaneVisualizerV2]. If for the given [Plane]
-     * no [PlaneVisualizerV2] exists, create a new one and add
-     * it to the [visualizers].
-     *
-     * @param plane [Plane]
+     * Refreshes (or lazily creates) the [PlaneVisualizerV2] for [plane] and forwards the
+     * current [frame] + [camera] so the depth path has everything it needs.
      */
-    private fun renderPlane(plane: Plane, visible: Boolean = true) {
+    private fun renderPlane(
+        plane: Plane,
+        frame: Frame?,
+        camera: com.google.ar.core.Camera?,
+        visible: Boolean = true,
+    ) {
         // Find the plane visualizer if it already exists.
         // If not, create a new plane visualizer for this plane.
         if (plane.trackingState == TrackingState.TRACKING || plane.subsumedBy == null) {
@@ -228,7 +237,10 @@ class PlaneRendererV2(
                 }.also {
                     visualizers[plane] = it
                 }
-            // Update the plane visualizer.
+            // Hand the depth + camera context to the visualizer BEFORE updatePlane runs,
+            // so the depth-driven rebuild can pull from this frame's depth image. Either
+            // argument may be null — the visualizer falls back to the flat polygon then.
+            planeVisualizer.setFrame(frame, camera)
             planeVisualizer.updatePlane()
         }
     }

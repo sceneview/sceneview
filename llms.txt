@@ -275,7 +275,7 @@ ARSceneView(
 ) { /* ... */ }
 ```
 
-V2 is **byte-equivalent to V1 today** (skeleton only) — same flat polygon, same procedural grid, same shadow receiver. The V2 path exists so the [#2203](https://github.com/sceneview/sceneview/issues/2203) sprint can land its real upgrades (depth-driven mesh + PBR + HDR-cubemap reflections + type-aware floor / ceiling / wall shading + animated scan-in on first detection) without touching the V1 code path. V2 becomes the default once the sprint's PR #5 ships; V1 stays in place for one release cycle behind `@Deprecated` so apps that override `plane_renderer.mat` have time to port their custom styling.
+V2 today (PR #2 of [#2203](https://github.com/sceneview/sceneview/issues/2203)) ships **depth-driven mesh** + slope-aware procedural grid. When ARCore depth is available, the visible portion of the plane polygon is tessellated by sampling the depth image; each vertex is displaced along the plane normal by `(measuredDepth - expectedPlaneDepth)`. A detected floor visibly conforms to a rug, the lip of a step, a slight slope. Polygon-clip + ±30 cm displacement clamp keep the mesh tied to the detected surface — a cabinet far above the floor doesn't stretch the floor mesh up to it. Rebuilds rate-limited to ~5 Hz so the per-frame budget stays under 16 ms. **Without depth** (device unsupported, first frames after `Frame.acquireDepthImage16Bits`, raw frame not ready) V2 falls back transparently to the V1 flat polygon — never crashes, never blanks. Still unlit at PR #2 fidelity; PBR + HDR-cubemap reflections + scan-in arrive in PR #3, type-aware floor / ceiling / wall shading in PR #4, V2-as-default + V1 `@Deprecated` in PR #5.
 
 ### ARFogNode — environment-aware AR fog (v4.10.0+, #1717)
 
