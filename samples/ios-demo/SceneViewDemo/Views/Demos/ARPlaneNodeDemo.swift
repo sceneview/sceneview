@@ -94,7 +94,12 @@ struct ARPlaneNodeDemo: View {
         }
     }
 
-    private enum AssocKey { static var delegate = 0 }
+    // `objc_setAssociatedObject` needs the address of a global var as its
+    // key. Swift 6's strict-concurrency mode flags any `static var` as
+    // "non-isolated global shared mutable state" — even though we never
+    // mutate this byte, only take its address. `nonisolated(unsafe)` is the
+    // canonical opt-out for this exact "used as objc key" idiom.
+    private enum AssocKey { nonisolated(unsafe) static var delegate: UInt8 = 0 }
 
     private func makeMarker(for plane: ARPlaneAnchor, in arView: ARView) -> AnchorEntity {
         let anchor = AnchorEntity(world: plane.transform)
