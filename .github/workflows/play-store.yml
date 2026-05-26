@@ -521,11 +521,14 @@ jobs:
           # The promote step downstream re-reads `releaseNotes` from the source
           # track, so populating internal once propagates to production.
           whatsNewDirectory: ${{ steps.notes.outputs.extracted == 'true' && 'whatsnew' || '' }}
-          # changesNotSentForReview is only valid for tracks with deferred
-          # review (production/alpha/beta). Internal uses auto-review and
-          # rejects this parameter. Conditional on track to avoid the
-          # "must not be set" error on internal uploads (#2120).
-          changesNotSentForReview: ${{ matrix.track != 'internal' && 'true' || 'false' }}
+          # changesNotSentForReview is rejected by Play Console with:
+          #   "Changes are sent for review automatically.
+          #    The query parameter changesNotSentForReview must not be set."
+          # for both internal (always auto-reviewed) AND, since 2026-05-26,
+          # production direct uploads (v4.15.3 re-dispatch hit this — #2211).
+          # The safe default is omit / false everywhere: every track now
+          # auto-submits for review, which is the desired behaviour.
+          changesNotSentForReview: false
           # inAppUpdatePriority drives the urgency hint AppUpdateManager
           # returns to in-app `getAppUpdateInfo()` consumers. The Play default
           # is 0 ("Google's discretion" — can take days to surface), which
@@ -701,6 +704,13 @@ jobs:
               # No changesNotSentForReview: the promote path only runs when internal
               # succeeded, meaning FGS was already declared. Submit for review normally.
               r = sess.post(f"{BASE}/edits/{edit_id}:commit")
+              # Surface the response body BEFORE raise_for_status so a 4xx is
+              # actionable. The previous swallow-then-traceback flow lost the
+              # Play Console error message that explained the 403 on v4.15.3
+              # production commit (#2211).
+              if r.status_code >= 400:
+                  print(f"[promote] commit HTTP {r.status_code}: {r.text[:600]}",
+                        file=sys.stderr)
               r.raise_for_status()
               print(f"[promote] commit OK — {SOURCE}@{CODE} → {TARGET}")
           except Exception:
