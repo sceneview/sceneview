@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v4.15.4 — 2026-05-26
+
+### Fixed
+
+- **Play Store deploy:** set `inAppUpdatePriority: 3` on every release upload (both `r0adkll/upload-google-play` and the Python promote / fallback paths) so the in-app `UpdateBanner` actually fires when a new release lands. Pre-fix the workflow defaulted to priority 0 ("Google's discretion") and v4.15.2 silently never prompted v4.15.1 users — `AppUpdateManager.appUpdateInfo` returned `UPDATE_NOT_AVAILABLE` for days while Play Store itself indexed the release fine. Priority 3 = "high — surface within ~24h". Crash-fix releases can edit the workflow once to bump to 5 ("immediate"). (#2209)
+- **Play Store production deploy unblocked.** v4.15.3 production track 403'd on `:commit` with `PERMISSION_DENIED — Artifact does not support 16KB page size`. Root cause traced via 5 redispatches + 2 diagnostic PRs to `libmediapipe_tasks_vision_jni.so` from MediaPipe `tasks-vision:0.10.14` — its arm64 ELF was 4 KB-aligned (`p_align = 0x1000`). Filament 1.71.4 + ARCore 1.54.0 + Compose were all already 16 KB-aligned. Bumped `mediapipe-tasks-vision` to `0.10.26` (the first release with "All the latest Android packages from Google Maven are now supporting the Android 16kb page size" per [MediaPipe v0.10.26 release notes](https://github.com/google-ai-edge/mediapipe/releases/tag/v0.10.26)). Verified locally: rebuilt `libmediapipe_tasks_vision_jni.so` now reports `p_align = 0x4000`. No API changes between 0.10.14 and 0.10.26 affect SceneView demo usage — `compileReleaseKotlin` clean. (#2214)
+
 ## v4.15.3 — 2026-05-26
 
 ### Changed
