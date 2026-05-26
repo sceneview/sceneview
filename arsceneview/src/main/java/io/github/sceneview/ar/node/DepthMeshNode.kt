@@ -122,8 +122,14 @@ open class DepthMeshNode(
     /**
      * Tracks the wall-clock time of the last successful rebuild so [refreshIntervalMs] can gate
      * the next one. Render-thread only (#1811).
+     *
+     * Initialised to `0L` — **not** `Long.MIN_VALUE`. With `Long.MIN_VALUE` the expression
+     * `now - lastRebuildTimestampMs` overflows in two's complement to a large **negative** value
+     * on every frame, so the `< refreshIntervalMs` guard fires forever and [latestSnapshot] is
+     * never populated. `0L` means "never rebuilt" which is both semantically correct and safe
+     * (any positive `now` will be > `refreshIntervalMs`). (#2186)
      */
-    private var lastRebuildTimestampMs: Long = Long.MIN_VALUE
+    private var lastRebuildTimestampMs: Long = 0L
 
     /** Capacity (in vertices) of the currently-allocated [vertexBuffer]. Render-thread only. */
     private var allocatedVertexCount: Int = INITIAL_VERTEX_CAPACITY
