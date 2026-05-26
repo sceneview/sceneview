@@ -14,6 +14,7 @@ import io.github.sceneview.ar.arcore.fps
 import io.github.sceneview.ar.arcore.getUpdatedPlanes
 import io.github.sceneview.ar.arcore.hitTest
 import io.github.sceneview.ar.arcore.isTracking
+import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.material.setParameter
 import io.github.sceneview.material.setTexture
@@ -25,23 +26,28 @@ import io.github.sceneview.texture.ImageTexture
 /**
  * Control rendering of ARCore planes — V2 implementation.
  *
- * **PR #2 status** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): the
- * detected plane is no longer a flat polygon. When ARCore depth is available, V2 tessellates
- * the polygon-visible region of the depth image and displaces each vertex along the plane
- * normal by `(measuredDepth - expectedPlaneDepth)`. The floor visibly conforms to a rug,
- * the lip of a step, a slight slope. Polygon-clip + max-displacement clamp keep the mesh
- * tied to the detected surface — a cabinet 80 cm above the floor does not stretch the floor
- * mesh up to it. Rebuilds rate-limited to 5 Hz.
+ * **PR #3 status** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): the V2
+ * plane is now a real PBR surface lit by the real room. The material switched from
+ * `shadingModel: unlit` to `shadingModel: lit`, declares `metallic` / `roughness` /
+ * `reflectance` slots, and samples Filament's IBL — which `LightEstimator` continuously
+ * feeds from ARCore's `acquireEnvironmentalHdrCubeMap()`. A glossy floor visibly reflects
+ * the ceiling lights and window glow; a matt wall picks up the actual ambient irradiance.
+ * The depth-driven mesh now ships smooth per-vertex `TANGENTS` so PBR specular highlights
+ * wrap correctly across bumps and slopes (instead of looking faceted as they did in PR #2).
+ * The first time a plane is detected, an 800 ms scan-in ring expands outward from the
+ * polygon centroid and a 1 s reflection fade-in ramps `metallic` + `reflectance` from 0 to
+ * their configured values, masking ARCore's HDR cubemap stabilisation window.
  *
  * Without depth — device unsupported, first frames after resume, raw frame not yet ready —
- * V2 falls back transparently to the V1 flat-polygon mesh. Never crashes, never blanks.
+ * V2 falls back transparently to the V1 flat-polygon mesh (with smooth `(0, 1, 0)` normals
+ * so the lit shader still reads as a level surface). Never crashes, never blanks.
  *
  * **Coming in follow-up PRs** of [#2203](https://github.com/sceneview/sceneview/issues/2203):
  *
  * | PR  | Effect                                                                       |
  * |-----|------------------------------------------------------------------------------|
  * | #2  | Depth-driven tessellation + polygon clip + slope-aware unlit grid. **DONE.** |
- * | #3  | PBR + HDR reflections sampled from ARCore's environmental cubemap + scan-in. |
+ * | #3  | PBR + HDR reflections + scan-in ring + reflection fade-in. **DONE.**         |
  * | #4  | Type-aware shading: floor / ceiling / wall get distinct material identities. |
  * | #5  | V2 becomes the default. V1 gets `@Deprecated` for one release cycle.         |
  *
@@ -80,7 +86,30 @@ class PlaneRendererV2(
             val scaleY = scaleX * widthToHeightRatio
             setParameter(MATERIAL_UV_SCALE, scaleX, scaleY)
 
+            // Legacy `color` tint stays neutral white — `gridTint` is the new colour knob
+            // PR #4 will vary per `plane.type`. Keep `color` at 1.0 so the multiplicative
+            // chain `gridTint * color * slopeShade` reduces to `gridTint * slopeShade`
+            // unless a custom MaterialInstance overrides it.
             setParameter(MATERIAL_COLOR, Color(1.0f, 1.0f, 1.0f))
+
+            // ── PR #3 PBR + animation defaults ──────────────────────────────────────
+            // These match the brief in `.claude/plans/plane-renderer-v2.md` (PR #3 row).
+            // `metallic = 0` so the surface is a dielectric floor; `roughness = 0.35`
+            // gives a slight gloss so the IBL reflection reads; `reflectance = 0.5`
+            // is the canonical dielectric value (matches kMaterialDefaultReflectance
+            // in MaterialInstance.kt).
+            setParameter(MATERIAL_METALLIC, DEFAULT_METALLIC)
+            setParameter(MATERIAL_ROUGHNESS, DEFAULT_ROUGHNESS)
+            setParameter(MATERIAL_REFLECTANCE, DEFAULT_REFLECTANCE)
+            setParameter(MATERIAL_GRID_TINT, DEFAULT_GRID_TINT)
+            setParameter(MATERIAL_GRID_ALPHA, DEFAULT_GRID_ALPHA)
+            setParameter(MATERIAL_SURFACE_ALPHA, DEFAULT_SURFACE_ALPHA)
+            // Steady-state defaults — `reflectionFadeIn = 1.0` and `scanProgress = 1.0`
+            // mean "no animation in progress". The per-visualizer overrides land via
+            // `pushAnimationUniforms` on its own per-instance MaterialInstance.
+            setParameter(MATERIAL_REFLECTION_FADE_IN, 1.0f)
+            setParameter(MATERIAL_SCAN_PROGRESS, 1.0f)
+            setParameter(MATERIAL_SCAN_PLANE_RADIUS, 1.0f)
         }
     }
 
@@ -276,13 +305,62 @@ class PlaneRendererV2(
         const val MATERIAL_UV_SCALE = "uvScale"
 
         /**
-         * Float3 material parameter to control the RGB tint of the plane.
+         * Float3 material parameter — legacy RGB tint kept for binary/API compatibility. PR #3
+         * adds [MATERIAL_GRID_TINT] as the canonical colour knob; the shader multiplies both.
          */
         const val MATERIAL_COLOR = "color"
+
+        /** Float PBR metallic, default `0.0` (dielectric floor). PR #4 will vary per `plane.type`. */
+        const val MATERIAL_METALLIC = "metallic"
+
+        /** Float PBR roughness, default `0.35` (slight gloss). PR #4 will vary per `plane.type`. */
+        const val MATERIAL_ROUGHNESS = "roughness"
+
+        /** Float dielectric Fresnel reflectance, default `0.5`. */
+        const val MATERIAL_REFLECTANCE = "reflectance"
+
+        /** Float3 cool-white tint used by the procedural grid + scan ring (PR #3). */
+        const val MATERIAL_GRID_TINT = "gridTint"
+
+        /** Float peak per-pixel opacity of the grid lines (PR #3). */
+        const val MATERIAL_GRID_ALPHA = "gridAlpha"
+
+        /** Float base opacity of the lit surface between grid lines (PR #3). */
+        const val MATERIAL_SURFACE_ALPHA = "surfaceAlpha"
+
+        /**
+         * Float in `[0, 1]` modulating the IBL contribution so the reflection fades in over
+         * the first second of the plane's life (PR #3). `PlaneVisualizerV2` overrides this
+         * per-instance from elapsed-since-detection.
+         */
+        const val MATERIAL_REFLECTION_FADE_IN = "reflectionFadeIn"
+
+        /**
+         * Float in `[0, 1]` driving the scan-in ring expansion (PR #3). `1.0` means the
+         * animation has completed and the ring is no longer drawn.
+         */
+        const val MATERIAL_SCAN_PROGRESS = "scanProgress"
+
+        /**
+         * Float — max scan-ring radius in plane-local metres (≈ furthest polygon vertex
+         * from the centroid). Set per-instance by `PlaneVisualizerV2` (PR #3).
+         */
+        const val MATERIAL_SCAN_PLANE_RADIUS = "scanPlaneRadius"
 
         /**
          * Used to control the UV Scale for the default texture.
          */
         private const val BASE_UV_SCALE = 8.0f
+
+        // ── PR #3 PBR + grid defaults ───────────────────────────────────────────────
+        // Inline constants live here rather than in PlaneVisualizerV2 because the
+        // material defaults are a renderer-level concern (the visualizer overrides
+        // only the animation uniforms per-instance).
+        private const val DEFAULT_METALLIC = 0.0f
+        private const val DEFAULT_ROUGHNESS = 0.35f
+        private const val DEFAULT_REFLECTANCE = 0.5f
+        private val DEFAULT_GRID_TINT = Float3(0.9f, 0.95f, 1.0f)
+        private const val DEFAULT_GRID_ALPHA = 0.85f
+        private const val DEFAULT_SURFACE_ALPHA = 0.10f
     }
 }
