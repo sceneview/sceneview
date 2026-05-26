@@ -1,9 +1,3 @@
-// PlaneVisualizer (V1) is @Deprecated since #2203 PR #5. Its own internals legitimately
-// reference the V1 PlaneRenderer companion (e.g. material parameter constants). A file-level
-// suppression keeps the V1 path warning-free internally while callers of the V1 class still
-// see the deprecation notice at their call site.
-@file:Suppress("DEPRECATION")
-
 package io.github.sceneview.ar
 
 import com.google.android.filament.Engine
@@ -26,21 +20,11 @@ import java.nio.ByteOrder
 /**
  * Renders a single ARCore Plane using native Filament geometry — V1 implementation.
  *
- * **Deprecated** as of [#2203](https://github.com/sceneview/sceneview/issues/2203) PR #5.
- * The V2 path ([io.github.sceneview.ar.PlaneVisualizerV2]) is the default and ships
- * depth-driven mesh, PBR lighting, HDR reflection, type-aware shading and a scan-in ring.
- * V1 stays available for one release cycle for apps that subclass or override its
- * material — it will be removed in a future release.
+ * V1 is the **default** plane visualizer again as of v4.16.1 (see
+ * [#2203](https://github.com/sceneview/sceneview/issues/2203)). v4.16.0 briefly shipped V2
+ * ([PlaneVisualizerV2]) as the default but its visual output did not match the design
+ * intent under on-device QA, so the default was reverted while V2 is polished.
  */
-@Deprecated(
-    message = "V1 renders detected planes as a flat unlit polygon. " +
-        "V2 ships depth-driven mesh, PBR lighting, HDR reflection, " +
-        "type-aware shading, and scan-in animation. Migrate to V2 " +
-        "via ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2). " +
-        "V1 will be removed in a future release. See #2203.",
-    replaceWith = ReplaceWith("PlaneVisualizerV2"),
-    level = DeprecationLevel.WARNING,
-)
 class PlaneVisualizer(
     private val engine: Engine,
     private val scene: Scene,
