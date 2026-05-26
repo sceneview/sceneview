@@ -26,17 +26,32 @@ import io.github.sceneview.texture.ImageTexture
 /**
  * Control rendering of ARCore planes — V2 implementation.
  *
- * **PR #3 status** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): the V2
- * plane is now a real PBR surface lit by the real room. The material switched from
- * `shadingModel: unlit` to `shadingModel: lit`, declares `metallic` / `roughness` /
- * `reflectance` slots, and samples Filament's IBL — which `LightEstimator` continuously
- * feeds from ARCore's `acquireEnvironmentalHdrCubeMap()`. A glossy floor visibly reflects
- * the ceiling lights and window glow; a matt wall picks up the actual ambient irradiance.
- * The depth-driven mesh now ships smooth per-vertex `TANGENTS` so PBR specular highlights
- * wrap correctly across bumps and slopes (instead of looking faceted as they did in PR #2).
- * The first time a plane is detected, an 800 ms scan-in ring expands outward from the
- * polygon centroid and a 1 s reflection fade-in ramps `metallic` + `reflectance` from 0 to
- * their configured values, masking ARCore's HDR cubemap stabilisation window.
+ * **PR #4 status** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): a floor,
+ * a ceiling and a wall visible at once now read as three distinct surfaces.
+ * [io.github.sceneview.ar.PlaneVisualizerV2] applies a per-instance material preset
+ * keyed off `com.google.ar.core.Plane.Type` — same single `Material`, one
+ * `MaterialInstance` per plane, three different `(metallic, roughness, gridTint)` triples:
+ *
+ * | `plane.type`                 | role    | metallic | roughness | gridTint     |
+ * |------------------------------|---------|----------|-----------|--------------|
+ * | `HORIZONTAL_UPWARD_FACING`   | floor   | `0.00`   | `0.35`    | cool white   |
+ * | `HORIZONTAL_DOWNWARD_FACING` | ceiling | `0.00`   | `0.65`    | warm white   |
+ * | `VERTICAL`                   | wall    | `0.00`   | `0.80`    | neutral grey |
+ *
+ * Unknown future ARCore plane types fall back to the floor preset rather than crashing.
+ * Type re-classifications mid-tracking (ARCore can re-merge a plane into a different
+ * normal direction) trigger a 3-`setParameter`-call re-apply on the next `updatePlane()`.
+ *
+ * **PR #3 carried over** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): the
+ * V2 plane is a real PBR surface lit by the real room. The material is `shadingModel: lit`,
+ * declares `metallic` / `roughness` / `reflectance` slots, and samples Filament's IBL —
+ * which `LightEstimator` continuously feeds from ARCore's `acquireEnvironmentalHdrCubeMap()`.
+ * A glossy floor visibly reflects the ceiling lights and window glow; a matt wall picks
+ * up the actual ambient irradiance. The depth-driven mesh ships smooth per-vertex
+ * `TANGENTS` so PBR specular highlights wrap correctly across bumps and slopes. The first
+ * time a plane is detected, an 800 ms scan-in ring expands outward from the polygon
+ * centroid and a 1 s reflection fade-in ramps `metallic` + `reflectance` from 0 to their
+ * configured values, masking ARCore's HDR cubemap stabilisation window.
  *
  * Without depth — device unsupported, first frames after resume, raw frame not yet ready —
  * V2 falls back transparently to the V1 flat-polygon mesh (with smooth `(0, 1, 0)` normals
@@ -48,7 +63,7 @@ import io.github.sceneview.texture.ImageTexture
  * |-----|------------------------------------------------------------------------------|
  * | #2  | Depth-driven tessellation + polygon clip + slope-aware unlit grid. **DONE.** |
  * | #3  | PBR + HDR reflections + scan-in ring + reflection fade-in. **DONE.**         |
- * | #4  | Type-aware shading: floor / ceiling / wall get distinct material identities. |
+ * | #4  | Type-aware shading: floor / ceiling / wall get distinct identities. **DONE.** |
  * | #5  | V2 becomes the default. V1 gets `@Deprecated` for one release cycle.         |
  *
  * Opt in today via `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)`.
@@ -310,10 +325,17 @@ class PlaneRendererV2(
          */
         const val MATERIAL_COLOR = "color"
 
-        /** Float PBR metallic, default `0.0` (dielectric floor). PR #4 will vary per `plane.type`. */
+        /**
+         * Float PBR metallic, default `0.0` (dielectric floor). PR #4 varies per
+         * `plane.type` via [planeMaterialPresetFor].
+         */
         const val MATERIAL_METALLIC = "metallic"
 
-        /** Float PBR roughness, default `0.35` (slight gloss). PR #4 will vary per `plane.type`. */
+        /**
+         * Float PBR roughness, default `0.35` (slight gloss). PR #4 varies per
+         * `plane.type` via [planeMaterialPresetFor] (floor `0.35` < ceiling `0.65` <
+         * wall `0.80`).
+         */
         const val MATERIAL_ROUGHNESS = "roughness"
 
         /** Float dielectric Fresnel reflectance, default `0.5`. */
@@ -364,3 +386,90 @@ class PlaneRendererV2(
         private const val DEFAULT_SURFACE_ALPHA = 0.10f
     }
 }
+
+/**
+ * Per-`plane.type` material preset applied by [io.github.sceneview.ar.PlaneVisualizerV2]
+ * on top of `PlaneRendererV2.planeMaterial`'s shared defaults (PR #4 of
+ * [#2203](https://github.com/sceneview/sceneview/issues/2203)).
+ *
+ * Same single `Material`, one [com.google.android.filament.MaterialInstance] per plane,
+ * three different `(metallic, roughness, gridTint)` triples — see
+ * [planeMaterialPresetFor] for the type → preset mapping and
+ * [PlaneRendererV2]'s class KDoc for the rationale.
+ *
+ * `internal` so [io.github.sceneview.ar.scene.PlaneRendererV2Test] can exercise the
+ * mapping without spinning up an Engine.
+ *
+ * @param metallic PBR metallic in `[0, 1]`. Always `0.0` in PR #4 — every detected plane
+ *                 is a dielectric surface (no real-world brushed-metal floors).
+ * @param roughness PBR roughness in `[0, 1]`. Invariant `floor < ceiling < wall` so the
+ *                  three roles look visibly distinct under the same IBL.
+ * @param gridR Float `[0, 1]` red component of `gridTint`.
+ * @param gridG Float `[0, 1]` green component of `gridTint`.
+ * @param gridB Float `[0, 1]` blue component of `gridTint`.
+ */
+internal data class PlaneMaterialPreset(
+    val metallic: Float,
+    val roughness: Float,
+    val gridR: Float,
+    val gridG: Float,
+    val gridB: Float,
+)
+
+/**
+ * Maps a [com.google.ar.core.Plane.Type] to its [PlaneMaterialPreset] (PR #4 of
+ * [#2203](https://github.com/sceneview/sceneview/issues/2203)).
+ *
+ * | `plane.type`                 | role    | metallic | roughness | gridTint     |
+ * |------------------------------|---------|----------|-----------|--------------|
+ * | `HORIZONTAL_UPWARD_FACING`   | floor   | `0.00`   | `0.35`    | cool white   |
+ * | `HORIZONTAL_DOWNWARD_FACING` | ceiling | `0.00`   | `0.65`    | warm white   |
+ * | `VERTICAL`                   | wall    | `0.00`   | `0.80`    | neutral grey |
+ *
+ * Unknown future ARCore plane types fall back to the floor preset rather than crashing —
+ * the renderer must never blank because ARCore added a fourth enum entry.
+ *
+ * Pure function. `internal` so tests can exercise the mapping without a Filament Engine
+ * or a real `Plane` instance.
+ */
+// `Plane.Type` is exhaustive at this ARCore version (HORIZONTAL_UPWARD_FACING,
+// HORIZONTAL_DOWNWARD_FACING, VERTICAL). The `else` arm is deliberately kept as
+// future-proofing for a hypothetical fourth value ARCore may add — a render-thread
+// crash on an unknown enum value is strictly worse than a slightly-wrong shading.
+// Same defensive stance as `PlaneVisualizerV2.rebuildDepthMesh()`'s flat-fallback
+// on Throwable.
+@Suppress("REDUNDANT_ELSE_IN_WHEN")
+internal fun planeMaterialPresetFor(type: com.google.ar.core.Plane.Type): PlaneMaterialPreset =
+    when (type) {
+        com.google.ar.core.Plane.Type.HORIZONTAL_UPWARD_FACING -> FLOOR_PRESET
+        com.google.ar.core.Plane.Type.HORIZONTAL_DOWNWARD_FACING -> CEILING_PRESET
+        com.google.ar.core.Plane.Type.VERTICAL -> WALL_PRESET
+        else -> FLOOR_PRESET
+    }
+
+// Cool white — a freshly-mopped floor reading slightly cool under the typical room IBL.
+// `metallic = 0.0` + `roughness = 0.35` gives a gentle gloss so reflections of ceiling
+// lights register without turning the floor into a mirror.
+private val FLOOR_PRESET = PlaneMaterialPreset(
+    metallic = 0.0f,
+    roughness = 0.35f,
+    gridR = 0.85f, gridG = 0.92f, gridB = 1.0f,
+)
+
+// Warm white — drywall ceilings read warm under most indoor lighting (incandescent
+// bounce dominates). `roughness = 0.65` keeps the ceiling matt-ish; you should see the
+// IBL but not your own reflection in it.
+private val CEILING_PRESET = PlaneMaterialPreset(
+    metallic = 0.0f,
+    roughness = 0.65f,
+    gridR = 1.0f, gridG = 0.96f, gridB = 0.88f,
+)
+
+// Neutral grey — walls without a known finish (paint / wallpaper / panel) sit in the
+// middle. `roughness = 0.80` so the wall absorbs the IBL almost fully — matches how a
+// real matte wall looks in the camera passthrough.
+private val WALL_PRESET = PlaneMaterialPreset(
+    metallic = 0.0f,
+    roughness = 0.80f,
+    gridR = 0.92f, gridG = 0.92f, gridB = 0.92f,
+)

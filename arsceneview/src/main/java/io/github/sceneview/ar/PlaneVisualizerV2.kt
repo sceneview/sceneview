@@ -16,6 +16,8 @@ import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.arcore.buildPlaneDepthMeshGeometry
 import io.github.sceneview.ar.arcore.depthImage
 import io.github.sceneview.ar.arcore.rawDepthConfidenceImage
+import io.github.sceneview.ar.scene.PlaneRendererV2
+import io.github.sceneview.ar.scene.planeMaterialPresetFor
 import io.github.sceneview.collision.Matrix
 import io.github.sceneview.collision.TransformProvider
 import io.github.sceneview.material.setParameter
@@ -219,6 +221,15 @@ class PlaneVisualizerV2(
     // the animation completes — typically the entire steady-state lifetime of the plane).
     private var animationIdle: Boolean = false
 
+    // ── PR #4 type-aware shading state ──────────────────────────────────────────────
+    // Last `plane.type` value the per-instance material was configured for. `null` means
+    // the preset has not been applied yet (first call to `applyPlaneTypePreset()` will
+    // push it). On every `updatePlane()` we compare against `plane.type` — if ARCore
+    // re-classified the plane (rare, but legal: a horizontal plane re-merged with a
+    // vertical neighbour can flip), we re-push the 3 setParameter calls. The cost is
+    // 3 JNI calls only on change — steady-state lifetime is free.
+    private var lastAppliedPlaneType: Plane.Type? = null
+
     fun setEnabled(enabled: Boolean) {
         if (isEnabled != enabled) {
             isEnabled = enabled
@@ -242,6 +253,16 @@ class PlaneVisualizerV2(
 
     fun setPlaneMaterial(materialInstance: MaterialInstance) {
         planeSubmeshMaterial = materialInstance
+        // PR #4 — the type-aware preset lives on this MaterialInstance, so a fresh
+        // instance starts at the shared `planeMaterial` defaults. Apply once here so
+        // the first render carries the right values even if `updatePlane()` hasn't
+        // fired yet (e.g. `setShadowReceiver(true)` before the first frame). Pass
+        // `null` as the cached type to force the apply on the new instance.
+        lastAppliedPlaneType = applyTypePresetIfChanged(
+            instance = materialInstance,
+            type = plane.type,
+            lastAppliedType = null,
+        )
         if (builtPrimitiveCount > 0) updateRenderable()
     }
 
@@ -293,6 +314,18 @@ class PlaneVisualizerV2(
                 removePlaneFromScene()
                 return
             }
+        }
+
+        // PR #4: re-apply the per-`plane.type` preset whenever ARCore re-classifies the
+        // plane (rare but legal — e.g. a horizontal plane re-merged with a vertical
+        // neighbour). `applyTypePresetIfChanged` is a no-op when the type hasn't
+        // changed, so the steady-state cost is one Boolean compare per frame.
+        planeSubmeshMaterial?.let { instance ->
+            lastAppliedPlaneType = applyTypePresetIfChanged(
+                instance = instance,
+                type = plane.type,
+                lastAppliedType = lastAppliedPlaneType,
+            )
         }
 
         // PR #3: push the scan-in + fade-in uniforms BEFORE updateRenderable so the
@@ -852,6 +885,37 @@ internal fun computeReflectionFadeIn(elapsedNanos: Long): Float {
     val elapsedMs = elapsedNanos / 1_000_000f
     val progress = elapsedMs / PlaneVisualizerV2.REFLECTION_FADE_IN_MS
     return progress.coerceIn(0f, 1f)
+}
+
+/**
+ * Pushes the [planeMaterialPresetFor] preset onto [instance] when [type] differs
+ * from [lastAppliedType]. Returns the updated cached type — pass it back into the
+ * `lastAppliedType` argument on the next call.
+ *
+ * Three `setParameter` JNI calls — only runs on change. Steady-state cost is one
+ * Boolean compare per frame. A null [lastAppliedType] forces the apply (used the
+ * first time a `MaterialInstance` is bound to a visualizer in
+ * [PlaneVisualizerV2.setPlaneMaterial]).
+ *
+ * Top-level + `internal` so the routing is unit-testable without an Engine + a real
+ * ARCore Plane, and so the visualizer class stays under detekt's 25-function cap.
+ */
+internal fun applyTypePresetIfChanged(
+    instance: MaterialInstance,
+    type: Plane.Type,
+    lastAppliedType: Plane.Type?,
+): Plane.Type {
+    if (lastAppliedType == type) return type
+    val preset = planeMaterialPresetFor(type)
+    instance.setParameter(PlaneRendererV2.MATERIAL_METALLIC, preset.metallic)
+    instance.setParameter(PlaneRendererV2.MATERIAL_ROUGHNESS, preset.roughness)
+    instance.setParameter(
+        PlaneRendererV2.MATERIAL_GRID_TINT,
+        preset.gridR,
+        preset.gridG,
+        preset.gridB,
+    )
+    return type
 }
 
 /**
