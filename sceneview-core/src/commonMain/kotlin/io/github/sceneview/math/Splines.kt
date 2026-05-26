@@ -1,16 +1,22 @@
 package io.github.sceneview.math
 
 import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.distance
 import dev.romainguy.kotlin.math.normalize
+import kotlin.math.pow
 
 /**
  * Catmull-Rom spline interpolation between four control points.
  *
  * Given points p0, p1, p2, p3, this evaluates the spline segment between p1 and p2
  * at parameter [t] in [0..1]. The [alpha] parameter controls the knot parameterization:
- * - 0.0 = uniform
+ * - 0.0 = uniform (matrix formulation; may overshoot or form cusps near sharp turns)
  * - 0.5 = centripetal (recommended, avoids cusps and self-intersections)
  * - 1.0 = chordal
+ *
+ * The non-uniform case (alpha != 0) is evaluated with the Barry-Goldman pyramidal
+ * recurrence over knots `t_i` spaced by `|p_{i+1} - p_i|^alpha`, so that [alpha]
+ * genuinely changes the shape of the curve.
  *
  * @param p0 Control point before the segment start.
  * @param p1 Segment start point (t=0 returns this).
@@ -24,24 +30,56 @@ fun catmullRom(
     p0: Float3, p1: Float3, p2: Float3, p3: Float3,
     t: Float, alpha: Float = 0.5f
 ): Float3 {
-    // Standard Catmull-Rom matrix formulation
-    val t2 = t * t
-    val t3 = t2 * t
+    if (alpha == 0f) {
+        // Uniform Catmull-Rom matrix formulation.
+        val t2 = t * t
+        val t3 = t2 * t
+        return Float3(
+            x = 0.5f * ((2f * p1.x) +
+                    (-p0.x + p2.x) * t +
+                    (2f * p0.x - 5f * p1.x + 4f * p2.x - p3.x) * t2 +
+                    (-p0.x + 3f * p1.x - 3f * p2.x + p3.x) * t3),
+            y = 0.5f * ((2f * p1.y) +
+                    (-p0.y + p2.y) * t +
+                    (2f * p0.y - 5f * p1.y + 4f * p2.y - p3.y) * t2 +
+                    (-p0.y + 3f * p1.y - 3f * p2.y + p3.y) * t3),
+            z = 0.5f * ((2f * p1.z) +
+                    (-p0.z + p2.z) * t +
+                    (2f * p0.z - 5f * p1.z + 4f * p2.z - p3.z) * t2 +
+                    (-p0.z + 3f * p1.z - 3f * p2.z + p3.z) * t3)
+        )
+    }
 
-    return Float3(
-        x = 0.5f * ((2f * p1.x) +
-                (-p0.x + p2.x) * t +
-                (2f * p0.x - 5f * p1.x + 4f * p2.x - p3.x) * t2 +
-                (-p0.x + 3f * p1.x - 3f * p2.x + p3.x) * t3),
-        y = 0.5f * ((2f * p1.y) +
-                (-p0.y + p2.y) * t +
-                (2f * p0.y - 5f * p1.y + 4f * p2.y - p3.y) * t2 +
-                (-p0.y + 3f * p1.y - 3f * p2.y + p3.y) * t3),
-        z = 0.5f * ((2f * p1.z) +
-                (-p0.z + p2.z) * t +
-                (2f * p0.z - 5f * p1.z + 4f * p2.z - p3.z) * t2 +
-                (-p0.z + 3f * p1.z - 3f * p2.z + p3.z) * t3)
-    )
+    // Non-uniform (centripetal/chordal) parameterization via the Barry-Goldman
+    // pyramidal algorithm. Knots are spaced by the alpha-power of the chord length.
+    fun knot(ti: Float, a: Float3, b: Float3): Float = ti + distance(a, b).pow(alpha)
+
+    val t0 = 0f
+    val t1 = knot(t0, p0, p1)
+    val t2 = knot(t1, p1, p2)
+    val t3 = knot(t2, p2, p3)
+
+    // Degenerate (coincident) control points collapse a knot interval to zero;
+    // fall back to uniform spacing for that interval to avoid division by zero.
+    val k0 = t0
+    val k1 = if (t1 > t0) t1 else t0 + 1f
+    val k2 = if (t2 > k1) t2 else k1 + 1f
+    val k3 = if (t3 > k2) t3 else k2 + 1f
+
+    // Evaluate the spline between p1 and p2: remap t in [0,1] onto [k1, k2].
+    val tt = k1 + t * (k2 - k1)
+
+    fun lerp(a: Float3, b: Float3, ta: Float, tb: Float, x: Float): Float3 {
+        val w = (tb - x) / (tb - ta)
+        return a * w + b * (1f - w)
+    }
+
+    val a1 = lerp(p0, p1, k0, k1, tt)
+    val a2 = lerp(p1, p2, k1, k2, tt)
+    val a3 = lerp(p2, p3, k2, k3, tt)
+    val b1 = lerp(a1, a2, k0, k2, tt)
+    val b2 = lerp(a2, a3, k1, k3, tt)
+    return lerp(b1, b2, k1, k2, tt)
 }
 
 /**
@@ -55,11 +93,14 @@ fun catmullRom(
  *
  * @param points At least 4 control points.
  * @param segments Number of line segments per span (between consecutive interior points).
+ * @param alpha Knot parameterization forwarded to [catmullRom]. Default 0.5 (centripetal);
+ * 0.0 = uniform, 1.0 = chordal.
  * @return List of sampled positions along the spline.
  */
 fun catmullRomSpline(
     points: List<Float3>,
-    segments: Int = 16
+    segments: Int = 16,
+    alpha: Float = 0.5f
 ): List<Float3> {
     require(points.size >= 4) { "Catmull-Rom spline requires at least 4 control points" }
     require(segments >= 1) { "segments must be >= 1" }
@@ -72,13 +113,13 @@ fun catmullRomSpline(
         val p3 = points[i + 3]
         for (s in 0 until segments) {
             val t = s.toFloat() / segments
-            result.add(catmullRom(p0, p1, p2, p3, t))
+            result.add(catmullRom(p0, p1, p2, p3, t, alpha))
         }
     }
     // Add the final point
     result.add(catmullRom(
         points[points.size - 4], points[points.size - 3],
-        points[points.size - 2], points[points.size - 1], 1f
+        points[points.size - 2], points[points.size - 1], 1f, alpha
     ))
     return result
 }

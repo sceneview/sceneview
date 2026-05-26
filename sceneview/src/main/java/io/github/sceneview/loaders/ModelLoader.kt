@@ -411,6 +411,7 @@ class ModelLoader(
      *
      * @see AssetLoader.createInstance
      */
+    @MainThread
     fun createInstance(model: Model): ModelInstance? = assetLoader.createInstance(model)
 
     fun destroyModel(model: Model) {
