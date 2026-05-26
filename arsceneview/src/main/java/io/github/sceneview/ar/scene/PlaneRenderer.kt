@@ -55,7 +55,7 @@ import io.github.sceneview.texture.ImageTexture
     message = "V1 renders detected planes as a flat unlit polygon. " +
         "V2 ships depth-driven mesh, PBR lighting, HDR reflection, " +
         "type-aware shading, and scan-in animation. Migrate to V2 " +
-        "via ARScene(planeRendererVersion = PlaneRendererBase.Version.V2). " +
+        "via ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2). " +
         "V1 will be removed in a future release. See #2203.",
     replaceWith = ReplaceWith("PlaneRendererV2"),
     level = DeprecationLevel.WARNING,
