@@ -8,16 +8,26 @@
 //   - client: MCP client name (e.g. "claude-desktop", "cursor")
 //   - clientVersion: MCP client version string reported during handshake
 //   - mcpVersion: this package's version
-//   - tier: "free" | "pro"
+//   - tier: "free" | "pro" — tier the TOOL resolved to, NOT the user's plan
 //   - tool?: tool name (only for "tool" events)
+//   - installId?: opaque random UUID per install — lets the worker count
+//     unique developers per client runtime without identifying who they are
+//   - botLikelihood?: float in [0.0, 1.0] computed at the sender side from
+//     environment signals (CI flags, no-TTY, container hints). Worker uses
+//     it to exclude bot traffic from monetization analytics by default.
 //
 // What NEVER gets sent:
 //   - IP address (the endpoint strips it server-side; we never send headers)
-//   - hostname, OS user, machine id
+//   - hostname, OS user, machine id, cwd, project path, package name
 //   - prompt content, tool arguments, tool results
 //   - API keys, billing info
 //
 // Opt out with `SCENEVIEW_TELEMETRY=0` or by running in CI (`CI=true`).
+
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 import type { Tier } from "./tiers.js";
 
@@ -48,6 +58,10 @@ export interface TelemetryPayload {
   mcpVersion: string;
   tier: Tier;
   tool?: string;
+  /** Opaque random UUID per install. Stable across runs, never tied to identity. */
+  installId?: string;
+  /** Bot likelihood in [0.0, 1.0], computed at sender side from env signals. */
+  botLikelihood?: number;
 }
 
 let clientContext: ClientContext | undefined;
@@ -55,6 +69,10 @@ let clientContext: ClientContext | undefined;
 // ─── Client-side batch buffer ─────────────────────────────────────────────────
 let buffer: TelemetryPayload[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | undefined;
+
+// Cached fingerprint values — computed once per process.
+let cachedInstallId: string | undefined;
+let cachedBotLikelihood: number | undefined;
 
 // Read lazily so tests that mutate env vars between runs see the latest value.
 function isEnabled(): boolean {
@@ -71,6 +89,170 @@ import { PACKAGE_VERSION } from "./generated/version.js";
 
 function getMcpVersion(): string {
   return process.env.SCENEVIEW_MCP_VERSION ?? PACKAGE_VERSION;
+}
+
+// ─── Install ID — anonymous per-install fingerprint ──────────────────────────
+//
+// Stored at `$XDG_CONFIG_HOME/sceneview-mcp/install.json` (default
+// `~/.config/sceneview-mcp/install.json`). Created on first run if missing.
+// Contents: `{ "installId": "<uuid v4>", "createdAt": "<ISO>" }`.
+//
+// Why a UUID and not a hash of hostname / cwd / etc.:
+//   - hostnames/cwd are personally identifying (employee laptop name,
+//     `/Users/<name>/...`) — even hashed, they're predictable enough that
+//     a determined attacker with worker-side DB access could brute-force
+//     them back. A UUID is provably non-identifying.
+//   - The point is to count unique developers per `client` runtime, not to
+//     fingerprint the host. A fresh install = a fresh identity, by design.
+//
+// Disabled when telemetry is disabled (no file is written).
+
+function getInstallIdConfigPath(): string {
+  const xdg = process.env.XDG_CONFIG_HOME;
+  const base = xdg && xdg.length > 0 ? xdg : join(homedir(), ".config");
+  return join(base, "sceneview-mcp", "install.json");
+}
+
+function loadOrCreateInstallId(): string | undefined {
+  if (cachedInstallId !== undefined) return cachedInstallId;
+
+  let path: string;
+  try {
+    path = getInstallIdConfigPath();
+  } catch {
+    return undefined;
+  }
+
+  // Try to read an existing install record.
+  try {
+    const raw = readFileSync(path, "utf8");
+    const parsed = JSON.parse(raw) as { installId?: unknown };
+    if (typeof parsed.installId === "string" && parsed.installId.length > 0) {
+      cachedInstallId = parsed.installId;
+      return cachedInstallId;
+    }
+  } catch {
+    // File missing or unreadable — fall through to create.
+  }
+
+  // Create a fresh install record. All failures are swallowed: a read-only
+  // home directory (CI sandboxes, container images) should not break telemetry
+  // or the MCP server itself.
+  try {
+    const installId = randomUUID();
+    const dir = join(path, "..");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      path,
+      JSON.stringify({ installId, createdAt: new Date().toISOString() }, null, 2),
+      { encoding: "utf8" },
+    );
+    cachedInstallId = installId;
+    return cachedInstallId;
+  } catch {
+    // Fallback: an ephemeral per-process UUID. Better than nothing —
+    // still distinguishes parallel scripted runs from a real install.
+    cachedInstallId = randomUUID();
+    return cachedInstallId;
+  }
+}
+
+// ─── Bot likelihood — sender-side heuristic ──────────────────────────────────
+//
+// Returns a score in [0.0, 1.0] where 1.0 = almost certainly automation.
+// Signals (each independently bumps the score):
+//
+//   - GITHUB_ACTIONS / GITLAB_CI / CIRCLECI / BUILDKITE / TF_BUILD / JENKINS_URL
+//     are set                                              → +0.45 (strong)
+//   - CI is set to any truthy value                        → +0.30 (medium)
+//   - stdout is not a TTY                                  → +0.15 (weak)
+//   - common container/sandbox hints
+//     (KUBERNETES_SERVICE_HOST, container=docker, AWS_LAMBDA_FUNCTION_NAME)
+//                                                          → +0.20 (medium)
+//   - DEBIAN_FRONTEND=noninteractive (popular in scripts)  → +0.10 (weak)
+//
+// The score is computed ONCE per process and reused on every event. It is
+// clamped to [0.0, 1.0]. The worker uses it as an advisory exclusion filter
+// (default threshold 0.7); raw events are still stored for forensics.
+
+function computeBotLikelihood(): number {
+  if (cachedBotLikelihood !== undefined) return cachedBotLikelihood;
+
+  let score = 0;
+  const env = process.env;
+
+  // Strong: a named CI provider env var.
+  const strongCiVars = [
+    "GITHUB_ACTIONS",
+    "GITLAB_CI",
+    "CIRCLECI",
+    "BUILDKITE",
+    "TF_BUILD",
+    "JENKINS_URL",
+    "BITBUCKET_BUILD_NUMBER",
+    "TEAMCITY_VERSION",
+    "TRAVIS",
+    "DRONE",
+  ];
+  if (strongCiVars.some((k) => typeof env[k] === "string" && env[k]!.length > 0)) {
+    score += 0.45;
+  }
+
+  // Medium: generic CI=truthy. We don't double-count if a strong var fired,
+  // but for cheap envs ("CI=true" alone), this captures them.
+  const ci = env.CI;
+  if (typeof ci === "string" && (ci === "true" || ci === "1")) {
+    score += 0.3;
+  }
+
+  // Weak: no TTY → almost always automation or piped invocation. We test
+  // stdout because the MCP protocol uses stdin/stdout, but stderr is the
+  // more reliable indicator of "is a human watching".
+  try {
+    // process.stderr is most reliable; some MCP runners pipe stdout but leave
+    // stderr attached. Both being non-TTY is a stronger bot signal.
+    const stderrTty =
+      typeof process.stderr === "object" &&
+      typeof (process.stderr as { isTTY?: boolean }).isTTY === "boolean" &&
+      (process.stderr as { isTTY?: boolean }).isTTY === true;
+    if (!stderrTty) score += 0.15;
+  } catch {
+    // Defensive — if stderr isn't introspectable, treat as non-TTY.
+    score += 0.15;
+  }
+
+  // Medium: containerized environments.
+  const containerVars = [
+    "KUBERNETES_SERVICE_HOST",
+    "AWS_LAMBDA_FUNCTION_NAME",
+    "VERCEL",
+    "NETLIFY",
+    "CODESPACE_NAME",
+  ];
+  if (
+    containerVars.some((k) => typeof env[k] === "string" && env[k]!.length > 0) ||
+    env.container === "docker"
+  ) {
+    score += 0.2;
+  }
+
+  // Weak: scripted invocations frequently set this.
+  if (env.DEBIAN_FRONTEND === "noninteractive") score += 0.1;
+
+  cachedBotLikelihood = Math.min(1, Math.max(0, score));
+  return cachedBotLikelihood;
+}
+
+// Build a base payload populated with the install fingerprint + bot score.
+// `installId` is omitted when telemetry is disabled or the install file
+// could not be created. `botLikelihood` is always present (default 0).
+function buildBase(): Pick<TelemetryPayload, "installId" | "botLikelihood"> {
+  const out: Pick<TelemetryPayload, "installId" | "botLikelihood"> = {
+    botLikelihood: computeBotLikelihood(),
+  };
+  const installId = loadOrCreateInstallId();
+  if (installId) out.installId = installId;
+  return out;
 }
 
 // Fire-and-forget POST of a single payload to the individual event endpoint.
@@ -179,6 +361,8 @@ function send(payload: TelemetryPayload): void {
 /** Exposed for tests — resets the cached client context and the batch buffer. */
 export function __resetClientContext(): void {
   clientContext = undefined;
+  cachedInstallId = undefined;
+  cachedBotLikelihood = undefined;
   buffer = [];
   if (flushTimer !== undefined) {
     clearTimeout(flushTimer);
@@ -208,6 +392,7 @@ export function recordClientInit(clientInfo: { name: string; version: string } |
     clientVersion: clientContext.clientVersion,
     mcpVersion: getMcpVersion(),
     tier: "free",
+    ...buildBase(),
   });
 }
 
@@ -231,5 +416,19 @@ export function recordToolCall(toolName: string, tier: Tier): void {
     mcpVersion: getMcpVersion(),
     tier,
     tool: toolName,
+    ...buildBase(),
   });
+}
+
+// ─── Test-only exports ────────────────────────────────────────────────────────
+
+/** Exposed for tests — bypass the cache and recompute the bot score. */
+export function __computeBotLikelihoodForTest(): number {
+  cachedBotLikelihood = undefined;
+  return computeBotLikelihood();
+}
+
+/** Exposed for tests — read the install ID without going through send(). */
+export function __getInstallIdForTest(): string | undefined {
+  return loadOrCreateInstallId();
 }
