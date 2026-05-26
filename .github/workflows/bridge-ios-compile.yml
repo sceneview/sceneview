@@ -63,14 +63,29 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Select Xcode
+        # Use DEVELOPER_DIR env var (Apple-canonical) instead of `sudo
+        # xcode-select -s`. The sudo form requires NOPASSWD configured in
+        # /etc/sudoers, which GitHub-hosted runners provide but self-hosted
+        # macOS runners do not — running in a launchd context with no TTY
+        # makes sudo fail with `a password is required` and the step exits 1
+        # (run id 26418464635 on sceneview-mac).
+        # DEVELOPER_DIR works on both hosted and self-hosted, no sudo needed.
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer 2>/dev/null \
-            || sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer 2>/dev/null \
-            || sudo xcode-select -s /Applications/Xcode_26.1.1.app/Contents/Developer 2>/dev/null \
-            || sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer 2>/dev/null \
-            || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-          echo "Using Xcode: $(xcode-select -p)"
-          xcodebuild -version
+          for cand in \
+            /Applications/Xcode_26.3.app \
+            /Applications/Xcode_26.2.app \
+            /Applications/Xcode_26.1.1.app \
+            /Applications/Xcode_26.0.1.app \
+            /Applications/Xcode.app; do
+            if [ -d "$cand" ]; then
+              echo "DEVELOPER_DIR=$cand/Contents/Developer" >> "$GITHUB_ENV"
+              echo "Using Xcode: $cand"
+              "$cand/Contents/Developer/usr/bin/xcodebuild" -version
+              exit 0
+            fi
+          done
+          echo "::error::No Xcode installation found in /Applications/"
+          exit 1
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
