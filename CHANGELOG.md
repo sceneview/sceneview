@@ -2964,3 +2964,4 @@ respectively.
 - Filament 1.56.0 / ARCore 1.48.0
 - Documentation improvements
 - Camera Manipulator sample renamed
+
