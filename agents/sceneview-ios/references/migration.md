@@ -10,7 +10,7 @@ the cross-platform rename map is in
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.15.4")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.16.0")
 ```
 
 ```swift
