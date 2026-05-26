@@ -66,7 +66,7 @@ playServicesLocation = "21.3.0"
 mlkitObjectDetection = "17.0.2"
 
 # MediaPipe Tasks Vision (body-tracking demo — see ARBodyTrackerDemo, #1763)
-mediapipeTasksVision = "0.10.26"
+mediapipeTasksVision = "0.20230731"
 
 # Publishing & Docs
 mavenPublish = "0.36.0"
