@@ -1,17 +1,32 @@
 #!/usr/bin/env bash
-# Self-hosted macOS GitHub Actions runner for SceneView (v2 — launchctl bootstrap).
+# Self-hosted macOS GitHub Actions runner for SceneView (v3 — no spaces in path).
 #
-# WHY V2 (and not actions/runner svc.sh):
-#   svc.sh shells out to `launchctl load`, which is broken on macOS 11+ for
-#   user-scoped LaunchAgents (it returns `Load failed: 5: Input/output error`
-#   and silently leaves no plist behind — see actions/runner issue 1424).
-#   v2 bypasses svc.sh, writes the LaunchAgent plist itself, and uses the
-#   modern `launchctl bootstrap` API. Same result, actually works.
+# WHY V3 (and not v2):
+#   v2 installed to `~/Library/Application Support/sceneview-runner/`. macOS
+#   convention, BUT that path contains a space. actions/runner generates step
+#   scripts inside its `_work/_temp/` subtree and invokes them as
+#   `/bin/bash -e <script-path>`. With a space in the path, bash splits the
+#   argv and fails: `/bin/bash: /Users/.../Library/Application: No such file
+#   or directory`. Every workflow step failed in 34 s. v3 puts the runner in
+#   `~/sceneview-runner/` (no spaces, anywhere). Verified on the pilot
+#   `bridge-ios-compile` PR #2204 run id 26418464635.
+#
+# WHY V2 (still relevant — kept from v2 history):
+#   actions/runner's bundled svc.sh shells out to `launchctl load`, broken
+#   on macOS 11+ for user-scoped LaunchAgents (`Load failed: 5: Input/output
+#   error`). v2 bypassed svc.sh and uses the modern `launchctl bootstrap`
+#   API. v3 keeps that, only changes the install path.
+#
+# MIGRATION FROM V2
+#   The installer detects an existing v2 install at the old spaces-path,
+#   de-registers it, removes its LaunchAgent, then installs fresh at the
+#   new path. The old directory is left in place — remove manually with
+#   `rm -rf ~/Library/Application\ Support/sceneview-runner` if desired.
 #
 # WHAT IT INSTALLS
-#   ~/Library/Application Support/sceneview-runner/      actions/runner files
-#   ~/Library/LaunchAgents/io.github.sceneview.runner.plist            runner
-#   ~/Library/LaunchAgents/io.github.sceneview.runner-heartbeat.plist  heartbeat
+#   ~/sceneview-runner/                                       actions/runner
+#   ~/Library/LaunchAgents/io.github.sceneview.runner.plist          runner
+#   ~/Library/LaunchAgents/io.github.sceneview.runner-heartbeat.plist heartbeat
 #
 # OPT IN A WORKFLOW (one line per job in any .github/workflows/*.yml):
 #   runs-on: ${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && 'sceneview-mac' || 'macos-15' }}
@@ -27,7 +42,8 @@ set -euo pipefail
 REPO="sceneview/sceneview"
 RUNNER_VERSION="2.334.0"   # baseline; the runner auto-updates after first connect
 RUNNER_LABEL="sceneview-mac"
-RUNNER_HOME="${HOME}/Library/Application Support/sceneview-runner"
+RUNNER_HOME="${HOME}/sceneview-runner"
+RUNNER_HOME_V2_LEGACY="${HOME}/Library/Application Support/sceneview-runner"
 RUNNER_NAME="sceneview-mac-$(hostname -s)"
 
 # Runner LaunchAgent (replaces broken svc.sh)
@@ -155,6 +171,21 @@ fi
 if ! gh auth status >/dev/null 2>&1; then
   err "gh not authenticated. Run: gh auth login --scopes 'repo,workflow'"
   exit 1
+fi
+
+# v2 -> v3 migration: if a v2 install exists at the spaces-path, unload its
+# LaunchAgent, de-register the runner, leave its files in place for manual
+# removal. The new install then proceeds at the v3 path.
+if [[ -f "${RUNNER_HOME_V2_LEGACY}/.runner" ]]; then
+  log "Detected v2 install at ${RUNNER_HOME_V2_LEGACY} — migrating to v3 path..."
+  launchctl bootout "${GUI_DOMAIN}/${RUNNER_PLIST_LABEL}" 2>/dev/null || true
+  launchctl bootout "${GUI_DOMAIN}/${HEARTBEAT_LABEL}" 2>/dev/null || true
+  pkill -f "${RUNNER_HOME_V2_LEGACY}/run.sh" 2>/dev/null || true
+  REM_TOKEN_V2="$(gh api -X POST "/repos/${REPO}/actions/runners/remove-token" --jq .token 2>/dev/null || echo "")"
+  if [[ -n "${REM_TOKEN_V2}" ]]; then
+    (cd "${RUNNER_HOME_V2_LEGACY}" && ./config.sh remove --token "${REM_TOKEN_V2}" 2>/dev/null || true)
+  fi
+  log "  v2 runner de-registered. Old files left at ${RUNNER_HOME_V2_LEGACY} — remove manually if desired."
 fi
 
 ARCH="$(uname -m)"

@@ -334,12 +334,17 @@ bash .claude/scripts/setup-self-hosted-runner.sh
 bash .claude/scripts/setup-self-hosted-runner.sh --check
 ```
 
-The installer (a) downloads `actions/runner` for `osx-arm64`/`osx-x64`,
-(b) registers it with label `sceneview-mac`, (c) writes a user
-LaunchAgent plist directly and `launchctl bootstrap`s it (the v1
-attempt to delegate to `actions/runner`'s `svc.sh` was a dead end —
-`svc.sh` shells out to the deprecated `launchctl load` which fails with
-`Input/output error` on macOS 11+, see actions/runner issue 1424).
+The installer (a) downloads `actions/runner` for `osx-arm64`/`osx-x64`
+into `~/sceneview-runner/` (deliberately *outside* `~/Library/Application
+Support/` — that path contains a space, and the runner's generated step
+scripts get invoked as `/bin/bash -e <path>` which splits on space and
+fails with `No such file or directory`; v2 hit exactly this on the
+pilot bridge-ios-compile run id 26418464635), (b) registers it with
+label `sceneview-mac`, (c) writes a user LaunchAgent plist directly
+and `launchctl bootstrap`s it (the v1 attempt to delegate to
+`actions/runner`'s `svc.sh` was a dead end — `svc.sh` shells out to
+the deprecated `launchctl load` which fails with `Input/output error`
+on macOS 11+, see actions/runner issue 1424).
 The plist uses `KeepAlive=true` so the runner survives reboots, login,
 sleep/wake, and the runner's own auto-update cycle (the runner exits
 to install a new version, launchd restarts it, new version takes over —

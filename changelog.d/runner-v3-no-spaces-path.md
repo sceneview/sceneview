@@ -1,0 +1,5 @@
+<!-- category: Fixed -->
+- `setup-self-hosted-runner.sh` v3 — install path moved from `~/Library/Application Support/sceneview-runner/` to `~/sceneview-runner/`. v2 picked the macOS-convention location which contains a space, breaking the runner's step-script invocation (`/bin/bash -e <path>` splits on the space → `No such file or directory`). The pilot `bridge-ios-compile` PR [#2204](https://github.com/sceneview/sceneview/pull/2204) failed in 34 seconds on the `Select Xcode` step because of this exact issue (run id 26418464635). v3 keeps the LaunchAgent bootstrap design unchanged, only relocates the runner files. The installer auto-detects an existing v2 install at the legacy path, de-registers it from GitHub, and unloads its LaunchAgent before installing fresh — old files are left in place for manual `rm -rf`.
+
+<!-- category: Changed -->
+- Until the v3 runner is reinstalled, set the repo variable `SELF_HOSTED_MACOS_ONLINE=false` (`gh variable set SELF_HOSTED_MACOS_ONLINE -R sceneview/sceneview --body "false"`) so every opted-in workflow falls back to `macos-15`. Re-running the v3 installer marks it `true` again automatically via the heartbeat.
