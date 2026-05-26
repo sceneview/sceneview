@@ -158,6 +158,27 @@ open class Node(
 
     // ---- Transform ----
 
+    // Pristine backing fields for the local TRS components (#2187).
+    //
+    // The previous design read `position`, `quaternion`, and `scale` from the Filament
+    // TransformManager 4×4 matrix on every individual-property getter call. Each getter
+    // decomposed the matrix (scale = column vector lengths, quaternion = polar decomposition).
+    // When a caller updated a single axis at 60–120 Hz, the setter re-read the other two
+    // components from the matrix to compose a new Transform — feeding float imprecision back in
+    // on every tick. After ~10 000 frames the scale drifted by ~1e-4 per axis and the mesh
+    // visibly warped.
+    //
+    // Fix: cache `_position`, `_quaternion`, `_scale` as pristine Kotlin values. `transform.set`
+    // decomposes once on write and updates all three. Individual getters read the caches; individual
+    // setters compose from the caches (no round-trip through the Filament matrix).
+    //
+    // Invariant: whenever `transform.set` fires the caches are synchronised. This covers every
+    // write path — direct `transform = …`, `position = …`, `quaternion = …`, `scale = …`,
+    // `worldTransform = …`, smooth-animation ticks, and parenting reparents.
+    private var _position: Position = Position()
+    private var _quaternion: Quaternion = Quaternion()
+    private var _scale: Scale = Scale(1.0f)
+
     /**
      * Position to locate within the coordinate system the parent.
      *
@@ -196,9 +217,10 @@ open class Node(
      * @see transform
      */
     open var position: Position
-        get() = transform.position
+        get() = _position
         set(value) {
-            transform = Transform(value, quaternion, scale)
+            _position = value
+            transform = Transform(_position, _quaternion, _scale)
         }
 
     /**
@@ -221,9 +243,10 @@ open class Node(
      * @see transform
      */
     open var quaternion: Quaternion
-        get() = transform.quaternion
+        get() = _quaternion
         set(value) {
-            transform = Transform(position, value, scale)
+            _quaternion = value
+            transform = Transform(_position, _quaternion, _scale)
         }
 
     /**
@@ -282,9 +305,10 @@ open class Node(
      * @see transform
      */
     open var scale: Scale
-        get() = transform.scale
+        get() = _scale
         set(value) {
-            transform = Transform(position, quaternion, value)
+            _scale = value
+            transform = Transform(_position, _quaternion, _scale)
         }
 
     /**
@@ -304,6 +328,10 @@ open class Node(
     /**
      * Local transform of the transform component (i.e. relative to the parent).
      *
+     * Setting this property always decomposes the matrix once to update the pristine
+     * [_position] / [_quaternion] / [_scale] caches (#2187), so subsequent reads of the
+     * individual properties never re-decompose the Filament 4×4 matrix.
+     *
      * @see TransformManager.getTransform
      * @see TransformManager.setTransform
      */
@@ -311,6 +339,12 @@ open class Node(
         get() = transformManager.getTransform(transformInstance)
         set(value) {
             transformManager.setTransform(transformInstance, value)
+            // Synchronise the TRS caches from the new matrix so that any subsequent
+            // getter for `position`, `quaternion`, or `scale` reads the pristine value
+            // rather than re-decomposing the matrix (#2187).
+            _position = value.position
+            _quaternion = value.quaternion
+            _scale = value.scale
             onTransformChanged()
         }
 
