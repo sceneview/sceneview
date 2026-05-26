@@ -99,18 +99,32 @@ jobs:
         working-directory: SceneViewSwift
         run: |
           set -o pipefail
+          # ONLY_ACTIVE_ARCH=NO produces a fat (arm64 + x86_64) .swiftmodule so
+          # the type-check works on both Apple Silicon and Intel macos-15 runners.
+          # Without it, Intel runners produce only x86_64 and the arm64 type-check
+          # fails. See the matching fix in bridge-ios-compile.yml (#2223).
           xcodebuild build \
             -scheme SceneViewSwift \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/sv-dd" \
             -skipMacroValidation \
+            ONLY_ACTIVE_ARCH=NO \
+            ARCHS="arm64 x86_64" \
             | xcpretty --color 2>/dev/null || cat
           MODULE_DIR="$RUNNER_TEMP/sv-dd/Build/Products/Debug-iphonesimulator"
           if [ ! -e "$MODULE_DIR/SceneViewSwift.swiftmodule" ]; then
             echo "::error::SceneViewSwift.swiftmodule was not produced — build failed."
             exit 1
           fi
+          # Detect runner arch and export for use in subsequent steps.
+          RUNNER_ARCH="$(uname -m)"
+          if [ "$RUNNER_ARCH" = "arm64" ]; then
+            echo "SIM_TARGET=arm64-apple-ios18.0-simulator" >> "$GITHUB_ENV"
+          else
+            echo "SIM_TARGET=x86_64-apple-ios18.0-simulator" >> "$GITHUB_ENV"
+          fi
           echo "SVMOD_DIR=$MODULE_DIR" >> "$GITHUB_ENV"
+          echo "Runner arch: $RUNNER_ARCH → simulator target set in SIM_TARGET"
 
       # Generate a compile-only shim for the React Native Objective-C symbols
       # the bridge imports. NOT a shipped artifact — the real symbols come from
@@ -144,7 +158,7 @@ jobs:
           xcrun --sdk iphonesimulator swiftc \
             -emit-module \
             -module-name React \
-            -target arm64-apple-ios18.0-simulator \
+            -target "$SIM_TARGET" \
             "$SHIM_DIR/React.swift" \
             -emit-module-path "$SHIM_DIR/React.swiftmodule"
           echo "SHIM_DIR=$SHIM_DIR" >> "$GITHUB_ENV"
@@ -155,10 +169,10 @@ jobs:
       - name: Type-check RN iOS bridge
         run: |
           set -o pipefail
-          echo "Type-checking against SceneViewSwift module at: $SVMOD_DIR"
+          echo "Type-checking against SceneViewSwift module at: $SVMOD_DIR (target: $SIM_TARGET)"
           xcrun --sdk iphonesimulator swiftc \
             -typecheck \
-            -target arm64-apple-ios18.0-simulator \
+            -target "$SIM_TARGET" \
             -I "$SVMOD_DIR" \
             -I "$SHIM_DIR" \
             react-native/react-native-sceneview/ios/SceneViewModule.swift
