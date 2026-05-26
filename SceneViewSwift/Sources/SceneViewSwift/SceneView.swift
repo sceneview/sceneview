@@ -676,28 +676,23 @@ private struct SceneViewRepresentation: View {
             realityViewContent
                 .gesture(dragGesture)
                 .gesture(pinchGesture)
-        case .none, .tilt, .dolly:
-            // `realityViewCameraControls(_:)` is @available(iOS 18, macOS 15, *)
-            // and @available(visionOS, unavailable). On visionOS, fall back to
-            // the custom gesture path — orbit/pan/firstPerson semantics apply.
-            #if !os(visionOS)
-            switch cameraControlMode {
-            case .none:
-                realityViewContent.realityViewCameraControls(.none)
-            case .tilt:
-                realityViewContent.realityViewCameraControls(.tilt)
-            case .dolly:
-                realityViewContent.realityViewCameraControls(.dolly)
-            default:
-                realityViewContent
-                    .gesture(dragGesture)
-                    .gesture(pinchGesture)
-            }
-            #else
+        #if os(visionOS)
+        case .none, .tilt, .dolly, .gimbal:
+            // `realityViewCameraControls(_:)` is entirely unavailable on
+            // visionOS — fall back to the hand-rolled orbit gesture path.
             realityViewContent
                 .gesture(dragGesture)
                 .gesture(pinchGesture)
-            #endif
+        #else
+        case .none:
+            realityViewContent.realityViewCameraControls(.none)
+        case .tilt:
+            realityViewContent.realityViewCameraControls(.tilt)
+        case .dolly:
+            realityViewContent.realityViewCameraControls(.dolly)
+        case .gimbal:
+            realityViewContent.realityViewCameraControls(.gimbal)
+        #endif
         }
     }
 
@@ -1373,7 +1368,7 @@ private struct SceneViewRepresentation: View {
             entities.root.orientation = camera.sceneRotation()
             #endif
 
-        case .none, .tilt, .dolly:
+        case .none, .tilt, .dolly, .gimbal:
             // Native modes are guarded out above by `isCustom` — this branch
             // is unreachable at runtime. The exhaustive case keeps the Swift
             // compiler satisfied when the `isCustom` guard is inlined here.
@@ -1430,7 +1425,7 @@ private struct SceneViewRepresentation: View {
                             camera.maxFov
                         )
                     }
-                case .none, .tilt, .dolly:
+                case .none, .tilt, .dolly, .gimbal:
                     // This gesture is only applied for custom modes (see
                     // cameraInteractionView). Unreachable, but required for
                     // exhaustive switch.
