@@ -9,11 +9,10 @@ import RealityKit
 ///
 /// Three modes (``orbit``, ``pan``, ``firstPerson``) are implemented with
 /// SceneView's own gesture math, giving identical behaviour across Android
-/// and iOS. Three additional native modes (``none``, ``tilt``, ``dolly``)
-/// delegate directly to Apple's ``realityViewCameraControls(_:)`` modifier
-/// (iOS 18+, macOS 15+, visionOS 2+) — they have no Android equivalent and
-/// are Apple-platform enrichments only.
-/// Closes #1049 (Phase 2 — expose the native Apple modes).
+/// and iOS. Four additional iOS-only modes (``none``, ``tilt``, ``dolly``,
+/// ``gimbal``) delegate directly to Apple's ``realityViewCameraControls(_:)``
+/// modifier — they have no Android equivalent and are iOS enrichments only.
+/// Closes #1049 (Phase 2 — expose the 4 Apple-only modes).
 public enum CameraControlMode: Sendable {
     /// Orbit around a target point. Drag rotates the scene around the orbit
     /// pivot; pinch dollies in/out by scaling the scene root.
@@ -44,34 +43,38 @@ public enum CameraControlMode: Sendable {
     /// continuous in both directions. Closes #1236 / #1034.
     case firstPerson
 
-    // MARK: - Native Apple modes (#1049)
+    // MARK: - iOS-only native modes (#1049)
     //
-    // The three modes below delegate to Apple's `realityViewCameraControls(_:)`
-    // modifier (iOS 18+, macOS 15+, visionOS 2+). They have no Android equivalent
-    // and are Apple-platform enrichments only. SceneView's custom gesture math
-    // (orbit inertia, auto-rotate, fit-to-bounds framing) is bypassed — Apple's
+    // The four modes below delegate to Apple's `realityViewCameraControls(_:)`
+    // modifier (iOS 18+, macOS 15+). They have no Android equivalent and
+    // are iOS enrichments only. SceneView's custom gesture math (orbit
+    // inertia, auto-rotate, fit-to-bounds framing) is bypassed — Apple's
     // modifier drives the camera directly.
-    //
-    // The Apple SDK `RealityFoundation.CameraControls` struct exposes:
-    // .none, .tilt, .pan, .orbit, .dolly  (no .gimbal — checked in Xcode 16/26 SDK).
 
     /// Disables all camera gesture interaction.
     ///
-    /// Delegates to `RealityKit`'s `realityViewCameraControls(.none)`.
-    /// Available on iOS 18+, macOS 15+, visionOS 2+. No Android equivalent.
+    /// Equivalent to `RealityKit.CameraControls.none`. iOS / macOS only —
+    /// no Android equivalent.
     case none
 
     /// Tilt camera up / down about the horizontal axis.
     ///
-    /// Delegates to `RealityKit`'s `realityViewCameraControls(.tilt)`.
-    /// Available on iOS 18+, macOS 15+, visionOS 2+. No Android equivalent.
+    /// Equivalent to `RealityKit.CameraControls.tilt`. iOS / macOS only —
+    /// no Android equivalent.
     case tilt
 
     /// Dolly (zoom) the camera along its look direction.
     ///
-    /// Delegates to `RealityKit`'s `realityViewCameraControls(.dolly)`.
-    /// Available on iOS 18+, macOS 15+, visionOS 2+. No Android equivalent.
+    /// Equivalent to `RealityKit.CameraControls.dolly`. iOS / macOS only —
+    /// no Android equivalent.
     case dolly
+
+    /// Gimbal rotation — rotate the camera about all three axes independently
+    /// (no orbit pivot).
+    ///
+    /// Equivalent to `RealityKit.CameraControls.gimbal`. iOS / macOS only —
+    /// no Android equivalent.
+    case gimbal
 
     // MARK: - Internal helpers
 
@@ -81,7 +84,7 @@ public enum CameraControlMode: Sendable {
     var isCustom: Bool {
         switch self {
         case .orbit, .pan, .firstPerson: return true
-        case .none, .tilt, .dolly: return false
+        case .none, .tilt, .dolly, .gimbal: return false
         }
     }
 
@@ -432,7 +435,7 @@ public struct CameraControls: Sendable {
             elevation += Float(delta.height) * sensitivity
             clampElevation()
 
-        case .none, .tilt, .dolly:
+        case .none, .tilt, .dolly, .gimbal:
             // Native modes are handled by Apple's realityViewCameraControls(_:)
             // modifier — SceneView's gesture math is bypassed entirely.
             break
@@ -460,7 +463,7 @@ public struct CameraControls: Sendable {
             // Pinch out (scale > 1) ⇒ user wants to zoom IN ⇒ smaller FOV.
             fov /= Float(scale)
             fov = Swift.min(Swift.max(fov, minFov), maxFov)
-        case .none, .tilt, .dolly:
+        case .none, .tilt, .dolly, .gimbal:
             // Native modes: Apple's realityViewCameraControls(_:) handles pinch.
             break
         }
@@ -498,7 +501,7 @@ public struct CameraControls: Sendable {
             let up = SIMD3<Float>(0, 1, 0)
             target += right * Float(inertiaVelocity.width) * panSpeed
             target += up * Float(-inertiaVelocity.height) * panSpeed
-        case .none, .tilt, .dolly:
+        case .none, .tilt, .dolly, .gimbal:
             // Native modes: Apple's realityViewCameraControls(_:) handles inertia.
             break
         }

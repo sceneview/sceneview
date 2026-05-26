@@ -243,11 +243,10 @@ final class CameraControlsModeTests: XCTestCase {
     }
 
     func testIsCustom_nativeModes() {
-        // Native Apple modes — SDK provides: .none, .tilt, .dolly
-        // (.gimbal does not exist in RealityKit as of Xcode 16/26 SDK).
         XCTAssertFalse(CameraControlMode.none.isCustom)
         XCTAssertFalse(CameraControlMode.tilt.isCustom)
         XCTAssertFalse(CameraControlMode.dolly.isCustom)
+        XCTAssertFalse(CameraControlMode.gimbal.isCustom)
     }
 
 }
