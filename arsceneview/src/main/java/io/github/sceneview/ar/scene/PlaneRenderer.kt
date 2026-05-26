@@ -1,3 +1,10 @@
+// PlaneRenderer (V1) is @Deprecated since #2203 PR #5. Its own internals legitimately
+// reference the also-deprecated PlaneVisualizer (V1); a file-level suppression keeps the
+// V1 path warning-free internally while callers of the V1 class still see the deprecation
+// notice at their call site. Mirrors the @Suppress("DEPRECATION") pattern in ARScene.kt's
+// V1 factory branch.
+@file:Suppress("DEPRECATION")
+
 package io.github.sceneview.ar.scene
 
 import android.util.Size
@@ -30,22 +37,29 @@ import io.github.sceneview.texture.ImageTexture
  * Each detected plane is drawn as a flat polygon textured with a procedural soft grid
  * (`plane_renderer.mat`).
  *
- * ### V2 is on its way
+ * ### Deprecated — V2 is the default
  *
- * SceneView is rebuilding the plane renderer under umbrella issue
- * [#2203](https://github.com/sceneview/sceneview/issues/2203). The new
- * [PlaneRendererV2] gains depth-driven micro-relief, PBR materials lit by ARCore's HDR
- * cubemap, type-aware shading (floor / ceiling / wall) and an animated scan-in.
+ * As of [#2203](https://github.com/sceneview/sceneview/issues/2203) PR #5, V2 is the default
+ * and this V1 class is `@Deprecated`. V2 ([PlaneRendererV2]) ships depth-driven micro-relief,
+ * PBR materials lit by ARCore's HDR cubemap, type-aware shading (floor / ceiling / wall) and
+ * an animated scan-in.
  *
- * Opt into the next-generation renderer via `ARSceneView(planeRendererVersion =
- * PlaneRendererBase.Version.V2)`. Once V2 is feature-complete (PR #5 of the sprint), it
- * will become the default and this V1 class will be annotated `@Deprecated` with a
- * `ReplaceWith` hint — kept available for one release cycle so apps that override
- * `plane_renderer.mat` have time to port their custom styling.
+ * V1 stays available behind `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V1)`
+ * for one release cycle so apps that subclass [PlaneRenderer] or override `plane_renderer.mat`
+ * can port their custom styling. It will be removed in a future release.
  *
  * @see PlaneRendererBase
  * @see PlaneRendererV2
  */
+@Deprecated(
+    message = "V1 renders detected planes as a flat unlit polygon. " +
+        "V2 ships depth-driven mesh, PBR lighting, HDR reflection, " +
+        "type-aware shading, and scan-in animation. Migrate to V2 " +
+        "via ARScene(planeRendererVersion = PlaneRendererBase.Version.V2). " +
+        "V1 will be removed in a future release. See #2203.",
+    replaceWith = ReplaceWith("PlaneRendererV2"),
+    level = DeprecationLevel.WARNING,
+)
 class PlaneRenderer(
     val engine: Engine,
     private val materialLoader: MaterialLoader,

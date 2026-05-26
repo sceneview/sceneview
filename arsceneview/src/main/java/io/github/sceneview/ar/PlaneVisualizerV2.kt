@@ -31,6 +31,12 @@ import java.nio.FloatBuffer
 /**
  * Renders a single ARCore Plane using native Filament geometry — V2 implementation.
  *
+ * **V2 is the default plane renderer as of this release.** See
+ * [#2203](https://github.com/sceneview/sceneview/issues/2203) for the umbrella that delivered
+ * it. The legacy V1 [io.github.sceneview.ar.PlaneVisualizer] remains available behind
+ * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V1)` for one release cycle
+ * and is now `@Deprecated`.
+ *
  * **PR #3 status** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): the V2
  * plane is now a real PBR surface lit by the real room. Four user-visible effects:
  *

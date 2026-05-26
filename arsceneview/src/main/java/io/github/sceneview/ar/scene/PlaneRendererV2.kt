@@ -26,6 +26,12 @@ import io.github.sceneview.texture.ImageTexture
 /**
  * Control rendering of ARCore planes — V2 implementation.
  *
+ * **V2 is the default plane renderer as of this release.** See
+ * [#2203](https://github.com/sceneview/sceneview/issues/2203) for the umbrella that delivered
+ * it. The legacy V1 [PlaneRenderer] remains available behind
+ * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V1)` for one release cycle
+ * and is now `@Deprecated`.
+ *
  * **PR #4 status** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): a floor,
  * a ceiling and a wall visible at once now read as three distinct surfaces.
  * [io.github.sceneview.ar.PlaneVisualizerV2] applies a per-instance material preset
@@ -57,16 +63,18 @@ import io.github.sceneview.texture.ImageTexture
  * V2 falls back transparently to the V1 flat-polygon mesh (with smooth `(0, 1, 0)` normals
  * so the lit shader still reads as a level surface). Never crashes, never blanks.
  *
- * **Coming in follow-up PRs** of [#2203](https://github.com/sceneview/sceneview/issues/2203):
+ * **#2203 sprint — all 5 PRs landed**:
  *
  * | PR  | Effect                                                                       |
  * |-----|------------------------------------------------------------------------------|
  * | #2  | Depth-driven tessellation + polygon clip + slope-aware unlit grid. **DONE.** |
  * | #3  | PBR + HDR reflections + scan-in ring + reflection fade-in. **DONE.**         |
  * | #4  | Type-aware shading: floor / ceiling / wall get distinct identities. **DONE.** |
- * | #5  | V2 becomes the default. V1 gets `@Deprecated` for one release cycle.         |
+ * | #5  | V2 becomes the default. V1 gets `@Deprecated` for one release cycle. **DONE.** |
  *
- * Opt in today via `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)`.
+ * V2 is now the default — no opt-in required. Pass
+ * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V1)` to fall back to V1
+ * during the one-cycle deprecation window.
  *
  * @see PlaneRendererBase
  * @see PlaneRenderer
@@ -145,6 +153,12 @@ class PlaneRendererV2(
      *
      * The default mode is `RENDER_TOP_MOST`
      */
+    // PlaneRendererMode is nested inside the now-@Deprecated V1 PlaneRenderer class. The
+    // enum itself is reused as-is by V2 (no V2-specific replacement was introduced); the
+    // suppression is the textbook case for referencing a deprecated container of a
+    // still-valid nested type. When V1 is removed in a future release, PlaneRendererMode
+    // will be hoisted onto PlaneRendererBase.
+    @Suppress("DEPRECATION")
     var planeRendererMode = PlaneRenderer.PlaneRendererMode.RENDER_CENTER
 
     /**
@@ -214,6 +228,7 @@ class PlaneRendererV2(
                 try {
                     val updatedPlanes = frame.getUpdatedPlanes()
                     val camera = frame.camera
+                    @Suppress("DEPRECATION")
                     if (planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_ALL) {
                         updatedPlanes.forEach { renderPlane(it, frame = frame, camera = camera) }
                     } else if (planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_CENTER) {

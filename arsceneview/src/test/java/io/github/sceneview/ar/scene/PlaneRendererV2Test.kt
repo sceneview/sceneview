@@ -40,6 +40,9 @@ class PlaneRendererV2Test {
     // ── Interface conformance ───────────────────────────────────────────────────────────────
 
     @Test
+    @Suppress("DEPRECATION") // V1 PlaneRenderer is @Deprecated as of #2203 PR #5; the test
+    // legitimately references it to assert the V1 → PlaneRendererBase relationship survives
+    // the one-cycle deprecation window.
     fun `PlaneRenderer V1 implements PlaneRendererBase`() {
         // Sealed-interface routing in `ARSceneView` requires both V1 and V2 to satisfy
         // `PlaneRendererBase`. This assertion catches a future refactor that would

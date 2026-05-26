@@ -63,7 +63,10 @@ import io.github.sceneview.ar.node.ARCameraNode
 import io.github.sceneview.ar.node.DepthMeshNode
 import io.github.sceneview.ar.node.PointCloudNode
 import io.github.sceneview.ar.node.PoseNode
-import io.github.sceneview.ar.scene.PlaneRenderer
+// PlaneRenderer (V1) is @Deprecated as of #2203 PR #5. To avoid an unsuppressable
+// import-site deprecation warning, ARScene references it through its fully-qualified
+// name in the V1 → V2 dispatch (see the @Suppress("DEPRECATION") block below). The
+// import for the still-active V2 class + the renderer base stays.
 import io.github.sceneview.ar.scene.PlaneRendererBase
 import io.github.sceneview.ar.scene.PlaneRendererV2
 import io.github.sceneview.ar.scene.SceneUnderstanding
@@ -193,10 +196,17 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 inside this callback to choose a different mode if needed (#1063).
  * @param planeRenderer            Whether to render the AR plane grid overlay.
  * @param planeRendererVersion     Selects which plane-renderer implementation backs the AR
- *                                 session — see [PlaneRendererBase.Version]. Defaults to V1
- *                                 (the original flat-polygon + procedural-grid renderer);
- *                                 V2 is opt-in until [#2203](https://github.com/sceneview/sceneview/issues/2203)
- *                                 PR #5 flips the default.
+ *                                 session — see [PlaneRendererBase.Version]. **Default is
+ *                                 [PlaneRendererBase.Version.V2]** as of this release:
+ *                                 detected planes ship as a depth-driven PBR mesh lit by
+ *                                 ARCore's HDR estimate, type-aware floor / ceiling / wall
+ *                                 shading and an 800 ms scan-in ring. The legacy V1
+ *                                 flat-polygon renderer remains available behind
+ *                                 [PlaneRendererBase.Version.V1] for one release cycle —
+ *                                 it is now `@Deprecated` so external apps that subclass
+ *                                 [PlaneRenderer] or override `plane_renderer.mat` can port
+ *                                 their custom styling. Closes
+ *                                 [#2203](https://github.com/sceneview/sceneview/issues/2203).
  * @param cameraStream             [ARCameraStream] for camera texture rendering and occlusion.
  * @param view                     Filament [View] for this scene. Use [rememberARView] (default),
  *                                 which is tuned so the live camera background round-trips back to
@@ -498,20 +508,23 @@ fun ARSceneView(
      * Selects which plane-renderer implementation backs the AR session — see
      * [PlaneRendererBase.Version].
      *
-     * Defaults to [PlaneRendererBase.Version.V1] (the original flat-polygon + procedural-grid
-     * renderer). Opt into [PlaneRendererBase.Version.V2] to preview the next-generation
-     * renderer being built under
-     * [#2203](https://github.com/sceneview/sceneview/issues/2203) — today V2 is
-     * byte-equivalent to V1 (skeleton), but it will gain depth-driven micro-relief, PBR
-     * materials lit by ARCore's HDR estimate, type-aware shading and an animated scan-in
-     * in follow-up PRs. V2 becomes the default once the sprint's PR #5 ships; until then
-     * V1 stays in place behind this flag for backwards compatibility.
+     * **Default is [PlaneRendererBase.Version.V2]** as of this release: detected planes ship
+     * as a depth-driven PBR mesh lit by ARCore's HDR estimate (environmental cubemap +
+     * ambient SH), with type-aware floor / ceiling / wall material identities and an 800 ms
+     * scan-in ring on first detection. See
+     * [#2203](https://github.com/sceneview/sceneview/issues/2203) for the umbrella that
+     * delivered V2.
+     *
+     * The legacy V1 flat-polygon + procedural-grid renderer remains available behind
+     * [PlaneRendererBase.Version.V1] for **one release cycle** so apps that subclass
+     * [PlaneRenderer] or override `plane_renderer.mat` have time to port their custom
+     * styling. [PlaneRendererBase.Version.V1] is now `@Deprecated`.
      *
      * Changing this value triggers a renderer rebuild (it is wired into the surrounding
      * `remember(...)` keys), so toggling is safe but **not free** — pick once at the
      * composition root.
      */
-    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V1,
+    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V2,
     /**
      * Grouped scene-understanding flags (#1767) — mirrors RealityKit's
      * `ARView.environment.sceneUnderstanding.options`. When non-null, the four
@@ -698,9 +711,16 @@ fun ARSceneView(
 
     // ── AR subsystems ─────────────────────────────────────────────────────────────────────────────
 
+    // V1 (PlaneRenderer + PlaneVisualizer + Version.V1) is @Deprecated as of #2203 PR #5
+    // — the V2 default flip — but ARScene legitimately keeps instantiating it for one
+    // release cycle so external apps with custom plane materials have time to migrate.
+    // This is the textbook use case for the suppression: internal library code
+    // legitimately referencing deprecated-for-callers API.
+    @Suppress("DEPRECATION")
     val arPlaneRenderer: PlaneRendererBase = remember(engine, materialLoader, scene, planeRendererVersion) {
         when (planeRendererVersion) {
-            PlaneRendererBase.Version.V1 -> PlaneRenderer(engine, materialLoader, scene)
+            PlaneRendererBase.Version.V1 ->
+                io.github.sceneview.ar.scene.PlaneRenderer(engine, materialLoader, scene)
             PlaneRendererBase.Version.V2 -> PlaneRendererV2(engine, materialLoader, scene)
         }
     }
@@ -1842,7 +1862,7 @@ fun ARScene(
     flashMode: Config.FlashMode = Config.FlashMode.OFF,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     planeRenderer: Boolean = true,
-    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V1,
+    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V2,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
     view: View = rememberARView(engine),
     isOpaque: Boolean = true,
