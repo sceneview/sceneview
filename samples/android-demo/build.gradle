@@ -64,6 +64,14 @@ if (feedbackWorkerUrl.isEmpty()) {
 android {
     namespace = "io.github.sceneview.demo"
 
+    // Align native library ELF load segments to 16 KB so Google Play accepts
+    // the AAB on 16 KB-page-size devices (Android 15+, enforced by Play Store
+    // since Jan 2026 for existing-app updates). Filament ships prebuilt .so
+    // files; this property rewrites ELF PT_LOAD alignment headers at pack time.
+    // AGP internal key: ModulePropertyKey.OptionalString.NATIVE_LIBRARY_PAGE_SIZE
+    // Accepted values: "4k" (default), "16k", "64k".
+    experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"
+
     compileSdk 36
 
 

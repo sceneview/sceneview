@@ -746,6 +746,18 @@ jobs:
                                 file=sys.stderr)
                       print(f"[promote] error.keys: {list(err.keys())}",
                             file=sys.stderr)
+                      # Special-case the 16KB page size rejection with a clear fix note.
+                      raw_msg = str(err.get("message", "")).lower()
+                      if "16kb" in raw_msg or "16 kb" in raw_msg or "page size" in raw_msg:
+                          print(
+                              "\n[16KB] *** ACTION REQUIRED — AAB rejected by Play Store ***\n"
+                              f"[16KB] The AAB (versionCode {CODE}) does not meet Google Play's\n"
+                              "[16KB] 16 KB page-size alignment requirement (enforced Jan 2026+).\n"
+                              "[16KB] Fix: add to samples/android-demo/build.gradle:\n"
+                              "[16KB]   android { packaging { jniLibs { pageAlignSharedLibraries = true } } }\n"
+                              "[16KB] Then rebuild and re-release. See docs/docs/16kb-page-size.md.\n",
+                              file=sys.stderr,
+                          )
                   except Exception as parse_err:
                       print(f"[promote] could not parse error body: {parse_err}",
                             file=sys.stderr)
