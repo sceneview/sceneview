@@ -96,6 +96,48 @@ internal fun <T> diffTrackedSet(
 )
 
 /**
+ * Classic ray-casting point-in-polygon test (#2203 PR #2) — returns true when query point
+ * `(x, z)` lies inside the simple [polygon] expressed as `[x0, z0, x1, z1, ...]` in
+ * plane-local X-Z coordinates.
+ *
+ * Used by [io.github.sceneview.ar.arcore.buildPlaneDepthMeshGeometry] to clip depth-driven
+ * vertices to the visible portion of an ARCore [Plane.getPolygon] — without it, the depth
+ * mesh would extend across the entire camera frustum and ignore the plane's own shape.
+ *
+ * `O(n)` in `polygon.size / 2`. Treats boundary points as inside (the canonical half-open
+ * interval `(z0 > z) != (z1 > z)` guard handles the colinear-with-an-edge case without
+ * double-counting). Returns false for empty or degenerate polygons (< 3 vertices). Self-
+ * intersecting polygons are out of scope — ARCore guarantees simple polygons so the test
+ * is well-defined for the actual input.
+ *
+ * Polygon array layout matches [polygon] / [Plane.getPolygon]: `[x0, z0, x1, z1, ...]`.
+ *
+ * `internal` so the geometry math stays unit-testable without an ARCore [com.google.ar.core.Plane].
+ */
+internal fun pointInPolygon2D(x: Float, z: Float, polygon: FloatArray): Boolean {
+    val pointCount = polygon.size / 2
+    if (pointCount < 3) return false
+    var inside = false
+    var j = pointCount - 1
+    for (i in 0 until pointCount) {
+        val xi = polygon[i * 2]
+        val zi = polygon[i * 2 + 1]
+        val xj = polygon[j * 2]
+        val zj = polygon[j * 2 + 1]
+        // Half-open interval trick: an edge is counted iff exactly one of its endpoints is
+        // strictly above the horizontal ray through (x, z). Prevents double-counting when
+        // the ray passes through a shared vertex, and handles horizontal edges gracefully
+        // (they trivially fail the condition).
+        if ((zi > z) != (zj > z)) {
+            val xIntersection = (xj - xi) * (z - zi) / (zj - zi) + xi
+            if (x < xIntersection) inside = !inside
+        }
+        j = i
+    }
+    return inside
+}
+
+/**
  * Compose `State<List<Plane>>` that tracks the live set of ARCore-detected planes and fires
  * lifecycle callbacks as planes appear, refine, and disappear (#1774).
  *

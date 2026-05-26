@@ -137,6 +137,7 @@ fun ARSceneView(
     focusMode: Config.FocusMode = Config.FocusMode.AUTO,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,  // Escape hatch — runs AFTER all typed params above.
     planeRenderer: Boolean = true,
+    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V2,  // #2203 — V2 (depth-driven mesh + PBR + HDR reflection + scan-in + type-aware shading) is the default as of this release. V1 stays available behind `Version.V1` for one release cycle, now `@Deprecated`.
     sceneUnderstanding: SceneUnderstanding? = null,  // v4.10.0+ — grouped occlusion/lighting/physics/planeVisualization (#1767, RealityKit parity). null = use the individual flags.
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
     view: View = rememberARView(engine),
@@ -262,6 +263,20 @@ ARSceneView(
 ```
 
 When `sceneUnderstanding` is non-null, its four flags override the individual ones on every recomposition. When null, the individual flags retain their pre-#1767 defaults verbatim.
+
+### Plane rendering — V2 (default) vs V1 (legacy, deprecated, #2203)
+
+Two plane-renderer implementations ship side-by-side, selectable via the `planeRendererVersion` parameter on `ARSceneView` (and on the legacy `ARScene` alias). **V2 is the default as of this release.** V1 stays available for one release cycle behind `PlaneRendererBase.Version.V1` and is `@Deprecated` — apps that subclass `PlaneRenderer` or override `plane_renderer.mat` get one cycle to migrate.
+
+```kotlin
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    // V2 is the default — this line is redundant, shown for clarity.
+    planeRendererVersion = PlaneRendererBase.Version.V2,
+) { /* ... */ }
+```
+
+V2 ([#2203](https://github.com/sceneview/sceneview/issues/2203), all 5 PRs landed) ships **four user-visible effects in one renderer**: (1) **depth-driven mesh + polygon clip** — detected planes tessellate against the ARCore depth image (5 Hz rebuild cap, ±30 cm clamp); (2) **PBR + HDR cubemap reflection** — `shadingModel: lit` with `metallic` / `roughness` / `reflectance`, sampling the IBL that `LightEstimator` continuously feeds from ARCore's `acquireEnvironmentalHdrCubeMap()`, so a glossy floor visibly reflects the ceiling lights and window glow; (3) **type-aware shading** — `HORIZONTAL_UPWARD_FACING` → floor (`metallic 0.00`, `roughness 0.35`, cool-white grid tint), `HORIZONTAL_DOWNWARD_FACING` → ceiling (`roughness 0.65`, warm-white), `VERTICAL` → wall (`roughness 0.80`, neutral grey) — same single `Material`, one `MaterialInstance` per plane; (4) **scan-in + reflection fade-in** — an 800 ms ring expands from the polygon centroid the first time a plane is detected, and `metallic` + `reflectance` ramp from 0 over 1 s to mask ARCore's HDR estimate stabilisation. Smooth per-vertex `TANGENTS` ship with every depth-mesh vertex so PBR specular highlights wrap correctly across bumps and slopes. **Without depth** (device unsupported, first frames after `Frame.acquireDepthImage16Bits`, raw frame not yet ready) V2 falls back transparently to a flat polygon with `(0, 1, 0)` normals — never crashes, never blanks. Showcase demo: `sceneview://demo/ar-plane-renderer-v2` (live V1 ↔ V2 toggle).
 
 ### ARFogNode — environment-aware AR fog (v4.10.0+, #1717)
 
@@ -4032,6 +4047,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-people-occlusion` — People Occlusion. Real people hide virtual objects behind them.
 - `ar-placement` — Tap to Place. Place 3D models in AR.
 - `ar-plane-node` — Plane Lifecycle. PlaneNode + onAdded/onUpdated/onRemoved.
+- `ar-plane-renderer-v2` — Plane Renderer V2. Depth + PBR + HDR + scan-in, with live V1 ↔ V2 toggle.
 - `ar-point-cloud` — Point Cloud. World-space feature points via PointCloudNode.
 - `ar-pose` — Pose Placement. Free pose positioning.
 - `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Confidence-filtered point cloud from raw depth.

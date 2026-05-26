@@ -1,3 +1,10 @@
+// PlaneRenderer (V1) is @Deprecated since #2203 PR #5. Its own internals legitimately
+// reference the also-deprecated PlaneVisualizer (V1); a file-level suppression keeps the
+// V1 path warning-free internally while callers of the V1 class still see the deprecation
+// notice at their call site. Mirrors the @Suppress("DEPRECATION") pattern in ARScene.kt's
+// V1 factory branch.
+@file:Suppress("DEPRECATION")
+
 package io.github.sceneview.ar.scene
 
 import android.util.Size
@@ -24,18 +31,42 @@ import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.texture.ImageTexture
 
 /**
- * Control rendering of ARCore planes.
- *
+ * Control rendering of ARCore planes — V1 implementation.
  *
  * Used to visualize detected planes and to control whether Renderables cast shadows on them.
+ * Each detected plane is drawn as a flat polygon textured with a procedural soft grid
+ * (`plane_renderer.mat`).
+ *
+ * ### Deprecated — V2 is the default
+ *
+ * As of [#2203](https://github.com/sceneview/sceneview/issues/2203) PR #5, V2 is the default
+ * and this V1 class is `@Deprecated`. V2 ([PlaneRendererV2]) ships depth-driven micro-relief,
+ * PBR materials lit by ARCore's HDR cubemap, type-aware shading (floor / ceiling / wall) and
+ * an animated scan-in.
+ *
+ * V1 stays available behind `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V1)`
+ * for one release cycle so apps that subclass [PlaneRenderer] or override `plane_renderer.mat`
+ * can port their custom styling. It will be removed in a future release.
+ *
+ * @see PlaneRendererBase
+ * @see PlaneRendererV2
  */
+@Deprecated(
+    message = "V1 renders detected planes as a flat unlit polygon. " +
+        "V2 ships depth-driven mesh, PBR lighting, HDR reflection, " +
+        "type-aware shading, and scan-in animation. Migrate to V2 " +
+        "via ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2). " +
+        "V1 will be removed in a future release. See #2203.",
+    replaceWith = ReplaceWith("PlaneRendererV2"),
+    level = DeprecationLevel.WARNING,
+)
 class PlaneRenderer(
     val engine: Engine,
     private val materialLoader: MaterialLoader,
     private val scene: Scene
-) {
+) : PlaneRendererBase {
 
-    lateinit var viewSize: Size
+    override lateinit var viewSize: Size
 
     private val visualizers = mutableMapOf<Plane, PlaneVisualizer>()
 
@@ -93,7 +124,7 @@ class PlaneRenderer(
     /**
      * ### Enable/disable the plane renderer.
      */
-    var isEnabled = true
+    override var isEnabled = true
         set(value) {
             if (field != value) {
                 field = value
@@ -107,7 +138,7 @@ class PlaneRenderer(
      * If false - no planes are drawn. Note that shadow visibility is independent of plane
      * visibility.
      */
-    var isVisible = true
+    override var isVisible = true
         set(value) {
             if (field != value) {
                 field = value
@@ -120,7 +151,7 @@ class PlaneRenderer(
      *
      * If false - no planes receive shadows, regardless of the per-plane setting.
      */
-    var isShadowReceiver = true
+    override var isShadowReceiver = true
         set(value) {
             if (field != value) {
                 field = value
@@ -138,7 +169,7 @@ class PlaneRenderer(
 
     private var frame: Frame? = null
 
-    fun update(session: Session, frame: Frame) {
+    override fun update(session: Session, frame: Frame) {
         if (isEnabled) {
             if (frame.fps(this.frame) < maxHitTestPerSecond) {
                 this.frame = frame
@@ -176,7 +207,7 @@ class PlaneRenderer(
         }
     }
 
-    fun destroy() {
+    override fun destroy() {
         visualizers.forEach { (_, planeVisualizer) -> planeVisualizer.destroy() }
 
         materialInstances.forEach { engine.safeDestroyMaterialInstance(it) }
