@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **iOS App Store deploy:** patch Swift 6 strict-concurrency error in `ARPlaneNodeDemo.swift:97` that broke the v4.15.2 `app-store.yml` archive step. The `private enum AssocKey { static var delegate = 0 }` global (used only as an `objc_setAssociatedObject` key) is now `nonisolated(unsafe) static var delegate: UInt8 = 0` — canonical opt-out for the "address-of-global as key" idiom. Fixes the v4.15.2 iOS deploy red without re-tagging.
