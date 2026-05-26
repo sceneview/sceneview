@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+- **`catmullRom()`**: Fix centripetal/chordal parameterisation — the `alpha != 0` path now uses the Barry-Goldman pyramidal recurrence over chord-length knots instead of the uniform matrix formula, so `alpha = 0.5` (centripetal) genuinely avoids cusps and self-intersections near sharp turns. The uniform path (`alpha = 0`) is unchanged.
+- **`ModelLoader.createInstance()`**: Annotate with `@MainThread` — Filament's `AssetLoader.createInstance()` is a JNI call that must run on the Filament main thread; the annotation surfaces a warning in the IDE and lint when called from a background coroutine.
