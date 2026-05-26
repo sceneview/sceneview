@@ -87,11 +87,18 @@ jobs:
         working-directory: SceneViewSwift
         run: |
           set -o pipefail
+          # ONLY_ACTIVE_ARCH=NO forces a fat build (arm64 + x86_64) regardless of
+          # whether the runner is Apple Silicon or Intel. Without it, macos-15 Intel
+          # runners produce only an x86_64 .swiftmodule and the arm64 type-check step
+          # fails with "could not find module 'SceneViewSwift' for target arm64…;
+          # found: x86_64-apple-ios-simulator". See #2223.
           xcodebuild build \
             -scheme SceneViewSwift \
             -destination 'generic/platform=iOS Simulator' \
             -skipMacroValidation \
             -derivedDataPath "$RUNNER_TEMP/sv-dd" \
+            ONLY_ACTIVE_ARCH=NO \
+            ARCHS="arm64 x86_64" \
             | xcpretty --color 2>/dev/null || cat
 
       # Type-check the Flutter plugin's iOS Swift against the built
@@ -103,6 +110,16 @@ jobs:
 
           SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
           SV_MODULE="$RUNNER_TEMP/sv-dd/Build/Products/Debug-iphonesimulator"
+
+          # Detect the native runner arch to pick the matching simulator target.
+          # arm64 on Apple Silicon runners, x86_64 on Intel runners.
+          RUNNER_ARCH="$(uname -m)"
+          if [ "$RUNNER_ARCH" = "arm64" ]; then
+            SIM_TARGET="arm64-apple-ios18.0-simulator"
+          else
+            SIM_TARGET="x86_64-apple-ios18.0-simulator"
+          fi
+          echo "Runner arch: $RUNNER_ARCH  →  simulator target: $SIM_TARGET"
 
           # Locate the simulator slice of the Flutter engine xcframework that
           # ships inside the Flutter SDK cache. The path is engine-revision
@@ -130,7 +147,7 @@ jobs:
           swiftc -typecheck \
             -swift-version 5 \
             -sdk "$SDK" \
-            -target arm64-apple-ios18.0-simulator \
+            -target "$SIM_TARGET" \
             -F "$FLUTTER_SIM_FW" \
             -I "$SV_MODULE" \
             -L "$SV_MODULE" \
