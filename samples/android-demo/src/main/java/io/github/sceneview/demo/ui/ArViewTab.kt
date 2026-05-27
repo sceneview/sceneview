@@ -74,6 +74,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -152,6 +156,14 @@ import java.util.UUID
 @Composable
 fun ArViewTabContent(
     onDemoClick: (String) -> Unit,
+    /**
+     * Invoked whenever the live AR camera session is entered or exited. The
+     * caller (typically [RootScreen]) uses this to hide the bottom
+     * NavigationBar + system bars while the camera is active so the AR
+     * viewport gets the full screen (#2238). Default no-op keeps the
+     * composable usable in tests / previews that don't host a Scaffold.
+     */
+    onSessionActiveChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -180,6 +192,33 @@ fun ArViewTabContent(
     // launcher screen and re-prompt for everything. Anchors themselves are
     // not Parcelable so we accept the loss of placed models across a kill.
     var sessionStarted by rememberSaveable { mutableStateOf(false) }
+
+    // Immersive-mode wiring (#2238) — when the live AR session is active:
+    //   1. Tell [RootScreen] to hide its bottom NavigationBar (reclaims ~90 px
+    //      of viewport for the camera);
+    //   2. Hide the system status + nav bars via WindowInsetsControllerCompat
+    //      so the AR view goes truly fullscreen.
+    // Both reverse on exit / back / dispose so the user lands on the launcher
+    // screen with all chrome restored.
+    val view = LocalView.current
+    DisposableEffect(sessionStarted) {
+        onSessionActiveChange(sessionStarted)
+        val window = (view.context as? android.app.Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        if (sessionStarted && controller != null) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            // On composable dispose (tab swap, process tear-down) always
+            // restore chrome so the next screen renders normally.
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+            onSessionActiveChange(false)
+        }
+    }
     var arCoreAvailability by remember {
         mutableStateOf<ArCoreApk.Availability?>(null)
     }
