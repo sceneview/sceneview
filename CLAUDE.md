@@ -546,16 +546,16 @@ Never say "everything is good" without verifying published packages.
 
 **The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.15.1`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
 
-### Current state (last updated: 2026-05-27, session pedantic-robinson — maintenance sweep #3 + v4.16.10 SHIPPED)
+### Current state (last updated: 2026-05-27, session pedantic-robinson — maintenance sweep #3 + v4.16.10 FULLY SHIPPED)
 
-- 🚀 **v4.16.10 RELEASED** — tag `v4.16.10`. Lint & security patch: VIBRATE permission, CVE-2026-8723 qs pin, SVG coordinate corruption fix. release.yml ✅, play-store.yml ✅ (in progress), CI ✅.
-- 🔧 **SVG coordinate corruption FIXED** — pre-existing bug since v4.6.2: blanket sed was mangling polygon/polyline coordinate data in `website-static/index.html`. Lines 192/195/196 restored to correct geometry.
-- ✅ **v4.16.9 fully verified** — Maven Central ✅, npm ✅, Play Store ✅, GitHub Release ✅.
-- ✅ **Detekt ZERO across all modules** — android-demo (35→0), sceneview-web+desktop (27→0).
-- ✅ **iOS TestFlight deploying** from v4.16.5 onwards ✅.
-- ✅ **MCP 1864/1864 ✅** — sdk=4.16.10 in version.ts.
+- 🚀 **v4.16.10 RELEASED & VERIFIED** — Maven Central ✅, npm (sceneview-web@4.16.10, sceneview-mcp@4.0.12, react-native@4.16.10) ✅, Play Store ✅, iOS TestFlight ✅, GitHub Release ✅, website ✅.
+- 🔧 **SVG coordinate corruption FIXED** — pre-existing bug since v4.6.2 in `website-static/index.html` lines 192/195/196 restored.
+- ✅ **sync-versions 0/100 MISMATCH** — 3 intentional WARNs only (consumed deps lag).
+- ✅ **Lint 0 errors** — sceneview + arsceneview clean after VIBRATE permission fix.
+- ✅ **MCP 1864/1864 ✅**, AI skills ✅, cross-platform 8 gaps (expected alpha).
+- ✅ **Stale worktrees cleaned** — blissful-bohr + loving-ellis removed (0 commits ahead of main).
 - ⚠️ **macOS installer cert** — #2252: Thomas must add `MACOS_INSTALLER_CERT_BASE64` + `MACOS_INSTALLER_CERT_PASSWORD` GitHub secrets.
-- 📋 **19 open issues** (none stale, none unlabelled).
+- 📋 **19 open issues** (none stale, all labelled). PR #2221 draft, all CI green — awaits Thomas review.
 
 ### Followups for next session
 
