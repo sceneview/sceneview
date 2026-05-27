@@ -87,6 +87,7 @@ fun AsyncNetworkImage(
         // could still surface an OutOfMemoryError, which must NOT crash the
         // tab. Cancellation propagates because withContext re-checks the job.
         val decoded = withContext(Dispatchers.IO) {
+            @Suppress("SwallowedException") // all image-load errors degrade gracefully to null (no crash in the tab)
             try {
                 fetchBitmap(key)
             } catch (oom: OutOfMemoryError) {

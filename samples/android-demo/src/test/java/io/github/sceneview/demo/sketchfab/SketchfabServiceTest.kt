@@ -130,6 +130,7 @@ class SketchfabServiceTest {
             // make a real network call from a unit test.
             return
         }
+        @Suppress("SwallowedException") // expected exception in a negative test — no action needed on catch
         try {
             runBlocking { service.search("car", limit = 5) }
             fail("expected MissingApiKey, got success")

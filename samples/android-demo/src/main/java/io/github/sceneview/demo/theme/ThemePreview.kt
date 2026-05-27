@@ -1,4 +1,5 @@
 @file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@file:Suppress("MaxLineLength") // preview strings + Compose one-liner annotations are intentionally long
 
 package io.github.sceneview.demo.theme
 

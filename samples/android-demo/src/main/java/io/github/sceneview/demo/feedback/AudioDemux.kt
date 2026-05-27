@@ -59,6 +59,7 @@ fun demuxAudioTrack(source: File, dest: File): File? {
         }
         var buffer = ByteBuffer.allocate(bufferSize)
         val info = MediaCodec.BufferInfo()
+        @Suppress("LoopWithTooManyJumpStatements") // EOS/grow-and-retry protocol needs multiple breaks
         while (true) {
             var size = extractor.readSampleData(buffer, 0)
             // readSampleData returns -1 at EOS. It can also return -1 (or throw
@@ -85,7 +86,7 @@ fun demuxAudioTrack(source: File, dest: File): File? {
         }
         muxer.stop()
         dest
-    } catch (e: Exception) {
+    } catch (@Suppress("SwallowedException") e: Exception) { // any demux error → discard partial file and return null
         dest.delete()
         null
     } finally {

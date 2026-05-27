@@ -156,12 +156,13 @@ class FeedbackRecordingService : Service() {
                 startForeground(NOTIF_ID, notification)
             }
             true
-        } catch (e: Exception) {
+        } catch (@Suppress("SwallowedException") e: Exception) { // failure recorded via setFailed
             FeedbackRecorder.setFailed("could not start the recording service")
             false
         }
     }
 
+    @Suppress("LongMethod") // MediaRecorder setup is inherently sequential and cannot be split without losing clarity
     private fun startRecording(resultCode: Int, data: Intent) {
         try {
             val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -255,12 +256,13 @@ class FeedbackRecordingService : Service() {
         val stopped = try {
             recorder?.stop()
             true
-        } catch (e: Exception) {
-            // MediaRecorder.stop() throws if too few frames were captured.
+        } catch (@Suppress("SwallowedException") e: Exception) {
+            // MediaRecorder.stop() throws if too few frames were captured — not an error.
             false
         }
         cleanup()
-        if (stopped && out != null && out.exists() && out.length() > 0L) {
+        val hasRecording = stopped && out != null && out.exists() && out.length() > 0L
+        if (hasRecording) {
             // Demux the audio track off the main thread, then publish the
             // result. The work runs on a managed executor (cancelled in
             // onDestroy) and is wrapped so an exception is reported as a

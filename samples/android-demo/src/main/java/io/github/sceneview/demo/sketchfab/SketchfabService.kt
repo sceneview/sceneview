@@ -250,6 +250,7 @@ class SketchfabService private constructor(
             .build()
     }
 
+    @Suppress("ThrowsCount") // fine-grained error types (WAF, key-rejected, request-failed) need multiple throws
     private fun authenticatedGet(url: HttpUrl): String {
         val apiKey = SketchfabConfig.apiKey ?: throw SketchfabError.MissingApiKey
         val request = Request.Builder()
@@ -298,6 +299,7 @@ class SketchfabService private constructor(
         }
     }
 
+    @Suppress("NestedBlockDepth") // OkHttp use{} + temp-file try/catch + streaming loop is inherently nested
     private fun downloadBinary(
         remoteUrl: String,
         destination: File,
@@ -351,7 +353,7 @@ class SketchfabService private constructor(
                 }
             } catch (io: IOException) {
                 temp.delete()
-                throw SketchfabError.DownloadFailed(io.message ?: "io error")
+                throw SketchfabError.DownloadFailed(io.message ?: "io error", cause = io)
             }
         }
     }
@@ -410,7 +412,8 @@ class SketchfabService private constructor(
         }
 
         /** Failure while streaming the GLB from the signed CDN URL. */
-        class DownloadFailed(val reason: String) : SketchfabError() {
+        class DownloadFailed(val reason: String, cause: Throwable? = null) : SketchfabError() {
+            init { cause?.let { initCause(it) } }
             override val message: String get() = "Sketchfab download failed: $reason."
         }
 

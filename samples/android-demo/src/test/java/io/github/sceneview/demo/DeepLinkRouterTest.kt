@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // test DemoEntry constructor args are long by nature
+
 package io.github.sceneview.demo
 
 import android.net.Uri

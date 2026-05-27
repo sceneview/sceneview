@@ -390,6 +390,7 @@ private class SemanticsOverlayResources {
      * `R8` texture, builds the overlay quad on first use, sizes it to the camera frustum, and
      * applies [opacity]. A no-op when semantics are not yet available.
      */
+    @Suppress("LongMethod") // Filament texture upload + quad lifecycle is inherently multi-step
     fun update(
         frame: Frame,
         engine: com.google.android.filament.Engine,

@@ -79,10 +79,10 @@ object SketchfabConfig {
             if (resolved == null && BuildConfig.DEBUG && missingKeyLogged.compareAndSet(false, true)) {
                 Log.w(
                     LOG_TAG,
-                    "SKETCHFAB_API_KEY is not set — Sketchfab features (carousels, search, streamed demos) are disabled. " +
-                        "For local builds add `sketchfab.api.key=<your-token>` to local.properties, or export " +
-                        "SKETCHFAB_API_KEY=<your-token> before running Gradle. Grab a token at " +
-                        "Sketchfab → Settings → Password & API → API Token. See issue #1909."
+                    "SKETCHFAB_API_KEY is not set — Sketchfab features are disabled. " +
+                        "Add `sketchfab.api.key=<token>` to local.properties, or export " +
+                        "SKETCHFAB_API_KEY=<token> before Gradle. " +
+                        "Get a token at Sketchfab → Settings → Password & API → API Token. See #1909."
                 )
             }
             return resolved

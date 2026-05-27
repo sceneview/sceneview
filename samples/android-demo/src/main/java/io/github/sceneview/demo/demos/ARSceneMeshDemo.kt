@@ -228,12 +228,12 @@ fun ARSceneMeshDemo(onBack: () -> Unit) {
 
     LaunchedEffect(isTracking, geometryCount, geospatialUnavailable, sessionError, hasArcoreApiKey) {
         noGeometryGuidance = false
-        if (isTracking &&
+        val shouldShowNoGeometryHint = isTracking &&
             geometryCount == 0 &&
             geospatialUnavailable == null &&
             sessionError == null &&
             hasArcoreApiKey
-        ) {
+        if (shouldShowNoGeometryHint) {
             kotlinx.coroutines.delay(NO_GEOMETRY_HINT_DELAY_MS)
             noGeometryGuidance = true
         }

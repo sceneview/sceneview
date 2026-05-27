@@ -1,3 +1,5 @@
+@file:Suppress("MatchingDeclarationName") // plural file name, singular enum name — intentional
+
 package io.github.sceneview.demo.ui.explore
 
 /**

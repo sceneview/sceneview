@@ -1,4 +1,5 @@
 @file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@file:Suppress("MaxLineLength") // @Preview annotation strings and uiMode flags are intentionally long
 
 package io.github.sceneview.demo.update
 

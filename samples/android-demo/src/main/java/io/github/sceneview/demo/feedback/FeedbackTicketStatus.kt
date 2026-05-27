@@ -135,8 +135,8 @@ object FeedbackTicketStatus {
                     }
                 }
             }
-        } catch (e: Exception) {
-            // Offline / timeout — not cached, the next open retries.
+        } catch (@Suppress("SwallowedException") e: Exception) {
+            // Offline / timeout — not cached, the next open retries. Exception detail not needed.
             TicketState.UNKNOWN
         }
     }

@@ -196,7 +196,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     // `Context.display` was added in API 30; fall back to the
                     // deprecated `WindowManager.defaultDisplay` on API 28–29.
                     val displayRotation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                        context.display?.rotation ?: android.view.Surface.ROTATION_0
+                        context.display.rotation
                     } else {
                         @Suppress("DEPRECATION")
                         (context.getSystemService(android.content.Context.WINDOW_SERVICE)

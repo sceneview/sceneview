@@ -334,6 +334,7 @@ private suspend fun pickRandomDownloadableModel(
     // Search a broad PBR-friendly query so the picks read well under the demo
     // lighting. Falls back to "modern" if "pbr" returns 0 hits for some reason.
     val candidates = listOf("pbr", "modern", "scan")
+    @Suppress("LoopWithTooManyJumpStatements") // continue-guards replace nested ifs for readability
     for (query in candidates) {
         val results = runCatching {
             service.search(query = query, downloadable = true, limit = 24)

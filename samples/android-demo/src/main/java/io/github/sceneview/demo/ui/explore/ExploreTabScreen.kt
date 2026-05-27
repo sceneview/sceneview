@@ -93,7 +93,6 @@ import kotlinx.coroutines.supervisorScope
 fun ExploreTabScreen(
     curatedSamples: List<DemoEntry>,
     onSampleClick: (DemoEntry) -> Unit,
-    onCategoryClick: (SketchfabCategory) -> Unit = {},
 ) {
     val scroll = rememberScrollState()
     val recentSearches = rememberRecentSearches()
@@ -153,9 +152,15 @@ fun ExploreTabScreen(
         try {
             supervisorScope {
                 val onRejected = { keyRejected = true }
-                val a = async { catchingFeed(onRejected) { sketchfabService.staffPicks(animated = animatedParam, limit = 10) } }
-                val b = async { catchingFeed(onRejected) { sketchfabService.featured(animated = animatedParam, limit = 10) } }
-                val c = async { catchingFeed(onRejected) { sketchfabService.recentlyAdded(animated = animatedParam, limit = 10) } }
+                val a = async {
+                    catchingFeed(onRejected) { sketchfabService.staffPicks(animated = animatedParam, limit = 10) }
+                }
+                val b = async {
+                    catchingFeed(onRejected) { sketchfabService.featured(animated = animatedParam, limit = 10) }
+                }
+                val c = async {
+                    catchingFeed(onRejected) { sketchfabService.recentlyAdded(animated = animatedParam, limit = 10) }
+                }
                 staffPicks = a.await()
                 mostLiked = b.await()
                 recent = c.await()
@@ -264,8 +269,6 @@ fun ExploreTabScreen(
             recent = recent,
             loadingFeeds = loadingFeeds,
             onModelClick = { selectedModel = it },
-            onCategoryClick = onCategoryClick,
-            recentSearches = recentSearches,
         )
     }
 
@@ -323,8 +326,6 @@ private fun ExploreBody(
     recent: List<SketchfabModel>,
     loadingFeeds: Boolean,
     onModelClick: (SketchfabModel) -> Unit,
-    onCategoryClick: (SketchfabCategory) -> Unit,
-    recentSearches: RecentSearchesState,
 ) {
     val isSearching = activeSearchQuery.isNotBlank()
     Column(

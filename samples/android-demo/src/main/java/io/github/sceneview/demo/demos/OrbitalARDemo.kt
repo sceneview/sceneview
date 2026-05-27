@@ -524,7 +524,6 @@ fun OrbitalARDemo(onBack: () -> Unit) {
             if (target != null && viewportSize != IntSize.Zero) {
                 OffscreenTargetArrow(
                     angleRad = target.angleRad,
-                    viewportSize = viewportSize,
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
@@ -595,13 +594,11 @@ private fun rememberFileModelInstance(
  * a short stalk, rotated so it visually points along the same direction.
  *
  * @param angleRad direction from screen centre toward the target, in radians.
- * @param viewportSize current AR surface size in pixels.
  * @param color arrow fill colour — the demo passes the Material primary colour.
  */
 @Composable
 private fun OffscreenTargetArrow(
     angleRad: Float,
-    viewportSize: IntSize,
     color: Color,
 ) {
     Canvas(modifier = Modifier.fillMaxSize()) {

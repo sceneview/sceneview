@@ -130,7 +130,7 @@ object FeedbackUploader {
             client.newCall(request).execute().use { response ->
                 parseResponse(response)
             }
-        } catch (e: Exception) {
+        } catch (@Suppress("SwallowedException") e: Exception) { // network error → return typed error result
             Result(false, null, null, null, ErrorKind.NETWORK)
         }
     }

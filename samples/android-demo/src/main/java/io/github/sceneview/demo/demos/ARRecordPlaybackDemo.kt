@@ -1530,6 +1530,7 @@ private fun openRecordingAsVideo(context: Context, file: File) {
         setDataAndType(uri, "video/mp4")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
+    @Suppress("SwallowedException") // user sees a Toast — no-op logging needed for a demo app
     try {
         context.startActivity(Intent.createChooser(intent, "Open AR recording"))
     } catch (e: android.content.ActivityNotFoundException) {

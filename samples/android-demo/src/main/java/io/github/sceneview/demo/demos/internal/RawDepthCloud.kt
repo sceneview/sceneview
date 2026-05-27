@@ -61,6 +61,7 @@ internal object RawDepthCloud {
      *
      * @return Packed array length = `nPoints * STRIDE_INTS`. Always returns a fresh array.
      */
+    @Suppress("NestedBlockDepth") // y→x→confidence→depth nested loops are the canonical depth-cloud pattern
     fun buildCloud(
         depthBytes: ByteBuffer,
         depthRowStrideBytes: Int,

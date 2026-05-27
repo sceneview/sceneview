@@ -268,12 +268,12 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
     // the inputs so the timer re-arms whenever tracking drops or geometry appears.
     LaunchedEffect(isTracking, geometryCount, geospatialUnavailable, sessionError, hasArcoreApiKey) {
         noGeometryGuidance = false
-        if (isTracking &&
+        val shouldShowNoGeometryHint = isTracking &&
             geometryCount == 0 &&
             geospatialUnavailable == null &&
             sessionError == null &&
             hasArcoreApiKey
-        ) {
+        if (shouldShowNoGeometryHint) {
             kotlinx.coroutines.delay(NO_GEOMETRY_HINT_DELAY_MS)
             noGeometryGuidance = true
         }
