@@ -8,5 +8,11 @@
 import SwiftUI
 
 enum ArPlaneNodeScene: DemoScene {
-    @MainActor static var destination: AnyView { AnyView(ARPlaneNodeDemo()) }
+    @MainActor static var destination: AnyView {
+        #if os(iOS)
+        return AnyView(ARPlaneNodeDemo())
+        #else
+        return AnyView(EmptyView())
+        #endif
+    }
 }

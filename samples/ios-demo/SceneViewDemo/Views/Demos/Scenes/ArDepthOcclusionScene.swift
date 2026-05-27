@@ -8,5 +8,11 @@
 import SwiftUI
 
 enum ArDepthOcclusionScene: DemoScene {
-    @MainActor static var destination: AnyView { AnyView(ARDepthOcclusionDemo()) }
+    @MainActor static var destination: AnyView {
+        #if os(iOS)
+        return AnyView(ARDepthOcclusionDemo())
+        #else
+        return AnyView(EmptyView())
+        #endif
+    }
 }

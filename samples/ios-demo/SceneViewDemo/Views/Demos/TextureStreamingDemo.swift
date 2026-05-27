@@ -58,7 +58,9 @@ struct TextureStreamingDemo: View {
             }
         }
         .navigationTitle("Texture Streaming")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     // MARK: — RealityView overlay

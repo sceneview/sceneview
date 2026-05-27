@@ -52,7 +52,9 @@ struct DebugOverlayDemo: View {
             }
         }
         .navigationTitle("Debug Overlay")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .onAppear  { fps.start() }
         .onDisappear { fps.stop() }
         .task(id: targetCount)     { await spawnProgressively() }
@@ -250,6 +252,10 @@ struct DebugOverlayDemo: View {
 
 // MARK: — FPS Counter
 
+// CADisplayLink(target:selector:) is iOS/tvOS/visionOS only;
+// macOS does not expose this initialiser. Provide a no-op stub on macOS so
+// the demo still compiles for the macOS App Store target (#1794).
+#if os(iOS) || os(tvOS) || targetEnvironment(macCatalyst)
 private final class FPSCounter: ObservableObject {
     @Published var currentFPS: Double = 0
     @Published var frameTimeMs: Double = 0
@@ -287,6 +293,15 @@ private final class FPSCounter: ObservableObject {
 
     deinit { stop() }
 }
+#else
+private final class FPSCounter: ObservableObject {
+    @Published var currentFPS: Double = 0
+    @Published var frameTimeMs: Double = 0
+    @Published var history: [CGFloat] = []
+    func start() {}
+    func stop() {}
+}
+#endif
 
 // MARK: — Helpers
 

@@ -8,5 +8,11 @@
 import SwiftUI
 
 enum ArPointCloudScene: DemoScene {
-    @MainActor static var destination: AnyView { AnyView(ARPointCloudDemo()) }
+    @MainActor static var destination: AnyView {
+        #if os(iOS)
+        return AnyView(ARPointCloudDemo())
+        #else
+        return AnyView(EmptyView())
+        #endif
+    }
 }
