@@ -193,17 +193,24 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                         return@ARSceneView
                     }
 
-                    val rotationDegrees = (context.display.rotation).let { rot ->
+                    // `Context.display` was added in API 30; fall back to the
+                    // deprecated `WindowManager.defaultDisplay` on API 28–29.
+                    val displayRotation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                        context.display?.rotation ?: android.view.Surface.ROTATION_0
+                    } else {
+                        @Suppress("DEPRECATION")
+                        (context.getSystemService(android.content.Context.WINDOW_SERVICE)
+                                as android.view.WindowManager).defaultDisplay.rotation
+                    }
+                    val rotationDegrees = when (displayRotation) {
                         // ARCore CPU image is delivered with the device's natural-orientation
                         // axis. ML Kit needs degrees of rotation from upright. ARCore's
                         // back-camera sensor orientation on Android phones is 90° → match.
-                        when (rot) {
-                            android.view.Surface.ROTATION_0 -> 90
-                            android.view.Surface.ROTATION_90 -> 0
-                            android.view.Surface.ROTATION_180 -> 270
-                            android.view.Surface.ROTATION_270 -> 180
-                            else -> 90
-                        }
+                        android.view.Surface.ROTATION_0 -> 90
+                        android.view.Surface.ROTATION_90 -> 0
+                        android.view.Surface.ROTATION_180 -> 270
+                        android.view.Surface.ROTATION_270 -> 180
+                        else -> 90
                     }
 
                     // Hand the image to ML Kit. `InputImage.fromMediaImage` retains a

@@ -76,6 +76,9 @@ fun demuxAudioTrack(source: File, dest: File): File? {
             info.offset = 0
             info.size = size
             info.presentationTimeUs = extractor.sampleTime
+            // MediaExtractor.SAMPLE_FLAG_* and MediaCodec.BUFFER_FLAG_* share identical
+            // integer values by design — this assignment is semantically correct.
+            @Suppress("WrongConstant")
             info.flags = extractor.sampleFlags
             muxer.writeSampleData(outTrack, buffer, info)
             extractor.advance()

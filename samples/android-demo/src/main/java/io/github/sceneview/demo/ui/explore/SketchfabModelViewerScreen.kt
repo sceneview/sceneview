@@ -425,6 +425,8 @@ private fun DownloadingContent(
     heroModifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    // Capture outside the coroutine so stringResource() is called on the composition thread.
+    val downloadFailedMsg = stringResource(R.string.sketchfab_download_failed)
 
     // (bytesRead, totalBytes) — totalBytes == -1L when server omits Content-Length.
     var downloadProgress by remember { mutableStateOf<Pair<Long, Long>?>(null) }
@@ -447,7 +449,7 @@ private fun DownloadingContent(
         collector.join()
         result.fold(
             onSuccess = onReady,
-            onFailure = { onError(it.message ?: context.getString(R.string.sketchfab_download_failed)) },
+            onFailure = { onError(it.message ?: downloadFailedMsg) },
         )
     }
 

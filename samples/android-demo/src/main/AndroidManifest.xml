@@ -24,6 +24,8 @@
          the Play Store filter doesn't narrow the install audience to GPS-equipped
          devices, and so reviewers see "uses precise location only when used"
          rather than "always". (#891) -->
+    <!-- ACCESS_COARSE_LOCATION is required alongside FINE on API 31+ (CoarseFineLocation lint). -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-feature
         android:name="android.hardware.location.gps"
