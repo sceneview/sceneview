@@ -178,6 +178,17 @@ open class ModelNode(
     private val sanitizedEntities = mutableSetOf<Entity>()
 
     /**
+     * Entities observed at least once with a non-empty AABB.
+     *
+     * Once an entity is here, its AABB is considered stable and we skip per-frame
+     * re-checks — the only common reasons an AABB starts empty (skinning awaiting bone
+     * transforms, async resource loads) are one-shot startup transitions that don't
+     * recur during steady-state rendering. Allows [sanitizeEmptyBoundingBoxes] to
+     * early-exit on the hot path once a model is fully loaded (#2273).
+     */
+    private val validatedEntities = mutableSetOf<Entity>()
+
+    /**
      * Gets the skin count of this instance.
      */
     val skinCount: Int get() = modelInstance.skinCount
@@ -474,10 +485,19 @@ open class ModelNode(
      * Once the AABB becomes valid (non-empty), culling and shadows are re-enabled.
      */
     private fun sanitizeEmptyBoundingBoxes() {
+        // Steady-state fast path: every renderable has been observed valid at least
+        // once and nothing is currently disabled. No per-frame JNI traffic needed
+        // until popRenderable() yields a new entity.
+        if (sanitizedEntities.isEmpty() && validatedEntities.size == renderableNodes.size) {
+            return
+        }
         val renderableManager = modelInstance.engine.renderableManager
         val box = Box()
         for (renderableNode in renderableNodes) {
             val entity = renderableNode.entity
+            // Skip entities already known to be stable.
+            if (entity in validatedEntities) continue
+
             val instance = renderableManager.getInstance(entity)
             if (instance == 0) continue
 
@@ -497,6 +517,11 @@ open class ModelNode(
                 renderableManager.setCastShadows(instance, true)
                 renderableManager.setReceiveShadows(instance, true)
                 sanitizedEntities -= entity
+                validatedEntities += entity
+            } else if (!isEmpty) {
+                // First-time observation of a valid AABB: mark stable so future
+                // frames skip this entity in the fast path above.
+                validatedEntities += entity
             }
         }
     }
