@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v4.16.6 — 2026-05-27
+
+### Fixed
+
+- **macOS App Store**: fixed all compile errors blocking macOS archive since #1049
+  (Xcode 16.2+). Guarded `navigationBarTitleDisplayMode`, `CADisplayLink`,
+  `secondarySystemBackground`, and AR demo scene destinations in `#if os(iOS)`
+  blocks. Closes [#1794](https://github.com/sceneview/sceneview/issues/1794).
+
 ## v4.16.5 — 2026-05-27
 
 ### Fixed
