@@ -546,21 +546,22 @@ Never say "everything is good" without verifying published packages.
 
 **The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.15.1`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
 
-### Current state (last updated: 2026-05-27, session pedantic-robinson — maintenance sweep + v4.16.8 SHIPPED)
+### Current state (last updated: 2026-05-27, session pedantic-robinson — maintenance sweep + v4.16.8 SHIPPED + shadow fix)
 
 - 🚀 **v4.16.8 RELEASED** — tag `v4.16.8` at HEAD `aba3e83e0`. release.yml ✅, play-store.yml ✅, docs.yml ✅. app-store.yml iOS TestFlight ✅, macOS ❌ (missing `MACOS_INSTALLER_CERT_BASE64` — Thomas action, #2252).
 - ✅ **Library 16KB page-size alignment SHIPPED** (#2226, #2255) — `experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"` added to `sceneview/` and `arsceneview/` library modules. Consumers' APKs now pass Google Play's Jan 2026 enforcement for Android 15+.
 - ✅ **macOS App Store compile errors fixed** (#1794, v4.16.6) — 15 iOS demo files guard iOS-only APIs. Export blocked on missing `MACOS_INSTALLER_CERT_BASE64` secret (issue #2252 — Thomas action).
 - ✅ **iOS TestFlight deploying** from v4.16.5 onwards ✅.
-- ✅ **Maintenance sweep 2026-05-27 COMPLETE**: MCP tests 1864/1864 ✅, AI skills ✅, Filament 1.71.5 not on Maven Central yet (note in libs.versions.toml), sceneview.github.io bumped to 4.16.8.
+- ✅ **[#2235] Sketchfab viewer ground shadow SHIPPED** (#2256, merged 2026-05-27) — directional light + `plane_renderer_shadow.filamat` plane at computed ground Y. Models no longer float on a blank background.
+- ✅ **Maintenance sweep 2026-05-27 COMPLETE**: MCP tests 1864/1864 ✅, AI skills ✅, Filament 1.71.5 not on Maven Central yet, sceneview.github.io at 4.16.8. Version sync: 0 errors, 2 intentional WARNs (consumed Flutter/RN deps).
 - ⚠️ **macOS installer cert** — #2252: Thomas must add `MACOS_INSTALLER_CERT_BASE64` + `MACOS_INSTALLER_CERT_PASSWORD` GitHub secrets from Apple Developer Portal.
-- 📋 **~28 open issues** (mostly enhancement + needs-device + v5 backlog).
+- 📋 **20 open issues** (mostly enhancement + needs-device + v5 backlog).
 
 ### Followups for next session
 
 1. **[#2252](https://github.com/sceneview/sceneview/issues/2252) macOS installer cert** — Thomas action: add `MACOS_INSTALLER_CERT_BASE64` + `MACOS_INSTALLER_CERT_PASSWORD` GitHub secrets from Apple Developer Portal.
 2. **[#2188](https://github.com/sceneview/sceneview/issues/2188) Re-add FGS** — re-add `FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` once Play Console FGS declarations visible.
-3. **Filament 1.71.5** — bump once it appears on Maven Central (checked 2026-05-27: not yet). Note in `gradle/libs.versions.toml`.
+3. **Filament 1.71.5** — bump once it appears on Maven Central (checked 2026-05-27: not yet, GitHub tag exists).
 4. **[#1831](https://github.com/sceneview/sceneview/issues/1831)** — stale `appStoreVersionSubmission` auto-delete before POST in `app-store.yml`.
 5. **[#2241](https://github.com/sceneview/sceneview/issues/2241) Sprint 1 V2 plane renderer redo** — PlaneDiscoveryGuide + ShadowReceiverPlane + PlacementReticle + ARPlacementDemo modernization.
 6. **[#2239](https://github.com/sceneview/sceneview/issues/2239) Samples catalog regrouping** — 60 cards → ~25 cards aggressive grouping.
