@@ -72,7 +72,7 @@ class PlaneRenderer(
             val scaleY = scaleX * widthToHeightRatio
             setParameter(MATERIAL_UV_SCALE, scaleX, scaleY)
 
-            setParameter(MATERIAL_COLOR, Color(1.0f, 1.0f, 1.0f))
+            setParameter(MATERIAL_COLOR, Color(0.85f, 0.90f, 1.0f))  // cool-white tint, less harsh
         }
     }
 
@@ -285,6 +285,6 @@ class PlaneRenderer(
         /**
          * Used to control the UV Scale for the default texture.
          */
-        private const val BASE_UV_SCALE = 8.0f
+        private const val BASE_UV_SCALE = 4.0f  // denser grid keeps fwidth stable at oblique angles
     }
 }

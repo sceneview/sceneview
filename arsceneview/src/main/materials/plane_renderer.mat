@@ -90,9 +90,11 @@ fragment {
         // Smooth it so detected planes fade out softly instead of a hard cut.
         float edge = smoothstep(0.0, 0.6, variable_texCoordsAlpha.z);
 
-        float alpha = clamp(line * 0.85 + fill, 0.0, 1.0) * edge;
+        // Cap alpha at 0.45 so even when fwidth saturates at oblique angles,
+        // the camera feed remains visible behind the grid (#2224).
+        float alpha = clamp(line * 0.6 + fill * 0.5, 0.0, 1.0) * edge;
 
         material.baseColor.rgb = materialParams.color;
-        material.baseColor.a = alpha;
+        material.baseColor.a = min(alpha, 0.45);
     }
 }
