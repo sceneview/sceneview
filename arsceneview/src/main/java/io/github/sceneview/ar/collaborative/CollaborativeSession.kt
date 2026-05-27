@@ -10,6 +10,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import io.github.sceneview.ar.node.CloudAnchorNode
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -84,6 +85,10 @@ import kotlinx.coroutines.launch
  * @param poseRateHz  maximum number of camera-pose broadcasts per second.
  *   Later poses inside a tick are dropped. Default 10 Hz; `0` disables throttling.
  * @param tag         Logcat tag for non-fatal warnings.
+ * @param ioDispatcher coroutine dispatcher for the message I/O supervisor scope.
+ *   Defaults to [Dispatchers.Default]. Inject a [kotlinx.coroutines.test.TestCoroutineDispatcher]
+ *   (or [kotlinx.coroutines.test.StandardTestDispatcher]) in unit tests to drive the session
+ *   on virtual time via [kotlinx.coroutines.test.advanceUntilIdle].
  */
 public class CollaborativeSession
 @JvmOverloads
@@ -92,6 +97,7 @@ public constructor(
     private val displayName: String = transport.localPeerId,
     private val poseRateHz: Int = DEFAULT_POSE_RATE_HZ,
     private val tag: String = "CollaborativeSession",
+    ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
 
     public companion object {
@@ -104,7 +110,9 @@ public constructor(
 
     // All message I/O runs here. SupervisorJob so one failed send/merge job
     // never cancels the whole session — same choice as RerunBridge.
-    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    // ioDispatcher is injected so unit tests can use a StandardTestDispatcher
+    // and advance the session on virtual time via advanceUntilIdle().
+    private val scope = CoroutineScope(ioDispatcher + SupervisorJob())
 
     // Conflated: enqueuing from the render loop never blocks; the newest
     // outbound line wins if the writer is momentarily behind.
