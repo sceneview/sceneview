@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## v4.16.10 — Lint & security patch (2026-05-27)
+
+### Fixed
+
+- **Lint**: declare `VIBRATE` permission in `sceneview` library manifest so
+  `HapticEngine`'s `Vibrator.vibrate()` calls no longer generate
+  `MissingPermission` lint errors in the library and its consumers.
+- **Security**: patch CVE-2026-8723 (medium) — pin `qs` transitive dependency
+  to `>=6.15.2` in `mcp/packages/rerun`, `mcp/packages/interior`,
+  `mcp/packages/gaming`, and `mcp-gateway` via npm `overrides`.
+
 ## v4.16.9 — Sketchfab viewer polish + code quality (2026-05-27)
 
 ### Fixed

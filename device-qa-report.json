@@ -1,0 +1,36 @@
+{
+  "harness": "device-qa",
+  "schemaVersion": 2,
+  "startedAt": "2026-05-22T13:34:23Z",
+  "platformSelection": "android",
+  "fast": true,
+  "ci": false,
+  "status": "warn",
+  "advisoryPlatforms": [
+    "android",
+    "ar",
+    "web-perf"
+  ],
+  "releaseGate": {
+    "verdict": "warn",
+    "blockingFailed": [],
+    "advisoryFailed": [
+      "android"
+    ]
+  },
+  "totals": {
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0
+  },
+  "platforms": [
+    {
+      "platform": "android",
+      "status": "failed",
+      "advisory": true,
+      "reason": "qa-android-demos.sh rc=127 (flow=3d-basics)",
+      "durationSec": 25,
+      "summary": null
+    }
+  ]
+}
