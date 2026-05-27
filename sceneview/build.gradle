@@ -42,6 +42,12 @@ if (project.properties['filamentPluginEnabled']?.toBoolean()) {
 android {
     namespace = 'io.github.sceneview'
 
+    // Align native library ELF PT_LOAD segments to 16 KB so consumers' APKs are accepted
+    // by Google Play on 16 KB-page-size devices (Android 15+, enforced by Play since Jan 2026).
+    // Filament ships prebuilt .so files; this property rewrites ELF PT_LOAD alignment headers
+    // at pack time. Consumers must also add this to their own app-level build.gradle (#2226).
+    experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"
+
     compileSdk 36
 
     defaultConfig {

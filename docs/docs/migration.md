@@ -799,3 +799,30 @@ override fun onCreate(savedInstanceState: Bundle?) {
     setContent { /* ... */ }
 }
 ```
+
+## 16 KB page-size alignment (API 35+, required for Play Store)
+
+Google Play has enforced 16 KB ELF page-size alignment for all APKs targeting Android 15+
+(API 35) since January 2026. SceneView adds the AGP flag to its own library modules; your
+**app-level** `build.gradle` / `build.gradle.kts` must also opt in:
+
+```groovy
+// app/build.gradle (Groovy DSL)
+android {
+    experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"
+    // …
+}
+```
+
+```kotlin
+// app/build.gradle.kts (Kotlin DSL)
+android {
+    experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"
+    // …
+}
+```
+
+This rewrites ELF `PT_LOAD` alignment headers for **all** native `.so` files packaged
+into the APK/AAB at build time, including the Filament and ARCore prebuilt libraries.
+Without this flag, Play Store will reject the upload with:
+`Artifact does not support 16KB page size`.
