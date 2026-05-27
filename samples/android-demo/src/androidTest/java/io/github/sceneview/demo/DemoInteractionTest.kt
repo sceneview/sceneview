@@ -30,7 +30,7 @@ import java.io.File
  * `UiDevice.takeScreenshot()` (full framebuffer including Filament SurfaceView).
  *
  * **Why DemoHostActivity?** The earlier scroll-then-click approach was fragile for demos in
- * the Advanced section (`physics`, `custom-mesh`, …) — `UiScrollable.scrollTextIntoView()`
+ * the Advanced section (`physics`, `custom-geometry`, …) — `UiScrollable.scrollTextIntoView()`
  * gave up before the Compose LazyColumn recomposed the far-down row into view. Launching
  * the demo composable directly with an Intent bypasses the home list entirely.
  *
@@ -472,11 +472,18 @@ class DemoInteractionTest {
         screenshot("19_geometry_cube_off")
     }
 
-    // ── 5. Custom Mesh — auto-rotate toggle + orbit drag ──────────────────────
+    // ── 5. Custom Geometry — Custom Mesh mode (auto-rotate + orbit + scale) ───
+    //
+    // Both former demos (`custom-mesh` and `shape`) are now sub-modes of the
+    // unified `custom-geometry` demo, toggled by a segmented button at the top
+    // of the controls panel (#2239 Batch 1). The Custom Mesh mode is the
+    // default landing tab, so the deep-link still arrives ready to exercise
+    // auto-rotate / orbit / scale. The retired `custom-mesh` and `shape`
+    // deep-link ids continue to resolve through `DEMO_ID_ALIASES`.
 
     @Test
     fun customMesh_autoRotateAndOrbit() {
-        openDemo("custom-mesh")
+        openDemo("custom-geometry")
         screenshot("20_customMesh_autoRotate_on")
 
         tap("Auto-Rotate")
@@ -497,11 +504,13 @@ class DemoInteractionTest {
         dragSlider("Scale:", fraction = 0.5f); screenshot("22c_customMesh_scale_mid")
     }
 
-    // ── 6. Shape — Triangle / Star / Hexagon chips ────────────────────────────
+    // ── 6. Custom Geometry — Shape Extrude mode (Triangle/Star/Hexagon chips) ─
 
     @Test
     fun shape_allPolygons() {
-        openDemo("shape")
+        openDemo("custom-geometry")
+        // Switch from the default Custom Mesh mode to the Shape Extrude mode.
+        tap("Shape Extrude")
         screenshot("23_shape_triangle_default")
 
         tap("Star")
