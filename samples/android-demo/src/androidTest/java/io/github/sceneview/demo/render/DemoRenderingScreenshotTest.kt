@@ -205,8 +205,11 @@ class DemoRenderingScreenshotTest {
     }
 
     @Test
-    fun customMeshDemo_default_state() {
-        captureAndCompare(demoSlug = "custom-mesh", goldenName = "custommesh_default", settleSeconds = 3)
+    fun customGeometryDemo_default_state() {
+        // #2239 Batch 1 — `custom-mesh` and `shape` consolidated into `custom-geometry`.
+        // The deep-link alias keeps the old slug routable; the default tab is Custom Mesh
+        // so the captured frame is comparable to the prior `custommesh_default` golden.
+        captureAndCompare(demoSlug = "custom-geometry", goldenName = "customgeometry_default", settleSeconds = 3)
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
