@@ -169,6 +169,27 @@ fun ExploreTabScreen(
         }
     }
 
+    // Debounced live search (#2228). Each keystroke restarts this effect; the
+    // 350 ms delay is structurally cancelled by the next change, so we only
+    // actually fire `activeSearchQuery = ...` once the user has paused.
+    //
+    // Only the explicit Enter press (`onSearchSubmit`, below) records the
+    // query into `recentSearches` — live keystroke fragments would spam the
+    // history with "m", "ma", "mar", … and overwhelm the dropdown.
+    //
+    // The 2-character minimum filters out single-letter noise; an empty
+    // field is handled by `onSearchQueryChange` which immediately resets
+    // both `activeSearchQuery` and `searchResults`. Trimming the comparison
+    // avoids re-running on trailing-space whitespace changes.
+    LaunchedEffect(searchQuery) {
+        val trimmed = searchQuery.trim()
+        if (trimmed.length < 2 || SketchfabConfig.apiKey == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(350)
+        if (trimmed != activeSearchQuery) {
+            activeSearchQuery = trimmed
+        }
+    }
+
     // Execute search when activeSearchQuery changes (#1239). `null` results
     // means "in flight"; an empty list means "0 hits"; non-empty means we
     // have results to render. CancellationException is re-thrown so the
