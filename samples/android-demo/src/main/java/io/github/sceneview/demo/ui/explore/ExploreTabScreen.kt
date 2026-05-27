@@ -423,16 +423,13 @@ private fun ExploreBody(
             }
         }
 
-        CategoriesSection(onCategoryClick = onCategoryClick)
+        // Categories section removed (#2237) — Thomas QA 2026-05-26 confirmed it
+        // is never used as a section. Will return as filter chips under the
+        // search bar in a focused redesign (no issue filed yet).
 
-        if (recentSearches.items.isNotEmpty()) {
-            RecentSearchesSection(
-                items = recentSearches.items,
-                onClear = { recentSearches.clear() },
-                onClick = { onSearchQueryChange(it) },
-                onRemove = { recentSearches.remove(it) },
-            )
-        }
+        // Recent searches section removed (#2237) — same QA pass. The
+        // RecentSearchesState data layer is preserved for a future
+        // search-focus dropdown (Google Search style).
 
         Spacer(Modifier.height(16.dp))
     }
@@ -766,6 +763,9 @@ private fun sampleAccent(category: String): androidx.compose.ui.graphics.Color =
         else -> androidx.compose.ui.graphics.Color(0xFF6446CD)
     }
 
+// Preserved for a future redesign — see #2237. Currently unwired from
+// ExploreBody; do not delete the definition.
+@Suppress("unused", "UnusedPrivateMember", "UnusedPrivateFunction")
 @Composable
 private fun CategoriesSection(onCategoryClick: (SketchfabCategory) -> Unit) {
     val scrollState = rememberScrollState()
@@ -817,6 +817,9 @@ private fun CategoryChip(category: SketchfabCategory, onClick: (SketchfabCategor
     }
 }
 
+// Preserved for a future redesign — see #2237. Currently unwired from
+// ExploreBody; do not delete the definition.
+@Suppress("unused", "UnusedPrivateMember", "UnusedPrivateFunction")
 @Composable
 private fun RecentSearchesSection(
     items: List<String>,
