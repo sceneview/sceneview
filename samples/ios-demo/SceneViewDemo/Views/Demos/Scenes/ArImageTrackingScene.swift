@@ -8,5 +8,11 @@
 import SwiftUI
 
 enum ArImageTrackingScene: DemoScene {
-    @MainActor static var destination: AnyView { AnyView(ARImageTrackingDemo()) }
+    @MainActor static var destination: AnyView {
+        #if os(iOS)
+        return AnyView(ARImageTrackingDemo())
+        #else
+        return AnyView(EmptyView())
+        #endif
+    }
 }

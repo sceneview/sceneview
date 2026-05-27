@@ -8,5 +8,11 @@
 import SwiftUI
 
 enum ArCloudAnchorsScene: DemoScene {
-    @MainActor static var destination: AnyView { AnyView(EmptyView()) }
+    @MainActor static var destination: AnyView {
+        #if os(iOS)
+        return AnyView(EmptyView())
+        #else
+        return AnyView(EmptyView())
+        #endif
+    }
 }

@@ -80,6 +80,8 @@ import com.google.android.filament.Engine
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.model
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
@@ -492,12 +494,24 @@ private fun RenderContent(
         onDispose { environmentLoader.destroyEnvironment(environment) }
     }
 
+    // Auto-fit camera radius to the model's bounding box (#2233). Computed once per
+    // loaded instance — large models get a larger orbit, tiny ones a tighter orbit, so
+    // every model fills the viewport similarly instead of being framed by a hard-coded
+    // 2.2 m radius (which left ~30 %-fill models like the Porsche tiny in the preview).
+    val autoFitRadius = androidx.compose.runtime.remember(instance) {
+        instance?.let { computeAutoFitRadius(it) } ?: 2.2f
+    }
+
     // 20 s automatic orbit around the model. `trigger = instance != null` makes
-    // the orbit start the moment the GLB finishes loading.
+    // the orbit start the moment the GLB finishes loading. The default
+    // `resumeAfterMillis = 3_000L` means the auto-orbit resumes 3 s after the user
+    // releases a drag / pinch (#2225).
     val cameraManipulator = rememberHeroOrbitCameraManipulator(
         trigger = instance != null,
-        radius = 2.2f,
-        yHeight = 0.4f,
+        radius = autoFitRadius,
+        // Eye height proportional to the framing distance so the camera looks slightly
+        // down on the model at the same angle regardless of size.
+        yHeight = autoFitRadius * 0.18f,
         durationMillis = 20_000,
     )
 
@@ -615,4 +629,24 @@ private fun ErrorContent(message: String, onRetry: () -> Unit) {
         Spacer(Modifier.height(16.dp))
         Button(onClick = onRetry) { Text(stringResource(R.string.sketchfab_try_again)) }
     }
+}
+
+// ── Camera framing ────────────────────────────────────────────────────────
+
+/**
+ * Computes an orbit radius that frames [instance] so its largest axis-aligned extent
+ * fills roughly 40 % of the viewport height — matching the framing of Sketchfab's web
+ * viewer and `<model-viewer>`.
+ *
+ * The factor `2.5` ≈ `1 / tan(fov / 2)` for the SceneView default ~45° vertical FOV
+ * with a ~40 % fill target. The result is clamped to `>= 0.5 m` so a near-degenerate
+ * (single-vertex) bounding box still produces a sane orbit.
+ *
+ * Bumping the pinch-zoom *range* (min/max radius) requires exposing parameters on the
+ * SDK's `DefaultCameraManipulator` — out of scope for this demo-only fix (#2233).
+ */
+private fun computeAutoFitRadius(instance: ModelInstance): Float {
+    val half = instance.model.boundingBox.halfExtent
+    val maxExtent = maxOf(half[0], half[1], half[2])
+    return (maxExtent * 2.5f).coerceAtLeast(0.5f)
 }

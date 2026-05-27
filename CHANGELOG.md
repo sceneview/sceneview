@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## v4.16.6 — 2026-05-27
+
+### Fixed
+
+- **macOS App Store**: fixed all compile errors blocking macOS archive since #1049
+  (Xcode 16.2+). Guarded `navigationBarTitleDisplayMode`, `CADisplayLink`,
+  `secondarySystemBackground`, and AR demo scene destinations in `#if os(iOS)`
+  blocks. Closes [#1794](https://github.com/sceneview/sceneview/issues/1794).
+
+## v4.16.5 — 2026-05-27
+
+### Fixed
+
+- **Fix opaque white plane bug** ([#2224](https://github.com/sceneview/sceneview/issues/2224)). At oblique camera angles (typical for AR floor planes) the V1 procedural grid shader's `fwidth(uv)` saturated, collapsing `gridLine()` to ~1.0 across the whole plane and turning the detected ground into an opaque white blob. Three-lever fix: cool-white tint instead of pure white (`MATERIAL_COLOR = Color(0.85, 0.90, 1.0)`), grid alpha hard-capped at 0.45, denser cells via `BASE_UV_SCALE = 4.0` (was 8.0) so `fwidth(uv)` stays in a stable range. Detected planes now read as a subtle translucent grid overlay, as intended by #1616.
+- **iOS demo**: fixed App Store archive crash — added `.gimbal` case to three exhaustive
+  switch statements in `CameraControlsDemo` that were broken when `CameraControlMode.gimbal`
+  was introduced in #1049 (Xcode 16.2+ treats missing enum cases as compile errors).
+
 ## v4.16.3 — 2026-05-27
 
 ### Fixed
