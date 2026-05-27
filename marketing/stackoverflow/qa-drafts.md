@@ -212,7 +212,7 @@ I want to display a 3D USDZ model in a SwiftUI view on iOS. SceneKit feels old a
 **Answer:**
 [SceneViewSwift](https://github.com/sceneview/sceneview) provides declarative 3D views for SwiftUI, powered by RealityKit:
 
-**SPM:** `https://github.com/sceneview/sceneview.git` from: "4.16.8"`
+**SPM:** `https://github.com/sceneview/sceneview.git` from: "4.16.9"`
 
 ```swift
 import SceneViewSwift

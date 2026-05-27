@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## v4.16.9 — Sketchfab viewer polish + code quality (2026-05-27)
+
+### Fixed
+
+- **Feedback flow** — the confirmation Snackbar after submitting a feedback report
+  now stays visible for the full `SnackbarDuration.Long` (10 s) instead of the
+  default `Short` (4 s), giving users enough time to read the "Feedback sent!"
+  message before it disappears (#2230).
+- **Sketchfab viewer** — the loading sheet now shows a determinate
+  `LinearProgressIndicator` + `X.X / Y.Y MB` counter while a GLB is
+  streaming from Sketchfab, replacing the silent indeterminate spinner
+  that gave no feedback during 20+ second downloads of heavy models.
+  An advisory label ("Heavy model — may take a moment") appears for
+  models ≥ 500k polys (#2232).
+- **Sketchfab viewer** — models no longer float on a blank background: a directional
+  light + invisible `plane_renderer_shadow.filamat` plane at the model's ground level
+  cast a soft contact shadow beneath every Sketchfab model (#2235).
+
 ## v4.16.8 — Google Play 16 KB page-size + plane renderer polish (2026-05-27)
 
 ### Fixed
