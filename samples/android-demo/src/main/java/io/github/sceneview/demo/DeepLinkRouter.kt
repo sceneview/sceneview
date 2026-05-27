@@ -73,6 +73,13 @@ internal object DeepLinkRouter {
     val DEMO_ID_ALIASES: Map<String, String> = mapOf(
         // #1444 — `movable-light` was merged into the consolidated `lighting` demo.
         "movable-light" to "lighting",
+        // #2239 Batch 1 — Camera & Gestures consolidation. The retired
+        // `camera-controls` and `gesture-editing` demos merged into
+        // `camera-gestures` with a segmented-button toggle. The unified demo
+        // opens on its default Camera Modes tab (tab pre-selection from alias
+        // is a planned follow-up).
+        "camera-controls" to "camera-gestures",
+        "gesture-editing" to "camera-gestures",
     )
 
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {

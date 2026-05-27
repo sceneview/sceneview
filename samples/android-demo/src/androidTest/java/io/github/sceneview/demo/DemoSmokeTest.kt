@@ -169,14 +169,15 @@ class DemoSmokeTest {
         screenshot("s07_ar_streetscape")
     }
 
-    // ── Camera Controls — known to trip `Manipulator.nCreateBuilder` UnsatisfiedLinkError on
+    // ── Camera & Gestures — known to trip `Manipulator.nCreateBuilder` UnsatisfiedLinkError on
     //    the Apple M3 Metal translator AVD (symbol present in libfilament-jni.so but unresolved
     //    at runtime). The test runs last (`z_` prefix) so a hard crash here doesn't mask the
-    //    preceding 7 AR smoke tests.
+    //    preceding 7 AR smoke tests. #2239 Batch 1 — `camera-controls` is now an alias of the
+    //    unified `camera-gestures` demo whose default tab still builds the Filament Manipulator.
 
     @Test
     fun z01_cameraControls_smokeOpen() {
-        openDemoTolerant("camera-controls", "Camera Controls")
+        openDemoTolerant("camera-gestures", "Camera & Gestures")
         screenshot("s08_camera_controls")
     }
 }
