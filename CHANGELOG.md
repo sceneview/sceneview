@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## v4.16.2 — 2026-05-27
+
+### Added
+
+- **iOS — native camera modes** (`CameraControlMode`): four new iOS-only cases
+  (`.none`, `.tilt`, `.dolly`, `.gimbal`) delegate directly to Apple's
+  `realityViewCameraControls(_:)` modifier instead of SceneView's custom gesture
+  math. The existing cross-platform modes (`.orbit`, `.pan`, `.firstPerson`) are
+  unchanged — they keep orbit inertia, auto-rotate, and fit-to-bounds framing.
+  Closes #1049 (Phase 2 — exposing the 4 Apple-only modes).
+
+### Changed
+
+- `bridge-ios-compile.yml` is the **first workflow opted into the self-hosted macOS runner** introduced in #2192. Its `runs-on` switched from `macos-15` to `${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && 'sceneview-mac' || 'macos-15' }}` — when Thomas's Mac is online the type-check runs on bare metal (faster, no `macos-15` minute spend), otherwise it falls back transparently to the GitHub-hosted runner. Picked as the pilot because of its low trigger frequency (path-gated on `flutter/sceneview_flutter/ios/**` + `SceneViewSwift/**`) — minimal blast radius if the self-hosted leg misbehaves. The PR itself touches the workflow file so the very push that lands this change validates the routing end-to-end.
+
+### Fixed
+
+- Fix macOS archive failure: `CameraControls.gimbal` is iOS-only — guard with `#elseif os(macOS)` and fall back to orbit gesture path on macOS (#2219 follow-up).
+- Fix Play Store upload rejection: enable 16 KB page-size alignment for native libraries in the demo AAB (`packaging.jniLibs.pageAlignSharedLibraries = true`, required by Google Play since January 2026 for apps targeting Android 15+).
+- Bump MediaPipe Tasks Vision `0.20230731` → `0.10.26`: pre-0.10.26 builds ship 4 KB-aligned ELF `.so` files that Google Play rejects with "Artifact does not support 16KB page size" (enforced January 2026). The same root cause was fixed in v4.15.4 on the release branch only — this backports the fix to `main` so future releases are not affected.
+- **Restored V1 as the default plane renderer** ([#2203](https://github.com/sceneview/sceneview/issues/2203)). v4.16.0 briefly shipped V2 (depth-driven PBR mesh + HDR reflection + type-aware shading + scan-in) as the default, but on-device QA on a Pixel 9 showed the V2 visual output not matching the design intent — a washed-out translucent grid sheet instead of the promised HDR reflection + relief. V1 is restored as the default in v4.16.1 while V2 is polished. V2 stays available behind `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)` as an experimental opt-in so early adopters can help shape the redesign. See `.claude/plans/v2-references-study.md` + `v2-google-ar-catalog.md` + `v2-non-google-catalog.md` for the comparative research (ARCore Depth Lab, Apple ARKit + RoomPlan, Niantic Lightship, Snap Lens Studio) that informs the next iteration.
+
 ## v4.16.0 — 2026-05-26
 
 ### Added

@@ -698,13 +698,21 @@ private struct SceneViewRepresentation: View {
                 .gesture(pinchGesture)
         #else
         case .none:
-            realityViewContent.realityViewCameraControls(.none)
+            realityViewContent.realityViewCameraControls(RealityKit.CameraControls.none)
         case .tilt:
-            realityViewContent.realityViewCameraControls(.tilt)
+            realityViewContent.realityViewCameraControls(RealityKit.CameraControls.tilt)
         case .dolly:
-            realityViewContent.realityViewCameraControls(.dolly)
+            realityViewContent.realityViewCameraControls(RealityKit.CameraControls.dolly)
         case .gimbal:
-            realityViewContent.realityViewCameraControls(.gimbal)
+            // CameraControls.gimbal requires iOS 18.2+ / macOS 15.2+ SDK.
+            // Older SDK versions (Xcode 16.0–16.1) do not expose this member,
+            // causing a compile error. Fall back to the orbit gesture path
+            // until the minimum deployment / CI SDK is confirmed to be ≥ 18.2.
+            // TODO(#1049 Phase 3): enable `realityViewCameraControls(.gimbal)`
+            // when all CI runners use Xcode 16.2+ (iOS 18.2 SDK).
+            realityViewContent
+                .gesture(dragGesture)
+                .gesture(pinchGesture)
         #endif
         }
     }
