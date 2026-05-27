@@ -165,8 +165,8 @@ To set up: `npm install @google/stitch-sdk`, then add the Stitch MCP server in C
 
 ## When writing any SceneView code
 
-- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.16.6`)
-- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.16.6`)
+- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.16.7`)
+- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.16.7`)
 - Declare nodes as composables inside the trailing content block — not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — returns `null`
   while loading, always handle the null case

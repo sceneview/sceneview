@@ -28,6 +28,19 @@ const VALID_EVENTS = new Set(["init", "tool"]);
 const VALID_TIERS = new Set(["free", "pro"]);
 const MAX_STRING_LEN = 128;
 
+// Bot exclusion threshold — events with bot_likelihood >= this are filtered
+// from /v1/stats, /v1/funnel, /v1/top-clients by default. Tunable via
+// ?include_bots=1. NULL bot_likelihood (pre-2208 SDKs) is treated as non-bot.
+const BOT_THRESHOLD = 0.7;
+
+// SQL fragment shared by every analytics endpoint that supports include_bots.
+// Defaults to excluding bots; pass `?include_bots=1` to keep them in.
+function botFilter(includeBots: boolean): string {
+  return includeBots
+    ? ""
+    : ` AND (bot_likelihood IS NULL OR bot_likelihood < ${BOT_THRESHOLD})`;
+}
+
 interface EventPayload {
   timestamp: string;
   event: "init" | "tool";
@@ -36,6 +49,8 @@ interface EventPayload {
   mcpVersion: string;
   tier: "free" | "pro";
   tool?: string;
+  installId?: string;
+  botLikelihood?: number;
 }
 
 function validatePayload(body: unknown): EventPayload | null {
@@ -63,6 +78,23 @@ function validatePayload(body: unknown): EventPayload | null {
       return null;
   }
 
+  // installId is optional — a bounded string. Reject if present-but-invalid.
+  if (b.installId !== undefined) {
+    if (typeof b.installId !== "string" || b.installId.length === 0 || b.installId.length > MAX_STRING_LEN)
+      return null;
+  }
+
+  // botLikelihood is optional — must be a finite number in [0, 1] if present.
+  if (b.botLikelihood !== undefined) {
+    if (
+      typeof b.botLikelihood !== "number" ||
+      !Number.isFinite(b.botLikelihood) ||
+      b.botLikelihood < 0 ||
+      b.botLikelihood > 1
+    )
+      return null;
+  }
+
   return {
     timestamp: b.timestamp,
     event: b.event as "init" | "tool",
@@ -71,6 +103,9 @@ function validatePayload(body: unknown): EventPayload | null {
     mcpVersion: b.mcpVersion,
     tier: b.tier as "free" | "pro",
     tool: typeof b.tool === "string" ? b.tool : undefined,
+    installId: typeof b.installId === "string" ? b.installId : undefined,
+    botLikelihood:
+      typeof b.botLikelihood === "number" ? b.botLikelihood : undefined,
   };
 }
 
@@ -114,8 +149,8 @@ app.post("/v1/events", async (c) => {
   // Insert into D1 — fire-and-forget style but we await for correctness
   try {
     await c.env.DB.prepare(
-      `INSERT INTO events (timestamp, event, client, client_ver, mcp_ver, tier, tool)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO events (timestamp, event, client, client_ver, mcp_ver, tier, tool, install_id, bot_likelihood)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         payload.timestamp,
@@ -125,6 +160,8 @@ app.post("/v1/events", async (c) => {
         payload.mcpVersion,
         payload.tier,
         payload.tool ?? null,
+        payload.installId ?? null,
+        payload.botLikelihood ?? null,
       )
       .run();
   } catch (e) {
@@ -192,8 +229,8 @@ app.post("/v1/batch", async (c) => {
   // Batch insert with D1 batch API
   try {
     const stmt = c.env.DB.prepare(
-      `INSERT INTO events (timestamp, event, client, client_ver, mcp_ver, tier, tool)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO events (timestamp, event, client, client_ver, mcp_ver, tier, tool, install_id, bot_likelihood)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
     await c.env.DB.batch(
@@ -206,6 +243,8 @@ app.post("/v1/batch", async (c) => {
           p.mcpVersion,
           p.tier,
           p.tool ?? null,
+          p.installId ?? null,
+          p.botLikelihood ?? null,
         ),
       ),
     );
@@ -239,24 +278,27 @@ app.get("/v1/stats", async (c) => {
   const days = Math.min(Math.max(parseInt(rawDays, 10) || 1, 1), 90);
   const window = `-${days} days`;
   const period = days === 1 ? "24h" : `${days}d`;
+  const includeBots = c.req.query("include_bots") === "1";
+  const bf = botFilter(includeBots);
 
   try {
-    const [totals, topTools, versions, tiers, clientVers] = await Promise.all([
+    const [totals, topTools, versions, tiers, clientVers, bots] = await Promise.all([
       c.env.DB.prepare(
         `SELECT
            COUNT(*) as total,
            COUNT(CASE WHEN event = 'init' THEN 1 END) as inits,
            COUNT(CASE WHEN event = 'tool' THEN 1 END) as tools,
-           COUNT(DISTINCT client) as unique_clients
+           COUNT(DISTINCT client) as unique_clients,
+           COUNT(DISTINCT install_id) as unique_installs
          FROM events
-         WHERE ingested > datetime('now', ?)`,
+         WHERE ingested > datetime('now', ?)${bf}`,
       )
         .bind(window)
         .first(),
       c.env.DB.prepare(
         `SELECT tool, COUNT(*) as count
          FROM events
-         WHERE event = 'tool' AND ingested > datetime('now', ?)
+         WHERE event = 'tool' AND ingested > datetime('now', ?)${bf}
          GROUP BY tool
          ORDER BY count DESC
          LIMIT 20`,
@@ -266,7 +308,7 @@ app.get("/v1/stats", async (c) => {
       c.env.DB.prepare(
         `SELECT mcp_ver, COUNT(*) as count
          FROM events
-         WHERE ingested > datetime('now', ?)
+         WHERE ingested > datetime('now', ?)${bf}
          GROUP BY mcp_ver
          ORDER BY count DESC`,
       )
@@ -276,9 +318,10 @@ app.get("/v1/stats", async (c) => {
       c.env.DB.prepare(
         `SELECT tier,
                 COUNT(*) as count,
-                COUNT(DISTINCT client) as unique_clients
+                COUNT(DISTINCT client) as unique_clients,
+                COUNT(DISTINCT install_id) as unique_installs
          FROM events
-         WHERE ingested > datetime('now', ?)
+         WHERE ingested > datetime('now', ?)${bf}
          GROUP BY tier
          ORDER BY count DESC`,
       )
@@ -288,23 +331,38 @@ app.get("/v1/stats", async (c) => {
       c.env.DB.prepare(
         `SELECT client_ver, COUNT(*) as count, COUNT(DISTINCT client) as unique_clients
          FROM events
-         WHERE ingested > datetime('now', ?) AND client_ver != ''
+         WHERE ingested > datetime('now', ?) AND client_ver != ''${bf}
          GROUP BY client_ver
          ORDER BY count DESC
          LIMIT 10`,
       )
         .bind(window)
         .all(),
+      // Count of bot events excluded by the default filter — surface in the
+      // response so dashboards can show a "Bot calls excluded" badge.
+      c.env.DB.prepare(
+        `SELECT
+           COUNT(*) as count,
+           COUNT(DISTINCT install_id) as unique_installs
+         FROM events
+         WHERE ingested > datetime('now', ?)
+           AND bot_likelihood IS NOT NULL AND bot_likelihood >= ${BOT_THRESHOLD}`,
+      )
+        .bind(window)
+        .first(),
     ]);
 
     return c.json({
       period,
       days,
+      includeBots,
+      botThreshold: BOT_THRESHOLD,
       totals,
       topTools: topTools.results,
       versions: versions.results,
       tiers: tiers.results,
       clientVersions: clientVers.results,
+      botsExcluded: includeBots ? null : bots,
     });
   } catch {
     return c.json({ error: "query_failed" }, 500);
@@ -459,6 +517,8 @@ app.get("/v1/top-clients", async (c) => {
     100,
   );
   const window = `-${days} days`;
+  const includeBots = c.req.query("include_bots") === "1";
+  const bf = botFilter(includeBots);
 
   try {
     const result = await c.env.DB.prepare(
@@ -466,13 +526,14 @@ app.get("/v1/top-clients", async (c) => {
          client,
          COUNT(*) as events,
          COUNT(CASE WHEN event = 'tool' THEN 1 END) as tool_calls,
+         COUNT(DISTINCT install_id) as unique_installs,
          MAX(ingested) as last_seen,
          MIN(ingested) as first_seen,
          (SELECT tier FROM events e2 WHERE e2.client = events.client ORDER BY ingested DESC LIMIT 1) as tier,
          (SELECT mcp_ver FROM events e2 WHERE e2.client = events.client ORDER BY ingested DESC LIMIT 1) as mcp_ver,
          (SELECT client_ver FROM events e2 WHERE e2.client = events.client ORDER BY ingested DESC LIMIT 1) as client_ver
        FROM events
-       WHERE ingested > datetime('now', ?)
+       WHERE ingested > datetime('now', ?)${bf}
        GROUP BY client
        ORDER BY events DESC
        LIMIT ?`,
@@ -480,7 +541,7 @@ app.get("/v1/top-clients", async (c) => {
       .bind(window, limit)
       .all();
 
-    return c.json({ days, limit, clients: result.results });
+    return c.json({ days, limit, includeBots, clients: result.results });
   } catch {
     return c.json({ error: "query_failed" }, 500);
   }
@@ -501,19 +562,24 @@ app.get("/v1/funnel", async (c) => {
     90,
   );
   const window = `-${days} days`;
+  const includeBots = c.req.query("include_bots") === "1";
+  const bf = botFilter(includeBots);
 
   try {
-    // Single query computing per-client aggregates, then summarizing into funnel buckets
+    // Group by install_id when present, fall back to client for legacy events.
+    // COALESCE(install_id, 'client:' || client) keeps the two namespaces
+    // disjoint so a runtime named "foo" cannot collide with an installId
+    // literally equal to "foo".
     const stages = await c.env.DB.prepare(
-      `WITH per_client AS (
+      `WITH per_dev AS (
          SELECT
-           client,
+           COALESCE(install_id, 'client:' || client) as dev_key,
            COUNT(CASE WHEN event = 'init' THEN 1 END) as inits,
            COUNT(CASE WHEN event = 'tool' THEN 1 END) as tools,
            MAX(CASE WHEN tier = 'pro' THEN 1 ELSE 0 END) as is_pro
          FROM events
-         WHERE ingested > datetime('now', ?)
-         GROUP BY client
+         WHERE ingested > datetime('now', ?)${bf}
+         GROUP BY dev_key
        )
        SELECT
          COUNT(*) as installed,
@@ -521,7 +587,7 @@ app.get("/v1/funnel", async (c) => {
          COUNT(CASE WHEN tools >= 10 THEN 1 END) as engaged,
          COUNT(CASE WHEN tools >= 50 THEN 1 END) as power_users,
          COUNT(CASE WHEN is_pro = 1 THEN 1 END) as pro_users
-       FROM per_client`,
+       FROM per_dev`,
     )
       .bind(window)
       .first<{
@@ -542,6 +608,7 @@ app.get("/v1/funnel", async (c) => {
 
     return c.json({
       days,
+      includeBots,
       stages: [
         { stage: "installed", label: "Installed (any event)", count: installed, pct: 100 },
         { stage: "activated", label: "≥1 tool call", count: activated, pct: pct(activated) },
@@ -581,7 +648,7 @@ app.get("/v1/export", async (c) => {
     let bindings: (string | number)[];
 
     if (eventType) {
-      query = `SELECT timestamp, event, client, client_ver, mcp_ver, tier, tool
+      query = `SELECT timestamp, event, client, client_ver, mcp_ver, tier, tool, install_id, bot_likelihood
                FROM events
                WHERE ingested >= datetime('now', '-' || ? || ' days')
                  AND event = ?
@@ -589,7 +656,7 @@ app.get("/v1/export", async (c) => {
                LIMIT 10000`;
       bindings = [days, eventType];
     } else {
-      query = `SELECT timestamp, event, client, client_ver, mcp_ver, tier, tool
+      query = `SELECT timestamp, event, client, client_ver, mcp_ver, tier, tool, install_id, bot_likelihood
                FROM events
                WHERE ingested >= datetime('now', '-' || ? || ' days')
                ORDER BY ingested DESC
@@ -605,6 +672,8 @@ app.get("/v1/export", async (c) => {
       mcp_ver: string;
       tier: string;
       tool: string | null;
+      install_id: string | null;
+      bot_likelihood: number | null;
     };
 
     const result = await c.env.DB.prepare(query)
@@ -613,7 +682,7 @@ app.get("/v1/export", async (c) => {
 
     // Build CSV — header + rows
     const lines: string[] = [
-      "timestamp,event,client,client_ver,mcp_ver,tier,tool",
+      "timestamp,event,client,client_ver,mcp_ver,tier,tool,install_id,bot_likelihood",
     ];
 
     for (const row of result.results) {
@@ -625,6 +694,10 @@ app.get("/v1/export", async (c) => {
         row.mcp_ver,
         row.tier,
         row.tool ?? "",
+        row.install_id ?? "",
+        row.bot_likelihood !== null && row.bot_likelihood !== undefined
+          ? String(row.bot_likelihood)
+          : "",
       ].map((v) => {
         // Escape fields that contain commas, quotes, or newlines
         if (v.includes(",") || v.includes('"') || v.includes("\n")) {

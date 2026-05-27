@@ -22,5 +22,5 @@ dependencies {
     // doesn't break every time the SDK ships a new patch. The fixture's
     // whole purpose is to represent a happy-path consumer project — by
     // definition that means using the current version.
-    implementation("io.github.sceneview:sceneview:4.15.1")
+    implementation("io.github.sceneview:sceneview:4.16.6")
 }

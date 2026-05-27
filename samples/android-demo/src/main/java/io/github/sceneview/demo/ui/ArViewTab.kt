@@ -74,6 +74,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -152,6 +156,14 @@ import java.util.UUID
 @Composable
 fun ArViewTabContent(
     onDemoClick: (String) -> Unit,
+    /**
+     * Invoked whenever the live AR camera session is entered or exited. The
+     * caller (typically [RootScreen]) uses this to hide the bottom
+     * NavigationBar + system bars while the camera is active so the AR
+     * viewport gets the full screen (#2238). Default no-op keeps the
+     * composable usable in tests / previews that don't host a Scaffold.
+     */
+    onSessionActiveChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -180,6 +192,33 @@ fun ArViewTabContent(
     // launcher screen and re-prompt for everything. Anchors themselves are
     // not Parcelable so we accept the loss of placed models across a kill.
     var sessionStarted by rememberSaveable { mutableStateOf(false) }
+
+    // Immersive-mode wiring (#2238) — when the live AR session is active:
+    //   1. Tell [RootScreen] to hide its bottom NavigationBar (reclaims ~90 px
+    //      of viewport for the camera);
+    //   2. Hide the system status + nav bars via WindowInsetsControllerCompat
+    //      so the AR view goes truly fullscreen.
+    // Both reverse on exit / back / dispose so the user lands on the launcher
+    // screen with all chrome restored.
+    val view = LocalView.current
+    DisposableEffect(sessionStarted) {
+        onSessionActiveChange(sessionStarted)
+        val window = (view.context as? android.app.Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        if (sessionStarted && controller != null) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            // On composable dispose (tab swap, process tear-down) always
+            // restore chrome so the next screen renders normally.
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+            onSessionActiveChange(false)
+        }
+    }
     var arCoreAvailability by remember {
         mutableStateOf<ArCoreApk.Availability?>(null)
     }
@@ -281,6 +320,14 @@ fun ArViewTabContent(
     var isTracking by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    // True once at least one detected ARCore plane has reached
+    // [TrackingState.TRACKING]. The camera frame's own tracking state flips
+    // long before any plane is detected, so `isTracking` alone is not enough
+    // to know whether the user actually has a surface to tap (#2234). Without
+    // this gate the "Tap a surface" prompt showed for ~10–20 s before any
+    // real surface was actually trackable — confusing in the screen-record QA
+    // (2026-05-26, frames f_061 → f_069).
+    var anyPlaneTracked by remember { mutableStateOf(false) }
 
     // Force-rebuild key for the ARSceneView. Bumping this UUID recomposes the
     // whole AR subtree, which is the only way to discard ARCore state without
@@ -330,9 +377,14 @@ fun ArViewTabContent(
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 },
-                onSessionUpdated = { _, frame ->
+                onSessionUpdated = { session, frame ->
                     latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                    // Recompute "is there any plane the user can actually tap?"
+                    // each frame (#2234). Detection is cheap — ARCore caches
+                    // the trackable set internally and we only scan Planes.
+                    anyPlaneTracked = session.getAllTrackables(Plane::class.java)
+                        .any { it.trackingState == TrackingState.TRACKING }
                 },
                 onTrackingFailureChanged = { reason ->
                     trackingFailureReason = reason
@@ -444,12 +496,21 @@ fun ArViewTabContent(
                 val onePlacedLabel = stringResource(R.string.ar_status_one_placed)
                 val nPlacedLabel = stringResource(R.string.ar_status_n_placed, placed)
                 Text(
+                    // State machine (#2234):
+                    //   1. Camera not tracking yet OR tracking failure → "Scanning…"
+                    //      (or specific failure reason).
+                    //   2. Camera tracking but no plane has reached TRACKING yet →
+                    //      keep "Scanning…" — the user has nothing to tap on yet,
+                    //      and the "Tap a surface" prompt would be a lie.
+                    //   3. At least one plane tracked, nothing placed → "Tap a
+                    //      surface to place {Model}".
+                    //   4. ≥ 1 placed → "N placed · tap to add".
                     text = when {
                         !isTracking -> trackingFailureReason?.let { friendly(it) }
                             ?: scanningLabel
-                        placed == 0 -> tapToPlaceLabel
-                        placed == 1 -> onePlacedLabel
-                        else -> nPlacedLabel
+                        placed > 0 -> if (placed == 1) onePlacedLabel else nPlacedLabel
+                        anyPlaneTracked -> tapToPlaceLabel
+                        else -> scanningLabel
                     },
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Medium,
