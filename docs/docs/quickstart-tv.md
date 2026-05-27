@@ -9,7 +9,7 @@ Add SceneView to your TV app module:
 ```groovy
 // build.gradle
 dependencies {
-    implementation "io.github.sceneview:sceneview:4.16.3"
+    implementation "io.github.sceneview:sceneview:4.16.4"
     implementation "androidx.tv:tv-material:1.0.0"
 }
 ```
