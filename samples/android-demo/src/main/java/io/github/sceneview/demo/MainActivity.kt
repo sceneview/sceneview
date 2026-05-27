@@ -414,12 +414,18 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                     // visible trace that the feedback was sent. Lifecycle is
                     // tied to the activity scope so the snackbar survives
                     // tab switches.
+                    // issueNumber is a runtime callback parameter — stringResource()
+                    // cannot be used here (requires a composable call site).
+                    // Using context.getString() from a captured Activity Context
+                    // is safe: the lambda is called synchronously on the main thread
+                    // and the Activity context remains valid for the session lifetime.
+                    @Suppress("LocalContextGetResourceValueCall")
+                    val msg = if (issueNumber != null) {
+                        context.getString(R.string.feedback_sent_snackbar, issueNumber)
+                    } else {
+                        context.getString(R.string.feedback_sent_snackbar_generic)
+                    }
                     feedbackSentScope.launch {
-                        val msg = if (issueNumber != null) {
-                            context.getString(R.string.feedback_sent_snackbar, issueNumber)
-                        } else {
-                            context.getString(R.string.feedback_sent_snackbar_generic)
-                        }
                         feedbackSnackbarHost.showSnackbar(
                             message = msg,
                             duration = SnackbarDuration.Long,
