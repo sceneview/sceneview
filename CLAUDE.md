@@ -546,16 +546,16 @@ Never say "everything is good" without verifying published packages.
 
 **The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.15.1`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
 
-### Current state (last updated: 2026-05-27, session pedantic-robinson — v4.16.9 SHIPPED)
+### Current state (last updated: 2026-05-27, session pedantic-robinson — v4.16.9 + security sweep)
 
-- 🚀 **v4.16.9 RELEASED** — tag `v4.16.9` at HEAD. Sketchfab viewer polish (progress bar, ground shadow) + feedback UX fix (#2230, #2232, #2235) + detekt zero.
-- 🚀 **v4.16.8 RELEASED** — tag `v4.16.8`. 16 KB page-size alignment + plane renderer polish.
-- ✅ **Detekt ZERO across all modules** — android-demo (35→0), sceneview-web+desktop (27→0). `./gradlew detekt` BUILD SUCCESSFUL.
+- 🚀 **v4.16.9 RELEASED** — tag `v4.16.9`. Sketchfab viewer polish + feedback UX fix + detekt zero. Maven Central ✅, npm ✅, Play Store ✅, GitHub Release ✅.
+- 🔒 **CVE-2026-8723 (qs) PATCHED** — `qs >= 6.15.2` override added to mcp/packages/rerun, interior, gaming, mcp-gateway. Dependabot: 0 open alerts.
+- 🚀 **v4.16.8 RELEASED** — 16 KB page-size alignment + plane renderer polish.
+- ✅ **Detekt ZERO across all modules** — android-demo (35→0), sceneview-web+desktop (27→0).
 - ✅ **iOS TestFlight deploying** from v4.16.5 onwards ✅.
-- ✅ **Library 16KB page-size alignment SHIPPED** (#2226, #2255) — passes Google Play Jan 2026 enforcement.
-- ✅ **Maintenance sweep 2026-05-27**: MCP tests 1864/1864 ✅, AI skills ✅, Filament 1.71.5 not on Maven Central.
+- ✅ **Maintenance sweep 2026-05-27**: MCP tests 1864/1864 ✅, AI skills ✅, Filament 1.71.5 not yet on Maven Central.
 - ⚠️ **macOS installer cert** — #2252: Thomas must add `MACOS_INSTALLER_CERT_BASE64` + `MACOS_INSTALLER_CERT_PASSWORD` GitHub secrets.
-- 📋 **20 open issues** (none stale).
+- 📋 **19 open issues** (none stale, none unlabelled).
 
 ### Followups for next session
 
