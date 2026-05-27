@@ -62,7 +62,8 @@
     "vitest": "^4.1.5"
   },
   "overrides": {
-    "picomatch": ">=4.0.4"
+    "picomatch": ">=4.0.4",
+    "qs": ">=6.15.2"
   },
   "funding": [
     {
