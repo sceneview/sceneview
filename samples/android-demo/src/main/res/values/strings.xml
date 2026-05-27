@@ -89,6 +89,11 @@
     <string name="ar_cta_grant_camera">Grant Camera Access</string>
     <string name="ar_cta_start_camera">Start AR Camera</string>
     <string name="ar_try_an_ar_demo">Try an AR demo</string>
+    <!-- Section header above the curated AR demo grid (#2231). -->
+    <string name="ar_featured_section">Featured</string>
+    <!-- Section header above the full AR demo list. %d is the total AR demo count
+         (featured + remaining) so users see how much there is at a glance (#2231). -->
+    <string name="ar_all_demos_section">All AR demos (%d)</string>
     <string name="ar_exit_session">Exit AR session</string>
     <string name="ar_reset_scene">Reset scene</string>
     <string name="ar_share_screenshot">Share screenshot</string>
@@ -314,7 +319,14 @@
     <string name="feedback_review_body">Send it to the SceneView team, or record again.</string>
     <string name="feedback_review_recorded">Screen recording captured</string>
     <string name="feedback_review_no_recording">No recording — your note will be sent on its own.</string>
+    <!-- Shown when no screen recording is attached: the note becomes the only payload, so the
+         Send button stays disabled until something is typed. The copy makes that requirement
+         explicit instead of leaving it implied (#2230). -->
+    <string name="feedback_review_no_recording_note_required">No screen recording attached. Describe the issue in the note below so the team can act on it.</string>
     <string name="feedback_review_note_label">Add a note (optional)</string>
+    <!-- Note label when no recording is attached — the note is required, so the label drops
+         "optional" and asks for the description directly (#2230). -->
+    <string name="feedback_review_note_label_required">Describe the issue</string>
     <string name="feedback_review_note_placeholder">Anything else the team should know?</string>
     <string name="feedback_review_rerecord">Record again</string>
     <string name="feedback_review_send">Send feedback</string>
@@ -325,8 +337,10 @@
     <string name="feedback_record_retry">Try again</string>
     <string name="feedback_sending">Sending your feedback…</string>
     <string name="feedback_sending_progress">Uploading… %1$d%%</string>
-    <string name="feedback_sent_title">Thank you!</string>
-    <string name="feedback_sent_issue">Your report was filed as issue #%1$d. The team will take a look.</string>
+    <!-- "Feedback sent · Thank you" reads as a clear acknowledgement of receipt, not a
+         standalone greeting — paired with the issue number subtitle below (#2230). -->
+    <string name="feedback_sent_title">Feedback sent · Thank you</string>
+    <string name="feedback_sent_issue">Tracked as issue #%1$d. The team will take a look.</string>
     <string name="feedback_sent_generic">Your feedback was received by the SceneView team.</string>
     <string name="feedback_sent_done">Done</string>
     <string name="feedback_send_failed_title">Couldn\'t send</string>

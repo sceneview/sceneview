@@ -517,13 +517,29 @@ private fun ReviewStep(
         if (recording != null) {
             RecordingSummary(recording)
         } else {
-            StepBody(stringResource(R.string.feedback_review_no_recording))
+            // The Send button's enabled rule is `recording != null || note.isNotBlank()` —
+            // when there is no recording the note becomes the only payload, so the copy here
+            // must say so plainly. The previous "your note will be sent on its own" implied
+            // the note was optional, which contradicted the disabled Send button (#2230).
+            StepBody(stringResource(R.string.feedback_review_no_recording_note_required))
         }
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(
             value = note,
             onValueChange = onNoteChange,
-            label = { Text(stringResource(R.string.feedback_review_note_label)) },
+            // When there is no recording, the note is the only thing the team will see —
+            // drop "optional" from the label and ask for the description directly (#2230).
+            label = {
+                Text(
+                    stringResource(
+                        if (recording == null) {
+                            R.string.feedback_review_note_label_required
+                        } else {
+                            R.string.feedback_review_note_label
+                        },
+                    ),
+                )
+            },
             placeholder = { Text(stringResource(R.string.feedback_review_note_placeholder)) },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,

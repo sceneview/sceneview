@@ -8,5 +8,11 @@
 import SwiftUI
 
 enum ArAugmentedFacesScene: DemoScene {
-    @MainActor static var destination: AnyView { AnyView(ARAugmentedFacesDemo()) }
+    @MainActor static var destination: AnyView {
+        #if os(iOS)
+        return AnyView(ARAugmentedFacesDemo())
+        #else
+        return AnyView(EmptyView())
+        #endif
+    }
 }

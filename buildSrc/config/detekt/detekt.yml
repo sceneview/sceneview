@@ -25,6 +25,14 @@ complexity:
     allowedLines: 800
   CyclomaticComplexMethod:
     allowedComplexity: 25
+  LongMethod:
+    # Compose scene-root composables (SceneView, ARSceneView) legitimately
+    # exceed the 60-line Java-style default — they expose dozens of named
+    # parameters with KDoc and orchestrate the scene lifecycle in a single
+    # builder-pattern function. Exempt @Composable functions so SDK
+    # consumers writing their own scene roots aren't blocked by detekt either.
+    ignoreAnnotated:
+      - 'Composable'
 
 style:
   MagicNumber:

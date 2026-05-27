@@ -74,6 +74,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -107,6 +111,8 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.feedback.FeedbackChrome
 import io.github.sceneview.ar.node.AnchorNode
+import io.github.sceneview.demo.ALL_DEMOS
+import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.R
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
@@ -150,6 +156,14 @@ import java.util.UUID
 @Composable
 fun ArViewTabContent(
     onDemoClick: (String) -> Unit,
+    /**
+     * Invoked whenever the live AR camera session is entered or exited. The
+     * caller (typically [RootScreen]) uses this to hide the bottom
+     * NavigationBar + system bars while the camera is active so the AR
+     * viewport gets the full screen (#2238). Default no-op keeps the
+     * composable usable in tests / previews that don't host a Scaffold.
+     */
+    onSessionActiveChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -178,6 +192,33 @@ fun ArViewTabContent(
     // launcher screen and re-prompt for everything. Anchors themselves are
     // not Parcelable so we accept the loss of placed models across a kill.
     var sessionStarted by rememberSaveable { mutableStateOf(false) }
+
+    // Immersive-mode wiring (#2238) — when the live AR session is active:
+    //   1. Tell [RootScreen] to hide its bottom NavigationBar (reclaims ~90 px
+    //      of viewport for the camera);
+    //   2. Hide the system status + nav bars via WindowInsetsControllerCompat
+    //      so the AR view goes truly fullscreen.
+    // Both reverse on exit / back / dispose so the user lands on the launcher
+    // screen with all chrome restored.
+    val view = LocalView.current
+    DisposableEffect(sessionStarted) {
+        onSessionActiveChange(sessionStarted)
+        val window = (view.context as? android.app.Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        if (sessionStarted && controller != null) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            // On composable dispose (tab swap, process tear-down) always
+            // restore chrome so the next screen renders normally.
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+            onSessionActiveChange(false)
+        }
+    }
     var arCoreAvailability by remember {
         mutableStateOf<ArCoreApk.Availability?>(null)
     }
@@ -279,6 +320,14 @@ fun ArViewTabContent(
     var isTracking by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    // True once at least one detected ARCore plane has reached
+    // [TrackingState.TRACKING]. The camera frame's own tracking state flips
+    // long before any plane is detected, so `isTracking` alone is not enough
+    // to know whether the user actually has a surface to tap (#2234). Without
+    // this gate the "Tap a surface" prompt showed for ~10–20 s before any
+    // real surface was actually trackable — confusing in the screen-record QA
+    // (2026-05-26, frames f_061 → f_069).
+    var anyPlaneTracked by remember { mutableStateOf(false) }
 
     // Force-rebuild key for the ARSceneView. Bumping this UUID recomposes the
     // whole AR subtree, which is the only way to discard ARCore state without
@@ -328,9 +377,14 @@ fun ArViewTabContent(
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 },
-                onSessionUpdated = { _, frame ->
+                onSessionUpdated = { session, frame ->
                     latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                    // Recompute "is there any plane the user can actually tap?"
+                    // each frame (#2234). Detection is cheap — ARCore caches
+                    // the trackable set internally and we only scan Planes.
+                    anyPlaneTracked = session.getAllTrackables(Plane::class.java)
+                        .any { it.trackingState == TrackingState.TRACKING }
                 },
                 onTrackingFailureChanged = { reason ->
                     trackingFailureReason = reason
@@ -442,12 +496,21 @@ fun ArViewTabContent(
                 val onePlacedLabel = stringResource(R.string.ar_status_one_placed)
                 val nPlacedLabel = stringResource(R.string.ar_status_n_placed, placed)
                 Text(
+                    // State machine (#2234):
+                    //   1. Camera not tracking yet OR tracking failure → "Scanning…"
+                    //      (or specific failure reason).
+                    //   2. Camera tracking but no plane has reached TRACKING yet →
+                    //      keep "Scanning…" — the user has nothing to tap on yet,
+                    //      and the "Tap a surface" prompt would be a lie.
+                    //   3. At least one plane tracked, nothing placed → "Tap a
+                    //      surface to place {Model}".
+                    //   4. ≥ 1 placed → "N placed · tap to add".
                     text = when {
                         !isTracking -> trackingFailureReason?.let { friendly(it) }
                             ?: scanningLabel
-                        placed == 0 -> tapToPlaceLabel
-                        placed == 1 -> onePlacedLabel
-                        else -> nPlacedLabel
+                        placed > 0 -> if (placed == 1) onePlacedLabel else nPlacedLabel
+                        anyPlaneTracked -> tapToPlaceLabel
+                        else -> scanningLabel
                     },
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Medium,
@@ -844,22 +907,23 @@ private fun ArLauncherScreen(
             }
         }
 
-        // Section title
+        // Featured section title — kept under the existing `ar_try_an_ar_demo`
+        // string (translated as "Featured" in en, "Mises en avant" in fr, …)
+        // because the legacy callers / a11y bots key off it.
         Text(
-            text = stringResource(R.string.ar_try_an_ar_demo),
+            text = stringResource(R.string.ar_featured_section),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(start = 4.dp, top = 4.dp),
         )
 
-        // Grid of 6 AR demo cards — mirror the Samples-tab `DemoCard` pattern
-        // (gradient icon header on top + title + subtitle below) so the AR
-        // View tab feels like the same app when the user switches tabs.
-        // Pre-refactor (#1185) the cards used floating tertiary-tinted pills
-        // which read as a "different app" against the M3 Expressive grid in
-        // Samples.
+        // Featured grid — the curator's pick (FEATURED_AR_DEMOS, 6 cards).
+        // Mirrors the Samples-tab `DemoCard` pattern (gradient icon header
+        // on top + title + subtitle below) so the AR View tab feels like
+        // the same app when the user switches tabs (#1185).
         val featured = remember { FEATURED_AR_DEMOS }
+        val featuredIds = remember(featured) { featured.map { it.id }.toSet() }
         val dark = isSystemInDarkTheme()
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             featured.chunked(2).forEach { row ->
@@ -875,6 +939,47 @@ private fun ArLauncherScreen(
                         )
                     }
                     if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+
+        // All AR demos — every entry in ALL_DEMOS with category
+        // AUGMENTED_REALITY, minus the ones already shown in Featured. Pre-#2231
+        // these were reachable only via the Samples tab → half the AR feature
+        // surface was hidden on this screen. Each DemoEntry already carries
+        // titleRes / subtitleRes / icon, so the same ArDemoCard renders them.
+        val remainingArDemos = remember(featuredIds) {
+            ALL_DEMOS
+                .filter { it.category == DemoCategory.AUGMENTED_REALITY }
+                .filterNot { it.id in featuredIds }
+        }
+        if (remainingArDemos.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(
+                    R.string.ar_all_demos_section,
+                    remainingArDemos.size + featured.size,
+                ),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                remainingArDemos.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        row.forEach { demo ->
+                            ArDemoCard(
+                                title = stringResource(demo.titleRes),
+                                subtitle = stringResource(demo.subtitleRes),
+                                icon = demo.icon,
+                                dark = dark,
+                                onClick = { onArDemoClick(demo.id) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
                 }
             }
         }

@@ -72,7 +72,11 @@ class PlaneRenderer(
             val scaleY = scaleX * widthToHeightRatio
             setParameter(MATERIAL_UV_SCALE, scaleX, scaleY)
 
-            setParameter(MATERIAL_COLOR, Color(1.0f, 1.0f, 1.0f))
+            // #2224 — cool-white tint instead of pure white. With the alpha cap added in
+            // plane_renderer.mat (fwidth saturation at oblique camera angles drives `line→1`
+            // → grid fills the plane), pure-white baseColor reads as an opaque white blob.
+            // A faint cool tint also reads naturally as "detected ground".
+            setParameter(MATERIAL_COLOR, Color(0.85f, 0.90f, 1.0f))
         }
     }
 
@@ -285,6 +289,11 @@ class PlaneRenderer(
         /**
          * Used to control the UV Scale for the default texture.
          */
-        private const val BASE_UV_SCALE = 8.0f
+        // #2224 — 4.0 instead of 8.0. The previous value made grid cells ~125 cm wide
+        // on a typical AR scene; combined with the oblique camera angles characteristic of
+        // floor planes that pushed `fwidth(uv)` into saturation. Denser cells keep
+        // `fwidth(uv)` in a stable range so `gridLine()` returns thin lines instead of
+        // collapsing to ~1.0 everywhere.
+        private const val BASE_UV_SCALE = 4.0f
     }
 }

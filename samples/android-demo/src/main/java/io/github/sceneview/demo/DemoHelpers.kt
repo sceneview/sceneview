@@ -492,17 +492,34 @@ data class OrbitState(val yaw: Float, val radius: Float, val yHeight: Float) {
  * On first gesture the manipulator captures the current orbit pose as the new
  * [DefaultCameraManipulator.orbitHomePosition], so there's no snap — the user's first
  * drag continues from exactly where the idle orbit left off.
+ *
+ * ### Auto-orbit resume after idle (#2225)
+ *
+ * Once the user releases a grab/scroll the manipulator stays in user-control mode for
+ * [resumeAfterMillis] of inactivity, then clears the fallback so the idle auto-orbit
+ * resumes from the user's last pose (no snap — the next orbit yaw is read from
+ * [yawProvider] when [getTransform] falls through to [orbitTransform]). Set
+ * [resumeAfterMillis] to `0L` or negative to disable the resume — the manipulator then
+ * stays in user control forever after the first touch (legacy behaviour).
  */
 class HeroOrbitCameraManipulator(
     private val yawProvider: () -> Float,
     private val radius: Float,
     private val yHeight: Float,
     private val target: Position,
+    private val resumeAfterMillis: Long = 3_000L,
 ) : io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator {
     private var fallback: io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator? =
         null
     private var viewportW = 1
     private var viewportH = 1
+
+    /**
+     * Timestamp (from [System.nanoTime]) when the last user gesture released, or `0L`
+     * if the user is still actively dragging / scrolling (or has never touched yet).
+     * Used by [update] to know when to clear the [fallback] and resume the auto-orbit.
+     */
+    private var grabEndTimeNanos: Long = 0L
 
     fun isPaused(): Boolean = fallback != null
 
@@ -534,6 +551,9 @@ class HeroOrbitCameraManipulator(
                 targetPosition = target,
             ).also { it.setViewport(viewportW, viewportH) }
         }
+        // A new gesture is starting — clear the "idle since" stamp so the resume timer
+        // doesn't fire mid-drag.
+        grabEndTimeNanos = 0L
     }
 
     override fun setViewport(width: Int, height: Int) {
@@ -556,6 +576,9 @@ class HeroOrbitCameraManipulator(
 
     override fun grabEnd() {
         fallback?.grabEnd()
+        // Mark the moment the user released — `update` watches this timestamp and
+        // clears the fallback after `resumeAfterMillis`, restoring the auto-orbit.
+        grabEndTimeNanos = System.nanoTime()
     }
 
     override fun scrollBegin(x: Int, y: Int, separation: Float) {
@@ -569,10 +592,21 @@ class HeroOrbitCameraManipulator(
 
     override fun scrollEnd() {
         fallback?.scrollEnd()
+        grabEndTimeNanos = System.nanoTime()
     }
 
     override fun update(deltaTime: Float) {
         fallback?.update(deltaTime)
+        // Clear the fallback after `resumeAfterMillis` of post-gesture inactivity so the
+        // auto-orbit resumes (#2225). `resumeAfterMillis <= 0L` disables the resume —
+        // legacy behaviour where the fallback is never cleared.
+        if (fallback != null && grabEndTimeNanos != 0L && resumeAfterMillis > 0L) {
+            val idleNs = System.nanoTime() - grabEndTimeNanos
+            if (idleNs > resumeAfterMillis * 1_000_000L) {
+                fallback = null
+                grabEndTimeNanos = 0L
+            }
+        }
     }
 }
 
@@ -598,6 +632,7 @@ fun rememberHeroOrbitCameraManipulator(
     durationMillis: Int = 20_000,
     staticYaw: Float = 45f,
     target: Position = Position(0f, 0f, 0f),
+    resumeAfterMillis: Long = 3_000L,
 ): HeroOrbitCameraManipulator {
     val anim = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
     androidx.compose.runtime.LaunchedEffect(trigger, DemoSettings.qaMode) {
@@ -619,12 +654,13 @@ fun rememberHeroOrbitCameraManipulator(
     // keeps it a recomposition input; it is also a remember{} key so the manipulator is
     // rebuilt with the new orbit distance if the zoom changes (e.g. a warm-start onNewIntent).
     val effectiveRadius = DemoSettings.cameraDistance ?: radius
-    return androidx.compose.runtime.remember(effectiveRadius, yHeight, target) {
+    return androidx.compose.runtime.remember(effectiveRadius, yHeight, target, resumeAfterMillis) {
         HeroOrbitCameraManipulator(
             yawProvider = { if (DemoSettings.qaMode) staticYaw else anim.value },
             radius = effectiveRadius,
             yHeight = yHeight,
             target = target,
+            resumeAfterMillis = resumeAfterMillis,
         )
     }
 }

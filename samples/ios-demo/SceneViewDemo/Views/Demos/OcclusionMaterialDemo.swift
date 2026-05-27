@@ -31,7 +31,9 @@ struct OcclusionMaterialDemo: View {
             }
         }
         .navigationTitle("Occlusion Material")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     // MARK: — Scene
