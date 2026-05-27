@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v4.16.8 — Google Play 16 KB page-size + plane renderer polish (2026-05-27)
+
+### Fixed
+
+- Fix Play Store upload rejection: enable 16 KB page-size alignment for native libraries in the demo AAB (`packaging.jniLibs.pageAlignSharedLibraries = true`, required by Google Play since January 2026 for apps targeting Android 15+).
+- **Plane renderer white-blob: tighter alpha cap** ([#2224](https://github.com/sceneview/sceneview/issues/2224) — second iteration). v4.16.4 dropped the alpha hard-cap from saturation to 0.45 but on-device QA in sunny outdoor scenes still read as an opaque white blob (45 % cool-white tint on already-light camera input ≈ 80 %+ perceived white). v4.16.5 tightens to a **0.20 alpha cap** and caps `line` itself at **0.4** in `gridLine()` so the saturation is bounded at the source, not just clamped post-hoc. Grid coefficients also reduced (0.4 / 0.3 instead of 0.6 / 0.5). Industry baseline (Apple ARKit / Wayfair / ARCore Depth Lab reticle) ships plane viz at 20-30 % alpha unlit — this now matches.
+- **Library 16 KB page-size alignment** ([#2226](https://github.com/sceneview/sceneview/issues/2226)): add `experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"` to `sceneview` and `arsceneview` library modules so Filament's prebuilt `.so` files have ELF PT_LOAD segments aligned to 16 KB at pack time. Required for consumers' APKs to pass Google Play's new enforcement (Android 15+, enforced since January 2026). Consumers must also add this property to their own app-level `build.gradle`.
+
 ## v4.16.6 — 2026-05-27
 
 ### Fixed

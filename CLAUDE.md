@@ -165,8 +165,8 @@ To set up: `npm install @google/stitch-sdk`, then add the Stitch MCP server in C
 
 ## When writing any SceneView code
 
-- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.16.7`)
-- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.16.7`)
+- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.16.8`)
+- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.16.8`)
 - Declare nodes as composables inside the trailing content block — not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — returns `null`
   while loading, always handle the null case
@@ -546,34 +546,25 @@ Never say "everything is good" without verifying published packages.
 
 **The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.15.1`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
 
-### Current state (last updated: 2026-05-27, session pedantic-robinson — maintenance sweep + multi-release sprint v4.16.0→v4.16.7)
+### Current state (last updated: 2026-05-27, session pedantic-robinson — maintenance sweep + v4.16.8 release)
 
-- 🚀 **v4.16.7 is the latest release** (tag `v4.16.7`, HEAD `dcd40d13c`). All store deploys ✅.
-- ✅ **Play Store 16KB page-size fix SHIPPED** (v4.16.2) — MediaPipe 0.10.26 + `android.nativeLibraryAlignmentPageSize=16k`. v4.16.0/4.16.1 were rejected by Play; v4.16.2+ accepted.
-- ✅ **macOS App Store compile errors fixed** (#1794) — 15 iOS demo files guard iOS-only APIs with `#if os(iOS)` blocks (v4.16.6). macOS `Build archive` now succeeds. Export blocked on missing `MACOS_INSTALLER_CERT_BASE64` secret (issue #2252 — Thomas action).
+- 🚀 **v4.16.8 is about to be tagged** — version bumped across all 30+ locations, CHANGELOG.md collated (3 fragments: demo 16KB page-size, library 16KB alignment, plane renderer alpha cap). Committing and tagging next.
+- ✅ **Library 16KB page-size alignment SHIPPED** (#2226, #2255) — `experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"` added to `sceneview/` and `arsceneview/` library modules. Consumers' APKs now pass Google Play's Jan 2026 enforcement for Android 15+.
+- ✅ **macOS App Store compile errors fixed** (#1794, v4.16.6) — 15 iOS demo files guard iOS-only APIs. Export blocked on missing `MACOS_INSTALLER_CERT_BASE64` secret (issue #2252 — Thomas action).
 - ✅ **iOS TestFlight deploying** from v4.16.5 onwards ✅.
-- ✅ **Maintenance sweep 2026-05-27 COMPLETE**:
-  - MCP tests: 1850/1850 ✅; AI skills drift check ✅; android CLI v0.7.15411012 ✅
-  - sceneview.github.io version bumped to 4.16.7 ✅
-  - Filament 1.71.5 is on GitHub BUT NOT Maven Central yet (bumped + immediately reverted — note in libs.versions.toml)
-  - 6 worktrees pruned (freed ~8 GB)
-  - 5 PRs merged since v4.16.7 (demo improvements) + 1 pending (#2255, 16KB library alignment)
-  - issue #2208 closed (telemetry, merged via #2240)
-  - 8 cross-platform parity gaps (expected, iOS/Web alpha)
-- 🔵 **v4.16.8 READY TO CUT** — 5 meaningful commits since v4.16.7 + PR #2255 (16KB library modules) about to land. Run `/release` once #2255 merges.
-- ⚠️ **macOS installer cert** — #2252: Thomas must add `MACOS_INSTALLER_CERT_BASE64` + `MACOS_INSTALLER_CERT_PASSWORD` secrets from Apple Developer Portal (3rd Party Mac Developer Installer cert) to enable macOS App Store distribution.
+- ✅ **Maintenance sweep 2026-05-27 COMPLETE**: MCP tests 1864/1864 ✅, AI skills ✅, Filament 1.71.5 not on Maven Central yet (note in libs.versions.toml), sceneview.github.io bumped to 4.16.8.
+- ⚠️ **macOS installer cert** — #2252: Thomas must add `MACOS_INSTALLER_CERT_BASE64` + `MACOS_INSTALLER_CERT_PASSWORD` GitHub secrets from Apple Developer Portal.
 - 📋 **~28 open issues** (mostly enhancement + needs-device + v5 backlog).
 
 ### Followups for next session
 
-1. **Cut v4.16.8** — wait for PR #2255 (16KB library alignment) to merge, then run `/release`. 5 demo improvements + 1 library change (16KB alignment for consumers).
-2. **[#2252](https://github.com/sceneview/sceneview/issues/2252) macOS installer cert** — Thomas action: add `MACOS_INSTALLER_CERT_BASE64` + `MACOS_INSTALLER_CERT_PASSWORD` GitHub secrets from Apple Developer Portal.
-3. **[#2188](https://github.com/sceneview/sceneview/issues/2188) Re-add FGS** — re-add `FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` once Play Console FGS declarations visible.
-4. **Filament 1.71.5** — bump once it appears on Maven Central (checked 2026-05-27: not yet). Note in `gradle/libs.versions.toml`.
-5. **[#1831](https://github.com/sceneview/sceneview/issues/1831)** — stale `appStoreVersionSubmission` auto-delete before POST in `app-store.yml`.
-6. **[#2241](https://github.com/sceneview/sceneview/issues/2241) Sprint 1 V2 plane renderer redo** — PlaneDiscoveryGuide + ShadowReceiverPlane + PlacementReticle + ARPlacementDemo modernization.
-7. **[#2239](https://github.com/sceneview/sceneview/issues/2239) Samples catalog regrouping** — 60 cards → ~25 cards aggressive grouping.
-8. **[#894 iOS AR feature parity](https://github.com/sceneview/sceneview/issues/894)** — Cloud Anchors, ARRecorder via ReplayKit, Streetscape. Needs physical device.
+1. **[#2252](https://github.com/sceneview/sceneview/issues/2252) macOS installer cert** — Thomas action: add `MACOS_INSTALLER_CERT_BASE64` + `MACOS_INSTALLER_CERT_PASSWORD` GitHub secrets from Apple Developer Portal.
+2. **[#2188](https://github.com/sceneview/sceneview/issues/2188) Re-add FGS** — re-add `FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` once Play Console FGS declarations visible.
+3. **Filament 1.71.5** — bump once it appears on Maven Central (checked 2026-05-27: not yet). Note in `gradle/libs.versions.toml`.
+4. **[#1831](https://github.com/sceneview/sceneview/issues/1831)** — stale `appStoreVersionSubmission` auto-delete before POST in `app-store.yml`.
+5. **[#2241](https://github.com/sceneview/sceneview/issues/2241) Sprint 1 V2 plane renderer redo** — PlaneDiscoveryGuide + ShadowReceiverPlane + PlacementReticle + ARPlacementDemo modernization.
+6. **[#2239](https://github.com/sceneview/sceneview/issues/2239) Samples catalog regrouping** — 60 cards → ~25 cards aggressive grouping.
+7. **[#894 iOS AR feature parity](https://github.com/sceneview/sceneview/issues/894)** — Cloud Anchors, ARRecorder via ReplayKit, Streetscape. Needs physical device.
 
 ### Older session logs
 

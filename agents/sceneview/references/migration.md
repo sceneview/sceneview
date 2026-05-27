@@ -13,8 +13,8 @@ often need to rewrite.
 | `Scene { … }` | `SceneView { … }` |
 | `ArScene { … }` | `ARSceneView { … }` |
 
-Artifacts unchanged: `io.github.sceneview:sceneview:4.16.7` for 3D-only,
-`io.github.sceneview:arsceneview:4.16.7` for AR.
+Artifacts unchanged: `io.github.sceneview:sceneview:4.16.8` for 3D-only,
+`io.github.sceneview:arsceneview:4.16.8` for AR.
 
 ## Model loading
 
