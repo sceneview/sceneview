@@ -211,22 +211,33 @@ class SketchfabService private constructor(
      * marker) and the cached path is returned without hitting the network.
      *
      * @param uid Sketchfab model uid.
-     * @param progress Optional 0..1 progress callback. Fired once with `1.0`
-     *   when the binary finishes — richer progress hooks will arrive in V1.1.
+     * @param onProgress Optional progress callback fired periodically during
+     *   the streaming download. `bytesRead` accumulates from `0L` to the
+     *   final body size; `totalBytes` is the `Content-Length` reported by the
+     *   server (or `-1L` if the server omitted it — rare but possible for
+     *   chunked-transfer responses). The callback is invoked on the IO
+     *   dispatcher; if the UI needs to update from it, hop to the main
+     *   thread inside the callback. Fired once with `(size, size)` at the
+     *   end so the UI can settle on 100 % even when the body Content-Length
+     *   was unknown (#2232).
      */
     suspend fun downloadModel(
         uid: String,
-        progress: ((Float) -> Unit)? = null,
+        onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null,
     ): File = withContext(Dispatchers.IO) {
         val cacheFile = cacheFileFor(uid)
         if (cacheFile.exists()) {
             cacheFile.setLastModified(System.currentTimeMillis())
+            // Cache hit — fire a single 100 % progress event so the UI exits
+            // its loading state immediately instead of waiting for the model
+            // parser to start. `length()` is used as both `read` and `total`
+            // so the bar settles at 1.0 rather than flashing 0 %.
+            onProgress?.invoke(cacheFile.length(), cacheFile.length())
             return@withContext cacheFile
         }
 
         val remoteUrl = downloadUrl(uid)
-        downloadBinary(remoteUrl, cacheFile)
-        progress?.invoke(1f)
+        downloadBinary(remoteUrl, cacheFile, onProgress)
         pruneCacheIfNeeded()
         cacheFile
     }
@@ -297,7 +308,11 @@ class SketchfabService private constructor(
         }
     }
 
-    private fun downloadBinary(remoteUrl: String, destination: File) {
+    private fun downloadBinary(
+        remoteUrl: String,
+        destination: File,
+        onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null,
+    ) {
         // The signed CDN URL must NOT carry the Sketchfab auth header.
         val request = Request.Builder().url(remoteUrl).get().build()
         client.newCall(request).execute().use { response ->
@@ -305,6 +320,10 @@ class SketchfabService private constructor(
                 throw SketchfabError.DownloadFailed("HTTP ${response.code}")
             }
             val body = response.body
+            // contentLength() returns -1L for chunked-transfer responses
+            // (rare but possible) — surfaced as-is so the UI can render a
+            // determinate bar when known and fall back to indeterminate.
+            val total = body.contentLength()
             destination.parentFile?.mkdirs()
             // Stream into a per-call unique temp file, then atomically rename
             // onto `destination`. Concurrent downloads of the same uid (the
@@ -317,7 +336,28 @@ class SketchfabService private constructor(
             )
             try {
                 temp.outputStream().use { out ->
-                    body.byteStream().use { input -> input.copyTo(out) }
+                    body.byteStream().use { input ->
+                        // Manual chunked copy with progress (#2232). 16 KB
+                        // buffer matches OkHttp's internal default and keeps
+                        // the callback frequency reasonable (~60 Hz on 4G,
+                        // ~600 Hz on 5G — still well under any UI debounce
+                        // budget). Coalescing on the UI side handles bursty
+                        // emissions.
+                        val buffer = ByteArray(16 * 1024)
+                        var totalRead = 0L
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read == -1) break
+                            out.write(buffer, 0, read)
+                            totalRead += read
+                            onProgress?.invoke(totalRead, total)
+                        }
+                        // Always fire a final 100 % event so the UI can
+                        // settle on "done" even when contentLength was -1L
+                        // (chunked transfer — totalRead becomes the de-facto
+                        // total once the stream ends).
+                        onProgress?.invoke(totalRead, totalRead)
+                    }
                 }
                 if (!temp.renameTo(destination)) {
                     temp.copyTo(destination, overwrite = true)

@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
@@ -417,10 +418,27 @@ private fun DownloadingContent(
     heroModifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+
+    // Download progress, populated by SketchfabService.downloadModel's
+    // `onProgress` callback. `null` means "no Content-Length yet, render
+    // indeterminate spinner"; `0f..1f` drives the determinate
+    // LinearProgressIndicator below. (#2232)
+    var progress by remember(model.uid) { mutableStateOf<Float?>(null) }
+    var bytesRead by remember(model.uid) { mutableStateOf(0L) }
+    var totalBytes by remember(model.uid) { mutableStateOf(0L) }
+
     LaunchedEffect(model.uid) {
         val result = withContext(Dispatchers.IO) {
             runCatching {
-                SketchfabService.getInstance(context).downloadModel(model.uid)
+                SketchfabService.getInstance(context).downloadModel(model.uid) { read, total ->
+                    // `total` is -1L for chunked-transfer responses (rare);
+                    // in that case we keep `progress` null and show only the
+                    // indeterminate spinner + bytes count. When `total` is
+                    // known the bar tracks the ratio.
+                    bytesRead = read
+                    totalBytes = total
+                    progress = if (total > 0L) (read.toFloat() / total).coerceIn(0f, 1f) else null
+                }
             }
         }
         result.fold(
@@ -472,7 +490,20 @@ private fun DownloadingContent(
                     .padding(horizontal = 20.dp, vertical = 16.dp),
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator()
+                    // Determinate LinearProgressIndicator when the server
+                    // reported a Content-Length; falls back to the legacy
+                    // indeterminate spinner otherwise (#2232).
+                    val p = progress
+                    if (p != null) {
+                        LinearProgressIndicator(
+                            progress = { p },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp),
+                        )
+                    } else {
+                        CircularProgressIndicator()
+                    }
                     Spacer(Modifier.height(12.dp))
                     Text(
                         text = stringResource(R.string.sketchfab_loading_model, model.name),
@@ -480,8 +511,20 @@ private fun DownloadingContent(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(Modifier.height(4.dp))
+                    // Show bytes (and percent if known) so a 20-second 5G
+                    // download (Scifi Girl, 195k polys ~28 MB) doesn't feel
+                    // like the app froze (#2232).
                     Text(
-                        text = stringResource(R.string.sketchfab_streaming_from),
+                        text = if (totalBytes > 0L) {
+                            val mbRead = bytesRead / 1_000_000.0
+                            val mbTotal = totalBytes / 1_000_000.0
+                            val pct = (p ?: 0f).times(100f).toInt()
+                            "%.1f / %.1f MB · %d%%".format(mbRead, mbTotal, pct)
+                        } else if (bytesRead > 0L) {
+                            "%.1f MB".format(bytesRead / 1_000_000.0)
+                        } else {
+                            stringResource(R.string.sketchfab_streaming_from)
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
