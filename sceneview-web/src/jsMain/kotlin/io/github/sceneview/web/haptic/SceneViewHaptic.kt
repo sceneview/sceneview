@@ -81,6 +81,7 @@ public class SceneViewHaptic {
      * same honest-degradation pattern as [pattern]. A non-positive
      * [durationMs] is a no-op.
      */
+    @Suppress("UnusedParameter") // intensity is API parity with iOS — Web Vibration API has no intensity
     public fun continuous(intensity: Float, durationMs: Int) {
         if (durationMs <= 0) return
         vibrate(durationMs)

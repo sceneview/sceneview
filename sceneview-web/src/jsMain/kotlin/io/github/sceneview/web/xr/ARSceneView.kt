@@ -1,3 +1,8 @@
+@file:Suppress(
+    "MaxLineLength",    // WebXR Promise chain lambdas with type annotations are legitimately long
+    "UnusedParameter",  // timestamp in renderFrame is part of the XRAnimationFrameRequestCallback signature
+)
+
 package io.github.sceneview.web.xr
 
 import io.github.sceneview.web.SceneView

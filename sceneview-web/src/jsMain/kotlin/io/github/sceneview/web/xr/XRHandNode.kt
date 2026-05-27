@@ -72,6 +72,7 @@ class XRHandNode(
         val inputSources = frame.session.inputSources
         val length = (inputSources.length as? Int) ?: 0
         var found: XRHand? = null
+        @Suppress("LoopWithTooManyJumpStatements") // continue-skip + break-on-found is the clearest pattern here
         for (i in 0 until length) {
             val src = inputSources[i] as? XRInputSource ?: continue
             if (src.handedness == handedness && src.hand != null) {
@@ -90,6 +91,7 @@ class XRHandNode(
             previouslyTracked = true
             onHandFound?.invoke(found)
         }
+        @Suppress("LoopWithTooManyJumpStatements") // two continue-guards improve readability over nested ifs
         for ((jointName, cb) in jointCallbacks) {
             val space = found.get(jointName) ?: continue
             val pose = frame.getPose(space, referenceSpace) ?: continue

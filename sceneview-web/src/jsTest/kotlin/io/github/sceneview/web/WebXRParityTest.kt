@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // test assertion strings with shader expressions are legitimately long
+
 package io.github.sceneview.web
 
 import io.github.sceneview.web.xr.DepthOcclusionShader

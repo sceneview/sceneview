@@ -1,3 +1,5 @@
+@file:Suppress("UnusedParameter") // timestamp in renderFrame is part of XRAnimationFrameRequestCallback signature
+
 package io.github.sceneview.web.xr
 
 import io.github.sceneview.web.SceneView

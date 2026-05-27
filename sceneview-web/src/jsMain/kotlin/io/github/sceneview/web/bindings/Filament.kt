@@ -1,5 +1,11 @@
 @file:JsModule("filament")
 @file:JsNonModule
+@file:Suppress(
+    "FunctionNaming",    // Filament.js uses PascalCase statics — external bindings must match
+    "TooManyFunctions",  // Engine/TransformManager/etc. expose many functions by design
+    "UnusedParameter",   // external fun parameters must mirror the JS API even when unused in Kotlin
+    "MaxLineLength",     // JS binding comments with type annotations legitimately exceed 120 chars
+)
 
 package io.github.sceneview.web.bindings
 

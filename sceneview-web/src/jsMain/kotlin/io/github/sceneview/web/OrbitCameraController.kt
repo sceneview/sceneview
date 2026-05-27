@@ -147,6 +147,7 @@ class OrbitCameraController(
         canvas.addEventListener(type, listener, js("{passive: false}"))
     }
 
+    @Suppress("LongMethod") // event listener setup registers many event types — splitting would hurt cohesion
     private fun setupEventListeners() {
         // Mouse down
         listen("mousedown") { event ->

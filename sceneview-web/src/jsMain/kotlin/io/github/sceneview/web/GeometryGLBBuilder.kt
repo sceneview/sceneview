@@ -124,6 +124,7 @@ internal object GeometryGLBBuilder {
         }
     }
 
+    @Suppress("LongMethod") // GLB binary format builder — interleaved header/chunk writes are inherently sequential
     private fun buildGLBFromArrays(
         config: GeometryConfig,
         positions: Float32Array,

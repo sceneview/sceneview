@@ -1,3 +1,8 @@
+@file:Suppress(
+    "VariableNaming",   // EPS is a test constant — uppercase matches the math convention
+    "UnusedParameter",  // deltaY in dispatchWheel is used inside js("...") string literal
+)
+
 package io.github.sceneview.web
 
 import io.github.sceneview.web.bindings.Camera

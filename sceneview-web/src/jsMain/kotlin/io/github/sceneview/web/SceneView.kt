@@ -370,7 +370,7 @@ class SceneView private constructor(
                 scene.addEntities(entities)
 
                 // Get the animator from the asset instance for animation playback
-                val animator = try {
+                val animator = @Suppress("SwallowedException") try { // no animation → null
                     asset.getInstance().getAnimator()
                 } catch (e: Throwable) {
                     null
@@ -533,7 +533,7 @@ class SceneView private constructor(
                 val entities = asset.getEntities()
                 scene.addEntities(entities)
 
-                val animator = try {
+                val animator = @Suppress("SwallowedException") try { // no animation → null
                     asset.getInstance().getAnimator()
                 } catch (e: Throwable) {
                     null
@@ -825,7 +825,8 @@ class SceneView private constructor(
         if (autoResize) {
             val w = canvas.clientWidth
             val h = canvas.clientHeight
-            if (w > 0 && h > 0 && (w != canvas.width || h != canvas.height)) {
+            val needsResize = w > 0 && h > 0 && (w != canvas.width || h != canvas.height)
+            if (needsResize) {
                 resize(w, h)
             }
         }

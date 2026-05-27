@@ -298,6 +298,7 @@ private fun project(v: Vec3, width: Float, height: Float, fov: Float = 4f): Offs
     )
 }
 
+@Suppress("LongMethod") // software wireframe renderer — many drawLine/drawCircle calls are inherently verbose
 private fun DrawScope.drawSoftware3DScene(angleX: Float, angleY: Float) {
     // Background gradient
     drawRect(

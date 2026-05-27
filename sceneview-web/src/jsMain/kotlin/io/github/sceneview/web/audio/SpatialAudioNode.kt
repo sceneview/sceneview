@@ -315,6 +315,7 @@ public fun loadAudioSourcePromise(url: String): Promise<AudioSource> {
     val ctx = audioContext()
     return window.fetch(url)
         .then { response ->
+            @Suppress("TooGenericExceptionThrown") // Kotlin/JS Promise — Throwable is the base type
             if (!response.ok) throw Throwable("Failed to fetch audio '$url': HTTP ${response.status}")
             response.arrayBuffer()
         }
