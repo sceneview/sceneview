@@ -124,6 +124,15 @@ fun FeedbackFlow(
     micPermanentlyDenied: Boolean = false,
     notificationControlAvailable: Boolean = true,
     recordingAvailable: Boolean = true,
+    /**
+     * Fired ONCE the moment the upload reaches [UploadUiState.Sent] — the host
+     * uses it to show a persistent confirmation Snackbar (#2230) that survives
+     * the dialog dismissal, so users who tap "Done" don't end up wondering
+     * whether their feedback actually went through. `issueNumber` is the
+     * GitHub Issue number when the worker returned one, or `null` for the
+     * "Thank you" generic-confirmation path (text-only / queued submissions).
+     */
+    onSent: ((issueNumber: Int?) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -211,6 +220,11 @@ fun FeedbackFlow(
                     UploadUiState.Failed(result.errorKind)
                 }
                 if (result.ok) {
+                    // Notify the host (#2230) — the dialog's Sent screen is
+                    // dismissable in one tap, so the host snackbar is the
+                    // confirmation that survives "Done" and reassures the
+                    // user the upload actually went through.
+                    onSent?.invoke(result.issueNumber)
                     // Index the new ticket locally so "My feedback" can track
                     // it. Skipped when the worker stored the feedback but
                     // opened no issue (e.g. its hourly issue quota was hit) —

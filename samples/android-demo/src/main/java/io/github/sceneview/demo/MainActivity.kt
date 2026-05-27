@@ -33,7 +33,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -234,6 +239,15 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
     // and the NavHost were sibling root composables — the demo screens' own
     // TopAppBar then drew over the banner, clipping the "Update ready / Restart"
     // chrome. Drawing the banner last in the Box guarantees it stays visible.
+    // Host for the post-Sent feedback snackbar (#2230). Hoisted at this level
+    // (same scope as `feedbackOpen` below) so it can be triggered by the
+    // FeedbackFlow `onSent` callback and stays alive after the Dialog
+    // dismisses. CoroutineScope is rememberCoroutineScope'd here for the
+    // same reason — the snackbar.showSnackbar(...) launch must outlive the
+    // Dialog's own composition scope.
+    val feedbackSnackbarHost = remember { SnackbarHostState() }
+    val feedbackSentScope = rememberCoroutineScope()
+
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
@@ -393,8 +407,40 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 micPermanentlyDenied = micPermanentlyDenied,
                 notificationControlAvailable = notificationControlAvailable,
                 recordingAvailable = recordingAvailable,
+                onSent = { issueNumber ->
+                    // Persistent confirmation outside the dialog (#2230). The
+                    // dialog's Sent screen is dismissable in one tap; without
+                    // this snackbar the user lands back on Explore with no
+                    // visible trace that the feedback was sent. Lifecycle is
+                    // tied to the activity scope so the snackbar survives
+                    // tab switches.
+                    feedbackSentScope.launch {
+                        val msg = if (issueNumber != null) {
+                            context.getString(R.string.feedback_sent_snackbar, issueNumber)
+                        } else {
+                            context.getString(R.string.feedback_sent_snackbar_generic)
+                        }
+                        feedbackSnackbarHost.showSnackbar(
+                            message = msg,
+                            duration = SnackbarDuration.Long,
+                        )
+                    }
+                },
             )
         }
+
+        // Host for the post-Sent confirmation snackbar (#2230). Positioned at
+        // the bottom of the Box, above the navigation bar, so it sits below
+        // the FeedbackButton FAB instead of overlapping it. Padding matches
+        // the FAB's bottom offset so the snackbar appears just above the FAB
+        // while still respecting the system navigation bar.
+        SnackbarHost(
+            hostState = feedbackSnackbarHost,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(bottom = FEEDBACK_FAB_BOTTOM_OFFSET + 72.dp),
+        )
     }
 }
 
