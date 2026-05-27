@@ -1,3 +1,7 @@
+## 4.16.8
+
+- Version alignment with SceneView v4.16.8. Google Play 16 KB page-size alignment for Filament native libs, plane renderer alpha cap tightened, library-level 16 KB alignment fix for AAB (#2223, #2224, #2226). No breaking Flutter API change.
+
 ## 4.15.1
 
 - Version alignment with SceneView v4.15.1. iOS demo parity sprint complete (umbrella #910 — iOS app now at full 59-demo parity with Android). Native `CameraControlMode` cases added (`.none`, `.tilt`, `.dolly` via `realityViewCameraControls(_:)`, iOS 18+). `SceneReconstructionNode` / `DepthMeshNode` available on device. Play Store deploy fix for Foreground Service permissions (#2120). No breaking Flutter API change.
