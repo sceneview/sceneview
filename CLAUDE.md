@@ -546,14 +546,14 @@ Never say "everything is good" without verifying published packages.
 
 **The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.15.1`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
 
-### Current state (last updated: 2026-05-27, session pedantic-robinson — v4.16.9 + security sweep)
+### Current state (last updated: 2026-05-27, session pedantic-robinson — maintenance sweep #2)
 
-- 🚀 **v4.16.9 RELEASED** — tag `v4.16.9`. Sketchfab viewer polish + feedback UX fix + detekt zero. Maven Central ✅, npm ✅, Play Store ✅, GitHub Release ✅.
+- 🚀 **v4.16.9 RELEASED** — tag `v4.16.9`. Sketchfab viewer polish + feedback UX fix + detekt zero + CVE-2026-8723 patch. Maven Central ✅, npm ✅, Play Store ✅, GitHub Release ✅.
 - 🔒 **CVE-2026-8723 (qs) PATCHED** — `qs >= 6.15.2` override added to mcp/packages/rerun, interior, gaming, mcp-gateway. Dependabot: 0 open alerts.
-- 🚀 **v4.16.8 RELEASED** — 16 KB page-size alignment + plane renderer polish.
+- 🧹 **MCP stale refs fixed** — gaming/interior/rerun packages had `arsceneview:4.0.9` hardcoded (9-month drift). All updated to 4.16.9. macOS Finder duplicates removed from npm tarballs.
 - ✅ **Detekt ZERO across all modules** — android-demo (35→0), sceneview-web+desktop (27→0).
 - ✅ **iOS TestFlight deploying** from v4.16.5 onwards ✅.
-- ✅ **Maintenance sweep 2026-05-27**: MCP tests 1864/1864 ✅, AI skills ✅, Filament 1.71.5 not yet on Maven Central.
+- ✅ **Maintenance sweep 2026-05-27 #2**: MCP 1864/1864 ✅, AI skills ✅, sync 0 MISMATCH ✅, website 200 ✅, no stale issues. Filament 1.71.5 GitHub tag exists but NOT yet on Maven Central.
 - ⚠️ **macOS installer cert** — #2252: Thomas must add `MACOS_INSTALLER_CERT_BASE64` + `MACOS_INSTALLER_CERT_PASSWORD` GitHub secrets.
 - 📋 **19 open issues** (none stale, none unlabelled).
 
