@@ -314,7 +314,14 @@
     <string name="feedback_review_body">Send it to the SceneView team, or record again.</string>
     <string name="feedback_review_recorded">Screen recording captured</string>
     <string name="feedback_review_no_recording">No recording — your note will be sent on its own.</string>
+    <!-- Shown when no screen recording is attached: the note becomes the only payload, so the
+         Send button stays disabled until something is typed. The copy makes that requirement
+         explicit instead of leaving it implied (#2230). -->
+    <string name="feedback_review_no_recording_note_required">No screen recording attached. Describe the issue in the note below so the team can act on it.</string>
     <string name="feedback_review_note_label">Add a note (optional)</string>
+    <!-- Note label when no recording is attached — the note is required, so the label drops
+         "optional" and asks for the description directly (#2230). -->
+    <string name="feedback_review_note_label_required">Describe the issue</string>
     <string name="feedback_review_note_placeholder">Anything else the team should know?</string>
     <string name="feedback_review_rerecord">Record again</string>
     <string name="feedback_review_send">Send feedback</string>
@@ -325,8 +332,10 @@
     <string name="feedback_record_retry">Try again</string>
     <string name="feedback_sending">Sending your feedback…</string>
     <string name="feedback_sending_progress">Uploading… %1$d%%</string>
-    <string name="feedback_sent_title">Thank you!</string>
-    <string name="feedback_sent_issue">Your report was filed as issue #%1$d. The team will take a look.</string>
+    <!-- "Feedback sent · Thank you" reads as a clear acknowledgement of receipt, not a
+         standalone greeting — paired with the issue number subtitle below (#2230). -->
+    <string name="feedback_sent_title">Feedback sent · Thank you</string>
+    <string name="feedback_sent_issue">Tracked as issue #%1$d. The team will take a look.</string>
     <string name="feedback_sent_generic">Your feedback was received by the SceneView team.</string>
     <string name="feedback_sent_done">Done</string>
     <string name="feedback_send_failed_title">Couldn\'t send</string>
