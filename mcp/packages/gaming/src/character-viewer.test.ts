@@ -69,7 +69,7 @@ describe("generateCharacterViewer", () => {
     expect(code).toContain("import io.github.sceneview.ar.ARSceneView");
     expect(code).toContain("ARSceneView(");
     expect(code).toContain("android.permission.CAMERA");
-    expect(code).toContain("arsceneview:4.0.9");
+    expect(code).toContain("arsceneview:4.16.9");
   });
 
   it("includes auto-rotate when autoRotate=true", () => {

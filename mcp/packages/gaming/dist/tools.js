@@ -321,8 +321,8 @@ export async function dispatchTool(toolName, rawArgs, _ctx = {}) {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:3.6.0")`
-                                : `implementation("io.github.sceneview:sceneview:3.6.0")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
+                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -368,8 +368,8 @@ export async function dispatchTool(toolName, rawArgs, _ctx = {}) {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:3.6.0")`
-                                : `implementation("io.github.sceneview:sceneview:3.6.0")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
+                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -414,8 +414,8 @@ export async function dispatchTool(toolName, rawArgs, _ctx = {}) {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:3.6.0")`
-                                : `implementation("io.github.sceneview:sceneview:3.6.0")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
+                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -460,8 +460,8 @@ export async function dispatchTool(toolName, rawArgs, _ctx = {}) {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:3.6.0")`
-                                : `implementation("io.github.sceneview:sceneview:3.6.0")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
+                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -507,8 +507,8 @@ export async function dispatchTool(toolName, rawArgs, _ctx = {}) {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:3.6.0")`
-                                : `implementation("io.github.sceneview:sceneview:3.6.0")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
+                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,

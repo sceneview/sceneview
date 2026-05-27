@@ -22,9 +22,9 @@ describe("generateSetupProject — android", () => {
     expect(sidecar!.contents).toContain("rerun as rr");
   });
 
-  it("references arsceneview:4.0.9 in the Gradle file", () => {
+  it("references arsceneview:4.16.9 in the Gradle file", () => {
     const gradle = result.files.find((f) => f.path.endsWith("build.gradle.kts"))!;
-    expect(gradle.contents).toContain("io.github.sceneview:arsceneview:4.0.9");
+    expect(gradle.contents).toContain("io.github.sceneview:arsceneview:4.16.9");
   });
 
   it("uses rememberRerunBridge in the Kotlin composable", () => {

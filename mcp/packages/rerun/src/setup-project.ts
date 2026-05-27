@@ -58,7 +58,7 @@ function androidSetup(targetDir: string, includeSidecar: boolean): SetupProjectR
       contents: `// Add to your existing app/build.gradle.kts dependencies block:
 dependencies {
     // SceneView AR (required — ships the RerunBridge helper)
-    implementation("io.github.sceneview:arsceneview:4.0.9")
+    implementation("io.github.sceneview:arsceneview:4.16.9")
 
     // Kotlin coroutines — already a transitive dep of SceneView, listed for clarity
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")

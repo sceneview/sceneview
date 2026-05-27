@@ -306,8 +306,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:3.6.2")`
-                                : `implementation("io.github.sceneview:sceneview:3.6.2")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
+                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -354,8 +354,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             (args.ar ?? true)
-                                ? `implementation("io.github.sceneview:arsceneview:3.6.2")`
-                                : `implementation("io.github.sceneview:sceneview:3.6.2")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
+                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -401,8 +401,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:3.6.2")`
-                                : `implementation("io.github.sceneview:sceneview:3.6.2")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
+                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -461,8 +461,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:3.6.2")`
-                                : `implementation("io.github.sceneview:sceneview:3.6.2")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
+                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -509,8 +509,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:3.6.2")`
-                                : `implementation("io.github.sceneview:sceneview:3.6.2")`,
+                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
+                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,

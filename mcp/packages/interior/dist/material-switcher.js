@@ -62,7 +62,7 @@ import io.github.sceneview.node.LightNode
  *
  * Model: src/main/assets/${modelPath}
  *
- * Gradle: implementation("io.github.sceneview:sceneview:3.6.2")
+ * Gradle: implementation("io.github.sceneview:sceneview:4.16.9")
  */
 @Composable
 fun ${composableName}() {
@@ -226,7 +226,7 @@ import io.github.sceneview.rememberCollisionSystem
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:3.6.2")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.16.9")
  */
 @Composable
 fun ${composableName}AR() {

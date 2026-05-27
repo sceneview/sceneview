@@ -77,7 +77,7 @@ describe("generateRoomPlanner", () => {
     const code = generateRoomPlanner({ roomType: "living-room", ar: true });
     expect(code).toContain("import io.github.sceneview.ar.ARSceneView");
     expect(code).toContain("ARSceneView(");
-    expect(code).toContain("arsceneview:4.0.9");
+    expect(code).toContain("arsceneview:4.16.9");
     expect(code).toContain("android.permission.CAMERA");
   });
 

@@ -98,7 +98,7 @@ import io.github.sceneview.math.Position
  *
  * Model: src/main/assets/${roomModel}
  *
- * Gradle: implementation("io.github.sceneview:sceneview:4.0.9")
+ * Gradle: implementation("io.github.sceneview:sceneview:4.16.9")
  */
 @Composable
 fun ${composableName}() {
@@ -246,7 +246,7 @@ import io.github.sceneview.node.LightNode
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.0.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.16.9")
  */
 @Composable
 fun ${composableName}AR() {

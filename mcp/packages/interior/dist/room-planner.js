@@ -49,7 +49,7 @@ import io.github.sceneview.math.Scale
  * Uses SceneView's geometry nodes for walls/floor and ModelNode for furniture.
  * Orbit camera with pinch-to-zoom for interior exploration.
  *
- * Gradle: implementation("io.github.sceneview:sceneview:3.6.2")
+ * Gradle: implementation("io.github.sceneview:sceneview:4.16.9")
  */
 @Composable
 fun ${composableName}() {
@@ -258,7 +258,7 @@ import io.github.sceneview.math.Scale
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:3.6.2")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.16.9")
  */
 @Composable
 fun ${composableName}AR() {
