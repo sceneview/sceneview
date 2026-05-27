@@ -68,7 +68,13 @@ fragment {
         // Half-width of the line in cell units (~1.1 device px once divided by fwidth).
         float2 d = grid / max(fw, vec2(1e-5));
         float line = 1.0 - min(min(d.x, d.y) * 0.65, 1.0);
-        return clamp(line, 0.0, 1.0);
+        // #2224 v2 — cap line at 0.4 instead of 1.0. Even when `fwidth(uv)` saturates at
+        // oblique camera angles and `d` → 0 across the whole plane (which would normally drive
+        // `line → 1.0` everywhere → solid white surface), this cap keeps the grid contribution
+        // at a maximum of 40 % alpha. Combined with the alpha hard-cap below and the cool-white
+        // tint in `PlaneRenderer.kt`, the grid reads as a subtle translucent overlay (~20 %
+        // total opacity) instead of an opaque blob.
+        return clamp(line, 0.0, 0.4);
     }
 
     void material(inout MaterialInputs material) {
@@ -90,14 +96,15 @@ fragment {
         // Smooth it so detected planes fade out softly instead of a hard cut.
         float edge = smoothstep(0.0, 0.6, variable_texCoordsAlpha.z);
 
-        // #2224 — hard-cap alpha at 0.45 so the grid never reads as an opaque white blob,
-        // even when `fwidth(uv)` saturates at oblique camera angles and `line` collapses to
-        // ~1.0 across the whole plane. Coefficients reduced too (0.6 grid, 0.5 fill instead
-        // of 0.85 / 1.0) so the steady-state grid stays subtle. Pair with the `MATERIAL_COLOR`
-        // cool-white tint in `PlaneRenderer.kt` for "detected ground" feel.
-        float alpha = clamp(line * 0.6 + fill * 0.5, 0.0, 1.0) * edge;
+        // #2224 v2 — first iteration (v4.16.4) capped alpha at 0.45 but on-device QA in
+        // sunny outdoor scenes showed the grid still read as an opaque white blob: 45 % of
+        // a near-white tint on already-light camera input ≈ 80 %+ perceived white. v4.16.5
+        // tightens to a 20 % alpha cap *and* caps `line` itself at 0.4 in `gridLine()` so
+        // the saturation is bounded at the source. Industry baseline (Apple ARKit / Wayfair /
+        // ARCore Depth Lab reticle) ships plane viz at 20-30 % alpha unlit — this matches.
+        float alpha = clamp(line * 0.4 + fill * 0.3, 0.0, 1.0) * edge;
 
         material.baseColor.rgb = materialParams.color;
-        material.baseColor.a = min(alpha, 0.45);
+        material.baseColor.a = min(alpha, 0.20);
     }
 }
