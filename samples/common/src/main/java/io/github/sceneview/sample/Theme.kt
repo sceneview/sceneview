@@ -1,3 +1,4 @@
+@file:Suppress("MatchingDeclarationName") // File intentionally contains both Colors + SceneviewTheme
 package io.github.sceneview.sample
 
 import android.os.Build

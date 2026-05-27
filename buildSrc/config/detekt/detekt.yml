@@ -25,6 +25,9 @@ complexity:
     allowedLines: 800
   CyclomaticComplexMethod:
     allowedComplexity: 25
+    # AR scene composables handle many states (tracking, failure, UI) in one function by design.
+    ignoreAnnotated:
+      - 'Composable'
   LongMethod:
     # Compose scene-root composables (SceneView, ARSceneView) legitimately
     # exceed the 60-line Java-style default — they expose dozens of named
