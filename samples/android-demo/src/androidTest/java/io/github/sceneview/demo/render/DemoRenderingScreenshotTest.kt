@@ -105,18 +105,14 @@ class DemoRenderingScreenshotTest {
     }
 
     @Test
-    fun textDemo_default_state() {
-        // No cycling animation in this demo — letter anti-aliasing converges within a
-        // few frames after capture, residual diff is TAA jitter.
-        captureAndCompare(demoSlug = "text", goldenName = "text_default", settleSeconds = 3,
-            pixelDiffTolerancePercent = 8.0f, maxChannelDiff = 16)
-    }
-
-    @Test
-    fun imageDemo_default_state() {
-        // No texture swap in this demo — billboard holds the first texture. Residual is
-        // TAA jitter.
-        captureAndCompare(demoSlug = "image", goldenName = "image_default", settleSeconds = 3,
+    fun twoDInThreeDDemo_default_state() {
+        // #2239 Batch 1 — `text`, `image`, `video`, `billboard` consolidated into
+        // `two-d-in-three-d`. Default landing tab is Text; the captured frame is
+        // comparable to the prior `text_default` golden once re-baselined.
+        // The Image / Video / Billboard sub-modes are reachable via segmented-button
+        // taps but covered only via DemoInteractionTest; dedicated screenshot captures
+        // would need a tab-aware deep-link parameter (follow-up).
+        captureAndCompare(demoSlug = "two-d-in-three-d", goldenName = "twodinthreed_default", settleSeconds = 3,
             pixelDiffTolerancePercent = 8.0f, maxChannelDiff = 16)
     }
 
@@ -160,11 +156,9 @@ class DemoRenderingScreenshotTest {
             pixelDiffTolerancePercent = 5.0f, maxChannelDiff = 16)
     }
 
-    @Test
-    fun billboardDemo_default_state() {
-        captureAndCompare(demoSlug = "billboard", goldenName = "billboard_default", settleSeconds = 3,
-            pixelDiffTolerancePercent = 8.0f, maxChannelDiff = 16)
-    }
+    // #2239 Batch 1 — `billboard` consolidated into `two-d-in-three-d` (Billboard sub-mode,
+    // reachable via the "Billboard" segmented button; default landing tab covered by
+    // `twoDInThreeDDemo_default_state` above).
 
     @Test
     fun viewNodeDemo_default_state() {

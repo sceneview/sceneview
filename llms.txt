@@ -4007,11 +4007,8 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Content
 
-- `billboard` — Billboard. Labels that face the camera.
-- `image` — Image Planes. Image planes in 3D space.
 - `lines-paths` — Lines & Paths. Polylines, helix, grids, and circles.
-- `text` — 3D Text. Extruded text with styles and sizes.
-- `video` — Video Texture. Video playback on a 3D surface.
+- `two-d-in-three-d` — 2D in 3D. Text, image, video, and billboard quads.
 
 ### Interaction
 

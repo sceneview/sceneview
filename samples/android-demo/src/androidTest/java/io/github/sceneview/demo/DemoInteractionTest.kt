@@ -653,7 +653,9 @@ class DemoInteractionTest {
             "BillboardNode / ImageNode teardown order is fixed in sceneview/. (#887)"
     )
     fun billboard_visibilityChips() {
-        openDemo("billboard")
+        // #2239 Batch 1 — `billboard` consolidated into `two-d-in-three-d`.
+        openDemo("two-d-in-three-d")
+        tap("Billboard")
         screenshot("49_billboard_both_visible")
         tap("Billboard Panel"); screenshot("50_billboard_only_fixed")
         tap("Fixed Image"); screenshot("51_billboard_none")
@@ -783,7 +785,9 @@ class DemoInteractionTest {
 
     @Test
     fun image_scaleSlider() {
-        openDemo("image")
+        // #2239 Batch 1 — `image` consolidated into `two-d-in-three-d`.
+        openDemo("two-d-in-three-d")
+        tap("Image")
         screenshot("79_image_default_scale")
 
         dragSlider("Scale:", fraction = 1.0f)
@@ -800,7 +804,9 @@ class DemoInteractionTest {
 
     @Test
     fun textLabels_fontSizeSlider() {
-        openDemo("text")
+        // #2239 Batch 1 — `text` consolidated into `two-d-in-three-d` (Text is the
+        // default landing tab, so no extra tap is needed before the slider drives).
+        openDemo("two-d-in-three-d")
         screenshot("82_text_default")
 
         dragSlider("Font Size:", fraction = 1.0f)
@@ -853,7 +859,9 @@ class DemoInteractionTest {
 
     @Test
     fun video_initialRender() {
-        openDemo("video")
+        // #2239 Batch 1 — `video` consolidated into `two-d-in-three-d`.
+        openDemo("two-d-in-three-d")
+        tap("Video")
         Thread.sleep(1500)  // let the video texture warm up
         screenshot("92_video_initial")
 
