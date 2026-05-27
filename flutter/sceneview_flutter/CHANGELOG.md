@@ -1,3 +1,7 @@
+## 4.16.9
+
+- Version alignment with SceneView v4.16.9. Security: patch CVE-2026-8723 (qs transitive dep pinned >=6.15.2 in MCP packages). Stale SDK version references fixed in gaming/interior/rerun MCP packages (4.0.9 → 4.16.9). No breaking Flutter API change.
+
 ## 4.16.8
 
 - Version alignment with SceneView v4.16.8. Google Play 16 KB page-size alignment for Filament native libs, plane renderer alpha cap tightened, library-level 16 KB alignment fix for AAB (#2223, #2224, #2226). No breaking Flutter API change.
