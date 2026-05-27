@@ -66,7 +66,15 @@ playServicesLocation = "21.3.0"
 mlkitObjectDetection = "17.0.2"
 
 # MediaPipe Tasks Vision (body-tracking demo — see ARBodyTrackerDemo, #1763)
-mediapipeTasksVision = "0.20230731"
+# Bumped 0.20230731 → 0.10.26: pre-0.10.26 MediaPipe .so files have 4 KB ELF
+# PT_LOAD alignment which Google Play rejects since Jan 2026 (16 KB page-size
+# enforcement). 0.10.26 was the first release with 16 KB-aligned .so binaries
+# ("All the latest Android packages from Google Maven now supporting Android
+# 16kb page size"). Same root-cause as the v4.15.4 fix (#2214); that fix landed
+# on the release branch only and was never merged back to main — the
+# experimentalProperties "16k" anchor in build.gradle is a belt-and-suspenders
+# fallback for any remaining transitive 4 KB .so not covered by this bump.
+mediapipeTasksVision = "0.10.26"
 
 # Publishing & Docs
 mavenPublish = "0.36.0"

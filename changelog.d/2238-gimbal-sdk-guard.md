@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- Fix iOS/macOS archive failure: `CameraControls.gimbal` is only available in the iOS 18.2+ / macOS 15.2+ SDK (Xcode 16.2+). Guard it at compile time — `.gimbal` mode falls back to the orbit gesture path on SDKs older than 16.2. Explicit `RealityKit.CameraControls.*` qualification added to all four native-mode cases to eliminate the type-inference ambiguity with `SceneViewSwift.CameraControls`.
