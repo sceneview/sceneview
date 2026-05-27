@@ -89,6 +89,11 @@
     <string name="ar_cta_grant_camera">Grant Camera Access</string>
     <string name="ar_cta_start_camera">Start AR Camera</string>
     <string name="ar_try_an_ar_demo">Try an AR demo</string>
+    <!-- Section header above the curated AR demo grid (#2231). -->
+    <string name="ar_featured_section">Featured</string>
+    <!-- Section header above the full AR demo list. %d is the total AR demo count
+         (featured + remaining) so users see how much there is at a glance (#2231). -->
+    <string name="ar_all_demos_section">All AR demos (%d)</string>
     <string name="ar_exit_session">Exit AR session</string>
     <string name="ar_reset_scene">Reset scene</string>
     <string name="ar_share_screenshot">Share screenshot</string>
