@@ -348,6 +348,7 @@ private fun updateAnchorsFromDetections(
 
     // Build category keys from this frame's detections.
     val newKeys = mutableSetOf<String>()
+    @Suppress("LoopWithTooManyJumpStatements") // multiple early-exit guards improve readability
     for (obj in results) {
         val label = obj.labels.firstOrNull()?.text ?: continue
         // Bucket by 64-pixel cell so small bbox jitter doesn't create new anchors.

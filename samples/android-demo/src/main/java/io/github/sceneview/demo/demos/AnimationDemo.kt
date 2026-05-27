@@ -877,10 +877,15 @@ private class ScriptedCameraManipulator(
     // the in-flight gesture actually move the camera — without it the new
     // manipulator has no origin point recorded.
     override fun grabBegin(x: Int, y: Int, strafe: Boolean) { onGrabBegin(x, y, strafe) }
+    @Suppress("EmptyFunctionBlock") // required interface stubs — no-ops are intentional
     override fun grabUpdate(x: Int, y: Int) {}
+    @Suppress("EmptyFunctionBlock")
     override fun grabEnd() {}
     override fun scrollBegin(x: Int, y: Int, separation: Float) { onScrollBegin(x, y, separation) }
+    @Suppress("EmptyFunctionBlock")
     override fun scrollUpdate(x: Int, y: Int, prevSeparation: Float, currSeparation: Float) {}
+    @Suppress("EmptyFunctionBlock")
     override fun scrollEnd() {}
+    @Suppress("EmptyFunctionBlock")
     override fun update(deltaTime: Float) {}
 }
