@@ -107,6 +107,8 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.feedback.FeedbackChrome
 import io.github.sceneview.ar.node.AnchorNode
+import io.github.sceneview.demo.ALL_DEMOS
+import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.R
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
@@ -844,22 +846,23 @@ private fun ArLauncherScreen(
             }
         }
 
-        // Section title
+        // Featured section title — kept under the existing `ar_try_an_ar_demo`
+        // string (translated as "Featured" in en, "Mises en avant" in fr, …)
+        // because the legacy callers / a11y bots key off it.
         Text(
-            text = stringResource(R.string.ar_try_an_ar_demo),
+            text = stringResource(R.string.ar_featured_section),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(start = 4.dp, top = 4.dp),
         )
 
-        // Grid of 6 AR demo cards — mirror the Samples-tab `DemoCard` pattern
-        // (gradient icon header on top + title + subtitle below) so the AR
-        // View tab feels like the same app when the user switches tabs.
-        // Pre-refactor (#1185) the cards used floating tertiary-tinted pills
-        // which read as a "different app" against the M3 Expressive grid in
-        // Samples.
+        // Featured grid — the curator's pick (FEATURED_AR_DEMOS, 6 cards).
+        // Mirrors the Samples-tab `DemoCard` pattern (gradient icon header
+        // on top + title + subtitle below) so the AR View tab feels like
+        // the same app when the user switches tabs (#1185).
         val featured = remember { FEATURED_AR_DEMOS }
+        val featuredIds = remember(featured) { featured.map { it.id }.toSet() }
         val dark = isSystemInDarkTheme()
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             featured.chunked(2).forEach { row ->
@@ -875,6 +878,47 @@ private fun ArLauncherScreen(
                         )
                     }
                     if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+
+        // All AR demos — every entry in ALL_DEMOS with category
+        // AUGMENTED_REALITY, minus the ones already shown in Featured. Pre-#2231
+        // these were reachable only via the Samples tab → half the AR feature
+        // surface was hidden on this screen. Each DemoEntry already carries
+        // titleRes / subtitleRes / icon, so the same ArDemoCard renders them.
+        val remainingArDemos = remember(featuredIds) {
+            ALL_DEMOS
+                .filter { it.category == DemoCategory.AUGMENTED_REALITY }
+                .filterNot { it.id in featuredIds }
+        }
+        if (remainingArDemos.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(
+                    R.string.ar_all_demos_section,
+                    remainingArDemos.size + featured.size,
+                ),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                remainingArDemos.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        row.forEach { demo ->
+                            ArDemoCard(
+                                title = stringResource(demo.titleRes),
+                                subtitle = stringResource(demo.subtitleRes),
+                                icon = demo.icon,
+                                dark = dark,
+                                onClick = { onArDemoClick(demo.id) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
                 }
             }
         }
