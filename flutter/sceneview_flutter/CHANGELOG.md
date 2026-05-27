@@ -1,3 +1,7 @@
+## 4.16.10
+
+- Version alignment with SceneView v4.16.10. Lint: VIBRATE permission declared in sceneview library manifest (HapticEngine). Security: CVE-2026-8723 qs pin. SVG coordinate corruption in website fixed. No breaking Flutter API change.
+
 ## 4.16.9
 
 - Version alignment with SceneView v4.16.9. Security: patch CVE-2026-8723 (qs transitive dep pinned >=6.15.2 in MCP packages). Stale SDK version references fixed in gaming/interior/rerun MCP packages (4.0.9 → 4.16.9). No breaking Flutter API change.
