@@ -546,9 +546,9 @@ Never say "everything is good" without verifying published packages.
 
 **The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.15.1`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
 
-### Current state (last updated: 2026-05-27, session pedantic-robinson — maintenance sweep + v4.16.8 release)
+### Current state (last updated: 2026-05-27, session pedantic-robinson — maintenance sweep + v4.16.8 SHIPPED)
 
-- 🚀 **v4.16.8 is about to be tagged** — version bumped across all 30+ locations, CHANGELOG.md collated (3 fragments: demo 16KB page-size, library 16KB alignment, plane renderer alpha cap). Committing and tagging next.
+- 🚀 **v4.16.8 RELEASED** — tag `v4.16.8` at HEAD `aba3e83e0`. release.yml ✅, play-store.yml ✅, docs.yml ✅. app-store.yml iOS TestFlight ✅, macOS ❌ (missing `MACOS_INSTALLER_CERT_BASE64` — Thomas action, #2252).
 - ✅ **Library 16KB page-size alignment SHIPPED** (#2226, #2255) — `experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"` added to `sceneview/` and `arsceneview/` library modules. Consumers' APKs now pass Google Play's Jan 2026 enforcement for Android 15+.
 - ✅ **macOS App Store compile errors fixed** (#1794, v4.16.6) — 15 iOS demo files guard iOS-only APIs. Export blocked on missing `MACOS_INSTALLER_CERT_BASE64` secret (issue #2252 — Thomas action).
 - ✅ **iOS TestFlight deploying** from v4.16.5 onwards ✅.
