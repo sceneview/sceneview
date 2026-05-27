@@ -103,7 +103,7 @@ struct ShapeExtrudeDemo: View {
                         .background(
                             selectedPreset == preset
                                 ? Color.accentColor
-                                : Color(.secondarySystemBackground)
+                                : Color(.systemFill)
                         )
                         .foregroundStyle(
                             selectedPreset == preset ? .white : .primary

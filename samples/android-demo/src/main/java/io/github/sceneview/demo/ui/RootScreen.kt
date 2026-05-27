@@ -83,17 +83,32 @@ import io.github.sceneview.demo.ui.explore.ExploreTabScreen
 @Composable
 fun RootScreen(onDemoClick: (String) -> Unit) {
     var selectedTab by rememberSaveable { mutableStateOf(RootTab.Explore) }
+    // Tracks whether the AR View tab is in a live camera session. When `true`
+    // the bottom NavigationBar is hidden so the AR camera goes truly
+    // fullscreen — pre-#2238 the nav bar always stayed visible and ate ~90 px
+    // of the live camera viewport. ArViewTabContent invokes the setter
+    // whenever its internal `sessionStarted` flag flips (start / exit / back
+    // gesture). The flag is intentionally NOT rememberSaveable: a config
+    // change or process death should land the user back on the launcher
+    // screen with the nav bar visible, not on an orphaned immersive shell.
+    var arSessionActive by remember { mutableStateOf(false) }
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                RootTab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
-                        icon = { Icon(tab.icon, contentDescription = null) },
-                        label = { Text(stringResource(tab.labelRes)) },
-                    )
+            // Conditional rendering rather than just `visible = !arSessionActive`
+            // because the bottomBar slot reserves layout space when present —
+            // hiding it via Modifier.alpha or visibility would still steal ~90 px
+            // from the live AR camera viewport (#2238).
+            if (!arSessionActive) {
+                NavigationBar {
+                    RootTab.entries.forEach { tab ->
+                        NavigationBarItem(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            icon = { Icon(tab.icon, contentDescription = null) },
+                            label = { Text(stringResource(tab.labelRes)) },
+                        )
+                    }
                 }
             }
         },
@@ -108,7 +123,10 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
                     curatedSamples = curatedSamplesForExplore(),
                     onSampleClick = { sample -> onDemoClick(sample.id) },
                 )
-                RootTab.ArView -> ArViewTabContent(onDemoClick = onDemoClick)
+                RootTab.ArView -> ArViewTabContent(
+                    onDemoClick = onDemoClick,
+                    onSessionActiveChange = { arSessionActive = it },
+                )
                 RootTab.Samples -> DemoListScreen(onDemoClick = onDemoClick)
                 RootTab.About -> AboutTabContent()
             }
