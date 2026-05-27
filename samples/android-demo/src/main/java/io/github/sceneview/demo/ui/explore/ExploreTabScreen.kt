@@ -313,12 +313,17 @@ private fun ExploreBody(
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         Spacer(Modifier.height(0.dp))
-        Text(
-            text = stringResource(R.string.explore_heading),
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+        // Hide the page title when the user is actively searching (#2229) —
+        // it's noise that pushes the results below the fold. The SearchField
+        // below carries the "what is this page" affordance on its own.
+        if (!isSearching) {
+            Text(
+                text = stringResource(R.string.explore_heading),
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
 
         SearchField(
             value = searchQuery,
@@ -341,11 +346,15 @@ private fun ExploreBody(
             SketchfabDisabledBanner(keyRejected = keyRejected)
         }
 
-        if (apiKeyAvailable) {
+        // FiltersBar (Animated chip) and the "Try a sample" carousel both
+        // belong to the browse experience — when searching, the screen is
+        // dedicated to results so they get hidden too (#2229). The full
+        // browse layout returns the moment the query clears.
+        if (apiKeyAvailable && !isSearching) {
             FiltersBar(animatedOnly = animatedOnly, onToggle = onToggleAnimated)
         }
 
-        if (curatedSamples.isNotEmpty()) {
+        if (curatedSamples.isNotEmpty() && !isSearching) {
             CarouselSection(title = stringResource(R.string.explore_try_a_sample)) {
                 val state = rememberLazyListState()
                 LazyRow(
