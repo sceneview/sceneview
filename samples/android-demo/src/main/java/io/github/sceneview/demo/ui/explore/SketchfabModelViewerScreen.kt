@@ -38,11 +38,20 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -111,7 +120,6 @@ fun SketchfabModelViewerScreen(
     model: SketchfabModel,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var stage by remember(model.uid) { mutableStateOf<Stage>(Stage.Preview) }
 
     // Pre-warm the Filament Engine on the first transition out of Preview.
@@ -138,11 +146,27 @@ fun SketchfabModelViewerScreen(
     val modelLoader: ModelLoader? = engine?.let { rememberModelLoader(it) }
     val environmentLoader: EnvironmentLoader? = engine?.let { rememberEnvironmentLoader(it) }
 
-    ModalBottomSheet(
+    // Fullscreen Dialog instead of ModalBottomSheet (#2227). The bottom-sheet
+    // drag gesture conflicted with the SceneView orbit / pinch gestures inside
+    // RenderContent — vertical drags closed the sheet instead of tilting the
+    // camera. Dialog with `usePlatformDefaultWidth = false` + `Surface` filling
+    // the screen gives the viewer the entire viewport (no gesture rival) and
+    // lets the new ground-shadow plane (#2235) read against a stable backdrop.
+    Dialog(
         onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            // System back exits the viewer (Compose Dialog handles this for
+            // us); the in-app X button below is the primary exit affordance.
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+        ),
     ) {
+        BackHandler(onBack = onDismiss)
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.surface,
+        ) { Box(modifier = Modifier.fillMaxSize()) {
         // SharedTransitionLayout + AnimatedContent so the hero thumbnail
         // morphs smoothly between Preview (220 dp card) → Downloading
         // (440 dp Ken-Burns) → Rendering (live SceneView surface). Each
@@ -210,7 +234,26 @@ fun SketchfabModelViewerScreen(
                 }
             }
         }
-    }
+
+        // Top-end close button — the only exit affordance now that the
+        // bottom-sheet drag handle is gone (#2227). System back gesture also
+        // dismisses (see BackHandler / DialogProperties.dismissOnBackPress).
+        IconButton(
+            onClick = onDismiss,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = stringResource(R.string.feedback_cd_close),
+                modifier = Modifier.size(28.dp),
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        } } // close Box, Surface
+    } // close Dialog
 }
 
 private sealed interface Stage {
