@@ -344,6 +344,11 @@
     <string name="feedback_sent_issue">Tracked as issue #%1$d. The team will take a look.</string>
     <string name="feedback_sent_generic">Your feedback was received by the SceneView team.</string>
     <string name="feedback_sent_done">Done</string>
+    <!-- Snackbar shown by the host after the dialog dismisses on a successful
+         send — persistent confirmation Thomas asked for at 0:58 of the
+         screen-record QA 2026-05-26 (#2230). %1$d is the GitHub issue number. -->
+    <string name="feedback_sent_snackbar">Feedback sent · Issue #%1$d</string>
+    <string name="feedback_sent_snackbar_generic">Feedback sent · Thank you</string>
     <string name="feedback_send_failed_title">Couldn\'t send</string>
     <string name="feedback_send_failed_body">Your feedback couldn\'t be sent. Check your connection and try again.</string>
     <string name="feedback_send_retry">Try again</string>
