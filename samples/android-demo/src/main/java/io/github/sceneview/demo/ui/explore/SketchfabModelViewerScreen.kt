@@ -86,13 +86,18 @@ import io.github.sceneview.demo.ui.explore.components.formattedFaceCount
 import io.github.sceneview.demo.ui.explore.components.preferredThumbnailUrl
 import io.github.sceneview.demo.ui.explore.components.primaryTagDisplay
 import com.google.android.filament.Engine
+import com.google.android.filament.LightManager
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.math.Direction
+import io.github.sceneview.math.Position
+import io.github.sceneview.math.Size
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
+import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.Dispatchers
@@ -524,6 +529,20 @@ private fun RenderContent(
         fileLocation = "file://${file.absolutePath}",
     )
 
+    // Material loader for the ground-shadow plane (#2235).
+    val materialLoader = rememberMaterialLoader(engine)
+
+    // Shadow-receiver material — `plane_renderer_shadow.filamat` is a Filament
+    // material from arsceneview that writes only to the shadow buffer (no colour
+    // output). It gives the model a soft ground shadow without a visible floor.
+    val shadowMaterialInstance = remember(materialLoader) {
+        materialLoader.createMaterial("materials/plane_renderer_shadow.filamat")
+            .createInstance()
+    }
+    DisposableEffect(shadowMaterialInstance) {
+        onDispose { materialLoader.destroyMaterialInstance(shadowMaterialInstance) }
+    }
+
     // Premium studio HDR — much more flattering on PBR materials than the
     // neutral_ibl SDK default. `createSkybox = false` keeps the sheet's surface
     // background (no big white skybox behind the model).
@@ -598,6 +617,35 @@ private fun RenderContent(
                     environment = environment,
                     cameraManipulator = cameraManipulator,
                 ) {
+                    // Ground Y in world space: `scaleToUnits = 1f` below scales the
+                    // model so its max dimension fills 1 unit (scale = 1/maxDim).
+                    // The bottom of the model after scaling is −halfExtent.y/maxDim.
+                    val groundY = remember(instance) {
+                        val he = instance.model.boundingBox.halfExtent
+                        val maxDim = maxOf(he[0], he[1], he[2]) * 2f
+                        if (maxDim > 0f) -(he[1] / maxDim) else -0.5f
+                    }
+
+                    // Directional light angled to cast a soft shadow under the model.
+                    // Intensity 80 000 lx matches the studio_2k IBL contribution so
+                    // the shadow is visible but not harsh.
+                    LightNode(
+                        type = LightManager.Type.DIRECTIONAL,
+                        intensity = 80_000f,
+                        direction = Direction(x = -0.5f, y = -1f, z = -0.4f),
+                        apply = { castShadows(true) },
+                    )
+
+                    // Invisible shadow-receiver plane at the model's ground level.
+                    // plane_renderer_shadow.filamat writes only to the shadow buffer —
+                    // the plane itself is transparent, but the shadow cast by the
+                    // model onto it is rendered (#2235).
+                    PlaneNode(
+                        size = Size(x = 6f, y = 6f),
+                        materialInstance = shadowMaterialInstance,
+                        position = Position(x = 0f, y = groundY, z = 0f),
+                    )
+
                     ModelNode(modelInstance = instance, scaleToUnits = 1f)
                 }
                 // Cinematic vignette — costs ~0 GPU and lifts the model in
