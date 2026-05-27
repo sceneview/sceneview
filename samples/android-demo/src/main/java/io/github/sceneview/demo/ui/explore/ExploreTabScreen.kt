@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import io.github.sceneview.demo.ui.ParticleBackground
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -247,25 +248,34 @@ fun ExploreTabScreen(
         )
     }
 
-    // Pull-to-refresh is only wired when the Sketchfab carousels are visible —
-    // without an API key there's nothing dynamic to refresh and pulling would
-    // spin a spinner that immediately settles, which is worse than no affordance
-    // at all. onRefresh just bumps `refreshTick`; the LaunchedEffect above
-    // owns the single cancel-then-restart pipeline.
-    if (apiKeyAvailable) {
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = {
-                if (!isRefreshing) {
-                    isRefreshing = true
-                    refreshTick++
-                }
-            },
-        ) {
+    // Animated SceneView ParticleBackground behind the home — dogfoods the SDK
+    // on the entry screen and matches the Samples tab where Thomas validated
+    // "le design avec le background est top" (screen-record QA 2026-05-26).
+    // The body() above renders transparent cards/sections on top so the
+    // particles read through. Pre-#2236 Explore was a flat black surface.
+    Box(modifier = Modifier.fillMaxSize()) {
+        ParticleBackground(modifier = Modifier.fillMaxSize())
+
+        // Pull-to-refresh is only wired when the Sketchfab carousels are visible —
+        // without an API key there's nothing dynamic to refresh and pulling would
+        // spin a spinner that immediately settles, which is worse than no affordance
+        // at all. onRefresh just bumps `refreshTick`; the LaunchedEffect above
+        // owns the single cancel-then-restart pipeline.
+        if (apiKeyAvailable) {
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = {
+                    if (!isRefreshing) {
+                        isRefreshing = true
+                        refreshTick++
+                    }
+                },
+            ) {
+                body()
+            }
+        } else {
             body()
         }
-    } else {
-        body()
     }
 
     selectedModel?.let { model ->
