@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   recordClientInit,
   recordToolCall,
   flushTelemetry,
   __resetClientContext,
+  __computeBotLikelihoodForTest,
+  __getInstallIdForTest,
   type TelemetryPayload,
 } from "./telemetry.js";
 
@@ -31,12 +36,45 @@ function installFetchMock(impl?: (...args: unknown[]) => Promise<Response>): Fet
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
 
+// Per-test XDG_CONFIG_HOME so the install.json file is written to a throwaway
+// directory and never pollutes the developer's real `~/.config/sceneview-mcp/`.
+let tempConfigHome: string;
+
+// Bot-detection env vars that the heuristic looks at. We unset them all in
+// beforeEach so the default test environment is "no bot signals" (score = 0
+// before the no-TTY signal, which itself adds 0.15 under vitest).
+const BOT_ENV_VARS = [
+  "GITHUB_ACTIONS",
+  "GITLAB_CI",
+  "CIRCLECI",
+  "BUILDKITE",
+  "TF_BUILD",
+  "JENKINS_URL",
+  "BITBUCKET_BUILD_NUMBER",
+  "TEAMCITY_VERSION",
+  "TRAVIS",
+  "DRONE",
+  "KUBERNETES_SERVICE_HOST",
+  "AWS_LAMBDA_FUNCTION_NAME",
+  "VERCEL",
+  "NETLIFY",
+  "CODESPACE_NAME",
+  "container",
+  "DEBIAN_FRONTEND",
+];
+
 beforeEach(() => {
   // Start each test from a clean env with telemetry enabled and CI off.
   // The vitest harness usually sets CI=true, so we must unset it here.
   process.env = { ...ORIGINAL_ENV };
   delete process.env.SCENEVIEW_TELEMETRY;
   delete process.env.CI;
+  for (const k of BOT_ENV_VARS) delete process.env[k];
+
+  // Isolate install.json per test.
+  tempConfigHome = mkdtempSync(join(tmpdir(), "sceneview-mcp-test-"));
+  process.env.XDG_CONFIG_HOME = tempConfigHome;
+
   __resetClientContext();
 });
 
@@ -46,6 +84,13 @@ afterEach(() => {
   vi.restoreAllMocks();
   // Drain any remaining buffer so timers don't leak between tests.
   flushTelemetry();
+  if (tempConfigHome) {
+    try {
+      rmSync(tempConfigHome, { recursive: true, force: true });
+    } catch {
+      // best-effort cleanup
+    }
+  }
 });
 
 // Wait a microtask tick so fire-and-forget `fetch(...)` calls have a chance
@@ -143,6 +188,8 @@ describe("telemetry payload shape", () => {
     "mcpVersion",
     "tier",
     "tool",
+    "installId",
+    "botLikelihood",
   ]);
 
   // Parse the payload from a single-event fetch call (goes to /v1/events).
@@ -451,5 +498,183 @@ describe("telemetry batching", () => {
     await flushMicrotasks();
 
     expect(mock).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Install ID — anonymous per-install fingerprint ──────────────────────────
+
+describe("telemetry installId fingerprint", () => {
+  function firstPayload(mock: FetchMock): TelemetryPayload {
+    const [url, init] = mock.mock.calls[0] as [string, RequestInit];
+    const raw = JSON.parse((init.body as string) ?? "{}") as
+      | TelemetryPayload
+      | TelemetryPayload[];
+    return Array.isArray(raw) ? raw[0]! : raw;
+  }
+
+  it("populates installId on init events", async () => {
+    const mock = installFetchMock();
+
+    recordClientInit({ name: "claude-desktop", version: "0.11.0" });
+    flushTelemetry();
+    await flushMicrotasks();
+
+    const payload = firstPayload(mock);
+    expect(payload.installId).toBeDefined();
+    expect(typeof payload.installId).toBe("string");
+    // UUID v4 is 36 chars: 8-4-4-4-12 hex with hyphens.
+    expect(payload.installId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+  });
+
+  it("populates installId on tool events", async () => {
+    const mock = installFetchMock();
+
+    recordClientInit({ name: "claude-desktop", version: "0.11.0" });
+    recordToolCall("list_samples", "free");
+    flushTelemetry();
+    await flushMicrotasks();
+
+    const batch = JSON.parse(
+      (mock.mock.calls[0]![1] as RequestInit).body as string,
+    ) as TelemetryPayload[];
+    expect(batch).toHaveLength(2);
+    expect(batch[0]!.installId).toBeDefined();
+    expect(batch[1]!.installId).toBeDefined();
+    // Same install → same id across init and tool events.
+    expect(batch[0]!.installId).toBe(batch[1]!.installId);
+  });
+
+  it("reuses the same installId across a second call within the same process", () => {
+    const a = __getInstallIdForTest();
+    const b = __getInstallIdForTest();
+    expect(a).toBeDefined();
+    expect(a).toBe(b);
+  });
+
+  it("persists the installId across __resetClientContext (different processes simulated)", () => {
+    const a = __getInstallIdForTest();
+    __resetClientContext();
+    const b = __getInstallIdForTest();
+    // Same XDG_CONFIG_HOME → install.json is read back and id matches.
+    expect(a).toBe(b);
+  });
+
+  it("yields a fresh installId in a different XDG_CONFIG_HOME", () => {
+    const a = __getInstallIdForTest();
+
+    const otherHome = mkdtempSync(join(tmpdir(), "sceneview-mcp-other-"));
+    try {
+      process.env.XDG_CONFIG_HOME = otherHome;
+      __resetClientContext();
+      const b = __getInstallIdForTest();
+      expect(a).toBeDefined();
+      expect(b).toBeDefined();
+      expect(a).not.toBe(b);
+    } finally {
+      rmSync(otherHome, { recursive: true, force: true });
+    }
+  });
+
+  it("installId is never sent when telemetry is opted-out", async () => {
+    process.env.SCENEVIEW_TELEMETRY = "0";
+    const mock = installFetchMock();
+
+    recordClientInit({ name: "claude-desktop", version: "0.11.0" });
+    flushTelemetry();
+    await flushMicrotasks();
+
+    expect(mock).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Bot likelihood — sender-side heuristic ──────────────────────────────────
+
+describe("telemetry botLikelihood heuristic", () => {
+  function firstPayload(mock: FetchMock): TelemetryPayload {
+    const [url, init] = mock.mock.calls[0] as [string, RequestInit];
+    const raw = JSON.parse((init.body as string) ?? "{}") as
+      | TelemetryPayload
+      | TelemetryPayload[];
+    return Array.isArray(raw) ? raw[0]! : raw;
+  }
+
+  it("clamps to [0.0, 1.0]", () => {
+    process.env.GITHUB_ACTIONS = "true";
+    process.env.CI = "true";
+    process.env.KUBERNETES_SERVICE_HOST = "10.0.0.1";
+    process.env.DEBIAN_FRONTEND = "noninteractive";
+    // Force every signal to trip. Total adds = 0.45 + 0.30 + ~0.15 + 0.20 + 0.10 = 1.20.
+    const score = __computeBotLikelihoodForTest();
+    expect(score).toBeLessThanOrEqual(1);
+    expect(score).toBeGreaterThanOrEqual(0);
+  });
+
+  it("returns a non-zero score under a fully-clean env (no-TTY signal under vitest)", () => {
+    // Under vitest, process.stderr.isTTY is false → +0.15 baseline.
+    const score = __computeBotLikelihoodForTest();
+    expect(score).toBeGreaterThanOrEqual(0);
+    // Bounded above by the no-TTY signal alone since we cleaned everything else.
+    expect(score).toBeLessThan(0.2);
+  });
+
+  it("bumps score when GITHUB_ACTIONS is set", () => {
+    const before = __computeBotLikelihoodForTest();
+    process.env.GITHUB_ACTIONS = "true";
+    const after = __computeBotLikelihoodForTest();
+    expect(after).toBeGreaterThan(before);
+    expect(after - before).toBeCloseTo(0.45, 2);
+  });
+
+  it("bumps score when generic CI=true is set", () => {
+    // Note: CI=true also disables telemetry sending entirely, but the SCORE
+    // is still computed/cached for the next process.
+    const before = __computeBotLikelihoodForTest();
+    process.env.CI = "true";
+    const after = __computeBotLikelihoodForTest();
+    expect(after - before).toBeCloseTo(0.3, 2);
+    delete process.env.CI;
+  });
+
+  it("bumps score when KUBERNETES_SERVICE_HOST is set", () => {
+    const before = __computeBotLikelihoodForTest();
+    process.env.KUBERNETES_SERVICE_HOST = "10.0.0.1";
+    const after = __computeBotLikelihoodForTest();
+    expect(after - before).toBeCloseTo(0.2, 2);
+  });
+
+  it("scores >=0.9 under a full GitHub Actions container run", () => {
+    process.env.GITHUB_ACTIONS = "true";
+    process.env.CI = "true";
+    process.env.KUBERNETES_SERVICE_HOST = "10.0.0.1";
+    const score = __computeBotLikelihoodForTest();
+    expect(score).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("includes botLikelihood field on the payload", async () => {
+    const mock = installFetchMock();
+    recordClientInit({ name: "claude-desktop", version: "0.11.0" });
+    flushTelemetry();
+    await flushMicrotasks();
+
+    const payload = firstPayload(mock);
+    expect(payload.botLikelihood).toBeDefined();
+    expect(typeof payload.botLikelihood).toBe("number");
+    expect(payload.botLikelihood).toBeGreaterThanOrEqual(0);
+    expect(payload.botLikelihood).toBeLessThanOrEqual(1);
+  });
+
+  it("payload botLikelihood reflects elevated score when CI vars are set", async () => {
+    process.env.GITHUB_ACTIONS = "true";
+    const mock = installFetchMock();
+
+    // Note: CI=true would disable telemetry. GITHUB_ACTIONS alone is enough.
+    recordClientInit({ name: "claude-desktop", version: "0.11.0" });
+    flushTelemetry();
+    await flushMicrotasks();
+
+    const payload = firstPayload(mock);
+    expect(payload.botLikelihood).toBeGreaterThanOrEqual(0.45);
   });
 });
