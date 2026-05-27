@@ -73,6 +73,14 @@ internal object DeepLinkRouter {
     val DEMO_ID_ALIASES: Map<String, String> = mapOf(
         // #1444 — `movable-light` was merged into the consolidated `lighting` demo.
         "movable-light" to "lighting",
+        // #2239 Batch 1 — Custom Geometry consolidation. The retired
+        // `custom-mesh` and `shape` demos merged into `custom-geometry` with a
+        // segmented-button toggle. Existing `sceneview://demo/custom-mesh` and
+        // `sceneview://demo/shape` deep links keep working; the unified demo
+        // opens on its default Custom Mesh tab (tab pre-selection is a planned
+        // follow-up enhancement, not in Batch 1 scope).
+        "custom-mesh" to "custom-geometry",
+        "shape" to "custom-geometry",
     )
 
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {

@@ -22,7 +22,7 @@ import io.github.sceneview.demo.demos.AnimationDemo
 import io.github.sceneview.demo.demos.BillboardDemo
 import io.github.sceneview.demo.demos.CameraControlsDemo
 import io.github.sceneview.demo.demos.CollisionDemo
-import io.github.sceneview.demo.demos.CustomMeshDemo
+import io.github.sceneview.demo.demos.CustomGeometryDemo
 import io.github.sceneview.demo.demos.DebugOverlayDemo
 import io.github.sceneview.demo.demos.DynamicSkyDemo
 import io.github.sceneview.demo.demos.EnvironmentDemo
@@ -38,7 +38,6 @@ import io.github.sceneview.demo.demos.PhysicsDemo
 import io.github.sceneview.demo.demos.PostProcessingDemo
 import io.github.sceneview.demo.demos.ReflectionProbesDemo
 import io.github.sceneview.demo.demos.SecondaryCameraDemo
-import io.github.sceneview.demo.demos.ShapeDemo
 import io.github.sceneview.demo.demos.TextDemo
 import io.github.sceneview.demo.demos.VideoDemo
 import io.github.sceneview.demo.demos.ViewNodeDemo
@@ -124,8 +123,8 @@ class DemoHostActivity : ComponentActivity() {
             // Advanced
             "physics" -> PhysicsDemo(onBack = back)
             "post-processing" -> PostProcessingDemo(onBack = back)
-            "custom-mesh" -> CustomMeshDemo(onBack = back)
-            "shape" -> ShapeDemo(onBack = back)
+            // #2239 Batch 1 — `custom-mesh` and `shape` consolidated into `custom-geometry`.
+            "custom-geometry", "custom-mesh", "shape" -> CustomGeometryDemo(onBack = back)
             "reflection-probes" -> ReflectionProbesDemo(onBack = back)
             "secondary-camera" -> SecondaryCameraDemo(onBack = back)
             "debug-overlay" -> DebugOverlayDemo(onBack = back)
