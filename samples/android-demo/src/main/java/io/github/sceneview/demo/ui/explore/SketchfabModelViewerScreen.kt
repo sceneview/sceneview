@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
@@ -101,6 +102,8 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -408,6 +411,11 @@ private fun StatChip(label: String) {
  * premium preview instead of a spinner. Morphs into the live SceneView via
  * the parent [SharedTransitionLayout] + [AnimatedContent] when [RenderContent]
  * takes over — the 440 dp hero Box keeps its shared bounds across the swap.
+ *
+ * When the server sends a `Content-Length` header the card switches from an
+ * indeterminate [CircularProgressIndicator] to a determinate
+ * [LinearProgressIndicator] + `X.X / Y.Y MB` counter so the user knows how
+ * long they are waiting (#2232).
  */
 @Composable
 private fun DownloadingContent(
@@ -417,12 +425,26 @@ private fun DownloadingContent(
     heroModifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+
+    // (bytesRead, totalBytes) — totalBytes == -1L when server omits Content-Length.
+    var downloadProgress by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+
     LaunchedEffect(model.uid) {
+        // Conflated channel: only the latest progress event matters for the UI.
+        val progressChannel = Channel<Pair<Long, Long>>(Channel.CONFLATED)
+        // Collect on the main coroutine so Compose state is written on the UI thread.
+        val collector = launch {
+            for (p in progressChannel) { downloadProgress = p }
+        }
         val result = withContext(Dispatchers.IO) {
             runCatching {
-                SketchfabService.getInstance(context).downloadModel(model.uid)
+                SketchfabService.getInstance(context).downloadModel(model.uid) { read, total ->
+                    progressChannel.trySend(Pair(read, total))
+                }
             }
         }
+        progressChannel.close()
+        collector.join()
         result.fold(
             onSuccess = onReady,
             onFailure = { onError(it.message ?: context.getString(R.string.sketchfab_download_failed)) },
@@ -471,20 +493,58 @@ private fun DownloadingContent(
                     )
                     .padding(horizontal = 20.dp, vertical = 16.dp),
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator()
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth(0.72f),
+                ) {
+                    val progress = downloadProgress
+                    val fraction = progress?.let { (read, total) ->
+                        if (total > 0L) read.toFloat() / total else null
+                    }
+                    if (fraction != null) {
+                        LinearProgressIndicator(
+                            progress = { fraction },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        CircularProgressIndicator()
+                    }
                     Spacer(Modifier.height(12.dp))
                     Text(
                         text = stringResource(R.string.sketchfab_loading_model, model.name),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.height(4.dp))
+                    // Show "X.X / Y.Y MB" when total is known, fallback label otherwise.
+                    val progressText = progress?.let { (read, total) ->
+                        if (total > 0L) {
+                            val readMb = "%.1f".format(read / 1_000_000.0)
+                            val totalMb = "%.1f".format(total / 1_000_000.0)
+                            "$readMb / $totalMb MB"
+                        } else {
+                            stringResource(R.string.sketchfab_streaming_from)
+                        }
+                    } ?: stringResource(R.string.sketchfab_streaming_from)
                     Text(
-                        text = stringResource(R.string.sketchfab_streaming_from),
+                        text = progressText,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    // Advisory for very heavy models (≥ 500k polys).
+                    if (model.faceCount >= 500_000) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(
+                                R.string.sketchfab_heavy_model_warning,
+                                model.faceCount / 1_000,
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }

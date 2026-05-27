@@ -64,6 +64,7 @@
     <string name="sketchfab_could_not_open">Couldn\'t open this model</string>
     <string name="sketchfab_try_again">Try again</string>
     <string name="sketchfab_download_failed">Download failed</string>
+    <string name="sketchfab_heavy_model_warning">Heavy model (%dk polys) — may take a moment</string>
 
     <!-- AR screen -->
     <string name="ar_scan_surface">Point your camera at a flat surface</string>

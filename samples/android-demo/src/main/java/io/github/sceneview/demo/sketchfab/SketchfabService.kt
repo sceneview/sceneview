@@ -211,12 +211,14 @@ class SketchfabService private constructor(
      * marker) and the cached path is returned without hitting the network.
      *
      * @param uid Sketchfab model uid.
-     * @param progress Optional 0..1 progress callback. Fired once with `1.0`
-     *   when the binary finishes — richer progress hooks will arrive in V1.1.
+     * @param onProgress Optional callback fired while the binary is streaming.
+     *   Receives `(bytesRead, totalBytes)` — `totalBytes` is `-1` when the
+     *   server omits a `Content-Length` header. Called from [Dispatchers.IO];
+     *   update Compose state via a [kotlinx.coroutines.channels.Channel].
      */
     suspend fun downloadModel(
         uid: String,
-        progress: ((Float) -> Unit)? = null,
+        onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null,
     ): File = withContext(Dispatchers.IO) {
         val cacheFile = cacheFileFor(uid)
         if (cacheFile.exists()) {
@@ -225,8 +227,7 @@ class SketchfabService private constructor(
         }
 
         val remoteUrl = downloadUrl(uid)
-        downloadBinary(remoteUrl, cacheFile)
-        progress?.invoke(1f)
+        downloadBinary(remoteUrl, cacheFile, onProgress)
         pruneCacheIfNeeded()
         cacheFile
     }
@@ -297,7 +298,11 @@ class SketchfabService private constructor(
         }
     }
 
-    private fun downloadBinary(remoteUrl: String, destination: File) {
+    private fun downloadBinary(
+        remoteUrl: String,
+        destination: File,
+        onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null,
+    ) {
         // The signed CDN URL must NOT carry the Sketchfab auth header.
         val request = Request.Builder().url(remoteUrl).get().build()
         client.newCall(request).execute().use { response ->
@@ -305,6 +310,7 @@ class SketchfabService private constructor(
                 throw SketchfabError.DownloadFailed("HTTP ${response.code}")
             }
             val body = response.body
+            val totalBytes = body.contentLength() // -1 when unknown
             destination.parentFile?.mkdirs()
             // Stream into a per-call unique temp file, then atomically rename
             // onto `destination`. Concurrent downloads of the same uid (the
@@ -316,8 +322,28 @@ class SketchfabService private constructor(
                 destination.parentFile,
             )
             try {
+                var bytesRead = 0L
+                // Throttle callbacks: fire at most every 256 KB or 1 % of total,
+                // whichever is larger — keeps UI smooth without saturating the
+                // channel on fast connections.
+                val throttle = if (totalBytes > 0L) maxOf(totalBytes / 100L, 256 * 1024L)
+                               else 256 * 1024L
+                var nextReport = throttle
+                val buffer = ByteArray(8 * 1024)
                 temp.outputStream().use { out ->
-                    body.byteStream().use { input -> input.copyTo(out) }
+                    body.byteStream().use { input ->
+                        var n: Int
+                        while (input.read(buffer).also { n = it } != -1) {
+                            out.write(buffer, 0, n)
+                            bytesRead += n
+                            if (onProgress != null && bytesRead >= nextReport) {
+                                onProgress(bytesRead, totalBytes)
+                                nextReport = bytesRead + throttle
+                            }
+                        }
+                        // Final notification at 100 %.
+                        onProgress?.invoke(bytesRead, totalBytes)
+                    }
                 }
                 if (!temp.renameTo(destination)) {
                     temp.copyTo(destination, overwrite = true)
