@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the unified `custom-geometry` demo (registered by
+     `CustomGeometryFragment.kt`). Consolidates the retired `custom-mesh`
+     and `shape` demos (#2239 Batch 1). Old ids continue to deep-link
+     through `DeepLinkRouter.DEMO_ID_ALIASES`. -->
+<resources>
+    <string name="demo_custom_geometry_title">Custom Geometry</string>
+    <string name="demo_custom_geometry_subtitle">Composite meshes and shape extrusion</string>
+</resources>

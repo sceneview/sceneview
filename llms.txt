@@ -4021,7 +4021,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Advanced
 
-- `custom-mesh` — Custom Mesh. Custom vertex and index buffers.
+- `custom-geometry` — Custom Geometry. Composite meshes and shape extrusion.
 - `debug-overlay` — Debug Overlay. Performance stats overlay.
 - `double-pendulum` — Double Pendulum. Chaotic two-link physics, shared KMP simulation.
 - `materials` — PBR Materials. KHR_materials_* extension showcase — sheen, transmission, iridescence.
@@ -4030,7 +4030,6 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `post-processing` — Post Processing. SSAO, anti-aliasing, and tone mapping.
 - `reflection-probes` — Reflection Probes. Local cubemap reflections.
 - `secondary-camera` — Secondary Camera (PiP). Picture-in-picture camera view.
-- `shape` — Shape Extrude. Extrude 2D polygons into 3D meshes.
 - `spatial-audio` — Spatial Audio. 3D positional sound that pans as you orbit.
 - `texture-streaming` — Material Streaming. Swap textures and materials on a model at runtime.
 

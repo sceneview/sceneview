@@ -36,7 +36,7 @@ mirroring the same surface.
 [`GeometryDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/GeometryDemo.kt) — use the per-shape composables (`CubeNode`, `SphereNode`, `CylinderNode`, etc.) directly. Each takes `materialInstance` plus its shape parameter (e.g. `radius`, `size`).
 
 ## 10. Custom geometry / mesh
-[`CustomMeshDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CustomMeshDemo.kt) — composes the built-in shape nodes (`SphereNode` + `CylinderNode`) into a molecule. For a fully custom mesh from raw vertex/index buffers, use `MeshNode(primitiveType, vertexBuffer, indexBuffer, …)` directly — see `SceneScope.kt`.
+[`CustomGeometryDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CustomGeometryDemo.kt) — the unified Custom Geometry demo bundles two modes via a segmented-button toggle: **Custom Mesh** composes built-in shape nodes (`SphereNode` + `CylinderNode`) into a molecule, **Shape Extrude** triangulates 2D `Position2` polygon paths via `ShapeNode`. For a fully custom mesh from raw vertex/index buffers, use `MeshNode(primitiveType, vertexBuffer, indexBuffer, …)` directly — see `SceneScope.kt`.
 
 ## 11. Physics (bouncing spheres)
 [`PhysicsDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/PhysicsDemo.kt) — `PhysicsNode(node, mass, restitution, floorY)`. Experimental; only handles sphere collisions on a Y=0 floor.
