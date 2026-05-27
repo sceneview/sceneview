@@ -79,9 +79,9 @@ There is **no `rememberARSession`** helper — configure via the
 | `ModelNode(modelInstance, scaleToUnits, centerOrigin, isEditable)` | `ModelViewerDemo.kt` | Render a GLB. `isEditable = true` enables drag/scale/rotate |
 | `LightNode(type, intensity, direction, position, color, apply = { … })` | `LightingDemo.kt` | `type` is `LightManager.Type.POINT / SPOT / DIRECTIONAL / FOCUSED_SPOT / SUN` |
 | `CubeNode / SphereNode / CylinderNode / PlaneNode / CapsuleNode / TorusNode / ConeNode` | `GeometryDemo.kt`, `LightingDemo.kt` (Sphere) | Each takes `materialInstance` and shape-specific dimensions (e.g. `SphereNode(radius, ...)`) |
-| `BillboardNode` | `BillboardDemo.kt` | Always faces the camera |
-| `ImageNode` | `ImageDemo.kt` | 2D image quad |
-| `TextNode` | `TextDemo.kt` | 3D text (uses `widthMeters` / `heightMeters`, NOT `scaleToUnits`) |
+| `BillboardNode` | `TwoDInThreeDDemo.kt` | Always faces the camera (Billboard tab of unified 2D in 3D demo) |
+| `ImageNode` | `TwoDInThreeDDemo.kt` | 2D image quad (Image tab of unified 2D in 3D demo) |
+| `TextNode` | `TwoDInThreeDDemo.kt` | 3D text (Text tab of unified 2D in 3D demo). Uses `widthMeters` / `heightMeters`, NOT `scaleToUnits` |
 | `ViewNode` | `ViewNodeDemo.kt` | Embeds a Compose UI inside 3D |
 | `LineNode / PathNode` | `LinesPathsDemo.kt` | Procedural lines/paths |
 | `PhysicsNode(node, mass, restitution, …)` | `PhysicsDemo.kt` | Wraps an existing node; experimental |
