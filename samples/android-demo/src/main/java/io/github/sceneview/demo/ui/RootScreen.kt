@@ -153,7 +153,8 @@ private fun curatedSamplesForExplore(): List<DemoEntry> {
         "lighting",
         "ar-placement",
         "multi-model",
-        "animation",
+        // #2239 Batch 3 — `animation` consolidated into `animation-physics`.
+        "animation-physics",
     )
     return ids.mapNotNull { id -> ALL_DEMOS.firstOrNull { it.id == id } }
 }

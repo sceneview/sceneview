@@ -84,7 +84,7 @@ There is **no `rememberARSession`** helper — configure via the
 | `TextNode` | `TwoDInThreeDDemo.kt` | 3D text (Text tab of unified 2D in 3D demo). Uses `widthMeters` / `heightMeters`, NOT `scaleToUnits` |
 | `ViewNode` | `PickingAndCollisionDemo.kt` | Embeds a Compose UI inside 3D (View Node tab of the unified demo) |
 | `LineNode / PathNode` | `LinesPathsDemo.kt` | Procedural lines/paths |
-| `PhysicsNode(node, mass, restitution, …)` | `PhysicsDemo.kt` | Wraps an existing node; experimental |
+| `PhysicsNode(node, mass, restitution, …)` | `AnimationPhysicsDemo.kt` | Wraps an existing node; experimental (Physics tab of unified Animation & Physics demo) |
 | `ReflectionProbeNode` | `ReflectionProbesDemo.kt` | Local IBL probe |
 
 For collision, use the **`rememberCollisionSystem(view)`** helper (it's already

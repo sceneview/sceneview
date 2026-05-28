@@ -104,6 +104,12 @@ internal object DeepLinkRouter {
         "image" to "two-d-in-three-d",
         "video" to "two-d-in-three-d",
         "billboard" to "two-d-in-three-d",
+        // #2239 Batch 3 — Animation & Physics consolidation. The retired
+        // `animation` and `physics` demos merged into `animation-physics` with a
+        // segmented-button toggle. The unified demo opens on its default Animation
+        // tab (tab pre-selection from alias is a planned follow-up).
+        "animation" to "animation-physics",
+        "physics" to "animation-physics",
     )
 
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {

@@ -3992,7 +3992,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### 3D Basics
 
-- `animation` — Animation. Play, pause, and control animations.
+- `animation-physics` — Animation & Physics. Skeletal animation playback and rigid-body simulation.
 - `geometry` — Geometry Primitives. Cube, sphere, cylinder, cone, plane.
 - `model-viewer` — Model Viewer. Load and display 3D models.
 - `multi-model` — Multi-Model Scene. Multiple models in one scene.
@@ -4022,7 +4022,6 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `double-pendulum` — Double Pendulum. Chaotic two-link physics, shared KMP simulation.
 - `materials` — PBR Materials. KHR_materials_* extension showcase — sheen, transmission, iridescence.
 - `occlusion-material` — Occlusion Material. Invisible depth-writing surface hides content behind it.
-- `physics` — Physics. Gravity, collisions, and rigid bodies.
 - `post-processing` — Post Processing. SSAO, anti-aliasing, and tone mapping.
 - `reflection-probes` — Reflection Probes. Local cubemap reflections.
 - `secondary-camera` — Secondary Camera (PiP). Picture-in-picture camera view.
