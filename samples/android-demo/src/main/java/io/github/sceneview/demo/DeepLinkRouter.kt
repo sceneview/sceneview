@@ -113,6 +113,13 @@ internal object DeepLinkRouter {
         "environment" to "lighting-lab",
         "reflection-probes" to "lighting-lab",
         "post-processing" to "lighting-lab",
+        // #2239 Batch 4 — Materials consolidation. The retired `texture-streaming`
+        // and `occlusion-material` demos merged into the existing `materials` entry
+        // (the natural umbrella, kept live) with a segmented-button toggle. The
+        // unified demo opens on its default PBR Materials tab (tab pre-selection
+        // from alias is a planned follow-up).
+        "texture-streaming" to "materials",
+        "occlusion-material" to "materials",
     )
 
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {

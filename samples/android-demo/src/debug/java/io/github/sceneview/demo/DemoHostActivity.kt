@@ -27,6 +27,7 @@ import io.github.sceneview.demo.demos.GeometryDemo
 import io.github.sceneview.demo.demos.LightingDemo
 import io.github.sceneview.demo.demos.LightingLabDemo
 import io.github.sceneview.demo.demos.LinesPathsDemo
+import io.github.sceneview.demo.demos.MaterialsDemo
 import io.github.sceneview.demo.demos.ModelViewerDemo
 import io.github.sceneview.demo.demos.MultiModelDemo
 import io.github.sceneview.demo.demos.PhysicsDemo
@@ -113,6 +114,8 @@ class DemoHostActivity : ComponentActivity() {
             "picking-collision", "collision", "view-node" -> PickingAndCollisionDemo(onBack = back)
             // Advanced
             "physics" -> PhysicsDemo(onBack = back)
+            // #2239 Batch 4 — `texture-streaming` and `occlusion-material` consolidated into `materials`.
+            "materials", "texture-streaming", "occlusion-material" -> MaterialsDemo(onBack = back)
             // #2239 Batch 1 — `custom-mesh` and `shape` consolidated into `custom-geometry`.
             "custom-geometry", "custom-mesh", "shape" -> CustomGeometryDemo(onBack = back)
             "secondary-camera" -> SecondaryCameraDemo(onBack = back)
