@@ -89,19 +89,24 @@ object MeshCollider {
         val edge1 = Vector3.subtract(v1, v0)
         val edge2 = Vector3.subtract(v2, v0)
 
-        val h = Vector3.cross(ray.getDirection(), edge2)
+        // Read-only refs: the Moller-Trumbore math only reads components and
+        // feeds them into allocating static ops — no mutation of the ray's vectors.
+        val rayDirection = ray.directionRef()
+        val rayOrigin = ray.originRef()
+
+        val h = Vector3.cross(rayDirection, edge2)
         val a = Vector3.dot(edge1, h)
 
         if (abs(a) < EPSILON) return MeshHitResult(false) // Parallel
 
         val f = 1f / a
-        val s = Vector3.subtract(ray.getOrigin(), v0)
+        val s = Vector3.subtract(rayOrigin, v0)
         val u = f * Vector3.dot(s, h)
 
         if (u < 0f || u > 1f) return MeshHitResult(false)
 
         val q = Vector3.cross(s, edge1)
-        val v = f * Vector3.dot(ray.getDirection(), q)
+        val v = f * Vector3.dot(rayDirection, q)
 
         if (v < 0f || u + v > 1f) return MeshHitResult(false)
 
@@ -178,8 +183,9 @@ data class AABB(
 
     /** Ray-AABB intersection test (slab method). Returns true if the ray hits. */
     fun rayIntersection(ray: Ray): Boolean {
-        val origin = ray.getOrigin()
-        val dir = ray.getDirection()
+        // Read-only refs: the slab test only reads the components.
+        val origin = ray.originRef()
+        val dir = ray.directionRef()
 
         var tMin = -Float.MAX_VALUE
         var tMax = Float.MAX_VALUE

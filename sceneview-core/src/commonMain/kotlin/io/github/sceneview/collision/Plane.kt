@@ -53,8 +53,9 @@ class Plane(center: Vector3, normal: Vector3) {
         Preconditions.checkNotNull(ray, "Parameter \"ray\" was null.")
         Preconditions.checkNotNull(result, "Parameter \"result\" was null.")
 
-        val rayDirection = ray.getDirection()
-        val rayOrigin = ray.getOrigin()
+        // Read-only refs: only components are read, fed into allocating static ops.
+        val rayDirection = ray.directionRef()
+        val rayOrigin = ray.originRef()
 
         val denominator = Vector3.dot(normal, rayDirection)
         if (abs(denominator) > NEAR_ZERO_THRESHOLD) {

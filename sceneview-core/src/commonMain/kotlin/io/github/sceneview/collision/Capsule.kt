@@ -112,9 +112,12 @@ class Capsule : CollisionShape {
         // then against the two hemispherical caps
         val (a, b) = getSegmentEndpoints()
 
+        // Read-only refs: the cylinder + cap math only reads components, feeding
+        // them into allocating static ops (subtract/dot/scaled) — no mutation.
+        val rayOrigin = ray.originRef()
         val ab = Vector3.subtract(b, a)
-        val ao = Vector3.subtract(ray.getOrigin(), a)
-        val abDir = ray.getDirection()
+        val ao = Vector3.subtract(rayOrigin, a)
+        val abDir = ray.directionRef()
 
         val abDotAb = Vector3.dot(ab, ab)
         val abDotD = Vector3.dot(ab, abDir)
@@ -152,8 +155,8 @@ class Capsule : CollisionShape {
 
         // Test hemispherical caps (as sphere intersections)
         for (capCenter in listOf(a, b)) {
-            val oc = Vector3.subtract(ray.getOrigin(), capCenter)
-            val bCoeff = 2f * Vector3.dot(oc, ray.getDirection())
+            val oc = Vector3.subtract(rayOrigin, capCenter)
+            val bCoeff = 2f * Vector3.dot(oc, abDir)
             val cCoeff = Vector3.dot(oc, oc) - radius * radius
             val disc = bCoeff * bCoeff - 4f * cCoeff
 
