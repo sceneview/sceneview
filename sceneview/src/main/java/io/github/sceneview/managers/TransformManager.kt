@@ -6,8 +6,19 @@ import com.google.android.filament.TransformManager
 import io.github.sceneview.FilamentEntity
 import io.github.sceneview.FilamentEntityInstance
 import io.github.sceneview.math.Transform
-import io.github.sceneview.math.toColumnsFloatArray
+import io.github.sceneview.math.copyColumnsInto
 import io.github.sceneview.math.toTransform
+
+/**
+ * Main-thread scratch buffer reused by [setTransform] to avoid allocating a
+ * `FloatArray(16)` on every transform write.
+ *
+ * Safe because Filament JNI calls run exclusively on the main thread (no
+ * concurrent access) and `TransformManager.setTransform(instance, FloatArray)`
+ * copies the array into native memory synchronously before returning, so the
+ * buffer can be reused immediately on the next call.
+ */
+private val transformScratch = FloatArray(16)
 
 /**
  * Returns the local transform of a transform component.
@@ -39,7 +50,7 @@ fun TransformManager.getTransform(@FilamentEntityInstance transformInstance: Int
 fun TransformManager.setTransform(
     @FilamentEntityInstance transformInstance: Int,
     localTransform: Transform
-) = setTransform(transformInstance, localTransform.toColumnsFloatArray())
+) = setTransform(transformInstance, localTransform.copyColumnsInto(transformScratch))
 
 /**
  * Returns the world transform of a transform component.
