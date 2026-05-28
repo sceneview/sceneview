@@ -4012,8 +4012,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Interaction
 
-- `camera-controls` — Camera Controls. Orbit, pan, and free camera modes.
-- `gesture-editing` — Gesture Editing. Move, scale, and rotate with gestures.
+- `camera-gestures` — Camera & Gestures. Manipulator modes and per-node edit gestures.
 - `picking-collision` — Picking & Collision. Ray hit-test and interactive ViewNode overlays.
 
 ### Advanced

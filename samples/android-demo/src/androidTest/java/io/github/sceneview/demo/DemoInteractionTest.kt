@@ -696,7 +696,11 @@ class DemoInteractionTest {
 
     @Test
     fun gestureEditing_editableAndReset() {
-        openDemo("gesture-editing")
+        // #2239 Batch 1 — `gesture-editing` and `camera-controls` consolidated
+        // into `camera-gestures`. Open the unified demo and switch to the
+        // "Node Gestures" tab before driving the editable / reset flow.
+        openDemo("camera-gestures")
+        tap("Node Gestures")
         screenshot("58_gesture_editable_default")
 
         tap("Editable")

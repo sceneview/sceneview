@@ -19,14 +19,13 @@ import io.github.sceneview.demo.demos.ARRooftopAnchorDemo
 import io.github.sceneview.demo.demos.ARStreetscapeDemo
 import io.github.sceneview.demo.demos.ARTerrainAnchorDemo
 import io.github.sceneview.demo.demos.AnimationDemo
-import io.github.sceneview.demo.demos.CameraControlsDemo
+import io.github.sceneview.demo.demos.CameraAndGesturesDemo
 import io.github.sceneview.demo.demos.CustomGeometryDemo
 import io.github.sceneview.demo.demos.DebugOverlayDemo
 import io.github.sceneview.demo.demos.DynamicSkyDemo
 import io.github.sceneview.demo.demos.EnvironmentDemo
 import io.github.sceneview.demo.demos.FogDemo
 import io.github.sceneview.demo.demos.GeometryDemo
-import io.github.sceneview.demo.demos.GestureEditingDemo
 import io.github.sceneview.demo.demos.LightingDemo
 import io.github.sceneview.demo.demos.LinesPathsDemo
 import io.github.sceneview.demo.demos.ModelViewerDemo
@@ -110,8 +109,8 @@ class DemoHostActivity : ComponentActivity() {
             "two-d-in-three-d", "text", "image", "video", "billboard" -> TwoDInThreeDDemo(onBack = back)
             "lines-paths" -> LinesPathsDemo(onBack = back)
             // Interaction
-            "camera-controls" -> CameraControlsDemo(onBack = back)
-            "gesture-editing" -> GestureEditingDemo(onBack = back)
+            // #2239 Batch 1 — `camera-controls` and `gesture-editing` consolidated into `camera-gestures`.
+            "camera-gestures", "camera-controls", "gesture-editing" -> CameraAndGesturesDemo(onBack = back)
             // #2239 Batch 1 — `collision` and `view-node` consolidated into `picking-collision`.
             "picking-collision", "collision", "view-node" -> PickingAndCollisionDemo(onBack = back)
             // Advanced

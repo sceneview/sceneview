@@ -546,25 +546,23 @@ Never say "everything is good" without verifying published packages.
 
 **The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.15.1`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
 
-### Current state (last updated: 2026-05-27, session pedantic-robinson — maintenance sweep #3 + v4.16.10 FULLY SHIPPED)
+### Current state (last updated: 2026-05-28, session pedantic-robinson — maintenance sweep #4)
 
 - 🚀 **v4.16.10 RELEASED & VERIFIED** — Maven Central ✅, npm (sceneview-web@4.16.10, sceneview-mcp@4.0.12, react-native@4.16.10) ✅, Play Store ✅, iOS TestFlight ✅, GitHub Release ✅, website ✅.
-- 🔧 **SVG coordinate corruption FIXED** — pre-existing bug since v4.6.2 in `website-static/index.html` lines 192/195/196 restored.
+- 🔧 **macOS App Store CI — root cause found & gated** (#2252, reopened): the deploy needs TWO certs (Apple Distribution → `.app`, Mac Installer → `.pkg`). Only the installer cert was imported, so xcodebuild signed the `.app` with it and the provisioning profile rejected it. The Apple Distribution cert Xcode auto-generated is **non-extractable** (`kSecAttrIsExtractable=0`, ACL allows only `identityservicesd`) — verified via `security dump-keychain` AND Keychain Access GUI (Export menu disabled, confirmed via AppleScript). `app-store.yml` now gates `macos_ready` on `MACOS_APP_CERT_BASE64` (skips cleanly until set) and imports BOTH certs. Fix needs a CSR-regenerated Apple Distribution cert — full steps in #2252.
+- ⬆️ **Filament 1.71.4 → 1.71.5** — patch bump (no MATERIAL_VERSION change, no `.filamat` recompile). compileReleaseKotlin + testDebugUnitTest both green. Pushed to main (CI in flight).
 - ✅ **sync-versions 0/100 MISMATCH** — 3 intentional WARNs only (consumed deps lag).
-- ✅ **Lint 0 errors** — sceneview + arsceneview clean after VIBRATE permission fix.
-- ✅ **MCP 1864/1864 ✅**, AI skills ✅, cross-platform 8 gaps (expected alpha).
-- ✅ **Stale worktrees cleaned** — blissful-bohr + loving-ellis removed (0 commits ahead of main).
-- ⚠️ **macOS installer cert** — #2252: Thomas must add `MACOS_INSTALLER_CERT_BASE64` + `MACOS_INSTALLER_CERT_PASSWORD` GitHub secrets.
-- 📋 **19 open issues** (none stale, all labelled). PR #2221 draft, all CI green — awaits Thomas review.
+- ✅ **MCP 1864/1864 ✅**, AI skills (all 3) ✅, cross-platform 8 gaps (expected alpha), website 200 + JS syntax OK.
+- 📋 **~28 open issues** — large hot-path perf umbrella batch (#2263–#2278) from May 2026 audit, all labelled. Worktrees: 7, all in active use (3 live sessions + 1 locked agent + uncommitted) — nothing prunable.
 
 ### Followups for next session
 
-1. **[#2252](https://github.com/sceneview/sceneview/issues/2252) macOS installer cert** — Thomas action: add `MACOS_INSTALLER_CERT_BASE64` + `MACOS_INSTALLER_CERT_PASSWORD` GitHub secrets from Apple Developer Portal.
+1. **[#2252](https://github.com/sceneview/sceneview/issues/2252) macOS Apple Distribution cert (non-extractable)** — Thomas action: regenerate the Apple Distribution cert via Keychain Access → Certificate Assistant CSR flow (keeps key extractable), revoke old cert `3C376942…`, re-link the "SceneView Demo Mac App Store" profile, then set `MACOS_APP_CERT_BASE64` + `MACOS_APP_CERT_PASSWORD` + refresh `MACOS_PROVISIONING_PROFILE_BASE64`. Full 10-step walkthrough in the issue.
 2. **[#2188](https://github.com/sceneview/sceneview/issues/2188) Re-add FGS** — re-add `FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` once Play Console FGS declarations visible.
-3. **Filament 1.71.5** — bump once it appears on Maven Central (checked 2026-05-27: not yet, GitHub tag exists).
-4. **[#1831](https://github.com/sceneview/sceneview/issues/1831)** — stale `appStoreVersionSubmission` auto-delete before POST in `app-store.yml`.
+3. **[#1831](https://github.com/sceneview/sceneview/issues/1831)** — stale `appStoreVersionSubmission` auto-delete before POST in `app-store.yml`.
+4. **[#2263](https://github.com/sceneview/sceneview/issues/2263) Hot-path perf umbrella** — 16 child issues (#2264–#2278) across Android/iOS/web/core: cache world TRS on Node, kill per-frame allocations, pre-decomposed TRS overloads, etc.
 5. **[#2241](https://github.com/sceneview/sceneview/issues/2241) Sprint 1 V2 plane renderer redo** — PlaneDiscoveryGuide + ShadowReceiverPlane + PlacementReticle + ARPlacementDemo modernization.
-6. **[#2239](https://github.com/sceneview/sceneview/issues/2239) Samples catalog regrouping** — 60 cards → ~25 cards aggressive grouping.
+6. **[#2239](https://github.com/sceneview/sceneview/issues/2239) Samples catalog regrouping** — 60 cards → ~25 cards aggressive grouping (Batch 1 demos already merging).
 7. **[#894 iOS AR feature parity](https://github.com/sceneview/sceneview/issues/894)** — Cloud Anchors, ARRecorder via ReplayKit, Streetscape. Needs physical device.
 
 ### Older session logs

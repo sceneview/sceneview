@@ -174,11 +174,10 @@ class DemoRenderingScreenshotTest {
         captureAndCompare(demoSlug = "debug-overlay", goldenName = "debugoverlay_default", settleSeconds = 3)
     }
 
-    @Test
-    fun gestureEditingDemo_default_state() {
-        captureAndCompare(demoSlug = "gesture-editing", goldenName = "gestureediting_default", settleSeconds = 3,
-            pixelDiffTolerancePercent = 10.0f, maxChannelDiff = 16)
-    }
+    // #2239 Batch 1 — `gesture-editing` consolidated into `camera-gestures` (covered
+    // by `cameraAndGesturesDemo_default_state` below). The Node Gestures sub-mode is
+    // reachable via the "Node Gestures" segmented button; a dedicated capture would
+    // need a tab-aware deep-link parameter (follow-up).
 
     @Test
     fun dynamicSkyDemo_default_state() {
@@ -198,8 +197,11 @@ class DemoRenderingScreenshotTest {
     }
 
     @Test
-    fun cameraControlsDemo_default_state() {
-        captureAndCompare(demoSlug = "camera-controls", goldenName = "cameracontrols_default", settleSeconds = 4)
+    fun cameraAndGesturesDemo_default_state() {
+        // #2239 Batch 1 — `camera-controls` and `gesture-editing` consolidated into
+        // `camera-gestures`. Default landing tab is Camera Modes; the captured frame
+        // is comparable to the prior `cameracontrols_default` golden once re-baselined.
+        captureAndCompare(demoSlug = "camera-gestures", goldenName = "cameragestures_default", settleSeconds = 4)
     }
 
     @Test
