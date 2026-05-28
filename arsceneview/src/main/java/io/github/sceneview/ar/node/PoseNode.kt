@@ -57,17 +57,26 @@ open class PoseNode(
         set(value) {
             if (field != value) {
                 field = value
-                // Write the world translation + rotation directly from the ARCore Pose
-                // components instead of routing through `worldTransform(pose.transform)`,
-                // which allocated a fresh FloatArray(16) + a Transform wrap and then
-                // immediately decomposed that matrix back into position/quaternion/scale.
-                // An ARCore Pose is a rigid transform (no scale), so the prior path also
-                // reset any user-set scale to identity every frame — writing only the
-                // translation and rotation preserves the node's scale. Fires for every
-                // AnchorNode / PlaneNode / AugmentedFaceNode / AugmentedImageNode /
-                // StreetscapeGeometryNode on every frame (#2266 / umbrella #2263).
-                worldPosition = value.position
-                worldQuaternion = value.quaternion
+                // Write the world translation + rotation from the ARCore Pose components
+                // instead of routing through `worldTransform(pose.transform)`, which
+                // allocated a fresh FloatArray(16) + a Transform wrap and then decomposed
+                // that matrix back into position/quaternion/scale. An ARCore Pose is a
+                // rigid transform (no scale), so the prior path also reset any user-set
+                // scale to identity every frame — passing only translation + rotation
+                // preserves the node's scale. Fires for every AnchorNode / PlaneNode /
+                // AugmentedFaceNode / AugmentedImageNode / StreetscapeGeometryNode on every
+                // frame (#2266 / umbrella #2263).
+                if (isSmoothTransformEnabled) {
+                    // HitResultNode / DepthHitResultNode set isSmoothTransformEnabled = true
+                    // and reassign `pose` every frame; the old `worldTransform(pose.transform)`
+                    // path fed the smooth slerp. Keep that smooth-follow (the component
+                    // overload still avoids Pose.transform's FloatArray(16)) (#2296 review).
+                    worldTransform(position = value.position, quaternion = value.quaternion)
+                } else {
+                    // High-frequency non-smooth nodes: fully alloc-free direct TRS write.
+                    worldPosition = value.position
+                    worldQuaternion = value.quaternion
+                }
                 onPoseChanged(value)
             }
         }
