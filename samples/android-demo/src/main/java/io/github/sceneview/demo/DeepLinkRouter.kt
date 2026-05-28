@@ -89,6 +89,13 @@ internal object DeepLinkRouter {
         // pre-selection from alias is a planned follow-up).
         "collision" to "picking-collision",
         "view-node" to "picking-collision",
+        // #2239 Batch 1 — Camera & Gestures consolidation. The retired
+        // `camera-controls` and `gesture-editing` demos merged into
+        // `camera-gestures` with a segmented-button toggle. The unified demo
+        // opens on its default Camera Modes tab (tab pre-selection from alias
+        // is a planned follow-up).
+        "camera-controls" to "camera-gestures",
+        "gesture-editing" to "camera-gestures",
     )
 
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {

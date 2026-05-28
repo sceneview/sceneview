@@ -12,7 +12,7 @@ mirroring the same surface.
 [`ModelViewerDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ModelViewerDemo.kt) — `ModelNode(modelInstance, scaleToUnits, centerOrigin)` with hero-orbit camera manipulator.
 
 ## 2. Camera controls (orbit / zoom / pan)
-[`CameraControlsDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraControlsDemo.kt) — pass a custom `cameraManipulator =` to `SceneView`, or `null` to lock the camera.
+[`CameraAndGesturesDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraAndGesturesDemo.kt) — the unified Camera & Gestures demo (Camera Modes tab): pass a custom `cameraManipulator =` to `SceneView`, or `null` to lock the camera.
 
 ## 3. AR tap-to-place
 [`ARPlacementDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARPlacementDemo.kt) — `rememberOnGestureListener(onSingleTapConfirmed = { event, node -> frame.hitTest(event)... })` + `AnchorNode(anchor = hit.createAnchor()) { ModelNode(isEditable = true) }`.
@@ -42,7 +42,7 @@ mirroring the same surface.
 [`PhysicsDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/PhysicsDemo.kt) — `PhysicsNode(node, mass, restitution, floorY)`. Experimental; only handles sphere collisions on a Y=0 floor.
 
 ## 12. Gesture editing (drag / pinch / rotate a node)
-[`GestureEditingDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/GestureEditingDemo.kt) — `ModelNode(isEditable = true)`. Listen via `rememberOnGestureListener(onMoveBegin = …, onScaleBegin = …, onRotateBegin = …)`.
+[`CameraAndGesturesDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraAndGesturesDemo.kt) — the unified Camera & Gestures demo (Node Gestures tab): `ModelNode(isEditable = true)`. Listen via `rememberOnGestureListener(onMoveBegin = …, onScaleBegin = …, onRotateBegin = …)`.
 
 ## 13. ViewNode (Compose UI inside 3D)
 [`PickingAndCollisionDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/PickingAndCollisionDemo.kt) — the unified Picking & Collision demo bundles two modes: **Ray Hit-Test** with `CollisionSystem` + per-node tap highlights, **View Node** with `ViewNode { Card { Text("…") } }` (requires `viewNodeWindowManager` on `SceneView`).
