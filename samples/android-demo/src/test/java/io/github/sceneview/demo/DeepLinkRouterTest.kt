@@ -30,6 +30,15 @@ class DeepLinkRouterTest {
         DemoEntry("model-viewer", R.string.demo_model_viewer, R.string.demo_model_viewer_subtitle, "3D Basics", Icons.Filled.ViewInAr),
     )
 
+    // Registry holding the three #2239 Batch 1 consolidated demos that the
+    // retired ids redirect to. The router only inspects `id`, so the title /
+    // subtitle resources are arbitrary (see the note above).
+    private val consolidatedRegistry = listOf(
+        DemoEntry("custom-geometry", R.string.demo_custom_geometry_title, R.string.demo_custom_geometry_subtitle, "Advanced", Icons.Filled.ViewInAr),
+        DemoEntry("picking-collision", R.string.demo_picking_collision_title, R.string.demo_picking_collision_subtitle, "Interaction", Icons.Filled.ViewInAr),
+        DemoEntry("camera-gestures", R.string.demo_camera_and_gestures_title, R.string.demo_camera_and_gestures_subtitle, "Interaction", Icons.Filled.ViewInAr),
+    )
+
     // ── Custom scheme: sceneview://demo/<id> ──────────────────────────────
 
     @Test
@@ -261,6 +270,37 @@ class DeepLinkRouterTest {
             assertNull(
                 "retired alias id '$retired' must not also be a registered demo",
                 ALL_DEMOS.find { it.id == retired },
+            )
+        }
+    }
+
+    // ── #2239 Batch 1 alias redirects — three demo consolidations ─────────────
+    //
+    // Batch 1 merged six demos into three consolidated ones, each behind a
+    // segmented-button toggle. The retired ids stay on the public deep-link
+    // surface and must keep resolving to their consolidated demo rather than
+    // falling through to the demo list.
+
+    @Test
+    fun `Batch 1 retired ids resolve to their consolidated demo`() {
+        val expected = mapOf(
+            "custom-mesh" to "custom-geometry",
+            "shape" to "custom-geometry",
+            "collision" to "picking-collision",
+            "view-node" to "picking-collision",
+            "camera-controls" to "camera-gestures",
+            "gesture-editing" to "camera-gestures",
+        )
+        expected.forEach { (retired, consolidated) ->
+            assertEquals(
+                "validate('$retired') must redirect to '$consolidated'",
+                consolidated,
+                DeepLinkRouter.validate(retired, consolidatedRegistry),
+            )
+            assertEquals(
+                "sceneview://demo/$retired must resolve to '$consolidated'",
+                consolidated,
+                DeepLinkRouter.parse(Uri.parse("sceneview://demo/$retired"), consolidatedRegistry),
             )
         }
     }
