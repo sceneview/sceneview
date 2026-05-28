@@ -41,11 +41,54 @@ fun localToWorldPosition(localPosition: Position, worldTransform: Transform): Po
 // --- Quaternion ---
 
 /**
+ * Convert a world-space quaternion to this node's local space using the parent's
+ * cached world quaternion — the **direct, allocation-light** path.
+ *
+ * A rotation-only conversion never needs a 4×4 matrix: the local rotation is simply
+ * `inverse(parentWorldRotation) * worldRotation`. This overload therefore skips the
+ * Mat4 polar decomposition that the [worldToLocal: Transform][worldToLocalQuaternion]
+ * overload pays on every call (#2267). Prefer it whenever the parent's world
+ * quaternion is already known — e.g. it is cached on the node post-#2264.
+ *
+ * @param parentWorldQuaternion The parent node's world-space quaternion (cached).
+ * @param worldQuaternion Quaternion in world space.
+ */
+fun worldToLocalQuaternion(
+    parentWorldQuaternion: Quaternion,
+    worldQuaternion: Quaternion
+): Quaternion = inverse(parentWorldQuaternion) * worldQuaternion
+
+/**
+ * Convert a local-space quaternion to world space using the parent's cached world
+ * quaternion — the **direct, allocation-light** path.
+ *
+ * The world rotation is `parentWorldRotation * localRotation`, so no 4×4 matrix or
+ * polar decomposition is required (#2267). Prefer it whenever the parent's world
+ * quaternion is already known — e.g. it is cached on the node post-#2264.
+ *
+ * @param parentWorldQuaternion The parent node's world-space quaternion (cached).
+ * @param localQuaternion Quaternion in this node's local space.
+ */
+fun localToWorldQuaternion(
+    parentWorldQuaternion: Quaternion,
+    localQuaternion: Quaternion
+): Quaternion = parentWorldQuaternion * localQuaternion
+
+/**
  * Convert a world-space quaternion to this node's local space.
+ *
+ * Runs a Mat4 polar decomposition (`worldToLocal.quaternion`) on every call. Prefer
+ * the [worldToLocalQuaternion] overload taking the parent's cached world quaternion,
+ * which skips the decomposition (#2267).
  *
  * @param worldQuaternion Quaternion in world space.
  * @param worldToLocal Inverse of the node's world transform.
  */
+@Deprecated(
+    "Decomposes a Mat4 on every call. Use worldToLocalQuaternion(parentWorldQuaternion, " +
+        "worldQuaternion) with the parent's cached world quaternion instead (#2267).",
+    ReplaceWith("worldToLocalQuaternion(parentWorldQuaternion, worldQuaternion)")
+)
 fun worldToLocalQuaternion(
     worldQuaternion: Quaternion,
     worldToLocal: Transform
@@ -54,9 +97,18 @@ fun worldToLocalQuaternion(
 /**
  * Convert a local-space quaternion to world space.
  *
+ * Runs a Mat4 polar decomposition (`worldTransform.quaternion`) on every call. Prefer
+ * the [localToWorldQuaternion] overload taking the parent's cached world quaternion,
+ * which skips the decomposition (#2267).
+ *
  * @param localQuaternion Quaternion in this node's local space.
  * @param worldTransform The node's world transform matrix.
  */
+@Deprecated(
+    "Decomposes a Mat4 on every call. Use localToWorldQuaternion(parentWorldQuaternion, " +
+        "localQuaternion) with the parent's cached world quaternion instead (#2267).",
+    ReplaceWith("localToWorldQuaternion(parentWorldQuaternion, localQuaternion)")
+)
 fun localToWorldQuaternion(
     localQuaternion: Quaternion,
     worldTransform: Transform
@@ -65,20 +117,58 @@ fun localToWorldQuaternion(
 // --- Rotation (Euler angles) ---
 
 /**
+ * Convert a world-space rotation (Euler angles) to this node's local space using the
+ * parent's cached world quaternion — skips the Mat4 polar decomposition (#2267).
+ *
+ * @param parentWorldQuaternion The parent node's world-space quaternion (cached).
+ * @param worldRotation Rotation in degrees (world space).
+ */
+fun worldToLocalRotation(parentWorldQuaternion: Quaternion, worldRotation: Rotation): Rotation =
+    worldToLocalQuaternion(parentWorldQuaternion, worldRotation.toQuaternion()).toRotation()
+
+/**
+ * Convert a local-space rotation (Euler angles) to world space using the parent's
+ * cached world quaternion — skips the Mat4 polar decomposition (#2267).
+ *
+ * @param parentWorldQuaternion The parent node's world-space quaternion (cached).
+ * @param localRotation Rotation in degrees (local space).
+ */
+fun localToWorldRotation(parentWorldQuaternion: Quaternion, localRotation: Rotation): Rotation =
+    localToWorldQuaternion(parentWorldQuaternion, localRotation.toQuaternion()).toRotation()
+
+/**
  * Convert a world-space rotation (Euler angles) to this node's local space.
+ *
+ * Decomposes a Mat4 on every call. Prefer the [worldToLocalRotation] overload taking
+ * the parent's cached world quaternion (#2267).
  *
  * @param worldRotation Rotation in degrees (world space).
  * @param worldToLocal Inverse of the node's world transform.
  */
+@Deprecated(
+    "Decomposes a Mat4 on every call. Use worldToLocalRotation(parentWorldQuaternion, " +
+        "worldRotation) with the parent's cached world quaternion instead (#2267).",
+    ReplaceWith("worldToLocalRotation(parentWorldQuaternion, worldRotation)")
+)
+@Suppress("DEPRECATION")
 fun worldToLocalRotation(worldRotation: Rotation, worldToLocal: Transform): Rotation =
     worldToLocalQuaternion(worldRotation.toQuaternion(), worldToLocal).toRotation()
 
 /**
  * Convert a local-space rotation (Euler angles) to world space.
  *
+ * Decomposes a Mat4 on every call. Prefer the [localToWorldRotation] overload taking
+ * the parent's cached world quaternion (#2267).
+ *
  * @param localRotation Rotation in degrees (local space).
  * @param worldTransform The node's world transform matrix.
  */
+@Deprecated(
+    "Decomposes a Mat4 on every call. Use localToWorldRotation(parentWorldQuaternion, " +
+        "localRotation) with the parent's cached world quaternion instead (#2267).",
+    ReplaceWith("localToWorldRotation(parentWorldQuaternion, localRotation)")
+)
+@Suppress("DEPRECATION")
 fun localToWorldRotation(localRotation: Rotation, worldTransform: Transform): Rotation =
     localToWorldQuaternion(localRotation.toQuaternion(), worldTransform).toRotation()
 
