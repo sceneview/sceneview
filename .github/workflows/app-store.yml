@@ -50,6 +50,8 @@ jobs:
           HAS_PASS: ${{ secrets.IOS_BUILD_CERTIFICATE_PASSWORD != '' }}
           HAS_IOS_PROF: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 != '' }}
           HAS_MACOS_PROF: ${{ secrets.MACOS_PROVISIONING_PROFILE_BASE64 != '' }}
+          HAS_MACOS_INSTALLER_CERT: ${{ secrets.MACOS_INSTALLER_CERT_BASE64 != '' }}
+          HAS_MACOS_APP_CERT: ${{ secrets.MACOS_APP_CERT_BASE64 != '' }}
           HAS_KEY: ${{ secrets.APP_STORE_CONNECT_KEY_ID != '' }}
         run: |
           if [ "$HAS_CERT" = "true" ] && [ "$HAS_PASS" = "true" ] && [ "$HAS_IOS_PROF" = "true" ] && [ "$HAS_KEY" = "true" ]; then
@@ -59,12 +61,25 @@ jobs:
             echo "ios_ready=false" >> $GITHUB_OUTPUT
             echo "::notice::Skipping iOS deploy — signing secrets not configured."
           fi
-          if [ "$HAS_CERT" = "true" ] && [ "$HAS_PASS" = "true" ] && [ "$HAS_MACOS_PROF" = "true" ] && [ "$HAS_KEY" = "true" ]; then
+          # macOS App Store deploy needs THREE distinct signing secrets:
+          #   - MACOS_APP_CERT_BASE64       → "Apple Distribution" cert (signs the .app bundle)
+          #   - MACOS_INSTALLER_CERT_BASE64 → "3rd Party Mac Developer Installer" cert (signs the .pkg)
+          #   - MACOS_PROVISIONING_PROFILE_BASE64 → "SceneView Demo Mac App Store" profile
+          # The Apple Distribution cert that Xcode auto-generates is non-extractable
+          # (kSecAttrIsExtractable=0) — Keychain Access's "Export Items…" menu stays
+          # disabled, and `security export -t identities` skips it silently. To unblock,
+          # generate a fresh Apple Distribution cert via Keychain Access > Certificate
+          # Assistant > Request a Certificate from a CA (the CSR flow keeps the new
+          # private key extractable), upload the CSR to Apple Developer Portal, install
+          # the issued .cer, re-link the provisioning profile to it, then export to p12
+          # and set MACOS_APP_CERT_BASE64 + MACOS_APP_CERT_PASSWORD secrets. Tracking
+          # issue: #2252.
+          if [ "$HAS_CERT" = "true" ] && [ "$HAS_PASS" = "true" ] && [ "$HAS_MACOS_PROF" = "true" ] && [ "$HAS_MACOS_INSTALLER_CERT" = "true" ] && [ "$HAS_MACOS_APP_CERT" = "true" ] && [ "$HAS_KEY" = "true" ]; then
             echo "macos_ready=true" >> $GITHUB_OUTPUT
             echo "macOS secrets configured"
           else
             echo "macos_ready=false" >> $GITHUB_OUTPUT
-            echo "::notice::Skipping macOS deploy — signing secrets not configured."
+            echo "::notice::Skipping macOS deploy — signing secrets not configured (need MACOS_APP_CERT_BASE64, MACOS_INSTALLER_CERT_BASE64, MACOS_PROVISIONING_PROFILE_BASE64). See #2252."
           fi
 
   deploy-ios:
@@ -653,31 +668,52 @@ jobs:
           echo "Using Xcode: $(xcode-select -p)"
           xcodebuild -version
 
-      - name: Install the Apple certificate and provisioning profile
+      - name: Install the Apple certificates and provisioning profile
         env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.MACOS_INSTALLER_CERT_BASE64 }}
-          P12_PASSWORD: ${{ secrets.MACOS_INSTALLER_CERT_PASSWORD }}
+          # The macOS App Store flow needs TWO distinct signing certs (#2252):
+          #   APP_CERT       → "Apple Distribution"             — signs the .app bundle
+          #   INSTALLER_CERT → "3rd Party Mac Developer Installer" — signs the .pkg wrapper
+          # Earlier runs only imported the installer cert, so xcodebuild fell back to
+          # signing the .app with it too and the provisioning profile rejected it
+          # ("Provisioning profile doesn't include signing certificate '3rd Party Mac
+          # Developer Installer'"). Both certs MUST be in the same keychain.
+          APP_CERT_BASE64: ${{ secrets.MACOS_APP_CERT_BASE64 }}
+          APP_CERT_PASSWORD: ${{ secrets.MACOS_APP_CERT_PASSWORD }}
+          INSTALLER_CERT_BASE64: ${{ secrets.MACOS_INSTALLER_CERT_BASE64 }}
+          INSTALLER_CERT_PASSWORD: ${{ secrets.MACOS_INSTALLER_CERT_PASSWORD }}
           BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.MACOS_PROVISIONING_PROFILE_BASE64 }}
           KEYCHAIN_PASSWORD: ${{ github.run_id }}_${{ github.run_attempt }}
         run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          APP_CERT_PATH=$RUNNER_TEMP/app_certificate.p12
+          INSTALLER_CERT_PATH=$RUNNER_TEMP/installer_certificate.p12
           PROFILE_PATH=$RUNNER_TEMP/build_pp.provisionprofile
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
-          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$APP_CERT_BASE64" | base64 --decode -o $APP_CERT_PATH
+          echo -n "$INSTALLER_CERT_BASE64" | base64 --decode -o $INSTALLER_CERT_PATH
           echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PROFILE_PATH
 
-          if ! openssl pkcs12 -in "$CERTIFICATE_PATH" -passin "pass:$P12_PASSWORD" -nokeys -noout 2>/dev/null; then
-            echo "::error::P12 password verification failed."
+          if ! openssl pkcs12 -in "$APP_CERT_PATH" -passin "pass:$APP_CERT_PASSWORD" -nokeys -noout 2>/dev/null; then
+            echo "::error::Apple Distribution P12 password verification failed."
+            exit 1
+          fi
+          if ! openssl pkcs12 -in "$INSTALLER_CERT_PATH" -passin "pass:$INSTALLER_CERT_PASSWORD" -nokeys -noout 2>/dev/null; then
+            echo "::error::Mac Installer P12 password verification failed."
             exit 1
           fi
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          # Import both certs into the SAME keychain so xcodebuild can find
+          # the right identity for each signing step (.app vs .pkg).
+          security import $APP_CERT_PATH       -P "$APP_CERT_PASSWORD"       -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security import $INSTALLER_CERT_PATH -P "$INSTALLER_CERT_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
+
+          echo "Installed identities:"
+          security find-identity -v $KEYCHAIN_PATH
 
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(/usr/bin/security cms -D -i $PROFILE_PATH))

@@ -45,7 +45,7 @@ mirroring the same surface.
 [`CameraAndGesturesDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraAndGesturesDemo.kt) — the unified Camera & Gestures demo (Node Gestures tab): `ModelNode(isEditable = true)`. Listen via `rememberOnGestureListener(onMoveBegin = …, onScaleBegin = …, onRotateBegin = …)`.
 
 ## 13. ViewNode (Compose UI inside 3D)
-[`ViewNodeDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ViewNodeDemo.kt) — `ViewNode { Card { Text("…") } }`. Requires `viewNodeWindowManager` on `SceneView`.
+[`PickingAndCollisionDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/PickingAndCollisionDemo.kt) — the unified Picking & Collision demo bundles two modes: **Ray Hit-Test** with `CollisionSystem` + per-node tap highlights, **View Node** with `ViewNode { Card { Text("…") } }` (requires `viewNodeWindowManager` on `SceneView`).
 
 ## AR recording / playback
 [`ARRecordPlaybackDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARRecordPlaybackDemo.kt) — `val recorder = rememberARRecorder(); recorder.start(file); recorder.stop()`. To replay, pass `playbackDataset = file` to `ARSceneView`.
