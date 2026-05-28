@@ -199,7 +199,11 @@ open class Node(
         _worldPosition = world.position
         _worldQuaternion = world.toQuaternion()
         _worldScale = world.scale
-        _worldRotation = _worldQuaternion.toEulerAngles()
+        // Extract Euler directly from the matrix (not via the quaternion) to stay
+        // bit-equivalent to the pre-cache `worldTransform.rotation` behavior — the
+        // matrix→quaternion→Euler path can pick a different branch near gimbal lock
+        // (e.g. 179.9° vs -180.1°) and break callers that compare successive readings.
+        _worldRotation = world.rotation
         return world
     }
 

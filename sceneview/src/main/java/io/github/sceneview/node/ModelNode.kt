@@ -178,17 +178,6 @@ open class ModelNode(
     private val sanitizedEntities = mutableSetOf<Entity>()
 
     /**
-     * Entities observed at least once with a non-empty AABB.
-     *
-     * Once an entity is here, its AABB is considered stable and we skip per-frame
-     * re-checks — the only common reasons an AABB starts empty (skinning awaiting bone
-     * transforms, async resource loads) are one-shot startup transitions that don't
-     * recur during steady-state rendering. Allows [sanitizeEmptyBoundingBoxes] to
-     * early-exit on the hot path once a model is fully loaded (#2273).
-     */
-    private val validatedEntities = mutableSetOf<Entity>()
-
-    /**
      * Gets the skin count of this instance.
      */
     val skinCount: Int get() = modelInstance.skinCount
@@ -467,10 +456,35 @@ open class ModelNode(
             sanitizeEmptyBoundingBoxes()
             applyAnimations(frameTimeNanos)
             animator.updateBoneMatrices()
+            // glTF animation (applyAnimations + updateBoneMatrices) writes the sub-nodes'
+            // transforms straight into the Filament TransformManager, bypassing the Node
+            // setters that normally invalidate the world-space cache (#2264). Invalidate the
+            // sub-nodes explicitly while animations are active so reads of their
+            // worldPosition / worldQuaternion / etc. never return a stale first-frame value.
+            if (playingAnimations.isNotEmpty()) {
+                nodes.forEach { it.onWorldTransformChanged() }
+            }
         } catch (e: Exception) {
             onFrameError?.invoke(e)
                 ?: android.util.Log.e("SceneView", "ModelNode.onFrame error", e)
         }
+    }
+
+    /**
+     * Propagates world-transform invalidation to the glTF sub-nodes.
+     *
+     * [renderableNodes] and [emptyNodes] are parented to this [ModelNode] only at the
+     * Filament level, not through [childNodes], so the base [Node.onWorldTransformChanged]
+     * propagation (which walks [childNodes]) doesn't reach them. When this ModelNode moves,
+     * their Filament world transform changes too — invalidate their cache explicitly so
+     * reads of a sub-node's world-space TRS stay correct (#2264).
+     */
+    override fun onWorldTransformChanged() {
+        super.onWorldTransformChanged()
+        // `nodes` is null while the base Node constructor runs (before the subclass
+        // property initializers); guard against that early invalidation.
+        @Suppress("UNNECESSARY_SAFE_CALL")
+        nodes?.forEach { it.onWorldTransformChanged() }
     }
 
     /**
@@ -485,19 +499,10 @@ open class ModelNode(
      * Once the AABB becomes valid (non-empty), culling and shadows are re-enabled.
      */
     private fun sanitizeEmptyBoundingBoxes() {
-        // Steady-state fast path: every renderable has been observed valid at least
-        // once and nothing is currently disabled. No per-frame JNI traffic needed
-        // until popRenderable() yields a new entity.
-        if (sanitizedEntities.isEmpty() && validatedEntities.size == renderableNodes.size) {
-            return
-        }
         val renderableManager = modelInstance.engine.renderableManager
         val box = Box()
         for (renderableNode in renderableNodes) {
             val entity = renderableNode.entity
-            // Skip entities already known to be stable.
-            if (entity in validatedEntities) continue
-
             val instance = renderableManager.getInstance(entity)
             if (instance == 0) continue
 
@@ -517,11 +522,6 @@ open class ModelNode(
                 renderableManager.setCastShadows(instance, true)
                 renderableManager.setReceiveShadows(instance, true)
                 sanitizedEntities -= entity
-                validatedEntities += entity
-            } else if (!isEmpty) {
-                // First-time observation of a valid AABB: mark stable so future
-                // frames skip this entity in the fast path above.
-                validatedEntities += entity
             }
         }
     }
