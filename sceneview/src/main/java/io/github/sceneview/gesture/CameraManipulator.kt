@@ -49,6 +49,16 @@ private class CameraManipulatorState {
     var lastTargetY = Float.NaN
     var lastTargetZ = Float.NaN
     var lastTransform: Transform? = null
+
+    /**
+     * True when [eye] and [target] match the eye/target captured on the last
+     * recompute — i.e. the camera hasn't moved and the cached [lastTransform] is
+     * still valid. Initial `NaN` fields never match (`NaN == NaN` is false), so the
+     * first call always recomputes.
+     */
+    fun matches(eye: FloatArray, target: FloatArray): Boolean =
+        eye[0] == lastEyeX && eye[1] == lastEyeY && eye[2] == lastEyeZ &&
+            target[0] == lastTargetX && target[1] == lastTargetY && target[2] == lastTargetZ
 }
 
 private val cameraManipulatorStates = WeakHashMap<Manipulator, CameraManipulatorState>()
@@ -72,11 +82,7 @@ val Manipulator.transform: Transform
         getLookAt(eye, target, state.upScratch)
 
         val cached = state.lastTransform
-        if (cached != null &&
-            eye[0] == state.lastEyeX && eye[1] == state.lastEyeY && eye[2] == state.lastEyeZ &&
-            target[0] == state.lastTargetX && target[1] == state.lastTargetY &&
-            target[2] == state.lastTargetZ
-        ) {
+        if (cached != null && state.matches(eye, target)) {
             return cached
         }
 
