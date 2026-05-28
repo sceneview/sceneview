@@ -41,6 +41,39 @@ fun localToWorldPosition(localPosition: Position, worldTransform: Transform): Po
 // --- Quaternion ---
 
 /**
+ * Convert a world-space quaternion to local space, given the parent's
+ * **cached** world quaternion.
+ *
+ * Direct quaternion algebra (`inverse(parentWorldQuaternion) * worldQuaternion`)
+ * — no matrix involved. Prefer this over the [Transform] overload when the
+ * parent's world quaternion is already known (e.g. cached on a node): it skips
+ * the per-call polar decomposition that `Transform.quaternion` performs.
+ *
+ * @param parentWorldQuaternion The parent's world-space quaternion.
+ * @param worldQuaternion Quaternion in world space.
+ */
+fun worldToLocalQuaternion(
+    parentWorldQuaternion: Quaternion,
+    worldQuaternion: Quaternion
+): Quaternion = inverse(parentWorldQuaternion) * worldQuaternion
+
+/**
+ * Convert a local-space quaternion to world space, given the parent's
+ * world quaternion.
+ *
+ * Direct quaternion algebra (`parentWorldQuaternion * localQuaternion`) — no
+ * matrix involved. Prefer this over the [Transform] overload when the parent's
+ * world quaternion is already known.
+ *
+ * @param parentWorldQuaternion The parent's world-space quaternion.
+ * @param localQuaternion Quaternion in this node's local space.
+ */
+fun localToWorldQuaternion(
+    parentWorldQuaternion: Quaternion,
+    localQuaternion: Quaternion
+): Quaternion = parentWorldQuaternion * localQuaternion
+
+/**
  * Convert a world-space quaternion to this node's local space.
  *
  * @param worldQuaternion Quaternion in world space.
@@ -63,6 +96,30 @@ fun localToWorldQuaternion(
 ): Quaternion = worldTransform.quaternion * localQuaternion
 
 // --- Rotation (Euler angles) ---
+
+/**
+ * Convert a world-space rotation (Euler angles) to local space, given the
+ * parent's **cached** world quaternion.
+ *
+ * Goes Euler→Quat→direct quaternion algebra→Euler — no matrix decomposition.
+ *
+ * @param parentWorldQuaternion The parent's world-space quaternion.
+ * @param worldRotation Rotation in degrees (world space).
+ */
+fun worldToLocalRotation(parentWorldQuaternion: Quaternion, worldRotation: Rotation): Rotation =
+    worldToLocalQuaternion(parentWorldQuaternion, worldRotation.toQuaternion()).toRotation()
+
+/**
+ * Convert a local-space rotation (Euler angles) to world space, given the
+ * parent's world quaternion.
+ *
+ * Goes Euler→Quat→direct quaternion algebra→Euler — no matrix decomposition.
+ *
+ * @param parentWorldQuaternion The parent's world-space quaternion.
+ * @param localRotation Rotation in degrees (local space).
+ */
+fun localToWorldRotation(parentWorldQuaternion: Quaternion, localRotation: Rotation): Rotation =
+    localToWorldQuaternion(parentWorldQuaternion, localRotation.toQuaternion()).toRotation()
 
 /**
  * Convert a world-space rotation (Euler angles) to this node's local space.

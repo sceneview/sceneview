@@ -36,10 +36,12 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Transform
+import io.github.sceneview.math.localToWorldQuaternion
 import io.github.sceneview.math.quaternion
 import io.github.sceneview.math.times
 import io.github.sceneview.math.toMatrix
 import io.github.sceneview.math.toQuaternion
+import io.github.sceneview.math.worldToLocalQuaternion
 import io.github.sceneview.safeDestroyEntity
 import io.github.sceneview.safeDestroyTransformable
 
@@ -649,19 +651,28 @@ open class Node(
     /**
      * Converts a quaternion in the world-space to a local-space of this node.
      *
+     * Uses this node's **cached** world quaternion via direct quaternion algebra
+     * (`inverse(worldQuaternion) * value`), skipping the per-call polar
+     * decomposition of `worldToLocal`.
+     *
      * @param worldQuaternion the quaternion in world-space to convert.
      * @return a new quaternion that represents the world quaternion in local-space.
      */
     fun getLocalQuaternion(worldQuaternion: Quaternion) =
-        worldToLocal.toQuaternion() * worldQuaternion
+        worldToLocalQuaternion(this.worldQuaternion, worldQuaternion)
 
     /**
      * Converts a quaternion in the local-space of this node to world-space.
      *
+     * Uses this node's **cached** world quaternion via direct quaternion algebra
+     * (`worldQuaternion * quaternion`), skipping the per-call polar decomposition
+     * of `worldTransform`.
+     *
      * @param quaternion the quaternion in local-space to convert.
      * @return a new quaternion that represents the local quaternion in world-space.
      */
-    fun getWorldQuaternion(quaternion: Quaternion) = worldTransform.toQuaternion() * quaternion
+    fun getWorldQuaternion(quaternion: Quaternion) =
+        localToWorldQuaternion(this.worldQuaternion, quaternion)
 
     /**
      * Converts a rotation in the world-space to a local-space of this node.
