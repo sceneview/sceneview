@@ -36,10 +36,12 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Transform
+import io.github.sceneview.math.localToWorldQuaternion
 import io.github.sceneview.math.quaternion
 import io.github.sceneview.math.times
 import io.github.sceneview.math.toMatrix
 import io.github.sceneview.math.toQuaternion
+import io.github.sceneview.math.worldToLocalQuaternion
 import io.github.sceneview.safeDestroyEntity
 import io.github.sceneview.safeDestroyTransformable
 
@@ -649,19 +651,28 @@ open class Node(
     /**
      * Converts a quaternion in the world-space to a local-space of this node.
      *
+     * Uses this node's cached [worldQuaternion] (#2264) directly — a rotation-only
+     * conversion never needs the 4×4 matrix, so this skips the Mat4 polar
+     * decomposition that `worldToLocal.toQuaternion()` paid on every call (#2267).
+     *
      * @param worldQuaternion the quaternion in world-space to convert.
      * @return a new quaternion that represents the world quaternion in local-space.
      */
     fun getLocalQuaternion(worldQuaternion: Quaternion) =
-        worldToLocal.toQuaternion() * worldQuaternion
+        worldToLocalQuaternion(worldQuaternion = worldQuaternion, parentWorldQuaternion = this.worldQuaternion)
 
     /**
      * Converts a quaternion in the local-space of this node to world-space.
      *
+     * Uses this node's cached [worldQuaternion] (#2264) directly — a rotation-only
+     * conversion never needs the 4×4 matrix, so this skips the Mat4 polar
+     * decomposition that `worldTransform.toQuaternion()` paid on every call (#2267).
+     *
      * @param quaternion the quaternion in local-space to convert.
      * @return a new quaternion that represents the local quaternion in world-space.
      */
-    fun getWorldQuaternion(quaternion: Quaternion) = worldTransform.toQuaternion() * quaternion
+    fun getWorldQuaternion(quaternion: Quaternion) =
+        localToWorldQuaternion(localQuaternion = quaternion, parentWorldQuaternion = this.worldQuaternion)
 
     /**
      * Converts a rotation in the world-space to a local-space of this node.
