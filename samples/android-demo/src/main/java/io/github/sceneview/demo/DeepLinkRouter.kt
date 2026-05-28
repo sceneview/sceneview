@@ -96,6 +96,14 @@ internal object DeepLinkRouter {
         // is a planned follow-up).
         "camera-controls" to "camera-gestures",
         "gesture-editing" to "camera-gestures",
+        // #2239 Batch 1 — 2D in 3D consolidation. The retired `text`, `image`,
+        // `video`, and `billboard` demos merged into `two-d-in-three-d` with a
+        // segmented-button toggle. The unified demo opens on its default Text
+        // tab (tab pre-selection from alias is a planned follow-up).
+        "text" to "two-d-in-three-d",
+        "image" to "two-d-in-three-d",
+        "video" to "two-d-in-three-d",
+        "billboard" to "two-d-in-three-d",
     )
 
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {

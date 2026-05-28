@@ -19,7 +19,6 @@ import io.github.sceneview.demo.demos.ARRooftopAnchorDemo
 import io.github.sceneview.demo.demos.ARStreetscapeDemo
 import io.github.sceneview.demo.demos.ARTerrainAnchorDemo
 import io.github.sceneview.demo.demos.AnimationDemo
-import io.github.sceneview.demo.demos.BillboardDemo
 import io.github.sceneview.demo.demos.CameraAndGesturesDemo
 import io.github.sceneview.demo.demos.CustomGeometryDemo
 import io.github.sceneview.demo.demos.DebugOverlayDemo
@@ -27,7 +26,6 @@ import io.github.sceneview.demo.demos.DynamicSkyDemo
 import io.github.sceneview.demo.demos.EnvironmentDemo
 import io.github.sceneview.demo.demos.FogDemo
 import io.github.sceneview.demo.demos.GeometryDemo
-import io.github.sceneview.demo.demos.ImageDemo
 import io.github.sceneview.demo.demos.LightingDemo
 import io.github.sceneview.demo.demos.LinesPathsDemo
 import io.github.sceneview.demo.demos.ModelViewerDemo
@@ -37,8 +35,7 @@ import io.github.sceneview.demo.demos.PickingAndCollisionDemo
 import io.github.sceneview.demo.demos.PostProcessingDemo
 import io.github.sceneview.demo.demos.ReflectionProbesDemo
 import io.github.sceneview.demo.demos.SecondaryCameraDemo
-import io.github.sceneview.demo.demos.TextDemo
-import io.github.sceneview.demo.demos.VideoDemo
+import io.github.sceneview.demo.demos.TwoDInThreeDDemo
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 
 /**
@@ -108,11 +105,9 @@ class DemoHostActivity : ComponentActivity() {
             "fog" -> FogDemo(onBack = back)
             "environment" -> EnvironmentDemo(onBack = back)
             // Content
-            "text" -> TextDemo(onBack = back)
+            // #2239 Batch 1 — `text`, `image`, `video`, `billboard` consolidated into `two-d-in-three-d`.
+            "two-d-in-three-d", "text", "image", "video", "billboard" -> TwoDInThreeDDemo(onBack = back)
             "lines-paths" -> LinesPathsDemo(onBack = back)
-            "image" -> ImageDemo(onBack = back)
-            "billboard" -> BillboardDemo(onBack = back)
-            "video" -> VideoDemo(onBack = back)
             // Interaction
             // #2239 Batch 1 — `camera-controls` and `gesture-editing` consolidated into `camera-gestures`.
             "camera-gestures", "camera-controls", "gesture-editing" -> CameraAndGesturesDemo(onBack = back)

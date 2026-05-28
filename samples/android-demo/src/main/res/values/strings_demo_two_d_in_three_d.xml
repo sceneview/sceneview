@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the unified `two-d-in-three-d` demo (registered by
+     `TwoDInThreeDFragment.kt`). Consolidates the retired `text`, `image`,
+     `video`, and `billboard` demos (#2239 Batch 1). Old ids continue to
+     deep-link through `DeepLinkRouter.DEMO_ID_ALIASES`. -->
+<resources>
+    <string name="demo_two_d_in_three_d_title">2D in 3D</string>
+    <string name="demo_two_d_in_three_d_subtitle">Text, image, video, and billboard quads</string>
+</resources>
