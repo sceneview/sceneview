@@ -62,7 +62,11 @@ open class TrackableNode<T : Trackable>(
         super.update(session, frame)
 
         trackable?.takeIf {
-            it in frame.getUpdatedTrackables(it.javaClass)
+            // #2270: prefer the per-frame batched updated-trackables set computed once by the
+            // AR frame driver (O(1) HashSet lookup, no per-node JNI allocation). Fall back to
+            // the per-node JNI query when this node's update runs outside that driver so
+            // behaviour stays identical in every path.
+            it in (frameUpdatedTrackables ?: frame.getUpdatedTrackables(it.javaClass))
         }?.let {
             update(it)
             onUpdated?.invoke(it)

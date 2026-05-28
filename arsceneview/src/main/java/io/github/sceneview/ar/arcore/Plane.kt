@@ -96,6 +96,31 @@ internal fun <T> diffTrackedSet(
 )
 
 /**
+ * Apply the per-frame trackable deltas to an incremental [tracked] cache (#2270) — the testable
+ * core of the incremental path in [rememberDetectedPlanes].
+ *
+ * For each item in [updated] (ARCore's `frame.getUpdatedTrackables(...)` delta, i.e. only the
+ * trackables whose state changed this frame): keep it in [tracked] when [isActive] returns `true`
+ * (still TRACKING), otherwise drop it (STOPPED/PAUSED — e.g. a subsumed or lost plane). ARCore
+ * surfaces every state transition through that delta, so applying just the delta keeps [tracked]
+ * in sync with the full live set without re-scanning `getAllTrackables` every frame.
+ *
+ * Mutates [tracked] in place and returns it for chaining. `internal` so the membership bookkeeping
+ * is unit-testable against plain objects (ARCore's `Plane` is JNI-only and can't be constructed
+ * under unit tests).
+ */
+internal fun <T> applyTrackedUpdates(
+    tracked: MutableSet<T>,
+    updated: Iterable<T>,
+    isActive: (T) -> Boolean
+): MutableSet<T> {
+    for (item in updated) {
+        if (isActive(item)) tracked += item else tracked -= item
+    }
+    return tracked
+}
+
+/**
  * Classic ray-casting point-in-polygon test (#2203 PR #2) — returns true when query point
  * `(x, z)` lies inside the simple [polygon] expressed as `[x0, z0, x1, z1, ...]` in
  * plane-local X-Z coordinates.
@@ -160,11 +185,19 @@ internal fun pointInPolygon2D(x: Float, z: Float, polygon: FloatArray): Boolean 
  * }
  * ```
  *
- * The set is re-read every Compose frame via [withFrameNanos], so it inherits Compose's natural
+ * The set is re-evaluated every Compose frame via [withFrameNanos], so it inherits Compose's natural
  * cadence and pauses with the composition — no separate timer to manage. Only planes in
  * [TrackingState.TRACKING] are reported, so a subsumed plane naturally surfaces through
  * [onRemoved]. Returns an empty list while [session] is `null` (AR lifecycle paused) or before
  * the first plane is detected.
+ *
+ * **Performance (#2270):** when the passed [session] is SceneView's [ARSession], the live set is
+ * maintained **incrementally** from the per-frame delta `frame.getUpdatedPlanes()` (ARCore returns
+ * only the planes whose state changed this frame) plus a mutable cache, instead of recomputing the
+ * full `session.getAllTrackables(Plane).filter { … }.toSet()` on every Compose frame. The
+ * add/update/remove classification is identical — only how the current snapshot is derived changes.
+ * If [session] is a plain ARCore [Session] (no per-frame handle available) or no frame has been
+ * produced yet, it transparently falls back to the original full-rescan path.
  *
  * @param session  The ARCore [Session], typically captured from `ARSceneView`'s `onSessionCreated`.
  * @param onAdded   Invoked with the planes newly detected since the previous frame.
@@ -184,19 +217,49 @@ fun rememberDetectedPlanes(
             return@produceState
         }
         var previous: Set<Plane> = emptySet()
+        // #2270: the incremental cache of currently-TRACKING planes, mutated frame-to-frame from
+        // `frame.getUpdatedPlanes()` so we never recompute the whole set unless we must fall back.
+        val tracked = LinkedHashSet<Plane>()
+        var trackedSeeded = false
+        var lastFrameTimestamp = 0L
         while (true) {
             withFrameNanos {
-                // getAllTrackables runs on the caller thread — here the Compose frame
-                // callback on the main thread, satisfying the ARCore main-thread contract.
-                val current = session.getAllTrackables(Plane::class.java)
-                    .filter { it.trackingState == TrackingState.TRACKING }
-                    .toSet()
+                // All ARCore reads here run on the Compose frame callback (main thread),
+                // satisfying the ARCore main-thread contract.
+                val arSession = session as? ARSession
+                val frame = arSession?.frame
+                val current: Set<Plane> = if (frame != null) {
+                    // First time we get a frame, seed the cache from the full trackable list so a
+                    // fallback→incremental hand-off (or planes detected before the first frame was
+                    // observed here) doesn't spuriously report every plane as removed.
+                    if (!trackedSeeded) {
+                        trackedSeeded = true
+                        session.getAllTrackables(Plane::class.java)
+                            .filterTo(tracked) { it.trackingState == TrackingState.TRACKING }
+                    }
+                    // Incremental path: apply only this frame's plane deltas to the cache.
+                    // ARCore surfaces every state transition (including → STOPPED for subsumed
+                    // or lost planes) through getUpdatedPlanes, so the cache stays in sync.
+                    // Re-applying on the same frame timestamp is a no-op for an idempotent set.
+                    if (frame.timestamp != lastFrameTimestamp) {
+                        lastFrameTimestamp = frame.timestamp
+                        applyTrackedUpdates(tracked, frame.getUpdatedPlanes()) {
+                            it.trackingState == TrackingState.TRACKING
+                        }
+                    }
+                    tracked
+                } else {
+                    // Fallback: full rescan (plain Session, or no frame produced yet).
+                    session.getAllTrackables(Plane::class.java)
+                        .filterTo(LinkedHashSet()) { it.trackingState == TrackingState.TRACKING }
+                }
                 if (current != previous) {
                     val diff = diffPlanes(previous, current)
                     if (diff.added.isNotEmpty()) onAdded?.invoke(diff.added)
                     if (diff.updated.isNotEmpty()) onUpdated?.invoke(diff.updated)
                     if (diff.removed.isNotEmpty()) onRemoved?.invoke(diff.removed)
-                    previous = current
+                    // Snapshot a copy — `tracked` is mutated in place on later frames.
+                    previous = current.toSet()
                     value = current.toList()
                 }
             }
