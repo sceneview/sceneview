@@ -454,14 +454,19 @@ open class ModelNode(
             // Re-sanitize after popRenderable() which may make new entities available
             // for rendering that could have empty AABBs.
             sanitizeEmptyBoundingBoxes()
+            // Capture BEFORE applyAnimations(): a non-looping animation removes itself
+            // from `playingAnimations` on the same frame it writes its final pose, so a
+            // post-call `isNotEmpty()` check would skip invalidation on that stop-frame
+            // and leave a stale world cache (#2264 re-review). `wasAnimating` covers it.
+            val wasAnimating = playingAnimations.isNotEmpty()
             applyAnimations(frameTimeNanos)
             animator.updateBoneMatrices()
-            // glTF animation (applyAnimations + updateBoneMatrices) writes the sub-nodes'
-            // transforms straight into the Filament TransformManager, bypassing the Node
-            // setters that normally invalidate the world-space cache (#2264). Invalidate the
-            // sub-nodes explicitly while animations are active so reads of their
-            // worldPosition / worldQuaternion / etc. never return a stale first-frame value.
-            if (playingAnimations.isNotEmpty()) {
+            // glTF animation (applyAnimations) writes the sub-nodes' transforms straight
+            // into the Filament TransformManager, bypassing the Node setters that normally
+            // invalidate the world-space cache (#2264). Invalidate the sub-nodes explicitly
+            // on any frame an animation was active (including the final stop-frame) so reads
+            // of their worldPosition / worldQuaternion / etc. never return a stale value.
+            if (wasAnimating) {
                 nodes.forEach { it.onWorldTransformChanged() }
             }
         } catch (e: Exception) {
