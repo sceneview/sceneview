@@ -7,7 +7,8 @@ import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.arcore.getProjectionTransform
-import io.github.sceneview.ar.arcore.transform
+import io.github.sceneview.ar.arcore.position
+import io.github.sceneview.ar.arcore.quaternion
 import io.github.sceneview.node.CameraNode
 
 /**
@@ -44,7 +45,13 @@ open class ARCameraNode(engine: Engine) : CameraNode(engine) {
             if (field != value) {
                 field = value
                 value?.let {
-                    worldTransform = it.transform
+                    // Write the world translation + rotation directly from the ARCore Pose
+                    // components instead of `worldTransform = it.transform`, which allocated a
+                    // FloatArray(16) + Transform every frame only to decompose it straight back
+                    // into TRS. The camera pose refreshes on every tracked frame (#2266 /
+                    // umbrella #2263).
+                    worldPosition = it.position
+                    worldQuaternion = it.quaternion
                 }
             }
         }
