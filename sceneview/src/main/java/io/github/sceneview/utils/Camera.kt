@@ -12,12 +12,22 @@ import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Transform
 import io.github.sceneview.math.almostEquals
+import io.github.sceneview.math.copyColumnsInto
 import io.github.sceneview.math.toColumnsDoubleArray
-import io.github.sceneview.math.toColumnsFloatArray
 import io.github.sceneview.math.toDirection
 import io.github.sceneview.math.toFloat4
 import io.github.sceneview.math.toTransform
 import kotlin.math.log2
+
+/**
+ * Main-thread scratch buffer reused by the [Camera.modelTransform] setter to
+ * avoid allocating a `FloatArray(16)` on every camera-pose write (per frame).
+ *
+ * Safe because Filament JNI calls run exclusively on the main thread and
+ * `Camera.setModelMatrix(FloatArray)` copies the array into native memory
+ * synchronously before returning.
+ */
+private val modelMatrixScratch = FloatArray(16)
 
 /**
  * Computes the camera's EV100 from exposure settings.
@@ -202,7 +212,7 @@ val Camera.scaling: Float4 get() = DoubleArray(4).apply { getScaling(this) }.toF
 var Camera.modelTransform: Transform
     get() = FloatArray(16).apply { getModelMatrix(this) }.toTransform()
     set(value) {
-        setModelMatrix(value.toColumnsFloatArray())
+        setModelMatrix(value.copyColumnsInto(modelMatrixScratch))
     }
 
 /**

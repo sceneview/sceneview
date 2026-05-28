@@ -77,8 +77,9 @@ class Sphere : CollisionShape {
         Preconditions.checkNotNull(ray, "Parameter \"ray\" was null.")
         Preconditions.checkNotNull(result, "Parameter \"result\" was null.")
 
-        val rayDirection = ray.getDirection()
-        val rayOrigin = ray.getOrigin()
+        // Read-only refs: only components are read, fed into allocating static ops.
+        val rayDirection = ray.directionRef()
+        val rayOrigin = ray.originRef()
 
         val difference = Vector3.subtract(rayOrigin, center)
         val b = 2.0f * Vector3.dot(difference, rayDirection)

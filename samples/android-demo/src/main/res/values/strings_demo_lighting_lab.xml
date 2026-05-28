@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the unified `lighting-lab` demo (registered by
+     `LightingLabFragment.kt`). Consolidates the retired `dynamic-sky`,
+     `environment`, `reflection-probes`, and `post-processing` demos
+     (#2239 Batch 2). Old ids continue to deep-link through
+     `DeepLinkRouter.DEMO_ID_ALIASES`. -->
+<resources>
+    <string name="demo_lighting_lab_title">Lighting Lab</string>
+    <string name="demo_lighting_lab_subtitle">Sky, environment, reflections, and post-FX</string>
+</resources>

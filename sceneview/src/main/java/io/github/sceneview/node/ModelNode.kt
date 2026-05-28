@@ -454,12 +454,42 @@ open class ModelNode(
             // Re-sanitize after popRenderable() which may make new entities available
             // for rendering that could have empty AABBs.
             sanitizeEmptyBoundingBoxes()
+            // Capture BEFORE applyAnimations(): a non-looping animation removes itself
+            // from `playingAnimations` on the same frame it writes its final pose, so a
+            // post-call `isNotEmpty()` check would skip invalidation on that stop-frame
+            // and leave a stale world cache (#2264 re-review). `wasAnimating` covers it.
+            val wasAnimating = playingAnimations.isNotEmpty()
             applyAnimations(frameTimeNanos)
             animator.updateBoneMatrices()
+            // glTF animation (applyAnimations) writes the sub-nodes' transforms straight
+            // into the Filament TransformManager, bypassing the Node setters that normally
+            // invalidate the world-space cache (#2264). Invalidate the sub-nodes explicitly
+            // on any frame an animation was active (including the final stop-frame) so reads
+            // of their worldPosition / worldQuaternion / etc. never return a stale value.
+            if (wasAnimating) {
+                nodes.forEach { it.onWorldTransformChanged() }
+            }
         } catch (e: Exception) {
             onFrameError?.invoke(e)
                 ?: android.util.Log.e("SceneView", "ModelNode.onFrame error", e)
         }
+    }
+
+    /**
+     * Propagates world-transform invalidation to the glTF sub-nodes.
+     *
+     * [renderableNodes] and [emptyNodes] are parented to this [ModelNode] only at the
+     * Filament level, not through [childNodes], so the base [Node.onWorldTransformChanged]
+     * propagation (which walks [childNodes]) doesn't reach them. When this ModelNode moves,
+     * their Filament world transform changes too — invalidate their cache explicitly so
+     * reads of a sub-node's world-space TRS stay correct (#2264).
+     */
+    override fun onWorldTransformChanged() {
+        super.onWorldTransformChanged()
+        // `nodes` is null while the base Node constructor runs (before the subclass
+        // property initializers); guard against that early invalidation.
+        @Suppress("UNNECESSARY_SAFE_CALL")
+        nodes?.forEach { it.onWorldTransformChanged() }
     }
 
     /**

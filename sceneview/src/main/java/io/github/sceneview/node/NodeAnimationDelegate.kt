@@ -53,7 +53,8 @@ class NodeAnimationDelegate(
             // #2265: read node.transform ONCE per frame (was 3 Filament JNI round-trips —
             // the `target != node.transform` check, the slerp `start`, and the convergence
             // `equals`). `current` is reused for both exact comparisons so behaviour is
-            // unchanged.
+            // unchanged. (The single-read landed via #2280; this PR additionally feeds slerp
+            // the cached components below.)
             val current = node.transform
             if (target != current) {
                 // Feed slerp the node's #2187-cached local TRS (Node.position / quaternion /

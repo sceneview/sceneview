@@ -104,8 +104,10 @@ class Box : CollisionShape {
         Preconditions.checkNotNull(ray, "Parameter \"ray\" was null.")
         Preconditions.checkNotNull(result, "Parameter \"result\" was null.")
 
-        val rayDirection = ray.getDirection()
-        val rayOrigin = ray.getOrigin()
+        // Read-only refs: the slab test only reads the components and feeds them
+        // into allocating static ops (subtract/dot) — no mutation of the ray's vectors.
+        val rayDirection = ray.directionRef()
+        val rayOrigin = ray.originRef()
         val max = getExtents()
         val min = max.negated()
 

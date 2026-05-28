@@ -105,6 +105,24 @@ fun Mat3.toColumnsFloatArray() = floatArrayOf(
     z.x, z.y, z.z
 )
 
+/**
+ * Writes this [Mat3]'s 9 columns into [out] starting at [offset] (column-major).
+ *
+ * Allocation-free counterpart to [toColumnsFloatArray]. Pass a reusable scratch
+ * buffer to avoid the per-call `FloatArray(9)` allocation on hot paths.
+ *
+ * @return [out], for chaining.
+ */
+fun Mat3.copyColumnsInto(out: FloatArray, offset: Int = 0): FloatArray {
+    require(out.size >= offset + 9) {
+        "FloatArray needs >= 9 slots from offset $offset (size=${out.size})"
+    }
+    out[offset] = x.x; out[offset + 1] = x.y; out[offset + 2] = x.z
+    out[offset + 3] = y.x; out[offset + 4] = y.y; out[offset + 5] = y.z
+    out[offset + 6] = z.x; out[offset + 7] = z.y; out[offset + 8] = z.z
+    return out
+}
+
 fun Mat4.toColumnsDoubleArray(): DoubleArray =
     toColumnsFloatArray().map { it.toDouble() }.toDoubleArray()
 
@@ -123,6 +141,27 @@ fun Mat4.toColumnsFloatArray() = floatArrayOf(
     z.x, z.y, z.z, z.w,
     w.x, w.y, w.z, w.w
 )
+
+/**
+ * Writes this [Mat4]'s 16 columns into [out] starting at [offset] (column-major).
+ *
+ * Allocation-free counterpart to [toColumnsFloatArray]. Pass a reusable scratch
+ * buffer to avoid the per-call `FloatArray(16)` allocation on hot paths such as
+ * `TransformManager.setTransform`, fired thousands of times per second on an
+ * animated scene.
+ *
+ * @return [out], for chaining.
+ */
+fun Mat4.copyColumnsInto(out: FloatArray, offset: Int = 0): FloatArray {
+    require(out.size >= offset + 16) {
+        "FloatArray needs >= 16 slots from offset $offset (size=${out.size})"
+    }
+    out[offset] = x.x; out[offset + 1] = x.y; out[offset + 2] = x.z; out[offset + 3] = x.w
+    out[offset + 4] = y.x; out[offset + 5] = y.y; out[offset + 6] = y.z; out[offset + 7] = y.w
+    out[offset + 8] = z.x; out[offset + 9] = z.y; out[offset + 10] = z.z; out[offset + 11] = z.w
+    out[offset + 12] = w.x; out[offset + 13] = w.y; out[offset + 14] = w.z; out[offset + 15] = w.w
+    return out
+}
 
 fun FloatArray.toTransform() = Transform(
     x = Float4(this[0], this[1], this[2], this[3]),

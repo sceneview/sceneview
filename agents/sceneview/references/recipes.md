@@ -30,7 +30,7 @@ mirroring the same surface.
 [`AnimationDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/AnimationDemo.kt) — `ModelNode` exposes `animationName`, `autoAnimate`, `animationLoop`, `animationSpeed`. For imperative control, call `node.playAnimation(name, speed = …, loop = …)` from `onFrame` or a button callback.
 
 ## 8. Lights and environment
-[`LightingDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/LightingDemo.kt), [`EnvironmentDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/EnvironmentDemo.kt) — `environment = rememberEnvironment(environmentLoader) { environmentLoader.createHDREnvironment("env.hdr") }`.
+[`LightingDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/LightingDemo.kt), [`LightingLabDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/LightingLabDemo.kt) (Environment tab) — `environment = rememberEnvironment(environmentLoader) { environmentLoader.createHDREnvironment("env.hdr") }`.
 
 ## 9. Procedural geometry
 [`GeometryDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/GeometryDemo.kt) — use the per-shape composables (`CubeNode`, `SphereNode`, `CylinderNode`, etc.) directly. Each takes `materialInstance` plus its shape parameter (e.g. `radius`, `size`).
