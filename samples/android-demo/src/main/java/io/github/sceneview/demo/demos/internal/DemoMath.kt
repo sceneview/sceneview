@@ -82,7 +82,8 @@ internal object DemoMath {
     }
 
     /**
-     * Tabletop-display rotation used by [io.github.sceneview.demo.demos.MultiModelDemo].
+     * Tabletop-display rotation used by [io.github.sceneview.demo.demos.ModelViewerDemo]'s
+     * Multi-Model section (formerly `MultiModelDemo`, #2239 Batch 5).
      * Each model has a fixed `(dx, dz)` offset relative to the formation centre at
      * `(0, _, centerZ)`. As `sceneYaw` advances, the formation rotates around the
      * centre. Returns the new world-space `(x, z)` for the model.

@@ -29,7 +29,6 @@ import io.github.sceneview.demo.demos.LightingLabDemo
 import io.github.sceneview.demo.demos.LinesPathsDemo
 import io.github.sceneview.demo.demos.MaterialsDemo
 import io.github.sceneview.demo.demos.ModelViewerDemo
-import io.github.sceneview.demo.demos.MultiModelDemo
 import io.github.sceneview.demo.demos.PhysicsDemo
 import io.github.sceneview.demo.demos.PickingAndCollisionDemo
 import io.github.sceneview.demo.demos.SecondaryCameraDemo
@@ -93,10 +92,11 @@ class DemoHostActivity : ComponentActivity() {
         val back: () -> Unit = { finish() }
         when (id) {
             // 3D Basics
-            "model-viewer" -> ModelViewerDemo(onBack = back)
+            // #2239 Batch 5 — `multi-model` and `scene-gallery` consolidated into the
+            // existing `model-viewer` entry (the flagship umbrella, kept live).
+            "model-viewer", "multi-model", "scene-gallery" -> ModelViewerDemo(onBack = back)
             "geometry" -> GeometryDemo(onBack = back)
             "animation" -> AnimationDemo(onBack = back)
-            "multi-model" -> MultiModelDemo(onBack = back)
             // Lighting & Environment
             "lighting" -> LightingDemo(onBack = back)
             "fog" -> FogDemo(onBack = back)

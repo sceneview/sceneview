@@ -152,7 +152,11 @@ private fun curatedSamplesForExplore(): List<DemoEntry> {
         "geometry",
         "lighting",
         "ar-placement",
-        "multi-model",
+        // #2239 Batch 5 — `multi-model` consolidated into `model-viewer` (already
+        // first in this list). Repointed to the live `materials` umbrella so the
+        // carousel keeps its 6-card diversity rather than silently shrinking when
+        // a retired id is dropped by `mapNotNull` (the Batch 3 footgun).
+        "materials",
         "animation",
     )
     return ids.mapNotNull { id -> ALL_DEMOS.firstOrNull { it.id == id } }

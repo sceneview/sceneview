@@ -73,7 +73,8 @@ fun LoadingScrim(loading: Boolean, label: String = "Loading…") {
 /**
  * Error overlay that covers the 3D viewport when a model fails to resolve or load.
  *
- * Streamed demos ([io.github.sceneview.demo.demos.SceneGalleryDemo],
+ * Streamed demos ([io.github.sceneview.demo.demos.ModelViewerDemo]'s Gallery
+ * section — formerly `SceneGalleryDemo`, #2239 Batch 5 —
  * [io.github.sceneview.demo.demos.MaterialsDemo]) used to wrap their
  * `resolver.resolve()` call in `runCatching { … }.getOrNull()`. On a
  * `FallbackUnavailable` throw (or any failure) the resolved path stayed `null`

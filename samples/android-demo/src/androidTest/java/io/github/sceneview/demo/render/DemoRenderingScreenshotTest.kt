@@ -64,18 +64,12 @@ class DemoRenderingScreenshotTest {
         captureAndCompare(demoSlug = "geometry", goldenName = "geometry_default", settleSeconds = 6)
     }
 
-    @Test
-    fun multiModelDemo_default_state() {
-        // TODO(qaMode-bind-pose): MultiModelDemo passes `autoAnimate = !qaMode` to the
-        // dragon's ModelNode, but `autoAnimate` is consumed only at construction time
-        // (see ModelNodeImpl.init, line 226 of ModelNode.kt). When the ModelInstance
-        // remember-cache returns the same instance across test runs, the dragon resumes
-        // animating from wherever it stopped, so capture-N and capture-N+1 land on
-        // different skeletal phases. Reactive auto-animate-control needs a SceneView
-        // SDK change. Until then, hold the wider tolerance.
-        captureAndCompare(demoSlug = "multi-model", goldenName = "multimodel_default", settleSeconds = 4,
-            pixelDiffTolerancePercent = 60.0f, maxChannelDiff = 32)
-    }
+    // #2239 Batch 5 — `multi-model` and `scene-gallery` consolidated into the existing
+    // `model-viewer` entry (covered by `modelViewerDemo_default_state` below). The
+    // Multi-Model / Gallery sub-modes are reachable via segmented-button taps; dedicated
+    // sub-mode captures would need a tab-aware deep-link parameter (follow-up). The stale
+    // `multimodel_default.png` golden + its `multiModelDemo_default_state` test (which
+    // launched the now-retired `multi-model` slug) were removed.
 
     @Test
     fun animationDemo_default_state() {

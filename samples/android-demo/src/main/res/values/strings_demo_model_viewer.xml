@@ -1,14 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Strings for the `model-viewer` demo (registered by
-     `ModelViewerFragment.kt`). Android's resource merger
-     fans every `res/values/*.xml` file in, so `R.string.demo_model_viewer` etc.
+<!-- Strings for the unified `model-viewer` demo (registered by
+     `ModelViewerFragment.kt`). Consolidates the retired `multi-model` and
+     `scene-gallery` demos (#2239 Batch 5) — the `model-viewer` id stays the
+     live flagship umbrella (its id + `ModelViewerDemo.kt` file are referenced
+     across docs and kept verbatim), the other two deep-link through
+     `DeepLinkRouter.DEMO_ID_ALIASES`. Android's resource merger fans every
+     `res/values/*.xml` file in, so `R.string.demo_model_viewer` etc.
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_model_viewer">Model Viewer</string>
-    <string name="demo_model_viewer_subtitle">Load and display 3D models</string>
+    <string name="demo_model_viewer">Models</string>
+    <string name="demo_model_viewer_subtitle">Single model, multi-model scene, and gallery</string>
     <string name="demo_model_viewer_desc">Load and render glTF/GLB 3D models with orbit camera</string>
     <string name="demo_model_viewer_loading">Loading model…</string>
     <string name="demo_model_viewer_surprise">Surprise me</string>
     <string name="demo_model_viewer_surprise_loading">Finding…</string>
+
+    <!-- Multi-Model section — formerly the `multi-model` demo. -->
+    <string name="demo_multi_model_title">Multi-Model Scene</string>
+
+    <!-- Gallery section — formerly the `scene-gallery` demo. -->
+    <string name="demo_scene_gallery_title">Scene Gallery</string>
+    <string name="demo_scene_gallery_credit">by %1$s · CC-BY 4.0</string>
+    <string name="demo_scene_gallery_loading">Streaming model…</string>
+    <string name="demo_scene_gallery_error">Couldn\'t load this model</string>
+    <string name="demo_scene_gallery_retry">Retry</string>
 </resources>

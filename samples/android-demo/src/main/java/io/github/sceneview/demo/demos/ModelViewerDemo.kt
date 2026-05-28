@@ -1,16 +1,30 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -30,45 +44,120 @@ import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.ErrorScrim
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
+import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
+import io.github.sceneview.demo.rememberHeroYaw
+import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.sketchfab.SketchfabService
+import io.github.sceneview.demo.sketchfab.SketchfabSlug
+import io.github.sceneview.environment.rememberHDREnvironment
+import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
+import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
- * Full-screen 3D model viewer.
+ * Unified "Models" demo — consolidates the retired `multi-model` and
+ * `scene-gallery` demos into the existing `model-viewer` entry behind a single
+ * segmented-button toggle (#2239 Batch 5).
  *
- * **Default state.** Loads the bundled `khronos_damaged_helmet.glb` so the demo
- * renders identically with or without a Sketchfab API key — the very first
- * frame the user sees is the same hero shot the screenshots and store assets
- * promise. The CAMERA orbits the helmet so lights, reflections and IBL hit the
- * same surface every frame.
+ * Each sub-mode showcases one facet of loading + displaying glTF models:
  *
- * **"Surprise me" button.** When the user taps the extended FAB at the
- * bottom-right, the demo searches the Sketchfab API for a downloadable model
- * tagged like the previous pick (or just downloadable PBR content on first
- * tap), then routes the resulting URL through SceneView's `file://` model
- * loader. The streamed pick replaces the helmet for the rest of the session
- * (or until the next tap). When no API key is configured (App Store builds),
- * the button is hidden — there is no plausible "Surprise me" without the
- * Sketchfab catalogue, and showing a non-functional button would mislead.
+ * - **Single Model** (default) — the canonical full-screen 3D model viewer:
+ *   bundled hero helmet, auto-fit hero orbit, optional "Surprise me" Sketchfab
+ *   stream. (The original `model-viewer` demo — the flagship example.)
+ * - **Multi-Model** — a themed "Park" scene composed from 4 streamed glTF
+ *   assets with per-model visibility chips and a spin toggle. (Formerly
+ *   `multi-model`.)
+ * - **Gallery** — a chip-picked gallery of themed Sketchfab CC-BY models, one
+ *   on screen at a time on an automated orbit. (Formerly `scene-gallery`.)
  *
- * The moment the user touches the viewport the orbit hands off to the stock
- * [io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator]
- * at the exact same pose, so there's no snap — drag / pinch / zoom continue
- * from where the automated orbit left off.
+ * Each sub-mode keeps its own `SceneView` + its own [rememberEngine] / loaders,
+ * so switching tabs tears down the inactive section completely — no engine is
+ * hoisted above the `when`, which is what prevents resource leaks across tab
+ * switches (Batch 1 review confirmed this pattern). Old deep links route
+ * through [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES]; the
+ * `model-viewer` id itself stays a live registered demo (the flagship
+ * umbrella — its id and `ModelViewerDemo.kt` file are referenced across docs
+ * and kept verbatim).
  */
 @Composable
 fun ModelViewerDemo(onBack: () -> Unit) {
+    var mode by remember { mutableStateOf(ModelViewerMode.Single) }
+    when (mode) {
+        ModelViewerMode.Single -> SingleModelSection(onBack, mode) { mode = it }
+        ModelViewerMode.Multi -> MultiModelSection(onBack, mode) { mode = it }
+        ModelViewerMode.Gallery -> GallerySection(onBack, mode) { mode = it }
+    }
+}
+
+private enum class ModelViewerMode(val label: String) {
+    Single("Single Model"),
+    Multi("Multi-Model"),
+    Gallery("Gallery"),
+}
+
+@Composable
+private fun ModeSelector(
+    current: ModelViewerMode,
+    onModeChange: (ModelViewerMode) -> Unit,
+) {
+    val modes = ModelViewerMode.entries
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        modes.forEachIndexed { index, m ->
+            SegmentedButton(
+                selected = m == current,
+                onClick = { onModeChange(m) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
+                label = { Text(m.label) },
+            )
+        }
+    }
+    Spacer(modifier = Modifier.height(12.dp))
+}
+
+// ─── Single Model section ─────────────────────────────────────────────────────
+// The original `model-viewer` demo — the flagship full-screen 3D model viewer.
+//
+// **Default state.** Loads the bundled `khronos_damaged_helmet.glb` so the demo
+// renders identically with or without a Sketchfab API key — the very first
+// frame the user sees is the same hero shot the screenshots and store assets
+// promise. The CAMERA orbits the helmet so lights, reflections and IBL hit the
+// same surface every frame.
+//
+// **"Surprise me" button.** When the user taps the extended FAB at the
+// bottom-right, the demo searches the Sketchfab API for a downloadable model
+// tagged like the previous pick (or just downloadable PBR content on first
+// tap), then routes the resulting URL through SceneView's `file://` model
+// loader. The streamed pick replaces the helmet for the rest of the session
+// (or until the next tap). When no API key is configured (App Store builds),
+// the button is hidden — there is no plausible "Surprise me" without the
+// Sketchfab catalogue, and showing a non-functional button would mislead.
+//
+// The moment the user touches the viewport the orbit hands off to the stock
+// CameraGestureDetector.DefaultCameraManipulator at the exact same pose, so
+// there's no snap — drag / pinch / zoom continue from where the automated
+// orbit left off.
+
+@Composable
+private fun SingleModelSection(
+    onBack: () -> Unit,
+    mode: ModelViewerMode,
+    onModeChange: (ModelViewerMode) -> Unit,
+) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
@@ -185,6 +274,7 @@ fun ModelViewerDemo(onBack: () -> Unit) {
         assetSource = assetSource,
         firstFrameRendered = firstFrame.rendered,
         controls = {
+            ModeSelector(mode, onModeChange)
             // Camera-distance slider — makes zoom discoverable without a pinch
             // gesture (and Maestro-testable, see #1571). The displayed value is
             // the slider override when set, otherwise the live auto-fit radius.
@@ -350,4 +440,478 @@ private suspend fun pickRandomDownloadableModel(
         return cached.toURI().toString()
     }
     return null
+}
+
+// ─── Multi-Model section ──────────────────────────────────────────────────────
+// Formerly MultiModelDemo (id `multi-model`).
+//
+// Composes a themed "Park" scene from 4 streamed glTF assets — an oak tree
+// (the backdrop), a park bench (the foreground prop), a sleeping dog (the
+// animated occupant), and a perched songbird (the second animated occupant).
+//
+// Lighting comes from `studio_warm_2k.hdr` — a soft golden-hour wash that
+// unifies the four very different materials (bark, weathered wood, fur,
+// feathers) into one cohesive open-air display.
+//
+// Controls:
+// - Visibility chips per model (toggle individual nodes off / on)
+// - "Spin scene" toggle — slow circular auto-rotation of the whole formation,
+//   lets the viewer walk around the display without touching the screen
+//
+// The previous "tabletop" composition (shiba + lantern + helmet + dragon, all
+// bundled) is replaced by the streamed `park` category from [SampleAssets].
+// Offline fallback is per-slug (`shiba.glb` / `khronos_lantern.glb` /
+// `threejs_soldier.glb` etc.) so the demo still renders four nodes when no
+// Sketchfab key is configured — the visual swap is documented in the CHANGELOG
+// but the user-visible behaviour stays "4 nodes, 4 chips, 1 spin toggle".
+//
+// Streaming pipeline (Stage 2, issue #1152) — the resolver returns the
+// downloaded GLB or the registered bundled fallback (see [SketchfabAssetResolver]
+// Kdoc). The whole scene is keyed by the slug uid, so a registry edit
+// re-resolves exactly the affected nodes.
+
+@Composable
+private fun MultiModelSection(
+    onBack: () -> Unit,
+    mode: ModelViewerMode,
+    onModeChange: (ModelViewerMode) -> Unit,
+) {
+    var showTree by remember { mutableStateOf(true) }
+    var showBench by remember { mutableStateOf(true) }
+    var showDog by remember { mutableStateOf(true) }
+    var showBird by remember { mutableStateOf(true) }
+    var spinScene by remember { mutableStateOf(true) }
+
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
+    val context = LocalContext.current
+
+    // Look up the 4 `park` slugs by uid (stable across registry re-ordering).
+    // Falling back to the first slug-by-category if an explicit uid is somehow
+    // missing keeps the demo running at degraded fidelity rather than crashing.
+    val parkSlugs = SampleAssets.byCategory["park"].orEmpty()
+    val tree = SampleAssets.byUid["d841c3bcc5324daebee50f45619e05fc"] ?: parkSlugs.getOrNull(0)
+    val bench = SampleAssets.byUid["6d1aeea748f147789004bc03e1930d32"] ?: parkSlugs.getOrNull(1)
+    val dog = SampleAssets.byUid["4f6ab5594a8a415aba3f958682b9ced5"] ?: parkSlugs.getOrNull(2)
+    val bird = SampleAssets.byUid["fd582b0d4a8c4af1a1b5c4f21a481c93"] ?: parkSlugs.getOrNull(3)
+
+    // Warm-up the park category in parallel on first composition. The resolver
+    // dedupes concurrent calls for the same slug so the per-node `resolve`
+    // below picks up the cached file as soon as the prefetch lands.
+    LaunchedEffect(Unit) {
+        runCatching {
+            SketchfabAssetResolver.getInstance(context).prefetchAll("park")
+        }
+    }
+
+    // Each `produceState` flips from `null` (download / fallback-copy still
+    // running on IO) to a real `File` once the resolver returns. ModelInstance
+    // creation happens only after the file is on disk — `rememberFileModelInstance`
+    // loads the `file://` URI via `ModelLoader.loadModelInstance`, which is
+    // async-safe and keeps the Filament JNI work on the Main thread.
+    val treeFile = rememberSlugFile(tree)
+    val benchFile = rememberSlugFile(bench)
+    val dogFile = rememberSlugFile(dog)
+    val birdFile = rememberSlugFile(bird)
+
+    val treeInstance = rememberFileModelInstance(modelLoader, treeFile)
+    val benchInstance = rememberFileModelInstance(modelLoader, benchFile)
+    val dogInstance = rememberFileModelInstance(modelLoader, dogFile)
+    val birdInstance = rememberFileModelInstance(modelLoader, birdFile)
+
+    // Warm dusk HDR — `studio_warm_2k.hdr` gives a golden-hour wash that
+    // unifies the four very different materials. Skybox enabled so the warm tint
+    // is visible behind the display, not just rim-lighting the models on a black
+    // void. Falls back to the default neutral environment while the HDR is still
+    // loading.
+    val hdrEnvironment = rememberHDREnvironment(
+        environmentLoader,
+        "environments/studio_warm_2k.hdr",
+        createSkybox = true,
+    )
+    val fallbackEnvironment = rememberEnvironment(environmentLoader)
+    val activeEnvironment = hdrEnvironment ?: fallbackEnvironment
+
+    val allLoaded = treeInstance != null && benchInstance != null &&
+        dogInstance != null && birdInstance != null
+    // Yaw drives the parent-scene rotation when "Spin scene" is on. Slow 30 s sweep
+    // so the viewer can take in each face of the display before it cycles round.
+    val sceneYaw = rememberHeroYaw(
+        trigger = allLoaded && spinScene, durationMillis = 30_000, staticYaw = 0f,
+    )
+
+    val firstFrame = rememberFirstFrameState()
+
+    DemoScaffold(
+        title = stringResource(R.string.demo_multi_model_title),
+        onBack = onBack,
+        firstFrameRendered = firstFrame.rendered,
+        controls = {
+            ModeSelector(mode, onModeChange)
+            Text("Visibility", style = MaterialTheme.typography.labelLarge)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = showTree,
+                    onClick = { showTree = !showTree },
+                    label = { Text("Tree") },
+                )
+                FilterChip(
+                    selected = showBench,
+                    onClick = { showBench = !showBench },
+                    label = { Text("Bench") },
+                )
+                FilterChip(
+                    selected = showDog,
+                    onClick = { showDog = !showDog },
+                    label = { Text("Dog") },
+                )
+                FilterChip(
+                    selected = showBird,
+                    onClick = { showBird = !showBird },
+                    label = { Text("Bird") },
+                )
+            }
+
+            // Spin toggle — wrap the row in toggleable so taps anywhere flip the state
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = spinScene,
+                        onValueChange = { spinScene = it },
+                    ),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Spin scene", style = MaterialTheme.typography.bodyMedium)
+                Switch(checked = spinScene, onCheckedChange = null)
+            }
+        },
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                onFrame = firstFrame.onFrame,
+                engine = engine,
+                modelLoader = modelLoader,
+                environmentLoader = environmentLoader,
+                environment = activeEnvironment,
+                cameraManipulator = rememberCameraManipulator(
+                    orbitHomePosition = Position(0f, 0.4f, 0.5f),
+                    targetPosition = Position(0f, 0f, -1.5f),
+                ),
+            ) {
+                // Park scene arrangement: tree as the towering backdrop (back-
+                // centre, scale 1.8 m to read as a real-world tree on the
+                // tabletop), bench in front-centre as the foreground prop, the
+                // sleeping dog at front-left next to the bench's leg, the
+                // songbird perched front-right.
+                //
+                // Front row z=-1.3, back row z=-1.7 so the depth difference reads
+                // even on a portrait phone viewport. sceneYaw rotates each model
+                // AROUND the formation centre by treating its (x, z) as polar
+                // coords offset from (0, -1.5). Per-model rotation cancels the
+                // yaw on its own Y so each piece stays facing the camera as the
+                // formation sweeps — gives a "turntable display" feel.
+                val centerZ = -1.5f
+                val displays = listOf(
+                    Display(showTree, treeInstance, x = 0.0f, z = -1.7f, scale = 1.80f),
+                    Display(showBench, benchInstance, x = 0.0f, z = -1.3f, scale = 0.65f),
+                    Display(showDog, dogInstance, x = -0.55f, z = -1.3f, scale = 0.40f),
+                    Display(showBird, birdInstance, x = 0.55f, z = -1.3f, scale = 0.15f),
+                )
+                for (d in displays) {
+                    if (!d.show || d.instance == null) continue
+                    // Rotation math lives in DemoMath.rotateAroundCentre so it can be
+                    // JVM-unit-tested without firing up Filament / Compose.
+                    val (rx, rz) = DemoMath.rotateAroundCentre(d.x, d.z - centerZ, sceneYaw)
+                    ModelNode(
+                        modelInstance = d.instance,
+                        // The animated dog + bird auto-play their skeletal animation
+                        // for "alive" scene reads; in qaMode we need the bind pose
+                        // to render every frame so golden screenshots stay
+                        // deterministic.
+                        autoAnimate = !DemoSettings.qaMode,
+                        scaleToUnits = d.scale,
+                        centerOrigin = Position(0f, 0.5f, 0f),
+                        position = Position(x = rx, y = 0f, z = rz + centerZ),
+                        rotation = Rotation(y = -sceneYaw),
+                    )
+                }
+            }
+            LoadingScrim(loading = !allLoaded, label = "Loading 4 models…")
+        }
+    }
+}
+
+private data class Display(
+    val show: Boolean,
+    val instance: io.github.sceneview.model.ModelInstance?,
+    val x: Float,
+    val z: Float,
+    val scale: Float,
+)
+
+/**
+ * Resolve a `SketchfabSlug` to a local `File` via [SketchfabAssetResolver].
+ *
+ * Returns `null` while the resolver is still downloading / staging the
+ * bundled fallback. Once the resolver returns, the [File] is the streamed
+ * GLB (or the bundled fallback if the network/key was unavailable).
+ *
+ * Wrapped in a helper so the Multi-Model section body stays focused on the
+ * scene composition — the resolve plumbing is the same for every slug.
+ */
+@Composable
+private fun rememberSlugFile(slug: SketchfabSlug?): File? {
+    if (slug == null) return null
+    val context = LocalContext.current
+    return produceState<File?>(initialValue = null, key1 = slug.uid) {
+        value = runCatching {
+            SketchfabAssetResolver.getInstance(context).resolve(slug)
+        }.getOrNull()
+    }.value
+}
+
+/**
+ * Load a [io.github.sceneview.model.ModelInstance] from a nullable local [File],
+ * returning `null` until the file is ready.
+ *
+ * The resolver always hands back a real on-disk [File] (streamed GLB or staged
+ * bundled fallback), so the model must be loaded through
+ * [io.github.sceneview.loaders.ModelLoader.loadModelInstance], which understands
+ * `file://` URIs. The two-argument `rememberModelInstance(modelLoader, String)`
+ * call is **not** usable here: Kotlin overload resolution binds it to the
+ * asset-path overload (the one without a defaulted `resourceResolver`), which
+ * feeds the `file://` string straight to `AssetManager.open` — that throws
+ * `FileNotFoundException`, the instance stays `null`, and the demo hangs forever
+ * on "Loading 4 models…" (#1422). Loading via `produceState` + `loadModelInstance`
+ * keeps the Filament JNI work on the loader's own Main-thread hop.
+ */
+@Composable
+private fun rememberFileModelInstance(
+    modelLoader: io.github.sceneview.loaders.ModelLoader,
+    file: File?,
+): io.github.sceneview.model.ModelInstance? {
+    if (file == null) return null
+    return produceState<io.github.sceneview.model.ModelInstance?>(
+        initialValue = null,
+        key1 = modelLoader,
+        key2 = file.absolutePath,
+    ) {
+        value = runCatching {
+            modelLoader.loadModelInstance("file://${file.absolutePath}")
+        }.getOrNull()
+    }.value
+}
+
+// ─── Gallery section ──────────────────────────────────────────────────────────
+// Formerly SceneGalleryDemo (id `scene-gallery`).
+//
+// Streamed model gallery — themed bundles (Animals, Furniture, Retro, …) rotating
+// Sketchfab CC-BY content. Each chip selects one [SketchfabSlug] in the curated
+// `gallery` category of [SampleAssets]; the resolver hands back either the
+// streamed GLB or the bundled fallback when no API key is configured. The
+// `SceneView` composable then renders the model with an automated orbit camera.
+//
+// Honours the umbrella's hard rules:
+//  - **No Sketchfab WebView / external link** — the demo only ever points
+//    [rememberModelInstance] at the local [java.io.File] returned by
+//    [SketchfabAssetResolver.resolve].
+//  - **No network required to render something useful** — empty key (App Store
+//    cold-cache builds) → the resolver stages the bundled fallback under the
+//    same cache root and the demo renders it the same way as the streamed file.
+//  - **License attribution preserved** — the per-chip caption shows the author
+//    name. The Credits sheet (Stage 3) will surface the full per-model
+//    attribution.
+//
+// The chip labels come from [SketchfabSlug.displayName] (set by registry
+// curators in English at design time) — they're not user-facing copy strings
+// subject to translation. Authors and license URLs are user-data of the
+// Sketchfab catalogue itself; only the demo scaffolding (title / subtitle /
+// loading copy) goes through `stringResource()`.
+
+@Composable
+private fun GallerySection(
+    onBack: () -> Unit,
+    mode: ModelViewerMode,
+    onModeChange: (ModelViewerMode) -> Unit,
+) {
+    val context = LocalContext.current
+    val resolver = remember(context) { SketchfabAssetResolver.getInstance(context) }
+
+    // The four curated `gallery` slugs declared in SampleAssets. Stage 2 keeps
+    // the chip count low so the offline-fallback footprint stays bounded — Stage
+    // 2 follow-ups can fan out to ~10 via Sketchfab `search()`.
+    val slugs = remember { SampleAssets.byCategory["gallery"].orEmpty() }
+    var selectedIndex by remember { mutableStateOf(0) }
+    val selectedSlug = slugs.getOrNull(selectedIndex)
+
+    // Bumped by the error scrim's Retry button. It is a `produceState` key so a
+    // tap re-runs the resolve coroutine for the same slug instead of leaving the
+    // demo stuck on a failed resolution forever (#2088).
+    var retryTick by remember { mutableStateOf(0) }
+
+    // Warm every gallery slug in parallel on first frame so chip taps switch
+    // instantly after the cold-start download. The resolver is idempotent
+    // (cache-hit -> touches lastModified only) so re-running is cheap.
+    LaunchedEffect(resolver) {
+        runCatching { resolver.prefetchAll("gallery") }
+    }
+
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
+
+    // Resolve the slug to a local file. produceState delegates IO + retries to
+    // the resolver; the `key1 = selectedSlug` rebinds the file when the user
+    // picks a new chip without leaking any prior coroutine. A failed resolve is
+    // surfaced as [GalleryResolveState.Error] instead of being swallowed into a
+    // `null` path that hangs the loading scrim forever (#2088). `retryTick`
+    // re-runs the resolve when the user taps Retry.
+    val resolveState: GalleryResolveState by produceState<GalleryResolveState>(
+        initialValue = GalleryResolveState.Loading,
+        key1 = resolver,
+        key2 = selectedSlug?.uid,
+        key3 = retryTick,
+    ) {
+        value = GalleryResolveState.Loading
+        val slug = selectedSlug ?: return@produceState
+        value = runCatching { resolver.resolve(slug) }
+            .fold(
+                onSuccess = { GalleryResolveState.Resolved(it.toURI().toString()) },
+                onFailure = { GalleryResolveState.Error(it.message ?: it.javaClass.simpleName) },
+            )
+    }
+    val resolvedPath = (resolveState as? GalleryResolveState.Resolved)?.path
+    val resolveError = (resolveState as? GalleryResolveState.Error)?.message
+
+    val modelInstance = resolvedPath?.let { path ->
+        // `rememberModelInstance(modelLoader, fileLocation)` accepts a `file://`
+        // URL; the underlying SceneView API auto-detects the scheme and uses
+        // `loadModelInstance` on the IO dispatcher (Filament JNI back to main
+        // is handled internally — we never touch JNI off-main here).
+        rememberModelInstance(modelLoader, path)
+    }
+
+    // Per-demo offline indicator chip (#1152 Stage 3). When no API key is
+    // configured we know up-front the resolver will fall back to bundled
+    // GLBs; otherwise the chip mirrors the centre LoadingScrim exactly so the
+    // two never contradict each other (#1465): it stays "Streaming…" until the
+    // model is fully parsed into a `ModelInstance` — not merely while the file
+    // path resolves — and only then flips to "Streamed (cached)". Gating on
+    // `modelInstance` (the same signal the LoadingScrim uses) keeps the chip
+    // and the spinner in lockstep.
+    val assetSource = when {
+        slugs.isEmpty() -> null
+        SketchfabConfig.apiKey == null -> AssetSourceState.Bundled
+        modelInstance == null -> AssetSourceState.Streaming
+        else -> AssetSourceState.Streamed
+    }
+
+    val firstFrame = rememberFirstFrameState()
+
+    DemoScaffold(
+        title = stringResource(R.string.demo_scene_gallery_title),
+        onBack = onBack,
+        assetSource = assetSource,
+        firstFrameRendered = firstFrame.rendered,
+        controls = {
+            ModeSelector(mode, onModeChange)
+            // Category chips along the top of the controls sheet. We expose
+            // them as a horizontally scrolling row so the four labels never
+            // wrap at portrait phone widths. Each chip's label is a hand-
+            // curated English `displayName` from SampleAssets — these are
+            // catalogue identifiers, not localizable UI copy.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                slugs.forEachIndexed { index, slug ->
+                    FilterChip(
+                        selected = index == selectedIndex,
+                        onClick = { selectedIndex = index },
+                        label = { Text(slug.displayName) },
+                    )
+                }
+            }
+            // Author credit — required by CC-BY 4.0 attribution. Stage 3 adds
+            // a full Credits sheet; the inline byline below keeps the
+            // attribution visible without a tap.
+            selectedSlug?.let { slug ->
+                Text(
+                    text = stringResource(R.string.demo_scene_gallery_credit, slug.author),
+                )
+            }
+        },
+    ) {
+        // Hero orbit so lighting + reflections sweep over the same surface
+        // every frame — same camera contract as the Single Model section, just
+        // bound to a different model. yHeight = 0 keeps the model centered in
+        // portrait without the empty-top-band artefact (QA finding
+        // 2026-05-11).
+        val cameraManipulator = rememberHeroOrbitCameraManipulator(
+            trigger = modelInstance != null,
+            radius = 1.6f,
+            yHeight = 0f,
+            durationMillis = 24_000,
+        )
+        Box(modifier = Modifier.fillMaxSize()) {
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                onFrame = firstFrame.onFrame,
+                engine = engine,
+                modelLoader = modelLoader,
+                environmentLoader = environmentLoader,
+                environment = rememberModelDemoEnvironment(environmentLoader),
+                cameraManipulator = cameraManipulator,
+            ) {
+                val instance = modelInstance
+                val slug = selectedSlug
+                if (instance != null && slug != null) {
+                    ModelNode(
+                        modelInstance = instance,
+                        scaleToUnits = slug.scaleToUnits,
+                        // centerOrigin lets SceneView re-centre the model on the
+                        // world origin so the camera (looking at 0,0,0) frames
+                        // the body, not the model's authored pivot point.
+                        centerOrigin = Position(0f, 0f, 0f),
+                    )
+                }
+            }
+            // Mutually exclusive with LoadingScrim: a resolve failure shows the
+            // error scrim (with Retry) instead of hanging on "Streaming…" (#2088).
+            if (resolveError != null) {
+                ErrorScrim(
+                    message = resolveError,
+                    onRetry = { retryTick++ },
+                    label = stringResource(R.string.demo_scene_gallery_error),
+                    retryLabel = stringResource(R.string.demo_scene_gallery_retry),
+                )
+            } else {
+                LoadingScrim(
+                    loading = modelInstance == null,
+                    label = stringResource(R.string.demo_scene_gallery_loading),
+                )
+            }
+        }
+    }
+}
+
+/** Resolution lifecycle for a streamed gallery slug. See [GallerySection]. */
+private sealed interface GalleryResolveState {
+    /** Resolve coroutine in flight. */
+    data object Loading : GalleryResolveState
+
+    /** Resolve succeeded — [path] is a `file://` URL ready for the model loader. */
+    data class Resolved(val path: String) : GalleryResolveState
+
+    /** Resolve failed — [message] is a short human-readable reason. */
+    data class Error(val message: String) : GalleryResolveState
 }
