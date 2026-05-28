@@ -526,32 +526,55 @@ class DemoInteractionTest {
 
     // ── 8. Post Processing — 4 toggle rows ────────────────────────────────────
 
+    // ── 8. Lighting Lab — all 4 segmented tabs ────────────────────────────────
+
     @Test
-    fun postProcessing_allToggles() {
-        // Defaults in PostProcessingDemo: SSAO=off, MSAA=off, FXAA=on, Dithering=on
-        // (recommended production setup — FXAA & temporal dithering are cheap and
-        // noticeably improve quality on mobile GPUs).
-        openDemo("post-processing")
-        screenshot("31_postProc_defaults")
+    fun lightingLab_allTabs() {
+        // #2239 Batch 2 — `dynamic-sky`, `environment`, `reflection-probes`, and
+        // `post-processing` consolidated into `lighting-lab` with a 4-way segmented
+        // toggle. One test taps through every tab so each merged half is exercised
+        // (the unified demo opens on its default Sky tab).
+        openDemo("lighting-lab")
 
-        tap("SSAO (Ambient Occlusion)")      // SSAO → on
-        screenshot("32_postProc_ssao_on")
+        // ── Sky tab (default landing tab) — time + turbidity sliders ──────────
+        screenshot("31_lab_sky_default")
+        dragSlider("Time of Day:", fraction = 0.1f)   // dawn
+        screenshot("31a_lab_sky_dawn")
+        dragSlider("Time of Day:", fraction = 0.9f)   // dusk
+        screenshot("31b_lab_sky_dusk")
+        dragSlider("Turbidity:", fraction = 1.0f)
+        screenshot("31c_lab_sky_high_turbidity")
 
-        tap("FXAA (Fast Approx. AA)")        // FXAA → off
-        screenshot("33_postProc_fxaa_off")
+        // ── Environment tab — HDR chips ───────────────────────────────────────
+        tap("Environment")
+        screenshot("32_lab_env_studio_default")
+        tap("Sunset")
+        screenshot("32a_lab_env_sunset")
+        tap("Studio")
+        screenshot("32b_lab_env_studio_back")
 
-        tap("Temporal Dithering")            // Dithering → off
-        screenshot("34_postProc_ssao_only")
+        // ── Reflections tab — probe radius + Y sliders ────────────────────────
+        tap("Reflections")
+        screenshot("33_lab_probes_default")
+        dragSlider("Probe Radius:", fraction = 1.0f)
+        screenshot("33a_lab_probes_max_radius")
+        dragSlider("Probe Y Position:", fraction = 1.0f)
+        screenshot("33b_lab_probes_y_max")
 
+        // ── Post-FX tab — SSAO / MSAA / FXAA / dithering switches ──────────────
+        // Defaults: SSAO=on, MSAA=off, FXAA=on, Dithering=on (the SDK's library
+        // defaults — FXAA & temporal dithering are cheap and noticeably improve
+        // quality on mobile GPUs).
+        tap("Post-FX")
+        screenshot("34_lab_postFx_defaults")
+        tap("SSAO (Ambient Occlusion)")      // SSAO → off
+        screenshot("34a_lab_postFx_ssao_off")
         tap("MSAA (4x Multi-Sample)")        // MSAA → on
-        screenshot("34a_postProc_msaa_on")
-
-        // Revert all four to their defaults: MSAA off, SSAO off, FXAA on, Dithering on.
-        tap("MSAA (4x Multi-Sample)")
+        screenshot("34b_lab_postFx_msaa_on")
+        // Revert the two toggled switches back to their defaults.
         tap("SSAO (Ambient Occlusion)")
-        tap("FXAA (Fast Approx. AA)")
-        tap("Temporal Dithering")
-        screenshot("35_postProc_back_to_defaults")
+        tap("MSAA (4x Multi-Sample)")
+        screenshot("35_lab_postFx_back_to_defaults")
     }
 
     // ── 9. Debug Overlay — preset reset ───────────────────────────────────────
@@ -608,31 +631,10 @@ class DemoInteractionTest {
         screenshot("41h_physics_reset")
     }
 
-    // ── 11. Environment Gallery — 6 HDR chips ─────────────────────────────────
-
-    @Test
-    fun environment_hdrGallery() {
-        openDemo("environment")
-        screenshot("42_env_studio_default")
-
-        tap("Studio Warm")
-        screenshot("43_env_studio_warm")
-
-        tap("Outdoor Cloudy")
-        screenshot("44_env_outdoor_cloudy")
-
-        tap("Chinese Garden")
-        screenshot("45_env_chinese_garden")
-
-        tap("Sunset")
-        screenshot("46_env_sunset")
-
-        tap("Rooftop Night")
-        screenshot("47_env_rooftop_night")
-
-        tap("Studio")
-        screenshot("48_env_studio_back")
-    }
+    // ── 11. Environment Gallery ───────────────────────────────────────────────
+    // #2239 Batch 2 — `environment` consolidated into `lighting-lab` (Environment
+    // tab). Covered by `lightingLab_allTabs` above, which taps the Environment tab
+    // and cycles the HDR chips.
 
     // ── 12. Billboard — skipped until lib bug #XXX fixed ──────────────────────
 
@@ -741,58 +743,13 @@ class DemoInteractionTest {
         dragSlider("Path Points:", fraction = 1.0f); screenshot("71b_linesPaths_points_max")
     }
 
-    // ── 18. Dynamic Sky — time + turbidity sliders ────────────────────────────
+    // ── 18. Dynamic Sky ───────────────────────────────────────────────────────
+    // #2239 Batch 2 — `dynamic-sky` consolidated into `lighting-lab` (Sky tab, the
+    // default landing tab). Covered by `lightingLab_allTabs` above.
 
-    @Test
-    fun dynamicSky_timeAndTurbidity() {
-        openDemo("dynamic-sky")
-        screenshot("72_sky_default")
-
-        dragSlider("Time of Day:", fraction = 0.1f)   // dawn
-        screenshot("73_sky_dawn")
-
-        dragSlider("Time of Day:", fraction = 0.5f)   // noon — mid value exercises the
-        screenshot("73a_sky_noon")                     // zenith sun-position path
-
-        dragSlider("Time of Day:", fraction = 0.9f)   // dusk
-        screenshot("74_sky_dusk")
-
-        dragSlider("Turbidity:", fraction = 0.0f)     // clear atmosphere
-        screenshot("74a_sky_low_turbidity")
-
-        dragSlider("Turbidity:", fraction = 0.5f)     // mid — typical overcast sky
-        screenshot("74b_sky_mid_turbidity")
-
-        dragSlider("Turbidity:", fraction = 1.0f)
-        screenshot("75_sky_high_turbidity")
-    }
-
-    // ── 19. Reflection Probes — radius + Y sliders ────────────────────────────
-
-    @Test
-    fun reflectionProbes_sliders() {
-        openDemo("reflection-probes")
-        screenshot("76_probes_default")
-
-        dragSlider("Probe Radius:", fraction = 1.0f)
-        screenshot("77_probes_max_radius")
-
-        dragSlider("Probe Radius:", fraction = 0.0f)
-        screenshot("78_probes_min_radius")
-
-        dragSlider("Probe Radius:", fraction = 0.5f)   // mid radius — realistic room
-        screenshot("78c_probes_mid_radius")
-
-        // Probe Y Position slider — second slider of the demo
-        dragSlider("Probe Y Position:", fraction = 0.0f)
-        screenshot("78a_probes_y_min")
-
-        dragSlider("Probe Y Position:", fraction = 0.5f)  // mid Y — typical eye-level probe
-        screenshot("78d_probes_y_mid")
-
-        dragSlider("Probe Y Position:", fraction = 1.0f)
-        screenshot("78b_probes_y_max")
-    }
+    // ── 19. Reflection Probes ─────────────────────────────────────────────────
+    // #2239 Batch 2 — `reflection-probes` consolidated into `lighting-lab`
+    // (Reflections tab). Covered by `lightingLab_allTabs` above.
 
     // ── 20. Image — scale slider ──────────────────────────────────────────────
 

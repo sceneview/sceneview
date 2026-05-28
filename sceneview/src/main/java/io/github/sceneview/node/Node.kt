@@ -179,6 +179,34 @@ open class Node(
     private var _quaternion: Quaternion = Quaternion()
     private var _scale: Scale = Scale(1.0f)
 
+    // World-space TRS cache (#2264, completes the #2187 fix for world-space getters).
+    //
+    // `_worldTransform` is `null` whenever the cache is dirty (initially, after a
+    // local transform write, or after `onWorldTransformChanged()` propagates from a
+    // moving ancestor). On the next world-space read we re-fetch the matrix from
+    // Filament once and decompose its TRS into the three pristine caches — so
+    // subsequent reads of `worldPosition / worldQuaternion / worldScale / worldRotation`
+    // never re-decompose the matrix or JNI back into TransformManager.
+    private var _worldTransform: Transform? = null
+    private var _worldPosition: Position = Position()
+    private var _worldQuaternion: Quaternion = Quaternion()
+    private var _worldScale: Scale = Scale(1.0f)
+    private var _worldRotation: Rotation = Rotation()
+
+    private fun refreshWorldCache(): Transform {
+        val world = transformManager.getWorldTransform(transformInstance)
+        _worldTransform = world
+        _worldPosition = world.position
+        _worldQuaternion = world.toQuaternion()
+        _worldScale = world.scale
+        // Extract Euler directly from the matrix (not via the quaternion) to stay
+        // bit-equivalent to the pre-cache `worldTransform.rotation` behavior — the
+        // matrix→quaternion→Euler path can pick a different branch near gimbal lock
+        // (e.g. 179.9° vs -180.1°) and break callers that compare successive readings.
+        _worldRotation = world.rotation
+        return world
+    }
+
     /**
      * Position to locate within the coordinate system the parent.
      *
@@ -232,7 +260,10 @@ open class Node(
      * @see worldTransform
      */
     open var worldPosition: Position
-        get() = worldTransform.position
+        get() {
+            if (_worldTransform == null) refreshWorldCache()
+            return _worldPosition
+        }
         set(value) {
             position = parent?.getLocalPosition(value) ?: value
         }
@@ -259,7 +290,10 @@ open class Node(
      * @see worldTransform
      */
     open var worldQuaternion: Quaternion
-        get() = worldTransform.toQuaternion()
+        get() {
+            if (_worldTransform == null) refreshWorldCache()
+            return _worldQuaternion
+        }
         set(value) {
             quaternion = parent?.getLocalQuaternion(value) ?: value
         }
@@ -292,7 +326,10 @@ open class Node(
      * @see worldTransform
      */
     open var worldRotation: Rotation
-        get() = worldTransform.rotation
+        get() {
+            if (_worldTransform == null) refreshWorldCache()
+            return _worldRotation
+        }
         set(value) {
             worldQuaternion = Quaternion.fromEuler(value)
         }
@@ -320,7 +357,10 @@ open class Node(
      * @see worldTransform
      */
     open var worldScale: Scale
-        get() = worldTransform.scale
+        get() {
+            if (_worldTransform == null) refreshWorldCache()
+            return _worldScale
+        }
         set(value) {
             scale = parent?.getLocalScale(value) ?: value
         }
@@ -354,7 +394,7 @@ open class Node(
      * @see TransformManager.getWorldTransform
      */
     var worldTransform: Transform
-        get() = transformManager.getWorldTransform(transformInstance)
+        get() = _worldTransform ?: refreshWorldCache()
         set(value) {
             transform = parent?.getLocalTransform(value) ?: value
         }
@@ -374,6 +414,10 @@ open class Node(
         set(value) {
             if (parentInstance != value) {
                 transformManager.setParent(transformInstance, value ?: 0)
+                // Reparenting changes this node's (and its descendants') world transform
+                // even though `transform` (local) is unchanged. Invalidate the world-space
+                // cache so subsequent reads re-fetch from Filament (#2264).
+                onWorldTransformChanged()
             }
         }
 
@@ -556,7 +600,23 @@ open class Node(
     val worldToLocal: Transform get() = inverse(worldTransform)
 
     val transformManager get() = engine.transformManager
-    val transformInstance get() = transformManager.getInstance(entity)
+
+    /**
+     * Cached [TransformManager] instance handle for this entity.
+     *
+     * `0` means "not yet looked up". The handle is stable for the lifetime of the
+     * entity in the [TransformManager], so we only pay the JNI thunk once instead of
+     * on every transform getter/setter — read by every `transform` / `worldTransform`
+     * / `worldPosition` / smooth-animation tick at 60–120 Hz (#2269).
+     */
+    private var _transformInstance: EntityInstance = 0
+    val transformInstance: EntityInstance
+        get() {
+            if (_transformInstance == 0) {
+                _transformInstance = transformManager.getInstance(entity)
+            }
+            return _transformInstance
+        }
 
     internal open val sceneEntities = listOf(entity)
     internal val onChildAdded = mutableListOf<(child: Node) -> Unit>()
@@ -885,6 +945,10 @@ open class Node(
      * for all of it's descendants.
      */
     open fun onWorldTransformChanged() {
+        // Invalidate the world-space TRS cache (#2264). The next read of
+        // worldTransform / worldPosition / worldQuaternion / worldScale /
+        // worldRotation will re-fetch from Filament and refresh the caches.
+        _worldTransform = null
         collider?.markWorldShapeDirty()
         childNodes.forEach { it.onWorldTransformChanged() }
     }
