@@ -28,7 +28,7 @@ kotlinMath = "1.8.0"
 # integration approach and slicing plan (issue #1738).
 jetpackXrArCore = "1.0.0-alpha14"
 
-# Filament 1.71.4 — must match the binary version of .filamat files committed
+# Filament 1.71.5 — must match the binary version of .filamat files committed
 # under sceneview/src/main/assets/materials/ and website-static/materials/.
 # Those were recompiled to material-binary version 71 in commit `efd296f1`
 # (Apr 11) when Filament was first bumped 1.70.2 → 1.71.0. The follow-up
@@ -37,14 +37,13 @@ jetpackXrArCore = "1.0.0-alpha14"
 # SIGABRT at material-load on Lighting / Geometry / Animation / MovableLight /
 # MultiModel demos (Filament 1.70.2 cannot parse v71 packages). v4.1.1
 # restores the consistent pair: 1.71.0 runtime + v71 .filamat.
-# 1.71.1–1.71.4 are patch releases with no material-format version change
+# 1.71.1–1.71.5 are patch releases with no material-format version change
 # (no MATERIAL_VERSION bump) — the .filamat blobs compiled at 1.71.0 remain
-# valid at 1.71.4. No matc recompile is required for this patch bump.
-# NOTE: Filament 1.71.5 is tagged on GitHub but NOT yet on Maven Central
-# (checked 2026-05-27). Bump to 1.71.5 once it appears on repo1.maven.org.
+# valid at 1.71.5. No matc recompile is required for this patch bump
+# (1.71.5 landed on repo1.maven.org, verified 2026-05-28).
 # Session #800 / #961 track future Filament bumps with the same paired-update
 # guarantee.
-filament = "1.71.4"
+filament = "1.71.5"
 arCore = "1.54.0"
 
 # Networking
