@@ -22,18 +22,15 @@ import io.github.sceneview.demo.demos.AnimationDemo
 import io.github.sceneview.demo.demos.CameraAndGesturesDemo
 import io.github.sceneview.demo.demos.CustomGeometryDemo
 import io.github.sceneview.demo.demos.DebugOverlayDemo
-import io.github.sceneview.demo.demos.DynamicSkyDemo
-import io.github.sceneview.demo.demos.EnvironmentDemo
 import io.github.sceneview.demo.demos.FogDemo
 import io.github.sceneview.demo.demos.GeometryDemo
 import io.github.sceneview.demo.demos.LightingDemo
+import io.github.sceneview.demo.demos.LightingLabDemo
 import io.github.sceneview.demo.demos.LinesPathsDemo
 import io.github.sceneview.demo.demos.ModelViewerDemo
 import io.github.sceneview.demo.demos.MultiModelDemo
 import io.github.sceneview.demo.demos.PhysicsDemo
 import io.github.sceneview.demo.demos.PickingAndCollisionDemo
-import io.github.sceneview.demo.demos.PostProcessingDemo
-import io.github.sceneview.demo.demos.ReflectionProbesDemo
 import io.github.sceneview.demo.demos.SecondaryCameraDemo
 import io.github.sceneview.demo.demos.TwoDInThreeDDemo
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
@@ -101,9 +98,10 @@ class DemoHostActivity : ComponentActivity() {
             "multi-model" -> MultiModelDemo(onBack = back)
             // Lighting & Environment
             "lighting" -> LightingDemo(onBack = back)
-            "dynamic-sky" -> DynamicSkyDemo(onBack = back)
             "fog" -> FogDemo(onBack = back)
-            "environment" -> EnvironmentDemo(onBack = back)
+            // #2239 Batch 2 — `dynamic-sky`, `environment`, `reflection-probes`, `post-processing` consolidated into `lighting-lab`.
+            "lighting-lab", "dynamic-sky", "environment", "reflection-probes", "post-processing" ->
+                LightingLabDemo(onBack = back)
             // Content
             // #2239 Batch 1 — `text`, `image`, `video`, `billboard` consolidated into `two-d-in-three-d`.
             "two-d-in-three-d", "text", "image", "video", "billboard" -> TwoDInThreeDDemo(onBack = back)
@@ -115,10 +113,8 @@ class DemoHostActivity : ComponentActivity() {
             "picking-collision", "collision", "view-node" -> PickingAndCollisionDemo(onBack = back)
             // Advanced
             "physics" -> PhysicsDemo(onBack = back)
-            "post-processing" -> PostProcessingDemo(onBack = back)
             // #2239 Batch 1 — `custom-mesh` and `shape` consolidated into `custom-geometry`.
             "custom-geometry", "custom-mesh", "shape" -> CustomGeometryDemo(onBack = back)
-            "reflection-probes" -> ReflectionProbesDemo(onBack = back)
             "secondary-camera" -> SecondaryCameraDemo(onBack = back)
             "debug-overlay" -> DebugOverlayDemo(onBack = back)
             // Augmented Reality

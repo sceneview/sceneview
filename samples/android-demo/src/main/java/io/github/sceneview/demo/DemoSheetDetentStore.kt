@@ -12,7 +12,7 @@ import androidx.compose.material3.SheetValue
  * sub-item of the bottom-sheet umbrella (#1154 Stage 3).
  *
  * Without this the sheet always re-opens at [SheetValue.PartiallyExpanded]. A
- * power user who, for a control-heavy demo (e.g. `DynamicSkyDemo`), always wants
+ * power user who, for a control-heavy demo (e.g. `LightingLabDemo`), always wants
  * the **fully-expanded** sheet had to re-drag it up on every single open. This
  * store records the detent the user last left the sheet at, **per demo**, so
  * each demo reopens its sheet exactly where it was last used.

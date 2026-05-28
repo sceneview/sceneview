@@ -144,20 +144,18 @@ class DemoRenderingScreenshotTest {
     }
 
     @Test
-    fun reflectionProbesDemo_default_state() {
-        // Probe baking captures the current scene state and writes a fresh cubemap each
-        // run. Order of model loads, environment-HDR async resolution, and probe
-        // placement all shift the baked reflections substantially. 60 % handles the
-        // worst case observed; the test still catches "no model rendered at all".
-        captureAndCompare(demoSlug = "reflection-probes", goldenName = "reflectionprobes_default", settleSeconds = 4,
-            pixelDiffTolerancePercent = 60.0f, maxChannelDiff = 32)
-    }
-
-    @Test
-    fun environmentDemo_default_state() {
-        // HDR-driven IBL has ≤4 % residual diff between cold/warm cache runs.
-        captureAndCompare(demoSlug = "environment", goldenName = "environment_default", settleSeconds = 5,
-            pixelDiffTolerancePercent = 5.0f, maxChannelDiff = 16)
+    fun lightingLabDemo_default_state() {
+        // #2239 Batch 2 — `dynamic-sky`, `environment`, `reflection-probes`, and
+        // `post-processing` consolidated into `lighting-lab`. Default landing tab is
+        // Sky (the dynamic-sky scene), so the captured frame is comparable to the
+        // prior `dynamicsky_default` golden once re-baselined. The Environment /
+        // Reflections / Post-FX sub-modes are reachable via segmented-button taps but
+        // covered only via DemoInteractionTest; dedicated screenshot captures would
+        // need a tab-aware deep-link parameter (follow-up). The procedural-sky shader
+        // has very high gradient sensitivity around the horizon, so TAA jitter bleeds
+        // into entire pixel rows along the sun band — 15 % handles cold + warm runs.
+        captureAndCompare(demoSlug = "lighting-lab", goldenName = "lightinglab_default", settleSeconds = 4,
+            pixelDiffTolerancePercent = 15.0f, maxChannelDiff = 24)
     }
 
     // #2239 Batch 1 — `billboard` consolidated into `two-d-in-three-d` (Billboard sub-mode,
@@ -180,22 +178,11 @@ class DemoRenderingScreenshotTest {
     // reachable via the "Node Gestures" segmented button; a dedicated capture would
     // need a tab-aware deep-link parameter (follow-up).
 
-    @Test
-    fun dynamicSkyDemo_default_state() {
-        // The procedural-sky shader has very high gradient sensitivity around the
-        // horizon; tiny TAA-jitter bleeds into entire pixel rows along the sun band.
-        // 15 % handles cold + warm runs.
-        captureAndCompare(demoSlug = "dynamic-sky", goldenName = "dynamicsky_default", settleSeconds = 4,
-            pixelDiffTolerancePercent = 15.0f, maxChannelDiff = 24)
-    }
-
-    @Test
-    fun postProcessingDemo_default_state() {
-        // The bloom pass averages over multiple frames, slight TAA bleed pushes diff
-        // just above 2 % default; 5 % is plenty.
-        captureAndCompare(demoSlug = "post-processing", goldenName = "postprocessing_default", settleSeconds = 4,
-            pixelDiffTolerancePercent = 5.0f, maxChannelDiff = 16)
-    }
+    // #2239 Batch 2 — `dynamic-sky`, `environment`, `reflection-probes`, and
+    // `post-processing` consolidated into `lighting-lab` (covered by
+    // `lightingLabDemo_default_state` above). The Environment / Reflections / Post-FX
+    // sub-modes are reachable via segmented-button taps; dedicated sub-mode captures
+    // would need a tab-aware deep-link parameter (follow-up).
 
     @Test
     fun cameraAndGesturesDemo_default_state() {
