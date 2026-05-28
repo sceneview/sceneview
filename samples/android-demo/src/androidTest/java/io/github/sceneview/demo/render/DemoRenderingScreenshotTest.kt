@@ -121,11 +121,12 @@ class DemoRenderingScreenshotTest {
         captureAndCompare(demoSlug = "lines-paths", goldenName = "linespaths_default", settleSeconds = 3)
     }
 
-    @Test
-    fun shapeDemo_default_state() {
-        captureAndCompare(demoSlug = "shape", goldenName = "shape_default", settleSeconds = 3,
-            pixelDiffTolerancePercent = 10.0f, maxChannelDiff = 16)
-    }
+    // #2239 Batch 1 — `shape` (and `custom-mesh`) consolidated into `custom-geometry`
+    // (covered by `customGeometryDemo_default_state` below). The Shape Extrude sub-mode
+    // is reachable via the "Shape" segmented button; a dedicated sub-mode capture would
+    // need a tab-aware deep-link parameter (follow-up). The old `shapeDemo_default_state`
+    // test was removed: it launched the retired `shape` slug (aliased to `custom-geometry`)
+    // against the deleted `shape_default` golden, so it only ever silently skipped.
 
     @Test
     fun pickingCollisionDemo_default_state() {
