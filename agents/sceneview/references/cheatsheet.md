@@ -85,7 +85,7 @@ There is **no `rememberARSession`** helper — configure via the
 | `ViewNode` | `PickingAndCollisionDemo.kt` | Embeds a Compose UI inside 3D (View Node tab of the unified demo) |
 | `LineNode / PathNode` | `LinesPathsDemo.kt` | Procedural lines/paths |
 | `PhysicsNode(node, mass, restitution, …)` | `PhysicsDemo.kt` | Wraps an existing node; experimental |
-| `ReflectionProbeNode` | `ReflectionProbesDemo.kt` | Local IBL probe |
+| `ReflectionProbeNode` | `LightingLabDemo.kt` | Local IBL probe (Reflections tab of unified Lighting Lab demo) |
 
 For collision, use the **`rememberCollisionSystem(view)`** helper (it's already
 plumbed by default in `SceneView`'s param list above) — not a node type. See

@@ -4000,10 +4000,9 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Lighting & Environment
 
-- `dynamic-sky` — Dynamic Sky. Time-of-day sun simulation.
-- `environment` — Environment Gallery. HDR environment switching.
 - `fog` — Fog. Linear, exponential, and height fog.
 - `lighting` — Lighting. Light types, plus a movable orbiting light.
+- `lighting-lab` — Lighting Lab. Dynamic sky, HDR environment, reflection probes, and post-FX.
 
 ### Content
 
@@ -4023,8 +4022,6 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `materials` — PBR Materials. KHR_materials_* extension showcase — sheen, transmission, iridescence.
 - `occlusion-material` — Occlusion Material. Invisible depth-writing surface hides content behind it.
 - `physics` — Physics. Gravity, collisions, and rigid bodies.
-- `post-processing` — Post Processing. SSAO, anti-aliasing, and tone mapping.
-- `reflection-probes` — Reflection Probes. Local cubemap reflections.
 - `secondary-camera` — Secondary Camera (PiP). Picture-in-picture camera view.
 - `spatial-audio` — Spatial Audio. 3D positional sound that pans as you orbit.
 - `texture-streaming` — Material Streaming. Swap textures and materials on a model at runtime.

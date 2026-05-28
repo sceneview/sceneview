@@ -42,9 +42,9 @@ import io.github.sceneview.rememberEnvironment
  * The HDR decodes asynchronously; until it is ready this falls back to the
  * default neutral environment so the first frames never flash black either.
  *
- * Demos whose *subject* is the environment ([io.github.sceneview.demo.demos.EnvironmentDemo],
- * `DynamicSkyDemo`, `ReflectionProbesDemo`) manage their own environment and
- * must NOT use this helper. AR demos use ARCore light estimation, not IBL, and
+ * Demos whose *subject* is the environment ([io.github.sceneview.demo.demos.LightingLabDemo]'s
+ * Sky / Environment / Reflections tabs) manage their own environment and must
+ * NOT use this helper. AR demos use ARCore light estimation, not IBL, and
  * are likewise out of scope.
  */
 @Composable
