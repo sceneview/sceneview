@@ -13,7 +13,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.arcore.createAnchor
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.arcore.position
-import io.github.sceneview.ar.arcore.transform
+import io.github.sceneview.ar.arcore.quaternion
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.node.Node
 
@@ -57,7 +57,26 @@ open class PoseNode(
         set(value) {
             if (field != value) {
                 field = value
-                worldTransform(pose.transform)
+                // Write the world translation + rotation from the ARCore Pose components
+                // instead of routing through `worldTransform(pose.transform)`, which
+                // allocated a fresh FloatArray(16) + a Transform wrap and then decomposed
+                // that matrix back into position/quaternion/scale. An ARCore Pose is a
+                // rigid transform (no scale), so the prior path also reset any user-set
+                // scale to identity every frame — passing only translation + rotation
+                // preserves the node's scale. Fires for every AnchorNode / PlaneNode /
+                // AugmentedFaceNode / AugmentedImageNode / StreetscapeGeometryNode on every
+                // frame (#2266 / umbrella #2263).
+                if (isSmoothTransformEnabled) {
+                    // HitResultNode / DepthHitResultNode set isSmoothTransformEnabled = true
+                    // and reassign `pose` every frame; the old `worldTransform(pose.transform)`
+                    // path fed the smooth slerp. Keep that smooth-follow (the component
+                    // overload still avoids Pose.transform's FloatArray(16)) (#2296 review).
+                    worldTransform(position = value.position, quaternion = value.quaternion)
+                } else {
+                    // High-frequency non-smooth nodes: fully alloc-free direct TRS write.
+                    worldPosition = value.position
+                    worldQuaternion = value.quaternion
+                }
                 onPoseChanged(value)
             }
         }
@@ -98,7 +117,10 @@ open class PoseNode(
         }
 
     init {
-        worldTransform = pose.transform
+        // Seed the initial world transform from the Pose components directly, matching the
+        // allocation-free setter path above (#2266).
+        worldPosition = pose.position
+        worldQuaternion = pose.quaternion
 
         updateVisibility()
     }
