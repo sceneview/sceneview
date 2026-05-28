@@ -49,14 +49,18 @@ class NodeAnimationDelegate(
      */
     fun onFrame(frameTimeNanos: Long) {
         smoothTransform?.let { target ->
-            if (target != node.transform) {
+            // Read `node.transform` once per frame — pre-fix this fired 3× per
+            // smooth-animated node per frame, each round-tripping through the
+            // TransformManager JNI plus a FloatArray(16) + Mat4 allocation (#2265).
+            val current = node.transform
+            if (target != current) {
                 val slerpTransform = slerp(
-                    start = node.transform,
+                    start = current,
                     end = target,
                     deltaSeconds = frameTimeNanos.intervalSeconds(lastFrameTimeNanos),
                     speed = smoothTransformSpeed
                 )
-                if (!slerpTransform.equals(node.transform, delta = 0.001f)) {
+                if (!slerpTransform.equals(current, delta = 0.001f)) {
                     node.transform = slerpTransform
                 } else {
                     node.transform = target
