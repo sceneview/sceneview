@@ -81,6 +81,14 @@ internal object DeepLinkRouter {
         // follow-up enhancement, not in Batch 1 scope).
         "custom-mesh" to "custom-geometry",
         "shape" to "custom-geometry",
+        // #2239 Batch 1 — Picking & Collision consolidation. The retired
+        // `collision` and `view-node` demos merged into `picking-collision`
+        // with a segmented-button toggle. Existing `sceneview://demo/collision`
+        // and `sceneview://demo/view-node` deep links keep working; the
+        // unified demo opens on its default Ray Hit-Test tab (tab
+        // pre-selection from alias is a planned follow-up).
+        "collision" to "picking-collision",
+        "view-node" to "picking-collision",
         // #2239 Batch 1 — 2D in 3D consolidation. The retired `text`, `image`,
         // `video`, and `billboard` demos merged into `two-d-in-three-d` with a
         // segmented-button toggle. The unified demo opens on its default Text

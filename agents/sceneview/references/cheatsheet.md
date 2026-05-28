@@ -82,14 +82,14 @@ There is **no `rememberARSession`** helper — configure via the
 | `BillboardNode` | `TwoDInThreeDDemo.kt` | Always faces the camera (Billboard tab of unified 2D in 3D demo) |
 | `ImageNode` | `TwoDInThreeDDemo.kt` | 2D image quad (Image tab of unified 2D in 3D demo) |
 | `TextNode` | `TwoDInThreeDDemo.kt` | 3D text (Text tab of unified 2D in 3D demo). Uses `widthMeters` / `heightMeters`, NOT `scaleToUnits` |
-| `ViewNode` | `ViewNodeDemo.kt` | Embeds a Compose UI inside 3D |
+| `ViewNode` | `PickingAndCollisionDemo.kt` | Embeds a Compose UI inside 3D (View Node tab of the unified demo) |
 | `LineNode / PathNode` | `LinesPathsDemo.kt` | Procedural lines/paths |
 | `PhysicsNode(node, mass, restitution, …)` | `PhysicsDemo.kt` | Wraps an existing node; experimental |
 | `ReflectionProbeNode` | `ReflectionProbesDemo.kt` | Local IBL probe |
 
 For collision, use the **`rememberCollisionSystem(view)`** helper (it's already
 plumbed by default in `SceneView`'s param list above) — not a node type. See
-`CollisionDemo.kt` for the API in action.
+`PickingAndCollisionDemo.kt` (Ray Hit-Test tab of the unified Picking & Collision demo) for the API in action.
 
 ## AR-only nodes (in `arsceneview`)
 

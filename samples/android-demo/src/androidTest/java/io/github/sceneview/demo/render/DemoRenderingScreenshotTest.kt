@@ -128,8 +128,11 @@ class DemoRenderingScreenshotTest {
     }
 
     @Test
-    fun collisionDemo_default_state() {
-        captureAndCompare(demoSlug = "collision", goldenName = "collision_default", settleSeconds = 3,
+    fun pickingCollisionDemo_default_state() {
+        // #2239 Batch 1 — `collision` and `view-node` consolidated into `picking-collision`.
+        // The default landing tab is Ray Hit-Test, so the captured frame is comparable to
+        // the prior `collision_default` golden once it is re-baselined.
+        captureAndCompare(demoSlug = "picking-collision", goldenName = "pickingcollision_default", settleSeconds = 3,
             pixelDiffTolerancePercent = 8.0f, maxChannelDiff = 16)
     }
 
@@ -160,11 +163,11 @@ class DemoRenderingScreenshotTest {
     // reachable via the "Billboard" segmented button; default landing tab covered by
     // `twoDInThreeDDemo_default_state` above).
 
-    @Test
-    fun viewNodeDemo_default_state() {
-        captureAndCompare(demoSlug = "view-node", goldenName = "viewnode_default", settleSeconds = 3,
-            pixelDiffTolerancePercent = 10.0f, maxChannelDiff = 16)
-    }
+    // #2239 Batch 1 — `view-node` consolidated into `picking-collision` (covered by
+    // `pickingCollisionDemo_default_state` above). The View Node sub-mode is reachable
+    // by tapping the "View Node" segmented button, but the renderer-screenshot test
+    // covers the default landing tab only; a dedicated sub-mode capture would need
+    // a tab-aware deep-link parameter (follow-up).
 
     @Test
     fun debugOverlayDemo_default_state() {

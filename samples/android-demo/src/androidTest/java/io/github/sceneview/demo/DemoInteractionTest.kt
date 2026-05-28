@@ -839,7 +839,11 @@ class DemoInteractionTest {
 
     @Test
     fun viewNode_visibleAndTapCounter() {
-        openDemo("view-node")
+        // #2239 Batch 1 — `view-node` and `collision` consolidated into
+        // `picking-collision` with a segmented toggle. Open the unified demo,
+        // switch to the "View Node" tab, then run the original interactions.
+        openDemo("picking-collision")
+        tap("View Node")
         screenshot("88_viewNode_visible_default")
 
         // ViewNode's "Tap me" Button is rendered inside a Compose hierarchy attached to
@@ -926,7 +930,10 @@ class DemoInteractionTest {
 
     @Test
     fun collision_shapeTapAndReset() {
-        openDemo("collision")
+        // #2239 Batch 1 — `collision` and `view-node` consolidated into
+        // `picking-collision`. The default landing tab is Ray Hit-Test, so the
+        // alias arrives ready to exercise the shape-tap + Reset Colors flow.
+        openDemo("picking-collision")
         screenshot("85_collision_default")
 
         val w = device.displayWidth

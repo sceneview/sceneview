@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **Samples catalog: unified Picking & Collision demo ([#2239](https://github.com/sceneview/sceneview/issues/2239)).** The retired `collision` and `view-node` demos consolidated into a single `picking-collision` entry with a segmented-button toggle between Ray Hit-Test (tap-driven highlight) and View Node (Compose UI on a textured quad) modes. Existing `sceneview://demo/collision` and `sceneview://demo/view-node` deep links keep working via `DEMO_ID_ALIASES`.
