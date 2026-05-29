@@ -127,4 +127,79 @@ class MathTest {
         // 0.5^2.2 ≈ 0.2176
         assertClose(0.2176f, linear[0], 0.01f)
     }
+
+    // ── slerp TRS-tuple overload (#2265) ──────────────────────────────────────
+
+    /**
+     * The pre-decomposed TRS-tuple `slerp` overload must produce the same result as the
+     * `Transform`-based overload (which is now implemented in terms of it). Position and scale
+     * are compared component-wise; the quaternion is compared via |dot| ≈ 1 to tolerate the
+     * sign double-cover introduced by the matrix decompose/recompose round-trip on the
+     * Transform path.
+     */
+    @Test
+    fun slerpTrsTupleMatchesTransformOverload() {
+        val start = Transform(
+            position = Float3(0f, 0f, 0f),
+            rotation = Float3(0f, 0f, 0f),
+            scale = Float3(1f, 1f, 1f)
+        )
+        val end = Transform(
+            position = Float3(10f, 20f, 30f),
+            rotation = Float3(0f, 90f, 0f),
+            scale = Float3(2f, 4f, 8f)
+        )
+        val deltaSeconds = 1.0 / 60.0
+        val speed = 5f
+
+        val viaTransform = slerp(start, end, deltaSeconds, speed)
+        val (position, quaternion, scale) = slerp(
+            startPosition = start.position,
+            startQuaternion = start.quaternion,
+            startScale = start.scale,
+            endPosition = end.position,
+            endQuaternion = end.quaternion,
+            endScale = end.scale,
+            deltaSeconds = deltaSeconds,
+            speed = speed
+        )
+
+        assertClose(viaTransform.position.x, position.x)
+        assertClose(viaTransform.position.y, position.y)
+        assertClose(viaTransform.position.z, position.z)
+        assertClose(viaTransform.scale.x, scale.x)
+        assertClose(viaTransform.scale.y, scale.y)
+        assertClose(viaTransform.scale.z, scale.z)
+
+        val q = viaTransform.quaternion
+        val dot = quaternion.x * q.x + quaternion.y * q.y + quaternion.z * q.z + quaternion.w * q.w
+        assertTrue(abs(dot) > 0.9999f, "quaternion mismatch: dot=$dot")
+    }
+
+    /** `deltaSeconds <= 0` (or `speed <= 0`) yields a zero factor → the start components. */
+    @Test
+    fun slerpTrsTupleZeroDeltaReturnsStart() {
+        val startPosition = Float3(1f, 2f, 3f)
+        val startQuaternion = Float3(0f, 45f, 0f).toQuaternion()
+        val startScale = Float3(2f, 2f, 2f)
+
+        val (position, quaternion, scale) = slerp(
+            startPosition = startPosition,
+            startQuaternion = startQuaternion,
+            startScale = startScale,
+            endPosition = Float3(9f, 9f, 9f),
+            endQuaternion = Float3(0f, 90f, 0f).toQuaternion(),
+            endScale = Float3(5f, 5f, 5f),
+            deltaSeconds = 0.0,
+            speed = 5f
+        )
+
+        assertClose(startPosition.x, position.x)
+        assertClose(startPosition.y, position.y)
+        assertClose(startPosition.z, position.z)
+        assertClose(startScale.x, scale.x)
+        val dot = quaternion.x * startQuaternion.x + quaternion.y * startQuaternion.y +
+            quaternion.z * startQuaternion.z + quaternion.w * startQuaternion.w
+        assertTrue(abs(dot) > 0.9999f, "expected start quaternion, dot=$dot")
+    }
 }

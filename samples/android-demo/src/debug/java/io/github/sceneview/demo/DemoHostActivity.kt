@@ -31,6 +31,7 @@ import io.github.sceneview.demo.demos.MaterialsDemo
 import io.github.sceneview.demo.demos.ModelViewerDemo
 import io.github.sceneview.demo.demos.PhysicsDemo
 import io.github.sceneview.demo.demos.PickingAndCollisionDemo
+import io.github.sceneview.demo.demos.PlaneGridPreviewDemo
 import io.github.sceneview.demo.demos.SecondaryCameraDemo
 import io.github.sceneview.demo.demos.TwoDInThreeDDemo
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
@@ -120,6 +121,8 @@ class DemoHostActivity : ComponentActivity() {
             "custom-geometry", "custom-mesh", "shape" -> CustomGeometryDemo(onBack = back)
             "secondary-camera" -> SecondaryCameraDemo(onBack = back)
             "debug-overlay" -> DebugOverlayDemo(onBack = back)
+            // #2224 — non-AR static preview of the ARCore plane grid material for shader QA.
+            "plane-grid-preview" -> PlaneGridPreviewDemo(onBack = back)
             // Augmented Reality
             "ar-placement" -> ARPlacementDemo(onBack = back)
             "ar-image" -> ARImageDemo(onBack = back)
