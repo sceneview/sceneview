@@ -1,5 +1,6 @@
 package io.github.sceneview.ar
 
+import io.github.sceneview.ar.arcore.applyTrackedUpdates
 import io.github.sceneview.ar.arcore.diffTrackedSet
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -116,5 +117,72 @@ class PlaneDiffTest {
         assertEquals(listOf(second), added)
         assertTrue(updated.isEmpty())
         assertEquals(listOf(first), removed)
+    }
+
+    // ── applyTrackedUpdates — incremental cache core (#2270) ─────────────────────────────────────
+    //
+    // rememberDetectedPlanes' incremental path keeps a mutable cache of TRACKING planes and applies
+    // only `frame.getUpdatedPlanes()` deltas to it each frame instead of re-scanning getAllTrackables.
+    // The membership bookkeeping is split into applyTrackedUpdates so it is unit-testable against
+    // plain objects (the same JNI constraint as diffTrackedSet above). `isActive` stands in for the
+    // on-device `trackingState == TRACKING` predicate.
+
+    @Test
+    fun `applyTrackedUpdates — active deltas are added to the cache`() {
+        val a = FakePlane("a")
+        val b = FakePlane("b")
+        val tracked = linkedSetOf<FakePlane>()
+        applyTrackedUpdates(tracked, listOf(a, b)) { true }
+        assertEquals(setOf(a, b), tracked)
+    }
+
+    @Test
+    fun `applyTrackedUpdates — inactive delta removes a previously tracked plane`() {
+        val kept = FakePlane("kept")
+        val subsumed = FakePlane("subsumed")
+        val tracked = linkedSetOf(kept, subsumed)
+        // subsumed transitions to STOPPED this frame → not active → dropped.
+        applyTrackedUpdates(tracked, listOf(subsumed)) { it != subsumed }
+        assertEquals(setOf(kept), tracked)
+    }
+
+    @Test
+    fun `applyTrackedUpdates — re-adding an already tracked plane is idempotent`() {
+        val a = FakePlane("a")
+        val tracked = linkedSetOf(a)
+        applyTrackedUpdates(tracked, listOf(a)) { true }
+        assertEquals(setOf(a), tracked)
+    }
+
+    @Test
+    fun `applyTrackedUpdates — empty delta leaves the cache untouched`() {
+        val a = FakePlane("a")
+        val tracked = linkedSetOf(a)
+        applyTrackedUpdates(tracked, emptyList()) { true }
+        assertEquals(setOf(a), tracked)
+    }
+
+    @Test
+    fun `applyTrackedUpdates — mixed delta adds active and drops inactive in one pass`() {
+        val kept = FakePlane("kept")     // already tracked, stays TRACKING
+        val gone = FakePlane("gone")     // already tracked, now STOPPED
+        val fresh = FakePlane("fresh")   // newly TRACKING
+        val tracked = linkedSetOf(kept, gone)
+
+        applyTrackedUpdates(tracked, listOf(kept, gone, fresh)) { it != gone }
+
+        assertEquals(setOf(kept, fresh), tracked)
+    }
+
+    @Test
+    fun `applyTrackedUpdates — insertion order is preserved across frames`() {
+        // LinkedHashSet backing keeps the State<List<Plane>> stable so Compose keys don't churn.
+        val a = FakePlane("a")
+        val b = FakePlane("b")
+        val c = FakePlane("c")
+        val tracked = linkedSetOf<FakePlane>()
+        applyTrackedUpdates(tracked, listOf(a, b)) { true }   // frame 1
+        applyTrackedUpdates(tracked, listOf(c)) { true }      // frame 2 — c appended
+        assertEquals(listOf(a, b, c), tracked.toList())
     }
 }
