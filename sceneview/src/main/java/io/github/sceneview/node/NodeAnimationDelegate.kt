@@ -2,6 +2,7 @@ package io.github.sceneview.node
 
 import io.github.sceneview.math.Transform
 import io.github.sceneview.math.equals
+import io.github.sceneview.math.quaternion
 import io.github.sceneview.math.slerp
 import io.github.sceneview.utils.intervalSeconds
 
@@ -49,17 +50,30 @@ class NodeAnimationDelegate(
      */
     fun onFrame(frameTimeNanos: Long) {
         smoothTransform?.let { target ->
-            // Read `node.transform` once per frame — pre-fix this fired 3× per
-            // smooth-animated node per frame, each round-tripping through the
-            // TransformManager JNI plus a FloatArray(16) + Mat4 allocation (#2265).
+            // #2265: read node.transform ONCE per frame (was 3 Filament JNI round-trips —
+            // the `target != node.transform` check, the slerp `start`, and the convergence
+            // `equals`). `current` is reused for both exact comparisons so behaviour is
+            // unchanged. (The single-read landed via #2280; this PR additionally feeds slerp
+            // the cached components below.)
             val current = node.transform
             if (target != current) {
-                val slerpTransform = slerp(
-                    start = current,
-                    end = target,
+                // Feed slerp the node's #2187-cached local TRS (Node.position / quaternion /
+                // scale return the pristine `_position` / `_quaternion` / `_scale` — no extra
+                // Mat4 decomposition) via the TRS-tuple overload, instead of re-decomposing
+                // `current` inside slerp. Cuts the per-call matrix decompositions from 6 to 3
+                // (only `target` is decomposed). `node.position/quaternion/scale` are the same
+                // decomposition `current` would yield, so the trajectory is identical.
+                val (slerpPosition, slerpQuaternion, slerpScale) = slerp(
+                    startPosition = node.position,
+                    startQuaternion = node.quaternion,
+                    startScale = node.scale,
+                    endPosition = target.position,
+                    endQuaternion = target.quaternion,
+                    endScale = target.scale,
                     deltaSeconds = frameTimeNanos.intervalSeconds(lastFrameTimeNanos),
                     speed = smoothTransformSpeed
                 )
+                val slerpTransform = Transform(slerpPosition, slerpQuaternion, slerpScale)
                 if (!slerpTransform.equals(current, delta = 0.001f)) {
                     node.transform = slerpTransform
                 } else {
