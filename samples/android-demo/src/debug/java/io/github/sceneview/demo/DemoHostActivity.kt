@@ -18,7 +18,7 @@ import io.github.sceneview.demo.demos.ARRerunDemo
 import io.github.sceneview.demo.demos.ARRooftopAnchorDemo
 import io.github.sceneview.demo.demos.ARStreetscapeDemo
 import io.github.sceneview.demo.demos.ARTerrainAnchorDemo
-import io.github.sceneview.demo.demos.AnimationDemo
+import io.github.sceneview.demo.demos.AnimationPhysicsDemo
 import io.github.sceneview.demo.demos.CameraAndGesturesDemo
 import io.github.sceneview.demo.demos.CustomGeometryDemo
 import io.github.sceneview.demo.demos.DebugOverlayDemo
@@ -30,7 +30,6 @@ import io.github.sceneview.demo.demos.LinesPathsDemo
 import io.github.sceneview.demo.demos.MaterialsDemo
 import io.github.sceneview.demo.demos.ModelViewerDemo
 import io.github.sceneview.demo.demos.MultiModelDemo
-import io.github.sceneview.demo.demos.PhysicsDemo
 import io.github.sceneview.demo.demos.PickingAndCollisionDemo
 import io.github.sceneview.demo.demos.PlaneGridPreviewDemo
 import io.github.sceneview.demo.demos.SecondaryCameraDemo
@@ -96,7 +95,8 @@ class DemoHostActivity : ComponentActivity() {
             // 3D Basics
             "model-viewer" -> ModelViewerDemo(onBack = back)
             "geometry" -> GeometryDemo(onBack = back)
-            "animation" -> AnimationDemo(onBack = back)
+            // #2239 Batch 3 — `animation` and `physics` consolidated into `animation-physics`.
+            "animation-physics", "animation", "physics" -> AnimationPhysicsDemo(onBack = back)
             "multi-model" -> MultiModelDemo(onBack = back)
             // Lighting & Environment
             "lighting" -> LightingDemo(onBack = back)
@@ -114,7 +114,6 @@ class DemoHostActivity : ComponentActivity() {
             // #2239 Batch 1 — `collision` and `view-node` consolidated into `picking-collision`.
             "picking-collision", "collision", "view-node" -> PickingAndCollisionDemo(onBack = back)
             // Advanced
-            "physics" -> PhysicsDemo(onBack = back)
             // #2239 Batch 4 — `texture-streaming` and `occlusion-material` consolidated into `materials`.
             "materials", "texture-streaming", "occlusion-material" -> MaterialsDemo(onBack = back)
             // #2239 Batch 1 — `custom-mesh` and `shape` consolidated into `custom-geometry`.

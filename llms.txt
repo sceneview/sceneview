@@ -3992,7 +3992,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### 3D Basics
 
-- `animation` — Animation. Play, pause, and control animations.
+- `animation-physics` — Animation & Physics. Skeletal animation playback and rigid-body simulation.
 - `geometry` — Geometry Primitives. Cube, sphere, cylinder, cone, plane.
 - `model-viewer` — Model Viewer. Load and display 3D models.
 - `multi-model` — Multi-Model Scene. Multiple models in one scene.
@@ -4020,7 +4020,6 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `debug-overlay` — Debug Overlay. Performance stats overlay.
 - `double-pendulum` — Double Pendulum. Chaotic two-link physics, shared KMP simulation.
 - `materials` — Materials. PBR extension showcase, runtime material streaming, and occlusion material.
-- `physics` — Physics. Gravity, collisions, and rigid bodies.
 - `secondary-camera` — Secondary Camera (PiP). Picture-in-picture camera view.
 - `spatial-audio` — Spatial Audio. 3D positional sound that pans as you orbit.
 

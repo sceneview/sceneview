@@ -113,7 +113,7 @@ internal object DemoMath {
 
     /**
      * The five scripted camera shots offered by
-     * [io.github.sceneview.demo.demos.AnimationDemo].
+     * [io.github.sceneview.demo.demos.AnimationPhysicsDemo] (Animation tab).
      *
      * Mirrors the demo's private `CameraMode` enum — kept as a separate public
      * type in [DemoMath] so the choreography ([cameraModeScript]) can be
@@ -168,7 +168,7 @@ internal object DemoMath {
 
     /**
      * The keyframe choreography for one cinematic [shot] of
-     * [io.github.sceneview.demo.demos.AnimationDemo].
+     * [io.github.sceneview.demo.demos.AnimationPhysicsDemo] (Animation tab).
      *
      * Returns the ordered list of [CameraStep]s that make up **one loop** of the
      * shot (the demo replays the list forever). [CameraShot.FREE] returns an
