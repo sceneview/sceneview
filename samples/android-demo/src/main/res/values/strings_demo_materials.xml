@@ -1,14 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Strings for the `materials` demo (registered by
-     `MaterialsFragment.kt`). Android's resource merger
-     fans every `res/values/*.xml` file in, so `R.string.demo_materials_title` etc.
+<!-- Strings for the unified `materials` demo (registered by
+     `MaterialsFragment.kt`). Consolidates the retired `texture-streaming` and
+     `occlusion-material` demos (#2239 Batch 4) — the `materials` id stays the
+     live umbrella, the other two deep-link through
+     `DeepLinkRouter.DEMO_ID_ALIASES`. Android's resource merger fans every
+     `res/values/*.xml` file in, so `R.string.demo_materials_title` etc.
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_materials_title">PBR Materials</string>
-    <string name="demo_materials_subtitle">KHR_materials_* extension showcase — sheen, transmission, iridescence</string>
+    <string name="demo_materials_title">Materials</string>
+    <string name="demo_materials_subtitle">PBR extension showcase, runtime material streaming, and occlusion material</string>
     <string name="demo_materials_credit">by %1$s · CC-BY 4.0</string>
     <string name="demo_materials_loading">Streaming material…</string>
     <string name="demo_materials_error">Couldn\'t load this material</string>
     <string name="demo_materials_retry">Retry</string>
+
+    <!-- Streaming section — formerly the `texture-streaming` demo (#1480). -->
+    <string name="demo_texture_streaming_picker_label">Material set</string>
+    <string name="demo_texture_streaming_variant_ceramic">Glazed Ceramic</string>
+    <string name="demo_texture_streaming_variant_copper">Copper</string>
+    <string name="demo_texture_streaming_variant_detail">metallic %1$.2f · roughness %2$.2f</string>
+    <string name="demo_texture_streaming_variant_gold">Brushed Gold</string>
+    <string name="demo_texture_streaming_variant_plastic">Matte Plastic</string>
+    <string name="demo_texture_streaming_variant_steel">Polished Steel</string>
+
+    <!-- Occlusion section — formerly the `occlusion-material` demo (#1776). -->
+    <string name="demo_occlusion_material_toggle">Occluder visible</string>
+    <string name="demo_occlusion_material_explainer">A plane sits between the camera and the helmet. Toggle ON: a debug-tinted plate shows where the plane is. Toggle OFF: the same plane wears the occlusion material — invisible, but it still hides what is behind it.</string>
 </resources>

@@ -4019,11 +4019,9 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `custom-geometry` — Custom Geometry. Composite meshes and shape extrusion.
 - `debug-overlay` — Debug Overlay. Performance stats overlay.
 - `double-pendulum` — Double Pendulum. Chaotic two-link physics, shared KMP simulation.
-- `materials` — PBR Materials. KHR_materials_* extension showcase — sheen, transmission, iridescence.
-- `occlusion-material` — Occlusion Material. Invisible depth-writing surface hides content behind it.
+- `materials` — Materials. PBR extension showcase, runtime material streaming, and occlusion material.
 - `secondary-camera` — Secondary Camera (PiP). Picture-in-picture camera view.
 - `spatial-audio` — Spatial Audio. 3D positional sound that pans as you orbit.
-- `texture-streaming` — Material Streaming. Swap textures and materials on a model at runtime.
 
 ### Augmented Reality
 
@@ -4136,7 +4134,7 @@ fun DemoScaffold(
 
 **Gestures:** tap FAB or peek chip → opens sheet; long-press peek chip → toggles `DemoSettings.qaMode` (deterministic screenshot mode); drag handle / outside tap / back → dismiss. AR sessions keep tracking underneath while the sheet is open.
 
-**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `MultiModelDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
+**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `MultiModelDemo`, `AnimationDemo`, `MaterialsDemo`, `PhysicsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
 
 ```kotlin
 controls = {

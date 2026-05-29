@@ -444,13 +444,40 @@ private struct SceneViewRepresentation: View {
     /// content centroid so repeated pan→orbit cycles don't drift. Closes #1236.
     let recentersTargetOnOrbit: Bool
 
-    /// Default `CameraControls(mode: .orbit)` — uses the struct's own
+    /// Mutable camera-orbit state, held in a **reference type** so mutating it
+    /// (auto-rotate, drag, pinch) does NOT invalidate the SwiftUI body. The
+    /// value default `CameraControls(mode: .orbit)` uses the struct's own
     /// `orbitRadius = 2.0` public default, which matches the camera-
     /// to-target distance of the pre-v4.4.0 fake-orbit `[0, 0.3, 2]`
     /// so existing demos retain their on-screen framing. Direct
     /// constructors of `CameraControls` see the same `2.0` value, so
     /// there is no internal / external default split.
-    @State private var camera = CameraControls(mode: .orbit)
+    ///
+    /// **Why a box (#2277):** when this was `@State private var camera:
+    /// CameraControls` (a value type), the auto-rotate `.task` loop called
+    /// `camera.applyAutoRotation(dt:)` every ~16 ms → every mutation
+    /// invalidated the entire `body`, rebuilding all six `Gesture` chains and
+    /// re-running `RealityView.update:` (applyCamera + refreshLightSlot ×2 +
+    /// refreshContentCentering + skybox diff) at 60 Hz for the lifetime of any
+    /// auto-rotating scene. Holding the struct inside a reference type means a
+    /// mutation never changes the `@State` value (the box reference), so
+    /// SwiftUI never sees a state change — the same trick already used for
+    /// `AppliedCache` and `SceneEntities` below. The camera transform is
+    /// instead pushed onto the entity directly by calling `applyCamera()` from
+    /// the mutating sites (the auto-rotate task and the drag / pinch gesture
+    /// handlers), decoupling the visual update from SwiftUI body re-evaluation.
+    private final class CameraControlsBox {
+        var value: CameraControls
+        init(_ value: CameraControls) { self.value = value }
+    }
+    @State private var cameraBox = CameraControlsBox(CameraControls(mode: .orbit))
+
+    /// Convenience accessor for the boxed camera state. Reads and writes go
+    /// through the reference, so a write here never invalidates the body.
+    private var camera: CameraControls {
+        get { cameraBox.value }
+        nonmutating set { cameraBox.value = newValue }
+    }
     @StateObject private var entities = SceneEntities()
     @State private var lastDragTranslation: CGSize = .zero
     @State private var initialPinchRadius: Float? = nil
@@ -519,14 +546,39 @@ private struct SceneViewRepresentation: View {
     // compared against `loadedSkyboxResource` so `content.environment` is only
     // reassigned when the resource identity actually changes (~10-50 µs/frame saved).
     //
-    // All three are held in a reference-type class so mutations inside
+    // All are held in a reference-type class so mutations inside
     // `RealityView.update:` don't trigger SwiftUI's "Modifying state during view
     // update" warning. A class property mutation never changes the @State value
     // (the reference), so SwiftUI never detects a state change during body evaluation.
+    //
+    // `main/fillLightEntity` cache the provisioned light entity by reference so
+    // `refreshLightSlot` can remove the previous light directly (#2278) instead
+    // of walking `entities.root.children.first { … }` on every slot change —
+    // mirroring `ARSceneView`'s `coordinator.main/fillLightAnchor` pattern
+    // (`ARSceneView.swift`). `immersiveSkyboxHost` does the same for the
+    // visionOS inverted-sphere skybox host so `refreshImmersiveSkybox` likewise
+    // skips the children tree-walk. The slot guard means these reads happen only
+    // on a genuine slot change today, but caching the ref keeps the path O(1)
+    // and guards against a future equality regression turning a per-frame
+    // no-op into an O(n) children walk.
     private final class AppliedCache {
         var mainSlot: LightSlot? = nil
         var fillSlot: LightSlot? = nil
         var skyboxResource: EnvironmentResource? = nil
+        /// The currently-attached main-slot light entity, cached by reference
+        /// for direct removal in `refreshLightSlot`. `nil` when the main slot
+        /// is `.disabled`. Closes #2278.
+        var mainLightEntity: Entity? = nil
+        /// The currently-attached fill-slot light entity, cached by reference
+        /// for direct removal in `refreshLightSlot`. `nil` when the fill slot
+        /// is `.disabled`. Closes #2278.
+        var fillLightEntity: Entity? = nil
+        #if os(visionOS)
+        /// The currently-attached visionOS immersive-skybox host entity, cached
+        /// by reference for direct removal in `refreshImmersiveSkybox`. `nil`
+        /// when no skybox host is attached. Closes #2278.
+        var immersiveSkyboxHost: Entity? = nil
+        #endif
     }
     @State private var appliedCache = AppliedCache()
 
@@ -584,7 +636,18 @@ private struct SceneViewRepresentation: View {
                     let dt = Float(now - lastTime)
                     lastTime = now
                     if !isDragging {
+                        // Mutate the boxed orbit state (no body invalidation —
+                        // #2277) and push the new transform straight onto the
+                        // camera entity. `applyCamera()` only reads `camera` and
+                        // writes `entities.*`, so calling it here reproduces the
+                        // per-frame visual update the `RealityView.update:`
+                        // closure used to give us when this loop forced a body
+                        // re-eval every 16 ms — but now without rebuilding the
+                        // gesture chains, the light-slot diffs, the framing pass,
+                        // or the skybox diff every frame. `.task` is MainActor-
+                        // isolated, so the `@MainActor applyCamera()` call is safe.
                         camera.applyAutoRotation(dt: dt)
+                        applyCamera()
                     }
                 }
             }
@@ -947,6 +1010,14 @@ private struct SceneViewRepresentation: View {
             entity.components.set(LightSlotMarker(slot: which))
             entities.root.addChild(entity)
         }
+        // Cache the provisioned entity (or `nil` for a `.disabled` slot) by
+        // reference so `refreshLightSlot` can remove it directly instead of
+        // tree-walking `entities.root.children` (#2278). Mirrors how
+        // `provisionARLightSlot` records `coordinator.main/fillLightAnchor`.
+        switch which {
+        case .main: appliedCache.mainLightEntity = entity
+        case .fill: appliedCache.fillLightEntity = entity
+        }
     }
 
     /// Diffs the current slot value against the cached `applied{Main,Fill}Slot`
@@ -963,12 +1034,15 @@ private struct SceneViewRepresentation: View {
     private func refreshLightSlot(_ which: LightSlotMarker.Slot, slot: LightSlot) {
         let applied: LightSlot? = (which == .main) ? appliedCache.mainSlot : appliedCache.fillSlot
         guard applied != slot else { return }   // no change since last frame
-        // Remove the old tagged entity if present.
-        let toRemove = entities.root.children.first { entity in
-            entity.components[LightSlotMarker.self]?.slot == which
-        }
+        // Remove the previously-provisioned entity directly via its cached
+        // reference rather than walking `entities.root.children.first { … }`
+        // (#2278). Mirrors `refreshARLightSlot`, which removes
+        // `coordinator.main/fillLightAnchor` by ref. `provisionLightSlot`
+        // overwrites the cached ref below (with the new entity or `nil`).
+        let toRemove = (which == .main) ? appliedCache.mainLightEntity : appliedCache.fillLightEntity
         toRemove?.removeFromParent()
         // Provision the new one (or none if the new slot is .disabled).
+        // `provisionLightSlot` updates `appliedCache.main/fillLightEntity`.
         provisionLightSlot(which, slot: slot)
         // Update the cache so the next frame's diff is a no-op.
         if which == .main {
@@ -1001,15 +1075,16 @@ private struct SceneViewRepresentation: View {
             ? sceneEnvironment?.hdrResource
             : nil
         guard desired != appliedImmersiveSkyboxResource else { return }
-        // Remove any existing skybox host.
-        let existing = entities.root.children.first { entity in
-            entity.components[VisionOSSkybox.Marker.self] != nil
-        }
-        existing?.removeFromParent()
+        // Remove the previously-attached host via its cached reference rather
+        // than walking `entities.root.children.first { … }` (#2278). Same
+        // by-ref removal discipline as `refreshLightSlot` / `refreshARLightSlot`.
+        appliedCache.immersiveSkyboxHost?.removeFromParent()
+        appliedCache.immersiveSkyboxHost = nil
         // Build + attach the new host, if a texture is available.
         if let desired, let texture = loadedImmersiveSkyboxTexture {
             let host = VisionOSSkybox.makeHost(texture: texture, hdrResource: desired)
             entities.root.addChild(host)
+            appliedCache.immersiveSkyboxHost = host
         }
         appliedImmersiveSkyboxResource = desired
     }
@@ -1409,6 +1484,11 @@ private struct SceneViewRepresentation: View {
                 camera.handleDrag(delta)
                 lastDragTranslation = value.translation
                 isDragging = true
+                // Push the dragged orbit straight onto the camera entity.
+                // Now that `camera` lives in a reference box (#2277), mutating
+                // it no longer invalidates the body, so the `RealityView.update:`
+                // closure no longer re-fires per drag tick — apply directly.
+                applyCamera()
             }
             .onEnded { _ in
                 lastDragTranslation = .zero
@@ -1452,6 +1532,10 @@ private struct SceneViewRepresentation: View {
                     // exhaustive switch.
                     break
                 }
+                // Push the new radius / FOV straight onto the camera entity —
+                // the boxed `camera` no longer invalidates the body (#2277), so
+                // the `update:` closure no longer re-fires per pinch tick.
+                applyCamera()
             }
             .onEnded { _ in
                 initialPinchRadius = nil

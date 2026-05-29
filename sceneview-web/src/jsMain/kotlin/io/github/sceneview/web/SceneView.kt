@@ -112,6 +112,25 @@ class SceneView private constructor(
      */
     private val autoCenterGate = AutoCenterGate()
 
+    /**
+     * The engine's [TransformManager], resolved once at construction instead of
+     * per model per frame. `engine.getTransformManager()` crosses the WASM↔JS
+     * boundary; the auto-center pass ([refreshContentCentering]) ran it inside
+     * its per-model loop, paying that marshalling cost N times every non-latched
+     * frame for no reason — the handle never changes (#2268).
+     */
+    private val transformManager: TransformManager = engine.getTransformManager()
+
+    /**
+     * Reusable flat 16-element column-major mat4 scratch buffer for the
+     * auto-center pass writeback. Filament.js expects a JS `number[]` for
+     * `setTransform`, so this stays a `dynamic` JS array (preallocated once),
+     * mutated in place every frame by [applyTranslatedTransform] — zero
+     * allocation after warmup, versus the prior two fresh 16-element arrays per
+     * model per frame (#2268).
+     */
+    private val transformScratch: dynamic = js("new Array(16)")
+
     /** Tracks a loaded glTF asset with its animation state. */
     private class LoadedModel(
         val asset: FilamentAsset,
@@ -134,9 +153,14 @@ class SceneView private constructor(
          * deferred async sibling grows the union (#1540), so it must compose
          * each new offset onto this stored base rather than onto the
          * already-offset transform — otherwise the translation accumulates.
-         * Filament.js represents a mat4 as a flat 16-element `number[]`.
+         *
+         * Stored as a reusable column-major `DoubleArray(16)` rather than a
+         * `dynamic` JS `number[]` so the per-frame auto-center pass reads it
+         * with primitive (un-boxed) `double`s and never allocates (#2268). A
+         * mat4 is a flat 16-element column-major matrix; the translation lives
+         * at indices 12, 13, 14.
          */
-        var baseTransform: dynamic = null
+        var baseTransform: DoubleArray? = null
 
         /**
          * `true` once this model's [asset] has been destroyed — either
@@ -698,25 +722,34 @@ class SceneView private constructor(
         }
 
         // Apply the centring translation to each asset's root entity via the
-        // TransformManager. The first time this model is touched its current
-        // transform is captured as `baseTransform`; every subsequent re-frame
-        // (a deferred async sibling grew the union — #1540) composes the new
-        // offset onto that *base* rather than onto the already-offset
+        // cached [transformManager]. The first time this model is touched its
+        // current transform is captured as `baseTransform`; every subsequent
+        // re-frame (a deferred async sibling grew the union — #1540) composes
+        // the new offset onto that *base* rather than onto the already-offset
         // transform, so the translation never accumulates. Composing onto the
         // base keeps any per-model scale/position the consumer set intact.
-        val tm = engine.getTransformManager()
-        for (model in models) {
-            try {
-                val root = model.asset.getRoot()
-                if (!tm.hasComponent(root)) tm.create(root)
-                val instance = tm.getInstance(root)
-                if (model.baseTransform == null) {
-                    model.baseTransform = copyMat4(tm.getTransform(instance))
+        //
+        // #2268: all `setTransform` calls coalesce into one upload by wrapping
+        // the loop in a local transform transaction, and the per-model writeback
+        // reuses [transformScratch] (mutated in place) so the pass allocates
+        // nothing after the one-time `baseTransform` capture.
+        val tm = transformManager
+        tm.openLocalTransformTransaction()
+        try {
+            for (model in models) {
+                try {
+                    val root = model.asset.getRoot()
+                    if (!tm.hasComponent(root)) tm.create(root)
+                    val instance = tm.getInstance(root)
+                    val base = model.baseTransform
+                        ?: readMat4(tm.getTransform(instance)).also { model.baseTransform = it }
+                    applyTranslatedTransform(tm, instance, base, offset, transformScratch)
+                } catch (e: Throwable) {
+                    console.error("SceneView: auto-center failed for a model", e)
                 }
-                tm.setTransform(instance, translatedMat4(model.baseTransform, offset))
-            } catch (e: Throwable) {
-                console.error("SceneView: auto-center failed for a model", e)
             }
+        } finally {
+            tm.commitLocalTransformTransaction()
         }
 
         // Auto-dolly: fit the orbit camera to the content size (#1540). The
@@ -733,30 +766,46 @@ class SceneView private constructor(
     }
 
     /**
-     * Return a fresh flat 16-element `number[]` copy of the column-major 4x4
-     * [mat]. Used to snapshot a model's base transform before the auto-center
+     * Read the column-major 4x4 [mat] (a Filament.js flat 16-element JS
+     * `number[]`) into a fresh primitive [DoubleArray] of 16 un-boxed `double`s.
+     * Used once per model to snapshot its base transform before the auto-center
      * pass first offsets it (#1540), so later re-frames compose onto an
-     * immutable base.
+     * immutable base. Allocates exactly one [DoubleArray] per model lifetime —
+     * the per-frame writeback reuses [transformScratch] instead (#2268).
      */
-    private fun copyMat4(mat: dynamic): dynamic {
-        val out = js("[]")
+    private fun readMat4(mat: dynamic): DoubleArray {
+        val out = DoubleArray(16)
         for (i in 0 until 16) {
-            out.push((mat[i] as Number).toDouble())
+            out[i] = (mat[i] as Number).toDouble()
         }
         return out
     }
 
     /**
-     * Return a copy of the column-major 4x4 [mat] with [offset] added to its
-     * translation column (indices 12, 13, 14). Filament.js represents a mat4
-     * as a flat 16-element `number[]`.
+     * Compose the column-major 4x4 [base] transform with [offset] added to its
+     * translation column (indices 12, 13, 14) and push the result to the
+     * [TransformManager] for [instance] — all without allocating.
+     *
+     * The result is written into the caller-supplied reusable [scratch] JS
+     * `number[]` (16 elements, mutated in place) and handed to `setTransform`,
+     * so a per-frame auto-center pass over N models allocates nothing
+     * (#2268). The base is read from a primitive [DoubleArray] of un-boxed
+     * `double`s, so no per-element boxing happens on the read side either.
      */
-    private fun translatedMat4(mat: dynamic, offset: DoubleArray): dynamic {
-        val out = copyMat4(mat)
-        out[12] = (out[12] as Number).toDouble() + offset[0]
-        out[13] = (out[13] as Number).toDouble() + offset[1]
-        out[14] = (out[14] as Number).toDouble() + offset[2]
-        return out
+    private fun applyTranslatedTransform(
+        tm: TransformManager,
+        instance: dynamic,
+        base: DoubleArray,
+        offset: DoubleArray,
+        scratch: dynamic,
+    ) {
+        for (i in 0 until 16) {
+            scratch[i] = base[i]
+        }
+        scratch[12] = base[12] + offset[0]
+        scratch[13] = base[13] + offset[1]
+        scratch[14] = base[14] + offset[2]
+        tm.setTransform(instance, scratch)
     }
 
     /** Clean up all Filament resources. */

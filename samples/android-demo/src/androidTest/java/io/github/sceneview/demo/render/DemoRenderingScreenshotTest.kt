@@ -165,6 +165,20 @@ class DemoRenderingScreenshotTest {
             pixelDiffTolerancePercent = 15.0f, maxChannelDiff = 24)
     }
 
+    @Test
+    fun materialsDemo_default_state() {
+        // #2239 Batch 4 — `texture-streaming` and `occlusion-material` consolidated into
+        // the existing `materials` entry. Default landing tab is PBR Materials, which
+        // streams a Sketchfab CC-BY model and falls back to a bundled asset offline; the
+        // Streaming / Occlusion sub-modes are reachable via segmented-button taps but
+        // covered only via DemoInteractionTest (a dedicated capture would need a tab-aware
+        // deep-link parameter — follow-up). The streamed model resolves asynchronously and
+        // the studio HDR IBL has cold/warm cache variance, so a generous tolerance handles
+        // both; the test still catches "nothing rendered at all".
+        captureAndCompare(demoSlug = "materials", goldenName = "materials_default", settleSeconds = 5,
+            pixelDiffTolerancePercent = 15.0f, maxChannelDiff = 24)
+    }
+
     // #2239 Batch 1 — `billboard` consolidated into `two-d-in-three-d` (Billboard sub-mode,
     // reachable via the "Billboard" segmented button; default landing tab covered by
     // `twoDInThreeDDemo_default_state` above).
@@ -190,6 +204,11 @@ class DemoRenderingScreenshotTest {
     // `lightingLabDemo_default_state` above). The Environment / Reflections / Post-FX
     // sub-modes are reachable via segmented-button taps; dedicated sub-mode captures
     // would need a tab-aware deep-link parameter (follow-up).
+
+    // #2239 Batch 4 — `texture-streaming` and `occlusion-material` consolidated into
+    // `materials` (covered by `materialsDemo_default_state` above). The Streaming /
+    // Occlusion sub-modes are reachable via segmented-button taps; dedicated sub-mode
+    // captures would need a tab-aware deep-link parameter (follow-up).
 
     @Test
     fun cameraAndGesturesDemo_default_state() {

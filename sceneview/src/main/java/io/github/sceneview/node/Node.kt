@@ -36,10 +36,12 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Transform
+import io.github.sceneview.math.localToWorldQuaternion
 import io.github.sceneview.math.quaternion
 import io.github.sceneview.math.times
 import io.github.sceneview.math.toMatrix
 import io.github.sceneview.math.toQuaternion
+import io.github.sceneview.math.worldToLocalQuaternion
 import io.github.sceneview.safeDestroyEntity
 import io.github.sceneview.safeDestroyTransformable
 
@@ -649,19 +651,37 @@ open class Node(
     /**
      * Converts a quaternion in the world-space to a local-space of this node.
      *
+     * When this node's world transform has **no scale**, the conversion is rotation-only:
+     * it uses the cached [worldQuaternion] (#2264) directly and skips the Mat4 polar
+     * decomposition that `worldToLocal.toQuaternion()` paid on every call (#2267).
+     *
+     * When this node IS scaled the fast path is NOT used: `inverse(M).toQuaternion()`
+     * (legacy) and `inverse(M.toQuaternion())` (fast) diverge once `M` carries scale
+     * (verified divergence even for uniform scale — #2294 review), so the scaled case
+     * falls back to the exact legacy matrix path to preserve behavior.
+     *
      * @param worldQuaternion the quaternion in world-space to convert.
      * @return a new quaternion that represents the world quaternion in local-space.
      */
     fun getLocalQuaternion(worldQuaternion: Quaternion) =
-        worldToLocal.toQuaternion() * worldQuaternion
+        if (worldScale.isApproximatelyUnitScale()) {
+            worldToLocalQuaternion(worldQuaternion = worldQuaternion, parentWorldQuaternion = this.worldQuaternion)
+        } else {
+            worldToLocal.toQuaternion() * worldQuaternion
+        }
 
     /**
      * Converts a quaternion in the local-space of this node to world-space.
      *
+     * Uses this node's cached [worldQuaternion] (#2264) directly — a rotation-only
+     * conversion never needs the 4×4 matrix, so this skips the Mat4 polar
+     * decomposition that `worldTransform.toQuaternion()` paid on every call (#2267).
+     *
      * @param quaternion the quaternion in local-space to convert.
      * @return a new quaternion that represents the local quaternion in world-space.
      */
-    fun getWorldQuaternion(quaternion: Quaternion) = worldTransform.toQuaternion() * quaternion
+    fun getWorldQuaternion(quaternion: Quaternion) =
+        localToWorldQuaternion(localQuaternion = quaternion, parentWorldQuaternion = this.worldQuaternion)
 
     /**
      * Converts a rotation in the world-space to a local-space of this node.
@@ -680,6 +700,17 @@ open class Node(
      */
     fun getWorldRotation(rotation: Rotation) =
         getWorldQuaternion(Quaternion.fromEuler(rotation)).toEulerAngles()
+
+    /**
+     * True when each axis of this scale is within a small epsilon of 1.0 — i.e. the
+     * transform carries no meaningful scale and the rotation-only quaternion fast path in
+     * [getLocalQuaternion] is exactly equivalent to the legacy matrix path (#2294 review).
+     */
+    private fun Scale.isApproximatelyUnitScale(): Boolean {
+        val lo = 1f - 1e-4f
+        val hi = 1f + 1e-4f
+        return x in lo..hi && y in lo..hi && z in lo..hi
+    }
 
     fun getLocalScale(worldScale: Scale) = worldToLocal * worldScale
     fun getWorldScale(scale: Scale) = worldTransform * scale
