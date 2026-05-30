@@ -26,6 +26,24 @@ val Pose.transform: Transform
     get() = FloatArray(16).apply { toMatrix(this, 0) }.toTransform()
 //    get() = translation(position) * rotation(quaternion)
 
+/**
+ * Converts this [Pose] to a 4x4 [Transform] matrix, writing the column-major floats into the
+ * caller-supplied [out] scratch array instead of allocating a fresh `FloatArray(16)`.
+ *
+ * Hot-path callers that refresh the matrix every frame (e.g. [ARCameraNode]) should keep a single
+ * reusable `FloatArray(16)` field and pass it here to avoid per-frame allocation churn (#2266 /
+ * umbrella #2263).
+ *
+ * @param out a `FloatArray(16)` scratch buffer the matrix is written into; reused across calls.
+ * @return [out] wrapped as a [Transform] (`Mat4`). The returned matrix shares the backing floats
+ * with [out], so callers must not retain it past the next reuse of [out].
+ */
+fun Pose.toTransform(out: FloatArray): Transform {
+    require(out.size == 16) { "Pose.toTransform out array must have size 16, was ${out.size}" }
+    toMatrix(out, 0)
+    return out.toTransform()
+}
+
 /** The rotation component of this [Pose] as Euler angles (pitch, yaw, roll) in degrees. */
 val Pose.rotation: Rotation
     get() = quaternion.toEulerAngles()

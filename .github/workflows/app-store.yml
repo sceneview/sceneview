@@ -765,7 +765,7 @@ jobs:
             -skipMacroValidation \
             -allowProvisioningUpdates \
             CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
+            CODE_SIGN_IDENTITY="3rd Party Mac Developer Application" \
             DEVELOPMENT_TEAM=5G3DZ3TH45 \
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_UUID" \
             ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \

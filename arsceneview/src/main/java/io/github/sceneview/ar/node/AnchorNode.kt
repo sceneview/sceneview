@@ -106,7 +106,10 @@ open class AnchorNode(
 
         if (isMoving) return
 
-        if (anchor in frame.updatedAnchors) {
+        // #2270: prefer the per-frame batched updated-anchors set computed once by the AR frame
+        // driver (O(1) HashSet lookup, no per-node JNI allocation). Fall back to the per-node
+        // JNI query when this node's update runs outside that driver so behaviour is identical.
+        if (anchor in (frameUpdatedAnchors ?: frame.updatedAnchors)) {
             trackingState = anchor.trackingState
             if (trackingState == TrackingState.TRACKING && updateAnchorPose) {
                 pose = anchor.pose

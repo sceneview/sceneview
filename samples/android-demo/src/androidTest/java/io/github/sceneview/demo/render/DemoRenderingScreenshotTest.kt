@@ -72,14 +72,21 @@ class DemoRenderingScreenshotTest {
     // launched the now-retired `multi-model` slug) were removed.
 
     @Test
-    fun animationDemo_default_state() {
+    fun animationPhysicsDemo_default_state() {
+        // #2239 Batch 3 — `animation` and `physics` consolidated into
+        // `animation-physics`. Default landing tab is Animation (the skeletal
+        // playback scene), so the captured frame is comparable to the prior
+        // `animation_default` golden once re-baselined. The Physics sub-mode is
+        // reachable via a segmented-button tap but covered only via
+        // DemoInteractionTest; a dedicated physics capture would need a tab-aware
+        // deep-link parameter (follow-up).
         // TODO(qaMode-bind-pose): same root cause as multimodel — `stopAnimation()` only
         // pauses playback, it doesn't reset bones to the bind pose, so subsequent
         // `animator.updateBoneMatrices()` calls write whatever frame the animator was
-        // last on. AnimationDemo's `LaunchedEffect(qaMode) { stopAnimation(i) }` helps
+        // last on. The Animation tab's `LaunchedEffect(qaMode) { stopAnimation(i) }` helps
         // (~22 % diff vs ~50 % without), but a true bind-pose freeze needs an explicit
         // `animator.applyAnimation(0, 0f)` call from inside ModelNodeImpl.
-        captureAndCompare(demoSlug = "animation", goldenName = "animation_default", settleSeconds = 4,
+        captureAndCompare(demoSlug = "animation-physics", goldenName = "animationphysics_default", settleSeconds = 4,
             pixelDiffTolerancePercent = 30.0f, maxChannelDiff = 32)
     }
 

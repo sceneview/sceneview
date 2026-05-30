@@ -430,27 +430,10 @@ class DemoInteractionTest {
         dragSlider("Density:", fraction = 0.5f); screenshot("10c_fog_density_mid")
     }
 
-    // ── 3. Physics — drop + reset ─────────────────────────────────────────────
-
-    @Test
-    fun physics_dropAndReset() {
-        openDemo("physics")
-        screenshot("11_physics_initial")
-
-        tap("Drop")
-        Thread.sleep(1500)  // let physics settle
-        screenshot("12_physics_dropped_1")
-
-        tap("Drop")
-        Thread.sleep(400)
-        tap("Drop")
-        Thread.sleep(2000)
-        screenshot("13_physics_dropped_3")
-
-        tap("Reset")
-        Thread.sleep(1500)
-        screenshot("14_physics_reset")
-    }
+    // ── 3. Physics ─────────────────────────────────────────────────────────────
+    // #2239 Batch 3 — `physics` consolidated into `animation-physics` (Physics tab).
+    // Covered by `animationPhysics_allTabs` below, which taps the Physics tab and
+    // exercises Drop / Drop 10 / Reset.
 
     // ── 4. Geometry Primitives — 4 shape chips ────────────────────────────────
 
@@ -648,26 +631,43 @@ class DemoInteractionTest {
         screenshot("37_debugOverlay_after_reset")
     }
 
-    // ── 10. Animation — loop / once chips ─────────────────────────────────────
+    // ── 10. Animation & Physics — both segmented tabs ─────────────────────────
 
     @Test
-    fun animation_loopVsOnce() {
-        openDemo("animation")
-        screenshot("39_animation_loop_default")
+    fun animationPhysics_allTabs() {
+        // #2239 Batch 3 — `animation` and `physics` consolidated into
+        // `animation-physics` with a 2-way segmented toggle. One test taps through
+        // both tabs so each merged half is exercised (the unified demo opens on its
+        // default Animation tab).
+        openDemo("animation-physics")
 
+        // ── Animation tab (default landing tab) — loop / once / speed / playback ──
+        screenshot("39_animation_loop_default")
         tap("Once")
         screenshot("40_animation_once")
-
         tap("Loop")
         screenshot("41_animation_loop_back")
-
         // Speed slider sweep — slow / fast
         dragSlider("Speed:", fraction = 0.0f); screenshot("41a_animation_speed_min")
         dragSlider("Speed:", fraction = 1.0f); screenshot("41b_animation_speed_max")
-
         // Play / Pause icon-only button — reached via contentDescription.
         tapByDesc("Pause"); screenshot("41c_animation_paused")
         tapByDesc("Play"); screenshot("41d_animation_playing")
+
+        // ── Physics tab — drop + reset ────────────────────────────────────────
+        tap("Physics")
+        screenshot("41e_physics_initial")
+        tap("Drop")
+        Thread.sleep(1500)  // let physics settle
+        screenshot("41f_physics_dropped_1")
+        tap("Drop")
+        Thread.sleep(400)
+        tap("Drop")
+        Thread.sleep(2000)
+        screenshot("41g_physics_dropped_3")
+        tap("Reset")
+        Thread.sleep(1500)
+        screenshot("41h_physics_reset")
     }
 
     // ── 11. Environment Gallery ───────────────────────────────────────────────

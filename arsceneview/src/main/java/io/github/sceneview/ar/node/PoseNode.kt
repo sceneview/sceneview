@@ -13,7 +13,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.arcore.createAnchor
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.arcore.position
-import io.github.sceneview.ar.arcore.transform
+import io.github.sceneview.ar.arcore.quaternion
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.node.Node
 
@@ -57,7 +57,26 @@ open class PoseNode(
         set(value) {
             if (field != value) {
                 field = value
-                worldTransform(pose.transform)
+                // Write the world translation + rotation from the ARCore Pose components
+                // instead of routing through `worldTransform(pose.transform)`, which
+                // allocated a fresh FloatArray(16) + a Transform wrap and then decomposed
+                // that matrix back into position/quaternion/scale. An ARCore Pose is a
+                // rigid transform (no scale), so the prior path also reset any user-set
+                // scale to identity every frame — passing only translation + rotation
+                // preserves the node's scale. Fires for every AnchorNode / PlaneNode /
+                // AugmentedFaceNode / AugmentedImageNode / StreetscapeGeometryNode on every
+                // frame (#2266 / umbrella #2263).
+                if (isSmoothTransformEnabled) {
+                    // HitResultNode / DepthHitResultNode set isSmoothTransformEnabled = true
+                    // and reassign `pose` every frame; the old `worldTransform(pose.transform)`
+                    // path fed the smooth slerp. Keep that smooth-follow (the component
+                    // overload still avoids Pose.transform's FloatArray(16)) (#2296 review).
+                    worldTransform(position = value.position, quaternion = value.quaternion)
+                } else {
+                    // High-frequency non-smooth nodes: fully alloc-free direct TRS write.
+                    worldPosition = value.position
+                    worldQuaternion = value.quaternion
+                }
                 onPoseChanged(value)
             }
         }
@@ -87,6 +106,25 @@ open class PoseNode(
     var session: Session? = null
     var frame: Frame? = null
 
+    /**
+     * Per-frame set of updated trackables/anchors, computed **once** by the AR frame driver
+     * (`onARFrame`) and shared across every node in the scene (#2270).
+     *
+     * Before this batched context existed, [TrackableNode] and [AnchorNode] each called back
+     * into ARCore independently every frame (`frame.getUpdatedTrackables(...)` /
+     * `frame.updatedAnchors`) — one JNI thunk + a fresh JNI-allocated `List` + an O(n) linear
+     * `contains()` scan **per node**. With N nodes that is O(N×M) work and N JNI allocations
+     * per frame. Pre-building the membership sets once and handing them to every node turns the
+     * per-node check into an O(1) `HashSet.contains()` and collapses the cost to O(N+M).
+     *
+     * `internal` and nullable on purpose: it is only populated by the in-library frame driver.
+     * When a node's [update] is invoked outside that driver (unit tests, imperative third-party
+     * code), the field stays `null` and the node falls back to its original per-node JNI lookup,
+     * so behaviour is identical in every path — this is a pure performance refactor.
+     */
+    internal var frameUpdatedTrackables: Set<com.google.ar.core.Trackable>? = null
+    internal var frameUpdatedAnchors: Set<com.google.ar.core.Anchor>? = null
+
     // Rotation edition is disabled by default because retrieved from the pose.
     override var isRotationEditable = false
 
@@ -98,7 +136,10 @@ open class PoseNode(
         }
 
     init {
-        worldTransform = pose.transform
+        // Seed the initial world transform from the Pose components directly, matching the
+        // allocation-free setter path above (#2266).
+        worldPosition = pose.position
+        worldQuaternion = pose.quaternion
 
         updateVisibility()
     }

@@ -18,7 +18,7 @@ import io.github.sceneview.demo.demos.ARRerunDemo
 import io.github.sceneview.demo.demos.ARRooftopAnchorDemo
 import io.github.sceneview.demo.demos.ARStreetscapeDemo
 import io.github.sceneview.demo.demos.ARTerrainAnchorDemo
-import io.github.sceneview.demo.demos.AnimationDemo
+import io.github.sceneview.demo.demos.AnimationPhysicsDemo
 import io.github.sceneview.demo.demos.CameraAndGesturesDemo
 import io.github.sceneview.demo.demos.CustomGeometryDemo
 import io.github.sceneview.demo.demos.DebugOverlayDemo
@@ -29,8 +29,8 @@ import io.github.sceneview.demo.demos.LightingLabDemo
 import io.github.sceneview.demo.demos.LinesPathsDemo
 import io.github.sceneview.demo.demos.MaterialsDemo
 import io.github.sceneview.demo.demos.ModelViewerDemo
-import io.github.sceneview.demo.demos.PhysicsDemo
 import io.github.sceneview.demo.demos.PickingAndCollisionDemo
+import io.github.sceneview.demo.demos.PlaneGridPreviewDemo
 import io.github.sceneview.demo.demos.SecondaryCameraDemo
 import io.github.sceneview.demo.demos.TwoDInThreeDDemo
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
@@ -96,7 +96,8 @@ class DemoHostActivity : ComponentActivity() {
             // existing `model-viewer` entry (the flagship umbrella, kept live).
             "model-viewer", "multi-model", "scene-gallery" -> ModelViewerDemo(onBack = back)
             "geometry" -> GeometryDemo(onBack = back)
-            "animation" -> AnimationDemo(onBack = back)
+            // #2239 Batch 3 — `animation` and `physics` consolidated into `animation-physics`.
+            "animation-physics", "animation", "physics" -> AnimationPhysicsDemo(onBack = back)
             // Lighting & Environment
             "lighting" -> LightingDemo(onBack = back)
             "fog" -> FogDemo(onBack = back)
@@ -113,13 +114,14 @@ class DemoHostActivity : ComponentActivity() {
             // #2239 Batch 1 — `collision` and `view-node` consolidated into `picking-collision`.
             "picking-collision", "collision", "view-node" -> PickingAndCollisionDemo(onBack = back)
             // Advanced
-            "physics" -> PhysicsDemo(onBack = back)
             // #2239 Batch 4 — `texture-streaming` and `occlusion-material` consolidated into `materials`.
             "materials", "texture-streaming", "occlusion-material" -> MaterialsDemo(onBack = back)
             // #2239 Batch 1 — `custom-mesh` and `shape` consolidated into `custom-geometry`.
             "custom-geometry", "custom-mesh", "shape" -> CustomGeometryDemo(onBack = back)
             "secondary-camera" -> SecondaryCameraDemo(onBack = back)
             "debug-overlay" -> DebugOverlayDemo(onBack = back)
+            // #2224 — non-AR static preview of the ARCore plane grid material for shader QA.
+            "plane-grid-preview" -> PlaneGridPreviewDemo(onBack = back)
             // Augmented Reality
             "ar-placement" -> ARPlacementDemo(onBack = back)
             "ar-image" -> ARImageDemo(onBack = back)

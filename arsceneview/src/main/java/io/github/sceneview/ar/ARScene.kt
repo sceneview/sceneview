@@ -45,11 +45,13 @@ import com.google.android.filament.IndirectLight
 import com.google.android.filament.Renderer
 import com.google.android.filament.Scene
 import com.google.android.filament.View
+import com.google.ar.core.Anchor
 import com.google.ar.core.CameraConfig
 import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
+import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.exceptions.PlaybackFailedException
 import io.github.sceneview.SceneNodeManager
@@ -60,9 +62,11 @@ import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.light.LightEstimator
 import io.github.sceneview.ar.node.ARCameraNode
+import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.node.DepthMeshNode
 import io.github.sceneview.ar.node.PointCloudNode
 import io.github.sceneview.ar.node.PoseNode
+import io.github.sceneview.ar.node.TrackableNode
 import io.github.sceneview.ar.scene.PlaneRenderer
 import io.github.sceneview.ar.scene.PlaneRendererBase
 import io.github.sceneview.ar.scene.PlaneRendererV2
@@ -1493,12 +1497,27 @@ private fun onARFrame(
 
     arPlaneRenderer.update(session, frame)
 
+    // Batched per-frame updated-sets (#2270): build the updated-trackables / updated-anchors
+    // membership sets ONCE per frame (see [buildFrameUpdatedSets]) instead of letting every
+    // TrackableNode / AnchorNode call `frame.getUpdatedTrackables(...)` / `frame.updatedAnchors`
+    // independently — that was O(N×M) work and N JNI allocations per frame.
+    val (updatedTrackables, updatedAnchors) = buildFrameUpdatedSets(frame, childNodes)
+
     // Single-pass dispatch (#1810): the previous `filterIsInstance<PoseNode>().forEach { }` +
     // `filterIsInstance<DepthMeshNode>().forEach { }` allocated two fresh ArrayLists every frame
     // (~240 list allocations/sec at 60 fps on the render thread). A single `for` loop with a
     // `when` type-check is zero-allocation and walks the child list once.
     for (n in childNodes) when (n) {
-        is PoseNode -> n.update(session, frame)
+        is PoseNode -> {
+            // Hand the node the batched membership sets (#2270). A node only reads the set
+            // relevant to its kind; the other stays null. Both are cleared after update so a
+            // node never holds a stale cross-frame reference to a JNI-backed collection.
+            n.frameUpdatedTrackables = updatedTrackables
+            n.frameUpdatedAnchors = updatedAnchors
+            n.update(session, frame)
+            n.frameUpdatedTrackables = null
+            n.frameUpdatedAnchors = null
+        }
         is DepthMeshNode -> n.update(session, frame)
         is PointCloudNode -> n.update(session, frame)
     }
@@ -1513,6 +1532,43 @@ private fun onARFrame(
     }
 
     onSessionUpdatedRef.get()?.invoke(session, frame)
+}
+
+/**
+ * Build the per-frame batched membership sets used by [PoseNode]-derived nodes (#2270).
+ *
+ * Before this batching existed, every [TrackableNode] called `frame.getUpdatedTrackables(...)`
+ * and every [AnchorNode] called `frame.updatedAnchors` independently each frame — one JNI thunk
+ * + one fresh JNI-allocated `List` + an O(n) linear `contains()` scan **per node**, i.e. O(N×M)
+ * work and N JNI allocations per frame. Hashing each collection once here and handing the sets to
+ * every node makes each node's membership check an O(1) `HashSet.contains()`, collapsing the cost
+ * to O(N+M) with at most two JNI calls.
+ *
+ * Each set is built **lazily** — only when [childNodes] actually contains a node of that kind — so
+ * a pure-3D-overlay AR scene (no anchor/trackable nodes) pays nothing. Returns `null` for an
+ * unneeded set; nodes fall back to their own per-node JNI query when the relevant set is `null`.
+ *
+ * @return `(updatedTrackables, updatedAnchors)` — either may be `null` when no node needs it.
+ */
+private fun buildFrameUpdatedSets(
+    frame: Frame,
+    childNodes: List<Node>
+): Pair<Set<Trackable>?, Set<Anchor>?> {
+    var updatedTrackables: Set<Trackable>? = null
+    var updatedAnchors: Set<Anchor>? = null
+    for (n in childNodes) {
+        when (n) {
+            is AnchorNode ->
+                if (updatedAnchors == null) updatedAnchors = frame.updatedAnchors.toHashSet()
+            is TrackableNode<*> ->
+                if (updatedTrackables == null) {
+                    updatedTrackables = frame.getUpdatedTrackables(Trackable::class.java).toHashSet()
+                }
+        }
+        // Early-out once both sets are built — no need to keep scanning.
+        if (updatedTrackables != null && updatedAnchors != null) break
+    }
+    return updatedTrackables to updatedAnchors
 }
 
 /**

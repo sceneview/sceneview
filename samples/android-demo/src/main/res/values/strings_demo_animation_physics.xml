@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the unified `animation-physics` demo (registered by
+     `AnimationPhysicsFragment.kt`). Consolidates the retired `animation` and
+     `physics` demos (#2239 Batch 3). Old ids continue to deep-link through
+     `DeepLinkRouter.DEMO_ID_ALIASES`. The `demo_physics_picker_*` strings are
+     still referenced by the Physics sub-mode, so they migrate here verbatim. -->
+<resources>
+    <string name="demo_animation_physics_title">Animation &amp; Physics</string>
+    <string name="demo_animation_physics_subtitle">Skeletal animation playback and rigid-body simulation</string>
+    <string name="demo_physics_picker_label">What to drop</string>
+    <string name="demo_physics_picker_spheres">Bundled spheres</string>
+    <string name="demo_physics_picker_subtitle">Crash-test bodies are CC-BY models from Sketchfab. Switching the picker resets the scene so the new shape is what falls.</string>
+</resources>

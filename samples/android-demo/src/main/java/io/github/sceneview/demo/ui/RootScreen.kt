@@ -157,7 +157,8 @@ private fun curatedSamplesForExplore(): List<DemoEntry> {
         // carousel keeps its 6-card diversity rather than silently shrinking when
         // a retired id is dropped by `mapNotNull` (the Batch 3 footgun).
         "materials",
-        "animation",
+        // #2239 Batch 3 — `animation` consolidated into `animation-physics`.
+        "animation-physics",
     )
     return ids.mapNotNull { id -> ALL_DEMOS.firstOrNull { it.id == id } }
 }

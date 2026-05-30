@@ -224,15 +224,64 @@ fun slerp(
     deltaSeconds: Double,
     speed: Float
 ): Transform {
+    val (position, quaternion, scale) = slerp(
+        startPosition = start.position,
+        startQuaternion = start.quaternion,
+        startScale = start.scale,
+        endPosition = end.position,
+        endQuaternion = end.quaternion,
+        endScale = end.scale,
+        deltaSeconds = deltaSeconds,
+        speed = speed
+    )
+    return Transform(position, quaternion, scale)
+}
+
+/**
+ * Pre-decomposed TRS-tuple variant of [slerp] — interpolates position/rotation/scale
+ * components directly without ever building or decomposing a [Transform] (`Mat4`).
+ *
+ * The `slerp(start: Transform, end: Transform, …)` overload reads `.position`,
+ * `.quaternion` and `.scale` off each [Transform], and **every one of those accessors runs
+ * a matrix decomposition** (a W-column extract, a polar decomposition, and three column-length
+ * `sqrt`s) — six decompositions per call. Callers that already hold the components (e.g. a
+ * [io.github.sceneview.node.Node] whose `position` / `quaternion` / `scale` are cached since
+ * #2187) should call this overload to skip all of them, then rebuild a `Transform` once from
+ * the result if they need the matrix form.
+ *
+ * Uses the exact same frame-rate-independent factor `1 - exp(-speed * deltaSeconds)` as the
+ * [Transform] overload, so trajectories are identical.
+ *
+ * @param startPosition Current position.
+ * @param startQuaternion Current rotation.
+ * @param startScale Current scale.
+ * @param endPosition Target position.
+ * @param endQuaternion Target rotation.
+ * @param endScale Target scale.
+ * @param deltaSeconds Time since last call. Negative values are clamped to 0.
+ * @param speed Convergence rate (s⁻¹). The 63 % point is reached after `1 / speed` seconds
+ * regardless of the caller's tick rate.
+ * @return A [Triple] of the interpolated `(position, quaternion, scale)`.
+ */
+fun slerp(
+    startPosition: Position,
+    startQuaternion: Quaternion,
+    startScale: Scale,
+    endPosition: Position,
+    endQuaternion: Quaternion,
+    endScale: Scale,
+    deltaSeconds: Double,
+    speed: Float
+): Triple<Position, Quaternion, Scale> {
     val lerpFactor = if (deltaSeconds <= 0.0 || speed <= 0f) {
         0f
     } else {
         (1.0 - exp(-speed.toDouble() * deltaSeconds)).toFloat().coerceIn(0f, 1f)
     }
-    return Transform(
-        position = lerp(start.position, end.position, lerpFactor),
-        quaternion = slerp(start.quaternion, end.quaternion, lerpFactor),
-        scale = lerp(start.scale, end.scale, lerpFactor)
+    return Triple(
+        lerp(startPosition, endPosition, lerpFactor),
+        slerp(startQuaternion, endQuaternion, lerpFactor),
+        lerp(startScale, endScale, lerpFactor)
     )
 }
 

@@ -113,6 +113,12 @@ internal object DeepLinkRouter {
         "environment" to "lighting-lab",
         "reflection-probes" to "lighting-lab",
         "post-processing" to "lighting-lab",
+        // #2239 Batch 3 — Animation & Physics consolidation. The retired
+        // `animation` and `physics` demos merged into `animation-physics` with a
+        // segmented-button toggle. The unified demo opens on its default Animation
+        // tab (tab pre-selection from alias is a planned follow-up).
+        "animation" to "animation-physics",
+        "physics" to "animation-physics",
         // #2239 Batch 4 — Materials consolidation. The retired `texture-streaming`
         // and `occlusion-material` demos merged into the existing `materials` entry
         // (the natural umbrella, kept live) with a segmented-button toggle. The
