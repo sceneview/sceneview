@@ -414,6 +414,17 @@
       this._videoElements = new Map(); // entity -> { video, canvas, ctx, rafId }
       this._quadGLB = null; // Cached quad GLB bytes
 
+      // Per-frame allocation scratch (#2274) — eliminates the GC sawtooth, worst
+      // on iOS Safari. Filament.js reads these arrays synchronously inside the
+      // call, so mutating them in place every requestAnimationFrame tick is safe.
+      this._billboardScratch = new Array(16); // shared column-major mat4 for billboards
+      // lookAt scratch — one eye/center/up triple per camera mode, set once here
+      // and mutated in place each frame. _upMap is the constant top-down up vector.
+      this._eye = [0, 0, 0];
+      this._center = [0, 0, 0];
+      this._up = [0, 1, 0];
+      this._upMap = [0, 0, -1];
+
       // Animation state — glTF skinning / keyframe playback
       this._animator = null;
       this._animationIndex = -1;
@@ -1047,22 +1058,26 @@
       var t = this._orbitTarget;
       var r = this._orbitRadius;
       var camX = t[0] + Math.sin(this._angle) * r;
-      var camY = this._orbitHeight;
       var camZ = t[2] + Math.cos(this._angle) * r;
 
       var self = this;
+      var mat = this._billboardScratch; // shared scratch — fully overwritten per billboard
+      // Batch the per-billboard setTransform calls in one local-transform
+      // transaction so the TransformManager recomputes world transforms once.
+      var inTransaction = false;
+      if (typeof tcm.openLocalTransformTransaction === 'function') {
+        tcm.openLocalTransformTransaction();
+        inTransaction = true;
+      }
       this._billboards.forEach(function(entity) {
         var nodeInfo = self._mediaNodes.get(entity);
         if (!nodeInfo || !nodeInfo.asset) return;
 
-        var rootEntity = nodeInfo.asset.getRoot();
         var pos = nodeInfo.position || [0, 0, 0];
 
         // Calculate direction from entity to camera (Y-up world)
         var dx = camX - pos[0];
-        var dy = camY - pos[1];
         var dz = camZ - pos[2];
-        var lenXZ = Math.sqrt(dx * dx + dz * dz);
 
         // Yaw angle (rotation around Y axis) to face camera
         var yaw = Math.atan2(dx, dz);
@@ -1071,24 +1086,33 @@
         var sx = nodeInfo.scaleX || 1;
         var sy = nodeInfo.scaleY || 1;
 
-        // Column-major 4x4 matrix for Filament
+        // Column-major 4x4 matrix for Filament — fully written into the shared
+        // scratch each iteration (no partial-state leak between billboards).
         var cosY = Math.cos(yaw);
         var sinY = Math.sin(yaw);
-        var mat = [
-          cosY * sx, 0, -sinY * sx, 0,
-          0, sy, 0, 0,
-          sinY, 0, cosY, 0,
-          pos[0], pos[1], pos[2], 1
-        ];
+        mat[0] = cosY * sx; mat[1] = 0;  mat[2] = -sinY * sx; mat[3] = 0;
+        mat[4] = 0;         mat[5] = sy; mat[6] = 0;          mat[7] = 0;
+        mat[8] = sinY;      mat[9] = 0;  mat[10] = cosY;      mat[11] = 0;
+        mat[12] = pos[0];   mat[13] = pos[1]; mat[14] = pos[2]; mat[15] = 1;
 
         try {
-          var inst = tcm.getInstance(rootEntity);
+          // Cache the TransformManager instance per billboard (#2274) — getInstance
+          // was previously called every frame for every billboard.
+          var inst = nodeInfo.transformInstance;
+          if (inst == null) {
+            inst = tcm.getInstance(nodeInfo.asset.getRoot());
+            nodeInfo.transformInstance = inst;
+          }
           tcm.setTransform(inst, mat);
         } catch (e) {
           // Entity may have been destroyed
+          nodeInfo.transformInstance = null;
           self._billboards.delete(entity);
         }
       });
+      if (inTransaction) {
+        tcm.commitLocalTransformTransaction();
+      }
     }
 
     // ---------------------------------------------------------------
@@ -1531,29 +1555,32 @@
         var r = self._orbitRadius;
         var h = self._orbitHeight;
         var mode = self._cameraMode || 'orbit';
+        // Mutate the reusable eye/center/up scratch arrays in place instead of
+        // allocating fresh arrays every frame (#2274). Camera.lookAt reads them
+        // synchronously, so reuse is safe.
+        var eye = self._eye;
+        var center = self._center;
         if (mode === 'map') {
           // Top-down: camera above target, looking straight down
-          self._camera.lookAt(
-            [t[0], t[1] + r * 2, t[2]],
-            t,
-            [0, 0, -1]
-          );
+          eye[0] = t[0]; eye[1] = t[1] + r * 2; eye[2] = t[2];
+          center[0] = t[0]; center[1] = t[1]; center[2] = t[2];
+          self._camera.lookAt(eye, center, self._upMap);
         } else if (mode === 'freelook') {
           // Freelook: camera at orbit position but height responds to vertical drag
           var camX = t[0] + Math.sin(self._angle) * r * 0.5;
           var camZ = t[2] + Math.cos(self._angle) * r * 0.5;
-          self._camera.lookAt(
-            [camX, h, camZ],
-            [camX + Math.sin(self._angle + Math.PI), h, camZ + Math.cos(self._angle + Math.PI)],
-            [0, 1, 0]
-          );
+          eye[0] = camX; eye[1] = h; eye[2] = camZ;
+          center[0] = camX + Math.sin(self._angle + Math.PI);
+          center[1] = h;
+          center[2] = camZ + Math.cos(self._angle + Math.PI);
+          self._camera.lookAt(eye, center, self._up);
         } else {
           // Default orbit
-          self._camera.lookAt(
-            [t[0] + Math.sin(self._angle) * r, h, t[2] + Math.cos(self._angle) * r],
-            t,
-            [0, 1, 0]
-          );
+          eye[0] = t[0] + Math.sin(self._angle) * r;
+          eye[1] = h;
+          eye[2] = t[2] + Math.cos(self._angle) * r;
+          center[0] = t[0]; center[1] = t[1]; center[2] = t[2];
+          self._camera.lookAt(eye, center, self._up);
         }
 
         self._engine.execute();

@@ -53,6 +53,17 @@ class ARSceneView private constructor(
     private var isRunning = false
 
     /**
+     * Reusable per-XRView viewport scratch arrays, keyed by the view's index in
+     * `pose.views` (#2274). AR is mono (one view) but the loop is shared with the
+     * stereo path. Mutating one cached array per view in place — instead of
+     * allocating a fresh `[x, y, w, h]` array per view per frame — kills a
+     * per-requestAnimationFrame allocation source (GC sawtooth, worst on iOS
+     * Safari). `setViewport` reads synchronously, so reuse is safe. We also skip
+     * `setViewport` entirely when the viewport is byte-for-byte unchanged.
+     */
+    private val viewportScratch = mutableListOf<dynamic>()
+
+    /**
      * Idempotency guard for [destroySceneView] — `stop()` and the `onend`
      * handler both tear the Filament [SceneView] down, this prevents a
      * double-free (#2045).
@@ -216,8 +227,8 @@ class ARSceneView private constructor(
             val views = pose.views
             if (views.isNotEmpty()) {
                 if (sceneView.renderer.beginFrame(sceneView.swapChain)) {
-                    for (view in views) {
-                        renderView(view)
+                    for (i in views.indices) {
+                        renderView(views[i], i)
                     }
                     sceneView.renderer.endFrame()
                 }
@@ -231,8 +242,11 @@ class ARSceneView private constructor(
      * Render a single [XRView] (#2046): apply the eye's pose and the
      * device-supplied projection matrix, clip the Filament viewport to the
      * eye's region of the `XRWebGLLayer` framebuffer, then draw the scene.
+     *
+     * @param viewIndex the view's position in `pose.views`, used to key its
+     *   reusable viewport scratch array (#2274).
      */
-    private fun renderView(view: XRView) {
+    private fun renderView(view: XRView, viewIndex: Int) {
         sceneView.camera.setModelMatrix(view.transform.matrix)
         sceneView.camera.setCustomProjection(
             view.projectionMatrix,
@@ -241,9 +255,27 @@ class ARSceneView private constructor(
         )
 
         val viewport = glLayer.getViewport(view)
-        val viewportArray = js("[]")
-        viewportArray.push(viewport.x, viewport.y, viewport.width, viewport.height)
-        sceneView.view.setViewport(viewportArray)
+        // Reuse the per-view scratch array (#2274): mutate in place, allocate only
+        // the first time this view index is seen. Skip setViewport when unchanged.
+        while (viewportScratch.size <= viewIndex) {
+            viewportScratch.add(null)
+        }
+        var arr = viewportScratch[viewIndex]
+        if (arr == null) {
+            arr = js("[]")
+            arr.push(viewport.x, viewport.y, viewport.width, viewport.height)
+            viewportScratch[viewIndex] = arr
+            sceneView.view.setViewport(arr)
+        } else if (
+            arr[0] != viewport.x || arr[1] != viewport.y ||
+            arr[2] != viewport.width || arr[3] != viewport.height
+        ) {
+            arr[0] = viewport.x
+            arr[1] = viewport.y
+            arr[2] = viewport.width
+            arr[3] = viewport.height
+            sceneView.view.setViewport(arr)
+        }
 
         sceneView.renderer.renderView(sceneView.view)
     }
@@ -289,6 +321,15 @@ class VRSceneView private constructor(
     var onSessionEnd: (() -> Unit)? = null
 
     private var isRunning = false
+
+    /**
+     * Reusable per-XRView viewport scratch arrays, keyed by the eye's index in
+     * `pose.views` (#2274). A stereo headset reports two views; each gets its own
+     * cached `[x, y, w, h]` array, mutated in place instead of re-allocated every
+     * frame. `setViewport` reads synchronously, so reuse is safe; we also skip the
+     * call when the viewport is unchanged.
+     */
+    private val viewportScratch = mutableListOf<dynamic>()
 
     /**
      * Idempotency guard for [destroySceneView] — `stop()` and the `onend`
@@ -443,8 +484,8 @@ class VRSceneView private constructor(
             val views = pose.views
             if (views.isNotEmpty()) {
                 if (sceneView.renderer.beginFrame(sceneView.swapChain)) {
-                    for (view in views) {
-                        renderView(view)
+                    for (i in views.indices) {
+                        renderView(views[i], i)
                     }
                     sceneView.renderer.endFrame()
                 }
@@ -458,8 +499,11 @@ class VRSceneView private constructor(
      * Render a single [XRView] / eye (#2046): apply the eye pose and the
      * device-supplied projection matrix, clip the Filament viewport to the
      * eye's half of the `XRWebGLLayer` framebuffer, then draw the scene.
+     *
+     * @param viewIndex the eye's position in `pose.views`, used to key its
+     *   reusable viewport scratch array (#2274).
      */
-    private fun renderView(view: XRView) {
+    private fun renderView(view: XRView, viewIndex: Int) {
         sceneView.camera.setModelMatrix(view.transform.matrix)
         sceneView.camera.setCustomProjection(
             view.projectionMatrix,
@@ -468,9 +512,27 @@ class VRSceneView private constructor(
         )
 
         val viewport = glLayer.getViewport(view)
-        val viewportArray = js("[]")
-        viewportArray.push(viewport.x, viewport.y, viewport.width, viewport.height)
-        sceneView.view.setViewport(viewportArray)
+        // Reuse the per-eye scratch array (#2274): mutate in place, allocate only
+        // the first time this eye index is seen. Skip setViewport when unchanged.
+        while (viewportScratch.size <= viewIndex) {
+            viewportScratch.add(null)
+        }
+        var arr = viewportScratch[viewIndex]
+        if (arr == null) {
+            arr = js("[]")
+            arr.push(viewport.x, viewport.y, viewport.width, viewport.height)
+            viewportScratch[viewIndex] = arr
+            sceneView.view.setViewport(arr)
+        } else if (
+            arr[0] != viewport.x || arr[1] != viewport.y ||
+            arr[2] != viewport.width || arr[3] != viewport.height
+        ) {
+            arr[0] = viewport.x
+            arr[1] = viewport.y
+            arr[2] = viewport.width
+            arr[3] = viewport.height
+            sceneView.view.setViewport(arr)
+        }
 
         sceneView.renderer.renderView(sceneView.view)
     }
