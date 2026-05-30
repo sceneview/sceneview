@@ -143,6 +143,17 @@ class PlaneVisualizerV2(
 
     private val entity = EntityManager.get().create()
 
+    /**
+     * Cached `TransformManager` instance handle for [entity].
+     *
+     * `0` means "not yet looked up". The plane entity and its transform component are created
+     * once and live for the visualizer's lifetime (rebuilding the renderable in place does not
+     * touch the transform component), so the handle is stable — we pay the `getInstance` JNI
+     * thunk once instead of on every update tick. Mirrors the lazy-once caching #2280 applied
+     * to `Node.transformInstance` (#2269, #2287). A `0` result is never frozen.
+     */
+    private var transformInstance: Int = 0
+
     private val vertexBuffer: VertexBuffer = VertexBuffer.Builder()
         .vertexCount(MAX_VERTS)
         .bufferCount(2)
@@ -777,9 +788,13 @@ class PlaneVisualizerV2(
             }
         }
 
+        // The instance handle is stable for the entity's lifetime, so it's looked up once and
+        // cached (#2287). A 0 result (no transform component yet) is retried on the next tick.
         val transformManager = engine.transformManager
-        val transformInst = transformManager.getInstance(entity)
-        transformManager.setTransform(transformInst, planeMatrix.data)
+        if (transformInstance == 0) {
+            transformInstance = transformManager.getInstance(entity)
+        }
+        transformManager.setTransform(transformInstance, planeMatrix.data)
     }
 
     fun destroy() {

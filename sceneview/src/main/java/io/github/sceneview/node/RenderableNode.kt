@@ -8,6 +8,7 @@ import com.google.android.filament.RenderableManager
 import io.github.sceneview.Entity
 import io.github.sceneview.FilamentEntity
 import io.github.sceneview.components.RenderableComponent
+import io.github.sceneview.components.RenderableInstance
 import io.github.sceneview.math.toVector3Box
 import io.github.sceneview.safeDestroyMaterialInstance
 import io.github.sceneview.safeDestroyRenderable
@@ -25,6 +26,28 @@ open class RenderableNode(
     engine: Engine,
     @FilamentEntity entity: Entity = EntityManager.get().create(),
 ) : Node(engine, entity), RenderableComponent {
+
+    /**
+     * Cached [RenderableManager] instance handle for this entity.
+     *
+     * `0` means "not yet looked up". The handle is stable for the lifetime of the
+     * renderable component on this entity, so we only pay the `getInstance` JNI thunk once
+     * instead of on every skinning / bone-matrix / morph-weight / AABB / culling / priority
+     * read — the same lazy-once caching #2280 applied to [transformInstance] (#2269, #2285).
+     *
+     * Rebuilding the renderable in place (e.g. [setGeometry] / re-`build` on the same entity)
+     * keeps the same instance handle, so the cache stays valid for the node's lifetime.
+     */
+    private var _renderableInstance: RenderableInstance = 0
+    override val renderableInstance: RenderableInstance
+        get() {
+            // Only freeze a *valid* handle: if the renderable component isn't built yet
+            // `getInstance` returns 0, which we must not cache as final — re-look-up next read.
+            if (_renderableInstance == 0) {
+                _renderableInstance = renderableManager.getInstance(entity)
+            }
+            return _renderableInstance
+        }
 
     /**
      * Material instances this node owns and will tear down on [destroy].
