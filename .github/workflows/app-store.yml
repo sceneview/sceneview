@@ -51,7 +51,6 @@ jobs:
           HAS_IOS_PROF: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 != '' }}
           HAS_MACOS_PROF: ${{ secrets.MACOS_PROVISIONING_PROFILE_BASE64 != '' }}
           HAS_MACOS_INSTALLER_CERT: ${{ secrets.MACOS_INSTALLER_CERT_BASE64 != '' }}
-          HAS_MACOS_APP_CERT: ${{ secrets.MACOS_APP_CERT_BASE64 != '' }}
           HAS_KEY: ${{ secrets.APP_STORE_CONNECT_KEY_ID != '' }}
         run: |
           if [ "$HAS_CERT" = "true" ] && [ "$HAS_PASS" = "true" ] && [ "$HAS_IOS_PROF" = "true" ] && [ "$HAS_KEY" = "true" ]; then
