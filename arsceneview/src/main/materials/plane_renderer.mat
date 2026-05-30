@@ -1,9 +1,22 @@
 // plane_renderer.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
 //
-// Purpose:    Unlit transparent material that draws detected ARCore planes as a modern,
+// Purpose:    Unlit alpha-blended material that draws detected ARCore planes as a modern,
 //             procedural soft grid (issue #1616). The old dense white dot-grid PNG read
 //             as low-fidelity next to apps like Reality Composer / Polycam; this shader
 //             draws thin anti-aliased grid lines with a feathered edge fade instead.
+//
+// #2224 (real root cause): `blending: transparent` composites ONE*src + (1-a)*dst, but
+//             Filament does NOT premultiply unlit baseColor for you. The fragment emitted
+//             a straight (non-premultiplied) `color`, so the composite resolved to
+//             `color + (1-a)*bg` — the grid `color` was added at FULL strength and `alpha`
+//             only gated how much background bled through. Capping `alpha` (v4.16.4 → 0.45,
+//             v4.16.7 → 0.20) therefore never reduced the white, so over a bright camera
+//             feed the plane still read as an opaque white blob. Fix: PREMULTIPLY in the
+//             fragment (`baseColor.rgb = color * baseColor.a`) so the composite becomes the
+//             intended `lerp(bg, color, alpha) = alpha*color + (1-alpha)*bg` and the 0.20
+//             cap genuinely holds the overlay at ~20 % opacity. Diagnosed + validated with
+//             the non-AR `plane-grid-preview` shader-QA demo (renders this exact .filamat on
+//             a static surface; pixel-measured `color + (1-a)*bg` before, `lerp` after).
 // Used by:    PlaneRenderer (planeMaterial) — ARSceneView plane visualization.
 // Parameters:
 //   texture    — sampler2d, kept for binary/API compatibility with PlaneRenderer; the
@@ -35,6 +48,9 @@ material {
         "position"
     ],
     shadingModel : unlit,
+    // `transparent` = Filament premultiplied-alpha compositing (ONE, ONE_MINUS_SRC_ALPHA).
+    // The fragment premultiplies `baseColor.rgb *= baseColor.a` (see #2224 note below), so
+    // the composite is the intended lerp(bg, color, alpha).
     "blending": "transparent"
 }
 
@@ -104,7 +120,13 @@ fragment {
         // ARCore Depth Lab reticle) ships plane viz at 20-30 % alpha unlit — this matches.
         float alpha = clamp(line * 0.4 + fill * 0.3, 0.0, 1.0) * edge;
 
-        material.baseColor.rgb = materialParams.color;
         material.baseColor.a = min(alpha, 0.20);
+        // #2224 — PREMULTIPLY by alpha. With `blending: transparent` Filament composites
+        // ONE * src + (1-a) * dst and does NOT premultiply unlit baseColor for us, so
+        // emitting straight `color` made the composite `color + (1-a)*bg` (grid colour
+        // added at full strength → white blob over a bright feed, regardless of the alpha
+        // cap). Premultiplying here makes it `alpha*color + (1-alpha)*bg` = lerp(bg, color,
+        // alpha), so the 0.20 cap genuinely holds the overlay at ~20 % opacity.
+        material.baseColor.rgb = materialParams.color * material.baseColor.a;
     }
 }
