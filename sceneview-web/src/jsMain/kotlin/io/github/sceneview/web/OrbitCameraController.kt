@@ -73,6 +73,14 @@ class OrbitCameraController(
     private val listeners = mutableListOf<Pair<String, EventListener>>()
     private var disposed = false
 
+    // Reusable float3 scratch arrays for the per-frame [update] lookAt call (#2274).
+    // Filament.js reads these synchronously inside lookAt, so mutating them in place
+    // every frame is safe and eliminates 3 array allocations per requestAnimationFrame
+    // tick (the GC sawtooth, worst on iOS Safari). `up` is the constant world-up.
+    private val eyeScratch: dynamic = float3(0.0, 0.0, 0.0)
+    private val centerScratch: dynamic = float3(0.0, 0.0, 0.0)
+    private val upScratch: dynamic = float3(0.0, 1.0, 0.0)
+
     init {
         setupEventListeners()
     }
@@ -111,12 +119,12 @@ class OrbitCameraController(
         val eyeY = targetY + distance * cos(phi)
         val eyeZ = targetZ + distance * sin(phi) * cos(theta)
 
-        // Filament.js Camera.lookAt takes float3 arrays, not 9 separate doubles
-        camera.lookAt(
-            float3(eyeX, eyeY, eyeZ),          // eye
-            float3(targetX, targetY, targetZ),  // center
-            float3(0.0, 1.0, 0.0)              // up
-        )
+        // Filament.js Camera.lookAt takes float3 arrays, not 9 separate doubles.
+        // Mutate the reusable scratch arrays in place instead of allocating fresh
+        // ones every frame (#2274). lookAt reads them synchronously, so reuse is safe.
+        eyeScratch[0] = eyeX; eyeScratch[1] = eyeY; eyeScratch[2] = eyeZ
+        centerScratch[0] = targetX; centerScratch[1] = targetY; centerScratch[2] = targetZ
+        camera.lookAt(eyeScratch, centerScratch, upScratch)
     }
 
     /**
