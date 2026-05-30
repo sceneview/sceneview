@@ -796,6 +796,14 @@ jobs:
             <string>manual</string>
             <key>teamID</key>
             <string>5G3DZ3TH45</string>
+            <!-- #2252: the .pkg installer is signed with the Mac Installer
+                 Distribution cert. It is NEVER part of the provisioning profile
+                 (profiles only carry the .app / Apple Distribution cert), so it
+                 must be named explicitly here — otherwise exportArchive errors
+                 "Provisioning profile … doesn't include signing certificate
+                 '3rd Party Mac Developer Installer'". -->
+            <key>installerSigningCertificate</key>
+            <string>3rd Party Mac Developer Installer</string>
             <key>provisioningProfiles</key>
             <dict>
               <key>io.github.sceneview.demo</key>
