@@ -61,25 +61,22 @@ jobs:
             echo "ios_ready=false" >> $GITHUB_OUTPUT
             echo "::notice::Skipping iOS deploy — signing secrets not configured."
           fi
-          # macOS App Store deploy needs THREE distinct signing secrets:
-          #   - MACOS_APP_CERT_BASE64       → "Apple Distribution" cert (signs the .app bundle)
-          #   - MACOS_INSTALLER_CERT_BASE64 → "3rd Party Mac Developer Installer" cert (signs the .pkg)
-          #   - MACOS_PROVISIONING_PROFILE_BASE64 → "SceneView Demo Mac App Store" profile
-          # The Apple Distribution cert that Xcode auto-generates is non-extractable
-          # (kSecAttrIsExtractable=0) — Keychain Access's "Export Items…" menu stays
-          # disabled, and `security export -t identities` skips it silently. To unblock,
-          # generate a fresh Apple Distribution cert via Keychain Access > Certificate
-          # Assistant > Request a Certificate from a CA (the CSR flow keeps the new
-          # private key extractable), upload the CSR to Apple Developer Portal, install
-          # the issued .cer, re-link the provisioning profile to it, then export to p12
-          # and set MACOS_APP_CERT_BASE64 + MACOS_APP_CERT_PASSWORD secrets. Tracking
-          # issue: #2252.
-          if [ "$HAS_CERT" = "true" ] && [ "$HAS_PASS" = "true" ] && [ "$HAS_MACOS_PROF" = "true" ] && [ "$HAS_MACOS_INSTALLER_CERT" = "true" ] && [ "$HAS_MACOS_APP_CERT" = "true" ] && [ "$HAS_KEY" = "true" ]; then
+          # macOS App Store deploy needs (#2252):
+          #   - IOS_BUILD_CERTIFICATE_BASE64 → "Apple Distribution" cert — REUSED to sign
+          #     the .app bundle. It's the unified iOS+macOS distribution cert and already
+          #     carries an extractable key (iOS TestFlight signs with it). This sidesteps
+          #     #2252: the auto-generated macOS Apple Distribution cert was non-extractable,
+          #     that cert type is maxed (2/2), and Xcode 26 rejects the legacy Mac App
+          #     Distribution cert for Mac App Store archives.
+          #   - MACOS_INSTALLER_CERT_BASE64 → "3rd Party Mac Developer Installer" — signs the .pkg
+          #   - MACOS_PROVISIONING_PROFILE_BASE64 → "SceneView Demo Mac App Store" profile,
+          #     which MUST reference the same Apple Distribution cert as IOS_BUILD_CERTIFICATE.
+          if [ "$HAS_CERT" = "true" ] && [ "$HAS_PASS" = "true" ] && [ "$HAS_MACOS_PROF" = "true" ] && [ "$HAS_MACOS_INSTALLER_CERT" = "true" ] && [ "$HAS_KEY" = "true" ]; then
             echo "macos_ready=true" >> $GITHUB_OUTPUT
             echo "macOS secrets configured"
           else
             echo "macos_ready=false" >> $GITHUB_OUTPUT
-            echo "::notice::Skipping macOS deploy — signing secrets not configured (need MACOS_APP_CERT_BASE64, MACOS_INSTALLER_CERT_BASE64, MACOS_PROVISIONING_PROFILE_BASE64). See #2252."
+            echo "::notice::Skipping macOS deploy — signing secrets not configured (need IOS_BUILD_CERTIFICATE_BASE64, MACOS_INSTALLER_CERT_BASE64, MACOS_PROVISIONING_PROFILE_BASE64). See #2252."
           fi
 
   deploy-ios:
@@ -674,11 +671,17 @@ jobs:
           #   APP_CERT       → "Apple Distribution"             — signs the .app bundle
           #   INSTALLER_CERT → "3rd Party Mac Developer Installer" — signs the .pkg wrapper
           # Earlier runs only imported the installer cert, so xcodebuild fell back to
-          # signing the .app with it too and the provisioning profile rejected it
-          # ("Provisioning profile doesn't include signing certificate '3rd Party Mac
-          # Developer Installer'"). Both certs MUST be in the same keychain.
-          APP_CERT_BASE64: ${{ secrets.MACOS_APP_CERT_BASE64 }}
-          APP_CERT_PASSWORD: ${{ secrets.MACOS_APP_CERT_PASSWORD }}
+          # signing the .app with it too and the provisioning profile rejected it.
+          # The .app cert is REUSED from the iOS pipeline's IOS_BUILD_CERTIFICATE_BASE64:
+          # it already holds the team's "Apple Distribution" cert WITH an extractable
+          # private key (iOS TestFlight signs with it daily), and "Apple Distribution"
+          # is the unified iOS+macOS cert. This sidesteps #2252's blocker — the
+          # auto-generated macOS Apple Distribution cert was non-extractable and the
+          # type is maxed (2/2), and Xcode 26 rejects the legacy Mac App Distribution
+          # cert for Mac App Store archives. The macOS provisioning profile must
+          # reference this same Apple Distribution cert.
+          APP_CERT_BASE64: ${{ secrets.IOS_BUILD_CERTIFICATE_BASE64 }}
+          APP_CERT_PASSWORD: ${{ secrets.IOS_BUILD_CERTIFICATE_PASSWORD }}
           INSTALLER_CERT_BASE64: ${{ secrets.MACOS_INSTALLER_CERT_BASE64 }}
           INSTALLER_CERT_PASSWORD: ${{ secrets.MACOS_INSTALLER_CERT_PASSWORD }}
           BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.MACOS_PROVISIONING_PROFILE_BASE64 }}
@@ -765,7 +768,7 @@ jobs:
             -skipMacroValidation \
             -allowProvisioningUpdates \
             CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="3rd Party Mac Developer Application" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             DEVELOPMENT_TEAM=5G3DZ3TH45 \
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_UUID" \
             ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \
