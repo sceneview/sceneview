@@ -255,8 +255,11 @@ class ARSceneView private constructor(
         )
 
         val viewport = glLayer.getViewport(view)
-        // Reuse the per-view scratch array (#2274): mutate in place, allocate only
-        // the first time this view index is seen. Skip setViewport when unchanged.
+        // Reuse the per-view scratch array (#2274): mutate in place, allocate only the
+        // first time this view index is seen. Always call setViewport (the Filament
+        // `view` viewport is shared state) — the #2274 win is the zero allocation, not
+        // skipping the call. Mono AR is single-view so a skip would be safe here, but we
+        // keep the same shape as the VR path for robustness (#2308 review).
         while (viewportScratch.size <= viewIndex) {
             viewportScratch.add(null)
         }
@@ -265,17 +268,13 @@ class ARSceneView private constructor(
             arr = js("[]")
             arr.push(viewport.x, viewport.y, viewport.width, viewport.height)
             viewportScratch[viewIndex] = arr
-            sceneView.view.setViewport(arr)
-        } else if (
-            arr[0] != viewport.x || arr[1] != viewport.y ||
-            arr[2] != viewport.width || arr[3] != viewport.height
-        ) {
+        } else {
             arr[0] = viewport.x
             arr[1] = viewport.y
             arr[2] = viewport.width
             arr[3] = viewport.height
-            sceneView.view.setViewport(arr)
         }
+        sceneView.view.setViewport(arr)
 
         sceneView.renderer.renderView(sceneView.view)
     }
@@ -512,8 +511,12 @@ class VRSceneView private constructor(
         )
 
         val viewport = glLayer.getViewport(view)
-        // Reuse the per-eye scratch array (#2274): mutate in place, allocate only
-        // the first time this eye index is seen. Skip setViewport when unchanged.
+        // Reuse the per-eye scratch array (#2274): mutate in place, allocate only the
+        // first time this eye index is seen. We ALWAYS call setViewport — the Filament
+        // `view` viewport is a single shared piece of state set across both eyes each
+        // frame, so a per-eye "skip when unchanged" would leave the other eye's viewport
+        // in place and render this eye into the wrong half (#2308 review). The #2274 win
+        // is the zero allocation, not skipping the call.
         while (viewportScratch.size <= viewIndex) {
             viewportScratch.add(null)
         }
@@ -522,17 +525,13 @@ class VRSceneView private constructor(
             arr = js("[]")
             arr.push(viewport.x, viewport.y, viewport.width, viewport.height)
             viewportScratch[viewIndex] = arr
-            sceneView.view.setViewport(arr)
-        } else if (
-            arr[0] != viewport.x || arr[1] != viewport.y ||
-            arr[2] != viewport.width || arr[3] != viewport.height
-        ) {
+        } else {
             arr[0] = viewport.x
             arr[1] = viewport.y
             arr[2] = viewport.width
             arr[3] = viewport.height
-            sceneView.view.setViewport(arr)
         }
+        sceneView.view.setViewport(arr)
 
         sceneView.renderer.renderView(sceneView.view)
     }
