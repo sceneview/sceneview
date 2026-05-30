@@ -179,18 +179,22 @@ open class ModelNode(
 
     /**
      * Tracks renderable entities whose AABB has been observed valid (non-empty) AND whose
-     * geometry cannot change at runtime, so they never need to be re-checked by
-     * [sanitizeEmptyBoundingBoxes] again.
+     * shape has no runtime AABB-mutating driver, so they are skipped by
+     * [sanitizeEmptyBoundingBoxes] on subsequent frames.
      *
      * Only static renderables are latched here: the whole model must have no skins
      * ([ModelInstance.skinCount] == 0) and the renderable itself must have no morph targets
-     * ([RenderableManager.getMorphTargetCount] == 0). For those, a once-valid AABB can never
-     * collapse back to empty, so skipping them on subsequent frames is safe.
+     * ([RenderableManager.getMorphTargetCount] == 0). Skinning and morphing are the runtime
+     * drivers that can take a once-valid AABB back to empty (degenerate bone pose / zeroed
+     * morph weight) — missing that `valid→empty` transition crashes Filament ("AABB can't be
+     * empty…"), which is why skinned / morph-target renderables are deliberately NEVER latched
+     * and keep the full per-frame valid↔empty check (#2273, #2280 revert).
      *
-     * Skinned / morph-target renderables are deliberately NEVER added here: a degenerate bone
-     * pose or a zeroed morph weight can re-introduce an empty AABB at runtime, and missing that
-     * `valid→empty` transition crashes Filament ("AABB can't be empty…"). They keep the full
-     * per-frame valid↔empty check (#2273, #2280 revert).
+     * Caveat (not handled, by design): explicitly mutating a *latched* renderable via
+     * [RenderableComponent.setGeometry] / the `axisAlignedBoundingBox` setter with a degenerate
+     * box re-introduces an empty AABB that this latch will not re-scan. No glTF-driven path or
+     * any SceneView sample does this; if a future caller needs it, evict the entity from this
+     * set on those mutations (tracked in the #2273 follow-up).
      */
     private val permanentlyValidEntities = mutableSetOf<Entity>()
 
@@ -583,9 +587,11 @@ open class ModelNode(
             sanitizedEntities -= entity
         }
 
-        // Latch only when valid AND the AABB cannot change at runtime: no skins on the model
-        // and no morph targets on this renderable. Such a renderable can never go empty again,
-        // so it's safe to skip permanently. Animated (skinned/morph) renderables are never
+        // Latch only when valid AND no runtime AABB-mutating driver exists: no skins on the
+        // model and no morph targets on this renderable. With neither, nothing the render loop
+        // does can take the AABB back to empty, so it's safe to skip permanently. (Explicit
+        // setGeometry / axisAlignedBoundingBox mutation is the one out-of-band exception — see
+        // the permanentlyValidEntities KDoc.) Animated (skinned/morph) renderables are never
         // latched — they keep the per-frame check that catches a runtime valid→empty collapse.
         if (!isEmpty && !modelHasSkins && renderableManager.getMorphTargetCount(instance) == 0) {
             permanentlyValidEntities += entity
