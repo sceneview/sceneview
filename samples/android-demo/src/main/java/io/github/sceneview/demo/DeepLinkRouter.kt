@@ -126,6 +126,14 @@ internal object DeepLinkRouter {
         // from alias is a planned follow-up).
         "texture-streaming" to "materials",
         "occlusion-material" to "materials",
+        // #2239 Batch 5 — Models consolidation. The retired `multi-model` and
+        // `scene-gallery` demos merged into the existing `model-viewer` entry
+        // (the flagship umbrella, kept live — its id + `ModelViewerDemo.kt` file
+        // are referenced across docs) with a segmented-button toggle. The
+        // unified demo opens on its default Single Model tab (tab pre-selection
+        // from alias is a planned follow-up).
+        "multi-model" to "model-viewer",
+        "scene-gallery" to "model-viewer",
     )
 
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {

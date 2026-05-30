@@ -506,22 +506,30 @@ class DemoInteractionTest {
         screenshot("26_shape_triangle_back")
     }
 
-    // ── 7. Multi Model — 3 visibility chips ───────────────────────────────────
+    // ── 7. Models — all 3 segmented tabs ──────────────────────────────────────
 
     @Test
-    fun multiModel_visibilityChips() {
-        openDemo("multi-model")
-        screenshot("27_multiModel_all_visible")
+    fun modelViewer_allTabs() {
+        // #2239 Batch 5 — `multi-model` and `scene-gallery` consolidated into the
+        // existing `model-viewer` entry (the flagship umbrella, kept live) with a
+        // 3-way segmented toggle. One test taps through every tab so each merged
+        // half is exercised (the unified demo opens on its default Single Model tab).
+        openDemo("model-viewer")
 
-        tap("Avocado")
-        screenshot("28_multiModel_no_avocado")
+        // ── Single Model tab (default landing tab) — bundled hero helmet ──────
+        screenshot("27_models_single_default")
 
-        tap("Helmet")
-        screenshot("29_multiModel_no_avocado_no_helmet")
+        // ── Multi-Model tab — themed "Park" scene + per-model visibility chips ─
+        tap("Multi-Model")
+        screenshot("28_models_multi_default")
+        tap("Tree")   // toggle a node off / on so the chips are exercised
+        screenshot("28a_models_multi_no_tree")
+        tap("Tree")
+        screenshot("28b_models_multi_tree_back")
 
-        tap("Avocado")
-        tap("Helmet")
-        screenshot("30_multiModel_all_back")
+        // ── Gallery tab — chip-picked themed Sketchfab model ──────────────────
+        tap("Gallery")
+        screenshot("29_models_gallery_default")
     }
 
     // ── 8. Post Processing — 4 toggle rows ────────────────────────────────────

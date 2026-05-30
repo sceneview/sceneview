@@ -3994,9 +3994,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 - `animation-physics` — Animation & Physics. Skeletal animation playback and rigid-body simulation.
 - `geometry` — Geometry Primitives. Cube, sphere, cylinder, cone, plane.
-- `model-viewer` — Model Viewer. Load and display 3D models.
-- `multi-model` — Multi-Model Scene. Multiple models in one scene.
-- `scene-gallery` — Scene Gallery. Themed Sketchfab bundles streamed on demand.
+- `model-viewer` — Models. Single model, multi-model scene, and gallery.
 
 ### Lighting & Environment
 
@@ -4134,7 +4132,7 @@ fun DemoScaffold(
 
 **Gestures:** tap FAB or peek chip → opens sheet; long-press peek chip → toggles `DemoSettings.qaMode` (deterministic screenshot mode); drag handle / outside tap / back → dismiss. AR sessions keep tracking underneath while the sheet is open.
 
-**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `MultiModelDemo`, `AnimationDemo`, `MaterialsDemo`, `PhysicsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
+**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationDemo`, `MaterialsDemo`, `PhysicsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
 
 ```kotlin
 controls = {
