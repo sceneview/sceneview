@@ -48,6 +48,13 @@ source "$SCRIPT_DIR/lib/android-cli.sh"
 # leasable running emulator and to target the leased serial via ANDROID_SERIAL.
 # shellcheck source=lib/emulator-select.sh
 source "$SCRIPT_DIR/lib/emulator-select.sh"
+# API-key resolution (#2343) — resolve + EXPORT SKETCHFAB_API_KEY / ARCORE_API_KEY
+# (env, else repo-root local.properties) so the assembleDebug build below injects
+# them via samples/android-demo/build.gradle, instead of silently building with
+# empty keys (Explore disabled, AR Cloud → ERROR_NOT_AUTHORIZED). Presence only —
+# never logs a key value.
+# shellcheck source=lib/qa-keys.sh
+source "$SCRIPT_DIR/lib/qa-keys.sh"
 
 PACKAGE="io.github.sceneview.demo"
 ACTIVITY=".MainActivity"
@@ -99,6 +106,19 @@ elif ! adb get-state >/dev/null 2>&1; then
   echo "[qa] ERROR: no Android device. Boot one first (RAM-budgeted pool):" >&2
   echo "[qa]   bash .claude/scripts/setup-ar-emulator.sh" >&2
   exit 1
+fi
+
+# --- API keys (#2343) ------------------------------------------------------
+# Resolve + EXPORT the demo store secrets BEFORE the build so build.gradle wires
+# them into the debug APK (Explore/Sketchfab + AR Cloud). Without this the build
+# is silently keyless and those paths are untestable. Presence (not the value)
+# is logged. When run standalone (no parent device-qa.sh), print the loud banner
+# here too — a parent orchestrator sets QA_KEYS_RESOLVED_BY_PARENT=1 and prints
+# its own banner once, so this child stays quiet to avoid a double banner.
+qa_keys_resolve_all
+echo "[qa] API keys — Sketchfab present: ${QA_SKETCHFAB_KEY_PRESENT}, ARCore present: ${QA_ARCORE_KEY_PRESENT}"
+if [[ "${QA_KEYS_RESOLVED_BY_PARENT:-}" != "1" ]]; then
+  qa_keys_banner_if_absent
 fi
 
 # --- Optional build + install ---------------------------------------------
