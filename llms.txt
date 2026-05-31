@@ -2719,7 +2719,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberARCameraStream(materialLoader)` | `ARCameraStream` | Camera feed background texture |
 | `rememberAREnvironment(engine)` | `Environment` | No-skybox environment for AR |
 
-**NOTE:** There is NO `rememberMaterialInstance` function. Create materials with `materialLoader.createColorInstance(...)` inside a `remember` block:
+**NOTE:** There is no `rememberMaterialInstance` in the published SceneView SDK — create materials with `materialLoader.createColorInstance(...)` inside a `remember` block. (The demos use a sample-only helper of that name from `samples/common`; in your own code copy this pattern, not the helper.)
 ```kotlin
 val mat = remember(materialLoader) {
     materialLoader.createColorInstance(Color.Red, metallic = 0f, roughness = 0.4f)

@@ -1,0 +1,2 @@
+<!-- category: Docs -->
+- Clarified the `rememberMaterialInstance` note in `llms.txt`, `gpt/knowledge-api.md` and the website `.well-known/llms.txt`: the flat "there is NO `rememberMaterialInstance` function" was imprecise (and contradicted the demos, which use a sample-only helper of that name in `samples/common`). Reworded to say there is none in the *published SDK* and to copy the `materialLoader.createColorInstance(...)` pattern — so an AI reading both the docs and the demos isn't confused.

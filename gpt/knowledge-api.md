@@ -371,7 +371,7 @@ materialLoader.createColorInstance(
 ): MaterialInstance
 ```
 
-There is NO `rememberMaterialInstance`. Create materials inside `remember`:
+There is no `rememberMaterialInstance` in the published SDK (only a `samples/common` helper). Create materials inside `remember`:
 
 ```kotlin
 val mat = remember(materialLoader) {
