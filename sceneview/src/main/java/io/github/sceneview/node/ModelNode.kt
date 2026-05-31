@@ -499,11 +499,17 @@ open class ModelNode(
     /**
      * Propagates world-transform invalidation to the glTF sub-nodes.
      *
-     * [renderableNodes] and [emptyNodes] are parented to this [ModelNode] only at the
-     * Filament level, not through [childNodes], so the base [Node.onWorldTransformChanged]
-     * propagation (which walks [childNodes]) doesn't reach them. When this ModelNode moves,
-     * their Filament world transform changes too — invalidate their cache explicitly so
-     * reads of a sub-node's world-space TRS stay correct (#2264).
+     * This override is **redundant but harmless** (kept for clarity and safety, #2303):
+     * every node in [nodes] is also parented through [childNodes] (see the `init` block,
+     * which assigns each sub-node's [Node.parent]), so the base
+     * [Node.onWorldTransformChanged] — which walks [childNodes] — already reaches them.
+     * Re-invalidating here is idempotent: [onWorldTransformChanged] only nulls the
+     * already-null world cache, so the extra pass costs nothing observable while making
+     * the sub-node invalidation explicit at this level should the parenting ever change.
+     *
+     * The genuinely-needed invalidation for animation is the `wasAnimating` pass in
+     * [onFrame]: glTF animation writes sub-node transforms straight into Filament,
+     * bypassing the [Node] setters that would otherwise trigger this propagation (#2264).
      */
     override fun onWorldTransformChanged() {
         super.onWorldTransformChanged()
