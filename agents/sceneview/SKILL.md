@@ -191,7 +191,7 @@ lambda — there is NO `rememberARSession()` helper, do NOT invent one.
 loop).** Set the whole `node.transform = …` once instead of writing `position` /
 `quaternion` / `scale` one at a time (one-at-a-time writes recompose the matrix and
 drift — issue [#2187](https://github.com/sceneview/sceneview/issues/2187)); use
-`mat4.copyColumnsInto(scratch)` not `Mat4.toColumnsFloatArray()` for per-frame uniform
+`Mat4.copyColumnsInto(scratch)` not `Mat4.toColumnsFloatArray()` for per-frame uniform
 uploads; prefer the TRS-tuple `slerp(startPosition, startQuaternion, startScale, …)`
 when you already hold the components. Reading `node.worldPosition` /
 `worldQuaternion` per frame is fine now — those are cached. Always load via

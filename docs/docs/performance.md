@@ -46,7 +46,7 @@ Three distinct failure modes, all from the same root cause:
     | Avoid per frame | Use instead | Why |
     |---|---|---|
     | Setting `node.position` / `node.quaternion` / `node.rotation` / `node.scale` individually in a loop | Build a `Transform` (`Mat4`) and assign `node.transform = …` **once** | Each component setter recomposes the matrix; one-at-a-time writes also round-trip and drift (#2187) |
-    | `Mat4.toColumnsFloatArray()` for a per-frame uniform / `TransformManager.setTransform` upload | `mat4.copyColumnsInto(scratch)` into a reused `FloatArray(16)` (also `Mat3.copyColumnsInto`) | `toColumnsFloatArray()` allocates a fresh array every call (#2271) |
+    | `Mat4.toColumnsFloatArray()` for a per-frame uniform / `TransformManager.setTransform` upload | `Mat4.copyColumnsInto(scratch)` into a reused `FloatArray(16)` (also `Mat3.copyColumnsInto`) | `toColumnsFloatArray()` allocates a fresh array every call (#2271) |
     | `slerp(startTransform, endTransform, …)` when you already hold the TRS components | the TRS-tuple overload `slerp(startPosition, startQuaternion, startScale, …)` | The `Transform` overload runs **6 matrix decompositions** per call (#2265) |
     | Re-loading a model / re-creating a node per recomposition | `rememberModelInstance(modelLoader, "models/x.glb")`, `rememberNode { … }` | They cache and marshal Filament JNI onto the main thread for you |
 
