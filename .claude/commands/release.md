@@ -14,7 +14,12 @@ Ask the user: "What version are we releasing? (current: check root gradle.proper
 
 Run `/version-bump X.Y.Z` which updates ALL 30+ version locations at once.
 
-If not using /version-bump, manually update:
+`/version-bump` runs `sync-versions.sh --fix` — the **single source of truth** for the
+location list. Do NOT hand-maintain a copy; the list below is reference-only and may lag.
+⛔ **#1705**: `sceneview-mcp` is on an INDEPENDENT npm track — `sync-versions.sh` EXCLUDES
+`mcp/package.json` + `mcp/src/index.ts`; never bump them to `VERSION_NAME`. The flutter/RN
+*consumed* `io.github.sceneview:*` deps lag to the last PUBLISHED release, never the
+in-flight one (#1494). Reference list:
 
 ### Source of truth
 1. `gradle.properties` (root) — `VERSION_NAME=X.Y.Z`
@@ -25,7 +30,7 @@ If not using /version-bump, manually update:
 4. `sceneview-core/gradle.properties` — `VERSION_NAME=`
 
 ### npm packages
-5. `mcp/package.json` — `"version": "X.Y.Z"`
+5. ~~`mcp/package.json`~~ — **excluded** (independent MCP track, #1705)
 6. `sceneview-web/package.json` — `"version": "X.Y.Z"`
 7. `react-native/react-native-sceneview/package.json` — `"version": "X.Y.Z"`
 
@@ -54,7 +59,7 @@ If not using /version-bump, manually update:
 23. `sceneview/Module.md`, `arsceneview/Module.md` — version refs
 
 ### MCP source
-24. `mcp/src/index.ts` — version string in server info
+24. ~~`mcp/src/index.ts`~~ — **excluded** (independent MCP track, #1705)
 
 ## Step 2: Collate the CHANGELOG
 
@@ -168,7 +173,7 @@ This triggers:
 
 ## Step 9: Verify published artifacts
 
-Wait 5-10 minutes, then run `/publish-check` to verify all artifacts are live:
+Wait 5-10 minutes, then run `/sync-check --published-only` to verify all artifacts are live — and `/store-status` for the REAL App Store / Play live versions (CI-green ≠ live, #2252):
 - Maven Central: sceneview, arsceneview, sceneview-core
 - npm: sceneview-mcp, @sceneview/sceneview-web
 - GitHub Release with APKs attached

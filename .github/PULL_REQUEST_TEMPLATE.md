@@ -17,7 +17,7 @@
 
 - [ ] `/review` passed — no threading, Compose API, or style issues
 - [ ] `/document` run — KDoc updated for changed public APIs, `llms.txt` updated if signatures changed
-- [ ] `/test` run — new tests added for new behaviour
+- [ ] `/review --coverage` run — new tests added for new behaviour
 - [ ] `./gradlew :sceneview:assembleDebug :arsceneview:assembleDebug` passes
 - [ ] Filament materials recompiled (if `.mat` files changed)
 - [ ] Minimal diff — no unrelated reformatting

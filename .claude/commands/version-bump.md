@@ -6,6 +6,12 @@ description: Coordinated version update across all 30+ platform-specific files (
 
 Bump the SceneView version across ALL locations in a single, atomic operation.
 
+> ⛔ **What is NOT bumped here.** `sceneview-mcp` (`mcp/package.json`, `mcp/src/index.ts`)
+> is on an **independent npm track** — `sync-versions.sh` excludes it; bump it only when
+> releasing the MCP, never to the SDK `VERSION_NAME` (#1705). The flutter/RN **consumed**
+> `io.github.sceneview:*` dependency lines lag to the **last published** release, never the
+> in-flight one — `sync-versions.sh` reports them WARN-only and never auto-bumps (#1494).
+
 **Usage:** `/version-bump 3.6.0` or just `/version-bump` (will ask for version)
 
 ---
@@ -21,8 +27,7 @@ Bump the SceneView version across ALL locations in a single, atomic operation.
 - `sceneview-core/gradle.properties` -> `VERSION_NAME=`
 
 ### npm packages
-- `mcp/package.json` -> `"version": "X.Y.Z"`
-- `mcp/src/index.ts` -> version string in server info object
+- ⛔ `mcp/package.json` / `mcp/src/index.ts` — **NOT bumped here** (independent MCP track, excluded by `sync-versions.sh`, #1705)
 - `sceneview-web/package.json` -> `"version": "X.Y.Z"`
 - `react-native/react-native-sceneview/package.json` -> `"version": "X.Y.Z"`
 
@@ -75,9 +80,18 @@ grep '^VERSION_NAME=' gradle.properties | cut -d= -f2
 ### 2. Ask for new version (if not provided as argument)
 "Current version is X.Y.Z. What version do you want to bump to?"
 
-### 3. Update ALL locations
+### 3. Update ALL locations — `sync-versions.sh --fix` is the single source of truth
 
-Use sed/Edit to update every file listed above. The key patterns to replace:
+`bash .claude/scripts/sync-versions.sh --fix` is the AUTHORITATIVE updater: it owns the
+canonical location list and rewrites every file atomically, so the script and this doc
+can never drift. Run it instead of hand-editing (it already excludes the MCP files,
+#1705, and treats flutter/RN consumed deps WARN-only, #1494):
+
+```bash
+bash .claude/scripts/sync-versions.sh --fix
+```
+
+Only fall back to manual `sed` if the script cannot reach a file. The key patterns:
 
 **Gradle modules:**
 ```bash

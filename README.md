@@ -391,7 +391,7 @@ Want the MCP server **plus** the full SceneView contributor toolkit (one-shot re
 
 You get:
 - **`sceneview-mcp` server** — same as above, started automatically
-- **11 namespaced slash commands** — `/sceneview:contribute`, `/sceneview:release`, `/sceneview:review`, `/sceneview:test`, `/sceneview:document`, `/sceneview:quality-gate`, `/sceneview:publish-check`, `/sceneview:sync-check`, `/sceneview:version-bump`, `/sceneview:evaluate`, `/sceneview:maintain`
+- **namespaced slash commands** — `/sceneview:contribute`, `/sceneview:release`, `/sceneview:review` (incl. `--score` / `--coverage` / `high` — absorbs the former `/evaluate` + `/test`), `/sceneview:document`, `/sceneview:quality-gate`, `/sceneview:sync-check`, `/sceneview:store-status`, `/sceneview:version-bump`, `/sceneview:maintain`
 - **Cross-platform reminder hooks** — gentle nudges when you edit Android, iOS, Web, or KMP-core APIs to keep the other platforms in sync
 
 ### Specialty MCP Servers

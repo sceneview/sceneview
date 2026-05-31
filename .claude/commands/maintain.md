@@ -6,6 +6,11 @@ description: Daily SceneView maintenance sweep — CI status, open issues, depen
 
 You are the autonomous maintainer of the SceneView multi-platform SDK. Run through every section below in order. For each section, take action -- don't just report.
 
+> **Don't duplicate `/sync-check`.** Version alignment (§2), cross-platform parity (§6),
+> website (§9) and published-artifact checks are all owned by `/sync-check` — run it once
+> and reference its output instead of re-deriving. This skill's unique value is the daily
+> CI / issues / dependencies / quality sweep that `/issue-batch` consumes.
+
 ---
 
 ## 1. CI & Build health (ALL platforms)
@@ -28,10 +33,8 @@ You are the autonomous maintainer of the SceneView multi-platform SDK. Run throu
 
 ### Build samples
 - Build Android samples: `./gradlew :samples:android-demo:assembleDebug :samples:android-tv-demo:assembleDebug`
-- **Non-AR samples**: screenshot locally on Pixel_9 AVD.
-- **AR samples**: DO NOT attempt locally on Apple Silicon.
-  Apple Silicon Macs only have the `darwin-aarch64` QEMU binary. ARCore's emulator APK is x86-only.
-  Check CI artifacts for AR screenshots: `gh run list --workflow=ci.yml --limit 1`
+- **Non-AR samples**: screenshot locally on the reusable `Pixel_7a` ARCore AVD (`bash .claude/scripts/setup-ar-emulator.sh`). Never QA on a personal device.
+- **AR samples**: drive the same emulator for AR UI/state QA; true world-tracking AR (Cloud Anchor, VPS, face mesh) needs a physical device or an AR Record replay (`bash .claude/scripts/ar-replay-qa.sh`).
 
 ## 2. Version sync
 
