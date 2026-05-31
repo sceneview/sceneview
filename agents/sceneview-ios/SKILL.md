@@ -186,6 +186,17 @@ ARSceneView(
 7. **`SceneView` is cross-platform (iOS/macOS/visionOS); `ARSceneView` is iOS
    only.** macOS and visionOS get 3D but not the ARKit camera view.
 
+## Performance / hot paths
+
+**Don't drive SwiftUI `@State` from a per-frame loop** (an `onFrame` / RealityKit
+`update` closure). A `@State` write every frame churns the view `body` — the
+per-frame loop should mutate entities (or a reference-box `class` you hold) and only
+flip `@State` when UI-visible state actually changes. Same root rule as the other
+platforms: never recompute or allocate per frame what you can read once and cache.
+Full cross-platform guidance:
+[`docs/docs/performance.md` § Hot Paths & Allocation-Free APIs](https://github.com/sceneview/sceneview/blob/main/docs/docs/performance.md)
+(audit umbrella [#2263](https://github.com/sceneview/sceneview/issues/2263)).
+
 ## Toolchain pairing
 
 Pair this skill with Xcode's command-line tools:

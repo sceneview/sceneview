@@ -223,6 +223,18 @@ sceneview.haptic.pattern([10, 50, 20]);// custom on/off durations (ms)
   every call is then a silent no-op. Some browsers also restrict
   vibration to user-gesture handlers. See `llms.txt § Haptic Feedback`.
 
+## Performance / hot paths
+
+**Preallocate scratch arrays and mutate them in place — never build fresh
+`[x, y, z]` / `float3(...)` / mat4 array literals inside a `requestAnimationFrame`
+tick.** Filament.js reads the array synchronously, so reuse is safe, and the small
+JS heap on iOS Safari turns per-frame allocation into a GC sawtooth that drops
+frames. SceneView's own `OrbitCameraController` keeps `eyeScratch` / `centerScratch`
+/ `upScratch` and rewrites them per frame instead of allocating — follow that
+pattern in your render loop. Full cross-platform guidance:
+[`docs/docs/performance.md` § Hot Paths & Allocation-Free APIs](https://github.com/sceneview/sceneview/blob/main/docs/docs/performance.md)
+(audit umbrella [#2263](https://github.com/sceneview/sceneview/issues/2263)).
+
 ## Resources
 
 - **[Cheat sheet](./references/cheatsheet.md)** — the Kotlin/JS DSL, the JS API,

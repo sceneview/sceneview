@@ -6,6 +6,95 @@ for the SceneView SDK.
 
 ---
 
+## Hot Paths & Allocation-Free APIs
+
+This is the **single most common performance bug** in SceneView apps, and the one
+that AI assistants reintroduce most often. A cross-platform [hot-path audit
+(umbrella #2263)](https://github.com/sceneview/sceneview/issues/2263) found the
+exact same anti-pattern on all five platforms: **getters that decompose a matrix
+or allocate are far too easy to call once per frame.** They cost almost nothing
+when called occasionally, so the cost is invisible in code review — but in a
+render-rate loop they melt your frame budget.
+
+!!! danger "The rule"
+    **Never call a decomposing or allocating getter inside `onFrame`,
+    `onSessionUpdated`, an `update` closure, a `requestAnimationFrame` tick, or any
+    other per-frame loop.** Read once, cache outside the loop, or use the
+    allocation-free overload. The frame loop runs **30–60 times per second** — one
+    stray `FloatArray(16)` there is thousands of garbage objects per second.
+
+### Why it matters
+
+Three distinct failure modes, all from the same root cause:
+
+- **Float drift.** Decomposing a matrix into components and recomposing it every
+  frame is lossy. The trigger for this whole audit ([#2187](https://github.com/sceneview/sceneview/issues/2187))
+  was `node.quaternion = q` round-tripping through the world matrix → measurable
+  rotational drift over time. Writing one TRS component at a time forces a
+  decompose-edit-recompose cycle; set the whole `transform` once instead.
+- **GC sawtooth.** Per-frame allocation produces the classic memory-profiler
+  sawtooth: allocate → GC pause → jank. It is worst on **iOS Safari / mobile web**,
+  where the JS heap is small and a collection mid-`rAF` drops a frame outright.
+- **JNI / bridge thunks.** On Android each Filament world-matrix read is a JNI
+  round-trip; doing it three times per frame per node (position + rotation +
+  scale) is three thunks where one cached read would do.
+
+### Cheat sheet — avoid in the hot path → use instead
+
+=== "Android (Kotlin / Compose)"
+
+    | Avoid per frame | Use instead | Why |
+    |---|---|---|
+    | Setting `node.position` / `node.quaternion` / `node.rotation` / `node.scale` individually in a loop | Build a `Transform` (`Mat4`) and assign `node.transform = …` **once** | Each component setter recomposes the matrix; one-at-a-time writes also round-trip and drift (#2187) |
+    | `Mat4.toColumnsFloatArray()` for a per-frame uniform / `TransformManager.setTransform` upload | `mat4.copyColumnsInto(scratch)` into a reused `FloatArray(16)` (also `Mat3.copyColumnsInto`) | `toColumnsFloatArray()` allocates a fresh array every call (#2271) |
+    | `slerp(startTransform, endTransform, …)` when you already hold the TRS components | the TRS-tuple overload `slerp(startPosition, startQuaternion, startScale, …)` | The `Transform` overload runs **6 matrix decompositions** per call (#2265) |
+    | Re-loading a model / re-creating a node per recomposition | `rememberModelInstance(modelLoader, "models/x.glb")`, `rememberNode { … }` | They cache and marshal Filament JNI onto the main thread for you |
+
+    `node.worldPosition` / `worldQuaternion` / `worldScale` / `worldRotation` are
+    **now cached** (#2264) — reading them per frame is fine. They invalidate
+    automatically when the transform or parenting changes.
+
+=== "AR (ARCore)"
+
+    | Avoid per frame | Use instead | Why |
+    |---|---|---|
+    | `pose.transform` inside `onSessionUpdated` | `pose.toTransform(scratch)` with a reused `FloatArray(16)`, or just feed the pose to a node/anchor setter | The `Pose.transform` getter allocates a `FloatArray(16)` every read (#2266) |
+    | Allocating collections — `frame.getUpdatedPlanes().map { … }`, `listOf(...)`, `filter` — every frame | Hoist the references out of the callback; iterate without building new lists | `onSessionUpdated` runs every frame; per-frame collections are pure GC pressure |
+
+    Anchor / `PoseNode` setters already do the matrix work internally — let them,
+    rather than reading `pose.transform` yourself.
+
+=== "KMP collision (sceneview-core)"
+
+    | Avoid per frame | Use instead | Why |
+    |---|---|---|
+    | A fresh `Ray(origin, direction)` per pick/cast | Reuse one `Ray` and `setOrigin(...)` / `setDirection(...)` | Each `Ray` and each `getOrigin()` / `getDirection()` returns a **new `Vector3` copy** |
+    | Allocating per triangle in a mesh-intersection loop | Reuse scratch `Vector3` / arrays across the loop | Triangle loops run thousands of iterations per cast |
+
+=== "Web (Filament.js)"
+
+    | Avoid per frame | Use instead | Why |
+    |---|---|---|
+    | Fresh `[x, y, z]` / `float3(...)` / mat4 array literals every `requestAnimationFrame` tick | Preallocate scratch arrays once and **mutate in place** before the call | Filament.js reads the array synchronously, so reuse is safe; fresh literals = GC sawtooth on Safari |
+
+    SceneView's own `OrbitCameraController` already does this — it keeps
+    `eyeScratch` / `centerScratch` / `upScratch` and rewrites them per frame instead
+    of allocating (#2268). Follow the same pattern in your render loop.
+
+=== "Apple (SwiftUI / RealityKit)"
+
+    | Avoid per frame | Use instead | Why |
+    |---|---|---|
+    | Driving `@State` from a per-frame `onFrame` / RealityKit `update` closure | Mutate a reference box (a `class` you hold), or subscribe to scene events, and only flip `@State` when UI-visible state actually changes | A `@State` write every frame churns the SwiftUI view `body` — the per-frame loop should touch entities, not view state |
+
+### One-line takeaway
+
+> Per-frame code reads cached values and writes whole transforms. If a getter's
+> name implies a decomposition (`world*`, `*.transform`) or returns a fresh array
+> or object, hoist it out of the loop or use its allocation-free overload.
+
+---
+
 ## Measuring Performance
 
 Before optimizing, measure. Guessing where time is spent leads to wasted effort.

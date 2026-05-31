@@ -185,6 +185,20 @@ lambda — there is NO `rememberARSession()` helper, do NOT invent one.
    / `rememberMaterialLoader` / `rememberEnvironmentLoader` belong at the top of
    the screen-level composable, NOT inside scroll lists or item composables.
 
+## Performance / hot paths
+
+**Never call a decomposing or allocating getter inside `onFrame` (or any 30–60 Hz
+loop).** Set the whole `node.transform = …` once instead of writing `position` /
+`quaternion` / `scale` one at a time (one-at-a-time writes recompose the matrix and
+drift — issue [#2187](https://github.com/sceneview/sceneview/issues/2187)); use
+`mat4.copyColumnsInto(scratch)` not `Mat4.toColumnsFloatArray()` for per-frame uniform
+uploads; prefer the TRS-tuple `slerp(startPosition, startQuaternion, startScale, …)`
+when you already hold the components. Reading `node.worldPosition` /
+`worldQuaternion` per frame is fine now — those are cached. Always load via
+`rememberModelInstance` / `rememberNode` (cached + main-thread). Full table:
+[`docs/docs/performance.md` § Hot Paths & Allocation-Free APIs](https://github.com/sceneview/sceneview/blob/main/docs/docs/performance.md)
+(audit umbrella [#2263](https://github.com/sceneview/sceneview/issues/2263)).
+
 ## Toolchain pairing
 
 This skill is most useful paired with the **`android-cli`** skill:
