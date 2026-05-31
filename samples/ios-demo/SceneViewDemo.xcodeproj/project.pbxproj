@@ -1028,6 +1028,7 @@
 				MARKETING_VERSION = 4.16.10;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo;
 				PRODUCT_NAME = SceneView;
+				PRODUCT_MODULE_NAME = SceneViewDemo;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1061,6 +1062,7 @@
 				MARKETING_VERSION = 4.16.10;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo;
 				PRODUCT_NAME = SceneView;
+				PRODUCT_MODULE_NAME = SceneViewDemo;
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "SceneView Demo App Store";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
