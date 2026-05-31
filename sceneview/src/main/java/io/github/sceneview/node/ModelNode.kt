@@ -1,8 +1,10 @@
 package io.github.sceneview.node
 
 import androidx.annotation.IntRange
+import com.google.android.filament.IndexBuffer
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
+import com.google.android.filament.VertexBuffer
 import com.google.android.filament.gltfio.Animator
 import com.google.android.filament.gltfio.FilamentAsset
 import dev.romainguy.kotlin.math.Float3
@@ -10,6 +12,7 @@ import dev.romainguy.kotlin.math.max
 import com.google.android.filament.Box
 import io.github.sceneview.Entity
 import io.github.sceneview.components.RenderableComponent
+import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
@@ -88,6 +91,37 @@ open class ModelNode(
     ) : io.github.sceneview.node.RenderableNode(engine = modelInstance.engine, entity = entity),
         ChildNode {
         override var name = super<ChildNode>.name
+
+        // The sanitize-once latch ([permanentlyValidEntities]) assumes a static renderable's AABB
+        // can never go back to empty once observed valid. Explicitly mutating the geometry or the
+        // bounding box of a *latched* renderable is the one out-of-band path that can re-introduce
+        // an empty AABB (a degenerate box → Filament "AABB can't be empty" crash). Evicting the
+        // entity from the latch on every such mutation makes the next [sanitizeEmptyBoundingBoxes]
+        // pass re-scan it and re-detect the empty AABB before Filament can crash on it (#2311).
+
+        override fun setGeometry(geometry: Geometry) {
+            super.setGeometry(geometry)
+            permanentlyValidEntities -= entity
+        }
+
+        override fun setGeometryAt(
+            primitiveIndex: Int,
+            type: RenderableManager.PrimitiveType,
+            vertices: VertexBuffer,
+            indices: IndexBuffer,
+            offset: Int,
+            count: Int
+        ) {
+            super.setGeometryAt(primitiveIndex, type, vertices, indices, offset, count)
+            permanentlyValidEntities -= entity
+        }
+
+        override var axisAlignedBoundingBox: Box
+            get() = super.axisAlignedBoundingBox
+            set(value) {
+                super.axisAlignedBoundingBox = value
+                permanentlyValidEntities -= entity
+            }
     }
 
     inner class LightNode internal constructor(
@@ -190,11 +224,12 @@ open class ModelNode(
      * empty…"), which is why skinned / morph-target renderables are deliberately NEVER latched
      * and keep the full per-frame valid↔empty check (#2273, #2280 revert).
      *
-     * Caveat (not handled, by design): explicitly mutating a *latched* renderable via
-     * [RenderableComponent.setGeometry] / the `axisAlignedBoundingBox` setter with a degenerate
-     * box re-introduces an empty AABB that this latch will not re-scan. No glTF-driven path or
-     * any SceneView sample does this; if a future caller needs it, evict the entity from this
-     * set on those mutations (tracked in the #2273 follow-up).
+     * Out-of-band mutation (handled, #2311): explicitly mutating a *latched* renderable via
+     * [RenderableComponent.setGeometry] / [RenderableComponent.setGeometryAt] / the
+     * `axisAlignedBoundingBox` setter with a degenerate box re-introduces an empty AABB that this
+     * latch would otherwise never re-scan. The [RenderableNode] inner class overrides those three
+     * mutators to remove the entity from this set, so the next [sanitizeEmptyBoundingBoxes] pass
+     * re-scans the entity and re-detects the empty AABB before Filament can crash on it.
      */
     private val permanentlyValidEntities = mutableSetOf<Entity>()
 
@@ -596,9 +631,10 @@ open class ModelNode(
         // Latch only when valid AND no runtime AABB-mutating driver exists: no skins on the
         // model and no morph targets on this renderable. With neither, nothing the render loop
         // does can take the AABB back to empty, so it's safe to skip permanently. (Explicit
-        // setGeometry / axisAlignedBoundingBox mutation is the one out-of-band exception — see
-        // the permanentlyValidEntities KDoc.) Animated (skinned/morph) renderables are never
-        // latched — they keep the per-frame check that catches a runtime valid→empty collapse.
+        // setGeometry / setGeometryAt / axisAlignedBoundingBox mutation evicts the entity from
+        // the latch via RenderableNode — see the permanentlyValidEntities KDoc, #2311.) Animated
+        // (skinned/morph) renderables are never latched — they keep the per-frame check that
+        // catches a runtime valid→empty collapse.
         if (!isEmpty && !modelHasSkins && renderableManager.getMorphTargetCount(instance) == 0) {
             permanentlyValidEntities += entity
         }
