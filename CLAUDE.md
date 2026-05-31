@@ -671,7 +671,9 @@ Hooks trigger automatically on specific Claude Code actions:
 
 | Script | Purpose |
 |---|---|
-| `sync-versions.sh` | Scan ALL version declarations, report/fix mismatches |
+| `sync-versions.sh` | Scan ALL version declarations, report/fix mismatches (the single source of truth for the version-location list) |
+| `claim.sh` | Atomic issue-claim registry that kills the #2300 dup-implementation race. Primary lock = GitHub `in-progress` label (cross-host); local mirror = the `STATE.md` IN-FLIGHT ledger. `<issue#>` / `--check` / `--release` / `--list` / `--force`. macOS-safe (sleepless `mkdir` lock, no `flock`) |
+| `check-saved-workflows.sh` | Static validator for the `.claude/workflows/*.js` saved workflows (async-wrapped `node --check` + meta block + resume-safety). Distinct from `check-workflow-scripts.sh`, which validates the CI YAML |
 | `cross-platform-check.sh` | Compare Android vs iOS vs Web API surface, report gaps |
 | `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.) |
 | `lib/android-cli.sh` | Shared helpers for Google's `android` CLI (screenshot, layout, install+launch) with `adb` fallback |
