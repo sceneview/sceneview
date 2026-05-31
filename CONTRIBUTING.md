@@ -320,6 +320,20 @@ When adding a new material, pick a profile by deployment target and add an entry
 
 `GenerateFilamat.sh --check` (and the `quality-gate.sh` drift gate) will catch a runtime/blob mismatch before merge. If you somehow bypass the gate, the first signal is a runtime crash on whichever demo loads the affected material first.
 
+#### Visual QA for material / shader changes (Mac-friendly)
+
+A material change can compile, pass unit tests, and still render wrong (the v4.16.x plane-renderer "white blob", #2224, is the canonical example — three "fixes" shipped before the real cause was found). Compile + unit tests are **not** a visual gate. This is the validated flow, refined while fixing #2224.
+
+**1 — Diagnose & iterate on the shader on a plain Mac, with no ARCore.** ARCore cannot run in an Android emulator on Apple Silicon (x86 needs TCG → ARCore watchdog-timeouts; arm64 has no ARCore camera bridge — see `feedback_arcore_emulator_mac_dead_end` / issue #1645, definitively closed). **But pure Filament rendering works perfectly on the standard arm64 emulator.** So isolate the shader: render the exact committed `.filamat` on a static, hand-built mesh in a **non-AR** `SceneView`, with no ARCore session — the pattern in [`PlaneGridPreviewDemo`](samples/android-demo/src/main/java/io/github/sceneview/demo/demos/PlaneGridPreviewDemo.kt) (debug-only, `adb shell am start -n io.github.sceneview.demo/.DemoHostActivity --es demo_id plane-grid-preview`). Mirror the AR render pipeline: pass `renderQuality = RenderQuality.Performance` (bloom/SSAO **off**, like `ARSceneView`) — the default `SceneView` keeps bloom on, which washes a translucent material into a uniform blob and hides the real output.
+
+**2 — Pixel-measure, don't eyeball.** Capture `adb exec-out screencap -p`, convert to BMP (`sips -s format bmp`), parse pixels (no ImageMagick on most Macs). Over a known background you can read the actual composite. #2224's root cause was found this way: an unlit `blending: transparent` material that writes a straight (non-premultiplied) `baseColor.rgb` composites as `color + (1-α)·bg` (colour at full strength) instead of `lerp(bg, color, α)`, so capping `α` never reduces the colour. Fix: premultiply in the fragment — `material.baseColor.rgb = <color> * material.baseColor.a;`. A distinguishing test (render with two different `color` values and check the slope) tells premultiplied from straight-add unambiguously.
+
+**3 — Confirm on a real device (the only true AR gate).** USB, not wireless — `adb`-over-Wi-Fi drops mid-transfer on a 200+ MB demo APK. The Play Store build is release-signed, so `uninstall io.github.sceneview.demo` first (debug APK can't replace it; `INSTALL_FAILED_VERSION_DOWNGRADE` / signature mismatch otherwise). Launch an AR demo via `DemoHostActivity` (`--es demo_id ar-placement`), grant `android.permission.CAMERA`, and screen-record while sweeping over varied surfaces — **especially a bright/outdoor one**, the condition that made the #2224 blob worst.
+
+**4 — Analyse the screen recording.** Pull it, then: contact-sheet the frames with ffmpeg's `tile` filter (`-vf "fps=1/3,scale=200:-1,tile=5x4"` — no ImageMagick needed) for a fast overview, then extract full-res frames at the interesting timestamps for the actual judgement. If the recording has narration, transcribe with Whisper **large-v3** (smaller models are not reliable for this). ⚠️ A transcript that is only `Sous-titrage ST'…` / `Merci` / `Amara.org` repeated is Whisper's **silence hallucination** — it means there was no speech, not a real transcript.
+
+**Two hard rules (born from the #2224 saga):** (a) **look at an actual rendered frame — and pixel-measure it — before claiming a visual fix works**; never infer "it looks better" from code. (b) **Verify any flag an LLM suggests against the real binary before trusting it** — e.g. the proposed ARCore replay property `debug.com.google.ar.core.camera_playback_autostart` was a confident hallucination (0 hits in 1 M strings extracted from the ARCore APK).
+
 ---
 
 ## Maintenance scripts
