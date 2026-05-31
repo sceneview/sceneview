@@ -1,0 +1,2 @@
+<!-- category: Docs -->
+- Doc↔API drift audit (manual run): corrected the stale "version 4.15.0" Maven-artifacts label in `llms.txt` to match the current `4.16.10` install snippets, and fixed two recipes (`samples/recipes/procedural-geometry.md`, `samples/recipes/physics.md`) that called a non-existent `rememberMaterialInstance(materialLoader)` — replaced with the canonical `remember(materialLoader) { materialLoader.createColorInstance(...) }` pattern (`rememberMaterialInstance` does not exist; `llms.txt` itself documents its absence).
