@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- Fixed `DemoHostActivity` (debug deep-link test harness) crashing with `Unknown demo id` when launched for `double-pendulum`, `spatial-audio`, or `placement-scene` — these three demos are registered in the catalog but were missing from the host's `when()` routing. They now route to their composables. Real users were unaffected (the normal `MainActivity` deep-link channel always handled them); the crash only hit the instrumentation/manual-QA `--es demo_id` path. Found during the #2239 interactive QA sweep.

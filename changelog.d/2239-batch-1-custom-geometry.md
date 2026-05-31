@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **Samples catalog: unified Custom Geometry demo ([#2239](https://github.com/sceneview/sceneview/issues/2239)).** The retired `custom-mesh` and `shape` demos consolidated into a single `custom-geometry` entry with a segmented-button toggle between Custom Mesh (composite primitives) and Shape Extrude (2D polygon → 3D mesh) modes. Existing `sceneview://demo/custom-mesh` and `sceneview://demo/shape` deep links keep working via `DEMO_ID_ALIASES`. Batch 1 of the 60 → 23 catalog regrouping (iOS mirror follows).
