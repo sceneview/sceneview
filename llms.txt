@@ -2914,6 +2914,7 @@ SceneView(surfaceType = SurfaceType.TextureSurface, isOpaque = false)  // Textur
 - **Engine**: create one `rememberEngine()` at app level, share across all scenes.
 - **AR**: disable `planeRenderer` after object placement to reduce overdraw.
 - **Rerun bridge**: adds ~0.5ms when active. Gate with `BuildConfig.DEBUG`.
+- **Hot paths**: never call a decomposing/allocating getter inside `onFrame`/`onSessionUpdated`. Set whole `node.transform = …` once (don't write `position`/`quaternion`/`scale` one at a time → recompose + drift); use `mat4.copyColumnsInto(scratch)` not `toColumnsFloatArray()`; use the TRS-tuple `slerp(...)` overload; `worldPosition`/`worldQuaternion` are cached so per-frame reads are fine. AR: don't read `pose.transform` per frame (allocates) — use `pose.toTransform(scratch)` or a node setter. See docs/docs/performance.md § Hot Paths & Allocation-Free APIs (audit #2263).
 - See full guide: docs/docs/performance.md
 
 ---
