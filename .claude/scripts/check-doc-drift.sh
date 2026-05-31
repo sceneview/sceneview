@@ -43,6 +43,13 @@
 # ROBUSTNESS CONTRACT (mirrors impact-check.sh #1782/#1786)
 #   - Missing inputs [SKIP] rather than die under `set -euo pipefail`.
 #   - Default exit code 0 (advisory); `--fail` opts into non-zero.
+#
+# KNOWN HEURISTIC LIMITS (acceptable: this is a non-blocking advisory, and the
+# weekly doc-audit agent is the semantic backstop)
+#   - A local `val`/`var` declared inside a changed function body matches the
+#     public-decl regex, so a pure body refactor can produce a spurious WARN.
+#   - A param added to an EXISTING multi-line signature is missed (the `fun`
+#     line itself is not in the hunk). Both are by-design trade-offs.
 
 set -euo pipefail
 
@@ -102,12 +109,26 @@ DOC_RECIPES_DIR="samples/recipes"
 # so we flag any decl that is NOT explicitly private/internal/protected).
 public_decl_re='(@Composable[[:space:]]+)?(fun|val|var|class|interface|object|enum[[:space:]]+class)[[:space:]]+[A-Za-z]'
 swift_decl_re='public[[:space:]]+(func|var|let|struct|class|enum|protocol)[[:space:]]+[A-Za-z]'
+# A line is "non-public" only when a visibility modifier word is followed (maybe
+# via other modifiers like `inline`/`open`) by a DECLARATION keyword — i.e.
+# `private fun`, `internal val`, `protected open class`. This deliberately does
+# NOT match "internal" inside a comment ("// not internal yet") or a param name
+# ("internal: Boolean"), which would otherwise filter out a genuinely public
+# decl and cause a false negative (review #2333 nit #2).
+nonpublic_re='(^|[^[:alnum:]_])(private|internal|protected)[[:space:]]+([a-z]+[[:space:]]+)*(fun|val|var|class|interface|object|enum|func|let|struct|protocol)([[:space:]]|$)'
 
 # ──────────────────────────────────────────────────────────────────────────
 # DIFF MODE — advisory
 # ──────────────────────────────────────────────────────────────────────────
 resolve_range() {
-    # Echoes a git diff range ("A B" or "A..B") for the current PR/branch.
+    # Echoes a git diff range ("A B") for the current PR/branch. We use a
+    # TWO-dot range (FETCH_HEAD HEAD) on purpose: on a `pull_request` event the
+    # checkout is the merge ref, so two-dot already excludes main-only changes
+    # and is correct. A three-dot (merge-base) range would be cleaner for a
+    # diverged LOCAL branch, but the shallow `--depth=1` fetch has no common
+    # ancestor to compute it. CAVEAT: running this locally on a branch whose
+    # main has diverged can therefore show a few main-only files as "changed"
+    # → at worst a spurious advisory WARN. Harmless for a non-blocking check.
     if [[ -n "$BASE_REF" ]]; then
         git fetch --no-tags --depth=1 origin "$BASE_REF" >/dev/null 2>&1 || true
         if git rev-parse --verify -q "origin/$BASE_REF" >/dev/null; then echo "origin/$BASE_REF HEAD"; return; fi
@@ -125,6 +146,7 @@ resolve_range() {
 changed_files() {
     if [[ -n "${DOC_DRIFT_FILES:-}" ]]; then tr ' ' '\n' <<<"$DOC_DRIFT_FILES" | sed '/^$/d'; return; fi
     local range; range="$(resolve_range)"
+    # shellcheck disable=SC2086  # $range is intentionally word-split into "A B".
     { [[ -n "$range" ]] && git diff --name-only $range 2>/dev/null || true
       git diff --name-only 2>/dev/null || true          # unstaged
       git diff --name-only --cached 2>/dev/null || true # staged
@@ -162,7 +184,7 @@ run_diff_mode() {
         # shellcheck disable=SC2086
         local apidiff; apidiff="$(git diff $range -- $api_changed 2>/dev/null || true)"
         if grep -E "^[+-]" <<<"$apidiff" \
-             | grep -vE "private|internal|protected" \
+             | grep -vE "$nonpublic_re" \
              | grep -qE "$public_decl_re|$swift_decl_re"; then
             decl_changed=true
         fi
@@ -250,7 +272,7 @@ $(find sceneview/src/main/java/io/github/sceneview/node arsceneview/src/main \
           { prev = $0 }
         ' "$f" 2>/dev/null || true
     done < <(find sceneview/src/main arsceneview/src/main -name '*.kt' 2>/dev/null | head -400) \
-      | head -40 | sed 's/^/  /'
+      | head -40 | sed 's/^/  /' || true
     echo "  (list truncated to 40 — full scan is the agent's job)"
     echo
 

@@ -57,5 +57,46 @@ set +e; OUT="$(bash "$SCRIPT" --audit 2>&1)"; RC=$?; set -e
     && ok "audit mode emits a worklist and exits 0" \
     || bad "audit mode should emit a worklist (rc=$RC)"
 
+# 6. REAL git-diff path (not DOC_DRIFT_FILES injection): exercise the public-decl
+#    detection regex against an actual committed hunk in a scratch repo. This is
+#    the fragile logic the injection tests short-circuit (review #2333 nit #6).
+SCRATCH="$(mktemp -d)"
+trap 'rm -rf "$SCRATCH"' EXIT
+(
+    cd "$SCRATCH"
+    git init -q
+    git config user.email t@t.t && git config user.name t
+    git config core.hooksPath /dev/null   # bypass the host's global pre-commit hook
+    mkdir -p sceneview/src/main/java
+    printf 'class Foo {\n    fun bar() {\n        doWork()\n    }\n}\n' > sceneview/src/main/java/Foo.kt
+    git add -A && git commit -qm base
+    # Add a genuinely public composable in a NEW commit → must be detected.
+    printf 'class Foo {\n    fun bar() {\n        doWork()\n    }\n}\n\n@Composable\nfun NewPublicThing() {}\n' \
+        > sceneview/src/main/java/Foo.kt
+    git commit -qam "add public api"
+)
+set +e
+OUT="$(cd "$SCRATCH" && bash "$SCRIPT" 2>&1)"; RC=$?
+set -e
+{ [[ $RC -eq 0 ]] && grep -q "llms.txt\` was not updated" <<<"$OUT"; } \
+    && ok "real committed public-decl hunk → detected + advisory WARN" \
+    || bad "real public-decl hunk should be detected via git diff (rc=$RC)"
+
+# 6b. A pure body-statement change (no declaration line touched) must NOT trip
+#     the public-decl gate. (Local `val`/`var` decls inside a body would — a
+#     documented heuristic limitation; this tests the clean statement case.)
+(
+    cd "$SCRATCH"
+    printf 'class Foo {\n    fun bar() {\n        doOtherWork()\n    }\n}\n\n@Composable\nfun NewPublicThing() {}\n' \
+        > sceneview/src/main/java/Foo.kt
+    git commit -qam "body tweak only"
+)
+set +e
+OUT="$(cd "$SCRATCH" && bash "$SCRIPT" 2>&1)"; RC=$?
+set -e
+{ [[ $RC -eq 0 ]] && grep -q "no public declaration was added" <<<"$OUT"; } \
+    && ok "body-only change → no false-positive warning" \
+    || bad "body-only change should not warn (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

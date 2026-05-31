@@ -34,6 +34,7 @@ permissions:
   contents: write          # create the audit branch + commit doc patches
   pull-requests: write     # open the draft PR
   issues: write            # open/update the tracking issue when no safe patch
+  id-token: write          # OIDC for claude-code-action (matches claude.yml)
 
 jobs:
   doc-audit:
