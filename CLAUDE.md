@@ -12,6 +12,10 @@ complete, working code on the first try.
 read the docs and generate correct code for this?" If not, simplify the API or improve
 the documentation until it can.
 
+> **Start here.** Read [`.claude/STATE.md`](.claude/STATE.md) for *where we are* and
+> [`.claude/workflows/README.md`](.claude/workflows/README.md) for *how we work* (the v2
+> working methodology). This file holds stable project facts only — never session state.
+
 ## QUALITY RULES (MANDATORY — every session, every commit)
 
 **ZERO TOLERANCE for bugs reaching the user.** Every change must be verified before push.
@@ -566,51 +570,33 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 
 ## Session continuity
 
-Every Claude Code session MUST read this section first to stay in sync.
+> **Where are we right now? → [`.claude/STATE.md`](.claude/STATE.md).**
+> That gitignored file is the single live source of truth: `NOW` (released version ·
+> what just shipped · what's broken), the `IN-FLIGHT` claim ledger, `NEXT` (<=6 issue
+> links), and the `BOOTSTRAP` commands a fresh session runs (<2 min). **CLAUDE.md carries
+> zero session state** — never add a "Current state" block here again. Done items move to
+> `.claude/handoff.md`; the backlog lives in GitHub issues.
 
-**NOTE FOR OTHER SESSIONS:** Always run `/sync-check` at the start and end of every session.
-Never say "everything is good" without verifying published packages.
+> **How do we work? → [`.claude/workflows/README.md`](.claude/workflows/README.md).**
+> The canonical methodology (v2): principles, the unified lifecycle, the 5 tooling layers,
+> the parallelism model, autonomy boundaries, quality gates, the saved-workflow index, and
+> the claim protocol (`.claude/scripts/claim.sh`) that kills the #2300 dup-implementation race.
 
 ### Latest release: see `gradle.properties`
 
-**The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** — read that file, never hardcode a version here. Any AI bootstrapping from this file should treat the `gradle.properties` `VERSION_NAME` as the latest published version across all surfaces (Maven Central, npm `sceneview-web`/`@sceneview-sdk/react-native`, SPM tag `vX.Y.Z`, web CDN). At the time of writing this is `4.15.1`, but `gradle.properties` is authoritative if they ever disagree. The dated session logs below are historical context only — do not infer the latest version from them.
-
-### Current state (last updated: 2026-05-31 — **v4.17.0 released** + **iOS/macOS App Store rejections fixed & RESUBMITTED** (#2252))
-
-- 🛬 **iOS + macOS App Store REJECTIONS fixed & RESUBMITTED — 4.17.0 / build 366 (#2252).** ⚠️ **Correction to the "store deploys succeeded" claim below: CI upload-green ≠ Apple-approved.** App Review had **rejected** every recent update → **iOS was stuck LIVE on the 3-week-old 4.0.3**, **macOS was NEVER published**. Discovered only when Thomas surfaced it (lesson saved: `feedback_verify_live_store_state` — verify the *real* live version via iTunes lookup + reject states in ASC, never trust CI-green). Root causes fixed on top of v4.17.0: **(1) iOS 2.1(a)** "We were unable to load the model" — the Explore **Sketchfab** path downloaded **GLB** but RealityKit `Entity(contentsOf:)` loads **only USDZ** → now requests/caches USDZ (`SketchfabModels.appleFormat`, `.usdz` cache, `.unsupportedFormat` honest fallback); **runtime-verified on an iPad Air 11" M3 sim** (keyed API → signed USDZ → `Entity` load OK; the GLB throws "No importer can load"). **(2) macOS 2.3.8+2.2** demo-naming — `PRODUCT_NAME=SceneView` (binary/`CFBundleName`/`.app`), `PRODUCT_MODULE_NAME=SceneViewDemo` pinned so Swift module + `@testable import` stay stable; TEST_HOST + 2 QA scripts repointed. **(3) iOS 2.3.10** Android refs in What's New — `app-store.yml` whatsNew extractor strips non-Apple-platform bullets. Work **rebased onto v4.17.0** (main had been rewritten and had none of these fixes), merged (`6de79334d`); `app-store.yml` dispatch uploaded **build 366** (365 was taken); **both iOS+macOS 4.17.0(366) submitted to App Review** ("En attente de vérification") manually via Chrome with a clean human-readable What's New. 3 empty stale `reviewSubmissions` drafts deleted. **⛔ iOS 4.0.3 = the LIVE version — do NOT delete; auto-superseded when 4.17.0 ships.**
-- 🚀 **v4.17.0 RELEASED & VERIFIED LIVE** — the #2263 hot-path/perf umbrella + the **complete #2187 fix** (#2337, component setters no longer re-decompose) + Engine-backed regression test tier (#2334/#2337/#2339) + iOS drag-delta fix (#2312) + hot-path API-guidance doc (#2314). Minor bump from 4.16.10 (new public APIs additive: `Mat4.copyColumnsInto`, slerp TRS overload, `Pose.toTransform(out)`; major 4 frozen). **Verified live:** Maven Central `sceneview`/`arsceneview`/`sceneview-core` 4.17.0 ✅ (repo1, HTTP 200), npm `sceneview-web@4.17.0` ✅, GitHub Release v4.17.0 ✅ (thematic body + demo APKs), website ✅. **Store deploys succeeded** (Play Store + iOS App Store workflows green — the #2252 cert fix held on its first real release run); the demo APPS' store-visibility is review-gated (Apple/Play review, not instant) — the library artifacts devs consume are live now. `release-checklist` gate: 1 "blocker" was a **false positive** (`sk-` substring matching "disk-full" — fixed the regex to real key shapes, commit pushed) → RELEASE POSSIBLE with 3 advisory WARNs. mcp stays on its independent track (4.0.12).
-- 🚀 **v4.16.10 was the prior release** — Maven Central ✅, npm ✅, Play Store ✅, iOS TestFlight ✅, GitHub Release ✅, website ✅.
-- ✅ **macOS App Store #2252 RESOLVED — deploys** (closed). The auto-generated Apple Distribution cert is non-extractable AND that type is maxed (2/2), AND Xcode 26 rejects the legacy "Mac App Distribution" cert for App Store archives. **Final fix (no revocation, no new cert):** the macOS `.app` is signed by **REUSING `IOS_BUILD_CERTIFICATE_BASE64`** — the same unified Apple Distribution cert (`3C376942`) iOS TestFlight signs with daily (extractable key already in that secret); the `.pkg` is signed by the Mac Installer cert named via `installerSigningCertificate` in ExportOptions; the macOS provisioning profile was regenerated to reference `3C376942`. `app-store.yml` `macos_ready` gate now requires `IOS_BUILD_CERTIFICATE`/`MACOS_INSTALLER_CERT`/`MACOS_PROVISIONING_PROFILE` (dropped `MACOS_APP_CERT`). Commits `65817fb7c`+`dd337547f`. Full forensic trail in #2252.
-- ✅ **Perf umbrella #2263 FULLY CLOSED** — all 16 children merged + **empirically profiling-validated** (#2317, deterministic alloc tracking, reproduced twice): **slerp #2289 72→7 allocs/call (~10×)**, **Mat4.copyColumnsInto #2282 1→0**, **Ray by-ref #2286 ~3000 copies eliminated** per mesh ray-test. No new material hot-paths. Children: #2264–#2278, #2303 (review-nits), #2311 (sanitize-latch eviction).
-- 🔺 **TRIPTYQUE rigoureux sur chaque changement** (Thomas mandate, mémoire `feedback_review_update_visual_triptych` + `feedback_opus48_dynamic_workflows_default`): independent adversarial Opus reviews (**caught a real latent crash gap #2311** the implementers missed — setGeometry on a latched renderable) + emulator visual QA (no rendering regressions, screenshots) + profiling. Orchestrated the finish via a **dynamic Workflow** (`finish-perf-tail`: implement → reviews → emulator QA+profiling).
-- ⬆️ **Filament 1.71.5** shipped.
-- ✅ **main CI green**, sync-versions 0 MISMATCH (3 expected WARNs), main checkout clean, merged worktrees pruned.
-- 🔁 **#2187 was NOT fully closed by the umbrella — now it is (the loop closed on itself).** A separate session added a **Filament-Engine-backed regression harness** (#2284 → #2334, instrumented `NodeWorldTransformDriftTest`, runs in `render-tests.yml` CI) *because* the transform-cache fixes had only pure-math tests. It **immediately surfaced that #2187 still drifted** via the per-component setters: `node.quaternion = …` routed through the `transform =` setter which re-decomposed `_scale` (1.0→1.0003821 over 10k frames) — the original feedback loop, reintroduced on the setter path. **Fixed in #2337** (new private `applyCachedTransform()` pushes the pristine caches without re-decomposing; public `transform =` unchanged; `NodeLocalTransformDriftTest` proves fail→pass <1e-6). Also: hot-path **API-guidance doc #2314** (docs/performance.md + 3 agent skills + llms.txt, AI-first anti-recurrence) and the **iOS drag-delta correctness bug #2283 → #2312** (entityDragGesture dispatched cumulative not delta). Every PR got an independent adversarial review (caught the #2294 scaled-node divergence + the #2296 reticle smooth-follow loss + the #2308 VR cross-eye viewport) + visual device-QA where feasible.
-- 🗂️ **Phase-2 (MED) findings filed as per-surface trackers** #2328 (sceneview) / #2329 (arsceneview) / #2330 (core) / #2331 (SceneViewSwift) / #2332 (web) — so "0 open perf issues" is no longer literally true; these are the intentional, deduped MED backlog for `/issue-batch` (LOW micro-allocs left in the audit doc). Reconciled via a dynamic `phase2-reconcile` Workflow (5 parallel surface-triage agents, structured output).
-
-### Followups for next session
-
-0. **🛬 CHECK APPLE REVIEW STATUS (#2252)** — iOS + macOS **4.17.0 (build 366)** submitted 2026-05-31 ~21:50, "En attente de vérification"; expect a verdict in ~1-2 days. If approved: **iOS** finally leaves the stale 4.0.3, **macOS publishes for the first time** on the Mac App Store. If rejected again, read the reviewer message in ASC Resolution Center (Chrome, Thomas logged in). Verify the *real* live version with `curl -s "https://itunes.apple.com/lookup?id=6761329763&country=fr"` — NOT CI-green (see `feedback_verify_live_store_state`).
-0b. **tvOS 4.17.0 / visionOS 1.0** are unfinished ASC version *drafts* ("À finaliser avant soumission") — harmless, never submitted. Delete only if we're sure we're not shipping Apple TV / Vision Pro apps soon (Thomas to decide).
-1. **Perf Phase-2 trackers #2328–#2332** (per-surface MED backlog from the audit) + **#2335-class regression guard**: now that the Engine harness exists (#2334), prefer Engine-backed instrumented tests for any further transform/cache work — the pure-math tier can't catch decompose-drift.
-2. **[#2300](https://github.com/sceneview/sceneview/issues/2300) claim-race process gap** — parallel sessions duplicate-implemented the same issue 3× this session (#2265↔#2280, #2267↔#2294). Proposes: before claiming, grep open-PR *diffs* (not just issue links). 
-2. **[#2301](https://github.com/sceneview/sceneview/issues/2301) reviewSubmissions stale-open robustness** — CONFIRMED recurring: the `app-store.yml` flow leaves **empty** submission drafts (0 elements) in ASC; 3 were found & deleted manually this session and **will re-accumulate on the next deploy**. Fix the CI flow to not orphan empty submissions (self-contained).
-3. **[#2188](https://github.com/sceneview/sceneview/issues/2188) Re-add FGS** — re-add `FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` once Play Console FGS declarations visible.
-4. **[#2241](https://github.com/sceneview/sceneview/issues/2241) Sprint 1 V2 plane renderer redo** — PlaneDiscoveryGuide + ShadowReceiverPlane + PlacementReticle + ARPlacementDemo (RELIRE `project_v2_plane_renderer_lessons.md` first).
-5. **[#2239](https://github.com/sceneview/sceneview/issues/2239) Samples catalog regrouping** — multiple batches merged; more may be in flight from parallel sessions.
-6. **[#2221](https://github.com/sceneview/sceneview/pull/2221)** — Nearby Connections reference transport (DRAFT PR, not from this session) — awaits review.
-7. **[#894 iOS AR feature parity](https://github.com/sceneview/sceneview/issues/894)** — Cloud Anchors, ARRecorder via ReplayKit, Streetscape. Needs physical device.
-8. **Possible release** embarking all the merged perf gains (umbrella #2263) once a release window is wanted.
+**The source-of-truth version is always `VERSION_NAME` in the root `gradle.properties`** —
+read that file, never hardcode a version. Treat it as the latest published version across
+all surfaces (Maven Central, npm `sceneview-web`, SPM tag `vX.Y.Z`, web CDN);
+`gradle.properties` is authoritative if anything disagrees. `/store-status` verifies the
+REAL live versions (CI-green != live).
 
 ### Older session logs
 
-Historical session snapshots (past version sprints, ARCore feature coverage, plugin marketplace work, store-deploy sweeps, etc.) live in `.claude/handoff.md` (gitignored, chronological log) and in `git log` / PR descriptions for permanent "why did we do X" context. CLAUDE.md keeps only the **current** state — read `handoff.md` at session start for everything older.
-
-For full multi-session history with grep context, see the user-memory file `project_session_history.md`.
-
-### How to update
-
-After significant work, update **only** the "Current state" + "Followups for next session" blocks above. Append the old "Current state" entry to `.claude/handoff.md` rather than letting it accumulate here — this section was trimmed from 992 → 741 lines on 2026-05-25 after exactly that accumulation problem (~280 lines of nested "Previous state" entries).
+Chronological history (the "why did we do X") lives in `.claude/handoff.md` (gitignored,
+append-only, rotated to `.claude/handoff-archive/YYYY-QN.md` at 400 lines). `git log` / PR
+descriptions are the permanent record; durable cross-session *rules* live in agent memory
+(`MEMORY.md` index). Run `/handoff` at session end to reconcile STATE.md -> handoff, and
+`/sync-check` before a PR / at session end (never claim "everything is good" without it).
 
 ---
 
@@ -625,7 +611,7 @@ Based on [Anthropic harness design for long-running apps](https://www.anthropic.
 - **Don't prematurely wrap up** — if approaching context limits, hand off cleanly instead
 
 ### Separate generator from evaluator
-- **Never self-evaluate** — run `/evaluate` or `/review` as a separate step
+- **Never self-evaluate** — run `/review --score` (independent evaluator) as a separate step
 - Evaluators should be skeptical; generators should be creative
 - If any evaluation criterion scores 1-2/5, it's BLOCKING — fix before pushing
 
@@ -652,15 +638,18 @@ Based on [Anthropic harness design for long-running apps](https://www.anthropic.
 ### Available evaluator commands
 | Command | Role |
 |---|---|
-| `/review` | Code review checklist (threading, Compose API, style) |
-| `/evaluate` | Independent quality assessment (5 criteria, weighted scores) |
-| `/test` | Test coverage audit |
-| `/sync-check` | Repo synchronization verification |
+| `/review` | Independent review — `low` checklist · `high` adversarial triptych · `--score` weighted eval · `--coverage` test gaps (absorbs the former `/evaluate` + `/test`) |
+| `/sync-check` | Repo + published-artifact sync (`--published-only` = the former `/publish-check`) |
+| `/store-status` | Real live store / Maven / npm versions (CI-green != live) |
 | `/contribute` | Full contribution workflow |
 | `/version-bump` | Coordinated version update across all platforms |
-| `/publish-check` | Verify all published artifacts are up to date |
 | `/release` | Full release lifecycle (bump, changelog, tag, publish) |
 | `/maintain` | Daily maintenance sweep (CI, issues, deps, quality) |
+| `/handoff` | End-of-session continuity (reconcile STATE.md -> handoff) |
+
+Multi-agent **saved workflows** (`.claude/workflows/`, run via the Workflow tool):
+`triptych`, `fix-issue-batch`, `audit-sweep`, `release-checkpoint`, `device-qa-orchestrate`,
+`doc-drift-fix`, `store-status`, `phase2-reconcile`. See `.claude/workflows/README.md`.
 
 ---
 
@@ -682,7 +671,9 @@ Hooks trigger automatically on specific Claude Code actions:
 
 | Script | Purpose |
 |---|---|
-| `sync-versions.sh` | Scan ALL version declarations, report/fix mismatches |
+| `sync-versions.sh` | Scan ALL version declarations, report/fix mismatches (the single source of truth for the version-location list) |
+| `claim.sh` | Atomic issue-claim registry that kills the #2300 dup-implementation race. Primary lock = GitHub `in-progress` label (cross-host); local mirror = the `STATE.md` IN-FLIGHT ledger. `<issue#>` / `--check` / `--release` / `--list` / `--force`. macOS-safe (sleepless `mkdir` lock, no `flock`) |
+| `check-saved-workflows.sh` | Static validator for the `.claude/workflows/*.js` saved workflows (async-wrapped `node --check` + meta block + resume-safety). Distinct from `check-workflow-scripts.sh`, which validates the CI YAML |
 | `cross-platform-check.sh` | Compare Android vs iOS vs Web API surface, report gaps |
 | `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.) |
 | `lib/android-cli.sh` | Shared helpers for Google's `android` CLI (screenshot, layout, install+launch) with `adb` fallback |

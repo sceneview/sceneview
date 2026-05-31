@@ -26,7 +26,7 @@ Or run it with no arguments after you've already made changes to get a full pre-
 
 - Read `CLAUDE.md` — critical rules for threading, Compose API, and module structure.
 - Read `llms.txt` — complete API reference.
-- Read `MIGRATION.md` — what changed from v2 to v3.
+- Read `docs/docs/migration.md` — what changed between major versions.
 - Run `git log --oneline -10` to understand recent history.
 - Read the relevant source files before making any change.
 
@@ -50,7 +50,7 @@ Run `/document` to generate or update KDoc for changed public APIs and check if 
 
 ### 5. Check tests
 
-Run `/test` to audit coverage and generate missing test cases.
+Run `/review --coverage` to audit coverage and generate missing test cases.
 
 ### 6. Build check
 
@@ -92,7 +92,7 @@ Approach taken. Any non-obvious design decisions.
 ## Checklist
 - [ ] `/review` passed (no FAIL items)
 - [ ] `/document` run — KDoc updated, llms.txt updated if needed
-- [ ] `/test` run — new tests added for new behaviour
+- [ ] `/review --coverage` run — new tests added for new behaviour
 - [ ] `assembleDebug` build passes
 - [ ] Filament materials recompiled if `.mat` files changed
 ```
@@ -105,7 +105,7 @@ Approach taken. Any non-obvious design decisions.
 |---|---|
 | `/review` | Threading, Compose API, Kotlin style, module boundaries |
 | `/document` | KDoc generation + llms.txt diff |
-| `/test` | Coverage audit + test generation |
+| `/review --coverage` | Coverage audit + test generation |
 | `/contribute` | This file — full workflow |
 
 MCP server for IDE integration:

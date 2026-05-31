@@ -8,6 +8,11 @@ Run this **before every PR**, at the **end of every session**, and whenever the 
 
 **CRITICAL RULE**: Never tell the user "everything is synced" or "we're good" without running ALL checks below first. Local file versions mean NOTHING if the packages aren't published.
 
+> **Modes.** `/sync-check` runs everything. `/sync-check --published-only` runs only
+> the artifact-vs-published + live-store checks (§1, §1b, §3) — this **replaces the
+> former `/publish-check`** skill. Use `--published-only` right after a release to
+> confirm propagation; use the full sweep before a PR / at session end.
+
 ---
 
 ## 1. Published packages vs local (MOST CRITICAL)
@@ -15,10 +20,14 @@ Run this **before every PR**, at the **end of every session**, and whenever the 
 Check what's actually published and available to developers RIGHT NOW:
 
 ```bash
-# Maven Central — what devs actually get with implementation("io.github.sceneview:sceneview:X.Y.Z")
+# Maven Central — verify the EXACT expected version is downloadable from repo1,
+# the canonical mirror. (search.maven.org/solrsearch is flaky and lags indexing —
+# a HEAD on the .pom is the truth devs actually get.)
+EXPECTED=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)
 for artifact in sceneview arsceneview sceneview-core; do
-  V=$(curl -s "https://search.maven.org/solrsearch/select?q=g:io.github.sceneview+AND+a:$artifact&rows=1&wt=json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['response']['docs'][0]['latestVersion'] if d['response']['docs'] else 'NOT FOUND')" 2>/dev/null)
-  echo "  Maven $artifact: $V"
+  POM="https://repo1.maven.org/maven2/io/github/sceneview/$artifact/$EXPECTED/$artifact-$EXPECTED.pom"
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" -I "$POM")
+  [ "$CODE" = "200" ] && echo "  Maven $artifact $EXPECTED: LIVE (200)" || echo "  Maven $artifact $EXPECTED: NOT on repo1 (HTTP $CODE)"
 done
 
 # npm — what devs get with npx sceneview-mcp
@@ -37,6 +46,21 @@ Compare each published version with the local VERSION_NAME. If they don't match:
 - Check if it succeeded or failed
 
 **This check is a hard blocker. Do NOT skip it.**
+
+## 1b. Live store state (CI-green is NEVER proof of live)
+
+A successful `app-store.yml` / `play-store.yml` run means **upload**, not **approved**
+or **live**. iOS once sat on 4.0.3 for three weeks while CI was green. Verify the REAL
+live versions — run the `store-status` saved workflow:
+
+```
+Workflow({ name: "store-status" })   # iTunes lookup + Maven repo1 + npm, vs expected
+```
+
+It probes `itunes.apple.com/lookup?id=6761329763`, Maven repo1, and npm, compares to
+the expected `VERSION_NAME`, and flags any mismatch. **ASC rejection-state + Play
+review-state need an authenticated browser session (Chrome MCP)** — that is a known gap;
+flag it for a dedicated session, never infer "approved" from a CI badge.
 
 ## 2. Local version alignment (run the script)
 

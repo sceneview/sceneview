@@ -126,7 +126,7 @@ See [CLAUDE.md](CLAUDE.md) for the full module map, architecture overview, threa
 | `/contribute` | Full guided workflow from understanding to PR |
 | `/review` | Checks threading rules, Compose API, Kotlin style, module boundaries |
 | `/document` | Generates/updates KDoc and `llms.txt` for changed APIs |
-| `/test` | Audits coverage and generates missing tests |
+| `/review --coverage` | Audits coverage and generates missing tests |
 
 ### MCP server (optional)
 

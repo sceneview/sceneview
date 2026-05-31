@@ -29,7 +29,7 @@ claude
 | `/contribute` | Full guided workflow from understanding to PR |
 | `/review` | Checks threading, Compose API, Kotlin style, module boundaries |
 | `/document` | Generates/updates KDoc and `llms.txt` for changed APIs |
-| `/test` | Audits coverage and generates missing tests |
+| `/review --coverage` | Audits coverage and generates missing tests |
 
 ---
 

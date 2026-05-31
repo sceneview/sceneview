@@ -65,12 +65,11 @@ Inside the SceneView repo with Claude Code (commands shown unprefixed work local
 | Command | What it does |
 |---|---|
 | `/contribute` | Full guided workflow — understand the codebase, make changes, prepare a PR |
-| `/review` | Check threading rules, Compose API patterns, Kotlin style, module boundaries |
+| `/review` | Threading, Compose API, style, module boundaries — plus `--score` (weighted eval), `--coverage` (test gaps), `high` (multi-agent triptych) |
 | `/document` | Generate/update KDoc for changed public APIs, update `llms.txt` |
-| `/test` | Audit test coverage and generate missing tests |
-| `/release`, `/quality-gate`, `/publish-check`, `/sync-check`, `/version-bump`, `/evaluate`, `/maintain` | Pre-PR + release lifecycle |
+| `/release`, `/quality-gate`, `/sync-check`, `/store-status`, `/version-bump`, `/maintain` | Pre-PR + release lifecycle |
 
-> **Tip — namespace conflict:** the bare `/review` and `/test` commands shadow Claude Code built-ins. With the plugin installed, prefer the prefixed forms `/sceneview:review` and `/sceneview:test` to disambiguate.
+> **Tip — namespace conflict:** the bare `/review` command shadows a Claude Code built-in. With the plugin installed, prefer the prefixed form `/sceneview:review` to disambiguate.
 
 ### Example workflow
 

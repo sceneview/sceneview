@@ -9,6 +9,14 @@ job is to **audit, dispatch, and monitor — never to code yourself**. A maintai
 starts a session, says "run the cycle", and you keep a steady pipeline of background
 agents flowing until the backlog is drained or they ask you to stop.
 
+> **Executable form.** The mechanical per-issue loop is now the **`fix-issue-batch`
+> saved workflow** (`Workflow({ name: "fix-issue-batch" })` → `.claude/workflows/fix-issue-batch.js`):
+> claim → lean-clone → fix → self-review → fire-and-forget merge → release-claim, with
+> `claim.sh` killing the #2300 race. This skill is the orchestrator's *playbook* (the
+> *why*, plus the audit + release-checkpoint wrapping); the workflow is the *how* for the
+> fan-out. Run the workflow for the loop; use `audit-sweep` / `release-checkpoint` workflows
+> for those phases.
+
 The validated operating model (formalized 2026-05-15) is:
 
 ```
