@@ -14,7 +14,7 @@ const a = args || {}
 const VALID = ['android', 'ios', 'web', 'ar', 'all']
 const PLATFORM = VALID.includes(a.platform) ? a.platform : 'all'
 const FAST = a.fast === true
-const REPORT_PATH = '.claude/worktrees/upbeat-bohr-c0b0b5/device-qa-report.json'
+const REPORT_PATH = 'device-qa-report.json'
 // The script writes the report to the repo root by default. Express the command
 // the agent runs verbatim; the agent resolves the absolute repo-root path itself.
 const CMD = `bash .claude/scripts/device-qa.sh --platform=${PLATFORM}${FAST ? ' --fast' : ''}`
@@ -84,6 +84,7 @@ GATE POLICY you must reflect honestly (do NOT re-grade — just surface the repo
 - web is BLOCKING (reliable). A red web leg ⇒ the report verdict is 'blocked'.
 - android and ar are ADVISORY (chronically flaky SwiftShader emulator, #1643). A red android/ar leg ⇒ 'warn', surfaced loudly, NEVER a silent pass.
 - HONEST BLIND SPOT: true ARCore world-tracking cannot run on arm64 emulators. The 'ar' leg is 3D-emulated / recorded-session replay only; if it legitimately can't exercise tracking (e.g. ar-record-playback replayed 0 frames), it records as 'skipped' — that is honest, never fake a green AR leg. Note such a skip in notes.
+- KEY-GATED PATHS: if device-qa.sh marks a leg 'skipped' with reason 'key missing' (Sketchfab Explore, ARCore Cloud — the build had no SKETCHFAB_API_KEY / ARCORE_API_KEY), surface it LOUDLY in notes as 'NOT tested — API key absent', never as a pass. A keyless/degraded build is never a 'complete' QA (#2343).
 - If the disk gate trips (exit 2) or the report was never written, say so plainly: ran=false, reportVerdict='missing'.
 
 Return your structured verdict. Be precise; the orchestrator's gate reads your fields directly.`,
@@ -163,5 +164,5 @@ return {
   exitCode: run ? run.exitCode : undefined,
   reportPath,
   notes: (run && run.notes) || (reportMissing ? 'device-qa.sh produced no parseable report — gated as blocked (fail-safe).' : ''),
-  policy: 'web BLOCKING · android/ar ADVISORY (#1643 flaky, never silent pass) · true ARCore tracking is replay-only on arm64 (honest skip, never a faked green AR leg).',
+  policy: 'web BLOCKING · android/ar ADVISORY (#1643 flaky, never silent pass) · true ARCore tracking is replay-only on arm64 (honest skip, never a faked green AR leg) · key-gated paths (Sketchfab/ARCore Cloud) on a keyless build = SKIPPED/NOT-tested, never pass (#2343).',
 }

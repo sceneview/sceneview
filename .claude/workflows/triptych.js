@@ -90,7 +90,7 @@ If the diff touches a demo/sample/UI on a platform you can drive locally:
 - Android → reusable ARCore emulator (\`setup-ar-emulator.sh\`), drive the demo via DemoHostActivity, screenshots ≤1800px (≤5 total) with the \`android\` CLI (NEVER raw adb).
 - iOS → simulator via XcodeBuildMCP, drive the demo, screenshot.
 - Web → Playwright (\`samples/web-demo/tests/\`).
-Assert: no crash, the change renders as intended, no rendering corruption (drift/skew/black viewport/frozen billboard). If the platform can't be driven locally (e.g. true ARCore tracking on arm64), say so HONESTLY and mark applicable=false — never fake a pass. Return your structured verdict.`,
+Assert: no crash, the change renders as intended, no rendering corruption (drift/skew/black viewport/frozen billboard). If the platform can't be driven locally (e.g. true ARCore tracking on arm64), say so HONESTLY and mark applicable=false — never fake a pass. If a demo path is KEY-GATED (Sketchfab Explore, ARCore Cloud) and the build has no API key (SKETCHFAB_API_KEY / ARCORE_API_KEY), mark applicable=false with notes 'key missing — path NOT tested', and alert that QA could not be complete — NEVER report a key-gated path as passing on a keyless build (#2343). Return your structured verdict.`,
   { label: 'visual-qa', phase: 'Verify', schema: VQ })
 
 const all = await parallel([...tasks, impactTask, visualTask])

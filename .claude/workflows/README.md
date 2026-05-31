@@ -97,7 +97,7 @@ release agent also clears labels on merge). **Resumable workflows**: an interrup
 5. **External-PR submission** — ≤1/week, manual (GitHub-ban guard).
 6. **Resource arbitration** — two competing big chantiers for one host.
 
-A saturated session **never** stops mid-air: commit/push + `STATE.md` "START HERE" + a self-contained continuation relay issue, then close.
+A saturated session **never** stops mid-air: commit/push + `STATE.md` "START HERE" + a self-contained continuation relay issue, then close. **Self-feed relentlessly:** every point the maintainer raises, every finding, every deferred item becomes a GitHub issue *immediately* — never "I'll remember it". The open-issue backlog (not memory, not a TODO list) is the work queue; session closure files all remaining work as self-contained relay issues so the next session resumes with zero context loss.
 
 ## 7. Quality gates
 
@@ -110,6 +110,8 @@ A saturated session **never** stops mid-air: commit/push + `STATE.md` "START HER
 **CI-drift guard:** every agent prompt mandates the regen script (`sync-versions.sh`, `collate-changelog.sh`) before push — stale generated/version files are the recurring red-main cause. `ci-gate.yml` is the single required check.
 
 **Honest blind spot:** ARCore won't run on arm64 emulators — true AR (Cloud Anchor, VPS, face mesh) is 3D-emulated or replay-only locally and marked ADVISORY honestly. **Never fake a green AR leg.**
+
+**Keyed QA or honest skip — never a silent green.** Demo QA must build WITH the API keys (`SKETCHFAB_API_KEY`, `ARCORE_API_KEY` — env → repo-root `local.properties`) so key-gated paths (Sketchfab Explore, ARCore Cloud) are actually exercised. A **debug** build with empty keys compiles silently and disables those paths, so QA that drives them tests a degraded build. If a key is absent, the harness marks that leg `SKIPPED (key missing — path NOT tested)` (advisory, never pass) and **LOUDLY alerts the human** — a keyless/degraded build is **never** reported as a complete QA. CI/QA-green ≠ feature-works (#2343).
 
 ---
 
@@ -147,4 +149,4 @@ That is distinct from `check-workflow-scripts.sh`, which validates the CI YAML i
 
 ## 10. Non-goals
 
-No major version bump (`4` frozen, cap at minor) · no raw `adb` · no PR/issue burst on external repos (≤1/week, manual) · no oversized screenshots / no polling · no orchestrator-side coding or inline heavy interactive work · no "live ✅" from a CI upload · no second `/release` or cycle-orchestrator per host · no new scheduler surface on top of Cron · no migrating deterministic shell crons to agentic routines · no Three.js / model-viewer on the website · no personal MCPs or employer/personal data in `sceneview/*`. We don't add scaffolding a newer model capability makes unnecessary.
+No major version bump (`4` frozen, cap at minor) · no raw `adb` · no PR/issue burst on external repos (≤1/week, manual) · no oversized screenshots / no polling · no orchestrator-side coding or inline heavy interactive work · no "live ✅" from a CI upload · no "QA complete" claim on a keyless / degraded build (keyed QA or honest SKIPPED) · no second `/release` or cycle-orchestrator per host · no new scheduler surface on top of Cron · no migrating deterministic shell crons to agentic routines · no Three.js / model-viewer on the website · no personal MCPs or employer/personal data in `sceneview/*`. We don't add scaffolding a newer model capability makes unnecessary.
