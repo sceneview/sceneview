@@ -626,6 +626,23 @@ jobs:
         shell: bash
         run: bash .claude/scripts/validate-demo-assets.sh
 
+      # Doc-drift detector self-test — a regressed detector that silently
+      # PASSes is worse than none, so pin its contract before trusting it.
+      - name: Self-test check-doc-drift.sh
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-doc-drift.sh
+
+      # Doc↔API drift (ADVISORY, #docs). Warns when this PR changed a public
+      # API surface without updating llms.txt / KDoc / docs/docs / recipes.
+      # AI-first SDK: stale prose makes AI emit stale user code. Non-blocking
+      # by design (heuristic → false positives would erode trust); the weekly
+      # `doc-audit.yml` agent does the deep semantic pass + proposes patches.
+      - name: Doc-drift check (advisory)
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/check-doc-drift.sh
+
   # ── Full quality gate ────────────────────────────────────────────────────
   # Runs the same .claude/scripts/quality-gate.sh that contributors run
   # locally before pushing. Includes:

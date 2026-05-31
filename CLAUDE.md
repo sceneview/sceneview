@@ -422,6 +422,35 @@ Thomas's Max quota; gate every fire with an explicit `@claude` mention so
 Dependabot etc. never trigger it. Concurrency is keyed per issue/PR — a second
 mention cancels a still-running earlier reply.
 
+## Documentation drift (docs ↔ API) — two-tier policy
+
+SceneView is AI-first: the prose docs (`llms.txt`, KDoc, `docs/docs/*`,
+`samples/recipes/*`) are the surface an AI reads to generate user code, so
+stale docs make an AI emit stale code. Keeping them in sync is enforced at
+**two complementary tiers** — neither alone is enough:
+
+1. **Per-PR — advisory, deterministic, cheap.** `check-doc-drift.sh` runs in
+   `ci.yml` → `repo-hygiene` and WARNs (in the job step summary) when a PR
+   changed a public-API source file *and* added/removed/retyped a public
+   declaration without touching the relevant doc surface. **Non-blocking by
+   design**: it is a heuristic, and blocking a heuristic guarantees false
+   positives that erode trust (consistent with the repo's advisory-first
+   stance on flaky device-QA legs). It reminds the author; it never freezes
+   the PR. `/document` covers the KDoc half on demand.
+2. **Weekly — deep, agent-driven, safe.** [`doc-audit.yml`](.github/workflows/doc-audit.yml)
+   fires every Monday 07:17 UTC (and `workflow_dispatch`). It seeds an Opus
+   agent with `check-doc-drift.sh --audit` (a repo-wide candidate-drift
+   worklist) plus the week's `git log`, the agent reasons over the four
+   surfaces against the *current* API, and opens a **DRAFT** PR with concrete
+   doc patches (or a single de-duplicated tracking issue when a patch is not
+   safe). Draft + human review means a wrong prose patch can never land
+   silently — this is where the "auto-fix" power lives, not on every PR.
+
+Why not block per-PR or auto-fix per-PR? Blocking frustrates internal-only
+refactors that get mis-classified; per-PR auto-fix is costly on every PR and a
+green "bot fixed docs" check invites rubber-stamping a subtly-wrong prose
+patch. The weekly draft-PR concentrates the cost and keeps a human in the loop.
+
 ## Samples
 
 One unified showcase app per platform — all features integrated into tabs.
@@ -660,6 +689,7 @@ Hooks trigger automatically on specific Claude Code actions:
 | `install-sceneview-ios-skill.sh` | Copies `agents/sceneview-ios/` (Apple skill) to `~/.android/cli/skills/xr/sceneview-ios/` |
 | `install-sceneview-web-skill.sh` | Copies `agents/sceneview-web/` (Web skill) to `~/.android/cli/skills/xr/sceneview-web/` |
 | `check-sceneview-skill.sh` | Verifies all three `agents/sceneview*/` skills (API identifiers, demo refs, frontmatter) are in sync with the library source. Runs in `quality-gate.sh`, `pr-check.yml`, and daily via `maintenance.yml` |
+| `check-doc-drift.sh` | Flags when a public-API change is not mirrored in the docs (llms.txt / KDoc / `docs/docs/*` / recipes). **Diff mode** (default) = per-PR ADVISORY WARN, runs in `ci.yml` → `repo-hygiene`; never blocks (heuristic → would false-positive). **`--audit` mode** = repo-wide candidate-drift worklist consumed by the weekly `doc-audit.yml` agent. `--fail` opts into a non-zero exit. Self-tested by `test-check-doc-drift.sh` (also in `repo-hygiene`). |
 | `worktree-auto-prune.sh` | Safe GC for `.claude/worktrees/*` — removes worktrees whose branch is merged (`--dry-run`, `--yes`, `--keep <path>`). Never touches dirty or unmerged trees |
 | `cleanup-branches-worktrees.sh` | One-shot GC for stale `claude/*` branches **and** worktrees: deletes merged local + remote branches (single `git push --delete`, no bot-burst) and delegates worktree pruning to `worktree-auto-prune.sh`. Defaults to dry-run; `--yes` to act, `--keep <branch\|path>`, `--no-worktrees`. Current-branch / unmerged / open-PR guarded. Runs daily in `maintenance.yml` |
 
