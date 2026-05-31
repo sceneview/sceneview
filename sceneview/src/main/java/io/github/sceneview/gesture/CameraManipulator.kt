@@ -57,6 +57,10 @@ private class CameraManipulatorState {
      * first call always recomputes.
      */
     fun matches(eye: FloatArray, target: FloatArray): Boolean =
+        // Exact `==` float comparison is intentional, not a missing epsilon (#2303): a
+        // false miss only costs one extra `lookAt` recompute (harmless), while an epsilon
+        // tolerance would wrongly treat a genuine sub-epsilon camera move as "unchanged"
+        // and return a stale matrix.
         eye[0] == lastEyeX && eye[1] == lastEyeY && eye[2] == lastEyeZ &&
             target[0] == lastTargetX && target[1] == lastTargetY && target[2] == lastTargetZ
 }
