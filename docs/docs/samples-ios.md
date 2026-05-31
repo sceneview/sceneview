@@ -49,7 +49,7 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 |---|---|---|
 | 3D Text | [`TextDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/TextDemo.swift) | Extruded 3D text with depth, color, and font control |
 | Lines & Paths | [`LinesPathsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/LinesPathsDemo.swift) | `LineNode`, `PathNode`, axis gizmo |
-| Image Planes | [`ImageDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ImageDemo.swift) | `ImageNode` — textures on planes in 3D space |
+| Image Planes | [`ImagePlaneDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ImagePlaneDemo.swift) | `ImageNode` — textures on planes in 3D space |
 | Billboard | [`BillboardDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/BillboardDemo.swift) | Camera-facing labels and sprites |
 | Video Texture | [`VideoTextureDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/VideoTextureDemo.swift) | `VideoNode` — play / pause / loop video on a 3D plane |
 | Texture Streaming | [`TextureStreamingDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/TextureStreamingDemo.swift) | Swap PBR material presets in real time — no geometry rebuild |

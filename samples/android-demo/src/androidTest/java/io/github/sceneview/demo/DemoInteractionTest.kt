@@ -741,6 +741,10 @@ class DemoInteractionTest {
         // into `camera-gestures`. Open the unified demo and switch to the
         // "Node Gestures" tab before driving the editable / reset flow.
         openDemo("camera-gestures")
+        // #2239 — exercise the Camera Modes tab (the absorbed `camera-controls` half)
+        // before switching tabs: it is the default landing tab, so orbit the camera here
+        // to confirm the manipulator works, then move to Node Gestures.
+        orbit(pixels = 200); screenshot("57b_camera_modes_orbit")
         tap("Node Gestures")
         screenshot("58_gesture_editable_default")
 

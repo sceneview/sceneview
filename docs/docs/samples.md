@@ -20,7 +20,7 @@ git clone https://github.com/sceneview/sceneview.git
 **`samples/android-demo/`** — Play Store ready, Material 3 Expressive
 
 4-tab showcase (**Explore / AR View / Samples / About**) backed by an
-append-only demo registry of **59 demos** (30 non-AR + 29 AR):
+append-only demo registry of **47 demos** (17 non-AR + 30 AR):
 
 - **Explore tab**: Featured 3D & AR demos and Sketchfab model streaming
 - **AR View tab**: Live `ARSceneView` camera with plane detection and tap-to-place
