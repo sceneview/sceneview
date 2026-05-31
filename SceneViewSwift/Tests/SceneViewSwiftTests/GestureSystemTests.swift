@@ -87,6 +87,83 @@ final class GestureSystemTests: XCTestCase {
         XCTAssertEqual(receivedTranslation?.x ?? 0, 1.0, accuracy: 0.001)
     }
 
+    // MARK: - Per-frame drag delta (#2283)
+
+    /// Reproduces the cumulative→delta conversion `entityDragGesture`
+    /// performs and asserts the `onDrag` contract: a natural
+    /// `entity.position += delta` handler must track the pointer 1:1, i.e.
+    /// the entity's final offset equals the gesture's *final cumulative*
+    /// translation — NOT the sum of every intermediate cumulative value
+    /// (the #2283 bug, which made the entity accelerate off-screen).
+    @MainActor
+    func testEntityDragHandlerTracksPointerWithPerFrameDelta() {
+        let entity = ModelEntity(
+            mesh: .generateBox(size: 1.0),
+            materials: [SimpleMaterial()]
+        )
+        entity.position = .zero
+
+        // The documented capture pattern: integrate the delta into position.
+        NodeGesture.onDrag(entity) { delta in entity.position += delta }
+
+        // Same per-entity baseline the gesture keeps (keyed by ObjectIdentifier
+        // since Entity isn't Hashable), and the same `current − previous`
+        // dispatch the fixed `entityDragGesture.onChanged` performs.
+        var lastTranslation: [ObjectIdentifier: SIMD3<Float>] = [:]
+        let key = ObjectIdentifier(entity)
+        func dispatchCumulative(_ cumulative: SIMD3<Float>) {
+            let previous = lastTranslation[key] ?? .zero
+            NodeGesture.dispatchDrag(on: entity, translation: cumulative - previous)
+            lastTranslation[key] = cumulative
+        }
+
+        // SwiftUI emits *cumulative* translation each tick.
+        dispatchCumulative([0.10, 0.0, 0])
+        dispatchCumulative([0.25, 0.0, 0])
+        dispatchCumulative([0.40, 0.0, 0]) // final cumulative = 0.40
+
+        // 1:1 tracking — final position == final cumulative translation.
+        XCTAssertEqual(entity.position.x, 0.40, accuracy: 0.0001)
+        XCTAssertEqual(entity.position.y, 0.0, accuracy: 0.0001)
+
+        // The buggy code dispatched the cumulative value every tick, so the
+        // position would have summed 0.10+0.25+0.40 = 0.75 — guard against it.
+        XCTAssertNotEqual(entity.position.x, 0.75, accuracy: 0.0001)
+    }
+
+    /// A second gesture on the same entity must start from a zero baseline —
+    /// `.onEnded` clears the per-entity entry, so the next drag's first delta
+    /// equals its first cumulative value rather than jumping by the previous
+    /// gesture's final offset.
+    @MainActor
+    func testEntityDragBaselineResetsBetweenGestures() {
+        let entity = ModelEntity(
+            mesh: .generateBox(size: 1.0),
+            materials: [SimpleMaterial()]
+        )
+        entity.position = .zero
+        NodeGesture.onDrag(entity) { delta in entity.position += delta }
+
+        var lastTranslation: [ObjectIdentifier: SIMD3<Float>] = [:]
+        let key = ObjectIdentifier(entity)
+        func dispatchCumulative(_ cumulative: SIMD3<Float>) {
+            let previous = lastTranslation[key] ?? .zero
+            NodeGesture.dispatchDrag(on: entity, translation: cumulative - previous)
+            lastTranslation[key] = cumulative
+        }
+        func endGesture() { lastTranslation[key] = nil } // mirrors .onEnded
+
+        // First gesture drags to +0.30.
+        dispatchCumulative([0.30, 0.0, 0])
+        endGesture()
+        XCTAssertEqual(entity.position.x, 0.30, accuracy: 0.0001)
+
+        // Second gesture's first cumulative tick is +0.05 — must move by 0.05,
+        // not snap back by the previous gesture's 0.30 baseline.
+        dispatchCumulative([0.05, 0.0, 0])
+        XCTAssertEqual(entity.position.x, 0.35, accuracy: 0.0001)
+    }
+
     @MainActor
     func testDispatchScaleCallsHandler() {
         let entity = ModelEntity(
