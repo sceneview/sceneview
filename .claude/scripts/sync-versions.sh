@@ -184,6 +184,14 @@ LLMS="$REPO_ROOT/llms.txt"
 if [ -f "$LLMS" ]; then
     V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$LLMS" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "MISSING")
     add_check "llms.txt" "$V"
+
+    # Prose version label, e.g. "Maven artifacts (version X.Y.Z):". DISTINCT from
+    # the artifact-coordinate check above — a stale prose label slipped through to
+    # 4.15.0 while the coordinates were 4.16.10 (caught only by the doc-audit, PR
+    # #2336), because nothing matched the parenthesised label. Only checked when
+    # the label is present, so rewording it never breaks the gate.
+    V=$(grep -m1 -oE '\(version [0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?\)' "$LLMS" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+    [ -n "$V" ] && add_check "llms.txt (prose version label)" "$V"
 fi
 
 # CLAUDE.md (code examples section)
