@@ -72,7 +72,7 @@ build_app() {
     -destination 'generic/platform=iOS Simulator' \
     -derivedDataPath "$DERIVED" \
     CODE_SIGNING_ALLOWED=NO >/dev/null
-  APP_PATH="$DERIVED/Build/Products/Debug-iphonesimulator/SceneViewDemo.app"
+  APP_PATH="$DERIVED/Build/Products/Debug-iphonesimulator/SceneView.app"
   [ -d "$APP_PATH" ] || { echo "build produced no .app" >&2; exit 1; }
 }
 

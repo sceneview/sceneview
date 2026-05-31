@@ -126,9 +126,9 @@ if $INSTALL; then
     -derivedDataPath "$DERIVED_DATA" \
     | { command -v xcpretty >/dev/null 2>&1 && xcpretty || cat; }
 
-  APP_PATH="$(find "$DERIVED_DATA/Build/Products" -name 'SceneViewDemo.app' -maxdepth 3 -print -quit)"
+  APP_PATH="$(find "$DERIVED_DATA/Build/Products" -name 'SceneView.app' -maxdepth 3 -print -quit)"
   if [[ -z "$APP_PATH" ]]; then
-    echo "[ios-qa] ERROR: build succeeded but SceneViewDemo.app was not found." >&2
+    echo "[ios-qa] ERROR: build succeeded but SceneView.app was not found." >&2
     rm -rf "$DERIVED_DATA"
     exit 1
   fi
