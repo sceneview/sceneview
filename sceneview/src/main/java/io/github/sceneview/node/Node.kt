@@ -170,13 +170,19 @@ open class Node(
     // on every tick. After ~10 000 frames the scale drifted by ~1e-4 per axis and the mesh
     // visibly warped.
     //
-    // Fix: cache `_position`, `_quaternion`, `_scale` as pristine Kotlin values. `transform.set`
-    // decomposes once on write and updates all three. Individual getters read the caches; individual
-    // setters compose from the caches (no round-trip through the Filament matrix).
+    // Fix: cache `_position`, `_quaternion`, `_scale` as pristine Kotlin values. Individual getters
+    // read the caches directly. Individual setters update the one cache they own and push the
+    // composed matrix to Filament via `applyCachedTransform()` WITHOUT reading it back — they never
+    // round-trip through matrix decomposition (#2335). Only the public `transform` setter, whose
+    // input is an arbitrary external matrix, decomposes (once) to re-seed all three caches.
     //
-    // Invariant: whenever `transform.set` fires the caches are synchronised. This covers every
-    // write path — direct `transform = …`, `position = …`, `quaternion = …`, `scale = …`,
-    // `worldTransform = …`, smooth-animation ticks, and parenting reparents.
+    // #2187/#2217 fixed the getters; #2335 closed the remaining drift on the per-component setter
+    // path, which still re-decomposed because it routed through the `transform` setter.
+    //
+    // Invariant: every write path keeps the caches synchronised with the Filament matrix — direct
+    // `transform = …` (decomposes), `position = …` / `quaternion = …` / `scale = …` /
+    // `rotation = …` (compose-only via `applyCachedTransform()`), `worldTransform = …`,
+    // smooth-animation ticks, and parenting reparents.
     private var _position: Position = Position()
     private var _quaternion: Quaternion = Quaternion()
     private var _scale: Scale = Scale(1.0f)
@@ -207,6 +213,23 @@ open class Node(
         // (e.g. 179.9° vs -180.1°) and break callers that compare successive readings.
         _worldRotation = world.rotation
         return world
+    }
+
+    /**
+     * Pushes the pristine [_position] / [_quaternion] / [_scale] caches to Filament without
+     * re-decomposing them.
+     *
+     * A per-frame component setter ([position] / [quaternion] / [scale] / [rotation]) must NOT
+     * route through the [transform] setter: that setter re-decomposes the composed matrix back into
+     * TRS, and the column-length / polar decomposition drifts off the pristine values a little every
+     * frame (local scale 1.0 → 1.000354 over 10 000 frames). The #2187/#2217 fix corrected the
+     * getters, but the setter path still round-tripped through decomposition — this completes the
+     * fix (#2335) by composing the matrix from the caches and pushing it straight to Filament, never
+     * reading it back.
+     */
+    private fun applyCachedTransform() {
+        transformManager.setTransform(transformInstance, Transform(_position, _quaternion, _scale))
+        onTransformChanged()
     }
 
     /**
@@ -250,7 +273,7 @@ open class Node(
         get() = _position
         set(value) {
             _position = value
-            transform = Transform(_position, _quaternion, _scale)
+            applyCachedTransform()
         }
 
     /**
@@ -279,7 +302,7 @@ open class Node(
         get() = _quaternion
         set(value) {
             _quaternion = value
-            transform = Transform(_position, _quaternion, _scale)
+            applyCachedTransform()
         }
 
     /**
@@ -347,7 +370,7 @@ open class Node(
         get() = _scale
         set(value) {
             _scale = value
-            transform = Transform(_position, _quaternion, _scale)
+            applyCachedTransform()
         }
 
     /**
