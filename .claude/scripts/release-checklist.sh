@@ -195,8 +195,11 @@ for pattern in ".env" "credentials.json" "keystore.jks" "google-services.json" "
 done
 [ "$SECRETS_FOUND" -eq 0 ] && check "No secrets in tracked files" "PASS" ""
 
-# Check for API keys in source
-API_KEY_HITS=$({ grep -rn "AIza\|sk-\|AKIA\|ghp_\|npm_" --include="*.kt" --include="*.swift" --include="*.ts" --include="*.js" \
+# Check for API keys in source.
+# Match the actual key SHAPES, not bare prefixes — the old `sk-` substring flagged
+# innocuous words ("disk-full", "desk-side", "risk-", "task-") and the embedded
+# llms.txt prose, failing every release on a false positive (verified during v4.17.0).
+API_KEY_HITS=$({ grep -rnE "AIza[0-9A-Za-z_-]{35}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|npm_[A-Za-z0-9]{36}" --include="*.kt" --include="*.swift" --include="*.ts" --include="*.js" \
     sceneview/ arsceneview/ SceneViewSwift/ mcp/src/ 2>/dev/null || true; } | { grep -v "node_modules\|\.test\." || true; } | wc -l | tr -d ' ')
 [ "$API_KEY_HITS" -eq 0 ] && check "No hardcoded API keys" "PASS" "" || check "No hardcoded API keys" "FAIL" "$API_KEY_HITS hit(s)"
 echo ""
