@@ -7,6 +7,7 @@ enum SketchfabError: Error, LocalizedError {
     case invalidResponse
     case downloadFailed
     case modelNotFound
+    case unsupportedFormat
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,8 @@ enum SketchfabError: Error, LocalizedError {
             return "Failed to download model from Sketchfab CDN."
         case .modelNotFound:
             return "No downloadable format available for the requested model."
+        case .unsupportedFormat:
+            return "This model isn't available in USDZ, the format required to view it on this device."
         }
     }
 }
@@ -125,14 +128,16 @@ actor SketchfabService {
         return response.results
     }
 
-    /// Resolve the signed CDN URL for a model's preferred format (GLB > glTF > USDZ).
+    /// Resolve the signed CDN URL for a model's USDZ format — the only format
+    /// RealityKit's `Entity(contentsOf:)` can load. Throws `.unsupportedFormat`
+    /// when the model offers no USDZ download (GLB/glTF are not loadable here).
     func downloadURL(for uid: String) async throws -> URL {
         let response: SketchfabDownloadResponse = try await get(
             path: "models/\(uid)/download",
             queryItems: []
         )
-        guard let preferred = response.preferred, let url = URL(string: preferred.url) else {
-            throw SketchfabError.modelNotFound
+        guard let usdz = response.appleFormat, let url = URL(string: usdz.url) else {
+            throw SketchfabError.unsupportedFormat
         }
         return url
     }
@@ -248,7 +253,10 @@ actor SketchfabService {
     }
 
     private func cacheFileURL(for uid: String) throws -> URL {
-        try cacheRoot().appendingPathComponent("\(uid).glb")
+        // USDZ is the only format we download (RealityKit can't load GLB/glTF),
+        // so the cached file must carry the .usdz extension — RealityKit
+        // dispatches its loader on the file extension.
+        try cacheRoot().appendingPathComponent("\(uid).usdz")
     }
 
     private func touch(_ url: URL) {

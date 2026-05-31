@@ -55,17 +55,20 @@ struct SketchfabSearchResponse: Codable {
 /// Response of `GET /v3/models/{uid}/download`.
 ///
 /// Sketchfab returns up to three format entries (`gltf`, `glb`, `usdz`); all
-/// are optional because availability depends on the model. The iOS demo
-/// prefers `glb` (single binary, no companion files) and falls back to `gltf`.
+/// are optional because availability depends on the model.
 struct SketchfabDownloadResponse: Codable {
     let gltf: SketchfabDownloadUrl?
     let glb: SketchfabDownloadUrl?
     let usdz: SketchfabDownloadUrl?
 
-    /// Best format for SceneView consumption: prefer GLB (self-contained),
-    /// fall back to glTF, then USDZ as a last resort.
-    var preferred: SketchfabDownloadUrl? {
-        glb ?? gltf ?? usdz
+    /// The only format this RealityKit-backed demo can render.
+    /// `Entity(contentsOf:)` loads **only** `.usdz`/`.reality` — it cannot
+    /// parse GLB or glTF — so on Apple platforms we must request USDZ. (The
+    /// Android/Filament demo is the mirror image: it prefers GLB, which
+    /// Filament loads natively.) `glb`/`gltf` are decoded for completeness but
+    /// are not loadable here; a model without a `usdz` entry can't be shown.
+    var appleFormat: SketchfabDownloadUrl? {
+        usdz
     }
 }
 

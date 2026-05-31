@@ -83,7 +83,7 @@ actor SketchfabAssetResolver {
     // MARK: - Public API
 
     /// Resolve `slug` to a local file `URL`. The returned URL is always
-    /// either the streamed asset under `Caches/sketchfab/<uid>.glb` or a
+    /// either the streamed asset under `Caches/sketchfab/<uid>.usdz` or a
     /// copy of the bundled fallback under `Caches/sketchfab/fallback/<uid>`.
     ///
     /// - Throws: `Error.unknown` if `slug` is not registered in
