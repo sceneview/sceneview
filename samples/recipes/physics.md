@@ -9,7 +9,9 @@
 fun PhysicsScene() {
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
-    val material = rememberMaterialInstance(materialLoader)
+    val material = remember(materialLoader) {
+        materialLoader.createColorInstance(Color.Gray, metallic = 0f, roughness = 0.4f)
+    }
     var balls by remember { mutableStateOf(listOf<BallState>()) }
 
     SceneView(

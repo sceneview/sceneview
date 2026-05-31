@@ -9,7 +9,9 @@
 fun ProceduralScene() {
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
-    val material = rememberMaterialInstance(materialLoader)
+    val material = remember(materialLoader) {
+        materialLoader.createColorInstance(Color.Gray, metallic = 0f, roughness = 0.4f)
+    }
 
     SceneView(modifier = Modifier.fillMaxSize(), engine = engine) {
         CubeNode(size = Size(0.5f), materialInstance = material)
@@ -51,5 +53,5 @@ struct ProceduralScene: View {
 | Sphere | `SphereNode(radius = 0.3f)` | `GeometryNode.sphere(radius: 0.3)` |
 | Cylinder | `CylinderNode(radius, height)` | `GeometryNode.cylinder(radius, height)` |
 | Plane | `PlaneNode(size = Size(1f))` | `GeometryNode.plane(width, depth)` |
-| Material | `rememberMaterialInstance()` | `SimpleMaterial(color:)` |
+| Material | `materialLoader.createColorInstance(color)` | `SimpleMaterial(color:)` |
 | Mesh generation | Filament VertexBuffer | RealityKit MeshResource |

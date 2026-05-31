@@ -111,7 +111,9 @@ fun ARTapToPlace() {
 fun ProceduralScene() {
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
-    val material = rememberMaterialInstance(materialLoader)
+    val material = remember(materialLoader) {
+        materialLoader.createColorInstance(Color.Gray, metallic = 0f, roughness = 0.4f)
+    }
 
     SceneView(modifier = Modifier.fillMaxSize(), engine = engine) {
         CubeNode(size = Size(0.5f), materialInstance = material)
