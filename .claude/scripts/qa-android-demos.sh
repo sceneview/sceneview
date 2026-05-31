@@ -123,6 +123,13 @@ fi
 
 # --- Optional build + install ---------------------------------------------
 if $INSTALL; then
+  # #2343: if a key is present, delete any pre-existing (possibly KEYLESS) APK so
+  # the `[[ ! -f "$APK" ]]` guard below can never short-circuit a keyed build. An
+  # env-sourced buildConfigField is not a tracked Gradle input, so a stale keyless
+  # APK at this path would otherwise be installed verbatim while record_key_subleg
+  # reports the sub-leg `passed` off resolution-time presence — the exact false
+  # green #2343 kills. (DO NOT remove this — see PR #2347 review.)
+  qa_keys_force_fresh_build_if_present "$APK"
   if [[ ! -f "$APK" ]]; then
     echo "[qa] building demo APK (this is a cold build — streams progress)..."
     # `--console=plain` (NOT -q): a quiet build emits zero output, so a slow

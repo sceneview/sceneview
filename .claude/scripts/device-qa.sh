@@ -103,6 +103,13 @@ source "$SCRIPT_DIR/lib/emulator-select.sh"
 # shellcheck source=lib/qa-keys.sh
 source "$SCRIPT_DIR/lib/qa-keys.sh"
 
+# The demo debug APK both Android-emulator legs install. Kept as the single
+# canonical path qa-android-demos.sh expects and the CI build-android-apk job
+# restores into. #2343: when a key is present this APK is deleted before each
+# leg's build/install (qa_keys_force_fresh_build_if_present) so a stale KEYLESS
+# build can never be reused — see PR #2347 review.
+DEMO_DEBUG_APK="samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk"
+
 # Release every emulator lease this orchestrator owns when it exits.
 trap 'emu_lease_release_all' EXIT
 
@@ -325,6 +332,14 @@ run_android() {
   local flow="catalog"
   $FAST && flow="3d-basics"
 
+  # #2343: when a key is present, drop any stale (possibly KEYLESS) demo APK —
+  # e.g. the CI build-android-apk artifact, restored into this exact path — so
+  # the keyed build below is never short-circuited and `record_key_subleg
+  # sketchfab` stays truthful. qa-android-demos.sh re-checks this too, but doing
+  # it here covers the install path explicitly (idempotent no-op if already
+  # gone). See PR #2347 review.
+  qa_keys_force_fresh_build_if_present "$DEMO_DEBUG_APK"
+
   local rc=0
   # Stream live via `tee` — a plain `> file` redirect kept the whole Android
   # leg silent in CI until the wrapper returned, so a slow APK build (or a
@@ -527,6 +542,16 @@ run_ar() {
     record ar skipped "leased emulator $serial not responding" "" "$(( $(date +%s) - started ))"
     return 0
   fi
+
+  # #2343: ar-replay-qa.sh installs via Gradle `installDebug`, which trusts
+  # UP-TO-DATE. The keys reach the build through System.getenv() — NOT a tracked
+  # Gradle input — so a keyless APK assembled earlier (the android leg, a manual
+  # build, or the CI build-android-apk artifact restored into this path) would be
+  # reused even with ARCORE_API_KEY now in the env, leaving AR Cloud at
+  # ERROR_NOT_AUTHORIZED while `record_key_subleg arcore-cloud` reports `passed`.
+  # Delete the APK so Gradle re-assembles and re-reads the env. (DO NOT remove —
+  # see PR #2347 review.)
+  qa_keys_force_fresh_build_if_present "$DEMO_DEBUG_APK"
 
   local rc=0
   bash "$SCRIPT_DIR/ar-replay-qa.sh" --out "$ARTIFACTS" \

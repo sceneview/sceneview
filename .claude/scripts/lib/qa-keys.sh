@@ -35,8 +35,10 @@
 #     #     QA_ARCORE_KEY_PRESENT    = true|false
 #     qa_keys_banner_if_absent     # print the LOUD stderr banner(s) when absent
 #
-# Presence is what QA needs — not a live API round-trip — so the optional live
-# probe in verify-sketchfab-key.sh is suppressed (SKIP_SKETCHFAB_LIVE_CHECK=1).
+# Presence is what QA needs — not a live API round-trip — so presence is detected
+# locally by the `_qa_keys_nonblank` whitespace-strip check (a key that is " " /
+# "\n" counts as ABSENT, the #1909 hit pattern); no verify-*-key.sh script and no
+# network probe is involved.
 
 # Guard against double-sourcing in the same shell.
 if [[ -n "${QA_KEYS_SH_SOURCED:-}" ]]; then
@@ -48,7 +50,7 @@ if [[ -n "${QA_KEYS_SH_SOURCED:-}" ]]; then
 fi
 QA_KEYS_SH_SOURCED=1
 
-# Resolve this helper's own dir so it can find sibling verify-*-key.sh scripts
+# Resolve this helper's own dir so it can locate the repo-root local.properties
 # regardless of the caller's CWD.
 QA_KEYS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # .claude/scripts/lib -> .claude/scripts
@@ -136,30 +138,35 @@ qa_keys_resolve_all() {
   export QA_KEYS_RESOLVED=1
 }
 
-# Confirm a key's presence via the existing pre-release guard script, reusing its
-# whitespace-stripping + length heuristics. Network is suppressed
-# (SKIP_*_LIVE_CHECK=1) — QA needs PRESENCE, not a live API round-trip. Falls
-# back to the local non-blank check if the verify script is absent. Returns the
-# verify script's exit status (0 = present/ok). Never prints the value; the
-# verify scripts only ever print length, never the key.
-qa_keys_verify_sketchfab() {
-  local v="$QA_KEYS_SCRIPTS_DIR/verify-sketchfab-key.sh"
-  if [[ -x "$v" ]]; then
-    SKIP_SKETCHFAB_LIVE_CHECK=1 bash "$v" >/dev/null 2>&1
-    return $?
+# Force a fresh KEYED build when a key is present (#2343 — closes the silent-green
+# this whole helper exists to kill).
+#
+# WHY DELETE THE APK INSTEAD OF TRUSTING GRADLE UP-TO-DATE
+# -------------------------------------------------------
+# The keys reach the build via `System.getenv(...)` in
+# samples/android-demo/build.gradle (buildConfigField / manifestPlaceholder). An
+# env var is NOT a tracked Gradle task input, so a debug APK assembled WITHOUT
+# the keys (a prior run, a manual ./gradlew, or the CI build-android-apk
+# artifact) is considered UP-TO-DATE — `assembleDebug` / `installDebug` would
+# REUSE the keyless APK even though the keys are now in the env. Installing that
+# stale APK means Sketchfab Explore is disabled and AR Cloud throws
+# ERROR_NOT_AUTHORIZED, yet record_key_subleg would report the sub-leg `passed`
+# off RESOLUTION-time presence — exactly the false green #2343 fixes. Deleting
+# the APK makes the output genuinely missing, so the assemble task re-runs and
+# re-reads the env. Call this BEFORE any `if [[ ! -f "$APK" ]]` build guard and
+# before the AR leg's Gradle `installDebug`. (DO NOT re-introduce a stale-APK
+# shortcut here — see #2343 / PR #2347 review.)
+#   $1 path to the demo debug APK (the only artifact that carries the keys).
+# No-op when neither key is present (a keyless run must NOT churn the build).
+# Never logs a key value — only that a fresh build is forced.
+qa_keys_force_fresh_build_if_present() {
+  local apk="${1:?qa_keys_force_fresh_build_if_present needs the APK path}"
+  if [[ "${QA_SKETCHFAB_KEY_PRESENT:-false}" == "true" || "${QA_ARCORE_KEY_PRESENT:-false}" == "true" ]]; then
+    if [[ -f "$apk" ]]; then
+      rm -f "$apk"
+      echo "[qa-keys] a key is present — removed the existing demo APK to force a fresh KEYED build (#2343): $apk" >&2
+    fi
   fi
-  _qa_keys_nonblank "${SKETCHFAB_API_KEY:-}"
-}
-
-qa_keys_verify_arcore() {
-  local v="$QA_KEYS_SCRIPTS_DIR/verify-arcore-key.sh"
-  if [[ -x "$v" ]]; then
-    # verify-arcore-key.sh has no live network probe; SKIP_ARCORE_LIVE_CHECK is a
-    # harmless no-op kept for symmetry with the Sketchfab path.
-    SKIP_ARCORE_LIVE_CHECK=1 bash "$v" >/dev/null 2>&1
-    return $?
-  fi
-  _qa_keys_nonblank "${ARCORE_API_KEY:-}"
 }
 
 # Print a LOUD, boxed, unmissable banner to stderr for whichever key is absent,
