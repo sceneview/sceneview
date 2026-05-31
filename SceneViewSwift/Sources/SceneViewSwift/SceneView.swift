@@ -480,6 +480,26 @@ private struct SceneViewRepresentation: View {
     }
     @StateObject private var entities = SceneEntities()
     @State private var lastDragTranslation: CGSize = .zero
+
+    /// Per-entity cumulative drag translation at the previous `onChanged` tick,
+    /// keyed by `ObjectIdentifier(entity)` (`Entity` is a class but not
+    /// `Hashable`). Used by `entityDragGesture` to convert SwiftUI's
+    /// **cumulative** `value.translation` into the **per-frame delta** that
+    /// `NodeGesture.onDrag`'s documented contract promises ("translation delta
+    /// in world space") — without this, a natural `cube.position += delta`
+    /// handler double-integrates the cumulative offset every frame and the
+    /// entity accelerates off-screen (#2283).
+    ///
+    /// Held in a reference box (same pattern as `cameraBox`, #2277) so the
+    /// per-frame writes during a drag never change the `@State` value and so
+    /// never invalidate the SwiftUI body / re-run `RealityView.update:`.
+    /// Entries are inserted lazily on the first tick of a gesture and removed
+    /// in `.onEnded`, so the dictionary holds only currently-dragging entities.
+    private final class EntityDragStateBox {
+        var lastTranslation: [ObjectIdentifier: SIMD3<Float>] = [:]
+    }
+    @State private var entityDragStateBox = EntityDragStateBox()
+
     @State private var initialPinchRadius: Float? = nil
     /// Snapshotted FOV when a pinch begins in ``CameraControlMode/firstPerson``
     /// — kept separate from `initialPinchRadius` so the orbit/pan dolly path
@@ -1588,9 +1608,29 @@ private struct SceneViewRepresentation: View {
                 // depth. Sufficient for sticker-style drag interactions; users
                 // who need full 3D-projected drags can compute via the camera
                 // ray themselves in the handler.
-                let dx = Float(value.translation.width) * 0.001
-                let dy = Float(-value.translation.height) * 0.001
-                NodeGesture.dispatchDrag(on: value.entity, translation: SIMD3<Float>(dx, dy, 0))
+                //
+                // `value.translation` is SwiftUI's *cumulative* translation
+                // since the gesture began, but `NodeGesture.onDrag`'s contract
+                // promises a per-frame *delta* ("translation delta in world
+                // space"). Dispatch `current − previous` so the natural
+                // `entity.position += delta` handler integrates once, not twice
+                // — the previous code dispatched the cumulative value every
+                // tick, so the entity accelerated off-screen (#2283).
+                let current = SIMD3<Float>(
+                    Float(value.translation.width) * 0.001,
+                    Float(-value.translation.height) * 0.001,
+                    0
+                )
+                let key = ObjectIdentifier(value.entity)
+                let previous = entityDragStateBox.lastTranslation[key] ?? .zero
+                NodeGesture.dispatchDrag(on: value.entity, translation: current - previous)
+                entityDragStateBox.lastTranslation[key] = current
+            }
+            .onEnded { value in
+                // Reset the per-gesture baseline so the next drag on this
+                // entity starts from zero rather than the last gesture's
+                // final cumulative offset.
+                entityDragStateBox.lastTranslation[ObjectIdentifier(value.entity)] = nil
             }
     }
 
