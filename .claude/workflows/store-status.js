@@ -11,12 +11,12 @@ export const meta = {
 // Probe phase reads it from the root gradle.properties VERSION_NAME.
 const a = args || {}
 const APP_ID = '6761329763'
-const ANDROID_PKG = 'io.github.sceneview.demo'
 
-// Resolve the canonical (non-worktree) repo root so we both READ gradle.properties
-// and WRITE STATE.md against the main checkout, not this worktree copy.
-const WT = '/Users/thomasgorisse/Projects/sceneview/.claude/worktrees/upbeat-bohr-c0b0b5'
-const RESOLVE_MAIN = `MAIN=$(dirname "$(git -C ${WT} rev-parse --path-format=absolute --git-common-dir)")`
+// Resolve the canonical (non-worktree) main repo root from the AGENT'S OWN CWD — never a
+// hardcoded worktree path (those get GC'd after merge, breaking every future run).
+// --git-common-dir points at the shared .git; its parent is the main checkout. Works
+// from any worktree or the main tree.
+const RESOLVE_MAIN = 'MAIN=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")'
 
 phase('Probe')
 

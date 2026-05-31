@@ -219,9 +219,12 @@ Hard rules: no polling/sleep loops; no raw adb (android CLI / lib/android-cli.sh
 // pipeline() = replace-on-completion with NO barrier: as each per-issue agent
 // returns, the next item flows through immediately (the runtime caps how many
 // build-heavy agents run at once, ~2). Each item passes through exactly one stage.
+// pipeline() stage args (EMPIRICALLY VERIFIED): arg0 = prevResult (== the item itself
+// for the first/only stage), arg1 = ALWAYS the originalItem, arg2 = index. We read the
+// issue from arg1 (originalItem) so this stays correct regardless of stage position.
 const results = await pipeline(
   chosen,
-  (prev, item) =>
+  (_prev, item) =>
     agent(fixBrief(item.number, item.title, item.priority), {
       label: `fix:#${item.number}`,
       phase: 'Cycle',

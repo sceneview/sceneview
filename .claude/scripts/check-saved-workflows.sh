@@ -52,7 +52,7 @@ for f in "${FILES[@]}"; do
   if [ "$HAVE_NODE" -eq 1 ]; then
     {
       printf 'async function __wf__(){\n'
-      sed -E 's/^([[:space:]]*)export[[:space:]]+const[[:space:]]+meta/\1const meta/' "$f"
+      sed -E 's/^([[:space:]]*)export[[:space:]]+/\1/' "$f"
       printf '\n}\n'
     } > "$TMP/wf.cjs"
     if ! node --check "$TMP/wf.cjs" 2> "$TMP/err"; then
@@ -77,11 +77,14 @@ for f in "${FILES[@]}"; do
     EXIT=1
   fi
 
-  # 3. Resume-safety: forbidden non-deterministic calls.
-  if grep -nE 'Date\.now\(|Math\.random\(|new[[:space:]]+Date\([[:space:]]*\)' "$f" > "$TMP/bad" 2>/dev/null; then
-    echo "::error::$rel — resume-breaking call(s) (use args/stamp-after-return instead):"
+  # 3. Resume-safety (WARN-only heuristic). These calls break Workflow resume — but the
+  #    Workflow TOOL already hard-rejects them at submit time, so here we only WARN. We
+  #    strip line-comments first, and accept that a token inside an agent-prompt STRING
+  #    (passed to a subagent, never run in THIS workflow's resume path) is a false
+  #    positive — blocking would falsely reject legit prompt-heavy workflows (erodes trust).
+  if sed -E 's#//.*$##' "$f" | grep -nE 'Date\.now\(|Math\.random\(|new[[:space:]]+Date\([[:space:]]*\)' > "$TMP/bad" 2>/dev/null; then
+    echo "::warning::$rel — possible resume-breaking call(s) (ignore if inside an agent-prompt string; else pass via args / stamp after return):"
     sed 's/^/    /' "$TMP/bad"
-    EXIT=1
   fi
 done
 

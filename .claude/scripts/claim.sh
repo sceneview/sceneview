@@ -42,6 +42,38 @@ STATE="$MAIN_ROOT/.claude/STATE.md"
 
 have_gh() { command -v gh >/dev/null 2>&1; }
 
+# ── Genesis / self-heal ─────────────────────────────────────────────────────────
+# Guarantee STATE.md has the IN-FLIGHT ledger scaffold, so existing_row()/insert_row()
+# always work and the local collision check can NEVER silently no-op (#2342 review #6/#7).
+# Seeds from the tracked .claude/STATE.md.template when present, else an embedded scaffold.
+ensure_scaffold() {
+  if [ -f "$STATE" ] && grep -q '<!-- claim-rows' "$STATE"; then return 0; fi
+  local tmpl="$MAIN_ROOT/.claude/STATE.md.template"
+  if [ ! -f "$STATE" ] && [ -f "$tmpl" ]; then
+    cp "$tmpl" "$STATE" && echo "claim.sh: seeded $STATE from template." >&2
+    return 0
+  fi
+  if [ ! -f "$STATE" ]; then
+    {
+      printf '# SceneView — Session State\n\n'
+      printf '> Single live source of truth for "where are we". Gitignored. See .claude/workflows/README.md §5.\n\n'
+      printf '## NOW\n\n'
+      printf '## IN-FLIGHT\n| Key | Branch / worktree | Session | Claimed | Status |\n|---|---|---|---|---|\n'
+      printf '%s\n\n' '<!-- claim-rows: claim.sh inserts new rows immediately ABOVE this line -->'
+      printf '## NEXT\n\n'
+      printf '## BOOTSTRAP\n```\ncat .claude/STATE.md\nbash .claude/scripts/sync-versions.sh\ngh issue list --repo sceneview/sceneview --label in-progress\n```\n'
+    } > "$STATE"
+    echo "claim.sh: seeded $STATE (embedded scaffold; no template found)." >&2
+    return 0
+  fi
+  # STATE.md exists but lacks the ledger marker → append a proper IN-FLIGHT section.
+  echo "claim.sh: WARN $STATE had no claim-rows ledger — appended one so collision detection works." >&2
+  {
+    printf '\n## IN-FLIGHT\n| Key | Branch / worktree | Session | Claimed | Status |\n|---|---|---|---|---|\n'
+    printf '%s\n' '<!-- claim-rows: claim.sh inserts new rows immediately ABOVE this line -->'
+  } >> "$STATE"
+}
+
 # ── Argument parsing ────────────────────────────────────────────────────────────
 MODE="claim"
 case "${1:-}" in
@@ -70,6 +102,9 @@ BRANCH="${2:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')}"
 STATUS="${3:-claimed}"
 SESSION="${CLAUDE_SESSION_ID:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
 TODAY="$(date -u +%Y-%m-%d)"
+
+# Genesis/self-heal the ledger before any read or mutation (--list stays a pure read).
+case "$MODE" in claim|force|release|check) ensure_scaffold ;; esac
 
 # ── STATE.md helpers (bounded sleepless mkdir lock) ─────────────────────────────
 LOCK="$STATE.lock"
@@ -171,6 +206,12 @@ case "$MODE" in
         echo "Use --force if you are intentionally iterating on it." >&2
         exit 2
       fi
+    fi
+    # Degraded-mode transparency (#2342 review #7): without the GitHub label the only
+    # protection is the local ledger — loudly say so rather than silently under-protect.
+    if ! have_gh || [ -z "$ISSUE_NUM" ]; then
+      reason="$([ -z "$ISSUE_NUM" ] && echo 'slug key — no GitHub issue' || echo 'gh unavailable')"
+      echo "claim.sh: WARN collision detection is LOCAL-LEDGER-ONLY ($reason — no cross-host '$LABEL' label). Another host could double-claim; verify manually for high-stakes work." >&2
     fi
     # Claim: GitHub label first (the real lock), then the local mirror.
     if have_gh && [ -n "$ISSUE_NUM" ]; then
