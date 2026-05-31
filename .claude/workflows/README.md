@@ -141,7 +141,9 @@ Every `*.js` in this directory MUST:
 7. **Report incrementally** (`log()` at phase boundaries) so a budget/session cap never loses everything.
 8. **Be resumable** — pure of `Date.now()`/`Math.random()`; stamp timestamps after return or pass via `args`.
 
-Validate every script before committing: `bash .claude/scripts/check-workflow-scripts.sh`.
+Validate every script before committing: `bash .claude/scripts/check-saved-workflows.sh`
+(static: ESM `node --check` + meta-block + resume-safety; never executes the workflow).
+That is distinct from `check-workflow-scripts.sh`, which validates the CI YAML in `.github/workflows/`.
 
 ## 10. Non-goals
 
