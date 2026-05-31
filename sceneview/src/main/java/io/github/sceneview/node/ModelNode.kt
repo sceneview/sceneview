@@ -178,6 +178,27 @@ open class ModelNode(
     private val sanitizedEntities = mutableSetOf<Entity>()
 
     /**
+     * Tracks renderable entities whose AABB has been observed valid (non-empty) AND whose
+     * shape has no runtime AABB-mutating driver, so they are skipped by
+     * [sanitizeEmptyBoundingBoxes] on subsequent frames.
+     *
+     * Only static renderables are latched here: the whole model must have no skins
+     * ([ModelInstance.skinCount] == 0) and the renderable itself must have no morph targets
+     * ([RenderableManager.getMorphTargetCount] == 0). Skinning and morphing are the runtime
+     * drivers that can take a once-valid AABB back to empty (degenerate bone pose / zeroed
+     * morph weight) — missing that `valid→empty` transition crashes Filament ("AABB can't be
+     * empty…"), which is why skinned / morph-target renderables are deliberately NEVER latched
+     * and keep the full per-frame valid↔empty check (#2273, #2280 revert).
+     *
+     * Caveat (not handled, by design): explicitly mutating a *latched* renderable via
+     * [RenderableComponent.setGeometry] / the `axisAlignedBoundingBox` setter with a degenerate
+     * box re-introduces an empty AABB that this latch will not re-scan. No glTF-driven path or
+     * any SceneView sample does this; if a future caller needs it, evict the entity from this
+     * set on those mutations (tracked in the #2273 follow-up).
+     */
+    private val permanentlyValidEntities = mutableSetOf<Entity>()
+
+    /**
      * Gets the skin count of this instance.
      */
     val skinCount: Int get() = modelInstance.skinCount
@@ -502,32 +523,78 @@ open class ModelNode(
      * - The model has auxiliary entities with no mesh data
      *
      * Once the AABB becomes valid (non-empty), culling and shadows are re-enabled.
+     *
+     * **Per-frame cost (#2273).** This runs from [onFrame] every frame. To avoid issuing a
+     * `getInstance` + `getAxisAlignedBoundingBox` JNI call (plus a `FloatArray(3)` allocation)
+     * per renderable on every frame forever, a renderable is latched into
+     * [permanentlyValidEntities] and skipped on subsequent frames **once, and only once, it is
+     * both observed valid AND statically shaped** — i.e. the model has no skins and the
+     * renderable has no morph targets, so its AABB can never collapse back to empty. Skinned /
+     * morph-target renderables are never latched and keep the full per-frame check, preserving
+     * the `valid→empty` detection that prevents the Filament empty-AABB crash for animated meshes.
+     * When every renderable is latched (the steady state for a fully-loaded static model) the
+     * method returns immediately with zero JNI work.
      */
     private fun sanitizeEmptyBoundingBoxes() {
+        // Fast path: every renderable already permanently validated — nothing left to scan.
+        if (permanentlyValidEntities.size == renderableNodes.size) return
+
         val renderableManager = modelInstance.engine.renderableManager
+        // Skinning is a model-level property: if any skin exists, conservatively treat every
+        // renderable as runtime-mutable (we can't cheaply map an entity to its skin), so none
+        // get latched and the full per-frame check is preserved.
+        val modelHasSkins = modelInstance.skinCount > 0
         val box = Box()
-        for (renderableNode in renderableNodes) {
-            val entity = renderableNode.entity
-            val instance = renderableManager.getInstance(entity)
-            if (instance == 0) continue
-
-            renderableManager.getAxisAlignedBoundingBox(instance, box)
-            val halfExtent = box.halfExtent
-            val isEmpty = halfExtent[0] == 0f && halfExtent[1] == 0f && halfExtent[2] == 0f
-
-            if (isEmpty && entity !in sanitizedEntities) {
-                // Empty AABB: disable culling and shadows to prevent Filament crash
-                renderableManager.setCulling(instance, false)
-                renderableManager.setCastShadows(instance, false)
-                renderableManager.setReceiveShadows(instance, false)
-                sanitizedEntities += entity
-            } else if (!isEmpty && entity in sanitizedEntities) {
-                // AABB is now valid: re-enable culling and shadows
-                renderableManager.setCulling(instance, true)
-                renderableManager.setCastShadows(instance, true)
-                renderableManager.setReceiveShadows(instance, true)
-                sanitizedEntities -= entity
+        renderableNodes.forEach { renderableNode ->
+            // Already proven valid and static: never needs re-checking, skip the JNI calls.
+            if (renderableNode.entity !in permanentlyValidEntities) {
+                sanitizeRenderable(renderableNode.entity, renderableManager, box, modelHasSkins)
             }
+        }
+    }
+
+    /**
+     * Sanitizes a single renderable [entity] — see [sanitizeEmptyBoundingBoxes].
+     *
+     * Disables culling + shadows while the AABB is empty and re-enables them once it becomes
+     * valid. A statically-shaped renderable (no model skins, no morph targets) is latched into
+     * [permanentlyValidEntities] the first time it is observed valid so it is never re-scanned.
+     */
+    private fun sanitizeRenderable(
+        entity: Entity,
+        renderableManager: RenderableManager,
+        box: Box,
+        modelHasSkins: Boolean
+    ) {
+        val instance = renderableManager.getInstance(entity)
+        if (instance == 0) return
+
+        renderableManager.getAxisAlignedBoundingBox(instance, box)
+        val halfExtent = box.halfExtent
+        val isEmpty = halfExtent[0] == 0f && halfExtent[1] == 0f && halfExtent[2] == 0f
+
+        if (isEmpty && entity !in sanitizedEntities) {
+            // Empty AABB: disable culling and shadows to prevent Filament crash
+            renderableManager.setCulling(instance, false)
+            renderableManager.setCastShadows(instance, false)
+            renderableManager.setReceiveShadows(instance, false)
+            sanitizedEntities += entity
+        } else if (!isEmpty && entity in sanitizedEntities) {
+            // AABB is now valid: re-enable culling and shadows
+            renderableManager.setCulling(instance, true)
+            renderableManager.setCastShadows(instance, true)
+            renderableManager.setReceiveShadows(instance, true)
+            sanitizedEntities -= entity
+        }
+
+        // Latch only when valid AND no runtime AABB-mutating driver exists: no skins on the
+        // model and no morph targets on this renderable. With neither, nothing the render loop
+        // does can take the AABB back to empty, so it's safe to skip permanently. (Explicit
+        // setGeometry / axisAlignedBoundingBox mutation is the one out-of-band exception — see
+        // the permanentlyValidEntities KDoc.) Animated (skinned/morph) renderables are never
+        // latched — they keep the per-frame check that catches a runtime valid→empty collapse.
+        if (!isEmpty && !modelHasSkins && renderableManager.getMorphTargetCount(instance) == 0) {
+            permanentlyValidEntities += entity
         }
     }
 
