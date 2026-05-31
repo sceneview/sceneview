@@ -22,6 +22,7 @@ import io.github.sceneview.demo.demos.AnimationPhysicsDemo
 import io.github.sceneview.demo.demos.CameraAndGesturesDemo
 import io.github.sceneview.demo.demos.CustomGeometryDemo
 import io.github.sceneview.demo.demos.DebugOverlayDemo
+import io.github.sceneview.demo.demos.DoublePendulumDemo
 import io.github.sceneview.demo.demos.FogDemo
 import io.github.sceneview.demo.demos.GeometryDemo
 import io.github.sceneview.demo.demos.LightingDemo
@@ -30,8 +31,10 @@ import io.github.sceneview.demo.demos.LinesPathsDemo
 import io.github.sceneview.demo.demos.MaterialsDemo
 import io.github.sceneview.demo.demos.ModelViewerDemo
 import io.github.sceneview.demo.demos.PickingAndCollisionDemo
+import io.github.sceneview.demo.demos.PlacementSceneDemo
 import io.github.sceneview.demo.demos.PlaneGridPreviewDemo
 import io.github.sceneview.demo.demos.SecondaryCameraDemo
+import io.github.sceneview.demo.demos.SpatialAudioDemo
 import io.github.sceneview.demo.demos.TwoDInThreeDDemo
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 
@@ -120,6 +123,13 @@ class DemoHostActivity : ComponentActivity() {
             "custom-geometry", "custom-mesh", "shape" -> CustomGeometryDemo(onBack = back)
             "secondary-camera" -> SecondaryCameraDemo(onBack = back)
             "debug-overlay" -> DebugOverlayDemo(onBack = back)
+            // These 3 were registered in the catalog (GeneratedDemos / fragments) but
+            // missing from this debug deep-link host's when() — launching them via
+            // DemoHostActivity (--es demo_id) crashed with "Unknown demo id" while they
+            // worked fine through MainActivity navigation. Found during #2239 interactive QA.
+            "double-pendulum" -> DoublePendulumDemo(onBack = back)
+            "spatial-audio" -> SpatialAudioDemo(onBack = back)
+            "placement-scene" -> PlacementSceneDemo(onBack = back)
             // #2224 — non-AR static preview of the ARCore plane grid material for shader QA.
             "plane-grid-preview" -> PlaneGridPreviewDemo(onBack = back)
             // Augmented Reality
