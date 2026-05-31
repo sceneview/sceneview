@@ -1,0 +1,120 @@
+name: Weekly Doc Audit
+
+# Weekly doc↔API drift audit (#docs).
+#
+# WHY
+#   SceneView is an AI-first SDK: the prose docs (llms.txt, KDoc, docs/docs/*,
+#   recipes) are the surface an AI reads to generate user code. The per-PR
+#   `Doc-drift check (advisory)` step (ci.yml → repo-hygiene) is a cheap,
+#   deterministic WARN that catches the obvious "API moved, docs didn't" case
+#   on a single diff — but it cannot judge prose semantics or catch drift that
+#   accumulated across many merged PRs. THIS job is the complementary deep
+#   pass: once a week an Opus agent reasons over the whole repo and either
+#   opens a *draft* PR with concrete doc patches or a single de-duplicated
+#   tracking issue. A draft PR (never auto-merged) means a wrong prose patch
+#   can never land silently — a human reviews it.
+#
+# AUTH / COST
+#   Reuses CLAUDE_CODE_OAUTH_TOKEN (Thomas's Claude Max quota — no per-call
+#   API spend), same secret as claude.yml. Runs once a week → bounded cost.
+
+on:
+  schedule:
+    # 07:17 UTC every Monday. Off the top-of-hour (GitHub drops `0 * * * *`
+    # cron overflow on busy infra — see maintenance.yml header, #1646) and
+    # distinct from maintenance.yml (07:11 daily) and nightly-ci.yml (04:00).
+    - cron: '17 7 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: doc-audit
+  cancel-in-progress: false
+
+permissions:
+  contents: write          # create the audit branch + commit doc patches
+  pull-requests: write     # open the draft PR
+  issues: write            # open/update the tracking issue when no safe patch
+  id-token: write          # OIDC for claude-code-action (matches claude.yml)
+
+jobs:
+  doc-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history so the agent can read `git log` since last week to see
+          # which public APIs moved and reason about what docs should follow.
+          fetch-depth: 0
+
+      # Seed the agent with the deterministic candidate-drift worklist so it
+      # starts from signal, not a cold scan. Captured to the step summary too.
+      - name: Build doc-drift worklist
+        shell: bash
+        run: |
+          {
+            echo '## Doc-drift audit worklist'
+            echo '```'
+            bash .claude/scripts/check-doc-drift.sh --audit || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Run doc-audit agent
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--model claude-opus-4-8'
+          prompt: |
+            You are the SceneView weekly documentation-drift auditor.
+
+            SceneView is an AI-first SDK: its prose docs are the surface an AI
+            reads to generate USER code. Stale docs => the AI emits stale code.
+            Your job is to find where the docs have drifted from the CURRENT
+            public API and fix it — accurately, never inventing API.
+
+            CONTEXT TO READ FIRST
+            - `bash .claude/scripts/check-doc-drift.sh --audit` — deterministic
+              candidate-drift worklist (composables missing from llms.txt,
+              public symbols likely missing KDoc, recipe files to verify).
+            - `git log --oneline --since="8 days ago"` — what merged this week.
+              Cross-reference public-API changes against the four doc surfaces.
+
+            FOUR DOC SURFACES (in priority order)
+            1. `llms.txt` (root) — the canonical AI-first API reference. HIGHEST
+               priority: signatures, node types, params, threading rules, patterns.
+            2. KDoc on public Kotlin symbols in `sceneview/` and `arsceneview/`.
+            3. `docs/docs/*.md` — cheatsheet, quickstart, migration, platforms,
+               android-xr (developer-facing prose).
+            4. `samples/recipes/*.md` + module READMEs — user-facing code examples.
+
+            HARD RULES
+            - NEVER document an API that does not exist in source. Verify every
+              symbol you mention against the actual `.kt`/`.swift` files. A
+              hallucinated API in llms.txt is worse than a gap.
+            - Do NOT bump versions, edit changelog version anchors, or touch
+              `mcp/package.json` (independent track). Docs prose only.
+            - Keep `docs/docs/llms.txt` and `mcp/src/generated/*` alone — they
+              are generated mirrors (see check-llms-drift.sh).
+            - Follow DESIGN.md if you touch any rendered HTML/MkDocs UI.
+
+            DELIVERABLE
+            - If you find concrete, high-confidence doc fixes: create a branch
+              `claude/doc-audit-<run_id>`, commit the doc changes (add a
+              changelog fragment `changelog.d/doc-audit-<run_id>.md` with a
+              `<!-- category: Docs -->` tag), and open a **DRAFT** pull request
+              titled `docs: weekly doc↔API drift audit`. Body = a per-surface
+              summary of what drifted and what you changed. DRAFT so a human
+              reviews before merge — do not auto-merge.
+            - Before opening a PR, check `gh pr list --state open --search
+              "weekly doc↔API drift audit in:title"`; if last week's audit PR
+              is still open, push your commits to ITS branch and comment a
+              refresh instead of opening a duplicate.
+            - If you find drift but cannot safely auto-patch it (ambiguous,
+              needs a design decision): open ONE de-duplicated tracking issue
+              titled `docs: doc↔API drift — <YYYY-WW>` (search existing open
+              issues with that title prefix first; update instead of dup).
+            - If the docs are genuinely in sync: do nothing beyond a short note
+              in your final message. Do NOT open an empty PR or issue.
+
+            Be rigorous and conservative. A small, correct patch beats a large,
+            speculative one.
