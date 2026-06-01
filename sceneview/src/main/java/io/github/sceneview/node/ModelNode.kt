@@ -640,28 +640,46 @@ open class ModelNode(
         }
     }
 
+    /**
+     * Reusable scratch list of finished (non-looping, completed) animation indices collected
+     * during [applyAnimations]. Removals from [playingAnimations] are deferred to after the
+     * per-frame walk so the loop never needs an explicit `MutableIterator` + in-place
+     * `iterator.remove()`. Reused in place (cleared after draining); only ever touched on the
+     * render thread inside [applyAnimations], so there is no race.
+     */
+    private val finishedAnimationIndices = ArrayList<Int>(0)
+
     private fun applyAnimations(frameTimeNanos: Long) {
-        val iterator = playingAnimations.iterator()
-        while (iterator.hasNext()) {
-            val (index, animation) = iterator.next()
-            if (animation.speed == 0f) continue
+        val animator = animator
+        // `forEach` over the map walks the backing LinkedHashMap.Entry nodes (which are persistent
+        // — not boxed per frame; the Int key was boxed once at insert in playAnimation()). Finished
+        // non-looping animations are collected into the reusable [finishedAnimationIndices] scratch
+        // and removed after the walk, replacing the prior `iterator.remove()` mutation-during-
+        // iteration. Behaviour is identical: a finished animation still has its final pose applied
+        // this frame before it is dropped.
+        playingAnimations.forEach { (index, animation) ->
+            if (animation.speed == 0f) return@forEach
 
-            animator.let { animator ->
-                val elapsedTimeSeconds = frameTimeNanos.intervalSeconds(animation.startTime)
-                val adjustedTimeSeconds = elapsedTimeSeconds.toFloat() * abs(animation.speed)
-                val animationDuration = animator.getAnimationDuration(index)
-                val animationTime: Float = if (animation.speed > 0) {
-                    adjustedTimeSeconds
-                } else {
-                    animationDuration - adjustedTimeSeconds
-                }
-
-                animator.applyAnimation(index, animationTime)
-
-                if (!animation.loop && adjustedTimeSeconds >= animationDuration) {
-                    iterator.remove()
-                }
+            val elapsedTimeSeconds = frameTimeNanos.intervalSeconds(animation.startTime)
+            val adjustedTimeSeconds = elapsedTimeSeconds.toFloat() * abs(animation.speed)
+            val animationDuration = animator.getAnimationDuration(index)
+            val animationTime: Float = if (animation.speed > 0) {
+                adjustedTimeSeconds
+            } else {
+                animationDuration - adjustedTimeSeconds
             }
+
+            animator.applyAnimation(index, animationTime)
+
+            if (!animation.loop && adjustedTimeSeconds >= animationDuration) {
+                finishedAnimationIndices.add(index)
+            }
+        }
+        if (finishedAnimationIndices.isNotEmpty()) {
+            for (i in finishedAnimationIndices.indices) {
+                playingAnimations.remove(finishedAnimationIndices[i])
+            }
+            finishedAnimationIndices.clear()
         }
     }
 }
