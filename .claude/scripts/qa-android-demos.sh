@@ -48,6 +48,13 @@ source "$SCRIPT_DIR/lib/android-cli.sh"
 # leasable running emulator and to target the leased serial via ANDROID_SERIAL.
 # shellcheck source=lib/emulator-select.sh
 source "$SCRIPT_DIR/lib/emulator-select.sh"
+# API-key resolution (#2343) — resolve + EXPORT SKETCHFAB_API_KEY / ARCORE_API_KEY
+# (env, else repo-root local.properties) so the assembleDebug build below injects
+# them via samples/android-demo/build.gradle, instead of silently building with
+# empty keys (Explore disabled, AR Cloud → ERROR_NOT_AUTHORIZED). Presence only —
+# never logs a key value.
+# shellcheck source=lib/qa-keys.sh
+source "$SCRIPT_DIR/lib/qa-keys.sh"
 
 PACKAGE="io.github.sceneview.demo"
 ACTIVITY=".MainActivity"
@@ -101,8 +108,28 @@ elif ! adb get-state >/dev/null 2>&1; then
   exit 1
 fi
 
+# --- API keys (#2343) ------------------------------------------------------
+# Resolve + EXPORT the demo store secrets BEFORE the build so build.gradle wires
+# them into the debug APK (Explore/Sketchfab + AR Cloud). Without this the build
+# is silently keyless and those paths are untestable. Presence (not the value)
+# is logged. When run standalone (no parent device-qa.sh), print the loud banner
+# here too — a parent orchestrator sets QA_KEYS_RESOLVED_BY_PARENT=1 and prints
+# its own banner once, so this child stays quiet to avoid a double banner.
+qa_keys_resolve_all
+echo "[qa] API keys — Sketchfab present: ${QA_SKETCHFAB_KEY_PRESENT}, ARCore present: ${QA_ARCORE_KEY_PRESENT}"
+if [[ "${QA_KEYS_RESOLVED_BY_PARENT:-}" != "1" ]]; then
+  qa_keys_banner_if_absent
+fi
+
 # --- Optional build + install ---------------------------------------------
 if $INSTALL; then
+  # #2343: if a key is present, delete any pre-existing (possibly KEYLESS) APK so
+  # the `[[ ! -f "$APK" ]]` guard below can never short-circuit a keyed build. An
+  # env-sourced buildConfigField is not a tracked Gradle input, so a stale keyless
+  # APK at this path would otherwise be installed verbatim while record_key_subleg
+  # reports the sub-leg `passed` off resolution-time presence — the exact false
+  # green #2343 kills. (DO NOT remove this — see PR #2347 review.)
+  qa_keys_force_fresh_build_if_present "$APK"
   if [[ ! -f "$APK" ]]; then
     echo "[qa] building demo APK (this is a cold build — streams progress)..."
     # `--console=plain` (NOT -q): a quiet build emits zero output, so a slow

@@ -242,6 +242,16 @@ jobs:
 
       - name: Run device-qa.sh (android leg) on emulator
         uses: ReactiveCircus/android-emulator-runner@v2
+        # Inject the demo store secrets so device-qa.sh resolves the keys as
+        # PRESENT and exercises the key-gated `sketchfab` sub-leg (#2343). Without
+        # this the CI leg always resolves them ABSENT → `skipped` → the release
+        # gate flips to a permanent `warn`. Mirrors how app-store.yml / play-store.yml
+        # / build-apks.yml already inject these exact secret names. Read into env
+        # only — never referenced from an `if:` (would expose secrets to the
+        # expression context). The action forwards the step env into its `script:`.
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+          ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
         with:
           api-level: 30
           target: google_apis
@@ -319,6 +329,16 @@ jobs:
 
       - name: Run device-qa.sh (ar leg) on ARCore emulator
         uses: ReactiveCircus/android-emulator-runner@v2
+        # Inject the demo store secrets so device-qa.sh resolves ARCORE_API_KEY as
+        # PRESENT and exercises the key-gated `arcore-cloud` sub-leg (#2343).
+        # Without this the CI ar leg always resolves the key ABSENT → `skipped` →
+        # the release gate flips to a permanent `warn`. Mirrors the secret names
+        # already injected by app-store.yml / play-store.yml / build-apks.yml. Read
+        # into env only — never referenced from an `if:`. The action forwards the
+        # step env into its `script:`.
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+          ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
         with:
           api-level: 30
           target: google_apis

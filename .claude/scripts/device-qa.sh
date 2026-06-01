@@ -46,16 +46,29 @@
 #   --advisory=<csv> Comma-separated platforms whose result is ADVISORY for the
 #                    release gate — a failure on an advisory leg surfaces as a
 #                    WARN (not a hard block) in release-checklist.sh section 14
-#                    (#1651). Default: `android,ar,web-perf`. `android,ar` run
-#                    on the chronically flaky SwiftShader emulator (#1643) and
-#                    are `continue-on-error: true` in device-qa.yml, so the
-#                    release gate must not be hard-blocked by them. `web-perf`
-#                    is the Lighthouse perf sub-leg of `web` (#1879/#1898) —
-#                    advisory until its budgets are proven against real
-#                    baseline data. The `web` leg itself is intentionally NOT
-#                    advisory: it is reliable and BLOCKING.
+#                    (#1651). Default: `android,ar,web-perf,sketchfab,arcore-cloud`.
+#                    `android,ar` run on the chronically flaky SwiftShader
+#                    emulator (#1643) and are `continue-on-error: true` in
+#                    device-qa.yml, so the release gate must not be hard-blocked
+#                    by them. `web-perf` is the Lighthouse perf sub-leg of `web`
+#                    (#1879/#1898) — advisory until its budgets are proven against
+#                    real baseline data. `sketchfab` + `arcore-cloud` (#2343) are
+#                    the key-gated sub-legs — `skipped` (advisory) when their API
+#                    key is absent so a keyless run is never a silent green. The
+#                    `web` leg itself is intentionally NOT advisory: it is
+#                    reliable and BLOCKING.
 #                    Pass `--advisory=` (empty) to make every leg blocking.
 #   -h | --help      Show this help.
+#
+# API keys (#2343):
+#   Full local QA needs the demo store secrets so the Explore/Sketchfab path and
+#   the AR Cloud demos are actually exercised — otherwise the harness builds a
+#   keyless debug APK (Explore disabled, AR Cloud → ERROR_NOT_AUTHORIZED) and the
+#   key-gated `sketchfab` / `arcore-cloud` legs report `skipped` (advisory), with
+#   a loud banner. Provide them via the repo-root local.properties (gitignored)
+#   or the environment — NEVER commit a key value:
+#     • local.properties:  sketchfab.api.key=<token>   /   ARCORE_API_KEY=<key>
+#     • or env vars:        SKETCHFAB_API_KEY=<token>   /   ARCORE_API_KEY=<key>
 #
 # Exit status:
 #   0  every REQUIRED leg passed. Includes the WARN case where only advisory
@@ -84,6 +97,18 @@ cd "$REPO_ROOT"
 # live host RAM safely allows, floor 1.
 # shellcheck source=lib/emulator-select.sh
 source "$SCRIPT_DIR/lib/emulator-select.sh"
+# API-key resolution (#2343) — resolve + EXPORT SKETCHFAB_API_KEY / ARCORE_API_KEY
+# so the android leg's assembleDebug build is built WITH the keys, and so a
+# keyless run reports the key-gated legs as honestly `skipped` (never green).
+# shellcheck source=lib/qa-keys.sh
+source "$SCRIPT_DIR/lib/qa-keys.sh"
+
+# The demo debug APK both Android-emulator legs install. Kept as the single
+# canonical path qa-android-demos.sh expects and the CI build-android-apk job
+# restores into. #2343: when a key is present this APK is deleted before each
+# leg's build/install (qa_keys_force_fresh_build_if_present) so a stale KEYLESS
+# build can never be reused — see PR #2347 review.
+DEMO_DEBUG_APK="samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk"
 
 # Release every emulator lease this orchestrator owns when it exits.
 trap 'emu_lease_release_all' EXIT
@@ -99,7 +124,10 @@ OUT_DIR="$REPO_ROOT"
 # `web-perf` (#1898) is the Lighthouse perf sub-leg — advisory at first, until
 # its budgets are proven stable against real baseline data. Promote it out of
 # this CSV to make a budget breach a hard release block.
-ADVISORY="android,ar,web-perf"
+# `sketchfab` + `arcore-cloud` (#2343) are the key-gated sub-legs: when their
+# API key is absent the path is reported `skipped` (advisory) — a missing LOCAL
+# key must surface as a WARN, never hard-block a dev's run.
+ADVISORY="android,ar,web-perf,sketchfab,arcore-cloud"
 ADVISORY_SET=false
 
 while [[ $# -gt 0 ]]; do
@@ -113,7 +141,7 @@ while [[ $# -gt 0 ]]; do
     --advisory=*) ADVISORY="${1#--advisory=}"; ADVISORY_SET=true; shift ;;
     --advisory)   ADVISORY="${2-}"; ADVISORY_SET=true; shift 2 ;;
     -h|--help)
-      sed -n '2,71p' "$SCRIPT_DIR/device-qa.sh" | sed 's/^# \{0,1\}//'
+      sed -n '2,84p' "$SCRIPT_DIR/device-qa.sh" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "[device-qa] unknown argument: $1" >&2; exit 2 ;;
@@ -198,6 +226,39 @@ record() {
   log "$1 -> $2 ${3:+($3)}"
 }
 
+# Echo the status last recorded for platform $1 (or empty if it never ran).
+last_status_of() {
+  local want="$1" i found=""
+  for i in "${!RESULT_PLATFORMS[@]}"; do
+    [[ "${RESULT_PLATFORMS[$i]}" == "$want" ]] && found="${RESULT_STATUSES[$i]}"
+  done
+  echo "$found"
+}
+
+# record_key_subleg — emit a key-gated sub-leg (#2343) that fits the existing
+# report shape so a keyless run is reported HONESTLY and never as a silent green.
+#   $1 sub-leg name      (sketchfab | arcore-cloud) — both in the ADVISORY CSV
+#   $2 parent leg name   (android | ar) — whose flow would exercise the path
+#   $3 key-present flag  (true | false)
+#   $4 path label        (e.g. "Sketchfab Explore path")
+# Rules:
+#   • key absent              → skipped, reason "key missing — <path> NOT tested"
+#   • key present, parent pass → passed,  reason "<path> exercised by <parent>"
+#   • key present, parent !pass→ skipped, reason "<parent> leg did not pass …"
+# The sub-leg never reports `failed`: a real crash is owned by the parent leg;
+# this leg only attests whether the key-gated path was actually exercised.
+record_key_subleg() {
+  local name="$1" parent="$2" present="$3" path="$4"
+  local pstatus; pstatus="$(last_status_of "$parent")"
+  if [[ "$present" != "true" ]]; then
+    record "$name" skipped "key missing — ${path} NOT tested" "" 0
+  elif [[ "$pstatus" == "passed" ]]; then
+    record "$name" passed "key present — ${path} exercised by the ${parent} flow" "" 0
+  else
+    record "$name" skipped "${parent} leg did not pass (${pstatus:-not run}) — ${path} not exercised" "" 0
+  fi
+}
+
 # --- Pool emulator acquisition ---------------------------------------------
 # acquire_pool_emulator — lease an emulator from the RAM-budgeted adaptive pool
 # (#1654) for the android / ar legs. Strategy:
@@ -270,6 +331,14 @@ run_android() {
 
   local flow="catalog"
   $FAST && flow="3d-basics"
+
+  # #2343: when a key is present, drop any stale (possibly KEYLESS) demo APK —
+  # e.g. the CI build-android-apk artifact, restored into this exact path — so
+  # the keyed build below is never short-circuited and `record_key_subleg
+  # sketchfab` stays truthful. qa-android-demos.sh re-checks this too, but doing
+  # it here covers the install path explicitly (idempotent no-op if already
+  # gone). See PR #2347 review.
+  qa_keys_force_fresh_build_if_present "$DEMO_DEBUG_APK"
 
   local rc=0
   # Stream live via `tee` — a plain `> file` redirect kept the whole Android
@@ -474,6 +543,16 @@ run_ar() {
     return 0
   fi
 
+  # #2343: ar-replay-qa.sh installs via Gradle `installDebug`, which trusts
+  # UP-TO-DATE. The keys reach the build through System.getenv() — NOT a tracked
+  # Gradle input — so a keyless APK assembled earlier (the android leg, a manual
+  # build, or the CI build-android-apk artifact restored into this path) would be
+  # reused even with ARCORE_API_KEY now in the env, leaving AR Cloud at
+  # ERROR_NOT_AUTHORIZED while `record_key_subleg arcore-cloud` reports `passed`.
+  # Delete the APK so Gradle re-assembles and re-reads the env. (DO NOT remove —
+  # see PR #2347 review.)
+  qa_keys_force_fresh_build_if_present "$DEMO_DEBUG_APK"
+
   local rc=0
   bash "$SCRIPT_DIR/ar-replay-qa.sh" --out "$ARTIFACTS" \
     > "$ARTIFACTS/ar-output.txt" 2>&1 || rc=$?
@@ -499,6 +578,16 @@ RUN_STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 log "starting device-QA — platform=$PLATFORM fast=$FAST ci=$CI_MODE"
 log "free disk at start: $(disk_free_gb) GB"
 
+# Resolve + EXPORT the demo API keys ONCE (#2343) so the android leg's
+# assembleDebug build is built WITH them (Explore/Sketchfab + AR Cloud), and so
+# the key-gated sub-legs below report honestly. Presence only — never the value.
+# QA_KEYS_RESOLVED_BY_PARENT tells the child qa-android-demos.sh not to re-print
+# the banner this orchestrator is about to print.
+qa_keys_resolve_all
+export QA_KEYS_RESOLVED_BY_PARENT=1
+log "API keys — Sketchfab present: ${QA_SKETCHFAB_KEY_PRESENT}, ARCore present: ${QA_ARCORE_KEY_PRESENT}"
+qa_keys_banner_if_absent
+
 # Order: cheapest/least-stateful first (web), then the Android-emulator legs
 # back-to-back (they can share one booted emulator), then iOS last.
 LEGS=()
@@ -510,8 +599,20 @@ esac
 for leg in "${LEGS[@]}"; do
   case "$leg" in
     web)     run_web ;;
-    android) run_android ;;
-    ar)      run_ar ;;
+    android)
+      run_android
+      # Key-gated sub-leg (#2343): whether the Explore/Sketchfab path was
+      # actually exercised. `skipped` (advisory) when SKETCHFAB_API_KEY is
+      # absent — never counted as part of the android pass.
+      record_key_subleg sketchfab android "${QA_SKETCHFAB_KEY_PRESENT:-false}" "Sketchfab Explore path"
+      ;;
+    ar)
+      run_ar
+      # Key-gated sub-leg (#2343): whether the AR Cloud demos (Cloud Anchors /
+      # Geospatial / Streetscape) were actually exercised. `skipped` (advisory)
+      # when ARCORE_API_KEY is absent — never counted as part of the ar pass.
+      record_key_subleg arcore-cloud ar "${QA_ARCORE_KEY_PRESENT:-false}" "ARCore Cloud path"
+      ;;
     ios)     run_ios ;;
   esac
   # Reclaim build output before the next leg so a full pass stays disk-safe.
