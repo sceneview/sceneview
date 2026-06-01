@@ -188,6 +188,28 @@ public struct ShapeNode: Sendable {
 
     // MARK: - Preset shapes
 
+    /// The 2D vertices of a regular polygon, first vertex at angle `-.pi / 2`
+    /// (toward -Y) and wound counter-clockwise.
+    ///
+    /// The single source of truth for the points used by
+    /// ``regularPolygon(sides:radius:extrusionDepth:color:)``. Exposed so the
+    /// demo gallery and the unit tests can share one polygon definition instead
+    /// of hand-copying coordinates.
+    ///
+    /// - Parameters:
+    ///   - sides: Number of sides (clamped to a minimum of 3).
+    ///   - radius: Circumscribed radius in meters.
+    /// - Returns: `max(sides, 3)` ordered XY vertices.
+    public static func regularPolygonPoints(sides: Int, radius: Float = 0.5) -> [SIMD2<Float>] {
+        let n = max(sides, 3)
+        var pts: [SIMD2<Float>] = []
+        for i in 0..<n {
+            let angle = Float(i) / Float(n) * 2 * .pi - .pi / 2
+            pts.append(SIMD2<Float>(radius * cos(angle), radius * sin(angle)))
+        }
+        return pts
+    }
+
     /// Creates a regular polygon (e.g. pentagon, hexagon, octagon).
     ///
     /// - Parameters:
@@ -202,13 +224,40 @@ public struct ShapeNode: Sendable {
         extrusionDepth: Float = 0,
         color: SimpleMaterial.Color = .white
     ) -> ShapeNode {
-        let n = max(sides, 3)
+        ShapeNode(
+            points: regularPolygonPoints(sides: sides, radius: radius),
+            extrusionDepth: extrusionDepth,
+            color: color
+        )
+    }
+
+    /// The 2D vertices of a star polygon, alternating `outerRadius` /
+    /// `innerRadius`, first point at angle `-.pi / 2` (toward -Y) and wound
+    /// counter-clockwise.
+    ///
+    /// The single source of truth for the points used by
+    /// ``star(pointCount:outerRadius:innerRadius:extrusionDepth:color:)``.
+    /// Exposed so the demo gallery and the unit tests can share one polygon
+    /// definition instead of hand-copying coordinates.
+    ///
+    /// - Parameters:
+    ///   - pointCount: Number of star points (clamped to a minimum of 3).
+    ///   - outerRadius: Outer radius in meters.
+    ///   - innerRadius: Inner radius in meters.
+    /// - Returns: `max(pointCount, 3) * 2` ordered XY vertices.
+    public static func starPoints(
+        pointCount: Int = 5,
+        outerRadius: Float = 0.5,
+        innerRadius: Float = 0.2
+    ) -> [SIMD2<Float>] {
+        let n = max(pointCount, 3)
         var pts: [SIMD2<Float>] = []
-        for i in 0..<n {
-            let angle = Float(i) / Float(n) * 2 * .pi - .pi / 2
-            pts.append(SIMD2<Float>(radius * cos(angle), radius * sin(angle)))
+        for i in 0..<(n * 2) {
+            let angle = Float(i) / Float(n * 2) * 2 * .pi - .pi / 2
+            let r = i % 2 == 0 ? outerRadius : innerRadius
+            pts.append(SIMD2<Float>(r * cos(angle), r * sin(angle)))
         }
-        return ShapeNode(points: pts, extrusionDepth: extrusionDepth, color: color)
+        return pts
     }
 
     /// Creates a star shape.
@@ -227,14 +276,11 @@ public struct ShapeNode: Sendable {
         extrusionDepth: Float = 0,
         color: SimpleMaterial.Color = .yellow
     ) -> ShapeNode {
-        let n = max(pointCount, 3)
-        var pts: [SIMD2<Float>] = []
-        for i in 0..<(n * 2) {
-            let angle = Float(i) / Float(n * 2) * 2 * .pi - .pi / 2
-            let r = i % 2 == 0 ? outerRadius : innerRadius
-            pts.append(SIMD2<Float>(r * cos(angle), r * sin(angle)))
-        }
-        return ShapeNode(points: pts, extrusionDepth: extrusionDepth, color: color)
+        ShapeNode(
+            points: starPoints(pointCount: pointCount, outerRadius: outerRadius, innerRadius: innerRadius),
+            extrusionDepth: extrusionDepth,
+            color: color
+        )
     }
 
     // MARK: - Transform helpers

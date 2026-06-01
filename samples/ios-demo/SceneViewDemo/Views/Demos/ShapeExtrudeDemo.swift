@@ -187,56 +187,18 @@ private enum ShapePreset: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The polygon geometry lives in ``SceneViewSwift/ShapePresets`` — the
+    /// single source of truth shared with the `SceneViewSwift` triangulation
+    /// tests, so a retune (e.g. the star's inner/outer radius) updates the demo
+    /// and its guarding test together rather than silently drifting apart.
     var points: [SIMD2<Float>] {
         switch self {
-        case .triangle:
-            return [
-                .init(0, 0.5),
-                .init(-0.5, -0.4),
-                .init(0.5, -0.4),
-            ]
-        case .star:
-            var pts: [SIMD2<Float>] = []
-            let n = 5
-            let outerR: Float = 0.5
-            let innerR: Float = 0.22
-            for i in 0..<(n * 2) {
-                let angle = Float(i) / Float(n * 2) * 2 * .pi - .pi / 2
-                let r: Float = i % 2 == 0 ? outerR : innerR
-                pts.append(.init(r * cos(angle), r * sin(angle)))
-            }
-            return pts
-        case .pentagon:
-            return (0..<5).map { i in
-                let angle = Float(i) / 5 * 2 * .pi - .pi / 2
-                return .init(0.5 * cos(angle), 0.5 * sin(angle))
-            }
-        case .hexagon:
-            return (0..<6).map { i in
-                let angle = Float(i) / 6 * 2 * .pi
-                return .init(0.5 * cos(angle), 0.5 * sin(angle))
-            }
-        case .lShape:
-            return [
-                .init(-0.4, -0.4),
-                .init(0.1, -0.4),
-                .init(0.1, 0.0),
-                .init(-0.1, 0.0),
-                .init(-0.1, 0.4),
-                .init(-0.4, 0.4),
-            ]
-        case .arrow:
-            return [
-                // Shaft
-                .init(-0.35, -0.1),
-                .init(0.05, -0.1),
-                .init(0.05, -0.3),
-                // Arrowhead
-                .init(0.4,  0.0),
-                .init(0.05, 0.3),
-                .init(0.05, 0.1),
-                .init(-0.35, 0.1),
-            ]
+        case .triangle: return ShapePresets.triangle
+        case .star:     return ShapePresets.star
+        case .pentagon: return ShapePresets.pentagon
+        case .hexagon:  return ShapePresets.hexagon
+        case .lShape:   return ShapePresets.lShape
+        case .arrow:    return ShapePresets.arrow
         }
     }
 }

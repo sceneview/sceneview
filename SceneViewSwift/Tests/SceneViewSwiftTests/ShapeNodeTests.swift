@@ -160,6 +160,10 @@ final class ShapeNodeTests: XCTestCase {
 
     // MARK: - `unlit:` parameter (#1359)
 
+    /// A plain symmetric triangle for the material/creation tests. Deliberately
+    /// NOT `ShapePresets.triangle` (whose base sits at Y = -0.4, not -0.5) — the
+    /// material tests don't care about the gallery silhouette, so this stays a
+    /// local fixture rather than coupling them to a demo preset.
     private static let triangle: [SIMD2<Float>] = [
         SIMD2<Float>(0, 0.5),
         SIMD2<Float>(-0.5, -0.5),
@@ -218,40 +222,13 @@ final class ShapeNodeTests: XCTestCase {
     }
 
     // MARK: - Triangulation correctness (#2354)
-
-    /// A 5-point star with a concave (reflex) inner ring — the default preset
-    /// of `ShapeExtrudeDemo`.
-    private static let star: [SIMD2<Float>] = {
-        var pts: [SIMD2<Float>] = []
-        let n = 5
-        let outerR: Float = 0.5
-        let innerR: Float = 0.22
-        for i in 0..<(n * 2) {
-            let angle = Float(i) / Float(n * 2) * 2 * .pi - .pi / 2
-            let r: Float = i % 2 == 0 ? outerR : innerR
-            pts.append(.init(r * cos(angle), r * sin(angle)))
-        }
-        return pts
-    }()
-
-    private static let lShape: [SIMD2<Float>] = [
-        .init(-0.4, -0.4),
-        .init(0.1, -0.4),
-        .init(0.1, 0.0),
-        .init(-0.1, 0.0),
-        .init(-0.1, 0.4),
-        .init(-0.4, 0.4),
-    ]
-
-    private static let arrow: [SIMD2<Float>] = [
-        .init(-0.35, -0.1),
-        .init(0.05, -0.1),
-        .init(0.05, -0.3),
-        .init(0.4,  0.0),
-        .init(0.05, 0.3),
-        .init(0.05, 0.1),
-        .init(-0.35, 0.1),
-    ]
+    //
+    // The concave fixtures (`star`, `lShape`, `arrow`) are NOT re-declared here.
+    // They come straight from ``ShapePresets`` — the single source of truth
+    // shared with `ShapeExtrudeDemo` — so these tests always guard the exact
+    // geometry the demo renders. Retuning a preset (e.g. the star's
+    // inner/outer radius) updates the demo and this test together; the test
+    // can no longer silently drift from the shipped shape.
 
     /// Sum of the unsigned areas of every triangle emitted by the triangulator.
     private func triangulatedArea(_ points: [SIMD2<Float>]) -> Float {
@@ -273,7 +250,7 @@ final class ShapeNodeTests: XCTestCase {
     /// Guards the concave case #2354 worried about — even though the existing
     /// triangulator already handles it (the real bug was the build plane).
     func testConcavePresetsTriangulateWithoutAreaLoss() {
-        for (name, points) in [("star", Self.star), ("lShape", Self.lShape), ("arrow", Self.arrow)] {
+        for (name, points) in [("star", ShapePresets.star), ("lShape", ShapePresets.lShape), ("arrow", ShapePresets.arrow)] {
             let indices = ShapeNode.earClipTriangulate(points)
             XCTAssertEqual(
                 indices.count, (points.count - 2) * 3,
@@ -289,13 +266,42 @@ final class ShapeNodeTests: XCTestCase {
         }
     }
 
+    // MARK: - Preset single-source-of-truth (#2354 follow-up)
+
+    /// Pins the canonical geometry of the shared ``ShapePresets/star`` so a
+    /// careless retune of the single source (or of ``ShapeNode/starPoints``)
+    /// is caught here instead of silently reshaping the shipped demo: ten
+    /// vertices, alternating outer-0.5 / inner-0.22 radii, first point toward
+    /// -Y, wound counter-clockwise. This is the explicit guard the dedup is for
+    /// — the demo and this assertion now read the very same `ShapePresets.star`.
+    func testStarPresetHasCanonicalGeometry() {
+        let star = ShapePresets.star
+        XCTAssertEqual(star.count, 10, "5-point star must have 10 vertices (outer + inner)")
+
+        for (i, p) in star.enumerated() {
+            let r = (p.x * p.x + p.y * p.y).squareRoot()
+            let expected: Float = i % 2 == 0 ? 0.5 : 0.22
+            XCTAssertEqual(
+                r, expected, accuracy: 1e-4,
+                "vertex \(i) radius \(r) must be \(expected) (even = outer, odd = inner)"
+            )
+        }
+
+        // First vertex sits at angle -.pi / 2 -> straight down (-Y).
+        XCTAssertEqual(star[0].x, 0, accuracy: 1e-4)
+        XCTAssertEqual(star[0].y, -0.5, accuracy: 1e-4)
+
+        // CCW winding (positive signed area) — what the mesh builder expects.
+        XCTAssertGreaterThan(ShapeNode.signedArea(star), 0, "star preset must be CCW")
+    }
+
     // MARK: - Vertex layout — XY plane facing +Z (#2354)
 
     /// The flat mesh lives in the XY plane (Z = 0) with +Z normals — mirroring
     /// SceneView Android's `ShapeGeometry`, NOT the old XZ (horizontal) plane
     /// that rendered the star edge-on as a thin ribbon.
     func testFlatMeshLivesInXYPlaneFacingCamera() throws {
-        let shape = ShapeNode(points: Self.star, color: .yellow)
+        let shape = ShapeNode(points: ShapePresets.star, color: .yellow)
         let mesh = try XCTUnwrap(shape.entity.model?.mesh)
         let model = try XCTUnwrap(mesh.contents.models.first)
 
@@ -324,7 +330,7 @@ final class ShapeNodeTests: XCTestCase {
     /// −depth/2) — extruded along the Z axis, not the Y axis.
     func testExtrudedMeshIsSymmetricAboutZ() throws {
         let depth: Float = 0.2
-        let shape = ShapeNode(points: Self.star, extrusionDepth: depth, color: .yellow)
+        let shape = ShapeNode(points: ShapePresets.star, extrusionDepth: depth, color: .yellow)
         let mesh = try XCTUnwrap(shape.entity.model?.mesh)
         let model = try XCTUnwrap(mesh.contents.models.first)
 
@@ -393,7 +399,7 @@ final class ShapeNodeTests: XCTestCase {
     /// cap to the camera instead of culling it.
     func testFrontCapTrianglesAreCCWFromPlusZ() throws {
         let depth: Float = 0.2
-        let shape = ShapeNode(points: Self.star, extrusionDepth: depth, color: .yellow)
+        let shape = ShapeNode(points: ShapePresets.star, extrusionDepth: depth, color: .yellow)
         let buffers = try meshBuffers(shape)
 
         var sawFrontTriangle = false
@@ -419,7 +425,7 @@ final class ShapeNodeTests: XCTestCase {
 
     /// The flat (non-extruded) cap must likewise be wound CCW from +Z.
     func testFlatCapTrianglesAreCCWFromPlusZ() throws {
-        let shape = ShapeNode(points: Self.star, color: .yellow)
+        let shape = ShapeNode(points: ShapePresets.star, color: .yellow)
         let buffers = try meshBuffers(shape)
 
         var sawTriangle = false
@@ -441,7 +447,7 @@ final class ShapeNodeTests: XCTestCase {
     /// A solid extrusion must have a real BACK face: the distinct-normals set
     /// includes a (0, 0, -1). (Front cap, back cap, and outward side walls.)
     func testExtrudedMeshHasBackFaceNormal() throws {
-        let shape = ShapeNode(points: Self.star, extrusionDepth: 0.2, color: .yellow)
+        let shape = ShapeNode(points: ShapePresets.star, extrusionDepth: 0.2, color: .yellow)
         let buffers = try meshBuffers(shape)
 
         var allNormals: [SIMD3<Float>] = []
@@ -541,7 +547,7 @@ final class ShapeNodeTests: XCTestCase {
     /// through the full ear-clipper + side-wall path, the broadest exercise of
     /// the formerly-broken branch.
     func testSideWallsOutward_CWConcaveLShape() throws {
-        let cwLShape = Array(Self.lShape.reversed())
+        let cwLShape = Array(ShapePresets.lShape.reversed())
         XCTAssertLessThan(ShapeNode.signedArea(cwLShape), 0, "reversed L-shape must be CW")
         try assertSideWallsOutwardAndConsistent(cwLShape, depth: 0.15, "CW L-shape")
     }
