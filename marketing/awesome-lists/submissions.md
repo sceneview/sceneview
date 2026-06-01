@@ -10,7 +10,7 @@ Ready-to-submit entries for major awesome lists. Each section is a PR-ready addi
 **Section:** Libraries / Graphics
 
 ```markdown
-- [SceneView](https://github.com/sceneview/sceneview) - 3D & AR SDK for Jetpack Compose. Declarative scene graph with 35+ node types, Filament rendering, ARCore integration. The only Compose-native 3D library.
+- [SceneView](https://github.com/sceneview/sceneview) - 3D & AR SDK for Jetpack Compose. Declarative scene graph with 42+ node types, Filament rendering, ARCore integration. The only Compose-native 3D library.
 ```
 
 ---
@@ -21,7 +21,7 @@ Ready-to-submit entries for major awesome lists. Each section is a PR-ready addi
 **Section:** Libraries/Frameworks / Graphics
 
 ```markdown
-- [SceneView](https://github.com/sceneview/sceneview) - Cross-platform 3D & AR SDK. Compose-native on Android (Filament), SwiftUI-native on iOS (RealityKit), shared logic via KMP. 29+ composable node types.
+- [SceneView](https://github.com/sceneview/sceneview) - Cross-platform 3D & AR SDK. Compose-native on Android (Filament), SwiftUI-native on iOS (RealityKit), shared logic via KMP. 42+ composable node types.
 ```
 
 ---
@@ -32,7 +32,7 @@ Ready-to-submit entries for major awesome lists. Each section is a PR-ready addi
 **Section:** Graphics / 3D
 
 ```markdown
-- [SceneView](https://github.com/sceneview/sceneview) - Open-source 3D & AR library for Jetpack Compose. Successor to Google Sceneform. Filament rendering, ARCore, 35+ node types, ~5MB APK impact.
+- [SceneView](https://github.com/sceneview/sceneview) - Open-source 3D & AR library for Jetpack Compose. Successor to Google Sceneform. Filament rendering, ARCore, 42+ node types, ~5MB APK impact.
 ```
 
 ---
@@ -43,7 +43,7 @@ Ready-to-submit entries for major awesome lists. Each section is a PR-ready addi
 **Section:** SDKs / Libraries
 
 ```markdown
-- [SceneView](https://github.com/sceneview/sceneview) - The only Compose-native AR SDK for Android (ARCore + Filament). Also supports iOS via SwiftUI (RealityKit + ARKit). Open source, ~5MB, 35+ node types, MCP server for AI-assisted development.
+- [SceneView](https://github.com/sceneview/sceneview) - The only Compose-native AR SDK for Android (ARCore + Filament). Also supports iOS via SwiftUI (RealityKit + ARKit). Open source, ~5MB, 42+ node types, MCP server for AI-assisted development.
 ```
 
 ---

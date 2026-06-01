@@ -126,7 +126,7 @@ methods, no outdated patterns.
 
 ---
 
-## 29+ composable node types
+## 42+ composable node types
 
 | Category | Nodes |
 |---|---|
