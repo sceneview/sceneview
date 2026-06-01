@@ -1,8 +1,16 @@
 package io.github.sceneview.demo.feedback
 
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.unit.dp
 
 /**
@@ -48,4 +56,79 @@ val FEEDBACK_FAB_RESERVED_SPACE = 168.dp
  */
 object FeedbackChrome {
     var chipVisible: Boolean by mutableStateOf(true)
+
+    /**
+     * Whether the *currently visible* list tab has been scrolled away from its
+     * resting (top) position.
+     *
+     * The chip sits at a **fixed y-band** on the bottom-left
+     * ([FEEDBACK_FAB_BOTTOM_OFFSET] above the navigation bars), so a full-width
+     * card that naturally lands in that band at rest — the first "Trending
+     * models" card on Explore, the "Sponsor" card on About — is masked by the
+     * chip even though [FEEDBACK_FAB_RESERVED_SPACE] already clears the *last*
+     * item (#2358). Reserving bottom padding cannot help a card resting
+     * mid-list.
+     *
+     * The fix is the standard M3 scroll-aware-FAB behaviour: the chip is
+     * **hidden at rest** (`false`, where the overlap occurs) and **revealed the
+     * moment the user scrolls** (`true`). Once scrolling, the overlapped card
+     * has moved out of the chip's fixed band, so the chip can show without
+     * masking anything. Discoverability is preserved — both tabs are taller
+     * than the viewport, so a browsing user reveals the chip immediately.
+     *
+     * Each scrollable list tab drives this from its own scroll state; it is
+     * reset to `false` whenever the chip is hidden ([chipVisible] = false) or a
+     * tab without a scroll signal is shown, so a stale `true` from a previous
+     * tab can never leave the chip floating over a fresh tab's resting content.
+     */
+    var listScrolled: Boolean by mutableStateOf(false)
+}
+
+/**
+ * Past this many pixels of scroll the list counts as "scrolled away" and the
+ * feedback chip is revealed. A few pixels of headroom keeps a 1-px scroll
+ * jitter (or an over-scroll spring settling back to 0) from flickering the
+ * chip in and out at rest.
+ */
+private const val FEEDBACK_CHIP_REVEAL_THRESHOLD_PX = 8
+
+/**
+ * Drives [FeedbackChrome.listScrolled] from a vertical-scroll tab's
+ * [ScrollState] so the floating feedback chip stays hidden at rest and reveals
+ * on scroll (#2358). Call once near the top of a scrollable list tab
+ * (Explore / About / AR View), passing the same [ScrollState] used by the
+ * tab's `verticalScroll(...)`.
+ *
+ * On leaving the composition the flag is reset to `false`, so switching to a
+ * tab that does not drive it (or back to the top of this one) never leaves the
+ * chip floating over fresh resting content.
+ */
+@Composable
+fun DriveFeedbackChipReveal(scrollState: ScrollState) {
+    val scrolled by remember(scrollState) {
+        derivedStateOf { scrollState.value > FEEDBACK_CHIP_REVEAL_THRESHOLD_PX }
+    }
+    LaunchedEffect(scrolled) { FeedbackChrome.listScrolled = scrolled }
+    DisposableEffect(Unit) { onDispose { FeedbackChrome.listScrolled = false } }
+}
+
+/**
+ * [DriveFeedbackChipReveal] overload for a `LazyVerticalGrid`-backed tab
+ * (the Samples list), keyed off the grid's first-visible-item offset / index
+ * so the chip reveals as soon as the grid scrolls off its top row.
+ */
+@Composable
+fun DriveFeedbackChipReveal(gridState: LazyGridState) {
+    val scrolled by remember(gridState) {
+        derivedStateOf {
+            gridState.firstVisibleItemIndex > 0 ||
+                gridState.firstVisibleItemScrollOffset > FEEDBACK_CHIP_REVEAL_THRESHOLD_PX
+        }
+    }
+    // snapshotFlow keeps the LaunchedEffect from re-keying on every offset
+    // delta — it only emits on the boolean's distinct transitions.
+    LaunchedEffect(gridState) {
+        snapshotFlow { scrolled }.collect { FeedbackChrome.listScrolled = it }
+    }
+    DisposableEffect(Unit) { onDispose { FeedbackChrome.listScrolled = false } }
 }

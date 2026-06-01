@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -375,11 +376,26 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         // fully occupies the bottom of the screen (e.g. ArViewTabContent while
         // the live ARSceneView is running), so the chip never masks the AR
         // model picker pill or any other bottom-anchored interaction (#2194).
-        if (onListScreen && !isRecording && FeedbackChrome.chipVisible) {
+        //
+        // FeedbackChrome.listScrolled is driven by the visible list tab's
+        // scroll state: the chip sits at a fixed y-band on the bottom-left, so
+        // a full-width card resting in that band (the first Trending card on
+        // Explore, the Sponsor card on About) is masked at rest even though the
+        // tabs already reserve FEEDBACK_FAB_RESERVED_SPACE for the *last* item
+        // (#2358). Standard M3 scroll-aware-FAB behaviour fixes it: hide the
+        // chip at rest (where the overlap occurs) and reveal it — sliding in
+        // from the left, since it is bottom-start anchored — the moment the
+        // user scrolls and the overlapped card leaves the band.
+        AnimatedVisibility(
+            visible = onListScreen && !isRecording &&
+                FeedbackChrome.chipVisible && FeedbackChrome.listScrolled,
+            modifier = Modifier.align(Alignment.BottomStart),
+            enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(),
+        ) {
             FeedbackButton(
                 onClick = { feedbackOpen = true },
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(start = 16.dp, bottom = FEEDBACK_FAB_BOTTOM_OFFSET),
             )

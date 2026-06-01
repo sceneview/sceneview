@@ -108,6 +108,7 @@ import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.demo.feedback.DriveFeedbackChipReveal
 import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.feedback.FeedbackChrome
 import io.github.sceneview.ar.node.AnchorNode
@@ -767,10 +768,16 @@ private fun ArLauncherScreen(
     val ctaEnabled = !isChecking && arSupported
     val showCta = availability != ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE
 
+    // Hide the floating feedback chip at rest and reveal it on scroll, so it
+    // never masks a card resting in its fixed bottom-left band — #2358. (The
+    // chip is already fully hidden during a live AR session via chipVisible.)
+    val scroll = rememberScrollState()
+    DriveFeedbackChipReveal(scroll)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
             // Bottom padding leaves a gutter for the floating feedback FAB so
             // it does not mask the last row of the AR demo grid (#2194).
             .padding(
