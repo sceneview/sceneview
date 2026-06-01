@@ -17,7 +17,7 @@ import UIKit
 /// ``GeometryNode``.
 ///
 /// ```swift
-/// // A triangle on the XZ plane
+/// // A triangle on the XY plane, facing the camera (+Z)
 /// let triangle = ShapeNode(
 ///     points: [
 ///         SIMD2<Float>(0, 0.5),
@@ -72,14 +72,23 @@ public struct ShapeNode: Sendable {
 
     /// Creates a flat or extruded shape from a polygon defined by 2D points.
     ///
-    /// The polygon is triangulated using an ear-clipping algorithm and rendered
-    /// on the XZ plane (Y-up). If `extrusionDepth` is greater than zero, the
-    /// shape is extruded along the Y axis to create a solid.
+    /// The polygon is triangulated using an ear-clipping algorithm and placed in
+    /// the XY plane facing the camera (+Z), mirroring SceneView Android's
+    /// `ShapeGeometry`. If `extrusionDepth` is greater than zero, the shape is
+    /// extruded symmetrically along the Z axis to create a solid.
+    ///
+    /// The polygon may be wound either clockwise or counter-clockwise — the
+    /// mesh is normalised internally so the faces are always wound correctly
+    /// and lit from the outside.
+    ///
+    /// - Note: Holes and explicit Delaunay interior points are an Android-only
+    ///   feature of `ShapeGeometry`; they are not yet supported on iOS. iOS
+    ///   triangulates the single outer contour only.
     ///
     /// - Parameters:
     ///   - points: Ordered 2D vertices of the polygon (minimum 3).
     ///     The polygon is automatically closed (last point connects to first).
-    ///   - extrusionDepth: Thickness along the Y axis in meters. 0 produces a
+    ///   - extrusionDepth: Thickness along the Z axis in meters. 0 produces a
     ///     flat shape. Default 0.
     ///   - color: Material color. Default white.
     ///   - isMetallic: Whether the material is metallic. Default false.
@@ -130,7 +139,7 @@ public struct ShapeNode: Sendable {
                 )
             }
         } else {
-            // Flat shape on the XZ plane
+            // Flat shape in the XY plane, facing +Z
             let mesh = ShapeNode.buildFlatMesh(points: points)
             self.entity = ModelEntity(
                 mesh: mesh ?? MeshResource.generatePlane(width: 0.001, depth: 0.001),
@@ -145,7 +154,7 @@ public struct ShapeNode: Sendable {
     ///
     /// - Parameters:
     ///   - points: Ordered 2D vertices of the polygon (minimum 3).
-    ///   - extrusionDepth: Thickness along the Y axis. Default 0.
+    ///   - extrusionDepth: Thickness along the Z axis. Default 0.
     ///   - material: Material to apply.
     public init(
         points: [SIMD2<Float>],
@@ -276,25 +285,33 @@ public struct ShapeNode: Sendable {
 
     // MARK: - Mesh generation
 
-    /// Builds a flat triangulated mesh from a 2D polygon on the XZ plane.
+    /// Builds a flat triangulated mesh from a 2D polygon in the XY plane,
+    /// facing +Z (mirrors SceneView Android's `ShapeGeometry`).
     private static func buildFlatMesh(points: [SIMD2<Float>]) -> MeshResource? {
         guard points.count >= 3 else { return nil }
 
-        let indices = earClipTriangulate(points)
+        // Normalise to CCW winding ONCE, up front, and build everything from
+        // `pts`. With a single always-CCW source the front-cap winding is
+        // always correct (no per-input branch). For already-CCW input — every
+        // demo preset — `pts == points`, so the mesh is byte-identical.
+        var pts = points
+        if signedArea(pts) < 0 { pts.reverse() }
+
+        let indices = earClipTriangulate(pts)
         guard !indices.isEmpty else { return nil }
 
-        // Convert 2D points to 3D on the XZ plane (Y = 0)
-        let positions = points.map { SIMD3<Float>($0.x, 0, $0.y) }
-        let normals = [SIMD3<Float>](repeating: SIMD3<Float>(0, 1, 0), count: positions.count)
+        // Convert 2D points to 3D in the XY plane (Z = 0), facing +Z
+        let positions = pts.map { SIMD3<Float>($0.x, $0.y, 0) }
+        let normals = [SIMD3<Float>](repeating: SIMD3<Float>(0, 0, 1), count: positions.count)
 
         // Compute UV coordinates from bounding box
-        let minX = points.map(\.x).min() ?? 0
-        let maxX = points.map(\.x).max() ?? 1
-        let minY = points.map(\.y).min() ?? 0
-        let maxY = points.map(\.y).max() ?? 1
+        let minX = pts.map(\.x).min() ?? 0
+        let maxX = pts.map(\.x).max() ?? 1
+        let minY = pts.map(\.y).min() ?? 0
+        let maxY = pts.map(\.y).max() ?? 1
         let rangeX = max(maxX - minX, 1e-6)
         let rangeY = max(maxY - minY, 1e-6)
-        let uvs = points.map { SIMD2<Float>(($0.x - minX) / rangeX, ($0.y - minY) / rangeY) }
+        let uvs = pts.map { SIMD2<Float>(($0.x - minX) / rangeX, ($0.y - minY) / rangeY) }
 
         var descriptor = MeshDescriptor(name: "ShapeNode_Flat")
         descriptor.positions = MeshBuffers.Positions(positions)
@@ -305,11 +322,25 @@ public struct ShapeNode: Sendable {
         return try? MeshResource.generate(from: [descriptor])
     }
 
-    /// Builds an extruded mesh from a 2D polygon.
+    /// Builds an extruded mesh from a 2D polygon in the XY plane, extruded
+    /// symmetrically along the Z axis (mirrors SceneView Android's `ShapeGeometry`
+    /// extrusion). The front face (+Z) faces the camera.
     private static func buildExtrudedMesh(points: [SIMD2<Float>], depth: Float) -> MeshResource? {
         guard points.count >= 3 else { return nil }
 
-        let topIndices = earClipTriangulate(points)
+        // Normalise to CCW winding ONCE, up front, and build EVERYTHING from
+        // `pts` — the triangulation, the front/back caps, and the side loop.
+        // With a single always-CCW source, the CCW front-cap winding, the
+        // reversed back-cap winding, the outward side-quad normal `(dy, -dx)`,
+        // and the side-quad triangle winding are *all* correct for any input,
+        // so there is no per-input flip branch (a flip that touched only the
+        // normal would contradict the hardcoded winding and render CW inputs
+        // inside-out). For already-CCW input — every demo preset — `pts ==
+        // points`, so the mesh is byte-identical and there is no visual change.
+        var pts = points
+        if signedArea(pts) < 0 { pts.reverse() }
+
+        let topIndices = earClipTriangulate(pts)
         guard !topIndices.isEmpty else { return nil }
 
         let halfDepth = depth / 2
@@ -318,48 +349,54 @@ public struct ShapeNode: Sendable {
         var uvs: [SIMD2<Float>] = []
         var indices: [UInt32] = []
 
-        // Top face
-        let topOffset = UInt32(positions.count)
-        for p in points {
-            positions.append(SIMD3<Float>(p.x, halfDepth, p.y))
-            normals.append(SIMD3<Float>(0, 1, 0))
+        // Front face (+Z) — faces the camera, same winding as the flat mesh.
+        let frontOffset = UInt32(positions.count)
+        for p in pts {
+            positions.append(SIMD3<Float>(p.x, p.y, halfDepth))
+            normals.append(SIMD3<Float>(0, 0, 1))
             uvs.append(p)
         }
         for idx in topIndices {
-            indices.append(topOffset + idx)
+            indices.append(frontOffset + idx)
         }
 
-        // Bottom face (reversed winding)
-        let bottomOffset = UInt32(positions.count)
-        for p in points {
-            positions.append(SIMD3<Float>(p.x, -halfDepth, p.y))
-            normals.append(SIMD3<Float>(0, -1, 0))
+        // Back face (-Z) — reversed winding so it faces away from the camera.
+        let backOffset = UInt32(positions.count)
+        for p in pts {
+            positions.append(SIMD3<Float>(p.x, p.y, -halfDepth))
+            normals.append(SIMD3<Float>(0, 0, -1))
             uvs.append(p)
         }
         for i in stride(from: 0, to: topIndices.count, by: 3) {
-            indices.append(bottomOffset + topIndices[i + 2])
-            indices.append(bottomOffset + topIndices[i + 1])
-            indices.append(bottomOffset + topIndices[i])
+            indices.append(backOffset + topIndices[i + 2])
+            indices.append(backOffset + topIndices[i + 1])
+            indices.append(backOffset + topIndices[i])
         }
 
-        // Side faces
-        let n = points.count
+        // Side faces — quads wrapping the XY perimeter, normals pointing outward.
+        // `pts` is now guaranteed CCW, so the outward 2D normal of edge
+        // (p0 → p1) is `(dy, -dx)` and the quad triangle winding below is the
+        // matching outward winding — both hold for every input.
+        let n = pts.count
         for i in 0..<n {
             let j = (i + 1) % n
-            let p0 = points[i]
-            let p1 = points[j]
+            let p0 = pts[i]
+            let p1 = pts[j]
 
             let edge = SIMD2<Float>(p1.x - p0.x, p1.y - p0.y)
             let edgeLen = max(sqrt(edge.x * edge.x + edge.y * edge.y), 1e-6)
-            let normal3 = SIMD3<Float>(edge.y / edgeLen, 0, -edge.x / edgeLen)
+            // Outward in-plane normal (XY), Z component is zero.
+            let nx = edge.y / edgeLen
+            let ny = -edge.x / edgeLen
+            let normal3 = SIMD3<Float>(nx, ny, 0)
 
             let sideOffset = UInt32(positions.count)
 
-            // Four vertices per side quad
-            positions.append(SIMD3<Float>(p0.x, halfDepth, p0.y))
-            positions.append(SIMD3<Float>(p1.x, halfDepth, p1.y))
-            positions.append(SIMD3<Float>(p1.x, -halfDepth, p1.y))
-            positions.append(SIMD3<Float>(p0.x, -halfDepth, p0.y))
+            // Four vertices per side quad (front-top, front-next, back-next, back-top)
+            positions.append(SIMD3<Float>(p0.x, p0.y, halfDepth))
+            positions.append(SIMD3<Float>(p1.x, p1.y, halfDepth))
+            positions.append(SIMD3<Float>(p1.x, p1.y, -halfDepth))
+            positions.append(SIMD3<Float>(p0.x, p0.y, -halfDepth))
 
             for _ in 0..<4 { normals.append(normal3) }
             uvs.append(SIMD2<Float>(0, 1))
@@ -367,13 +404,13 @@ public struct ShapeNode: Sendable {
             uvs.append(SIMD2<Float>(1, 0))
             uvs.append(SIMD2<Float>(0, 0))
 
-            // Two triangles per quad
+            // Two triangles per quad, wound so the front face points outward.
             indices.append(sideOffset)
+            indices.append(sideOffset + 2)
             indices.append(sideOffset + 1)
-            indices.append(sideOffset + 2)
             indices.append(sideOffset)
-            indices.append(sideOffset + 2)
             indices.append(sideOffset + 3)
+            indices.append(sideOffset + 2)
         }
 
         var descriptor = MeshDescriptor(name: "ShapeNode_Extruded")
@@ -391,7 +428,10 @@ public struct ShapeNode: Sendable {
     ///
     /// Returns triangle indices into the original points array.
     /// Handles simple convex and concave polygons without holes.
-    private static func earClipTriangulate(_ polygon: [SIMD2<Float>]) -> [UInt32] {
+    ///
+    /// `internal` (not `private`) so the unit tests can assert the concave
+    /// presets triangulate to `n - 2` triangles with ~0 area deviation.
+    static func earClipTriangulate(_ polygon: [SIMD2<Float>]) -> [UInt32] {
         guard polygon.count >= 3 else { return [] }
 
         // Ensure counter-clockwise winding
@@ -456,7 +496,10 @@ public struct ShapeNode: Sendable {
     }
 
     /// Signed area of a 2D polygon. Positive = CCW, negative = CW.
-    private static func signedArea(_ pts: [SIMD2<Float>]) -> Float {
+    ///
+    /// `internal` so the unit tests can compute expected polygon area for the
+    /// triangulation area-deviation guard.
+    static func signedArea(_ pts: [SIMD2<Float>]) -> Float {
         var area: Float = 0
         let n = pts.count
         for i in 0..<n {

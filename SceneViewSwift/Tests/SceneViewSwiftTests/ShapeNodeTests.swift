@@ -216,6 +216,335 @@ final class ShapeNodeTests: XCTestCase {
         XCTAssertNotNil(shape.entity)
         XCTAssertEqual(shape.points.count, 6)
     }
+
+    // MARK: - Triangulation correctness (#2354)
+
+    /// A 5-point star with a concave (reflex) inner ring — the default preset
+    /// of `ShapeExtrudeDemo`.
+    private static let star: [SIMD2<Float>] = {
+        var pts: [SIMD2<Float>] = []
+        let n = 5
+        let outerR: Float = 0.5
+        let innerR: Float = 0.22
+        for i in 0..<(n * 2) {
+            let angle = Float(i) / Float(n * 2) * 2 * .pi - .pi / 2
+            let r: Float = i % 2 == 0 ? outerR : innerR
+            pts.append(.init(r * cos(angle), r * sin(angle)))
+        }
+        return pts
+    }()
+
+    private static let lShape: [SIMD2<Float>] = [
+        .init(-0.4, -0.4),
+        .init(0.1, -0.4),
+        .init(0.1, 0.0),
+        .init(-0.1, 0.0),
+        .init(-0.1, 0.4),
+        .init(-0.4, 0.4),
+    ]
+
+    private static let arrow: [SIMD2<Float>] = [
+        .init(-0.35, -0.1),
+        .init(0.05, -0.1),
+        .init(0.05, -0.3),
+        .init(0.4,  0.0),
+        .init(0.05, 0.3),
+        .init(0.05, 0.1),
+        .init(-0.35, 0.1),
+    ]
+
+    /// Sum of the unsigned areas of every triangle emitted by the triangulator.
+    private func triangulatedArea(_ points: [SIMD2<Float>]) -> Float {
+        let indices = ShapeNode.earClipTriangulate(points)
+        var total: Float = 0
+        for t in stride(from: 0, to: indices.count, by: 3) {
+            let a = points[Int(indices[t])]
+            let b = points[Int(indices[t + 1])]
+            let c = points[Int(indices[t + 2])]
+            total += abs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) / 2
+        }
+        return total
+    }
+
+    /// The ear-clipping triangulator handles concave (reflex-vertex) polygons:
+    /// each preset must triangulate to exactly `n - 2` triangles whose combined
+    /// area equals the polygon's own area (deviation ≈ 0).
+    ///
+    /// Guards the concave case #2354 worried about — even though the existing
+    /// triangulator already handles it (the real bug was the build plane).
+    func testConcavePresetsTriangulateWithoutAreaLoss() {
+        for (name, points) in [("star", Self.star), ("lShape", Self.lShape), ("arrow", Self.arrow)] {
+            let indices = ShapeNode.earClipTriangulate(points)
+            XCTAssertEqual(
+                indices.count, (points.count - 2) * 3,
+                "\(name): expected \(points.count - 2) triangles, got \(indices.count / 3)"
+            )
+
+            let polygonArea = abs(ShapeNode.signedArea(points))
+            let triArea = triangulatedArea(points)
+            XCTAssertEqual(
+                triArea, polygonArea, accuracy: 1e-4,
+                "\(name): triangulated area \(triArea) deviates from polygon area \(polygonArea)"
+            )
+        }
+    }
+
+    // MARK: - Vertex layout — XY plane facing +Z (#2354)
+
+    /// The flat mesh lives in the XY plane (Z = 0) with +Z normals — mirroring
+    /// SceneView Android's `ShapeGeometry`, NOT the old XZ (horizontal) plane
+    /// that rendered the star edge-on as a thin ribbon.
+    func testFlatMeshLivesInXYPlaneFacingCamera() throws {
+        let shape = ShapeNode(points: Self.star, color: .yellow)
+        let mesh = try XCTUnwrap(shape.entity.model?.mesh)
+        let model = try XCTUnwrap(mesh.contents.models.first)
+
+        var sawVertex = false
+        for part in model.parts {
+            let positions = part.positions.elements
+            let normals = part.normals?.elements ?? []
+            XCTAssertFalse(positions.isEmpty, "flat mesh must have positions")
+
+            for p in positions {
+                sawVertex = true
+                // Flat shape: every vertex sits on the XY plane (Z == 0).
+                XCTAssertEqual(p.z, 0, accuracy: 1e-4, "flat vertex must have Z == 0 (XY plane)")
+            }
+            for n in normals {
+                // Front-facing normal points at the camera (+Z), not +Y.
+                XCTAssertEqual(n.z, 1, accuracy: 1e-4, "flat normal must point +Z")
+                XCTAssertEqual(n.x, 0, accuracy: 1e-4)
+                XCTAssertEqual(n.y, 0, accuracy: 1e-4)
+            }
+        }
+        XCTAssertTrue(sawVertex, "expected at least one vertex in the flat mesh")
+    }
+
+    /// The extruded mesh is symmetric about Z = 0 (front at +depth/2, back at
+    /// −depth/2) — extruded along the Z axis, not the Y axis.
+    func testExtrudedMeshIsSymmetricAboutZ() throws {
+        let depth: Float = 0.2
+        let shape = ShapeNode(points: Self.star, extrusionDepth: depth, color: .yellow)
+        let mesh = try XCTUnwrap(shape.entity.model?.mesh)
+        let model = try XCTUnwrap(mesh.contents.models.first)
+
+        var minZ: Float = .greatestFiniteMagnitude
+        var maxZ: Float = -.greatestFiniteMagnitude
+        var minY: Float = .greatestFiniteMagnitude
+        var maxY: Float = -.greatestFiniteMagnitude
+        for part in model.parts {
+            for p in part.positions.elements {
+                minZ = min(minZ, p.z); maxZ = max(maxZ, p.z)
+                minY = min(minY, p.y); maxY = max(maxY, p.y)
+            }
+        }
+
+        // Thickness lives on Z (front/back faces at ±depth/2).
+        XCTAssertEqual(maxZ, depth / 2, accuracy: 1e-4, "front face at +depth/2 on Z")
+        XCTAssertEqual(minZ, -depth / 2, accuracy: 1e-4, "back face at -depth/2 on Z")
+        // The polygon spans Y (it is NOT collapsed onto a single Y line).
+        XCTAssertGreaterThan(maxY - minY, 0.5, "polygon must span the Y axis, not the depth axis")
+    }
+
+    // MARK: - Triangle WINDING + outward normals (#2354 review — MAJOR 1/2)
+    //
+    // RealityKit single-sided materials back-face-cull by INDEX WINDING, not by
+    // the normal attribute. The earlier tests assert positions / normals but
+    // never the winding, so a winding regression (the exact class of bug the
+    // PR's normal-only flip introduced for CW input) would pass CI undetected.
+    // These read the *generated* index buffer back and assert the winding +
+    // outward invariants directly, including a clockwise-input fixture that
+    // exercises the formerly-broken `!ccw` path.
+
+    /// Reads the first generated model's parts as `(positions, normals, indices)`.
+    private func meshBuffers(
+        _ shape: ShapeNode,
+        line: UInt = #line
+    ) throws -> [(positions: [SIMD3<Float>], normals: [SIMD3<Float>], indices: [UInt32])] {
+        let mesh = try XCTUnwrap(shape.entity.model?.mesh, line: line)
+        let model = try XCTUnwrap(mesh.contents.models.first, line: line)
+        return model.parts.map { part in
+            (part.positions.elements,
+             part.normals?.elements ?? [],
+             part.triangleIndices?.elements ?? [])
+        }
+    }
+
+    /// Signed area of triangle (a, b, c) in the XY plane.
+    /// > 0 ⟺ counter-clockwise viewed from +Z (front-facing for RealityKit).
+    private func cross2D(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>) -> Float {
+        (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+    }
+
+    /// XY centroid of every vertex in the mesh. For a symmetric extrusion (and
+    /// for the flat cap) this equals the polygon centroid — a winding-agnostic
+    /// reference for "outward".
+    private func xyCentroid(_ buffers: [(positions: [SIMD3<Float>], normals: [SIMD3<Float>], indices: [UInt32])]) -> SIMD2<Float> {
+        var sum = SIMD2<Float>(0, 0)
+        var count = 0
+        for b in buffers {
+            for p in b.positions { sum += SIMD2<Float>(p.x, p.y); count += 1 }
+        }
+        return count > 0 ? sum / Float(count) : .zero
+    }
+
+    /// Every FRONT-cap triangle (all three vertices on the +Z front face) must
+    /// be wound CCW when viewed from +Z, so a single-sided material shows the
+    /// cap to the camera instead of culling it.
+    func testFrontCapTrianglesAreCCWFromPlusZ() throws {
+        let depth: Float = 0.2
+        let shape = ShapeNode(points: Self.star, extrusionDepth: depth, color: .yellow)
+        let buffers = try meshBuffers(shape)
+
+        var sawFrontTriangle = false
+        for buf in buffers {
+            let p = buf.positions
+            let idx = buf.indices
+            XCTAssertFalse(idx.isEmpty, "expected a non-empty index buffer")
+            for t in stride(from: 0, to: idx.count, by: 3) {
+                let a = p[Int(idx[t])], b = p[Int(idx[t + 1])], c = p[Int(idx[t + 2])]
+                // Front cap = all three vertices at +depth/2.
+                guard abs(a.z - depth / 2) < 1e-4,
+                      abs(b.z - depth / 2) < 1e-4,
+                      abs(c.z - depth / 2) < 1e-4 else { continue }
+                sawFrontTriangle = true
+                XCTAssertGreaterThan(
+                    cross2D(a, b, c), 0,
+                    "front-cap triangle must be CCW viewed from +Z (front-facing)"
+                )
+            }
+        }
+        XCTAssertTrue(sawFrontTriangle, "expected at least one front-cap triangle")
+    }
+
+    /// The flat (non-extruded) cap must likewise be wound CCW from +Z.
+    func testFlatCapTrianglesAreCCWFromPlusZ() throws {
+        let shape = ShapeNode(points: Self.star, color: .yellow)
+        let buffers = try meshBuffers(shape)
+
+        var sawTriangle = false
+        for buf in buffers {
+            let p = buf.positions
+            let idx = buf.indices
+            for t in stride(from: 0, to: idx.count, by: 3) {
+                let a = p[Int(idx[t])], b = p[Int(idx[t + 1])], c = p[Int(idx[t + 2])]
+                sawTriangle = true
+                XCTAssertGreaterThan(
+                    cross2D(a, b, c), 0,
+                    "flat triangle must be CCW viewed from +Z (front-facing)"
+                )
+            }
+        }
+        XCTAssertTrue(sawTriangle, "expected at least one flat triangle")
+    }
+
+    /// A solid extrusion must have a real BACK face: the distinct-normals set
+    /// includes a (0, 0, -1). (Front cap, back cap, and outward side walls.)
+    func testExtrudedMeshHasBackFaceNormal() throws {
+        let shape = ShapeNode(points: Self.star, extrusionDepth: 0.2, color: .yellow)
+        let buffers = try meshBuffers(shape)
+
+        var allNormals: [SIMD3<Float>] = []
+        for buf in buffers { allNormals.append(contentsOf: buf.normals) }
+        var backFacing = false
+        for n in allNormals where abs(n.x) < 1e-3 && abs(n.y) < 1e-3 && abs(n.z + 1) < 1e-3 {
+            backFacing = true
+            break
+        }
+        XCTAssertTrue(backFacing, "extruded mesh must contain a (0,0,-1) back-face normal")
+    }
+
+    /// Core MAJOR-1 invariant, asserted on the GENERATED mesh: for every
+    /// side-wall triangle (one vertex on each of +Z / −Z, i.e. spanning the
+    /// thickness), the geometric face normal of the triangle (from its index
+    /// winding) must point OUTWARD (positive dot with edge-midpoint − centroid)
+    /// AND agree with the triangle's own stored normal attribute. Run this for
+    /// BOTH a CCW polygon and a CW polygon — the CW case is what the PR's
+    /// normal-only flip rendered inside-out.
+    private func assertSideWallsOutwardAndConsistent(
+        _ points: [SIMD2<Float>],
+        depth: Float,
+        _ label: String,
+        line: UInt = #line
+    ) throws {
+        let shape = ShapeNode(points: points, extrusionDepth: depth, color: .systemPink)
+        let buffers = try meshBuffers(shape, line: line)
+        let centroid = xyCentroid(buffers)
+
+        var sawSideTriangle = false
+        for buf in buffers {
+            let p = buf.positions
+            let nrm = buf.normals
+            let idx = buf.indices
+            for t in stride(from: 0, to: idx.count, by: 3) {
+                let i0 = Int(idx[t]), i1 = Int(idx[t + 1]), i2 = Int(idx[t + 2])
+                let a = p[i0], b = p[i1], c = p[i2]
+                // Side wall = triangle that spans the thickness (has both a +Z
+                // and a −Z vertex). Caps live entirely on one Z plane.
+                let zs = [a.z, b.z, c.z]
+                let hasFront = zs.contains { abs($0 - depth / 2) < 1e-4 }
+                let hasBack  = zs.contains { abs($0 + depth / 2) < 1e-4 }
+                guard hasFront && hasBack else { continue }
+                sawSideTriangle = true
+
+                // Geometric face normal from index winding.
+                let geo = simd_normalize(simd_cross(b - a, c - a))
+
+                // Outward reference: triangle XY centroid − polygon centroid.
+                let triMidXY = SIMD2<Float>((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3)
+                let outward = triMidXY - centroid
+                let outwardLen = simd_length(outward)
+                if outwardLen > 1e-5 {
+                    let dotOutward = geo.x * outward.x + geo.y * outward.y
+                    XCTAssertGreaterThan(
+                        dotOutward, 0,
+                        "\(label): side-wall face normal must point outward (winding inside-out?)",
+                        line: line
+                    )
+                }
+
+                // Stored normal attribute must agree with the geometric winding.
+                let storedAvg = simd_normalize((nrm[i0] + nrm[i1] + nrm[i2]) / 3)
+                let dotStored = simd_dot(geo, storedAvg)
+                XCTAssertGreaterThan(
+                    dotStored, 0.5,
+                    "\(label): side-wall winding must agree with its stored normal",
+                    line: line
+                )
+            }
+        }
+        XCTAssertTrue(sawSideTriangle, "\(label): expected at least one side-wall triangle", line: line)
+    }
+
+    /// CCW square — must already be correct (matches the all-CCW demo presets).
+    func testSideWallsOutward_CCWSquare() throws {
+        let ccwSquare: [SIMD2<Float>] = [
+            .init(-0.5, -0.5), .init(0.5, -0.5), .init(0.5, 0.5), .init(-0.5, 0.5),
+        ]
+        XCTAssertGreaterThan(ShapeNode.signedArea(ccwSquare), 0, "fixture must be CCW")
+        try assertSideWallsOutwardAndConsistent(ccwSquare, depth: 0.2, "CCW square")
+    }
+
+    /// CLOCKWISE square — `signedArea < 0`. This is the input the PR's
+    /// normal-only `!ccw` flip rendered inside-out (winding said one face,
+    /// the flipped normal said the other). Locks in MAJOR 1: the CW-input
+    /// side walls must still face outward with a consistent normal.
+    func testSideWallsOutward_CWSquare() throws {
+        let cwSquare: [SIMD2<Float>] = [
+            .init(-0.5, -0.5), .init(-0.5, 0.5), .init(0.5, 0.5), .init(0.5, -0.5),
+        ]
+        XCTAssertLessThan(ShapeNode.signedArea(cwSquare), 0, "fixture must be CW")
+        try assertSideWallsOutwardAndConsistent(cwSquare, depth: 0.2, "CW square")
+    }
+
+    /// A CLOCKWISE-wound L-shape (reversed preset) — a concave CW polygon
+    /// through the full ear-clipper + side-wall path, the broadest exercise of
+    /// the formerly-broken branch.
+    func testSideWallsOutward_CWConcaveLShape() throws {
+        let cwLShape = Array(Self.lShape.reversed())
+        XCTAssertLessThan(ShapeNode.signedArea(cwLShape), 0, "reversed L-shape must be CW")
+        try assertSideWallsOutwardAndConsistent(cwLShape, depth: 0.15, "CW L-shape")
+    }
 }
 
 #endif // os(iOS) || os(macOS) || os(visionOS)
