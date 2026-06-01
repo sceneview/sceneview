@@ -110,6 +110,59 @@ public enum RerunWireFormat {
         entity: String = "world/points"
     ) -> String {
         let n = positions.count / 3
+        return pointCloudLine(
+            timestampNanos: timestampNanos,
+            pointCount: n,
+            entity: entity,
+            confidences: confidences,
+            appendPoint: { s, i in
+                appendFloat(&s, positions[i * 3]); s.append(",")
+                appendFloat(&s, positions[i * 3 + 1]); s.append(",")
+                appendFloat(&s, positions[i * 3 + 2])
+            }
+        )
+    }
+
+    /// SIMD-buffer point-cloud serializer — the exact code path the ARKit
+    /// `pointCloud(_:)` production overload uses, minus the (unconstructible
+    /// in a unit test) `ARPointCloud`. Reads each `SIMD3<Float>`'s x/y/z in
+    /// the same order the flat-`[Float]` overload indexes its buffer, so the
+    /// two produce byte-identical JSON. Exposed `internal` purely so a golden
+    /// test can assert that equivalence without an AR session.
+    internal static func pointCloudJson(
+        timestampNanos: Int64,
+        simdPositions: [SIMD3<Float>],
+        confidences: [Float] = [],
+        entity: String = "world/points"
+    ) -> String {
+        return pointCloudLine(
+            timestampNanos: timestampNanos,
+            pointCount: simdPositions.count,
+            entity: entity,
+            confidences: confidences,
+            appendPoint: { s, i in
+                let p = simdPositions[i]
+                appendFloat(&s, p.x); s.append(",")
+                appendFloat(&s, p.y); s.append(",")
+                appendFloat(&s, p.z)
+            }
+        )
+    }
+
+    /// Shared point-cloud serializer. Both the flat-`[Float]` overload and
+    /// the ARKit `[simd_float3]` production path funnel through this single
+    /// implementation so they emit byte-identical JSON — the `appendPoint`
+    /// closure is the only thing that varies (index into a flat buffer vs.
+    /// read a SIMD vector), and it writes the same `x,y,z` sequence either
+    /// way. Keeping one serializer also means a format change can never drift
+    /// between the two entry points.
+    private static func pointCloudLine(
+        timestampNanos: Int64,
+        pointCount n: Int,
+        entity: String,
+        confidences: [Float],
+        appendPoint: (inout String, Int) -> Void
+    ) -> String {
         var s = ""
         s.reserveCapacity(64 + n * 48)
         s.append("{")
@@ -118,9 +171,7 @@ public enum RerunWireFormat {
         for i in 0..<n {
             if i > 0 { s.append(",") }
             s.append("[")
-            appendFloat(&s, positions[i * 3]); s.append(",")
-            appendFloat(&s, positions[i * 3 + 1]); s.append(",")
-            appendFloat(&s, positions[i * 3 + 2])
+            appendPoint(&s, i)
             s.append("]")
         }
         s.append("],\"confidences\":[")
@@ -235,17 +286,14 @@ public enum RerunWireFormat {
         cloud: ARPointCloud,
         entity: String = "world/points"
     ) -> String {
-        let pts = cloud.points
-        var flat: [Float] = []
-        flat.reserveCapacity(pts.count * 3)
-        for p in pts {
-            flat.append(p.x)
-            flat.append(p.y)
-            flat.append(p.z)
-        }
+        // Serialize straight from the `[simd_float3]` buffer — no intermediate
+        // flat `[Float]` reflatten per emit. `ARPointCloud.points` is already
+        // `[SIMD3<Float>]`; the internal SIMD overload reads each vector's
+        // x/y/z in the same order the flat-buffer overload does, so the
+        // emitted JSON is byte-identical (covered by a golden test).
         return pointCloudJson(
             timestampNanos: timestampNanos,
-            positions: flat,
+            simdPositions: cloud.points,
             confidences: [],
             entity: entity
         )

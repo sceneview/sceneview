@@ -259,6 +259,50 @@ final class RerunWireFormatTests: XCTestCase {
         XCTAssertEqual(ack!.path, "C:\\Users\\dév\\rec.rrd")
     }
 
+    // MARK: - Point cloud — SIMD path byte-identical to flat path (#2331 iOS5)
+
+    /// The production `pointCloud(_:)` overload serializes straight from
+    /// `[SIMD3<Float>]` without reflattening into a `[Float]` buffer every
+    /// emit. This asserts that single-pass path is byte-for-byte identical to
+    /// the flat-array overload for the same logical points — so dropping the
+    /// per-emit alloc changes nothing on the wire.
+    func testSimdPointCloudIsByteIdenticalToFlatPointCloud() {
+        let simd: [SIMD3<Float>] = [
+            SIMD3(0.1, 0.2, 0.3),
+            SIMD3(-1.5, 2.0, 3.25),
+            SIMD3(0, 0, 0),
+        ]
+        let flat: [Float] = [0.1, 0.2, 0.3, -1.5, 2.0, 3.25, 0, 0, 0]
+
+        let fromSimd = RerunWireFormat.pointCloudJson(timestampNanos: 42, simdPositions: simd)
+        let fromFlat = RerunWireFormat.pointCloudJson(timestampNanos: 42, positions: flat)
+
+        XCTAssertEqual(fromSimd, fromFlat,
+                       "SIMD single-pass serialization must equal the flat-buffer output byte-for-byte")
+    }
+
+    /// Empty cloud — both paths must emit the same canonical empty line.
+    func testSimdPointCloudEmptyMatchesFlatEmpty() {
+        let fromSimd = RerunWireFormat.pointCloudJson(timestampNanos: 7, simdPositions: [])
+        let fromFlat = RerunWireFormat.pointCloudJson(timestampNanos: 7, positions: [])
+        XCTAssertEqual(fromSimd, fromFlat)
+        XCTAssertTrue(fromSimd.contains("\"positions\":[]"))
+    }
+
+    /// Custom entity + confidences carried through identically on the SIMD path.
+    func testSimdPointCloudHonoursEntityAndConfidences() {
+        let simd: [SIMD3<Float>] = [SIMD3(1, 2, 3), SIMD3(4, 5, 6)]
+        let flat: [Float] = [1, 2, 3, 4, 5, 6]
+        let conf: [Float] = [0.9, 0.1]
+        let fromSimd = RerunWireFormat.pointCloudJson(
+            timestampNanos: 9, simdPositions: simd, confidences: conf, entity: "world/feat")
+        let fromFlat = RerunWireFormat.pointCloudJson(
+            timestampNanos: 9, positions: flat, confidences: conf, entity: "world/feat")
+        XCTAssertEqual(fromSimd, fromFlat)
+        XCTAssertTrue(fromSimd.contains("\"entity\":\"world/feat\""))
+        XCTAssertTrue(fromSimd.contains("\"confidences\":[0.9,0.1]"))
+    }
+
     // MARK: - Newline invariant
 
     func testEverySerializedLineContainsExactlyOneNewlineAtTheEnd() {
