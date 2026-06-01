@@ -1524,6 +1524,7 @@ non-goal. Color is fully configurable via `materialInstance` (use
 ```kotlin
 @Composable fun ARSceneScope.rememberPointCloud(
     confidenceThreshold: Float = 0.2f,          // min ARCore confidence in [0, 1]
+    refreshIntervalMs: Long = 0L,               // 0 = rebuild every frame; >0 rate-limits (e.g. 200 = 5 Hz)
     materialInstance: MaterialInstance? = null, // e.g. createUnlitColorInstance(Color.Cyan)
     builder: RenderableManager.Builder.() -> Unit = {},
     onPointCloudUpdated: ((pointCount: Int) -> Unit)? = null,

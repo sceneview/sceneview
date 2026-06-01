@@ -1225,6 +1225,10 @@ class ARSceneScope internal constructor(
      * @param confidenceThreshold Minimum ARCore confidence in `[0, 1]` for a feature point to be
      *                            rendered (default
      *                            [PointCloudNodeImpl.DEFAULT_CONFIDENCE_THRESHOLD]).
+     * @param refreshIntervalMs   Minimum interval, in ms, between two cloud rebuilds. `0` (the
+     *                            default) rebuilds every tracked frame — the original behavior. A
+     *                            positive value rate-limits the rebuild (and its per-frame
+     *                            allocation), like [rememberDepthCollider] / [rememberDepthMesh].
      * @param materialInstance    Optional material applied to the cloud. An unlit colored material
      *                            from [MaterialLoader.createUnlitColorInstance] is the usual choice.
      * @param onPointCloudUpdated Invoked on each update with the rendered point count — use it to
@@ -1233,6 +1237,7 @@ class ARSceneScope internal constructor(
     @Composable
     fun rememberPointCloud(
         confidenceThreshold: Float = PointCloudNodeImpl.DEFAULT_CONFIDENCE_THRESHOLD,
+        refreshIntervalMs: Long = PointCloudNodeImpl.DEFAULT_REFRESH_INTERVAL_MS,
         materialInstance: MaterialInstance? = null,
         builder: RenderableManager.Builder.() -> Unit = {},
         onPointCloudUpdated: ((pointCount: Int) -> Unit)? = null,
@@ -1241,6 +1246,7 @@ class ARSceneScope internal constructor(
             PointCloudNodeImpl(
                 engine = engine,
                 confidenceThreshold = confidenceThreshold,
+                refreshIntervalMs = refreshIntervalMs,
                 materialInstance = materialInstance,
                 builder = builder,
                 onPointCloudUpdated = onPointCloudUpdated,
@@ -1250,6 +1256,7 @@ class ARSceneScope internal constructor(
         // recreating the underlying Filament buffers.
         SideEffect {
             node.confidenceThreshold = confidenceThreshold
+            node.refreshIntervalMs = refreshIntervalMs
             node.onPointCloudUpdated = onPointCloudUpdated
         }
         DisposableEffect(node) {
