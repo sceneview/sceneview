@@ -4135,7 +4135,7 @@ fun DemoScaffold(
 
 **Gestures:** tap FAB or peek chip → opens sheet; long-press peek chip → toggles `DemoSettings.qaMode` (deterministic screenshot mode); drag handle / outside tap / back → dismiss. AR sessions keep tracking underneath while the sheet is open.
 
-**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationDemo`, `MaterialsDemo`, `PhysicsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
+**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
 
 ```kotlin
 controls = {

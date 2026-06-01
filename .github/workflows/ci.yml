@@ -643,6 +643,25 @@ jobs:
         shell: bash
         run: bash .claude/scripts/check-doc-drift.sh
 
+      # Stale demo-class / demo-id reference guard self-test — pin the guard's
+      # contract (catches deletions, ignores live iOS .swift refs + plain-prose
+      # phrases) before trusting it. Same self-test-first discipline as above.
+      - name: Self-test check-demo-class-refs.sh
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-demo-class-refs.sh
+
+      # Stale demo-class / demo-id refs in AI-facing prose (ADVISORY, #docs,
+      # #2316). A demo deleted/merged (the #2239 consolidation) leaves its
+      # Kotlin class name / retired deep-link id in hand-written prose outside
+      # the collator-generated block — teaching an AI to reference a file/id
+      # that no longer exists. Advisory like check-doc-drift.sh: surfaces the
+      # finding, never blocks (a false positive would erode trust).
+      - name: Stale demo-class reference check (advisory)
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/check-demo-class-refs.sh
+
   # ── Full quality gate ────────────────────────────────────────────────────
   # Runs the same .claude/scripts/quality-gate.sh that contributors run
   # locally before pushing. Includes:

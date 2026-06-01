@@ -5,37 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
-import io.github.sceneview.demo.demos.ARCloudAnchorDemo
-import io.github.sceneview.demo.demos.ARDepthOcclusionDemo
-import io.github.sceneview.demo.demos.ARFaceDemo
-import io.github.sceneview.demo.demos.ARImageDemo
-import io.github.sceneview.demo.demos.ARImageStabilizationDemo
-import io.github.sceneview.demo.demos.ARInstantPlacementDemo
-import io.github.sceneview.demo.demos.ARPlacementDemo
-import io.github.sceneview.demo.demos.ARPoseDemo
-import io.github.sceneview.demo.demos.ARRecordPlaybackDemo
-import io.github.sceneview.demo.demos.ARRerunDemo
-import io.github.sceneview.demo.demos.ARRooftopAnchorDemo
-import io.github.sceneview.demo.demos.ARStreetscapeDemo
-import io.github.sceneview.demo.demos.ARTerrainAnchorDemo
-import io.github.sceneview.demo.demos.AnimationPhysicsDemo
-import io.github.sceneview.demo.demos.CameraAndGesturesDemo
-import io.github.sceneview.demo.demos.CustomGeometryDemo
-import io.github.sceneview.demo.demos.DebugOverlayDemo
-import io.github.sceneview.demo.demos.DoublePendulumDemo
-import io.github.sceneview.demo.demos.FogDemo
-import io.github.sceneview.demo.demos.GeometryDemo
-import io.github.sceneview.demo.demos.LightingDemo
-import io.github.sceneview.demo.demos.LightingLabDemo
-import io.github.sceneview.demo.demos.LinesPathsDemo
-import io.github.sceneview.demo.demos.MaterialsDemo
-import io.github.sceneview.demo.demos.ModelViewerDemo
-import io.github.sceneview.demo.demos.PickingAndCollisionDemo
-import io.github.sceneview.demo.demos.PlacementSceneDemo
-import io.github.sceneview.demo.demos.PlaneGridPreviewDemo
-import io.github.sceneview.demo.demos.SecondaryCameraDemo
-import io.github.sceneview.demo.demos.SpatialAudioDemo
-import io.github.sceneview.demo.demos.TwoDInThreeDDemo
+import io.github.sceneview.demo.fragments.GeneratedDemos
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 
 /**
@@ -66,7 +36,19 @@ import io.github.sceneview.demo.theme.SceneViewDemoTheme
  *
  * The activity renders the demo composable directly, with `finish()` wired to the back button.
  * `DemoInteractionTest` uses this for every interaction test — fast, deterministic, scales
- * to all 30 demos without any scroll-tuning.
+ * to all demos without any scroll-tuning.
+ *
+ * ### Routing is drift-proof
+ *
+ * The host **delegates to [GeneratedDemos.Screen]** — the collator-generated router that is
+ * regenerated from every `*Fragment.kt` (#1797), so it covers **every** [ALL_DEMOS] id by
+ * construction. Retired ids (e.g. `multi-model`, `text`, `gesture-editing`) are first resolved
+ * to their live consolidated demo through [DeepLinkRouter.validate] / [DeepLinkRouter.DEMO_ID_ALIASES],
+ * mirroring the main-app [DemoRouter] path. This replaced an earlier hand-written `when()` that
+ * silently drifted from the catalog: three demos (#2319) and later seventeen AR demos were in the
+ * catalog but missing from the `when()`, crashing this host with `Unknown demo id`. A pure-JVM
+ * `testDebug` guard ([DemoHostRoutableTest]) now asserts [routableId] resolves every catalog id and
+ * every alias.
  *
  * @see DemoEntry.id in [ALL_DEMOS] for the full list of valid ids.
  */
@@ -74,6 +56,24 @@ class DemoHostActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_DEMO_ID = "demo_id"
+
+        /**
+         * Resolves a raw demo [id] to the live, routable id this host will render, or `null`
+         * if no demo (and no retired-id alias) matches.
+         *
+         * Pure, non-composable, no Android framework calls — so a JVM `testDebug` unit test can
+         * assert the host routes every [ALL_DEMOS] id and every [DeepLinkRouter.DEMO_ID_ALIASES]
+         * key without an emulator. A live registered id maps to itself; a retired id (e.g.
+         * `multi-model`) maps to its consolidated successor (e.g. `model-viewer`); a registered
+         * id with a matching generated fragment is what [GeneratedDemos.Screen] can render.
+         *
+         * The id is considered routable iff, after alias resolution, a [GeneratedDemos] fragment
+         * registers it — which is exactly what [GeneratedDemos.Screen] checks at render time.
+         */
+        fun routableId(id: String?): String? {
+            val resolved = DeepLinkRouter.validate(id) ?: return null
+            return if (GeneratedDemos.all.any { it.id == resolved }) resolved else null
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -93,61 +93,16 @@ class DemoHostActivity : ComponentActivity() {
     @Composable
     private fun DemoById(id: String) {
         val back: () -> Unit = { finish() }
-        when (id) {
-            // 3D Basics
-            // #2239 Batch 5 — `multi-model` and `scene-gallery` consolidated into the
-            // existing `model-viewer` entry (the flagship umbrella, kept live).
-            "model-viewer", "multi-model", "scene-gallery" -> ModelViewerDemo(onBack = back)
-            "geometry" -> GeometryDemo(onBack = back)
-            // #2239 Batch 3 — `animation` and `physics` consolidated into `animation-physics`.
-            "animation-physics", "animation", "physics" -> AnimationPhysicsDemo(onBack = back)
-            // Lighting & Environment
-            "lighting" -> LightingDemo(onBack = back)
-            "fog" -> FogDemo(onBack = back)
-            // #2239 Batch 2 — `dynamic-sky`, `environment`, `reflection-probes`, `post-processing` consolidated into `lighting-lab`.
-            "lighting-lab", "dynamic-sky", "environment", "reflection-probes", "post-processing" ->
-                LightingLabDemo(onBack = back)
-            // Content
-            // #2239 Batch 1 — `text`, `image`, `video`, `billboard` consolidated into `two-d-in-three-d`.
-            "two-d-in-three-d", "text", "image", "video", "billboard" -> TwoDInThreeDDemo(onBack = back)
-            "lines-paths" -> LinesPathsDemo(onBack = back)
-            // Interaction
-            // #2239 Batch 1 — `camera-controls` and `gesture-editing` consolidated into `camera-gestures`.
-            "camera-gestures", "camera-controls", "gesture-editing" -> CameraAndGesturesDemo(onBack = back)
-            // #2239 Batch 1 — `collision` and `view-node` consolidated into `picking-collision`.
-            "picking-collision", "collision", "view-node" -> PickingAndCollisionDemo(onBack = back)
-            // Advanced
-            // #2239 Batch 4 — `texture-streaming` and `occlusion-material` consolidated into `materials`.
-            "materials", "texture-streaming", "occlusion-material" -> MaterialsDemo(onBack = back)
-            // #2239 Batch 1 — `custom-mesh` and `shape` consolidated into `custom-geometry`.
-            "custom-geometry", "custom-mesh", "shape" -> CustomGeometryDemo(onBack = back)
-            "secondary-camera" -> SecondaryCameraDemo(onBack = back)
-            "debug-overlay" -> DebugOverlayDemo(onBack = back)
-            // These 3 were registered in the catalog (GeneratedDemos / fragments) but
-            // missing from this debug deep-link host's when() — launching them via
-            // DemoHostActivity (--es demo_id) crashed with "Unknown demo id" while they
-            // worked fine through MainActivity navigation. Found during #2239 interactive QA.
-            "double-pendulum" -> DoublePendulumDemo(onBack = back)
-            "spatial-audio" -> SpatialAudioDemo(onBack = back)
-            "placement-scene" -> PlacementSceneDemo(onBack = back)
-            // #2224 — non-AR static preview of the ARCore plane grid material for shader QA.
-            "plane-grid-preview" -> PlaneGridPreviewDemo(onBack = back)
-            // Augmented Reality
-            "ar-placement" -> ARPlacementDemo(onBack = back)
-            "ar-image" -> ARImageDemo(onBack = back)
-            "ar-face" -> ARFaceDemo(onBack = back)
-            "ar-cloud-anchor" -> ARCloudAnchorDemo(onBack = back)
-            "ar-streetscape" -> ARStreetscapeDemo(onBack = back)
-            "ar-pose" -> ARPoseDemo(onBack = back)
-            "ar-rerun" -> ARRerunDemo(onBack = back)
-            // 6 AR demos shipped after the previous DemoHostActivity revision (#888):
-            "ar-record-playback" -> ARRecordPlaybackDemo(onBack = back)
-            "ar-depth-occlusion" -> ARDepthOcclusionDemo(onBack = back)
-            "ar-instant-placement" -> ARInstantPlacementDemo(onBack = back)
-            "ar-terrain" -> ARTerrainAnchorDemo(onBack = back)
-            "ar-rooftop" -> ARRooftopAnchorDemo(onBack = back)
-            "ar-image-stabilization" -> ARImageStabilizationDemo(onBack = back)
-            else -> error("Unknown demo id '$id'")
-        }
+        // Resolve retired ids to their live consolidated demo, then delegate to the
+        // collator-generated router that covers every ALL_DEMOS id by construction. This
+        // eliminates the hand-written-when() drift class (#2319 / #2320): there is no longer a
+        // per-demo branch to forget.
+        val resolved = routableId(id)
+            ?: error(
+                "Unknown demo id '$id' — not in ALL_DEMOS and not a known retired-id alias. " +
+                    "Add a *Fragment.kt under io.github.sceneview.demo.fragments and run " +
+                    "samples/android-demo/scripts/collate-demos.sh (see DemoHostRoutableTest).",
+            )
+        GeneratedDemos.Screen(id = resolved, onBack = back)
     }
 }
