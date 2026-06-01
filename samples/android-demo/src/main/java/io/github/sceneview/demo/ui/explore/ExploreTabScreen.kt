@@ -62,6 +62,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.feedback.DriveFeedbackChipReveal
 import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.sketchfab.SketchfabModel
@@ -95,6 +96,9 @@ fun ExploreTabScreen(
     onSampleClick: (DemoEntry) -> Unit,
 ) {
     val scroll = rememberScrollState()
+    // Hide the floating feedback chip at rest (it masks the first Trending
+    // card) and reveal it on scroll — #2358.
+    DriveFeedbackChipReveal(scroll)
     val recentSearches = rememberRecentSearches()
 
     var searchQuery by remember { mutableStateOf("") }
