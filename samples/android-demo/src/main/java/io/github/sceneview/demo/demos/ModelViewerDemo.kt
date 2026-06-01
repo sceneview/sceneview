@@ -5,10 +5,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
@@ -356,8 +359,16 @@ private fun SingleModelSection(
                             },
                         )
                     },
+                    // Bottom-START (#2350). The DemoScaffold's Settings FAB / peek
+                    // chip is pinned to the bottom-END corner with the same 16 dp
+                    // padding, so a bottom-END placement here had the round Settings
+                    // control sitting on top of the extended FAB and clipping its
+                    // "Surprise me" label to "Surprise…". Bottom-start keeps the two
+                    // controls in opposite corners. `systemBars` inset padding lifts it
+                    // above the nav bar, matching the Settings column.
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
+                        .align(Alignment.BottomStart)
+                        .windowInsetsPadding(WindowInsets.systemBars)
                         .padding(16.dp),
                 )
             }

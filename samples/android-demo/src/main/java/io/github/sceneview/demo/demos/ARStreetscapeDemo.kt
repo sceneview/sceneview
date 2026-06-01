@@ -50,6 +50,7 @@ import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.friendlyArSessionError
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -347,7 +348,9 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
                 },
                 onSessionFailed = { exception ->
                     Log.e(TAG, "AR session failed", exception)
-                    sessionError = exception.message ?: exception.javaClass.simpleName
+                    // Map to friendly copy (#2349) — never surface the raw
+                    // "FatalException" class name to the user.
+                    sessionError = friendlyArSessionError(exception)
                 },
                 onSessionUpdated = { _: Session, frame: Frame ->
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
@@ -389,7 +392,8 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 val statusText = when {
-                    sessionError != null -> "AR session error: $sessionError"
+                    // friendlyArSessionError already yields a complete, honest sentence (#2349).
+                    sessionError != null -> sessionError!!
                     !hasArcoreApiKey ->
                         "ARCore Cloud API key not configured \u2014 see samples/android-demo/ARCORE_CLOUD_SETUP.md"
                     geospatialUnavailable != null ->
