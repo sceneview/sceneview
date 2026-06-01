@@ -47,10 +47,25 @@ import java.nio.ByteOrder
  * configurable through [materialInstance] (a `MaterialLoader.createUnlitColorInstance(...)` is the
  * typical choice).
  *
+ * ### Refresh rate
+ *
+ * By default the cloud is rebuilt on **every** tracked frame (`refreshIntervalMs = 0`), preserving
+ * the original behavior. Each rebuild allocates a `FloatArray` of surviving positions plus two
+ * direct `ByteBuffer`s for the Filament upload (Filament copies asynchronously, so the upload
+ * buffers cannot be safely pooled — see [uploadPoints]). On a device tracking hundreds of points
+ * at 30–60 Hz that churn is measurable. Set [refreshIntervalMs] to a non-zero value (e.g. `200` =
+ * 5 Hz, matching [DepthMeshNode]) to rate-limit the rebuild and cut that per-frame allocation. The
+ * point cloud is debug/scanning telemetry, so a lower refresh rate is usually imperceptible.
+ *
  * @param engine               The Filament [Engine].
  * @param confidenceThreshold  Minimum ARCore confidence in `[0, 1]` for a feature point to be
  *                             rendered. `0` keeps every point; raise it to drop noisy,
  *                             low-confidence points. Default [DEFAULT_CONFIDENCE_THRESHOLD].
+ * @param refreshIntervalMs    Minimum interval, in milliseconds, between two cloud rebuilds.
+ *                             `0` (the default) rebuilds every tracked frame — the original,
+ *                             byte-for-byte behavior. A positive value rate-limits the rebuild
+ *                             (and its per-frame allocation) the same way [DepthMeshNode] does; the
+ *                             effective rate is still capped by ARCore's frame delivery (~30 Hz).
  * @param materialInstance     Optional [MaterialInstance] applied to the cloud. When `null`,
  *                             Filament's basic default material is used. An unlit colored
  *                             material is the usual choice for a flat, lighting-independent dot.
@@ -63,6 +78,7 @@ import java.nio.ByteOrder
 open class PointCloudNode(
     engine: Engine,
     var confidenceThreshold: Float = DEFAULT_CONFIDENCE_THRESHOLD,
+    var refreshIntervalMs: Long = DEFAULT_REFRESH_INTERVAL_MS,
     materialInstance: MaterialInstance? = null,
     builder: RenderableManager.Builder.() -> Unit = {},
     onPointCloudUpdated: ((pointCount: Int) -> Unit)? = null,
@@ -98,6 +114,17 @@ open class PointCloudNode(
     /** Capacity (in vertices) of the currently-allocated buffers. Render-thread only. */
     private var allocatedPointCount: Int = INITIAL_POINT_CAPACITY
 
+    /**
+     * Wall-clock time of the last successful rebuild so [refreshIntervalMs] can gate the next one.
+     * Render-thread only.
+     *
+     * Initialised to `0L` — **not** `Long.MIN_VALUE`: with `Long.MIN_VALUE`, `now - last` overflows
+     * to a large negative value so the `< refreshIntervalMs` guard would fire forever and the cloud
+     * would never populate (the #2186 trap proven by [DepthMeshNode]). `0L` means "never rebuilt",
+     * and with the default `refreshIntervalMs = 0` the guard never trips at all.
+     */
+    private var lastRebuildTimestampMs: Long = 0L
+
     /** Owned buffers so [destroy] can free them. The base [MeshNode] only owns the renderable. */
     private var ownedVertexBuffer: VertexBuffer = vertexBuffer
     private var ownedIndexBuffer: IndexBuffer = indexBuffer
@@ -117,6 +144,13 @@ open class PointCloudNode(
     open fun update(session: Session, frame: Frame) {
         if (frame.camera.trackingState != TrackingState.TRACKING) return
 
+        // Rate-limit gate (AR8 / #2263). With the default refreshIntervalMs = 0 this never trips,
+        // so the cloud rebuilds every tracked frame exactly as before. A positive interval skips
+        // the acquire + buildPointCloudPositions FloatArray + 2× direct-ByteBuffer upload on
+        // frames inside the window — the per-frame allocation the hot-path audit flagged.
+        val now = nowMs()
+        if (pointCloudRebuildThrottled(now, lastRebuildTimestampMs, refreshIntervalMs)) return
+
         val positions = runCatching {
             frame.acquirePointCloud().use { cloud ->
                 buildPointCloudPositions(cloud.points, confidenceThreshold)
@@ -124,9 +158,13 @@ open class PointCloudNode(
         }.getOrNull() ?: return
 
         uploadPoints(positions)
+        lastRebuildTimestampMs = now
         pointCount = positions.size / 3
         onPointCloudUpdated?.invoke(pointCount)
     }
+
+    /** Hook for tests — JVM monotonic time. Mirrors [DepthMeshNode.nowMs]. */
+    protected open fun nowMs(): Long = System.currentTimeMillis()
 
     /**
      * Uploads [positions] (flat `xyz`) to the Filament buffers, growing the underlying buffers
@@ -215,6 +253,13 @@ open class PointCloudNode(
          */
         const val DEFAULT_CONFIDENCE_THRESHOLD: Float = 0.2f
 
+        /**
+         * Default rebuild interval, in milliseconds. `0` = rebuild every tracked frame, preserving
+         * the original per-frame behavior. Opt into a non-zero value (e.g. `200` = 5 Hz, the
+         * [DepthMeshNode] default) to rate-limit the rebuild and its per-frame allocation.
+         */
+        const val DEFAULT_REFRESH_INTERVAL_MS: Long = 0L
+
         /** Initial buffer capacity (in points). ARCore typically tracks a few hundred points. */
         internal const val INITIAL_POINT_CAPACITY: Int = 256
 
@@ -289,6 +334,29 @@ internal fun computePointCloudAabb(positions: FloatArray): Box {
         ((maxZ - minZ) * 0.5f).coerceAtLeast(minHalf),
     )
 }
+
+/**
+ * Pure rate-limit decision for [PointCloudNode.update] (AR8 / #2263).
+ *
+ * Returns `true` when this frame's rebuild should be **skipped** because the configured
+ * [refreshIntervalMs] window has not yet elapsed since [lastRebuildTimestampMs].
+ *
+ * A [refreshIntervalMs] of `0` (the default) is the "rebuild every frame" sentinel and is never
+ * throttled — preserving the original byte-for-byte per-frame behaviour. Extracted as an
+ * `internal` top-level function so the gate — including the `0` sentinel and the `lastRebuild = 0L`
+ * first-frame case — can be pinned by a JVM unit test without ARCore / Filament, mirroring the
+ * [DepthMeshNode] throttle and the #2186 overflow guard.
+ *
+ * @param now                   Current wall-clock time (ms).
+ * @param lastRebuildTimestampMs Time of the last successful rebuild (ms); `0L` = never rebuilt.
+ * @param refreshIntervalMs     Minimum interval between rebuilds; `0` = never throttle.
+ * @return `true` to skip this frame's rebuild, `false` to rebuild.
+ */
+internal fun pointCloudRebuildThrottled(
+    now: Long,
+    lastRebuildTimestampMs: Long,
+    refreshIntervalMs: Long,
+): Boolean = refreshIntervalMs > 0L && now - lastRebuildTimestampMs < refreshIntervalMs
 
 /** Rounds [value] up to the next power of two — amortises buffer-allocation churn. */
 internal fun pointCloudNextPowerOfTwo(value: Int): Int {

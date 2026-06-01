@@ -9,6 +9,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.arcore.getProjectionTransform
 import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.arcore.quaternion
+import io.github.sceneview.math.Transform
 import io.github.sceneview.node.CameraNode
 
 /**
@@ -72,9 +73,39 @@ open class ARCameraNode(engine: Engine) : CameraNode(engine) {
     var session: Session? = null
     var frame: Frame? = null
 
+    /**
+     * Cached AR projection [Transform] plus the `(near, far)` it was computed with, so a fresh
+     * one is only built when an input actually changes.
+     *
+     * ARCore's `Camera.getProjectionMatrix(near, far)` is invariant across frames unless the
+     * near/far clip planes change **or** the display geometry changes (rotation / resize, applied
+     * via `Session.setDisplayGeometry`). Recomputing it every tracked frame allocated a
+     * `FloatArray(16)` + a [Transform] (see [getProjectionTransform]) and fired two redundant
+     * JNI calls (`getProjectionMatrix` + the Filament `projectionTransform` setter) for an
+     * identical result — a per-frame waste flagged by the hot-path audit (AR5 / umbrella #2263).
+     *
+     * The display-geometry half of the dirty signal is read straight from the frame
+     * ([Frame.hasDisplayGeometryChanged]) — the same authoritative flag [ARCameraStream] uses to
+     * rebuild its UV coordinates — so the cache can never freeze a stale projection after a device
+     * rotation. Render-thread only (mutated under [update]).
+     */
+    private var cachedProjectionTransform: Transform? = null
+    private var cachedProjectionNear: Float = Float.NaN
+    private var cachedProjectionFar: Float = Float.NaN
+
+    /**
+     * Whether the AR display geometry (rotation / viewport) changed on the frame currently being
+     * processed by [update] — set from [Frame.hasDisplayGeometryChanged] before [onCameraUpdated]
+     * runs and consumed there to invalidate [cachedProjectionTransform]. Defaults to `true` so a
+     * direct [onCameraUpdated] call (outside the [update] path) always recomputes — never reuses a
+     * potentially stale cache. Render-thread only.
+     */
+    private var displayGeometryChanged: Boolean = true
+
     open fun update(session: Session, frame: Frame) {
         this.session = session
         this.frame = frame
+        displayGeometryChanged = frame.hasDisplayGeometryChanged()
         onCameraUpdated(frame.camera)
     }
 
@@ -83,16 +114,74 @@ open class ARCameraNode(engine: Engine) : CameraNode(engine) {
      *
      * The Camera projection and pose is updated during calls to session.update() as ARCore refines
      * its estimate of the world.
+     *
+     * The projection [Transform] is recomputed only when [near] / [far] change or the AR display
+     * geometry changed on this frame ([Frame.hasDisplayGeometryChanged]); otherwise the cached
+     * projection is reused, avoiding a per-frame `FloatArray(16)` + [Transform] allocation and two
+     * redundant JNI calls for an identical result (AR5 / umbrella #2263).
      */
     open fun onCameraUpdated(camera: Camera) {
         trackingState = camera.trackingState
 
         // Update the node's transformation properties to match the tracked pose
         pose = camera.displayOrientedPose
-        // Update the projection matrix.
-        projectionTransform = camera.getProjectionTransform(near, far)
+
+        // Update the projection matrix — but only when an input actually changed. The cache is
+        // invalidated on a near/far change or a display-geometry change so it can never freeze a
+        // stale matrix after a rotation/resize.
+        val near = near
+        val far = far
+        if (shouldRecomputeProjection(
+                cached = cachedProjectionTransform != null,
+                displayGeometryChanged = displayGeometryChanged,
+                near = near,
+                far = far,
+                cachedNear = cachedProjectionNear,
+                cachedFar = cachedProjectionFar,
+            )
+        ) {
+            val transform = camera.getProjectionTransform(near, far)
+            cachedProjectionTransform = transform
+            cachedProjectionNear = near
+            cachedProjectionFar = far
+            projectionTransform = transform
+        }
+
+        // Consume the one-frame display-geometry signal: reset to `true` so any direct
+        // onCameraUpdated() call outside the update() path conservatively recomputes the
+        // projection rather than trusting a stale flag from an earlier frame.
+        displayGeometryChanged = true
     }
 
     open fun onTrackingStateChanged(trackingState: TrackingState) {
     }
 }
+
+/**
+ * Pure decision for whether [ARCameraNode]'s cached AR projection [Transform] must be recomputed.
+ *
+ * Recompute iff there is no cached value yet, the display geometry changed this frame, or the
+ * near/far clip planes differ from the values the cache was built with. Extracted as an `internal`
+ * top-level function — like [io.github.sceneview.ar.arcore.buildPointCloudPositions] — so the AR5
+ * (#2263) caching/invalidation logic can be pinned by a JVM unit test without instantiating the
+ * ARCore `Camera` / Filament JNI surface.
+ *
+ * @param cached               Whether a projection is already cached.
+ * @param displayGeometryChanged Whether `Frame.hasDisplayGeometryChanged()` reported a change.
+ * @param near                 Current near clip plane.
+ * @param far                  Current far clip plane.
+ * @param cachedNear           Near clip plane the cache was built with.
+ * @param cachedFar            Far clip plane the cache was built with.
+ * @return `true` when the projection must be rebuilt; `false` to reuse the cached one.
+ */
+internal fun shouldRecomputeProjection(
+    cached: Boolean,
+    displayGeometryChanged: Boolean,
+    near: Float,
+    far: Float,
+    cachedNear: Float,
+    cachedFar: Float,
+): Boolean = !cached ||
+    displayGeometryChanged ||
+    near != cachedNear ||
+    far != cachedFar
