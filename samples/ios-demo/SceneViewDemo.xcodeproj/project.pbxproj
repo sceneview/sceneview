@@ -184,6 +184,8 @@
 		A20000010000000000000001 /* SceneViewDemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneViewDemoApp.swift; sourceTree = "<group>"; };
 		A20000010000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A20000010000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000010000000000000004 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
+		A20000010000000000000005 /* Secrets.xcconfig.template */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig.template; sourceTree = "<group>"; };
 		A20000010000000000000010 /* SceneViewDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SceneViewDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F00000000000000000000001 /* SceneViewDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SceneViewDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F00000000000000000000002 /* AppStoreUpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdaterTests.swift; path = SceneViewDemoTests/AppStoreUpdaterTests.swift; sourceTree = SOURCE_ROOT; };
@@ -396,6 +398,8 @@
 				E40000000000000000000002 /* Videos */,
 				A20000010000000000000002 /* Assets.xcassets */,
 				A20000010000000000000003 /* Info.plist */,
+				A20000010000000000000004 /* Config.xcconfig */,
+				A20000010000000000000005 /* Secrets.xcconfig.template */,
 			);
 			path = SceneViewDemo;
 			sourceTree = "<group>";
@@ -1006,6 +1010,7 @@
 		};
 		B10000010000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20000010000000000000004 /* Config.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -1039,6 +1044,7 @@
 		};
 		B10000010000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20000010000000000000004 /* Config.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

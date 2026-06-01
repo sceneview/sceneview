@@ -1,0 +1,33 @@
+// Config.xcconfig — committed base configuration for the SceneViewDemo app
+// target (Debug + Release). Its only job is to *optionally* pull in the
+// developer-local, gitignored `Secrets.xcconfig` so a keyed build is possible
+// from Xcode (and `xcodebuild`) without editing the scheme or this file.
+//
+// HOW THE SKETCHFAB KEY REACHES THE APP (#2356, mirrors Android #2343)
+// --------------------------------------------------------------------
+// `Info.plist` declares  SketchfabAPIKey = $(SKETCHFAB_API_KEY)  so the build
+// substitutes whatever the `SKETCHFAB_API_KEY` *build setting* resolves to.
+// There are three ways that setting gets a value, in increasing precedence:
+//
+//   1. (this file) `#include?` of `Secrets.xcconfig` — the local-dev path.
+//      Copy `Secrets.xcconfig.template` → `Secrets.xcconfig` (gitignored),
+//      paste your token, and every Xcode/`xcodebuild` build is keyed.
+//   2. The legacy scheme env var `SKETCHFAB_API_KEY` (Edit Scheme → Run →
+//      Arguments → Environment Variables) — read by `SketchfabConfig` via
+//      `ProcessInfo` at runtime. Works under Xcode "Run" only, not archives.
+//   3. A command-line build setting: `xcodebuild ... SKETCHFAB_API_KEY=…`.
+//      This OVERRIDES the xcconfig, so CI (`app-store.yml`, `ios.yml`) and the
+//      device-QA harness (`ios-device-qa.sh --sketchfab-key`) inject the secret
+//      this way without ever writing a file to disk.
+//
+// SECURITY: the real token lives ONLY in the gitignored `Secrets.xcconfig`
+// (or the env / a CLI arg). This file and `Secrets.xcconfig.template` carry
+// NO secret and are safe to commit. `.gitignore` already excludes
+// `**/Secrets.xcconfig`.
+//
+// The `?` makes the include OPTIONAL: a fresh checkout WITHOUT `Secrets.xcconfig`
+// builds keyless and silently (no "unable to open base configuration" warning),
+// exactly as before — the Explore/Sketchfab path is simply disabled until a key
+// is supplied. See `SketchfabConfig.swift` and the "Keyed QA" section of
+// `.maestro/README.md`.
+#include? "Secrets.xcconfig"

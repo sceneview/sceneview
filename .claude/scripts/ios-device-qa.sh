@@ -31,6 +31,14 @@
 #   --simulator <name>   Simulator device name to boot / target. Defaults to
 #                        "iPhone 16 Pro" (the name used by `.github/workflows/
 #                        ios.yml`).
+#   --sketchfab-key <k>  Explicit Sketchfab API key for a KEYED build (#2356),
+#                        overriding the env / local.properties resolution. With
+#                        a key present (here, the SKETCHFAB_API_KEY env var, or
+#                        repo-root local.properties `sketchfab.api.key`) the
+#                        `--install` build bakes it into Info.plist so the
+#                        Explore/Sketchfab + streamed-USDZ demos are exercised;
+#                        without one the build is keyless and that path is
+#                        loudly reported NOT-tested. Key value is never logged.
 #   -h | --help          Show this help.
 #
 # Note — a full `xcodebuild` simulator build is heavy (Swift Package resolve +
@@ -50,6 +58,13 @@ cd "$REPO_ROOT"
 
 # shellcheck source=lib/maestro.sh
 source "$SCRIPT_DIR/lib/maestro.sh"
+# shellcheck source=lib/qa-keys.sh
+# Shared key resolver (#2343, reused for iOS #2356): resolves SKETCHFAB_API_KEY
+# from the env, else repo-root local.properties `sketchfab.api.key`, and reports
+# PRESENCE (never the value). The iOS build wires it via a `xcodebuild`
+# user-defined build setting → Info.plist `SketchfabAPIKey = $(SKETCHFAB_API_KEY)`
+# → SketchfabConfig.apiKey, mirroring the Android assembleDebug buildConfigField.
+source "$SCRIPT_DIR/lib/qa-keys.sh"
 
 BUNDLE_ID="io.github.sceneview.demo"
 DEMO_DIR="samples/ios-demo"
@@ -65,8 +80,13 @@ while [[ $# -gt 0 ]]; do
     --install)   INSTALL=true; shift ;;
     --flow)      FLOW="${2:?--flow needs a name}"; shift 2 ;;
     --simulator) SIMULATOR="${2:?--simulator needs a name}"; shift 2 ;;
+    --sketchfab-key)
+      # Explicit key override for a keyed build (#2356). Takes precedence over
+      # the env / local.properties resolution below. The value is consumed, not
+      # echoed.
+      export SKETCHFAB_API_KEY="${2:?--sketchfab-key needs a value}"; shift 2 ;;
     -h|--help)
-      sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,42p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "[ios-qa] unknown argument: $1" >&2; exit 2 ;;
@@ -114,16 +134,42 @@ print(next((d['udid'] for v in ds.values() for d in v if d.get('name')=='$SIMULA
 fi
 echo "[ios-qa] using simulator $BOOTED_UDID"
 
+# --- Resolve the Sketchfab key (#2356) -------------------------------------
+# Resolve + export SKETCHFAB_API_KEY (env → repo-root local.properties
+# `sketchfab.api.key`) so the build below bakes it into Info.plist. Presence
+# only is ever logged — never the value (qa-keys.sh security invariant). When
+# the key is absent the build stays keyless and the Explore/Sketchfab path is
+# reported as NOT tested via the loud banner, mirroring Android #2343.
+qa_keys_resolve_sketchfab || true
+echo "[ios-qa] Sketchfab API key present: ${QA_SKETCHFAB_KEY_PRESENT}"
+# The Info.plist substitutes SketchfabAPIKey = $(SKETCHFAB_API_KEY). When the
+# key is present we pass it as a `xcodebuild` user-defined build setting (which
+# OVERRIDES the Config.xcconfig `#include?` of Secrets.xcconfig — so the harness
+# never has to write a key file to disk); when absent we pass nothing and the
+# placeholder resolves empty (SketchfabConfig handles empty/unsubstituted).
+# Built as a positional list. NOTE: assigned element-by-element (not `arr=()`
+# then `"${arr[@]}"`) because macOS's default bash 3.2 treats expanding an
+# EMPTY array under `set -u` as an unbound-variable error.
+SKETCHFAB_BUILD_SETTING=""
+if [[ "${QA_SKETCHFAB_KEY_PRESENT}" == "true" ]]; then
+  SKETCHFAB_BUILD_SETTING="SKETCHFAB_API_KEY=${SKETCHFAB_API_KEY}"
+fi
+
 # --- Optional build + install ---------------------------------------------
 if $INSTALL; then
   echo "[ios-qa] building $XCODE_SCHEME for the simulator (this is heavy)..."
   DERIVED_DATA="$(mktemp -d)"
   set -o pipefail
+  # NB: the key build setting (if any) is the LAST argument — `xcodebuild`
+  # parses `NAME=value` overrides positionally after the options. It is passed
+  # unquoted-as-one-arg only when non-empty so a keyless build sends no stray
+  # empty argument. It is never echoed; `set -x` is never enabled here.
   xcodebuild build \
     -project "$DEMO_DIR/$XCODE_PROJECT" \
     -scheme "$XCODE_SCHEME" \
     -destination "id=$BOOTED_UDID" \
     -derivedDataPath "$DERIVED_DATA" \
+    ${SKETCHFAB_BUILD_SETTING:+"$SKETCHFAB_BUILD_SETTING"} \
     | { command -v xcpretty >/dev/null 2>&1 && xcpretty || cat; }
 
   APP_PATH="$(find "$DERIVED_DATA/Build/Products" -name 'SceneView.app' -maxdepth 3 -print -quit)"
@@ -200,8 +246,23 @@ if [[ -n "$CRASHES" ]]; then
   MAESTRO_RC=1
 fi
 
+# --- Keyless-QA honesty banner (#2356) -------------------------------------
+# A keyless run can NEVER be read as "complete": the Explore tab's Sketchfab
+# carousels + search and the streamed-USDZ demos (MultiModelDemo, OrbitalARDemo,
+# ModelViewerDemo) were not exercised — the build shipped an empty
+# SketchfabAPIKey. Suppress the qa-keys.sh ARCore half (the iOS demo has no
+# ARCore-Cloud path) and print only the Sketchfab notice. Advisory — it does
+# not flip the QA verdict, mirroring the Android `sketchfab` skipped sub-leg.
+if [[ "${QA_SKETCHFAB_KEY_PRESENT:-false}" != "true" ]]; then
+  QA_ARCORE_KEY_PRESENT=true qa_keys_banner_if_absent
+  echo "[ios-qa] NOTE: Sketchfab key absent — Explore/Sketchfab + streamed-USDZ demos NOT tested (keyless build)." >&2
+fi
+
 if [[ "$MAESTRO_RC" -eq 0 ]]; then
   echo "[ios-qa] PASS — $FLOW flow completed, no crash detected."
+  if [[ "${QA_SKETCHFAB_KEY_PRESENT:-false}" == "true" ]]; then
+    echo "[ios-qa] (Sketchfab key WAS present — Explore/Sketchfab path was exercised.)"
+  fi
 else
   echo "[ios-qa] FAIL — see Maestro output above (rc=$MAESTRO_RC)." >&2
 fi

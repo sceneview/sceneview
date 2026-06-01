@@ -158,6 +158,10 @@ docs/docs/llms.txt
 **/*.keystore
 **/*.jks
 **/google-services.json
+# iOS demo Sketchfab key — the REAL key lives here (gitignored). The committed
+# `Secrets.xcconfig.template` (placeholder) is intentionally NOT matched — do
+# NOT widen this to `**/Secrets.xcconfig*` or the template stops being
+# committable. See samples/ios-demo/SceneViewDemo/Config.xcconfig (#2356).
 **/Secrets.xcconfig
 **/*.p12
 **/*.mobileprovision
