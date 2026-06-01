@@ -1132,19 +1132,33 @@ fun rememberFillLightNode(
  * }
  * ```
  *
+ * The [environment] factory lambda is captured as a stable key by Compose, so a factory that
+ * closes over a changing value (e.g. an HDR path that depends on a time-of-day slider) is **not**
+ * re-run on its own. Pass that changing value as [key] so the [Environment] is rebuilt — and the
+ * old one disposed — whenever the key changes:
+ * ```kotlin
+ * val environment = rememberEnvironment(environmentLoader, key = hdrPath) {
+ *     environmentLoader.createHDREnvironment(hdrPath)!!
+ * }
+ * ```
+ *
  * @param environmentLoader The loader that produced the IBL textures.
  * @param isOpaque          If `false`, the skybox is cleared so the surface background shows through.
- * @param environment       Factory that produces the [Environment]. Memoised by the loader + opacity key.
+ * @param key               Extra memoisation key. When it changes the [Environment] is rebuilt and
+ *                          the previous one destroyed. Pass the value the [environment] factory
+ *                          depends on (e.g. the HDR file path); leave `null` for a static environment.
+ * @param environment       Factory that produces the [Environment]. Memoised by the loader + opacity + [key].
  * @return An [Environment] destroyed on disposal.
  */
 @Composable
 fun rememberEnvironment(
     environmentLoader: EnvironmentLoader,
     isOpaque: Boolean = true,
+    key: Any? = null,
     environment: () -> Environment = {
         createEnvironment(environmentLoader, isOpaque)
     }
-) = remember(environmentLoader, isOpaque, environment).also {
+) = remember(environmentLoader, isOpaque, key, environment).also {
     DisposableEffect(it) {
         onDispose {
             environmentLoader.destroyEnvironment(it)
@@ -1160,17 +1174,21 @@ fun rememberEnvironment(
  *
  * @param engine      The Filament [Engine] that owns the IBL and skybox textures.
  * @param isOpaque    If `false`, the skybox is cleared so the surface background shows through.
- * @param environment Factory that produces the [Environment]. Memoised by the engine + opacity key.
+ * @param key         Extra memoisation key. When it changes the [Environment] is rebuilt and the
+ *                    previous one destroyed. Pass the value the [environment] factory depends on;
+ *                    leave `null` for a static environment.
+ * @param environment Factory that produces the [Environment]. Memoised by the engine + opacity + [key].
  * @return An [Environment] destroyed on disposal.
  */
 @Composable
 fun rememberEnvironment(
     engine: Engine,
     isOpaque: Boolean = true,
+    key: Any? = null,
     environment: () -> Environment = {
         createEnvironment(engine, isOpaque)
     }
-) = remember(engine, isOpaque, environment).also {
+) = remember(engine, isOpaque, key, environment).also {
     DisposableEffect(it) {
         onDispose {
             engine.safeDestroyEnvironment(it)
