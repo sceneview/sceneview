@@ -78,23 +78,35 @@ class Octree(
      * @return List of object indices that potentially overlap.
      */
     fun query(queryAabb: AABB): List<Int> {
-        if (!bounds.intersects(queryAabb)) return emptyList()
-
         val results = mutableListOf<Int>()
+        query(queryAabb, results)
+        return results
+    }
+
+    /**
+     * Allocation-light variant of [query] that appends matching object indices into the
+     * caller-supplied [out] list instead of allocating a fresh list per recursion level.
+     *
+     * The single [out] list is threaded through the whole recursion (no per-node list +
+     * `addAll` copy). [out] is appended to, never cleared — clear it yourself for reuse.
+     * Returns [out] for convenience.
+     */
+    fun query(queryAabb: AABB, out: MutableList<Int>): MutableList<Int> {
+        if (!bounds.intersects(queryAabb)) return out
 
         for (obj in objects) {
             if (obj.aabb.intersects(queryAabb)) {
-                results.add(obj.index)
+                out.add(obj.index)
             }
         }
 
         children?.let { kids ->
             for (child in kids) {
-                results.addAll(child.query(queryAabb))
+                child.query(queryAabb, out)
             }
         }
 
-        return results
+        return out
     }
 
     /**
@@ -104,23 +116,35 @@ class Octree(
      * @return List of object indices whose AABBs the ray passes through.
      */
     fun queryRay(ray: Ray): List<Int> {
-        if (!bounds.rayIntersection(ray)) return emptyList()
-
         val results = mutableListOf<Int>()
+        queryRay(ray, results)
+        return results
+    }
+
+    /**
+     * Allocation-light variant of [queryRay] that appends matching object indices into the
+     * caller-supplied [out] list instead of allocating a fresh list per recursion level.
+     *
+     * The single [out] list is threaded through the whole recursion (no per-node list +
+     * `addAll` copy). [out] is appended to, never cleared — clear it yourself for reuse.
+     * Returns [out] for convenience.
+     */
+    fun queryRay(ray: Ray, out: MutableList<Int>): MutableList<Int> {
+        if (!bounds.rayIntersection(ray)) return out
 
         for (obj in objects) {
             if (obj.aabb.rayIntersection(ray)) {
-                results.add(obj.index)
+                out.add(obj.index)
             }
         }
 
         children?.let { kids ->
             for (child in kids) {
-                results.addAll(child.queryRay(ray))
+                child.queryRay(ray, out)
             }
         }
 
-        return results
+        return out
     }
 
     /**
@@ -196,8 +220,9 @@ class Octree(
                 Vector3.add(bounds.max, padding)
             )
             val octree = Octree(paddedBounds, maxDepth)
-            for ((index, tri) in triangles.withIndex()) {
-                octree.insert(tri.aabb(), index)
+            // Index loop instead of withIndex() to avoid boxing an IndexedValue per triangle.
+            for (index in triangles.indices) {
+                octree.insert(triangles[index].aabb(), index)
             }
             return octree
         }
@@ -217,10 +242,13 @@ fun acceleratedRayMeshIntersection(
     triangles: List<MeshCollider.Triangle>,
     octree: Octree
 ): MeshCollider.MeshHitResult {
-    val candidates = octree.queryRay(ray)
+    // Reuse a single candidate list (sink overload) rather than the per-recursion
+    // list + addAll that the no-arg queryRay allocates internally.
+    val candidates = octree.queryRay(ray, ArrayList())
     var bestResult = MeshCollider.MeshHitResult(false)
 
-    for (index in candidates) {
+    for (i in candidates.indices) {
+        val index = candidates[i]
         val tri = triangles[index]
         val result = MeshCollider.rayTriangleIntersection(ray, tri.v0, tri.v1, tri.v2)
         if (result.hit && result.distance < bestResult.distance) {

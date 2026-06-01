@@ -104,26 +104,34 @@ class Box : CollisionShape {
         Preconditions.checkNotNull(ray, "Parameter \"ray\" was null.")
         Preconditions.checkNotNull(result, "Parameter \"result\" was null.")
 
-        // Read-only refs: the slab test only reads the components and feeds them
-        // into allocating static ops (subtract/dot) — no mutation of the ray's vectors.
+        // Read-only refs: the slab test only reads the components — no mutation of
+        // the ray's vectors. Half-extents and the per-axis vectors are read as
+        // scalars from the backing arrays so no Vector3 is allocated per test.
         val rayDirection = ray.directionRef()
         val rayOrigin = ray.originRef()
-        val max = getExtents()
-        val min = max.negated()
+        // Half-extents (was getExtents() = getSize().scaled(0.5f)); min = -max per axis.
+        val maxX = size.x * 0.5f
+        val maxY = size.y * 0.5f
+        val maxZ = size.z * 0.5f
 
         var tMin = -Float.MAX_VALUE
         var tMax = Float.MAX_VALUE
 
-        val delta = Vector3.subtract(center, rayOrigin)
+        // delta = center - rayOrigin (read as scalars; was Vector3.subtract).
+        val deltaX = center.x - rayOrigin.x
+        val deltaY = center.y - rayOrigin.y
+        val deltaZ = center.z - rayOrigin.z
 
         val axes = rotationMatrix.data
-        var axis = Vector3(axes[0], axes[1], axes[2])
-        var e = Vector3.dot(axis, delta)
-        var f = Vector3.dot(rayDirection, axis)
+
+        // --- X axis (rotation column 0) ---
+        var ax = axes[0]; var ay = axes[1]; var az = axes[2]
+        var e = ax * deltaX + ay * deltaY + az * deltaZ
+        var f = rayDirection.x * ax + rayDirection.y * ay + rayDirection.z * az
 
         if (kotlin.math.abs(f) >= 1.0E-6f) {
-            var t1 = (e + min.x) / f
-            var t2 = (e + max.x) / f
+            var t1 = (e - maxX) / f
+            var t2 = (e + maxX) / f
 
             if (t1 > t2) {
                 val temp = t1; t1 = t2; t2 = temp
@@ -135,17 +143,18 @@ class Box : CollisionShape {
             if (tMax < tMin) {
                 return false
             }
-        } else if (-e + min.x > 0.0f || -e + max.x < 0.0f) {
+        } else if (-e - maxX > 0.0f || -e + maxX < 0.0f) {
             return false
         }
 
-        axis = Vector3(axes[4], axes[5], axes[6])
-        e = Vector3.dot(axis, delta)
-        f = Vector3.dot(rayDirection, axis)
+        // --- Y axis (rotation column 1) ---
+        ax = axes[4]; ay = axes[5]; az = axes[6]
+        e = ax * deltaX + ay * deltaY + az * deltaZ
+        f = rayDirection.x * ax + rayDirection.y * ay + rayDirection.z * az
 
         if (kotlin.math.abs(f) >= 1.0E-6f) {
-            var t1 = (e + min.y) / f
-            var t2 = (e + max.y) / f
+            var t1 = (e - maxY) / f
+            var t2 = (e + maxY) / f
 
             if (t1 > t2) {
                 val temp = t1; t1 = t2; t2 = temp
@@ -157,17 +166,18 @@ class Box : CollisionShape {
             if (tMax < tMin) {
                 return false
             }
-        } else if (-e + min.y > 0.0f || -e + max.y < 0.0f) {
+        } else if (-e - maxY > 0.0f || -e + maxY < 0.0f) {
             return false
         }
 
-        axis = Vector3(axes[8], axes[9], axes[10])
-        e = Vector3.dot(axis, delta)
-        f = Vector3.dot(rayDirection, axis)
+        // --- Z axis (rotation column 2) ---
+        ax = axes[8]; ay = axes[9]; az = axes[10]
+        e = ax * deltaX + ay * deltaY + az * deltaZ
+        f = rayDirection.x * ax + rayDirection.y * ay + rayDirection.z * az
 
         if (kotlin.math.abs(f) >= 1.0E-6f) {
-            var t1 = (e + min.z) / f
-            var t2 = (e + max.z) / f
+            var t1 = (e - maxZ) / f
+            var t2 = (e + maxZ) / f
 
             if (t1 > t2) {
                 val temp = t1; t1 = t2; t2 = temp
@@ -179,7 +189,7 @@ class Box : CollisionShape {
             if (tMax < tMin) {
                 return false
             }
-        } else if (-e + min.z > 0.0f || -e + max.z < 0.0f) {
+        } else if (-e - maxZ > 0.0f || -e + maxZ < 0.0f) {
             return false
         }
 
