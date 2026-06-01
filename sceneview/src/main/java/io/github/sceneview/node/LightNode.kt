@@ -7,6 +7,8 @@ import com.google.android.filament.Material
 import io.github.sceneview.Entity
 import io.github.sceneview.EntityInstance
 import io.github.sceneview.components.LightComponent
+import io.github.sceneview.math.Color
+import io.github.sceneview.math.toColor
 
 /**
  * Light source [Node] in the scene such as a sun or street lights.
@@ -46,6 +48,27 @@ open class LightNode(
                 _lightInstance = lightManager.getInstance(entity)
             }
             return _lightInstance
+        }
+
+    /**
+     * Per-instance scratch buffer for the [color] getter, reused across reads so each read no
+     * longer allocates a throwaway `FloatArray(3)` to receive Filament's RGB out-param (#2328
+     * SV8). Only the returned [Color] (a fresh [io.github.sceneview.math.Color]) is allocated —
+     * the scratch is never handed to a caller, so there is no aliasing risk. Light reads happen
+     * on the render/main thread (a Filament JNI requirement), so this single-threaded reuse
+     * introduces no race.
+     */
+    private val colorScratch = FloatArray(3)
+
+    /**
+     * Overrides the [LightComponent.color] default getter to reuse [colorScratch] instead of
+     * allocating a fresh `FloatArray(3)` on every read. Behaviour is identical: the value handed
+     * to the caller is still a freshly-built [Color].
+     */
+    override var color: Color
+        get() = colorScratch.apply { lightManager.getColor(lightInstance, this) }.toColor()
+        set(value) {
+            lightManager.setColor(lightInstance, value.r, value.g, value.b)
         }
 
     constructor(

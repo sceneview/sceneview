@@ -199,7 +199,10 @@ class NodeGestureDelegate(
             val deltaRadians = detector.currentAngle - detector.lastAngle
             onRotate(
                 detector, e,
-                rotationDelta = Quaternion.fromAxisAngle(Float3(y = 1.0f), degrees(-deltaRadians))
+                // Y_AXIS is a shared read-only constant: Quaternion.fromAxisAngle only reads it
+                // (it returns a fresh Quaternion), so it is never retained or mutated — safe to
+                // hoist out of this per-rotate-event path (#2328 SV9).
+                rotationDelta = Quaternion.fromAxisAngle(Y_AXIS, degrees(-deltaRadians))
             )
         } else {
             node.parent?.onRotate(detector, e) ?: false
@@ -270,5 +273,16 @@ class NodeGestureDelegate(
         } else {
             node.parent?.onScaleEnd(detector, e)
         }
+    }
+
+    private companion object {
+        /**
+         * The world-up axis used as the rotation axis for one-finger rotate gestures. Hoisted
+         * to a shared read-only constant so [onRotate] no longer allocates a fresh `Float3` on
+         * every rotate event (#2328 SV9). It is treated as read-only — [Quaternion.fromAxisAngle]
+         * only reads the axis (it returns a fresh [Quaternion]) and no code path here mutates it,
+         * so sharing one instance is safe.
+         */
+        private val Y_AXIS = Float3(y = 1.0f)
     }
 }

@@ -168,22 +168,37 @@ open class CameraGestureDetector(
     // Simplified memento of MotionEvent, minimal but sufficient for our purposes.
     private data class TouchPair(var pt0: Float2, var pt1: Float2, var count: Int) {
         constructor() : this(Float2(0f), Float2(0f), 0)
-        constructor(me: MotionEvent, height: Int) : this() {
-            if (me.pointerCount >= 1) {
-                this.pt0 = Float2(me.getX(0), height - me.getY(0))
-                this.pt1 = this.pt0
-                this.count++
-            }
-            if (me.pointerCount >= 2) {
-                this.pt1 = Float2(me.getX(1), height - me.getY(1))
-                this.count++
-            }
-        }
 
         val separation get() = distance(pt0, pt1)
         val midpoint get() = mix(pt0, pt1, 0.5f)
         val x: Int get() = midpoint.x.toInt()
         val y: Int get() = midpoint.y.toInt()
+
+        companion object {
+            /**
+             * Builds a [TouchPair] directly from a [MotionEvent], allocating only the [Float2]
+             * point(s) that are actually present. The previous secondary constructor delegated
+             * to the no-arg `this()` ctor, which allocated two throwaway `Float2(0f)` instances
+             * that were immediately overwritten whenever a pointer was down — pure waste on every
+             * touch event (#2328 SV10). For the common 1-2 pointer case this now allocates 1-2
+             * `Float2` instead of 3-4. Geometry is byte-identical to the old constructor (a
+             * single pointer leaves `pt1 == pt0`; zero pointers yields the same `Float2(0f)`
+             * pair and `count == 0`).
+             */
+            fun of(me: MotionEvent, height: Int): TouchPair = when {
+                me.pointerCount >= 2 -> {
+                    val p0 = Float2(me.getX(0), height - me.getY(0))
+                    TouchPair(p0, Float2(me.getX(1), height - me.getY(1)), 2)
+                }
+
+                me.pointerCount >= 1 -> {
+                    val p0 = Float2(me.getX(0), height - me.getY(0))
+                    TouchPair(p0, p0, 1)
+                }
+
+                else -> TouchPair(Float2(0f), Float2(0f), 0)
+            }
+        }
     }
 
     private var currentGesture = Gesture.NONE
@@ -199,7 +214,7 @@ open class CameraGestureDetector(
     var isPanEnabled: Boolean = true
 
     fun onTouchEvent(event: MotionEvent) {
-        val touch = TouchPair(event, viewHeight())
+        val touch = TouchPair.of(event, viewHeight())
         when (event.actionMasked) {
             MotionEvent.ACTION_MOVE -> {
 
