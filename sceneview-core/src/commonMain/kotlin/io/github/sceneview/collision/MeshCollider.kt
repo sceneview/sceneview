@@ -75,6 +75,19 @@ object MeshCollider {
     private const val EPSILON = 1e-7f
 
     /**
+     * Shared immutable "no hit" result.
+     *
+     * [rayTriangleIntersection] returns this on every miss instead of allocating a fresh
+     * [MeshHitResult] (whose default `point`/`normal` each allocate a `Vector3.zero()`) —
+     * a per-triangle saving in the inner mesh-intersection loop. Behaviour is identical:
+     * a miss carries `hit = false`, `distance = Float.MAX_VALUE` and zero point/normal.
+     *
+     * **Read-only:** callers must not mutate the `point`/`normal` of a returned miss
+     * (they never need to — a miss is only ever inspected via `hit`/`distance`).
+     */
+    private val MISS = MeshHitResult(false)
+
+    /**
      * Moller-Trumbore ray-triangle intersection algorithm.
      *
      * @param ray The ray to test.
@@ -82,6 +95,7 @@ object MeshCollider {
      * @param v1 Second vertex of the triangle.
      * @param v2 Third vertex of the triangle.
      * @return (hit, t, u, v) where t is the distance, u and v are barycentric coords.
+     *   On a miss, the shared [MISS] constant is returned — treat it as read-only.
      */
     fun rayTriangleIntersection(
         ray: Ray, v0: Vector3, v1: Vector3, v2: Vector3
@@ -97,18 +111,18 @@ object MeshCollider {
         val h = Vector3.cross(rayDirection, edge2)
         val a = Vector3.dot(edge1, h)
 
-        if (abs(a) < EPSILON) return MeshHitResult(false) // Parallel
+        if (abs(a) < EPSILON) return MISS // Parallel
 
         val f = 1f / a
         val s = Vector3.subtract(rayOrigin, v0)
         val u = f * Vector3.dot(s, h)
 
-        if (u < 0f || u > 1f) return MeshHitResult(false)
+        if (u < 0f || u > 1f) return MISS
 
         val q = Vector3.cross(s, edge1)
         val v = f * Vector3.dot(rayDirection, q)
 
-        if (v < 0f || u + v > 1f) return MeshHitResult(false)
+        if (v < 0f || u + v > 1f) return MISS
 
         val t = f * Vector3.dot(edge2, q)
 
@@ -124,7 +138,7 @@ object MeshCollider {
             )
         }
 
-        return MeshHitResult(false)
+        return MISS
     }
 
     /**
@@ -135,9 +149,11 @@ object MeshCollider {
      * @return The nearest intersection result.
      */
     fun rayMeshIntersection(ray: Ray, triangles: List<Triangle>): MeshHitResult {
-        var bestResult = MeshHitResult(false)
+        var bestResult = MISS
 
-        for ((index, tri) in triangles.withIndex()) {
+        // Index loop instead of withIndex() to avoid boxing an IndexedValue per triangle.
+        for (index in triangles.indices) {
+            val tri = triangles[index]
             val result = rayTriangleIntersection(ray, tri.v0, tri.v1, tri.v2)
             if (result.hit && result.distance < bestResult.distance) {
                 bestResult = result.copy(triangleIndex = index)

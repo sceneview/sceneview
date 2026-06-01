@@ -79,15 +79,36 @@ class Capsule : CollisionShape {
      * The segment runs from bottom to top along the capsule axis.
      */
     fun getSegmentEndpoints(): Pair<Vector3, Vector3> {
-        val halfSegment = max(0f, height / 2f - radius)
-        val localUp = Vector3(
-            rotationMatrix.data[1],
-            rotationMatrix.data[5],
-            rotationMatrix.data[9]
-        )
-        val bottom = Vector3.subtract(center, localUp.scaled(halfSegment))
-        val top = Vector3.add(center, localUp.scaled(halfSegment))
+        val bottom = Vector3()
+        val top = Vector3()
+        writeSegmentEndpoints(bottom, top)
         return Pair(bottom, top)
+    }
+
+    /**
+     * Allocation-free variant of [getSegmentEndpoints]: writes the bottom and top
+     * segment endpoints into the caller-supplied [bottom] / [top] scratch vectors.
+     *
+     * Hot-path helper for the collision math (ray + shape intersection), which would
+     * otherwise allocate a [Pair] plus 5 [Vector3] per call. The two output vectors
+     * must be distinct instances. The result is identical to [getSegmentEndpoints].
+     */
+    internal fun writeSegmentEndpoints(bottom: Vector3, top: Vector3) {
+        val halfSegment = max(0f, height / 2f - radius)
+        // localUp = rotation column 1, read as scalars (was an allocated Vector3).
+        val upX = rotationMatrix.data[1]
+        val upY = rotationMatrix.data[5]
+        val upZ = rotationMatrix.data[9]
+        bottom.set(
+            center.x - upX * halfSegment,
+            center.y - upY * halfSegment,
+            center.z - upZ * halfSegment
+        )
+        top.set(
+            center.x + upX * halfSegment,
+            center.y + upY * halfSegment,
+            center.z + upZ * halfSegment
+        )
     }
 
     /** Returns an independent copy of this capsule with the same dimensions and orientation. */
@@ -109,30 +130,39 @@ class Capsule : CollisionShape {
      */
     override fun rayIntersection(ray: Ray, result: RayHit): Boolean {
         // Ray-capsule intersection: test ray against the infinite cylinder,
-        // then against the two hemispherical caps
-        val (a, b) = getSegmentEndpoints()
+        // then against the two hemispherical caps.
+        // Function-local scratch endpoints (no Pair / per-call Vector3 alloc).
+        val a = Vector3()
+        val b = Vector3()
+        writeSegmentEndpoints(a, b)
 
-        // Read-only refs: the cylinder + cap math only reads components, feeding
-        // them into allocating static ops (subtract/dot/scaled) — no mutation.
+        // Read-only refs: the cylinder + cap math only reads components — no
+        // mutation. All vector ops below are inlined as scalar math so no
+        // Vector3 is allocated per intersection test.
         val rayOrigin = ray.originRef()
-        val ab = Vector3.subtract(b, a)
-        val ao = Vector3.subtract(rayOrigin, a)
         val abDir = ray.directionRef()
 
-        val abDotAb = Vector3.dot(ab, ab)
-        val abDotD = Vector3.dot(ab, abDir)
-        val abDotAo = Vector3.dot(ab, ao)
+        // ab = b - a
+        val abX = b.x - a.x; val abY = b.y - a.y; val abZ = b.z - a.z
+        // ao = rayOrigin - a
+        val aoX = rayOrigin.x - a.x; val aoY = rayOrigin.y - a.y; val aoZ = rayOrigin.z - a.z
+
+        val abDotAb = abX * abX + abY * abY + abZ * abZ
+        val abDotD = abX * abDir.x + abY * abDir.y + abZ * abDir.z
+        val abDotAo = abX * aoX + abY * aoY + abZ * aoZ
 
         // Quadratic equation for cylinder intersection
         val m = abDotD / abDotAb
         val n = abDotAo / abDotAb
 
-        val q = Vector3.subtract(abDir, ab.scaled(m))
-        val r = Vector3.subtract(ao, ab.scaled(n))
+        // q = abDir - ab * m
+        val qX = abDir.x - abX * m; val qY = abDir.y - abY * m; val qZ = abDir.z - abZ * m
+        // r = ao - ab * n
+        val rX = aoX - abX * n; val rY = aoY - abY * n; val rZ = aoZ - abZ * n
 
-        val qA = Vector3.dot(q, q)
-        val qB = 2f * Vector3.dot(q, r)
-        val qC = Vector3.dot(r, r) - radius * radius
+        val qA = qX * qX + qY * qY + qZ * qZ
+        val qB = 2f * (qX * rX + qY * rY + qZ * rZ)
+        val qC = (rX * rX + rY * rY + rZ * rZ) - radius * radius
 
         val discriminant = qB * qB - 4f * qA * qC
 
@@ -143,35 +173,17 @@ class Capsule : CollisionShape {
             val t1 = (-qB - sqrtD) / (2f * qA)
             val t2 = (-qB + sqrtD) / (2f * qA)
 
-            for (t in listOf(t1, t2)) {
-                if (t < 0f) continue
-                val hitPoint = ray.getPoint(t)
-                val projection = Vector3.dot(Vector3.subtract(hitPoint, a), ab) / abDotAb
-                if (projection in 0f..1f && t < bestT) {
-                    bestT = t
-                }
-            }
+            bestT = considerCylinderRoot(
+                rayOrigin, abDir, t1, a.x, a.y, a.z, abX, abY, abZ, abDotAb, bestT
+            )
+            bestT = considerCylinderRoot(
+                rayOrigin, abDir, t2, a.x, a.y, a.z, abX, abY, abZ, abDotAb, bestT
+            )
         }
 
-        // Test hemispherical caps (as sphere intersections)
-        for (capCenter in listOf(a, b)) {
-            val oc = Vector3.subtract(rayOrigin, capCenter)
-            val bCoeff = 2f * Vector3.dot(oc, abDir)
-            val cCoeff = Vector3.dot(oc, oc) - radius * radius
-            val disc = bCoeff * bCoeff - 4f * cCoeff
-
-            if (disc >= 0f) {
-                val sqrtDisc = sqrt(disc)
-                val t1 = (-bCoeff - sqrtDisc) / 2f
-                val t2 = (-bCoeff + sqrtDisc) / 2f
-
-                for (t in listOf(t1, t2)) {
-                    if (t >= 0f && t < bestT) {
-                        bestT = t
-                    }
-                }
-            }
-        }
+        // Test hemispherical caps (as sphere intersections), each cap center in turn.
+        bestT = considerCap(rayOrigin, abDir, a.x, a.y, a.z, radius, bestT)
+        bestT = considerCap(rayOrigin, abDir, b.x, b.y, b.z, radius, bestT)
 
         if (bestT < Float.MAX_VALUE) {
             result.setDistance(bestT)
@@ -246,6 +258,61 @@ class Capsule : CollisionShape {
 }
 
 // --- Capsule intersection helpers ---
+
+/**
+ * Considers one cylinder-body quadratic root for [Capsule.rayIntersection].
+ *
+ * Inlined scalar form of the original `for (t in listOf(t1, t2))` body: a non-negative
+ * root whose projection onto the capsule axis falls within `[0,1]` and which beats the
+ * current [bestT] becomes the new best. Returns the (possibly updated) best `t`. Pure
+ * scalar math — no [Vector3] / list allocation. The hit-point projection is computed
+ * directly from the ray origin/direction components rather than `ray.getPoint(t)`.
+ */
+private fun considerCylinderRoot(
+    rayOrigin: Vector3,
+    rayDir: Vector3,
+    t: Float,
+    aX: Float, aY: Float, aZ: Float,
+    abX: Float, abY: Float, abZ: Float,
+    abDotAb: Float,
+    bestT: Float
+): Float {
+    if (t < 0f || t >= bestT) return bestT
+    // hitPoint = rayOrigin + rayDir * t ; hp - a, dotted with ab.
+    val hpaX = (rayOrigin.x + rayDir.x * t) - aX
+    val hpaY = (rayOrigin.y + rayDir.y * t) - aY
+    val hpaZ = (rayOrigin.z + rayDir.z * t) - aZ
+    val projection = (hpaX * abX + hpaY * abY + hpaZ * abZ) / abDotAb
+    return if (projection in 0f..1f) t else bestT
+}
+
+/**
+ * Considers one hemispherical cap (treated as a sphere centered at the cap point) for
+ * [Capsule.rayIntersection]. Inlined scalar form of the original cap loop: returns the
+ * smallest non-negative root that beats [bestT], else [bestT] unchanged. No allocation.
+ */
+private fun considerCap(
+    rayOrigin: Vector3,
+    rayDir: Vector3,
+    cX: Float, cY: Float, cZ: Float,
+    radius: Float,
+    bestT: Float
+): Float {
+    // oc = rayOrigin - capCenter
+    val ocX = rayOrigin.x - cX; val ocY = rayOrigin.y - cY; val ocZ = rayOrigin.z - cZ
+    val bCoeff = 2f * (ocX * rayDir.x + ocY * rayDir.y + ocZ * rayDir.z)
+    val cCoeff = (ocX * ocX + ocY * ocY + ocZ * ocZ) - radius * radius
+    val disc = bCoeff * bCoeff - 4f * cCoeff
+    if (disc < 0f) return bestT
+
+    val sqrtDisc = sqrt(disc)
+    var best = bestT
+    val t1 = (-bCoeff - sqrtDisc) / 2f
+    if (t1 >= 0f && t1 < best) best = t1
+    val t2 = (-bCoeff + sqrtDisc) / 2f
+    if (t2 >= 0f && t2 < best) best = t2
+    return best
+}
 
 /**
  * Closest point on a line segment AB to point P.
@@ -327,12 +394,16 @@ internal fun capsuleCapsuleIntersection(c1: Capsule, c2: Capsule): Boolean {
 }
 
 internal fun capsuleBoxIntersection(capsule: Capsule, box: Box): Boolean {
-    // Approximate: test the capsule segment endpoints + center as spheres
-    val (a, b) = capsule.getSegmentEndpoints()
+    // Approximate: test the capsule segment endpoints + center as spheres.
+    // Function-local scratch endpoints; the per-point sphere test is done
+    // allocation-free via Intersections.pointWithinBoxDistance (no Sphere alloc,
+    // no listOf).
+    val a = Vector3()
+    val b = Vector3()
+    capsule.writeSegmentEndpoints(a, b)
+    val r = capsule.radius
+    if (Intersections.pointWithinBoxDistance(a.x, a.y, a.z, r, box)) return true
+    if (Intersections.pointWithinBoxDistance(b.x, b.y, b.z, r, box)) return true
     val mid = capsule.getCenter()
-    for (point in listOf(a, b, mid)) {
-        val testSphere = Sphere(capsule.radius, point)
-        if (Intersections.sphereBoxIntersection(testSphere, box)) return true
-    }
-    return false
+    return Intersections.pointWithinBoxDistance(mid.x, mid.y, mid.z, r, box)
 }
