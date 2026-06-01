@@ -29,7 +29,7 @@ SceneView uses **native renderers per platform** for the best performance and to
 
 The primary platform. SceneView wraps Google Filament (PBR rendering) and ARCore (augmented reality) in Jetpack Compose composables.
 
-- **3D**: `SceneView { }` composable with 41+ node types
+- **3D**: `SceneView { }` composable with 42+ node types
 - **AR**: `ARSceneView { }` with plane detection, image tracking, face mesh, cloud anchors, geospatial
 - **Min SDK**: 24 (Android 7.0)
 - **Install**: `implementation("io.github.sceneview:sceneview:4.17.0")`

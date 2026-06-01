@@ -36,7 +36,7 @@ KMP shares **logic**, not **rendering**. Each platform uses its native renderer.
 - **3D rendering** via Google Filament: PBR materials, HDR environments, glTF/GLB models, post-processing.
 - **AR** via ARCore: plane detection, hit testing, anchors, cloud anchors, augmented images, depth, light estimation, point cloud.
 - **Compose-native DSL**: all nodes are \`@Composable\` functions inside \`SceneView { }\` or \`ARSceneView { }\`.
-- **41+ node types**: ModelNode, LightNode, AnchorNode, CameraNode, TextNode, PathNode, ViewNode, PlaneNode, SphereNode, CylinderNode, CubeNode, DynamicSkyNode, FogNode, ReflectionProbeNode, PhysicsNode, BillboardNode, LineNode, and more.
+- **42+ node types**: ModelNode, LightNode, AnchorNode, CameraNode, TextNode, PathNode, ViewNode, PlaneNode, SphereNode, CylinderNode, CubeNode, DynamicSkyNode, FogNode, ReflectionProbeNode, PhysicsNode, BillboardNode, LineNode, and more.
 
 ## Apple — Alpha (SceneViewSwift)
 

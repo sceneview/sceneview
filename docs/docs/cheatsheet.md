@@ -1,6 +1,6 @@
 ---
 title: API Cheatsheet — SceneView Android
-description: "Complete API reference for SceneView's 41+ node types, composables, resource loading, camera controls, gestures, and AR features on Android."
+description: "Complete API reference for SceneView's 42+ node types, composables, resource loading, camera controls, gestures, and AR features on Android."
 ---
 
 # API Cheatsheet

@@ -135,16 +135,34 @@ if [[ ! -d "$ANDROID_3D_DIR" ]] && [[ ! -d "$ANDROID_AR_DIR" ]]; then
     check "Node count consistency" "SKIP" "no Android sources"
 else
     echo -e "${CYAN}--- Node count consistency (actual: $ACTUAL_NODES) ---${NC}"
-    # Check each file that claims a node count
-    for f in README.md llms.txt website-static/index.html docs/docs/showcase.md mcp/README.md; do
+    # Check each file that claims a node count. The list spans every
+    # current-state surface that states a marketing "N+ node types" total.
+    # Extended 2026-06-01 to cover cheatsheet / manifest / platforms / try /
+    # .cursorrules / mcp guides — those were blind spots, which is exactly why
+    # the count drifted silently across them.
+    for f in README.md llms.txt website-static/index.html docs/docs/showcase.md mcp/README.md \
+             docs/docs/cheatsheet.md docs/docs/manifest.json docs/docs/platforms.md \
+             docs/docs/try.md .cursorrules mcp/src/guides.ts; do
         trace "node count claim in $f"
         if [[ -f "$f" ]]; then
-            # Only check claims with "+" (marketing total), skip platform-specific counts
-            CLAIMED=$(grep -oE '[0-9]+\+ node type' "$f" 2>/dev/null | head -1 | grep -oE '[0-9]+' 2>/dev/null || true)
-            if [[ -n "$CLAIMED" ]] && [[ "$CLAIMED" -ne "$ACTUAL_NODES" ]]; then
-                check "$f node count" "FAIL" "Claims $CLAIMED, actual $ACTUAL_NODES"
-            elif [[ -n "$CLAIMED" ]]; then
-                check "$f node count" "PASS" "$CLAIMED"
+            # Only check claims with "+" (marketing total), skip platform-specific
+            # counts (e.g. the iOS "19 node types" subset, which has no "+").
+            # Check EVERY claim, not just the first: a file may state the count in
+            # several places (try.md, index.html) — a partial fix must still FAIL.
+            CLAIMS=$(grep -oE '[0-9]+\+ node type' "$f" 2>/dev/null \
+                | grep -oE '[0-9]+' 2>/dev/null | sort -u || true)
+            if [[ -n "$CLAIMS" ]]; then
+                BAD=""
+                for c in $CLAIMS; do
+                    if [[ "$c" -ne "$ACTUAL_NODES" ]]; then
+                        BAD="$BAD $c"
+                    fi
+                done
+                if [[ -n "${BAD// }" ]]; then
+                    check "$f node count" "FAIL" "Claims$BAD, actual $ACTUAL_NODES"
+                else
+                    check "$f node count" "PASS" "$ACTUAL_NODES"
+                fi
             fi
         fi
     done
