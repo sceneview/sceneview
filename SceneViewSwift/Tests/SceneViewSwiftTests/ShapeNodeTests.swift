@@ -216,6 +216,135 @@ final class ShapeNodeTests: XCTestCase {
         XCTAssertNotNil(shape.entity)
         XCTAssertEqual(shape.points.count, 6)
     }
+
+    // MARK: - Triangulation correctness (#2354)
+
+    /// A 5-point star with a concave (reflex) inner ring — the default preset
+    /// of `ShapeExtrudeDemo`.
+    private static let star: [SIMD2<Float>] = {
+        var pts: [SIMD2<Float>] = []
+        let n = 5
+        let outerR: Float = 0.5
+        let innerR: Float = 0.22
+        for i in 0..<(n * 2) {
+            let angle = Float(i) / Float(n * 2) * 2 * .pi - .pi / 2
+            let r: Float = i % 2 == 0 ? outerR : innerR
+            pts.append(.init(r * cos(angle), r * sin(angle)))
+        }
+        return pts
+    }()
+
+    private static let lShape: [SIMD2<Float>] = [
+        .init(-0.4, -0.4),
+        .init(0.1, -0.4),
+        .init(0.1, 0.0),
+        .init(-0.1, 0.0),
+        .init(-0.1, 0.4),
+        .init(-0.4, 0.4),
+    ]
+
+    private static let arrow: [SIMD2<Float>] = [
+        .init(-0.35, -0.1),
+        .init(0.05, -0.1),
+        .init(0.05, -0.3),
+        .init(0.4,  0.0),
+        .init(0.05, 0.3),
+        .init(0.05, 0.1),
+        .init(-0.35, 0.1),
+    ]
+
+    /// Sum of the unsigned areas of every triangle emitted by the triangulator.
+    private func triangulatedArea(_ points: [SIMD2<Float>]) -> Float {
+        let indices = ShapeNode.earClipTriangulate(points)
+        var total: Float = 0
+        for t in stride(from: 0, to: indices.count, by: 3) {
+            let a = points[Int(indices[t])]
+            let b = points[Int(indices[t + 1])]
+            let c = points[Int(indices[t + 2])]
+            total += abs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) / 2
+        }
+        return total
+    }
+
+    /// The ear-clipping triangulator handles concave (reflex-vertex) polygons:
+    /// each preset must triangulate to exactly `n - 2` triangles whose combined
+    /// area equals the polygon's own area (deviation ≈ 0).
+    ///
+    /// Guards the concave case #2354 worried about — even though the existing
+    /// triangulator already handles it (the real bug was the build plane).
+    func testConcavePresetsTriangulateWithoutAreaLoss() {
+        for (name, points) in [("star", Self.star), ("lShape", Self.lShape), ("arrow", Self.arrow)] {
+            let indices = ShapeNode.earClipTriangulate(points)
+            XCTAssertEqual(
+                indices.count, (points.count - 2) * 3,
+                "\(name): expected \(points.count - 2) triangles, got \(indices.count / 3)"
+            )
+
+            let polygonArea = abs(ShapeNode.signedArea(points))
+            let triArea = triangulatedArea(points)
+            XCTAssertEqual(
+                triArea, polygonArea, accuracy: 1e-4,
+                "\(name): triangulated area \(triArea) deviates from polygon area \(polygonArea)"
+            )
+        }
+    }
+
+    // MARK: - Vertex layout — XY plane facing +Z (#2354)
+
+    /// The flat mesh lives in the XY plane (Z = 0) with +Z normals — mirroring
+    /// SceneView Android's `ShapeGeometry`, NOT the old XZ (horizontal) plane
+    /// that rendered the star edge-on as a thin ribbon.
+    func testFlatMeshLivesInXYPlaneFacingCamera() throws {
+        let shape = ShapeNode(points: Self.star, color: .yellow)
+        let mesh = try XCTUnwrap(shape.entity.model?.mesh)
+        let model = try XCTUnwrap(mesh.contents.models.first)
+
+        var sawVertex = false
+        for part in model.parts {
+            let positions = part.positions.elements
+            let normals = part.normals?.elements ?? []
+            XCTAssertFalse(positions.isEmpty, "flat mesh must have positions")
+
+            for p in positions {
+                sawVertex = true
+                // Flat shape: every vertex sits on the XY plane (Z == 0).
+                XCTAssertEqual(p.z, 0, accuracy: 1e-5, "flat vertex must have Z == 0 (XY plane)")
+            }
+            for n in normals {
+                // Front-facing normal points at the camera (+Z), not +Y.
+                XCTAssertEqual(n.z, 1, accuracy: 1e-4, "flat normal must point +Z")
+                XCTAssertEqual(n.x, 0, accuracy: 1e-4)
+                XCTAssertEqual(n.y, 0, accuracy: 1e-4)
+            }
+        }
+        XCTAssertTrue(sawVertex, "expected at least one vertex in the flat mesh")
+    }
+
+    /// The extruded mesh is symmetric about Z = 0 (front at +depth/2, back at
+    /// −depth/2) — extruded along the Z axis, not the Y axis.
+    func testExtrudedMeshIsSymmetricAboutZ() throws {
+        let depth: Float = 0.2
+        let shape = ShapeNode(points: Self.star, extrusionDepth: depth, color: .yellow)
+        let mesh = try XCTUnwrap(shape.entity.model?.mesh)
+        let model = try XCTUnwrap(mesh.contents.models.first)
+
+        var minZ: Float = .greatestFiniteMagnitude
+        var maxZ: Float = -.greatestFiniteMagnitude
+        var minY: Float = .greatestFiniteMagnitude
+        var maxY: Float = -.greatestFiniteMagnitude
+        for part in model.parts {
+            for p in part.positions.elements {
+                minZ = min(minZ, p.z); maxZ = max(maxZ, p.z)
+                minY = min(minY, p.y); maxY = max(maxY, p.y)
+            }
+        }
+
+        // Thickness lives on Z (front/back faces at ±depth/2).
+        XCTAssertEqual(maxZ, depth / 2, accuracy: 1e-4, "front face at +depth/2 on Z")
+        XCTAssertEqual(minZ, -depth / 2, accuracy: 1e-4, "back face at -depth/2 on Z")
+        // The polygon spans Y (it is NOT collapsed onto a single Y line).
+        XCTAssertGreaterThan(maxY - minY, 0.5, "polygon must span the Y axis, not the depth axis")
+    }
 }
 
 #endif // os(iOS) || os(macOS) || os(visionOS)

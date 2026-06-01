@@ -13,10 +13,21 @@ import SceneViewSwift
 /// ear-clipping triangulator to create the mesh — identical algorithm to the
 /// Android `sceneview-core` Earcut port.
 struct ShapeExtrudeDemo: View {
-    @State private var selectedPreset: ShapePreset = .star
+    @State private var selectedPreset: ShapePreset = ShapeExtrudeDemo.launchArgPreset ?? .star
     @State private var extrusionDepth: Float = 0.15
     @State private var useUnlit: Bool = false
     @State private var sceneKey = UUID()
+
+    /// Optional `-shapePreset <id>` launch argument (e.g. `-shapePreset arrow`)
+    /// that pre-selects a preset, so the QA / screenshot harness can drive the
+    /// concave presets without tapping the settings sheet. Mirrors the
+    /// `-demo <id>` / `-qa_mode 1` launch-arg idiom in `SceneViewDemoApp`.
+    /// Unknown / absent values fall back to the default `.star`.
+    private static let launchArgPreset: ShapePreset? = {
+        let args = CommandLine.arguments
+        guard let idx = args.firstIndex(of: "-shapePreset"), idx + 1 < args.count else { return nil }
+        return ShapePreset(rawValue: args[idx + 1])
+    }()
 
     var body: some View {
         ZStack {
@@ -60,8 +71,13 @@ struct ShapeExtrudeDemo: View {
             unlit: unlit
         )
         shape.entity.position = .init(x: 0, y: 0, z: -2)
-        // Tilt slightly so the extrusion depth reads clearly
-        shape.entity.orientation = simd_quatf(angle: -.pi / 8, axis: .init(x: 1, y: 0, z: 0))
+        // The shape now lives in the XY plane facing the camera (+Z), so it
+        // reads as a flat star head-on. Apply a gentle compound tilt — a small
+        // yaw (Y) plus a small pitch (X) — so the silhouette stays clearly
+        // readable while the extrusion thickness along Z is still visible.
+        let yaw = simd_quatf(angle: .pi / 7, axis: .init(x: 0, y: 1, z: 0))
+        let pitch = simd_quatf(angle: -.pi / 14, axis: .init(x: 1, y: 0, z: 0))
+        shape.entity.orientation = pitch * yaw
 
         if !unlit {
             // Add a grounding shadow for PBR materials (iOS 18+)
