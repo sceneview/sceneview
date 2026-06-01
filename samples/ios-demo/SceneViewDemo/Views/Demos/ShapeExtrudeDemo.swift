@@ -4,14 +4,15 @@ import SceneViewSwift
 
 /// Shape Extrude — 2D polygons extruded into 3D meshes.
 ///
-/// Mirrors the Android `ShapeExtrudeDemo` (`samples/android-demo/.../ShapeExtrudeDemo.kt`):
+/// Conceptually mirrors Android's `ShapeNode` / `ShapeGeometry`:
 /// - Gallery of preset shapes: Triangle, Star, Pentagon, Hexagon, L-Shape, Arrow
 /// - Depth slider controls extrusion depth (0 = flat, up to 0.4 m)
 /// - Material toggle: PBR metallic vs unlit flat color
 ///
-/// Each shape is built with ``ShapeNode`` from `SceneViewSwift` which uses an
-/// ear-clipping triangulator to create the mesh — identical algorithm to the
-/// Android `sceneview-core` Earcut port.
+/// Each shape is built with ``ShapeNode`` from `SceneViewSwift`. iOS uses an
+/// equivalent hand-rolled ear-clipping triangulation rather than the Android
+/// `sceneview-core` Earcut port, so the meshes are equivalent but not produced
+/// by identical code.
 struct ShapeExtrudeDemo: View {
     @State private var selectedPreset: ShapePreset = ShapeExtrudeDemo.launchArgPreset ?? .star
     @State private var extrusionDepth: Float = 0.15

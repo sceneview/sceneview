@@ -77,6 +77,14 @@ public struct ShapeNode: Sendable {
     /// `ShapeGeometry`. If `extrusionDepth` is greater than zero, the shape is
     /// extruded symmetrically along the Z axis to create a solid.
     ///
+    /// The polygon may be wound either clockwise or counter-clockwise — the
+    /// mesh is normalised internally so the faces are always wound correctly
+    /// and lit from the outside.
+    ///
+    /// - Note: Holes and explicit Delaunay interior points are an Android-only
+    ///   feature of `ShapeGeometry`; they are not yet supported on iOS. iOS
+    ///   triangulates the single outer contour only.
+    ///
     /// - Parameters:
     ///   - points: Ordered 2D vertices of the polygon (minimum 3).
     ///     The polygon is automatically closed (last point connects to first).
@@ -282,21 +290,28 @@ public struct ShapeNode: Sendable {
     private static func buildFlatMesh(points: [SIMD2<Float>]) -> MeshResource? {
         guard points.count >= 3 else { return nil }
 
-        let indices = earClipTriangulate(points)
+        // Normalise to CCW winding ONCE, up front, and build everything from
+        // `pts`. With a single always-CCW source the front-cap winding is
+        // always correct (no per-input branch). For already-CCW input — every
+        // demo preset — `pts == points`, so the mesh is byte-identical.
+        var pts = points
+        if signedArea(pts) < 0 { pts.reverse() }
+
+        let indices = earClipTriangulate(pts)
         guard !indices.isEmpty else { return nil }
 
         // Convert 2D points to 3D in the XY plane (Z = 0), facing +Z
-        let positions = points.map { SIMD3<Float>($0.x, $0.y, 0) }
+        let positions = pts.map { SIMD3<Float>($0.x, $0.y, 0) }
         let normals = [SIMD3<Float>](repeating: SIMD3<Float>(0, 0, 1), count: positions.count)
 
         // Compute UV coordinates from bounding box
-        let minX = points.map(\.x).min() ?? 0
-        let maxX = points.map(\.x).max() ?? 1
-        let minY = points.map(\.y).min() ?? 0
-        let maxY = points.map(\.y).max() ?? 1
+        let minX = pts.map(\.x).min() ?? 0
+        let maxX = pts.map(\.x).max() ?? 1
+        let minY = pts.map(\.y).min() ?? 0
+        let maxY = pts.map(\.y).max() ?? 1
         let rangeX = max(maxX - minX, 1e-6)
         let rangeY = max(maxY - minY, 1e-6)
-        let uvs = points.map { SIMD2<Float>(($0.x - minX) / rangeX, ($0.y - minY) / rangeY) }
+        let uvs = pts.map { SIMD2<Float>(($0.x - minX) / rangeX, ($0.y - minY) / rangeY) }
 
         var descriptor = MeshDescriptor(name: "ShapeNode_Flat")
         descriptor.positions = MeshBuffers.Positions(positions)
@@ -313,7 +328,19 @@ public struct ShapeNode: Sendable {
     private static func buildExtrudedMesh(points: [SIMD2<Float>], depth: Float) -> MeshResource? {
         guard points.count >= 3 else { return nil }
 
-        let topIndices = earClipTriangulate(points)
+        // Normalise to CCW winding ONCE, up front, and build EVERYTHING from
+        // `pts` — the triangulation, the front/back caps, and the side loop.
+        // With a single always-CCW source, the CCW front-cap winding, the
+        // reversed back-cap winding, the outward side-quad normal `(dy, -dx)`,
+        // and the side-quad triangle winding are *all* correct for any input,
+        // so there is no per-input flip branch (a flip that touched only the
+        // normal would contradict the hardcoded winding and render CW inputs
+        // inside-out). For already-CCW input — every demo preset — `pts ==
+        // points`, so the mesh is byte-identical and there is no visual change.
+        var pts = points
+        if signedArea(pts) < 0 { pts.reverse() }
+
+        let topIndices = earClipTriangulate(pts)
         guard !topIndices.isEmpty else { return nil }
 
         let halfDepth = depth / 2
@@ -324,7 +351,7 @@ public struct ShapeNode: Sendable {
 
         // Front face (+Z) — faces the camera, same winding as the flat mesh.
         let frontOffset = UInt32(positions.count)
-        for p in points {
+        for p in pts {
             positions.append(SIMD3<Float>(p.x, p.y, halfDepth))
             normals.append(SIMD3<Float>(0, 0, 1))
             uvs.append(p)
@@ -335,7 +362,7 @@ public struct ShapeNode: Sendable {
 
         // Back face (-Z) — reversed winding so it faces away from the camera.
         let backOffset = UInt32(positions.count)
-        for p in points {
+        for p in pts {
             positions.append(SIMD3<Float>(p.x, p.y, -halfDepth))
             normals.append(SIMD3<Float>(0, 0, -1))
             uvs.append(p)
@@ -347,21 +374,20 @@ public struct ShapeNode: Sendable {
         }
 
         // Side faces — quads wrapping the XY perimeter, normals pointing outward.
-        // `earClipTriangulate` normalises to CCW winding; for CCW (positive-area)
-        // polygons the outward 2D normal of edge (p0 → p1) is (dy, -dx).
-        let ccw = signedArea(points) >= 0
-        let n = points.count
+        // `pts` is now guaranteed CCW, so the outward 2D normal of edge
+        // (p0 → p1) is `(dy, -dx)` and the quad triangle winding below is the
+        // matching outward winding — both hold for every input.
+        let n = pts.count
         for i in 0..<n {
             let j = (i + 1) % n
-            let p0 = points[i]
-            let p1 = points[j]
+            let p0 = pts[i]
+            let p1 = pts[j]
 
             let edge = SIMD2<Float>(p1.x - p0.x, p1.y - p0.y)
             let edgeLen = max(sqrt(edge.x * edge.x + edge.y * edge.y), 1e-6)
             // Outward in-plane normal (XY), Z component is zero.
-            var nx = edge.y / edgeLen
-            var ny = -edge.x / edgeLen
-            if !ccw { nx = -nx; ny = -ny }
+            let nx = edge.y / edgeLen
+            let ny = -edge.x / edgeLen
             let normal3 = SIMD3<Float>(nx, ny, 0)
 
             let sideOffset = UInt32(positions.count)
