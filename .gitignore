@@ -19,6 +19,11 @@ Desktop.ini
 # so tracking it would mean constant merge conflicts (same class as GeneratedDemos.kt
 # / llms-txt.ts). The durable cross-host shadow is the GitHub `in-progress` label.
 .claude/STATE.md
+# .claude/data/ = local runtime evidence for the Evidence-Stamped Claim Gate (#2346):
+# last-store-probe.json (the /store-status live-probe record) + claim-ledger.tsv (the
+# /caught miss ledger). Same policy as STATE.md — same-host, mutates constantly, never
+# committed; claim-gate.sh reads it on the git-push hook to block unevidenced claims.
+.claude/data/
 .claude/handoff*.md
 .claude/handoff-archive/
 .claude/SESSION_*.md
