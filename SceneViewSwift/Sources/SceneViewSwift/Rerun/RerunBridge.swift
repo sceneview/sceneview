@@ -81,6 +81,21 @@ public final class RerunBridge: ObservableObject {
     private var _enabled: Bool = true
     private let minIntervalNanos: Int64
 
+    /// Authoritative event total, mutated only on ``queue`` (the same queue
+    /// `NWConnection`'s `contentProcessed` completion fires on). The
+    /// `@Published` ``eventCount`` is a coalesced UI mirror of this value —
+    /// see ``publishEventCount()``.
+    private var sentCount: Int = 0
+
+    /// `true` while a main-queue publish of ``sentCount`` is already in
+    /// flight. Coalesces the per-emit (~420/s) `DispatchQueue.main.async`
+    /// hops into at most one pending main-thread update: each flush bumps the
+    /// authoritative `sentCount` on the I/O queue, but only the first flush
+    /// since the last publish schedules the hop, which then reads the latest
+    /// total. The final count is never lost — the last flush always leaves
+    /// either a pending publish or triggers a fresh one.
+    private var eventCountPublishPending: Bool = false
+
     /// Buffer holding partial JSON-lines received from the sidecar. The
     /// bridge does not pretend to be a generic JSON router — it only looks
     /// for control acknowledgments (e.g. `saved` after `save_now`).
@@ -354,15 +369,57 @@ public final class RerunBridge: ObservableObject {
             conn.send(
                 content: data,
                 completion: .contentProcessed { [weak self] error in
+                    // `contentProcessed` fires on the connection's queue,
+                    // which is `self.queue` (see `conn.start(queue:)`), so
+                    // touching `sentCount` here needs no extra hop.
                     if let error = error {
                         NSLog("[RerunBridge] send failed: \(error.localizedDescription)")
                         return
                     }
-                    DispatchQueue.main.async {
-                        self?.eventCount += 1
-                    }
+                    guard let self = self else { return }
+                    self.recordSent()
                 }
             )
+        }
+    }
+
+    /// Bump the authoritative event total and arm a coalesced UI publish.
+    /// MUST run on ``queue`` — both callers (the `send` completion and the
+    /// test hook) are on it. Factored out so the coalescing invariant is
+    /// exercised by the exact production code path in a unit test, without
+    /// needing a live `NWConnection`.
+    private func recordSent() {
+        sentCount += 1
+        publishEventCount()
+    }
+
+    /// Coalesced publish of ``sentCount`` to the `@Published` ``eventCount``.
+    ///
+    /// MUST be called on ``queue`` (every caller — the `send` completion — is).
+    /// Instead of one `DispatchQueue.main.async` per emitted line (~420/s
+    /// under a busy ARKit stream), we schedule a main-queue publish only when
+    /// none is already pending.
+    ///
+    /// Correctness — the final count is never lost: the pending flag is
+    /// cleared and `sentCount` snapshotted *together on `queue`* before the
+    /// value is handed to main. Any flush that increments `sentCount` after
+    /// that snapshot runs `publishEventCount()` itself; it sees the flag clear
+    /// and arms a fresh publish, so the latest total always converges. Bursts
+    /// of N flushes between two drains collapse into one update on the final
+    /// total — only the per-line hop frequency drops, never the count.
+    private func publishEventCount() {
+        guard !eventCountPublishPending else { return }
+        eventCountPublishPending = true
+        // Hop to `queue` (async, so we don't re-enter synchronously) to
+        // atomically clear the flag and snapshot the authoritative total,
+        // then to main to assign the @Published mirror.
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.eventCountPublishPending = false
+            let latest = self.sentCount
+            DispatchQueue.main.async { [weak self] in
+                self?.eventCount = latest
+            }
         }
     }
 
@@ -370,6 +427,17 @@ public final class RerunBridge: ObservableObject {
     /// directly so the tests don't need a real ARFrame.
     internal func testOnlyEnqueue(_ line: String) {
         send(line)
+    }
+
+    /// Internal hook for unit tests — simulate `count` successful socket
+    /// flushes through the *real* coalescing path (`recordSent`) without a
+    /// live `NWConnection`. Lets a test assert that N flushes converge
+    /// `eventCount` to N while collapsing the per-flush main-thread hops.
+    internal func testOnlyRecordSent(_ count: Int) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            for _ in 0..<count { self.recordSent() }
+        }
     }
 }
 #endif

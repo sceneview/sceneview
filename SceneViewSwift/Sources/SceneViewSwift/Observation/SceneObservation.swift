@@ -126,19 +126,32 @@ public final class SceneObserver: ObservableObject {
     }
 
     /// Updates metrics. Call from a per-frame update.
+    ///
+    /// Both `@Published` properties are gated on a real value change: a
+    /// `@Published` setter fires `objectWillChange` even when the assigned
+    /// value is identical, so a static scene graph would otherwise publish a
+    /// redundant `entityCount` every frame and wake every bound SwiftUI view.
+    /// Assigning only on inequality is observationally identical (an observer
+    /// cannot distinguish "assigned the same value" from "not assigned"),
+    /// matching the change-gating already used by ``EntityObserver/update()``.
     public func update() {
         guard let root = rootEntity else { return }
 
-        // Count entities
+        // Count entities (only publishes when the count actually changed).
         var count = 0
         countEntities(root, count: &count)
-        entityCount = count
+        if count != entityCount {
+            entityCount = count
+        }
 
-        // Estimate FPS
+        // Estimate FPS (gated likewise; identical only when dt repeats exactly).
         let now = CFAbsoluteTimeGetCurrent()
         let dt = now - lastUpdateTime
         if dt > 0 {
-            estimatedFPS = 1.0 / dt
+            let fps = 1.0 / dt
+            if fps != estimatedFPS {
+                estimatedFPS = fps
+            }
         }
         lastUpdateTime = now
     }
