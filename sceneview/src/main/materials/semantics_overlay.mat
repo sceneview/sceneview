@@ -13,6 +13,12 @@
 //   opacity         — float [0, 1], global overlay alpha. 0 = camera only, 1 = full overlay.
 // matc profile: C (ARCore overlay — "--optimize-size -p mobile -a opengl -a vulkan").
 //
+// #2224/#2325: `blending: transparent` composites ONE*src + (1-a)*dst, but Filament does NOT
+//             premultiply unlit baseColor for us. Emitting a straight `tint` made dialling
+//             `opacity` down never reduce the tint over the camera feed — the overlay
+//             composited as `tint + (1-a)*bg` and read near-opaque. The fragment now
+//             premultiplies the tint by the final alpha → `lerp(bg, tint, alpha)`.
+//
 // The 12-class palette is a compile-time `const` array: the ARCore Scene Semantics model
 // always emits exactly the same 12 ordinals (SKY..UNLABELED), so baking the colors keeps the
 // parameter surface tiny (one texture + one float) and the lookup branch-free. The colors are
@@ -73,7 +79,11 @@ fragment {
         // through un-classified pixels — only confident classes get tinted.
         float classAlpha = ordinal == 11 ? 0.0 : 1.0;
 
-        material.baseColor.rgb = tint;
         material.baseColor.a = clamp(materialParams.opacity, 0.0, 1.0) * classAlpha;
+        // #2224/#2325 — premultiply the tint by the final alpha. With `blending: transparent`
+        // Filament composites ONE * src + (1-a) * dst and does NOT premultiply unlit baseColor,
+        // so emitting a straight `tint` composited as `tint + (1-a)*bg` (opacity never reduced
+        // the tint). Premultiplying makes it `alpha*tint + (1-alpha)*bg` = lerp(bg, tint, alpha).
+        material.baseColor.rgb = tint * material.baseColor.a;
     }
 }

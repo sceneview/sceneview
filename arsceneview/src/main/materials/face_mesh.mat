@@ -1,11 +1,17 @@
 // face_mesh.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
 //
-// Purpose:    Unlit transparent material that textures an ARCore Augmented Face mesh
+// Purpose:    Unlit alpha-blended material that textures an ARCore Augmented Face mesh
 //             (face paint / mask overlay).
 // Used by:    AugmentedFaceNode mesh material — supplied to its `meshMaterialInstance`.
 // Parameters:
 //   texture — sampler2d, the RGBA face-texture sampled across the face-mesh UVs.
 // matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
+//
+// #2224/#2325: `blending: transparent` composites ONE*src + (1-a)*dst, but Filament does NOT
+//             premultiply unlit baseColor for us. A straight RGBA sample from a face texture
+//             with straight (non-premultiplied) alpha composited as `color + (1-a)*bg`. The
+//             fragment now premultiplies → `lerp(bg, color, alpha)`. (No-op when the supplied
+//             texture is already premultiplied: a typical face-paint/mask asset is not.)
 material {
     name : "Face Mesh",
 
@@ -28,5 +34,9 @@ fragment {
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
         material.baseColor = texture(materialParams_texture, getUV0());
+        // #2224/#2325 — premultiply by alpha. With `blending: transparent` Filament composites
+        // ONE * src + (1-a) * dst and does NOT premultiply unlit baseColor, so a straight RGBA
+        // sample composited as `color + (1-a)*bg`. Premultiplying makes it lerp(bg, color, alpha).
+        material.baseColor.rgb *= material.baseColor.a;
     }
 }

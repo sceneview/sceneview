@@ -5,6 +5,12 @@
 // Parameters:
 //   color — float4, base RGBA colour; alpha drives transparency, rendered flat, double-sided.
 // matc profile: B (lean Android — "-a opengl -p mobile", see tools/GenerateFilamat.sh).
+//
+// #2224/#2325: `blending: transparent` composites ONE*src + (1-a)*dst, but Filament does NOT
+//             premultiply unlit baseColor for us. Emitting a straight `color` made the composite
+//             `color + (1-a)*bg` (colour added at FULL strength → wash-out / blob over bright
+//             backgrounds, alpha only gated bleed-through). Textbook #2224 plane-renderer shape.
+//             The fragment now premultiplies `baseColor.rgb *= baseColor.a` → `lerp(bg, color, a)`.
 material {
     "name" : "Transparent Unlit Colored",
 
@@ -25,5 +31,10 @@ fragment {
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
         material.baseColor = materialParams.color;
+        // #2224/#2325 — premultiply by alpha. With `blending: transparent` Filament composites
+        // ONE * src + (1-a) * dst and does NOT premultiply unlit baseColor, so a straight `color`
+        // composited as `color + (1-a)*bg`. Premultiplying makes it `alpha*color + (1-alpha)*bg`
+        // = lerp(bg, color, alpha). a=1 (opaque) is unchanged (color * 1).
+        material.baseColor.rgb *= material.baseColor.a;
     }
 }
