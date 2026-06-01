@@ -150,8 +150,12 @@ private fun SkySection(
         timeOfDay < 9f || timeOfDay >= 17f -> "environments/sunset_2k.hdr"
         else                               -> "environments/outdoor_cloudy_2k.hdr"
     }
+    // `key = envAsset` is load-bearing: the factory closes over `envAsset`, which Compose treats
+    // as a stable key, so without an explicit key the HDR is built once for noon and the skybox
+    // never swaps as the time-of-day slider crosses a bucket boundary (#2353).
     val environment = rememberEnvironment(
         environmentLoader = environmentLoader,
+        key = envAsset,
     ) {
         environmentLoader.createHDREnvironment(envAsset)!!
     }

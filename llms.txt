@@ -2697,6 +2697,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberModelInstance(modelLoader, path)` | `ModelInstance?` | Async model load — null while loading |
 | `rememberEnvironment(environmentLoader, isOpaque)` | `Environment` | IBL + skybox environment |
 | `rememberEnvironment(environmentLoader) { ... }` | `Environment` | Custom environment from lambda |
+| `rememberEnvironment(environmentLoader, key = hdrPath) { ... }` | `Environment` | Pass `key` when the factory depends on a changing value (e.g. an HDR path from a slider) — the lambda is otherwise memoised once and the skybox never swaps |
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light (key) with apply block — shadows ON by default; apply block is reactive (re-runs on recomposition, so Compose-state-driven intensity/direction/color update live) |
 | `rememberFillLightNode(engine) { ... }` | `LightNode` | Soft fill light opposite the main light — lifts shadows so models don't look flat; apply block is reactive (same as `rememberMainLightNode`) |
