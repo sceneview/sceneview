@@ -159,7 +159,30 @@ const liveLine = mismatches.length === 0
 
 log(`Report — ${mismatches.length === 0 ? 'ALL MATCH' : mismatches.length + ' MISMATCH(es)'}: ${liveLine}`)
 
-// --- One agent updates ONLY the store/live bullet in STATE.md NOW. ---
+// --- Evidence-Stamped Claim Gate (#2346): the machine-readable probe record. ---
+// claim-gate.sh reads .claude/data/last-store-probe.json before a `git push` and
+// blocks the push if STATE.md asserts an "all-live / deployed ✅" claim whose
+// evidence is missing/stale/disagrees. We compute the exact fields here (pure JS)
+// and have the report AGENT write the file with a REAL `ts` via `date -u` — the
+// Workflow tool rejects Date.now()/new Date(), so the timestamp is stamped in the
+// shell at write time, not in this JS.
+const verdict = mismatches.length === 0 ? 'ALL_LIVE' : 'MISMATCH'
+const iosLive = (ios && ios.version) ? ios.version : null
+const mavenHttp = maven ? maven.httpCode : null
+const npmLive = (npmRes && npmRes.version) ? npmRes.version : null
+// Pre-render the JSON body with a `__TS__` placeholder the agent replaces with the
+// `date -u` value. Booleans/numbers/null stay valid JSON; strings are quoted.
+const probeBody = `{
+  "expected": ${JSON.stringify(expected)},
+  "iosLive": ${JSON.stringify(iosLive)},
+  "mavenHttp": ${mavenHttp === null ? 'null' : JSON.stringify(mavenHttp)},
+  "npm": ${JSON.stringify(npmLive)},
+  "verdict": ${JSON.stringify(verdict)},
+  "ts": "__TS__"
+}`
+
+// --- One agent updates ONLY the store/live bullet in STATE.md NOW, AND writes
+// the claim-gate evidence file. ---
 // The bullet to touch is the iOS + macOS App Store line under '## NOW'.
 const reportTask = () => agent(
   `You are updating the canonical SceneView STATE.md after a live-store verification run. Touch ONLY the store/live bullet; leave every other line, section, and bullet byte-for-byte unchanged.
@@ -182,7 +205,23 @@ Write the bullet truthfully and concisely (1–3 sentences). Rules for the prose
 - Append, as the last sentence of the same bullet, this exact known-gap note so it is not lost: "${KNOWN_GAP}"
 - Preserve the leading "- " list marker and Markdown bold style used by the surrounding bullets.
 
-After editing, print a 2-line confirmation: (1) the absolute path you edited, (2) the new bullet text verbatim. Do NOT git add / commit / push. Do NOT modify any file other than STATE.md.`,
+THEN write the Evidence-Stamped Claim Gate (#2346) probe record so a future \`git push\` can prove this live-store claim. Run EXACTLY (the \`date -u\` stamps a REAL timestamp — do NOT invent one):
+  ${RESOLVE_MAIN}
+  mkdir -p "$MAIN/.claude/data"
+  TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  cat > "$MAIN/.claude/data/last-store-probe.json" <<JSON
+${probeBody}
+JSON
+  python3 - "$MAIN/.claude/data/last-store-probe.json" "$TS" <<'PY'
+import json,sys
+p=sys.argv[1]; ts=sys.argv[2]
+d=json.load(open(p)); d["ts"]=ts
+json.dump(d,open(p,"w"),indent=2); open(p,"a").write("\\n")
+print("wrote",p,"ts",ts)
+PY
+This file is gitignored runtime evidence (\`.claude/data/\`), never committed. Its \`verdict\` is "${verdict}"; claim-gate.sh blocks an "all-live ✅" STATE.md claim unless verdict=ALL_LIVE and the record is fresh.
+
+After editing, print a 3-line confirmation: (1) the absolute STATE.md path you edited, (2) the new bullet text verbatim, (3) the absolute probe path written + its verdict. Do NOT git add / commit / push. Do NOT modify any file other than STATE.md and .claude/data/last-store-probe.json.`,
   { label: 'report:update-state', phase: 'Report' })
 
 const reportConfirm = await reportTask()
@@ -195,5 +234,8 @@ return {
   mismatches,
   knownGap: KNOWN_GAP,
   stateUpdate: reportConfirm,
-  verdict: mismatches.length === 0 ? 'ALL_LIVE' : 'MISMATCH',
+  verdict,
+  // The claim-gate (#2346) evidence the report agent stamped on disk.
+  probeFile: '.claude/data/last-store-probe.json',
+  probe: { expected, iosLive, mavenHttp, npm: npmLive, verdict },
 }
