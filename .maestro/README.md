@@ -77,6 +77,44 @@ scheme `SceneViewDemo`), runs the Maestro flow, then sweeps the simulator log
 for crash markers. The `xcodebuild` step is heavy — on a disk-constrained host
 omit `--install` and reuse an installed build.
 
+### Keyed QA — exercising the Sketchfab / Explore path ([#2356](https://github.com/sceneview/sceneview/issues/2356))
+
+On a fresh checkout the iOS demo builds **keyless**: `SketchfabConfig.apiKey`
+is `nil`, the Explore tab's Sketchfab carousels + search are disabled, and the
+streamed-USDZ demos (`MultiModelDemo`, `OrbitalARDemo`, `ModelViewerDemo`) fall
+back to bundled assets. So a default `--install` QA run never exercises the
+live Sketchfab → USDZ-download → RealityKit `Entity(contentsOf:)` path — the
+one that caused the App Review 2.1(a) rejection in
+[#2252](https://github.com/sceneview/sceneview/issues/2252) (RealityKit cannot
+load GLB, so the iOS service must request **USDZ**).
+
+To run a **keyed** build that exercises that path, supply a Sketchfab API token
+one of three ways (this mirrors how Android #2343 keys `assembleDebug`):
+
+```bash
+# 1. Local-dev xcconfig (persists across Xcode + xcodebuild runs):
+cp samples/ios-demo/SceneViewDemo/Secrets.xcconfig.template \
+   samples/ios-demo/SceneViewDemo/Secrets.xcconfig
+#   …then paste your token into Secrets.xcconfig (gitignored — never committed).
+
+# 2. The harness resolves the key automatically from the env or the
+#    repo-root local.properties `sketchfab.api.key` and bakes it into the build:
+SKETCHFAB_API_KEY=<token> bash .claude/scripts/ios-device-qa.sh --install
+#    (or just set sketchfab.api.key=<token> in local.properties, then run --install)
+
+# 3. Explicit flag (overrides 1 + 2):
+bash .claude/scripts/ios-device-qa.sh --install --sketchfab-key <token>
+```
+
+`ios-device-qa.sh` sources `.claude/scripts/lib/qa-keys.sh` (the same resolver
+the Android leg uses), passes the key to `xcodebuild` as a `SKETCHFAB_API_KEY`
+user-defined build setting (which `Info.plist`'s `SketchfabAPIKey =
+$(SKETCHFAB_API_KEY)` substitutes), and reports **presence only** — the token
+value is never printed or committed. A keyless run prints a loud banner and is
+treated as NOT having tested the Sketchfab path (advisory, mirroring Android's
+`sketchfab` skipped sub-leg). `Config.xcconfig` `#include?`s `Secrets.xcconfig`
+optionally, so a checkout without the file builds keyless and silently.
+
 ### iOS coverage and known gaps
 
 - **Deep-link subset, not the full catalog.** iOS flows reach demos via the

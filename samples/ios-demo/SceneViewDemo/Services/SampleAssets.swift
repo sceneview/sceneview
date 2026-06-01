@@ -191,7 +191,13 @@ enum SampleAssets {
             displayName: "Stylized Tree",
             author: "yonimantz09",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/tree_scene.usdz",
+            // Keyless fallback for the MultiModelDemo *bench* slot. The streamed
+            // model is a tree, but the four park slots map to distinct diorama
+            // roles (tree / bench / dog / bird) — so the fallbacks must be
+            // DISTINCT too, or keyless mode stacks four identical 14 MB
+            // tree_scene islands instead of a scene (#2355). A small furniture-
+            // like prop (1.8 MB retro_piano) reads as the foreground bench.
+            fallbackBundledPath: "Models/retro_piano.usdz",
             scaleToUnits: 1.80,
             hasBakedAnimation: false,
             category: "park",
@@ -202,7 +208,10 @@ enum SampleAssets {
             displayName: "Mighty Oak Trees",
             author: "Jagobo",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/tree_scene.usdz",
+            // Keyless fallback for the MultiModelDemo *dog* (animated occupant)
+            // slot — a small animated creature (3.1 MB animated_butterfly).
+            // Distinct silhouette from the tree backdrop (#2355).
+            fallbackBundledPath: "Models/animated_butterfly.usdz",
             scaleToUnits: 2.60,
             hasBakedAnimation: false,
             category: "park",
@@ -213,7 +222,13 @@ enum SampleAssets {
             displayName: "Skovfogedegen Oak",
             author: "rigsters",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/tree_scene.usdz",
+            // Keyless fallback for the MultiModelDemo *bird* slot — an actual
+            // bird (phoenix_bird) AND the lightest bundled model at 1.1 MB, so
+            // it lands FIRST and dismisses the "Loading park scene…" scrim early
+            // (#1056 progressive reveal — previously defeated because every slot
+            // loaded the same heavy 14 MB tree_scene). Distinct silhouette
+            // (#2355).
+            fallbackBundledPath: "Models/phoenix_bird.usdz",
             scaleToUnits: 2.30,
             hasBakedAnimation: false,
             category: "park",
