@@ -1,10 +1,17 @@
 // image_texture.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
 //
-// Purpose:    Unlit transparent material that draws a 2D image straight from a texture.
+// Purpose:    Unlit alpha-blended material that draws a 2D image straight from a texture.
 // Used by:    MaterialLoader.createImageInstance / ImageNode.
 // Parameters:
 //   texture  — sampler2d, the RGBA image to display; alpha is preserved (transparent blending).
 // matc profile: A (heavy Android — "-p all -a all", see tools/GenerateFilamat.sh).
+//
+// #2224/#2325: `blending: transparent` composites ONE*src + (1-a)*dst, but Filament does NOT
+//             premultiply unlit baseColor for us. Emitting a straight RGBA sample made any
+//             partially-transparent texel (soft edges, anti-aliased fringes) composite as
+//             `color + (1-a)*bg` — the colour added at FULL strength → wash-out / blob over
+//             bright backgrounds. The fragment now premultiplies `baseColor.rgb *= baseColor.a`
+//             so the composite is the intended `lerp(bg, color, alpha)`.
 material {
     "name" : "Transparent Textured",
 
@@ -26,5 +33,10 @@ fragment {
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
         material.baseColor = texture(materialParams_texture, getUV0());
+        // #2224/#2325 — premultiply by alpha. With `blending: transparent` Filament composites
+        // ONE * src + (1-a) * dst and does NOT premultiply unlit baseColor, so a straight RGBA
+        // sample composited as `color + (1-a)*bg`. Premultiplying makes it `alpha*color +
+        // (1-alpha)*bg` = lerp(bg, color, alpha). a=1 is unchanged (color * 1).
+        material.baseColor.rgb *= material.baseColor.a;
     }
 }

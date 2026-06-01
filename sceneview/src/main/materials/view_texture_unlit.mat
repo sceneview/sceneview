@@ -1,12 +1,20 @@
 // view_texture_unlit.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
 //
-// Purpose:    Unlit transparent material that draws a rendered Android View as a 3D quad,
+// Purpose:    Unlit alpha-blended material that draws a rendered Android View as a 3D quad,
 //             ignoring scene lighting (flat passthrough).
 // Used by:    MaterialLoader.createViewInstance (unlit = true) / ViewNode.
 // Parameters:
 //   uvOffset — float2, per-axis UV mirror offset (1,0) flips X for front-camera use.
 //   texture  — samplerExternal, the View's hardware-rendered surface texture.
 // matc profile: A (heavy Android — "-p all -a all", see tools/GenerateFilamat.sh).
+//
+// #2224/#2325: `blending: transparent` composites ONE*src + (1-a)*dst, but Filament does NOT
+//             premultiply unlit baseColor for us. A rendered Android View routinely has
+//             transparent / anti-aliased regions; emitting that straight RGBA made those fringes
+//             composite as `color + (1-a)*bg` (wash-out over bright backgrounds). The fragment
+//             now premultiplies `baseColor.rgb *= baseColor.a` AFTER the inverseTonemapSRGB step
+//             → `lerp(bg, color, alpha)`. (The lit sibling view_texture_lit.mat is unaffected:
+//             the lit shading path premultiplies the shaded output itself.)
 material {
     name : view,
     shadingModel : unlit,
@@ -58,6 +66,12 @@ fragment {
         // if (materialParams.isViewReady) {
             material.baseColor = texture(materialParams_texture, uv);
             material.baseColor.rgb = inverseTonemapSRGB(material.baseColor.rgb);
+            // #2224/#2325 — premultiply by alpha (AFTER the tonemap, so the inverse-tonemap
+            // operates on the straight colour and the premultiply is the last step). With
+            // `blending: transparent` Filament composites ONE * src + (1-a) * dst and does NOT
+            // premultiply unlit baseColor, so straight RGBA composited as `color + (1-a)*bg`.
+            // Premultiplying makes it lerp(bg, color, alpha). a=1 (opaque) is unchanged.
+            material.baseColor.rgb *= material.baseColor.a;
         // } else {
         //     material.baseColor = vec4(0.0);
         // }
