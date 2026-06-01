@@ -537,7 +537,7 @@
     "@context": "https://schema.org",
     "@type": "TechArticle",
     "@id": "https://sceneview.github.io/cheatsheet/#techarticle",
-    "headline": "SceneView API Cheatsheet — Complete Reference for 22+ Node Types",
+    "headline": "SceneView API Cheatsheet — Complete Reference for 42+ Node Types",
     "description": "Complete API reference for SceneView SDK covering all node types, composables, resource loading, camera controls, gestures, and AR features.",
     "url": "https://sceneview.github.io/cheatsheet/",
     "author": {

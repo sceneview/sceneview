@@ -142,14 +142,17 @@ else
     # the count drifted silently across them.
     for f in README.md llms.txt website-static/index.html docs/docs/showcase.md mcp/README.md \
              docs/docs/cheatsheet.md docs/docs/manifest.json docs/docs/platforms.md \
-             docs/docs/try.md .cursorrules mcp/src/guides.ts; do
+             docs/docs/try.md .cursorrules mcp/src/guides.ts \
+             docs/docs/structured-data.json; do
         trace "node count claim in $f"
         if [[ -f "$f" ]]; then
             # Only check claims with "+" (marketing total), skip platform-specific
             # counts (e.g. the iOS "19 node types" subset, which has no "+").
             # Check EVERY claim, not just the first: a file may state the count in
             # several places (try.md, index.html) — a partial fix must still FAIL.
-            CLAIMS=$(grep -oE '[0-9]+\+ node type' "$f" 2>/dev/null \
+            # Case-insensitive (-i) so "42+ Node Types" (structured-data headline,
+            # index.html feature card) is caught too, not just lowercase prose.
+            CLAIMS=$(grep -oiE '[0-9]+\+ node type' "$f" 2>/dev/null \
                 | grep -oE '[0-9]+' 2>/dev/null | sort -u || true)
             if [[ -n "$CLAIMS" ]]; then
                 BAD=""
