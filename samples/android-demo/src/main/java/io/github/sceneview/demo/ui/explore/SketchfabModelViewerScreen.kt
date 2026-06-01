@@ -72,6 +72,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,6 +80,9 @@ import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.createEnvironment
+import io.github.sceneview.fitDistanceForBounds
+import io.github.sceneview.toAabb
+import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.sketchfab.SketchfabModel
 import io.github.sceneview.demo.sketchfab.SketchfabService
@@ -618,24 +622,47 @@ private fun RenderContent(
         onDispose { environmentLoader.destroyEnvironment(environment) }
     }
 
-    // Auto-fit camera radius to the model's bounding box (#2233). Computed once per
-    // loaded instance — large models get a larger orbit, tiny ones a tighter orbit, so
-    // every model fills the viewport similarly instead of being framed by a hard-coded
-    // 2.2 m radius (which left ~30 %-fill models like the Porsche tiny in the preview).
-    val autoFitRadius = androidx.compose.runtime.remember(instance) {
-        instance?.let { computeAutoFitRadius(it) } ?: 2.2f
+    // Live viewport aspect (width / height) of the 440 dp render Box, measured via
+    // `onSizeChanged` below. Seeded to 0f ("unknown"); `computeAutoFitFraming` falls back
+    // to a portrait-phone aspect until the first measured size arrives, then re-frames.
+    var viewportAspect by remember(instance) { mutableStateOf(0f) }
+
+    // Auto-fit camera framing (#2348). The previous `computeAutoFitRadius` scaled the
+    // orbit to the model's *raw* glTF bounding box while the model was rendered with
+    // `scaleToUnits = 1f` (normalised to a unit cube) — so the orbit radius and the
+    // rendered size were computed in two different scales. A car authored in large glTF
+    // units got a huge radius (tiny in a black void); a small-unit character got a tiny
+    // radius (over-zoomed, legs only). This now mirrors the correctly-framed
+    // `ModelViewerDemo`: render the model at its TRUE glTF size (no `scaleToUnits`),
+    // recenter it on its bounding-box centre (glTF pivots are frequently off-origin —
+    // the prime cause of "cut off at the legs"), and derive the orbit radius from the
+    // library helper `fitDistanceForBounds` (bounding-sphere fit on BOTH axes via the
+    // real viewport aspect + the stock 28 mm lens FOV), so tall and wide models both
+    // frame to ~85 % of the viewport.
+    val framing = remember(instance, viewportAspect) {
+        instance?.let { computeAutoFitFraming(it, viewportAspect) }
     }
 
-    // 20 s automatic orbit around the model. `trigger = instance != null` makes
-    // the orbit start the moment the GLB finishes loading. The default
+    // Orbit radius (fit distance) for the current model — falls back to 2.2 m while the
+    // bounds are not yet measurable so the camera is never at radius 0.
+    val autoFitRadius = framing?.radius ?: 2.2f
+
+    // 20 s automatic orbit around the (recentred) model. `trigger = instance != null`
+    // makes the orbit start the moment the GLB finishes loading. The default
     // `resumeAfterMillis = 3_000L` means the auto-orbit resumes 3 s after the user
     // releases a drag / pinch (#2225).
     val cameraManipulator = rememberHeroOrbitCameraManipulator(
         trigger = instance != null,
         radius = autoFitRadius,
-        // Eye height proportional to the framing distance so the camera looks slightly
-        // down on the model at the same angle regardless of size.
-        yHeight = autoFitRadius * 0.18f,
+        // Eye sits just above the look target for a gentle hero down-tilt (#2348).
+        yHeight = (framing?.lookAtY ?: 0f) + autoFitRadius * 0.06f,
+        // Aim the orbit pivot a little ABOVE the model's centre, not at the world origin
+        // (#2348). The model is recentred so its bbox centre is at origin, but the 440 dp
+        // render surface is the TOP portion of a taller camera viewport, so aiming dead at
+        // origin left the model floating in the upper half. Raising the look-point to
+        // `lookAtY` (a fraction of the model's half-height) drops the model to the visual
+        // centre of the surface. Measured on Scifi Girl + Porsche.
+        target = Position(0f, framing?.lookAtY ?: 0f, 0f),
         durationMillis = 20_000,
     )
 
@@ -648,6 +675,12 @@ private fun RenderContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(440.dp)
+                // Feed the live render-surface aspect into the auto-fit framing so a
+                // tall model gets pushed back enough to clear the top/bottom and a wide
+                // model fills the width — both on THIS viewport, not a guessed one (#2348).
+                .onSizeChanged { size ->
+                    if (size.height > 0) viewportAspect = size.width.toFloat() / size.height
+                }
                 .then(heroModifier),
         ) {
             // Defer SceneView mount until the GLB has finished loading
@@ -679,13 +712,17 @@ private fun RenderContent(
                     environment = environment,
                     cameraManipulator = cameraManipulator,
                 ) {
-                    // Ground Y in world space: `scaleToUnits = 1f` below scales the
-                    // model so its max dimension fills 1 unit (scale = 1/maxDim).
-                    // The bottom of the model after scaling is −halfExtent.y/maxDim.
-                    val groundY = remember(instance) {
-                        val he = instance.model.boundingBox.halfExtent
-                        val maxDim = maxOf(he[0], he[1], he[2]) * 2f
-                        if (maxDim > 0f) -(he[1] / maxDim) else -0.5f
+                    // The model renders at its TRUE glTF size and is recentred so its
+                    // bounding-box centre lands on the world origin the hero orbit pivots
+                    // around (#2348). After recentring, the model's bottom sits at
+                    // −halfExtent.y in true world units, and the shadow plane is sized to
+                    // the model's footprint so the shadow reads at any model scale.
+                    val he = remember(instance) { instance.model.boundingBox.halfExtent }
+                    val groundY = remember(he) { -he[1] }
+                    // Plane spanning ~3× the model's horizontal footprint, clamped so a
+                    // near-degenerate bbox still gets a sane catcher.
+                    val planeSize = remember(he) {
+                        (maxOf(he[0], he[2]) * 6f).coerceAtLeast(1f)
                     }
 
                     // Directional light angled to cast a soft shadow under the model.
@@ -703,12 +740,19 @@ private fun RenderContent(
                     // the plane itself is transparent, but the shadow cast by the
                     // model onto it is rendered (#2235).
                     PlaneNode(
-                        size = Size(x = 6f, y = 6f),
+                        size = Size(x = planeSize, y = planeSize),
                         materialInstance = shadowMaterialInstance,
                         position = Position(x = 0f, y = groundY, z = 0f),
                     )
 
-                    ModelNode(modelInstance = instance, scaleToUnits = 1f)
+                    // No `scaleToUnits` — render at true glTF size; the orbit radius is
+                    // auto-fit to that size instead (mirrors ModelViewerDemo). Recenter
+                    // on the bbox centre so off-origin glTF pivots don't push the model
+                    // off the top of the viewport.
+                    ModelNode(
+                        modelInstance = instance,
+                        position = framing?.let { -it.center } ?: Position(0f, 0f, 0f),
+                    )
                 }
                 // Cinematic vignette — costs ~0 GPU and lifts the model in
                 // the centre without obscuring it. Only drawn once the
@@ -787,19 +831,50 @@ private fun ErrorContent(message: String, onRetry: () -> Unit) {
 // ── Camera framing ────────────────────────────────────────────────────────
 
 /**
- * Computes an orbit radius that frames [instance] so its largest axis-aligned extent
- * fills roughly 40 % of the viewport height — matching the framing of Sketchfab's web
- * viewer and `<model-viewer>`.
- *
- * The factor `2.5` ≈ `1 / tan(fov / 2)` for the SceneView default ~45° vertical FOV
- * with a ~40 % fill target. The result is clamped to `>= 0.5 m` so a near-degenerate
- * (single-vertex) bounding box still produces a sane orbit.
- *
- * Bumping the pinch-zoom *range* (min/max radius) requires exposing parameters on the
- * SDK's `DefaultCameraManipulator` — out of scope for this demo-only fix (#2233).
+ * Auto-fit framing for a loaded model (#2348): the orbit [radius] (fit distance), the
+ * bounding-box [center] to recenter the model onto the orbit pivot, and the camera
+ * [lookAtY] (world-Y the orbit pivot aims at, above the recentred model's origin) that
+ * vertically centres the model in the render surface.
  */
-private fun computeAutoFitRadius(instance: ModelInstance): Float {
-    val half = instance.model.boundingBox.halfExtent
-    val maxExtent = maxOf(half[0], half[1], half[2])
-    return (maxExtent * 2.5f).coerceAtLeast(0.5f)
+private data class ModelFraming(val radius: Float, val center: Position, val lookAtY: Float)
+
+/**
+ * Computes the auto-fit framing for [instance] using the library helper
+ * [fitDistanceForBounds] — the SAME path `ModelViewerDemo` (which frames correctly) uses,
+ * so the Sketchfab viewer and the bundled Models demo frame identically (#2348).
+ *
+ * Unlike the old `computeAutoFitRadius`, this:
+ *  - fits the model's **bounding sphere** on **both** axes (so a tall model is pushed back
+ *    far enough to clear the top and bottom, and a wide model fills the width), via the
+ *    real viewport [aspect] (width / height) and the stock 28 mm lens FOV;
+ *  - returns the bounding-box **centre** so the caller can translate the ModelNode onto the
+ *    orbit pivot — off-origin glTF pivots were a prime cause of "cut off at the legs".
+ *
+ * @param aspect Live render-surface aspect (width / height). A non-positive value (the
+ *   bounds-not-yet-measured frame) falls back to a portrait-phone `0.5`, matching
+ *   `ModelViewerDemo`; the camera re-frames once the real aspect is measured.
+ */
+private fun computeAutoFitFraming(instance: ModelInstance, aspect: Float): ModelFraming? {
+    val bounds = runCatching { instance.model.boundingBox.toAabb() }.getOrNull()
+    if (bounds == null || bounds.isEmpty) return null
+    val safeAspect = if (aspect.isFinite() && aspect > 0f) aspect.toDouble() else 0.5
+    val radius = fitDistanceForBounds(
+        bounds = bounds,
+        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+        aspect = safeAspect,
+        // Slightly tighter than the SDK's 0.15 default — this hero viewer auto-orbits
+        // 360°, so the bounding-SPHERE fit already guarantees the model never clips at any
+        // yaw; 0.08 fills a bit more of the viewport while keeping that safety margin.
+        padding = 0.08f,
+    ).coerceIn(0.2f, 50f)
+
+    // Vertical look-target (#2348). The model is recentred so its bbox centre is at the
+    // world origin, but the 440 dp render surface is only the TOP slice of a taller camera
+    // viewport — so aiming the orbit at origin floats the model in the upper half. Raising
+    // the look-point to ~55 % of the model's half-height drops the model to the visual centre
+    // of the surface (measured on Scifi Girl + Porsche).
+    val he = instance.model.boundingBox.halfExtent
+    val lookAtY = he[1] * 0.55f
+
+    return ModelFraming(radius = radius, center = bounds.center, lookAtY = lookAtY)
 }

@@ -41,6 +41,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
+import io.github.sceneview.demo.demos.internal.friendlyArSessionError
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
@@ -246,7 +247,8 @@ fun ARRooftopAnchorDemo(onBack: () -> Unit) {
                     !hasArcoreApiKey ->
                         "ARCore Cloud API key missing — set ARCORE_API_KEY in local.properties"
                     geospatialUnavailable != null -> geospatialUnavailable!!
-                    sessionError != null -> "Session error: $sessionError"
+                    // Friendly, complete sentence from friendlyArSessionError (#2349).
+                    sessionError != null -> sessionError!!
                     !isTracking -> "Waiting for camera tracking…"
                     !earthTracking -> "Waiting for VPS lock (go outside, look around)…"
                     cameraLat != null && cameraLng != null -> {
@@ -340,7 +342,9 @@ fun ARRooftopAnchorDemo(onBack: () -> Unit) {
                 },
                 onSessionFailed = { exception ->
                     Log.e(TAG, "AR session failed", exception)
-                    sessionError = exception.message ?: exception.javaClass.simpleName
+                    // Map to friendly copy (#2349) — never surface the raw
+                    // "FatalException" class name to the user.
+                    sessionError = friendlyArSessionError(exception)
                 },
                 onSessionUpdated = { session: Session, frame: Frame ->
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
@@ -373,7 +377,8 @@ fun ARRooftopAnchorDemo(onBack: () -> Unit) {
             }
 
             val statusText = when {
-                sessionError != null -> "AR session error: $sessionError"
+                // friendlyArSessionError already yields a complete, honest sentence (#2349).
+                sessionError != null -> sessionError!!
                 !hasArcoreApiKey ->
                     "ARCore Cloud API key not configured — see samples/android-demo/" +
                         "ARCORE_CLOUD_SETUP.md"
