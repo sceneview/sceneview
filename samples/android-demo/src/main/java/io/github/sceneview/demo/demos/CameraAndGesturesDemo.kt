@@ -213,52 +213,60 @@ private fun CameraModesSection(
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            androidx.compose.runtime.key(selectedMode, resetKey, cameraDistance) {
-                val manipulator = remember(selectedMode, resetKey, cameraDistance) {
-                    Manipulator.Builder()
-                        .orbitHomePosition(homePosition)
-                        .targetPosition(target)
-                        .flightStartPosition(homePosition.x, homePosition.y, homePosition.z)
-                        .flightStartOrientation(0.0f, 0.0f)
-                        .flightMaxMoveSpeed(2.0f)
-                        .orbitSpeed(0.005f, 0.005f)
-                        .zoomSpeed(0.05f)
-                        .build(selectedMode.second)
-                }
-                val cameraManipulator = rememberCameraManipulator(
-                    orbitHomePosition = homePosition,
-                    targetPosition = target,
-                    creator = {
-                        CameraGestureDetector.DefaultCameraManipulator(manipulator)
-                    }
-                )
-                SceneView(
-                    modifier = Modifier.fillMaxSize(),
-                    onFrame = firstFrame.onFrame,
-                    engine = engine,
-                    modelLoader = modelLoader,
-                    environmentLoader = environmentLoader,
-                    environment = rememberModelDemoEnvironment(environmentLoader),
-                    cameraNode = cameraNode,
-                    cameraManipulator = cameraManipulator
-                ) {
-                    modelInstance?.let { instance ->
-                        ModelNode(
-                            modelInstance = instance,
-                            scaleToUnits = 0.5f,
-                            centerOrigin = Position(0.0f, 0.0f, 0.0f)
-                        )
-                    }
-                }
-                if (isFreeFlight) {
-                    FreeFlightMovementPad(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
-                        onKeyDown = { manipulator.keyDown(it) },
-                        onKeyUp = { manipulator.keyUp(it) }
+            // One Filament manipulator per (mode, reset, distance). Building it with the
+            // FREE_FLIGHT start state pointed *at* the model (yaw faces the camera back
+            // toward `target` from `homePosition`) is what keeps Free Flight from opening
+            // on a black void (#2357).
+            val manipulator = remember(selectedMode, resetKey, cameraDistance) {
+                Manipulator.Builder()
+                    .orbitHomePosition(homePosition)
+                    .targetPosition(target)
+                    .flightStartPosition(homePosition.x, homePosition.y, homePosition.z)
+                    .flightStartOrientation(
+                        flightStartPitch(homePosition, target),
+                        flightStartYaw(homePosition, target),
+                    )
+                    .flightMaxMoveSpeed(2.0f)
+                    .orbitSpeed(0.005f, 0.005f)
+                    .zoomSpeed(0.05f)
+                    .build(selectedMode.second)
+            }
+            // Swap the live manipulator on the SAME SceneView instead of re-keying the
+            // whole subtree. Re-keying tore down + rebuilt the SceneView every time the
+            // mode changed, and the rebuilt ModelNode reused the already-attached shared
+            // `modelInstance`, leaving the new scene with nothing to render — a black
+            // void that then leaked back into Orbit (#2357). SceneView reacts to a new
+            // `cameraManipulator` via its internal SideEffect, so a stable subtree + a
+            // remembered-per-mode manipulator is all that's needed.
+            val cameraManipulator = remember(manipulator) {
+                CameraGestureDetector.DefaultCameraManipulator(manipulator)
+            }
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                onFrame = firstFrame.onFrame,
+                engine = engine,
+                modelLoader = modelLoader,
+                environmentLoader = environmentLoader,
+                environment = rememberModelDemoEnvironment(environmentLoader),
+                cameraNode = cameraNode,
+                cameraManipulator = cameraManipulator
+            ) {
+                modelInstance?.let { instance ->
+                    ModelNode(
+                        modelInstance = instance,
+                        scaleToUnits = 0.5f,
+                        centerOrigin = Position(0.0f, 0.0f, 0.0f)
                     )
                 }
+            }
+            if (isFreeFlight) {
+                FreeFlightMovementPad(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
+                    onKeyDown = { manipulator.keyDown(it) },
+                    onKeyUp = { manipulator.keyUp(it) }
+                )
             }
             LoadingScrim(loading = modelInstance == null, label = "Loading helmet…")
 
@@ -267,6 +275,31 @@ private fun CameraModesSection(
             )
         }
     }
+}
+
+/**
+ * Pitch (radians) that aims a FREE_FLIGHT camera placed at [eye] back toward
+ * [target], matching Filament's `FreeFlightManipulator` convention where the
+ * look direction is `eulerZYX(0, yaw, pitch) · (0, 0, -1)` — i.e.
+ * `dir = (-sin(yaw)·cos(pitch), sin(pitch), -cos(yaw)·cos(pitch))`.
+ *
+ * Deriving the orientation from `target - eye` (instead of hard-coding `(0, 0)`)
+ * is what keeps Free Flight from opening on a black void regardless of where the
+ * camera home sits relative to the model (#2357).
+ */
+private fun flightStartPitch(eye: Position, target: Position): Float {
+    val dir = target - eye
+    val len = kotlin.math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z)
+    if (len < 1e-6f) return 0.0f
+    return kotlin.math.asin((dir.y / len).coerceIn(-1.0f, 1.0f))
+}
+
+/** Yaw (radians) companion to [flightStartPitch] — see its docs for the convention. */
+private fun flightStartYaw(eye: Position, target: Position): Float {
+    val dir = target - eye
+    val len = kotlin.math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z)
+    if (len < 1e-6f) return 0.0f
+    return kotlin.math.atan2(-dir.x / len, -dir.z / len)
 }
 
 @Composable
