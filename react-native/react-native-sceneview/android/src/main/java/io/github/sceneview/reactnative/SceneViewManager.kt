@@ -3,6 +3,7 @@ package io.github.sceneview.reactnative
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -110,9 +111,19 @@ class SceneViewManager : SimpleViewManager<FrameLayout>() {
                 }
 
                 val environment = state.environmentPath.value?.let { path ->
-                    rememberEnvironment(environmentLoader) {
-                        environmentLoader.createHDREnvironment(path)
-                            ?: io.github.sceneview.createEnvironment(environmentLoader)
+                    // Rebuild the Environment when `path` switches between two non-null HDRs, else the
+                    // skybox/IBL freezes on the first one (#2361, same class as #2353): the factory
+                    // lambda alone is a stable remember key. Uses Compose key {} rather than
+                    // rememberEnvironment's own key= param because this bridge compiles against the
+                    // published Maven artifact (sceneview:4.7.0) that predates key=. key {} replaces
+                    // the group on a new path, disposing the old Environment via its DisposableEffect.
+                    // TODO(#2361): migrate to rememberEnvironment(..., key = path) once this bridge
+                    // consumes a SceneView release that includes the public key= param.
+                    key(path) {
+                        rememberEnvironment(environmentLoader) {
+                            environmentLoader.createHDREnvironment(path)
+                                ?: io.github.sceneview.createEnvironment(environmentLoader)
+                        }
                     }
                 }
 
