@@ -585,6 +585,18 @@ private struct SceneViewRepresentation: View {
         var mainSlot: LightSlot? = nil
         var fillSlot: LightSlot? = nil
         var skyboxResource: EnvironmentResource? = nil
+        /// Last camera inputs `applyCamera()` actually applied to the entities,
+        /// so a re-entry with an unchanged camera skips the per-mode entity
+        /// writes (root orientation/scale/position + `perspCamera.look()` /
+        /// position / orientation) and the trig that feeds them. `applyCamera()`
+        /// runs from the `RealityView.update:` closure on *every* SwiftUI body
+        /// re-eval (light-slot change, framing tick, skybox load, parent
+        /// re-render) and from the ~60 Hz auto-rotate task — most of which leave
+        /// the camera state untouched. The FOV write already self-guarded with a
+        /// `!=` check; this extends the same diff-write discipline to the rest of
+        /// the block. `nil` until the first apply so the first frame always
+        /// writes. Closes #2331 (audit I27).
+        var cameraKey: CameraApplyKey? = nil
         /// The currently-attached main-slot light entity, cached by reference
         /// for direct removal in `refreshLightSlot`. `nil` when the main slot
         /// is `.disabled`. Closes #2278.
@@ -947,6 +959,15 @@ private struct SceneViewRepresentation: View {
         entities.perspCamera.look(at: .zero, from: [0, 0.3, 2], relativeTo: nil)
         realityContent.add(entities.perspCamera)
         #endif
+
+        // The perspective camera was just re-seeded to its setup default, so
+        // invalidate `applyCamera()`'s diff key — the next `update:` pass must
+        // overwrite these defaults with the real orbit transform rather than
+        // skipping on a stale key (#2331). Cheap insurance: today `make:` and
+        // `appliedCache` share the view's identity lifetime so the key is
+        // already `nil` here, but this keeps the invariant explicit if `make:`
+        // is ever re-invoked.
+        appliedCache.cameraKey = nil
 
         // Root entity holds all user content
         realityContent.add(entities.root)
@@ -1345,6 +1366,46 @@ private struct SceneViewRepresentation: View {
     /// remains free to mutate `camera.fov` via pinch.
     private static let baselineFov: Float = 60
 
+    /// The exact set of camera inputs that determine the entity transforms
+    /// `applyCamera()` writes for a given mode. Two equal keys produce
+    /// byte-identical entity writes, so when the cached key matches the current
+    /// one `applyCamera()` can skip the per-mode block entirely (the root
+    /// orientation/scale/position writes, the `cameraPosition()` /
+    /// `lookOrientation()` / `sceneRotation()` trig, and the
+    /// `look()` / `fieldOfViewInDegrees` writes). Closes #2331 (audit I27).
+    ///
+    /// Equatable so the diff-guard is a single struct comparison. `firstPersonEye`
+    /// is included because the firstPerson eye is captured once on entry and
+    /// then the camera stands still — without it the cache would never detect
+    /// the initial-firstPerson eye capture. `fov` is included so a firstPerson
+    /// pinch (which mutates `fov` but not the orbit angles) still re-applies.
+    /// `minRadius` is included because the visionOS branch's zoom scale reads
+    /// `max(orbitRadius, minRadius)`; the auto-framing pass mutates `minRadius`
+    /// (`refreshContentCentering()`), and keying on it keeps the cache correct
+    /// without relying on the `fitRadius` clamp invariant that today happens to
+    /// also move `orbitRadius` on the same frame.
+    private struct CameraApplyKey: Equatable {
+        let mode: CameraControlMode
+        let target: SIMD3<Float>
+        let azimuth: Float
+        let elevation: Float
+        let orbitRadius: Float
+        let minRadius: Float
+        let fov: Float
+        let firstPersonEye: SIMD3<Float>?
+
+        init(_ c: CameraControls) {
+            mode = c.mode
+            target = c.target
+            azimuth = c.azimuth
+            elevation = c.elevation
+            orbitRadius = c.orbitRadius
+            minRadius = c.minRadius
+            fov = c.fov
+            firstPersonEye = c.firstPersonEye
+        }
+    }
+
     @MainActor
     private func applyCamera() {
         // Native modes (none/tilt/dolly/gimbal) delegate to Apple's
@@ -1390,6 +1451,30 @@ private struct SceneViewRepresentation: View {
                 camera.recenterTarget(contentWorldCenter)
             }
         }
+
+        // Eye is normally captured by `enterFirstPerson()` on the orbit→
+        // firstPerson switch above. When firstPerson is the INITIAL mode no
+        // such switch fires, so capture it once here — BEFORE the diff key is
+        // computed — otherwise dragging would re-derive a moving
+        // `cameraPosition()` each frame (the old orbit bug), and the key would
+        // flip from `eye == nil` to `eye == <captured>` for one wasted frame.
+        if camera.mode == .firstPerson && camera.firstPersonEye == nil {
+            camera.enterFirstPerson()
+        }
+
+        // Diff-guard: `applyCamera()` runs from `RealityView.update:` on every
+        // SwiftUI body re-eval (light-slot change, framing tick, skybox load,
+        // parent re-render) and from the ~60 Hz auto-rotate task. Most of those
+        // leave the camera state untouched. Two equal `CameraApplyKey`s produce
+        // byte-identical entity writes, so when the key is unchanged skip the
+        // per-mode block entirely — the root transform writes, the
+        // `cameraPosition()` / `lookOrientation()` / `sceneRotation()` trig, and
+        // the `look()` / `fieldOfViewInDegrees` writes. The FOV write already
+        // self-guarded with a `!=` check; this extends the same diff-write
+        // discipline to the rest of the block (audit I27, #2331).
+        let cameraKey = CameraApplyKey(camera)
+        if appliedCache.cameraKey == cameraKey { return }
+        appliedCache.cameraKey = cameraKey
 
         // Per-mode application of orientation, zoom, and translation.
         // Mirrors Android's `CameraGestureDetector` modes
@@ -1458,14 +1543,12 @@ private struct SceneViewRepresentation: View {
             entities.root.scale = SIMD3<Float>(repeating: 1)
             entities.root.position = .zero
             #if os(iOS) || os(macOS)
-            // Eye is normally set by `enterFirstPerson()` on the orbit→
-            // firstPerson switch. When firstPerson is the INITIAL mode no
-            // such switch ever fires, so capture it once here from the
-            // current orbit position — otherwise dragging would re-derive
-            // a moving `cameraPosition()` each frame (the old orbit bug).
-            if camera.firstPersonEye == nil {
-                camera.enterFirstPerson()
-            }
+            // Eye is captured by `enterFirstPerson()` either on the orbit→
+            // firstPerson switch above or — when firstPerson is the INITIAL
+            // mode — by the initial-eye capture before the diff key was
+            // computed. The `?? cameraPosition()` is a defensive fallback only;
+            // it should never be hit (otherwise dragging would re-derive a
+            // moving `cameraPosition()` each frame — the old orbit bug).
             let eye = camera.firstPersonEye ?? camera.cameraPosition()
             entities.perspCamera.position = eye
             // Rotate the camera in place — `lookOrientation()` reproduces
