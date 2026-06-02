@@ -75,7 +75,7 @@ mlkitObjectDetection = "17.0.2"
 # on the release branch only and was never merged back to main — the
 # experimentalProperties "16k" anchor in build.gradle is a belt-and-suspenders
 # fallback for any remaining transitive 4 KB .so not covered by this bump.
-mediapipeTasksVision = "0.10.26"
+mediapipeTasksVision = "0.20230731"
 
 # Publishing & Docs
 mavenPublish = "0.36.0"
