@@ -53,6 +53,7 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.rememberOcclusionMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
+import java.io.File
 
 /**
  * Unified "Materials" demo — consolidates the retired `texture-streaming` and
@@ -197,17 +198,25 @@ private fun PbrSection(
         }
         value = runCatching { resolver.resolve(slug) }
             .fold(
-                onSuccess = { MaterialResolveState.Resolved(it.toURI().toString()) },
+                onSuccess = { MaterialResolveState.Resolved(it) },
                 onFailure = { MaterialResolveState.Error(it.message ?: it.javaClass.simpleName) },
             )
     }
-    val resolvedPath = (resolveState as? MaterialResolveState.Resolved)?.path
+    val resolvedFile = (resolveState as? MaterialResolveState.Resolved)?.file
     val resolveError = (resolveState as? MaterialResolveState.Error)?.message
     val isEmpty = resolveState is MaterialResolveState.Empty
 
-    val modelInstance = resolvedPath?.let { path ->
-        rememberModelInstance(modelLoader, path)
-    }
+    // Load the resolved file (streamed GLB or bundled fallback) through
+    // [rememberFileModelInstance] → `ModelLoader.loadModelInstance("file://…")`,
+    // NOT the two-argument `rememberModelInstance(modelLoader, fileUri)`. The
+    // latter binds to the asset-path overload — Kotlin prefers the candidate that
+    // needs no default argument — which feeds the `file://` string straight to
+    // `AssetManager.open`; that throws, the instance stays `null`, and the
+    // "Streaming material…" scrim hangs forever even though the bundled fallback
+    // resolved instantly offline (#2302 — same root cause as #1422 / the
+    // Multi-Model section of ModelViewerDemo). Called unconditionally so its
+    // `produceState` slot stays stable (#1464).
+    val modelInstance = rememberFileModelInstance(modelLoader, resolvedFile)
 
     val firstFrame = rememberFirstFrameState()
 
@@ -662,9 +671,42 @@ private sealed interface MaterialResolveState {
      */
     data object Empty : MaterialResolveState
 
-    /** Resolve succeeded — [path] is a `file://` URL ready for the model loader. */
-    data class Resolved(val path: String) : MaterialResolveState
+    /** Resolve succeeded — [file] is the on-disk GLB (streamed or bundled fallback). */
+    data class Resolved(val file: File) : MaterialResolveState
 
     /** Resolve failed — [message] is a short human-readable reason. */
     data class Error(val message: String) : MaterialResolveState
+}
+
+/**
+ * Load a [io.github.sceneview.model.ModelInstance] from a nullable local [File],
+ * returning `null` until the file is ready.
+ *
+ * The resolver always hands back a real on-disk [File] (streamed GLB or staged
+ * bundled fallback), so the model must be loaded through
+ * [io.github.sceneview.loaders.ModelLoader.loadModelInstance], which understands
+ * `file://` URIs. The two-argument `rememberModelInstance(modelLoader, String)`
+ * call is **not** usable here: Kotlin overload resolution binds it to the
+ * asset-path overload (the one without a defaulted `resourceResolver`), which
+ * feeds the `file://` string straight to `AssetManager.open` — that throws, the
+ * instance stays `null`, and the PBR section hangs forever on the
+ * "Streaming material…" scrim (#2302). Mirrors `rememberFileModelInstance` in
+ * ModelViewerDemo (the Multi-Model fix, #1422); loading via `produceState` +
+ * `loadModelInstance` keeps the Filament JNI work on the loader's own Main hop.
+ */
+@Composable
+private fun rememberFileModelInstance(
+    modelLoader: io.github.sceneview.loaders.ModelLoader,
+    file: File?,
+): io.github.sceneview.model.ModelInstance? {
+    if (file == null) return null
+    return produceState<io.github.sceneview.model.ModelInstance?>(
+        initialValue = null,
+        key1 = modelLoader,
+        key2 = file.absolutePath,
+    ) {
+        value = runCatching {
+            modelLoader.loadModelInstance("file://${file.absolutePath}")
+        }.getOrNull()
+    }.value
 }
