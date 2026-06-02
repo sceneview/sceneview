@@ -46,7 +46,8 @@ Rule: **cheap + deterministic → lower layer; expensive + judgment → higher l
 | **Hooks** (`settings.json`) | Per-action, cheap, deterministic gates that must **block** (not remind) | version-equality, deprecated-API, secret-scan, `.filamat` ABI, spawn resource-gate |
 | **Scripts** (`.claude/scripts/*.sh`) | On-demand aggregated checks, one source of truth | `quality-gate.sh`, `sync-versions.sh`, `impact-check.sh`, `device-qa.sh`, `claim.sh` |
 | **Skills** (`.claude/commands/*.md`) | Human-facing entrypoints needing judgment; thin wrappers that **call** scripts/workflows | `/review`, `/sync-check`, `/store-status`, `/handoff`, `/maintain` |
-| **Saved workflows** (`.claude/workflows/*.js`) | Multi-agent orchestration with deterministic, **resumable** control-flow | `triptych.js`, `fix-issue-batch.js`, `audit-sweep.js`, `release-checkpoint.js` |
+| **Saved workflows** (`.claude/workflows/*.js`) | Multi-agent orchestration with deterministic, **resumable** control-flow | `triptych.js`, `fix-issue-batch.js`, `review-fanout.js`, `audit-sweep.js`, `release-checkpoint.js` |
+| **Reviewer agents** (`.claude/agents/sv-*.md`) | Single-source-of-truth mandates for the adversarial review fan-out | `sv-code-reviewer`, `sv-security-reviewer`, `sv-impact-reviewer` (the API-parity / auto-merge safety gate), `sv-doc-freshness` |
 | **Scheduled routines** (cron / `@claude` / GitHub-cron) | Unattended recurring work | `maintenance.yml`, `doc-audit.yml`, `weekly-maintainer`, monthly `consolidate-memory` |
 
 Deterministic shell crons stay as GitHub-cron YAML; only **agentic reasoning** (vitals triage, review→issue) becomes a `/schedule` routine. **No new scheduler surface on top of these.**
@@ -124,7 +125,8 @@ A saturated session **never** stops mid-air: commit/push + `STATE.md` "START HER
 | Workflow | Status | Trigger | Fans out |
 |---|---|---|---|
 | `triptych.js` | TODO | every PR pre-merge | 5 Opus reviewers (`ReviewVerdict` schema) ∥ → serial visual-QA agent → gate; `/code-review ultra` Tier-2 |
-| `fix-issue-batch.js` | TODO | continuous issue cycle | claim → dispatch → triptych → merge → refill (replace-on-completion pool, disk/RAM-gated, fire-and-forget) |
+| `fix-issue-batch.js` | LIVE | continuous issue cycle | claim → challenge → fix → self-review → open PR; trivial fire-and-forget merges, **medium+ → `review-fanout` → graded merge** (replace-on-completion pool, disk-gated) |
+| `review-fanout.js` | LIVE | medium+ PR pre-merge (orchestrator) | 4 dedicated reviewers (`sv-*`) ∥ → adversarially verify every ERROR → graded `merge_recommendation`; a breaking public-API change (impact reviewer) blocks auto-merge |
 | `audit-sweep.js` | TODO | a bug reveals a CLASS | `parallel()` Explore × 5 surfaces → structured findings → umbrella + deduped sub-issues |
 | `release-checkpoint.js` | TODO | release window | bump → changelog → gate → device-QA → tag → verify-live (single-sources the version map; fixes #1705) |
 | `device-qa-orchestrate.js` | TODO | per iteration + pre-tag | serial emulator lease → per-platform harness → grade → aggregate `device-qa-report.json` |
