@@ -3,7 +3,8 @@ export const meta = {
   description: 'Continuous issue cycle: pick open issues (priority order, skip in-progress), then pipeline() one lean-clone agent per issue that claims → fixes → self-reviews → fire-and-forget merges → releases the claim. Replace-on-completion, no barrier, disk-gated.',
   phases: [
     { title: 'Preflight', detail: 'disk-gated-spawn-check.sh; if no issues given, one agent picks the top max||6 open issues in priority order, excluding in-progress' },
-    { title: 'Cycle', detail: 'pipeline() over the chosen issues — one worktree/clone agent each: claim → lean-clone → fix → tests → changelog → self-review → gh pr merge --auto → release claim' },
+    { title: 'Cycle', detail: 'pipeline() over the chosen issues — one lean-clone agent each: claim → challenge → fix → tests → changelog → self-review → open PR (trivial: --auto merge; medium+: PR only)' },
+    { title: 'Review', detail: 'medium+ PRs only: review-fanout (4 adversarial reviewers) → graded merge, or block/draft on a confirmed ERROR / breaking public-API' },
   ],
 }
 
@@ -109,15 +110,21 @@ if (!chosen.length) {
 phase('Cycle')
 
 // Structured result every fix agent must return.
+// outcome:
+//   'merged'                 — trivial scope, fire-and-forget --auto merge (worker self-reviewed).
+//   'pr-open-pending-review' — medium+ scope: PR opened WITHOUT --auto; stage 2 runs review-fanout.
+//   'skipped' / 'failed'     — as before.
 const FIX_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
     issue: { type: 'number' },
-    outcome: { type: 'string', enum: ['merged', 'skipped', 'failed'] },
-    pr: { type: 'number', description: 'PR number if one was opened (outcome=merged), else omit' },
+    outcome: { type: 'string', enum: ['merged', 'pr-open-pending-review', 'skipped', 'failed'] },
+    scope: { type: 'string', enum: ['trivial', 'medium-plus'], description: 'worker self-classification; medium-plus ⇒ stage-2 adversarial review before merge' },
+    pr: { type: 'number', description: 'PR number if one was opened, else omit' },
     branch: { type: 'string' },
     skipReason: { type: 'string', enum: ['claim-collision', 'stale-already-fixed', 'not-reproducible', 'none'] },
+    challengeVerdict: { type: 'string', description: 'one line: did the probe confirm or DISPROVE the issue\'s prescribed root cause, and what was actually fixed' },
     compiled: { type: 'boolean' },
     testsRun: { type: 'boolean' },
     changelogFragment: { type: 'string', description: 'path of the changelog.d/*.md fragment added, or empty if none' },
@@ -160,13 +167,13 @@ A full clone is ~2.3 GB; a lean sparse one is ~0.3-0.6 GB. Pick a short slug fro
 
 If any script later complains about a missing path: \`git sparse-checkout add <path>\`. ALL remaining work happens inside /tmp/sv-${num}.
 
-== 3. INVESTIGATE → IMPLEMENT ==
-First VERIFY the issue is real and still OPEN on main — stale "already fixed" issues are common. Read the referenced code; reproduce the claim. If it is already fixed or not reproducible on origin/main:
-  - close the loop honestly: \`gh issue comment ${num} --repo ${REPO} --body "Verified fixed on main as of <SHA> — closing as already-resolved."\` then \`gh issue close ${num} --repo ${REPO}\`,
-  - release the claim (\`bash .claude/scripts/claim.sh --release ${num}\` from the main checkout's path or via the sparse clone's .claude),
+== 3. CHALLENGE → IMPLEMENT (the issue's prescribed root cause is OFTEN wrong) ==
+STALENESS + reproduce first: \`git fetch origin\`, scan \`git log --oneline HEAD..origin/main\` and the diffs of recently-merged PRs touching your files — stale "already fixed" issues are common (a title-only scan is not enough). If already fixed/obsoleted on origin/main:
+  - close honestly: \`gh issue comment ${num} --repo ${REPO} --body "Verified fixed on main as of <SHA> — closing as already-resolved."\` then \`gh issue close ${num} --repo ${REPO}\`,
+  - release the claim (\`bash .claude/scripts/claim.sh --release ${num}\`),
   - rm -rf /tmp/sv-${num},
-  - return outcome:"skipped" with skipReason:"stale-already-fixed" (or "not-reproducible"), note explaining what you found.
-Otherwise implement the MINIMAL correct fix (clean; breaking changes only if justified, but NEVER bump major — 4 is FROZEN, cf. feedback_version_policy.md). If you change ANY public API on one renderer, mirror it on the others or leave a documented honest "Coming soon" (iOS V1 is a strict subset of Android — never hide a gap).
+  - return outcome:"skipped" with skipReason:"stale-already-fixed" (or "not-reproducible").
+Otherwise reproduce the bug, then run a DETERMINISTIC PROBE that tests the issue's PRESCRIBED cause/fix (does the symbol exist in the consumed version? is the divergence actually where the issue claims? a standalone repro of the asserted mechanism). If the probe DISPROVES it → **diverge with evidence** and fix the REAL cause — this is why #2354 avoided a needless Earcut port and #2361 avoided an uncompilable \`key=\` fix (cf. feedback_reproduce_before_prescribed_fix). Capture one line for challengeVerdict. Then implement the MINIMAL correct option (clean; breaking changes only if justified, but NEVER bump major — 4 is FROZEN). If you change ANY public API on one renderer, mirror it on the others or leave a documented honest "Coming soon" (iOS V1 is a strict subset of Android — never hide a gap).
 
 == 4. COMPILE + TEST (only what's relevant) ==
 Compile the modules you touched, e.g.:
@@ -192,7 +199,8 @@ Review your own diff and FIX anything actionable before merge:
   - Cross-platform: Android/iOS/Web parity mirrored or honestly deferred; llms.txt + agents/sceneview* skills + cheatsheets stay truthful for any public change.
 Capture a one-line verdict for selfReview.
 
-== 7. FIRE-AND-FORGET MERGE — then EXIT (never watch CI) ==
+== 7. OPEN PR + MERGE — GRADED BY SCOPE (then EXIT, never watch CI) ==
+First self-classify SCOPE: "trivial" = < ~20 lines AND no public API / renderer / threading / \`.filamat\` shader / machine-readable contract touched. Anything else = "medium-plus".
   git add -A && git commit -m "Fix <headline> (#${num})
 
 Closes #${num}
@@ -201,17 +209,18 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
   git push -u origin claude/${num}-<slug>
   gh pr create --repo ${REPO} --base main --head claude/${num}-<slug> --title "Fix <headline> (#${num})" --body "Closes #${num}
 
-<what changed + the 5-angle self-review summary>
+<what changed · the challengeVerdict · the 5-angle self-review summary · 'scope: trivial|medium-plus' · for trivial: 'self-reviewed inline; review-fanout skipped because trivial'>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)"
-  gh pr merge <PR#> --repo ${REPO} --squash --auto
-Do NOT sit watching CI — ci-gate.yml is the one required check and the orchestrator owns stuck-PR triage.
+- **scope = trivial** → fire-and-forget: \`gh pr merge <PR#> --repo ${REPO} --squash --auto\`, then go to step 8 (release claim + clean). Return outcome:"merged".
+- **scope = medium-plus** → do **NOT** \`--auto\` merge. The ORCHESTRATOR (stage 2) runs \`review-fanout\` on your PR and merges/blocks (a breaking public-API change → draft + maintainer). rm -rf your /tmp clone but **DO NOT release the claim** (stage 2 releases it after the merge decision). Return outcome:"pr-open-pending-review", scope:"medium-plus", pr:<PR#>.
+Do NOT sit watching CI either way.
 
-== 8. RELEASE CLAIM + CLEAN UP ==
-  bash .claude/scripts/claim.sh --release ${num}   # from the sparse clone's .claude (or the main checkout)
+== 8. RELEASE CLAIM + CLEAN UP (trivial scope only — medium+ leaves the claim for stage 2) ==
+  bash .claude/scripts/claim.sh --release ${num}
   rm -rf /tmp/sv-${num}
 
-Return the structured result: outcome:"merged", pr:<PR#>, branch:"claude/${num}-<slug>", compiled:true, testsRun:true, changelogFragment:"changelog.d/${num}-<slug>.md", selfReview:"<one line>", note:"<short summary>".
+Return the structured result, e.g. outcome:"merged", scope:"trivial", pr:<PR#>, branch:"claude/${num}-<slug>", challengeVerdict:"<one line>", compiled:true, testsRun:true, changelogFragment:"changelog.d/${num}-<slug>.md", selfReview:"<one line>", note:"<short summary>". (Always rm -rf /tmp/sv-${num} before returning, even on skip/fail.)
 
 Hard rules: no polling/sleep loops; no raw adb (android CLI / lib/android-cli.sh only); no image > 1800px; never bump major; never push uncompiled code; always rm -rf /tmp/sv-${num} before returning (even on skip/fail).`
 }
@@ -224,38 +233,74 @@ Hard rules: no polling/sleep loops; no raw adb (android CLI / lib/android-cli.sh
 // issue from arg1 (originalItem) so this stays correct regardless of stage position.
 const results = await pipeline(
   chosen,
+  // Stage 1 — fix: claim → challenge → fix → self-review → open PR. Trivial scope fire-and-forget
+  // merges itself; medium+ opens the PR WITHOUT --auto and returns 'pr-open-pending-review'.
   (_prev, item) =>
     agent(fixBrief(item.number, item.title, item.priority), {
       label: `fix:#${item.number}`,
       phase: 'Cycle',
       schema: FIX_SCHEMA,
     }),
+  // Stage 2 — graded review (medium+ only): the orchestrator-level adversarial fan-out the worker
+  // cannot run itself (#1243). Trivial/skipped/failed pass straight through.
+  async (fixRes, item) => {
+    if (!fixRes || fixRes.outcome !== 'pr-open-pending-review' || !fixRes.pr) return fixRes
+    const branch = fixRes.branch || `claude/${item.number}`
+    let review
+    try {
+      review = await workflow('review-fanout', { diffRef: `origin/main...origin/${branch}`, issue: item.number, pr: fixRes.pr })
+    } catch (e) {
+      return { ...fixRes, outcome: 'blocked-by-review', reviewRecommendation: 'REVIEW_ERROR', note: `review-fanout threw (${String(e)}) — PR #${fixRes.pr} left open + claim held for the orchestrator` }
+    }
+    const rec = review && review.merge_recommendation
+    if (rec === 'MERGE' || rec === 'MERGE_AFTER_WARNINGS') {
+      await agent(
+        `Finalize SceneView PR #${fixRes.pr} (issue #${item.number}): run \`gh pr merge ${fixRes.pr} --repo ${REPO} --squash --auto\`, then \`bash .claude/scripts/claim.sh --release ${item.number}\`. Report one line. Do NOT watch CI.`,
+        { label: `merge:#${item.number}`, phase: 'Review' },
+      )
+      return { ...fixRes, outcome: 'merged', reviewRecommendation: rec, reviewWarnings: (review.warnings || []).length }
+    }
+    // DO_NOT_MERGE / REVIEW_INCOMPLETE / breaking public-API → leave open (draft if breaking),
+    // keep the claim, surface for the orchestrator/maintainer. Never auto-merge.
+    if (review.breakingApi) {
+      await agent(
+        `Mark SceneView PR #${fixRes.pr} as a DRAFT — it has a confirmed BREAKING public-API change and needs the maintainer: \`gh pr ready ${fixRes.pr} --repo ${REPO} --undo\`. Do NOT merge. Report one line.`,
+        { label: `draft:#${item.number}`, phase: 'Review' },
+      )
+    }
+    return { ...fixRes, outcome: 'blocked-by-review', reviewRecommendation: rec, breakingApi: !!review.breakingApi, blockers: (review.confirmedErrors || []).length, note: `${fixRes.note || ''} | review=${rec}${review.breakingApi ? ' BREAKING-API → drafted, maintainer gate' : ''}; PR #${fixRes.pr} open, claim held`.trim() }
+  },
 )
 
 // ── Aggregate ────────────────────────────────────────────────────────────────────
 const norm = (chosen || []).map((item, i) => {
   const r = results[i]
+  const issue = (r && r.issue) || item.number
   if (!r) {
-    return { issue: item.number, failed: true, note: 'agent returned nothing (skipped, errored, or budget-capped) — verify the claim/clone was cleaned up' }
+    return { issue, failed: true, note: 'agent returned nothing (skipped, errored, or budget-capped) — verify the claim/clone was cleaned up' }
   }
   if (r.outcome === 'merged') {
-    return { issue: r.issue, pr: r.pr || null, note: r.note || `merged via claude/${r.issue}-…` }
+    return { issue, merged: true, pr: r.pr || null, note: r.note || `merged via claude/${issue}-…` }
+  }
+  if (r.outcome === 'blocked-by-review') {
+    return { issue, blocked: true, pr: r.pr || null, breakingApi: !!r.breakingApi, note: `review=${r.reviewRecommendation || '?'}${r.breakingApi ? ' (BREAKING-API → draft, maintainer gate)' : ''} — ${r.note || ''}`.trim() }
   }
   if (r.outcome === 'skipped') {
-    return { issue: r.issue, skipped: true, note: `${r.skipReason || 'skipped'} — ${r.note || ''}`.trim() }
+    return { issue, skipped: true, note: `${r.skipReason || 'skipped'} — ${r.note || ''}`.trim() }
   }
-  return { issue: r.issue, failed: true, note: r.note || 'failed' }
+  return { issue, failed: true, note: r.note || 'failed' }
 })
 
-const merged = norm.filter(r => r.pr != null).length
+const merged = norm.filter(r => r.merged).length
+const blocked = norm.filter(r => r.blocked).length
 const skipped = norm.filter(r => r.skipped).length
 const failed = norm.filter(r => r.failed).length
-log(`Cycle done — ${merged} merging PR(s), ${skipped} skipped, ${failed} failed across ${norm.length} issue(s).`)
+log(`Cycle done — ${merged} merged/merging, ${blocked} blocked-by-review (PR open), ${skipped} skipped, ${failed} failed across ${norm.length} issue(s).`)
 
 return {
-  verdict: failed === 0 ? 'CLEAR' : 'PARTIAL',
+  verdict: failed === 0 ? (blocked ? 'CLEAR_WITH_REVIEW_HOLDS' : 'CLEAR') : 'PARTIAL',
   disk: disk ? { freeGb: disk.freeGb, safe: disk.safe } : null,
-  counts: { merged, skipped, failed, total: norm.length },
+  counts: { merged, blocked, skipped, failed, total: norm.length },
   results: norm,
-  note: 'Fire-and-forget: PRs were opened with `--squash --auto`; the orchestrator (not this workflow) watches ci-gate.yml and triages any stuck PR. Run a release checkpoint (`release-checkpoint.js` / `/release`) once the merges land. Cap stays at minor — 4 is frozen.',
+  note: 'Trivial scope was fire-and-forget --auto merged; medium+ scope ran the `review-fanout` adversarial pass and merged on MERGE/MERGE_AFTER_WARNINGS, else left the PR open (drafted on a breaking public-API change — the one maintainer gate) with the claim held. The orchestrator watches ci-gate.yml + triages stuck PRs, and runs a release checkpoint once merges land. Cap stays at minor — 4 is frozen.',
 }
