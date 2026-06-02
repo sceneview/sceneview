@@ -66,6 +66,8 @@ describe("POST /v1/events", () => {
       "4.0.0-rc.1",
       "free",
       "get_node_info",
+      null, // install_id — not set in validPayload() → bound as null
+      null, // bot_likelihood — not set in validPayload() → bound as null
     ]);
   });
 
