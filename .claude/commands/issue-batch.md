@@ -17,11 +17,25 @@ agents flowing until the backlog is drained or they ask you to stop.
 > fan-out. Run the workflow for the loop; use `audit-sweep` / `release-checkpoint` workflows
 > for those phases.
 
-The validated operating model (formalized 2026-05-15) is:
+The validated operating model (formalized 2026-05-15; rigor layer added 2026-06-02) is:
 
 ```
-AUDIT → AUTO-FILE ISSUES → BATCH → DISPATCH PIPELINE → SELF-REVIEW + CI → MERGE → TIER-2 (risky only) → re-AUDIT
+AUDIT → AUTO-FILE → BATCH → DISPATCH
+  └─ worker: CHALLENGE (disprove the issue's prescribed root cause with a probe BEFORE coding)
+             → fix → Tier-1 self-review → open PR
+  └─ SCOPE-GRADED REVIEW: trivial = self-review DECLARED in the PR body + fire-and-forget;
+                          medium+ / public-API / rendering / threading = orchestrator runs
+                          the `review-fanout` workflow (4 adversarial reviewers)
+  └─ GRADED MERGE: auto-merge UNLESS a confirmed ERROR survives, REVIEW_INCOMPLETE, or a
+                   BREAKING public-API change (impact gate → draft PR + stop for maintainer)
+→ re-AUDIT
 ```
+
+See **"Challenge · graded review · graded-merge autonomy"** below for the rigor layer.
+The autonomy is deliberately *high* here because SceneView is the maintainer's own
+low-personal-risk repo: auto-merge on **all** platforms,
+the challenge is **self-decided** by the worker (no per-issue human gate), and the maintainer
+is surfaced ONLY for a breaking public-API change, a cross-cutting design call, or a revert.
 
 **Master playbook:** the full rationale lives in agent memory
 `feedback_continuous_issue_cycle.md`. Supporting detail: `feedback_issue_workflow.md`
@@ -67,6 +81,41 @@ harness silently rejects nested calls. So real multi-agent review only happens a
 9. **Auto-file everything.** Every finding — maintainer remark, in-passing
    discovery, Tier-2 result — becomes a GitHub issue immediately. Track in GitHub,
    never just remember.
+
+---
+
+## Challenge · graded review · graded-merge autonomy  (the rigor layer)
+
+A rigor layer calibrated for SceneView's deliberately high autonomy.
+Three additions make the autonomous fire-and-forget loop *safe*:
+
+### A. Challenge BEFORE coding — disprove the prescribed root cause
+The issue's stated root cause is **often wrong** (proven repeatedly — `feedback_reproduce_before_prescribed_fix`; this is why #2354 avoided a needless Earcut port and #2361 avoided an uncompilable `key=` fix). Every worker, before writing any fix:
+1. **Staleness + race gate (cheapest, highest-ROI):** `git fetch origin` + `git log --oneline HEAD..origin/main`; read the diffs of recently-merged PRs that touched the files in scope; `claim.sh` for the cross-host race. If a merged/in-flight PR already resolved or obsoleted it → close as already-resolved + skip. A title-only PR scan is NOT enough.
+2. **Reproduce + disprove:** reproduce the bug, then run a *deterministic probe* to test the issue's prescribed cause. If the probe shows the prescribed cause/fix is wrong (e.g. the param doesn't exist in the consumed version; the divergence is elsewhere) → **diverge with evidence**, fix the REAL cause.
+3. **Options, not the first idea:** weigh do-nothing / minimal / structural; pick the smallest correct option. In autonomous mode the worker **self-decides** — it does NOT gate the maintainer per issue. Surface to the orchestrator only a genuinely structural/cross-cutting divergence.
+
+### B. Scope-graded review — match effort to scope
+Because the loop **auto-merges with no human gate**, medium+ changes get an independent adversarial pass (the worker cannot — #1243 — so the **orchestrator** runs it):
+
+| Scope | Review | Run by |
+|---|---|---|
+| 1-line / config / a string, empirically validated | Self-review, **declared in the PR body** ("self-reviewed inline; reviewers skipped because …") | worker |
+| Trivial < ~20 lines, strong validation | Tier-1 self-review (5 angles) | worker |
+| **Medium (20-200) · or touches public API / a renderer / threading / a `.filamat` shader / a machine-readable contract** | **`review-fanout` workflow — non-negotiable** (`Workflow({ name: 'review-fanout', args: { diffRef, issue } })`) | **orchestrator** |
+| Large / cross-cutting | `review-fanout` **+ re-run after fixes** | orchestrator |
+| Visual/behavioral (rendering, gesture, dirty-flag, materials, demo UX) | the above **+ device-QA** (serial emulator/sim agent — never fire-and-forget) | orchestrator |
+
+`review-fanout` runs 4 dedicated reviewers (`sv-code-reviewer`, `sv-security-reviewer`, `sv-impact-reviewer`, `sv-doc-freshness` — `.claude/agents/`) in parallel, then **adversarially verifies every ERROR finding** (default `real=false`) before returning a `merge_recommendation`. Don't adopt a reviewer verdict verbatim — the workflow already verifies; you sanity-check survivors against source.
+
+### C. Graded-merge autonomy — the 4 states + the impact gate
+`review-fanout` returns one of four `merge_recommendation`s; only the first two merge:
+- **`MERGE`** → orchestrator auto-merges (`--squash --auto`), no maintainer gate.
+- **`MERGE_AFTER_WARNINGS`** → fix the warnings in the same PR, then auto-merge.
+- **`DO_NOT_MERGE`** (a confirmed ERROR survived) → fix the root cause, re-run `review-fanout`. **Never** rationalize a confirmed ERROR away.
+- **`REVIEW_INCOMPLETE`** (a reviewer failed to run) → **never merge**; absence of findings ≠ evidence of safety. Investigate the dropped reviewer, re-run.
+
+**The impact gate is the one hard maintainer stop:** a confirmed ERROR from `sv-impact-reviewer` (a breaking public-API change / unmirrored cross-platform divergence) sets `breakingApi: true` → the orchestrator leaves a **draft PR and stops for the maintainer**, never auto-merges. This preserves zero-SDK-API-breakage without a blanket manual hold (SceneView publishes to Maven/npm/SPM — a breaking change ships to every downstream app and every AI-generated snippet). Also draft-stop on any unverified external-API dependency.
 
 ---
 
@@ -142,8 +191,16 @@ If a script needs a missing path: `git sparse-checkout add <path>`.
 
 ## Workflow
 
-a. Verify each issue is still OPEN and not already fixed on `main`. Skip no-ops.
-b. Implement the batch (clean refactor; breaking changes OK if justified — but
+a. CHALLENGE before coding (the prescribed root cause is OFTEN wrong):
+   - Staleness + race: `git fetch origin` + scan `git log --oneline HEAD..origin/main` and the
+     diffs of recently-merged PRs touching your files. If already resolved/obsoleted → close as
+     already-resolved + skip (no-op). A title-only PR scan is not enough.
+   - Reproduce the bug, then run a DETERMINISTIC PROBE to test the issue's prescribed cause/fix.
+     If the probe shows it's wrong (param absent in the consumed version, divergence elsewhere,
+     etc.) → **diverge with evidence**, fix the REAL cause. Weigh do-nothing/minimal/structural;
+     pick the smallest correct option. Self-decide (no maintainer gate); surface only a genuinely
+     structural/cross-cutting divergence.
+b. Implement the chosen option (clean; breaking changes OK if justified — but
    never bump major: 4 is frozen, cf. feedback_version_policy.md).
 c. Compile: `./gradlew :sceneview:compileReleaseKotlin :arsceneview:compileReleaseKotlin`
    (+ iOS/Web targets if touched).
@@ -161,10 +218,17 @@ f. QA visuel obligatoire with real interactions: Android emulator
 g. Sync: `bash .claude/scripts/impact-check.sh` + update CLAUDE.md handoff +
    llms.txt + MCP + cheatsheet. Changelog: add a `changelog.d/<issue>-<slug>.md`
    fragment (NOT an edit to CHANGELOG.md — see changelog.d/README.md).
-h. FIRE-AND-FORGET MERGE: `git push -u origin <branch>` →
-   `gh pr create --repo sceneview/sceneview` (English, `Closes #<issue>`) →
-   `gh pr merge <PR#> --repo sceneview/sceneview --squash --auto` → exit.
-   Do NOT sit watching CI — the orchestrator monitors stuck PRs.
+h. MERGE — GRADED BY SCOPE (you self-classify):
+   - **Trivial** (< ~20 lines; no public API / renderer / threading / `.filamat` / contract):
+     self-review declared in the PR body, then `git push -u origin <branch>` →
+     `gh pr create --repo sceneview/sceneview` (English, `Closes #<issue>`) →
+     `gh pr merge <PR#> --repo sceneview/sceneview --squash --auto` → exit. Fire-and-forget.
+   - **Medium+ / touches public API / a renderer / threading / a `.filamat` / a contract:**
+     `git push` + `gh pr create` (`Closes #<issue>`) but do **NOT** `--auto` merge. Report the PR
+     number + `scope:"medium+"` so the ORCHESTRATOR runs `review-fanout` and merges/blocks on its
+     `merge_recommendation` (a breaking public-API change → draft + maintainer). Never self-merge a
+     medium+ change — #1243 means you cannot run the independent review yourself.
+   Do NOT sit watching CI either way — the orchestrator owns merge + stuck-PR triage.
 i. `rm -rf /tmp/sv-<issue>`.
 
 ## Rules
@@ -188,27 +252,31 @@ Ne poll pas pour d'autre travail. La session principale orchestre.
 
 ---
 
-## Phase 3.5 — Tier-2 audit (risky PRs only)
+## Phase 3.5 — Review (pre-merge graded · post-merge audit for the risky)
 
-Run a Tier-2 multi-reviewer audit **only on risky merges**: umbrella issues,
-rendering-pipeline changes, breaking changes, anything touching threading or
-release plumbing. Routine fixes (docs, single-module bug, CI tweak) skip Tier 2 —
-their Tier-1 self-review + green CI is enough.
-
-For a risky merged commit `<SHA>`, the orchestrator (this session — agents cannot)
-spawns 5-7 parallel Opus reviewers, one angle each
-(Security / Threading / API consistency / Performance / Docs):
+**Pre-merge (the safety layer — graded by scope, see "Challenge · graded review" above).**
+For a **medium+ / public-API / rendering / threading / `.filamat` / contract** change, the
+worker opens its PR but does **NOT** `--auto` merge; the orchestrator runs the adversarial
+fan-out on the PR diff and gates on its `merge_recommendation`:
 
 ```
-Agent(subagent_type="general-purpose", model="opus", run_in_background=true,
-  prompt="Post-merge reviewer for SceneView commit <SHA> on main (batch <name>).
-  Review angle: <angle>. Read-only: `git show <SHA>`, touched files, cross-platform
-  parity. Deliver <=500 words: verdict 🟢 ship | 🟡 follow-up | 🔴 hotfix, blockers
-  with file:line, suggested follow-up issue. Do NOT push or spawn nested agents.")
+Workflow({ name: 'review-fanout', args: { diffRef: 'origin/main...<branch>', issue: <N>, pr: <P> } })
 ```
 
-Process: 🟢 → done. 🟡 → `gh issue create` follow-up, no revert (PRs are atomic).
-🔴 → spawn a fresh hotfix batch (never amend the merged commit).
+It returns `{ merge_recommendation, autonomousAction, breakingApi, confirmedErrors, warnings }`:
+- `MERGE` → orchestrator `gh pr merge <P> --squash --auto`.
+- `MERGE_AFTER_WARNINGS` → fix warnings in the PR, then merge.
+- `DO_NOT_MERGE` → dispatch a fix into the same branch, re-run `review-fanout`.
+- `REVIEW_INCOMPLETE` → **never merge**; investigate the dropped reviewer, re-run.
+- `breakingApi: true` → **draft PR + stop for the maintainer** (the one hard human gate).
+
+Trivial diffs skip the fan-out (worker self-review **declared in the PR body** + fire-and-forget).
+
+**Post-merge audit (already-merged risky commits — fire-and-forget trivials, or a commit that
+turned out riskier than scoped).** Re-run `review-fanout` with `diffRef: '<SHA>^...<SHA>'`, or for
+a quick read spawn a couple of read-only Opus reviewers on `git show <SHA>`. Process:
+🟢 clean → done. 🟡 warnings → `gh issue create` follow-up, no revert (PRs are atomic).
+🔴 confirmed error / breaking API → spawn a fresh hotfix batch (never amend the merged commit).
 
 ---
 
