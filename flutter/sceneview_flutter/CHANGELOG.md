@@ -1,3 +1,7 @@
+## 4.17.0
+
+- Version alignment with SceneView v4.17.0. Performance & correctness release: hot-path audit cutting per-frame allocations / matrix decompositions / JNI across Android 3D, AR, KMP core, Apple and Web; the #2187 transform-drift is now fully fixed (component setters no longer re-decompose). No breaking Flutter API change.
+
 ## 4.16.10
 
 - Version alignment with SceneView v4.16.10. Lint: VIBRATE permission declared in sceneview library manifest (HapticEngine). Security: CVE-2026-8723 qs pin. SVG coordinate corruption in website fixed. No breaking Flutter API change.
