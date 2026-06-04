@@ -581,10 +581,65 @@ private struct SceneViewRepresentation: View {
     // on a genuine slot change today, but caching the ref keeps the path O(1)
     // and guards against a future equality regression turning a per-frame
     // no-op into an O(n) children walk.
+    /// Snapshot of the inputs that fully determine what ``applyCamera()`` writes
+    /// to the perspective-camera / scene-root entities. Every per-mode branch of
+    /// `applyCamera()` is a pure function of these values (`cameraPosition()`,
+    /// `lookOrientation()`, `sceneRotation()` and the constant root reset all
+    /// read only from this set), so an unchanged snapshot means the entity
+    /// transform would be rewritten with identical values — the write can be
+    /// skipped. Compared with ``approximatelyMatches(_:)`` (float tolerance),
+    /// never `==`, because the values are derived geometry. Closes #2331.
+    private struct AppliedCameraState {
+        var mode: CameraControlMode
+        var azimuth: Float
+        var elevation: Float
+        var orbitRadius: Float
+        var target: SIMD3<Float>
+        var fov: Float
+        var firstPersonEye: SIMD3<Float>?
+
+        /// Per-frame redundancy check. `mode` is compared exactly (it is a
+        /// discrete enum); the geometric scalars / vectors within `eps` so that
+        /// a no-op re-evaluation of an unchanged orbit is treated as identical,
+        /// while any real camera motion — an orbit / pan drag tick, an
+        /// auto-rotate step, a pinch, a framing re-fit — clears the threshold
+        /// and re-applies. `eps = 1e-5` world units / radians is far below one
+        /// pixel of motion at any realistic scene scale yet far above
+        /// float round-off, and ~80× smaller than the smallest single-frame
+        /// step a slow auto-rotate produces, so a live camera never freezes.
+        func approximatelyMatches(_ other: AppliedCameraState) -> Bool {
+            guard mode == other.mode else { return false }
+            let eps: Float = 1e-5
+            func close(_ a: Float, _ b: Float) -> Bool { abs(a - b) <= eps }
+            func close3(_ a: SIMD3<Float>, _ b: SIMD3<Float>) -> Bool {
+                close(a.x, b.x) && close(a.y, b.y) && close(a.z, b.z)
+            }
+            // A nil ↔ non-nil firstPerson eye is a genuine state change (the
+            // eye is captured on entering firstPerson) and must re-apply.
+            switch (firstPersonEye, other.firstPersonEye) {
+            case (nil, nil): break
+            case let (lhs?, rhs?): if !close3(lhs, rhs) { return false }
+            default: return false
+            }
+            return close(azimuth, other.azimuth)
+                && close(elevation, other.elevation)
+                && close(orbitRadius, other.orbitRadius)
+                && close(fov, other.fov)
+                && close3(target, other.target)
+        }
+    }
+
     private final class AppliedCache {
         var mainSlot: LightSlot? = nil
         var fillSlot: LightSlot? = nil
         var skyboxResource: EnvironmentResource? = nil
+        /// Last camera state pushed onto the RealityKit entities by
+        /// ``applyCamera()``. Compared (with float tolerance) each frame so a
+        /// no-op camera apply — the common case while idle, and on every
+        /// auto-rotate / framing-task `update:` tick where the orbit did not
+        /// actually move — skips the redundant entity-transform writes. `nil`
+        /// until the first apply. Closes #2331.
+        var camera: AppliedCameraState? = nil
         /// The currently-attached main-slot light entity, cached by reference
         /// for direct removal in `refreshLightSlot`. `nil` when the main slot
         /// is `.disabled`. Closes #2278.
@@ -1390,6 +1445,31 @@ private struct SceneViewRepresentation: View {
                 camera.recenterTarget(contentWorldCenter)
             }
         }
+
+        // Diff-guard (#2331): every per-mode branch below is a pure function of
+        // the orbit state captured here, so when nothing that drives the write
+        // changed since the last apply the RealityKit transforms would just be
+        // rewritten with identical values. This is the common path — `update:`
+        // re-runs `applyCamera()` on every auto-rotate / framing-task tick and
+        // on each SwiftUI re-eval, but the orbit only actually moves on a
+        // gesture / auto-rotate step. The mode-sync above (which mutates
+        // `camera`) has already run, so `desired` reflects post-sync state and
+        // is never skipped wrongly. A real re-fit (`refreshContentCentering`
+        // mutates `camera.target` / `orbitRadius` then re-calls `applyCamera`)
+        // changes the key and re-applies on the same frame.
+        let desired = AppliedCameraState(
+            mode: camera.mode,
+            azimuth: camera.azimuth,
+            elevation: camera.elevation,
+            orbitRadius: camera.orbitRadius,
+            target: camera.target,
+            fov: camera.fov,
+            firstPersonEye: camera.firstPersonEye
+        )
+        if let last = appliedCache.camera, last.approximatelyMatches(desired) {
+            return
+        }
+        appliedCache.camera = desired
 
         // Per-mode application of orientation, zoom, and translation.
         // Mirrors Android's `CameraGestureDetector` modes
