@@ -119,16 +119,17 @@ object SampleAssets {
             displayName = "Nile (Classical Statue)",
             author = "rigsters",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            // Was `khronos_toy_car.glb` — that GLB has a valid header but a Draco
-            // mesh buffer Filament's `gltfio` cannot decode ("Unable to parse glTF
-            // file"), so the offline fallback hung the Gallery scrim forever even
-            // after the loader fix (#2306). `khronos_damaged_helmet.glb` is the
-            // only bundled GLB verified to decode AND render visibly under this
-            // demo's scale/orbit (shiba.glb decodes but renders empty here). It
-            // is shared with the "Vintage Camera" chip — a deliberate, documented
-            // relaxation of the distinct-fallback intent (#1433): a visible
-            // fallback beats a hung scrim on the Gallery's default chip.
-            fallbackBundledPath = "models/khronos_damaged_helmet.glb",
+            // Restored to `khronos_toy_car.glb` now that the asset is fixed (#1433).
+            // The bundled GLB previously had a valid header but failed to parse in
+            // `gltfio` ("Unable to parse glTF file"): a babylon.js export bug left an
+            // out-of-bounds `clearcoatTexture` index and webp images on the core
+            // `source` instead of via `EXT_texture_webp`. #2390 worked around it by
+            // repointing this fallback (and "Coffee Mug") at decodable GLBs, which
+            // made "Nile" share the helmet with "Vintage Camera" (a #1433 relaxation).
+            // The asset has been re-exported (dangling texture dropped, normalized,
+            // Draco decompressed) so it decodes; restoring it makes all four gallery
+            // chips distinct again.
+            fallbackBundledPath = "models/khronos_toy_car.glb",
             scaleToUnits = 0.85f,
             hasBakedAnimation = false,
             category = "gallery",
@@ -274,10 +275,10 @@ object SampleAssets {
             displayName = "Coffee Mug",
             author = "FrenchBaguette",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            // Was `khronos_toy_car.glb`, which Filament cannot decode (see the
-            // Gallery "Nile" entry above) — no fallback should reference that
-            // asset. `khronos_lantern.glb` is a confirmed-decodable small prop.
-            fallbackBundledPath = "models/khronos_lantern.glb",
+            // Restored to `khronos_toy_car.glb` (the re-exported, now-decodable asset —
+            // see the Gallery "Nile" entry above). #2390 had temporarily repointed this
+            // at `khronos_lantern.glb` while the toy_car GLB was unparseable.
+            fallbackBundledPath = "models/khronos_toy_car.glb",
             scaleToUnits = 0.10f,
             hasBakedAnimation = false,
             category = "ar_placement",
