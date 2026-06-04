@@ -414,10 +414,14 @@ private fun rememberStreamedModelInstance(
     streamedFileUrl: String?,
 ): io.github.sceneview.model.ModelInstance? {
     // rememberModelInstance is called on every recomposition, in a stable slot.
-    // When there is no active stream we feed it an empty path: the URL overload
-    // sees a scheme-less location, the asset reader fails fast, and it returns
-    // null — no model is loaded and the bundled helmet keeps rendering.
-    val instance = rememberModelInstance(modelLoader, streamedFileUrl ?: "")
+    // The named `fileLocation =` argument binds to the URL-capable overload — without it
+    // the two-arg positional call binds to the asset-path overload, which feeds the
+    // `cached.toURI()` `file://…` URL straight to `AssetManager.open`; that throws, the
+    // instance stays `null`, and "Surprise me" silently never swaps in the streamed model
+    // (#1422 / the #2302 overload trap). When there is no active stream we feed it an empty
+    // path: the URL overload sees a scheme-less location, delegates to the asset reader,
+    // which fails fast and returns null — the bundled helmet keeps rendering.
+    val instance = rememberModelInstance(modelLoader, fileLocation = streamedFileUrl ?: "")
     return if (streamedFileUrl == null) null else instance
 }
 
@@ -890,6 +894,14 @@ private fun GallerySection(
                 val instance = modelInstance
                 val slug = selectedSlug
                 if (instance != null && slug != null) {
+                    // KNOWN ISSUE (#2306 follow-up): switching chips leaves the previous
+                    // model stacked in the scene. Device-QA proved this is NOT fixable here:
+                    // the ModelNode IS disposed on every switch (its `onDispose` runs — verified
+                    // via logcat) and `key(modelInstance)` re-keys correctly, yet the old
+                    // renderable stays in the Filament scene — `ModelNode` disposal does not
+                    // remove the model's renderable entities. That is a library-level
+                    // node-disposal bug (#2400); a demo-side `key()` wrapper is a no-op for
+                    // the symptom, so it is intentionally NOT applied here.
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = slug.scaleToUnits,
