@@ -2908,7 +2908,7 @@ SceneView(surfaceType = SurfaceType.TextureSurface, isOpaque = false)  // Textur
 - **APK size**: +3.2MB (sceneview), +5.1MB (sceneview + arsceneview).
 - **Memory**: ~25MB empty 3D scene, ~45MB empty AR scene.
 - **Triangle budget**: <100K per model, <200K total scene (mid-tier devices).
-- **Textures**: use KTX2 with Basis Universal, max 2048x2048 on mobile.
+- **Textures**: use KTX2 with Basis Universal, max 2048x2048 on mobile. **WebP is NOT supported on Android**: Filament's Android prebuilt ships `gltfio` with WebP compiled out, so glTF textures encoded as `EXT_texture_webp` (`image/webp`) fail with "Missing texture provider for image/webp" and render untextured. Re-encode such models' textures to PNG/JPEG or KTX2 before loading on Android (#2305). PNG/JPEG/KTX2 are decoded natively.
 - **Draw calls**: aim for <100 per frame. Merge static geometry in Blender before export.
 - **Lights**: 1 directional + IBL covers most cases. Max 2-3 additional point/spot lights.
 - **Post-processing**: Bloom ~1ms, SSAO ~2-3ms. Disable SSAO on low-end devices.
