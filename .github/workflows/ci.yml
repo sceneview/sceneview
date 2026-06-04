@@ -662,6 +662,15 @@ jobs:
         shell: bash
         run: bash .claude/scripts/check-demo-class-refs.sh
 
+      # impact-check.sh self-test — pin its lean/sparse-clone contract (#2370):
+      # a partial node-source checkout SKIPs (never FALSE-FAILs), a complete
+      # checkout still flags a real count mismatch, and missing HEAD~1 (shallow
+      # history) never crashes it. Same self-test-first discipline as above.
+      - name: Self-test impact-check.sh
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-impact-check.sh
+
   # ── Full quality gate ────────────────────────────────────────────────────
   # Runs the same .claude/scripts/quality-gate.sh that contributors run
   # locally before pushing. Includes:
