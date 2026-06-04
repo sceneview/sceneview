@@ -146,6 +146,9 @@ class SceneViewJS {
         opts["clearColor"] = color
         opts["clear"] = true
         sv.renderer.setClearOptions(opts)
+        // The clear color is not a camera move, so the on-demand gate cannot
+        // infer it — request a repaint explicitly (#2332).
+        sv.requestRender()
     }
 
     /**
@@ -166,7 +169,12 @@ class SceneViewJS {
      */
     @JsName("setAutoCenterContent")
     fun setAutoCenterContent(enabled: Boolean) {
-        _sceneView?.autoCenterContent = enabled
+        _sceneView?.let {
+            it.autoCenterContent = enabled
+            // Toggling the framing policy may change what the next frame shows —
+            // repaint so an idle scene reflects it (#2332).
+            it.requestRender()
+        }
     }
 
     /**
