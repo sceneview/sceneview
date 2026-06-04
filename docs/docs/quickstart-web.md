@@ -63,6 +63,11 @@ fun main() {
             }
             model("models/DamagedHelmet.glb")
         },
+        onError = { error ->
+            // Init runs async — a thrown error can't propagate to the caller.
+            // Handle it here (the createViewer JS wrapper rejects its Promise).
+            console.error("SceneView init failed", error)
+        },
         onReady = { sceneView ->
             sceneView.startRendering()
         }

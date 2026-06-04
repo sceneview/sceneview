@@ -59,6 +59,7 @@ SceneView.create(
     canvas: HTMLCanvasElement,
     assets: Array<String> = emptyArray(),     // KTX URLs to preload
     configure: SceneViewBuilder.() -> Unit = {},
+    onError: ((Throwable) -> Unit)? = null,    // init failed — wire to your reject path
     onReady: (SceneView) -> Unit
 )
 ```

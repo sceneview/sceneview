@@ -7,6 +7,8 @@ import io.github.sceneview.web.nodes.LightConfig
 import io.github.sceneview.web.nodes.LightType
 import io.github.sceneview.web.nodes.ModelConfig
 import kotlinx.browser.window
+import org.khronos.webgl.ArrayBuffer
+import org.khronos.webgl.Uint8Array
 import org.w3c.dom.HTMLCanvasElement
 
 /**
@@ -254,12 +256,20 @@ class SceneView private constructor(
          * @param canvas The HTML canvas element to render into
          * @param assets List of asset URLs to preload (IBL, skybox KTX files)
          * @param configure DSL block to configure the scene
+         * @param onError Callback invoked if initialization fails. Init runs
+         *   asynchronously inside the Filament `init` callback, so a thrown
+         *   error cannot propagate to the caller's stack — without this hook a
+         *   failure is only `console.error`-ed and any Promise wrapping
+         *   [create] (e.g. `createViewer`) hangs forever. Wire it to your
+         *   reject path so callers see a failed Promise instead of a silent
+         *   hang.
          * @param onReady Callback when the SceneView is fully initialized
          */
         fun create(
             canvas: HTMLCanvasElement,
             assets: Array<String> = emptyArray(),
             configure: SceneViewBuilder.() -> Unit = {},
+            onError: ((Throwable) -> Unit)? = null,
             onReady: (SceneView) -> Unit
         ) {
             // Step 1: Initialize Filament WASM module and preload any assets
@@ -276,7 +286,15 @@ class SceneView private constructor(
                     val view = engine.createView()
 
                     // Step 3: Create camera entity and camera
-                    val cameraEntity = (js("Filament.EntityManager.get().create()") as Entity)
+                    // `unsafeCast`, NOT `as Entity`: a Kotlin `as` against the
+                    // `external class Entity` compiles to `tmp instanceof Entity`,
+                    // but `Entity` is not a runtime constructor in Filament.js
+                    // (entities are integers) — the right-hand side is `undefined`,
+                    // so the cast throws `TypeError: Right-hand side of 'instanceof'
+                    // is not an object` and the whole init hangs. Same reason the
+                    // `Engine.create()` above goes through `js("Filament")` +
+                    // `unsafeCast`.
+                    val cameraEntity = js("Filament.EntityManager.get().create()").unsafeCast<Entity>()
                     val camera = engine.createCamera(cameraEntity)
 
                     // Step 4: Connect view to camera and scene
@@ -294,7 +312,9 @@ class SceneView private constructor(
                         fovInDegrees = 45.0,
                         aspect = aspect,
                         near = 0.1,
-                        far = 1000.0
+                        far = 1000.0,
+                        // Required — embind enforces strict arity 5. See fovVertical().
+                        fov = fovVertical()
                     )
 
                     // Default camera position: slightly above and back, looking at origin
@@ -345,7 +365,12 @@ class SceneView private constructor(
 
                     onReady(sceneView)
                 } catch (e: Throwable) {
+                    // Keep the log for the browser console, but ALSO signal the
+                    // failure to [onError] — this callback fires inside the async
+                    // `init` continuation, so a bare throw is swallowed here and a
+                    // Promise wrapping create() would otherwise never settle.
                     console.error("SceneView: Failed to initialize Filament engine", e)
+                    onError?.invoke(e)
                 }
             }
         }
@@ -361,7 +386,9 @@ class SceneView private constructor(
             fovInDegrees = 45.0,
             aspect = width.toDouble() / height.toDouble(),
             near = 0.1,
-            far = 1000.0
+            far = 1000.0,
+            // Required — embind enforces strict arity 5. See fovVertical().
+            fov = fovVertical()
         )
         // A new viewport / projection changes every pixel — repaint (#2332).
         requestRender()
@@ -424,7 +451,11 @@ class SceneView private constructor(
         window.fetch(url).then { response ->
             response.arrayBuffer()
         }.then { buffer ->
-            val asset = loader.createAsset(buffer)
+            // Filament.js gltfio `createAsset` expects a typed-array VIEW
+            // (Uint8Array), NOT a raw ArrayBuffer — passing the ArrayBuffer
+            // throws an embind BindingError. Mirrors the conversion the
+            // hand-authored sceneview.js does after `response.arrayBuffer()`.
+            val asset = loader.createAsset(Uint8Array(buffer.unsafeCast<ArrayBuffer>()))
             if (asset != null) {
                 // #1597: a 2nd loadModel of the same URL must release the prior
                 // asset for this logical model before adopting the replacement,
@@ -536,7 +567,9 @@ class SceneView private constructor(
 
         // Fetch and create IBL (indirect lighting) from a KTX1 file
         window.fetch(iblUrl).then { it.arrayBuffer() }.then { buffer ->
-            val ibl = engine.createIblFromKtx1(buffer)
+            // Uint8Array view, not the raw ArrayBuffer — see loadModel (embind
+            // BindingError otherwise).
+            val ibl = engine.createIblFromKtx1(Uint8Array(buffer.unsafeCast<ArrayBuffer>()))
             // Destroy the previous IBL (if any) before swapping it out, so a
             // 2nd loadEnvironment / loadDefaultEnvironment call does not leak
             // the prior GPU resource (issue #1496).
@@ -557,7 +590,8 @@ class SceneView private constructor(
                 if (!skySettled) { skySettled = true; pendingLoads--; requestRender() }
             }
             window.fetch(url).then { it.arrayBuffer() }.then { buffer ->
-                val sky = engine.createSkyFromKtx1(buffer)
+                // Uint8Array view, not the raw ArrayBuffer — see loadModel.
+                val sky = engine.createSkyFromKtx1(Uint8Array(buffer.unsafeCast<ArrayBuffer>()))
                 // Same leak-free swap as the IBL above (issue #1496).
                 skybox.replaceWith(sky)
                 scene.setSkybox(sky)
@@ -577,18 +611,31 @@ class SceneView private constructor(
      *   Filament.LightManager.Builder(type).intensity(n).direction([x,y,z]).build(engine, entity)
      */
     fun addLight(config: LightConfig) {
-        val entity = (js("Filament.EntityManager.get().create()") as Entity)
+        // `unsafeCast`, NOT `as Entity` — see the create() camera-entity note:
+        // `as` against the external `Entity` class emits `instanceof Entity`,
+        // and `Filament.Entity` is `undefined` at runtime, which throws. This
+        // path runs inside create() via the default 3-point lighting, so the
+        // same crash fires here too.
+        val entity = js("Filament.EntityManager.get().create()").unsafeCast<Entity>()
 
-        // Map our LightType enum to Filament's numeric type constants
-        // In Filament.js: 0 = SUN, 1 = DIRECTIONAL, 2 = POINT, 3 = FOCUSED_SPOT, 4 = SPOT
-        val lightType = when (config.type) {
-            LightType.DIRECTIONAL -> 1
-            LightType.POINT -> 2
-            LightType.SPOT -> 4
+        // Map our LightType to Filament's `LightManager$Type` embind ENUM
+        // values — NOT raw ints. `LightManager.Builder(type)` is an embind
+        // method whose `type` arg is the enum object; passing a bare integer
+        // throws a BindingError. (`\$` escapes Kotlin string interpolation.)
+        val lightType: dynamic = when (config.type) {
+            LightType.DIRECTIONAL -> js("Filament.LightManager\$Type.DIRECTIONAL")
+            LightType.POINT -> js("Filament.LightManager\$Type.POINT")
+            LightType.SPOT -> js("Filament.LightManager\$Type.SPOT")
         }
 
-        // Use the Builder pattern: LightManager.Builder(type).intensity(...).build(engine, entity)
-        val builder = LightManager.Builder(lightType)
+        // Resolve LightManager off the runtime `Filament` global. The
+        // `external class LightManager` binding captures
+        // `$module$filament.LightManager` at MODULE-LOAD — before
+        // `Filament.init()` attaches the embind classes — so it is `undefined`
+        // (→ "Cannot read properties of undefined (reading 'Builder')"). Same
+        // lazy `js("Filament")` resolution `Engine.create()` above uses.
+        val filament: dynamic = js("Filament")
+        val builder = filament.LightManager.Builder(lightType).unsafeCast<LightManagerBuilder>()
         builder.intensity(config.intensity)
         builder.color(float3(
             config.colorR.toDouble(),
@@ -641,7 +688,10 @@ class SceneView private constructor(
         }
 
         try {
-            val asset = loader.createAsset(glbBuffer)
+            // Uint8Array view, not the raw ArrayBuffer `buildGLB` returns —
+            // gltfio's createAsset throws an embind BindingError on a bare
+            // ArrayBuffer (see loadModel).
+            val asset = loader.createAsset(Uint8Array(glbBuffer))
             if (asset != null) {
                 val entities = asset.getEntities()
                 scene.addEntities(entities)

@@ -466,6 +466,24 @@ jobs:
         continue-on-error: true
         run: ./gradlew :sceneview-core:jsTest --stacktrace
 
+      # In-browser smoke test of the COMPILED Kotlin/JS bundle (the artifact
+      # published to npm/CDN), against the real Filament WASM module. The
+      # jsTest suite above stubs the Filament externals, so a real init-path
+      # binding crash is invisible to it — this leg builds the production
+      # webpack bundle, stages it with a version-matched filament.js/.wasm, and
+      # drives `createViewer()` in headless chromium (#2410). BLOCKING: a bundle
+      # that cannot initialise in a browser is broken for every consumer.
+      - name: Kotlin/JS bundle in-browser smoke test
+        run: bash .claude/scripts/web-bundle-smoke.sh
+
+      - name: Upload bundle smoke-test artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-bundle-smoke
+          path: samples/web-demo/test-results/
+          if-no-files-found: ignore
+
   # ── Flutter demo build ──────────────────────────────────────────────────
   # Protects the Kotlin 2.0 Compose Compiler plugin wiring in
   # flutter/sceneview_flutter/android/build.gradle. Without this job, a

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SceneView Kotlin/JS bundle — in-browser smoke test</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #000; }
+    #scene-canvas { width: 640px; height: 480px; display: block; }
+  </style>
+</head>
+<body>
+  <!--
+    Minimal harness that exercises the COMPILED Kotlin/JS bundle
+    (`sceneview-web.js`) the way a real npm/CDN consumer does — NOT the
+    hand-authored `js/sceneview.js` the rest of the web-demo serves.
+
+    The bundle + a version-matched `filament.js`/`filament.wasm` are staged
+    into this directory by `.claude/scripts/web-bundle-smoke.sh` (which builds
+    `:sceneview-web:jsBrowserProductionWebpack` and copies the artifacts). The
+    Playwright spec `tests/kotlin-bundle.spec.ts` drives this page and asserts
+    `createViewer(...)` actually RESOLVES and renders — the regression guard for
+    the silent init hang fixed in SceneView.kt (`as Entity` → `instanceof
+    undefined`). filament.js resolves filament.wasm relative to its own URL, so
+    all three files live side-by-side here.
+  -->
+  <canvas id="scene-canvas" width="640" height="480"></canvas>
+
+  <script src="./filament.js"></script>
+  <script src="./sceneview-web.js"></script>
+  <script>
+    // The spec polls these globals. `status` starts 'pending' and is the core
+    // regression signal: the bug left it 'pending' forever (createViewer's
+    // Promise never settled), so a timeout waiting for status !== 'pending'
+    // reproduces the hang.
+    window.__smoke = {
+      status: 'pending',   // pending | resolved | rejected | no-api
+      error: null,
+      version: null,
+      modelLoaded: false,
+    };
+    // init-path crashes are swallowed into console.error by SceneView.create();
+    // capture that exact signature so the spec can assert it never fires.
+    window.__initErrors = [];
+    (function () {
+      var orig = console.error;
+      console.error = function () {
+        try {
+          var msg = Array.prototype.map
+            .call(arguments, function (a) { return (a && a.message) ? a.message : String(a); })
+            .join(' ');
+          if (msg.indexOf('Failed to initialize Filament engine') !== -1) {
+            window.__initErrors.push(msg);
+          }
+        } catch (e) { /* never let logging instrumentation throw */ }
+        return orig.apply(console, arguments);
+      };
+    })();
+
+    window.addEventListener('load', function () {
+      if (!window.sceneview || typeof window.sceneview.createViewer !== 'function') {
+        window.__smoke.status = 'no-api';
+        return;
+      }
+      window.__smoke.version = window.sceneview.version;
+
+      window.sceneview.createViewer('scene-canvas')
+        .then(function (sv) {
+          window.__smoke.status = 'resolved';
+          window.__sv = sv;
+          // Force real GPU work with a self-contained, network-free local GLB
+          // so "renders non-blank" is a true signal (the default neutral IBL
+          // fetch hits the network and is allowed to fail — the 3 default
+          // directional lights still light the model).
+          return sv.loadModel('../models/khronos_damaged_helmet.glb');
+        })
+        .then(function () {
+          window.__smoke.modelLoaded = true;
+        })
+        .catch(function (err) {
+          window.__smoke.status = 'rejected';
+          window.__smoke.error = (err && err.message) ? err.message : String(err);
+        });
+    });
+  </script>
+</body>
+</html>

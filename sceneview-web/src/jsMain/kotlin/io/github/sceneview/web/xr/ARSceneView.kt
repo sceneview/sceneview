@@ -119,6 +119,9 @@ class ARSceneView private constructor(
                         // AR uses camera from WebXR, not user-configured camera
                         cameraControls(false)
                     },
+                    // Surface a Filament init failure through this flow's onError
+                    // instead of letting create() swallow it into console.error.
+                    onError = { error -> onError?.invoke("Failed to initialize Filament for AR: ${error.message}") },
                     onReady = { sceneView ->
                         // Set up XR rendering
                         val gl = canvas.asDynamic().getContext("webgl2", js("{xrCompatible: true}"))
@@ -383,6 +386,9 @@ class VRSceneView private constructor(
                     configure = {
                         cameraControls(false)
                     },
+                    // Surface a Filament init failure through this flow's onError
+                    // instead of letting create() swallow it into console.error.
+                    onError = { error -> onError?.invoke("Failed to initialize Filament for VR: ${error.message}") },
                     onReady = { sceneView ->
                         val gl = canvas.asDynamic().getContext("webgl2", js("{xrCompatible: true}"))
                         val xrLayer = XRWebGLLayer(session, gl)

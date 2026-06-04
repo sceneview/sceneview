@@ -40,3 +40,22 @@ fun viewport(x: Int, y: Int, width: Int, height: Int): dynamic {
     arr.push(x, y, width, height)
     return arr
 }
+
+/**
+ * The `Camera$Fov.VERTICAL` direction enum, resolved from the runtime Filament
+ * global.
+ *
+ * `Camera.setProjectionFov(...)` is a raw embind method with a STRICT arity of
+ * 5 — it throws `function Camera.setProjectionFov called with 4 arguments,
+ * expected 5 args!` if the trailing `fov` direction is omitted, even though the
+ * Kotlin binding gives that parameter a `definedExternally` default (which only
+ * means "JS supplies the default", NOT "the arg may be dropped at the call
+ * site"). So every `setProjectionFov` call MUST pass this explicitly — the same
+ * `Filament.Camera$Fov.VERTICAL` the hand-authored sceneview.js passes.
+ *
+ * A function (not a top-level `val`) so it is resolved lazily on first call,
+ * after `Filament.init()` has populated the global — never at module load. The
+ * `\$` escapes Kotlin string-template interpolation; the JS identifier is
+ * literally `Filament.Camera$Fov.VERTICAL`.
+ */
+fun fovVertical(): dynamic = js("Filament.Camera\$Fov.VERTICAL")

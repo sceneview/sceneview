@@ -1,0 +1,125 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { test, expect, sampleCanvas, assertCanvasContextAlive } from './helpers';
+
+/**
+ * SceneView Web — COMPILED Kotlin/JS bundle in-browser smoke test (#2410).
+ *
+ * The rest of the web-demo (render.spec / catalog.spec) drives the
+ * hand-authored plain-JS `js/sceneview.js`. That left the actual published
+ * artifact — the Kotlin/JS bundle shipped to npm + the CDN as
+ * `sceneview-web@<v>/sceneview-web.js` — with ZERO in-browser coverage: the
+ * `jsTest` (Karma) suite stubs the Filament externals, so an init-path crash
+ * that only happens against the real Filament WASM module is invisible to CI.
+ *
+ * That gap hid a hard init crash: `SceneView.create()` did
+ * `js("Filament.EntityManager.get().create()") as Entity`, and the Kotlin `as`
+ * cast against the `external class Entity` compiled to `tmp instanceof Entity`.
+ * `Entity` is not a runtime constructor in Filament.js (entities are integers),
+ * so the right-hand side was `undefined` → `TypeError: Right-hand side of
+ * 'instanceof' is not an object`. `SceneView.create()` swallowed it into a
+ * `console.error`, so `createViewer().then(...)` never settled and every
+ * consumer of the bundle hung forever on a blank canvas.
+ *
+ * This spec loads the bundle the way a real consumer does (a bare page with
+ * `filament.js` + `sceneview-web.js`, see `site/kotlin-bundle/index.html`) and
+ * asserts the viewer Promise actually RESOLVES and renders.
+ *
+ * The bundle + a version-matched filament.js/.wasm are staged into
+ * `site/kotlin-bundle/` by `.claude/scripts/web-bundle-smoke.sh` (build
+ * `:sceneview-web:jsBrowserProductionWebpack` + copy). When they are NOT staged
+ * — e.g. the lean node-only `device-qa.sh --platform=web` leg that has no JDK —
+ * the whole describe self-skips so it never red-blocks a context that simply
+ * could not produce the artifact. The real gate runs in the `web-desktop` CI
+ * job (gradle + node) and locally via that script.
+ */
+
+const BUNDLE_PATH = join(__dirname, '..', 'site', 'kotlin-bundle', 'sceneview-web.js');
+const BUNDLE_STAGED = existsSync(BUNDLE_PATH);
+
+test.describe('SceneView Kotlin/JS bundle — browser init', () => {
+  test.skip(
+    !BUNDLE_STAGED,
+    'Kotlin bundle not staged at site/kotlin-bundle/sceneview-web.js — ' +
+      'run `bash .claude/scripts/web-bundle-smoke.sh` (builds ' +
+      ':sceneview-web:jsBrowserProductionWebpack and stages the artifacts).',
+  );
+
+  test('createViewer() resolves, renders, and never throws during init', async ({ page }) => {
+    const consoleErrors: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') consoleErrors.push(msg.text());
+    });
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(err.message));
+
+    await page.goto('/kotlin-bundle/index.html');
+
+    // The global API must be registered by the bundle (`window.sceneview`).
+    await expect
+      .poll(() => page.evaluate(() => typeof (window as any).sceneview?.createViewer), {
+        timeout: 15_000,
+        message: 'window.sceneview.createViewer was never registered by the bundle',
+      })
+      .toBe('function');
+
+    // CORE REGRESSION: the viewer Promise must SETTLE. The bug left it
+    // 'pending' forever (createViewer().then() hung), so this poll timing out
+    // *is* the reproduction of the hang — surface it with a clear message
+    // rather than a bare assertion timeout.
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__smoke?.status), {
+        timeout: 30_000,
+        message:
+          'createViewer() never settled — the Promise hung (init crash swallowed ' +
+          'into console.error). This is the `as Entity` → `instanceof undefined` regression.',
+      })
+      .not.toBe('pending');
+
+    const smoke = await page.evaluate(() => (window as any).__smoke);
+
+    // It must RESOLVE — not reject, and not fail to expose the API.
+    expect(
+      smoke.status,
+      `createViewer() settled as "${smoke.status}"${smoke.error ? ` (${smoke.error})` : ''} ` +
+        '— expected "resolved".',
+    ).toBe('resolved');
+
+    // The init-crash signature must never have been logged.
+    const initErrors: string[] = await page.evaluate(() => (window as any).__initErrors ?? []);
+    expect(
+      initErrors,
+      'SceneView.create() logged a Filament init failure — the bundle cannot ' +
+        'initialise in a browser.',
+    ).toEqual([]);
+
+    // No uncaught page error escaped either.
+    expect(pageErrors, `uncaught page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+
+    // The WebGL2 context the engine created must be live.
+    await assertCanvasContextAlive(page, 'kotlin bundle createViewer');
+
+    // Wait for the local model to finish loading, then let a few frames render.
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__smoke?.modelLoaded === true), {
+        timeout: 30_000,
+        message: 'local model never finished loading through the bundle',
+      })
+      .toBe(true);
+    await page.waitForTimeout(1500);
+
+    // Hard blank-canvas signal — a real lit model has wide luminance variance.
+    // `--enable-unsafe-swiftshader` (playwright.config.ts) gives headless CI a
+    // genuine software-rasterised context, so this is a true signal. Sample the
+    // FULL canvas (not the centre block): this smoke test guards "the bundle
+    // initialised and rendered visible content", and a bare 640×480 fixture
+    // without the demo's full framing setup does not guarantee the subject is
+    // dead-centre. Per `sampleCanvas`'s own docs, 'full' is an equally hard
+    // blank signal, just framing-agnostic.
+    const canvas = page.locator('#scene-canvas');
+    await canvas.screenshot({ path: 'test-results/kotlin_bundle_canvas.png' });
+    const { hasContent, headlessGpuOk } = await sampleCanvas(page, 'full');
+    expect(headlessGpuOk, 'canvas element is missing or zero-sized').toBe(true);
+    expect(hasContent, 'canvas is blank — the Kotlin bundle rendered nothing').toBe(true);
+  });
+});
