@@ -153,6 +153,9 @@ class WebXRSession private constructor(
                         // XR sessions manage their own camera — disable orbit controls
                         cameraControls(false)
                     },
+                    // Surface a Filament init failure through this flow's onError
+                    // instead of letting create() swallow it into console.error.
+                    onError = { error -> onError?.invoke("Failed to initialize Filament for XR: ${error.message}") },
                     onReady = { sceneView ->
                         // Get WebGL2 context with XR compatibility
                         val gl = canvas.asDynamic().getContext("webgl2", js("{xrCompatible: true}"))

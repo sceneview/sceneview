@@ -116,6 +116,11 @@ internal fun createViewerImpl(
                     autoRotate(autoRotate)
                     cameraControls(cameraControls)
                 },
+                // Init runs async inside Filament's `init` callback, so a crash
+                // there can't reach the `try/catch` below. Reject the Promise on
+                // failure so `createViewer(...).then(...)` callers get a rejected
+                // Promise instead of an infinite hang on a blank canvas.
+                onError = { error -> reject(error) },
                 onReady = { sceneView ->
                     sceneView.startRendering()
 

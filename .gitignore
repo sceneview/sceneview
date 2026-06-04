@@ -206,6 +206,13 @@ samples/react-native-demo/ios/Models/
 samples/web-demo/test-results/
 samples/web-demo/playwright-report/
 
+# Kotlin/JS bundle smoke-test staging: the built bundle + version-matched
+# Filament runtime that .claude/scripts/web-bundle-smoke.sh copies into
+# samples/web-demo/site/kotlin-bundle/ are build artifacts. They are already
+# covered by the broad `site/` rule above; the fixture page index.html in that
+# directory is force-added (`git add -f`), matching how the rest of site/ is
+# tracked.
+
 # Local MCP workspace artifacts (not canonical — canonical code is in mcp/packages/)
 mcp-automotive/
 mcp-healthcare/
