@@ -522,9 +522,12 @@ private fun StreamingSection(
 // — the SceneView equivalent of RealityKit's `OcclusionMaterial` and Sceneform
 // legacy's `MaterialFactory.makeOcclusionMaterial(...)`.
 //
-// Stage:
-//  - A virtual helmet sits at `z = -2 m`.
-//  - A flat 1 × 1 m plane sits between the camera and the helmet at `z = -1.2 m`.
+// Stage (#2304 framing):
+//  - A virtual helmet sits at the world origin, scaled to 0.6 m and framed close by a static
+//    camera looking at the origin, lit by the shared studio IBL so it fills the viewport and
+//    reads against the dark background.
+//  - A vertical occluder plane sits between the camera and the helmet at `z = +0.7 m`, with
+//    its edge on the helmet's centre line so it hides exactly one lateral half of the helmet.
 //
 // Toggle:
 //  - **Occluder visible ON** — the plane wears a tinted unlit material so the user can SEE
@@ -534,7 +537,8 @@ private fun StreamingSection(
 //    itself is now invisible (zero pixels painted), but its depth value still goes into the
 //    depth buffer, so any helmet fragment behind it fails the depth test and is hidden.
 //
-// Effect: the helmet visibly disappears WHERE the plane is, with no plane painted on top.
+// Effect: one half of the helmet visibly disappears WHERE the plane is, with no plane
+// painted on top — a sharp vertical cut down the middle into the dark background.
 // That's the entire contract — a "ghost wall" that blocks virtual content without ever
 // rendering itself.
 //
@@ -619,13 +623,19 @@ private fun OcclusionSection(
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
+                // Studio IBL (no skybox) — the helmet reads via its own lighting against
+                // the dark background, and the occluded region stays dark too, so the
+                // hidden half reads as "gone" rather than as a painted slab (#2304).
                 environment = rememberModelDemoEnvironment(environmentLoader),
                 // Static camera — the whole section is about depth ordering at a fixed
-                // viewpoint. No orbit so the user sees the occlusion effect from a
-                // single, reproducible angle.
+                // viewpoint. No orbit so the user sees the occlusion effect from a single,
+                // reproducible angle. Framed close on the helmet (which sits at the world
+                // origin) so it fills the viewport; eye x == target x == 0, so the occluder
+                // wall's edge (at world x = 0) projects to the screen centre — a clean
+                // vertical cut down the helmet's middle (#2304).
                 cameraManipulator = rememberCameraManipulator(
-                    orbitHomePosition = Position(0f, 0.1f, 0.5f),
-                    targetPosition = Position(0f, 0f, -2f),
+                    orbitHomePosition = Position(0f, 0.2f, 1.4f),
+                    targetPosition = Position(0f, 0f, 0f),
                 ),
                 // The hand-authored helmet + plane positions are meaningful — keep them
                 // in world space instead of letting the union bbox auto-centre move
@@ -634,22 +644,29 @@ private fun OcclusionSection(
             ) {
                 val instance = helmetInstance
                 if (instance != null) {
-                    // Helmet at z = -2 m — the target whose visibility the occluder
-                    // controls.
+                    // Helmet at the world origin, scaled to 0.6 m so it fills the close
+                    // framing (#2304) — the target one lateral half of which the occluder
+                    // hides. Placed at the origin and viewed by a camera looking at the
+                    // origin (the proven framing pattern other demos use); centerOrigin is
+                    // *not* used here because the composable's `position` overrides it.
                     ModelNode(
                         modelInstance = instance,
-                        scaleToUnits = 0.4f,
-                        centerOrigin = Position(0f, 0f, -2f),
+                        scaleToUnits = 0.6f,
                     )
                 }
-                // Occluder plane at z = -1.2 m — between the camera and the helmet.
-                // Slightly smaller than the helmet's bbox so the user can clearly see
-                // the occluded vs. unoccluded silhouette difference.
+                // Occluder wall at z = +0.7 m — between the camera (z = +1.4) and the
+                // helmet (at the origin), so it clearly sits in front. Its edge is at
+                // world x = 0 (the helmet's centre line) and it extends to one side, so it
+                // hides exactly one lateral half of the helmet: the other half stays fully
+                // visible, giving an obvious vertical occlusion cut down the middle (#2304).
+                // The previous 0.5×0.5 plane was *centred* on the helmet and, being closer
+                // to the camera, covered the whole silhouette — so the helmet simply
+                // vanished and nothing read.
                 PlaneNode(
-                    size = Size(x = 0.5f, y = 0.5f, z = 0f),
+                    size = Size(x = 1.4f, y = 1.4f, z = 0f),
                     materialInstance =
                         if (occluderVisible) debugVisibleMaterial else occlusionMaterial,
-                    position = Position(0f, 0f, -1.2f),
+                    position = Position(0.7f, 0f, 0.7f),
                 )
             }
             LoadingScrim(
