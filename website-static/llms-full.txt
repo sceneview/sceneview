@@ -120,6 +120,9 @@ if (instance != null) {
     ModelNode(
         modelInstance = instance,
         scaleToUnits = 1.0f,
+        // centerOrigin composes additively with position: the model is bottom-aligned
+        // (y = -1) AND placed at z = -2. centerOrigin alone (no position) bottom-aligns at
+        // the origin; pass both to align AND position.
         centerOrigin = Position(y = -1f),
         position = Position(x = 0f, y = 0f, z = -2f),
         rotation = Rotation(y = 45f),

@@ -209,7 +209,11 @@ fun ARPoseDemo(onBack: () -> Unit) {
                             ModelNode(
                                 modelInstance = instance,
                                 scaleToUnits = 0.3f,
-                                centerOrigin = Position(0.0f, -1.0f, 0.0f),
+                                // The lantern sits centred on the slider-driven pose. A previous
+                                // `centerOrigin = Position(0, -1, 0)` (bottom-align) here was a
+                                // silent no-op — the composable discarded it (fixed library-side) —
+                                // so it's removed to keep the lantern centred on the pose exactly
+                                // as shipped, which is the natural read for a 6DoF pose marker.
                             )
                         }
                     }

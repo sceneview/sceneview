@@ -123,8 +123,8 @@ fun MyARScreen() {
     animationLoop: Boolean = true,
     animationSpeed: Float = 1f,
     scaleToUnits: Float? = null,       // uniformly scale to fit this size (meters)
-    centerOrigin: Position? = null,    // Position(0,0,0) = center, Position(0,-1,0) = bottom-aligned
-    position: Position = Position(x = 0f),
+    centerOrigin: Position? = null,    // Position(0,0,0) = center, Position(0,-1,0) = bottom-aligned; composes additively with `position`
+    position: Position = Position(x = 0f),  // added on top of the centerOrigin offset
     rotation: Rotation = Rotation(x = 0f),
     scale: Scale = Scale(1f),
     isVisible: Boolean = true,

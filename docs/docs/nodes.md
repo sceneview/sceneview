@@ -260,7 +260,8 @@ instance?.let {
         modelInstance = it,
         // Fit the model into a 1m cube regardless of its original size
         scaleToUnits = 1f,
-        // Pivot at the bottom (feet) instead of geometric center
+        // Pivot at the bottom (feet) instead of geometric center. centerOrigin composes
+        // additively with position below — the model is bottom-aligned AND placed at z = -2.
         centerOrigin = Position(x = 0f, y = -1f, z = 0f),
         // Reactive animation switch
         autoAnimate = false,
@@ -276,7 +277,7 @@ instance?.let {
 
 - **`scaleToUnits` and `scale` are mutually exclusive.** When `scaleToUnits != null`, the `scale` parameter is **ignored** — the model's scale is computed from its bounding box.
 - **Switching animations:** provide `animationName` as reactive state, set `autoAnimate = false`. The previous animation is stopped automatically when `animationName` changes.
-- **`centerOrigin` convention:** `null` keeps the model's authoring origin, `Position(0,0,0)` centers on the bounding box, `Position(0,-1,0)` bottom-aligns.
+- **`centerOrigin` convention:** `null` keeps the model's authoring origin, `Position(0,0,0)` centers on the bounding box, `Position(0,-1,0)` bottom-aligns. Composes **additively** with `position` — the alignment offset (`origin * size`) is added to `position`, so a non-zero `centerOrigin` takes effect even when `position` keeps its default, and the two can be combined (bottom-align *and* place at a point). Applied once on creation (not reactive, like `scaleToUnits`).
 - **`autoAnimate = true` ignores `animationName`** — the code explicitly ORs the two to avoid double-playing.
 
 ---

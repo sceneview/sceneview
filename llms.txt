@@ -376,7 +376,7 @@ SceneView(...) {
 
 Key behaviors:
 - `scaleToUnits`: uniformly scales to fit within a cube of this size (meters). `null` = original size.
-- `centerOrigin`: `Position(0,0,0)` = center model. `Position(0,-1,0)` = center horizontal, bottom-aligned. `null` = keep original.
+- `centerOrigin`: `Position(0,0,0)` = center model. `Position(0,-1,0)` = center horizontal, bottom-aligned. `null` = keep original. Composes **additively** with `position` — the alignment offset (`origin * size`) is added to `position`, so a non-zero `centerOrigin` takes effect even when `position` is left at its default, and the two can be combined (bottom-align *and* place at a point). Applied once on creation (not reactive, like `scaleToUnits`).
 - `autoAnimate = true` + `animationName = null`: plays ALL animations.
 - `animationName = "Walk"`: plays only that named animation (stops previous). Reactive to Compose state.
 
