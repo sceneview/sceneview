@@ -127,6 +127,25 @@ for pkg in sceneview-web react-native/react-native-sceneview; do
     fi
 done
 
+# react-native/react-native-sceneview/package-lock.json — the lockfile sibling
+# of the RN library package.json checked just above. Same two-slot drift as the
+# web-demo lock (it shipped 4.3.0 while package.json was 4.17.0): `npm install`
+# rewrites root `.version` + `.packages[""].version` to match package.json, so a
+# stale lock dirties the tree. Both slots checked so a partial drift is caught.
+RN_LIB_LOCK="$REPO_ROOT/react-native/react-native-sceneview/package-lock.json"
+if [ -f "$RN_LIB_LOCK" ]; then
+    while IFS= read -r V; do
+        [ -n "$V" ] && add_check "react-native/.../package-lock.json" "$V"
+    done < <(python3 -c "
+import json
+d = json.load(open('$RN_LIB_LOCK'))
+vs = [d['version']] if 'version' in d else []
+pkg = d.get('packages', {}).get('', {})
+if isinstance(pkg, dict) and 'version' in pkg: vs.append(pkg['version'])
+print('\n'.join(sorted(set(vs))))
+" 2>/dev/null)
+fi
+
 # React Native plugin's CONSUMED SceneView dependency coordinate — same rule as
 # the Flutter plugin: `io.github.sceneview:(ar)sceneview:X.Y.Z` here is a
 # dependency on the published Maven Central artifact and MUST lag to the last
@@ -677,6 +696,27 @@ if [ -f "$WEB_DEMO_TESTS_PKG" ]; then
     add_check "samples/web-demo/package.json" "$V"
 fi
 
+# samples/web-demo/package-lock.json — the lockfile sibling of the package.json
+# above. `npm install` rewrites the lock's two version slots (root `.version`
+# and `.packages[""].version`) to match package.json, so a stale lock (it
+# shipped 4.12.0 while package.json was 4.17.0) makes a plain `npm install`
+# dirty the working tree in CI / device-QA. Track both slots so a partial drift
+# between them is still caught, the same way MARKETING_VERSION is swept per
+# occurrence above.
+WEB_DEMO_TESTS_LOCK="$REPO_ROOT/samples/web-demo/package-lock.json"
+if [ -f "$WEB_DEMO_TESTS_LOCK" ]; then
+    while IFS= read -r V; do
+        [ -n "$V" ] && add_check "samples/web-demo/package-lock.json" "$V"
+    done < <(python3 -c "
+import json
+d = json.load(open('$WEB_DEMO_TESTS_LOCK'))
+vs = [d['version']] if 'version' in d else []
+pkg = d.get('packages', {}).get('', {})
+if isinstance(pkg, dict) and 'version' in pkg: vs.append(pkg['version'])
+print('\n'.join(sorted(set(vs))))
+" 2>/dev/null)
+fi
+
 # website-static/.well-known/llms.txt — the "(version X.Y.Z)" prose label on
 # the Maven artifacts line. Distinct from the artifact coordinate scan above
 # which catches the next two lines (`io.github.sceneview:sceneview:X.Y.Z`).
@@ -897,6 +937,34 @@ with open('$PKG_JSON', 'w') as f:
         fi
     done
 
+    # Fix react-native/react-native-sceneview/package-lock.json — keep the RN
+    # library lockfile's two version slots in lockstep with its package.json.
+    # Byte-for-byte-npm round-trip (verified), same pattern as the web-demo lock
+    # fix; only the version strings change, every other field round-trips.
+    if [ -f "$RN_LIB_LOCK" ]; then
+        CHANGED=$(python3 -c "
+import json
+p = '$RN_LIB_LOCK'
+src = '$SOURCE_VERSION'
+with open(p) as f:
+    data = json.load(f)
+old = ''
+changed = False
+if data.get('version') != src:
+    old = data.get('version', ''); data['version'] = src; changed = True
+pkg = data.get('packages', {}).get('')
+if isinstance(pkg, dict) and pkg.get('version') != src:
+    if not old: old = pkg.get('version', '')
+    pkg['version'] = src; changed = True
+if changed:
+    with open(p, 'w') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write('\n')
+    print(old)
+" 2>/dev/null || echo "")
+        [ -n "$CHANGED" ] && echo -e "  Fixed: react-native/.../package-lock.json ($CHANGED -> $SOURCE_VERSION)"
+    fi
+
     # Fix Flutter pubspec.yaml
     PUBSPEC="$REPO_ROOT/flutter/sceneview_flutter/pubspec.yaml"
     if [ -f "$PUBSPEC" ]; then
@@ -1013,12 +1081,18 @@ with open('$PKG_JSON', 'w') as f:
         fi
     done
 
-    # Fix website-static/index.html version refs
+    # Fix website-static/index.html version refs. This is the ONLY unanchored
+    # blanket version sweep, so OLD_V's dots MUST be escaped before it is used
+    # as a regex by grep and sed: an unescaped `4.3.0` is the BRE `4`+any+`3`+
+    # any+`0`, which matched the SVG-logo coordinate substring `4 390` and
+    # rewrote `390,194 390,340` to `390,194.17.0,340`, corrupting the markup.
+    # Escaping restricts the match to a literal version string.
     if [ -f "$WEBSITE_INDEX" ]; then
         for OLD_V in $OLD_VERSIONS; do
             [ "$OLD_V" = "$SOURCE_VERSION" ] && continue
-            if grep -q "$OLD_V" "$WEBSITE_INDEX" 2>/dev/null; then
-                _sed_inplace "s/$OLD_V/$SOURCE_VERSION/g" "$WEBSITE_INDEX"
+            OLD_V_RE="${OLD_V//./\\.}"
+            if grep -qE "$OLD_V_RE" "$WEBSITE_INDEX" 2>/dev/null; then
+                _sed_inplace "s/$OLD_V_RE/$SOURCE_VERSION/g" "$WEBSITE_INDEX"
                 echo -e "  Fixed: website-static/index.html ($OLD_V -> $SOURCE_VERSION)"
             fi
         done
@@ -1190,6 +1264,36 @@ with open('$WEB_DEMO_TESTS_PKG', 'w') as f:
 "
             echo -e "  Fixed: samples/web-demo/package.json ($CURRENT -> $SOURCE_VERSION)"
         fi
+    fi
+
+    # samples/web-demo/package-lock.json — keep the lockfile's two version slots
+    # (root + packages[""]) in lockstep with package.json. Mutated + re-dumped via
+    # python with `ensure_ascii=False` so the output is byte-for-byte what `npm
+    # install` writes (verified), leaving the QA tree clean. Only the version
+    # strings change; every other field is round-tripped untouched. The guard
+    # fires when EITHER slot drifts so a partial drift still converges.
+    if [ -f "$WEB_DEMO_TESTS_LOCK" ]; then
+        CHANGED=$(python3 -c "
+import json
+p = '$WEB_DEMO_TESTS_LOCK'
+src = '$SOURCE_VERSION'
+with open(p) as f:
+    data = json.load(f)
+old = ''
+changed = False
+if data.get('version') != src:
+    old = data.get('version', ''); data['version'] = src; changed = True
+pkg = data.get('packages', {}).get('')
+if isinstance(pkg, dict) and pkg.get('version') != src:
+    if not old: old = pkg.get('version', '')
+    pkg['version'] = src; changed = True
+if changed:
+    with open(p, 'w') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write('\n')
+    print(old)
+" 2>/dev/null || echo "")
+        [ -n "$CHANGED" ] && echo -e "  Fixed: samples/web-demo/package-lock.json ($CHANGED -> $SOURCE_VERSION)"
     fi
 
     # website-static/.well-known/llms.txt — Maven prose label + sceneview-web prose.
