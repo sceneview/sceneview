@@ -52,6 +52,7 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
@@ -101,7 +102,9 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun AnimationPhysicsDemo(onBack: () -> Unit) {
-    var mode by remember { mutableStateOf(AnimationPhysicsMode.Animation) }
+    var mode by remember {
+        mutableStateOf(initialDemoMode(AnimationPhysicsMode.entries, AnimationPhysicsMode.Animation))
+    }
     when (mode) {
         AnimationPhysicsMode.Animation -> AnimationSection(onBack, mode) { mode = it }
         AnimationPhysicsMode.Physics -> PhysicsSection(onBack, mode) { mode = it }

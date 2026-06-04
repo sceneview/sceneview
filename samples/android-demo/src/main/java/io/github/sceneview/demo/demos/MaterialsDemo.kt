@@ -36,6 +36,7 @@ import io.github.sceneview.demo.ErrorScrim
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
+import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.sketchfab.SampleAssets
@@ -78,7 +79,9 @@ import java.io.File
  */
 @Composable
 fun MaterialsDemo(onBack: () -> Unit) {
-    var mode by remember { mutableStateOf(MaterialsMode.Pbr) }
+    var mode by remember {
+        mutableStateOf(initialDemoMode(MaterialsMode.entries, MaterialsMode.Pbr))
+    }
     when (mode) {
         MaterialsMode.Pbr -> PbrSection(onBack, mode) { mode = it }
         MaterialsMode.Streaming -> StreamingSection(onBack, mode) { mode = it }

@@ -38,6 +38,7 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
+import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberPausableHeroYaw
 import io.github.sceneview.math.Position
@@ -71,7 +72,9 @@ import io.github.sceneview.sample.rememberUnlitMaterialInstance
  */
 @Composable
 fun PickingAndCollisionDemo(onBack: () -> Unit) {
-    var mode by remember { mutableStateOf(PickingMode.RayHitTest) }
+    var mode by remember {
+        mutableStateOf(initialDemoMode(PickingMode.entries, PickingMode.RayHitTest))
+    }
     when (mode) {
         PickingMode.RayHitTest -> RayHitTestSection(onBack, mode) { mode = it }
         PickingMode.ViewNode -> ViewNodeSection(onBack, mode) { mode = it }
