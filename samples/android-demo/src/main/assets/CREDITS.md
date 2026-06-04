@@ -2,11 +2,15 @@
 
 All assets used in this demo app are free and distributed under permissive licenses.
 
-> **Optimization note (#934).** The bundled GLBs and HDRs are compressed for a
-> lean APK while preserving on-device visual quality:
-> - **GLB models** — geometry is `KHR_draco_mesh_compression`, textures are
->   `EXT_texture_webp` (sRGB maps lossy q90, linear normal/MR/AO maps lossless).
->   Both extensions are decoded natively by Filament's bundled `gltfio`.
+> **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
+> for a lean APK while preserving on-device visual quality:
+> - **GLB models** — geometry is `KHR_draco_mesh_compression`. Textures are
+>   **PNG/JPEG**: Filament's Android prebuilt ships `gltfio` with WebP support
+>   compiled out (`isWebpSupported() == false`), so `EXT_texture_webp` textures
+>   render untextured on Android (#2305). The models are therefore bundled with
+>   PNG/JPEG textures the `gltfio` `StbProvider` decodes natively (Draco geometry
+>   is decoded natively too). KTX2/Basis is a worthwhile future optimization to
+>   reclaim the size PNG costs vs WebP.
 > - **HDR environments** — equirect maps are downsampled 2048×1024 → 1024×512
 >   in linear-radiance space (2×2 box average, energy-preserving). The `_2k`
 >   suffix is kept as a stable filename only; resolution is now 1K.
@@ -19,16 +23,16 @@ Repository: https://github.com/KhronosGroup/glTF-Sample-Assets
 
 | File | Original Name | Category | Size (compressed) | License |
 |---|---|---|---|---|
-| `khronos_damaged_helmet.glb` | DamagedHelmet | Sci-fi helmet | 3.1 MB | CC-BY 4.0 (theblueturtle_) |
+| `khronos_damaged_helmet.glb` | DamagedHelmet | Sci-fi helmet | 3.5 MB | CC-BY 4.0 (theblueturtle_) |
 | `khronos_fox.glb` | Fox | Animated character | 94 KB | CC-BY 4.0 (PixelMannen) |
-| `khronos_lantern.glb` | Lantern | Decor / Architectural | 3.7 MB | CC-BY 4.0 (Microsoft) |
-| `khronos_toy_car.glb` | ToyCar | Vehicle / Toy car | 1.2 MB | CC-BY 4.0 (Khronos) |
+| `khronos_lantern.glb` | Lantern | Decor / Architectural | 9.0 MB | CC-BY 4.0 (Microsoft) |
+| `khronos_toy_car.glb` | ToyCar | Vehicle / Toy car | 2.1 MB | CC-BY 4.0 (Khronos) |
 
 ### Other sources (CC0 / CC-BY)
 | File | Category | Size (compressed) |
 |---|---|---|
-| `shiba.glb` | Animated character (Shiba dog) | 64 KB |
-| `threejs_soldier.glb` | Animated character (4 clips) | 1.3 MB |
+| `shiba.glb` | Animated character (Shiba dog) | 669 KB |
+| `threejs_soldier.glb` | Animated character (4 clips) | 2.3 MB |
 
 ## HDR Environments (.hdr)
 
