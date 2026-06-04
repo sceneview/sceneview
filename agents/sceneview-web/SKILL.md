@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-05-21'
+  last-updated: '2026-06-04'
   keywords:
   - sceneview
   - sceneview-web
@@ -107,6 +107,10 @@ sceneview.modelViewer('viewer', 'model.glb')
 // More control
 sceneview.createViewer('viewer').then(function (sv) {
   sv.loadModel('model.glb').then(function () { sv.fitToModels(); });
+}).catch(function (err) {
+  // The Promise REJECTS if Filament fails to initialize — handle it,
+  // don't assume createViewer always resolves.
+  console.error('SceneView init failed', err);
 });
 ```
 
@@ -138,6 +142,7 @@ SceneView.create(
         cameraControls(true)
         autoRotate(true)
     },
+    onError = { error -> console.error(error) },  // init failed — wire to your reject path
     onReady = { sceneView -> sceneView.startRendering() }
 )
 ```

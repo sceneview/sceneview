@@ -30,6 +30,9 @@ sceneview.createViewer('viewer').then(function (sv) {
   sv.setEnvironmentWithSkybox('studio_ibl.ktx', 'studio_skybox.ktx');
   sv.setCameraOrbit(0.6, 1.2, 4.0);
   sv.setZoomLimits(1.0, 12.0);
+}).catch(function (err) {
+  // createViewer's Promise rejects if Filament fails to init — always handle it.
+  console.error('SceneView init failed', err);
 });
 ```
 

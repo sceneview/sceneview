@@ -5068,6 +5068,12 @@ sceneview.createViewerFull(
   canvasId, autoRotate, cameraControls,
   cameraX, cameraY, cameraZ, fov, lightIntensity
 ).then(sv => { /* SceneViewer */ })
+
+// The returned Promise REJECTS if Filament fails to initialize (bad canvas,
+// no WebGL2, engine error) — always handle .catch, don't assume it resolves.
+sceneview.createViewer(canvasId)
+  .then(sv => { /* SceneViewer ready */ })
+  .catch(err => { /* init failed — show a fallback / message */ })
 ```
 
 SceneViewer instance methods (all return the viewer for chaining unless noted):
