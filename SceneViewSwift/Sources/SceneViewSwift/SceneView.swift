@@ -481,24 +481,13 @@ private struct SceneViewRepresentation: View {
     @StateObject private var entities = SceneEntities()
     @State private var lastDragTranslation: CGSize = .zero
 
-    /// Per-entity cumulative drag translation at the previous `onChanged` tick,
-    /// keyed by `ObjectIdentifier(entity)` (`Entity` is a class but not
-    /// `Hashable`). Used by `entityDragGesture` to convert SwiftUI's
-    /// **cumulative** `value.translation` into the **per-frame delta** that
-    /// `NodeGesture.onDrag`'s documented contract promises ("translation delta
-    /// in world space") — without this, a natural `cube.position += delta`
-    /// handler double-integrates the cumulative offset every frame and the
-    /// entity accelerates off-screen (#2283).
-    ///
-    /// Held in a reference box (same pattern as `cameraBox`, #2277) so the
-    /// per-frame writes during a drag never change the `@State` value and so
-    /// never invalidate the SwiftUI body / re-run `RealityView.update:`.
-    /// Entries are inserted lazily on the first tick of a gesture and removed
-    /// in `.onEnded`, so the dictionary holds only currently-dragging entities.
-    private final class EntityDragStateBox {
-        var lastTranslation: [ObjectIdentifier: SIMD3<Float>] = [:]
-    }
-    @State private var entityDragStateBox = EntityDragStateBox()
+    /// Per-entity drag baseline + the cumulative→per-frame-delta conversion that
+    /// `entityDragGesture` performs, extracted into the directly-testable
+    /// ``EntityDragState`` (#2313). Held in a reference type so the per-frame
+    /// writes during a drag never change this `@State` value and so never
+    /// invalidate the SwiftUI body / re-run `RealityView.update:` (same rationale
+    /// as `cameraBox`, #2277/#2283).
+    @State private var entityDragState = EntityDragState()
 
     @State private var initialPinchRadius: Float? = nil
     /// Snapshotted FOV when a pinch begins in ``CameraControlMode/firstPerson``
@@ -1616,21 +1605,21 @@ private struct SceneViewRepresentation: View {
                 // `entity.position += delta` handler integrates once, not twice
                 // — the previous code dispatched the cumulative value every
                 // tick, so the entity accelerated off-screen (#2283).
-                let current = SIMD3<Float>(
-                    Float(value.translation.width) * 0.001,
-                    Float(-value.translation.height) * 0.001,
-                    0
+                let current = EntityDragState.worldTranslation(
+                    width: value.translation.width,
+                    height: value.translation.height
                 )
                 let key = ObjectIdentifier(value.entity)
-                let previous = entityDragStateBox.lastTranslation[key] ?? .zero
-                NodeGesture.dispatchDrag(on: value.entity, translation: current - previous)
-                entityDragStateBox.lastTranslation[key] = current
+                NodeGesture.dispatchDrag(
+                    on: value.entity,
+                    translation: entityDragState.delta(forKey: key, cumulative: current)
+                )
             }
             .onEnded { value in
                 // Reset the per-gesture baseline so the next drag on this
                 // entity starts from zero rather than the last gesture's
                 // final cumulative offset.
-                entityDragStateBox.lastTranslation[ObjectIdentifier(value.entity)] = nil
+                entityDragState.end(forKey: ObjectIdentifier(value.entity))
             }
     }
 
