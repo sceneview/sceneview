@@ -8,6 +8,7 @@ import org.w3c.dom.events.EventListener
 import org.w3c.dom.events.MouseEvent
 import org.w3c.dom.events.WheelEvent
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -31,6 +32,18 @@ class OrbitCameraController(
     private val canvas: HTMLCanvasElement,
     private val camera: Camera
 ) {
+    companion object {
+        /**
+         * World-space distance below which a frame-to-frame eye/target change is
+         * treated as floating-point noise or a settled damping tail rather than a
+         * genuine move (#2332). At a typical few-metre framing this is far below
+         * one screen pixel, so the render gate stops repainting once the camera
+         * has visually settled — yet auto-rotate (≈0.5°/frame) and any real drag
+         * move the eye well beyond it, so live interaction always repaints.
+         */
+        private const val MOVE_EPSILON: Double = 1e-6
+    }
+
     // Spherical coordinates — defaults match model-viewer's "45deg 70deg 2.5m"
     var theta = 45.0 * PI / 180.0   // horizontal angle (radians) — 45° like model-viewer
     var phi = 70.0 * PI / 180.0     // vertical angle (radians) — 70° like model-viewer
@@ -81,6 +94,17 @@ class OrbitCameraController(
     private val centerScratch: dynamic = float3(0.0, 0.0, 0.0)
     private val upScratch: dynamic = float3(0.0, 1.0, 0.0)
 
+    // Last eye/target [update] resolved, so the render gate (#2332) can tell
+    // whether this frame's camera actually moved. `hasUpdated` forces the very
+    // first frame to count as moved (there is no prior pose to compare against).
+    private var hasUpdated = false
+    private var lastEyeX = 0.0
+    private var lastEyeY = 0.0
+    private var lastEyeZ = 0.0
+    private var lastTargetX = 0.0
+    private var lastTargetY = 0.0
+    private var lastTargetZ = 0.0
+
     init {
         setupEventListeners()
     }
@@ -95,8 +119,14 @@ class OrbitCameraController(
      *
      * Converts spherical coordinates (theta, phi, distance) to Cartesian
      * and calls camera.lookAt() with float3 arrays as required by Filament.js.
+     *
+     * @return `true` if the resolved eye or target moved since the previous
+     *   frame (auto-rotate, a damping tail, or a fresh drag/zoom/pan) — the
+     *   signal the render gate uses to decide whether to repaint (#2332). The
+     *   `lookAt` itself still runs every frame, so the Filament camera always
+     *   reflects the current pose even on frames the gate skips drawing.
      */
-    fun update() {
+    fun update(): Boolean {
         // Apply auto-rotation
         if (autoRotate && !isDragging) {
             theta += autoRotateSpeed
@@ -125,6 +155,20 @@ class OrbitCameraController(
         eyeScratch[0] = eyeX; eyeScratch[1] = eyeY; eyeScratch[2] = eyeZ
         centerScratch[0] = targetX; centerScratch[1] = targetY; centerScratch[2] = targetZ
         camera.lookAt(eyeScratch, centerScratch, upScratch)
+
+        // Did the pose actually change? Sub-MOVE_EPSILON deltas are floating-point
+        // noise / a settled damping tail and must NOT keep the gate awake forever.
+        val moved = !hasUpdated ||
+            abs(eyeX - lastEyeX) > MOVE_EPSILON ||
+            abs(eyeY - lastEyeY) > MOVE_EPSILON ||
+            abs(eyeZ - lastEyeZ) > MOVE_EPSILON ||
+            abs(targetX - lastTargetX) > MOVE_EPSILON ||
+            abs(targetY - lastTargetY) > MOVE_EPSILON ||
+            abs(targetZ - lastTargetZ) > MOVE_EPSILON
+        lastEyeX = eyeX; lastEyeY = eyeY; lastEyeZ = eyeZ
+        lastTargetX = targetX; lastTargetY = targetY; lastTargetZ = targetZ
+        hasUpdated = true
+        return moved
     }
 
     /**
