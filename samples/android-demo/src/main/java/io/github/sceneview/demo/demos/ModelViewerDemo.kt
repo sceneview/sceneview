@@ -655,7 +655,12 @@ private fun MultiModelSection(
                         // deterministic.
                         autoAnimate = !DemoSettings.qaMode,
                         scaleToUnits = d.scale,
-                        centerOrigin = Position(0f, 0.5f, 0f),
+                        // Models are placed by `position`; their formation is centred on the
+                        // bounding box, not ground-anchored. A previous `centerOrigin =
+                        // Position(0, 0.5, 0)` here was a silent no-op (the composable discarded
+                        // it — fixed library-side) and was removed to keep this scene's framing
+                        // byte-for-byte identical. (Adopting the now-working centerOrigin to sit
+                        // each model on a ground plane is a separate, visually-QA'd enhancement.)
                         position = Position(x = rx, y = 0f, z = rz + centerZ),
                         rotation = Rotation(y = -sceneYaw),
                     )

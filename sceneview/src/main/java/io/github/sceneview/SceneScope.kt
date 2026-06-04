@@ -245,11 +245,17 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * @param scaleToUnits   Uniformly scales the model to fit within a cube of this size (meters).
      *                       **Note:** when set, the [scale] parameter is ignored — the model's scale
      *                       is computed from its bounding box. Use `null` to control scale manually.
-     * @param centerOrigin   Origin alignment relative to the model's bounding box.
+     * @param centerOrigin   Origin alignment relative to the model's bounding box, applied once on
+     *                       creation. The resulting translation (`origin * size`) is composed
+     *                       **additively** with [position] — so a non-zero `centerOrigin` is
+     *                       honoured even when [position] keeps its default, and the two can be
+     *                       combined (e.g. bottom-align a model *and* place it at a point).
      *                       - `null` keeps the model's original center
      *                       - `Position(0,0,0)` centers horizontally and vertically
      *                       - `Position(0,-1,0)` = centered horizontally, bottom-aligned
-     * @param position       Local position.
+     * @param position       Local position, added on top of the [centerOrigin] offset. Defaults to
+     *                       the origin, so by default the node sits exactly where [centerOrigin]
+     *                       placed it.
      * @param rotation       Local rotation in Euler angles (degrees).
      * @param scale          Local scale.
      * @param isVisible      Whether to render the node.
@@ -277,26 +283,37 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         apply: ModelNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null
     ) {
-        val node = remember(engine, modelInstance) {
-            ModelNodeImpl(
+        // `centerOriginOffset` is the translation ModelNodeImpl's constructor bakes into the node
+        // for `centerOrigin` (`position += origin * size`). Capture it BEFORE applying the
+        // declarative props (and before the user `apply` lambda) so the `position` param can be
+        // composed additively on top of it. Previously the composable assigned
+        // `node.position = position` here and again in the SideEffect below, which overwrote — and
+        // so silently discarded — any non-zero `centerOrigin` (e.g. `Position(0,-1,0)` to
+        // bottom-align). Discovered while fixing the Materials → Occlusion demo (#2304).
+        val (node, centerOriginOffset) = remember(engine, modelInstance) {
+            val modelNode = ModelNodeImpl(
                 modelInstance = modelInstance,
                 autoAnimate = autoAnimate && animationName == null,
                 scaleToUnits = scaleToUnits,
                 centerOrigin = centerOrigin
-            ).apply {
-                this.position = position
+            )
+            val offset = modelNode.position
+            modelNode.apply {
                 this.rotation = rotation
-                // Don't reset scale here — scaleToUnitCube() already set it in the constructor.
-                // If scaleToUnits is null, scale stays at its default (Scale(1f)); apply() can
-                // override either way.
+                // Don't reset position/scale here — the constructor already baked `centerOrigin`
+                // into position and `scaleToUnits` into scale. `position` is applied additively in
+                // the SideEffect below; if scaleToUnits is null, scale stays at its default
+                // (Scale(1f)) and apply() can override either way.
                 if (scaleToUnits == null) this.scale = scale
                 this.isVisible = isVisible
                 this.isEditable = isEditable
                 apply()
             }
+            modelNode to offset
         }
         SideEffect {
-            node.position = position
+            // Additive so a non-zero `centerOrigin` survives — see resolveModelNodePosition.
+            node.position = resolveModelNodePosition(centerOriginOffset, position)
             node.rotation = rotation
             // Don't clobber scaleToUnits-computed scale on every recomposition.
             if (scaleToUnits == null) node.scale = scale
@@ -1710,6 +1727,29 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         }
     }
 }
+
+/**
+ * Resolves the effective node position for the [SceneScope.ModelNode] composable.
+ *
+ * `ModelNode`'s constructor bakes its `centerOrigin` alignment into the node as a translation
+ * (`position += origin * size`); [centerOriginOffset] is that baked translation, captured once
+ * right after construction. The declarative `position` param is then composed **additively** on
+ * top of it.
+ *
+ * This is the fix for a silent no-op: the composable previously assigned `node.position = position`
+ * (default `(0,0,0)`) on creation and on every recomposition, which overwrote — and so discarded —
+ * any non-zero `centerOrigin`. Passing e.g. `centerOrigin = Position(0,-1,0)` to bottom-align a
+ * model therefore did nothing. Composing `position` additively makes `centerOrigin` take effect
+ * while still letting callers place the (re-centered) model anywhere. Discovered while fixing the
+ * Materials → Occlusion demo (#2304).
+ *
+ * `internal` rather than private so the JVM unit test can drive the production code directly
+ * instead of re-implementing the contract (the `ModelNode` composable itself cannot be exercised
+ * under `createComposeRule` — Compose's test dispatcher trips Filament's thread-adoption check,
+ * see RenderQualityComposeTest).
+ */
+internal fun resolveModelNodePosition(centerOriginOffset: Position, position: Position): Position =
+    centerOriginOffset + position
 
 // ── NodeScope ─────────────────────────────────────────────────────────────────────────────────────
 
