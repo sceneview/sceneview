@@ -52,6 +52,7 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.rememberHeroYaw
@@ -99,7 +100,9 @@ import java.io.File
  */
 @Composable
 fun ModelViewerDemo(onBack: () -> Unit) {
-    var mode by remember { mutableStateOf(ModelViewerMode.Single) }
+    var mode by remember {
+        mutableStateOf(initialDemoMode(ModelViewerMode.entries, ModelViewerMode.Single))
+    }
     when (mode) {
         ModelViewerMode.Single -> SingleModelSection(onBack, mode) { mode = it }
         ModelViewerMode.Multi -> MultiModelSection(onBack, mode) { mode = it }

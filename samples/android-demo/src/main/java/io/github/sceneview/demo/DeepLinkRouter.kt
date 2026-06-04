@@ -58,6 +58,15 @@ internal object DeepLinkRouter {
     const val CAMERA_DISTANCE_MAX: Float = 100f
 
     /**
+     * Query parameter / intent-extra name carrying the optional initial tab a consolidated
+     * demo should open on — `sceneview://demo/<id>?tab=<id|index>` and the `--es tab <v>`
+     * QA extra. The value is either a 0-based segmented-button index (`?tab=1`) or a retired
+     * alias token (`?tab=shape`) resolved through [ALIAS_INITIAL_TAB]. See [resolveInitialTab]
+     * (#2315).
+     */
+    const val QUERY_PARAM_TAB: String = "tab"
+
+    /**
      * Retired demo ids mapped to the consolidated demo that absorbed them.
      *
      * A demo id is part of the public deep-link surface (`sceneview://demo/<id>`),
@@ -76,64 +85,104 @@ internal object DeepLinkRouter {
         // #2239 Batch 1 — Custom Geometry consolidation. The retired
         // `custom-mesh` and `shape` demos merged into `custom-geometry` with a
         // segmented-button toggle. Existing `sceneview://demo/custom-mesh` and
-        // `sceneview://demo/shape` deep links keep working; the unified demo
-        // opens on its default Custom Mesh tab (tab pre-selection is a planned
-        // follow-up enhancement, not in Batch 1 scope).
+        // `sceneview://demo/shape` deep links keep working; `custom-mesh` lands
+        // on the default Custom Mesh tab and `shape` pre-selects the Shape tab
+        // (#2315 — see [ALIAS_INITIAL_TAB]).
         "custom-mesh" to "custom-geometry",
         "shape" to "custom-geometry",
         // #2239 Batch 1 — Picking & Collision consolidation. The retired
         // `collision` and `view-node` demos merged into `picking-collision`
         // with a segmented-button toggle. Existing `sceneview://demo/collision`
-        // and `sceneview://demo/view-node` deep links keep working; the
-        // unified demo opens on its default Ray Hit-Test tab (tab
-        // pre-selection from alias is a planned follow-up).
+        // and `sceneview://demo/view-node` deep links keep working; `collision`
+        // lands on the default Ray Hit-Test tab and `view-node` pre-selects the
+        // View Node tab (#2315 — see [ALIAS_INITIAL_TAB]).
         "collision" to "picking-collision",
         "view-node" to "picking-collision",
         // #2239 Batch 1 — Camera & Gestures consolidation. The retired
         // `camera-controls` and `gesture-editing` demos merged into
-        // `camera-gestures` with a segmented-button toggle. The unified demo
-        // opens on its default Camera Modes tab (tab pre-selection from alias
-        // is a planned follow-up).
+        // `camera-gestures` with a segmented-button toggle. `camera-controls`
+        // lands on the default Camera Modes tab and `gesture-editing`
+        // pre-selects the Node Gestures tab (#2315 — see [ALIAS_INITIAL_TAB]).
         "camera-controls" to "camera-gestures",
         "gesture-editing" to "camera-gestures",
         // #2239 Batch 1 — 2D in 3D consolidation. The retired `text`, `image`,
         // `video`, and `billboard` demos merged into `two-d-in-three-d` with a
-        // segmented-button toggle. The unified demo opens on its default Text
-        // tab (tab pre-selection from alias is a planned follow-up).
+        // segmented-button toggle. `text` lands on the default Text tab; `image`,
+        // `video`, and `billboard` pre-select their matching tabs (#2315 — see
+        // [ALIAS_INITIAL_TAB]).
         "text" to "two-d-in-three-d",
         "image" to "two-d-in-three-d",
         "video" to "two-d-in-three-d",
         "billboard" to "two-d-in-three-d",
         // #2239 Batch 2 — Lighting Lab consolidation. The retired `dynamic-sky`,
         // `environment`, `reflection-probes`, and `post-processing` demos merged
-        // into `lighting-lab` with a segmented-button toggle. The unified demo
-        // opens on its default Sky tab (tab pre-selection from alias is a planned
-        // follow-up).
+        // into `lighting-lab` with a segmented-button toggle. `dynamic-sky` lands
+        // on the default Sky tab; `environment`, `reflection-probes`, and
+        // `post-processing` pre-select their matching tabs (#2315 — see
+        // [ALIAS_INITIAL_TAB]).
         "dynamic-sky" to "lighting-lab",
         "environment" to "lighting-lab",
         "reflection-probes" to "lighting-lab",
         "post-processing" to "lighting-lab",
         // #2239 Batch 3 — Animation & Physics consolidation. The retired
         // `animation` and `physics` demos merged into `animation-physics` with a
-        // segmented-button toggle. The unified demo opens on its default Animation
-        // tab (tab pre-selection from alias is a planned follow-up).
+        // segmented-button toggle. `animation` lands on the default Animation tab
+        // and `physics` pre-selects the Physics tab (#2315 — see [ALIAS_INITIAL_TAB]).
         "animation" to "animation-physics",
         "physics" to "animation-physics",
         // #2239 Batch 4 — Materials consolidation. The retired `texture-streaming`
         // and `occlusion-material` demos merged into the existing `materials` entry
-        // (the natural umbrella, kept live) with a segmented-button toggle. The
-        // unified demo opens on its default PBR Materials tab (tab pre-selection
-        // from alias is a planned follow-up).
+        // (the natural umbrella, kept live) with a segmented-button toggle.
+        // `materials` lands on the default PBR Materials tab; `texture-streaming`
+        // and `occlusion-material` pre-select their matching tabs (#2315 — see
+        // [ALIAS_INITIAL_TAB]).
         "texture-streaming" to "materials",
         "occlusion-material" to "materials",
         // #2239 Batch 5 — Models consolidation. The retired `multi-model` and
         // `scene-gallery` demos merged into the existing `model-viewer` entry
         // (the flagship umbrella, kept live — its id + `ModelViewerDemo.kt` file
-        // are referenced across docs) with a segmented-button toggle. The
-        // unified demo opens on its default Single Model tab (tab pre-selection
-        // from alias is a planned follow-up).
+        // are referenced across docs) with a segmented-button toggle.
         "multi-model" to "model-viewer",
         "scene-gallery" to "model-viewer",
+    )
+
+    /**
+     * Retired alias ids whose content lives on a **non-default** tab of the consolidated
+     * demo that absorbed them. When a consolidated demo is opened through one of these
+     * aliases (e.g. `sceneview://demo/shape`), it should pre-select the matching segmented
+     * tab instead of falling back to its default first tab (#2315).
+     *
+     * The index is 0-based and matches the order of the demo's segmented-button modes.
+     * Aliases that map to the default first tab (index 0 — e.g. `custom-mesh`, `collision`,
+     * `text`) are intentionally omitted: they already land correctly, so an absent entry
+     * means "no pre-selection". `DeepLinkRouterTest` asserts every key is a known
+     * [DEMO_ID_ALIASES] retired id, so this table cannot drift out of sync.
+     */
+    val ALIAS_INITIAL_TAB: Map<String, Int> = mapOf(
+        // lighting — [Types, Movable]
+        "movable-light" to 1,
+        // custom-geometry — [Custom Mesh, Shape Extrude]
+        "shape" to 1,
+        // picking-collision — [Ray Hit-Test, View Node]
+        "view-node" to 1,
+        // camera-gestures — [Camera Modes, Node Gestures]
+        "gesture-editing" to 1,
+        // two-d-in-three-d — [Text, Image, Video, Billboard]
+        "image" to 1,
+        "video" to 2,
+        "billboard" to 3,
+        // lighting-lab — [Sky, Environment, Reflections, Post-FX]
+        "environment" to 1,
+        "reflection-probes" to 2,
+        "post-processing" to 3,
+        // animation-physics — [Animation, Physics]
+        "physics" to 1,
+        // materials — [PBR Materials, Streaming, Occlusion]
+        "texture-streaming" to 1,
+        "occlusion-material" to 2,
+        // model-viewer — [Single Model, Multi-Model, Gallery]
+        "multi-model" to 1,
+        "scene-gallery" to 2,
     )
 
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {
@@ -198,6 +247,50 @@ internal object DeepLinkRouter {
     fun validateCameraDistance(value: Float?): Float? {
         if (value == null || !value.isFinite()) return null
         return value.takeIf { it in CAMERA_DISTANCE_MIN..CAMERA_DISTANCE_MAX }
+    }
+
+    /**
+     * Resolves the 0-based tab index a consolidated demo should pre-select on launch, or
+     * `null` for "keep the demo's default first tab" (#2315).
+     *
+     * Precedence — explicit user intent wins over the alias default, mirroring the
+     * `cameraDistance` dual-ingress policy:
+     *  1. An explicit [tabParam] (`--es tab <v>` extra or `?tab=<v>` query) — either a
+     *     0-based index (`"1"`) or a retired-alias token (`"shape"`) looked up in
+     *     [ALIAS_INITIAL_TAB]. See [parseTabValue].
+     *  2. Otherwise, the launching [rawId] itself: if it is a retired alias whose content
+     *     lives on a non-default tab (e.g. `shape` → 1), that tab.
+     *
+     * [rawId] is the **pre-validation** id as launched (the alias, e.g. `shape` — not the
+     * resolved `custom-geometry`), since the alias is what carries the tab hint. Never
+     * throws; an absent / blank / unparseable value falls through to the next rule and an
+     * out-of-range index is left for the demo to clamp to its default tab.
+     */
+    fun resolveInitialTab(rawId: String?, tabParam: String?): Int? {
+        parseTabValue(tabParam)?.let { return it }
+        return rawId?.let { ALIAS_INITIAL_TAB[it] }
+    }
+
+    /**
+     * Reads the raw `?tab=` query parameter off a deep-link URI, or `null` when absent.
+     * Kept separate from [resolveInitialTab] so [MainActivity] can OR it with the
+     * `--es tab` intent extra the same way it ORs the two `cameraDistance` channels.
+     */
+    fun parseTabParam(data: Uri?): String? {
+        if (data == null) return null
+        return runCatching { data.getQueryParameter(QUERY_PARAM_TAB) }.getOrNull()
+    }
+
+    /**
+     * Parses a `?tab=` / `--es tab` value into a 0-based tab index: a non-negative integer
+     * literal is taken as-is; any other token is looked up in [ALIAS_INITIAL_TAB] (so
+     * `?tab=shape` selects the Shape tab). A blank, negative, or unrecognised value returns
+     * `null`. Never throws.
+     */
+    internal fun parseTabValue(raw: String?): Int? {
+        val token = raw?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        token.toIntOrNull()?.let { index -> return index.takeIf { it >= 0 } }
+        return ALIAS_INITIAL_TAB[token]
     }
 
     /**
