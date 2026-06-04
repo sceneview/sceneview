@@ -83,7 +83,9 @@ private data class InstantPlacedModel(
     val anchor: Anchor,
     val trackable: Any?,
     /** Local file URI (`file://...`) for a streamed slug, OR `assets/`-relative path for a
-     *  bundled GLB. `rememberModelInstance` accepts both via its single-string overload. */
+     *  bundled GLB. Load it through `rememberModelInstance(modelLoader, fileLocation = …)` — the
+     *  `fileLocation =` overload scheme-detects both forms. The two-arg positional call binds to
+     *  the asset-path overload and silently fails on `file://` URIs (#1422 / #2302). */
     val assetLocation: String,
     val displayName: String,
 )
@@ -386,7 +388,11 @@ private fun InstantPlacementScene(
                             anchor = placed.anchor,
                             visibleTrackingStates = ArPlacement.ANCHORED_VISIBLE_STATES
                         ) {
-                            val instance = rememberModelInstance(modelLoader, placed.assetLocation)
+                            // `fileLocation =` forces the URL-capable overload (handles both
+                            // the `file://` streamed URI and the bundled asset path). See the
+                            // `assetLocation` Kdoc and the #2302 overload trap.
+                            val instance =
+                                rememberModelInstance(modelLoader, fileLocation = placed.assetLocation)
                             // Gate visibility until Filament finishes uploading the model's
                             // textures, so it doesn't flash black on placement (#1435).
                             val textured = rememberTexturesSettled(ready = instance != null)

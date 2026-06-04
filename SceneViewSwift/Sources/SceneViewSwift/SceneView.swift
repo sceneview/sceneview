@@ -481,24 +481,13 @@ private struct SceneViewRepresentation: View {
     @StateObject private var entities = SceneEntities()
     @State private var lastDragTranslation: CGSize = .zero
 
-    /// Per-entity cumulative drag translation at the previous `onChanged` tick,
-    /// keyed by `ObjectIdentifier(entity)` (`Entity` is a class but not
-    /// `Hashable`). Used by `entityDragGesture` to convert SwiftUI's
-    /// **cumulative** `value.translation` into the **per-frame delta** that
-    /// `NodeGesture.onDrag`'s documented contract promises ("translation delta
-    /// in world space") — without this, a natural `cube.position += delta`
-    /// handler double-integrates the cumulative offset every frame and the
-    /// entity accelerates off-screen (#2283).
-    ///
-    /// Held in a reference box (same pattern as `cameraBox`, #2277) so the
-    /// per-frame writes during a drag never change the `@State` value and so
-    /// never invalidate the SwiftUI body / re-run `RealityView.update:`.
-    /// Entries are inserted lazily on the first tick of a gesture and removed
-    /// in `.onEnded`, so the dictionary holds only currently-dragging entities.
-    private final class EntityDragStateBox {
-        var lastTranslation: [ObjectIdentifier: SIMD3<Float>] = [:]
-    }
-    @State private var entityDragStateBox = EntityDragStateBox()
+    /// Per-entity drag baseline + the cumulative→per-frame-delta conversion that
+    /// `entityDragGesture` performs, extracted into the directly-testable
+    /// ``EntityDragState`` (#2313). Held in a reference type so the per-frame
+    /// writes during a drag never change this `@State` value and so never
+    /// invalidate the SwiftUI body / re-run `RealityView.update:` (same rationale
+    /// as `cameraBox`, #2277/#2283).
+    @State private var entityDragState = EntityDragState()
 
     @State private var initialPinchRadius: Float? = nil
     /// Snapshotted FOV when a pinch begins in ``CameraControlMode/firstPerson``
@@ -581,10 +570,65 @@ private struct SceneViewRepresentation: View {
     // on a genuine slot change today, but caching the ref keeps the path O(1)
     // and guards against a future equality regression turning a per-frame
     // no-op into an O(n) children walk.
+    /// Snapshot of the inputs that fully determine what ``applyCamera()`` writes
+    /// to the perspective-camera / scene-root entities. Every per-mode branch of
+    /// `applyCamera()` is a pure function of these values (`cameraPosition()`,
+    /// `lookOrientation()`, `sceneRotation()` and the constant root reset all
+    /// read only from this set), so an unchanged snapshot means the entity
+    /// transform would be rewritten with identical values — the write can be
+    /// skipped. Compared with ``approximatelyMatches(_:)`` (float tolerance),
+    /// never `==`, because the values are derived geometry. Closes #2331.
+    private struct AppliedCameraState {
+        var mode: CameraControlMode
+        var azimuth: Float
+        var elevation: Float
+        var orbitRadius: Float
+        var target: SIMD3<Float>
+        var fov: Float
+        var firstPersonEye: SIMD3<Float>?
+
+        /// Per-frame redundancy check. `mode` is compared exactly (it is a
+        /// discrete enum); the geometric scalars / vectors within `eps` so that
+        /// a no-op re-evaluation of an unchanged orbit is treated as identical,
+        /// while any real camera motion — an orbit / pan drag tick, an
+        /// auto-rotate step, a pinch, a framing re-fit — clears the threshold
+        /// and re-applies. `eps = 1e-5` world units / radians is far below one
+        /// pixel of motion at any realistic scene scale yet far above
+        /// float round-off, and ~80× smaller than the smallest single-frame
+        /// step a slow auto-rotate produces, so a live camera never freezes.
+        func approximatelyMatches(_ other: AppliedCameraState) -> Bool {
+            guard mode == other.mode else { return false }
+            let eps: Float = 1e-5
+            func close(_ a: Float, _ b: Float) -> Bool { abs(a - b) <= eps }
+            func close3(_ a: SIMD3<Float>, _ b: SIMD3<Float>) -> Bool {
+                close(a.x, b.x) && close(a.y, b.y) && close(a.z, b.z)
+            }
+            // A nil ↔ non-nil firstPerson eye is a genuine state change (the
+            // eye is captured on entering firstPerson) and must re-apply.
+            switch (firstPersonEye, other.firstPersonEye) {
+            case (nil, nil): break
+            case let (lhs?, rhs?): if !close3(lhs, rhs) { return false }
+            default: return false
+            }
+            return close(azimuth, other.azimuth)
+                && close(elevation, other.elevation)
+                && close(orbitRadius, other.orbitRadius)
+                && close(fov, other.fov)
+                && close3(target, other.target)
+        }
+    }
+
     private final class AppliedCache {
         var mainSlot: LightSlot? = nil
         var fillSlot: LightSlot? = nil
         var skyboxResource: EnvironmentResource? = nil
+        /// Last camera state pushed onto the RealityKit entities by
+        /// ``applyCamera()``. Compared (with float tolerance) each frame so a
+        /// no-op camera apply — the common case while idle, and on every
+        /// auto-rotate / framing-task `update:` tick where the orbit did not
+        /// actually move — skips the redundant entity-transform writes. `nil`
+        /// until the first apply. Closes #2331.
+        var camera: AppliedCameraState? = nil
         /// The currently-attached main-slot light entity, cached by reference
         /// for direct removal in `refreshLightSlot`. `nil` when the main slot
         /// is `.disabled`. Closes #2278.
@@ -1391,6 +1435,31 @@ private struct SceneViewRepresentation: View {
             }
         }
 
+        // Diff-guard (#2331): every per-mode branch below is a pure function of
+        // the orbit state captured here, so when nothing that drives the write
+        // changed since the last apply the RealityKit transforms would just be
+        // rewritten with identical values. This is the common path — `update:`
+        // re-runs `applyCamera()` on every auto-rotate / framing-task tick and
+        // on each SwiftUI re-eval, but the orbit only actually moves on a
+        // gesture / auto-rotate step. The mode-sync above (which mutates
+        // `camera`) has already run, so `desired` reflects post-sync state and
+        // is never skipped wrongly. A real re-fit (`refreshContentCentering`
+        // mutates `camera.target` / `orbitRadius` then re-calls `applyCamera`)
+        // changes the key and re-applies on the same frame.
+        let desired = AppliedCameraState(
+            mode: camera.mode,
+            azimuth: camera.azimuth,
+            elevation: camera.elevation,
+            orbitRadius: camera.orbitRadius,
+            target: camera.target,
+            fov: camera.fov,
+            firstPersonEye: camera.firstPersonEye
+        )
+        if let last = appliedCache.camera, last.approximatelyMatches(desired) {
+            return
+        }
+        appliedCache.camera = desired
+
         // Per-mode application of orientation, zoom, and translation.
         // Mirrors Android's `CameraGestureDetector` modes
         // (ORBIT / PAN / FREE_FLIGHT) — closes #1034 (last #928 silent-stub
@@ -1616,21 +1685,21 @@ private struct SceneViewRepresentation: View {
                 // `entity.position += delta` handler integrates once, not twice
                 // — the previous code dispatched the cumulative value every
                 // tick, so the entity accelerated off-screen (#2283).
-                let current = SIMD3<Float>(
-                    Float(value.translation.width) * 0.001,
-                    Float(-value.translation.height) * 0.001,
-                    0
+                let current = EntityDragState.worldTranslation(
+                    width: value.translation.width,
+                    height: value.translation.height
                 )
                 let key = ObjectIdentifier(value.entity)
-                let previous = entityDragStateBox.lastTranslation[key] ?? .zero
-                NodeGesture.dispatchDrag(on: value.entity, translation: current - previous)
-                entityDragStateBox.lastTranslation[key] = current
+                NodeGesture.dispatchDrag(
+                    on: value.entity,
+                    translation: entityDragState.delta(forKey: key, cumulative: current)
+                )
             }
             .onEnded { value in
                 // Reset the per-gesture baseline so the next drag on this
                 // entity starts from zero rather than the last gesture's
                 // final cumulative offset.
-                entityDragStateBox.lastTranslation[ObjectIdentifier(value.entity)] = nil
+                entityDragState.end(forKey: ObjectIdentifier(value.entity))
             }
     }
 

@@ -14,6 +14,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -219,6 +220,41 @@ class OrbitCameraControllerTest {
         controller.update()
         controller.update()
         assertEquals(3, cam.lookAtCalls, "every update() must push a fresh lookAt to the camera")
+    }
+
+    @Test
+    fun firstUpdateReportsMovedSoTheFirstFrameAlwaysPaints() {
+        // #2332: the render gate keys off update()'s return — the very first
+        // frame has no prior pose to compare against and must count as moved.
+        val (controller, _) = controller()
+        controller.enableDamping = false
+        assertTrue(controller.update(), "the first update() must report the camera as moved")
+    }
+
+    @Test
+    fun staticCameraReportsNotMovedSoTheGateCanIdle() {
+        // #2332: with no input, no auto-rotate and no damping velocity, the pose
+        // is identical frame to frame — update() must report NOT moved so the
+        // render gate stops repainting a settled scene.
+        val (controller, _) = controller()
+        controller.enableDamping = false
+        controller.autoRotate = false
+        controller.update() // first frame: moved (no prior pose)
+        assertFalse(controller.update(), "an unchanged camera must report not-moved")
+        assertFalse(controller.update(), "and stay not-moved while nothing changes")
+    }
+
+    @Test
+    fun autoRotateReportsMovedEveryFrame() {
+        // #2332: auto-rotate advances theta each frame, so the camera genuinely
+        // moves — update() must report moved so the gate keeps painting.
+        val (controller, _) = controller()
+        controller.enableDamping = false
+        controller.autoRotate = true
+        controller.theta = 0.0
+        controller.update() // first frame
+        assertTrue(controller.update(), "auto-rotate must keep reporting the camera as moved")
+        assertTrue(controller.update(), "auto-rotate must keep reporting the camera as moved")
     }
 
     /**

@@ -106,15 +106,18 @@ final class GestureSystemTests: XCTestCase {
         // The documented capture pattern: integrate the delta into position.
         NodeGesture.onDrag(entity) { delta in entity.position += delta }
 
-        // Same per-entity baseline the gesture keeps (keyed by ObjectIdentifier
-        // since Entity isn't Hashable), and the same `current − previous`
-        // dispatch the fixed `entityDragGesture.onChanged` performs.
-        var lastTranslation: [ObjectIdentifier: SIMD3<Float>] = [:]
+        // Drive the SAME production code the gesture runs (#2313):
+        // `EntityDragState.delta(forKey:cumulative:)` is exactly what
+        // `entityDragGesture.onChanged` dispatches — so this now catches a
+        // regression in the real wiring (dispatching the cumulative value instead
+        // of `current − previous`, or mis-keying the per-entity dictionary).
+        let dragState = EntityDragState()
         let key = ObjectIdentifier(entity)
         func dispatchCumulative(_ cumulative: SIMD3<Float>) {
-            let previous = lastTranslation[key] ?? .zero
-            NodeGesture.dispatchDrag(on: entity, translation: cumulative - previous)
-            lastTranslation[key] = cumulative
+            NodeGesture.dispatchDrag(
+                on: entity,
+                translation: dragState.delta(forKey: key, cumulative: cumulative)
+            )
         }
 
         // SwiftUI emits *cumulative* translation each tick.
@@ -144,14 +147,17 @@ final class GestureSystemTests: XCTestCase {
         entity.position = .zero
         NodeGesture.onDrag(entity) { delta in entity.position += delta }
 
-        var lastTranslation: [ObjectIdentifier: SIMD3<Float>] = [:]
+        // Drive the production `EntityDragState` (#2313): `end(forKey:)` is the
+        // same `.onEnded` reset the gesture performs.
+        let dragState = EntityDragState()
         let key = ObjectIdentifier(entity)
         func dispatchCumulative(_ cumulative: SIMD3<Float>) {
-            let previous = lastTranslation[key] ?? .zero
-            NodeGesture.dispatchDrag(on: entity, translation: cumulative - previous)
-            lastTranslation[key] = cumulative
+            NodeGesture.dispatchDrag(
+                on: entity,
+                translation: dragState.delta(forKey: key, cumulative: cumulative)
+            )
         }
-        func endGesture() { lastTranslation[key] = nil } // mirrors .onEnded
+        func endGesture() { dragState.end(forKey: key) } // production .onEnded path
 
         // First gesture drags to +0.30.
         dispatchCumulative([0.30, 0.0, 0])
@@ -162,6 +168,18 @@ final class GestureSystemTests: XCTestCase {
         // not snap back by the previous gesture's 0.30 baseline.
         dispatchCumulative([0.05, 0.0, 0])
         XCTAssertEqual(entity.position.x, 0.35, accuracy: 0.0001)
+    }
+
+    /// `EntityDragState.worldTranslation` is the production screen→world mapping
+    /// `entityDragGesture` applies before computing deltas (#2313): the screen
+    /// delta is scaled by `0.001`, Y is flipped (screen grows downward, world
+    /// upward), and Z is 0. Guards the scale factor and the Y-axis sign — both
+    /// are silent-regression-prone and were previously untestable.
+    func testWorldTranslationScalesAndFlipsY() {
+        let t = EntityDragState.worldTranslation(width: 100, height: 200)
+        XCTAssertEqual(t.x, 0.1, accuracy: 1e-6)   // 100 * 0.001
+        XCTAssertEqual(t.y, -0.2, accuracy: 1e-6)  // -200 * 0.001 (Y flipped)
+        XCTAssertEqual(t.z, 0, accuracy: 1e-6)
     }
 
     @MainActor

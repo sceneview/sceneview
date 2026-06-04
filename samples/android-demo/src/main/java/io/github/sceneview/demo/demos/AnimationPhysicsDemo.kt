@@ -52,6 +52,7 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
@@ -101,7 +102,9 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun AnimationPhysicsDemo(onBack: () -> Unit) {
-    var mode by remember { mutableStateOf(AnimationPhysicsMode.Animation) }
+    var mode by remember {
+        mutableStateOf(initialDemoMode(AnimationPhysicsMode.entries, AnimationPhysicsMode.Animation))
+    }
     when (mode) {
         AnimationPhysicsMode.Animation -> AnimationSection(onBack, mode) { mode = it }
         AnimationPhysicsMode.Physics -> PhysicsSection(onBack, mode) { mode = it }
@@ -305,7 +308,14 @@ private fun AnimationSection(
         else -> streamedFiles.getOrNull(selectedModelIndex)?.let { "file://${it.absolutePath}" }
     }
     val modelInstance = if (activeFileLocation != null) {
-        rememberModelInstance(modelLoader, activeFileLocation)
+        // `activeFileLocation` is EITHER a bundled `assets/`-relative path OR a streamed
+        // `file://…` URI. The named `fileLocation =` argument binds to the URL-capable
+        // `rememberModelInstance` overload, which scheme-detects: asset paths go through the
+        // fast asset reader, `file://` URIs through `ModelLoader.loadModelInstance`. The
+        // two-arg positional call would bind to the asset-path overload instead and feed the
+        // `file://` string to `AssetManager.open`, which throws — the streamed model would
+        // silently stay `null` forever (#1422 / the #2302 overload trap).
+        rememberModelInstance(modelLoader, fileLocation = activeFileLocation)
     } else null
 
     // Re-pin the animation track to the new model's default whenever the

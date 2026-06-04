@@ -60,6 +60,7 @@ import io.github.sceneview.demo.common.Axes3DNode
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
+import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.gesture.orbitHomePosition
@@ -95,7 +96,9 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun CameraAndGesturesDemo(onBack: () -> Unit) {
-    var mode by remember { mutableStateOf(CameraGesturesMode.CameraModes) }
+    var mode by remember {
+        mutableStateOf(initialDemoMode(CameraGesturesMode.entries, CameraGesturesMode.CameraModes))
+    }
     when (mode) {
         CameraGesturesMode.CameraModes -> CameraModesSection(onBack, mode) { mode = it }
         CameraGesturesMode.NodeGestures -> NodeGesturesSection(onBack, mode) { mode = it }
