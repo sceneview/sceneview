@@ -319,6 +319,25 @@ public struct ARSceneView: UIViewRepresentable {
         refreshARLightSlot(.fill, slot: fillLightSlot, in: arView, coordinator: context.coordinator)
     }
 
+    /// Tears down the AR scene when SwiftUI permanently removes this view.
+    ///
+    /// Without this, the `ARView`'s `ARSession` keeps running after the view
+    /// leaves the hierarchy — the rear camera, motion sensors, and per-frame
+    /// tracking pipeline stay live, draining battery and pinning every anchor
+    /// the coordinator added (the translucent plane overlays from #2407 and the
+    /// dual light anchors from #2408) in `arView.scene`. The session is paused,
+    /// the delegate detached, and all coordinator-owned anchors removed and
+    /// released here so the AR resources deallocate with the view.
+    ///
+    /// `UIViewRepresentable.dismantleUIView` is invoked on the main actor while
+    /// both `uiView` and `coordinator` are still alive — the correct place for
+    /// RealityKit/ARKit teardown. The coordinator's `deinit` is a secondary
+    /// safety net (#2407); this is the primary, deterministic path. The teardown
+    /// is idempotent, so the two paths never double-free.
+    public static func dismantleUIView(_ uiView: ARView, coordinator: Coordinator) {
+        coordinator.tearDownScene(in: uiView)
+    }
+
     // MARK: - Light slot provisioning (#1138)
 
     /// Identifies the active light anchor in `arView.scene.anchors` so the
@@ -511,7 +530,11 @@ public struct ARSceneView: UIViewRepresentable {
 
         /// Translucent overlay entities keyed by their `ARPlaneAnchor` id, so
         /// `didUpdate` can resize them and `didRemove` can tear them down.
-        private var planeOverlays: [UUID: PlaneVisualizer] = [:]
+        /// Cleared by ``tearDownScene(in:)`` on view dismantle (#2407).
+        /// `internal` (not `private`) so the teardown leak test can provision
+        /// overlays — `ARPlaneAnchor` has no public initializer, so the live
+        /// `session(_:didAdd:)` path cannot be exercised headlessly.
+        var planeOverlays: [UUID: PlaneVisualizer] = [:]
 
         // Light-slot reactive plumbing — same pattern as ``SceneView`` (#1017)
         // adapted for AR. The anchor refs let the diff in `refreshARLightSlot`
@@ -541,6 +564,75 @@ public struct ARSceneView: UIViewRepresentable {
             self.enableMeshReconstruction = enableMeshReconstruction
             self.faceTracking = faceTracking
             self.environmentTexturing = environmentTexturing
+        }
+
+        /// Tears down every RealityKit/ARKit resource this coordinator owns:
+        /// pauses the AR session, detaches the session delegate, removes the
+        /// translucent plane overlays (#2407) and the dual light anchors
+        /// (#2408) from `arView.scene`, and clears all strong references so the
+        /// entities deallocate with the view instead of leaking.
+        ///
+        /// Called from ``ARSceneView/dismantleUIView(_:coordinator:)`` on the
+        /// main actor while the view is alive. Idempotent — a second call (e.g.
+        /// from `deinit`) is a no-op because the collections are already empty
+        /// and the anchor references already `nil`, so there is no double-free.
+        @MainActor
+        func tearDownScene(in arView: ARView) {
+            // Plane overlays (#2407) — remove each translucent fill anchor from
+            // the scene, then drop the strong dictionary references.
+            for visualizer in planeOverlays.values {
+                arView.scene.removeAnchor(visualizer.anchor)
+            }
+            planeOverlays.removeAll()
+
+            // Light anchors (#2408) — mirrors the `removeAnchor` in
+            // `refreshARLightSlot`; the cached refs (#2278 pattern) let us
+            // detach them directly without walking `scene.anchors`.
+            if let main = mainLightAnchor { arView.scene.removeAnchor(main) }
+            if let fill = fillLightAnchor { arView.scene.removeAnchor(fill) }
+            mainLightAnchor = nil
+            fillLightAnchor = nil
+
+            // Stop the AR session so the camera + sensor pipeline goes idle and
+            // ARKit drops its hold; detach the delegate so no late frame
+            // callback fires into a torn-down coordinator.
+            arView.session.pause()
+            arView.session.delegate = nil
+        }
+
+        deinit {
+            // Safety net for the teardown path (#2407). `dismantleUIView` is the
+            // primary, deterministic teardown (SwiftUI calls it before releasing
+            // the coordinator), but if the coordinator is ever released without
+            // it, break the strong-reference graph here so the plane-overlay and
+            // light entities still deallocate.
+            //
+            // Mirrors `SceneEntities.deinit` (#2038/#2068): a non-`@MainActor`
+            // class deinits on whatever thread drops the last reference, and
+            // touching RealityKit off-main traps the process. Always release the
+            // strong refs (thread-agnostic); detach from the live scene only
+            // when we can confirm main-actor isolation and the view still
+            // exists. No escaping task, no heap escape — safe in `deinit`.
+            let overlayAnchors = planeOverlays.values.map(\.anchor)
+            let main = mainLightAnchor
+            let fill = fillLightAnchor
+            planeOverlays.removeAll()
+            mainLightAnchor = nil
+            fillLightAnchor = nil
+            guard let arView = arView,
+                  !overlayAnchors.isEmpty || main != nil || fill != nil else { return }
+            let detach = {
+                MainActor.assumeIsolated {
+                    for anchor in overlayAnchors { arView.scene.removeAnchor(anchor) }
+                    if let main = main { arView.scene.removeAnchor(main) }
+                    if let fill = fill { arView.scene.removeAnchor(fill) }
+                }
+            }
+            if Thread.isMainThread {
+                detach()
+            } else {
+                DispatchQueue.main.sync(execute: detach)
+            }
         }
 
         @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
@@ -685,11 +777,21 @@ final class PlaneVisualizer {
     private static let overlayColor: SimpleMaterial.Color =
         .init(white: 1.0, alpha: 0.12)
 
-    init(planeAnchor: ARPlaneAnchor) {
-        anchor = AnchorEntity(anchor: planeAnchor)
+    /// Hosts the overlay on an anchor bound to the detected plane's pose,
+    /// then sizes the translucent fill to the plane's current extent.
+    convenience init(planeAnchor: ARPlaneAnchor) {
+        self.init(anchor: AnchorEntity(anchor: planeAnchor))
+        update(with: planeAnchor)
+    }
+
+    /// Designated initializer — wires the translucent fill onto a caller-
+    /// provided anchor. Split out from the plane-anchor binding so the teardown
+    /// leak test can provision an overlay headlessly (`ARPlaneAnchor` has no
+    /// public initializer, so the live detection path is untestable off-device).
+    init(anchor: AnchorEntity) {
+        self.anchor = anchor
         fill = ModelEntity()
         anchor.addChild(fill)
-        update(with: planeAnchor)
     }
 
     /// Resizes and re-centers the overlay to match the latest plane estimate.
