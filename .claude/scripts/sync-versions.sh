@@ -1029,11 +1029,16 @@ if changed:
 
     for OLD_V in $OLD_VERSIONS; do
         [ "$OLD_V" = "$SOURCE_VERSION" ] && continue
+        # Escape OLD_V's dots before using it as a regex (defense-in-depth):
+        # an unescaped `4.3.0` is the BRE `4`+any+`3`+any+`0`, which can
+        # wildcard-match unintended substrings. The replacement side stays
+        # $SOURCE_VERSION (a plain semver, never used as a pattern).
+        OLD_V_RE="${OLD_V//./\\.}"
         # Fix docs that contain Maven artifact version refs
         for docfile in llms.txt README.md CLAUDE.md docs/docs/index.md docs/docs/quickstart.md docs/docs/llms-full.txt docs/docs/cheatsheet.md docs/docs/platforms.md docs/docs/migration.md docs/docs/android-xr.md; do
             F="$REPO_ROOT/$docfile"
-            if [ -f "$F" ] && grep -q "io\.github\.sceneview:.*$OLD_V" "$F" 2>/dev/null; then
-                _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$OLD_V/io.github.sceneview:\1:$SOURCE_VERSION/g" "$F"
+            if [ -f "$F" ] && grep -q "io\.github\.sceneview:.*$OLD_V_RE" "$F" 2>/dev/null; then
+                _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$OLD_V_RE/io.github.sceneview:\1:$SOURCE_VERSION/g" "$F"
                 echo -e "  Fixed: $docfile (artifact refs $OLD_V -> $SOURCE_VERSION)"
             fi
         done
@@ -1223,6 +1228,8 @@ with open('$WEBSITE_JS_PKG', 'w') as f:
     # so it never touches unrelated version strings on the same line.
     for OLD_V in $OLD_VERSIONS; do
         [ "$OLD_V" = "$SOURCE_VERSION" ] && continue
+        # Escape OLD_V's dots before regex use (see note in the docs-files sweep above).
+        OLD_V_RE="${OLD_V//./\\.}"
         for f in docs/docs/ai-context.md docs/docs/android-xr-emulator.md \
                  docs/docs/nodes.md docs/docs/comparison.md docs/docs/quickstart-tv.md \
                  docs/docs/codelabs/codelab-3d-compose.md docs/docs/codelabs/codelab-ar-compose.md \
@@ -1231,8 +1238,8 @@ with open('$WEBSITE_JS_PKG', 'w') as f:
                  website-static/llms-full.txt \
                  website-static/.well-known/llms.txt; do
             F="$REPO_ROOT/$f"
-            if [ -f "$F" ] && grep -q "io\.github\.sceneview:[^:]*:$OLD_V" "$F" 2>/dev/null; then
-                _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$OLD_V/io.github.sceneview:\1:$SOURCE_VERSION/g" "$F"
+            if [ -f "$F" ] && grep -q "io\.github\.sceneview:[^:]*:$OLD_V_RE" "$F" 2>/dev/null; then
+                _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$OLD_V_RE/io.github.sceneview:\1:$SOURCE_VERSION/g" "$F"
                 echo -e "  Fixed: $f (artifact refs $OLD_V -> $SOURCE_VERSION)"
             fi
         done
@@ -1240,8 +1247,8 @@ with open('$WEBSITE_JS_PKG', 'w') as f:
         for f in README.md docs/docs/index.md website-static/web.html; do
             F="$REPO_ROOT/$f"
             [ -f "$F" ] || continue
-            if grep -qE "(badge/(Flutter|React%20Native)-v$OLD_V|sceneview(-web)?@v?$OLD_V|sceneview\.js\?v=$OLD_V)" "$F" 2>/dev/null; then
-                _sed_inplace "s/-v$OLD_V/-v$SOURCE_VERSION/g; s/@v$OLD_V/@v$SOURCE_VERSION/g; s/@$OLD_V/@$SOURCE_VERSION/g; s/?v=$OLD_V/?v=$SOURCE_VERSION/g" "$F"
+            if grep -qE "(badge/(Flutter|React%20Native)-v$OLD_V_RE|sceneview(-web)?@v?$OLD_V_RE|sceneview\.js\?v=$OLD_V_RE)" "$F" 2>/dev/null; then
+                _sed_inplace "s/-v$OLD_V_RE/-v$SOURCE_VERSION/g; s/@v$OLD_V_RE/@v$SOURCE_VERSION/g; s/@$OLD_V_RE/@$SOURCE_VERSION/g; s/?v=$OLD_V_RE/?v=$SOURCE_VERSION/g" "$F"
                 echo -e "  Fixed: $f (badge/CDN $OLD_V -> $SOURCE_VERSION)"
             fi
         done
@@ -1357,10 +1364,12 @@ if changed:
     # Wire it in here.
     for OLD_V in $OLD_VERSIONS; do
         [ "$OLD_V" = "$SOURCE_VERSION" ] && continue
+        # Escape OLD_V's dots before regex use (see note in the docs-files sweep above).
+        OLD_V_RE="${OLD_V//./\\.}"
         for modmd in sceneview/Module.md arsceneview/Module.md; do
             F="$REPO_ROOT/$modmd"
-            if [ -f "$F" ] && grep -q "io\.github\.sceneview:.*$OLD_V" "$F" 2>/dev/null; then
-                _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$OLD_V/io.github.sceneview:\1:$SOURCE_VERSION/g" "$F"
+            if [ -f "$F" ] && grep -q "io\.github\.sceneview:.*$OLD_V_RE" "$F" 2>/dev/null; then
+                _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$OLD_V_RE/io.github.sceneview:\1:$SOURCE_VERSION/g" "$F"
                 echo -e "  Fixed: $modmd (artifact ref $OLD_V -> $SOURCE_VERSION)"
             fi
         done
