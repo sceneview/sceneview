@@ -322,7 +322,7 @@ fun SceneView(
     // large model for a smaller one in a single slot — the previously-rendered
     // pixels the new model does not cover are left on screen, so the old model
     // appears "stacked" behind the new one even though its renderable entities were
-    // correctly removed from the Scene (verified on device: `Scene.renderableCount`
+    // correctly removed from the Scene (verified on device: `Scene.getRenderableCount()`
     // drops to the new model's count, yet the old pixels linger). Clearing every
     // frame fixes it for both opaque (clear to opaque black) and translucent (clear
     // to transparent so the surface background shows through) views; when a skybox
