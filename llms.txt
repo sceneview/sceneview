@@ -5044,7 +5044,7 @@ controller.rotateSensitivity // default 0.005
 controller.zoomSensitivity   // default 0.1
 controller.panSensitivity    // default 0.003
 controller.target(x, y, z) // set look-at point
-controller.update()         // call each frame (automatic inside SceneView render loop)
+controller.update(): Boolean // call each frame (automatic inside SceneView render loop); returns true if the camera moved this frame — the on-demand render gate repaints only when update() reports moved (#2332)
 controller.dispose()
 ```
 

@@ -245,6 +245,25 @@ class OrbitCameraControllerTest {
     }
 
     @Test
+    fun settledCameraReportsNotMovedUnderShippedDampingDefault() {
+        // #2332: the sibling idle test above forces enableDamping = false, but the
+        // PRODUCTION default is enableDamping = true (autoRotate = false). With no
+        // pointer input the damping velocity is zero, so a settled camera's pose is
+        // identical frame to frame — update() must STILL report not-moved under the
+        // shipped config, otherwise the render gate would repaint a settled scene
+        // forever for every default consumer. Pins the gate to the default, not
+        // just the damping-off path.
+        val (controller, _) = controller()
+        assertTrue(controller.enableDamping, "test premise: damping is on by default in production")
+        controller.autoRotate = false
+        controller.update() // first frame: moved (no prior pose)
+        assertFalse(
+            controller.update(),
+            "a settled camera must report not-moved under the default damping = true",
+        )
+    }
+
+    @Test
     fun autoRotateReportsMovedEveryFrame() {
         // #2332: auto-rotate advances theta each frame, so the camera genuinely
         // moves — update() must report moved so the gate keeps painting.
