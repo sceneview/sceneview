@@ -97,6 +97,17 @@ class PlaneVisualizer(
     // Track the last primitive counts so we only rebuild the renderable when they change
     private var builtPrimitiveCount = 0
 
+    /**
+     * Reusable 2-element backing list for [updateRenderable]'s primitive selection (#2328 / #2402).
+     *
+     * [updateRenderable] runs every frame the plane updates; building the primitive list with a
+     * fresh `buildList { }` each call churned one short-lived list per plane per frame (300+/s with
+     * 10 planes at 30 Hz). The selection is recomputed into this single reused list every call —
+     * cleared first — so there is no cached state that could go stale; only the per-call allocation
+     * is removed. Single-threaded (main/render thread), so the shared field is race-free.
+     */
+    private val primitivesScratch = ArrayList<MaterialInstance>(2)
+
     fun setEnabled(enabled: Boolean) {
         if (isEnabled != enabled) {
             isEnabled = enabled
@@ -214,10 +225,13 @@ class PlaneVisualizer(
     }
 
     private fun updateRenderable() {
-        val primitives = buildList {
-            if (isVisible && planeSubmeshMaterial != null) add(planeSubmeshMaterial!!)
-            if (isShadowReceiver && shadowSubmeshMaterial != null) add(shadowSubmeshMaterial!!)
-        }
+        val primitives = selectPlanePrimitives(
+            isVisible = isVisible,
+            planeMaterial = planeSubmeshMaterial,
+            isShadowReceiver = isShadowReceiver,
+            shadowMaterial = shadowSubmeshMaterial,
+            out = primitivesScratch
+        )
 
         if (primitives.isEmpty()) {
             removePlaneFromScene()
@@ -286,4 +300,34 @@ class PlaneVisualizer(
             isPlaneAddedToScene = false
         }
     }
+}
+
+/**
+ * Fills [out] with a plane's renderable primitive materials, in draw order (plane then shadow),
+ * reusing the caller's list instead of allocating a fresh one per frame (#2328 / #2402). Returns
+ * [out] for call-site convenience.
+ *
+ * Shared by both [PlaneVisualizer] (V1) and [PlaneVisualizerV2]. [out] is cleared first, so the
+ * result is always rebuilt from the live arguments — there is no cached state that could go stale
+ * (the safest form of "reuse": no invalidation path to miss). Pure (no Filament), so the
+ * per-frame allocation removal and the visibility / shadow-receiver gating are pinned by a JVM unit
+ * test.
+ *
+ * @param isVisible        Whether the plane's textured submesh should be drawn.
+ * @param planeMaterial    Plane submesh material, or `null` if not set yet.
+ * @param isShadowReceiver Whether the plane's shadow-catcher submesh should be drawn.
+ * @param shadowMaterial   Shadow submesh material, or `null` if not set yet.
+ * @param out              Reused destination list (cleared before filling).
+ */
+internal fun <T : Any> selectPlanePrimitives(
+    isVisible: Boolean,
+    planeMaterial: T?,
+    isShadowReceiver: Boolean,
+    shadowMaterial: T?,
+    out: MutableList<T>,
+): MutableList<T> {
+    out.clear()
+    if (isVisible && planeMaterial != null) out.add(planeMaterial)
+    if (isShadowReceiver && shadowMaterial != null) out.add(shadowMaterial)
+    return out
 }

@@ -26,7 +26,19 @@ interface LightComponent : Component {
     /** The Filament [LightManager] that owns all light instances. */
     val lightManager get() = engine.lightManager
 
-    /** The light-manager instance handle for this entity. */
+    /**
+     * The light-manager instance handle for this entity.
+     *
+     * **Caching contract (#2328 / #2402 MED-2).** This interface default resolves the handle with a
+     * `getInstance` JNI thunk on *every* read, and every [LightComponent] getter/setter funnels
+     * through it — reactive light setups (`rememberMainLightNode`'s `SideEffect { node.apply(…) }`)
+     * re-apply on each recomposition, so it is read at recomposition frequency. A Kotlin interface
+     * property cannot hold a backing field, so the cache must live in the implementer:
+     * [io.github.sceneview.node.LightNode] overrides this with a lazy-once cached handle (the handle
+     * is stable for the entity's lifetime; a `0` "not built yet" result is never frozen).
+     * **Any implementer that reads light properties frequently MUST cache this the same way;** the
+     * uncached default is only safe for one-shot or test implementers.
+     */
     val lightInstance: EntityInstance get() = lightManager.getInstance(entity)
 
     /** The type of this light (directional, point, spot, or sun). */

@@ -200,6 +200,17 @@ class PlaneVisualizerV2(
     private val tangentScratch = FloatArray(MAX_VERTS * 4)
 
     private var builtPrimitiveCount = 0
+
+    /**
+     * Reusable 2-element backing list for [updateRenderable]'s primitive selection (#2328 / #2402).
+     *
+     * V2 is the default renderer, so this per-frame path runs often. Building the primitive list
+     * with a fresh `buildList { }` each call churned one short-lived list per plane per frame; the
+     * selection is recomputed into this single reused list every call (cleared first via
+     * [selectPlanePrimitives]), so no cached state can go stale — only the allocation is removed.
+     * Single-threaded (main/render thread), so the shared field is race-free.
+     */
+    private val primitivesScratch = ArrayList<MaterialInstance>(2)
     private var currentVertexCount = 0
     private var currentIndexCount = 0
     private var lastDepthRebuildMs: Long = Long.MIN_VALUE
@@ -737,10 +748,13 @@ class PlaneVisualizerV2(
     }
 
     private fun updateRenderable() {
-        val primitives = buildList {
-            if (isVisible && planeSubmeshMaterial != null) add(planeSubmeshMaterial!!)
-            if (isShadowReceiver && shadowSubmeshMaterial != null) add(shadowSubmeshMaterial!!)
-        }
+        val primitives = selectPlanePrimitives(
+            isVisible = isVisible,
+            planeMaterial = planeSubmeshMaterial,
+            isShadowReceiver = isShadowReceiver,
+            shadowMaterial = shadowSubmeshMaterial,
+            out = primitivesScratch
+        )
 
         if (primitives.isEmpty() || currentIndexCount == 0) {
             removePlaneFromScene()
