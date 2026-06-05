@@ -1,0 +1,2 @@
+<!-- category: Docs -->
+- **Documented the new `HitResultNode.refreshIntervalMs` hit-test throttle in `llms.txt` ([#2328](https://github.com/sceneview/sceneview/issues/2328)).** #2328 added an opt-in `refreshIntervalMs` rate-limit to `HitResultNode` (mirroring `PointCloudNode`/`DepthMeshNode`); the AI-first reference now documents it so an assistant can generate code that uses the throttle, closing the doc-coverage gap a review-fanout flagged.

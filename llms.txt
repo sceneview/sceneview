@@ -1022,6 +1022,17 @@ ARSceneView(modifier = Modifier.fillMaxSize()) {
 }
 ```
 
+**Rate-limit the ARCore hit test (perf, [#2328](https://github.com/sceneview/sceneview/issues/2328)).**
+`HitResultNode.refreshIntervalMs` (default `0` = `Frame.hitTest` every frame) throttles the
+raycast the same way `PointCloudNode` / `DepthMeshNode` rate-limit their rebuilds: a positive
+value (e.g. `100` = 10 Hz) keeps the node's last pose between hit tests, cutting hit-test load
+on scenes with several cursors. Set it in the `apply` block:
+```kotlin
+HitResultNode(xPx = viewWidth / 2f, yPx = viewHeight / 2f, apply = { refreshIntervalMs = 100 }) {
+    CubeNode(size = Size(0.05f))
+}
+```
+
 ### ReticleNode — placement reticle with auto-hide
 
 `ReticleNode` is a **thin wrapper** over `HitResultNode` for "tap to place" UX. It is a
