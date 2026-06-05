@@ -32,7 +32,19 @@ interface RenderableComponent : Component {
     /** The Filament [RenderableManager] that owns all renderable instances. */
     val renderableManager get() = engine.renderableManager
 
-    /** The renderable-manager instance handle for this entity. */
+    /**
+     * The renderable-manager instance handle for this entity.
+     *
+     * **Caching contract (#2328 / #2402 MED-1).** This interface default resolves the handle with a
+     * `getInstance` JNI thunk on *every* read, and the renderable getters/setters below all funnel
+     * through it — a hot read path. A Kotlin interface property cannot hold a backing field, so the
+     * cache must live in the implementer: [io.github.sceneview.node.RenderableNode] and
+     * [io.github.sceneview.ar.camera.ARCameraStream] override this with a lazy-once cached handle
+     * (the handle is stable for the entity's lifetime — rebuilding the renderable in place keeps
+     * it, so a non-zero handle is frozen and a `0` "not built yet" result is re-looked-up).
+     * **Any implementer that reads renderable properties frequently MUST cache this the same way;**
+     * the uncached default is only safe for one-shot or test implementers.
+     */
     val renderableInstance: RenderableInstance get() = renderableManager.getInstance(entity)
 
     /**

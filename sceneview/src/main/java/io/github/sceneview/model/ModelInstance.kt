@@ -20,15 +20,48 @@ val ModelInstance.renderableEntities: List<Entity>
     get() = entities.filter {
         renderableManager.hasComponent(it)
     }
+
+/**
+ * The [RenderableManager] instance handles for every renderable entity of this model (#2328 /
+ * #2402 MED-3).
+ *
+ * Resolved in a **single pass** over [entities] (`hasComponent` filter fused with the `getInstance`
+ * map) so the per-call material/shadow/visibility setters below — each of which reads this once —
+ * no longer allocate the intermediate [renderableEntities] list on top of the result list. The
+ * returned values are byte-for-byte identical to the previous `renderableEntities.map { … }` form.
+ *
+ * Deliberately **not** cached across calls: [ModelInstance] is a `typealias` for Filament's
+ * external `FilamentInstance`, which has no backing field to hold the cache and no hook to
+ * invalidate it when its entities change — a stale instance list would be exactly the silent
+ * native-handle bug class this audit (#2402) targets. The handles are still re-resolved live each
+ * call; only the redundant intermediate allocation is removed.
+ */
 val ModelInstance.renderableInstances: List<EntityInstance>
-    get() = renderableEntities.map { renderableManager.getInstance(it) }
+    get() = buildList {
+        for (entity in entities) {
+            if (renderableManager.hasComponent(entity)) add(renderableManager.getInstance(entity))
+        }
+    }
 
 val ModelInstance.lightEntities: List<Entity>
     get() = entities.filter {
         lightManager.hasComponent(it)
     }
+
+/**
+ * The [com.google.android.filament.LightManager] instance handles for every light entity of this
+ * model (#2328 / #2402 MED-4).
+ *
+ * Same single-pass fusion and the same "deliberately not cached" rationale as [renderableInstances]
+ * — [ModelInstance] is an external `FilamentInstance` typealias, so a cross-call cache could go
+ * silently stale. Returned values are identical to the previous `lightEntities.map { … }` form.
+ */
 val ModelInstance.lightEntityInstances: List<EntityInstance>
-    get() = lightEntities.map { lightManager.getInstance(it) }
+    get() = buildList {
+        for (entity in entities) {
+            if (lightManager.hasComponent(entity)) add(lightManager.getInstance(entity))
+        }
+    }
 
 val ModelInstance.camerasEntities: List<Entity>
     get() = entities.filter {

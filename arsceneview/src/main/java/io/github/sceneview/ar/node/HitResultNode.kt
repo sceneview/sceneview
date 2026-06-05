@@ -31,6 +31,27 @@ open class HitResultNode(
      */
     var update: Boolean = true
 
+    /**
+     * Minimum interval, in milliseconds, between two ARCore [Frame.hitTest] calls (#2328 / #2402
+     * MED-5).
+     *
+     * `0` (the default) runs the hit test on **every** updated frame — the original, byte-for-byte
+     * behavior. ARCore's [Frame.hitTest] is a comparatively expensive per-pixel raycast, and a
+     * scene with many [HitResultNode]s (or a high refresh display) can issue hundreds of hit tests
+     * a second, which itself degrades tracking quality. Set a positive value (e.g. `100` = 10 Hz)
+     * to rate-limit the raycast the same way [PointCloudNode]/[DepthMeshNode] rate-limit their
+     * per-frame rebuilds; between hit tests the node keeps its last pose and [super.update] still
+     * runs every frame, so the existing smooth-transform interpolation is unaffected.
+     */
+    var refreshIntervalMs: Long = 0L
+
+    /**
+     * Wall-clock time of the last [hitTest] call so [refreshIntervalMs] can gate the next one.
+     * Render/AR-frame-thread only. `0L` = "never run yet"; like [PointCloudNode] it is `0L` and not
+     * `Long.MIN_VALUE` so the first frame is never wrongly throttled by overflow (#2186).
+     */
+    private var lastHitTestTimestampMs: Long = 0L
+
     open var hitResult: HitResult? = null
         set(value) {
             field = value
@@ -75,6 +96,10 @@ open class HitResultNode(
      *                                  `Pose.distanceToPlane`). Kept for back-compat; prefer
      *                                  [minCameraDistance] for new code.
      * @param predicate                 Custom filter applied to each [HitResult].
+     * @param refreshIntervalMs         Minimum interval (ms) between ARCore hit tests. `0` (the
+     *                                  default) runs the hit test every updated frame — the
+     *                                  original behavior; a positive value rate-limits the raycast
+     *                                  (see [refreshIntervalMs]).
      */
     constructor(
         engine: Engine,
@@ -89,7 +114,8 @@ open class HitResultNode(
         planePoseInPolygon: Boolean = true,
         minCameraDistance: Float? = 0.3f,
         minCameraDistanceFromPlane: Pair<Camera, Float>? = null,
-        predicate: ((HitResult) -> Boolean)? = null
+        predicate: ((HitResult) -> Boolean)? = null,
+        refreshIntervalMs: Long = 0L
     ) : this(
         engine = engine,
         hitTest = { frame ->
@@ -103,13 +129,49 @@ open class HitResultNode(
                 minCameraDistance == null || hit.distance >= minCameraDistance
             }
         }
-    )
+    ) {
+        this.refreshIntervalMs = refreshIntervalMs
+    }
+
+    /** Hook for tests — JVM monotonic time. Mirrors [PointCloudNode.nowMs]. */
+    protected open fun nowMs(): Long = System.currentTimeMillis()
 
     override fun update(session: Session, frame: Frame) {
         if (update) {
-            hitResult = hitTest(frame)
+            // Rate-limit gate (#2328 / #2402 MED-5). With the default refreshIntervalMs = 0 this
+            // never trips, so the hit test runs every updated frame exactly as before. A positive
+            // interval skips the ARCore Frame.hitTest raycast on frames inside the window; the node
+            // keeps its previous hitResult/pose until the interval elapses.
+            val now = nowMs()
+            if (!hitResultRefreshThrottled(now, lastHitTestTimestampMs, refreshIntervalMs)) {
+                hitResult = hitTest(frame)
+                lastHitTestTimestampMs = now
+            }
         }
 
         super.update(session, frame)
     }
 }
+
+/**
+ * Pure rate-limit decision for [HitResultNode.update] (#2328 / #2402 MED-5).
+ *
+ * Returns `true` when this frame's [com.google.ar.core.Frame.hitTest] should be **skipped** because
+ * the configured [refreshIntervalMs] window has not yet elapsed since [lastHitTestTimestampMs].
+ *
+ * A [refreshIntervalMs] of `0` (the default) is the "every frame" sentinel and is never throttled —
+ * preserving the original byte-for-byte per-frame behaviour. Mirrors [pointCloudRebuildThrottled],
+ * including the `lastHitTest = 0L` first-frame case (`0L`, not `Long.MIN_VALUE`, so the first hit
+ * test is never blocked by overflow — the #2186 guard). Extracted as an `internal` top-level
+ * function so the gate can be pinned by a JVM unit test without ARCore / Filament.
+ *
+ * @param now                    Current wall-clock time (ms).
+ * @param lastHitTestTimestampMs Time of the last hit test (ms); `0L` = never run.
+ * @param refreshIntervalMs      Minimum interval between hit tests; `0` = never throttle.
+ * @return `true` to skip this frame's hit test, `false` to run it.
+ */
+internal fun hitResultRefreshThrottled(
+    now: Long,
+    lastHitTestTimestampMs: Long,
+    refreshIntervalMs: Long,
+): Boolean = refreshIntervalMs > 0L && now - lastHitTestTimestampMs < refreshIntervalMs

@@ -19,6 +19,7 @@ import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.arcore.semanticImage
 import io.github.sceneview.ar.node.ARFogConfig
 import io.github.sceneview.components.RenderableComponent
+import io.github.sceneview.components.RenderableInstance
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.managers.safeDestroy
 import io.github.sceneview.material.setExternalTexture
@@ -80,6 +81,31 @@ open class ARCameraStream(
     final override val engine: Engine = materialLoader.engine
 
     final override val entity = EntityManager.get().create()
+
+    /**
+     * Cached [RenderableManager] instance handle for [entity] (#2328 / #2402 MED-1).
+     *
+     * `0` means "not yet looked up". The camera-stream renderable is built once on this entity (the
+     * `RenderableManager.Builder(1)…build(engine, entity)` init block below) and its handle is
+     * stable for the stream's lifetime, so we pay the `getInstance` JNI thunk once instead of on
+     * every
+     * `materialInstance` read / `setPriority` / per-frame [cameraTexture] swap that the
+     * [RenderableComponent] getters funnel through. This is the same lazy-once cache
+     * [io.github.sceneview.node.RenderableNode] applies — [ARCameraStream] is the other production
+     * [RenderableComponent] implementer, and without this override it paid the uncached interface
+     * default. A `0` result (renderable not built yet) is never frozen — it re-looks-up next read.
+     *
+     * Threading: read only from the render/main thread (a Filament JNI requirement), so the single
+     * un-synchronised field is race-free.
+     */
+    private var _renderableInstance: RenderableInstance = 0
+    override val renderableInstance: RenderableInstance
+        get() {
+            if (_renderableInstance == 0) {
+                _renderableInstance = renderableManager.getInstance(entity)
+            }
+            return _renderableInstance
+        }
 
     /**
      * Passing multiple textures allows for a multithreaded rendering pipeline
