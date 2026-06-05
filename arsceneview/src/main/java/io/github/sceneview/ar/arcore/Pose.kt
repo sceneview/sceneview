@@ -21,9 +21,31 @@ val Pose.position: Position
 val Pose.quaternion: Quaternion
     get() = Quaternion(x = qx(), y = qy(), z = qz(), w = qw())
 
-/** Converts this [Pose] to a 4x4 [Transform] matrix. */
+/**
+ * Per-thread scratch buffer reused by [Pose.transform] to avoid allocating a fresh
+ * `FloatArray(16)` on every access (#2406 / umbrella #2263).
+ *
+ * `Pose.transform` is read at 60–120 Hz per tracked node (e.g. [io.github.sceneview.ar.node.DepthMeshNode]
+ * refreshes `worldTransform = camera.pose.transform` every depth frame), so the per-access array
+ * allocation was steady GC churn. A `ThreadLocal` is used rather than a single shared buffer
+ * because, unlike Filament's strictly-main-thread `TransformManager` scratch, an ARCore [Pose] is a
+ * retained value object that a caller may legitimately query off the render thread — each thread
+ * gets its own buffer, so there is no cross-thread race. Reuse is safe: [toMatrix] fills the 16
+ * floats synchronously and `toTransform()` COPIES them into a fresh [Transform]'s columns (see
+ * `FloatArray.toTransform`), so the returned matrix never aliases the buffer and the next access can
+ * overwrite it.
+ */
+private val poseMatrixScratch = ThreadLocal.withInitial { FloatArray(16) }
+
+/**
+ * Converts this [Pose] to a 4x4 [Transform] matrix.
+ *
+ * Reuses a per-thread scratch buffer ([poseMatrixScratch]) for the column-major float read instead
+ * of allocating a `FloatArray(16)` on every access — the returned [Transform] carries its own
+ * freshly-copied columns, so the value is identical to the previous fresh-allocation behavior (#2406).
+ */
 val Pose.transform: Transform
-    get() = FloatArray(16).apply { toMatrix(this, 0) }.toTransform()
+    get() = poseMatrixScratch.get()!!.apply { toMatrix(this, 0) }.toTransform()
 //    get() = translation(position) * rotation(quaternion)
 
 /**
