@@ -39,7 +39,8 @@ fun generateExtrude(
         val pathPoint = path[pathIdx]
         val v = i.toFloat() / (pathCount - 1)
 
-        for ((j, csPoint) in crossSection.withIndex()) {
+        for (j in crossSection.indices) {
+            val csPoint = crossSection[j]
             // Transform cross-section point to world space using the Frenet frame
             val position = Float3(
                 pathPoint.x + frame.normal.x * csPoint.x + frame.binormal.x * csPoint.y,

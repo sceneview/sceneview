@@ -92,7 +92,8 @@ data class SequenceState(
                 elapsedSeconds.coerceIn(0f, sequence.totalDuration)
             }
             var accumulated = 0f
-            for ((index, step) in sequence.steps.withIndex()) {
+            for (index in sequence.steps.indices) {
+                val step = sequence.steps[index]
                 accumulated += step.durationSeconds
                 if (time <= accumulated) return index
             }

@@ -98,7 +98,12 @@ fun generateIcosphere(
         Vertex(position = scaledPos, normal = normal, uvCoordinate = Float2(u, v))
     }
 
-    val indices = faces.flatMap { (a, b, c) -> listOf(a, b, c) }
+    val indices = ArrayList<Int>(faces.size * 3)
+    for (face in faces) {
+        indices.add(face.first)
+        indices.add(face.second)
+        indices.add(face.third)
+    }
 
     return GeometryData(vertices, indices)
 }

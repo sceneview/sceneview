@@ -40,7 +40,8 @@ fun generateLathe(
         val sinT = sin(theta)
         val u = slice.toFloat() / segments
 
-        for ((profileIdx, point) in profile.withIndex()) {
+        for (profileIdx in profile.indices) {
+            val point = profile[profileIdx]
             val x = point.x * cosT
             val z = point.x * sinT
             val y = point.y
