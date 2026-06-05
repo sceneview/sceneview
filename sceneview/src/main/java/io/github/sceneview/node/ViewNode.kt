@@ -311,27 +311,41 @@ class ViewNode(
          * An owner View can only be added to the WindowManager after the activity has finished
          * resuming **and** the owner View itself is attached to a window.
          *
-         * If the owner View is not yet attached when we try (common on a background → foreground
-         * cycle, where the SurfaceView re-attaches after `onResume`), we register an
-         * [View.OnAttachStateChangeListener] so the attach is retried automatically the moment the
-         * owner View becomes attached, instead of being silently dropped (sceneview/sceneview#984).
+         * If the owner View is not yet attached when `resume()` is called (common on a
+         * background → foreground cycle, where the SurfaceView re-attaches after `onResume`), we
+         * register an [View.OnAttachStateChangeListener] **synchronously** so the attach is retried
+         * automatically the moment the owner View becomes attached, instead of being silently
+         * dropped (sceneview/sceneview#984).
+         *
+         * Arming the listener synchronously — rather than from inside `ownerView.post { … }` — is
+         * deliberate. `View.post()` on a *detached* View does not dispatch to a Handler: it queues
+         * the Runnable in the View's `HandlerActionQueue`, which is flushed only once the View
+         * attaches. By then `isAttachedToWindow` is already `true`, so a posted block would always
+         * take the direct-attach branch and the #984 retry listener would never actually arm for a
+         * detached owner — leaving the documented retry path as dead code.
          */
         fun resume(ownerView: View) {
             if (destroyed) return
-            // A ownerView can only be added to the WindowManager after the activity has finished resuming.
-            // Therefore, we must use post to ensure that the window is only added after resume is finished.
-            ownerView.post {
-                // Recheck after the post: destroy() may have run while we were queued — without this
-                // guard the layout would be re-attached to the system WindowManager *after* it was
-                // explicitly torn down, leaking the window for the lifetime of the process.
-                if (destroyed) return@post
-                if (ownerView.isAttachedToWindow) {
-                    clearPendingAttach()
-                    tryAttachingView()
-                } else {
-                    // Owner not attached yet — wait for it instead of dropping the attach.
-                    awaitOwnerAttach(ownerView)
+            if (ownerView.isAttachedToWindow) {
+                // Owner already attached. The window can only be added to the system WindowManager
+                // after the activity has finished resuming, so defer the attach via post().
+                ownerView.post {
+                    // Recheck after the post: destroy() may have run while we were queued — without
+                    // this guard the layout would be re-attached to the system WindowManager *after*
+                    // it was explicitly torn down, leaking the window for the lifetime of the process.
+                    if (destroyed) return@post
+                    if (ownerView.isAttachedToWindow) {
+                        clearPendingAttach()
+                        tryAttachingView()
+                    } else {
+                        // Owner detached between resume() and now — wait for it to re-attach.
+                        awaitOwnerAttach(ownerView)
+                    }
                 }
+            } else {
+                // Owner not attached yet — arm the retry listener now so the attach fires the
+                // moment the owner attaches, instead of being silently dropped (#984).
+                awaitOwnerAttach(ownerView)
             }
         }
 
