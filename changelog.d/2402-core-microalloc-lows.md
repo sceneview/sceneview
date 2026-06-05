@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- Dropped per-setup micro-allocations in `sceneview-core` geometry/animation: `AnimationSequence.currentStepIndex`, `generateExtrude`, and `generateLathe` now use index loops instead of `withIndex()` (no per-step/per-point `IndexedValue` boxing), and `generateIcosphere` builds its index list directly into a pre-sized list instead of allocating a `List` per face. Behavior-preserving (geometry/animation output is byte-identical, verified by the existing test suites). Part of #2402.
