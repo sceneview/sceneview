@@ -902,14 +902,15 @@ private fun GallerySection(
                 val instance = modelInstance
                 val slug = selectedSlug
                 if (instance != null && slug != null) {
-                    // KNOWN ISSUE (#2306 follow-up): switching chips leaves the previous
-                    // model stacked in the scene. Device-QA proved this is NOT fixable here:
-                    // the ModelNode IS disposed on every switch (its `onDispose` runs — verified
-                    // via logcat) and `key(modelInstance)` re-keys correctly, yet the old
-                    // renderable stays in the Filament scene — `ModelNode` disposal does not
-                    // remove the model's renderable entities. That is a library-level
-                    // node-disposal bug (#2400); a demo-side `key()` wrapper is a no-op for
-                    // the symptom, so it is intentionally NOT applied here.
+                    // Switching chips swaps the model in this single slot. The previous
+                    // model is disposed correctly on every switch (its `onDispose` runs and
+                    // `SceneNodeManager.removeNode` removes all of its renderable entities —
+                    // verified on device: `Scene.getRenderableCount()` drops to the new
+                    // model's count). The earlier "stacking" symptom was NOT a disposal bug:
+                    // the IBL-only environment has no skybox, so the Filament swap chain was
+                    // never cleared and the previous (larger) model's uncovered pixels lingered
+                    // on screen. Fixed library-side (#2400) by clearing the color buffer every
+                    // frame in `SceneView`; no demo-side `key()` wrapper is needed.
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = slug.scaleToUnits,
