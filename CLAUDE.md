@@ -557,6 +557,17 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 > where the sync agent downgraded `mcp/package.json` behind the published npm
 > `@next` tag. When releasing `sceneview-mcp`, bump these two files to the
 > next *MCP* version, never to the SDK `VERSION_NAME` (issue #1705).
+>
+> **Republishing the MCP without a full SDK release.** Because the MCP is not
+> tied to a `v*` tag, `mcp/` changes between releases leave npm stale (it once
+> rotted a month behind at 4.0.12). To ship the MCP on demand, bump
+> `mcp/package.json` + `mcp/package-lock.json` + `mcp/src/version.ts` by a patch,
+> land it on `main`, then dispatch the **`mcp-publish.yml`** workflow
+> (`gh workflow run mcp-publish.yml -R sceneview/sceneview --ref main`). It
+> mirrors `release.yml`'s `publish-mcp` job (same `NPM_TOKEN`, build/test/publish)
+> and is idempotent — re-dispatch on an already-published version is a clean
+> no-op. `maintenance.yml`'s `mcp-npm-freshness` job WARNs daily if npm lags the
+> local `mcp/package.json`. `/release` Step 3.5 covers this in the release flow.
 
 **Automation:**
 - `bash .claude/scripts/sync-versions.sh` — checks all 30+ locations

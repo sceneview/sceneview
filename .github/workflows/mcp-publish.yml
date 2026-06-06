@@ -1,0 +1,83 @@
+# Dispatchable npm republish for `sceneview-mcp`.
+#
+# `sceneview-mcp` is on an INDEPENDENT version track (#1705) — its npm cadence
+# is decoupled from the SDK `VERSION_NAME`. `release.yml` already publishes it
+# on a `v*` tag, but the MCP often needs a republish *without* cutting a full
+# SDK release (e.g. refreshed SDK doc refs, a tooling fix). Cutting a tag just
+# to ship the MCP is wrong, so the package rotted a month behind npm.
+#
+# This workflow lets a maintainer republish the MCP on demand. It mirrors the
+# exact `publish-mcp` job in `release.yml` (same `setup-mcp` action, same
+# `secrets.NPM_TOKEN`, same build/test/publish sequence) and is fully
+# idempotent: if `mcp/package.json`'s version is already on npm it logs a
+# notice and succeeds without publishing, so a re-dispatch never errors.
+name: Publish MCP to npm (dispatch)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-publish
+  cancel-in-progress: false
+
+jobs:
+  publish-mcp:
+    name: Publish MCP to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-mcp
+        with:
+          registry-url: https://registry.npmjs.org
+
+      - name: Check if version already published
+        id: check-mcp
+        working-directory: mcp
+        run: |
+          # MCP has its own version cycle — always use package.json version.
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # npm view <pkg>@<ver> version returns the version string if it
+          # exists, or empty if it has never been published. Re-dispatch on an
+          # already-published version is a clean no-op success (idempotent).
+          PUBLISHED=$(npm view "sceneview-mcp@$VERSION" version 2>/dev/null || echo "")
+          if [ "$PUBLISHED" = "$VERSION" ]; then
+            echo "::notice::sceneview-mcp@$VERSION already published — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Publishing sceneview-mcp@$VERSION (not yet on npm)"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.check-mcp.outputs.skip != 'true'
+        working-directory: mcp
+        run: npm run prepare
+
+      - name: Test
+        if: steps.check-mcp.outputs.skip != 'true'
+        working-directory: mcp
+        run: npm test
+
+      - name: Publish
+        if: steps.check-mcp.outputs.skip != 'true'
+        working-directory: mcp
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ steps.check-mcp.outputs.skip }}" = "true" ]; then
+            echo "✅ sceneview-mcp@${{ steps.check-mcp.outputs.version }} already on npm — nothing to do." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "📦 Published sceneview-mcp@${{ steps.check-mcp.outputs.version }} to npm." >> "$GITHUB_STEP_SUMMARY"
+          fi
