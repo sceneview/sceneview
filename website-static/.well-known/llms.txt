@@ -2324,7 +2324,7 @@ let data = SceneSnapshot.pngData(image) // or jpegData(image, quality: 0.9)
 | Cube | `CubeNode(size)` | `GeometryNode.cube(size:color:)` |
 | Sphere | `SphereNode(radius)` | `GeometryNode.sphere(radius:)` |
 | Cylinder | `CylinderNode(radius, height)` | `GeometryNode.cylinder(radius:height:)` |
-| Plane | `PlaneNode(size)` | `GeometryNode.plane(width:height:)` |
+| Plane | `PlaneNode(size)` | `GeometryNode.plane(width:depth:)` |
 | Cone | `ConeNode(radius, height)` | `GeometryNode.cone(radius:height:)` |
 | Torus | `TorusNode(majorRadius, minorRadius)` | `GeometryNode.torus(majorRadius:minorRadius:)` |
 | Capsule | `CapsuleNode(radius, height)` | `GeometryNode.capsule(radius:height:)` |
@@ -2530,8 +2530,9 @@ SceneView.create(canvas, configure = {
         // for point/spot: position(x, y, z)
     }
     model("models/damaged_helmet.glb") {
-        autoAnimate(true)          // play first glTF animation if present
-        scale(1.0f)
+        // glTF animation 0 auto-plays by default. NOTE: per-model scale() and
+        // disabling autoAnimate() are not yet wired on web (the builder stores
+        // them but the loader ignores them) — tracked by #2432.
         onLoaded { asset -> /* FilamentAsset */ }
     }
     geometry {
