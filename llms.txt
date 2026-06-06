@@ -4710,6 +4710,14 @@ SceneEnvironment.allPresets  // [SceneEnvironment] for UI pickers
 ```
 
 **ViewNode** — embed SwiftUI in 3D:
+
+> ⚠️ **Coming soon (deferred).** ViewNode's SwiftUI-in-3D rendering is **not yet
+> wired on iOS** — the node currently displays a blank white plane: the `content`
+> closure is stored but never rendered, and there is no gesture forwarding. The
+> type ships only so its transform API is stable for callers; it is `@available`
+> deprecated to flag this. Tracked by [#1035](https://github.com/sceneview/sceneview/issues/1035).
+> For a static 2D surface today, use a textured `ImageNode` instead.
+
 ```swift
 let view = ViewNode(width: 0.5, height: 0.3) {
     VStack { Text("Hello").padding().background(.regularMaterial) }
@@ -4740,7 +4748,7 @@ let data = SceneSnapshot.pngData(image) // or jpegData(image, quality: 0.9)
 | Cube | `CubeNode(size)` | `GeometryNode.cube(size:color:)` |
 | Sphere | `SphereNode(radius)` | `GeometryNode.sphere(radius:)` |
 | Cylinder | `CylinderNode(radius, height)` | `GeometryNode.cylinder(radius:height:)` |
-| Plane | `PlaneNode(size)` | `GeometryNode.plane(width:height:)` |
+| Plane | `PlaneNode(size)` | `GeometryNode.plane(width:depth:)` |
 | Cone | `ConeNode(radius, height)` | `GeometryNode.cone(radius:height:)` |
 | Torus | `TorusNode(majorRadius, minorRadius)` | `GeometryNode.torus(majorRadius:minorRadius:)` |
 | Capsule | `CapsuleNode(radius, height)` | `GeometryNode.capsule(radius:height:)` |
@@ -5009,8 +5017,9 @@ SceneView.create(canvas, configure = {
         // for point/spot: position(x, y, z)
     }
     model("models/damaged_helmet.glb") {
-        autoAnimate(true)          // play first glTF animation if present
-        scale(1.0f)
+        // glTF animation 0 auto-plays by default. NOTE: per-model scale() and
+        // disabling autoAnimate() are not yet wired on web (the builder stores
+        // them but the loader ignores them) — tracked by #2432.
         onLoaded { asset -> /* FilamentAsset */ }
     }
     geometry {

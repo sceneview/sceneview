@@ -154,10 +154,10 @@ On user denial throws `ARRecorderError.photoLibraryDenied`; on
 | | `.point(color:intensity:attenuationRadius:)` | `.position()`, `.attenuationRadius()` |
 | | `.spot(color:intensity:innerAngle:outerAngle:)` | `.position()`, `.lookAt()` |
 | `TextNode` | `TextNode(text:fontSize:color:depth:)` | `.position()`, `.centered()`, `.withText()` |
-| `ImageNode` | `ImageNode(named:size:)` | `.position()`, `.billboard()` |
+| `ImageNode` | `ImageNode.load("file.png", width:height:)` / `.color(_:width:height:)` | `.load` is `async throws`; `.position()` |
 | `BillboardNode` | `BillboardNode(named:width:height:)` | always faces camera |
-| `VideoNode` | `VideoNode(url:size:)` | `.play()`, `.pause()` |
-| `LineNode` | `LineNode(start:end:color:)` | `SIMD3<Float>` endpoints |
+| `VideoNode` | `VideoNode.load("clip.mp4", width:height:loop:)` | `.play()`, `.pause()` |
+| `LineNode` | `LineNode(from:to:color:)` | `SIMD3<Float>` endpoints |
 | `PathNode` | `PathNode(points:closed:color:)` | `[SIMD3<Float>]` path |
 | `PhysicsNode` | `.dynamic(entity, mass:restitution:)` | `.static(entity)`, `.kinematic(entity)` |
 | `DynamicSkyNode` | `DynamicSkyNode(timeOfDay:turbidity:)` | `0...24` time cycle |
