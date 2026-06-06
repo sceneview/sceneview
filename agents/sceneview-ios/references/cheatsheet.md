@@ -69,7 +69,7 @@ ARSceneView(
 | `TextNode` | `TextNode(text:fontSize:color:depth:)` | `.centered()` |
 | `ImageNode` | `ImageNode.load("img.png")` | `async throws`; `width:` / `height:` |
 | `BillboardNode` | `BillboardNode(child:)` / `BillboardNode.text(_:fontSize:color:)` | always faces camera |
-| `LineNode` | `LineNode(start:end:color:)` | `SIMD3<Float>` endpoints |
+| `LineNode` | `LineNode(from:to:color:)` | `SIMD3<Float>` endpoints |
 | `PathNode` | `PathNode(points:closed:color:)` | `[SIMD3<Float>]` |
 | `PhysicsNode` | `.dynamic(entity, mass:restitution:)` `.static(entity)` `.kinematic(entity)` | |
 | `DynamicSkyNode` | `DynamicSkyNode(timeOfDay:turbidity:)` | `0...24` time cycle |

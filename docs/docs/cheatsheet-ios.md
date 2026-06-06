@@ -156,8 +156,8 @@ On user denial throws `ARRecorderError.photoLibraryDenied`; on
 | `TextNode` | `TextNode(text:fontSize:color:depth:)` | `.position()`, `.centered()`, `.withText()` |
 | `ImageNode` | `ImageNode.load("img.png")` | `async throws`, `width:`, `height:`, `.position()` |
 | `BillboardNode` | `BillboardNode(child:)` / `BillboardNode.text(_:fontSize:color:)` | always faces camera |
-| `VideoNode` | `VideoNode(url:size:)` | `.play()`, `.pause()` |
-| `LineNode` | `LineNode(start:end:color:)` | `SIMD3<Float>` endpoints |
+| `VideoNode` | `VideoNode.load("clip.mp4")` | `width:`, `height:`, `loop:`, `.play()`, `.pause()` |
+| `LineNode` | `LineNode(from:to:color:)` | `SIMD3<Float>` endpoints |
 | `PathNode` | `PathNode(points:closed:color:)` | `[SIMD3<Float>]` path |
 | `PhysicsNode` | `.dynamic(entity, mass:restitution:)` | `.static(entity)`, `.kinematic(entity)` |
 | `DynamicSkyNode` | `DynamicSkyNode(timeOfDay:turbidity:)` | `0...24` time cycle |
