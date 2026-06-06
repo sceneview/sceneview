@@ -68,7 +68,7 @@ and [`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/mai
 
 ## 16. Image plane
 [`ImagePlaneDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ImagePlaneDemo.swift)
-— `ImageNode(named:size:)`.
+— `ImageNode.load("img.png")`.
 
 ## AR recipes (iOS only)
 

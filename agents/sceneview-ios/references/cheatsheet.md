@@ -67,8 +67,8 @@ ARSceneView(
 | `GeometryNode` | `.cube(size:color:)` `.sphere(radius:color:)` `.cylinder(radius:height:color:)` `.plane(width:depth:color:)` `.cone(height:radius:color:)` `.torus(...)` `.capsule(...)` | also `material: .pbr(...)` overloads; `unlit: Bool` for flat fill |
 | `LightNode` | `.directional(color:intensity:castsShadow:)` `.point(color:intensity:attenuationRadius:)` `.spot(color:intensity:innerAngle:outerAngle:)` | aim via `.position(_:)` / `.lookAt(_:)` |
 | `TextNode` | `TextNode(text:fontSize:color:depth:)` | `.centered()` |
-| `ImageNode` | `ImageNode(named:size:)` | `.billboard()` |
-| `BillboardNode` | `BillboardNode(named:width:height:)` | always faces camera |
+| `ImageNode` | `ImageNode.load("img.png")` | `async throws`; `width:` / `height:` |
+| `BillboardNode` | `BillboardNode(child:)` / `BillboardNode.text(_:fontSize:color:)` | always faces camera |
 | `LineNode` | `LineNode(start:end:color:)` | `SIMD3<Float>` endpoints |
 | `PathNode` | `PathNode(points:closed:color:)` | `[SIMD3<Float>]` |
 | `PhysicsNode` | `.dynamic(entity, mass:restitution:)` `.static(entity)` `.kinematic(entity)` | |

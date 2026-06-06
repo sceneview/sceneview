@@ -4755,7 +4755,7 @@ let data = SceneSnapshot.pngData(image) // or jpegData(image, quality: 0.9)
 | Tap | `onGestureListener(onSingleTapConfirmed = ...)` | `.onEntityTapped { }` / `NodeGesture.onTap(entity)` |
 | Drag | `onGestureListener(onMoveBegin = ...)` | `NodeGesture.onDrag(entity) { translation in }` |
 | Secondary camera | `SecondaryCamera(apply = { })` | `CameraNode()` |
-| Billboard | `BillboardNode(text)` | `BillboardNode(text:fontSize:color:)` |
+| Billboard | `BillboardNode(text)` | `BillboardNode.text(_:fontSize:color:)` |
 | Reflection probe | `ReflectionProbeNode(scene, env)` | `ReflectionProbeNode.box(size:)` |
 | Renderer | Filament | RealityKit |
 | AR framework | ARCore | ARKit |

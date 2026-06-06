@@ -154,8 +154,8 @@ On user denial throws `ARRecorderError.photoLibraryDenied`; on
 | | `.point(color:intensity:attenuationRadius:)` | `.position()`, `.attenuationRadius()` |
 | | `.spot(color:intensity:innerAngle:outerAngle:)` | `.position()`, `.lookAt()` |
 | `TextNode` | `TextNode(text:fontSize:color:depth:)` | `.position()`, `.centered()`, `.withText()` |
-| `ImageNode` | `ImageNode(named:size:)` | `.position()`, `.billboard()` |
-| `BillboardNode` | `BillboardNode(named:width:height:)` | always faces camera |
+| `ImageNode` | `ImageNode.load("img.png")` | `async throws`, `width:`, `height:`, `.position()` |
+| `BillboardNode` | `BillboardNode(child:)` / `BillboardNode.text(_:fontSize:color:)` | always faces camera |
 | `VideoNode` | `VideoNode(url:size:)` | `.play()`, `.pause()` |
 | `LineNode` | `LineNode(start:end:color:)` | `SIMD3<Float>` endpoints |
 | `PathNode` | `PathNode(points:closed:color:)` | `[SIMD3<Float>]` path |
