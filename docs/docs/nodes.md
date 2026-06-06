@@ -9,7 +9,7 @@ A scannable, AI-first reference for every node type exposed by `SceneView` and `
 
 All examples assume you are inside a `SceneView { … }` or `ARSceneView { … }` block (for AR nodes). Import the `io.github.sceneview.*` / `io.github.sceneview.ar.*` packages as needed.
 
-Artifact versions: `io.github.sceneview:sceneview:4.17.0` and `io.github.sceneview:arsceneview:4.17.0`.
+Artifact versions: `io.github.sceneview:sceneview:4.18.0` and `io.github.sceneview:arsceneview:4.18.0`.
 
 ---
 
