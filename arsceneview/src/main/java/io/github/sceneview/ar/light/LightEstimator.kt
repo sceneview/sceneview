@@ -277,7 +277,7 @@ class LightEstimator(
      * loop early-returns instead of touching native resources after teardown.
      *
      * Why `@Volatile` (CORR-B audit, acceptance #2 of umbrella #1094): [destroy] is invoked from
-     * `DisposableEffect.onDispose` (Compose main thread, [ARScene.kt:373]),
+     * `DisposableEffect.onDispose` (Compose main thread, [ARSceneView.kt:373]),
      * while a stray late frame could still drive [update] (Filament render
      * thread, same engine but different lifecycle). Marking the flag volatile
      * gives the render thread a happens-before guarantee on the teardown
@@ -727,7 +727,7 @@ class LightEstimator(
      * (`field?.let { destroy }`) and idempotent; the volatile flag write
      * provides the happens-before to a concurrent reader.
      *
-     * Idempotency is required by [ARScene.kt:373]'s `DisposableEffect`
+     * Idempotency is required by [ARSceneView.kt:373]'s `DisposableEffect`
      * semantics: the lambda can re-run if the keys change before the
      * previous teardown finishes.
      */

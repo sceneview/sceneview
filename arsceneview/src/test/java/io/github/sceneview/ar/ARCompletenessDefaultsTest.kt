@@ -32,7 +32,7 @@ import java.io.File
  */
 class ARCompletenessDefaultsTest {
 
-    private val arSceneFile = File("src/main/java/io/github/sceneview/ar/ARScene.kt")
+    private val arSceneFile = File("src/main/java/io/github/sceneview/ar/ARSceneView.kt")
     private val demosDir = File("../samples/android-demo/src/main/java/io/github/sceneview/demo")
 
     private val arSceneSource: String by lazy {
@@ -63,7 +63,7 @@ class ARCompletenessDefaultsTest {
         // Find the `session.configure { config -> ... }` block; the closing `}` is the one that
         // matches the open `{` after `config ->`.
         val openIdx = Regex("""session\.configure\s*\{\s*config\s*->""").find(src)?.range?.last
-            ?: throw AssertionError("Could not find `session.configure { config -> ` in ARScene.kt")
+            ?: throw AssertionError("Could not find `session.configure { config -> ` in ARSceneView.kt")
         // We only need to scan past the user callback line. Window must accommodate the long-form
         // KDoc-style comments + later additions (e.g. #1732 flashMode wiring, #1766 typed
         // Config.*Mode block which adds ~20 lines).
@@ -101,7 +101,7 @@ class ARCompletenessDefaultsTest {
             RegexOption.DOT_MATCHES_ALL
         ).find(src)?.value
         requireNotNull(arSceneFn) {
-            "Could not find the deprecated `fun ARScene(...)` alias in ARScene.kt."
+            "Could not find the deprecated `fun ARScene(...)` alias in ARSceneView.kt."
         }
         assertTrue(
             "Deprecated `ARScene` alias must accept `fillLightNode: LightNode? = rememberFillLightNode(engine)`.",
@@ -116,7 +116,7 @@ class ARCompletenessDefaultsTest {
     @Test
     fun `fillLightNode DisposableEffect attaches and detaches via nodeManager`() {
         val src = arSceneSource
-        // Same pattern PR #1131 introduced on the 3D `Scene.kt`: `DisposableEffect(fillLightNode)`
+        // Same pattern PR #1131 introduced on the 3D `SceneView.kt`: `DisposableEffect(fillLightNode)`
         // adds on (re-)key, `onDispose` removes on disposal/key-change. Pre-#1131 used a
         // `SideEffect` + `prevFillLightRef` which leaked lights in a shared `rememberScene`.
         // Pin the exact pattern so a regression to SideEffect immediately fails.
@@ -125,7 +125,7 @@ class ARCompletenessDefaultsTest {
         )
         assertTrue(
             "ARSceneView's fill-light wire-up MUST be a `DisposableEffect(fillLightNode) { add ; onDispose { remove } }` " +
-                "block (matches 3D `Scene.kt` post-#1131). Source did not match $disposableBlock.",
+                "block (matches 3D `SceneView.kt` post-#1131). Source did not match $disposableBlock.",
             disposableBlock.containsMatchIn(src)
         )
     }
@@ -156,7 +156,7 @@ class ARCompletenessDefaultsTest {
         // is present, AND that `fillLightNode` is NEVER referenced inside this private fun.
         val onArFrame = Regex("""private fun onARFrame\(.*?\)\s*\{.*?(?=\n\}\n\n|\nprivate fun|\nfun )""", RegexOption.DOT_MATCHES_ALL)
             .find(src)?.value
-            ?: throw AssertionError("Could not find `private fun onARFrame(...)` body in ARScene.kt")
+            ?: throw AssertionError("Could not find `private fun onARFrame(...)` body in ARSceneView.kt")
         assertTrue(
             "onARFrame must drive the estimator into `mainLightNode?.let { light -> ... }`.",
             onArFrame.contains("mainLightNode?.let { light")

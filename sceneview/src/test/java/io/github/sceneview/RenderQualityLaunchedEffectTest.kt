@@ -5,7 +5,7 @@ import org.junit.Test
 
 /**
  * Pure-JVM regression test for the keyed-`LaunchedEffect` pattern introduced in
- * #1078 around `view.applyRenderQuality(renderQuality)` in [Scene.kt:278].
+ * #1078 around `view.applyRenderQuality(renderQuality)` in [SceneView.kt:278].
  *
  * Before the fix, the call lived in an unkeyed `SideEffect { view.applyRenderQuality(...) }`
  * that ran on **every recomposition**, silently overwriting any post-`Scene` tweaks

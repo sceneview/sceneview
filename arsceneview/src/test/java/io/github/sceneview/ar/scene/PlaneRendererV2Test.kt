@@ -20,7 +20,7 @@ import org.robolectric.annotation.Config
  *     the routing in `ARSceneView` relies on the shared interface for the V1 / V2 swap.
  *  2. The [PlaneRendererBase.Version] enum exposes exactly the two values the public DSL
  *     surface advertises (V1, V2). A future addition or rename would invalidate the
- *     `when (planeRendererVersion)` exhaustive branches in `ARScene.kt` and must come with
+ *     `when (planeRendererVersion)` exhaustive branches in `ARSceneView.kt` and must come with
  *     a deliberate API-surface review.
  *
  * **What this does NOT cover**
@@ -67,7 +67,7 @@ class PlaneRendererV2Test {
 
     @Test
     fun `PlaneRendererBase Version enum exposes exactly V1 and V2`() {
-        // The exhaustive `when (planeRendererVersion)` in ARScene.kt relies on this enum
+        // The exhaustive `when (planeRendererVersion)` in ARSceneView.kt relies on this enum
         // surface being stable. Adding a value silently turns the `when` into a non-exhaustive
         // expression (compile error), which is the desired safeguard — but the test pins
         // down the intentional surface so a stray rename gets caught early too.

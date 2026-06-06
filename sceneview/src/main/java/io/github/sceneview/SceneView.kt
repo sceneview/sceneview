@@ -1,3 +1,9 @@
+// File renamed SceneView.kt -> SceneView.kt (the primary composable is `SceneView`; the bare `Scene`
+// is a deprecated backward-compat alias). `@file:JvmName("SceneKt")` pins the published JVM facade
+// class name so the rename is SOURCE-only — pre-compiled Kotlin consumers that reference the
+// `SceneKt` facade in their bytecode keep working without a recompile (no binary-compat break).
+@file:JvmName("SceneKt")
+
 package io.github.sceneview
 
 import android.content.Context
