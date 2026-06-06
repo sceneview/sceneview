@@ -308,27 +308,6 @@ fun SceneView(
         // even when the swap chain is CONFIG_TRANSPARENT — nothing under the
         // SceneView shows through.
         view.blendMode = if (isOpaque) BlendMode.OPAQUE else BlendMode.TRANSLUCENT
-
-        // Force a per-frame color-buffer clear so stale renderable pixels never
-        // survive a scene change (#2400). Filament defaults to
-        // `ClearOptions.clear = false` and relies on the skybox to repaint the
-        // background every frame. A SceneView whose environment has NO skybox
-        // (the model-viewer / gallery demos use `createSkybox = false` so the
-        // model floats on the surface background) then never clears the swap
-        // chain: when the rendered footprint SHRINKS — swapping a large model
-        // for a smaller one in a single slot — the previously-rendered pixels
-        // the new model does not cover are left on screen, so the old model
-        // appears "stacked" behind the new one even though its renderable
-        // entities were correctly removed from the Scene (verified on device:
-        // `Scene.getRenderableCount()` drops to the new model's count, yet the
-        // old pixels linger). Clearing every frame fixes it for both opaque
-        // (clear to opaque black) and translucent (clear to transparent so the
-        // surface background shows through) views; when a skybox IS present it
-        // simply overdraws the clear, so this is a no-op for skybox scenes.
-        renderer.clearOptions = Renderer.ClearOptions().apply {
-            clear = true
-            clearColor = doubleArrayOf(0.0, 0.0, 0.0, if (isOpaque) 1.0 else 0.0)
-        }
     }
     // Keyed `LaunchedEffect` so the preset is reapplied ONLY when `renderQuality`
     // actually changes (#1078). The previous unkeyed `SideEffect` ran on every
@@ -338,6 +317,32 @@ fun SceneView(
     // they will not be undone".
     LaunchedEffect(view, renderQuality) {
         view.applyRenderQuality(renderQuality)
+    }
+
+    // Force a per-frame color-buffer clear so stale renderable pixels never survive
+    // a scene change (#2400). Filament defaults to `Renderer.ClearOptions.clear =
+    // false` and relies on the skybox to repaint the background every frame. A
+    // SceneView whose environment has NO skybox (the model-viewer / gallery demos
+    // use `createSkybox = false` so the model floats on the surface background) then
+    // never clears the swap chain: when the rendered footprint SHRINKS — swapping a
+    // large model for a smaller one in a single slot — the previously-rendered
+    // pixels the new model does not cover are left on screen, so the old model
+    // appears "stacked" behind the new one even though its renderable entities were
+    // correctly removed from the Scene (verified on device: `Scene.getRenderableCount()`
+    // drops to the new model's count, yet the old pixels linger). Clearing every
+    // frame fixes it for both opaque (clear to opaque black) and translucent (clear
+    // to transparent so the surface background shows through) views; when a skybox
+    // IS present it simply overdraws the clear, so this is a no-op for skybox scenes.
+    //
+    // Keyed on (renderer, isOpaque) — the only inputs the clear depends on — so it
+    // applies once per change instead of allocating a `ClearOptions` + issuing a JNI
+    // `setClearOptions` on every recomposition (mirrors the `renderQuality` effect
+    // above rather than the per-recomposition `view.*` SideEffect).
+    LaunchedEffect(renderer, isOpaque) {
+        renderer.clearOptions = Renderer.ClearOptions().apply {
+            clear = true
+            clearColor = doubleArrayOf(0.0, 0.0, 0.0, if (isOpaque) 1.0 else 0.0)
+        }
     }
 
     // ── Camera node — registered so children (HUD nodes) are tracked by the scene manager ─────────
