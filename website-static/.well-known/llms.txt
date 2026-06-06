@@ -2266,7 +2266,7 @@ DynamicSkyNode(timeOfDay: 14, turbidity: 3, sunIntensity: 1200)
 ```swift
 FogNode.linear(start: 1.0, end: 20.0).color(.cool)
 FogNode.exponential(density: 0.15)
-FogNode.heightBased(density: 0.1, height: 1.0)
+// FogNode.heightBased(...) is deprecated on iOS (RealityKit parity gap, #1380) — use .exponential instead
 ```
 
 **ReflectionProbeNode** — local environment reflections:
