@@ -108,9 +108,9 @@ echo "npm=$NPM_VER  local=$PKG_VER"
 
 If `mcp/` changed since `npm=$NPM_VER` (refreshed SDK doc refs, tooling fix,
 etc.) and `local` is not ahead, bump `mcp/package.json` + `mcp/package-lock.json`
-+ the generated `mcp/src/version.ts` by a **patch** (e.g. 4.0.12 → 4.0.13 —
-never sync to `VERSION_NAME`), land it on `main`, then republish via the
-dispatchable workflow (no tag needed):
+by a **patch** (e.g. 4.0.12 → 4.0.13 — never sync to `VERSION_NAME`; the
+generated `mcp/src/generated/version.ts` is refreshed by `npm run prepare`),
+land it on `main`, then republish via the dispatchable workflow (no tag needed):
 
 ```bash
 gh workflow run mcp-publish.yml -R sceneview/sceneview --ref main

@@ -561,7 +561,8 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 > **Republishing the MCP without a full SDK release.** Because the MCP is not
 > tied to a `v*` tag, `mcp/` changes between releases leave npm stale (it once
 > rotted a month behind at 4.0.12). To ship the MCP on demand, bump
-> `mcp/package.json` + `mcp/package-lock.json` + `mcp/src/version.ts` by a patch,
+> `mcp/package.json` + `mcp/package-lock.json` by a patch (the generated
+> `mcp/src/generated/version.ts` is refreshed automatically by `npm run prepare`),
 > land it on `main`, then dispatch the **`mcp-publish.yml`** workflow
 > (`gh workflow run mcp-publish.yml -R sceneview/sceneview --ref main`). It
 > mirrors `release.yml`'s `publish-mcp` job (same `NPM_TOKEN`, build/test/publish)
