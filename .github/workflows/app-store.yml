@@ -181,6 +181,15 @@ jobs:
         # `SketchfabConfig.swift` would return nil for every TestFlight +
         # App Store build (issue #1157). Mirrors the Android pattern in
         # `play-store.yml:170` / `build-apks.yml:47`.
+        #
+        # CURRENT_PROJECT_VERSION=${{ github.run_number }} overrides the
+        # static `CURRENT_PROJECT_VERSION` literal baked into project.pbxproj
+        # so every upload gets a strictly-increasing CFBundleVersion. Without
+        # it, re-archiving the same source reuses the pinned build number and
+        # App Store Connect rejects the duplicate ("must contain a higher
+        # version than the previously uploaded") — issue #2443. A command-line
+        # build setting takes precedence over the project-file value, so this
+        # reliably overrides the literal at archive time.
         env:
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
         run: |
@@ -199,6 +208,7 @@ jobs:
             DEVELOPMENT_TEAM=5G3DZ3TH45 \
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_UUID" \
             ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY"
 
       - name: Export IPA and upload to TestFlight
@@ -816,6 +826,12 @@ jobs:
         # mirrored here so macOS App Store binaries also ship the
         # Sketchfab key substituted into `Info.plist` rather than the
         # unsubstituted `$(SKETCHFAB_API_KEY)` literal.
+        #
+        # CURRENT_PROJECT_VERSION=${{ github.run_number }} — same #2443 fix as
+        # the iOS archive above. The Mac App Store stream is what actually hit
+        # the duplicate-CFBundleVersion rejection (build 366 reused), so the
+        # monotonic per-run build number is mandatory here. Mirror the iOS leg
+        # so both upload streams stay in lockstep.
         env:
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
         run: |
@@ -833,6 +849,7 @@ jobs:
             DEVELOPMENT_TEAM=5G3DZ3TH45 \
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_UUID" \
             ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY"
 
       - name: Export and upload to App Store
