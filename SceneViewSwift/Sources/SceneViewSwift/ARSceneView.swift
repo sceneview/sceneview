@@ -167,7 +167,7 @@ public struct ARSceneView: UIViewRepresentable {
     /// Configures the main / key directional light slot for the AR scene.
     ///
     /// Mirrors SceneView Android's `ARSceneView(mainLightNode = ...)`
-    /// composable parameter (`ARScene.kt:294`). Default (`.systemDefault`):
+    /// composable parameter (`ARSceneView.kt:294`). Default (`.systemDefault`):
     /// directional light at `10 000` lux pointing straight down (`-Y`),
     /// shadow casting enabled — same baseline as the 3D ``SceneView``.
     ///
@@ -314,7 +314,7 @@ public struct ARSceneView: UIViewRepresentable {
         // Diff light slots and swap entities when the caller's modifier value
         // changed since last frame. Mirrors the reactive light path in
         // ``SceneView`` (#1017) and Android's `prevFillLightRef` pattern in
-        // `ARScene.kt:540`. Closes #1138.
+        // `ARSceneView.kt:540`. Closes #1138.
         refreshARLightSlot(.main, slot: mainLightSlot, in: arView, coordinator: context.coordinator)
         refreshARLightSlot(.fill, slot: fillLightSlot, in: arView, coordinator: context.coordinator)
     }

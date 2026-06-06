@@ -8,7 +8,7 @@
 //  4. Update build.gradle consumers: replace `arsceneview` dependency with `sceneview`
 //  5. Update llms.txt and docs to reflect single-module architecture
 
-// File renamed ARSceneView.kt -> ARSceneView.kt (the primary composable is `ARSceneView`; the bare
+// File renamed ARScene.kt -> ARSceneView.kt (the primary composable is `ARSceneView`; the bare
 // `ARScene` is a deprecated backward-compat alias). `@file:JvmName("ARSceneKt")` pins the published
 // JVM facade class name so the rename is SOURCE-only — pre-compiled Kotlin consumers that reference
 // the `ARSceneKt` facade in their bytecode keep working without a recompile (no binary-compat break).

@@ -1,7 +1,7 @@
 // TODO(module-unification): This module should eventually merge into `sceneview`.
 //  ARCore would become a `compileOnly` dependency in sceneview/build.gradle, and all source
 //  files here would move to sceneview/src/main/java/io/github/sceneview/ar/.
-//  See ARScene.kt for the full migration checklist.
+//  See ARSceneView.kt for the full migration checklist.
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)

@@ -30,13 +30,13 @@ import org.junit.runner.RunWith
  *
  * ## What this pins
  *
- * Pre-fix, `Scene.kt:293` wired `cameraNode` registration through a `SideEffect` +
+ * Pre-fix, `SceneView.kt:293` wired `cameraNode` registration through a `SideEffect` +
  * `AtomicReference<CameraNode?>` swap — only firing the `removeNode` path when a
  * *different* camera replaced the previous one. A `SceneView` leaving composition
  * cleanly orphaned the camera (and any HUD-space children parented under it) in
  * the underlying Filament `Scene` — a cumulative leak when sharing a single
  * `Scene` across multiple sequential `SceneView` composables (the documented
- * use case at `Scene.kt:191`).
+ * use case at `SceneView.kt:191`).
  *
  * Post-fix, the camera registers via `DisposableEffect(cameraNode) { addNode;
  * onDispose { removeNode } }` — the same shape as the `#1122` light-node leak
@@ -92,7 +92,7 @@ class CameraNodeLifecycleTest {
 
     /**
      * Five sequential `addNode → removeNode` cycles sharing the same Filament `Scene`
-     * — the production shape of `Scene.kt:293`'s `DisposableEffect(cameraNode)`. Each
+     * — the production shape of `SceneView.kt:293`'s `DisposableEffect(cameraNode)`. Each
      * cycle creates a fresh `SceneNodeManager` + a fresh `CameraNode` (a new
      * `DisposableEffect` enter), adds it, then disposes (the `onDispose` block).
      *
@@ -157,7 +157,7 @@ class CameraNodeLifecycleTest {
      * `Node.onChildAdded += ::addNode`. Pre-#1143, the SideEffect path silently
      * leaked those children alongside the camera on every clean dispose.
      *
-     * Verifies the documented use case at `Scene.kt:283-288` (`children parented to
+     * Verifies the documented use case at `SceneView.kt:283-288` (`children parented to
      * the camera ... are automatically added to the scene and rendered in
      * camera/HUD space`).
      */
