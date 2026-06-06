@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **sceneview-web:** Guard the on-demand render gate (#2332) against a frozen canvas after a failed model/IBL/skybox load. A failed `fetch` now settles its in-flight load *and* requests a repaint so the viewer reflects the error state instead of freezing at the last successful frame, and the success and error paths signal the gate identically. Added `LoadModelErrorSignalTest` regression coverage. (#2409)
