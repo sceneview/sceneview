@@ -12,7 +12,7 @@ import java.nio.Buffer
 //
 // Only factories that depend on ARCore types live here. Filament-only factories (including
 // createARView) are in SceneFactories.kt in the base `sceneview` module.
-// Corresponding remember* hooks are in ARScene.kt.
+// Corresponding remember* hooks are in ARSceneView.kt.
 //
 // AR-specific factory composables. These live in `arsceneview` to keep the ARCore dependency
 // out of the lightweight `sceneview` module.

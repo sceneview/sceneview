@@ -10,7 +10,7 @@ import org.junit.Test
  * #1844:
  *  - Class is open + public (callers should be able to subclass for custom behaviour).
  *  - Inherits from [PoseNode] so it integrates with the existing
- *    `ARScene.kt`'s per-frame `childNodes` iteration that runs both `PoseNode` and
+ *    `ARSceneView.kt`'s per-frame `childNodes` iteration that runs both `PoseNode` and
  *    `DepthMeshNode` updates.
  *  - Exposes a `hitTest` lambda (primary constructor, #1844) so callers can override the
  *    selection rule without subclassing.
@@ -28,7 +28,7 @@ class DepthHitResultNodeContractTest {
     @Test
     fun `DepthHitResultNode is a subclass of PoseNode (for per-frame update wiring)`() {
         assertTrue(
-            "DepthHitResultNode must extend PoseNode so ARScene.kt's " +
+            "DepthHitResultNode must extend PoseNode so ARSceneView.kt's " +
                 "childNodes.filterIsInstance<PoseNode>().forEach { update() } loop picks it up.",
             PoseNode::class.java.isAssignableFrom(DepthHitResultNode::class.java),
         )

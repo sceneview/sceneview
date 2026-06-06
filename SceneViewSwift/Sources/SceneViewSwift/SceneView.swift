@@ -28,7 +28,7 @@ import RealityKit
 /// How a `SceneView` should provision a main / fill light slot.
 ///
 /// Mirrors SceneView Android's `mainLightNode: LightNode?` / `fillLightNode: LightNode?`
-/// composable parameters (`Scene.kt`), but with a 3-state enum instead of a double-Optional
+/// composable parameters (`SceneView.kt`), but with a 3-state enum instead of a double-Optional
 /// sentinel — clearer at call sites and exhaustive in `switch`.
 ///
 /// ```swift
@@ -220,7 +220,7 @@ public struct SceneView: View {
     /// Configures the main / key directional light slot.
     ///
     /// Mirrors SceneView Android's `mainLightNode: LightNode? = rememberMainLightNode(engine)`
-    /// composable parameter (`Scene.kt`). Pass `.disabled` for a rare IBL-only setup;
+    /// composable parameter (`SceneView.kt`). Pass `.disabled` for a rare IBL-only setup;
     /// `.custom(LightNode)` to provide your own.
     ///
     /// Default (`.systemDefault`): directional light at `10 000` lux pointing straight
@@ -244,7 +244,7 @@ public struct SceneView: View {
     /// Configures the secondary fill directional light slot.
     ///
     /// Mirrors SceneView Android's `fillLightNode: LightNode? = rememberFillLightNode(engine)`
-    /// composable parameter (`Scene.kt`). Pair with ``mainLight(_:)`` to fully
+    /// composable parameter (`SceneView.kt`). Pair with ``mainLight(_:)`` to fully
     /// override the key+fill setup.
     ///
     /// Default (`.systemDefault`): ``LightNode/fill(color:intensity:castsShadow:)`` at
@@ -873,7 +873,7 @@ private struct SceneViewRepresentation: View {
             applyCamera()
             // Diff light slots and swap entities when the caller's modifier value
             // changed since last frame. Closes #1017 (Android `prevFillLightRef`
-            // pattern in `Scene.kt:287-305` ported to iOS).
+            // pattern in `SceneView.kt:287-305` ported to iOS).
             refreshLightSlot(.main, slot: mainLightSlot)
             refreshLightSlot(.fill, slot: fillLightSlot)
             // Auto-center user content the first frame where `visualBounds`
@@ -1044,7 +1044,7 @@ private struct SceneViewRepresentation: View {
     /// and swaps the tagged entity in-place when they differ. Called from the
     /// `RealityView.update:` closure on every render. Closes #1017.
     ///
-    /// Mirrors Android's `Scene.kt:287-305` `prevFillLightRef` pattern — the
+    /// Mirrors Android's `SceneView.kt:287-305` `prevFillLightRef` pattern — the
     /// idea is the same (cache the previously-applied value, diff on
     /// recomposition / re-render, swap the scene-attached entity) but the
     /// mechanism differs because RealityKit's `RealityViewContent` is

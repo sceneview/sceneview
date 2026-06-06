@@ -14,20 +14,20 @@ import kotlin.reflect.jvm.kotlinFunction
  * Before the #1595 fix, `CameraFraming.kt` exported the whole auto-fit surface but no
  * `autoFitContent` parameter existed on `SceneView` / `Scene` and nothing in `sceneview/src/main`
  * called [SceneAutoFitState.maybeFit] — the feature was a silent no-op. This test fails if that
- * regression returns: it reads the Kotlin `@Metadata` of the compiled `Scene.kt` facade (JVM
+ * regression returns: it reads the Kotlin `@Metadata` of the compiled `SceneView.kt` facade (JVM
  * bytecode does not retain parameter names, but Kotlin reflection does) and asserts both
  * composables declare an `autoFitContent` parameter.
  */
 class SceneAutoFitWiringTest {
 
-    /** Names of every value parameter of the named top-level function in the `Scene.kt` facade. */
+    /** Names of every value parameter of the named top-level function in the `SceneView.kt` facade. */
     private fun facadeFunctionParameterNames(functionName: String): Set<String> {
         val facade = Class.forName("io.github.sceneview.SceneKt")
         val kotlinFunctions = facade.declaredMethods
             .filter { it.name == functionName }
             .mapNotNull { it.kotlinFunction }
         assertTrue(
-            "the `$functionName` composable must exist in the Scene.kt facade",
+            "the `$functionName` composable must exist in the SceneView.kt facade",
             kotlinFunctions.isNotEmpty()
         )
         return kotlinFunctions.flatMap { fn -> fn.parameters.mapNotNull { it.name } }.toSet()

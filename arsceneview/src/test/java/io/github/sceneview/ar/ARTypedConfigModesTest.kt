@@ -20,7 +20,7 @@ import java.io.File
  */
 class ARTypedConfigModesTest {
 
-    private val arSceneFile = File("src/main/java/io/github/sceneview/ar/ARScene.kt")
+    private val arSceneFile = File("src/main/java/io/github/sceneview/ar/ARSceneView.kt")
 
     private val arSceneSource: String by lazy {
         assertTrue(
@@ -62,7 +62,7 @@ class ARTypedConfigModesTest {
         // ARCore.onSessionCreated). Window 6000 chars accommodates all typed params + the user
         // callback line.
         val openIdx = Regex("""session\.configure\s*\{\s*config\s*->""").find(src)?.range?.last
-            ?: throw AssertionError("Could not find `session.configure { config -> ` in ARScene.kt")
+            ?: throw AssertionError("Could not find `session.configure { config -> ` in ARSceneView.kt")
         val window = src.substring(openIdx, (openIdx + 6000).coerceAtMost(src.length))
 
         val callbackIdx = Regex("""sessionConfigurationRef\.get\(\)\?""").find(window)?.range?.first
@@ -125,7 +125,7 @@ class ARTypedConfigModesTest {
             )
             assertTrue(
                 "Expected reactive `LaunchedEffect($name) { ... config.$name = $name ... }` " +
-                    "block in ARScene.kt for the #1766 typed-DSL reactivity contract.",
+                    "block in ARSceneView.kt for the #1766 typed-DSL reactivity contract.",
                 pattern.containsMatchIn(src),
             )
         }

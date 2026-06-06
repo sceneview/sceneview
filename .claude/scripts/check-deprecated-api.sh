@@ -81,11 +81,11 @@ is_whitelisted() {
     changelog.d/1765-placement-scene.md) return 0 ;;
 
     # The deprecated alias definitions themselves
-    sceneview/src/main/java/io/github/sceneview/Scene.kt) return 0 ;;
-    arsceneview/src/main/java/io/github/sceneview/ar/ARScene.kt) return 0 ;;
+    sceneview/src/main/java/io/github/sceneview/SceneView.kt) return 0 ;;
+    arsceneview/src/main/java/io/github/sceneview/ar/ARSceneView.kt) return 0 ;;
 
     # Regression test that intentionally references the deprecated alias
-    # signature by name (regex assertion on the ARScene.kt body that the
+    # signature by name (regex assertion on the ARSceneView.kt body that the
     # `fun ARScene(...)` forwarder still includes `fillLightNode`, per #1136).
     arsceneview/src/test/java/io/github/sceneview/ar/ARCompletenessDefaultsTest.kt) return 0 ;;
 

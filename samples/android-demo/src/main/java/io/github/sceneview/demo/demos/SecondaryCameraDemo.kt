@@ -99,7 +99,7 @@ private const val ORBIT_PERIOD_NANOS = 12_000_000_000L
  *     never double-free. (See [rememberInstancedHelmet].)
  *
  *  2. The PiP SceneView passes `cameraManipulator = null`. Without it, the
- *     SceneView frame loop (`Scene.kt`) writes
+ *     SceneView frame loop (`SceneView.kt`) writes
  *     `cameraNode.transform = manipulator.getTransform()` every frame,
  *     clobbering whatever the LaunchedEffect just set on `pipCameraNode`.
  *     The chips would fire and the PiP would visually freeze at the

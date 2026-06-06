@@ -8,6 +8,12 @@
 //  4. Update build.gradle consumers: replace `arsceneview` dependency with `sceneview`
 //  5. Update llms.txt and docs to reflect single-module architecture
 
+// File renamed ARScene.kt -> ARSceneView.kt (the primary composable is `ARSceneView`; the bare
+// `ARScene` is a deprecated backward-compat alias). `@file:JvmName("ARSceneKt")` pins the published
+// JVM facade class name so the rename is SOURCE-only — pre-compiled Kotlin consumers that reference
+// the `ARSceneKt` facade in their bytecode keep working without a recompile (no binary-compat break).
+@file:JvmName("ARSceneKt")
+
 package io.github.sceneview.ar
 
 import android.content.Context.WINDOW_SERVICE
@@ -1152,7 +1158,7 @@ fun ARSceneView(
     // (`onARFrame` reads back its color/intensity from `baselineMainLightColorRef`); the fill
     // light keeps its `createFillLightNode` defaults each frame regardless of ARCore (#1063).
     //
-    // `DisposableEffect` (not `SideEffect`) — same pattern as the 3D `Scene.kt` `mainLight` /
+    // `DisposableEffect` (not `SideEffect`) — same pattern as the 3D `SceneView.kt` `mainLight` /
     // `fillLight` wiring landed in #1131. Removes the light from the Filament scene both on
     // (a) key change AND (b) composable disposal so a shared `rememberScene(engine)` doesn't
     // leak duplicates when the AR view leaves composition.
@@ -1842,7 +1848,7 @@ fun rememberAREnvironment(
  *
  * ARCore + Filament are JNI-only and can't run in AS LayoutLib, so the preview pane shows
  * an informative gradient panel pointing the developer at Live Edit on a connected device
- * for the real AR session. Same rationale as the 3D-only `ScenePreview` in `Scene.kt`.
+ * for the real AR session. Same rationale as the 3D-only `ScenePreview` in `SceneView.kt`.
  */
 @Composable
 private fun ARScenePreview(modifier: Modifier) {
