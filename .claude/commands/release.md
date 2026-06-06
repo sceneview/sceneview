@@ -136,14 +136,18 @@ gate reads it directly (fast path, no dispatch).
 
 ### Gate policy
 
+Per CLAUDE.md "Release-gate policy for continue-on-error legs (#1651)" — the
+single source of truth — only `web` is BLOCKING; `android` and `ar` are
+ADVISORY (flaky emulator / CI assumeTrue-SKIP):
+
 | Leg | Role | A failure means |
 |---|---|---|
-| **web** (Playwright) | **REQUIRED** | release-gate **FAIL** (hard block) |
-| **ar** (ARCore replay) | **REQUIRED** | release-gate **FAIL** (hard block) |
+| **web** (Playwright) | **BLOCKING** | release-gate **FAIL** (hard block) |
+| **ar** (ARCore replay) | **ADVISORY** | **WARN** only — never blocks (CI assumeTrue-SKIP when bundled recording / Play Services for AR absent, #2433) |
 | **android** (Maestro emulator) | **ADVISORY** | **WARN** only — never blocks (flaky SwiftShader #1643/#1676) |
 | _timeout / dispatch failure / missing artifact_ | — | `device-qa: TIMEOUT (advisory)` — **proceeds with warning** |
 
-A genuine FAIL on `web` or `ar` is the **only** outcome that blocks tagging.
+A genuine FAIL on `web` is the **only** outcome that blocks tagging.
 Everything else (advisory red, timeout, stuck harness) yields
 `RELEASE-GATE: PASS-WITH-WARNINGS` and the release proceeds. A flaky or
 cancelled harness can never hold shipping hostage.
