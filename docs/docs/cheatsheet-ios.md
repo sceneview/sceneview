@@ -16,7 +16,7 @@ A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it
 
 ```swift
 // Package.swift or Xcode SPM
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.17.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.18.0")
 ```
 
 ```swift
@@ -154,14 +154,14 @@ On user denial throws `ARRecorderError.photoLibraryDenied`; on
 | | `.point(color:intensity:attenuationRadius:)` | `.position()`, `.attenuationRadius()` |
 | | `.spot(color:intensity:innerAngle:outerAngle:)` | `.position()`, `.lookAt()` |
 | `TextNode` | `TextNode(text:fontSize:color:depth:)` | `.position()`, `.centered()`, `.withText()` |
-| `ImageNode` | `ImageNode.load("file.png", width:height:)` / `.color(_:width:height:)` | `.load` is `async throws`; `.position()` |
-| `BillboardNode` | `BillboardNode(named:width:height:)` | always faces camera |
-| `VideoNode` | `VideoNode.load("clip.mp4", width:height:loop:)` | `.play()`, `.pause()` |
+| `ImageNode` | `ImageNode.load("img.png")` | `async throws`, `width:`, `height:`, `.position()` |
+| `BillboardNode` | `BillboardNode(child:)` / `BillboardNode.text(_:fontSize:color:)` | always faces camera |
+| `VideoNode` | `VideoNode.load("clip.mp4")` | `width:`, `height:`, `loop:`, `.play()`, `.pause()` |
 | `LineNode` | `LineNode(from:to:color:)` | `SIMD3<Float>` endpoints |
 | `PathNode` | `PathNode(points:closed:color:)` | `[SIMD3<Float>]` path |
 | `PhysicsNode` | `.dynamic(entity, mass:restitution:)` | `.static(entity)`, `.kinematic(entity)` |
 | `DynamicSkyNode` | `DynamicSkyNode(timeOfDay:turbidity:)` | `0...24` time cycle |
-| `FogNode` | `FogNode(density:color:)` | atmospheric fog |
+| `FogNode` | `FogNode.linear(start:end:color:)` · `FogNode.exponential(density:color:)` | atmospheric fog |
 | `ReflectionProbeNode` | `ReflectionProbeNode(position:radius:)` | zone-based IBL |
 
 ---

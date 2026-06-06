@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **The weekly `doc-audit` cron now surfaces failures as a de-duplicated tracking issue instead of failing silently ([#2340](https://github.com/sceneview/sceneview/issues/2340)).** An expired `CLAUDE_CODE_OAUTH_TOKEN` (or any failure) previously only showed in the Actions tab, so the audit could silently stop for weeks; an `if: failure()` step now opens or refreshes one tracking issue per outage.
