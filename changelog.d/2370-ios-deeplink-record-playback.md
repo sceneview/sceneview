@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- iOS demo: the published AR-recording deep link (`sceneview://demo/ar-record-playback`) now resolves to the recorder demo instead of the "Open in app" placeholder. The iOS `DemoDeepLinkRegistry` only wired the unpublished `ar-recording` id; the canonical `ar-record-playback` (used by the website QR landing page, `llms.txt`, and the Android catalog) fell through to the placeholder. Both ids now route to `ARRecorderDemo` (#2370).
