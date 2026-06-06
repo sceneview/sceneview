@@ -329,3 +329,52 @@ Agent note: Kotlin/JS module is healthy (~6 k LOC, 30+ files) — not a stub. Bo
 ## Synthesis (filled at end)
 
 Final ranked table with one row per finding → one GitHub issue.
+
+---
+
+## Re-grade addendum — 2026-06-06 (tracker [#2370](https://github.com/sceneview/sceneview/issues/2370) §3)
+
+Headless re-grade of three audit rows against the **current state of `main`**, requested
+in #2370 section 3 ("hot-path audit hygiene"). Each verdict below was confirmed by reading
+the live source, not by re-reasoning from the original audit text. The audit rows above are
+left as the historical 2026-05-27 snapshot; this section is the standing correction.
+
+| Audit row | Original grade | Re-graded | Verified against |
+|---|---|---|---|
+| **SV7 / I33** `ModelNode.applyAnimations` Map.Entry boxing | MED | **Partial false-positive — downgrade** | `sceneview/.../node/ModelNode.kt:205` |
+| **AR3 / part of I3** `PoseNode.pose` setter matrix decomp | HIGH | **DONE on main — mark stale** | `arsceneview/.../ar/node/PoseNode.kt` (pose setter) |
+| **AR4 / part of I3** `Pose.transform` `FloatArray(16)` per read | HIGH | **DONE on main — mark stale** | `arsceneview/.../ar/node/ARCameraNode.kt:54-55` + PoseNode setter |
+
+### SV7 / I33 — partial false-positive, downgrade the realized win
+
+`ModelNode.playingAnimations` is a **public** `var playingAnimations = mutableMapOf<Int, PlayingAnimation>()`
+(`ModelNode.kt:205`), iterated via `forEach { (index, animation) -> … }` in `applyAnimations`
+and read elsewhere (`AnimationState`, `SceneInspector`). The audit's proposed fix — replacing
+the `Map` with parallel arrays / a primitive-keyed structure to kill the `Map.Entry` boxing —
+**requires a public-API break** (the `MutableMap<Int, PlayingAnimation>` type is observable by
+consumers). The per-frame boxing is real but bounded by the *number of concurrently-playing
+animations* (typically 1–2), not by node count, so the realized win is modest. Net: keep the
+finding on record, but it is **not** a clean internal optimization — re-grade to LOW / "needs
+public-API design", below the I-series HIGH/MED batch threshold.
+
+### AR3 + AR4 — already fixed on main (mark stale)
+
+`PoseNode.pose`'s setter (above) no longer routes through `worldTransform(pose.transform)`. It
+writes the ARCore Pose's **translation + rotation components directly**
+(`worldTransform(position = value.position, quaternion = value.quaternion)`), with an in-source
+comment explicitly citing this exact alloc/decomp avoidance and the umbrella #2266 / #2263.
+`ARCameraNode.kt:54-55` likewise writes `worldPosition = it.position` / `worldQuaternion = it.quaternion`
+instead of `worldTransform = it.transform`. Both AR3 (PoseNode decomp) and AR4 (`Pose.transform`
+`FloatArray(16)` per read on the per-frame path) are therefore **resolved on `main`** — the
+`pose.transform` round-trip is no longer on any per-frame anchor/plane/face/camera path. Issue I3
+("AR `PoseNode.pose` setter → bypass `worldTransform(pose.transform)`") is **DONE**; close/skip it
+in any tracker that still lists it open.
+
+### Still-open AR items (AR6 / AR9 / AR10 / AR11 / AR13 / I8) — NOT re-graded here
+
+The remaining AR per-frame items from #2370 §3 (AugmentedFaceNode pose JNI, `rememberDetectedPlanes`
+`.filter.toSet()`, `PlaneRenderer` updated-planes linear-contains → **I8 HIGH**, `DepthHitResultNode`
+`Pose.makeTranslation`, `frame.cameraTextureName` JNI/frame) were **not** verified-as-fixed in this
+headless pass and require a tracker-coverage decision (are they folded into an existing #2329-family
+issue, or do they need their own?). That is a backlog-triage / issue-filing call left to the
+orchestrator — deliberately **not** auto-filed here to avoid an issue burst. Tracked back in #2370 §3.
