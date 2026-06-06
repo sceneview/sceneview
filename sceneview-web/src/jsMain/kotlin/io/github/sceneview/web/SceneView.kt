@@ -175,7 +175,24 @@ class SceneView private constructor(
     private class LoadedModel(
         val asset: FilamentAsset,
         val animator: Animator?,
-        var animationTime: Double = 0.0
+        var animationTime: Double = 0.0,
+        /**
+         * When `true` (the Android `ModelNode` default) the render loop plays
+         * the model's animation 0 every frame; when `false` the model renders
+         * static — gates the `animator.applyAnimation(0, …)` call in
+         * [renderLoop] so `model { autoAnimate(false) }` actually stops playback
+         * (#2432).
+         */
+        val autoAnimate: Boolean = true,
+        /**
+         * Uniform local scale applied to the asset's root entity at load time
+         * (mirrors Android `ModelNode(scale = Scale(value))` — *raw* uniform
+         * scale, not `scaleToUnits` normalisation). Baked into the root
+         * transform once entities are in the scene, and used to scale this
+         * model's asset-space `getBoundingBox()` so the auto-centre / auto-dolly
+         * pass frames the *rendered* (scaled) extent (#2432).
+         */
+        val scale: Float = 1f,
     ) {
         /**
          * `false` until `loadResources` has finished populating this asset's
@@ -424,10 +441,18 @@ class SceneView private constructor(
      *
      * @param url URL to the .glb or .gltf file
      * @param onLoaded Optional callback when the model is fully loaded (with resources)
+     * @param autoAnimate When `true` (default, matching Android `ModelNode`) the
+     *   render loop plays the model's animation 0; `false` renders it static (#2432).
+     * @param scale Uniform local scale applied to the model's root entity —
+     *   *raw* uniform scale like Android `ModelNode(scale = Scale(value))`, not
+     *   `scaleToUnits` normalisation. The default `1f` leaves the model at its
+     *   authored size (#2432).
      */
     fun loadModel(
         url: String,
-        onLoaded: ((FilamentAsset) -> Unit)? = null
+        onLoaded: ((FilamentAsset) -> Unit)? = null,
+        autoAnimate: Boolean = true,
+        scale: Float = 1f,
     ) {
         val loader = assetLoader ?: engine.createAssetLoader().also { assetLoader = it }
 
@@ -477,6 +502,15 @@ class SceneView private constructor(
                 // Add all entities to the scene so they become visible
                 val entities = asset.getEntities()
                 scene.addEntities(entities)
+
+                // #2432: bake the consumer's uniform `scale` into the root
+                // entity transform now that the entities are in the scene. Done
+                // before any render/auto-centre frame can run on this model so
+                // the auto-centre pass captures an already-scaled `baseTransform`
+                // and never has to special-case scale. A no-op for the default
+                // `scale == 1f`.
+                applyRootScale(asset, scale)
+
                 // The scene graph just changed — paint it (#2332).
                 requestRender()
 
@@ -487,7 +521,9 @@ class SceneView private constructor(
                     null
                 }
 
-                val loadedModel = LoadedModel(asset, animator)
+                val loadedModel = LoadedModel(
+                    asset, animator, autoAnimate = autoAnimate, scale = scale,
+                )
                 models.add(loadedModel)
                 loadedAssets.replaceWith(url, asset)
 
@@ -786,17 +822,24 @@ class SceneView private constructor(
             val aabb = model.asset.getBoundingBox()
             val mn: dynamic = aabb.min
             val mx: dynamic = aabb.max
-            ContentCentering.Aabb(
-                doubleArrayOf(
-                    (mn[0] as Number).toDouble(),
-                    (mn[1] as Number).toDouble(),
-                    (mn[2] as Number).toDouble(),
+            // #2432: `getBoundingBox()` is asset-space (unscaled). Scale the box
+            // by the model's uniform `scale` so the centring offset and
+            // auto-dolly use the box the geometry actually renders at — the root
+            // transform was scaled by the same factor in `applyRootScale`.
+            ContentCentering.scale(
+                ContentCentering.Aabb(
+                    doubleArrayOf(
+                        (mn[0] as Number).toDouble(),
+                        (mn[1] as Number).toDouble(),
+                        (mn[2] as Number).toDouble(),
+                    ),
+                    doubleArrayOf(
+                        (mx[0] as Number).toDouble(),
+                        (mx[1] as Number).toDouble(),
+                        (mx[2] as Number).toDouble(),
+                    ),
                 ),
-                doubleArrayOf(
-                    (mx[0] as Number).toDouble(),
-                    (mx[1] as Number).toDouble(),
-                    (mx[2] as Number).toDouble(),
-                ),
+                model.scale.toDouble(),
             )
         } catch (e: Throwable) {
             // The asset's bounds are not readable yet (resources still loading) — skip
@@ -960,6 +1003,50 @@ class SceneView private constructor(
         tm.setTransform(instance, scratch)
     }
 
+    /**
+     * Bake a uniform [scale] into the root entity of [asset] (#2432).
+     *
+     * Multiplies the linear (rotation/scale) 3×3 block of the root's current
+     * column-major transform by [scale] while leaving the translation column
+     * (indices 12, 13, 14) and the homogeneous row untouched — so the model
+     * grows/shrinks about its own root origin, exactly like Android
+     * `ModelNode(scale = Scale(value))`. Composing onto the *current* transform
+     * (rather than overwriting) preserves any glTF-authored root transform.
+     *
+     * A no-op for the default `scale == 1f`. Runs on the main/render thread
+     * (called from [loadModel]'s resolved `then`), never from a worker, so the
+     * Filament JNI/WASM call is safe. Failures are logged, not thrown, so a
+     * malformed asset cannot break the load pipeline.
+     */
+    private fun applyRootScale(asset: FilamentAsset, scale: Float) {
+        if (scale == 1f) return
+        try {
+            val tm = transformManager
+            val root = asset.getRoot()
+            if (!tm.hasComponent(root)) tm.create(root)
+            val instance = tm.getInstance(root)
+            val current = readMat4(tm.getTransform(instance))
+            val s = scale.toDouble()
+            // Filament.js `setTransform` expects a plain JS `number[]`, not a
+            // Kotlin `DoubleArray` (which lowers to a Float64Array) — mirror the
+            // `transformScratch` pattern and write into a fresh JS array. This
+            // runs once per load, so the one allocation is immaterial.
+            val out: dynamic = js("new Array(16)")
+            for (i in 0 until 16) out[i] = current[i]
+            // Scale the 3×3 linear block (columns 0,1,2 → indices 0,1,2,4,5,6,8,9,10),
+            // preserving translation (12,13,14) and the homogeneous row (3,7,11,15).
+            for (col in 0 until 3) {
+                val o = col * 4
+                out[o] = current[o] * s
+                out[o + 1] = current[o + 1] * s
+                out[o + 2] = current[o + 2] * s
+            }
+            tm.setTransform(instance, out)
+        } catch (e: Throwable) {
+            console.error("SceneView: failed to apply root scale $scale", e)
+        }
+    }
+
     /** Clean up all Filament resources. */
     fun destroy() {
         stopRendering()
@@ -1062,6 +1149,9 @@ class SceneView private constructor(
         var animating = false
         for (i in models.indices) {
             val model = models[i]
+            // #2432: honour `model { autoAnimate(false) }` — a static model
+            // neither advances animation 0 nor keeps the render gate live.
+            if (!model.autoAnimate) continue
             val animator = model.animator ?: continue
             val count = animator.getAnimationCount()
             if (count > 0) {
@@ -1214,7 +1304,12 @@ class SceneViewBuilder(private val sceneView: SceneView) {
         }
 
         modelConfigs.forEach { config ->
-            sceneView.loadModel(config.url, config.onLoaded)
+            sceneView.loadModel(
+                config.url,
+                config.onLoaded,
+                autoAnimate = config.autoAnimate,
+                scale = config.scale,
+            )
         }
         geometryConfigs.forEach { config ->
             sceneView.addGeometry(config)

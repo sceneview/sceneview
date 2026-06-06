@@ -155,4 +155,58 @@ class ContentCenteringTest {
             "A 2nd model must change the offset — otherwise re-centering is pointless.",
         )
     }
+
+    // --- #2432: model { scale(...) } bounds scaling ----------------------------
+
+    @Test
+    fun scaleByOneReturnsAnEqualBox() {
+        val box = aabb(doubleArrayOf(-1.0, -2.0, -3.0), doubleArrayOf(4.0, 5.0, 6.0))
+        // The no-scale path must be a true identity — the auto-centre math is
+        // unchanged for the default `scale == 1f`.
+        assertEquals(box, ContentCentering.scale(box, 1.0))
+    }
+
+    @Test
+    fun scaleMultipliesBothCornersUniformly() {
+        val box = aabb(doubleArrayOf(-1.0, -2.0, -3.0), doubleArrayOf(2.0, 4.0, 6.0))
+        val scaled = ContentCentering.scale(box, 2.0)
+        assertEquals(-2.0, scaled.min[0]); assertEquals(-4.0, scaled.min[1]); assertEquals(-6.0, scaled.min[2])
+        assertEquals(4.0, scaled.max[0]); assertEquals(8.0, scaled.max[1]); assertEquals(12.0, scaled.max[2])
+    }
+
+    @Test
+    fun scaledBoxFeedsCenteringOffsetSoAScaledModelStaysCentred() {
+        // A model whose unscaled box is centred at x=2 (off-origin). Scaling by
+        // 2 moves the rendered centroid to x=4 — the centring offset must be
+        // computed from the *scaled* box (-4), not the unscaled box (-2), or the
+        // model lands off-centre. This pins the #2432 wiring invariant.
+        val unscaled = aabb(doubleArrayOf(1.0, -1.0, -1.0), doubleArrayOf(3.0, 1.0, 1.0))
+        val scaled = ContentCentering.scale(unscaled, 2.0)
+        val offset = ContentCentering.centeringOffset(scaled)!!
+        assertEquals(-4.0, offset[0], "Scaled centroid at x=4 -> offset of -4.")
+        assertEquals(0.0, offset[1])
+        assertEquals(0.0, offset[2])
+    }
+
+    @Test
+    fun scaledBoxGrowsTheDiagonalSoAutoDollyFramesTheRenderedSize() {
+        // The auto-dolly fits on the union diagonal; a 3x-scaled model must
+        // report a 3x diagonal so the camera frames the rendered (not authored)
+        // extent.
+        val box = aabb(doubleArrayOf(-1.0, -1.0, -1.0), doubleArrayOf(1.0, 1.0, 1.0))
+        val base = ContentCentering.diagonal(box)
+        val scaled = ContentCentering.diagonal(ContentCentering.scale(box, 3.0))
+        assertEquals(base * 3.0, scaled, 1e-9, "A 3x uniform scale must triple the diagonal.")
+    }
+
+    @Test
+    fun nonPositiveScaleClampsToDegenerateBoxRatherThanInverting() {
+        // A guard: a zero/negative factor must not produce an inverted (min>max)
+        // box that would corrupt the union — it collapses to a zero-extent box
+        // the stability gate then defers on.
+        val box = aabb(doubleArrayOf(-2.0, -2.0, -2.0), doubleArrayOf(2.0, 2.0, 2.0))
+        val scaled = ContentCentering.scale(box, -1.0)
+        assertEquals(0.0, ContentCentering.diagonal(scaled), "Non-positive scale -> zero-extent box.")
+        assertFalse(ContentCentering.isStable(scaled), "A degenerate box is not framable.")
+    }
 }

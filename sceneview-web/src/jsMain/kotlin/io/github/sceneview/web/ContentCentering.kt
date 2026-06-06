@@ -24,6 +24,33 @@ internal object ContentCentering {
     }
 
     /**
+     * Uniformly scale [box] by [factor] about the asset-space origin — the
+     * point a root-entity uniform scale also pivots around. For a positive
+     * [factor], `min*factor` stays the minimum and `max*factor` stays the
+     * maximum, so the result is still a well-formed AABB.
+     *
+     * Used to convert a model's asset-space (unscaled) `getBoundingBox()` into
+     * the box the geometry actually renders at once the consumer applied
+     * `model { scale(factor) }` (#2432). Feeding the *scaled* box to
+     * [centeringOffset] / [fitToBounds] keeps a scaled model centred and
+     * correctly framed — the unscaled box would leave it off-centre by
+     * `(factor-1)·centroid` and mis-dollied.
+     *
+     * [factor] `== 1.0` returns an equal box (the common no-scale path);
+     * a non-positive [factor] is clamped to a degenerate (zero-extent) box so
+     * the auto-centre stability gate simply defers, rather than producing an
+     * inverted min/max.
+     */
+    fun scale(box: Aabb, factor: Double): Aabb {
+        if (factor == 1.0) return box
+        val f = if (factor > 0.0) factor else 0.0
+        return Aabb(
+            doubleArrayOf(box.min[0] * f, box.min[1] * f, box.min[2] * f),
+            doubleArrayOf(box.max[0] * f, box.max[1] * f, box.max[2] * f),
+        )
+    }
+
+    /**
      * Compute the union of [boxes]. Returns `null` when the list is empty —
      * there is nothing to centre yet.
      */
