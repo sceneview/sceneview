@@ -5017,9 +5017,10 @@ SceneView.create(canvas, configure = {
         // for point/spot: position(x, y, z)
     }
     model("models/damaged_helmet.glb") {
-        // glTF animation 0 auto-plays by default. NOTE: per-model scale() and
-        // disabling autoAnimate() are not yet wired on web (the builder stores
-        // them but the loader ignores them) — tracked by #2432.
+        scale(1.0f)                // raw uniform local scale (like Android
+                                   //  ModelNode(scale = Scale(value))); default 1f
+        autoAnimate(true)          // play glTF animation 0 (default true);
+                                   //  false renders the model static
         onLoaded { asset -> /* FilamentAsset */ }
     }
     geometry {

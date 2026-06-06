@@ -34,9 +34,10 @@ class SceneViewJS {
         val sv = _sceneView ?: return Promise.reject(Throwable("SceneViewer not initialized"))
         return Promise { resolve, reject ->
             try {
-                sv.loadModel(url) {
-                    resolve(url)
-                }
+                // `onLoaded` is named: `loadModel` now has trailing `autoAnimate`
+                // / `scale` params (#2432), so a trailing-lambda would bind to the
+                // wrong parameter.
+                sv.loadModel(url, onLoaded = { resolve(url) })
             } catch (e: Throwable) {
                 reject(e)
             }
