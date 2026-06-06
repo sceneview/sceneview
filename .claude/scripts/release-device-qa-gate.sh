@@ -27,14 +27,23 @@
 #    artifact (device-qa-report-web / -android / -ar). This gate downloads
 #    every per-leg artifact and reads each report's `platforms[0].status`
 #    (schemaVersion-2, #1657).
-# 4. APPLIES THE RELEASE-GATE POLICY:
-#       REQUIRED  legs = web (Playwright) + ar (ARCore replay)
-#                        -> a genuine FAIL on either => release-gate FAIL.
-#       ADVISORY  leg   = android (Maestro emulator)
+# 4. APPLIES THE RELEASE-GATE POLICY (CLAUDE.md "Release-gate policy for
+#    continue-on-error legs" — #1651, the single source of truth):
+#       BLOCKING  leg   = web (Playwright)
+#                        -> a genuine FAIL => release-gate FAIL.
+#       ADVISORY  legs  = android (Maestro emulator) + ar (ARCore replay)
 #                        -> a failure/cancel/skip => WARN line only,
 #                           NEVER a gate fail. This matches device-qa.yml's
-#                           `continue-on-error: true` on the android job and
-#                           the flaky-SwiftShader reality (#1643/#1670/#1676).
+#                           `continue-on-error: true` on the android AND ar
+#                           jobs and the flaky-SwiftShader reality
+#                           (#1643/#1670/#1676). The `ar` leg in particular
+#                           assumeTrue-SKIPs on CI when the bundled recording
+#                           or Google Play Services for AR is absent — an
+#                           infra skip that must read as WARN, never a hard
+#                           FAIL (#2433). This mirrors `device-qa.sh`'s
+#                           pre-computed `releaseGate.verdict` (clear/warn/
+#                           blocked), where `ar` is in the default advisory
+#                           set and can only ever produce `warn`.
 # 5. TIMEOUT FALLBACK — NEVER FREEZES. If the dispatched run has not completed
 #    within RELEASE_QA_TIMEOUT_MIN, the gate prints
 #    `device-qa: TIMEOUT (advisory) — proceeding` and returns SUCCESS (0).
@@ -47,18 +56,19 @@
 #   0  RELEASE-GATE: PASS-WITH-WARNINGS — required legs passed; an advisory
 #                                         leg did not pass, OR the run timed
 #                                         out / could not be dispatched.
-#   1  RELEASE-GATE: FAIL               — a REQUIRED leg (web or ar) genuinely
+#   1  RELEASE-GATE: FAIL               — a BLOCKING leg (web) genuinely
 #                                         failed. This is the ONLY blocking
 #                                         outcome.
 #
 # Usage:
 #   bash .claude/scripts/release-device-qa-gate.sh
+#   bash .claude/scripts/release-device-qa-gate.sh --advisory=android,ar
 #
-# Env overrides:
+# Flags / env overrides (flags win over env):
+#   --required=<csv> / RELEASE_QA_REQUIRED   blocking legs       (default web)
+#   --advisory=<csv> / RELEASE_QA_ADVISORY   advisory legs   (default android,ar)
 #   RELEASE_QA_TIMEOUT_MIN   hard timeout in minutes        (default 60)
 #   RELEASE_QA_POLL_SEC      poll interval in seconds        (default 30)
-#   RELEASE_QA_REQUIRED      CSV of required legs            (default web,ar)
-#   RELEASE_QA_ADVISORY      CSV of advisory legs            (default android)
 #   RELEASE_QA_REF           git ref to dispatch against     (default main)
 #
 # This script is called by `release-checklist.sh` section 14. It is also
@@ -67,12 +77,31 @@
 set -euo pipefail
 
 # ─── Config ──────────────────────────────────────────────────────────────
+# Policy source of truth: CLAUDE.md "Release-gate policy for continue-on-error
+# legs (#1651)" — web is BLOCKING; android + ar are ADVISORY (flaky emulator /
+# CI assumeTrue-SKIP, #1643/#2433). The defaults below mirror device-qa.sh's
+# default advisory set (android,ar,web-perf,sketchfab,arcore-cloud) for the two
+# legs this gate grades.
 TIMEOUT_MIN="${RELEASE_QA_TIMEOUT_MIN:-60}"
 POLL_SEC="${RELEASE_QA_POLL_SEC:-30}"
-REQUIRED_LEGS="${RELEASE_QA_REQUIRED:-web,ar}"
-ADVISORY_LEGS="${RELEASE_QA_ADVISORY:-android}"
+REQUIRED_LEGS="${RELEASE_QA_REQUIRED:-web}"
+ADVISORY_LEGS="${RELEASE_QA_ADVISORY:-android,ar}"
 REF="${RELEASE_QA_REF:-main}"
 WORKFLOW_NAME="Device QA"
+
+# CLI flags (win over env). --advisory=<csv> / --required=<csv> let a caller
+# override the graded sets without exporting env — e.g. promote ar to blocking
+# once #1643/#1645 land with `--advisory=android`.
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --required=*) REQUIRED_LEGS="${1#--required=}"; shift ;;
+        --required)   REQUIRED_LEGS="${2:?--required needs a value}"; shift 2 ;;
+        --advisory=*) ADVISORY_LEGS="${1#--advisory=}"; shift ;;
+        --advisory)   ADVISORY_LEGS="${2-}"; shift 2 ;;
+        -h|--help)    sed -n '2,70p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "release-device-qa-gate: unknown argument: $1" >&2; exit 2 ;;
+    esac
+done
 
 # Colors (disabled when not a tty).
 if [ -t 1 ]; then
@@ -211,7 +240,10 @@ print((match or {}).get("status", "missing"))
 PY
 }
 
-# ─── 5. Apply the required vs advisory policy ────────────────────────────
+# ─── 5. Apply the blocking vs advisory policy ────────────────────────────
+# Per CLAUDE.md #1651: only a red BLOCKING leg (web) hard-fails. ADVISORY legs
+# (android = flaky SwiftShader emulator; ar = CI assumeTrue-SKIP when the
+# bundled recording / Play Services for AR is absent, #2433) are WARN-only.
 log ""
 log "${CYAN}--- Release-gate verdict ---${NC}"
 REQUIRED_FAIL=0
@@ -239,7 +271,7 @@ for leg in ${ADVISORY_LEGS//,/ }; do
         passed)
             printf "  ${GREEN}[PASS]${NC}  %-10s (advisory) — passed\n" "$leg" ;;
         *)
-            printf "  ${YELLOW}[WARN]${NC}  %-10s (advisory) — %s — does NOT block (flaky emulator #1643/#1676)\n" "$leg" "$st"
+            printf "  ${YELLOW}[WARN]${NC}  %-10s (advisory) — %s — does NOT block (flaky emulator / CI assumeTrue-SKIP #1643/#1676/#2433)\n" "$leg" "$st"
             ADVISORY_WARN=$((ADVISORY_WARN + 1)) ;;
     esac
 done

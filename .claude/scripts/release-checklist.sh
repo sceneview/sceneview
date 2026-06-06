@@ -260,11 +260,14 @@ echo ""
 #     cancellation (#1665/#1667) — it cannot be killed by a later push.
 #   - It polls THAT specific run id with a BOUNDED loop and a HARD TIMEOUT
 #     (RELEASE_QA_TIMEOUT_MIN, default 60 min). No unbounded poll.
-#   - REQUIRED legs = web (Playwright) + ar (ARCore replay): a genuine FAIL
-#     on either => release-gate FAIL (the ONLY blocking outcome).
-#   - ADVISORY leg  = android (Maestro emulator): a failure/cancel/skip is a
-#     WARN line only, never a block — matches device-qa.yml's
-#     `continue-on-error: true` on the android job (#1670/#1676).
+#   - BLOCKING leg  = web (Playwright): a genuine FAIL => release-gate FAIL
+#     (the ONLY blocking outcome).
+#   - ADVISORY legs = android (Maestro emulator) + ar (ARCore replay): a
+#     failure/cancel/skip is a WARN line only, never a block — matches
+#     device-qa.yml's `continue-on-error: true` on the android AND ar jobs
+#     and CLAUDE.md #1651. The `ar` leg assumeTrue-SKIPs on CI (no bundled
+#     recording / Play Services for AR), which must read as WARN not a hard
+#     FAIL (#2433).
 #   - TIMEOUT FALLBACK: if the run does not complete within the timeout the
 #     gate emits `device-qa: TIMEOUT (advisory) — proceeding` and returns
 #     SUCCESS. A flaky / stuck / cancelled harness can NEVER freeze a
@@ -289,14 +292,14 @@ GATE_SCRIPT="$REPO_ROOT/.claude/scripts/release-device-qa-gate.sh"
 if [ ! -f "$DQ_REPORT" ] && [ -x "$GATE_SCRIPT" ]; then
     # No local report — run the deterministic, non-blocking gate. It
     # dispatches its own uncancellable Device QA run, waits with a hard
-    # timeout, and grades web+ar as required / android as advisory. It
-    # exits 1 ONLY on a genuine required-leg FAIL; timeout / advisory red /
-    # dispatch failure all proceed-with-warning.
+    # timeout, and grades web as blocking / android+ar as advisory (#1651,
+    # #2433). It exits 1 ONLY on a genuine blocking-leg (web) FAIL; timeout /
+    # advisory red / dispatch failure all proceed-with-warning.
     echo -e "  No local device-qa-report.json — invoking release-device-qa-gate.sh"
     if bash "$GATE_SCRIPT"; then
-        check "device-qa gate" "PASS" "deterministic gate passed (required legs green or proceed-with-warning)"
+        check "device-qa gate" "PASS" "deterministic gate passed (blocking leg green or proceed-with-warning)"
     else
-        check "device-qa gate" "FAIL" "a required device-QA leg (web/ar) failed — fix before tagging"
+        check "device-qa gate" "FAIL" "the blocking device-QA leg (web) failed — fix before tagging"
     fi
 elif [ -f "$DQ_REPORT" ]; then
     DQ_STATUS=$(python3 -c "import json; print(json.load(open('$DQ_REPORT')).get('status','?'))" 2>/dev/null || echo "?")
