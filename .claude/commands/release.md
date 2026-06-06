@@ -93,6 +93,35 @@ cd mcp && npm run prepare && npm test
 
 Verify dist/ files are updated and tests pass.
 
+### Step 3.5: Republish sceneview-mcp if `mcp/` changed (independent track, #1705)
+
+`sceneview-mcp` is on its OWN npm cadence — `release.yml` only republishes it
+on a `v*` tag, so a tag-less period of `mcp/` changes leaves npm stale (this is
+how it rotted a month behind at 4.0.12). After cutting the SDK release, check
+whether the MCP needs a republish:
+
+```bash
+NPM_VER=$(npm view sceneview-mcp version)
+PKG_VER=$(node -p "require('./mcp/package.json').version")
+echo "npm=$NPM_VER  local=$PKG_VER"
+```
+
+If `mcp/` changed since `npm=$NPM_VER` (refreshed SDK doc refs, tooling fix,
+etc.) and `local` is not ahead, bump `mcp/package.json` + `mcp/package-lock.json`
+by a **patch** (e.g. 4.0.12 → 4.0.13 — never sync to `VERSION_NAME`; the
+generated `mcp/src/generated/version.ts` is refreshed by `npm run prepare`),
+land it on `main`, then republish via the dispatchable workflow (no tag needed):
+
+```bash
+gh workflow run mcp-publish.yml -R sceneview/sceneview --ref main
+# verify (bounded — no infinite loop):
+gh run watch "$(gh run list --workflow=mcp-publish.yml --limit 1 --json databaseId --jq '.[0].databaseId')" -R sceneview/sceneview --exit-status
+npm view sceneview-mcp version   # must equal the new mcp/package.json version
+```
+
+`mcp-publish.yml` is idempotent — if the version is already on npm it logs a
+notice and succeeds, so a re-dispatch never errors.
+
 ## Step 4: Update CLAUDE.md session state
 
 Update the "Current state" section with:
@@ -226,7 +255,7 @@ auto-generated list.
 | sceneview | Maven Central | release.yml | git tag v* |
 | arsceneview | Maven Central | release.yml | git tag v* |
 | sceneview-core | Maven Central | release.yml | git tag v* |
-| sceneview-mcp | npm | release.yml | git tag v* |
+| sceneview-mcp | npm | release.yml **or** mcp-publish.yml | git tag v* / `workflow_dispatch` |
 | sceneview-web | npm | release.yml | git tag v* |
 | SceneViewSwift | SPM (git tag) | git tag | Manual |
 | GitHub Release | GitHub | release.yml | git tag v* |

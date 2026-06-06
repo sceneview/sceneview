@@ -581,3 +581,61 @@ jobs:
               echo "_No review data produced this run._"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 9. sceneview-mcp npm freshness ─────────────────────────────────────────
+  # sceneview-mcp is on an INDEPENDENT npm track (#1705) — it does NOT ship on
+  # every SDK release, so it silently rots when mcp/ changes without a tag (it
+  # fell a month behind at 4.0.12). WARN-only: if the local mcp/package.json
+  # version is ahead of npm, remind a maintainer to dispatch mcp-publish.yml.
+  mcp-npm-freshness:
+    name: MCP npm freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Compare local mcp/package.json against published npm
+        id: check
+        run: |
+          set -euo pipefail
+          LOCAL=$(node -p "require('./mcp/package.json').version")
+          NPM=$(npm view sceneview-mcp version 2>/dev/null || echo "unknown")
+          echo "local=$LOCAL  npm=$NPM"
+          echo "local=$LOCAL" >> "$GITHUB_OUTPUT"
+          echo "npm=$NPM" >> "$GITHUB_OUTPUT"
+          # `sort -V` puts the lower semver first. A lag means npm < local, i.e.
+          # local is NOT the first line. Equal versions = in sync (no lag).
+          if [ "$NPM" = "unknown" ] || [ "$LOCAL" = "$NPM" ]; then
+            echo "lag=false" >> "$GITHUB_OUTPUT"
+          elif [ "$(printf '%s\n%s\n' "$LOCAL" "$NPM" | sort -V | head -1)" = "$NPM" ]; then
+            echo "::warning::sceneview-mcp npm ($NPM) lags local mcp/package.json ($LOCAL) — dispatch mcp-publish.yml to republish."
+            echo "lag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "lag=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or update tracking issue
+        if: steps.check.outputs.lag == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          LOCAL='${{ steps.check.outputs.local }}'
+          NPM='${{ steps.check.outputs.npm }}'
+          TITLE="sceneview-mcp npm is stale ($NPM < $LOCAL)"
+          BODY=$'Daily maintenance found `sceneview-mcp` on npm is **'"$NPM"$'**, behind the local `mcp/package.json` (**'"$LOCAL"$'**).\n\nThe MCP is on an independent npm track (#1705) and does not ship on every SDK tag. Republish it on demand (no tag needed):\n\n```\ngh workflow run mcp-publish.yml -R sceneview/sceneview --ref main\n```\n\nThe dispatch is idempotent — if the version is already on npm it logs a notice and succeeds.'
+          EXISTING=$(gh issue list --state open --search "sceneview-mcp npm is stale in:title" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -z "$EXISTING" ]; then
+            gh issue create --title "$TITLE" --body "$BODY" --label "maintenance" \
+              || echo "::warning::Could not create MCP npm freshness issue"
+          else
+            gh issue comment "$EXISTING" --body "$BODY" \
+              || echo "::warning::Could not comment on existing MCP npm freshness issue #$EXISTING"
+          fi
