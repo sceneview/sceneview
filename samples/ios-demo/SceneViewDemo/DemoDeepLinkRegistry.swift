@@ -147,7 +147,11 @@ enum DemoDeepLinkRegistry {
             #else
             DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
             #endif
-        case "ar-recording":
+        // `ar-record-playback` is the canonical, published deep-link id
+        // (website-static/open/index.html + llms.txt + Android catalog);
+        // `ar-recording` is kept as a legacy alias so older QR codes still
+        // resolve. Both route to the recorder demo.
+        case "ar-record-playback", "ar-recording":
             #if os(iOS)
             ARRecorderDemo()
             #else
