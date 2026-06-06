@@ -161,7 +161,7 @@ On user denial throws `ARRecorderError.photoLibraryDenied`; on
 | `PathNode` | `PathNode(points:closed:color:)` | `[SIMD3<Float>]` path |
 | `PhysicsNode` | `.dynamic(entity, mass:restitution:)` | `.static(entity)`, `.kinematic(entity)` |
 | `DynamicSkyNode` | `DynamicSkyNode(timeOfDay:turbidity:)` | `0...24` time cycle |
-| `FogNode` | `FogNode(density:color:)` | atmospheric fog |
+| `FogNode` | `FogNode.linear(start:end:color:)` · `FogNode.exponential(density:color:)` | atmospheric fog |
 | `ReflectionProbeNode` | `ReflectionProbeNode(position:radius:)` | zone-based IBL |
 
 ---

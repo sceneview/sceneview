@@ -73,7 +73,7 @@ ARSceneView(
 | `PathNode` | `PathNode(points:closed:color:)` | `[SIMD3<Float>]` |
 | `PhysicsNode` | `.dynamic(entity, mass:restitution:)` `.static(entity)` `.kinematic(entity)` | |
 | `DynamicSkyNode` | `DynamicSkyNode(timeOfDay:turbidity:)` | `0...24` time cycle |
-| `FogNode` | `FogNode(density:color:)` | translucent-shader approximation on iOS |
+| `FogNode` | `FogNode.linear(start:end:color:)` `FogNode.exponential(density:color:)` | translucent-shader approximation on iOS |
 | `ReflectionProbeNode` | `ReflectionProbeNode(position:radius:)` | zone IBL |
 
 ## Node factories — AR (iOS)
