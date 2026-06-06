@@ -706,12 +706,27 @@ open class Node(
     // ---- Coordinate conversion ----
 
     /**
+     * The world-to-local matrix derived from this node's **live** Filament world transform.
+     *
+     * Unlike [worldToLocal] (which inverts the cached [worldTransform]), this forces a
+     * [refreshWorldCache] first so a world→local conversion never trusts a stale cache.
+     * Used by the public conversion helpers below — they back the world-space setters
+     * ([worldPosition] / [worldScale] / [worldTransform] on a child), which must convert
+     * against the parent's live world transform to round-trip (#2392). Same live-matrix
+     * read 4.15.2 did; the cached [worldTransform] getter stays the hot-path reader.
+     */
+    private val freshWorldToLocal: Transform get() = inverse(refreshWorldCache())
+
+    /**
      * Converts a position in the world-space to a local-space of this node.
+     *
+     * Reflects this node's **live** world transform (forces a [refreshWorldCache]) so the
+     * world-space position setter round-trips even when the cache is stale (#2392).
      *
      * @param worldPosition the position in world-space to convert.
      * @return a new position that represents the world position in local-space.
      */
-    fun getLocalPosition(worldPosition: Position) = worldToLocal * worldPosition
+    fun getLocalPosition(worldPosition: Position) = freshWorldToLocal * worldPosition
 
     /**
      * Converts a position in the local-space of this node to world-space.
@@ -719,13 +734,13 @@ open class Node(
      * @param localPosition the position in local-space to convert.
      * @return a new position that represents the local position in world-space.
      */
-    fun getWorldPosition(localPosition: Position) = worldTransform * localPosition
+    fun getWorldPosition(localPosition: Position) = refreshWorldCache() * localPosition
 
     /**
      * Converts a quaternion in the world-space to a local-space of this node.
      *
      * When this node's world transform has **no scale**, the conversion is rotation-only:
-     * it uses the cached [worldQuaternion] (#2264) directly and skips the Mat4 polar
+     * it uses this node's world quaternion directly and skips the Mat4 polar
      * decomposition that `worldToLocal.toQuaternion()` paid on every call (#2267).
      *
      * When this node IS scaled the fast path is NOT used: `inverse(M).toQuaternion()`
@@ -733,28 +748,49 @@ open class Node(
      * (verified divergence even for uniform scale — #2294 review), so the scaled case
      * falls back to the exact legacy matrix path to preserve behavior.
      *
+     * This conversion is the parent-side of the world-space setters
+     * ([worldQuaternion] / [worldRotation] on a child), so it MUST reflect this node's
+     * **live** Filament world transform — not a possibly-stale cache. It therefore
+     * forces a [refreshWorldCache] first: an ancestor (or an engine-driven write) can
+     * change this node's world transform without going through the [Node] setters that
+     * fire [onWorldTransformChanged], leaving `_worldQuaternion` decomposed from an
+     * out-of-date matrix. Trusting that stale cache here broke `set worldQuaternion`
+     * round-trips on parented nodes (#2392). Refreshing on this (write-time) path is
+     * the same live-matrix read 4.15.2 did, and keeps the per-frame world-quaternion
+     * *getter* — the actual 60–120 Hz hot path — fully cache-served.
+     *
      * @param worldQuaternion the quaternion in world-space to convert.
      * @return a new quaternion that represents the world quaternion in local-space.
      */
-    fun getLocalQuaternion(worldQuaternion: Quaternion) =
-        if (worldScale.isApproximatelyUnitScale()) {
-            worldToLocalQuaternion(worldQuaternion = worldQuaternion, parentWorldQuaternion = this.worldQuaternion)
+    fun getLocalQuaternion(worldQuaternion: Quaternion): Quaternion {
+        // Re-read the live world transform so the conversion never trusts a stale cache (#2392).
+        val world = refreshWorldCache()
+        return if (world.scale.isApproximatelyUnitScale()) {
+            worldToLocalQuaternion(worldQuaternion = worldQuaternion, parentWorldQuaternion = _worldQuaternion)
         } else {
-            worldToLocal.toQuaternion() * worldQuaternion
+            inverse(world).toQuaternion() * worldQuaternion
         }
+    }
 
     /**
      * Converts a quaternion in the local-space of this node to world-space.
      *
-     * Uses this node's cached [worldQuaternion] (#2264) directly — a rotation-only
-     * conversion never needs the 4×4 matrix, so this skips the Mat4 polar
-     * decomposition that `worldTransform.toQuaternion()` paid on every call (#2267).
+     * Uses this node's world quaternion directly — a rotation-only conversion never
+     * needs the 4×4 matrix, so this skips the Mat4 polar decomposition that
+     * `worldTransform.toQuaternion()` paid on every call (#2267).
+     *
+     * Like [getLocalQuaternion], this forces a [refreshWorldCache] first so the
+     * conversion reflects this node's **live** Filament world transform rather than a
+     * possibly-stale `_worldQuaternion` (#2392).
      *
      * @param quaternion the quaternion in local-space to convert.
      * @return a new quaternion that represents the local quaternion in world-space.
      */
-    fun getWorldQuaternion(quaternion: Quaternion) =
-        localToWorldQuaternion(localQuaternion = quaternion, parentWorldQuaternion = this.worldQuaternion)
+    fun getWorldQuaternion(quaternion: Quaternion): Quaternion {
+        // Re-read the live world transform so the conversion never trusts a stale cache (#2392).
+        refreshWorldCache()
+        return localToWorldQuaternion(localQuaternion = quaternion, parentWorldQuaternion = _worldQuaternion)
+    }
 
     /**
      * Converts a rotation in the world-space to a local-space of this node.
@@ -785,13 +821,13 @@ open class Node(
         return x in lo..hi && y in lo..hi && z in lo..hi
     }
 
-    fun getLocalScale(worldScale: Scale) = worldToLocal * worldScale
-    fun getWorldScale(scale: Scale) = worldTransform * scale
+    fun getLocalScale(worldScale: Scale) = freshWorldToLocal * worldScale
+    fun getWorldScale(scale: Scale) = refreshWorldCache() * scale
 
     fun getLocalTransform(node: Node) = getLocalTransform(node.worldTransform)
-    fun getLocalTransform(worldTransform: Transform) = worldToLocal * worldTransform
+    fun getLocalTransform(worldTransform: Transform) = freshWorldToLocal * worldTransform
     fun getWorldTransform(node: Node) = getWorldTransform(node.transform)
-    fun getWorldTransform(localTransform: Transform) = worldTransform * localTransform
+    fun getWorldTransform(localTransform: Transform) = refreshWorldCache() * localTransform
 
     // ---- Transform mutation ----
 
