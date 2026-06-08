@@ -5,7 +5,7 @@ kotlin = "2.3.21"
 composeMultiplatform = "1.11.1"
 
 # AndroidX Core
-coreKtx = "1.18.0"
+coreKtx = "1.19.0"
 appcompat = "1.7.1"
 fragmentKtx = "1.8.9"
 
