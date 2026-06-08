@@ -110,20 +110,25 @@ class SceneViewManager : SimpleViewManager<FrameLayout>() {
                     position = Position(y = 0f, z = 3.0f)
                 }
 
-                val environment = state.environmentPath.value?.let { path ->
-                    // Rebuild the Environment when `path` switches between two non-null HDRs, else the
-                    // skybox/IBL freezes on the first one (#2361, same class as #2353): the factory
-                    // lambda alone is a stable remember key. Uses Compose key {} rather than
-                    // rememberEnvironment's own key= param because this bridge compiles against the
-                    // published Maven artifact (sceneview:4.7.0) that predates key=. key {} replaces
-                    // the group on a new path, disposing the old Environment via its DisposableEffect.
-                    // TODO(#2361): migrate to rememberEnvironment(..., key = path) once this bridge
-                    // consumes a SceneView release that includes the public key= param.
-                    key(path) {
-                        rememberEnvironment(environmentLoader) {
+                // Single, stable environment call site (issue #2365): compute exactly one
+                // non-null Environment rather than branching between a keyed HDR call and a
+                // separate `environment ?: rememberEnvironment(...)` fallback at the SceneView
+                // argument. The `path` is the remember key, so:
+                //   - null path           → the default neutral environment;
+                //   - path A → path B      → the Environment is rebuilt (skybox/IBL actually
+                //                            swaps; the stale-factory bug of #2361).
+                // Uses Compose key {} rather than rememberEnvironment's own key= param because
+                // this bridge compiles against the published Maven artifact (sceneview:4.7.0)
+                // that predates key=. key {} replaces the group on a new path, disposing the old
+                // Environment via its DisposableEffect.
+                // TODO(#2361): migrate to rememberEnvironment(..., key = path) once this bridge
+                // consumes a SceneView release that includes the public key= param.
+                val environmentPath = state.environmentPath.value
+                val environment = key(environmentPath) {
+                    rememberEnvironment(environmentLoader) {
+                        environmentPath?.let { path ->
                             environmentLoader.createHDREnvironment(path)
-                                ?: io.github.sceneview.createEnvironment(environmentLoader)
-                        }
+                        } ?: io.github.sceneview.createEnvironment(environmentLoader)
                     }
                 }
 
@@ -134,7 +139,7 @@ class SceneViewManager : SimpleViewManager<FrameLayout>() {
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
                     cameraNode = cameraNode,
-                    environment = environment ?: rememberEnvironment(environmentLoader),
+                    environment = environment,
                     onGestureListener = gestureListener,
                 ) {
                     state.modelPaths.forEach { model ->

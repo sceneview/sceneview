@@ -97,10 +97,15 @@ const ANIMATED_MODELS: { label: string; src: string; scale: number }[] = [
   },
 ];
 
-/** HDR environments available to the Environment demo. */
-const ENVIRONMENTS: { label: string; path: string | null }[] = [
-  { label: 'Studio (small)', path: 'environments/studio_small.hdr' },
-  { label: 'None (neutral)', path: null },
+/**
+ * HDR environments available to the Environment demo. Two visually distinct
+ * non-null HDRs (bright studio ↔ dark rooftop night): toggling between them at
+ * runtime is what exercises the keyed-Environment swap path (#2361) — the
+ * skybox/IBL must rebuild on the new HDR, not freeze on the first one.
+ */
+const ENVIRONMENTS: { label: string; path: string }[] = [
+  { label: 'Studio', path: 'environments/studio_small.hdr' },
+  { label: 'Night', path: 'environments/rooftop_night_2k.hdr' },
 ];
 
 const SHAPE_TYPES: GeometryNode['type'][] = ['cube', 'sphere', 'cylinder', 'plane'];
@@ -905,7 +910,7 @@ function EnvironmentTab() {
       <View style={styles.viewerContainer}>
         <SceneView
           style={styles.scene}
-          environment={env.path ?? undefined}
+          environment={env.path}
           modelNodes={[modelNode]}
           autoCenterContent={autoCenter}
           cameraOrbit
@@ -951,9 +956,10 @@ function EnvironmentTab() {
           <Text style={styles.arInfoTitle}>Image-Based Lighting</Text>
           <Text style={styles.arInfoBody}>
             The `environment` prop loads an HDR file for image-based lighting
-            and the skybox. `autoCenterContent` frames the model on the first
-            stable frame — an iOS-first v4.3.0 feature; the Android side is
-            tracked in issue #1051.
+            and the skybox. Toggling between the two HDRs swaps the skybox and
+            IBL at runtime (#2361). `autoCenterContent` frames the model on the
+            first stable frame — an iOS-first v4.3.0 feature; the Android side
+            is tracked in issue #1051.
           </Text>
         </View>
       </ScrollView>
