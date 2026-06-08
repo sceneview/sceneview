@@ -352,6 +352,12 @@ open class Node(
      * Note that modifying the individual components of the returned rotation doesn't have any
      * effect.
      *
+     * The getter derives the Euler angles from [quaternion] on every read and deliberately does
+     * **not** cache the result. Euler `rotation` is not read by any per-frame render or animation
+     * path (those read [quaternion] / [worldQuaternion] directly), so a cache would only add
+     * invalidation cost to every — hot — [quaternion] write for no hot-loop benefit. The only
+     * internal callers are one-shot (animator setup, debug inspection). See #2328 (N2).
+     *
      * @see transform
      */
     open var rotation: Rotation

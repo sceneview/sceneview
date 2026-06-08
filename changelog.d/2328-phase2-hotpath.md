@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- Documented `Node.rotation` (Euler getter) as deliberately un-cached — no per-frame render/animation path reads it (they read `quaternion`), so caching would only add invalidation cost to the hot `quaternion` write path. Closes the last open item (N2) of the Phase-2 hot-path tracker (#2328); the transform/parent JNI and gesture/light/animation allocation items landed earlier in #2366, #2417, and #2423.
