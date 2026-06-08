@@ -1091,6 +1091,11 @@ class SceneView private constructor(
         engine.destroyView(view)
         engine.destroyScene(scene)
         engine.destroyCameraComponent(cameraEntity)
+        // Free the camera entity's EntityManager handle too — destroying only
+        // the camera component leaks the integer entity slot, the exact inverse
+        // of the #1700 light leak. Component first, then entity (parity with the
+        // light teardown above).
+        engine.destroyEntity(cameraEntity)
         engine.destroySwapChain(swapChain)
         val filament: dynamic = js("Filament")
         filament.Engine.destroy(engine)
