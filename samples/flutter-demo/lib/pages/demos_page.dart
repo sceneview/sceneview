@@ -296,8 +296,10 @@ class _AnimationDemoState extends State<_AnimationDemo> {
 // Environment demo — HDR image-based lighting
 // ---------------------------------------------------------------------------
 
-/// Switches the HDR environment on a fixed model so the change in
-/// image-based lighting and skybox is the only variable.
+/// Switches between TWO distinct HDR environments on a fixed model so the change
+/// in image-based lighting and skybox is the only variable. Toggling between two
+/// non-null HDRs at runtime is what exercises the keyed-Environment swap path
+/// (#2361) — the visual proof that the skybox/IBL actually rebuilds on a new HDR.
 class _EnvironmentDemo extends StatefulWidget {
   const _EnvironmentDemo();
 
@@ -309,16 +311,24 @@ class _EnvironmentDemoState extends State<_EnvironmentDemo> {
   final _controller = SceneViewController();
   bool _ready = false;
   bool _autoCenter = true;
+  int _envIndex = 0;
 
   static const _helmetUrl =
       'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb';
+
+  /// Two visually distinct HDRs (bright studio ↔ dark rooftop night), so the
+  /// toggle is unmistakable on a device and drives the keyed-swap path (#2361).
+  static const _environments = [
+    (label: 'Studio', path: 'environments/studio_small.hdr'),
+    (label: 'Night', path: 'environments/rooftop_night_2k.hdr'),
+  ];
 
   @override
   Widget build(BuildContext context) {
     return _DemoCard(
       icon: Icons.image,
       title: 'Environment — HDR Lighting',
-      description: 'setEnvironment + autoCenterContent on a fixed model.',
+      description: 'Toggle between two HDRs (Studio ↔ Night) at runtime.',
       child: Column(
         children: [
           SizedBox(
@@ -329,7 +339,8 @@ class _EnvironmentDemoState extends State<_EnvironmentDemo> {
                   controller: _controller,
                   autoCenterContent: _autoCenter,
                   onViewCreated: () {
-                    _controller.setEnvironment('environments/studio_small.hdr');
+                    _controller
+                        .setEnvironment(_environments[_envIndex].path);
                     _controller.loadModel(const ModelNode(modelPath: _helmetUrl));
                     setState(() => _ready = true);
                   },
@@ -339,12 +350,19 @@ class _EnvironmentDemoState extends State<_EnvironmentDemo> {
             ),
           ),
           const SizedBox(height: 8),
-          FilledButton.tonalIcon(
-            onPressed: _ready
-                ? () => _controller.setEnvironment('environments/studio_small.hdr')
+          SegmentedButton<int>(
+            segments: [
+              for (var i = 0; i < _environments.length; i++)
+                ButtonSegment(value: i, label: Text(_environments[i].label)),
+            ],
+            selected: {_envIndex},
+            onSelectionChanged: _ready
+                ? (selection) {
+                    final next = selection.first;
+                    setState(() => _envIndex = next);
+                    _controller.setEnvironment(_environments[next].path);
+                  }
                 : null,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Reload Studio HDR'),
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
