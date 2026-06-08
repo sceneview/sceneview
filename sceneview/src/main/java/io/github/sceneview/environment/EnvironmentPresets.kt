@@ -1,12 +1,11 @@
 package io.github.sceneview.environment
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.produceState
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.rememberEnvironment
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * Pre-defined HDR environment asset locations bundled with SceneView.
@@ -58,7 +57,7 @@ fun rememberHDREnvironment(
     assetFileLocation: String,
     createSkybox: Boolean = true
 ): Environment? {
-    return produceState<Environment?>(
+    val environment = produceState<Environment?>(
         initialValue = null,
         key1 = environmentLoader,
         key2 = assetFileLocation
@@ -72,6 +71,15 @@ fun rememberHDREnvironment(
             )
         }.getOrNull()
     }.value
+    // `produceState` only cancels the producer coroutine on a key change — it never destroys the
+    // previously produced [Environment]. Keying a [DisposableEffect] on the produced value fires
+    // `onDispose` for the *previous* environment whenever a new one is produced (key swap) and on
+    // leave-composition, matching the sibling `rememberEnvironment(key = …)`. `onDispose` runs on
+    // the composition (main) thread, satisfying the Filament JNI threading contract.
+    DisposableEffect(environment) {
+        onDispose { environment?.let { environmentLoader.destroyEnvironment(it) } }
+    }
+    return environment
 }
 
 /**
@@ -94,7 +102,7 @@ fun rememberKTXEnvironment(
     iblAssetFile: String? = null,
     skyboxAssetFile: String? = null
 ): Environment? {
-    return produceState<Environment?>(
+    val environment = produceState<Environment?>(
         initialValue = null,
         key1 = environmentLoader,
         key2 = iblAssetFile,
@@ -107,4 +115,11 @@ fun rememberKTXEnvironment(
             )
         }.getOrNull()
     }.value
+    // See [rememberHDREnvironment]: `produceState` skips per-key disposal, so destroy the previous
+    // [Environment] when the produced value changes (key swap) and on leave-composition. `onDispose`
+    // runs on the composition (main) thread, satisfying the Filament JNI threading contract.
+    DisposableEffect(environment) {
+        onDispose { environment?.let { environmentLoader.destroyEnvironment(it) } }
+    }
+    return environment
 }
