@@ -1,9 +1,11 @@
 package io.github.sceneview.geometries
 
-import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Float2
+import dev.romainguy.kotlin.math.cross
+import dev.romainguy.kotlin.math.dot
 import dev.romainguy.kotlin.math.length
-import kotlin.math.abs
+import dev.romainguy.kotlin.math.normalize
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -94,6 +96,158 @@ class ExtendedGeometryTest {
         val bb = capsule.boundingBox()
         // Height should span from -1 to +1 (approximately)
         assertTrue(bb.halfExtent.y > 0.9f, "Height too small: ${bb.halfExtent.y}")
+    }
+
+    /**
+     * Index-connectivity / topology regression for #2465.
+     *
+     * The previous implementation emitted three independently-ordered vertex blocks
+     * (top hemisphere, cylinder, bottom hemisphere) but stitched them with one
+     * continuous-grid index loop. That bridged the north-pole row onto the cylinder rim
+     * (an inverted cap funnel), produced a degenerate zero-area band where the cylinder
+     * bottom coincides with the bottom-hemisphere equator, and left the bottom hemisphere
+     * wound inward. None of those defects move any vertex *position*, so the earlier tests
+     * (which only inspect vertices / the bounding box) all passed on a broken mesh.
+     *
+     * This asserts the *connectivity*: every triangle is non-degenerate, every triangle's
+     * winding-derived face normal points outward (agrees with its vertex normals), and no
+     * triangle bridges non-adjacent vertex rows. It fails on the pre-fix topology.
+     */
+    private fun assertCapsuleTopologyValid(
+        radius: Float,
+        height: Float,
+        slices: Int,
+        hemisphereStacks: Int,
+        cylinderStacks: Int
+    ) {
+        val capsule = generateCapsule(
+            radius = radius,
+            height = height,
+            slices = slices,
+            hemisphereStacks = hemisphereStacks,
+            cylinderStacks = cylinderStacks
+        )
+        val verts = capsule.vertices
+        val idx = capsule.indices
+
+        assertTrue(idx.size % 3 == 0, "Index count ${idx.size} is not a multiple of 3")
+        assertTrue(idx.isNotEmpty(), "No indices generated")
+
+        // Every index in range.
+        for (i in idx) {
+            assertTrue(i in 0 until verts.size, "Index $i out of bounds (vertex count ${verts.size})")
+        }
+
+        // Rows are runs of (slices + 1) vertices. A well-formed quad-grid triangle spans at
+        // most two adjacent rows; a cross-block bridge connects rows further apart.
+        val verticesPerRow = slices + 1
+        var triCount = 0
+        var coveredVertices = 0
+        val touched = BooleanArray(verts.size)
+
+        for (t in idx.indices step 3) {
+            val ia = idx[t]
+            val ib = idx[t + 1]
+            val ic = idx[t + 2]
+            touched[ia] = true; touched[ib] = true; touched[ic] = true
+
+            val rowA = ia / verticesPerRow
+            val rowB = ib / verticesPerRow
+            val rowC = ic / verticesPerRow
+            val rowSpan = maxOf(rowA, rowB, rowC) - minOf(rowA, rowB, rowC)
+            assertTrue(
+                rowSpan <= 1,
+                "Triangle [$ia,$ib,$ic] bridges non-adjacent rows " +
+                    "($rowA,$rowB,$rowC) — a cross-block stitch"
+            )
+
+            val pa = verts[ia].position
+            val pb = verts[ib].position
+            val pc = verts[ic].position
+
+            // Non-degenerate: the edge cross-product (twice the triangle area) must be
+            // meaningfully non-zero. Catches the coincident cylinder-bottom/equator band.
+            val faceCross = cross(pb - pa, pc - pa)
+            val twiceArea = length(faceCross)
+            assertTrue(
+                twiceArea > 1e-7f,
+                "Degenerate (zero-area) triangle [$ia,$ib,$ic], 2*area=$twiceArea"
+            )
+
+            // Outward winding: the winding-derived face normal must agree with the mean of
+            // the three vertex normals. Catches the inverted top funnel and the inverted
+            // bottom hemisphere. A pole vertex's collapsed ring is skipped (its mean normal
+            // is dominated by the axis and can be near-orthogonal to the thin face normal),
+            // but a genuinely inverted *band* of full-radius rings is not near a pole.
+            val faceNormal = normalize(faceCross)
+            val na = verts[ia].normal!!
+            val nb = verts[ib].normal!!
+            val nc = verts[ic].normal!!
+            val meanNormal = (na + nb + nc) / 3f
+            val meanLen = length(meanNormal)
+            if (meanLen > 0.2f) {
+                val alignment = dot(faceNormal, meanNormal / meanLen)
+                assertTrue(
+                    alignment > 0f,
+                    "Inverted/back-facing triangle [$ia,$ib,$ic]: " +
+                        "dot(faceNormal, vertexNormals)=$alignment <= 0"
+                )
+            }
+            triCount++
+        }
+
+        for (v in touched.indices) if (touched[v]) coveredVertices++
+        assertTrue(coveredVertices > 0, "No vertices are referenced by triangles")
+        assertTrue(triCount > 0, "No triangles generated")
+
+        // Watertight-ish: there must be no *positional* hole. A vertex may legitimately go
+        // unreferenced — a pole apex's duplicate seam column, or the whole cylinder ring when
+        // height == 2*radius collapses it to zero length — but only if some *referenced*
+        // vertex sits at (essentially) the same position, so the surface still has no gap
+        // there. The gross "half the mesh was never stitched" bug leaves whole distinct rings
+        // uncovered and fails this. A small tolerance absorbs the ~1e-8 cos(PI/2) pole jitter.
+        val coverEps = maxOf(radius, height) * 1e-4f
+        val coverEps2 = coverEps * coverEps + 1e-10f
+        for (v in touched.indices) {
+            if (!touched[v]) {
+                val p = verts[v].position
+                var covered = false
+                for (u in touched.indices) {
+                    if (touched[u]) {
+                        val diff = verts[u].position - p
+                        if (dot(diff, diff) <= coverEps2) { covered = true; break }
+                    }
+                }
+                assertTrue(
+                    covered,
+                    "Unreferenced vertex $v at $p has no covering referenced vertex — a hole"
+                )
+            }
+        }
+    }
+
+    @Test
+    fun capsuleGeometryTopologyDefaultIsWatertightAndOutward() {
+        // Default parameters — the case the #2465 trace is written against.
+        assertCapsuleTopologyValid(
+            radius = 0.5f, height = 2f, slices = 24, hemisphereStacks = 8, cylinderStacks = 1
+        )
+    }
+
+    @Test
+    fun capsuleGeometryTopologyNonDefaultParamsAreWatertightAndOutward() {
+        // A coarse capsule.
+        assertCapsuleTopologyValid(
+            radius = 0.25f, height = 1.5f, slices = 6, hemisphereStacks = 3, cylinderStacks = 2
+        )
+        // A fatter, taller capsule with more cylinder stacks.
+        assertCapsuleTopologyValid(
+            radius = 1f, height = 5f, slices = 16, hemisphereStacks = 6, cylinderStacks = 4
+        )
+        // A near-spherical capsule (cylinder collapses to zero height).
+        assertCapsuleTopologyValid(
+            radius = 1f, height = 2f, slices = 12, hemisphereStacks = 8, cylinderStacks = 1
+        )
     }
 
     // ----- Rounded Cube -----

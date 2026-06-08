@@ -4,6 +4,7 @@ import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.PI
 import dev.romainguy.kotlin.math.TWO_PI
+import dev.romainguy.kotlin.math.dot
 import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.rendering.Vertex
 import kotlin.math.cos
@@ -98,21 +99,83 @@ fun generateCapsule(
     }
 
     // --- Generate indices ---
-    val totalStacks = hemisphereStacks + cylinderStacks + hemisphereStacks + 2
+    //
+    // The three vertex blocks above are NOT a single monotonic top→bottom sweep, so
+    // they must be stitched independently — a single continuous grid loop over all rows
+    // would bridge across the block boundaries and produce a malformed mesh (an inverted
+    // cap funnel from the north pole onto the cylinder rim, plus a degenerate zero-area
+    // band where the cylinder bottom and the bottom-hemisphere equator coincide).
+    //
+    // Winding also differs per block. For the shared (a,b,d)/(a,d,c) quad pattern, whether a
+    // face points outward depends on the Y direction the rows sweep: cross(rowDir, colDir)
+    // points outward only where the rows climb. The top hemisphere sweeps equator→pole going
+    // *up* in Y, so it winds outward as-is; the cylinder (top→bottom) and the bottom
+    // hemisphere (equator→pole going *down*) both descend, so cross(rowDir, colDir) points
+    // *inward* and their quads are emitted with reversed winding to keep every face outward.
+    //
+    // Each hemisphere's pole row collapses all (slices + 1) vertices onto a single apex,
+    // so a quad touching the pole has a zero-length edge. There it degenerates to a single
+    // triangle (apex + the base edge) — the same cap handling as generateSphere — instead
+    // of two triangles, one of which would be a zero-area sliver.
     val verticesPerRow = slices + 1
-    val totalRows = (hemisphereStacks + 1) + (cylinderStacks + 1) + (hemisphereStacks + 1)
+    val topRows = hemisphereStacks + 1
+    val cylRows = cylinderStacks + 1
+    val botRows = hemisphereStacks + 1
 
-    for (row in 0 until totalRows - 1) {
-        for (col in 0 until slices) {
-            val a = row * verticesPerRow + col
-            val b = a + verticesPerRow
-            val c = a + 1
-            val d = b + 1
+    // A hemisphere's pole ring does not collapse to *exactly* one point — cos(PI/2) is a
+    // tiny non-zero float, so the apex vertices differ by ~1e-8 — hence a tolerance test
+    // rather than an exact position compare. The tolerance scales with the radius and stays
+    // far below the spacing of any genuine (non-pole) ring.
+    val collapseEps2 = (radius * 1e-4f).let { it * it } + 1e-12f
+    fun collapsed(i: Int, j: Int): Boolean {
+        val d = vertices[i].position - vertices[j].position
+        return dot(d, d) <= collapseEps2
+    }
 
-            indices.add(a); indices.add(b); indices.add(d)
-            indices.add(a); indices.add(d); indices.add(c)
+    fun stitch(startRow: Int, rowCount: Int, reverseWinding: Boolean) {
+        for (row in startRow until startRow + rowCount - 1) {
+            for (col in 0 until slices) {
+                val a = row * verticesPerRow + col
+                val b = a + verticesPerRow
+                val c = a + 1
+                val d = b + 1
+
+                // Whole quad collapsed (the two rows coincide). Happens for the cylinder
+                // body when height == 2 * radius — a sphere — so the cylinder has zero
+                // length: emit nothing, the two hemispheres already meet at the equator.
+                if (collapsed(a, b) && collapsed(c, d)) continue
+
+                // Far edge (row + 1) collapsed to a pole apex → single triangle, base a→c.
+                val farPole = collapsed(b, d)
+                // Near edge (row) collapsed to a pole apex → single triangle, base b→d.
+                val nearPole = collapsed(a, c)
+
+                if (reverseWinding) {
+                    when {
+                        farPole -> { indices.add(a); indices.add(c); indices.add(b) }
+                        nearPole -> { indices.add(a); indices.add(d); indices.add(b) }
+                        else -> {
+                            indices.add(a); indices.add(d); indices.add(b)
+                            indices.add(a); indices.add(c); indices.add(d)
+                        }
+                    }
+                } else {
+                    when {
+                        farPole -> { indices.add(a); indices.add(b); indices.add(c) }
+                        nearPole -> { indices.add(a); indices.add(b); indices.add(d) }
+                        else -> {
+                            indices.add(a); indices.add(b); indices.add(d)
+                            indices.add(a); indices.add(d); indices.add(c)
+                        }
+                    }
+                }
+            }
         }
     }
+
+    stitch(0, topRows, reverseWinding = false)                  // top hemisphere: equator → pole (up)
+    stitch(topRows, cylRows, reverseWinding = true)             // cylinder body: top → bottom (down)
+    stitch(topRows + cylRows, botRows, reverseWinding = true)   // bottom hemisphere: equator → pole (down)
 
     return GeometryData(vertices, indices)
 }
