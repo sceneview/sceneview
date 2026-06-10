@@ -161,6 +161,34 @@ class ExtendedGeometryTest {
         assertEquals((segments + 1) * profile.size, lathe.vertices.size)
     }
 
+    @Test
+    fun latheOpenProducesDifferentTopologyThanClosed() {
+        // #2490: closed=false must omit the final wrap strip, yielding an OPEN lathe
+        // with fewer indices than the closed surface. Pre-fix both were byte-for-byte
+        // identical (the `closed` flag was dead).
+        val profile = listOf(Float2(1f, 0f), Float2(0.5f, 1f), Float2(0.8f, 2f))
+        val segments = 4
+
+        val closed = generateLathe(profile, segments = segments, closed = true)
+        val open = generateLathe(profile, segments = segments, closed = false)
+
+        // Closed stitches `segments` strips, open stitches `segments - 1`.
+        // Each strip = (profileSize - 1) quads * 6 indices.
+        val indicesPerStrip = (profile.size - 1) * 6
+        assertEquals(segments * indicesPerStrip, closed.indices.size, "Closed index count")
+        assertEquals((segments - 1) * indicesPerStrip, open.indices.size, "Open index count")
+        assertTrue(
+            open.indices.size < closed.indices.size,
+            "Open lathe must have fewer indices than closed (${open.indices.size} vs ${closed.indices.size})"
+        )
+        // The vertex grid is unchanged (seam rings kept for UVs in both cases).
+        assertEquals(closed.vertices.size, open.vertices.size, "Vertex count unchanged by closed flag")
+        // All open indices must still be in bounds.
+        for (idx in open.indices) {
+            assertTrue(idx in 0 until open.vertices.size, "Open index $idx out of bounds")
+        }
+    }
+
     // ----- Extrude -----
 
     @Test

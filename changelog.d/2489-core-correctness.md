@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+- `sceneview-core`: `worldToLocalScale` / `localToWorldScale` no longer transform a scale through the `Mat4 * Float3` point operator, which leaked the parent transform's translation (and rotation) into the result. Scale conversions now compose the transform's basis-vector lengths, so a translated parent no longer corrupts the converted scale (#2489).
+- `sceneview-core`: `LatheGeometry`'s documented `closed` parameter now has an effect. Previously `closed = false` produced byte-for-byte the same fully-closed surface as `closed = true`; it now leaves the final angular seam unstitched, producing the open lathe the parameter promises (#2490).
