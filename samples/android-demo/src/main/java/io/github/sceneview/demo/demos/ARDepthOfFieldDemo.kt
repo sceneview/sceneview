@@ -93,7 +93,11 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
     // ── User-facing knobs ────────────────────────────────────────────────────────────────────
     var dofEnabled by remember { mutableStateOf(true) }
     var focusDepth by remember { mutableStateOf(1.0f) }     // meters
-    var blurStrength by remember { mutableStateOf(2.0f) }   // identity ≈ 1.0
+    // Filament's stock cinematic strength (cocScale identity). 2.0× doubled the circle-of-
+    // confusion and crushed out-of-focus regions to black bands / colour smears (#2480) — it read
+    // as a glitch, not bokeh. 1.0× gives a pleasant, legible shallow-DoF; the slider still goes to
+    // 6× for anyone who wants a stronger blur.
+    var blurStrength by remember { mutableStateOf(1.0f) }
     var depthSupported by remember { mutableStateOf<Boolean?>(null) }
 
     // Latest Frame for tap-to-focus. The depth API requires the Frame from the same update tick.
@@ -206,7 +210,7 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
             OutlinedButton(
                 onClick = {
                     focusDepth = 1.0f
-                    blurStrength = 2.0f
+                    blurStrength = 1.0f
                 },
                 modifier = Modifier
                     .fillMaxWidth()
