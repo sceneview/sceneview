@@ -101,7 +101,7 @@ interface RenderableComponent : Component {
      *
      * @see RenderableManager.setMorphWeights
      */
-    fun setMorphWeights(weights: FloatArray, @IntRange(from = 0) offset: Int = weights.size) =
+    fun setMorphWeights(weights: FloatArray, @IntRange(from = 0) offset: Int = 0) =
         renderableManager.setMorphWeights(renderableInstance, weights, offset)
 
     /**
