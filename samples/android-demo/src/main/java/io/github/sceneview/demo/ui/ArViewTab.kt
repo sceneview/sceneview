@@ -407,12 +407,25 @@ fun ArViewTabContent(
                                 result.distance <= 5.0f
                         }
                         if (hit != null) {
+                            // Resolve the model from the CURRENT picker state at
+                            // tap time. Reading `arModels[selectedModelIndex]`
+                            // here — instead of closing over the derived
+                            // `selectedModel` val computed in composition —
+                            // avoids the stale-closure bug where every placement
+                            // kept the first model (Damaged Helmet) regardless of
+                            // the picker (#2476). The remembered gesture lambda is
+                            // built once, so anything it captures by value freezes
+                            // at first composition; `selectedModelIndex` is read
+                            // through state, so it stays live. This mirrors
+                            // ARPlacementDemo, which reads its selection inside the
+                            // tap body for the same reason.
+                            val model = arModels[selectedModelIndex]
                             placedAnchors.add(
                                 PlacedAr(
                                     id = nextId++,
                                     anchor = hit.createAnchor(),
-                                    assetPath = selectedModel.assetPath,
-                                    scale = selectedModel.scale,
+                                    assetPath = model.assetPath,
+                                    scale = model.scale,
                                 ),
                             )
                         }
