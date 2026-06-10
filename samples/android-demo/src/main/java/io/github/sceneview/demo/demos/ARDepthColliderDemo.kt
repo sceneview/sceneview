@@ -46,8 +46,9 @@ import io.github.sceneview.sample.rememberMaterialInstance
  *
  * The demo is the SceneView port of Google's
  * [arcore-depth-lab](https://github.com/googlesamples/arcore-depth-lab) "Collider" scene. Each
- * ball is a small coloured sphere (radius 5 cm) launched from a fixed point 30 cm in front of the
- * camera; gravity does the rest. When the device's depth subsystem is unavailable (no ARCore,
+ * ball is a small coloured sphere (radius 5 cm) launched ~50 cm in front of the **live** camera
+ * pose and slightly above it, so it always drops into view; gravity does the rest. When the
+ * device's depth subsystem is unavailable (no ARCore,
  * no `DepthMode.AUTOMATIC` support, or running on the SwiftShader emulator without depth
  * hardware) the ball falls through to a static `floorY = -1f` so the demo still shows a fallback
  * bounce rather than a black void.
@@ -71,11 +72,14 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
     // or part of the AR scene). Toggling this on re-renders the underlying DepthMeshNode for
     // debugging the collider geometry.
     var showDepthMesh by remember { mutableStateOf(false) }
-    // Captured per-frame in onSessionUpdated (#1874). The previous demo spawned every ball at
+    // Captured per-frame in onSessionUpdated (#1874). The original demo spawned every ball at
     // the AR-session origin (the device pose when the demo opened); if the user re-aimed the
     // device before tapping Drop the balls fell outside the camera view and looked "invisible".
-    // We now spawn at the **current** camera pose's forward direction so the balls always
-    // appear in front of the user, no matter how much they have moved.
+    // We now spawn relative to the **current** camera pose: straight ahead of the camera (so it
+    // is in view) and at a drop height in WORLD space (so it falls down into view) — see the
+    // per-ball startPosition below. PR #1880 fixed the origin-anchoring but still bundled the
+    // drop height into the camera transform, so aiming at the floor put the balls in a corner;
+    // this decouples the two so the balls are visible regardless of phone tilt (#2466).
     val latestCameraPoseRef = remember { mutableStateOf<Pose?>(null) }
     // Memoise the spawn pose at the moment ballCount last changed so re-running the for-loop
     // for an unrelated recomposition (slider, theme, settings toggle) keeps the same world
@@ -206,25 +210,40 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                 val spawnAnchor = spawnAnchorRef.value
 
                 for (i in 0 until ballCount) {
-                    // Local-space spawn: a small XY scatter so multiple balls don't pile up at
-                    // one XY, and a Y column so the first ball lands before the next is dropped.
-                    // -Z is forward in SceneView/Filament local space — these offsets are then
-                    // composed through `spawnAnchor` (the camera pose) to get the world-space
-                    // start position, so "forward" tracks the camera regardless of where the
-                    // user has moved before tapping Drop.
+                    // Spawn offsets, kept separate by axis on purpose (#1874):
+                    //  • zOffset  — distance straight AHEAD of the camera (forward), with a small
+                    //    per-row stagger so consecutive drops don't pile up at the same depth.
+                    //    Composed THROUGH the camera pose (-Z is forward) so it tracks the camera's
+                    //    facing direction.
+                    //  • xOffset  — a small horizontal scatter so the balls in a "Drop 5" don't
+                    //    stack on one X. Applied in WORLD space.
+                    //  • startY   — the drop HEIGHT above the spawn point. Applied in WORLD +Y so
+                    //    the balls always start above and fall straight DOWN under gravity
+                    //    (PhysicsNode integrates gravity along world -Y).
                     val xOffset = (i % 5 - 2) * 0.05f
                     val zOffset = -0.5f - ((i / 5) * 0.05f)
                     val startY = 0.5f + (i / 5) * 0.05f
 
                     val startPosition = remember(i, spawnAnchor) {
                         if (spawnAnchor != null) {
-                            // Pose.transformPoint composes the camera rotation + translation,
-                            // so a -Z offset in local pose space becomes "in front of the
-                            // camera in world space". Same pattern as ARPoseDemo.
-                            val world = spawnAnchor.transformPoint(
-                                floatArrayOf(xOffset, startY, zOffset),
+                            // Decouple "in front of the camera" (camera frame) from "above, so it
+                            // falls into view" (world frame). The previous fix (PR #1880) bundled
+                            // xOffset/startY/zOffset into a SINGLE transformPoint, which rotated
+                            // the drop HEIGHT by the camera's pitch/roll: when the user aimed at
+                            // the floor (as the header hint instructs) the balls landed off in a
+                            // screen corner at the wrong height instead of in view (#1874, #2466).
+                            //
+                            // Step 1 — project ONLY the forward offset through the camera pose to
+                            // get a point straight ahead of the camera in world space. A pure -Z
+                            // offset stays "forward" regardless of how the user is holding the
+                            // phone. Same primitive as ARPoseDemo (transformPoint of (0,0,-d)).
+                            val ahead = spawnAnchor.transformPoint(
+                                floatArrayOf(0f, 0f, zOffset),
                             )
-                            Position(world[0], world[1], world[2])
+                            // Step 2 — add the horizontal scatter and the drop height in WORLD
+                            // space (world +Y is up), so balls always start above the in-front
+                            // point and fall straight down into the camera view.
+                            Position(ahead[0] + xOffset, ahead[1] + startY, ahead[2])
                         } else {
                             // First-frame / pre-tracking fallback: spawn at scene origin so
                             // something visible appears, matching the previous demo behaviour.
