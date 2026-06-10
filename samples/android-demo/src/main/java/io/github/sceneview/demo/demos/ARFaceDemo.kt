@@ -27,6 +27,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.frontCameraConfig
+import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
@@ -175,6 +176,11 @@ fun ARFaceDemo(onBack: () -> Unit) {
                     )
                 }
             }
+
+            // Cover the still-black AR viewport until the front camera delivers its first
+            // frame (reusing `cameraActive`); lifts if the camera proves unavailable so the
+            // error banner below is never hidden (#2484).
+            ARCameraInitScrim(initializing = !cameraActive && !cameraUnavailable)
 
             // Status overlay — tracks face count and surfaces camera errors.
             AnimatedVisibility(

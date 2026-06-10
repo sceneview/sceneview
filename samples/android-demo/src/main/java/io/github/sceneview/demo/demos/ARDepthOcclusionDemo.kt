@@ -41,6 +41,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.createARCameraStream
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
@@ -117,6 +118,13 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
     var placedAnchor by remember { mutableStateOf<Anchor?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var isTracking by remember { mutableStateOf(false) }
+
+    // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
+    // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
+    // Hoisted ABOVE the `key(depthOn)` block on purpose: it must survive the depth-toggle
+    // remount so the entry scrim never re-fires on toggle — that 2-3 frame rebuild flash
+    // already has its own dedicated affordance, the #1777 "Switching depth mode…" spinner.
+    var cameraReady by remember { mutableStateOf(false) }
 
     // Latest Frame for hit testing in the gesture callback.
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
@@ -256,6 +264,7 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                         }
                     ),
                     onSessionUpdated = { _, frame: Frame ->
+                        cameraReady = true
                         latestFrame = frame
                         isTracking = frame.camera.trackingState == TrackingState.TRACKING
                         // The rebuilt scene has produced its first frame — the depth
@@ -311,6 +320,11 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                     }
                 }
             }
+
+            // Cover the still-black AR viewport until the first camera frame (#2484).
+            // Outside `key(depthOn)` so the depth toggle never resurrects the entry
+            // scrim — the toggle's own #1777 spinner below covers that flash.
+            ARCameraInitScrim(initializing = !cameraReady)
 
             // Top-center status pill — green tint when depth is ON, red tint when OFF.
             // Big enough for a screenshot to read at a glance.

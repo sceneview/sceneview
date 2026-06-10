@@ -34,6 +34,7 @@ import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.CloudAnchorNode as CloudAnchorNodeImpl
+import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
@@ -87,6 +88,9 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     var cloudAnchorId by remember { mutableStateOf<String?>(null) }
     var resolveId by remember { mutableStateOf("") }
     var isTracking by remember { mutableStateOf(false) }
+    // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
+    // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
+    var cameraReady by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var hostedId by remember { mutableStateOf<String?>(null) }
     var statusMessage by remember {
@@ -213,6 +217,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                     arSession = session
                 },
                 onSessionUpdated = { _, frame: Frame ->
+                    cameraReady = true
                     latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                 },
@@ -276,6 +281,9 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                     }
                 }
             }
+
+            // Cover the still-black AR viewport until the first camera frame (#2484).
+            ARCameraInitScrim(initializing = !cameraReady)
 
             // Status overlay
             // ForcedTrackingFailure.override shadows the real ARCore-reported reason

@@ -26,6 +26,7 @@ import com.google.ar.core.Config
 import com.google.ar.core.Pose
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.physics.DepthCollider
+import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.SceneAction
@@ -88,6 +89,10 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
 
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
+
+    // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
+    // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
+    var cameraReady by remember { mutableStateOf(false) }
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_depth_collider_title),
@@ -157,6 +162,7 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                 // camera pose so a future Drop tap spawns balls in front of the user (#1874),
                 // and (b) feed the per-frame collider region cull.
                 onSessionUpdated = { _, frame ->
+                    cameraReady = true
                     latestCameraPoseRef.value = frame.camera.pose
                     val collider = depthColliderRef.value ?: return@ARSceneView
                     publishCollisionRegion(nodeRefs, collider)
@@ -280,6 +286,9 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                 }
             }
         }
+
+        // Cover the still-black AR viewport until the first camera frame (#2484).
+        ARCameraInitScrim(initializing = !cameraReady)
 
         // Primary actions on-screen (#1964) — Drop / Drop 5 / Reset are the
         // demo's core interaction, so they live bottom-start, clear of the

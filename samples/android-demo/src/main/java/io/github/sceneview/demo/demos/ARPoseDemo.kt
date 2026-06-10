@@ -25,6 +25,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraNode
+import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberArPlaybackDataset
@@ -70,6 +71,9 @@ fun ARPoseDemo(onBack: () -> Unit) {
     var y by remember { mutableFloatStateOf(0f) }
     var z by remember { mutableFloatStateOf(0f) }
     var isTracking by remember { mutableStateOf(false) }
+    // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
+    // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
+    var cameraReady by remember { mutableStateOf(false) }
     // Base pose: 1 m in front of the camera at the moment the demo gained tracking.
     // Captured once per session to keep the lantern anchored in world space (so sliders
     // nudge it relative to that anchor, not to the moving camera).
@@ -155,6 +159,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 },
                 onSessionUpdated = { _, frame: Frame ->
+                    cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     if (isTracking && basePose == null) {
                         // Compute a pose 1 m in front of the camera, without tilt —
@@ -236,6 +241,9 @@ fun ARPoseDemo(onBack: () -> Unit) {
                     )
                 }
             }
+
+            // Cover the still-black AR viewport until the first camera frame (#2484).
+            ARCameraInitScrim(initializing = !cameraReady)
         }
     }
 }

@@ -47,6 +47,7 @@ import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.node.FogNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -103,6 +104,10 @@ fun ARFogDemo(onBack: () -> Unit) {
 
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var isTracking by remember { mutableStateOf(false) }
+
+    // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
+    // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
+    var cameraReady by remember { mutableStateOf(false) }
 
     // Replay a recorded ARCore dataset when the device-QA harness deep-links
     // the demo with `--es ar_playback_file <path>`. `null` for every normal
@@ -275,6 +280,7 @@ fun ARFogDemo(onBack: () -> Unit) {
                     },
                     cameraStream = cameraStream,
                     onSessionUpdated = { _, frame: Frame ->
+                        cameraReady = true
                         isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     },
                     onTrackingFailureChanged = { reason ->
@@ -304,6 +310,9 @@ fun ARFogDemo(onBack: () -> Unit) {
                     )
                 }
             }
+
+            // Cover the still-black AR viewport until the first camera frame (#2484).
+            ARCameraInitScrim(initializing = !cameraReady)
 
             Surface(
                 modifier = Modifier

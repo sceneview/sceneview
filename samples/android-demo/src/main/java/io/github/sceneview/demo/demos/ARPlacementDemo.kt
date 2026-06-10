@@ -50,6 +50,7 @@ import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.demos.internal.ArPlacement
 import io.github.sceneview.demo.demos.internal.DemoMath
@@ -204,6 +205,10 @@ fun ARPlacementDemo(onBack: () -> Unit) {
 
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var isTracking by remember { mutableStateOf(false) }
+
+    // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
+    // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
+    var cameraReady by remember { mutableStateOf(false) }
 
     // Keep a reference to the latest Frame for hit testing in the gesture callback.
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
@@ -414,6 +419,7 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 // lightEstimationMode are already the ARSceneView defaults, so the demo can drop
                 // its sessionConfiguration callback entirely.
                 onSessionUpdated = { _, frame: Frame ->
+                    cameraReady = true
                     latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                 },
@@ -614,6 +620,9 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                     }
                 }
             }
+
+            // Cover the still-black AR viewport until the first camera frame (#2484).
+            ARCameraInitScrim(initializing = !cameraReady)
 
             // Top-center pill: live count of placed models. Mirrors the GestureEditingDemo
             // "Editing: …" Surface pattern so the two AR/3D demos share an overlay style.
