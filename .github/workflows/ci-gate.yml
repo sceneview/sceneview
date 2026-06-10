@@ -236,9 +236,11 @@ jobs:
 
           while :; do
             # All check runs for the head commit (handles >100 via paging).
+            # `id` is carried so we can pick the LATEST run per name below
+            # (check-run ids increase monotonically with creation).
             runs=$(gh api --paginate \
               "repos/$REPO/commits/$HEAD_SHA/check-runs" \
-              --jq '.check_runs[] | {name: .name, status: .status, conclusion: .conclusion}')
+              --jq '.check_runs[] | {name: .name, status: .status, conclusion: .conclusion, id: .id}')
 
             # Drop this gate's own check run from consideration, plus every
             # `Device QA — *` run: Device QA is deliberately NOT a per-PR gate
@@ -246,6 +248,34 @@ jobs:
             # Device QA run on a branch SHA must never count here (#1588).
             others=$(echo "$runs" | jq -c --arg self "$SELF_CHECK" \
               'select((.name != $self) and (.name | startswith("Device QA") | not))')
+
+            # LATEST-RUN-PER-NAME COLLAPSE (#2492)
+            # ------------------------------------
+            # `ci.yml`'s concurrency group is keyed on the PR HEAD SHA
+            # (`ci-<head.sha>`, ci.yml#L84). Merging a sibling PR to `main`
+            # makes GitHub recompute THIS PR's merge ref and re-fire its
+            # `pull_request` event — at the SAME head SHA, so `ci.yml`'s
+            # `cancel-in-progress` CANCELS the in-flight run and immediately
+            # starts a FRESH one for that same SHA. The check-runs API then
+            # returns BOTH the superseded `cancelled` run AND the fresh run
+            # under the same name (e.g. two `Detect changed paths`). The
+            # superseded `cancelled` conclusion is pure concurrency noise —
+            # exactly like `stale` — yet without this collapse it lands in
+            # the `failed` set and red-lights `CI Gate`, skipping every
+            # downstream job and blocking `--auto` until a manual re-run
+            # (#2492; this ping-ponged PR #2467 three times in one session).
+            #
+            # Fix: keep only the LATEST run (max id) for each name before the
+            # pending/fail decisions, so a name's verdict is its newest run.
+            # A genuinely-cancelled check with NO newer run stays the latest
+            # and STILL fails the gate (the #1984 advisory exclusion and the
+            # `blocking CANCELLED still fails` contract in
+            # test-ci-gate-aggregation.sh are untouched — the standalone
+            # aggregate script still receives one `<conclusion>\t<name>` line
+            # per name). Concurrency is unchanged, so the CI-minutes saving of
+            # `cancel-in-progress` is preserved.
+            others=$(echo "$others" \
+              | jq -s -c 'group_by(.name) | map(max_by(.id))[]')
 
             if [ -z "$others" ]; then
               # DOCS-ONLY BYPASS (#2117): if the short grace period has
