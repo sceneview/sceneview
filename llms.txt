@@ -1962,7 +1962,7 @@ DisposableEffect(cloudAnchorId) { onDispose { resolveFuture.cancel() } }
 
 **Privacy disclosure (required).** ARCore Cloud Anchors upload feature points from the user's surroundings to Google. Surface a clear in-app disclosure and link to the ARCore data policy (https://developers.google.com/ar/data-privacy) before hosting.
 
-**Cross-platform:** Android-only. iOS Cloud Anchors require Google's `arcore-ios-sdk` Swift Package (`GARSession.hostCloudAnchor`). The Future + cancel-on-dispose pattern (#1768) needs porting to `SceneViewSwift.CloudAnchorNode` — tracked in #1859. See [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web has no Cloud Anchor runtime.
+**Cross-platform:** iOS ships the **Future + cancel-on-dispose lifecycle** as `SceneViewSwift.CloudAnchorNode.host(ttlDays:completion:operation:)` / `.resolve(cloudAnchorId:completion:operation:)`, each returning a cancellable `CloudAnchorFuture` — cancel it from SwiftUI `.onDisappear` (the analogue of Android's `DisposableEffect { onDispose { future.cancel() } }`), #1859. To keep the core library dependency-free, the actual `GARSession.hostCloudAnchor` round-trip (Google's `arcore-ios-sdk` Swift Package) is supplied by the app through the `operation` closure; `CloudAnchorFuture` owns only the portable, single-fire cancellation gate (never fires after `cancel()`/dealloc). See [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web has no Cloud Anchor runtime.
 
 ### CloudAnchorRegistry — local persistence helper for hosted Cloud Anchor IDs
 
