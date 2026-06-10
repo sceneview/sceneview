@@ -2,11 +2,53 @@ package io.github.sceneview.geometries
 
 import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.cross
+import dev.romainguy.kotlin.math.dot
 import dev.romainguy.kotlin.math.length
+import dev.romainguy.kotlin.math.normalize
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+
+/**
+ * Asserts every triangle of [geometry] is wound counter-clockwise / outward-facing: its
+ * geometric face normal (right-hand rule over the index order) points the same way as the
+ * mean of its three vertices' outward shading normals (`dot > 0`). A clockwise/inward
+ * winding flips the face normal, making `dot < 0`, which renders the surface inside-out
+ * under a single-sided material (Filament / Filament.js back-face-cull clockwise triangles).
+ */
+private fun assertOutwardWinding(geometry: GeometryData, label: String) {
+    val vertices = geometry.vertices
+    val indices = geometry.indices
+    var inverted = 0
+    var checked = 0
+    var i = 0
+    while (i + 2 < indices.size) {
+        val ia = indices[i]
+        val ib = indices[i + 1]
+        val ic = indices[i + 2]
+        val pa = vertices[ia].position
+        val pb = vertices[ib].position
+        val pc = vertices[ic].position
+        val faceNormal = cross(pb - pa, pc - pa)
+        // Skip degenerate triangles (zero-area) — their normal is undefined.
+        if (length(faceNormal) > 1e-6f) {
+            val na = vertices[ia].normal!!
+            val nb = vertices[ib].normal!!
+            val nc = vertices[ic].normal!!
+            val meanNormal = normalize(na + nb + nc)
+            if (dot(normalize(faceNormal), meanNormal) <= 0f) inverted++
+            checked++
+        }
+        i += 3
+    }
+    assertTrue(checked > 0, "$label: no non-degenerate triangles checked")
+    assertEquals(
+        0, inverted,
+        "$label: $inverted/$checked triangles are wound inward (inside-out)"
+    )
+}
 
 class ExtendedGeometryTest {
 
@@ -57,6 +99,22 @@ class ExtendedGeometryTest {
         for (idx in torus.indices) {
             assertTrue(idx in 0 until torus.vertices.size, "Index $idx out of bounds")
         }
+    }
+
+    @Test
+    fun torusWindingIsOutwardDefault() {
+        // Regression for #2475: the core Torus generator must wind triangles
+        // counter-clockwise (outward) so the donut is not rendered inside-out.
+        assertOutwardWinding(generateTorus(), "Torus(default)")
+    }
+
+    @Test
+    fun torusWindingIsOutwardNonDefault() {
+        // A non-default tessellation must be outward-wound too.
+        assertOutwardWinding(
+            generateTorus(majorRadius = 1.5f, minorRadius = 0.5f, majorSegments = 16, minorSegments = 10),
+            "Torus(non-default)"
+        )
     }
 
     // ----- Capsule Geometry -----
