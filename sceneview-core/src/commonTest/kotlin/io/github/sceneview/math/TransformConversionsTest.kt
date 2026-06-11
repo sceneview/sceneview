@@ -64,6 +64,45 @@ class TransformConversionsTest {
     }
 
     @Test
+    fun localToWorldScaleIgnoresParentTranslation() {
+        // Parent: world translation (10, 0, 0), uniform world scale 2.
+        // worldTransform = Translate(10,0,0) · Scale(2,2,2).
+        // A scale conversion must NOT pick up the translation — #2489.
+        // Pre-fix (Mat4 * Float3 point multiply) this returned (12, 2, 2).
+        val worldTransform = translation(Float3(10f, 0f, 0f)) * scale(Float3(2f, 2f, 2f))
+
+        val worldScale = localToWorldScale(Scale(1f, 1f, 1f), worldTransform)
+        assertFloat3Near(Scale(2f, 2f, 2f), worldScale, "localToWorldScale must not leak translation")
+    }
+
+    @Test
+    fun worldToLocalScaleIgnoresParentTranslation() {
+        // Inverse direction of #2489. Pre-fix this returned (-4, 1, 1).
+        val worldTransform = translation(Float3(10f, 0f, 0f)) * scale(Float3(2f, 2f, 2f))
+        val worldToLocal = inverse(worldTransform)
+
+        val localScale = worldToLocalScale(Scale(2f, 2f, 2f), worldToLocal)
+        assertFloat3Near(Scale(1f, 1f, 1f), localScale, "worldToLocalScale must not leak translation")
+    }
+
+    @Test
+    fun scaleRoundTripUnderTranslatingTransform() {
+        // Parent with translation on all three axes + non-unit scale: pre-fix the
+        // point-multiply corrupts every component; the round-trip must recover the input.
+        val worldTransform = translation(Float3(10f, 20f, 30f)) * scale(Float3(2f, 3f, 4f))
+        val worldToLocal = inverse(worldTransform)
+
+        // localToWorldScale(unit) must equal the parent's world scale (2, 3, 4).
+        val parentWorldScale = localToWorldScale(Scale(1f, 1f, 1f), worldTransform)
+        assertFloat3Near(Scale(2f, 3f, 4f), parentWorldScale, "Parent world scale")
+
+        val original = Scale(0.5f, 1.5f, 2f)
+        val world = localToWorldScale(original, worldTransform)
+        val roundTrip = worldToLocalScale(world, worldToLocal)
+        assertFloat3Near(original, roundTrip, "Scale round-trip should preserve scale")
+    }
+
+    @Test
     fun localToWorldPositionWithTranslation() {
         val worldTransform = translation(Float3(10f, 20f, 30f))
         val localPos = Position(1f, 2f, 3f)

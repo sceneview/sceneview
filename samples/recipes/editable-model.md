@@ -9,13 +9,17 @@
 fun EditableModelViewer() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
     val model = rememberModelInstance(modelLoader, "models/chair.glb")
 
     SceneView(
         modifier = Modifier.fillMaxSize(),
         engine = engine,
         modelLoader = modelLoader,
-        environment = rememberEnvironment(engine, "environments/studio_2k.hdr"),
+        environment = rememberEnvironment(environmentLoader) {
+            environmentLoader.createHDREnvironment("environments/studio_2k.hdr")
+                ?: createEnvironment(environmentLoader)
+        },
         cameraManipulator = rememberCameraManipulator()
     ) {
         model?.let {

@@ -18,7 +18,7 @@
  * Powered by Filament.js v1.70.2 (Google's PBR renderer, WASM).
  * https://sceneview.github.io
  *
- * @version 3.6.2
+ * @version 4.18.0
  * @license MIT
  */
 (function(global) {
@@ -398,6 +398,19 @@
       this._orbitHeight = 0.8;
       this._orbitTarget = [0, 0, 0];
       this._running = true;
+      // Visibility gating (#2508): the render loop only draws when the canvas is
+      // both on-screen (IntersectionObserver) and in a visible tab. Off-screen or
+      // tab-hidden, the rAF loop self-suspends — no GPU/CPU/battery drain — and
+      // resumes cleanly when visibility returns. The orbit animates by fixed
+      // per-frame increments (not delta-time), so suspending simply freezes the
+      // angle; there is no time-step jump on resume.
+      this._onScreen = true;       // updated by IntersectionObserver
+      this._tabVisible = (typeof document === 'undefined') ||
+        document.visibilityState !== 'hidden';
+      this._rafId = null;          // pending requestAnimationFrame handle, if any
+      this._listeners = [];        // {target, type, handler, options} for dispose() cleanup
+      this._intersectionObserver = null;
+      this._fallbackEl = null;     // load-failure placeholder overlay, if shown (#2509)
       this._isDragging = false;
       this._lastMouse = { x: 0, y: 0 };
       // Inertia for smooth orbit deceleration
@@ -437,6 +450,7 @@
 
       this._setupControls();
       this._setupResizeObserver();
+      this._setupVisibilityGating();
       this._startRenderLoop();
     }
 
@@ -448,20 +462,108 @@
     loadModel(url) {
       var self = this;
       return new Promise(function(resolve, reject) {
+        // On any failure (network/404, fetch error, GLB parse/decode failure),
+        // paint a graceful in-canvas fallback before rejecting (#2509). The
+        // promise still rejects so existing callers that .catch() (index.html,
+        // playground.html, web.html) keep their current behaviour — but bare
+        // callers (the two showcase pages) no longer get a dead blank canvas.
+        function fail(e) {
+          self._showLoadFallback(url);
+          reject(e);
+        }
         fetch(url)
-          .then(function(resp) { return resp.arrayBuffer(); })
+          .then(function(resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status + ' loading ' + url);
+            return resp.arrayBuffer();
+          })
           .then(function(buffer) {
             Filament.assets = Filament.assets || {};
             Filament.assets[url] = new Uint8Array(buffer);
             try {
               self._showModel(url);
+              self._hideLoadFallback();  // clear any prior-failure placeholder
               resolve(self);
             } catch (e) {
-              reject(e);
+              fail(e);
             }
           })
-          .catch(reject);
+          .catch(fail);
       });
+    }
+
+    /**
+     * Paint a subtle "3D preview unavailable" placeholder over the canvas when a
+     * model fails to load (#2509). Uses the site's DESIGN.md CSS custom properties
+     * so it adapts to light/dark automatically — no hardcoded colors. Idempotent:
+     * a second failure reuses the existing overlay. Removed by dispose().
+     */
+    _showLoadFallback(url) {
+      console.warn('SceneView: model failed to load, showing fallback (' + url + ')');
+      if (typeof document === 'undefined') return;
+      var canvas = this._canvas;
+      var parent = canvas.parentNode;
+      if (!parent) return;
+
+      // Ensure the overlay can position itself over the canvas box.
+      var parentPos = (window.getComputedStyle ? getComputedStyle(parent).position : '');
+      if (parentPos === 'static') parent.style.position = 'relative';
+
+      var el = this._fallbackEl;
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'sceneview-fallback';
+        el.setAttribute('role', 'img');
+        el.setAttribute('aria-label', '3D preview unavailable');
+        // Dimmed surface + subtle border + secondary text, all from design tokens
+        // (styles.css :root / [data-theme="dark"]) so it themes automatically.
+        el.style.cssText = [
+          'position:absolute',
+          'box-sizing:border-box',
+          'display:flex',
+          'align-items:center',
+          'justify-content:center',
+          'text-align:center',
+          'pointer-events:none',
+          'background:var(--color-surface-container, #1a1a2e)',
+          'color:var(--color-on-surface-variant, #9fb2dd)',
+          'border:1px solid var(--color-outline-variant, #2a3346)',
+          'font-family:var(--font-body, system-ui, -apple-system, sans-serif)',
+          'font-size:0.85rem',
+          'line-height:1.4',
+          'padding:8px 12px'
+        ].join(';');
+        var label = document.createElement('span');
+        label.textContent = '3D preview unavailable';
+        label.style.opacity = '0.75';
+        el.appendChild(label);
+        // Insert immediately after the canvas so it stacks above it.
+        if (canvas.nextSibling) parent.insertBefore(el, canvas.nextSibling);
+        else parent.appendChild(el);
+        this._fallbackEl = el;
+      }
+      // Align the overlay to the canvas box (handles parents with sibling content,
+      // e.g. claude-3d's label/badge, without covering them).
+      el.style.left = canvas.offsetLeft + 'px';
+      el.style.top = canvas.offsetTop + 'px';
+      el.style.width = (canvas.offsetWidth || canvas.clientWidth) + 'px';
+      el.style.height = (canvas.offsetHeight || canvas.clientHeight) + 'px';
+      // Match the canvas corner radius if the container rounds it.
+      try {
+        var br = getComputedStyle(canvas).borderRadius;
+        if (br && br !== '0px') el.style.borderRadius = br;
+        else {
+          var pbr = getComputedStyle(parent).borderRadius;
+          if (pbr && pbr !== '0px') el.style.borderRadius = pbr;
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    /** Remove the load-failure placeholder, if one is showing (#2509). */
+    _hideLoadFallback() {
+      if (this._fallbackEl && this._fallbackEl.parentNode) {
+        this._fallbackEl.parentNode.removeChild(this._fallbackEl);
+      }
+      this._fallbackEl = null;
     }
 
     _showModel(url) {
@@ -1420,6 +1522,12 @@
     dispose() {
       this._running = false;
 
+      // Stop any pending animation frame so the loop cannot draw after teardown.
+      if (this._rafId !== null) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+
       // Clean up video elements
       var self = this;
       this._videoElements.forEach(function(vInfo) {
@@ -1431,7 +1539,24 @@
       this._mediaNodes.clear();
       this._billboards.clear();
 
+      // Remove every tracked event listener (#2508 / #2507 LOW) — the 11 canvas
+      // control listeners plus the document visibilitychange listener all capture
+      // `self` → the Filament engine, so leaving them attached would keep the
+      // disposed viewer (and its WebGL context) alive.
+      this._listeners.forEach(function(l) {
+        try { l.target.removeEventListener(l.type, l.handler, l.options); } catch (e) { /* ignore */ }
+      });
+      this._listeners = [];
+
+      if (this._intersectionObserver) {
+        this._intersectionObserver.disconnect();
+        this._intersectionObserver = null;
+      }
       if (this._resizeObserver) this._resizeObserver.disconnect();
+
+      // Remove any load-failure fallback overlay we painted into the DOM.
+      this._hideLoadFallback();
+
       _activeCanvases.delete(this._canvas);
       try { Filament.Engine.destroy(this._engine); } catch (e) { /* already destroyed */ }
     }
@@ -1440,11 +1565,21 @@
     // Controls (existing)
     // ---------------------------------------------------------------
 
+    /**
+     * Register an event listener and remember it so dispose() can remove it
+     * (#2508 / #2507 LOW). Without this, the anonymous control listeners capture
+     * `self` → the Filament engine and keep a disposed viewer alive.
+     */
+    _addListener(target, type, handler, options) {
+      target.addEventListener(type, handler, options);
+      this._listeners.push({ target: target, type: type, handler: handler, options: options });
+    }
+
     _setupControls() {
       var canvas = this._canvas;
       var self = this;
 
-      canvas.addEventListener('mousedown', function(e) {
+      this._addListener(canvas, 'mousedown', function(e) {
         self._isDragging = true;
         self._lastMouse = { x: e.clientX, y: e.clientY };
         self._autoRotate = false;
@@ -1452,7 +1587,7 @@
         self._velocityHeight = 0;
         if (self._autoRotateTimer) { clearTimeout(self._autoRotateTimer); self._autoRotateTimer = null; }
       });
-      canvas.addEventListener('mousemove', function(e) {
+      this._addListener(canvas, 'mousemove', function(e) {
         if (!self._isDragging) return;
         var dx = (e.clientX - self._lastMouse.x) * 0.005;
         var dy = (e.clientY - self._lastMouse.y) * 0.01;
@@ -1462,27 +1597,27 @@
         self._orbitHeight += dy;
         self._lastMouse = { x: e.clientX, y: e.clientY };
       });
-      canvas.addEventListener('mouseup', function() {
+      this._addListener(canvas, 'mouseup', function() {
         self._isDragging = false;
         // Resume auto-rotate after 3s idle (like model-viewer)
         if (self._wantsAutoRotate) {
           self._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
         }
       });
-      canvas.addEventListener('mouseleave', function() {
+      this._addListener(canvas, 'mouseleave', function() {
         self._isDragging = false;
         if (self._wantsAutoRotate) {
           self._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
         }
       });
 
-      canvas.addEventListener('wheel', function(e) {
+      this._addListener(canvas, 'wheel', function(e) {
         e.preventDefault();
         self._orbitRadius *= (1 + e.deltaY * 0.001);
         self._orbitRadius = Math.max(0.5, Math.min(50, self._orbitRadius));
       }, { passive: false });
 
-      canvas.addEventListener('touchstart', function(e) {
+      this._addListener(canvas, 'touchstart', function(e) {
         if (e.touches.length === 1) {
           self._isDragging = true;
           self._lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -1492,7 +1627,7 @@
           if (self._autoRotateTimer) { clearTimeout(self._autoRotateTimer); self._autoRotateTimer = null; }
         }
       });
-      canvas.addEventListener('touchmove', function(e) {
+      this._addListener(canvas, 'touchmove', function(e) {
         if (!self._isDragging || e.touches.length !== 1) return;
         e.preventDefault();
         var dx = (e.touches[0].clientX - self._lastMouse.x) * 0.005;
@@ -1503,12 +1638,56 @@
         self._orbitHeight += dy;
         self._lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       }, { passive: false });
-      canvas.addEventListener('touchend', function() {
+      this._addListener(canvas, 'touchend', function() {
         self._isDragging = false;
         if (self._wantsAutoRotate) {
           self._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
         }
       });
+    }
+
+    /**
+     * Pause the render loop when the canvas is scrolled off-screen and resume it
+     * when it returns (#2508). An IntersectionObserver per canvas gates the loop
+     * so off-screen viewers stop doing GPU/CPU work entirely; a shared
+     * `visibilitychange` listener does the same when the whole tab is hidden.
+     * The API is unchanged — pages get this for free, no call-site changes.
+     */
+    _setupVisibilityGating() {
+      var self = this;
+
+      if (typeof IntersectionObserver !== 'undefined') {
+        this._intersectionObserver = new IntersectionObserver(function(entries) {
+          for (var i = 0; i < entries.length; i++) {
+            self._onScreen = entries[i].isIntersecting;
+          }
+          self._maybeResume();
+        }, { rootMargin: '0px' });
+        this._intersectionObserver.observe(this._canvas);
+      }
+
+      // Tab-hidden gate — shared across all viewers via document. Tracked so
+      // dispose() removes it (the captured `self` would otherwise leak the engine).
+      var onVisibility = function() {
+        self._tabVisible = document.visibilityState !== 'hidden';
+        self._maybeResume();
+      };
+      this._addListener(document, 'visibilitychange', onVisibility);
+    }
+
+    /** True only when the loop is allowed to draw this frame. */
+    _shouldRender() {
+      return this._running && this._onScreen && this._tabVisible;
+    }
+
+    /**
+     * Re-arm the render loop if it suspended while it should now be running.
+     * Idempotent — never schedules a second concurrent rAF.
+     */
+    _maybeResume() {
+      if (this._rafId === null && this._shouldRender()) {
+        this._startRenderLoop();
+      }
     }
 
     _setupResizeObserver() {
@@ -1529,8 +1708,16 @@
 
     _startRenderLoop() {
       var self = this;
+      // Guard against a double-start (e.g. _maybeResume racing the initial call).
+      if (self._rafId !== null) return;
       function render() {
-        if (!self._running) return;
+        // Suspend the loop when disposed, off-screen, or the tab is hidden
+        // (#2508). Clearing _rafId and returning (without re-arming) stops all
+        // GPU/CPU work; _maybeResume() restarts it when visibility returns.
+        if (!self._shouldRender()) {
+          self._rafId = null;
+          return;
+        }
 
         // Auto-rotate: 30°/sec ÷ 60fps (matches model-viewer)
         if (self._autoRotate) self._angle += 0.00873;
@@ -1594,9 +1781,9 @@
           console.error('SceneView render error:', e.message);
           self._running = false;
         }
-        requestAnimationFrame(render);
+        self._rafId = requestAnimationFrame(render);
       }
-      render();
+      self._rafId = requestAnimationFrame(render);
     }
 
     // ---------------------------------------------------------------
@@ -2169,7 +2356,7 @@
   }
 
   global.SceneView = {
-    version: '3.6.0',
+    version: '4.18.0',
     create: create,
     modelViewer: modelViewer
   };

@@ -93,7 +93,10 @@ SceneView(
         position = Position(0f, 0f, 4f)
     },
     mainLightNode = rememberMainLightNode(engine),
-    environment = rememberEnvironment(environmentLoader, "environments/studio_small.hdr")
+    environment = rememberEnvironment(environmentLoader) {
+        environmentLoader.createHDREnvironment("environments/studio_small.hdr")
+            ?: createEnvironment(environmentLoader)
+    }
 ) {
     // ─ nodes go here ─
     rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
