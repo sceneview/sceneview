@@ -136,7 +136,7 @@ var ModelInstance.materialInstances: Map<EntityInstance, List<MaterialInstance>>
  */
 fun ModelInstance.setMorphWeights(
     weights: FloatArray,
-    @IntRange(from = 0) offset: Int = weights.size
+    @IntRange(from = 0) offset: Int = 0
 ) = renderableInstances.forEach { renderableManager.setMorphWeights(it, weights, offset) }
 
 /**

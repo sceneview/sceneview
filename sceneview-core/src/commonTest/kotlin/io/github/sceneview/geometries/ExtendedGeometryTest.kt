@@ -6,9 +6,49 @@ import dev.romainguy.kotlin.math.cross
 import dev.romainguy.kotlin.math.dot
 import dev.romainguy.kotlin.math.length
 import dev.romainguy.kotlin.math.normalize
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+
+/**
+ * Asserts every triangle of [geometry] is wound counter-clockwise / outward-facing: its
+ * geometric face normal (right-hand rule over the index order) points the same way as the
+ * mean of its three vertices' outward shading normals (`dot > 0`). A clockwise/inward
+ * winding flips the face normal, making `dot < 0`, which renders the surface inside-out
+ * under a single-sided material (Filament / Filament.js back-face-cull clockwise triangles).
+ */
+private fun assertOutwardWinding(geometry: GeometryData, label: String) {
+    val vertices = geometry.vertices
+    val indices = geometry.indices
+    var inverted = 0
+    var checked = 0
+    var i = 0
+    while (i + 2 < indices.size) {
+        val ia = indices[i]
+        val ib = indices[i + 1]
+        val ic = indices[i + 2]
+        val pa = vertices[ia].position
+        val pb = vertices[ib].position
+        val pc = vertices[ic].position
+        val faceNormal = cross(pb - pa, pc - pa)
+        // Skip degenerate triangles (zero-area) — their normal is undefined.
+        if (length(faceNormal) > 1e-6f) {
+            val na = vertices[ia].normal!!
+            val nb = vertices[ib].normal!!
+            val nc = vertices[ic].normal!!
+            val meanNormal = normalize(na + nb + nc)
+            if (dot(normalize(faceNormal), meanNormal) <= 0f) inverted++
+            checked++
+        }
+        i += 3
+    }
+    assertTrue(checked > 0, "$label: no non-degenerate triangles checked")
+    assertEquals(
+        0, inverted,
+        "$label: $inverted/$checked triangles are wound inward (inside-out)"
+    )
+}
 
 class ExtendedGeometryTest {
 
@@ -59,6 +99,22 @@ class ExtendedGeometryTest {
         for (idx in torus.indices) {
             assertTrue(idx in 0 until torus.vertices.size, "Index $idx out of bounds")
         }
+    }
+
+    @Test
+    fun torusWindingIsOutwardDefault() {
+        // Regression for #2475: the core Torus generator must wind triangles
+        // counter-clockwise (outward) so the donut is not rendered inside-out.
+        assertOutwardWinding(generateTorus(), "Torus(default)")
+    }
+
+    @Test
+    fun torusWindingIsOutwardNonDefault() {
+        // A non-default tessellation must be outward-wound too.
+        assertOutwardWinding(
+            generateTorus(majorRadius = 1.5f, minorRadius = 0.5f, majorSegments = 16, minorSegments = 10),
+            "Torus(non-default)"
+        )
     }
 
     // ----- Capsule Geometry -----
@@ -132,97 +188,89 @@ class ExtendedGeometryTest {
 
         assertTrue(idx.size % 3 == 0, "Index count ${idx.size} is not a multiple of 3")
         assertTrue(idx.isNotEmpty(), "No indices generated")
-
-        // Every index in range.
         for (i in idx) {
             assertTrue(i in 0 until verts.size, "Index $i out of bounds (vertex count ${verts.size})")
         }
 
-        // Rows are runs of (slices + 1) vertices. A well-formed quad-grid triangle spans at
-        // most two adjacent rows; a cross-block bridge connects rows further apart.
-        val verticesPerRow = slices + 1
-        var triCount = 0
-        var coveredVertices = 0
         val touched = BooleanArray(verts.size)
-
         for (t in idx.indices step 3) {
-            val ia = idx[t]
-            val ib = idx[t + 1]
-            val ic = idx[t + 2]
-            touched[ia] = true; touched[ib] = true; touched[ic] = true
-
-            val rowA = ia / verticesPerRow
-            val rowB = ib / verticesPerRow
-            val rowC = ic / verticesPerRow
-            val rowSpan = maxOf(rowA, rowB, rowC) - minOf(rowA, rowB, rowC)
-            assertTrue(
-                rowSpan <= 1,
-                "Triangle [$ia,$ib,$ic] bridges non-adjacent rows " +
-                    "($rowA,$rowB,$rowC) — a cross-block stitch"
-            )
-
-            val pa = verts[ia].position
-            val pb = verts[ib].position
-            val pc = verts[ic].position
-
-            // Non-degenerate: the edge cross-product (twice the triangle area) must be
-            // meaningfully non-zero. Catches the coincident cylinder-bottom/equator band.
-            val faceCross = cross(pb - pa, pc - pa)
-            val twiceArea = length(faceCross)
-            assertTrue(
-                twiceArea > 1e-7f,
-                "Degenerate (zero-area) triangle [$ia,$ib,$ic], 2*area=$twiceArea"
-            )
-
-            // Outward winding: the winding-derived face normal must agree with the mean of
-            // the three vertex normals. Catches the inverted top funnel and the inverted
-            // bottom hemisphere. A pole vertex's collapsed ring is skipped (its mean normal
-            // is dominated by the axis and can be near-orthogonal to the thin face normal),
-            // but a genuinely inverted *band* of full-radius rings is not near a pole.
-            val faceNormal = normalize(faceCross)
-            val na = verts[ia].normal!!
-            val nb = verts[ib].normal!!
-            val nc = verts[ic].normal!!
-            val meanNormal = (na + nb + nc) / 3f
-            val meanLen = length(meanNormal)
-            if (meanLen > 0.2f) {
-                val alignment = dot(faceNormal, meanNormal / meanLen)
-                assertTrue(
-                    alignment > 0f,
-                    "Inverted/back-facing triangle [$ia,$ib,$ic]: " +
-                        "dot(faceNormal, vertexNormals)=$alignment <= 0"
-                )
-            }
-            triCount++
+            assertCapsuleTriangleValid(capsule, idx[t], idx[t + 1], idx[t + 2], verticesPerRow = slices + 1)
+            touched[idx[t]] = true
+            touched[idx[t + 1]] = true
+            touched[idx[t + 2]] = true
         }
+        assertTrue(touched.any { it }, "No vertices are referenced by triangles")
+        assertNoPositionalHole(capsule, touched, coverEps = maxOf(radius, height) * 1e-4f)
+    }
 
-        for (v in touched.indices) if (touched[v]) coveredVertices++
-        assertTrue(coveredVertices > 0, "No vertices are referenced by triangles")
-        assertTrue(triCount > 0, "No triangles generated")
+    /**
+     * One capsule triangle: spans at most two adjacent vertex rows (no cross-block stitch),
+     * has meaningful area (no degenerate band), and is wound outward — its winding-derived
+     * face normal agrees with the mean of its vertex normals. A pole sliver whose mean
+     * normal collapses (length <= 0.2) is skipped, but a genuinely inverted band of
+     * full-radius rings is never near a pole and still fails.
+     */
+    private fun assertCapsuleTriangleValid(
+        geometry: GeometryData,
+        ia: Int,
+        ib: Int,
+        ic: Int,
+        verticesPerRow: Int
+    ) {
+        val verts = geometry.vertices
+        val rowA = ia / verticesPerRow
+        val rowB = ib / verticesPerRow
+        val rowC = ic / verticesPerRow
+        val rowSpan = maxOf(rowA, rowB, rowC) - minOf(rowA, rowB, rowC)
+        assertTrue(
+            rowSpan <= 1,
+            "Triangle [$ia,$ib,$ic] bridges non-adjacent rows " +
+                "($rowA,$rowB,$rowC) — a cross-block stitch"
+        )
 
-        // Watertight-ish: there must be no *positional* hole. A vertex may legitimately go
-        // unreferenced — a pole apex's duplicate seam column, or the whole cylinder ring when
-        // height == 2*radius collapses it to zero length — but only if some *referenced*
-        // vertex sits at (essentially) the same position, so the surface still has no gap
-        // there. The gross "half the mesh was never stitched" bug leaves whole distinct rings
-        // uncovered and fails this. A small tolerance absorbs the ~1e-8 cos(PI/2) pole jitter.
-        val coverEps = maxOf(radius, height) * 1e-4f
+        val pa = verts[ia].position
+        val pb = verts[ib].position
+        val pc = verts[ic].position
+        val faceCross = cross(pb - pa, pc - pa)
+        val twiceArea = length(faceCross)
+        assertTrue(
+            twiceArea > 1e-7f,
+            "Degenerate (zero-area) triangle [$ia,$ib,$ic], 2*area=$twiceArea"
+        )
+
+        val faceNormal = normalize(faceCross)
+        val meanNormal = (verts[ia].normal!! + verts[ib].normal!! + verts[ic].normal!!) / 3f
+        val meanLen = length(meanNormal)
+        if (meanLen > 0.2f) {
+            val alignment = dot(faceNormal, meanNormal / meanLen)
+            assertTrue(
+                alignment > 0f,
+                "Inverted/back-facing triangle [$ia,$ib,$ic]: " +
+                    "dot(faceNormal, vertexNormals)=$alignment <= 0"
+            )
+        }
+    }
+
+    /**
+     * Watertight-ish: a vertex may legitimately go unreferenced (a pole apex's duplicate
+     * seam column, or the cylinder ring collapsed by height == 2*radius) but only when a
+     * referenced vertex sits at essentially the same position — otherwise the surface has
+     * a genuine positional hole (the "half the mesh was never stitched" bug). The small
+     * tolerance absorbs the ~1e-8 cos(PI/2) pole jitter.
+     */
+    private fun assertNoPositionalHole(geometry: GeometryData, touched: BooleanArray, coverEps: Float) {
+        val verts = geometry.vertices
         val coverEps2 = coverEps * coverEps + 1e-10f
         for (v in touched.indices) {
-            if (!touched[v]) {
-                val p = verts[v].position
-                var covered = false
-                for (u in touched.indices) {
-                    if (touched[u]) {
-                        val diff = verts[u].position - p
-                        if (dot(diff, diff) <= coverEps2) { covered = true; break }
-                    }
-                }
-                assertTrue(
-                    covered,
-                    "Unreferenced vertex $v at $p has no covering referenced vertex — a hole"
-                )
+            if (touched[v]) continue
+            val p = verts[v].position
+            val covered = touched.indices.any { u ->
+                touched[u] && length(verts[u].position - p).let { it * it } <= coverEps2
             }
+            assertTrue(
+                covered,
+                "Unreferenced vertex $v at $p has no covering referenced vertex — a hole"
+            )
         }
     }
 
@@ -313,6 +361,34 @@ class ExtendedGeometryTest {
         val lathe = generateLathe(profile, segments = segments)
         // (segments + 1) * profileSize
         assertEquals((segments + 1) * profile.size, lathe.vertices.size)
+    }
+
+    @Test
+    fun latheOpenProducesDifferentTopologyThanClosed() {
+        // #2490: closed=false must omit the final wrap strip, yielding an OPEN lathe
+        // with fewer indices than the closed surface. Pre-fix both were byte-for-byte
+        // identical (the `closed` flag was dead).
+        val profile = listOf(Float2(1f, 0f), Float2(0.5f, 1f), Float2(0.8f, 2f))
+        val segments = 4
+
+        val closed = generateLathe(profile, segments = segments, closed = true)
+        val open = generateLathe(profile, segments = segments, closed = false)
+
+        // Closed stitches `segments` strips, open stitches `segments - 1`.
+        // Each strip = (profileSize - 1) quads * 6 indices.
+        val indicesPerStrip = (profile.size - 1) * 6
+        assertEquals(segments * indicesPerStrip, closed.indices.size, "Closed index count")
+        assertEquals((segments - 1) * indicesPerStrip, open.indices.size, "Open index count")
+        assertTrue(
+            open.indices.size < closed.indices.size,
+            "Open lathe must have fewer indices than closed (${open.indices.size} vs ${closed.indices.size})"
+        )
+        // The vertex grid is unchanged (seam rings kept for UVs in both cases).
+        assertEquals(closed.vertices.size, open.vertices.size, "Vertex count unchanged by closed flag")
+        // All open indices must still be in bounds.
+        for (idx in open.indices) {
+            assertTrue(idx in 0 until open.vertices.size, "Open index $idx out of bounds")
+        }
     }
 
     // ----- Extrude -----

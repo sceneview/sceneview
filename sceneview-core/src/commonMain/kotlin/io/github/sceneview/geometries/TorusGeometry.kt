@@ -66,8 +66,11 @@ fun generateTorus(
                 val c = a + 1
                 val d = b + 1
 
-                add(a); add(b); add(d)
-                add(a); add(d); add(c)
+                // Counter-clockwise (outward-facing) winding so the front face matches the
+                // outward shading normal under the default single-sided material (Filament /
+                // Filament.js back-face-cull clockwise triangles). See issues #2469 / #2475.
+                add(a); add(d); add(b)
+                add(a); add(c); add(d)
             }
         }
     }

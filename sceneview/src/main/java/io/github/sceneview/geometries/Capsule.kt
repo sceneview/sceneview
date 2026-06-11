@@ -227,7 +227,10 @@ class Capsule private constructor(
                     val b = a + stride
                     val c = a + 1
                     val d = b + 1
-                    triangleIndices.addAll(listOf(a, b, d, a, d, c))
+                    // Counter-clockwise (outward-facing) winding so the front face matches the
+                    // outward shading normal under the default single-sided material (Filament
+                    // back-face-culls clockwise triangles). See issue #2470.
+                    triangleIndices.addAll(listOf(a, d, b, a, c, d))
                 }
             }
             add(triangleIndices)
