@@ -157,11 +157,18 @@ claude mcp add sceneview -- npx sceneview-mcp
 `SceneView` is a Composable that renders a Filament 3D viewport. Nodes are composables inside it.
 
 ```kotlin
+val engine = rememberEngine()
+val modelLoader = rememberModelLoader(engine)
+val environmentLoader = rememberEnvironmentLoader(engine)
+
 SceneView(
     modifier = Modifier.fillMaxSize(),
-    engine = rememberEngine(),
-    modelLoader = rememberModelLoader(engine),
-    environment = rememberEnvironment(engine, "envs/studio.hdr"),
+    engine = engine,
+    modelLoader = modelLoader,
+    environment = rememberEnvironment(environmentLoader) {
+        environmentLoader.createHDREnvironment("envs/studio.hdr")
+            ?: createEnvironment(environmentLoader)
+    },
     cameraManipulator = rememberCameraManipulator()
 ) {
     // Model — async loaded, appears when ready

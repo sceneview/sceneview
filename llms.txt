@@ -2588,6 +2588,8 @@ fun rememberModelInstance(
 ```
 Returns `null` while loading, recomposes when ready. **Always handle the null case.**
 
+**Lifecycle & ownership:** the composable owns the produced `ModelInstance` and its backing glTF `Model`. When the path key changes, the previous `Model` is destroyed (after any consuming `ModelNode` has detached its renderables) and the new asset is loaded; the `Model` is also destroyed on leave-composition. `ModelLoader` does NOT dedupe by path — each call is a fresh GPU allocation, not a cache hit. Never hold a swapped-out instance; for manual lifetime control use `ModelLoader.loadModelInstanceAsync` + `ModelLoader.destroyModel`.
+
 The `fileLocation` overload auto-detects URLs (http/https) and routes through Fuel HTTP client for download. Use it for remote model loading:
 ```kotlin
 val model = rememberModelInstance(modelLoader, "https://example.com/model.glb")
@@ -2700,6 +2702,8 @@ class EnvironmentLoader(engine: Engine, context: Context) {
 All `remember*` helpers create and memoize Filament objects, destroying them on disposal.
 Most are default parameter values in `SceneView`/`ARSceneView` — call them explicitly only when sharing resources or customizing.
 
+**Ownership on key change:** the keyed async loaders (`rememberModelInstance`, `rememberEnvironment(key = …)`, `rememberHDREnvironment`, `rememberKTXEnvironment`) also destroy the **previously produced** object when their key/path changes — a path swap (e.g. a gallery or HDR slider) frees the old GPU resources automatically. Never keep a reference to a swapped-out `ModelInstance`/`Environment`; re-read the helper's return value instead. For objects you manage yourself, use the imperative loaders (`loadModelInstanceAsync`, `createHDREnvironment`) and call `destroyModel`/`destroyEnvironment` when done.
+
 | Helper | Returns | Purpose |
 |--------|---------|---------|
 | `rememberEngine()` | `Engine` | Root Filament object — one per process |
@@ -2710,6 +2714,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberEnvironment(environmentLoader, isOpaque)` | `Environment` | IBL + skybox environment |
 | `rememberEnvironment(environmentLoader) { ... }` | `Environment` | Custom environment from lambda |
 | `rememberEnvironment(environmentLoader, key = hdrPath) { ... }` | `Environment` | Pass `key` when the factory depends on a changing value (e.g. an HDR path from a slider) — the lambda is otherwise memoised once and the skybox never swaps |
+| `rememberHDREnvironment(environmentLoader, "env.hdr")` | `Environment?` | `@ExperimentalSceneViewApi` — async HDR load from assets, `null` while loading; previous environment destroyed when the path changes |
+| `rememberKTXEnvironment(environmentLoader, iblAssetFile, skyboxAssetFile)` | `Environment?` | `@ExperimentalSceneViewApi` — async pre-filtered KTX1 IBL/skybox load, `null` while loading; previous environment destroyed when the paths change |
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light (key) with apply block — shadows ON by default; apply block is reactive (re-runs on recomposition, so Compose-state-driven intensity/direction/color update live) |
 | `rememberFillLightNode(engine) { ... }` | `LightNode` | Soft fill light opposite the main light — lifts shadows so models don't look flat; apply block is reactive (same as `rememberMainLightNode`) |
@@ -4883,7 +4889,7 @@ ferrari_f40.glb
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.1.2 — npm `sceneview-web`
+Package: `sceneview-web` v4.18.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -4895,7 +4901,7 @@ npm install sceneview-web filament
 Script-tag usage (no bundler):
 ```html
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.3.1/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.18.0/sceneview-web.js"></script>
 ```
 
 After loading, the library registers itself on `window.sceneview`.
