@@ -63,6 +63,19 @@ rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
 
 4. **Check Logcat.** Filter by `Filament` or `SceneView` — load failures are logged there.
 
+### Model loads but renders untextured (WebP textures)
+
+If a glTF/GLB model loads and animates but every surface is flat black/grey, and Logcat shows
+`Missing texture provider for image/webp`, the model's textures are WebP-encoded
+(`EXT_texture_webp`). **WebP glTF textures are not supported on Android**: Filament's Android
+prebuilt ships `gltfio` with WebP support compiled out, so the textures silently fail to decode
+([#2305](https://github.com/sceneview/sceneview/issues/2305)).
+
+**Fix:** re-encode the model's textures to PNG, JPEG, or KTX2 before bundling it (e.g. re-export
+from Blender with PNG/JPEG textures, or convert with a glTF texture tool). PNG, JPEG, and KTX2
+decode natively. The same limitation applies to the web build (Filament.js registers no
+`image/webp` provider either).
+
 ### Black screen / no rendering
 
 A completely black or empty viewport usually means the scene is set up but nothing is visible to

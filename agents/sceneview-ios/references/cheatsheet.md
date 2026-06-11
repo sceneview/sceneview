@@ -83,6 +83,7 @@ ARSceneView(
 | `AnchorNode.world(position:)` | anchor at a world coordinate |
 | `AnchorNode.plane(alignment:minimumBounds:)` | anchor on a detected plane |
 | `AugmentedImageNode` | overlay content on a detected reference image |
+| `CloudAnchorNode.host(ttlDays:completion:operation:)` / `.resolve(cloudAnchorId:completion:operation:)` | cross-device persistent anchors — both return a cancellable `CloudAnchorFuture`; call `future.cancel()` from `.onDisappear`. The app supplies the `GARSession` round-trip (Google's `arcore-ios-sdk`) through the `operation` closure |
 
 ## Environment presets
 
