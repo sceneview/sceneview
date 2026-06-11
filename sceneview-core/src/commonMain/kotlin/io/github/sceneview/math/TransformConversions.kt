@@ -2,6 +2,7 @@ package io.github.sceneview.math
 
 import dev.romainguy.kotlin.math.Quaternion
 import dev.romainguy.kotlin.math.inverse
+import dev.romainguy.kotlin.math.scale
 
 /**
  * Platform-independent local↔world coordinate conversions.
@@ -177,20 +178,30 @@ fun localToWorldRotation(localRotation: Rotation, worldTransform: Transform): Ro
 /**
  * Convert a world-space scale to this node's local space.
  *
+ * A scale is a magnitude triple, not a homogeneous point: it must compose with the
+ * transform's **basis-vector lengths** (`Mat4.scale`), never via the `Mat4 * Float3`
+ * point operator (which folds in the matrix translation and rotation — wrong for a
+ * scale). Because `worldToLocal.scale == 1 / parentWorldScale`, multiplying the world
+ * scale by it divides out the parent's world scale.
+ *
  * @param worldScale Scale in world space.
  * @param worldToLocal Inverse of the node's world transform.
  */
 fun worldToLocalScale(worldScale: Scale, worldToLocal: Transform): Scale =
-    worldToLocal * worldScale
+    worldScale * worldToLocal.scale
 
 /**
  * Convert a local-space scale to world space.
+ *
+ * Composes the local scale with the world transform's **basis-vector lengths**
+ * (`Mat4.scale`), never via the `Mat4 * Float3` point operator (which would leak the
+ * matrix translation and rotation into the result — wrong for a scale).
  *
  * @param localScale Scale in this node's local space.
  * @param worldTransform The node's world transform matrix.
  */
 fun localToWorldScale(localScale: Scale, worldTransform: Transform): Scale =
-    worldTransform * localScale
+    worldTransform.scale * localScale
 
 // --- Full Transform ---
 

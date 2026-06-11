@@ -19,7 +19,10 @@ import kotlin.math.sin
  *                Points should be ordered from bottom to top (increasing Y).
  * @param center Offset applied to every vertex position.
  * @param segments Number of radial subdivisions around the Y axis. Default 24.
- * @param closed Whether to close the mesh by connecting the last slice back to the first. Default true.
+ * @param closed Whether to close the mesh by connecting the last slice back to the first.
+ *               When `true` (default) the surface wraps a full 2π revolution. When `false`
+ *               the final angular gap is left unstitched, producing an open lathe (a
+ *               non-wrapping ribbon). Default true.
  */
 fun generateLathe(
     profile: List<Float2>,
@@ -32,8 +35,9 @@ fun generateLathe(
     val vertices = mutableListOf<Vertex>()
     val indices = mutableListOf<Int>()
 
-    val sliceCount = if (closed) segments else segments + 1
-
+    // The vertex grid always carries `segments + 1` rings: slice 0 (θ=0) and slice
+    // `segments` (θ=2π) are geometrically coincident but kept distinct so the seam UVs
+    // are correct. `closed` controls only whether the final wrap strip is stitched.
     for (slice in 0..segments) {
         val theta = TWO_PI * slice.toFloat() / segments
         val cosT = cos(theta)
@@ -75,9 +79,12 @@ fun generateLathe(
         }
     }
 
-    // Generate indices
+    // Generate indices. A closed lathe stitches all `segments` angular strips (the last
+    // bridges slice segments-1 → segments, closing the seam). An open lathe omits that
+    // final wrap strip, leaving the seam unstitched — `segments - 1` strips.
     val rowSize = profile.size
-    for (slice in 0 until segments) {
+    val strips = if (closed) segments else segments - 1
+    for (slice in 0 until strips) {
         for (row in 0 until profile.size - 1) {
             val a = slice * rowSize + row
             val b = a + rowSize
