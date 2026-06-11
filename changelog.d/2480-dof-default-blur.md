@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **AR Depth of Field demo**: lowered the default blur strength from `2.0×` to `1.0×` (Filament's stock cinematic strength). The old `2.0×` over-scaled the circle-of-confusion and crushed out-of-focus regions to black bands and colour smears, making the demo look broken; `1.0×` shows a legible shallow depth-of-field instead. The blur slider still ranges up to `6×` for a stronger bokeh. ([#2480](https://github.com/sceneview/sceneview/issues/2480))
