@@ -39,6 +39,7 @@ import com.google.mlkit.vision.objects.ObjectDetection
 import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.cameraImage
+import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.trackingFailureMessage
@@ -121,6 +122,14 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var isTracking by remember { mutableStateOf(false) }
 
+    // Camera world position, refreshed every AR frame. A `BillboardNode` only rotates to
+    // face the viewer when it is given a `cameraPositionProvider`; without one its `onFrame`
+    // hook is a no-op and the quad keeps the anchor's plane-aligned pose — so a label
+    // anchored on a floor/table is shown edge-on or back-faced, which is exactly the
+    // "oversized, warped diagonal band with mirrored/upside-down text" reported in #2478.
+    // Kept as a plain holder (read inside the per-frame billboard provider lambda).
+    val cameraPosition = remember { floatArrayOf(0f, 0f, 0f) }
+
     // Detection state — the list of currently-anchored labels and a status banner.
     val detections = remember { mutableStateListOf<DetectionAnchor>() }
     var statusBannerRes by remember { mutableIntStateOf(R.string.demo_ar_ml_status_warming) }
@@ -175,6 +184,14 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                 onSessionUpdated = { _, frame: Frame ->
                     latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
+
+                    // Keep the camera world position fresh so every label billboards toward
+                    // the viewer (see `cameraPosition` above). The pose translation is the
+                    // camera eye position in world space — all a billboard needs to orient.
+                    val camPose = frame.camera.pose.position
+                    cameraPosition[0] = camPose.x
+                    cameraPosition[1] = camPose.y
+                    cameraPosition[2] = camPose.z
 
                     if (!isTracking) return@ARSceneView
 
@@ -233,10 +250,11 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                                     detections = detections,
                                     labelBitmaps = labelBitmaps,
                                 )
-                                statusBannerRes =
-                                    if (results.isEmpty() && detections.isEmpty())
-                                        R.string.demo_ar_ml_status_aim
-                                    else R.string.demo_ar_ml_status_aim
+                                // Once anything is anchored, the status text switches to the
+                                // live "N objects detected" count (see `statusText` above), so
+                                // the "Aim at a recognisable object" hint is dismissed as soon
+                                // as ≥1 label is placed (#2478). Until then, keep prompting.
+                                statusBannerRes = R.string.demo_ar_ml_status_aim
                             } finally {
                                 cameraImage.close()
                             }
@@ -265,6 +283,16 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                                 widthMeters = 0.30f,
                                 heightMeters = 0.12f,
                                 position = Position(y = 0.05f),
+                                // Face the camera every frame. Without this the quad keeps
+                                // the anchor's plane-aligned orientation and renders edge-on
+                                // / back-faced (mirrored UVs) — the #2478 warped-band bug.
+                                cameraPositionProvider = {
+                                    Position(
+                                        x = cameraPosition[0],
+                                        y = cameraPosition[1],
+                                        z = cameraPosition[2],
+                                    )
+                                },
                             )
                         }
                     }
@@ -320,6 +348,16 @@ private data class DetectionAnchor(
 )
 
 /**
+ * Buckets a 0..1 ML Kit confidence into a stable percentage step so the label-bitmap cache
+ * key changes only every [step] percent. Without bucketing, every sub-percent confidence
+ * jitter between detector passes would invalidate the cache and re-rasterise the bitmap.
+ */
+private fun confidenceBucketPercent(confidence: Float, step: Int = 5): Int {
+    val pct = (confidence.coerceIn(0f, 1f) * 100f).toInt()
+    return (pct / step) * step
+}
+
+/**
  * Reconciles the current detection set with the latest ML Kit results.
  *
  * Strategy:
@@ -350,7 +388,9 @@ private fun updateAnchorsFromDetections(
     val newKeys = mutableSetOf<String>()
     @Suppress("LoopWithTooManyJumpStatements") // multiple early-exit guards improve readability
     for (obj in results) {
-        val label = obj.labels.firstOrNull()?.text ?: continue
+        val labelInfo = obj.labels.firstOrNull() ?: continue
+        val label = labelInfo.text
+        val confidencePercent = confidenceBucketPercent(labelInfo.confidence)
         // Bucket by 64-pixel cell so small bbox jitter doesn't create new anchors.
         val cx = obj.boundingBox.centerX()
         val cy = obj.boundingBox.centerY()
@@ -379,7 +419,12 @@ private fun updateAnchorsFromDetections(
         val hit = hits.firstOrNull { it.distance in 0.1f..5.0f } ?: continue
 
         val anchor = runCatching { hit.createAnchor() }.getOrNull() ?: continue
-        val bitmap = labelBitmaps.getOrPut(label) { createLabelBitmap(label) }
+        // Cache by label + confidence bucket so the rendered "%" stays current without
+        // re-rasterising on every sub-percent jitter (#2478 — the user asked for the score).
+        val bitmapKey = "$label@$confidencePercent"
+        val bitmap = labelBitmaps.getOrPut(bitmapKey) {
+            createLabelBitmap(label, confidencePercent)
+        }
         detections += DetectionAnchor(key, anchor, bitmap)
 
         // Cap total anchored labels to 6 — beyond that, the AR scene gets cluttered
@@ -396,25 +441,43 @@ private fun updateAnchorsFromDetections(
  * card on a small post, white bold text. Mid-saturation blue so labels read against most
  * natural backgrounds (sky / wood / fabric) and bold weight so the text survives the
  * GPU's mipmap chain at distance.
+ *
+ * When [confidencePercent] is non-negative, the ML Kit classification confidence is shown
+ * as a smaller "NN%" subtitle so the user can see *how sure* the detector is (#2478 — the
+ * confidence the device reviewer was looking for). Pass a negative value to omit it.
  */
-private fun createLabelBitmap(text: String): Bitmap {
+private fun createLabelBitmap(text: String, confidencePercent: Int = -1): Bitmap {
     val width = 384
     val height = 144
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
+    val cardBottom = height - 28f
 
     val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF005BC1.toInt() }
-    canvas.drawRoundRect(RectF(8f, 8f, width - 8f, height - 28f), 24f, 24f, cardPaint)
+    canvas.drawRoundRect(RectF(8f, 8f, width - 8f, cardBottom), 24f, 24f, cardPaint)
 
     val postPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF1F2436.toInt() }
-    canvas.drawRect(width / 2f - 6f, height - 28f, width / 2f + 6f, height.toFloat(), postPaint)
+    canvas.drawRect(width / 2f - 6f, cardBottom, width / 2f + 6f, height.toFloat(), postPaint)
 
+    val showConfidence = confidencePercent >= 0
     val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.WHITE
-        textSize = 44f
+        textSize = if (showConfidence) 40f else 44f
         textAlign = Paint.Align.CENTER
         typeface = android.graphics.Typeface.DEFAULT_BOLD
     }
-    canvas.drawText(text, width / 2f, (height - 28f) / 2f + 18f, labelPaint)
+    if (showConfidence) {
+        // Two stacked lines: bold category over a lighter "NN%" subtitle.
+        canvas.drawText(text, width / 2f, cardBottom / 2f - 2f, labelPaint)
+        val confidencePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFCBD8F0.toInt()
+            textSize = 30f
+            textAlign = Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT
+        }
+        canvas.drawText("$confidencePercent%", width / 2f, cardBottom / 2f + 34f, confidencePaint)
+    } else {
+        canvas.drawText(text, width / 2f, cardBottom / 2f + 18f, labelPaint)
+    }
     return bitmap
 }
