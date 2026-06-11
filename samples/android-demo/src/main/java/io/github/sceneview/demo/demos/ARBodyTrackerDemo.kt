@@ -5,11 +5,16 @@ import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
 import android.media.Image
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -41,6 +47,7 @@ import io.github.sceneview.ar.arcore.cameraImage
 import io.github.sceneview.ar.body.BodyPose
 import io.github.sceneview.ar.body.Joint
 import io.github.sceneview.ar.body.SKELETON_BONES
+import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.trackingFailureMessage
@@ -116,6 +123,8 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
         onDispose { landmarker?.close() }
     }
 
+    // True after the first ARCore camera frame — used to dismiss ARCameraInitScrim (#2485).
+    var cameraReady by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var bodyPose by remember { mutableStateOf(BodyPose(emptyMap())) }
 
@@ -169,6 +178,8 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                     config.planeFindingMode = Config.PlaneFindingMode.DISABLED
                 },
                 onSessionUpdated = { _, frame: Frame ->
+                    // First callback = camera is delivering frames; dismiss the init scrim.
+                    if (!cameraReady) cameraReady = true
                     if (landmarker == null) return@ARSceneView
                     if (frame.camera.trackingState != TrackingState.TRACKING) return@ARSceneView
 
@@ -208,6 +219,55 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                 pose = bodyPose,
                 modifier = Modifier.fillMaxSize(),
             )
+
+            // Persistent hint pill — always visible in the viewport so the user knows what
+            // to do regardless of whether the controls panel is open. Hidden once the first
+            // body is tracked so it never fights the skeleton overlay (#2485).
+            //
+            // State priority:
+            //   model missing  → "Pose model unavailable" (error, red)
+            //   tracking failed → ARCore's standard tracking-failure reason
+            //   body tracked    → hidden (skeleton overlay is the feedback)
+            //   else            → "Point the camera at a person — full body visible"
+            val trackingFailureHint = trackingFailureMessage(trackingFailureReason)
+            val (hintText, hintColor) = when {
+                landmarker == null ->
+                    stringResource(R.string.demo_ar_body_tracker_status_no_model) to
+                        MaterialTheme.colorScheme.error
+                trackingFailureHint != null ->
+                    trackingFailureHint to MaterialTheme.colorScheme.error
+                bodyPose.isTracked -> null to MaterialTheme.colorScheme.primary
+                else ->
+                    stringResource(R.string.demo_ar_body_tracker_hint_aim) to
+                        MaterialTheme.colorScheme.primary
+            }
+            AnimatedVisibility(
+                visible = hintText != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp),
+            ) {
+                if (hintText != null) {
+                    Text(
+                        text = hintText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier
+                            .background(
+                                color = hintColor.copy(alpha = 0.82f),
+                                shape = RoundedCornerShape(24.dp),
+                            )
+                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                    )
+                }
+            }
+
+            // Cover the still-black ARSceneView surface until ARCore delivers its first
+            // camera frame — on a cold start this can take several seconds and the
+            // silent black screen reads as a crash (#2485, #1473).
+            ARCameraInitScrim(initializing = !cameraReady)
         }
     }
 }
