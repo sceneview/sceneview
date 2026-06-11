@@ -27,8 +27,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.math.Position
 import java.io.File
+import kotlin.math.acos
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Overlay that covers the 3D viewport while [loading] is true. Shows a centred spinner and
@@ -563,8 +565,28 @@ class HeroOrbitCameraManipulator(
         fallback?.setViewport(viewportW, viewportH)
     }
 
-    override fun getTransform(): io.github.sceneview.math.Transform =
-        fallback?.getTransform() ?: orbitTransform()
+    override fun getTransform(): io.github.sceneview.math.Transform {
+        val fb = fallback ?: return orbitTransform()
+        // While the user is dragging (or in the post-drag resume window) the camera
+        // pose comes from the stock Filament orbit manipulator, which does NOT clamp
+        // its polar angle — a drag straight over the top/bottom of the model carries
+        // the eye onto the orbit pole, the lookAt's fixed world-up collapses, and the
+        // model snaps fully upside-down (#2487, Pixel 9 review). Re-derive the eye from
+        // the manipulator's transform, clamp its pitch just shy of the poles, and
+        // re-aim it at the (unchanged) orbit target so the flip can never happen. The
+        // idle auto-orbit path (`orbitTransform`) sits at a gentle down-tilt well clear
+        // of the poles and needs no clamp.
+        val transform = fb.getTransform()
+        val eye = transform.position
+        val clampedEye = clampOrbitEyePitch(eye, target)
+        if (clampedEye == eye) return transform
+        val mat = dev.romainguy.kotlin.math.lookAt(
+            eye = clampedEye,
+            target = target,
+            up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
+        )
+        return io.github.sceneview.math.Transform(mat)
+    }
 
     override fun grabBegin(x: Int, y: Int, strafe: Boolean) {
         ensureFallback()
@@ -664,4 +686,78 @@ fun rememberHeroOrbitCameraManipulator(
             resumeAfterMillis = resumeAfterMillis,
         )
     }
+}
+
+/** Default polar-angle floor (degrees from world +Y) used by [clampOrbitEyePitch]. */
+internal const val DEFAULT_MIN_ORBIT_POLAR_DEGREES: Float = 1f
+
+/** Default polar-angle ceiling (degrees from world +Y) used by [clampOrbitEyePitch]. */
+internal const val DEFAULT_MAX_ORBIT_POLAR_DEGREES: Float = 179f
+
+/**
+ * Clamps an orbit camera [eye] so its **polar angle** — the angle between the
+ * `target → eye` direction and world-up `+Y` — stays inside
+ * `[minPolarDegrees, maxPolarDegrees]`, keeping the orbit **radius** and
+ * **azimuth** unchanged. Returns the original [eye] unchanged when it is already
+ * in range (the common case), when it coincides with [target] (degenerate
+ * radius), or when any component is non-finite.
+ *
+ * ### Why (#2487)
+ *
+ * The hero viewer's user-drag path delegates to Filament's `ORBIT`-mode
+ * `Manipulator`, which does not clamp its polar angle. A drag straight over the
+ * top (or bottom) of the model carries the eye onto the orbit pole; the
+ * `lookAt(eye, target, up = +Y)` that builds the view matrix then has its
+ * forward axis parallel to `up`, the `right = cross(up, forward)` collapses to
+ * zero, and the model snaps fully **upside-down** — the orbit / gimbal flip the
+ * Pixel 9 review reported on the Explore 3D viewer. Clamping just **shy** of the
+ * poles (default `[1°, 179°]`) lets the eye reach a near-top-down / near-bottom-up
+ * view but never the exact singularity, so `lookAt` always stays well-defined.
+ *
+ * @param eye    orbit eye world position to clamp.
+ * @param target orbit target the eye looks at / pivots around.
+ */
+internal fun clampOrbitEyePitch(
+    eye: Position,
+    target: Position,
+    minPolarDegrees: Float = DEFAULT_MIN_ORBIT_POLAR_DEGREES,
+    maxPolarDegrees: Float = DEFAULT_MAX_ORBIT_POLAR_DEGREES,
+): Position {
+    val dx = eye.x - target.x
+    val dy = eye.y - target.y
+    val dz = eye.z - target.z
+    if (!dx.isFinite() || !dy.isFinite() || !dz.isFinite()) return eye
+
+    val radius = sqrt(dx * dx + dy * dy + dz * dz)
+    // Degenerate orbit (eye == target): no direction to clamp.
+    if (radius <= 1e-6f) return eye
+
+    // Polar angle from world +Y, in radians, in [0, π].
+    val polar = acos((dy / radius).coerceIn(-1f, 1f))
+    val minRad = Math.toRadians(minPolarDegrees.toDouble()).toFloat()
+    val maxRad = Math.toRadians(maxPolarDegrees.toDouble()).toFloat()
+    val clampedPolar = polar.coerceIn(minRad, maxRad)
+    // Already within range — return the eye untouched (fast path).
+    if (clampedPolar == polar) return eye
+
+    val horizontal = sqrt(dx * dx + dz * dz)
+    val newDy = radius * cos(clampedPolar)
+    val newHorizontal = radius * sin(clampedPolar)
+    // Preserve azimuth from the horizontal projection of the original direction.
+    // If the eye sat exactly on the polar axis there is no azimuth to preserve;
+    // fall back to +Z so the eye still lifts off the singularity.
+    val hx: Float
+    val hz: Float
+    if (horizontal <= 1e-6f) {
+        hx = 0f
+        hz = 1f
+    } else {
+        hx = dx / horizontal
+        hz = dz / horizontal
+    }
+    return Position(
+        x = target.x + hx * newHorizontal,
+        y = target.y + newDy,
+        z = target.z + hz * newHorizontal,
+    )
 }
