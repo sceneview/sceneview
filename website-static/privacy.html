@@ -266,7 +266,7 @@
     <section class="privacy-hero">
       <div class="privacy-hero__container">
         <h1 class="privacy-hero__title reveal">Privacy Policy</h1>
-        <p class="privacy-hero__updated reveal"><strong>SceneView Demo</strong> &mdash; Last updated: May 21, 2026</p>
+        <p class="privacy-hero__updated reveal"><strong>SceneView Demo</strong> &mdash; Last updated: June 12, 2026</p>
       </div>
     </section>
 
@@ -291,6 +291,14 @@
         <li>Camera data for AR is processed <strong>locally on-device</strong> in real time for plane detection and object placement.</li>
         <li><strong>No camera images or AR video are stored, recorded, or transmitted</strong> to any server.</li>
         <li>Camera access is only requested when the user navigates to the AR tab. A feedback screen recording may capture the AR viewfinder if an AR demo is open &mdash; only while you are actively recording feedback.</li>
+      </ul>
+
+      <h2>Face Data (TrueDepth API / ARKit Face Tracking)</h2>
+      <ul>
+        <li><strong>What is collected:</strong> when you open an AR face demo on iOS, the app uses Apple&rsquo;s ARKit face tracking (which relies on the TrueDepth camera) to obtain a real-time facial mesh &mdash; face geometry and expression coefficients. On Android, the equivalent demo uses Google ARCore Augmented Faces. No photographs of your face are taken by the app.</li>
+        <li><strong>Purpose:</strong> face data is used <strong>solely</strong> to render real-time 3D effects anchored to your face inside the demo, on screen, while the demo is open. It is not used for identification, authentication, profiling, or any other purpose.</li>
+        <li><strong>Storage &amp; retention:</strong> face data is processed <strong>in memory, on your device only</strong>. It is never recorded, stored, written to disk, or retained &mdash; it is discarded as each camera frame is rendered, and entirely released when you leave the demo.</li>
+        <li><strong>Sharing:</strong> face data <strong>never leaves your device</strong>. It is not transmitted to us or to any third party, and the app contains no analytics or tracking SDKs.</li>
       </ul>
 
       <h2>In-App Feedback (Opt-In)</h2>

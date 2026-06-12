@@ -15,6 +15,14 @@ The SceneView Demo app ("the App") is an open-source demonstration application d
 
 The App **collects no personal data during normal use**. It has no accounts, no analytics, and no tracking. The **one exception** is the **optional in-app feedback** feature: if you choose to report a bug or share an idea, it records your screen and microphone audio and uploads them — together with basic device/app context — to the SceneView feedback service. Nothing is recorded or sent unless you explicitly start a feedback report and agree.
 
+
+## Face Data (TrueDepth API / ARKit Face Tracking)
+
+- **What is collected:** when you open an AR face demo on iOS, the app uses Apple's ARKit face tracking (which relies on the TrueDepth camera) to obtain a real-time facial mesh — face geometry and expression coefficients. On Android, the equivalent demo uses Google ARCore Augmented Faces. No photographs of your face are taken by the app.
+- **Purpose:** face data is used **solely** to render real-time 3D effects anchored to your face inside the demo, on screen, while the demo is open. It is not used for identification, authentication, profiling, or any other purpose.
+- **Storage & retention:** face data is processed **in memory, on your device only**. It is never recorded, stored, written to disk, or retained — it is discarded as each camera frame is rendered, and entirely released when you leave the demo.
+- **Sharing:** face data **never leaves your device**. It is not transmitted to us or to any third party, and the app contains no analytics or tracking SDKs.
+
 ## Data Collection (normal use)
 
 Outside the feedback feature, the App does **not** collect, store, or transmit any personal data. Specifically:
