@@ -40,7 +40,7 @@ Full signature is in `llms.txt § Core Composables`.
 ARSceneView(
     /* same as SceneView, plus: */
     planeRenderer = true,
-    cameraExposure = null,                              // null = auto (default); negative = darken, positive = brighten
+    cameraExposure = null,                              // null = default (recommended). ABSOLUTE exposure scale (1.0 ≈ ISO 100), NOT EV stops — negative clamps to a black frame (#1179)
     sessionFeatures = setOf(/* Session.Feature.* */),
     sessionCameraConfig = { cameraConfigFilter -> /* … */ },
     sessionConfiguration = { session, config ->
@@ -96,9 +96,9 @@ plumbed by default in `SceneView`'s param list above) — not a node type. See
 | Node | Where verified | Notes |
 | --- | --- | --- |
 | `AnchorNode(anchor: Anchor) { … }` | `ARPlacementDemo.kt` | Wraps a `com.google.ar.core.Anchor` |
-| `AugmentedImageNode(referenceImage = …) { … }` | `ARImageDemo.kt` | Tracked image marker |
-| `AugmentedFaceNode { … }` | `ARFaceDemo.kt` | Face mesh overlay |
-| `HitResultNode(hitResult) { … }` | only used internally — prefer `frame.hitTest(event)` + `AnchorNode` | — |
+| `AugmentedImageNode(augmentedImage = …) { … }` | `ARImageDemo.kt` | Tracked image marker — takes the detected `AugmentedImage` trackable |
+| `AugmentedFaceNode(augmentedFace = …) { … }` | `ARFaceDemo.kt` | Face mesh overlay — takes the detected `AugmentedFace` trackable |
+| `HitResultNode(xPx, yPx) { … }` | `llms.txt § HitResultNode` | Continuous screen-coordinate surface cursor; for one-shot taps prefer `frame.hitTest(event)` + `AnchorNode` |
 
 There are NO `AnchorNode.image() / .face() / .plane() / .body()` factory
 functions on Android in v4.2. Those are iOS-only via SceneViewSwift.
@@ -111,7 +111,7 @@ this). For imperative code, use `modelLoader.loadModelInstanceAsync`.
 ## Apple parity
 
 iOS / macOS / visionOS export `SceneView { }` and `ARSceneView { }` from
-the `SceneViewSwift` package with SwiftUI semantics (`@SceneBuilder`,
+the `SceneViewSwift` package with SwiftUI semantics (`@NodeBuilder`,
 modifier-style configuration). The API names overlap but the SwiftUI
 shape differs — never copy a Kotlin snippet verbatim to Swift. See
 [`docs/docs/cheatsheet-ios.md`](https://github.com/sceneview/sceneview/blob/main/docs/docs/cheatsheet-ios.md).

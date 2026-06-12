@@ -28,12 +28,12 @@ fun ModelWithEnvironment() {
         }
 
         // Optional: add a directional light for sharper shadows
-        LightNode(apply = {
-            type(LightManager.Type.DIRECTIONAL)
-            intensity(100_000f)
-            direction(0f, -1f, -1f)
-            castShadows(true)
-        })
+        LightNode(
+            type = LightManager.Type.DIRECTIONAL,
+            intensity = 100_000f,
+            direction = Direction(0f, -1f, -1f),
+            apply = { castShadows(true) }   // Filament-builder extras go in apply
+        )
     }
 }
 ```
@@ -41,13 +41,23 @@ fun ModelWithEnvironment() {
 ## iOS (SwiftUI)
 
 ```swift
-SceneView(environment: .studio) {
-    ModelNode(named: "helmet.usdz")
-        .scaleToUnits(1.0)
-    LightNode.directional(intensity: 1000)
-        .direction(x: 0, y: -1, z: -1)
+@State private var model: ModelNode?
+
+SceneView { root in
+    if let model {
+        root.addChild(model.entity)
+    }
+    let sun = LightNode.directional(intensity: 1000)
+        .position(.init(x: 0, y: 2, z: 2))
+        .lookAt(.zero)               // aim via position + lookAt (no .direction modifier)
+    root.addChild(sun.entity)
 }
+.environment(.studio)
 .cameraControls(.orbit)
+.task {
+    model = try? await ModelNode.load("helmet.usdz")
+    model?.scaleToUnits(1.0)
+}
 ```
 
 ## visionOS — immersive-space skybox

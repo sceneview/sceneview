@@ -138,7 +138,8 @@ CubeNode(size = Size(1f), materialInstance = redMaterial, position = Position(z 
 SphereNode(radius = 0.5f, materialInstance = blueMaterial)
 CylinderNode(radius = 0.3f, height = 1.0f, materialInstance = greenMaterial)
 PlaneNode(size = Size(5f, 5f), materialInstance = greyMaterial)
-MeshNode(geometry = customGeometry, materialInstance = material)
+MeshNode(primitiveType = primitiveType, vertexBuffer = vertexBuffer, indexBuffer = indexBuffer,
+    materialInstance = material)
 ```
 
 ### Media Nodes
@@ -160,7 +161,7 @@ LightNode(
 ```kotlin
 DynamicSkyNode(timeOfDay = 12f, turbidity = 2f, sunIntensity = 110_000f)
 FogNode(view = view, density = 0.05f, height = 1f, color = Color(0xFFCCDDFF))
-ReflectionProbeNode(environment = env, position = Position(2f, 0f, 0f), radius = 3f)
+ReflectionProbeNode(filamentScene = scene, environment = env, position = Position(2f, 0f, 0f), radius = 3f)
 ```
 
 ### Drawing Nodes
@@ -173,20 +174,24 @@ TextNode(text = "Hello", fontSize = 48f, textColor = Color.WHITE, widthMeters = 
 
 ### Physics
 ```kotlin
-PhysicsNode(node = modelNode, mass = 1f, restitution = 0.6f, floorY = 0f, radius = 0.1f)
+// (the `mass` overload is @Deprecated — gravity is mass-independent, mass is a no-op)
+PhysicsNode(node = modelNode, restitution = 0.6f, floorY = 0f, radius = 0.1f)
 ```
 
 ### AR Nodes
 ```kotlin
 AnchorNode(anchor = hitResult.createAnchor()) { ModelNode(...) }
 HitResultNode(xPx = screenCenterX, yPx = screenCenterY) { SphereNode(radius = 0.02f) }
+ReticleNode(xPx = screenCenterX, yPx = screenCenterY, onHitResultChanged = { hit -> }) { /* marker */ }
+DepthHitResultNode(xPx = screenCenterX, yPx = screenCenterY) { /* rides any real surface */ }
 AugmentedImageNode(augmentedImage = image) { ModelNode(...) }
 AugmentedFaceNode(augmentedFace = face, meshMaterialInstance = faceMaterial)
 CloudAnchorNode(anchor = localAnchor, onHosted = { cloudId, state -> })
-GeospatialNode(latitude = 37.7749, longitude = -122.4194, altitude = 0.0)
-DepthNode(depthTexture = depthImage)
-InstantPlacementNode(xPx = centerX, yPx = centerY, approximateDistanceMeters = 2.0f)
-ArrowNode(from = Position(0f), to = Position(1f, 0f, 0f), materialInstance = mat)
+PoseNode(pose = pose) { ModelNode(...) }
+StreetscapeGeometryNode(streetscapeGeometry = geo, meshMaterialInstance = buildingMat)
+// Geospatial anchors are imperative async resolves (not composables):
+TerrainAnchorNode.resolve(engine, session, latitude, longitude, altitudeAboveTerrain) { state, node -> }
+RooftopAnchorNode.resolve(engine, session, latitude, longitude, altitudeAboveRooftop) { state, node -> }
 ```
 
 ---
@@ -254,11 +259,12 @@ val chrome = materialLoader.createColorInstance(Color.White, metallic = 1f, roug
 
 ## Sample Apps
 
-The showcase app bundles **47 demos** (17 non-AR + 30 AR). A representative selection:
+The showcase app bundles **47 demos** (16 non-AR + 31 AR). A representative selection
+(deep-linkable as `sceneview://demo/<id>` — full registry in `llms.txt § Sample app demos`):
 
-model-viewer, ar-model-viewer, gltf-camera, camera-manipulator, autopilot-demo,
-physics-demo, dynamic-sky, post-processing, line-path, text-labels,
-reflection-probe, ar-augmented-image, ar-cloud-anchor, ar-point-cloud
+model-viewer, geometry, animation-physics, lighting, lighting-lab, fog,
+lines-paths, two-d-in-three-d, camera-gestures, picking-collision,
+custom-geometry, spatial-audio, ar-placement, ar-image, ar-cloud-anchor, ar-point-cloud
 
 ---
 

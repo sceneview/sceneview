@@ -154,7 +154,9 @@ WebXRSession.checkSupport(mode = XRSessionMode.IMMERSIVE_AR) { supported -> }
 WebXRSession.create(canvas, mode, features, referenceSpaceType, onError, onReady)
 ```
 
-`XRFeature`: `HIT_TEST`, `DOM_OVERLAY`, `LIGHT_ESTIMATION`, `HAND_TRACKING`.
+`XRFeature`: `HIT_TEST`, `DOM_OVERLAY`, `LIGHT_ESTIMATION`, `HAND_TRACKING`,
+`DEPTH_SENSING`, `IMAGE_TRACKING`, `ANCHORS`, `PLANE_DETECTION`,
+`MESH_DETECTION`, `LAYERS`.
 `XRSessionMode`: `IMMERSIVE_AR`, `IMMERSIVE_VR`.
 `XRReferenceSpaceType`: `LOCAL_FLOOR`, `LOCAL`, `VIEWER`, `BOUNDED_FLOOR`,
 `UNBOUNDED`.

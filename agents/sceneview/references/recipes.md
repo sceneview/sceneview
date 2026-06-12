@@ -18,10 +18,10 @@ mirroring the same surface.
 [`ARPlacementDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARPlacementDemo.kt) — `rememberOnGestureListener(onSingleTapConfirmed = { event, node -> frame.hitTest(event)... })` + `AnchorNode(anchor = hit.createAnchor()) { ModelNode(isEditable = true) }`.
 
 ## 4. Augmented image tracking
-[`ARImageDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARImageDemo.kt) — `AugmentedImageNode(referenceImage = …) { ModelNode(...) }`. Image database is configured via `sessionConfiguration`.
+[`ARImageDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARImageDemo.kt) — `AugmentedImageNode(augmentedImage = …) { ModelNode(...) }` — one node per detected `AugmentedImage` from `frame.getUpdatedAugmentedImages()`. The reference-image database is configured via `sessionConfiguration`.
 
 ## 5. Augmented face mesh
-[`ARFaceDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARFaceDemo.kt) — `AugmentedFaceNode { ModelNode(...) }`. `Config.AugmentedFaceMode.MESH3D` in `sessionConfiguration`.
+[`ARFaceDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARFaceDemo.kt) — `AugmentedFaceNode(augmentedFace = face) { ModelNode(...) }` — one node per tracked `AugmentedFace`. `Config.AugmentedFaceMode.MESH3D` in `sessionConfiguration` + `sessionCameraConfig = ::frontCameraConfig`.
 
 ## 6. Movable light (drag the light source)
 [`LightingDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/LightingDemo.kt) — the "Movable Light" mode of the consolidated Lighting demo: `LightNode(type = LightManager.Type.POINT, intensity = 30_000f, direction, position, color, apply = { falloff(6f) })`. Disable default main light via `mainLightNode = null` for clean drag effect.
