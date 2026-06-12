@@ -51,6 +51,7 @@ import io.github.sceneview.collision.CollisionSystem
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.gesture.CameraGestureDetector
+import io.github.sceneview.gesture.CameraViewportSeed
 import io.github.sceneview.gesture.GestureDetector
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.gesture.RotateGestureDetector
@@ -486,9 +487,32 @@ fun SceneView(
     val gestureDetector = remember(context) { GestureDetector(context = context, listener = null) }
     val cameraGestureDetectorRef = remember { AtomicReference<CameraGestureDetector?>(null) }
 
+    // Last surface size pushed to the manipulator, packed as (width.toLong() shl 32) or height.
+    // `0L` means "not sized yet". A manipulator's pan math is only correct once it has the real
+    // viewport (Filament's ORBIT pan divides screen pixels by the viewport: a stale 1×1 viewport
+    // explodes the pan delta by ~3 orders of magnitude, throwing the model off-screen on the
+    // slightest two-finger drag — #2514). The surface is sized once, but the manipulator can be
+    // swapped at runtime (e.g. the demo Explore viewer rebuilds it on auto-fit after the model
+    // loads). `onSurfaceResized` won't re-fire for a same-size surface, so a freshly-swapped
+    // manipulator would never receive a `setViewport`. We cache the last size here and re-apply
+    // it whenever the manipulator instance changes.
+    val lastViewportRef = remember { AtomicLong(CameraViewportSeed.UNSET) }
+    // The manipulator instance the cached viewport was last applied to. Used to re-seed only when
+    // the manipulator actually changes, so the per-recomposition SideEffect doesn't make a
+    // redundant JNI setViewport call every frame.
+    val seededManipulatorRef = remember { AtomicReference<CameraGestureDetector.CameraManipulator?>(null) }
+
     SideEffect {
         gestureDetector.listener = onGestureListener
         cameraGestureDetectorRef.get()?.cameraManipulator = cameraManipulator
+        // Re-seed the (newly-swapped) manipulator with the current viewport so its pan/raycast
+        // math is correct from the first gesture, without waiting for a surface resize. Only when
+        // the instance changed — the surface-resize path keeps the same instance in sync.
+        if (cameraManipulator !== seededManipulatorRef.get()) {
+            if (CameraViewportSeed.seed(cameraManipulator, lastViewportRef.get())) {
+                seededManipulatorRef.set(cameraManipulator)
+            }
+        }
     }
 
     // Common touch dispatcher — wired to both SurfaceView and TextureView via SceneRenderer.
@@ -530,6 +554,9 @@ fun SceneView(
     // Wire resize and surface callbacks.
     SideEffect {
         sceneRenderer.onSurfaceResized = { width, height ->
+            // Remember the size so a manipulator swapped in later (without a surface resize)
+            // can inherit it — see [lastViewportRef] (#2514).
+            lastViewportRef.set(CameraViewportSeed.packViewport(width, height))
             cameraManipulator?.setViewport(width, height)
             cameraNode.updateProjection()
         }
