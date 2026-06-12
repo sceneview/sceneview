@@ -21,7 +21,7 @@ fun ARTapToPlace() {
             if (anchor == null) {
                 anchor = frame.getUpdatedPlanes()
                     .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
-                    ?.let { frame.createAnchorOrNull(it.centerPose) }
+                    ?.let { plane -> plane.createAnchorOrNull(plane.centerPose) }
             }
         }
     ) {
@@ -39,20 +39,17 @@ fun ARTapToPlace() {
 ```swift
 struct ARTapToPlace: View {
     @State private var model: ModelNode?
-    @State private var placed = false
 
     var body: some View {
         ARSceneView(
             planeDetection: .horizontal,
-            onTapGesture: { hit in
-                guard !placed, let model else { return }
-                let anchor = AnchorNode.plane(alignment: .horizontal)
+            onTapOnPlane: { position, arView in
+                guard let model else { return }
+                let anchor = AnchorNode.world(position: position)
                 anchor.add(model.entity)
-                placed = true
+                arView.scene.addAnchor(anchor.entity)
             }
-        ) { content in
-            // Content added via anchor in onTapGesture
-        }
+        )
         .task {
             model = try? await ModelNode.load("models/chair.usdz")
                 .scaleToUnits(0.5)
@@ -67,6 +64,6 @@ struct ARTapToPlace: View {
 |---|---|---|
 | AR container | `ARSceneView { }` | `ARSceneView { }` |
 | Plane detection | `planeRenderer = true` | `planeDetection: .horizontal` |
-| Anchor | `AnchorNode(anchor = a) { }` | `AnchorNode.plane()` |
-| Hit testing | `onSessionUpdated` + frame planes | `onTapGesture` callback |
+| Anchor | `AnchorNode(anchor = a) { }` | `AnchorNode.world(position:)` |
+| Hit testing | `onSessionUpdated` + frame planes | `onTapOnPlane` callback |
 | AR framework | ARCore | ARKit |

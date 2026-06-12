@@ -40,7 +40,7 @@ fun TextLabels() {
 ```swift
 struct TextLabels: View {
     var body: some View {
-        SceneView { content in
+        SceneView { root in
             // Static text label
             let label = TextNode(
                 text: "Hello 3D!",
@@ -48,14 +48,14 @@ struct TextLabels: View {
                 color: .white
             )
             .position(.init(x: 0, y: 1, z: -2))
-            content.add(label.entity)
+            root.addChild(label.entity)
 
             // Billboard text (always faces camera)
             let billboard = BillboardNode(
                 child: TextNode(text: "SceneView", fontSize: 0.08).entity
             )
             .position(.init(x: 0, y: 2, z: -2))
-            content.add(billboard.entity)
+            root.addChild(billboard.entity)
         }
         .cameraControls(.orbit)
     }

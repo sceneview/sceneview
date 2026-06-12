@@ -87,17 +87,19 @@ ARSceneView(
     },
     sessionFeatures = setOf(),  // e.g., Session.Feature.FRONT_CAMERA
     // fillLightNode = null,     // v4.3.0+: pass null to disable the dual-light AR baseline
-    cameraExposure = null,      // null = ARCore default; Float (EV) to override
+    cameraExposure = null,      // null = default (recommended); absolute exposure scale, NOT EV stops (#1179)
     flashMode = Config.FlashMode.OFF,  // v4.11+: Config.FlashMode.TORCH for low-light tracking
     // playbackDataset = file,      // v4.5+: deterministic replay from a recorded MP4 (File)
     // playbackDatasetUri = uri,    // v4.11+ scoped-storage equivalent (mutually exclusive)
     onSessionUpdated = { session, frame -> },
     onSessionFailure = { failure ->     // v4.11+: typed exhaustive when (#1759)
         when (failure) {
-            is ARSessionFailure.UnavailableArcoreNotInstalled -> { /* install ARCore */ }
-            is ARSessionFailure.CameraPermissionNotGranted -> { /* request permission */ }
-            // ... see ARSessionFailure for the full sealed hierarchy
-            else -> { /* compiler will flag the day a new failure mode is added */ }
+            is ARSessionFailure.ArCoreNotInstalled -> { /* install ARCore */ }
+            is ARSessionFailure.CameraNotAvailable -> { /* camera busy — close other camera apps */ }
+            // ... see ARSessionFailure for the full sealed hierarchy. Prefer an exhaustive
+            // `when` with NO `else` branch so the compiler flags new failure modes;
+            // an `else ->` silently swallows future subtypes (llms.txt § Error Handling).
+            else -> { /* fallback while prototyping only */ }
         }
     },
     onTouchEvent = { event, hitResult -> true }
@@ -121,23 +123,25 @@ ARSceneView(
 
 ### Camera exposure override
 
-Pass `cameraExposure` (in EV — exposure value) to correct a washed-out or too-dark camera
-preview on devices where ARCore's auto-exposure does not match Camera2's output:
+`cameraExposure` is Filament's **absolute exposure scale** (the single-`Float` `setExposure`
+overload — `1.0 ≈ ISO 100 ≈ EV 0`). It is **NOT a signed EV-stop bias**: negative values clamp
+to zero and render a fully black framebuffer (#1179). Realistic range is roughly `0.05`–`16`.
 
 ```kotlin
-// Fix washed-out camera preview
+// Brighten a too-dark camera preview
 ARSceneView(
-    cameraExposure = 1.0f  // lower = darker, higher = brighter, null = ARCore default
+    cameraExposure = 2.0f   // > 1.0 = brighter, < 1.0 = darker, null = default (recommended)
 ) { }
 
-// Fix too-dark preview (e.g. on some front-camera setups)
+// Darken a washed-out preview
 ARSceneView(
-    cameraExposure = -1.0f
+    cameraExposure = 0.5f   // NEVER pass a negative value — it clamps to a black frame
 ) { }
 ```
 
-`0f` corresponds to the standard middle-grey reference exposure. Start with `1.0f` or `-1.0f`
-and adjust by 0.5 EV steps until the preview matches the device's native camera app.
+Prefer leaving it `null` — the default AR camera tuning is correct for both back- and
+front-camera sessions. Note: the **iOS** `ARSceneView(cameraExposure:)` is a different
+mechanism (EV-stop post-process via CIColorControls) — do not copy values across platforms.
 
 ---
 
@@ -161,7 +165,7 @@ and adjust by 0.5 EV steps until the preview matches the device's native camera 
 | `DynamicSkyNode` | `timeOfDay` (0-24), `turbidity`, `sunIntensity` |
 | `FogNode` | `view`, `density`, `height`, `color`, `enabled` |
 | `ReflectionProbeNode` | `filamentScene`, `environment`, `position`, `radius`, `cameraPosition` |
-| `PhysicsNode` | `node`, `mass`, `restitution`, `linearVelocity`, `floorY`, `radius` |
+| `PhysicsNode` | `node`, `restitution`, `linearVelocity`, `floorY`, `radius`, `floorProvider` (`mass` overload is deprecated — no-op) |
 | `MeshNode` | `primitiveType`, `vertexBuffer`, `indexBuffer`, `materialInstance` |
 | `Node` | `position`, `rotation`, `scale` + child content |
 | `SecondaryCamera` | `apply` — non-active camera (formerly `CameraNode`) |
@@ -215,7 +219,7 @@ Rotation(x = 0f, y = 90f, z = 0f)     // Float3, degrees
 Scale(1.5f)                             // uniform
 Scale(x = 2f, y = 1f, z = 2f)         // non-uniform
 Direction(x = 0f, y = 1f, z = 0f)     // unit vector
-Size(width = 1f, height = 0.5f)       // Float2
+Size(x = 1f, y = 0.5f, z = 0f)        // Float3 — dimensions in meters
 ```
 
 ---
@@ -227,12 +231,12 @@ Size(width = 1f, height = 0.5f)       // Float2
 val model = rememberModelInstance(modelLoader, "models/file.glb")
 
 // Imperative
-val model = modelLoader.loadModelInstance("models/file.glb")
+val model = modelLoader.loadModelInstance("models/file.glb")   // suspend — call from a coroutine
 modelLoader.loadModelInstanceAsync("models/file.glb") { instance -> }
 
 // Environment
 environmentLoader.createHDREnvironment("environments/sky.hdr")
-environmentLoader.createKtxEnvironment("environments/studio.ktx")
+environmentLoader.createKTX1Environment(iblAssetFile = "environments/studio_ibl.ktx")
 
 // Material
 materialLoader.createColorInstance(Color.Red)

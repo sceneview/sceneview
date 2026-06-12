@@ -36,7 +36,7 @@ helmet?.let { ModelNode(modelInstance = it, scaleToUnits = 0.3f) }
 | --- | --- |
 | Imperative `scene.addChild(node)` | Children are declared inside the parent's trailing lambda |
 | `rememberNodes()` / `rememberChildNodes()` | Removed |
-| `rememberCollisionSystem()` | Opt-in via `CollisionNode` |
+| Manual collision wiring | `rememberCollisionSystem(view)` — already the default `collisionSystem` parameter of `SceneView` / `ARSceneView`; use `collisionSystem.hitTest(...)` |
 
 ## AR
 
@@ -80,7 +80,7 @@ LightNode(
 ## Apple parity
 
 `SceneViewSwift` mirrors the entrypoints (`SceneView { }`, `ARSceneView { }`)
-but uses SwiftUI's `@SceneBuilder` result-builder and modifier-style
+but uses SwiftUI's `@NodeBuilder` result-builder and modifier-style
 configuration. **Don't translate a Kotlin snippet character-by-character to
 Swift** — the result-builder + modifiers are syntactically different. See
 [`docs/docs/cheatsheet-ios.md`](https://github.com/sceneview/sceneview/blob/main/docs/docs/cheatsheet-ios.md)

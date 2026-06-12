@@ -34,7 +34,7 @@ SceneView { root in
 ```swift
 SceneView { … }
     .environment(.studio)        // IBL preset — see "Environment presets" below
-    .cameraControls(.orbit)      // .orbit (default) | .pan | .firstPerson | native (iOS 18+): .none | .tilt | .dolly
+    .cameraControls(.orbit)      // .orbit (default) | .pan | .firstPerson | native (iOS 18+): .none | .tilt | .dolly | .gimbal
     .onEntityTapped { entity in }
     .autoRotate(speed: 0.3)      // turntable
     .autoCenterContent(true)     // translate content centroid to orbit pivot
@@ -53,8 +53,8 @@ ARSceneView(
     onTapOnPlane: { position, arView in /* place content */ }
 )
     .onSessionStarted { arView in }
-    .cameraExposure(0.0)           // EV — AR-only camera exposure
-    .onFrame { arView in }
+    .cameraExposure(0.0)           // EV stops — AR-only camera exposure (iOS-specific semantics)
+    .onFrame { frame, arView in }  // (ARFrame, ARView)
     .mainLight(.systemDefault)
     .fillLight(.systemDefault)
 ```

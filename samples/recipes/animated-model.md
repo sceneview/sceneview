@@ -46,18 +46,28 @@ fun AnimatedModelViewer() {
 
 ```swift
 struct AnimatedModelViewer: View {
+    @State private var model: ModelNode?
     @State private var isPlaying = true
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            SceneView(environment: .studio) {
-                ModelNode(named: "astronaut.usdz")
-                    .scaleToUnits(1.0)
-                    .autoAnimate(isPlaying)
+            SceneView { root in
+                if let model {
+                    root.addChild(model.entity)
+                }
             }
+            .environment(.studio)
             .cameraControls(.orbit)
+            .task {
+                model = try? await ModelNode.load("astronaut.usdz")
+                model?.scaleToUnits(1.0)
+                model?.playAllAnimations()
+            }
 
-            Button(action: { isPlaying.toggle() }) {
+            Button(action: {
+                isPlaying.toggle()
+                if isPlaying { model?.resumeAllAnimations() } else { model?.pauseAllAnimations() }
+            }) {
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                     .font(.title)
                     .padding()

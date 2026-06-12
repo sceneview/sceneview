@@ -28,17 +28,17 @@ fun ProceduralScene() {
 ```swift
 struct ProceduralScene: View {
     var body: some View {
-        SceneView { content in
+        SceneView { root in
             let cube = GeometryNode.cube(size: 0.5)
-            content.add(cube.entity)
+            root.addChild(cube.entity)
 
             let sphere = GeometryNode.sphere(radius: 0.3)
                 .position(.init(x: 1, y: 0, z: 0))
-            content.add(sphere.entity)
+            root.addChild(sphere.entity)
 
             let cylinder = GeometryNode.cylinder(radius: 0.2, height: 0.8)
                 .position(.init(x: -1, y: 0, z: 0))
-            content.add(cylinder.entity)
+            root.addChild(cylinder.entity)
         }
         .cameraControls(.orbit)
     }

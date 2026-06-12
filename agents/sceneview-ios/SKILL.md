@@ -103,7 +103,7 @@ struct ModelViewerScreen: View {
             }
         }
         .environment(.studio)          // IBL lighting preset
-        .cameraControls(.orbit)        // .orbit | .pan | .firstPerson | native (iOS 18+): .none | .tilt | .dolly
+        .cameraControls(.orbit)        // .orbit | .pan | .firstPerson | native (iOS 18+): .none | .tilt | .dolly | .gimbal
         .autoCenterContent(true)
         .task {
             model = try? await ModelNode.load("models/helmet.usdz")
