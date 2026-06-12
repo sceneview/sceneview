@@ -22,13 +22,13 @@ class CameraViewportSeedTest {
         val viewports = mutableListOf<Pair<Int, Int>>()
         override fun setViewport(width: Int, height: Int) { viewports += width to height }
         override fun getTransform(): Transform = Transform()
-        override fun grabBegin(x: Int, y: Int, strafe: Boolean) {}
-        override fun grabUpdate(x: Int, y: Int) {}
-        override fun grabEnd() {}
-        override fun scrollBegin(x: Int, y: Int, separation: Float) {}
-        override fun scrollUpdate(x: Int, y: Int, prevSeparation: Float, currSeparation: Float) {}
-        override fun scrollEnd() {}
-        override fun update(deltaTime: Float) {}
+        override fun grabBegin(x: Int, y: Int, strafe: Boolean) = Unit
+        override fun grabUpdate(x: Int, y: Int) = Unit
+        override fun grabEnd() = Unit
+        override fun scrollBegin(x: Int, y: Int, separation: Float) = Unit
+        override fun scrollUpdate(x: Int, y: Int, prevSeparation: Float, currSeparation: Float) = Unit
+        override fun scrollEnd() = Unit
+        override fun update(deltaTime: Float) = Unit
     }
 
     @Test fun packViewport_roundTrips() {
