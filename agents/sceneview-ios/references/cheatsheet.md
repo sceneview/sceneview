@@ -53,8 +53,8 @@ ARSceneView(
     onTapOnPlane: { position, arView in /* place content */ }
 )
     .onSessionStarted { arView in }
-    .cameraExposure(0.0)           // EV — AR-only camera exposure
-    .onFrame { arView in }
+    .cameraExposure(0.0)           // EV stops — AR-only camera exposure (iOS-specific semantics)
+    .onFrame { frame, arView in }  // (ARFrame, ARView)
     .mainLight(.systemDefault)
     .fillLight(.systemDefault)
 ```
