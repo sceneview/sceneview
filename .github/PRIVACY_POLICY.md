@@ -117,3 +117,10 @@ If you have questions about this Privacy Policy, please contact:
 - **Email:** thomas.gorisse@gmail.com
 - **Website:** https://sceneview.github.io
 - **GitHub:** https://github.com/sceneview/sceneview
+
+## Face Data (TrueDepth API / ARKit Face Tracking)
+
+- **What is collected:** when you open an AR face demo on iOS, the app uses Apple's ARKit face tracking (which relies on the TrueDepth camera) to obtain a real-time facial mesh — face geometry and expression coefficients. On Android, the equivalent demo uses Google ARCore Augmented Faces. No photographs of your face are taken by the app.
+- **Purpose:** face data is used **solely** to render real-time 3D effects anchored to your face inside the demo, on screen, while the demo is open. It is not used for identification, authentication, profiling, or any other purpose.
+- **Storage & retention:** face data is processed **in memory, on your device only**. It is never recorded, stored, written to disk, or retained — it is discarded as each camera frame is rendered, and entirely released when you leave the demo.
+- **Sharing:** face data **never leaves your device**. It is not transmitted to us or to any third party, and the app contains no analytics or tracking SDKs.
