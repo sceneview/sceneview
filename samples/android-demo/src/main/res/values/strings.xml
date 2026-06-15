@@ -95,10 +95,7 @@
     <!-- Section header above the full AR demo list. %d is the total AR demo count
          (featured + remaining) so users see how much there is at a glance (#2231). -->
     <string name="ar_all_demos_section">All AR demos (%d)</string>
-    <string name="ar_exit_session">Exit AR session</string>
     <string name="ar_reset_scene">Reset scene</string>
-    <string name="ar_share_screenshot">Share screenshot</string>
-    <string name="ar_screenshot_toast">Screenshot capture: use system screenshot (Power + Volume Down)</string>
     <string name="ar_pick_a_model">Pick a model</string>
     <string name="ar_picker_model_label">Model</string>
     <string name="ar_status_scanning">Scanning for surfaces…</string>
@@ -109,13 +106,6 @@
     <string name="ar_starting_session_subtitle">Hold up — initializing ARCore.</string>
     <string name="ar_permission_required_title">Camera permission is required to run AR</string>
     <string name="ar_permission_required_subtitle">Grant the permission in system settings, then return to this tab.</string>
-
-    <!-- Tracking failure reasons -->
-    <string name="ar_tracking_bad_state">AR session error</string>
-    <string name="ar_tracking_insufficient_light">Not enough light</string>
-    <string name="ar_tracking_excessive_motion">Moving too fast</string>
-    <string name="ar_tracking_insufficient_features">Not enough detail — try a textured surface</string>
-    <string name="ar_tracking_camera_unavailable">Camera unavailable</string>
 
     <!-- Featured AR demos on the AR launcher -->
     <string name="featured_ar_placement_title">Tap to Place</string>
