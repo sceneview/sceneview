@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -160,13 +161,31 @@ fun ErrorScrim(
  *
  * Place it as the last child of the [Box] that wraps the `ARSceneView` so it draws
  * on top of the still-black viewport but below any other status overlays.
+ *
+ * Defensive timeout (#2484): if the first frame never arrives — a device that fails
+ * to open the camera, a session that errors before delivering a frame — the scrim
+ * would otherwise cover the viewport forever. After [timeoutMillis] it dismisses
+ * itself regardless, so the demo's own fallback / error messaging is never
+ * permanently hidden. The happy path (first frame in ~1–3 s) flips [initializing]
+ * false long before the timeout, so this only ever fires on a genuinely stuck start.
  */
 @Composable
 fun ARCameraInitScrim(
     initializing: Boolean,
     label: String = "Starting camera…",
+    timeoutMillis: Long = AR_CAMERA_INIT_SCRIM_TIMEOUT_MS,
 ) {
-    if (!initializing) return
+    // Defensive fallback: force-dismiss even if the first camera frame never reports.
+    var timedOut by androidx.compose.runtime.remember(initializing) {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+    if (initializing) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            kotlinx.coroutines.delay(timeoutMillis)
+            timedOut = true
+        }
+    }
+    if (!initializing || timedOut) return
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -195,6 +214,13 @@ fun ARCameraInitScrim(
         }
     }
 }
+
+/**
+ * Defensive dismiss window for [ARCameraInitScrim] (#2484). The first ARCore camera
+ * frame normally arrives in ~1–3 s; 8 s is comfortably past that, so the timeout only
+ * trips when the session is genuinely stuck (no camera, hard session failure).
+ */
+private const val AR_CAMERA_INIT_SCRIM_TIMEOUT_MS = 8_000L
 
 /**
  * Resolves the ARCore playback dataset an AR demo should replay, or `null` for a normal

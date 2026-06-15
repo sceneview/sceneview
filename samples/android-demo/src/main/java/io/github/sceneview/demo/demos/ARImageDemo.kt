@@ -47,6 +47,7 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.AddImageResult
 import io.github.sceneview.ar.arcore.captureCameraBitmap
 import io.github.sceneview.ar.arcore.rememberRuntimeAugmentedImageDatabase
+import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
@@ -101,6 +102,9 @@ fun ARImageDemo(onBack: () -> Unit) {
 
     val detectedImages = remember { mutableStateListOf<AugmentedImage>() }
     var isTracking by remember { mutableStateOf(false) }
+    // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
+    // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
+    var cameraReady by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var imageCount by remember { mutableStateOf(0) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
@@ -169,6 +173,7 @@ fun ARImageDemo(onBack: () -> Unit) {
                     }
                 },
                 onSessionUpdated = { _: Session, frame: Frame ->
+                    cameraReady = true
                     latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     frame.getUpdatedTrackables(AugmentedImage::class.java).forEach { image ->
@@ -208,6 +213,9 @@ fun ARImageDemo(onBack: () -> Unit) {
                     }
                 }
             }
+
+            // Cover the still-black AR viewport until the first camera frame (#2484).
+            ARCameraInitScrim(initializing = !cameraReady)
 
             // "What to scan" guide — shows the actual reference target so the user knows
             // exactly which image to point the camera at. Tap to expand/collapse.

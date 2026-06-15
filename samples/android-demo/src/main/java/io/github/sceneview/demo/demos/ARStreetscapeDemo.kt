@@ -43,6 +43,7 @@ import com.google.ar.core.StreetscapeGeometry
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
@@ -219,6 +220,9 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
 
     val geometries = remember { mutableStateListOf<StreetscapeGeometry>() }
     var isTracking by remember { mutableStateOf(false) }
+    // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
+    // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
+    var cameraReady by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var geometryCount by remember { mutableStateOf(0) }
     // After this long tracking with `geometryCount == 0` and no unsupported-device
@@ -353,6 +357,7 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
                     sessionError = friendlyArSessionError(exception)
                 },
                 onSessionUpdated = { _: Session, frame: Frame ->
+                    cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     frame.getUpdatedTrackables(StreetscapeGeometry::class.java).forEach { geo ->
                         if (geo.trackingState == TrackingState.TRACKING) {
@@ -379,6 +384,10 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
                     )
                 }
             }
+
+            // Cover the still-black AR viewport until the first camera frame; lifts on a
+            // session error so the error banner below is never hidden (#2484).
+            ARCameraInitScrim(initializing = !cameraReady && sessionError == null)
 
             // Status overlay
             // ForcedTrackingFailure.override shadows the real ARCore-reported reason

@@ -41,6 +41,7 @@ import io.github.sceneview.ar.arcore.transform
 import io.github.sceneview.ar.arcore.viewTransform
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.sketchfab.SampleAssets
@@ -344,6 +345,9 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     // ride this anchor — turning the phone shows them passing by in world space.
     var userAnchor by remember { mutableStateOf<Anchor?>(null) }
     var isTracking by remember { mutableStateOf(false) }
+    // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
+    // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
+    var cameraReady by remember { mutableStateOf(false) }
 
     // Elapsed seconds since the anchor was created, advanced by withFrameNanos. Drives
     // orbit + spin animation. Stored as nanos to avoid float-precision drift over long
@@ -444,6 +448,7 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 },
                 onSessionUpdated = { session: Session, frame: Frame ->
+                    cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     // Drop the world-origin anchor on the first tracked frame. ARCore's
                     // world origin = the camera's pose at session-start, which is exactly
@@ -552,6 +557,9 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                     }
                 }
             }
+
+            // Cover the still-black AR viewport until the first camera frame (#2484).
+            ARCameraInitScrim(initializing = !cameraReady)
 
             // Off-screen target indicator (#1482) — an edge arrow that points toward
             // the chase target whenever it is outside the camera frustum, so the user
