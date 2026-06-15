@@ -9,6 +9,7 @@
 fun MultiModelScene() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
 
     val chair = rememberModelInstance(modelLoader, "models/chair.glb")
     val table = rememberModelInstance(modelLoader, "models/table.glb")
@@ -18,7 +19,10 @@ fun MultiModelScene() {
         modifier = Modifier.fillMaxSize(),
         engine = engine,
         modelLoader = modelLoader,
-        environment = rememberEnvironment(engine, "environments/studio_2k.hdr"),
+        environment = rememberEnvironment(environmentLoader) {
+            environmentLoader.createHDREnvironment("environments/studio_2k.hdr")
+                ?: createEnvironment(environmentLoader)
+        },
         cameraManipulator = rememberCameraManipulator()
     ) {
         chair?.let {
@@ -49,28 +53,42 @@ fun MultiModelScene() {
 ## iOS (SwiftUI)
 
 ```swift
-SceneView(environment: .studio) {
-    ModelNode(named: "chair.usdz")
-        .scaleToUnits(0.8)
-        .position(x: -0.5)
-    ModelNode(named: "table.usdz")
-        .scaleToUnits(1.0)
-    ModelNode(named: "lamp.usdz")
-        .scaleToUnits(0.6)
-        .position(x: 0.5, y: 0.5)
+@State private var chair: ModelNode?
+@State private var table: ModelNode?
+@State private var lamp: ModelNode?
+
+SceneView { root in
+    if let chair { root.addChild(chair.entity) }
+    if let table { root.addChild(table.entity) }
+    if let lamp { root.addChild(lamp.entity) }
 }
+.environment(.studio)
 .cameraControls(.orbit)
+.task {
+    chair = try? await ModelNode.load("chair.usdz")
+        .scaleToUnits(0.8)
+        .position(.init(x: -0.5, y: 0, z: 0))
+    table = try? await ModelNode.load("table.usdz")
+        .scaleToUnits(1.0)
+    lamp = try? await ModelNode.load("lamp.usdz")
+        .scaleToUnits(0.6)
+        .position(.init(x: 0.5, y: 0.5, z: 0))
+}
 ```
 
 ## Web (sceneview.js)
 
 ```html
 <canvas id="canvas" style="width:100%;height:100vh"></canvas>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.1.0/sceneview-web.js"></script>
+<script src="https://sceneview.github.io/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.18.0/sceneview-web.js"></script>
 <script>
-  // sceneview.js supports one model per viewer
-  // For multi-model, create the scene and load models sequentially
-  const viewer = SceneView.modelViewer("canvas", "models/table.glb");
+  // Load several models into one viewer sequentially
+  sceneview.createViewer("canvas").then(function (sv) {
+    sv.loadModel("models/table.glb")
+      .then(function () { return sv.loadModel("models/chair.glb"); })
+      .then(function () { sv.fitToModels(); });
+  });
 </script>
 ```
 

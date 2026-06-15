@@ -244,8 +244,15 @@ class PlaneRendererV2(
                         updatedPlanes.forEach {
                             renderPlane(it, frame = frame, camera = camera, visible = it == centerPlane)
                         }
+                        // AR10 (#2504): `updatedPlanes` is ARCore's JNI-backed list, so the
+                        // per-visualizer `plane !in updatedPlanes` below was an O(M) linear scan —
+                        // O(N×M) across all visualizers every frame. Hoist a `HashSet` once so the
+                        // membership test is O(1). Identity-based set membership matches the list
+                        // `contains` exactly (ARCore returns the same `Plane` instance per trackable
+                        // across frames), so the visibility outcome is unchanged.
+                        val updatedPlaneSet = updatedPlanes.toHashSet()
                         visualizers.forEach { (plane, visualizer) ->
-                            if (plane !in updatedPlanes) {
+                            if (plane !in updatedPlaneSet) {
                                 visualizer.setVisible(isVisible && plane == centerPlane)
                             }
                         }

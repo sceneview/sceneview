@@ -35,9 +35,9 @@ struct ModelViewer: View {
     @State private var model: ModelNode?
 
     var body: some View {
-        SceneView { content in
+        SceneView { root in
             if let model {
-                content.add(model.entity)
+                root.addChild(model.entity)
             }
         }
         .cameraControls(.orbit)

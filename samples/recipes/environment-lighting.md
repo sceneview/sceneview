@@ -9,6 +9,7 @@
 fun ModelWithEnvironment() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
     val model = rememberModelInstance(modelLoader, "models/helmet.glb")
 
     SceneView(
@@ -16,7 +17,10 @@ fun ModelWithEnvironment() {
         engine = engine,
         modelLoader = modelLoader,
         // HDR environment provides both indirect lighting (IBL) and skybox
-        environment = rememberEnvironment(engine, "environments/studio_2k.hdr"),
+        environment = rememberEnvironment(environmentLoader) {
+            environmentLoader.createHDREnvironment("environments/studio_2k.hdr")
+                ?: createEnvironment(environmentLoader)
+        },
         cameraManipulator = rememberCameraManipulator()
     ) {
         model?.let {
@@ -24,12 +28,12 @@ fun ModelWithEnvironment() {
         }
 
         // Optional: add a directional light for sharper shadows
-        LightNode(apply = {
-            type(LightManager.Type.DIRECTIONAL)
-            intensity(100_000f)
-            direction(0f, -1f, -1f)
-            castShadows(true)
-        })
+        LightNode(
+            type = LightManager.Type.DIRECTIONAL,
+            intensity = 100_000f,
+            direction = Direction(0f, -1f, -1f),
+            apply = { castShadows(true) }   // Filament-builder extras go in apply
+        )
     }
 }
 ```
@@ -37,13 +41,23 @@ fun ModelWithEnvironment() {
 ## iOS (SwiftUI)
 
 ```swift
-SceneView(environment: .studio) {
-    ModelNode(named: "helmet.usdz")
-        .scaleToUnits(1.0)
-    LightNode.directional(intensity: 1000)
-        .direction(x: 0, y: -1, z: -1)
+@State private var model: ModelNode?
+
+SceneView { root in
+    if let model {
+        root.addChild(model.entity)
+    }
+    let sun = LightNode.directional(intensity: 1000)
+        .position(.init(x: 0, y: 2, z: 2))
+        .lookAt(.zero)               // aim via position + lookAt (no .direction modifier)
+    root.addChild(sun.entity)
 }
+.environment(.studio)
 .cameraControls(.orbit)
+.task {
+    model = try? await ModelNode.load("helmet.usdz")
+    model?.scaleToUnits(1.0)
+}
 ```
 
 ## visionOS — immersive-space skybox
@@ -92,9 +106,9 @@ These are the HDR files bundled with `android-demo` under
 
 ## Key Points
 
-- `rememberEnvironment(engine, "environments/studio_2k.hdr")` loads the HDR file from assets
+- `rememberEnvironment(environmentLoader) { environmentLoader.createHDREnvironment("environments/studio_2k.hdr") ?: createEnvironment(environmentLoader) }` loads the HDR file from assets (falling back to the neutral default environment if the load fails)
 - HDR environments provide **Image-Based Lighting** (IBL) for realistic reflections
-- They also set the skybox (background) — set `skybox = false` to keep a solid background
+- They also set the skybox (background) — pass `createSkybox = false` to `createHDREnvironment` to keep a solid background
 - Combine IBL with `LightNode` for direct light sources (sun, lamps)
 - `LightNode`'s `apply` is a **named parameter**, not a trailing lambda: `apply = { ... }`
 - All HDR files should be in `src/main/assets/environments/` for Android

@@ -173,8 +173,10 @@ import androidx.xr.compose.subspace.layout.SubspaceModifier
 import androidx.xr.compose.subspace.layout.height
 import androidx.xr.compose.subspace.layout.width
 import io.github.sceneview.SceneView
+import io.github.sceneview.createEnvironment
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
@@ -203,9 +205,11 @@ class XRDemoActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         engine = engine,
                         modelLoader = modelLoader,
-                        environment = environmentLoader.createHDREnvironment(
-                            "environments/studio_small.hdr"
-                        )!!,
+                        environment = rememberEnvironment(environmentLoader) {
+                            environmentLoader.createHDREnvironment(
+                                "environments/studio_small.hdr"
+                            ) ?: createEnvironment(environmentLoader)
+                        },
                     ) {
                         modelInstance?.let { instance ->
                             ModelNode(modelInstance = instance)

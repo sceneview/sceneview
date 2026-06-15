@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -60,6 +61,8 @@ import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.delay
 
 /**
  * Personal-solar-system AR demo — 8 themed planets orbit around the user.
@@ -372,6 +375,32 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     // be clamped to the real edge of the AR surface.
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
 
+    // Onboarding-dismiss state (#2481). The "Turn around — N models orbiting" banner
+    // and the directional edge-arrow are a *first-launch nudge*: they teach the user to
+    // turn and watch the formation pass by. Before this fix they never dismissed — the
+    // banner and arrow stayed up for the whole session, cluttering the view even once
+    // the user had clearly turned around and a model was on-screen (the QA tester:
+    // "là, il met encore la flèche alors qu'on est dessus"). `onboardingDismissed`
+    // flips true once the nudge has served its purpose and stays true (it's a
+    // rememberSaveable so a device rotation mid-session doesn't re-show it), at which
+    // point both the banner text and the arrow go quiet. It is set true when EITHER:
+    //  - the orbit is live and the chase target has come on-screen at least once
+    //    (the user successfully turned toward a model — see onSessionUpdated), or
+    //  - the onboarding window below elapses (timeout fallback, so the nudge always
+    //    eventually clears even in the rare frame where nothing has streamed in yet).
+    var onboardingDismissed by rememberSaveable { mutableStateOf(false) }
+
+    // Timeout fallback for the onboarding nudge: once the world anchor is locked, give
+    // the user a short window to turn around, then dismiss regardless. Keyed on
+    // `userAnchor == null` so the countdown only starts once the formation exists, and
+    // skipped entirely if the user already engaged (target came on-screen) first.
+    LaunchedEffect(userAnchor == null, onboardingDismissed) {
+        if (userAnchor != null && !onboardingDismissed) {
+            delay(12.seconds)
+            onboardingDismissed = true
+        }
+    }
+
     // Per-demo offline indicator (#1152 Stage 3): if every streamed slot has
     // resolved to a real `File` (Sketchfab CDN), surface "Streamed". If some
     // are still null, we're "Streaming…". If `SketchfabConfig.apiKey` is
@@ -459,6 +488,14 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                     } else {
                         null
                     }
+                    // Onboarding nudge dismisses for good the first time the user brings
+                    // the chase target on-screen (#2481). The orbit is live (anchor +
+                    // tracking) and `offscreenTarget == null` means the target now sits
+                    // inside the frustum — i.e. the user turned toward a model and saw
+                    // it, so the "Turn around" banner + arrow have served their purpose.
+                    if (anchor != null && isTracking && offscreenTarget == null) {
+                        onboardingDismissed = true
+                    }
                 }
             ) {
                 val anchor = userAnchor
@@ -527,34 +564,46 @@ fun OrbitalARDemo(onBack: () -> Unit) {
             // Off-screen target indicator (#1482) — an edge arrow that points toward
             // the chase target whenever it is outside the camera frustum, so the user
             // knows which way to turn. Drawn below the status pill so the pill text
-            // always stays readable.
+            // always stays readable. Suppressed once the onboarding nudge is dismissed
+            // (#2481): the arrow is a first-launch teach, not a permanent HUD, so it
+            // stops re-appearing as the target orbits off-screen after the user has
+            // already turned around and caught a model once.
             val target = offscreenTarget
-            if (target != null && viewportSize != IntSize.Zero) {
+            if (!onboardingDismissed && target != null && viewportSize != IntSize.Zero) {
                 OffscreenTargetArrow(
                     angleRad = target.angleRad,
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
 
-            // Status pill — top-center, mirrors the ARPlacement / ARInstantPlacement style.
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 8.dp),
-                color = Color.Black.copy(alpha = 0.7f),
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(
-                    text = when {
-                        !isTracking -> "Initializing AR — look around to start tracking"
-                        userAnchor == null -> "Locking world anchor…"
-                        else -> "Turn around — ${ORBITAL_PLANETS.size} models orbiting"
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge
-                )
+            // Status pill — top-center, mirrors the ARPlacement / ARInstantPlacement
+            // style. It carries the two transient setup states (tracking, anchor lock)
+            // and the "Turn around" onboarding nudge. Once tracking + anchor are
+            // established *and* the onboarding nudge has been dismissed (#2481), the
+            // pill is gone entirely — the orbit is self-explanatory at that point and a
+            // permanent banner only clutters the AR view.
+            val statusText = when {
+                !isTracking -> "Initializing AR — look around to start tracking"
+                userAnchor == null -> "Locking world anchor…"
+                !onboardingDismissed -> "Turn around — ${ORBITAL_PLANETS.size} models orbiting"
+                else -> null
+            }
+            if (statusText != null) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp),
+                    color = Color.Black.copy(alpha = 0.7f),
+                    contentColor = Color.White,
+                    tonalElevation = 4.dp,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = statusText,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
             }
         }
     }

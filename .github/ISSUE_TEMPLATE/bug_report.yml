@@ -44,7 +44,7 @@ body:
     id: version
     attributes:
       label: SceneView version
-      placeholder: "4.17.0"
+      placeholder: "4.18.0"
     validations:
       required: true
 

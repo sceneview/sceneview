@@ -68,10 +68,11 @@ fun SceneView(
     viewNodeWindowManager: ViewNode.WindowManager? = null,
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
-    permissionHandler: ARPermissionHandler? = /* auto from ComponentActivity */,
+    activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     renderQuality: RenderQuality = RenderQuality.Default,   // Cinematic / Default / Performance — see "Render Quality"
     autoCenterContent: Boolean = true,   // library-level auto-center — see note below
+    autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
     content: (@Composable SceneScope.() -> Unit)? = null
 )
@@ -121,6 +122,7 @@ fun ARSceneView(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     sessionFeatures: Set<Session.Feature> = setOf(),
     playbackDataset: File? = null,                 // Replay an MP4 recorded via ARRecorder. See "AR Recording & Playback".
+    playbackDatasetUri: android.net.Uri? = null,   // Scoped-storage replay (content:// or file://) — mutually exclusive with playbackDataset (#1845).
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,  // Picks the highest-res 30fps BACK config so ARRecorder records at full resolution (#1065). Pass null for ARCore's stock default, ::frontCameraConfig for Augmented Faces, or `cameraConfigFilter { ... }` for a DSL-built selector (#1733).
     flashMode: Config.FlashMode = Config.FlashMode.OFF,  // ARCore v1.45+ Flash Mode — OFF/TORCH. Reactive; unsupported devices/front-camera silently downgrade to OFF (#1732).
     // Typed Config.*Mode DSL params (#1766) — applied BEFORE sessionConfiguration so the callback still wins. All reactive.
@@ -156,16 +158,22 @@ fun ARSceneView(
     onSessionPaused: ((session: Session) -> Unit)? = null,
     onSessionFailed: ((exception: Exception) -> Unit)? = null,
     onSessionFailure: ((failure: ARSessionFailure) -> Unit)? = null,  // Typed sealed-class equivalent — see "Error Handling" (#1759).
+    onPlaybackFailed: ((exception: Exception) -> Unit)? = null,       // Dataset-replay failures (bad MP4 path / unreadable dataset) — see "AR Recording & Playback".
+    onConfigDowngraded: ((downgrade: ARConfigDowngrade) -> Unit)? = null,  // A requested capability was silently downgraded — see "ARConfigDowngrade" (#2096).
     onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
     onTrackingFailureChanged: ((trackingFailureReason: TrackingFailureReason?) -> Unit)? = null,
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     permissionHandler: ARPermissionHandler? = /* auto from ComponentActivity */,
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
-    renderQuality: RenderQuality = RenderQuality.Default,   // Cinematic / Default / Performance — see "Render Quality"
     content: (@Composable ARSceneScope.() -> Unit)? = null
 )
 ```
+
+**Note — no `renderQuality` parameter on `ARSceneView`.** Unlike the 3D `SceneView`, the AR
+composable has no `renderQuality` knob today; tune the AR view imperatively with
+`view.applyRenderQuality(RenderQuality.Performance)` on the `rememberARView(engine)` instance
+(see "Render Quality").
 
 Minimal usage:
 ```kotlin
@@ -425,7 +433,8 @@ ModelNode class properties (available via `apply` block):
     intensity: Float? = null,              // lux (directional/sun) or candela (point/spot)
     direction: Direction? = null,          // for directional/spot/sun
     position: Position = Position(x = 0f),
-    apply: LightManager.Builder.() -> Unit = {},   // advanced: color, falloff, spotLightCone, etc.
+    color: Color? = null,                  // linear RGB light colour (null = white)
+    apply: LightManager.Builder.() -> Unit = {},   // advanced: falloff, spotLightCone, sunAngularRadius, etc.
     nodeApply: LightNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null
 )
@@ -469,7 +478,7 @@ SceneView(...) {
 ### SphereNode — sphere geometry
 ```kotlin
 @Composable fun SphereNode(
-    radius: Float = Sphere.DEFAULT_RADIUS,  // 0.5f
+    radius: Float = Sphere.DEFAULT_RADIUS,  // 1.0f
     center: Position = Sphere.DEFAULT_CENTER,
     stacks: Int = Sphere.DEFAULT_STACKS,    // 24
     slices: Int = Sphere.DEFAULT_SLICES,    // 24
@@ -485,7 +494,7 @@ SceneView(...) {
 ### CylinderNode — cylinder geometry
 ```kotlin
 @Composable fun CylinderNode(
-    radius: Float = Cylinder.DEFAULT_RADIUS, // 0.5f
+    radius: Float = Cylinder.DEFAULT_RADIUS, // 1.0f
     height: Float = Cylinder.DEFAULT_HEIGHT, // 2.0f
     center: Position = Cylinder.DEFAULT_CENTER,
     sideCount: Int = Cylinder.DEFAULT_SIDE_COUNT, // 24
@@ -798,7 +807,8 @@ Renders a triangulated 2D polygon in 3D space. Supports holes, Delaunay refineme
     restitution: Float = 0.6f,
     linearVelocity: Position = Position(0f, 0f, 0f),
     floorY: Float = 0f,
-    radius: Float = 0f
+    radius: Float = 0f,
+    floorProvider: FloorProvider? = null   // dynamic floor source — e.g. rememberDepthCollider() (AR)
 )
 ```
 Attaches gravity + floor bounce to an existing node. Does NOT add the node to the scene — the node
@@ -954,7 +964,7 @@ ARSceneView(
         if (anchor == null) {
             anchor = frame.getUpdatedPlanes()
                 .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
-                ?.let { frame.createAnchorOrNull(it.centerPose) }
+                ?.let { plane -> plane.createAnchorOrNull(plane.centerPose) }
         }
     }
 ) {
@@ -2588,6 +2598,8 @@ fun rememberModelInstance(
 ```
 Returns `null` while loading, recomposes when ready. **Always handle the null case.**
 
+**Lifecycle & ownership:** the composable owns the produced `ModelInstance` and its backing glTF `Model`. When the path key changes, the previous `Model` is destroyed (after any consuming `ModelNode` has detached its renderables) and the new asset is loaded; the `Model` is also destroyed on leave-composition. `ModelLoader` does NOT dedupe by path — each call is a fresh GPU allocation, not a cache hit. Never hold a swapped-out instance; for manual lifetime control use `ModelLoader.loadModelInstanceAsync` + `ModelLoader.destroyModel`.
+
 The `fileLocation` overload auto-detects URLs (http/https) and routes through Fuel HTTP client for download. Use it for remote model loading:
 ```kotlin
 val model = rememberModelInstance(modelLoader, "https://example.com/model.glb")
@@ -2683,8 +2695,10 @@ class EnvironmentLoader(engine: Engine, context: Context) {
     fun createHDREnvironment(file: File, ...): Environment?
     suspend fun loadHDREnvironment(url: String, ...): Environment?
 
-    // KTX environment
-    fun createKTXEnvironment(assetFileLocation: String): Environment
+    // KTX1 environment (precompiled cmgen output — separate IBL + skybox files).
+    // Also accepts (iblBuffer, skyboxBuffer), (iblRawResId, skyboxRawResId), (iblFile, skyboxFile).
+    fun createKTX1Environment(iblAssetFile: String? = null, skyboxAssetFile: String? = null): Environment
+    suspend fun loadKTX1Environment(iblUrl: String? = null, skyboxUrl: String? = null): Environment
 
     fun createEnvironment(
         indirectLight: IndirectLight? = null,
@@ -2700,6 +2714,8 @@ class EnvironmentLoader(engine: Engine, context: Context) {
 All `remember*` helpers create and memoize Filament objects, destroying them on disposal.
 Most are default parameter values in `SceneView`/`ARSceneView` — call them explicitly only when sharing resources or customizing.
 
+**Ownership on key change:** the keyed async loaders (`rememberModelInstance`, `rememberEnvironment(key = …)`, `rememberHDREnvironment`, `rememberKTXEnvironment`) also destroy the **previously produced** object when their key/path changes — a path swap (e.g. a gallery or HDR slider) frees the old GPU resources automatically. Never keep a reference to a swapped-out `ModelInstance`/`Environment`; re-read the helper's return value instead. For objects you manage yourself, use the imperative loaders (`loadModelInstanceAsync`, `createHDREnvironment`) and call `destroyModel`/`destroyEnvironment` when done.
+
 | Helper | Returns | Purpose |
 |--------|---------|---------|
 | `rememberEngine()` | `Engine` | Root Filament object — one per process |
@@ -2710,6 +2726,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberEnvironment(environmentLoader, isOpaque)` | `Environment` | IBL + skybox environment |
 | `rememberEnvironment(environmentLoader) { ... }` | `Environment` | Custom environment from lambda |
 | `rememberEnvironment(environmentLoader, key = hdrPath) { ... }` | `Environment` | Pass `key` when the factory depends on a changing value (e.g. an HDR path from a slider) — the lambda is otherwise memoised once and the skybox never swaps |
+| `rememberHDREnvironment(environmentLoader, "env.hdr")` | `Environment?` | `@ExperimentalSceneViewApi` — async HDR load from assets, `null` while loading; previous environment destroyed when the path changes |
+| `rememberKTXEnvironment(environmentLoader, iblAssetFile, skyboxAssetFile)` | `Environment?` | `@ExperimentalSceneViewApi` — async pre-filtered KTX1 IBL/skybox load, `null` while loading; previous environment destroyed when the paths change |
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light (key) with apply block — shadows ON by default; apply block is reactive (re-runs on recomposition, so Compose-state-driven intensity/direction/color update live) |
 | `rememberFillLightNode(engine) { ... }` | `LightNode` | Soft fill light opposite the main light — lifts shadows so models don't look flat; apply block is reactive (same as `rememberMainLightNode`) |
@@ -2821,10 +2839,14 @@ enum class RenderQuality { Cinematic, Default, Performance }
 
 ```kotlin
 SceneView(renderQuality = RenderQuality.Cinematic) { /* … */ }
-ARSceneView(renderQuality = RenderQuality.Performance) { /* … */ }
+
+// AR: ARSceneView has NO renderQuality parameter — apply the preset to the AR view imperatively:
+import io.github.sceneview.applyRenderQuality
+val arView = rememberARView(engine)
+arView.applyRenderQuality(RenderQuality.Performance)
+ARSceneView(view = arView) { /* … */ }
 
 // Imperative — applies to any Filament View directly:
-import io.github.sceneview.applyRenderQuality
 view.applyRenderQuality(RenderQuality.Cinematic)
 ```
 
@@ -3028,6 +3050,34 @@ private fun ARSessionFailure.action(): ArFailureAction = when (this) {
 Avoid `else -> …` in the `when (failure)` site: it silently catches future SceneView subtypes and you lose the compile-time alarm that justifies the sealed hierarchy in the first place.
 
 Subtypes are organised into Install/availability, Permissions, Camera, Quota/runtime, Cloud Anchor, Augmented image, Recording/playback, Session/config, and an `Other` catch-all for forward compatibility with future ARCore exception classes. Every subtype preserves the original `Exception` on `.cause`, so apps that need the raw stack trace can still get at it.
+
+### ARConfigDowngrade — observe silently-downgraded session capabilities (#2096)
+
+Several `Config` knobs are support-gated inside `ARSceneView`'s session pipeline: an unsupported
+request (e.g. `depthMode = AUTOMATIC` on a device without motion-stereo depth, or a
+`sessionCameraConfig` selector returning a config not in `getSupportedCameraConfigs()`) is quietly
+replaced with a safe fallback instead of crashing the session. Wire `onConfigDowngraded` to *know*
+when that happened — hide a UI affordance, warn the user, or report to analytics.
+
+```kotlin
+public sealed class ARConfigDowngrade {
+    // Requested DepthMode unsupported — effective is always DISABLED.
+    data class DepthMode(val requested: Config.DepthMode, val effective: Config.DepthMode) : ARConfigDowngrade()
+    // sessionCameraConfig selector not honoured — ARCore kept its stock config.
+    data class CameraConfig(val requested: com.google.ar.core.CameraConfig,
+                            val effective: com.google.ar.core.CameraConfig) : ARConfigDowngrade()
+}
+
+ARSceneView(
+    depthMode = Config.DepthMode.AUTOMATIC,
+    onConfigDowngraded = { downgrade ->
+        when (downgrade) {
+            is ARConfigDowngrade.DepthMode -> occlusionAvailable = false  // no depth on this device
+            is ARConfigDowngrade.CameraConfig -> log("running at ${downgrade.effective.imageSize}")
+        }
+    },
+) { /* … */ }
+```
 
 **Per-node error states** that already ship:
 - `CloudAnchorNode.onHosted: (cloudAnchorId: String?, state: CloudAnchorState) -> Unit` — receives the specific `CloudAnchorState` (`ERROR_NOT_AUTHORIZED`, `ERROR_RESOURCE_EXHAUSTED`, `ERROR_HOSTING_SERVICE_UNAVAILABLE`, …) instead of a binary `isError`. Pair with the resolve overload's same signature.
@@ -3721,7 +3771,7 @@ fun ARTapToPlace() {
             if (anchor == null) {
                 anchor = frame.getUpdatedPlanes()
                     .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
-                    ?.let { frame.createAnchorOrNull(it.centerPose) }
+                    ?.let { plane -> plane.createAnchorOrNull(plane.centerPose) }
             }
         }
     ) {
@@ -4387,6 +4437,19 @@ generateLine(start: Float3 = Float3(0f), end: Float3 = Float3(x = 1f)): Geometry
 generatePath(points: List<Float3>, closed: Boolean = false): GeometryData
 generateShape(polygonPath: List<Float2>, polygonHoles: List<Int>, delaunayPoints: List<Float2>,
     normal: Float3, uvScale: Float2, color: Float4?): GeometryData
+
+// Additional generators (same GeometryData return):
+generateIcosphere(radius: Float = 1f, center: Float3 = Float3(0f), subdivisions: Int = 2): GeometryData
+generateTorus(majorRadius: Float = 1f, minorRadius: Float = 0.3f, center: Float3 = Float3(0f),
+    majorSegments: Int = 24, minorSegments: Int = 12): GeometryData
+generateCapsule(radius: Float = 0.5f, height: Float = 2f, center: Float3 = Float3(0f),
+    slices: Int = 24, hemisphereStacks: Int = 8, cylinderStacks: Int = 1): GeometryData
+generateExtrude(crossSection: List<Float2>, path: List<Float3>, closed: Boolean = false): GeometryData
+generateLathe(profile: List<Float2>, center: Float3 = Float3(0f), segments: Int = 24, closed: Boolean = true): GeometryData
+generateRoundedCube(size: Float3 = Float3(1f), radius: Float = 0.1f, center: Float3 = Float3(0f), segments: Int = 4): GeometryData
+generateHeightmap(width: Float = 10f, depth: Float = 10f, center: Float3 = Float3(0f),
+    segmentsX: Int = 64, segmentsZ: Int = 64, heightFunction: (Float, Float) -> Float = { _, _ -> 0f }): GeometryData
+generatePerlinTerrain(...): GeometryData   // procedural Perlin-noise heightmap terrain
 ```
 
 ### Collision system
@@ -4489,9 +4552,12 @@ public struct ARSceneView: UIViewRepresentable {
         planeDetection: PlaneDetectionMode = .horizontal,
         showPlaneOverlay: Bool = true,
         showCoachingOverlay: Bool = true,
+        cameraExposure: Float? = nil,
         imageTrackingDatabase: Set<ARReferenceImage>? = nil,
+        faceTracking: Bool = false,
         onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)? = nil,
-        onImageDetected: ((String, AnchorNode, ARView) -> Void)? = nil
+        onImageDetected: ((String, AnchorNode, ARView) -> Void)? = nil,
+        onFrame: ((ARFrame, ARView) -> Void)? = nil
     )
     public func onSessionStarted(_ handler: @escaping (ARView) -> Void) -> ARSceneView
 }
@@ -4525,6 +4591,7 @@ public struct ModelNode: @unchecked Sendable {
     public func playAnimation(named name: String, loop: Bool = true, speed: Float = 1.0, transitionDuration: TimeInterval = 0.2)
     public func stopAllAnimations()
     public func pauseAllAnimations()
+    public func resumeAllAnimations()
 
     // Material
     public func setColor(_ color: SimpleMaterial.Color) -> ModelNode
@@ -4544,11 +4611,14 @@ public struct ModelNode: @unchecked Sendable {
 public struct GeometryNode: Sendable {
     public let entity: ModelEntity
 
+    // Simple-color factories also accept `unlit: Bool = false` (flat fill, ignores lighting)
     public static func cube(size: Float = 1.0, color: SimpleMaterial.Color = .white, cornerRadius: Float = 0) -> GeometryNode
     public static func sphere(radius: Float = 0.5, color: SimpleMaterial.Color = .white) -> GeometryNode
     public static func cylinder(radius: Float = 0.5, height: Float = 1.0, color: SimpleMaterial.Color = .white) -> GeometryNode
     public static func cone(height: Float = 1.0, radius: Float = 0.5, color: SimpleMaterial.Color = .white) -> GeometryNode
     public static func plane(width: Float = 1.0, depth: Float = 1.0, color: SimpleMaterial.Color = .white) -> GeometryNode
+    public static func torus(majorRadius: Float = 0.4, minorRadius: Float = 0.15, color: SimpleMaterial.Color = .white) -> GeometryNode
+    public static func capsule(radius: Float = 0.25, height: Float = 1.0, color: SimpleMaterial.Color = .white) -> GeometryNode
 
     // PBR material overloads
     public static func cube(size: Float = 1.0, material: GeometryMaterial, cornerRadius: Float = 0) -> GeometryNode
@@ -4883,7 +4953,7 @@ ferrari_f40.glb
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.1.2 — npm `sceneview-web`
+Package: `sceneview-web` v4.18.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -4895,7 +4965,7 @@ npm install sceneview-web filament
 Script-tag usage (no bundler):
 ```html
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.3.1/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.18.0/sceneview-web.js"></script>
 ```
 
 After loading, the library registers itself on `window.sceneview`.
@@ -5514,6 +5584,7 @@ public struct ARSceneView: UIViewRepresentable {
         showCoachingOverlay: Bool = true,
         cameraExposure: Float? = nil,        // EV compensation — nil = ARKit auto-exposure
         imageTrackingDatabase: Set<ARReferenceImage>? = nil,
+        faceTracking: Bool = false,
         onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)? = nil,
         onImageDetected: ((String, AnchorNode, ARView) -> Void)? = nil,
         onFrame: ((ARFrame, ARView) -> Void)? = nil
@@ -5609,6 +5680,8 @@ public struct ModelNode: @unchecked Sendable {
     public func playAnimation(at index: Int, loop: Bool = true, speed: Float = 1.0, transitionDuration: TimeInterval = 0.2)
     public func playAnimation(named name: String, loop: Bool = true, speed: Float = 1.0, transitionDuration: TimeInterval = 0.2)
     public func stopAllAnimations()
+    public func pauseAllAnimations()
+    public func resumeAllAnimations()
 
     // Material
     public func setColor(_ color: SimpleMaterial.Color) -> ModelNode
@@ -5675,10 +5748,13 @@ public enum Color: Sendable {
 ```swift
 public struct GeometryNode: Sendable {
     // Primitives (simple color)
+    // Simple-color factories also accept `unlit: Bool = false` (flat fill, ignores lighting)
     public static func cube(size: Float = 1.0, color: SimpleMaterial.Color = .white, cornerRadius: Float = 0) -> GeometryNode
     public static func sphere(radius: Float = 0.5, color: SimpleMaterial.Color = .white) -> GeometryNode
     public static func cylinder(radius: Float = 0.5, height: Float = 1.0, color: SimpleMaterial.Color = .white) -> GeometryNode
     public static func plane(width: Float = 1.0, depth: Float = 1.0, color: SimpleMaterial.Color = .white) -> GeometryNode
+    public static func torus(majorRadius: Float = 0.4, minorRadius: Float = 0.15, color: SimpleMaterial.Color = .white) -> GeometryNode
+    public static func capsule(radius: Float = 0.25, height: Float = 1.0, color: SimpleMaterial.Color = .white) -> GeometryNode
     public static func cone(height: Float = 1.0, radius: Float = 0.5, color: SimpleMaterial.Color = .white) -> GeometryNode
 
     // Primitives with PBR material
@@ -5968,8 +6044,6 @@ Backpressure is absorbed by `rateHz`. Wire format: JSON-lines consumed by
 | macOS | RealityKit | SwiftUI | via SceneViewSwift | Alpha |
 | visionOS | RealityKit | SwiftUI | via SceneViewSwift | Alpha |
 | Web | Filament.js + WebXR | Kotlin/JS | `samples/web-demo` | Alpha |
-
-SceneView Web (sceneview-web v4.1.2) — see "## SceneView Web (Kotlin/JS + Filament.js)" section above for the full API reference.
 | Desktop | Software renderer | Compose Desktop | `samples/desktop-demo` | Alpha |
 | Flutter | Filament/RealityKit | PlatformView | `samples/flutter-demo` | Alpha |
 | React Native | Filament/RealityKit | Fabric | `samples/react-native-demo` | Alpha |

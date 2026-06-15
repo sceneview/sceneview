@@ -58,15 +58,15 @@ struct PhysicsScene: View {
     @State private var balls: [Entity] = []
 
     var body: some View {
-        SceneView { content in
+        SceneView { root in
             // Floor
             let floor = GeometryNode.cube(size: 5.0, color: .gray)
                 .scale(.init(x: 1, y: 0.02, z: 1))
-            content.add(floor.entity)
+            root.addChild(floor.entity)
 
             // Balls (RealityKit has built-in physics)
             for ball in balls {
-                content.add(ball)
+                root.addChild(ball)
             }
         }
         .cameraControls(.orbit)

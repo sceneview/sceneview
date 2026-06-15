@@ -2,9 +2,15 @@
 
 **Intent:** "Fix a washed-out or too-dark AR camera preview"
 
-On some devices, ARCore's auto-exposure setting does not match what Camera2 actually delivers.
-The result is a camera feed that looks overexposed (white / blown-out) or underexposed compared
-to the device's native camera app.
+On some devices the AR camera preview looks overexposed (white / blown-out) or underexposed
+compared to the device's native camera app. `ARSceneView(cameraExposure:)` overrides the
+renderer-side exposure of the whole AR frame.
+
+> ⚠️ **Semantics (Android, #1179):** `cameraExposure` is Filament's **absolute exposure
+> scale** (the single-`Float` `setExposure` overload — `1.0 ≈ ISO 100 ≈ EV 0`). It is **NOT a
+> signed EV-stop bias**: a negative value clamps to zero and renders a **fully black frame**.
+> Realistic range is roughly `0.05`–`16`. The iOS `ARSceneView(cameraExposure:)` is a
+> different mechanism (EV-stop post-process) — never copy values across platforms.
 
 ## Android (Kotlin + Jetpack Compose)
 
@@ -13,8 +19,8 @@ to the device's native camera app.
 fun ARWithExposureFix() {
     ARSceneView(
         modifier = Modifier.fillMaxSize(),
-        // Fix washed-out preview: lower = darker, higher = brighter, null = ARCore default
-        cameraExposure = 1.0f
+        // Brighten a too-dark preview: > 1.0 = brighter, < 1.0 = darker, null = default
+        cameraExposure = 2.0f
     ) {
         // your AR nodes here
     }
@@ -26,7 +32,8 @@ fun ARWithExposureFix() {
 ```kotlin
 @Composable
 fun ARWithAdjustableExposure() {
-    var exposure by remember { mutableStateOf(0f) }
+    // Absolute scale — keep the slider strictly positive (never negative).
+    var exposure by remember { mutableStateOf(1f) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         ARSceneView(
@@ -37,13 +44,13 @@ fun ARWithAdjustableExposure() {
         Slider(
             value = exposure,
             onValueChange = { exposure = it },
-            valueRange = -3f..3f,
+            valueRange = 0.05f..8f,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
         )
         Text(
-            text = "Exposure: ${"%.1f".format(exposure)} EV",
+            text = "Exposure scale: ${"%.2f".format(exposure)}x",
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
     }
@@ -55,23 +62,22 @@ fun ARWithAdjustableExposure() {
 | Concept | Detail |
 |---|---|
 | Parameter | `cameraExposure: Float?` on `ARSceneView` |
-| Unit | EV (exposure value) |
-| Default | `null` — uses ARCore's built-in exposure tuning |
-| `0f` | Standard middle-grey reference exposure |
-| Positive values | Brighter preview (e.g. `1.0f`, `2.0f`) |
-| Negative values | Darker preview (e.g. `-1.0f`, `-2.0f`) |
-| Suggested step | 0.5 EV — adjust until preview matches device camera app |
+| Unit | Absolute exposure scale (`1.0 ≈ ISO 100 ≈ EV 0`) — **not** EV stops |
+| Default | `null` — uses SceneView's tuned AR camera defaults (recommended) |
+| `1.0f` | Reference exposure |
+| Values `> 1.0` | Brighter preview (e.g. `2.0f`, `4.0f`) |
+| Values in `(0, 1)` | Darker preview (e.g. `0.5f`, `0.25f`) |
+| Negative values | ⛔ Clamp to zero → fully black framebuffer (#1179) — never use |
+| Realistic range | ~`0.05`–`16` |
 
 ## When to use this
 
-- Camera preview looks **washed out / blown-out** → try `cameraExposure = 1.0f`
-- Camera preview looks **too dark** → try `cameraExposure = -1.0f`
+- Camera preview looks **too dark** → try `cameraExposure = 2.0f`
+- Camera preview looks **washed out / blown-out** → try `cameraExposure = 0.5f`
 - Preview differs visually from the device's stock camera app
-- Using the **front camera** (`Session.Feature.FRONT_CAMERA`) — front sensors often have
-  different default exposure behaviour than the rear camera
 
 ## When NOT to use this
 
 Leave `cameraExposure = null` (the default) on devices where the preview already looks correct.
-The override bypasses ARCore's per-device tuning, so only set it when you observe an actual
-problem.
+The override bypasses SceneView's per-device AR camera tuning (correct for both back- and
+front-camera sessions), so only set it when you observe an actual problem.

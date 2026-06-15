@@ -9,13 +9,17 @@
 fun EditableModelViewer() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
     val model = rememberModelInstance(modelLoader, "models/chair.glb")
 
     SceneView(
         modifier = Modifier.fillMaxSize(),
         engine = engine,
         modelLoader = modelLoader,
-        environment = rememberEnvironment(engine, "environments/studio_2k.hdr"),
+        environment = rememberEnvironment(environmentLoader) {
+            environmentLoader.createHDREnvironment("environments/studio_2k.hdr")
+                ?: createEnvironment(environmentLoader)
+        },
         cameraManipulator = rememberCameraManipulator()
     ) {
         model?.let {
@@ -33,12 +37,24 @@ fun EditableModelViewer() {
 ## iOS (SwiftUI)
 
 ```swift
-SceneView(environment: .studio) {
-    ModelNode(named: "chair.usdz")
-        .scaleToUnits(1.0)
-        .editable(true)
+@State private var model: ModelNode?
+
+SceneView { root in
+    if let model {
+        root.addChild(model.entity)
+    }
 }
+.environment(.studio)
 .cameraControls(.orbit)
+.task {
+    model = try? await ModelNode.load("chair.usdz")
+    model?.scaleToUnits(1.0)
+    // Per-entity gestures (v4.2.0+) — the iOS equivalent of Android's isEditable:
+    model?.entity
+        .onDrag { translation in model?.position += translation }
+        .onScale { factor in model?.scale *= SIMD3<Float>(repeating: factor) }
+        .onRotate { angle in model?.rotation = simd_quatf(angle: angle, axis: [0, 1, 0]) }
+}
 ```
 
 ## Key Points

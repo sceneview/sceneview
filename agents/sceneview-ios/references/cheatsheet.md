@@ -34,7 +34,7 @@ SceneView { root in
 ```swift
 SceneView { … }
     .environment(.studio)        // IBL preset — see "Environment presets" below
-    .cameraControls(.orbit)      // .orbit (default) | .pan | .firstPerson | native (iOS 18+): .none | .tilt | .dolly
+    .cameraControls(.orbit)      // .orbit (default) | .pan | .firstPerson | native (iOS 18+): .none | .tilt | .dolly | .gimbal
     .onEntityTapped { entity in }
     .autoRotate(speed: 0.3)      // turntable
     .autoCenterContent(true)     // translate content centroid to orbit pivot
@@ -53,8 +53,8 @@ ARSceneView(
     onTapOnPlane: { position, arView in /* place content */ }
 )
     .onSessionStarted { arView in }
-    .cameraExposure(0.0)           // EV — AR-only camera exposure
-    .onFrame { arView in }
+    .cameraExposure(0.0)           // EV stops — AR-only camera exposure (iOS-specific semantics)
+    .onFrame { frame, arView in }  // (ARFrame, ARView)
     .mainLight(.systemDefault)
     .fillLight(.systemDefault)
 ```
@@ -83,6 +83,7 @@ ARSceneView(
 | `AnchorNode.world(position:)` | anchor at a world coordinate |
 | `AnchorNode.plane(alignment:minimumBounds:)` | anchor on a detected plane |
 | `AugmentedImageNode` | overlay content on a detected reference image |
+| `CloudAnchorNode.host(ttlDays:completion:operation:)` / `.resolve(cloudAnchorId:completion:operation:)` | cross-device persistent anchors — both return a cancellable `CloudAnchorFuture`; call `future.cancel()` from `.onDisappear`. The app supplies the `GARSession` round-trip (Google's `arcore-ios-sdk`) through the `operation` closure |
 
 ## Environment presets
 
