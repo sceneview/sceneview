@@ -3,7 +3,7 @@ import SwiftUI
 /// About tab — Liquid Glass card layout (iOS 26+ Stitch spec).
 ///
 /// Hero logo + version pill, then a series of `.regularMaterial` glass cards
-/// (Open Source, Docs, GitHub, Sponsor, Credits), a tinted "Star on GitHub"
+/// (Open Source, Docs, GitHub, 3D Playground, Credits), a tinted "Star on GitHub"
 /// CTA, and a footer with attribution.
 struct AboutTab: View {
     private static let version: String = {
@@ -123,15 +123,6 @@ struct AboutTab: View {
                 subtitle: "Try every feature in the browser",
                 trailing: .link,
                 url: URL(string: "https://sceneview.github.io/playground.html")
-            )
-
-            AboutCard(
-                icon: "heart.fill",
-                iconColor: .red,
-                title: "Sponsor",
-                subtitle: "Help keep the project free & active",
-                trailing: .link,
-                url: URL(string: "https://github.com/sponsors/sceneview")
             )
 
             AboutCard(
