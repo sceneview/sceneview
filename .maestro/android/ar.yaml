@@ -14,6 +14,11 @@
 # mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
 appId: io.github.sceneview.demo
 ---
+# The AR View tab's LIVE session (consumer entry, not a deep-linked demo) —
+# launcher → Start AR Camera → unified tap-to-place overlay → back-arrow exit.
+# Closes the QA gap that let #2476 ship (#2482 PR 4/4).
+- runFlow:
+    file: flows/ar-view-live.yaml
 - runFlow:
     file: flows/demo.yaml
     env:

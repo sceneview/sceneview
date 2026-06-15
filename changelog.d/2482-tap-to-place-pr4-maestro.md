@@ -1,0 +1,2 @@
+<!-- category: Tests -->
+- Added a Maestro flow (`.maestro/android/flows/ar-view-live.yaml`) that drives the AR View tab's **live** session end-to-end — launcher → Start AR Camera → unified tap-to-place status overlay → top-start back-arrow exit → launcher restored — and wired it into `ar.yaml`. Until now no flow exercised the live AR View session (only deep-linked demos), the blind spot that let #2476 ship. Final piece of the #2482 tap-to-place unification (PR 4/4).
