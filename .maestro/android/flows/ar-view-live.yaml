@@ -1,0 +1,58 @@
+# Maestro flow — the AR View tab's LIVE session (NOT a deep-linked demo).
+#
+# Drives the consumer entry point like a real user: open the "AR View" tab,
+# start the live `ARSceneView` from the launcher CTA, assert the unified
+# tap-to-place status overlay renders (the shared `TapToPlaceArSession`
+# engine — #2482), exit via the top-START back arrow that replaced the old
+# X close, and assert the launcher is restored.
+#
+# WHY THIS EXISTS: until #2482 PR 4/4 (§3.7 of
+# `.claude/plans/tap-to-place-unification.md`) NO Maestro flow drove the AR
+# View tab's live session — only deep-linked demos via `flows/demo.yaml`.
+# That blind spot let #2476 (a stale-closure tap regression on this exact
+# surface) ship. This closes the gap.
+#
+# REQUIRES the ARCore-friendly emulator from
+# `.claude/scripts/setup-ar-emulator.sh` (virtualscene back camera, host GPU,
+# Google Play Services for AR installed): the "Start AR Camera" CTA only
+# enables when ARCore is SUPPORTED_INSTALLED. The android/ar device-QA legs
+# are advisory (continue-on-error, #1651), so a slow emulator AR frame never
+# blocks a release.
+#
+# Run standalone:  maestro test .maestro/android/flows/ar-view-live.yaml
+# Also invoked once at the head of `.maestro/android/ar.yaml`.
+appId: io.github.sceneview.demo
+---
+# Cold start with the camera permission pre-granted so the launcher CTA goes
+# straight to the live session instead of the system permission dialog.
+- launchApp:
+    clearState: true
+    permissions:
+      camera: allow
+
+# Land on the AR View tab (bottom NavigationBar label `tab_ar_view`).
+- tapOn: "AR View"
+
+# The launcher gate is shown first (opt-in live session — never auto-starts).
+- assertVisible: "AR Experiences"
+- assertVisible: "Start AR Camera"
+
+# Start the live ARSceneView.
+- tapOn: "Start AR Camera"
+
+# The unified tap-to-place status overlay renders (shared
+# `TapToPlaceArSession` → default `TapToPlaceStatusOverlays`). The pill shows
+# the scanning vocabulary immediately — it draws above the camera-init scrim
+# and is NOT gated on AR tracking, so it is deterministic. Give ARCore a
+# generous window to construct the session on the emulator.
+- extendedWaitUntil:
+    visible: "Scanning for surfaces"
+    timeout: 20000
+
+# The top-START back arrow replaced the X close (#2482) — `cd_back_button`
+# content description "Navigate back".
+- assertVisible: "Navigate back"
+- tapOn: "Navigate back"
+
+# Back on the launcher — the session tore down cleanly, no crash.
+- assertVisible: "Start AR Camera"
