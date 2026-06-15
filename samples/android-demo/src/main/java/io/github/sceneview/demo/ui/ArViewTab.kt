@@ -8,13 +8,9 @@ package io.github.sceneview.demo.ui
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
-import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,6 +39,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.CheckCircle
@@ -53,8 +50,6 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocationCity
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelfImprovement
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -81,7 +76,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -94,34 +88,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import com.google.ar.core.ArCoreApk
-import com.google.ar.core.Config
-import com.google.ar.core.Frame
-import com.google.ar.core.Plane
-import com.google.ar.core.Session
-import com.google.ar.core.TrackingFailureReason
-import com.google.ar.core.TrackingState
 import androidx.compose.ui.graphics.vector.ImageVector
-import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.demo.common.placement.PlacementSpec
+import io.github.sceneview.demo.common.placement.TapToPlaceArSession
+import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
 import io.github.sceneview.demo.feedback.DriveFeedbackChipReveal
 import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.feedback.FeedbackChrome
-import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.R
-import io.github.sceneview.math.Position
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberOnGestureListener
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -141,18 +125,23 @@ import java.util.UUID
  *    asks for it. Saves battery and avoids spurious permission dialogs when
  *    the user is just browsing.
  *
- * Once the user taps "Start AR Camera" we fall through to the legacy live AR
- * experience, identical to the iOS spec:
+ * Once the user taps "Start AR Camera" we fall through to the live AR
+ * experience, now rendered by the shared `TapToPlaceArSession` engine
+ * (#2482, PR 3/4 — one engine for the AR View tab and the `ar-placement`
+ * demo). This auto-inherits the centre reticle (#1882), texture-settle gating
+ * (#1435), per-asset rotation correction (#1477), PAUSED-surviving anchors,
+ * the camera-init scrim (#2484) and the unified status vocabulary (#2234).
+ * The host keeps the consumer chrome on top:
  *
- *  - Full-bleed ARSceneView underneath (camera passthrough)
- *  - Top: glass status pill — "Tap a surface to place {Model}" / "N placed"
- *  - Bottom: floating action bar with FAB "Pick model" + Reset + Screenshot
+ *  - Top-start: back arrow (app-wide back affordance) over the session
+ *  - Top: glass status pill — drawn by the shared session's default overlays
+ *  - Bottom: floating action bar with FAB "Pick model" + Reset
  *  - Modal bottom sheet for the model picker grid
  *
  * Reset is implemented by bumping a `key(arSceneId)` wrapper around the
- * ARSceneView — there is no `removeAllAnchors` on the wrapper, so we
- * recompose the whole subtree to clear ARCore state and start a fresh
- * session.
+ * session — there is no `removeAllAnchors` on the wrapper, so we recompose the
+ * whole subtree (and its `TapToPlaceState` holder) to clear ARCore state and
+ * start a fresh session.
  */
 @Composable
 fun ArViewTabContent(
@@ -273,10 +262,10 @@ fun ArViewTabContent(
     }
 
     // Hide the floating feedback FAB while the live ARSceneView is on screen
-    // — the AR-View bottom action bar (model picker + Reset + Share) would
-    // otherwise be masked on its left side by the chip (#2194). The chip
-    // re-appears as soon as the user exits the AR session (back gesture /
-    // Close button) or switches tabs (DisposableEffect cleanup).
+    // — the AR-View bottom action bar (model picker + Reset) would otherwise be
+    // masked on its left side by the chip (#2194). The chip re-appears as soon
+    // as the user exits the AR session (back gesture / back arrow) or switches
+    // tabs (DisposableEffect cleanup).
     DisposableEffect(Unit) {
         FeedbackChrome.chipVisible = false
         onDispose { FeedbackChrome.chipVisible = true }
@@ -314,26 +303,17 @@ fun ArViewTabContent(
     var selectedModelIndex by remember { mutableStateOf(0) }
     val selectedModel = arModels[selectedModelIndex]
 
-    val placedAnchors = remember { mutableStateListOf<PlacedAr>() }
-    var nextId by remember { mutableStateOf(0) }
-
-    // Live AR session state for the status pill.
-    var isTracking by remember { mutableStateOf(false) }
-    var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
-    // True once at least one detected ARCore plane has reached
-    // [TrackingState.TRACKING]. The camera frame's own tracking state flips
-    // long before any plane is detected, so `isTracking` alone is not enough
-    // to know whether the user actually has a surface to tap (#2234). Without
-    // this gate the "Tap a surface" prompt showed for ~10–20 s before any
-    // real surface was actually trackable — confusing in the screen-record QA
-    // (2026-05-26, frames f_061 → f_069).
-    var anyPlaneTracked by remember { mutableStateOf(false) }
-
     // Force-rebuild key for the ARSceneView. Bumping this UUID recomposes the
     // whole AR subtree, which is the only way to discard ARCore state without
     // a wrapper-level resetSession() API (iOS does the same via arViewID).
     var arSceneId by remember { mutableStateOf(UUID.randomUUID()) }
+
+    // The shared tap-to-place session holder (#2482, PR 3/4). Hoisted here so
+    // `exitArSession` (defined below at an outer scope) can call
+    // `state.clearAll()`, while still wrapped in `key(arSceneId)` so a Reset —
+    // which bumps `arSceneId` — recreates a fresh holder and drops every placed
+    // anchor along with the recomposed ARCore session.
+    val state = key(arSceneId) { rememberTapToPlaceState() }
 
     var showModelPicker by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -345,12 +325,11 @@ fun ArViewTabContent(
     val materialLoader = rememberMaterialLoader(engine)
 
     // Shared exit path used by both the system back gesture (BackHandler) and
-    // the top-end Close button. Detaches every ARCore anchor first so the
+    // the top-start back arrow. Detaches every ARCore anchor first so the
     // underlying session releases its native refs before the wrapper
     // recomposes away.
     val exitArSession: () -> Unit = {
-        placedAnchors.forEach { runCatching { it.anchor.detach() } }
-        placedAnchors.clear()
+        state.clearAll()
         sessionStarted = false
     }
 
@@ -366,99 +345,43 @@ fun ArViewTabContent(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Live ARSceneView — full bleed under the overlays.
+        // Live AR session — full bleed under the overlays. The shared
+        // `TapToPlaceArSession` engine (#2482, PR 3/4) renders the ARSceneView,
+        // centre reticle (#1882), texture-settle gating (#1435), per-asset
+        // rotation correction (#1477 — the helmet now lands upright), PAUSED-
+        // surviving anchors, the camera-init scrim (#2484), and the unified
+        // status-pill vocabulary (#2234, incl. tracking-failure messages).
         key(arSceneId) {
-            ARSceneView(
-                modifier = Modifier.fillMaxSize(),
+            TapToPlaceArSession(
+                nextModelLabel = arModels[selectedModelIndex].name,
+                onPlaceModel = {
+                    // Resolve the model from the CURRENT picker state at tap time
+                    // (#2476 invariant) — never captured at composition. Reading
+                    // `arModels[selectedModelIndex]` here keeps each placement on
+                    // the live selection rather than freezing on the first model.
+                    val m = arModels[selectedModelIndex]
+                    PlacementSpec(
+                        assetLocation = m.assetPath,
+                        displayName = m.name,
+                        scaleToUnits = m.scale,
+                    )
+                },
+                state = state,
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
-                planeRenderer = true,
-                sessionConfiguration = { _: Session, config: Config ->
-                    config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                    config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-                },
-                onSessionUpdated = { session, frame ->
-                    latestFrame = frame
-                    isTracking = frame.camera.trackingState == TrackingState.TRACKING
-                    // Recompute "is there any plane the user can actually tap?"
-                    // each frame (#2234). Detection is cheap — ARCore caches
-                    // the trackable set internally and we only scan Planes.
-                    anyPlaneTracked = session.getAllTrackables(Plane::class.java)
-                        .any { it.trackingState == TrackingState.TRACKING }
-                },
-                onTrackingFailureChanged = { reason ->
-                    trackingFailureReason = reason
-                },
-                onGestureListener = rememberOnGestureListener(
-                    onSingleTapConfirmed = { event: MotionEvent, node ->
-                        // Tap on an existing editable model -> let it handle
-                        // the gesture. Avoid stacking new models on top.
-                        if (node != null) return@rememberOnGestureListener
-
-                        val frame = latestFrame ?: return@rememberOnGestureListener
-                        if (frame.camera.trackingState != TrackingState.TRACKING) {
-                            return@rememberOnGestureListener
-                        }
-                        val hit = frame.hitTest(event).firstOrNull { result ->
-                            val trackable = result.trackable
-                            trackable is Plane &&
-                                trackable.isPoseInPolygon(result.hitPose) &&
-                                result.distance <= 5.0f
-                        }
-                        if (hit != null) {
-                            // Resolve the model from the CURRENT picker state at
-                            // tap time. Reading `arModels[selectedModelIndex]`
-                            // here — instead of closing over the derived
-                            // `selectedModel` val computed in composition —
-                            // avoids the stale-closure bug where every placement
-                            // kept the first model (Damaged Helmet) regardless of
-                            // the picker (#2476). The remembered gesture lambda is
-                            // built once, so anything it captures by value freezes
-                            // at first composition; `selectedModelIndex` is read
-                            // through state, so it stays live. This mirrors
-                            // ARPlacementDemo, which reads its selection inside the
-                            // tap body for the same reason.
-                            val model = arModels[selectedModelIndex]
-                            placedAnchors.add(
-                                PlacedAr(
-                                    id = nextId++,
-                                    anchor = hit.createAnchor(),
-                                    assetPath = model.assetPath,
-                                    scale = model.scale,
-                                ),
-                            )
-                        }
-                    },
-                ),
-            ) {
-                placedAnchors.forEach { placed ->
-                    key(placed.id) {
-                        AnchorNode(anchor = placed.anchor) {
-                            val instance = rememberModelInstance(modelLoader, placed.assetPath)
-                            instance?.let {
-                                ModelNode(
-                                    modelInstance = it,
-                                    scaleToUnits = placed.scale,
-                                    centerOrigin = Position(0.0f, 0.0f, 0.0f),
-                                    isEditable = true,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            )
         }
 
-        // Top-end exit button — back affordance from the live AR session.
-        // Mirrors the BackHandler above so users have a visible CTA in addition
-        // to the system gesture.
+        // Top-start back arrow — visible back affordance from the live AR
+        // session, mirroring the BackHandler. App-wide back affordance (#2482
+        // review note): replaces the former top-end X close.
         FilledIconButton(
             onClick = exitArSession,
             modifier = Modifier
-                .align(Alignment.TopEnd)
+                .align(Alignment.TopStart)
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(top = 8.dp, end = 12.dp)
+                .padding(top = 8.dp, start = 12.dp)
                 .size(40.dp),
             shape = CircleShape,
             colors = IconButtonDefaults.filledIconButtonColors(
@@ -467,69 +390,10 @@ fun ArViewTabContent(
             ),
         ) {
             Icon(
-                imageVector = Icons.Filled.Close,
-                contentDescription = stringResource(R.string.ar_exit_session),
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.cd_back_button),
                 modifier = Modifier.size(20.dp),
             )
-        }
-
-        // Top status pill — translucent surface, capsule shape, M3 Expressive.
-        Surface(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(top = 8.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            shape = RoundedCornerShape(50),
-            tonalElevation = 6.dp,
-            shadowElevation = 4.dp,
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                val placed = placedAnchors.size
-                Icon(
-                    imageVector = if (placed == 0) {
-                        Icons.Filled.TouchApp
-                    } else {
-                        Icons.Filled.CheckCircle
-                    },
-                    contentDescription = null,
-                    tint = if (placed == 0) {
-                        MaterialTheme.colorScheme.tertiary
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
-                    modifier = Modifier.size(16.dp),
-                )
-                val scanningLabel = stringResource(R.string.ar_status_scanning)
-                val tapToPlaceLabel = stringResource(R.string.ar_status_tap_to_place, selectedModel.name)
-                val onePlacedLabel = stringResource(R.string.ar_status_one_placed)
-                val nPlacedLabel = stringResource(R.string.ar_status_n_placed, placed)
-                Text(
-                    // State machine (#2234):
-                    //   1. Camera not tracking yet OR tracking failure → "Scanning…"
-                    //      (or specific failure reason).
-                    //   2. Camera tracking but no plane has reached TRACKING yet →
-                    //      keep "Scanning…" — the user has nothing to tap on yet,
-                    //      and the "Tap a surface" prompt would be a lie.
-                    //   3. At least one plane tracked, nothing placed → "Tap a
-                    //      surface to place {Model}".
-                    //   4. ≥ 1 placed → "N placed · tap to add".
-                    text = when {
-                        !isTracking -> trackingFailureReason?.let { friendly(it) }
-                            ?: scanningLabel
-                        placed > 0 -> if (placed == 1) onePlacedLabel else nPlacedLabel
-                        anyPlaneTracked -> tapToPlaceLabel
-                        else -> scanningLabel
-                    },
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
         }
 
         // Bottom floating action bar.
@@ -576,11 +440,12 @@ fun ArViewTabContent(
                     },
                 )
 
-                // Reset.
+                // Reset — detach every anchor, then bump `arSceneId` to recompose
+                // a fresh ARCore session and a fresh `TapToPlaceState` holder
+                // (recreated inside `key(arSceneId)`), discarding all placements.
                 FilledIconButton(
                     onClick = {
-                        placedAnchors.forEach { runCatching { it.anchor.detach() } }
-                        placedAnchors.clear()
+                        state.clearAll()
                         arSceneId = UUID.randomUUID()
                     },
                     modifier = Modifier.size(56.dp),
@@ -593,31 +458,6 @@ fun ArViewTabContent(
                     Icon(
                         imageVector = Icons.Filled.Refresh,
                         contentDescription = stringResource(R.string.ar_reset_scene),
-                    )
-                }
-
-                // Screenshot — share-stub for now (live capture is out of scope
-                // for this UI refactor; ARSceneView GL readback requires
-                // Filament SwapChain plumbing).
-                val screenshotToast = stringResource(R.string.ar_screenshot_toast)
-                FilledIconButton(
-                    onClick = {
-                        android.widget.Toast.makeText(
-                            context,
-                            screenshotToast,
-                            android.widget.Toast.LENGTH_SHORT,
-                        ).show()
-                    },
-                    modifier = Modifier.size(56.dp),
-                    shape = CircleShape,
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    ),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Share,
-                        contentDescription = stringResource(R.string.ar_share_screenshot),
                     )
                 }
             }
@@ -1177,28 +1017,10 @@ private fun ArPermissionPlaceholder(granted: Boolean) {
     }
 }
 
-@Composable
-private fun friendly(reason: TrackingFailureReason): String = when (reason) {
-    TrackingFailureReason.NONE -> stringResource(R.string.ar_status_scanning)
-    TrackingFailureReason.BAD_STATE -> stringResource(R.string.ar_tracking_bad_state)
-    TrackingFailureReason.INSUFFICIENT_LIGHT -> stringResource(R.string.ar_tracking_insufficient_light)
-    TrackingFailureReason.EXCESSIVE_MOTION -> stringResource(R.string.ar_tracking_excessive_motion)
-    TrackingFailureReason.INSUFFICIENT_FEATURES ->
-        stringResource(R.string.ar_tracking_insufficient_features)
-    TrackingFailureReason.CAMERA_UNAVAILABLE -> stringResource(R.string.ar_tracking_camera_unavailable)
-}
-
 // ---------- Model catalogue ----------
 
 internal data class ArModel(
     val name: String,
-    val assetPath: String,
-    val scale: Float,
-)
-
-internal data class PlacedAr(
-    val id: Int,
-    val anchor: com.google.ar.core.Anchor,
     val assetPath: String,
     val scale: Float,
 )
