@@ -113,7 +113,7 @@ jobs:
       flutter: ${{ steps.filter.outputs.flutter }}
       kmp: ${{ steps.filter.outputs.kmp }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -183,7 +183,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-gradle
 
@@ -206,7 +206,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-gradle
 
@@ -270,7 +270,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-gradle
 
@@ -332,7 +332,7 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-gradle
 
@@ -435,7 +435,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-gradle
 
@@ -497,7 +497,7 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-gradle
         with:
@@ -538,7 +538,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-gradle
 
@@ -571,7 +571,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Deprecated API regression detector — sub-second guard against AI
       # sessions reintroducing the pre-v3.6 composable names (renamed in
@@ -720,7 +720,7 @@ jobs:
         # — all of which resolve against the working tree / HEAD, never an
         # older commit. sync-versions.sh compares files with plain `diff`, no
         # git history.
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # Shared composite: JDK 21 + Gradle cache + gradle-wrapper.jar SHA
       # validation + chmod +x ./gradlew. Replaces the formerly hand-rolled

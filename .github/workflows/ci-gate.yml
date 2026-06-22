@@ -142,7 +142,7 @@ jobs:
       # directory", `gate_rc` is non-zero and the gate fails EVERY PR
       # (#2013). This is the actual cause of the v4.13.0 admin-merge spree —
       # the helper was extracted by #1984 but no checkout step was added.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Aggregate all PR check conclusions
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
