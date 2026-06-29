@@ -84,7 +84,7 @@ jobs:
           xcodebuild -version
 
       - name: Cache Swift Package dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: SceneViewSwift/.build
           key: spm-rn-ios-${{ runner.os }}-${{ hashFiles('SceneViewSwift/Package.resolved') }}
