@@ -47,7 +47,7 @@ jobs:
       issues: write             # for issue replies
       id-token: write           # OIDC for the action
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history so Claude can read git log / blame when context demands.
           fetch-depth: 0

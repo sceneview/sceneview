@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Commit edit ${{ github.event.inputs.commit_edit_id }}
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
@@ -130,7 +130,7 @@ jobs:
       tracks: ${{ steps.tracks.outputs.tracks }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # Full history for version calculation
 
@@ -345,7 +345,7 @@ jobs:
 
     steps:
       - name: Checkout (for CHANGELOG.md → whatsnew extraction)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download AAB artifact
         uses: actions/download-artifact@v7
@@ -815,7 +815,7 @@ jobs:
     if: needs.build.outputs.is_minor_bump == 'true' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout (for distribution/play-store/* files)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Push listing to Play Console
         env:

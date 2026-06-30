@@ -26,7 +26,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Fetch latest versions
         id: versions
@@ -139,7 +139,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Run skill drift check
         id: drift
@@ -179,7 +179,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Check recent CI runs
         env:
@@ -224,7 +224,7 @@ jobs:
       issues: write       # post/update the digest tracking issue
       pull-requests: read # the script counts open PRs
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0    # release decision needs the full tag history
 
@@ -356,7 +356,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Run deep-link health check
         id: deeplink
@@ -409,7 +409,7 @@ jobs:
       contents: write       # git push --delete
       pull-requests: read   # gh pr view (open-PR guard)
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0    # full history — ahead-count needs all refs
 
@@ -453,7 +453,7 @@ jobs:
       contents: read
       issues: write       # open/update per-review triage issues
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -595,7 +595,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
