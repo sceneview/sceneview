@@ -79,33 +79,26 @@ import kotlinx.coroutines.launch
  * // every AR frame:
  * arSceneView.onSessionUpdated = { s, frame -> session.onFrame(frame) }
  * ```
+ *
+ * @param transport   the [CollaborativeTransport] relaying messages between peers.
+ * @param displayName a human-readable name broadcast to other peers.
+ * @param poseRateHz  maximum number of camera-pose broadcasts per second.
+ *   Later poses inside a tick are dropped. Default 10 Hz; `0` disables throttling.
+ * @param tag         Logcat tag for non-fatal warnings.
+ * @param ioDispatcher coroutine dispatcher for the message I/O supervisor scope.
+ *   Defaults to [Dispatchers.Default]. Inject a [kotlinx.coroutines.test.TestCoroutineDispatcher]
+ *   (or [kotlinx.coroutines.test.StandardTestDispatcher]) in unit tests to drive the session
+ *   on virtual time via [kotlinx.coroutines.test.advanceUntilIdle].
  */
-public class CollaborativeSession internal constructor(
+public class CollaborativeSession
+@JvmOverloads
+public constructor(
     private val transport: CollaborativeTransport,
-    private val displayName: String,
-    private val poseRateHz: Int,
-    private val tag: String,
-    // The dispatcher backing the message-I/O scope. Production always uses
-    // Dispatchers.Default (see the public constructor below); tests inject a
-    // TestDispatcher so propagation runs on virtual time rather than racing a
-    // shared thread pool against a wall-clock timeout (#2091).
-    ioDispatcher: CoroutineDispatcher,
+    private val displayName: String = transport.localPeerId,
+    private val poseRateHz: Int = DEFAULT_POSE_RATE_HZ,
+    private val tag: String = "CollaborativeSession",
+    ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
-
-    /**
-     * @param transport   the [CollaborativeTransport] relaying messages between peers.
-     * @param displayName a human-readable name broadcast to other peers.
-     * @param poseRateHz  maximum number of camera-pose broadcasts per second.
-     *   Later poses inside a tick are dropped. Default 10 Hz; `0` disables throttling.
-     * @param tag         Logcat tag for non-fatal warnings.
-     */
-    @JvmOverloads
-    public constructor(
-        transport: CollaborativeTransport,
-        displayName: String = transport.localPeerId,
-        poseRateHz: Int = DEFAULT_POSE_RATE_HZ,
-        tag: String = "CollaborativeSession",
-    ) : this(transport, displayName, poseRateHz, tag, Dispatchers.Default)
 
     public companion object {
         /** Default camera-pose broadcast rate, in Hz. */
@@ -117,6 +110,8 @@ public class CollaborativeSession internal constructor(
 
     // All message I/O runs here. SupervisorJob so one failed send/merge job
     // never cancels the whole session — same choice as RerunBridge.
+    // ioDispatcher is injected so unit tests can use a StandardTestDispatcher
+    // and advance the session on virtual time via advanceUntilIdle().
     private val scope = CoroutineScope(ioDispatcher + SupervisorJob())
 
     // Conflated: enqueuing from the render loop never blocks; the newest
