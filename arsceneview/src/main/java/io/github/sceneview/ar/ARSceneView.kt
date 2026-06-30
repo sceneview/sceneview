@@ -130,7 +130,7 @@ import java.util.concurrent.atomic.AtomicReference
  *         if (anchor == null) {
  *             anchor = frame.getUpdatedPlanes()
  *                 .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
- *                 ?.let { frame.createAnchorOrNull(it.centerPose) }
+ *                 ?.let { it.createAnchorOrNull(it.centerPose) }
  *         }
  *     }
  * ) {
