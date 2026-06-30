@@ -110,8 +110,11 @@ public constructor(
          * an arbitrary number of devices form one mesh. The right fit for
          * collaborative AR — see the class doc.
          */
-        @JvmField
-        public val STRATEGY: Strategy = Strategy.P2P_CLUSTER
+        // Internal: not part of the public SceneView API — exposing the Nearby
+        // `Strategy` type publicly would leak a Play-Services type into arsceneview's
+        // API surface (the dependency is `compileOnly`, so consumers couldn't even
+        // resolve it). The strategy is an implementation detail, not a knob (#2221 review).
+        internal val STRATEGY: Strategy = Strategy.P2P_CLUSTER
 
         /**
          * Nearby-device permissions required on API 31+ (Android 12+). The host
