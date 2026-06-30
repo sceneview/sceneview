@@ -425,7 +425,12 @@ class ARSceneViewPlatformView(
     private val lightNodes = mutableStateListOf<FlutterLightNode>()
 
     // Track which planes have already been reported to avoid duplicate callbacks.
-    private val reportedPlaneIds = mutableSetOf<String>()
+    // Keyed on the ARCore Plane reference itself via an IdentityHashMap-backed set:
+    // System.identityHashCode is NOT collision-free, so a distinct plane whose hash
+    // collided with an already-reported one would be silently dropped (#2488). Reference
+    // identity is genuinely unique for the lifetime of the session.
+    private val reportedPlanes: MutableSet<com.google.ar.core.Plane> =
+        java.util.Collections.newSetFromMap(java.util.IdentityHashMap())
 
     private val composeView = ComposeView(context).apply {
         setContent {
@@ -443,8 +448,7 @@ class ARSceneViewPlatformView(
                 onSessionUpdated = { _, frame ->
                     val updatedPlanes = frame.getUpdatedPlanes()
                     for (plane in updatedPlanes) {
-                        val planeId = System.identityHashCode(plane).toString()
-                        if (reportedPlaneIds.add(planeId)) {
+                        if (reportedPlanes.add(plane)) {
                             val planeType = when (plane.type) {
                                 com.google.ar.core.Plane.Type.HORIZONTAL_UPWARD_FACING -> "horizontal_upward"
                                 com.google.ar.core.Plane.Type.HORIZONTAL_DOWNWARD_FACING -> "horizontal_downward"
@@ -553,7 +557,7 @@ class ARSceneViewPlatformView(
         modelNodes.clear()
         geometryNodes.clear()
         lightNodes.clear()
-        reportedPlaneIds.clear()
+        reportedPlanes.clear()
         // Detach the ComposeView from any parent and dispose its composition
         // so that Filament/ARCore resources are released.
         composeView.disposeComposition()
@@ -599,7 +603,7 @@ class ARSceneViewPlatformView(
                 modelNodes.clear()
                 geometryNodes.clear()
                 lightNodes.clear()
-                reportedPlaneIds.clear()
+                reportedPlanes.clear()
                 result.success(null)
             }
             "setEnvironment" -> {
