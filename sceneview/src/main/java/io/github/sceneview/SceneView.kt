@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateListOf
@@ -1364,60 +1365,93 @@ fun rememberOnGestureListener(
     onScaleBegin: (detector: ScaleGestureDetector, e: MotionEvent, node: Node?) -> Unit = { _, _, _ -> },
     onScale: (detector: ScaleGestureDetector, e: MotionEvent, node: Node?) -> Unit = { _, _, _ -> },
     onScaleEnd: (detector: ScaleGestureDetector, e: MotionEvent, node: Node?) -> Unit = { _, _, _ -> },
-    creator: () -> GestureDetector.OnGestureListener = {
+    creator: (() -> GestureDetector.OnGestureListener)? = null
+): GestureDetector.OnGestureListener {
+    // A custom `creator` is the explicit escape hatch — honour it verbatim (the caller owns the
+    // listener instance and its capture semantics).
+    if (creator != null) return remember(creator)
+
+    // Default path: the listener instance must stay stable across recompositions (the
+    // GestureDetector keeps a single reference), but the callbacks must NOT be frozen at first
+    // composition. The historical `remember(creator)` captured every lambda once, so any caller
+    // whose callback closed over a derived `val` got permanently-stale behaviour with no warning
+    // (#2506 / #2476). Route each callback through `rememberUpdatedState` and let the remembered
+    // object read the always-current snapshot — the idiomatic Compose pattern.
+    val currentOnDown by rememberUpdatedState(onDown)
+    val currentOnShowPress by rememberUpdatedState(onShowPress)
+    val currentOnSingleTapUp by rememberUpdatedState(onSingleTapUp)
+    val currentOnScroll by rememberUpdatedState(onScroll)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val currentOnFling by rememberUpdatedState(onFling)
+    val currentOnSingleTapConfirmed by rememberUpdatedState(onSingleTapConfirmed)
+    val currentOnDoubleTap by rememberUpdatedState(onDoubleTap)
+    val currentOnDoubleTapEvent by rememberUpdatedState(onDoubleTapEvent)
+    val currentOnContextClick by rememberUpdatedState(onContextClick)
+    val currentOnMoveBegin by rememberUpdatedState(onMoveBegin)
+    val currentOnMove by rememberUpdatedState(onMove)
+    val currentOnMoveEnd by rememberUpdatedState(onMoveEnd)
+    val currentOnRotateBegin by rememberUpdatedState(onRotateBegin)
+    val currentOnRotate by rememberUpdatedState(onRotate)
+    val currentOnRotateEnd by rememberUpdatedState(onRotateEnd)
+    val currentOnScaleBegin by rememberUpdatedState(onScaleBegin)
+    val currentOnScale by rememberUpdatedState(onScale)
+    val currentOnScaleEnd by rememberUpdatedState(onScaleEnd)
+    return remember {
         object : GestureDetector.OnGestureListener {
-            override fun onDown(e: MotionEvent, node: Node?) = onDown(e, node)
-            override fun onShowPress(e: MotionEvent, node: Node?) = onShowPress(e, node)
-            override fun onSingleTapUp(e: MotionEvent, node: Node?) = onSingleTapUp(e, node)
+            override fun onDown(e: MotionEvent, node: Node?) = currentOnDown(e, node)
+            override fun onShowPress(e: MotionEvent, node: Node?) = currentOnShowPress(e, node)
+            override fun onSingleTapUp(e: MotionEvent, node: Node?) = currentOnSingleTapUp(e, node)
             override fun onScroll(
                 e1: MotionEvent?,
                 e2: MotionEvent,
                 node: Node?,
                 distance: Float2
-            ) = onScroll(e1, e2, node, distance)
+            ) = currentOnScroll(e1, e2, node, distance)
 
-            override fun onLongPress(e: MotionEvent, node: Node?) = onLongPress(e, node)
+            override fun onLongPress(e: MotionEvent, node: Node?) = currentOnLongPress(e, node)
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, node: Node?, velocity: Float2) =
-                onFling(e1, e2, node, velocity)
+                currentOnFling(e1, e2, node, velocity)
 
             override fun onSingleTapConfirmed(e: MotionEvent, node: Node?) =
-                onSingleTapConfirmed(e, node)
+                currentOnSingleTapConfirmed(e, node)
 
-            override fun onDoubleTap(e: MotionEvent, node: Node?) = onDoubleTap(e, node)
-            override fun onDoubleTapEvent(e: MotionEvent, node: Node?) = onDoubleTapEvent(e, node)
-            override fun onContextClick(e: MotionEvent, node: Node?) = onContextClick(e, node)
+            override fun onDoubleTap(e: MotionEvent, node: Node?) = currentOnDoubleTap(e, node)
+            override fun onDoubleTapEvent(e: MotionEvent, node: Node?) =
+                currentOnDoubleTapEvent(e, node)
+
+            override fun onContextClick(e: MotionEvent, node: Node?) = currentOnContextClick(e, node)
             override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent, node: Node?) =
-                onMoveBegin(detector, e, node)
+                currentOnMoveBegin(detector, e, node)
 
             override fun onMove(detector: MoveGestureDetector, e: MotionEvent, node: Node?) =
-                onMove(detector, e, node)
+                currentOnMove(detector, e, node)
 
             override fun onMoveEnd(detector: MoveGestureDetector, e: MotionEvent, node: Node?) =
-                onMoveEnd(detector, e, node)
+                currentOnMoveEnd(detector, e, node)
 
             override fun onRotateBegin(
                 detector: RotateGestureDetector,
                 e: MotionEvent,
                 node: Node?
-            ) = onRotateBegin(detector, e, node)
+            ) = currentOnRotateBegin(detector, e, node)
 
             override fun onRotate(detector: RotateGestureDetector, e: MotionEvent, node: Node?) =
-                onRotate(detector, e, node)
+                currentOnRotate(detector, e, node)
 
             override fun onRotateEnd(detector: RotateGestureDetector, e: MotionEvent, node: Node?) =
-                onRotateEnd(detector, e, node)
+                currentOnRotateEnd(detector, e, node)
 
             override fun onScaleBegin(detector: ScaleGestureDetector, e: MotionEvent, node: Node?) =
-                onScaleBegin(detector, e, node)
+                currentOnScaleBegin(detector, e, node)
 
             override fun onScale(detector: ScaleGestureDetector, e: MotionEvent, node: Node?) =
-                onScale(detector, e, node)
+                currentOnScale(detector, e, node)
 
             override fun onScaleEnd(detector: ScaleGestureDetector, e: MotionEvent, node: Node?) =
-                onScaleEnd(detector, e, node)
+                currentOnScaleEnd(detector, e, node)
         }
     }
-) = remember(creator)
+}
 
 /**
  * Creates and remembers a [CameraGestureDetector.CameraManipulator] for orbit/pan/zoom control.
