@@ -80,7 +80,8 @@
   },
   "overrides": {
     "picomatch": ">=4.0.4",
-    "hono": "^4.12.25"
+    "hono": "^4.12.25",
+    "esbuild": "^0.28.1"
   },
   "funding": [
     {

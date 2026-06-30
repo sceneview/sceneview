@@ -71,7 +71,8 @@
   },
   "overrides": {
     "fast-xml-parser": "^5.7.0",
-    "@babel/core": "^7.29.6"
+    "@babel/core": "^7.29.6",
+    "shell-quote": "^1.8.4"
   },
   "react-native-builder-bob": {
     "source": "src",
