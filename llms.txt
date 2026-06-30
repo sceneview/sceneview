@@ -143,6 +143,7 @@ fun ARSceneView(
     sceneUnderstanding: SceneUnderstanding? = null,  // v4.10.0+ — grouped occlusion/lighting/physics/planeVisualization (#1767, RealityKit parity). null = use the individual flags.
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
     view: View = rememberARView(engine),
+    renderQuality: RenderQuality? = null,   // v4.19.0+ (#2524) — one-line preset; NULLABLE: null keeps createARView's camera-feed-tuned defaults (no SSAO/bloom). Pass Performance/Cinematic to opt in. Filmic AR tone mapper preserved.
     isOpaque: Boolean = true,
     cameraExposure: Float? = null,  // Filament absolute exposure scale (1.0 ≈ ISO 100). NOT EV stops; negative = black framebuffer (#1179). Prefer null.
     renderer: Renderer = rememberRenderer(engine),
@@ -170,10 +171,14 @@ fun ARSceneView(
 )
 ```
 
-**Note — no `renderQuality` parameter on `ARSceneView`.** Unlike the 3D `SceneView`, the AR
-composable has no `renderQuality` knob today; tune the AR view imperatively with
-`view.applyRenderQuality(RenderQuality.Performance)` on the `rememberARView(engine)` instance
-(see "Render Quality").
+**Note — `renderQuality` on `ARSceneView` is NULLABLE (#2524, v4.19.0+).** Unlike the 3D
+`SceneView` (where it defaults to `RenderQuality.Default`), the AR composable defaults
+`renderQuality` to **`null`** so existing AR scenes keep the camera-feed-tuned defaults from
+`createARView` (minimal post-processing — no SSAO/bloom — over the live feed). Pass a preset
+explicitly to opt in, e.g. `ARSceneView(renderQuality = RenderQuality.Performance) { }` for
+battery-sensitive overlays. The Filmic AR tone mapper that round-trips the camera background
+(#1434) survives every preset. You can still tune imperatively via
+`view.applyRenderQuality(...)` on the `rememberARView(engine)` instance (see "Render Quality").
 
 Minimal usage:
 ```kotlin
@@ -2735,7 +2740,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberView(engine)` | `View` | Filament view (one per viewport) |
-| `rememberARView(engine)` | `View` | AR-tuned view (linear tone mapper) |
+| `rememberARView(engine)` | `View` | AR-tuned view (Filmic tone mapper — round-trips the camera background, #1434) |
 | `rememberRenderer(engine)` | `Renderer` | Filament renderer (one per window) |
 | `rememberScene(engine)` | `Scene` | Filament scene graph |
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
@@ -2840,7 +2845,11 @@ enum class RenderQuality { Cinematic, Default, Performance }
 ```kotlin
 SceneView(renderQuality = RenderQuality.Cinematic) { /* … */ }
 
-// AR: ARSceneView has NO renderQuality parameter — apply the preset to the AR view imperatively:
+// AR: renderQuality is NULLABLE (#2524). Omit it (null) to keep the camera-feed-tuned defaults;
+// pass a preset to opt in (e.g. Performance for battery-sensitive overlays):
+ARSceneView(renderQuality = RenderQuality.Performance) { /* … */ }
+
+// Equivalent imperative path on a shared AR view (also still supported):
 import io.github.sceneview.applyRenderQuality
 val arView = rememberARView(engine)
 arView.applyRenderQuality(RenderQuality.Performance)
