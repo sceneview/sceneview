@@ -165,7 +165,7 @@ ARSceneView(
     onSessionUpdated = { _, frame ->
         anchor = frame.getUpdatedPlanes()
             .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
-            ?.let { frame.createAnchorOrNull(it.centerPose) }
+            ?.let { it.createAnchorOrNull(it.centerPose) }
     }
 ) {
     anchor?.let { a ->

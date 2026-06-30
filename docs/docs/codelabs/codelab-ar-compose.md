@@ -97,7 +97,7 @@ ARSceneView(
         if (anchor == null) {
             anchor = frame.getUpdatedPlanes()
                 .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
-                ?.let { frame.createAnchorOrNull(it.centerPose) }
+                ?.let { it.createAnchorOrNull(it.centerPose) }
         }
     }
 )
@@ -131,7 +131,7 @@ ARSceneView(
         if (anchor == null) {
             anchor = frame.getUpdatedPlanes()
                 .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
-                ?.let { frame.createAnchorOrNull(it.centerPose) }
+                ?.let { it.createAnchorOrNull(it.centerPose) }
         }
     }
 ) {
@@ -266,7 +266,7 @@ fun ARViewerScreen() {
                 if (anchor == null) {
                     anchor = frame.getUpdatedPlanes()
                         .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
-                        ?.let { frame.createAnchorOrNull(it.centerPose) }
+                        ?.let { it.createAnchorOrNull(it.centerPose) }
                 }
             },
             onGestureListener = rememberOnGestureListener(
