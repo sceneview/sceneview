@@ -57,6 +57,9 @@ fun SceneView(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     view: View = rememberView(engine),
     isOpaque: Boolean = true,
+    renderQuality: RenderQuality = RenderQuality.Default,   // Cinematic / Default / Performance — see "Render Quality"
+    autoCenterContent: Boolean = true,   // library-level auto-center — see note below
+    autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
@@ -70,9 +73,6 @@ fun SceneView(
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
-    renderQuality: RenderQuality = RenderQuality.Default,   // Cinematic / Default / Performance — see "Render Quality"
-    autoCenterContent: Boolean = true,   // library-level auto-center — see note below
-    autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
     content: (@Composable SceneScope.() -> Unit)? = null
 )
@@ -145,13 +145,13 @@ fun ARSceneView(
     view: View = rememberARView(engine),
     renderQuality: RenderQuality? = null,   // v4.19.0+ (#2524) — one-line preset; NULLABLE: null keeps createARView's camera-feed-tuned defaults (no SSAO/bloom). Pass Performance/Cinematic to opt in. Filmic AR tone mapper preserved.
     isOpaque: Boolean = true,
-    cameraExposure: Float? = null,  // Filament absolute exposure scale (1.0 ≈ ISO 100). NOT EV stops; negative = black framebuffer (#1179). Prefer null.
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberAREnvironment(engine),
     mainLightNode: LightNode? = rememberMainLightNode(engine),
     fillLightNode: LightNode? = rememberFillLightNode(engine),  // v4.3.0+ — dual-light AR baseline; pass null for single-light
     cameraNode: ARCameraNode = rememberARCameraNode(engine),
+    cameraExposure: Float? = null,  // Filament absolute exposure scale (1.0 ≈ ISO 100). NOT EV stops; negative = black framebuffer (#1179). Prefer null.
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
     viewNodeWindowManager: ViewNode.WindowManager? = null,
     onSessionCreated: ((session: Session) -> Unit)? = null,
