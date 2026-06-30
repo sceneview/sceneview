@@ -70,7 +70,8 @@
     ]
   },
   "overrides": {
-    "fast-xml-parser": "^5.7.0"
+    "fast-xml-parser": "^5.7.0",
+    "@babel/core": "^7.29.6"
   },
   "react-native-builder-bob": {
     "source": "src",
