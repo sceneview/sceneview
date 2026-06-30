@@ -116,7 +116,9 @@ mutating an `Entity` must happen on the main actor — use `await MainActor.run`
 Some Android APIs are deprecated no-ops or unsupported on iOS — see the
 **"iOS parity status (#1036)"** tables in `docs/docs/cheatsheet-ios.md` before
 reusing `CameraNode.exposure`, `CameraNode.depthOfField`,
-`LightNode.shadowColor`, `ARSceneView(playbackDataset:)`, `StreetscapeGeometry`
+`LightNode.shadowColor`, `ARSceneView(playbackDataset:)`,
+`ARSceneView(renderQuality:)` (Android-only; on iOS tune AR via `cameraExposure`,
+and use `.renderQuality(_:)` on the 3D `SceneView`), `StreetscapeGeometry`
 or terrain/rooftop anchors.
 
 ## Android equivalents

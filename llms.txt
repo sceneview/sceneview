@@ -2972,7 +2972,7 @@ SceneView(surfaceType = SurfaceType.TextureSurface, isOpaque = false)  // Textur
 | Crash on background thread | Filament JNI on wrong thread | Use `rememberModelInstance` or `Dispatchers.Main` |
 | AR not starting | Missing CAMERA permission or ARCore | Handle `onSessionFailure`, check `ArCoreApk.checkAvailability()` |
 | Model too big/small | Model units mismatch | Use `scaleToUnits` parameter |
-| Oversaturated AR camera | Wrong tone mapper | Use `rememberARView(engine)` (Linear tone mapper) |
+| Oversaturated AR camera | Wrong tone mapper | Use `rememberARView(engine)` (Filmic tone mapper — round-trips the camera background, #1434) |
 | Crash on empty bounding box | Filament 1.70+ enforcement | SceneView auto-sanitizes; update to latest version |
 | Material crash on dispose | Entity still in scene | SceneView handles cleanup order automatically |
 
@@ -4728,6 +4728,7 @@ These symbols do not exist on iOS (no `@available(*, deprecated)` factory — th
 | Symbol | Why iOS can't | iOS path |
 |---|---|---|
 | `ARSceneView(playbackDataset:)` | ARKit has no deterministic recording playback | Record-only via [#1032 ReplayKit](https://github.com/sceneview/sceneview/issues/1032); replay stays Android-only |
+| `ARSceneView(renderQuality:)` | The one-line `renderQuality` preset is on the AR composable on Android only; the iOS `.renderQuality(_:)` modifier is 3D-`SceneView`-only (#2524) | Tune AR on iOS via `ARSceneView(cameraExposure:)` + IBL; use `.renderQuality(_:)` on the 3D `SceneView` path |
 | `SurfaceType.texture` | RealityKit always renders to `MTKView` | N/A — no port needed |
 | `StreetscapeGeometry` | ARGeoTrackingConfiguration exists but no mesh equivalent | iOS-skip with doc warning |
 | `TerrainAnchor / RooftopAnchor` | `ARGeoAnchor` only does ground; rooftop has no ARKit equivalent | iOS-skip with doc warning |
