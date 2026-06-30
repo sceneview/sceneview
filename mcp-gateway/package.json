@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "hono": "^4.12.14"
+    "hono": "^4.12.25"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250410.0",
@@ -26,6 +26,7 @@
     "wrangler": "^4.21.0"
   },
   "overrides": {
-    "qs": ">=6.15.2"
+    "qs": ">=6.15.2",
+    "undici": "^7.28.0"
   }
 }
