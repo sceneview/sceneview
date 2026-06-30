@@ -62,7 +62,9 @@ import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.exceptions.PlaybackFailedException
 import io.github.sceneview.SceneNodeManager
 import io.github.sceneview.SceneRenderer
+import io.github.sceneview.RenderQuality
 import io.github.sceneview.SurfaceType
+import io.github.sceneview.applyRenderQuality
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.camera.ARCameraStream
@@ -549,6 +551,19 @@ fun ARSceneView(
      */
     view: View = rememberARView(engine),
     /**
+     * One-line Filament quality preset for the AR `view`, mirroring `SceneView(renderQuality = …)`.
+     *
+     * Unlike the 3D composable, this parameter is **nullable and defaults to `null`**: when `null`
+     * the AR `view` keeps the camera-feed-tuned defaults set up by [rememberARView] /
+     * [io.github.sceneview.createARView] (minimal post-processing over the live feed — no SSAO, no
+     * bloom, MEDIUM HDR buffer). Passing a preset explicitly opts into it instead — e.g.
+     * [RenderQuality.Performance] for battery-sensitive AR overlays, or [RenderQuality.Cinematic]
+     * for a hero placement showcase. The Filmic tone mapper that round-trips the AR camera
+     * background (#1434) is preserved across every preset — [applyRenderQuality] never writes
+     * `view.colorGrading`. Reapplied only when the value changes (keyed effect).
+     */
+    renderQuality: RenderQuality? = null,
+    /**
      * Controls whether the render target is opaque or not. Default `true`.
      */
     isOpaque: Boolean = true,
@@ -784,6 +799,17 @@ fun ARSceneView(
         semanticModeRef.set(semanticMode)
         updateModeRef.set(updateMode)
         focusModeRef.set(focusMode)
+    }
+
+    // Apply the optional `renderQuality` preset to the AR `view`, mirroring the 3D
+    // `SceneView` wiring but **only when the caller passes one**. `null` (default) leaves the
+    // camera-feed-tuned defaults from `createARView` untouched, so existing AR consumers are
+    // unchanged (those defaults deliberately disable SSAO/bloom that `RenderQuality.Default`
+    // would re-enable). Keyed on (view, renderQuality) so the preset is reapplied only when it
+    // changes; the AR Filmic tone mapper (#1434) survives because `applyRenderQuality` never
+    // writes `view.colorGrading`.
+    LaunchedEffect(view, renderQuality) {
+        renderQuality?.let { view.applyRenderQuality(it) }
     }
 
     val prevTrackingFailureRef = remember { AtomicReference<TrackingFailureReason?>(null) }
