@@ -42,6 +42,93 @@
     });
   }
 
+  /** Resolve a canvas element from an element or an id string. */
+  function _resolveCanvas(canvasOrId) {
+    if (typeof document === 'undefined') return null;
+    return typeof canvasOrId === 'string' ? document.getElementById(canvasOrId) : canvasOrId;
+  }
+
+  /**
+   * Paint a subtle "3D preview unavailable" placeholder over a canvas (#2509,
+   * #2563). Uses the site's DESIGN.md CSS custom properties so it adapts to
+   * light/dark automatically — no hardcoded colors. Pass the previously created
+   * overlay element (or null) — the same element is reused/re-aligned so the
+   * painter stays idempotent. Returns the overlay element, or null if it could
+   * not be painted.
+   */
+  function _paintFallbackOverlay(canvas, existingEl) {
+    if (typeof document === 'undefined' || !canvas) return null;
+    var parent = canvas.parentNode;
+    if (!parent) return null;
+
+    // Ensure the overlay can position itself over the canvas box.
+    var parentPos = (window.getComputedStyle ? getComputedStyle(parent).position : '');
+    if (parentPos === 'static') parent.style.position = 'relative';
+
+    var el = existingEl;
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'sceneview-fallback';
+      el.setAttribute('role', 'img');
+      el.setAttribute('aria-label', '3D preview unavailable');
+      // Dimmed surface + subtle border + secondary text, all from design tokens
+      // (styles.css :root / [data-theme="dark"]) so it themes automatically.
+      el.style.cssText = [
+        'position:absolute',
+        'box-sizing:border-box',
+        'display:flex',
+        'align-items:center',
+        'justify-content:center',
+        'text-align:center',
+        'pointer-events:none',
+        'background:var(--color-surface-container, #1a1a2e)',
+        'color:var(--color-on-surface-variant, #9fb2dd)',
+        'border:1px solid var(--color-outline-variant, #2a3346)',
+        'font-family:var(--font-body, system-ui, -apple-system, sans-serif)',
+        'font-size:0.85rem',
+        'line-height:1.4',
+        'padding:8px 12px'
+      ].join(';');
+      var label = document.createElement('span');
+      label.textContent = '3D preview unavailable';
+      label.style.opacity = '0.75';
+      el.appendChild(label);
+      // Insert immediately after the canvas so it stacks above it.
+      if (canvas.nextSibling) parent.insertBefore(el, canvas.nextSibling);
+      else parent.appendChild(el);
+    }
+    // Align the overlay to the canvas box (handles parents with sibling content,
+    // e.g. claude-3d's label/badge, without covering them).
+    el.style.left = canvas.offsetLeft + 'px';
+    el.style.top = canvas.offsetTop + 'px';
+    el.style.width = (canvas.offsetWidth || canvas.clientWidth) + 'px';
+    el.style.height = (canvas.offsetHeight || canvas.clientHeight) + 'px';
+    // Match the canvas corner radius if the container rounds it.
+    try {
+      var br = getComputedStyle(canvas).borderRadius;
+      if (br && br !== '0px') el.style.borderRadius = br;
+      else {
+        var pbr = getComputedStyle(parent).borderRadius;
+        if (pbr && pbr !== '0px') el.style.borderRadius = pbr;
+      }
+    } catch (e) { /* ignore */ }
+    return el;
+  }
+
+  /**
+   * Paint the "3D preview unavailable" placeholder when the Filament engine
+   * itself fails to initialize (#2563) — e.g. WASM blocked by CSP, asset 404,
+   * or a stuck init. Happens before any SceneView instance exists, so the
+   * overlay is tracked on the canvas element itself (idempotent per canvas).
+   */
+  function _showInitFallback(canvasOrId) {
+    var canvas = _resolveCanvas(canvasOrId);
+    if (!canvas) return;
+    console.warn('SceneView: 3D engine failed to initialize, showing fallback');
+    var el = _paintFallbackOverlay(canvas, canvas.__sceneviewInitFallbackEl || null);
+    if (el) canvas.__sceneviewInitFallbackEl = el;
+  }
+
   // ---------------------------------------------------------------
   // Minimal GLB generator — creates a 1x1 textured quad in memory
   // ---------------------------------------------------------------
@@ -493,69 +580,14 @@
 
     /**
      * Paint a subtle "3D preview unavailable" placeholder over the canvas when a
-     * model fails to load (#2509). Uses the site's DESIGN.md CSS custom properties
-     * so it adapts to light/dark automatically — no hardcoded colors. Idempotent:
-     * a second failure reuses the existing overlay. Removed by dispose().
+     * model fails to load (#2509). Delegates to the shared module-level painter
+     * (also used for engine-init failures, #2563). Idempotent: a second failure
+     * reuses the existing overlay. Removed by dispose().
      */
     _showLoadFallback(url) {
       console.warn('SceneView: model failed to load, showing fallback (' + url + ')');
-      if (typeof document === 'undefined') return;
-      var canvas = this._canvas;
-      var parent = canvas.parentNode;
-      if (!parent) return;
-
-      // Ensure the overlay can position itself over the canvas box.
-      var parentPos = (window.getComputedStyle ? getComputedStyle(parent).position : '');
-      if (parentPos === 'static') parent.style.position = 'relative';
-
-      var el = this._fallbackEl;
-      if (!el) {
-        el = document.createElement('div');
-        el.className = 'sceneview-fallback';
-        el.setAttribute('role', 'img');
-        el.setAttribute('aria-label', '3D preview unavailable');
-        // Dimmed surface + subtle border + secondary text, all from design tokens
-        // (styles.css :root / [data-theme="dark"]) so it themes automatically.
-        el.style.cssText = [
-          'position:absolute',
-          'box-sizing:border-box',
-          'display:flex',
-          'align-items:center',
-          'justify-content:center',
-          'text-align:center',
-          'pointer-events:none',
-          'background:var(--color-surface-container, #1a1a2e)',
-          'color:var(--color-on-surface-variant, #9fb2dd)',
-          'border:1px solid var(--color-outline-variant, #2a3346)',
-          'font-family:var(--font-body, system-ui, -apple-system, sans-serif)',
-          'font-size:0.85rem',
-          'line-height:1.4',
-          'padding:8px 12px'
-        ].join(';');
-        var label = document.createElement('span');
-        label.textContent = '3D preview unavailable';
-        label.style.opacity = '0.75';
-        el.appendChild(label);
-        // Insert immediately after the canvas so it stacks above it.
-        if (canvas.nextSibling) parent.insertBefore(el, canvas.nextSibling);
-        else parent.appendChild(el);
-        this._fallbackEl = el;
-      }
-      // Align the overlay to the canvas box (handles parents with sibling content,
-      // e.g. claude-3d's label/badge, without covering them).
-      el.style.left = canvas.offsetLeft + 'px';
-      el.style.top = canvas.offsetTop + 'px';
-      el.style.width = (canvas.offsetWidth || canvas.clientWidth) + 'px';
-      el.style.height = (canvas.offsetHeight || canvas.clientHeight) + 'px';
-      // Match the canvas corner radius if the container rounds it.
-      try {
-        var br = getComputedStyle(canvas).borderRadius;
-        if (br && br !== '0px') el.style.borderRadius = br;
-        else {
-          var pbr = getComputedStyle(parent).borderRadius;
-          if (pbr && pbr !== '0px') el.style.borderRadius = pbr;
-        }
-      } catch (e) { /* ignore */ }
+      var el = _paintFallbackOverlay(this._canvas, this._fallbackEl);
+      if (el) this._fallbackEl = el;
     }
 
     /** Remove the load-failure placeholder, if one is showing (#2509). */
@@ -2328,25 +2360,54 @@
   }
 
   function create(canvasOrId, options) {
-    return _ensureFilament().then(function() {
-      return new Promise(function(resolve, reject) {
-        if (typeof Filament.Engine !== 'undefined') {
-          try {
-            var instance = _createEngine(canvasOrId, options);
-            if (instance) resolve(instance);
-            else reject(new Error('SceneView: Canvas already initialized'));
-          } catch (e) { reject(e); }
-          return;
-        }
-        Filament.init([], function() {
-          try {
-            var instance = _createEngine(canvasOrId, options);
-            if (instance) resolve(instance);
-            else reject(new Error('SceneView: Canvas already initialized'));
-          } catch (e) { reject(e); }
-        });
+    options = options || {};
+    // Engine-init watchdog (#2563): Filament.init only takes a success callback,
+    // so a failed WASM init (CSP-blocked eval, asset 404, OOM…) would otherwise
+    // hang every caller forever. Race init against a timeout so failure is
+    // deterministic, and paint the "3D preview unavailable" placeholder instead
+    // of leaving an infinite spinner. Override with options.initTimeoutMs
+    // (<= 0 disables the watchdog).
+    var timeoutMs = typeof options.initTimeoutMs === 'number' ? options.initTimeoutMs : 15000;
+
+    var engineReady = _ensureFilament().then(function() {
+      return new Promise(function(resolve) {
+        if (typeof Filament.Engine !== 'undefined') { resolve(); return; }
+        Filament.init([], function() { resolve(); });
       });
     });
+
+    if (timeoutMs > 0) {
+      var timer;
+      engineReady = Promise.race([
+        engineReady,
+        new Promise(function(_, reject) {
+          timer = setTimeout(function() {
+            reject(new Error('SceneView: Filament engine init timed out after ' + timeoutMs +
+              'ms — 3D disabled (WASM blocked or failed to load)'));
+          }, timeoutMs);
+        })
+      ]).then(
+        function(v) { clearTimeout(timer); return v; },
+        function(e) { clearTimeout(timer); throw e; }
+      );
+    }
+
+    return engineReady.then(
+      function() {
+        // Engine is up — instance-creation failures (canvas not found, canvas
+        // already initialized) are NOT init failures: never paint the overlay
+        // here, it could cover an already-live viewer.
+        var instance = _createEngine(canvasOrId, options);
+        if (instance) return instance;
+        throw new Error('SceneView: Canvas already initialized');
+      },
+      function(e) {
+        // Init-stage failure: degrade to the placeholder, then propagate so
+        // existing .catch() callers keep their behaviour.
+        _showInitFallback(canvasOrId);
+        throw e;
+      }
+    );
   }
 
   function modelViewer(canvasOrId, modelUrl, options) {
