@@ -45,11 +45,18 @@ internal class NearbyPeerRegistry {
      * the stable [peerId]. Publishes the updated roster.
      *
      * Idempotent: re-recording the same pair is a no-op and does not re-emit.
+     * Rejecting: a *different* endpoint claiming an already-connected [peerId]
+     * is NOT recorded (one live endpoint per peer id — see #2569).
      *
      * @return `true` if the roster changed.
      */
     fun onConnected(endpointId: String, peerId: String): Boolean {
         if (connected[endpointId] == peerId) return false
+        // Defense in depth (#2569): one live endpoint per peer id. A second
+        // endpoint claiming an already-connected peer id is impersonation (or
+        // a reconnect racing its own stale endpoint) — refuse to record it so
+        // the invariant holds even if a transport-level check was bypassed.
+        if (connected.containsValue(peerId)) return false
         connected[endpointId] = peerId
         publish()
         return true

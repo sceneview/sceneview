@@ -364,7 +364,11 @@ public object CollaborativeWireFormat {
         // Early-bail on an oversized body BEFORE allocating the substring —
         // no legitimate vector (max 4 floats) comes close to this length.
         if (end - from > MAX_VEC_BODY_LENGTH) return null
-        val body = line.substring(from, end).trim()
+        return parseVecBody(line.substring(from, end).trim())
+    }
+
+    /** Parses a trimmed `a,b,c` vector body, or `null` on any malformed part. */
+    private fun parseVecBody(body: String): FloatArray? {
         if (body.isEmpty()) return FloatArray(0)
         val parts = body.split(',')
         // Early-bail before allocating/parsing: nothing in the protocol

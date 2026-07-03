@@ -256,9 +256,11 @@ public constructor(
             logWarning("dropped un-frameable message: ${e.message}")
             return
         }
-        // Nearby BYTES payloads are hard-capped (32 KiB); an oversized one
-        // would fail on every endpoint anyway — drop it with a diagnostic.
-        // (CollaborativeWireFormat lines are a few hundred bytes at most.)
+        // Nearby BYTES payloads are hard-capped at
+        // ConnectionsClient.MAX_BYTES_DATA_SIZE (~1 MB in current Play
+        // Services); an oversized one would fail on every endpoint anyway —
+        // drop it with a diagnostic. (CollaborativeWireFormat lines are a few
+        // hundred bytes at most.)
         if (framed.size > ConnectionsClient.MAX_BYTES_DATA_SIZE) {
             logWarning(
                 "dropped oversized message: ${framed.size} bytes exceeds the " +
@@ -340,18 +342,35 @@ public constructor(
          */
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
             if (closed) return
-            // The remote's stable peer id is its advertised connection name.
+            // The remote's stable peer id is its advertised connection name —
+            // SELF-DECLARED by the remote device, not authenticated by Nearby.
             val remotePeerId = info.endpointName
+            // A live endpoint already owns this peer id → a second connection
+            // claiming it is either an impersonation attempt or a reconnect
+            // racing its own stale endpoint. Reject; a legitimate reconnect
+            // succeeds as soon as Nearby drops the stale endpoint (#2569).
+            if (registry.endpointIdFor(remotePeerId) != null) {
+                logWarning(
+                    "rejecting connection from '$remotePeerId': a live endpoint " +
+                        "already owns this peer id",
+                )
+                rejectQuietly(endpointId)
+                return
+            }
             // Trust gate: give the app a chance to verify the connection via
-            // the authentication digest (identical on both devices) before any
+            // the authentication digits (identical on both devices) before any
             // payload can flow. Default (null) = auto-accept, same-app trust.
-            if (shouldAcceptConnection?.invoke(remotePeerId, info.authenticationDigits) == false) {
+            // The gate receives untrusted input — a throwing gate must not
+            // crash the GMS callback, and MUST fail closed (reject).
+            val accepted = try {
+                shouldAcceptConnection?.invoke(remotePeerId, info.authenticationDigits) != false
+            } catch (e: Exception) {
+                logWarning("shouldAcceptConnection threw for '$remotePeerId' — rejecting: $e")
+                false
+            }
+            if (!accepted) {
                 logWarning("rejecting connection from '$remotePeerId' (app trust gate)")
-                connectionsClient
-                    .rejectConnection(endpointId)
-                    .addOnFailureListener { e ->
-                        logWarning("rejectConnection($endpointId) failed: ${e.message}")
-                    }
+                rejectQuietly(endpointId)
                 return
             }
             pendingPeerIds[endpointId] = remotePeerId
@@ -359,6 +378,14 @@ public constructor(
                 .acceptConnection(endpointId, payloadCallback)
                 .addOnFailureListener { e ->
                     logWarning("acceptConnection($endpointId) failed: ${e.message}")
+                }
+        }
+
+        private fun rejectQuietly(endpointId: String) {
+            connectionsClient
+                .rejectConnection(endpointId)
+                .addOnFailureListener { e ->
+                    logWarning("rejectConnection($endpointId) failed: ${e.message}")
                 }
         }
 

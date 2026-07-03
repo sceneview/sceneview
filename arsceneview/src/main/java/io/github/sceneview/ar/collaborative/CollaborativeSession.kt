@@ -67,9 +67,14 @@ import kotlinx.coroutines.launch
  *
  * Everything a peer sends is **untrusted input**:
  *
- * - **Identity is bound to the transport.** Inbound messages are attributed to
- *   the *authenticated* transport peer id (the connection they arrived on) —
- *   a message whose body claims a different `peer` is spoofed and dropped.
+ * - **Identity is bound to the transport connection.** Inbound messages are
+ *   attributed to the *connection-bound* transport peer id (the connection
+ *   they arrived on) — a message whose body claims a different `peer` is
+ *   spoofed and dropped. Note this is per-connection integrity, **not**
+ *   authentication: the Nearby peer id is the remote's self-advertised name
+ *   (cleartext during discovery), so absent a `shouldAcceptConnection`
+ *   out-of-band check a new connection can still *advertise* another peer's
+ *   id. Only the authentication-digits comparison authenticates a peer.
  * - **Rosters are bounded.** [CollaborativeState] caps participants and placed
  *   nodes ([CollaborativeState.MAX_PARTICIPANTS] / [CollaborativeState.MAX_NODES])
  *   so a malicious peer cannot grow memory without limit via forged keys.
@@ -402,9 +407,9 @@ public constructor(
                 logVerbose("dropped unparseable line from $peerId")
                 return@launch
             }
-            // Security (#2569): identity is bound to the transport's
-            // AUTHENTICATED peer id — the connection the message arrived on —
-            // never to the peer-controlled "peer" body field. No message type
+            // Security (#2569): identity is bound to the CONNECTION the
+            // message arrived on (the transport peer id) — never to the
+            // peer-controlled "peer" body field. No message type
             // is legitimately relayed on another peer's behalf, so a mismatch
             // is impersonation (forged pose, bye-eviction, roster flooding
             // under thousands of distinct forged keys) and is dropped whole.

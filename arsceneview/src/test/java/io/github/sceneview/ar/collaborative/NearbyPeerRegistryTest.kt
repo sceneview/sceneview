@@ -111,4 +111,23 @@ class NearbyPeerRegistryTest {
         registry.clear()
         assertSame(rosterBefore, registry.peers.value)
     }
+    @Test
+    fun `a second endpoint claiming a live peer id is rejected (#2569)`() {
+        val registry = NearbyPeerRegistry()
+        registry.onConnected("ep1", "alice")
+        val rosterBefore = registry.peers.value
+        assertFalse(registry.onConnected("ep2", "alice"))
+        assertSame(rosterBefore, registry.peers.value)
+        assertEquals(null, registry.peerIdFor("ep2"))
+        assertEquals("ep1", registry.endpointIdFor("alice"))
+    }
+
+    @Test
+    fun `a peer can reconnect on a new endpoint once its stale endpoint dropped (#2569)`() {
+        val registry = NearbyPeerRegistry()
+        registry.onConnected("ep1", "alice")
+        registry.onDisconnected("ep1")
+        assertTrue(registry.onConnected("ep2", "alice"))
+        assertEquals("ep2", registry.endpointIdFor("alice"))
+    }
 }
