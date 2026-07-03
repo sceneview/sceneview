@@ -122,8 +122,22 @@ class PlacementReticleContractTest {
             setterWindow.contains("smoother.reset()")
         )
         assertTrue(
-            "hitResult setter must re-pose with the smoothed rotation",
-            setterWindow.contains("smoother.smooth(hitPose.quaternion)")
+            "the resolveHitPose hook must apply the smoothed rotation (single pose write " +
+                "per frame — no raw-then-smoothed double write)",
+            nodeSource.contains("override fun resolveHitPose(hitPose: Pose): Pose") &&
+                nodeSource.contains("smoother.smooth(hitPose.quaternion)")
+        )
+    }
+
+    @Test
+    fun `composable has exactly ONE NodeLifecycle call site (no content-branch destroy)`() {
+        val composable = scopeSource.substringAfter("fun PlacementReticle(")
+            .substringBefore("// ── DepthHitResultNode")
+        assertEquals(
+            "branching between two NodeLifecycle calls on `content != null` destroys the " +
+                "remembered node when a host flips custom/default visuals (use-after-destroy)",
+            1,
+            Regex("""NodeLifecycle\(node""").findAll(composable).count()
         )
     }
 

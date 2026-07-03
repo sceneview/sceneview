@@ -520,28 +520,28 @@ class ARSceneScope internal constructor(
             node.onHitResultChanged = onHitResultChanged
             node.orientationSmoothing = orientationSmoothing
         }
-        if (content != null) {
-            NodeLifecycle(node, content)
-        } else {
-            // Built-in visual — the proven demo disc. The material is created once per
-            // loader and destroyed with the composable (#2458 leak class).
+        // ONE NodeLifecycle call site: branching between two NodeLifecycle calls on
+        // `content != null` would destroy-and-reattach the remembered node when a host
+        // flips between custom and default visuals across recompositions (the leaving
+        // branch's dispose destroys the node the entering branch then attaches).
+        NodeLifecycle(node, content ?: {
+            // Built-in visual — the same disc PlacementScene ships. The material is
+            // created once per loader and destroyed with the composable (#2458 class).
             val reticleMaterial = remember(materialLoader) {
                 materialLoader.createUnlitColorInstance(DEFAULT_RETICLE_COLOR)
             }
             DisposableEffect(materialLoader, reticleMaterial) {
                 onDispose { materialLoader.destroyMaterialInstance(reticleMaterial) }
             }
-            NodeLifecycle(node) {
-                // Thin disc — 7 cm radius, 5 mm tall — sits flush on the surface;
-                // the smoothed pose orients +Y along the surface normal.
-                CylinderNode(
-                    radius = 0.07f,
-                    height = 0.005f,
-                    sideCount = 48,
-                    materialInstance = reticleMaterial
-                )
-            }
-        }
+            // Thin disc — sits flush on the surface; the smoothed pose orients +Y
+            // along the surface normal.
+            CylinderNode(
+                radius = RETICLE_RADIUS,
+                height = RETICLE_HEIGHT,
+                sideCount = RETICLE_SIDES,
+                materialInstance = reticleMaterial
+            )
+        })
     }
 
     // ── DepthHitResultNode ────────────────────────────────────────────────────────────────────────

@@ -52,16 +52,20 @@ internal class ReticleOrientationSmoother(smoothing: Float) {
  * - **Orientation smoothing.** ARCore refines a surface normal frame by frame, which
  *   makes a raw reticle disc visibly jitter on textured or slanted surfaces. The node
  *   slerps each frame's rotation toward the hit orientation by [orientationSmoothing]
- *   (Depth Lab's `Quaternion.Slerp(current, target, 0.75f)`), while the position keeps
- *   following the hit verbatim. Set `1.0f` to disable.
+ *   (Depth Lab's `Quaternion.Slerp(current, target, 0.75f)`); the *damping layer* leaves
+ *   the position verbatim (the node's inherited smooth-transform easing still applies to
+ *   the final motion, as on [ReticleNode]). `1.0f` disables the damping; `0.0f` freezes
+ *   the orientation at the first acquired surface — use a small positive value if you
+ *   want heavy damping that still converges.
  * - **Depth-capable acceptance.** Pass `depthPoint = true` to also accept depth-based
  *   hits — the cursor then lands on arbitrary geometry (sofa, slope, cluttered desk)
  *   without waiting for a detected plane. Requires the session depth mode ≠ `DISABLED`;
  *   the default is **off** so a no-depth device behaves exactly like [ReticleNode]
  *   (#1891 plane-only contract).
  *
- * A `null` hit (ray misses every accepted trackable) resets the smoothing state, so the
- * reticle re-acquires the next surface verbatim instead of easing across the gap.
+ * A `null` hit (ray misses every accepted trackable) resets the damping state, so the
+ * next surface is re-acquired verbatim at the damping layer (the base smooth-transform
+ * easing still animates the node's rendered motion).
  *
  * `snapToPlane = false` with `depthPoint = false` accepts no trackable at all — enable
  * at least one source.
@@ -111,25 +115,33 @@ open class PlacementReticleNode(
         }
 
     /**
-     * Applies the base behaviour (trackable + raw pose + change callback), then re-poses
-     * the node with the damped rotation. Position stays the verbatim hit translation —
-     * only the orientation is smoothed, per the Depth Lab original.
+     * Resets the damping when the ray misses (so the next surface is acquired verbatim
+     * at the damping layer), then lets the base setter apply pose + change callback.
      */
     override var hitResult: HitResult?
         get() = super.hitResult
         set(value) {
+            if (value == null) smoother.reset()
             super.hitResult = value
-            val hitPose = value?.hitPose
-            if (hitPose == null) {
-                smoother.reset()
-            } else {
-                val smoothed = smoother.smooth(hitPose.quaternion)
-                pose = Pose(
-                    floatArrayOf(hitPose.tx(), hitPose.ty(), hitPose.tz()),
-                    floatArrayOf(smoothed.x, smoothed.y, smoothed.z, smoothed.w)
-                )
-            }
         }
+
+    /**
+     * Damps only the rotation component; the translation is the verbatim hit position.
+     * Runs once per accepted hit via the [HitResultNode.resolveHitPose] hook, so the node
+     * pose is written a single time per frame, already smoothed.
+     *
+     * Note the node's inherited `isSmoothTransformEnabled` easing still applies on top
+     * (same as [ReticleNode]) — this layer removes the *surface-normal jitter* the base
+     * easing can't (it eases toward whatever target it is given; a jittering target stays
+     * jittery). Whether to disable the base easing for reticles is a PR 5 device-QA call.
+     */
+    override fun resolveHitPose(hitPose: Pose): Pose {
+        val smoothed = smoother.smooth(hitPose.quaternion)
+        return Pose(
+            floatArrayOf(hitPose.tx(), hitPose.ty(), hitPose.tz()),
+            floatArrayOf(smoothed.x, smoothed.y, smoothed.z, smoothed.w)
+        )
+    }
 
     companion object {
         /**

@@ -6,6 +6,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
 import com.google.ar.core.Point
+import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingState
@@ -57,9 +58,16 @@ open class HitResultNode(
             field = value
             trackable = value?.trackable
             value?.hitPose?.let {
-                pose = it
+                pose = resolveHitPose(it)
             }
         }
+
+    /**
+     * Hook for subclasses to post-process the hit pose before it is applied to the node
+     * (e.g. `PlacementReticleNode`'s orientation smoothing, #2241). Called once per accepted
+     * hit, on the AR frame path. Default: identity (the raw hit pose).
+     */
+    protected open fun resolveHitPose(hitPose: Pose): Pose = hitPose
 
     init {
         isSmoothTransformEnabled = true
