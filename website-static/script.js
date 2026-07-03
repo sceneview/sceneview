@@ -85,6 +85,12 @@ document.querySelectorAll('a[href^="#"]').forEach(function (anchor) {
   var reveals = document.querySelectorAll('.reveal');
   if (!reveals.length) return;
 
+  // Respect prefers-reduced-motion: reveal everything immediately (#2568).
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    reveals.forEach(function(el) { el.classList.add('revealed'); });
+    return;
+  }
+
   // Immediately reveal elements already in or above the viewport
   function revealVisible() {
     reveals.forEach(function(el) {

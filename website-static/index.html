@@ -199,10 +199,6 @@
         <span>SceneView SDK</span>
       </a>
 
-      <button class="nav__hamburger" id="hamburger" aria-label="Toggle menu">
-        <span></span><span></span><span></span>
-      </button>
-
       <div class="nav__links" id="navLinks">
         <a href="#features" class="nav__link">Features</a>
         <a href="/showcase.html" class="nav__link">Showcase</a>
@@ -1446,34 +1442,6 @@
   })();
   </script>
 
-  <!-- Scroll reveal animations -->
-  <script>
-  // Scroll reveal
-  (function() {
-    var reveals = document.querySelectorAll('.reveal');
-    if (!reveals.length) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      reveals.forEach(function(el) { el.classList.add('revealed'); });
-      return;
-    }
-    function revealVisible() {
-      reveals.forEach(function(el) {
-        if (el.getBoundingClientRect().top < window.innerHeight + 100) el.classList.add('revealed');
-      });
-    }
-    revealVisible();
-    if ('IntersectionObserver' in window) {
-      var obs = new IntersectionObserver(function(entries) {
-        entries.forEach(function(e) {
-          if (e.isIntersecting) { e.target.classList.add('revealed'); obs.unobserve(e.target); }
-        });
-      }, { threshold: 0.01, rootMargin: '0px 0px 200px 0px' });
-      reveals.forEach(function(el) { if (!el.classList.contains('revealed')) obs.observe(el); });
-    }
-    var t; window.addEventListener('scroll', function() { clearTimeout(t); t = setTimeout(revealVisible, 50); }, { passive: true });
-    setTimeout(function() { reveals.forEach(function(el) { el.classList.add('revealed'); }); }, 3000);
-  })();
-  </script>
 </body>
 </html>
 <!-- deployed 2026-04-02T08:55:56Z -->

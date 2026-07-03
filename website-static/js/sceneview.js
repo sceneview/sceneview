@@ -28,6 +28,17 @@
   // This avoids dynamic script injection issues with WASM resolution.
 
   /**
+   * Info-level logging, silent in production (#2568). Opt in from the console
+   * with `window.SCENEVIEW_DEBUG = true`. Warnings/errors are NOT gated —
+   * real degradations must stay visible.
+   */
+  function _log() {
+    if (typeof global !== 'undefined' && global.SCENEVIEW_DEBUG && typeof console !== 'undefined') {
+      console.log.apply(console, arguments);
+    }
+  }
+
+  /**
    * Wait for Filament to be available (loaded by the script tag).
    */
   function _ensureFilament() {
@@ -700,7 +711,7 @@
             var ibl = self._engine.createIblFromKtx1(buffer);
             ibl.setIntensity(intensity || 40000);
             self._scene.setIndirectLight(ibl);
-            console.log('SceneView: Environment loaded (' + Math.round(buffer.length / 1024) + 'KB)');
+            _log('SceneView: Environment loaded (' + Math.round(buffer.length / 1024) + 'KB)');
           } catch (e) {
             console.warn('SceneView: loadEnvironment failed', e);
           }
@@ -2315,7 +2326,7 @@
           var ibl = engine.createIblFromKtx1(buffer);
           ibl.setIntensity(options.iblIntensity || 40000);
           scene.setIndirectLight(ibl);
-          console.log('SceneView: KTX IBL loaded (' + Math.round(buffer.length / 1024) + 'KB)');
+          _log('SceneView: KTX IBL loaded (' + Math.round(buffer.length / 1024) + 'KB)');
         } catch (e) {
           console.warn('SceneView: createIblFromKtx1 failed, using SH fallback', e);
           _applySyntheticIBL(engine, scene);
@@ -2355,7 +2366,7 @@
         .intensity(45000)
         .build(engine);
       scene.setIndirectLight(ibl);
-      console.log('SceneView: Using synthetic SH IBL');
+      _log('SceneView: Using synthetic SH IBL');
     } catch (e) { /* skip */ }
   }
 
