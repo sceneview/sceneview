@@ -8,4 +8,15 @@
     <string name="sceneview_camera_unavailable_message">Another app is using the camera.\nTap on this app or try closing the other one.</string>
     <string name="sceneview_unknown_tracking_failure">Unknown tracking failure reason: %1$s</string>
     <string name="sceneview_camera_permission_required">Camera permission required</string>
+
+    <!-- PlaneDiscoveryGuide (#2241) — plane-discovery onboarding overlay.
+         Lost-tracking copy reuses the sceneview_*_message strings above. -->
+    <string name="sceneview_plane_discovery_hint">Move your phone to find a surface</string>
+    <string name="sceneview_plane_discovery_help">Need help?</string>
+    <string name="sceneview_plane_discovery_tips_title">Can\'t find a surface?</string>
+    <string name="sceneview_plane_discovery_tip_move_slowly">Move your phone slowly in a circular motion</string>
+    <string name="sceneview_plane_discovery_tip_lighting">Turn on more lights or move to a brighter area</string>
+    <string name="sceneview_plane_discovery_tip_texture">Point at a surface with texture or color — plain surfaces are hard to detect</string>
+    <string name="sceneview_plane_discovery_got_it">Got it</string>
+    <string name="sceneview_plane_discovery_hand_animation">Hand moving a phone from side to side</string>
 </resources>
