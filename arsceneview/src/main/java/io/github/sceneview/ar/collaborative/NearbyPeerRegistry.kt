@@ -27,10 +27,10 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * ### Threading
  *
- * Nearby invokes its lifecycle callbacks on the main thread, but the registry
- * is fully thread-safe ([ConcurrentHashMap] + [MutableStateFlow]) so a test —
- * or a future transport that dispatches off-main — can drive it from any
- * thread without a `ConcurrentModification`.
+ * Nearby typically invokes its lifecycle callbacks on the main thread, but
+ * that is not a documented guarantee — the registry is therefore fully
+ * thread-safe ([ConcurrentHashMap] + [MutableStateFlow]) and can be driven
+ * from any thread without a `ConcurrentModification`.
  */
 internal class NearbyPeerRegistry {
 
@@ -72,8 +72,12 @@ internal class NearbyPeerRegistry {
 
     /**
      * The Nearby endpoint id currently mapped to the stable [peerId], or `null`
-     * if that peer is not connected. Used to address an outbound payload to a
-     * single peer; broadcast paths just iterate [connectedEndpointIds].
+     * if that peer is not connected.
+     *
+     * Not used by the broadcast-only transport today (broadcast paths iterate
+     * [connectedEndpointIds]), but kept as the reverse lookup a unicast path
+     * needs — e.g. a targeted state catch-up to a newly joined peer — and it
+     * is the natural inverse of [peerIdFor] (#2569).
      */
     fun endpointIdFor(peerId: String): String? =
         connected.entries.firstOrNull { it.value == peerId }?.key

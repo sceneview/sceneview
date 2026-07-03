@@ -91,6 +91,9 @@ public sealed interface CollaborativeMessage {
      *
      * @param nodeKey     app-defined unique key for the placed node.
      * @param modelKey    app-defined key for the model asset to instantiate.
+     *   ⚠️ Arrives from an **untrusted peer** — validate against an allow-list
+     *   of known model keys before mapping it to an asset; never use it
+     *   directly in an asset/file path (path-traversal risk).
      * @param translation `[x,y,z]` translation in shared-anchor space.
      * @param quaternion  `[x,y,z,w]` rotation in shared-anchor space.
      * @param scale       `[x,y,z]` scale.
@@ -182,6 +185,9 @@ public data class Participant(
  *
  * @param nodeKey     app-defined unique key for the placed node.
  * @param modelKey    app-defined key for the model asset to instantiate.
+ *   ⚠️ Originates from an **untrusted peer** — validate against an allow-list
+ *   of known model keys before mapping it to an asset; never use it directly
+ *   in an asset/file path (path-traversal risk in the consuming app).
  * @param translation `[x,y,z]` translation in shared-anchor space.
  * @param quaternion  `[x,y,z,w]` rotation in shared-anchor space.
  * @param scale       `[x,y,z]` scale.

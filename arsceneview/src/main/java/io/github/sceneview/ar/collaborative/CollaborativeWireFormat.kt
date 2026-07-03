@@ -339,15 +339,37 @@ public object CollaborativeWireFormat {
         return line.substring(numStart, i).toLongOrNull()
     }
 
+    /**
+     * Longest legitimate vector in the protocol — a quaternion has 4
+     * components. Anything longer is malformed (or malicious) and is rejected
+     * before any per-component parsing.
+     */
+    private const val MAX_VEC_COMPONENTS = 4
+
+    /**
+     * Generous character budget for a [MAX_VEC_COMPONENTS]-float vector body
+     * (sign + digits + exponent + separators). A body longer than this cannot
+     * be a valid vector, so we bail **before** substring/split — an untrusted
+     * peer must not be able to force a large transient allocation with one
+     * oversized `[...]` field (#2569).
+     */
+    private const val MAX_VEC_BODY_LENGTH = 128
+
     /** Extracts a `[a,b,c]` float-array field by name, or `null` if absent. */
     private fun floatVec(line: String, name: String): FloatArray? {
         val key = "\"$name\":["
         val start = line.indexOf(key).takeIf { it >= 0 } ?: return null
         val from = start + key.length
         val end = line.indexOf(']', from).takeIf { it >= 0 } ?: return null
+        // Early-bail on an oversized body BEFORE allocating the substring —
+        // no legitimate vector (max 4 floats) comes close to this length.
+        if (end - from > MAX_VEC_BODY_LENGTH) return null
         val body = line.substring(from, end).trim()
         if (body.isEmpty()) return FloatArray(0)
         val parts = body.split(',')
+        // Early-bail before allocating/parsing: nothing in the protocol
+        // carries more than 4 components (quaternion).
+        if (parts.size > MAX_VEC_COMPONENTS) return null
         val out = FloatArray(parts.size)
         for (i in parts.indices) {
             out[i] = parts[i].trim().toFloatOrNull() ?: return null

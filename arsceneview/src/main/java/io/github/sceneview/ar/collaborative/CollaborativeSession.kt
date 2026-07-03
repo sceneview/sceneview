@@ -63,6 +63,20 @@ import kotlinx.coroutines.launch
  * - Inbound messages are merged on the supervisor scope; observers read the
  *   results via the Compose-observable [participants] / [placedNodes].
  *
+ * ### Security & trust model (#2569)
+ *
+ * Everything a peer sends is **untrusted input**:
+ *
+ * - **Identity is bound to the transport.** Inbound messages are attributed to
+ *   the *authenticated* transport peer id (the connection they arrived on) —
+ *   a message whose body claims a different `peer` is spoofed and dropped.
+ * - **Rosters are bounded.** [CollaborativeState] caps participants and placed
+ *   nodes ([CollaborativeState.MAX_PARTICIPANTS] / [CollaborativeState.MAX_NODES])
+ *   so a malicious peer cannot grow memory without limit via forged keys.
+ * - **[PlacedNode.modelKey] is peer-supplied.** Validate it against an
+ *   app-side allow-list before mapping it to an asset — never interpolate it
+ *   into a file/asset path directly (path-traversal risk in the consuming app).
+ *
  * ### Usage
  *
  * Prefer [rememberCollaborativeSession]; this class is public so non-Compose
@@ -341,6 +355,10 @@ public constructor(
      *
      * @param nodeKey     a unique app-defined key for the placed node.
      * @param modelKey    an app-defined key telling peers which asset to load.
+     *   ⚠️ On the receiving side this arrives from an **untrusted peer** —
+     *   receivers must validate it against an allow-list of known model keys
+     *   and never use it directly in an asset/file path (see the class-level
+     *   *Security & trust model* section).
      * @param translation `[x,y,z]` in shared-anchor space.
      * @param quaternion  `[x,y,z,w]` in shared-anchor space.
      * @param scale       `[x,y,z]`. Defaults to unit scale.
@@ -382,6 +400,19 @@ public constructor(
             val line = bytes.toString(Charsets.UTF_8)
             val message = CollaborativeWireFormat.parse(line) ?: run {
                 logVerbose("dropped unparseable line from $peerId")
+                return@launch
+            }
+            // Security (#2569): identity is bound to the transport's
+            // AUTHENTICATED peer id — the connection the message arrived on —
+            // never to the peer-controlled "peer" body field. No message type
+            // is legitimately relayed on another peer's behalf, so a mismatch
+            // is impersonation (forged pose, bye-eviction, roster flooding
+            // under thousands of distinct forged keys) and is dropped whole.
+            if (message.peerId != peerId) {
+                logWarning(
+                    "dropped spoofed message: transport peer '$peerId' " +
+                        "claimed to be '${message.peerId}'",
+                )
                 return@launch
             }
             if (state.apply(message)) {
