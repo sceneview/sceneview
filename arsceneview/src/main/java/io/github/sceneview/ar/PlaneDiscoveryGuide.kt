@@ -182,9 +182,7 @@ class PlaneDiscoveryGuideState(
         // 1. A tracking failure with an actionable reason always wins — even after DONE
         //    (ARCore Elements keeps surfacing lost-tracking copy for the whole session).
         //    The onboarding timer resets so a recovery restarts the silent window.
-        if (cameraReady && !isTracking &&
-            trackingFailureReason != null && trackingFailureReason != TrackingFailureReason.NONE
-        ) {
+        if (isActionableFailure(cameraReady, isTracking, trackingFailureReason)) {
             scanStartMillis = UNSET
             fadeOutStartMillis = UNSET
             return PlaneDiscoveryPhase.LOST
@@ -201,24 +199,7 @@ class PlaneDiscoveryGuideState(
         }
 
         // 4. First plane found → fade out whatever is visible, then latch DONE.
-        if (anyPlaneTracked) {
-            scanStartMillis = UNSET
-            val wasVisible = phase == PlaneDiscoveryPhase.HAND_HINT ||
-                    phase == PlaneDiscoveryPhase.HELP_OFFERED ||
-                    phase == PlaneDiscoveryPhase.FADING_OUT
-            if (!wasVisible) {
-                // Nothing on screen (WAITING/SILENT) — no fade needed.
-                isDone = true
-                return PlaneDiscoveryPhase.DONE
-            }
-            if (fadeOutStartMillis == UNSET) fadeOutStartMillis = nowMillis
-            if (nowMillis - fadeOutStartMillis >= durations.fadeOutMs) {
-                isDone = true
-                fadeOutStartMillis = UNSET
-                return PlaneDiscoveryPhase.DONE
-            }
-            return PlaneDiscoveryPhase.FADING_OUT
-        }
+        if (anyPlaneTracked) return derivePlaneFoundPhase(nowMillis)
 
         // 5. Tracking with no plane yet — the timed onboarding ramp.
         //    (A plane lost mid-fade lands here too: the timer restarts from zero, matching
@@ -231,6 +212,36 @@ class PlaneDiscoveryGuideState(
             elapsed >= durations.handHintAfterMs -> PlaneDiscoveryPhase.HAND_HINT
             else -> PlaneDiscoveryPhase.SILENT
         }
+    }
+
+    /** An explicit, user-actionable tracking failure (not just a paused/warming camera). */
+    private fun isActionableFailure(
+        cameraReady: Boolean,
+        isTracking: Boolean,
+        trackingFailureReason: TrackingFailureReason?,
+    ): Boolean {
+        if (!cameraReady || isTracking) return false
+        return trackingFailureReason != null && trackingFailureReason != TrackingFailureReason.NONE
+    }
+
+    /** Plane found: fade out whatever is on screen (0.75 s), then latch [isDone]. */
+    private fun derivePlaneFoundPhase(nowMillis: Long): PlaneDiscoveryPhase {
+        scanStartMillis = UNSET
+        val wasVisible = phase == PlaneDiscoveryPhase.HAND_HINT ||
+                phase == PlaneDiscoveryPhase.HELP_OFFERED ||
+                phase == PlaneDiscoveryPhase.FADING_OUT
+        if (!wasVisible) {
+            // Nothing on screen (WAITING/SILENT) — no fade needed.
+            isDone = true
+            return PlaneDiscoveryPhase.DONE
+        }
+        if (fadeOutStartMillis == UNSET) fadeOutStartMillis = nowMillis
+        if (nowMillis - fadeOutStartMillis >= durations.fadeOutMs) {
+            isDone = true
+            fadeOutStartMillis = UNSET
+            return PlaneDiscoveryPhase.DONE
+        }
+        return PlaneDiscoveryPhase.FADING_OUT
     }
 
     private companion object {
@@ -374,6 +385,10 @@ fun BoxScope.PlaneDiscoveryGuide(
  * without an ARCore session.
  *
  * Parameters mirror [PlaneDiscoveryGuide]; see there for the semantics.
+ *
+ * ⚠️ When you drive a [PlaneDiscoveryGuideState] yourself, pass ITS durations here
+ * (`durations = state.durations`) — a mismatched copy desynchronizes the visual fade
+ * from the state machine's [PlaneDiscoveryPhase.FADING_OUT] window.
  */
 @Composable
 fun BoxScope.PlaneDiscoveryGuideOverlay(
@@ -413,8 +428,27 @@ fun BoxScope.PlaneDiscoveryGuideOverlay(
     }
 
     // Bottom message pill — onboarding hint or contextual tracking-lost copy.
+    val pillVisible = (onboardingVisible && !tipsOpen) || lostVisible
+    val liveMessage = if (lostVisible) {
+        trackingFailureReason?.getDescription(context)
+            ?: stringResource(R.string.sceneview_plane_discovery_hint)
+    } else {
+        hintMessage ?: stringResource(R.string.sceneview_plane_discovery_hint)
+    }
+    val liveHelpLabel = if (phase == PlaneDiscoveryPhase.HELP_OFFERED) {
+        helpLabel ?: stringResource(R.string.sceneview_plane_discovery_help)
+    } else null
+    // Latch the pill's content while it is visible so the exit fade keeps showing
+    // what was on screen — otherwise the copy flips to the next phase's text (e.g.
+    // lost-tracking → onboarding hint, or "Need help?" vanishing) mid-fade.
+    var shownMessage by remember { mutableStateOf(liveMessage) }
+    var shownHelpLabel by remember { mutableStateOf<String?>(liveHelpLabel) }
+    if (pillVisible) {
+        shownMessage = liveMessage
+        shownHelpLabel = liveHelpLabel
+    }
     AnimatedVisibility(
-        visible = (onboardingVisible && !tipsOpen) || lostVisible,
+        visible = pillVisible,
         modifier = modifier
             .align(Alignment.BottomCenter)
             .padding(horizontal = 24.dp)
@@ -422,17 +456,9 @@ fun BoxScope.PlaneDiscoveryGuideOverlay(
         enter = fadeIn(tween(durations.fadeInMs.toInt())),
         exit = fadeOut(tween(durations.fadeOutMs.toInt())),
     ) {
-        val message = if (lostVisible) {
-            trackingFailureReason?.getDescription(context)
-                ?: stringResource(R.string.sceneview_plane_discovery_hint)
-        } else {
-            hintMessage ?: stringResource(R.string.sceneview_plane_discovery_hint)
-        }
         GuideMessagePill(
-            message = message,
-            helpLabel = if (phase == PlaneDiscoveryPhase.HELP_OFFERED) {
-                helpLabel ?: stringResource(R.string.sceneview_plane_discovery_help)
-            } else null,
+            message = shownMessage,
+            helpLabel = shownHelpLabel,
             onHelp = { onHelp?.invoke() ?: run { showTips = true } },
         )
     }
