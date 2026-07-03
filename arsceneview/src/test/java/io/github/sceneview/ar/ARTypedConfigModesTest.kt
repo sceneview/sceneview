@@ -190,4 +190,32 @@ class ARTypedConfigModesTest {
             )
         }
     }
+
+    @Test
+    fun `onSessionResumed must not reapply focusMode — resume clobbered callback overrides (#2573)`() {
+        val src = arSceneSource
+        // ARCore session config persists across pause/resume, the creation path applies the
+        // typed param before `sessionConfiguration` (callback wins), and the gated
+        // `LaunchedEffect(focusMode)` covers genuine later changes. A reapply inside
+        // `onSessionResumed` therefore only ever *reverts* a callback-only override: ARCore's
+        // resume() invokes onResumed in the very same call that created/configured the session.
+        val resumedOpenIdx = Regex("""onSessionResumed\s*=\s*\{""").find(src)?.range?.first
+            ?: throw AssertionError("Could not find `onSessionResumed = {` in ARSceneView.kt")
+        val resumedEndIdx = src.indexOf("onSessionPaused", resumedOpenIdx)
+        assertTrue(
+            "Could not delimit the `onSessionResumed` block (no `onSessionPaused` after it).",
+            resumedEndIdx > resumedOpenIdx,
+        )
+        val resumedBlock = src.substring(resumedOpenIdx, resumedEndIdx)
+
+        assertTrue(
+            "`onSessionResumed` must NOT reconfigure the session (`session.configure` / " +
+                "`config.focusMode =`) — that force-reapply reverted `sessionConfiguration` " +
+                "callback overrides milliseconds after session creation (#2573). The creation " +
+                "path + gated `LaunchedEffect(focusMode)` already cover every legitimate case. " +
+                "Block:\n" + resumedBlock,
+            !resumedBlock.contains("session.configure") &&
+                !Regex("""config\.focusMode\s*=""").containsMatchIn(resumedBlock),
+        )
+    }
 }

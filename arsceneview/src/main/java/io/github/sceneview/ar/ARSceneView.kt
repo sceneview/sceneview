@@ -1037,12 +1037,11 @@ fun ARSceneView(
                 onSessionCreatedRef.get()?.invoke(session)
             },
             onSessionResumed = { session ->
-                // Honour the typed `focusMode` param (#1766) — previously this was force-set
-                // to AUTO on every resume; that overrode any caller opt-in to FIXED for sharp
-                // far-field tracking. Falls back to AUTO for parity with the prior behaviour.
-                session.configure { config ->
-                    config.focusMode = focusModeRef.get() ?: Config.FocusMode.AUTO
-                }
+                // No focusMode reapply here (#2573): ARCore session config persists across
+                // pause/resume, the creation path already applies the typed param before
+                // `sessionConfiguration` (callback wins), and the gated LaunchedEffect covers
+                // genuine later changes. Reapplying here clobbered callback-only overrides
+                // milliseconds after creation — resume() invokes onResumed in the same call.
                 onSessionResumedRef.get()?.invoke(session)
             },
             onSessionPaused = { session ->
