@@ -1,0 +1,65 @@
+// shadow_receiver.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Invisible AR shadow-catcher surface (#2241 Sprint-1, PR 3). Filament port of
+//             ARCore Depth Lab's `ShadowReceiverMeshShader` (Apache 2.0, Copyright 2020
+//             Google LLC): a mesh that renders NOTHING by itself and only darkens the
+//             framebuffer where a virtual object casts a shadow onto it, so placed models
+//             read as grounded on the real surface.
+//
+//             The Unity original achieves this with `Blend Zero SrcColor` (the framebuffer
+//             is multiplied by the shader output: lit texels output 1 → unchanged, shadowed
+//             texels output `1 - intensity` → darkened). Filament's dedicated feature for
+//             exactly this is `shadowMultiplier : true` (unlit only): the material's alpha
+//             is driven by the received shadowing factor — fully lit → alpha 0 (invisible),
+//             fully shadowed → alpha = baseColor.a → the black baseColor darkens the camera
+//             feed by `shadowIntensity`. Same construction as Filament's own gltf-viewer
+//             "Ground Shadow" sample material and the proven `plane_renderer_shadow.mat`,
+//             with the intensity exposed as a runtime parameter instead of a baked 60 %.
+//
+// Used by:    ShadowReceiverPlaneNode / the ARSceneScope `ShadowReceiverPlane` composable.
+// Parameters:
+//   shadowIntensity — float [0..1], how much a fully-shadowed texel darkens the background
+//                     (0 = shadows invisible, 1 = fully black). Default set from Kotlin:
+//                     ShadowReceiverPlaneNode.DEFAULT_SHADOW_INTENSITY = 0.6 (matches both
+//                     Depth Lab's `_GlobalShadowIntensity` default and the fixed value in
+//                     plane_renderer_shadow.mat).
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan").
+material {
+    name : "AR Shadow Receiver Material",
+    "parameters": [
+        {
+            "type": "float",
+            "name": "shadowIntensity"
+        }
+    ],
+    shadingModel : unlit,
+    blending : transparent,
+    shadowMultiplier : true
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        float3 pos = getPosition().xyz;
+
+        // Lift the surface slightly along its local up axis so the receiver never
+        // z-fights with a plane visualizer quad rendered at the same plane pose.
+        // NOTE: additive (`+=`), unlike plane_renderer_shadow.mat's `pos.y = 0.005`
+        // which FORCES y and silently flattens any non-XZ geometry to a degenerate
+        // strip. The additive form is safe for arbitrary meshes.
+        pos.y += 0.005;
+        material.worldPosition = mulMat4x4Float3(getWorldFromModelMatrix(), pos);
+    }
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        // Black at `shadowIntensity` alpha. With `shadowMultiplier : true` Filament
+        // scales the contribution by the received shadowing factor, so unshadowed
+        // texels resolve fully transparent — the surface itself is invisible.
+        // rgb is 0, so the straight-vs-premultiplied alpha pitfall documented in
+        // plane_renderer.mat (#2224) cannot bite here (0 * a == 0 either way).
+        material.baseColor = float4(0.0, 0.0, 0.0, materialParams.shadowIntensity);
+    }
+}

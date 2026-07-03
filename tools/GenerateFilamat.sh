@@ -10,13 +10,13 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (24 mats → 24 filamats):
+# Inventory (25 mats → 25 filamats):
 #   sceneview/src/main/materials/         (13) → sceneview/src/main/assets/materials/
-#   arsceneview/src/main/materials/        (8) → arsceneview/src/main/assets/materials/
+#   arsceneview/src/main/materials/        (9) → arsceneview/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/
 #
 # Usage:
-#   bash tools/GenerateFilamat.sh                 # regenerate all 24 filamats
+#   bash tools/GenerateFilamat.sh                 # regenerate all 25 filamats
 #   bash tools/GenerateFilamat.sh --check         # diff all 24 against committed blobs; exit 1 on drift
 #   bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 #   bash tools/GenerateFilamat.sh --ci-tolerant   # treat matc download failure as WARN, not FAIL
@@ -135,6 +135,7 @@ MATS=(
     "arsceneview:plane_renderer:arsceneview/src/main/materials/plane_renderer.mat:arsceneview/src/main/assets/materials/plane_renderer.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:plane_renderer_v2:arsceneview/src/main/materials/plane_renderer_v2.mat:arsceneview/src/main/assets/materials/plane_renderer_v2.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:plane_renderer_shadow:arsceneview/src/main/materials/plane_renderer_shadow.mat:arsceneview/src/main/assets/materials/plane_renderer_shadow.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "arsceneview:shadow_receiver:arsceneview/src/main/materials/shadow_receiver.mat:arsceneview/src/main/assets/materials/shadow_receiver.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "website-static:lit_colored:website-static/materials/lit_colored.mat:website-static/materials/lit_colored.filamat:-p mobile -a opengl"
     "website-static:transparent_colored:website-static/materials/transparent_colored.mat:website-static/materials/transparent_colored.filamat:-p mobile -a opengl"
     "website-static:unlit_colored:website-static/materials/unlit_colored.mat:website-static/materials/unlit_colored.filamat:-p mobile -a opengl"

@@ -50,6 +50,7 @@ import io.github.sceneview.ar.node.ReticleNode as ReticleNodeImpl
 import io.github.sceneview.ar.node.RooftopAnchorNode as RooftopAnchorNodeImpl
 import io.github.sceneview.ar.node.MeshClassification
 import io.github.sceneview.ar.node.SceneMeshNode as SceneMeshNodeImpl
+import io.github.sceneview.ar.node.ShadowReceiverPlaneNode as ShadowReceiverPlaneNodeImpl
 import io.github.sceneview.ar.node.StreetscapeGeometryNode as StreetscapeGeometryNodeImpl
 import io.github.sceneview.ar.node.TerrainAnchorNode as TerrainAnchorNodeImpl
 import io.github.sceneview.ar.node.TrackableNode as TrackableNodeImpl
@@ -849,6 +850,76 @@ class ARSceneScope internal constructor(
             ).apply(apply)
         }
         SideEffect {
+            node.onTrackingStateChanged = onTrackingStateChanged
+            node.onUpdated = onUpdated
+        }
+        NodeLifecycle(node, content)
+    }
+
+    // ── ShadowReceiverPlane ───────────────────────────────────────────────────────────────────────
+
+    /**
+     * An invisible shadow-catcher surface bound to a detected ARCore [Plane] (#2241 Sprint-1).
+     *
+     * Port of ARCore Depth Lab's `ShadowReceiverMeshShader`: mounts a quad on the tracked plane
+     * rendered with the `shadow_receiver` material (Filament `shadowMultiplier` — the idiomatic
+     * equivalent of the Unity original's `Blend Zero SrcColor` multiplicative blending). The quad
+     * itself is invisible: it only darkens the camera feed where a virtual object casts a shadow
+     * onto it, so placed models read as grounded on the real floor. It follows the plane's center
+     * pose and refined extents every frame, receives shadows, and never casts them.
+     *
+     * This is *not* a plane visualisation (no grid, no fill — see [PlaneNode] for that); declare
+     * both on the same [Plane] if you want a visible overlay *and* grounded shadows.
+     *
+     * ```kotlin
+     * ARSceneView(onSessionCreated = { arSession = it }) {
+     *     val planes by rememberDetectedPlanes(session = arSession)
+     *     planes.forEach { plane ->
+     *         ShadowReceiverPlane(plane = plane)
+     *     }
+     *     // A placed ModelNode casts the shadow (castShadows is on by default).
+     * }
+     * ```
+     *
+     * Shadows require a shadow-casting directional light — `ARSceneView`'s default
+     * `ENVIRONMENTAL_HDR` light estimation provides one.
+     *
+     * @param plane                   The ARCore [Plane] to catch shadows on.
+     * @param shadowIntensity         How much a fully-shadowed texel darkens the background, in
+     *                                `0..1` (0 = invisible shadows, 1 = fully black). Default
+     *                                [ShadowReceiverPlaneNodeImpl.DEFAULT_SHADOW_INTENSITY]
+     *                                (= 0.6, the ARCore Depth Lab default). Recomposing with a
+     *                                new value updates the material parameter live.
+     * @param visibleTrackingStates   States in which the shadow mesh is rendered.
+     * @param onTrackingStateChanged  Callback when the plane's tracking state changes.
+     * @param onUpdated               Callback invoked each frame while the plane is updated.
+     * @param apply                   Additional imperative configuration on the
+     *                                [ShadowReceiverPlaneNodeImpl].
+     * @param content                 Optional child nodes declared in a [NodeScope].
+     */
+    @Composable
+    fun ShadowReceiverPlane(
+        plane: Plane,
+        shadowIntensity: Float = ShadowReceiverPlaneNodeImpl.DEFAULT_SHADOW_INTENSITY,
+        visibleTrackingStates: Set<TrackingState> = setOf(TrackingState.TRACKING),
+        onTrackingStateChanged: ((TrackingState) -> Unit)? = null,
+        onUpdated: ((Plane) -> Unit)? = null,
+        apply: ShadowReceiverPlaneNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null
+    ) {
+        val node = remember(engine, plane) {
+            ShadowReceiverPlaneNodeImpl(
+                engine = engine,
+                materialLoader = materialLoader,
+                plane = plane,
+                shadowIntensity = shadowIntensity,
+                visibleTrackingStates = visibleTrackingStates,
+                onTrackingStateChanged = onTrackingStateChanged,
+                onUpdated = onUpdated
+            ).apply(apply)
+        }
+        SideEffect {
+            node.shadowIntensity = shadowIntensity
             node.onTrackingStateChanged = onTrackingStateChanged
             node.onUpdated = onUpdated
         }
