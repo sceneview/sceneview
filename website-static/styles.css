@@ -1914,11 +1914,6 @@ ul { list-style: none; }
   margin-bottom: 48px;
 }
 
-.testimonials__grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-}
 
 .testimonial-card {
   background: var(--color-surface-container-lowest);
@@ -2002,11 +1997,6 @@ ul { list-style: none; }
   margin-bottom: 48px;
 }
 
-.demos__grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24px;
-}
 
 .demo-card {
   display: flex;
@@ -2103,11 +2093,6 @@ ul { list-style: none; }
   margin-bottom: 48px;
 }
 
-.samples__grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24px;
-}
 
 .sample-card {
   display: flex;
@@ -3226,4 +3211,27 @@ ul { list-style: none; }
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ===== Keyboard focus visibility (WCAG 2.4.7, #2566) =====
+   :focus-visible only — mouse/touch interaction never shows the ring.
+   Token-driven so it themes automatically in light and dark modes. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* On the blue hero / gradient CTA surfaces the primary ring has too little
+   contrast — use the on-primary (light) ring there. */
+.hero a:focus-visible,
+.hero button:focus-visible,
+.cta a:focus-visible,
+.cta button:focus-visible {
+  outline-color: var(--color-on-primary);
 }
