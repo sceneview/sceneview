@@ -224,6 +224,74 @@ class CollaborativeSessionTest {
         assertEquals(3f, node.scale[0], 1e-5f)
     }
 
+    // ── Authenticated peer-id binding (#2569) ─────────────────────────────
+
+    @Test
+    fun `message claiming another peer id is rejected as spoofed`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val carol = session(hub.join("carol"), "Carol")
+        carol.start()
+        advanceUntilIdle()
+
+        // Arrives on mallory's authenticated connection but claims to be alice.
+        carol.testOnlyReceive("mallory", CollaborativeWireFormat.hello("alice", "Fake Alice"))
+        advanceUntilIdle()
+        assertTrue(carol.participants.none { it.id == "alice" })
+        // The forged sender is not admitted either — the message is dropped whole.
+        assertTrue(carol.participants.none { it.id == "mallory" })
+    }
+
+    @Test
+    fun `spoofed bye cannot evict another participant`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val carol = session(hub.join("carol"), "Carol")
+        carol.start()
+        carol.testOnlyReceive("alice", CollaborativeWireFormat.hello("alice", "Alice"))
+        advanceUntilIdle()
+        assertTrue(carol.participants.any { it.id == "alice" })
+
+        // Mallory forges a bye on alice's behalf — must be dropped.
+        carol.testOnlyReceive("mallory", CollaborativeWireFormat.bye("alice"))
+        advanceUntilIdle()
+        assertTrue(carol.participants.any { it.id == "alice" })
+    }
+
+    @Test
+    fun `spoofed pose cannot move another participant`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val carol = session(hub.join("carol"), "Carol")
+        carol.start()
+        carol.testOnlyReceive(
+            "alice",
+            CollaborativeWireFormat.pose(
+                "alice", 100L, floatArrayOf(1f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f),
+            ),
+        )
+        advanceUntilIdle()
+
+        // Mallory forges a newer pose claiming to be alice — must be dropped.
+        carol.testOnlyReceive(
+            "mallory",
+            CollaborativeWireFormat.pose(
+                "alice", 200L, floatArrayOf(9f, 9f, 9f), floatArrayOf(0f, 0f, 0f, 1f),
+            ),
+        )
+        advanceUntilIdle()
+        val alice = carol.participants.first { it.id == "alice" }
+        assertEquals(1f, alice.translation!![0], 1e-6f)
+        assertEquals(100L, alice.lastSeenEpochMs)
+    }
+
+    @Test
+    fun `matching transport and body peer id still applies`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val carol = session(hub.join("carol"), "Carol")
+        carol.start()
+        carol.testOnlyReceive("alice", CollaborativeWireFormat.hello("alice", "Alice"))
+        advanceUntilIdle()
+        assertTrue(carol.participants.any { it.id == "alice" })
+    }
+
     @Test
     fun `enqueue before start does not crash and onFrame is a no-op without anchor`() = runTest {
         val hub = LoopbackCollaborativeTransport.LoopbackHub()

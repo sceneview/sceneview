@@ -16,10 +16,46 @@ package io.github.sceneview.ar.collaborative
  * the same separation [io.github.sceneview.ar.rerun.RerunWireFormat] applies
  * to serialization — pure code stays pure and fully covered by JVM tests.
  *
+ * ### Roster caps (DoS hardening, #2569)
+ *
+ * Both rosters are **bounded**: at most [maxParticipants] participants and
+ * [maxNodes] placed nodes are tracked. Messages that would create an entry
+ * beyond a cap are dropped ([apply] returns `false`); updates to entries that
+ * already exist always go through. Without a bound, a malicious (or buggy)
+ * peer could grow the maps without limit by streaming thousands of distinct
+ * forged `peer` / `node` keys — a memory-amplification DoS, since one small
+ * wire line pins a map entry forever.
+ *
  * @param localPeerId the local device's peer id. Messages whose `peerId`
  *   equals this are ignored (a peer never tracks itself as a participant).
+ * @param maxParticipants upper bound on tracked remote participants. Defaults
+ *   to [MAX_PARTICIPANTS] — far above what Nearby-class transports support.
+ * @param maxNodes upper bound on tracked placed nodes. Defaults to [MAX_NODES].
  */
-public class CollaborativeState(private val localPeerId: String) {
+public class CollaborativeState
+@JvmOverloads
+public constructor(
+    private val localPeerId: String,
+    private val maxParticipants: Int = MAX_PARTICIPANTS,
+    private val maxNodes: Int = MAX_NODES,
+) {
+
+    public companion object {
+        /**
+         * Default cap on tracked remote participants. A same-room collaborative
+         * AR session realistically has a handful of peers (Nearby's
+         * `P2P_CLUSTER` mesh tops out well below this); 64 keeps a wide margin
+         * while bounding worst-case memory against forged `hello` floods.
+         */
+        public const val MAX_PARTICIPANTS: Int = 64
+
+        /**
+         * Default cap on tracked placed nodes. 1024 is far beyond any sane
+         * same-room scene while keeping the worst-case roster size bounded
+         * against forged `node`-key floods.
+         */
+        public const val MAX_NODES: Int = 1024
+    }
 
     private val participantsById = LinkedHashMap<String, Participant>()
     private val nodesByKey = LinkedHashMap<String, PlacedNode>()
@@ -71,6 +107,9 @@ public class CollaborativeState(private val localPeerId: String) {
 
     private fun applyHello(message: CollaborativeMessage.Hello): Boolean {
         val existing = participantsById[message.peerId]
+        // Roster cap: never create a NEW participant beyond maxParticipants —
+        // updates to already-tracked peers still apply (see class doc, #2569).
+        if (existing == null && participantsById.size >= maxParticipants) return false
         val updated = (existing ?: Participant(message.peerId, message.displayName)).copy(
             displayName = message.displayName,
             lastSeenEpochMs = maxOf(existing?.lastSeenEpochMs ?: 0L, nowOr(existing)),
@@ -90,6 +129,9 @@ public class CollaborativeState(private val localPeerId: String) {
 
     private fun applyPose(message: CollaborativeMessage.ParticipantPose): Boolean {
         val existing = participantsById[message.peerId]
+        // Roster cap: a pose may implicitly create a participant — apply the
+        // same maxParticipants bound as hello (see class doc, #2569).
+        if (existing == null && participantsById.size >= maxParticipants) return false
         // Drop out-of-order / stale poses: a later epoch always wins, an
         // earlier one is silently ignored (UDP-style reordering safety).
         if (existing != null && existing.lastSeenEpochMs > message.epochMs) return false
@@ -103,6 +145,9 @@ public class CollaborativeState(private val localPeerId: String) {
     }
 
     private fun applyNode(message: CollaborativeMessage.NodeState): Boolean {
+        // Roster cap: never create a NEW node key beyond maxNodes — moves /
+        // rewrites of already-tracked keys still apply (see class doc, #2569).
+        if (message.nodeKey !in nodesByKey && nodesByKey.size >= maxNodes) return false
         val placed = PlacedNode(
             nodeKey = message.nodeKey,
             modelKey = message.modelKey,

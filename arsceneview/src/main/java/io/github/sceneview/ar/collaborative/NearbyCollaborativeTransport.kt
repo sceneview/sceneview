@@ -64,14 +64,39 @@ import java.util.concurrent.CopyOnWriteArrayList
  * Wi-Fi to connect to nearby devices. This class never requests permissions
  * itself — that is a UX decision the app owns.
  *
+ * ### Trust model & pairing (#2569)
+ *
+ * By default this transport **auto-accepts** every connection from a device
+ * advertising the same [serviceId] — convenient for the same-app, same-room
+ * demo case, but it means *any* device that knows (or guesses) the service id
+ * can join the session and send messages. The `serviceId` is broadcast in
+ * cleartext during discovery, so it is **not a secret** and must not be
+ * treated as an authentication factor.
+ *
+ * Apps that need a real trust boundary should pass [shouldAcceptConnection]
+ * and verify the connection out of band: Nearby gives both sides the same
+ * authentication digits ([ConnectionInfo.getAuthenticationDigits]) for a
+ * pending connection, so displaying them on both screens and having users
+ * compare (or comparing against a code shared over a separate channel)
+ * defeats a same-service-id impersonator. Returning `false` rejects the
+ * connection before any payload is exchanged.
+ *
+ * Defense-in-depth on the receiving side lives in [CollaborativeSession]
+ * (authenticated peer-id binding) and [CollaborativeState] (bounded rosters)
+ * — see their *Security* docs.
+ *
  * ### Threading
  *
  * - [send] is non-blocking per the [CollaborativeTransport] contract: it hands
  *   the payload to [ConnectionsClient.sendPayload], which queues internally.
- * - Nearby invokes its callbacks on the main thread; received payloads are
- *   dispatched straight to registered [incoming] handlers (which, per the
- *   contract, may be called on any thread — [CollaborativeSession] re-marshals
- *   them onto its own scope).
+ * - Nearby *typically* invokes its callbacks on the main thread, but this is
+ *   not a documented guarantee — the transport (and [NearbyPeerRegistry]) is
+ *   fully thread-safe regardless. Received payloads are dispatched straight to
+ *   registered [incoming] handlers (which, per the contract, may be called on
+ *   any thread — [CollaborativeSession] re-marshals them onto its own scope).
+ * - [start] and [close] are expected to be called from a single thread
+ *   (typically the main thread, matching the composable lifecycle). Calling
+ *   them concurrently from different threads is unsupported.
  *
  * ### Usage
  *
@@ -94,6 +119,16 @@ import java.util.concurrent.CopyOnWriteArrayList
  *   Nearby connection name. Defaults to a random UUID. Must be unique across
  *   the session and stable for the transport's lifetime.
  * @param tag         Logcat tag for non-fatal warnings.
+ * @param shouldAcceptConnection optional trust gate for incoming/outgoing
+ *   connections (see *Trust model & pairing*). Invoked from a Nearby callback
+ *   with the remote's advertised peer id and the connection's authentication
+ *   digits ([ConnectionInfo.getAuthenticationDigits] — identical on both
+ *   devices for the same pending connection, suitable for out-of-band
+ *   comparison). Return `true` to accept,
+ *   `false` to reject before any payload is exchanged. Must not block for long
+ *   (it may run on the main thread); apps needing an async pairing UX should
+ *   pre-approve digests or wrap the transport. `null` (the default) keeps the
+ *   auto-accept behaviour: every same-[serviceId] device is trusted.
  */
 public class NearbyCollaborativeTransport
 @JvmOverloads
@@ -102,6 +137,8 @@ public constructor(
     private val serviceId: String = context.packageName,
     override val localPeerId: String = UUID.randomUUID().toString(),
     private val tag: String = "NearbyTransport",
+    private val shouldAcceptConnection:
+        ((peerId: String, authenticationDigits: String) -> Boolean)? = null,
 ) : CollaborativeTransport {
 
     public companion object {
@@ -166,7 +203,14 @@ public constructor(
     @Volatile private var started = false
     @Volatile private var closed = false
 
-    /** `true` between a successful [start] and [close]. */
+    /**
+     * `true` between [start] and [close].
+     *
+     * Set as soon as [start] begins: the underlying Nearby advertise/discover
+     * calls complete **asynchronously**, and their failures are logged (see
+     * [tag]) rather than reflected here — so `true` means "the transport has
+     * been started", not "advertising/discovery is confirmed live".
+     */
     public val isStarted: Boolean get() = started
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -212,10 +256,24 @@ public constructor(
             logWarning("dropped un-frameable message: ${e.message}")
             return
         }
+        // Nearby BYTES payloads are hard-capped at
+        // ConnectionsClient.MAX_BYTES_DATA_SIZE (~1 MB in current Play
+        // Services); an oversized one would fail on every endpoint anyway —
+        // drop it with a diagnostic. (CollaborativeWireFormat lines are a few
+        // hundred bytes at most.)
+        if (framed.size > ConnectionsClient.MAX_BYTES_DATA_SIZE) {
+            logWarning(
+                "dropped oversized message: ${framed.size} bytes exceeds the " +
+                    "${ConnectionsClient.MAX_BYTES_DATA_SIZE}-byte BYTES payload limit",
+            )
+            return
+        }
         val endpoints = registry.connectedEndpointIds()
         if (endpoints.isEmpty()) return
         // sendPayload queues internally — non-blocking, contract-compliant.
-        connectionsClient.sendPayload(endpoints, Payload.fromBytes(framed))
+        connectionsClient
+            .sendPayload(endpoints, Payload.fromBytes(framed))
+            .addOnFailureListener { e -> logWarning("sendPayload failed: ${e.message}") }
     }
 
     override fun incoming(
@@ -270,17 +328,64 @@ public constructor(
         // until the connection result arrives so onConnectionResult can map it.
         private val pendingPeerIds = java.util.concurrent.ConcurrentHashMap<String, String>()
 
+        /**
+         * ⚠️ **Trust boundary.** Absent a [shouldAcceptConnection] gate, every
+         * device advertising the same [serviceId] is auto-accepted here. The
+         * service id is broadcast in cleartext during discovery — it is a
+         * rendezvous key, **not** an authentication factor — so auto-accept
+         * means "anyone in radio range who knows the id joins the session".
+         * Everything received afterwards is untrusted input; see the class
+         * *Trust model & pairing* doc for the out-of-band pairing path
+         * ([ConnectionInfo.getAuthenticationDigits] comparison) and the
+         * defense-in-depth layers in [CollaborativeSession] /
+         * [CollaborativeState].
+         */
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
             if (closed) return
-            // The remote's stable peer id is its advertised connection name.
-            pendingPeerIds[endpointId] = info.endpointName
-            // Auto-accept: this is a same-app collaborative session, so every
-            // peer advertising our serviceId is trusted. Apps needing a manual
-            // pairing UX can subclass / wrap this transport.
+            // The remote's stable peer id is its advertised connection name —
+            // SELF-DECLARED by the remote device, not authenticated by Nearby.
+            val remotePeerId = info.endpointName
+            // A live endpoint already owns this peer id → a second connection
+            // claiming it is either an impersonation attempt or a reconnect
+            // racing its own stale endpoint. Reject; a legitimate reconnect
+            // succeeds as soon as Nearby drops the stale endpoint (#2569).
+            if (registry.endpointIdFor(remotePeerId) != null) {
+                logWarning(
+                    "rejecting connection from '$remotePeerId': a live endpoint " +
+                        "already owns this peer id",
+                )
+                rejectQuietly(endpointId)
+                return
+            }
+            // Trust gate: give the app a chance to verify the connection via
+            // the authentication digits (identical on both devices) before any
+            // payload can flow. Default (null) = auto-accept, same-app trust.
+            // The gate receives untrusted input — a throwing gate must not
+            // crash the GMS callback, and MUST fail closed (reject).
+            val accepted = try {
+                shouldAcceptConnection?.invoke(remotePeerId, info.authenticationDigits) != false
+            } catch (e: Exception) {
+                logWarning("shouldAcceptConnection threw for '$remotePeerId' — rejecting: $e")
+                false
+            }
+            if (!accepted) {
+                logWarning("rejecting connection from '$remotePeerId' (app trust gate)")
+                rejectQuietly(endpointId)
+                return
+            }
+            pendingPeerIds[endpointId] = remotePeerId
             connectionsClient
                 .acceptConnection(endpointId, payloadCallback)
                 .addOnFailureListener { e ->
                     logWarning("acceptConnection($endpointId) failed: ${e.message}")
+                }
+        }
+
+        private fun rejectQuietly(endpointId: String) {
+            connectionsClient
+                .rejectConnection(endpointId)
+                .addOnFailureListener { e ->
+                    logWarning("rejectConnection($endpointId) failed: ${e.message}")
                 }
         }
 

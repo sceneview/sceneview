@@ -205,6 +205,31 @@ class CollaborativeWireFormatTest {
     }
 
     @Test
+    fun `parse rejects a vector with more than 4 components`() {
+        // 5 components can never be valid (quaternion is the longest at 4) —
+        // the parser must bail before per-component parsing (#2569).
+        assertNull(
+            CollaborativeWireFormat.parse(
+                "{\"type\":\"pose\",\"peer\":\"p\",\"t\":1," +
+                    "\"translation\":[1.0,2.0,3.0,4.0,5.0],\"quaternion\":[0.0,0.0,0.0,1.0]}",
+            ),
+        )
+    }
+
+    @Test
+    fun `parse rejects an oversized vector body without parsing it`() {
+        // A maliciously long [...] body is rejected on length alone, before
+        // any substring/split allocation proportional to its size (#2569).
+        val huge = (1..10_000).joinToString(",") { "1.0" }
+        assertNull(
+            CollaborativeWireFormat.parse(
+                "{\"type\":\"pose\",\"peer\":\"p\",\"t\":1," +
+                    "\"translation\":[$huge],\"quaternion\":[0.0,0.0,0.0,1.0]}",
+            ),
+        )
+    }
+
+    @Test
     fun `pose rejects wrong-size translation at encode time`() {
         try {
             CollaborativeWireFormat.pose(

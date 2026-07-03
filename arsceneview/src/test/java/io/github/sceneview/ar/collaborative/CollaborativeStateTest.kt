@@ -172,6 +172,106 @@ class CollaborativeStateTest {
         assertFalse(state.retainParticipants(setOf("p1", "p2")))
     }
 
+    // ── Roster caps (#2569) ───────────────────────────────────────────────
+
+    @Test
+    fun `hello beyond the participant cap is dropped`() {
+        val state = CollaborativeState(local, maxParticipants = 2, maxNodes = 2)
+        assertTrue(state.apply(CollaborativeMessage.Hello("p1", "A")))
+        assertTrue(state.apply(CollaborativeMessage.Hello("p2", "B")))
+        // Third distinct peer exceeds the cap — dropped, state unchanged.
+        assertFalse(state.apply(CollaborativeMessage.Hello("p3", "C")))
+        assertEquals(2, state.participants.size)
+        assertTrue(state.participants.none { it.id == "p3" })
+    }
+
+    @Test
+    fun `existing participant is still updatable at the cap`() {
+        val state = CollaborativeState(local, maxParticipants = 1, maxNodes = 1)
+        assertTrue(state.apply(CollaborativeMessage.Hello("p1", "A")))
+        // Roster is full, but p1 is already tracked — the update applies.
+        assertTrue(state.apply(CollaborativeMessage.Hello("p1", "A-renamed")))
+        assertEquals("A-renamed", state.participants.first().displayName)
+    }
+
+    @Test
+    fun `pose beyond the participant cap does not create a participant`() {
+        val state = CollaborativeState(local, maxParticipants = 1, maxNodes = 1)
+        state.apply(CollaborativeMessage.Hello("p1", "A"))
+        val changed = state.apply(
+            CollaborativeMessage.ParticipantPose(
+                "p2", 100L, floatArrayOf(0f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f),
+            ),
+        )
+        assertFalse(changed)
+        assertEquals(1, state.participants.size)
+    }
+
+    @Test
+    fun `pose for an existing participant is still applied at the cap`() {
+        val state = CollaborativeState(local, maxParticipants = 1, maxNodes = 1)
+        state.apply(CollaborativeMessage.Hello("p1", "A"))
+        assertTrue(
+            state.apply(
+                CollaborativeMessage.ParticipantPose(
+                    "p1", 100L, floatArrayOf(1f, 2f, 3f), floatArrayOf(0f, 0f, 0f, 1f),
+                ),
+            ),
+        )
+        assertTrue(state.participants.first().hasPose)
+    }
+
+    @Test
+    fun `node beyond the node cap is dropped`() {
+        val state = CollaborativeState(local, maxParticipants = 2, maxNodes = 1)
+        assertTrue(
+            state.apply(
+                CollaborativeMessage.NodeState(
+                    "p1", "n1", "cube",
+                    floatArrayOf(0f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f), floatArrayOf(1f, 1f, 1f),
+                ),
+            ),
+        )
+        // A second distinct node key exceeds the cap — dropped.
+        assertFalse(
+            state.apply(
+                CollaborativeMessage.NodeState(
+                    "p1", "n2", "cube",
+                    floatArrayOf(1f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f), floatArrayOf(1f, 1f, 1f),
+                ),
+            ),
+        )
+        assertEquals(1, state.placedNodes.size)
+        assertEquals("n1", state.placedNodes.first().nodeKey)
+    }
+
+    @Test
+    fun `existing node key is still updatable at the node cap`() {
+        val state = CollaborativeState(local, maxParticipants = 2, maxNodes = 1)
+        state.apply(
+            CollaborativeMessage.NodeState(
+                "p1", "n1", "cube",
+                floatArrayOf(0f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f), floatArrayOf(1f, 1f, 1f),
+            ),
+        )
+        // Roster is full, but n1 already exists — last-writer-wins still applies.
+        assertTrue(
+            state.apply(
+                CollaborativeMessage.NodeState(
+                    "p2", "n1", "cube",
+                    floatArrayOf(9f, 9f, 9f), floatArrayOf(0f, 0f, 0f, 1f), floatArrayOf(1f, 1f, 1f),
+                ),
+            ),
+        )
+        assertEquals("p2", state.placedNodes.first().ownerPeerId)
+    }
+
+    @Test
+    fun `default caps are the documented constants`() {
+        assertEquals(64, CollaborativeState.MAX_PARTICIPANTS)
+        assertEquals(1024, CollaborativeState.MAX_NODES)
+    }
+
     @Test
     fun `removeNode removes a placed node`() {
         val state = CollaborativeState(local)

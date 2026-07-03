@@ -72,6 +72,13 @@ public interface CollaborativeTransport {
      * Registers a [handler] invoked for every message received from a peer.
      * The handler may be called on any thread.
      *
+     * **Contract (#2569):** the `peerId` reported to handlers must be the
+     * message *originator's* stable peer id — the same value that peer encodes
+     * in the wire body's `peer` field — not a hop, relay, or channel id.
+     * [CollaborativeSession] drops any message whose body `peer` differs from
+     * the reported `peerId` as spoofed, so a relay/star transport must
+     * propagate the originator id end-to-end.
+     *
      * @return a handle whose [AutoCloseable.close] unregisters the handler.
      */
     public fun incoming(handler: (peerId: String, message: ByteArray) -> Unit): AutoCloseable
