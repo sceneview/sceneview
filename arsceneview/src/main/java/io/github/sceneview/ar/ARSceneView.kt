@@ -285,6 +285,32 @@ internal val PLAYBACK_DATASET_URI_ALLOWED_SCHEMES: Set<String> = setOf("content"
 internal fun isAllowedPlaybackDatasetUri(uri: android.net.Uri?): Boolean =
     uri == null || uri.scheme in PLAYBACK_DATASET_URI_ALLOWED_SCHEMES
 
+/**
+ * Tracks whether a `remember`ed value has genuinely changed since the last call, so a reactive
+ * `LaunchedEffect(value) { ... }` can tell "the caller changed this parameter" apart from its own
+ * mount-time execution (#2573).
+ *
+ * `LaunchedEffect(key)` always runs once when the composable enters composition, using whatever
+ * value the key starts with — not only on subsequent, genuine key changes. The typed `flashMode` /
+ * `Config.*Mode` reactivity below used to compare the *live session config* against the parameter
+ * directly; on mount, the session may already differ from the parameter's default (because
+ * `sessionConfiguration` is applied afterward and can override it, by design — see the params'
+ * KDoc). That first, spurious comparison silently reverted the callback's choice.
+ *
+ * A [ChangeGate] is seeded with the parameter's mount-time value, so [shouldApply] correctly
+ * returns `false` for that first call (nothing has "changed" yet) and only `true` once the
+ * caller actually recomposes with a different value.
+ */
+internal class ChangeGate<T>(initial: T) {
+    private var last: T = initial
+
+    fun shouldApply(next: T): Boolean {
+        if (last == next) return false
+        last = next
+        return true
+    }
+}
+
 @Composable
 fun ARSceneView(
     modifier: Modifier = Modifier,
@@ -1011,12 +1037,11 @@ fun ARSceneView(
                 onSessionCreatedRef.get()?.invoke(session)
             },
             onSessionResumed = { session ->
-                // Honour the typed `focusMode` param (#1766) — previously this was force-set
-                // to AUTO on every resume; that overrode any caller opt-in to FIXED for sharp
-                // far-field tracking. Falls back to AUTO for parity with the prior behaviour.
-                session.configure { config ->
-                    config.focusMode = focusModeRef.get() ?: Config.FocusMode.AUTO
-                }
+                // No focusMode reapply here (#2573): ARCore session config persists across
+                // pause/resume, the creation path already applies the typed param before
+                // `sessionConfiguration` (callback wins), and the gated LaunchedEffect covers
+                // genuine later changes. Reapplying here clobbered callback-only overrides
+                // milliseconds after creation — resume() invokes onResumed in the same call.
                 onSessionResumedRef.get()?.invoke(session)
             },
             onSessionPaused = { session ->
@@ -1057,7 +1082,16 @@ fun ARSceneView(
     // reconfigured only when the actual value changes, so flipping unrelated state does not pay
     // for an ARCore `configure()` call. Support gating + front-camera downgrade is centralised
     // inside `ArSession.configure()`.
+    //
+    // `flashModeGate` (and its siblings below) additionally guards against this `LaunchedEffect`'s
+    // own initial-composition run: `LaunchedEffect(key)` always executes once on mount, using
+    // whatever value the parameter starts with. Without the gate, that first run would compare
+    // the just-created session's config (which may differ, because `sessionConfiguration` is
+    // applied AFTER this param and can override it) against the mount-time param value, see a
+    // mismatch, and silently revert the callback's choice — see #2573.
+    val flashModeGate = remember { ChangeGate(flashMode) }
     LaunchedEffect(flashMode) {
+        if (!flashModeGate.shouldApply(flashMode)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         if (session.config.flashMode != flashMode) {
             session.configure { config -> config.flashMode = flashMode }
@@ -1070,67 +1104,92 @@ fun ARSceneView(
     // reconfigure without having to recreate the ARSceneView. Each effect keys on a single param,
     // and the equality guard skips a JNI `configure()` round-trip when the param re-emits with the
     // same value (idempotent recompose).
+    //
+    // Each `*Gate` skips the effect's mount-time execution — see the `flashModeGate` note above
+    // and #2573.
+    val planeFindingModeGate = remember { ChangeGate(planeFindingMode) }
     LaunchedEffect(planeFindingMode) {
+        if (!planeFindingModeGate.shouldApply(planeFindingMode)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         if (session.config.planeFindingMode != planeFindingMode) {
             session.configure { config -> config.planeFindingMode = planeFindingMode }
         }
     }
+    val depthModeGate = remember { ChangeGate(depthMode) }
     LaunchedEffect(depthMode) {
+        if (!depthModeGate.shouldApply(depthMode)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         if (session.config.depthMode != depthMode) {
             session.configure { config -> config.depthMode = depthMode }
         }
     }
+    val instantPlacementModeGate = remember { ChangeGate(instantPlacementMode) }
     LaunchedEffect(instantPlacementMode) {
+        if (!instantPlacementModeGate.shouldApply(instantPlacementMode)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         if (session.config.instantPlacementMode != instantPlacementMode) {
             session.configure { config -> config.instantPlacementMode = instantPlacementMode }
         }
     }
+    val geospatialModeGate = remember { ChangeGate(geospatialMode) }
     LaunchedEffect(geospatialMode) {
+        if (!geospatialModeGate.shouldApply(geospatialMode)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         if (session.config.geospatialMode != geospatialMode) {
             session.configure { config -> config.geospatialMode = geospatialMode }
         }
     }
+    val streetscapeGeometryModeGate = remember { ChangeGate(streetscapeGeometryMode) }
     LaunchedEffect(streetscapeGeometryMode) {
+        if (!streetscapeGeometryModeGate.shouldApply(streetscapeGeometryMode)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         if (session.config.streetscapeGeometryMode != streetscapeGeometryMode) {
             session.configure { config -> config.streetscapeGeometryMode = streetscapeGeometryMode }
         }
     }
+    val cloudAnchorModeGate = remember { ChangeGate(cloudAnchorMode) }
     LaunchedEffect(cloudAnchorMode) {
+        if (!cloudAnchorModeGate.shouldApply(cloudAnchorMode)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         if (session.config.cloudAnchorMode != cloudAnchorMode) {
             session.configure { config -> config.cloudAnchorMode = cloudAnchorMode }
         }
     }
+    val augmentedFaceModeGate = remember { ChangeGate(augmentedFaceMode) }
     LaunchedEffect(augmentedFaceMode) {
+        if (!augmentedFaceModeGate.shouldApply(augmentedFaceMode)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         if (session.config.augmentedFaceMode != augmentedFaceMode) {
             session.configure { config -> config.augmentedFaceMode = augmentedFaceMode }
         }
     }
+    val imageStabilizationModeGate = remember { ChangeGate(imageStabilizationMode) }
     LaunchedEffect(imageStabilizationMode) {
+        if (!imageStabilizationModeGate.shouldApply(imageStabilizationMode)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         if (session.config.imageStabilizationMode != imageStabilizationMode) {
             session.configure { config -> config.imageStabilizationMode = imageStabilizationMode }
         }
     }
+    val semanticModeGate = remember { ChangeGate(semanticMode) }
     LaunchedEffect(semanticMode) {
+        if (!semanticModeGate.shouldApply(semanticMode)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         if (session.config.semanticMode != semanticMode) {
             session.configure { config -> config.semanticMode = semanticMode }
         }
     }
+    val updateModeGate = remember { ChangeGate(updateMode) }
     LaunchedEffect(updateMode) {
+        if (!updateModeGate.shouldApply(updateMode)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         if (session.config.updateMode != updateMode) {
             session.configure { config -> config.updateMode = updateMode }
         }
     }
+    val focusModeGate = remember { ChangeGate(focusMode) }
     LaunchedEffect(focusMode) {
+        if (!focusModeGate.shouldApply(focusMode)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         if (session.config.focusMode != focusMode) {
             session.configure { config -> config.focusMode = focusMode }

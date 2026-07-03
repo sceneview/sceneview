@@ -130,4 +130,92 @@ class ARTypedConfigModesTest {
             )
         }
     }
+
+    @Test
+    fun `each reactive LaunchedEffect skips its own initial-composition run (#2573)`() {
+        val src = arSceneSource
+        // `flashMode` predates #1766 (#1732) but has the exact same reactivity shape and the same
+        // defect, so it's covered here too.
+        val gatedParams = listOf(
+            "flashMode",
+            "planeFindingMode",
+            "depthMode",
+            "instantPlacementMode",
+            "geospatialMode",
+            "streetscapeGeometryMode",
+            "cloudAnchorMode",
+            "augmentedFaceMode",
+            "imageStabilizationMode",
+            "semanticMode",
+            "updateMode",
+            "focusMode",
+        )
+        gatedParams.forEach { name ->
+            // 1. A `ChangeGate` must be remembered with the parameter's mount-time value...
+            val gateDeclarationPattern = Regex(
+                """val\s+${name}Gate\s*=\s*remember\s*\{\s*ChangeGate\($name\)\s*\}""",
+            )
+            assertTrue(
+                "Expected `val ${name}Gate = remember { ChangeGate($name) }` in ARSceneView.kt — " +
+                    "without it, `LaunchedEffect($name)`'s mount-time run has no way to tell " +
+                    "itself apart from a genuine later change, and silently reverts whatever " +
+                    "`sessionConfiguration` set (#2573).",
+                gateDeclarationPattern.containsMatchIn(src),
+            )
+
+            // 2. ...and `LaunchedEffect($name)` must consult it BEFORE touching the session, so
+            // the mount-time run is a no-op.
+            val effectOpenIdx = Regex("""LaunchedEffect\($name\)\s*\{""").find(src)?.range?.last
+                ?: throw AssertionError("Could not find `LaunchedEffect($name) {` in ARSceneView.kt")
+            val effectWindow = src.substring(effectOpenIdx, (effectOpenIdx + 400).coerceAtMost(src.length))
+
+            val guardIdx = effectWindow.indexOf("if (!${name}Gate.shouldApply($name)) return@LaunchedEffect")
+            val configureIdx = effectWindow.indexOf("session.configure")
+
+            assertTrue(
+                "Expected `if (!${name}Gate.shouldApply($name)) return@LaunchedEffect` as the " +
+                    "first line of `LaunchedEffect($name) { ... }` in ARSceneView.kt (#2573). " +
+                    "Window:\n$effectWindow",
+                guardIdx >= 0,
+            )
+            assertTrue(
+                "Expected `session.configure` inside `LaunchedEffect($name) { ... }`. Window:\n$effectWindow",
+                configureIdx >= 0,
+            )
+            assertTrue(
+                "The `${name}Gate` guard (idx=$guardIdx) must appear BEFORE `session.configure` " +
+                    "(idx=$configureIdx) inside `LaunchedEffect($name) { ... }` — otherwise the " +
+                    "mount-time run still reaches the session before being skipped. Window:\n$effectWindow",
+                guardIdx in 0 until configureIdx,
+            )
+        }
+    }
+
+    @Test
+    fun `onSessionResumed must not reapply focusMode — resume clobbered callback overrides (#2573)`() {
+        val src = arSceneSource
+        // ARCore session config persists across pause/resume, the creation path applies the
+        // typed param before `sessionConfiguration` (callback wins), and the gated
+        // `LaunchedEffect(focusMode)` covers genuine later changes. A reapply inside
+        // `onSessionResumed` therefore only ever *reverts* a callback-only override: ARCore's
+        // resume() invokes onResumed in the very same call that created/configured the session.
+        val resumedOpenIdx = Regex("""onSessionResumed\s*=\s*\{""").find(src)?.range?.first
+            ?: throw AssertionError("Could not find `onSessionResumed = {` in ARSceneView.kt")
+        val resumedEndIdx = src.indexOf("onSessionPaused", resumedOpenIdx)
+        assertTrue(
+            "Could not delimit the `onSessionResumed` block (no `onSessionPaused` after it).",
+            resumedEndIdx > resumedOpenIdx,
+        )
+        val resumedBlock = src.substring(resumedOpenIdx, resumedEndIdx)
+
+        assertTrue(
+            "`onSessionResumed` must NOT reconfigure the session (`session.configure` / " +
+                "`config.focusMode =`) — that force-reapply reverted `sessionConfiguration` " +
+                "callback overrides milliseconds after session creation (#2573). The creation " +
+                "path + gated `LaunchedEffect(focusMode)` already cover every legitimate case. " +
+                "Block:\n" + resumedBlock,
+            !resumedBlock.contains("session.configure") &&
+                !Regex("""config\.focusMode\s*=""").containsMatchIn(resumedBlock),
+        )
+    }
 }
