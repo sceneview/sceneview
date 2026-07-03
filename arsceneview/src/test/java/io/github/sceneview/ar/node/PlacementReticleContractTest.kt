@@ -106,11 +106,15 @@ class PlacementReticleContractTest {
     }
 
     @Test
-    fun `snapToPlane maps to the planeTypes acceptance set`() {
+    fun `snapToPlane = false is free placement, not no-planes`() {
         assertTrue(
-            "snapToPlane must gate planeTypes (all types vs emptySet)",
-            Regex("""planeTypes = if \(snapToPlane\) Plane\.Type\.values\(\)\.toSet\(\) else emptySet\(\)""")
-                .containsMatchIn(nodeSource)
+            "planes must always stay candidates (in-polygon enforced by the base default)",
+            nodeSource.contains("planeTypes = Plane.Type.values().toSet()")
+        )
+        assertTrue(
+            "free placement (snapToPlane = false) must accept feature points — the " +
+                "PlacementHitPolicy contract",
+            nodeSource.contains("point = !snapToPlane")
         )
     }
 

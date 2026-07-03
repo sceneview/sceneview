@@ -488,6 +488,9 @@ class ARSceneScope internal constructor(
      * @param orientationSmoothing   Per-frame slerp fraction in `0..1` toward the hit
      *                               orientation (default 0.75 = Depth Lab; `1.0f` = raw).
      *                               Live-updatable on recomposition.
+     * @param predicate              Extra acceptance filter ANDed with the built-in ones
+     *                               (e.g. a max-distance policy). Construction-time only —
+     *                               not live-updatable on recomposition.
      * @param onHitResultChanged     Invoked on every hit change (including to/from `null`) —
      *                               drives AIMING/READY host state.
      * @param apply                  Additional imperative configuration on the node.
@@ -500,6 +503,7 @@ class ARSceneScope internal constructor(
         snapToPlane: Boolean = true,
         depthPoint: Boolean = false,
         orientationSmoothing: Float = PlacementReticleNodeImpl.DEFAULT_ORIENTATION_SMOOTHING,
+        predicate: ((HitResult) -> Boolean)? = null,
         onHitResultChanged: ((HitResult?) -> Unit)? = null,
         apply: PlacementReticleNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null
@@ -512,6 +516,7 @@ class ARSceneScope internal constructor(
                 snapToPlane = snapToPlane,
                 depthPoint = depthPoint,
                 orientationSmoothing = orientationSmoothing,
+                predicate = predicate,
                 onHitResultChanged = onHitResultChanged
             ).apply(apply)
         }

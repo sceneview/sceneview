@@ -67,14 +67,20 @@ internal class ReticleOrientationSmoother(smoothing: Float) {
  * next surface is re-acquired verbatim at the damping layer (the base smooth-transform
  * easing still animates the node's rendered motion).
  *
- * `snapToPlane = false` with `depthPoint = false` accepts no trackable at all — enable
- * at least one source.
+ * `snapToPlane = false` is **free placement**: feature-point hits become acceptable and
+ * plane hits must still fall inside the polygon (`planePoseInPolygon` stays on) — the
+ * same contract as the demos\' `PlacementHitPolicy`. Route project-specific acceptance
+ * (e.g. a max-distance cap) through [predicate].
  *
  * @param engine                Filament [Engine] that owns this node.
  * @param xPx                   View X coordinate in pixels for the per-frame hit test.
  * @param yPx                   View Y coordinate in pixels for the per-frame hit test.
- * @param snapToPlane           Accept detected-plane hits (#1891 default acceptance).
+ * @param snapToPlane           `true` = plane-only (#1891 default); `false` = free
+ *                              placement (adds feature-point hits, planes stay
+ *                              in-polygon).
  * @param depthPoint            Also accept depth hits (needs depth mode enabled).
+ * @param predicate             Extra acceptance filter ANDed with the built-in ones
+ *                              (e.g. a max-distance policy). Construction-time only.
  * @param orientationSmoothing  Per-frame slerp fraction in `0..1` toward the hit
  *                              orientation. Default [DEFAULT_ORIENTATION_SMOOTHING]
  *                              (= 0.75, the Depth Lab value); `1.0f` = raw orientation.
@@ -92,13 +98,19 @@ open class PlacementReticleNode(
     snapToPlane: Boolean = true,
     depthPoint: Boolean = false,
     orientationSmoothing: Float = DEFAULT_ORIENTATION_SMOOTHING,
+    predicate: ((HitResult) -> Boolean)? = null,
     onHitResultChanged: ((HitResult?) -> Unit)? = null
 ) : ReticleNode(
     engine = engine,
     xPx = xPx,
     yPx = yPx,
-    planeTypes = if (snapToPlane) Plane.Type.values().toSet() else emptySet(),
+    // Planes are always candidates (in-polygon enforced by the base default);
+    // free placement (snapToPlane = false) additionally accepts feature points —
+    // the PlacementHitPolicy contract, not "no planes".
+    planeTypes = Plane.Type.values().toSet(),
+    point = !snapToPlane,
     depthPoint = depthPoint,
+    predicate = predicate,
     onHitResultChanged = onHitResultChanged
 ) {
 
