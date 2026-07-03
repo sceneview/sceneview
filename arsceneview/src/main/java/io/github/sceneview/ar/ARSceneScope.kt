@@ -46,6 +46,7 @@ import io.github.sceneview.ar.node.HitResultNode as HitResultNodeImpl
 import io.github.sceneview.ar.node.PlaneNode as PlaneNodeImpl
 import io.github.sceneview.ar.node.PointCloudNode as PointCloudNodeImpl
 import io.github.sceneview.ar.node.PoseNode as PoseNodeImpl
+import io.github.sceneview.ar.node.PlacementReticleNode as PlacementReticleNodeImpl
 import io.github.sceneview.ar.node.ReticleNode as ReticleNodeImpl
 import io.github.sceneview.ar.node.RooftopAnchorNode as RooftopAnchorNodeImpl
 import io.github.sceneview.ar.node.MeshClassification
@@ -450,6 +451,97 @@ class ARSceneScope internal constructor(
             node.onHitResultChanged = onHitResultChanged
         }
         NodeLifecycle(node, content)
+    }
+
+    // ── PlacementReticle ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Smoothed AR placement cursor (#2241 Sprint-1) — [ReticleNode] plus the two Depth Lab
+     * `OrientedReticle` upgrades: per-frame **orientation smoothing** (slerp 0.75 by default, so
+     * the disc doesn't jitter as ARCore refines the surface normal) and optional **depth-hit
+     * acceptance** (`depthPoint = true`, lands on arbitrary geometry — requires the session depth
+     * mode ≠ `DISABLED`; default off so a no-depth device matches [ReticleNode] exactly).
+     *
+     * When [content] is `null` the reticle ships its proven default visual: a thin
+     * semi-transparent cyan disc (7 cm radius) that lies flush on the detected surface. Pass your
+     * own [content] to replace it — the children follow the smoothed reticle pose.
+     *
+     * Auto-hide is inherited from [ReticleNode]: a `null` hit clears the trackable and the
+     * children stop rendering, no visibility juggling needed. A `null` hit also resets the
+     * smoothing, so the next surface is acquired verbatim instead of easing across the gap.
+     *
+     * ```kotlin
+     * var reticleHit by remember { mutableStateOf<HitResult?>(null) }
+     * PlacementReticle(
+     *     xPx = viewWidth / 2f,
+     *     yPx = viewHeight / 2f,
+     *     onHitResultChanged = { reticleHit = it },
+     * )
+     * // on tap: reticleHit?.createAnchor()
+     * ```
+     *
+     * @param xPx                    View X coordinate in pixels (screen centre on most UIs).
+     * @param yPx                    View Y coordinate in pixels.
+     * @param snapToPlane            Accept detected-plane hits (#1891 default acceptance).
+     *                               `false` + `depthPoint = false` accepts nothing.
+     * @param depthPoint             Also accept depth-based hits (needs depth mode enabled).
+     * @param orientationSmoothing   Per-frame slerp fraction in `0..1` toward the hit
+     *                               orientation (default 0.75 = Depth Lab; `1.0f` = raw).
+     *                               Live-updatable on recomposition.
+     * @param onHitResultChanged     Invoked on every hit change (including to/from `null`) —
+     *                               drives AIMING/READY host state.
+     * @param apply                  Additional imperative configuration on the node.
+     * @param content                Custom visual; `null` = the built-in cyan disc.
+     */
+    @Composable
+    fun PlacementReticle(
+        xPx: Float,
+        yPx: Float,
+        snapToPlane: Boolean = true,
+        depthPoint: Boolean = false,
+        orientationSmoothing: Float = PlacementReticleNodeImpl.DEFAULT_ORIENTATION_SMOOTHING,
+        onHitResultChanged: ((HitResult?) -> Unit)? = null,
+        apply: PlacementReticleNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null
+    ) {
+        val node = remember(engine, xPx, yPx, snapToPlane, depthPoint) {
+            PlacementReticleNodeImpl(
+                engine = engine,
+                xPx = xPx,
+                yPx = yPx,
+                snapToPlane = snapToPlane,
+                depthPoint = depthPoint,
+                orientationSmoothing = orientationSmoothing,
+                onHitResultChanged = onHitResultChanged
+            ).apply(apply)
+        }
+        // Keep the recomposition-facing knobs live (see ReticleNode above / #2506).
+        SideEffect {
+            node.onHitResultChanged = onHitResultChanged
+            node.orientationSmoothing = orientationSmoothing
+        }
+        if (content != null) {
+            NodeLifecycle(node, content)
+        } else {
+            // Built-in visual — the proven demo disc. The material is created once per
+            // loader and destroyed with the composable (#2458 leak class).
+            val reticleMaterial = remember(materialLoader) {
+                materialLoader.createUnlitColorInstance(DEFAULT_RETICLE_COLOR)
+            }
+            DisposableEffect(materialLoader, reticleMaterial) {
+                onDispose { materialLoader.destroyMaterialInstance(reticleMaterial) }
+            }
+            NodeLifecycle(node) {
+                // Thin disc — 7 cm radius, 5 mm tall — sits flush on the surface;
+                // the smoothed pose orients +Y along the surface normal.
+                CylinderNode(
+                    radius = 0.07f,
+                    height = 0.005f,
+                    sideCount = 48,
+                    materialInstance = reticleMaterial
+                )
+            }
+        }
     }
 
     // ── DepthHitResultNode ────────────────────────────────────────────────────────────────────────
@@ -1494,4 +1586,3 @@ internal fun streetscapeGeometryPasses(
     types: Set<StreetscapeGeometry.Type>,
     minQuality: StreetscapeGeometry.Quality
 ): Boolean = actualType in types && actualQuality.ordinal >= minQuality.ordinal
-
