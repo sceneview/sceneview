@@ -346,9 +346,18 @@ ul { list-style: none; }
   margin: 0 auto;
   padding: 96px var(--container-padding);
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr): a plain 1fr track has an automatic min-content minimum, so
+     a child with a large intrinsic width (the aspect-ratio'd hero visual) can
+     steal the row and collapse the title column (#2560). */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 64px;
   align-items: center;
+}
+
+/* Let the grid children shrink below their intrinsic width (#2560). */
+.hero__content,
+.hero__visual {
+  min-width: 0;
 }
 
 .hero__title {
@@ -464,7 +473,11 @@ ul { list-style: none; }
 .hero__fallback-img {
   border-radius: 16px;
   width: 100%;
-  height: 500px;
+  /* height:auto — the inline aspect-ratio:16/9 drives the box. A fixed
+     height:500px combined with that aspect-ratio gave the element a definite
+     ~889px intrinsic width, blowing out the 1fr/1fr hero grid (#2560). */
+  height: auto;
+  aspect-ratio: 16/9;
   object-fit: cover;
   transition: opacity 0.8s ease;
 }

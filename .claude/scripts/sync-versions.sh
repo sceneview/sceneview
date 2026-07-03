@@ -418,6 +418,49 @@ if [ -f "$WEBSITE_INDEX" ]; then
     add_check "website-static/index.html (softwareVersion)" "$V"
 fi
 
+# Guard (#2562): a version string must NEVER appear inside SVG path data.
+# The historical unescaped-dot regex sweep injected versions into arc
+# commands (`a4 4 0` -> `a4.16.2 0`), and once corrupted, every later
+# escaped literal replace faithfully re-bumped the corruption
+# (4.16.2 -> 4.17.0 -> 4.18.0). Checking for the CURRENT version inside any
+# `d="..."` attribute is deterministic (legit path data never contains it)
+# and catches the whole class the moment it reappears.
+SVG_CORRUPTED=$(grep -rlE "d=\"[^\"]*${SOURCE_VERSION//./\\.}" "$REPO_ROOT/website-static" --include="*.html" 2>/dev/null || true)
+if [ -n "$SVG_CORRUPTED" ]; then
+    add_check "website-static SVG path data (version inside d= in: $(echo "$SVG_CORRUPTED" | tr '\n' ' '))" "CORRUPTED"
+else
+    add_check "website-static SVG path data (no version inside d=)" "$SOURCE_VERSION"
+fi
+
+# Website surfaces that drifted in #2564 — now pinned so they can't rot again.
+# iOS install-snippet comment on the homepage (`// Version: X.Y.Z`).
+if [ -f "$WEBSITE_INDEX" ]; then
+    V=$(grep -oE '// Version: [0-9]+\.[0-9]+\.[0-9]+' "$WEBSITE_INDEX" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "NOT FOUND")
+    add_check "website-static/index.html (iOS snippet // Version:)" "$V"
+fi
+# web.html JSON-LD softwareVersion (SEO structured data).
+WEBSITE_WEB="$REPO_ROOT/website-static/web.html"
+if [ -f "$WEBSITE_WEB" ]; then
+    V=$(grep 'softwareVersion' "$WEBSITE_WEB" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "NOT FOUND")
+    add_check "website-static/web.html (softwareVersion)" "$V"
+fi
+# Playground AI-prompt coordinates (arsceneview + sceneview-web@).
+WEBSITE_PLAYGROUND="$REPO_ROOT/website-static/playground.html"
+if [ -f "$WEBSITE_PLAYGROUND" ]; then
+    V=$(grep -oE 'arsceneview:[0-9]+\.[0-9]+\.[0-9]+' "$WEBSITE_PLAYGROUND" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "NOT FOUND")
+    add_check "website-static/playground.html (prompt arsceneview:)" "$V"
+    V=$(grep -oE 'sceneview-web@[0-9]+\.[0-9]+\.[0-9]+' "$WEBSITE_PLAYGROUND" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "NOT FOUND")
+    add_check "website-static/playground.html (prompt sceneview-web@)" "$V"
+fi
+# `js/sceneview.js?v=X.Y.Z` cache-busters — a stale ?v= keeps serving the
+# previous script from the HTTP cache after a deploy.
+STALE_BUSTERS=$(grep -rhoE 'sceneview\.js\?v=[0-9]+\.[0-9]+\.[0-9]+' "$REPO_ROOT/website-static" --include="*.html" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | sort -u | grep -v "^${SOURCE_VERSION}$" || true)
+if [ -n "$STALE_BUSTERS" ]; then
+    add_check "website-static *.html (sceneview.js?v= cache-busters)" "$(echo "$STALE_BUSTERS" | head -1)"
+else
+    add_check "website-static *.html (sceneview.js?v= cache-busters)" "$SOURCE_VERSION"
+fi
+
 # ─── 9b. Auto-update artefacts (per-sample version polled at runtime) ────
 # `website-static/version.json` is fetched by `samples/web-demo` on every
 # `visibilitychange` to decide whether to surface the "Reload to update"
