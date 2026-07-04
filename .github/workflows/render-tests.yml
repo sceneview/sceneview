@@ -219,6 +219,70 @@ jobs:
   # recording through ARRecordPlaybackDemo and captures the rendered frame at
   # fixed ARCore frame indices (f=30/60/120/180) for golden comparison.
   #
+  # Unified-demo render goldens (#2323). Runs DemoRenderingScreenshotTest on the
+  # SAME pinned emulator profile as the AR job below — goldens for
+  # `samples/android-demo/src/androidTest/assets/render-goldens/` MUST come from
+  # this exact config (GPU divergence flags false positives on any other).
+  # Non-blocking until the 8 missing baselines are pulled from this job's
+  # artifact, reviewed and committed; with no golden the test assumeTrue-skips
+  # and uploads first-run captures (#2323's silent-skip gap becomes a visible,
+  # harvestable artifact instead).
+  demo-render-goldens:
+    name: Unified-demo render goldens (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build demo + androidTest APKs
+        run: ./gradlew :samples:android-demo:assembleDebug :samples:android-demo:assembleDebugAndroidTest --stacktrace
+
+      - name: Run unified-demo render screenshot tests
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          # Pinned emulator profile — identical to the AR job (#1050 §4).
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            adb wait-for-device
+            attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 60 ]; do sleep 2; attempts=$((attempts + 1)); done
+
+            # Pure-3D demos — no ARCore sideload needed.
+            ./gradlew :samples:android-demo:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.demo.render.DemoRenderingScreenshotTest --stacktrace || true
+
+            # Pull the captures the test wrote (first-run goldens, diffs, actuals).
+            mkdir -p render-goldens-output
+            adb pull /sdcard/Download/SceneView/test-captures/ render-goldens-output/ || true
+
+      - name: Upload render-golden captures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: demo-render-golden-captures
+          path: render-goldens-output/
+          if-no-files-found: ignore
+
+      - name: Upload render test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: demo-render-golden-results
+          path: samples/android-demo/build/reports/androidTests/
+          if-no-files-found: ignore
+
   # Non-blocking by design: until goldens are captured on this pinned emulator
   # profile and committed under
   # `samples/android-demo/src/androidTest/assets/ar-screenshot-goldens/`, the
