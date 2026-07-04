@@ -6,4 +6,4 @@
 // stale hardcoded constants. See #941.
 
 export const PACKAGE_VERSION = "4.0.13" as const;
-export const LATEST_SCENEVIEW_RELEASE = "4.18.0" as const;
+export const LATEST_SCENEVIEW_RELEASE = "4.19.0" as const;

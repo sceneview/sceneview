@@ -1,36 +1,265 @@
 {
   "harness": "device-qa",
   "schemaVersion": 2,
-  "startedAt": "2026-05-22T13:34:23Z",
-  "platformSelection": "android",
-  "fast": true,
+  "startedAt": "2026-07-04T08:59:24Z",
+  "platformSelection": "web",
+  "fast": false,
   "ci": false,
   "status": "warn",
   "advisoryPlatforms": [
     "android",
     "ar",
+    "arcore-cloud",
+    "sketchfab",
     "web-perf"
   ],
   "releaseGate": {
     "verdict": "warn",
     "blockingFailed": [],
     "advisoryFailed": [
-      "android"
+      "web-perf"
     ]
   },
   "totals": {
-    "passed": 0,
+    "passed": 1,
     "failed": 1,
     "skipped": 0
   },
   "platforms": [
     {
-      "platform": "android",
+      "platform": "web",
+      "status": "passed",
+      "advisory": false,
+      "reason": "fast playwright",
+      "durationSec": 160,
+      "summary": {
+        "platform": "web",
+        "tool": "playwright",
+        "status": "passed",
+        "startedAt": "2026-07-04T08:59:25.841Z",
+        "durationMs": 158388,
+        "totals": {
+          "passed": 35,
+          "failed": 0,
+          "skipped": 1,
+          "flaky": 0
+        },
+        "tests": [
+          {
+            "title": "chromium \u203a audio.spec.ts \u203a SceneView Web Demo \u2014 Spatial Audio \u203a Spatial Audio panel exposes Play / Stop controls",
+            "status": "passed",
+            "durationMs": 2524
+          },
+          {
+            "title": "chromium \u203a audio.spec.ts \u203a SceneView Web Demo \u2014 Spatial Audio \u203a clicking Play constructs an AudioContext and the PannerNode graph (#1944)",
+            "status": "passed",
+            "durationMs": 2623
+          },
+          {
+            "title": "chromium \u203a audio.spec.ts \u203a SceneView Web Demo \u2014 Spatial Audio \u203a clicking Stop after Play tears the graph down",
+            "status": "passed",
+            "durationMs": 2758
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Models tab \u2014 CDN gallery loads and model chips switch the scene",
+            "status": "passed",
+            "durationMs": 9326
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Models tab \u2014 Sketchfab source toggle renders its search UI",
+            "status": "passed",
+            "durationMs": 2457
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Geometry tab \u2014 cube adds, recolours and renders",
+            "status": "passed",
+            "durationMs": 5222
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Geometry tab \u2014 sphere adds, recolours and renders",
+            "status": "passed",
+            "durationMs": 5174
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Geometry tab \u2014 cylinder adds, recolours and renders",
+            "status": "passed",
+            "durationMs": 5178
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Geometry tab \u2014 plane adds, recolours and renders",
+            "status": "passed",
+            "durationMs": 5178
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Geometry tab \u2014 Clear All Geometry does not throw",
+            "status": "passed",
+            "durationMs": 3479
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Lighting tab \u2014 directional light adds, recolours and renders",
+            "status": "passed",
+            "durationMs": 5137
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Lighting tab \u2014 point light adds, recolours and renders",
+            "status": "passed",
+            "durationMs": 5876
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Lighting tab \u2014 spot light adds, recolours and renders",
+            "status": "passed",
+            "durationMs": 5184
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Lighting tab \u2014 Remove Added Lights does not throw",
+            "status": "passed",
+            "durationMs": 3545
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Animation tab \u2014 animated model plays, loops and stops",
+            "status": "passed",
+            "durationMs": 7132
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Text tab \u2014 3D text adds, restyles, renders and clears",
+            "status": "passed",
+            "durationMs": 5914
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Environment tab \u2014 IBL preset, intensity, background and bloom all apply",
+            "status": "passed",
+            "durationMs": 6896
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Physics tab \u2014 Double Pendulum runs, sliders + reset work",
+            "status": "passed",
+            "durationMs": 9588
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Physics tab \u2014 #double-pendulum deep link opens it directly",
+            "status": "passed",
+            "durationMs": 2251
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Spatial Audio tab \u2014 orbiting bell scene builds and renders",
+            "status": "passed",
+            "durationMs": 6843
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Settings tab \u2014 quality, bloom, auto-rotate and background all apply",
+            "status": "passed",
+            "durationMs": 7362
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a Top-bar auto-rotate button toggles without errors",
+            "status": "passed",
+            "durationMs": 2402
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a every tab switches cleanly with no console errors",
+            "status": "passed",
+            "durationMs": 10116
+          },
+          {
+            "title": "chromium \u203a catalog.spec.ts \u203a Web Demo \u2014 catalog coverage \u203a WebXR AR/VR buttons are present in the DOM (presence only)",
+            "status": "passed",
+            "durationMs": 2232
+          },
+          {
+            "title": "chromium \u203a kotlin-bundle.spec.ts \u203a SceneView Kotlin/JS bundle \u2014 browser init \u203a createViewer() resolves, renders, and never throws during init",
+            "status": "skipped",
+            "durationMs": 0
+          },
+          {
+            "title": "chromium \u203a render.spec.ts \u203a SceneView Web Demo Rendering \u203a page loads and shows canvas",
+            "status": "passed",
+            "durationMs": 2355
+          },
+          {
+            "title": "chromium \u203a render.spec.ts \u203a SceneView Web Demo Rendering \u203a canvas renders non-blank content",
+            "status": "passed",
+            "durationMs": 4254
+          },
+          {
+            "title": "chromium \u203a render.spec.ts \u203a SceneView Web Demo Rendering \u203a model results panel is visible",
+            "status": "passed",
+            "durationMs": 2333
+          },
+          {
+            "title": "chromium \u203a render.spec.ts \u203a SceneView Web Demo Rendering \u203a every tab activates its matching panel",
+            "status": "passed",
+            "durationMs": 2935
+          },
+          {
+            "title": "chromium \u203a render.spec.ts \u203a SceneView Web Demo Rendering \u203a catalog tabs expose working controls (issue #1362)",
+            "status": "passed",
+            "durationMs": 2884
+          },
+          {
+            "title": "chromium \u203a render.spec.ts \u203a SceneView Web Demo Rendering \u203a switching models updates the scene",
+            "status": "passed",
+            "durationMs": 6271
+          },
+          {
+            "title": "chromium \u203a render.spec.ts \u203a SceneView Web Demo Rendering \u203a top bar branding is correct",
+            "status": "passed",
+            "durationMs": 2337
+          },
+          {
+            "title": "chromium \u203a render.spec.ts \u203a SceneView Web Demo Rendering \u203a XR buttons exist (may be hidden)",
+            "status": "passed",
+            "durationMs": 2223
+          },
+          {
+            "title": "chromium \u203a webxr.spec.ts \u203a Web Demo \u2014 WebXR (IWER) \u203a IWER runtime installs and enter-ar click does not crash the page",
+            "status": "passed",
+            "durationMs": 2634
+          },
+          {
+            "title": "chromium \u203a webxr.spec.ts \u203a Web Demo \u2014 WebXR (IWER) \u203a IWER drives a full immersive-ar session \u2014 request, frame loop, end",
+            "status": "passed",
+            "durationMs": 2381
+          },
+          {
+            "title": "chromium \u203a webxr.spec.ts \u203a Web Demo \u2014 WebXR (IWER) \u203a IWER drives an immersive-vr session \u2014 request, frame loop, end",
+            "status": "passed",
+            "durationMs": 2385
+          }
+        ]
+      }
+    },
+    {
+      "platform": "web-perf",
       "status": "failed",
       "advisory": true,
-      "reason": "qa-android-demos.sh rc=127 (flow=3d-basics)",
-      "durationSec": 25,
-      "summary": null
+      "reason": "cls 0.18 > 0.1",
+      "durationSec": 13,
+      "summary": {
+        "schemaVersion": 1,
+        "platform": "web-perf",
+        "tool": "lighthouse",
+        "status": "failed",
+        "verdict": "enforced",
+        "thresholds": {
+          "fcp_ms": 4000.0,
+          "lcp_ms": 4400.0,
+          "cls": 0.1,
+          "performanceScore": 0.65
+        },
+        "breaches": [
+          "cls 0.18 > 0.1"
+        ],
+        "preset": "mobile",
+        "url": "http://localhost:8090/",
+        "startedAt": "2026-07-04T09:02:04Z",
+        "durationMs": 13172,
+        "fcp_ms": 3151.68,
+        "lcp_ms": 3325.38,
+        "cls": 0.18,
+        "performanceScore": 0.78,
+        "reason": null,
+        "raw": "web-perf-lighthouse.json"
+      }
     }
   ]
 }

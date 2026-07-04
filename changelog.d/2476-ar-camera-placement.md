@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **android-demo:** Fix the AR View "Start AR Camera" experience always placing the default Damaged Helmet regardless of the model picked. The remembered tap-gesture lambda captured the derived `selectedModel` val from first composition, so picking Fox/Soldier/etc. updated the pill but never the placement. The tap handler now reads `arModels[selectedModelIndex]` through state at tap time (mirroring `ARPlacementDemo`), so each placement uses the currently-selected model. (#2476)

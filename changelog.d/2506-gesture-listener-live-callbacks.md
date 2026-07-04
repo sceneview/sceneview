@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- `rememberOnGestureListener` no longer freezes its callbacks at first composition. The previous `remember(creator)` captured every callback lambda once, so any handler that closed over a derived `val` (rather than reading Compose `State` inside its body) silently kept stale behaviour across recompositions — the root-cause footgun behind the "AR placement always uses the first model" report. Callbacks now route through `rememberUpdatedState`, keeping the listener instance stable while always invoking the latest lambda (#2506, #2476).

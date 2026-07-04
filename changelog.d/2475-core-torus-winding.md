@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- Fixed the shared `sceneview-core` `TorusGeometry` generator winding every triangle inward (clockwise), which rendered the torus inside-out under a single-sided material on the web (Filament.js) and the iOS reference path. The triangle index order is now counter-clockwise (outward-facing), mirroring the Android `Torus` fix (#2469) and matching the convention of the core Sphere/Cylinder/Cone generators. Vertices are unchanged — index/winding only. ([#2475](https://github.com/sceneview/sceneview/issues/2475))

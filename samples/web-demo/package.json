@@ -1,6 +1,6 @@
 {
   "name": "sceneview-web-demo-tests",
-  "version": "4.18.0",
+  "version": "4.19.0",
   "private": true,
   "description": "Playwright device-QA suite for the SceneView web demo",
   "scripts": {
@@ -10,7 +10,7 @@
     "test:webxr": "playwright test tests/webxr.spec.ts"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.0",
+    "@playwright/test": "^1.61.1",
     "http-server": "^14.1.1",
     "iwer": "^2.2.1"
   }

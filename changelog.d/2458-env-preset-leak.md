@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- `rememberHDREnvironment` / `rememberKTXEnvironment` no longer leak the previously loaded `Environment` (its `IndirectLight` + `Skybox` GPU textures) when the asset path changes. The factories now dispose the prior environment on a key swap via a `DisposableEffect`, matching the sibling `rememberEnvironment(key = …)` — previously `produceState` only cancelled the loader coroutine and the old IBL/skybox stayed GPU-resident until the whole `SceneView` left composition (e.g. a time-of-day HDR slider leaked one set per swap). (#2458)

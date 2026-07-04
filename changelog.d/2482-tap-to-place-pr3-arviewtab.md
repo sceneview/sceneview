@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- The AR View tab now renders via the shared `TapToPlaceArSession` engine (#2482, PR 3/4) — it gains the centre placement reticle, texture-settle gating (no black flash on placement), helmet rotation correction (the Damaged Helmet now lands upright instead of face-down) and PAUSED-surviving anchors. The top-end X close becomes a top-start back arrow, the toast-only Share stub is dropped, and both entry points now speak one status vocabulary.

@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- AR docs & KDoc: the canonical plane tap-to-place snippet called `frame.createAnchorOrNull(plane.centerPose)`, but no `Frame.createAnchorOrNull` extension exists (ARCore's `Frame.session` field is package-private, so the extension is infeasible). Swept all occurrences to the real `Trackable.createAnchorOrNull(pose)` form (`plane.createAnchorOrNull(plane.centerPose)`) across `ARSceneView` KDoc, the AR codelab, migration/showcase docs, and `samples/README.md`, so AI-reproduced code compiles (#2525, #2519).

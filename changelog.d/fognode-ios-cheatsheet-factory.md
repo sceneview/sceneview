@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- **Fixed a non-compiling `FogNode` initializer in the iOS cheatsheets.** Both `docs/docs/cheatsheet-ios.md` and the `sceneview-ios` agent skill cheatsheet documented `FogNode(density:color:)`, an initializer that does not exist on the Swift API (the init is private; only the static factories are public). They now use the real factory form `FogNode.linear(start:end:color:)` / `FogNode.exponential(density:color:)`, matching `llms.txt`, so an AI reading the cheatsheets emits compiling Swift.

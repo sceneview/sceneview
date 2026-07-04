@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- Orbital AR demo: the "Turn around — N models orbiting" banner and the directional edge-arrow now dismiss once the user has turned toward a model (the chase target enters the camera frustum) or after a short onboarding window, instead of staying up for the whole session and cluttering the view. The dismiss is sticky across device rotation (#2481, from the #2466 device review).
