@@ -14,7 +14,7 @@ composeBom = "2026.05.01"
 composeMaterial3Expressive = "1.5.0-alpha18"
 activityCompose = "1.13.0"
 navigationCompose = "2.9.8"
-lifecycleRuntimeCompose = "2.10.0"
+lifecycleRuntimeCompose = "2.11.0"
 
 # Kotlin Libraries
 coroutines = "1.11.0"
