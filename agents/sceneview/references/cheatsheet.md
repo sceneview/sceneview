@@ -56,6 +56,25 @@ ARSceneView(
 There is **no `rememberARSession`** helper — configure via the
 `sessionConfiguration` lambda.
 
+## AR placement UX kit (#2241, v4.19+)
+
+Prefer these built-ins over hand-rolled banners/reticles/shadows:
+
+```kotlin
+Box {
+    ARSceneView(...) {
+        PlacementReticle(xPx = viewWidth/2f, yPx = viewHeight/2f,
+            onHitResultChanged = { reticleHit = it })      // smoothed cursor (slerp 0.75)
+        detectedPlanes.forEach { key(it) { ShadowReceiverPlane(plane = it) } }  // grounded shadows
+    }
+    PlaneDiscoveryGuide(cameraReady, isTracking, anyPlaneTracked, failure)  // onboarding overlay
+}
+```
+
+`PlaneDiscoveryGuide` = timed hand-hint/help onboarding (replaces static "Scanning…" banners).
+`snapToPlane=false` on the reticle = free placement (points accepted, planes in-polygon).
+iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); shadows/reticle → #894.
+
 ## Remember helpers (always use these)
 
 | Helper | Returns | Notes |

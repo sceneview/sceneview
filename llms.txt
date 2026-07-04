@@ -238,6 +238,55 @@ Text(hint ?: "Point your camera at a flat surface")
 
 Ported from arcore-android-sdk's `common/helpers/TrackingStateHelper.java`.
 
+### PlaneDiscoveryGuide — plane-discovery onboarding overlay (#2241, v4.19+)
+
+The built-in, user-tested onboarding for the "move your phone until a plane is found" phase —
+a port of ARCore Elements' `PlaneDiscoveryGuide` state machine. Prefer it over hand-rolling
+banners from `onTrackingFailureChanged`: it layers the timed hand-hint, help affordance and
+contextual failure copy for you, and auto-dismisses on the first tracked plane.
+
+Timeline (defaults, all tunable via `PlaneDiscoveryGuideDurations`): 0–3 s silent → animated
+hand hint + "Move your phone to find a surface" pill → "Need help?" button at 8 s (built-in tip
+card, or your `onHelp`) → 750 ms fade-out latched on the first tracked plane (never re-onboards
+within the session). While tracking is lost with an actionable reason it shows the contextual
+copy from the table above instead.
+
+`PlaneDiscoveryGuide` is a `BoxScope` composable — declare it as a SIBLING of `ARSceneView`
+inside a `Box`, feeding it plain booleans (no ARCore objects → previewable without a session):
+
+```kotlin
+var cameraReady by remember { mutableStateOf(false) }
+var isTracking by remember { mutableStateOf(false) }
+var anyPlaneTracked by remember { mutableStateOf(false) }
+var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+
+Box {
+    ARSceneView(
+        onSessionUpdated = { session, frame ->
+            cameraReady = true
+            isTracking = frame.camera.trackingState == TrackingState.TRACKING
+            anyPlaneTracked = session.getAllTrackables(Plane::class.java)
+                .any { it.trackingState == TrackingState.TRACKING }
+        },
+        onTrackingFailureChanged = { failure = it },
+    ) { /* nodes */ }
+
+    PlaneDiscoveryGuide(
+        cameraReady = cameraReady,
+        isTracking = isTracking,
+        anyPlaneTracked = anyPlaneTracked,
+        trackingFailureReason = failure,
+    )
+}
+```
+
+Hoisted-state escape hatch: drive `rememberPlaneDiscoveryGuideState()` yourself and render
+`PlaneDiscoveryGuideOverlay(phase = state.phase, durations = state.durations, …)` — pass the
+STATE's durations, not a fresh copy, or the visual fade desynchronizes from the state machine.
+
+Platform matrix: **iOS** — use `ARSceneView(showCoachingOverlay: true)` (Apple's first-party
+`ARCoachingOverlayView` IS the onboarding; no port needed). **Web** — coming soon.
+
 ### Scene Understanding — grouped AR rendering flags
 
 `SceneUnderstanding` (`io.github.sceneview.ar.scene.SceneUnderstanding`, v4.10.0+, #1767) groups four scattered AR rendering flags into a single discoverable knob — mirrors RealityKit's `ARView.environment.sceneUnderstanding.options`. Pass it via `ARSceneView(sceneUnderstanding = ...)`; null (default) keeps every individual flag at its current default.
@@ -1101,6 +1150,62 @@ ARSceneView(
     }
 }
 ```
+
+### PlacementReticle — smoothed placement cursor (#2241, v4.19+)
+
+`ReticleNode`'s Sprint-1 upper layer — a port of ARCore Depth Lab's `OrientedReticle`. Same
+auto-hide + change-callback contract, plus: **orientation smoothing** (per-frame slerp toward
+the hit's surface normal, default `0.75` — kills the disc jitter as ARCore refines the normal;
+`1.0f` = raw) and **depth-capable acceptance** (`depthPoint = true` lands on arbitrary geometry;
+needs depth mode enabled, default off). Ships a built-in thin cyan disc when `content` is null.
+
+```kotlin
+var reticleHit by remember { mutableStateOf<HitResult?>(null) }
+ARSceneView(
+    onGestureListener = rememberOnGestureListener(
+        onSingleTapConfirmed = { _, _ -> reticleHit?.createAnchor()?.let { /* place */ } }
+    )
+) {
+    PlacementReticle(
+        xPx = viewWidth / 2f,
+        yPx = viewHeight / 2f,
+        onHitResultChanged = { reticleHit = it },
+    )
+}
+```
+
+Semantics: `snapToPlane = true` (default) is plane-only (#1891 contract);
+`snapToPlane = false` is FREE PLACEMENT — feature-point hits accepted, plane hits still
+in-polygon. Project acceptance policies (max distance, custom rules) go through `predicate`
+(construction-time). The smoothing knob and callback are live-updatable on recomposition.
+
+Platform matrix: **iOS** — continuous `ARView.raycast` reticle planned under the parity epic
+(#894); tap-to-place itself ships today. **Web** — coming soon.
+
+### ShadowReceiverPlane — invisible AR shadow catcher (#2241, v4.19+)
+
+An invisible surface bound to a detected `Plane` that renders NOTHING except the darkening of
+shadows cast onto it — placed models read as grounded on the real floor instead of floating.
+Filament `shadowMultiplier` material (the AR shadow-catcher feature; port of Depth Lab's
+`ShadowReceiverMeshShader`). Follows the plane's center pose and refined extents; receives
+shadows, never casts; `shadowIntensity` in `0..1` (default 0.6 = Depth Lab) tunable live.
+
+```kotlin
+ARSceneView(onSessionCreated = { arSession = it }) {
+    detectedPlanes.forEach { plane ->
+        key(plane) { ShadowReceiverPlane(plane = plane) }
+    }
+    // Placed ModelNodes cast the shadow (castShadows defaults on).
+}
+```
+
+Shadows require a shadow-casting directional light — `ARSceneView`'s default
+`ENVIRONMENTAL_HDR` light estimation provides one; diagnose the estimated main light's
+`isShadowCaster` before suspecting the catcher. This is NOT a plane visualisation (no grid,
+no fill — that is `PlaneNode`); declare both on the same plane if you want both.
+
+Platform matrix: **iOS** — `GroundingShadowComponent` equivalent planned under #894. **Web** —
+coming soon.
 
 ### Depth hit test — place on any real surface
 

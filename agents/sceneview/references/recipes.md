@@ -60,3 +60,39 @@ are:
 - iOS: [`docs/docs/cheatsheet-ios.md`](https://github.com/sceneview/sceneview/blob/main/docs/docs/cheatsheet-ios.md)
 - Web: [`sceneview-web README`](https://www.npmjs.com/package/sceneview-web)
 - Flutter / RN: bridge packages; both render via the native SceneView underneath.
+
+## Recipe: complete tap-to-place UX (onboarding + reticle + grounded shadow) — #2241
+
+```kotlin
+var cameraReady by remember { mutableStateOf(false) }
+var isTracking by remember { mutableStateOf(false) }
+var anyPlaneTracked by remember { mutableStateOf(false) }
+var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+var reticleHit by remember { mutableStateOf<HitResult?>(null) }
+val planes = remember { mutableStateListOf<Plane>() }
+
+Box {
+    ARSceneView(
+        onSessionUpdated = { session, frame ->
+            cameraReady = true
+            isTracking = frame.camera.trackingState == TrackingState.TRACKING
+            val tracked = session.getAllTrackables(Plane::class.java)
+                .filter { it.trackingState == TrackingState.TRACKING }
+            anyPlaneTracked = tracked.isNotEmpty()
+            if (planes.toList() != tracked) { planes.clear(); planes.addAll(tracked) }
+        },
+        onTrackingFailureChanged = { failure = it },
+        onGestureListener = rememberOnGestureListener(
+            onSingleTapConfirmed = { _, _ -> reticleHit?.createAnchor()?.let { /* AnchorNode + ModelNode */ } }
+        ),
+    ) {
+        PlacementReticle(xPx = viewWidth / 2f, yPx = viewHeight / 2f,
+            onHitResultChanged = { reticleHit = it })
+        planes.forEach { key(it) { ShadowReceiverPlane(plane = it) } }
+    }
+    PlaneDiscoveryGuide(cameraReady, isTracking, anyPlaneTracked, failure)
+}
+```
+
+The demo-app reference implementation is `samples/android-demo/.../common/placement/TapToPlaceArSession.kt`.
+
