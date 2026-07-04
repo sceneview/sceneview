@@ -449,7 +449,10 @@ run_web() {
   $FAST && spec_args=(tests/render.spec.ts)
 
   local rc=0
-  ( cd "$webdir" && npx playwright test "${spec_args[@]}" ) \
+  # ${arr[@]+…} idiom: bash 3.2 (macOS default) + `set -u` errors on expanding
+  # an EMPTY array — which made the BLOCKING web leg false-FAIL in 25 s on any
+  # Mac host (unbound variable, rc=1, zero tests run).
+  ( cd "$webdir" && npx playwright test ${spec_args[@]+"${spec_args[@]}"} ) \
     > "$ARTIFACTS/web-output.txt" 2>&1 || rc=$?
   cat "$ARTIFACTS/web-output.txt"
 
