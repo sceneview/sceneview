@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## v4.20.0 — 2026-07-05
+
+### Added
+
+- **iOS `ARSceneView(showPlacementReticle:)`** — opt-in placement reticle: the tap-to-place
+  raycast now runs every AR frame and drives a surface-snapped translucent disc at the screen
+  centre (orientation slerp `0.75`, Depth Lab / Android `PlacementReticle` parity; hidden while
+  the ray misses). Android's `PlacementReticle` iOS counterpart from the Sprint-1 design (#894).
+- **iOS `ARSceneView(groundingShadows:)`** — entities placed synchronously in `onTapOnPlane` now
+  automatically get RealityKit's `GroundingShadowComponent(castsShadow: true)`, projecting a
+  contact shadow onto the detected surface — the RealityKit analogue of Android's
+  `ShadowReceiverPlane` (#2580). Opt out with `groundingShadows: false` (#894).
+
+### Changed
+
+- **Demo app feedback rebuilt permission-free** — the MediaProjection screen + microphone recorder (foreground service, `RECORD_AUDIO` / `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_MEDIA_PROJECTION` / `POST_NOTIFICATIONS`, worker upload) is removed and replaced by a lightweight "Report a bug" bottom sheet: an optional `PixelCopy` screenshot of the app (include/exclude toggle, honest fallback note when the 3D viewport can't be captured), the app's own logcat tail, and device/app context — shared via the system share sheet or a pre-filled GitHub issue. Zero sensitive permissions, zero foreground service, and the Play Console foreground-service declaration (#2120 / #2188) is no longer required; the FGS-declaration CI steps were removed from `play-store.yml` / `main-internal-deploy.yml`.
+- **CI: every push to `main` now deploys the Android demo to the Play Store internal-testing track** ([#2596](https://github.com/sceneview/sceneview/pull/2596)). New paths-filtered `main-internal-deploy.yml` (cancel-in-progress, internal track only, versionName `X.Y.Z-main.<sha>`) gives the maintainer a minutes-fast real-device test loop; production remains tag-only via `play-store.yml`. Both Play-uploading workflows now share a single strictly-increasing epoch-minutes `versionCode` scheme (`epoch_seconds / 60`) — required because Play versionCodes must increase across all tracks, so the release workflow migrated off `github.run_number` in the same change.
+
+### Fixed
+
+- **AR: placed models rendered too dark / green-tinted under `ENVIRONMENTAL_HDR` light estimation (the `ARSceneView` default)** ([#2483](https://github.com/sceneview/sceneview/issues/2483)). `LightEstimator` fed ARCore's raw main-light radiance × `1/ev100` (≈ 0.067) into the light **color** — the max-component normalization from the 0.9.x/SceneformMaintained lineage was dropped in the v2 rewrite (the computed `maxIntensity` had been dead code) — while `mainLightIntensity` carried the same magnitude again, so the estimate was applied ~squared and the main directional light collapsed to ~1e-4 of its baseline (effectively black). AR models were lit only by the dim estimated cubemap/SH: dark, glossy, tinted by the camera feed (green/teal indoors). The estimate is now decomposed into hue (max-normalized `mainLightColor`) × magnitude (`mainLightIntensity` = max component), applying the radiance exactly once through the baseline-multiply contract — `(c / max) × max == c`. Pinned by `LightEstimatorTest`; on-device validation (Pixel 9) due at the next device-QA pass.
+- Demo app: added a `-dontwarn com.google.android.gms.nearby.**` ProGuard rule so the release AAB's R8 minification no longer aborts on the `compileOnly` Nearby Connections types referenced by arsceneview's `NearbyCollaborativeTransport` reference implementation. This was silently blocking the Play Store deploy of the demo (the missing-class check only runs during `minifyReleaseWithR8`, not on the CI compile/unit-test gates).
+
+### Tests
+
+- `DemoRenderingScreenshotTest` now FAILS (instead of silently assume-skipping) when a slug listed in `BASELINED_GOLDENS` has no committed golden — a deleted/renamed baseline can no longer disable its own regression guard unnoticed (#2323 suggestion 2). New slugs keep the quiet first-run capture flow.
+
 ## v4.19.0 — 2026-07-04
 
 ### Added

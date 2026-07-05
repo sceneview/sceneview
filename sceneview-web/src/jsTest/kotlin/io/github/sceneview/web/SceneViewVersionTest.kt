@@ -16,7 +16,7 @@ class SceneViewVersionTest {
     @Test
     fun versionIsCurrent() {
         // Bump in lockstep with `gradle.properties` -> `VERSION_NAME`.
-        assertEquals("4.19.0", SCENEVIEW_VERSION)
+        assertEquals("4.20.0", SCENEVIEW_VERSION)
     }
 
     @Test

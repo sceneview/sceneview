@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- Demo app: added a `-dontwarn com.google.android.gms.nearby.**` ProGuard rule so the release AAB's R8 minification no longer aborts on the `compileOnly` Nearby Connections types referenced by arsceneview's `NearbyCollaborativeTransport` reference implementation. This was silently blocking the Play Store deploy of the demo (the missing-class check only runs during `minifyReleaseWithR8`, not on the CI compile/unit-test gates).
