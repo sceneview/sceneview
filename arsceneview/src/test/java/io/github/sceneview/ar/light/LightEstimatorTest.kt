@@ -348,7 +348,7 @@ class LightEstimatorTest {
 
     @Test
     fun `environmentalHdrMainLight indoor estimate no longer collapses the light (#2483)`() {
-        // Pre-fix, with the default sunny-16 exposure (exposureFactor = 1/ev100
+        // Pre-fix, with the default AR exposure f/12 1/200s ISO200 (exposureFactor = 1/ev100
         // ≈ 0.0668) and a typical indoor estimate (~0.3 relative radiance):
         //   color     ≈ 0.3 × 0.0668            ≈ 0.02   (2% of baseline hue)
         //   intensity ≈ avg(0.02) / 4           ≈ 0.005
@@ -372,6 +372,16 @@ class LightEstimatorTest {
         val (color, intensity) =
             LightEstimator.environmentalHdrMainLight(Color(8f, 7.5f, 7f))
         assertEquals(8f, intensity, 1e-6f)
+        assertEquals(1.0f, color!!.r, 1e-6f)
+    }
+    @Test
+    fun `single-frame radiance spikes are capped at the defensive ceiling`() {
+        val (color, intensity) = LightEstimator.environmentalHdrMainLight(
+            Color(30f, 28f, 25f)  // absurd spike, far above real sun (~8)
+        )
+        assertEquals(LightEstimator.MAIN_LIGHT_MAX_INTENSITY_FACTOR, intensity)
+        // Hue stays normalized against the RAW max — chromaticity is unaffected
+        // by the cap.
         assertEquals(1.0f, color!!.r, 1e-6f)
     }
 }

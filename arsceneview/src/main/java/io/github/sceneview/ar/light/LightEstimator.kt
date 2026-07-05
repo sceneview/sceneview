@@ -380,7 +380,6 @@ class LightEstimator(
      *   factor under the consumer's baseline-multiply contract; see
      *   [environmentalHdrMainLight]).
      */
-    @Suppress("UNUSED_PARAMETER")
     fun update(session: Session, frame: Frame, camera: Camera): Estimation? {
         // Fix 1 (CORR-B, #1094 acceptance #2): a late render frame raced with `destroy()` from
         // `DisposableEffect.onDispose` could NPE on `engine.destroyTexture`
@@ -857,7 +856,7 @@ class LightEstimator(
          * — no normalization (the computed `maxIntensity` had been dead code since the
          * v2 rewrite; the 0.9.x / SceneformMaintained ancestor did divide by max) — and
          * `mainLightIntensity = avg(raw × exposureFactor) / 4`. With
-         * `exposureFactor = 1/ev100 ≈ 0.067` at the default sunny-16 exposure and a
+         * `exposureFactor = 1/ev100 ≈ 0.072` at the default AR exposure (f/12, 1/200 s, ISO 200 — ARFactories.kt) and a
          * typical indoor estimate (~0.3), both multipliers collapsed to ~1–2%: the
          * estimate was effectively applied **twice** (≈ squared) and the main
          * directional light went ~black (≈1e-4 × baseline). AR models were then lit
@@ -885,7 +884,20 @@ class LightEstimator(
         ): Pair<Color?, Float> {
             val maxIntensity = max(colorIntensitiesFactors)
             if (maxIntensity <= 0f) return null to 0f
-            return (colorIntensitiesFactors / maxIntensity) to maxIntensity
+            // Defensive ceiling: ARCore can spike a single frame's radiance
+            // (auto-exposure hunting) and the magnitude is otherwise unbounded —
+            // the 0.9.x lineage's avg-normalized multiplier never exceeded the
+            // baseline. Full sun (~8) stays untouched; only spikes are capped.
+            val clamped = minOf(maxIntensity, MAIN_LIGHT_MAX_INTENSITY_FACTOR)
+            return (colorIntensitiesFactors / maxIntensity) to clamped
         }
+
+        /**
+         * Upper bound for the ENVIRONMENTAL_HDR main-light magnitude multiplier —
+         * ~+3.3 EV over the 10 000 lux baseline. Above real-sun estimates (~8);
+         * exists to absorb single-frame radiance spikes, not to grade sunlight.
+         * Revisit against the #2483 Pixel 9 device pass.
+         */
+        internal const val MAIN_LIGHT_MAX_INTENSITY_FACTOR = 10f
     }
 }
