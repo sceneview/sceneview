@@ -1,8 +1,6 @@
 package io.github.sceneview.demo
 
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -34,9 +32,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -46,24 +41,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
+import io.github.sceneview.demo.feedback.BugReportSheet
 import io.github.sceneview.demo.feedback.FEEDBACK_FAB_BOTTOM_OFFSET
 import io.github.sceneview.demo.feedback.FeedbackButton
 import io.github.sceneview.demo.feedback.FeedbackChrome
-import io.github.sceneview.demo.feedback.FeedbackFlow
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
-import io.github.sceneview.demo.feedback.FeedbackRecorder
-import io.github.sceneview.demo.feedback.FeedbackRecordingService
-import io.github.sceneview.demo.feedback.RecordingState
-import io.github.sceneview.demo.feedback.RecordingStopPill
-import io.github.sceneview.demo.feedback.isMicPermanentlyDenied
-import io.github.sceneview.demo.feedback.rememberFeedbackRecordingLauncher
+import io.github.sceneview.demo.feedback.PendingBugReport
+import io.github.sceneview.demo.feedback.captureBugReportInfo
+import io.github.sceneview.demo.feedback.captureBugReportScreenshot
 import io.github.sceneview.demo.feedback.sweepStaleFeedbackMedia
 
 class MainActivity : ComponentActivity() {
@@ -263,15 +252,6 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
     // and the NavHost were sibling root composables — the demo screens' own
     // TopAppBar then drew over the banner, clipping the "Update ready / Restart"
     // chrome. Drawing the banner last in the Box guarantees it stays visible.
-    // Host for the post-Sent feedback snackbar (#2230). Hoisted at this level
-    // (same scope as `feedbackOpen` below) so it can be triggered by the
-    // FeedbackFlow `onSent` callback and stays alive after the Dialog
-    // dismisses. CoroutineScope is rememberCoroutineScope'd here for the
-    // same reason — the snackbar.showSnackbar(...) launch must outlive the
-    // Dialog's own composition scope.
-    val feedbackSnackbarHost = remember { SnackbarHostState() }
-    val feedbackSentScope = rememberCoroutineScope()
-
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
@@ -316,7 +296,8 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             )
         }
 
-        // Feedback entry points (#1930):
+        // Bug-report entry points (#1930, rebuilt permission-free in #2188's
+        // successor):
         //  - the tab host ("list" — RootScreen, all four tabs) gets the
         //    extended FAB rendered below;
         //  - every demo screen gets a top-app-bar feedback action in
@@ -328,71 +309,39 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         val currentEntry by navController.currentBackStackEntryAsState()
         val onListScreen = currentEntry?.destination?.route == "list"
 
-        // Keep the feedback recorder's notion of "current demo" in sync with
-        // navigation, so a feedback submission can name the exact demo a bug is
-        // in (#1934). Tracked here — not in the feedback flow — because the
-        // dialog is dismissed during recording, so the route the user navigates
-        // to while demonstrating a bug can only be observed from the NavHost.
-        LaunchedEffect(currentEntry) {
-            FeedbackRecorder.currentDemoId =
-                if (currentEntry?.destination?.route == "demo/{id}") {
-                    currentEntry?.arguments?.getString("id")
-                } else {
-                    null
-                }
-        }
-        var feedbackOpen by rememberSaveable { mutableStateOf(false) }
-        val recordingState by FeedbackRecorder.state.collectAsState()
-        val isRecording = recordingState is RecordingState.Recording
-        val feedbackLauncher = rememberFeedbackRecordingLauncher()
+        // The pending report (metadata + logcat + screenshot), captured the
+        // moment the user asks to report — BEFORE the sheet is composed, so
+        // the sheet itself is never in the screenshot. Not rememberSaveable:
+        // a Bitmap can't ride a config change; the sheet simply closes, and
+        // re-opening re-captures in <100 ms.
+        var bugReport by remember { mutableStateOf<PendingBugReport?>(null) }
+        val reportScope = rememberCoroutineScope()
 
-        // A finished or failed recording re-opens the flow at its review step.
-        LaunchedEffect(recordingState) {
-            if (recordingState is RecordingState.Done ||
-                recordingState is RecordingState.Failed
-            ) {
-                feedbackOpen = true
+        fun openBugReport() {
+            if (bugReport != null) return
+            // Capture the demo id NOW (the sheet host is the only place that
+            // can see the NavController), so the report names the exact demo
+            // the bug is in (#1934).
+            val demoId = currentEntry
+                ?.takeIf { it.destination.route == "demo/{id}" }
+                ?.arguments?.getString("id")
+            reportScope.launch {
+                val screenshot = activity?.let { captureBugReportScreenshot(it) }
+                bugReport = PendingBugReport(
+                    info = captureBugReportInfo(context, demoId),
+                    screenshot = screenshot,
+                )
             }
         }
 
         // A demo screen's top-app-bar feedback action raises this flag — open
-        // the shared flow and consume the request (#1930).
+        // the shared sheet and consume the request (#1930).
         val feedbackRequested by FeedbackOpenRequest.requested.collectAsState()
         LaunchedEffect(feedbackRequested) {
             if (feedbackRequested) {
-                feedbackOpen = true
                 FeedbackOpenRequest.consume()
+                openBugReport()
             }
-        }
-
-        // Whether the microphone permission is permanently denied and whether
-        // the foreground-service notification control will be visible — both
-        // re-evaluated when the feedback flow opens so the UI can adapt
-        // (route to settings / surface the in-app-Stop hint). #1930 review.
-        val micPermanentlyDenied = remember(feedbackOpen) {
-            activity?.let { isMicPermanentlyDenied(it) } ?: false
-        }
-        val notificationControlAvailable = remember(feedbackOpen) {
-            if (Build.VERSION.SDK_INT >= 33) {
-                ContextCompat.checkSelfPermission(
-                    context,
-                    android.Manifest.permission.POST_NOTIFICATIONS,
-                ) == PackageManager.PERMISSION_GRANTED
-            } else {
-                // Pre-13: notifications need no runtime permission, but the
-                // channel can still be disabled by the user.
-                NotificationManagerCompat.from(context).areNotificationsEnabled()
-            }
-        }
-        // Whether the foreground-service-backed screen recorder is usable on
-        // this build. False on Android 14+ when the manifest omits the
-        // FOREGROUND_SERVICE_MEDIA_PROJECTION permission — the catch-22 from
-        // #2120 left the permission out to unblock Play Store, so the consent
-        // step would dead-end in a system FGS crash. The feedback flow
-        // detects this and routes the user straight to a text-only review
-        // (#2188).
-        val recordingAvailable = remember(feedbackOpen) {
-            FeedbackRecordingService.isRecordingAvailable(context)
         }
 
         // FeedbackChrome.chipVisible is flipped to false by tab content that
@@ -410,82 +359,31 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         // from the left, since it is bottom-start anchored — the moment the
         // user scrolls and the overlapped card leaves the band.
         AnimatedVisibility(
-            visible = onListScreen && !isRecording &&
+            visible = onListScreen &&
                 FeedbackChrome.chipVisible && FeedbackChrome.listScrolled,
             modifier = Modifier.align(Alignment.BottomStart),
             enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
             exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(),
         ) {
             FeedbackButton(
-                onClick = { feedbackOpen = true },
+                onClick = { openBugReport() },
                 modifier = Modifier
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(start = 16.dp, bottom = FEEDBACK_FAB_BOTTOM_OFFSET),
             )
         }
 
-        // While recording, the dialog is hidden so the user can demonstrate the
-        // bug; a floating Stop pill stays on top of every screen.
-        if (isRecording) {
-            RecordingStopPill(
-                onStop = { FeedbackRecordingService.stop(context) },
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(top = 24.dp),
+        bugReport?.let { report ->
+            BugReportSheet(
+                report = report,
+                // The screenshot PNG is deliberately NOT deleted here: a share
+                // target (e.g. Gmail) may read the FileProvider URI lazily,
+                // after the sheet is gone. The app-start sweep
+                // (sweepStaleFeedbackMedia) reclaims the few-hundred-KB file
+                // on the next launch instead.
+                onDismiss = { bugReport = null },
             )
         }
-
-        if (feedbackOpen && !isRecording) {
-            FeedbackFlow(
-                onDismiss = {
-                    feedbackOpen = false
-                    FeedbackRecorder.reset()
-                },
-                launcher = feedbackLauncher,
-                micPermanentlyDenied = micPermanentlyDenied,
-                notificationControlAvailable = notificationControlAvailable,
-                recordingAvailable = recordingAvailable,
-                onSent = { issueNumber ->
-                    // Persistent confirmation outside the dialog (#2230). The
-                    // dialog's Sent screen is dismissable in one tap; without
-                    // this snackbar the user lands back on Explore with no
-                    // visible trace that the feedback was sent. Lifecycle is
-                    // tied to the activity scope so the snackbar survives
-                    // tab switches.
-                    // issueNumber is a runtime callback parameter — stringResource()
-                    // cannot be used here (requires a composable call site).
-                    // Using context.getString() from a captured Activity Context
-                    // is safe: the lambda is called synchronously on the main thread
-                    // and the Activity context remains valid for the session lifetime.
-                    @Suppress("LocalContextGetResourceValueCall")
-                    val msg = if (issueNumber != null) {
-                        context.getString(R.string.feedback_sent_snackbar, issueNumber)
-                    } else {
-                        context.getString(R.string.feedback_sent_snackbar_generic)
-                    }
-                    feedbackSentScope.launch {
-                        feedbackSnackbarHost.showSnackbar(
-                            message = msg,
-                            duration = SnackbarDuration.Long,
-                        )
-                    }
-                },
-            )
-        }
-
-        // Host for the post-Sent confirmation snackbar (#2230). Positioned at
-        // the bottom of the Box, above the navigation bar, so it sits below
-        // the FeedbackButton FAB instead of overlapping it. Padding matches
-        // the FAB's bottom offset so the snackbar appears just above the FAB
-        // while still respecting the system navigation bar.
-        SnackbarHost(
-            hostState = feedbackSnackbarHost,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(bottom = FEEDBACK_FAB_BOTTOM_OFFSET + 72.dp),
-        )
     }
 }
 

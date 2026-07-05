@@ -48,15 +48,6 @@ on:
           - beta
           - alpha
           - internal
-      commit_edit_id:
-        description: |
-          Fast path for #2120 FGS catch-22: paste the edit_id printed by a preserved FGS-failed
-          edit (see "ACTION REQUIRED" block in CI logs). When set, skips the 40-min build and
-          just commits the existing edit — supply AFTER declaring FGS in Play Console App content.
-          Leave blank for a normal build+upload run.
-        required: false
-        default: ''
-        type: string
 
 # Only one Play Store deploy at a time.
 concurrency:
@@ -67,62 +58,8 @@ permissions:
   contents: read
 
 jobs:
-  # ── Fast path: commit a previously-preserved edit without rebuilding (#2120)
-  # ────────────────────────────────────────────────────────────────────────────
-  # When the normal deploy is blocked by an undeclared FGS permission, the
-  # production fallback preserves the edit in Play Console (edit NOT deleted).
-  # Once FGS is declared in Play Console App content, trigger this workflow
-  # with commit_edit_id = <id from CI logs> to commit the existing edit in
-  # ~2 min instead of the ~50 min full build+upload cycle.
-  commit-edit:
-    name: Commit preserved edit (FGS fast-path)
-    if: github.event.inputs.commit_edit_id
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-      - name: Commit edit ${{ github.event.inputs.commit_edit_id }}
-        env:
-          SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
-          EDIT_ID: ${{ github.event.inputs.commit_edit_id }}
-          PACKAGE_NAME: io.github.sceneview.demo
-        run: |
-          python3 -m venv /tmp/commit-venv
-          /tmp/commit-venv/bin/pip install --quiet -r .github/workflows/requirements/play-store.txt
-          /tmp/commit-venv/bin/python3 << 'PYEOF'
-          import json, os, sys
-          from google.oauth2 import service_account
-          from google.auth.transport.requests import AuthorizedSession
-
-          PKG     = os.environ["PACKAGE_NAME"]
-          EDIT_ID = os.environ["EDIT_ID"].strip()
-          BASE    = f"https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{PKG}"
-
-          creds = service_account.Credentials.from_service_account_info(
-              json.loads(os.environ["SERVICE_ACCOUNT_JSON"]),
-              scopes=["https://www.googleapis.com/auth/androidpublisher"],
-          )
-          sess = AuthorizedSession(creds)
-
-          print(f"[commit-edit] Committing edit_id={EDIT_ID} for {PKG}")
-          r = sess.post(f"{BASE}/edits/{EDIT_ID}:commit")
-          print(f"[commit-edit] HTTP {r.status_code}: {r.text[:400]}")
-          if r.status_code == 200:
-              print("[commit-edit] ✅ Committed — submitted for review. FGS catch-22 resolved.")
-              sys.exit(0)
-          if "foreground service" in r.text.lower():
-              print(
-                  "\n[FGS] Still failing — FGS not yet declared? Go to:\n"
-                  "  Play Console → App content → Foreground service type declarations\n"
-                  "  Declare FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION, then re-run.",
-                  file=sys.stderr,
-              )
-          r.raise_for_status()
-          PYEOF
-
   build:
     name: Build release AAB
-    if: "!github.event.inputs.commit_edit_id"
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
@@ -455,82 +392,16 @@ jobs:
       # `Compute target tracks` ensures the internal upload completes before
       # the production promote runs.
 
-      # Best-effort pre-step: declare FGS permissions in Play Console so that
-      # edits.commit doesn't fail with "You must let us know whether your app
-      # uses any Foreground Service permissions" (#2120).
-      #
-      # FeedbackRecordingService uses FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-      # (screen recording for in-app bug reports — real feature, cannot remove).
-      # This declaration is app-level and persists across edits once set; but we
-      # re-declare on each upload to be resilient if it ever gets reset.
-      #
-      # Uses the Play Console internal API (playconsoleapps-pa) with the same
-      # service-account OAuth2 Bearer token used for the Android Publisher API.
-      # continue-on-error: the upload proceeds regardless — if this step fails
-      # the commit will still surface the old FGS error, making the issue visible.
-      - name: Declare Foreground Service permissions (Play Console)
-        if: matrix.track == 'internal' || !contains(needs.build.outputs.tracks, '"internal"')
-        continue-on-error: true
-        env:
-          SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
-        run: |
-          python3 -m venv /tmp/fgs-venv
-          /tmp/fgs-venv/bin/pip install --quiet -r .github/workflows/requirements/play-store.txt
-          /tmp/fgs-venv/bin/python3 << 'PYEOF'
-          import json, os, sys
-          import requests
-          from google.oauth2 import service_account
-          from google.auth.transport.requests import Request
-
-          creds = service_account.Credentials.from_service_account_info(
-              json.loads(os.environ["SERVICE_ACCOUNT_JSON"]),
-              scopes=["https://www.googleapis.com/auth/androidpublisher"],
-          )
-          creds.refresh(Request())
-          token = creds.token
-
-          # Play Console internal API identifiers.
-          DEV_ID = "4638313286439917620"
-          APP_ID = "4976357948291389972"
-          # permissionDeclarationData:update payload (#2120).
-          # Confirmed correct endpoint via browser network capture (GET→200).
-          # Field 3 = list of FGS type declarations:
-          #   field 1 = type ID (21 = MEDIA_PROJECTION), field 2 = 1 (in-use)
-          # Field 5 = submission status: {1: 2} = SUBMITTED
-          payload = {"3": [{"1": 21, "2": 1}], "5": {"1": 2}}
-
-          url = (
-              f"https://playconsoleapps-pa.clients6.google.com"
-              f"/v1/developers/{DEV_ID}/apps/{APP_ID}/permissionDeclarationData:update"
-          )
-          r = requests.post(
-              url,
-              headers={
-                  "Authorization": f"Bearer {token}",
-                  "Content-Type": "application/json+protobuf",
-              },
-              json=payload,
-              timeout=30,
-          )
-          print(f"FGS declaration: HTTP {r.status_code}")
-          if r.text:
-              print(f"Response: {r.text[:300]}")
-          if r.status_code == 200:
-              print("FGS declaration submitted — MEDIA_PROJECTION declared as in-use.")
-          else:
-              print(f"FGS declaration returned {r.status_code} — commit may still fail with FGS error.",
-                    file=sys.stderr)
-          PYEOF
-
       - name: Publish to Play Store (${{ matrix.track }}) — direct upload
         if: matrix.track == 'internal' || !contains(needs.build.outputs.tracks, '"internal"')
-        # continue-on-error for internal: FGS declaration via service-account Bearer
-        # token is rejected by the Play Console internal API (#2120), so the commit
-        # fails with "You must let us know whether your app uses any Foreground Service
-        # permissions." When that happens the internal upload fails but the workflow
-        # continues — the production promote step falls back to a direct upload with
-        # changesNotSentForReview=true. Once FGS is declared in Play Console the
-        # normal path (internal succeeds → production promotes) resumes automatically.
+        # continue-on-error for internal: if the internal upload fails
+        # transiently, the workflow continues — the production promote step
+        # detects the missing versionCode on the internal track and falls
+        # back to a direct upload, so a release is never lost to an
+        # internal-track hiccup. (Historically this also absorbed the #2120
+        # FGS-declaration failures; the MediaProjection feedback recorder —
+        # and with it every FGS permission — was removed, so that failure
+        # mode no longer exists.)
         continue-on-error: ${{ matrix.track == 'internal' }}
         uses: r0adkll/upload-google-play@v1.1.5
         with:
@@ -614,11 +485,11 @@ jobs:
                   None,
               )
               if not hit:
-                  # Internal upload likely failed due to undeclared FGS (#2120).
+                  # Internal upload failed (transient Play Edits error).
                   # Fall back to a direct upload of the AAB to the target track
-                  # with changesNotSentForReview=true so the deployment still lands.
-                  print(f"[promote] versionCode {CODE} not on {SOURCE} — FGS likely blocked "
-                        f"internal commit. Falling back to direct {TARGET} upload (#2120).")
+                  # so the deployment still lands.
+                  print(f"[promote] versionCode {CODE} not on {SOURCE} — internal upload "
+                        f"failed. Falling back to direct {TARGET} upload.")
                   for rel in releases:
                       print(f"  - codes={rel.get('versionCodes')} status={rel.get('status')}")
 
@@ -662,14 +533,7 @@ jobs:
                   )
                   r.raise_for_status()
 
-                  # Commit WITHOUT changesNotSentForReview — triggers review,
-                  # which is the desired end-state once FGS is declared.
-                  # If FGS is not yet declared, the commit returns a "foreground
-                  # service" error; we then exit via sys.exit(1) which raises
-                  # SystemExit (BaseException, NOT Exception) and escapes the
-                  # outer `except Exception` block, so the edit is NOT deleted.
-                  # The staged build makes the FGS section visible in Play Console
-                  # App content → Foreground service type declarations.
+                  # Commit — triggers review, the desired end-state.
                   r = sess.post(f"{BASE}/edits/{edit_id}:commit")
                   if r.status_code == 200:
                       print(f"[promote/fallback] direct upload to {TARGET} committed — submitted for review.")
@@ -677,22 +541,7 @@ jobs:
 
                   body = r.text
                   print(f"[promote/fallback] commit HTTP {r.status_code}: {body[:300]}", file=sys.stderr)
-
-                  if "foreground service" in body.lower() or "Foreground Service" in body:
-                      print(
-                          "\n[FGS] *** ACTION REQUIRED — edit PRESERVED (#2120) ***\n"
-                          f"[FGS] Edit {edit_id} kept alive in Play Console with the staged AAB.\n"
-                          "[FGS] The staged build makes the FGS declaration section visible:\n"
-                          "[FGS]  1. Play Console → App content → Foreground service type declarations\n"
-                          "[FGS]  2. Declare FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION (screen recording)\n"
-                          "[FGS]  3. Re-run play-store.yml → internal+production will both succeed\n",
-                          file=sys.stderr,
-                      )
-                      # sys.exit raises SystemExit (BaseException) — escapes
-                      # `except Exception` so delete is NOT called. Edit lives.
-                      sys.exit(1)
-
-                  r.raise_for_status()  # any other error: clean up via except
+                  r.raise_for_status()  # clean up via except
                   sys.exit(0)
 
               print(f"[promote] source release codes={hit.get('versionCodes')} status={hit.get('status')} name={hit.get('name')}")
@@ -724,8 +573,7 @@ jobs:
               print(f"[promote] target track {TARGET} now carries versionCode {CODE}")
 
               # 4. Commit the edit (track-membership change only — no new AAB).
-              # No changesNotSentForReview: the promote path only runs when internal
-              # succeeded, meaning FGS was already declared. Submit for review normally.
+              # No changesNotSentForReview: submit for review normally.
               r = sess.post(f"{BASE}/edits/{edit_id}:commit")
               # Surface the response body BEFORE raise_for_status so a 4xx is
               # actionable. v4.15.3 production commit 403'd and the previous

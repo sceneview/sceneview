@@ -39,20 +39,12 @@
         android:name="android.hardware.camera"
         android:required="false" />
 
-    <!-- In-app feedback (#1933) — screen + microphone recording via
-         MediaProjection, captured by a foreground service while the user
-         demonstrates a bug. All opt-in and consent-gated.
-         FOREGROUND_SERVICE_MEDIA_PROJECTION was temporarily removed in #2120 to
-         unblock Play Store deploys (Play Console requires the app-content FGS
-         declaration before any AAB with this permission can be committed, but the
-         declaration section only appears once a build is already on a track).
-         The declaration has now been completed in Play Console; re-adding the
-         permission and the foregroundServiceType so screen recording works on
-         Android 14+ (#2188). -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- In-app bug reporting deliberately needs NO permission (#2120/#2188).
+         The former MediaProjection screen-recording feedback system (RECORD_AUDIO
+         + FOREGROUND_SERVICE + FOREGROUND_SERVICE_MEDIA_PROJECTION +
+         POST_NOTIFICATIONS) was removed: the rebuilt reporter uses PixelCopy on
+         the app's own window, the app's own logcat tail, and a user-driven share
+         intent — zero foreground service, zero Play Console FGS declaration. -->
 
     <application
         android:allowBackup="true"
@@ -94,16 +86,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
-
-        <!-- In-app feedback screen + mic recorder (#1933).
-             foregroundServiceType="mediaProjection" is required on Android 14+
-             so that startForeground(id, notification,
-             FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION) does not throw
-             MissingForegroundServiceTypeException (#2188 / #2120). -->
-        <service
-            android:name=".feedback.FeedbackRecordingService"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
 
         <activity
             android:name=".MainActivity"
