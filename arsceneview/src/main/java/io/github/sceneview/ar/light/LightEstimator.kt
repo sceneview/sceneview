@@ -13,7 +13,6 @@ import io.github.sceneview.environment.IBLPrefilter
 import io.github.sceneview.math.Color
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.toLinearSpace
-import io.github.sceneview.utils.exposureFactor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -372,6 +371,15 @@ class LightEstimator(
      */
     private val uploadCompletedCallback = Runnable { uploadInFlight = false }
 
+    /**
+     * Per-frame light-estimation update. Returns the reused [Estimation] (see its doc), or
+     * `null` when estimation is disabled/unsupported or ARCore surfaced no fresh estimate.
+     *
+     * @param camera Kept for API stability — no longer read since #2483 removed the
+     *   `exposureFactor` term from the main-light math (the estimate is a *relative*
+     *   factor under the consumer's baseline-multiply contract; see
+     *   [environmentalHdrMainLight]).
+     */
     fun update(session: Session, frame: Frame, camera: Camera): Estimation? {
         // Fix 1 (CORR-B, #1094 acceptance #2): a late render frame raced with `destroy()` from
         // `DisposableEffect.onDispose` could NPE on `engine.destroyTexture`
@@ -486,34 +494,22 @@ class LightEstimator(
                 // Returns the intensity of the main directional light based on the inferred
                 // Environmental HDR Lighting Estimation. All return values are larger or equal to
                 // zero.
-                // The color correction method uses the green channel as reference baseline and
-                // scales the red and blue channels accordingly. In this way the overall intensity
-                // will not be significantly changed
                 if (environmentalHdrMainLightIntensity) {
-                    val colorIntensitiesFactors = lightEstimate.environmentalHdrMainLightIntensity
-                        .let { (r, g, b) -> Color(r, g, b) }
-                    val maxIntensity = max(colorIntensitiesFactors)
-                    // ARCore's light estimation uses unit-less (relative) values while Filament
-                    // uses a physically based camera model with lux or lumen values.
-                    // In order to keep the "standard" Filament behavior we scale ARCore values.
-                    // More info: [https://github.com/ThomasGorisse/SceneformMaintained/pull/156#issuecomment-911873565]
-                    val exposureFactor = camera.exposureFactor
-                    // Apply the camera exposure factor
-                    val exposedColor = colorIntensitiesFactors * exposureFactor
-                    mainLightColor = exposedColor
-                    // Average intensity — computed inline (#1105) instead of
-                    // `toFloatArray().average()`, which allocated a FloatArray
-                    // plus boxed the Double result every frame.
-                    //
-                    // NOTE: the divisor is 4, not 3. `Color` is a kotlin-math
-                    // `Float4`; `Color(r, g, b)` leaves `w = 0`, and the legacy
-                    // `toFloatArray().average()` averaged all 4 components
-                    // (`(r + g + b + 0) / 4`). This refactor is allocation-only —
-                    // it deliberately preserves that exact value rather than
-                    // "fixing" it to `/ 3`, which would shift main-light
-                    // intensity in every existing ENVIRONMENTAL_HDR AR scene.
-                    mainLightIntensity =
-                        (exposedColor.r + exposedColor.g + exposedColor.b) / 4f
+                    // Split ARCore's relative-radiance triple into hue (mainLightColor) ×
+                    // magnitude (mainLightIntensity). See [environmentalHdrMainLight] for the
+                    // decomposition contract and the #2483 history: the pre-fix code fed the
+                    // raw radiance × `1/ev100` into the light *color* (the max-normalization
+                    // of the 0.9.x / SceneformMaintained lineage had been dropped — the
+                    // computed `maxIntensity` was dead code) while the intensity multiplier
+                    // carried the same magnitude again, so the estimate was applied ~squared
+                    // and the main directional light collapsed to ~black in every
+                    // ENVIRONMENTAL_HDR session.
+                    val (color, intensity) = environmentalHdrMainLight(
+                        lightEstimate.environmentalHdrMainLightIntensity
+                            .let { (r, g, b) -> Color(r, g, b) }
+                    )
+                    mainLightColor = color
+                    mainLightIntensity = intensity
                 }
 
                 if (environmentalHdrMainLightDirection) {
@@ -834,5 +830,74 @@ class LightEstimator(
             -0.325735f, 0.273137f, -0.273137f,
             0.078848f, -0.273137f, 0.136569f
         )
+
+        /**
+         * Decomposes ARCore's `ENVIRONMENTAL_HDR` main-light radiance triple
+         * ([LightEstimate.getEnvironmentalHdrMainLightIntensity] — unit-less relative
+         * values, `>= 0`, unbounded) into the (hue, magnitude) pair the `ARSceneView`
+         * per-frame consumer expects ([#2483](https://github.com/sceneview/sceneview/issues/2483)).
+         *
+         * The consumer applies the estimate **multiplicatively against a first-frame
+         * baseline on BOTH fields** (`ARSceneView.kt`, `onARFrame`):
+         * ```
+         * light.color     = baselineColor     * estimation.mainLightColor
+         * light.intensity = baselineIntensity * estimation.mainLightIntensity
+         * ```
+         * so the estimate's magnitude must be carried by **exactly one** of the two:
+         *
+         * - `first` — the **hue**: the triple normalized by its max component (max
+         *   component == 1), or `null` when the estimate is pitch black (no hue
+         *   information — the consumer then keeps the baseline color).
+         * - `second` — the **magnitude**: the max component itself. Multiplied against
+         *   the baseline this applies the raw relative radiance exactly once:
+         *   `(c / max) × max == c`.
+         *
+         * History (#2483): the pre-fix code set `mainLightColor = raw × exposureFactor`
+         * — no normalization (the computed `maxIntensity` had been dead code since the
+         * v2 rewrite; the 0.9.x / SceneformMaintained ancestor did divide by max) — and
+         * `mainLightIntensity = avg(raw × exposureFactor) / 4`. With
+         * `exposureFactor = 1/ev100 ≈ 0.072` at the default AR exposure (f/12, 1/200 s, ISO 200 — ARFactories.kt) and a
+         * typical indoor estimate (~0.3), both multipliers collapsed to ~1–2%: the
+         * estimate was effectively applied **twice** (≈ squared) and the main
+         * directional light went ~black (≈1e-4 × baseline). AR models were then lit
+         * only by the dim estimated cubemap/SH — dark, glossy, tinted by the camera
+         * feed (green/teal indoors), which is exactly the Pixel 9 device-review
+         * symptom. The `1/ev100` factor is not a physical exposure quantity either
+         * (Filament's exposure normalization is `1/(1.2·2^ev100)`, see
+         * `filament/src/Exposure.cpp`); under the baseline-multiply contract the
+         * estimate must stay a *relative* factor, so no exposure term belongs here —
+         * dropping it also brings the HDR multiplier into the same O(1) ballpark as
+         * the AMBIENT_INTENSITY path (`pixelIntensity × `[AMBIENT_INTENSITY_GAIN]).
+         *
+         * Unlike [LightEstimate.getColorCorrection] (documented by ARCore as gamma
+         * space, hence [toLinearSpace] in the AMBIENT_INTENSITY path), the
+         * Environmental HDR API feeds linear/PBR pipelines — its spherical-harmonics
+         * and cubemap siblings are consumed linearly — so the triple is used as-is.
+         *
+         * Pinned by `LightEstimatorTest`.
+         *
+         * @param colorIntensitiesFactors ARCore's raw main-light RGB radiance (`w` unused).
+         * @return `(hue, magnitude)` — hue `null` + magnitude `0` for a pitch-black estimate.
+         */
+        internal fun environmentalHdrMainLight(
+            colorIntensitiesFactors: Color
+        ): Pair<Color?, Float> {
+            val maxIntensity = max(colorIntensitiesFactors)
+            if (maxIntensity <= 0f) return null to 0f
+            // Defensive ceiling: ARCore can spike a single frame's radiance
+            // (auto-exposure hunting) and the magnitude is otherwise unbounded —
+            // the 0.9.x lineage's avg-normalized multiplier never exceeded the
+            // baseline. Full sun (~8) stays untouched; only spikes are capped.
+            val clamped = minOf(maxIntensity, MAIN_LIGHT_MAX_INTENSITY_FACTOR)
+            return (colorIntensitiesFactors / maxIntensity) to clamped
+        }
+
+        /**
+         * Upper bound for the ENVIRONMENTAL_HDR main-light magnitude multiplier —
+         * ~+3.3 EV over the 10 000 lux baseline. Above real-sun estimates (~8);
+         * exists to absorb single-frame radiance spikes, not to grade sunlight.
+         * Revisit against the #2483 Pixel 9 device pass.
+         */
+        internal const val MAIN_LIGHT_MAX_INTENSITY_FACTOR = 10f
     }
 }

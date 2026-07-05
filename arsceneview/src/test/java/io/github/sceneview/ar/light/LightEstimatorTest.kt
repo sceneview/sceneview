@@ -1,5 +1,6 @@
 package io.github.sceneview.ar.light
 
+import io.github.sceneview.math.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -302,5 +303,85 @@ class LightEstimatorTest {
                 "#1090/#1091 double-close regression. Saw: $callbackDecl",
             callbackDecl.contains("arImages"),
         )
+    }
+
+    // ── environmentalHdrMainLight hue × magnitude decomposition (#2483) ─────
+    //
+    // The ARSceneView consumer multiplies a first-frame baseline by BOTH
+    // `mainLightColor` and `mainLightIntensity`, so the ARCore estimate's
+    // magnitude must be carried by exactly ONE of the two. The pre-fix code
+    // carried it in both (raw radiance × 1/ev100 in the color AND its average
+    // in the intensity) → the estimate was applied ~squared and the main light
+    // collapsed to ~black in every ENVIRONMENTAL_HDR session — the Pixel 9
+    // "placed models too dark / green-tinted" device-review finding.
+
+    @Test
+    fun `environmentalHdrMainLight normalizes hue to max component == 1`() {
+        val (color, intensity) =
+            LightEstimator.environmentalHdrMainLight(Color(0.2f, 0.5f, 0.4f))
+        assertNotNull(color)
+        assertEquals(0.4f, color!!.r, 1e-6f)
+        assertEquals(1.0f, color.g, 1e-6f)
+        assertEquals(0.8f, color.b, 1e-6f)
+        assertEquals(0.5f, intensity, 1e-6f)
+    }
+
+    @Test
+    fun `environmentalHdrMainLight conserves energy - hue x magnitude == input`() {
+        // The exact decomposition contract: (c / max) × max == c, so the
+        // consumer's baseline-multiply applies the raw radiance exactly once.
+        val input = Color(0.21f, 0.47f, 0.33f)
+        val (color, intensity) = LightEstimator.environmentalHdrMainLight(input)
+        assertNotNull(color)
+        assertEquals(input.r, color!!.r * intensity, 1e-6f)
+        assertEquals(input.g, color.g * intensity, 1e-6f)
+        assertEquals(input.b, color.b * intensity, 1e-6f)
+    }
+
+    @Test
+    fun `environmentalHdrMainLight pitch-black estimate keeps baseline hue, zero intensity`() {
+        val (color, intensity) =
+            LightEstimator.environmentalHdrMainLight(Color(0f, 0f, 0f))
+        assertNull(color)
+        assertEquals(0f, intensity, 0f)
+    }
+
+    @Test
+    fun `environmentalHdrMainLight indoor estimate no longer collapses the light (#2483)`() {
+        // Pre-fix, with the default AR exposure f/12 1/200s ISO200 (exposureFactor = 1/ev100
+        // ≈ 0.0668) and a typical indoor estimate (~0.3 relative radiance):
+        //   color     ≈ 0.3 × 0.0668            ≈ 0.02   (2% of baseline hue)
+        //   intensity ≈ avg(0.02) / 4           ≈ 0.005
+        //   effective ≈ 0.02 × 0.005 × baseline ≈ 1e-4 × baseline → black.
+        // Post-fix the magnitude is applied once: baseline × max component.
+        val baselineIntensity = 10_000f
+        val (color, intensity) =
+            LightEstimator.environmentalHdrMainLight(Color(0.24f, 0.30f, 0.27f))
+        val effectiveIntensity = baselineIntensity * intensity
+        assertEquals(3_000f, effectiveIntensity, 0.5f)
+        // The hue is bounded — a green-dominant camera feed tints the light but
+        // never scales any channel above the estimate's own magnitude.
+        assertEquals(1.0f, color!!.g, 1e-6f)
+        assertTrue(color.r in 0f..1f && color.b in 0f..1f)
+    }
+
+    @Test
+    fun `environmentalHdrMainLight sun-bright estimate scales past the baseline`() {
+        // ARCore HDR radiance is unbounded — direct sun can exceed 1.0. The
+        // magnitude passes through so the baseline-multiply can over-drive.
+        val (color, intensity) =
+            LightEstimator.environmentalHdrMainLight(Color(8f, 7.5f, 7f))
+        assertEquals(8f, intensity, 1e-6f)
+        assertEquals(1.0f, color!!.r, 1e-6f)
+    }
+    @Test
+    fun `single-frame radiance spikes are capped at the defensive ceiling`() {
+        val (color, intensity) = LightEstimator.environmentalHdrMainLight(
+            Color(30f, 28f, 25f)  // absurd spike, far above real sun (~8)
+        )
+        assertEquals(LightEstimator.MAIN_LIGHT_MAX_INTENSITY_FACTOR, intensity)
+        // Hue stays normalized against the RAW max — chromaticity is unaffected
+        // by the cap.
+        assertEquals(1.0f, color!!.r, 1e-6f)
     }
 }
