@@ -4670,6 +4670,8 @@ ARSceneView(
     planeDetection: .horizontal,
     showPlaneOverlay: true,
     showCoachingOverlay: true,
+    showPlacementReticle: Bool = false,      // continuous smoothed placement cursor (#894)
+    groundingShadows: Bool = true,           // contact shadows on tap-placed models (#894)
     onTapOnPlane: { position in /* SIMD3<Float> world-space */ }
 )
 .content { arView in /* add content */ }
@@ -4682,6 +4684,8 @@ public struct ARSceneView: UIViewRepresentable {
         planeDetection: PlaneDetectionMode = .horizontal,
         showPlaneOverlay: Bool = true,
         showCoachingOverlay: Bool = true,
+        showPlacementReticle: Bool = false,      // continuous smoothed placement cursor (#894)
+        groundingShadows: Bool = true,           // contact shadows on tap-placed models (#894)
         cameraExposure: Float? = nil,
         imageTrackingDatabase: Set<ARReferenceImage>? = nil,
         faceTracking: Bool = false,

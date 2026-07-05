@@ -50,6 +50,8 @@ ARSceneView(
     planeDetection: .horizontal,   // .horizontal | .vertical | .both | .none
     showPlaneOverlay: true,
     showCoachingOverlay: true,
+    showPlacementReticle: true,   // continuous smoothed placement cursor (#894, opt-in)
+    groundingShadows: true,       // contact shadows on tap-placed models (#894, DEFAULT ON — opt out with false; sync placement flow only)
     onTapOnPlane: { position, arView in /* place content */ }
 )
     .onSessionStarted { arView in }

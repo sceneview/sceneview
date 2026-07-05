@@ -73,7 +73,7 @@ Box {
 
 `PlaneDiscoveryGuide` = timed hand-hint/help onboarding (replaces static "Scanning…" banners).
 `snapToPlane=false` on the reticle = free placement (points accepted, planes in-polygon).
-iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); shadows/reticle → #894.
+iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); reticle = `showPlacementReticle: true`, contact shadows = `groundingShadows` (default on) — #894 shipped.
 
 ## Remember helpers (always use these)
 

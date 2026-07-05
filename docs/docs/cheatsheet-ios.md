@@ -62,6 +62,8 @@ ARSceneView(
     planeDetection: .horizontal,       // .horizontal, .vertical, .both, .none
     showPlaneOverlay: true,            // visualize detected planes
     showCoachingOverlay: true,         // ARKit coaching UI
+    showPlacementReticle: true,        // smoothed placement cursor (#894, opt-in)
+    groundingShadows: true,            // contact shadows on placed models (default on)
     onTapOnPlane: { position, arView in
         let anchor = AnchorNode.world(position: position)
         anchor.add(model.entity)

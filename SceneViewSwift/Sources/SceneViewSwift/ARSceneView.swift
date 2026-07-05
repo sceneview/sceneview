@@ -597,9 +597,10 @@ public struct ARSceneView: UIViewRepresentable {
         /// `PlacementReticleNode.DEFAULT_ORIENTATION_SMOOTHING`.
         static let reticleSmoothing: Float = 0.75
 
-        /// Reticle disc footprint (metres) — matches the 4 cm radius of the
-        /// built-in disc on Android's `ReticleNode`.
-        static let reticleDiameter: Float = 0.08
+        /// Reticle disc footprint (metres) — visual parity with the built-in
+        /// disc of Android's `PlacementReticle` (`PlacementScene.RETICLE_RADIUS`
+        /// = 0.07 m radius → 14 cm diameter).
+        static let reticleDiameter: Float = 0.14
 
         // Light-slot reactive plumbing — same pattern as ``SceneView`` (#1017)
         // adapted for AR. The anchor refs let the diff in `refreshARLightSlot`
@@ -817,9 +818,11 @@ public struct ARSceneView: UIViewRepresentable {
             )
         }
 
-        /// Builds the reticle — a thin translucent cyan disc (the same look as
-        /// the built-in disc on Android's `ReticleNode`), hosted on a world
-        /// anchor whose transform tracks the smoothed raycast pose.
+        /// Builds the reticle — a thin translucent disc in the design-system
+        /// cyan, matching Android `PlacementReticle`'s built-in disc
+        /// (`PlacementScene.DEFAULT_RETICLE_COLOR` = #44E7FF at ~60 % alpha),
+        /// hosted on a world anchor whose transform tracks the smoothed
+        /// raycast pose.
         private func makeReticleAnchor(in arView: ARView) -> AnchorEntity {
             let anchor = AnchorEntity(world: .zero)
             let mesh = MeshResource.generatePlane(
@@ -827,10 +830,13 @@ public struct ARSceneView: UIViewRepresentable {
                 depth: Self.reticleDiameter,
                 cornerRadius: Self.reticleDiameter / 2
             )
+            // Alpha rides the blending opacity, not the tint: RealityKit is
+            // known to drop the base-color alpha on some material paths, which
+            // would render the disc fully opaque.
             var material = UnlitMaterial(
-                color: .init(red: 0, green: 1, blue: 1, alpha: 0.85)
+                color: .init(red: 0x44 / 255.0, green: 0xE7 / 255.0, blue: 1.0, alpha: 1.0)
             )
-            material.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+            material.blending = .transparent(opacity: .init(floatLiteral: 0.6))
             let disc = ModelEntity(mesh: mesh, materials: [material])
             // Nudge off the surface along the plane normal so the disc never
             // z-fights the detected-plane overlay fill (a 1 mm box).
