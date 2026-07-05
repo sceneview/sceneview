@@ -52,7 +52,6 @@ class ARDemoPlaybackSmokeTest {
         // the camera-permission prompt and we capture the system dialog instead of the
         // ARSceneView playback.
         device.executeShellCommand("pm grant io.github.sceneview.demo android.permission.CAMERA")
-        device.executeShellCommand("pm grant io.github.sceneview.demo android.permission.RECORD_AUDIO")
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
     }

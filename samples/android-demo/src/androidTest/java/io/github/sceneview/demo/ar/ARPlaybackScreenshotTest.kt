@@ -82,7 +82,6 @@ class ARPlaybackScreenshotTest {
         // class, wiping any prior `pm grant`. Without CAMERA the AR demo blocks at the
         // permission prompt and we would screenshot the system dialog.
         device.executeShellCommand("pm grant io.github.sceneview.demo android.permission.CAMERA")
-        device.executeShellCommand("pm grant io.github.sceneview.demo android.permission.RECORD_AUDIO")
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
     }

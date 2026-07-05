@@ -38,13 +38,6 @@ name: Deploy Demo to Play Internal (per-push)
 # rejects the second upload loudly ("version code already used") and the next
 # push gets a fresh minute. Acceptable for a dev loop; the concurrency group
 # below makes it near-impossible within this workflow anyway.
-#
-# FGS note (#2505 / #2188 / #2120): an internal upload carrying the
-# FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION permission surfaces the Play
-# Console "Foreground service type declarations" form. That is expected, not
-# a bug — internal-track uploads are fine; only DO NOT promote such a build
-# to production before the declaration form is filled in Play Console →
-# App content. The best-effort declaration step below mirrors play-store.yml.
 
 on:
   push:
@@ -219,54 +212,6 @@ jobs:
           NOTE="main@$(git rev-parse --short HEAD): ${SUBJECT}"
           printf '%s' "${NOTE:0:500}" > whatsnew/whatsnew-en-GB
           cat whatsnew/whatsnew-en-GB
-
-      # Best-effort FGS declaration — mirrors play-store.yml (#2120/#2505).
-      # continue-on-error: if it fails, the upload commit surfaces the FGS
-      # error and the failure is visible in the run.
-      - name: Declare Foreground Service permissions (Play Console)
-        if: steps.guard.outputs.skip != 'true'
-        continue-on-error: true
-        env:
-          SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
-        run: |
-          python3 -m venv /tmp/fgs-venv
-          /tmp/fgs-venv/bin/pip install --quiet -r .github/workflows/requirements/play-store.txt
-          /tmp/fgs-venv/bin/python3 << 'PYEOF'
-          import json, os, sys
-          import requests
-          from google.oauth2 import service_account
-          from google.auth.transport.requests import Request
-
-          creds = service_account.Credentials.from_service_account_info(
-              json.loads(os.environ["SERVICE_ACCOUNT_JSON"]),
-              scopes=["https://www.googleapis.com/auth/androidpublisher"],
-          )
-          creds.refresh(Request())
-          token = creds.token
-
-          # Play Console internal API identifiers (see play-store.yml, #2120).
-          DEV_ID = "4638313286439917620"
-          APP_ID = "4976357948291389972"
-          payload = {"3": [{"1": 21, "2": 1}], "5": {"1": 2}}
-
-          url = (
-              f"https://playconsoleapps-pa.clients6.google.com"
-              f"/v1/developers/{DEV_ID}/apps/{APP_ID}/permissionDeclarationData:update"
-          )
-          r = requests.post(
-              url,
-              headers={
-                  "Authorization": f"Bearer {token}",
-                  "Content-Type": "application/json+protobuf",
-              },
-              json=payload,
-              timeout=30,
-          )
-          print(f"FGS declaration: HTTP {r.status_code}")
-          if r.status_code != 200:
-              print("FGS declaration failed — commit may still fail with FGS error.",
-                    file=sys.stderr)
-          PYEOF
 
       - name: Publish to Play Store (internal)
         if: steps.guard.outputs.skip != 'true'

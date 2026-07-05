@@ -1,14 +1,16 @@
 # Privacy Policy — SceneView Demo
 
-**Last updated:** May 21, 2026
+**Last updated:** July 5, 2026
 
 ## Summary
 
 **SceneView Demo collects no personal data and its 3D content works fully
-offline.** The one exception is the **optional in-app feedback feature**: if you
-choose to report a bug or share an idea, it records your screen and microphone
-and sends them to the SceneView team. Nothing is recorded or sent unless you
-explicitly start a feedback report and agree.
+offline.** The app never records your screen or microphone and never uploads
+anything by itself. The **optional in-app bug reporter** assembles a report
+(device info, the app's own recent log, and an optional screenshot of the app)
+**on your device only** — it is sent exclusively through an app *you* pick in
+the Android share sheet, or as a pre-filled GitHub issue you review before
+submitting.
 
 ## Details
 
@@ -16,7 +18,7 @@ explicitly start a feedback report and agree.
 
 - **No personal data collected** — The app does not collect names, email addresses, IP addresses, or any other personally identifiable information.
 - **No analytics or tracking** — No analytics SDKs, telemetry, fingerprinting, or behavioral tracking of any kind.
-- **Offline by default** — All 3D models, textures, and environments are bundled locally and need no network. The only feature that uses the network is the opt-in feedback reporter described below.
+- **Offline by default** — All 3D models, textures, and environments are bundled locally and need no network. The in-app bug reporter is offline too: it composes the report on-device and hands it to the Android share sheet (or your browser) — the app itself uploads nothing.
 - **No accounts** — The app does not require or support user accounts.
 
 ### Camera Usage (AR Features)
@@ -26,52 +28,43 @@ explicitly start a feedback report and agree.
 - **No camera images or video are stored, recorded, or transmitted** to any server.
 - Camera access is only requested when the user navigates to the AR tab.
 
-### In-App Feedback (Optional)
+### In-App Bug Reports (Optional)
 
-The app includes an optional feedback reporter so you can report a bug or
-suggest an idea. It is **opt-in and consent-gated** — nothing is recorded or
-sent unless you start a feedback report and explicitly agree on the consent
-screen.
+The app includes an optional, lightweight bug reporter. It uses **no runtime
+permission, no screen recording, no microphone, and no background service**,
+and the app **never uploads anything itself**.
 
-**What is captured.** When you submit feedback:
+**What the report contains.** When you open "Report a bug":
 
-- The app records **your screen** (a short `.mp4` — it may include the AR
-  camera viewfinder if an AR demo is open) and, if you allow it, **your
-  microphone audio**, so you can demonstrate and describe the issue.
-- It also collects **device/app context**: app version and build number,
-  Android version and API level, device manufacturer and model, locale, and
-  free RAM. No advertising ID, no IP address, no account identifier.
-- For a bug report a screen recording is encouraged; for an idea, a quick
-  voice note or plain text is enough — a recording is never forced.
+- an optional **screenshot of the app's own window** (captured via Android's
+  `PixelCopy` — only this app's content, never other apps or notifications),
+  with an in-sheet preview and an include/exclude toggle;
+- the **app's own recent log lines** (Android lets an app read only its own
+  log — no `READ_LOGS` permission is involved);
+- **device/app context**: app version and build number, Android version and
+  API level, device manufacturer and model, ABI, screen size, and locale. No
+  advertising ID, no IP address, no account identifier;
+- any **description you type**.
 
-**Where it goes.** The recording, audio, and context are uploaded over HTTPS
-to the **SceneView feedback service** — an open-source Cloudflare Worker
-operated by the SceneView project
-([`feedback-worker/`](https://github.com/sceneview/sceneview/tree/main/feedback-worker)).
-The service then:
+**Where it goes — you decide.** The report never leaves the device on its
+own. You choose one of two exits:
 
-1. Stores the screen recording and audio **privately** in **Cloudflare R2**
-   object storage — a private bucket, not publicly listable or indexable.
-2. Transcribes your voice audio to text using **Cloudflare Workers AI** (the
-   OpenAI **Whisper** model). The audio is processed for transcription only and
-   is not used to train any model.
-3. Opens a pre-filled issue in the public SceneView issue tracker on GitHub.
-   **That public issue contains only the written transcript, any text you
-   typed, and the device/app context — never your screen recording or audio.**
-   Please avoid showing or saying personal information while recording, since
-   the transcript and context are public.
+1. **Share** — the report opens in the standard Android share sheet and is
+   sent through whatever app you pick (email, GitHub, a messenger, …). The
+   data is then handled by that app under its own privacy policy.
+2. **Open a GitHub issue** — a pre-filled public issue form opens in your
+   browser; nothing is posted until you review and submit it there. This path
+   carries text only (the screenshot cannot ride in a URL).
 
-**Access control & retention.** The screen recording and audio are accessible
-only to SceneView maintainers, through an **admin-token-gated viewer**. Without
-that token the viewer page shows only the public transcript and context — the
-media players are not available; media is served with `private, no-store`
-caching and the viewer page is `noindex`. The recording and audio are
-**automatically deleted after 90 days** by a scheduled job; the transcript and
-context (already public on the GitHub issue) are kept. The service hashes the
-request IP for rate limiting only — the raw IP is never stored.
+If you dismiss the sheet, the report is discarded; the temporary screenshot
+file lives in the app's private cache and is cleaned up automatically.
 
-You can cancel at any point before sending. If you never use the feedback
-feature, none of the above applies.
+> **Earlier app versions (≤ 4.18.x)** shipped a consent-gated screen + voice
+> recorder that uploaded to the SceneView feedback service (a Cloudflare
+> Worker), where recordings were stored privately and auto-deleted after 90
+> days. That system has been removed from the app; the retention and deletion
+> commitments above continue to apply to any recording submitted by an older
+> version until it is deleted.
 
 ### Third-Party SDKs
 
@@ -80,25 +73,13 @@ feature, none of the above applies.
 | Google Filament | 3D rendering engine | None |
 | Google ARCore | Augmented reality | Camera processed locally, no data sent to Google |
 | Jetpack Compose | UI framework | None |
-| Android MediaProjection / MediaRecorder | Screen + audio capture for the opt-in feedback feature | Only when you record feedback (see *In-App Feedback*) |
 
-### Third-Party Processors (feedback feature only)
-
-These processors handle data **only** when you choose to submit feedback:
-
-| Service | Role | Data handled |
-|---------|------|--------------|
-| Cloudflare R2 | Private object storage | Screen recording, audio |
-| Cloudflare Workers AI (Whisper) | Speech-to-text transcription | Audio |
-| GitHub | Public issue tracker | Transcript, typed text, device/app context |
 
 ### Data Sharing
 
-- The only data that ever leaves the device is feedback **you** choose to
-  submit. It is sent to the SceneView feedback service (a Cloudflare Worker
-  operated by the SceneView open-source project), processed by the services in
-  the *Third-Party Processors* table above, and surfaces as an issue on GitHub,
-  as described in *In-App Feedback* above.
+- The only data that ever leaves the device is a bug report **you** choose to
+  send — through a share-sheet app you pick, or as a GitHub issue you review
+  and submit yourself, as described in *In-App Bug Reports* above.
 - No data is sold or used for advertising.
 
 ### Children's Privacy

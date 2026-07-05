@@ -39,13 +39,13 @@ and the `llms.txt` demo list from those fragments, so the catalog never drifts.
 ./gradlew :samples:android-demo:assembleDebug
 ```
 
-!!! info "In-app feedback"
-    The Android demo includes an opt-in **feedback button** for reporting a bug
-    or sharing an idea. When used, it records the screen and microphone and
-    uploads them to the SceneView feedback service, which transcribes the audio
-    and opens a pre-filled GitHub issue. The feature is consent-gated, the raw
-    recording stays private and is deleted after 90 days, and only the
-    transcript + device context appear on the public issue. See the
+!!! info "In-app bug reports"
+    The Android demo includes a **feedback button** that opens a lightweight
+    "Report a bug" sheet — an optional `PixelCopy` screenshot of the app, the
+    app's own logcat tail, and device/app context. It needs **zero
+    permissions** (no recording, no foreground service) and never uploads
+    anything itself: the user sends the report through the Android share
+    sheet, or opens a pre-filled GitHub issue in the browser. See the
     [Privacy Policy](privacy.md) for the full data flow.
 
 ### iOS Demo

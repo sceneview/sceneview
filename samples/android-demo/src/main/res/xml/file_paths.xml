@@ -11,4 +11,11 @@
         FileProvider.getUriForFile().
     -->
     <external-files-path name="ar-recordings" path="ar-recordings/" />
+
+    <!--
+        Bug-report screenshots (feedback/BugReportSheet) — PNGs written to
+        cacheDir/feedback/ and attached to the ACTION_SEND share intent.
+        Scoped to the feedback/ subdirectory only, never the whole cache.
+    -->
+    <cache-path name="feedback" path="feedback/" />
 </paths>

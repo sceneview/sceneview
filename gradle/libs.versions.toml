@@ -152,7 +152,6 @@ fuel-coroutines = { group = "com.github.kittinunf.fuel", name = "fuel-coroutines
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 # MockWebServer — JVM-only test double for the feedback uploader / ticket-status
 # OkHttp calls (#1930 review). Same okhttp version as the runtime client.
-okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver3", version.ref = "okhttp" }
 
 # Kotlinx Serialization (JSON parsing for Sketchfab API responses)
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }

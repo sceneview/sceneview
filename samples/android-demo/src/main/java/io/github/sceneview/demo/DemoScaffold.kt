@@ -227,7 +227,8 @@ fun DemoScaffold(
                     // top-app-bar action is the right slot: a FAB would collide
                     // with the demo controls `Tune` FAB at the bottom-end.
                     // Tapping it raises FeedbackOpenRequest, which
-                    // SceneViewDemoApp observes to open the shared FeedbackFlow.
+                    // SceneViewDemoApp observes to open the shared bug-report
+                    // sheet (BugReportSheet).
                     val feedbackCd = stringResource(R.string.feedback_action_cd)
                     IconButton(
                         onClick = {

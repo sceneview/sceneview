@@ -281,96 +281,23 @@
     <string name="tracking_failure_insufficient_features">Not enough detail — point at a more textured surface</string>
     <string name="tracking_failure_camera_unavailable">Camera unavailable — close other camera apps</string>
 
-    <!-- In-app feedback (issue #1932) -->
+    <!-- In-app bug report — lightweight, permission-free (successor of #1932/#2188) -->
     <string name="feedback_button">Feedback</string>
-    <string name="feedback_cd_close">Close</string>
-    <string name="feedback_onboarding_title">Help improve SceneView</string>
-    <string name="feedback_onboarding_body">See a bug or have an idea? Tap Feedback anytime. Record your screen and describe what\'s happening in your own words — we\'ll turn it into a report for the team.</string>
-    <string name="feedback_onboarding_continue">Get started</string>
-    <string name="feedback_category_title">What would you like to share?</string>
-    <string name="feedback_bug_title">Report a bug</string>
-    <string name="feedback_bug_subtitle">Something isn\'t working right</string>
-    <string name="feedback_idea_title">Share an idea</string>
-    <string name="feedback_idea_subtitle">A suggestion or feature request</string>
-    <string name="feedback_consent_title">Screen &amp; microphone</string>
-    <string name="feedback_consent_body">To capture your feedback, the next step records:</string>
-    <string name="feedback_consent_screen">Your screen, while you show what happens</string>
-    <string name="feedback_consent_voice">Your voice, describing the issue in your own words</string>
-    <string name="feedback_consent_idea_optional">Sharing an idea? Recording is optional — a few spoken words are enough</string>
-    <string name="feedback_consent_privacy">The recording stays private — only the SceneView team can view it, and it is deleted after 90 days. The public report contains only a written summary.</string>
-    <string name="feedback_consent_agree">Allow &amp; continue</string>
-    <string name="feedback_consent_back">Back</string>
-    <string name="feedback_recording_channel">Feedback recording</string>
-    <string name="feedback_recording_title">Recording your feedback</string>
-    <string name="feedback_recording_text">Show what happens, then tap Stop</string>
-    <string name="feedback_recording_stop">Stop</string>
-    <string name="feedback_recording_stop_action">Stop recording</string>
-    <string name="feedback_consent_skip">Skip recording</string>
-    <string name="feedback_review_title">Review your feedback</string>
-    <string name="feedback_review_body">Send it to the SceneView team, or record again.</string>
-    <string name="feedback_review_recorded">Screen recording captured</string>
-    <string name="feedback_review_no_recording">No recording — your note will be sent on its own.</string>
-    <!-- Shown when no screen recording is attached: the note becomes the only payload, so the
-         Send button stays disabled until something is typed. The copy makes that requirement
-         explicit instead of leaving it implied (#2230). -->
-    <string name="feedback_review_no_recording_note_required">No screen recording attached. Describe the issue in the note below so the team can act on it.</string>
-    <string name="feedback_review_note_label">Add a note (optional)</string>
-    <!-- Note label when no recording is attached — the note is required, so the label drops
-         "optional" and asks for the description directly (#2230). -->
-    <string name="feedback_review_note_label_required">Describe the issue</string>
-    <string name="feedback_review_note_placeholder">Anything else the team should know?</string>
-    <string name="feedback_review_rerecord">Record again</string>
-    <string name="feedback_review_send">Send feedback</string>
-    <!-- Emulator hint: mic is silent, typed note needed for the issue to be useful (#2123) -->
-    <string name="feedback_review_emulator_hint">Running on an emulator — the mic is silent. Add a note so maintainers know what you observed.</string>
-    <string name="feedback_record_failed_title">Recording didn\'t work</string>
-    <string name="feedback_record_failed_body">The recording didn\'t finish. You can try again.</string>
-    <string name="feedback_record_retry">Try again</string>
-    <string name="feedback_sending">Sending your feedback…</string>
-    <string name="feedback_sending_progress">Uploading… %1$d%%</string>
-    <!-- "Feedback sent · Thank you" reads as a clear acknowledgement of receipt, not a
-         standalone greeting — paired with the issue number subtitle below (#2230). -->
-    <string name="feedback_sent_title">Feedback sent · Thank you</string>
-    <string name="feedback_sent_issue">Tracked as issue #%1$d. The team will take a look.</string>
-    <string name="feedback_sent_generic">Your feedback was received by the SceneView team.</string>
-    <string name="feedback_sent_done">Done</string>
-    <!-- Snackbar shown by the host after the dialog dismisses on a successful
-         send — persistent confirmation Thomas asked for at 0:58 of the
-         screen-record QA 2026-05-26 (#2230). %1$d is the GitHub issue number. -->
-    <string name="feedback_sent_snackbar">Feedback sent · Issue #%1$d</string>
-    <string name="feedback_sent_snackbar_generic">Feedback sent · Thank you</string>
-    <string name="feedback_send_failed_title">Couldn\'t send</string>
-    <string name="feedback_send_failed_body">Your feedback couldn\'t be sent. Check your connection and try again.</string>
-    <string name="feedback_send_retry">Try again</string>
-    <!-- In-app feedback — ticket tracking (issue #1940) -->
-    <string name="feedback_tickets_entry">My feedback</string>
-    <string name="feedback_tickets_title">My feedback</string>
-    <string name="feedback_tickets_body">Tap a report to see its status and the team\'s replies on GitHub.</string>
-    <string name="feedback_tickets_back">Back</string>
-    <string name="feedback_tickets_empty">You haven\'t submitted any feedback yet.</string>
-    <string name="feedback_tickets_open">Open</string>
-    <string name="feedback_tickets_closed">Closed</string>
-    <string name="feedback_tickets_untitled_bug">Bug report</string>
-    <string name="feedback_tickets_untitled_idea">Idea</string>
-    <string name="feedback_tickets_row_meta">#%1$d · %2$s</string>
-    <string name="feedback_tickets_no_app">No app available to open the issue</string>
-    <string name="feedback_tickets_open_a11y">Open issue on GitHub</string>
-    <string name="feedback_tickets_status_loading">Loading status</string>
-    <!-- In-app feedback — review-blocker hardening (issue #1930) -->
-    <string name="feedback_recording_capped">Recording length limit reached — your clip was saved. You can send it as is, or record a shorter one.</string>
-    <string name="feedback_send_failed_too_large">Your recording is too large to send. Record a shorter clip and try again.</string>
-    <string name="feedback_send_failed_rate_limited">Too many submissions right now. Please try again in a minute.</string>
-    <string name="feedback_send_failed_server">The feedback service is having trouble. Please try again shortly.</string>
-    <string name="feedback_record_denied_title">Microphone access needed</string>
-    <string name="feedback_record_denied_body">Recording needs microphone access. Enable it in app settings, or skip recording and send a written note instead.</string>
-    <string name="feedback_record_open_settings">Open settings</string>
-    <string name="feedback_record_skip">Send a note instead</string>
-    <string name="feedback_notif_warning">If you can\'t see a notification, use the Stop button at the top of the screen to finish recording.</string>
-    <string name="feedback_sending_cancel">Cancel</string>
     <string name="feedback_action_cd">Send feedback</string>
-    <!-- In-app feedback — lower-priority review follow-ups (issue #2030) -->
-    <string name="feedback_record_revoked_title">Recording stopped early</string>
-    <string name="feedback_record_revoked_body">Screen recording was stopped before there was enough to capture. This can happen when another app takes over the screen. You can try again, or send a written note instead.</string>
-    <string name="feedback_tickets_refresh">Refresh status</string>
-    <string name="feedback_tickets_refreshing">Refreshing status</string>
+    <!-- Generic close a11y label — also reused by SketchfabModelViewerScreen. -->
+    <string name="feedback_cd_close">Close</string>
+    <string name="feedback_report_title">Report a bug</string>
+    <string name="feedback_report_body">The report bundles your device info, the app\'s recent log, and an optional screenshot. Nothing leaves your device until you choose where to send it.</string>
+    <string name="feedback_report_screenshot_include">Include screenshot</string>
+    <string name="feedback_report_screenshot_cd">Screenshot preview</string>
+    <string name="feedback_report_screenshot_unavailable">Screenshot couldn\'t be captured — the report will be text-only.</string>
+    <string name="feedback_report_screenshot_may_be_black">On this device the 3D viewport may appear black in the capture.</string>
+    <string name="feedback_report_screenshot_share_only">The screenshot is attached when you share — the GitHub link can\'t carry an image.</string>
+    <string name="feedback_report_note_label">Describe the issue (optional)</string>
+    <string name="feedback_report_note_placeholder">What happened? What did you expect?</string>
+    <string name="feedback_report_privacy">Sent only through the app you pick — no account, no upload, no recording.</string>
+    <string name="feedback_report_share">Share report</string>
+    <string name="feedback_report_open_github">Open a GitHub issue</string>
+    <string name="feedback_report_share_chooser">Share bug report</string>
+    <string name="feedback_report_no_app">No app available to send the report</string>
 </resources>

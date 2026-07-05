@@ -52,7 +52,6 @@ class ARDepthOcclusionToggleTest {
         // AGP reinstalls the demo APK before each test class, so pre-grant the AR
         // permissions — otherwise the demo blocks on the system camera prompt.
         device.executeShellCommand("pm grant $pkg android.permission.CAMERA")
-        device.executeShellCommand("pm grant $pkg android.permission.RECORD_AUDIO")
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
     }

@@ -121,7 +121,6 @@ class ARReplayHarnessTest {
         // test class, wiping any prior `pm grant`. Without CAMERA the AR demos
         // block at the permission prompt instead of mounting the ARSceneView.
         device.executeShellCommand("pm grant io.github.sceneview.demo android.permission.CAMERA")
-        device.executeShellCommand("pm grant io.github.sceneview.demo android.permission.RECORD_AUDIO")
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
     }
