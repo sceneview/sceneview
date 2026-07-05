@@ -35,6 +35,16 @@
 -dontwarn com.google.android.filament.**
 -dontwarn com.google.ar.**
 
+# ── Nearby Connections (compile-time-only) ───────────────────────────────────
+# arsceneview's `NearbyCollaborativeTransport` reference implementation (#2008)
+# references `com.google.android.gms.nearby.connection.**` via a `compileOnly`
+# dependency, so those classes are NOT on this app's runtime/minify classpath.
+# The demo uses `LoopbackCollaborativeTransport`, never the Nearby transport, so
+# R8 shrinks `NearbyCollaborativeTransport` away — but without this rule R8 aborts
+# on the unresolved references before it can (broke the 4.19.0 Play Store AAB).
+# Apps that actually use Nearby add `implementation(libs.play.services.nearby)`.
+-dontwarn com.google.android.gms.nearby.**
+
 # ── AutoValue / javax.lang.model (compile-time-only) ─────────────────────────
 # MediaPipe's tasks-vision POM drags com.google.auto.value:auto-value (the full
 # annotation processor + a shaded JavaPoet) onto the runtime/minify classpath.
