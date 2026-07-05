@@ -322,6 +322,17 @@ class DemoRenderingScreenshotTest {
         if (golden == null) {
             // First-run path: save the capture so it can be promoted to the golden.
             val savedTo = saveToDeviceForReview(capturedBitmapNN, "${goldenName}_first_run")
+            // A slug that HAS a committed baseline must never silently lose its
+            // protection (#2323): a missing golden there means the asset was
+            // deleted/renamed — FAIL loudly instead of assume-skipping. Genuinely
+            // new slugs keep the quiet first-run capture flow.
+            if (goldenName in BASELINED_GOLDENS) {
+                throw AssertionError(
+                    "Golden $goldenAsset is EXPECTED (slug is in BASELINED_GOLDENS) but " +
+                        "missing from the test assets — was it deleted or renamed? " +
+                        "Fresh capture saved to $savedTo for re-baselining if intentional.",
+                )
+            }
             assumeTrue(
                 "No golden at $goldenAsset — capture saved to $savedTo. " +
                     "Pull via adb, review, then commit as the new golden:\n" +
@@ -445,6 +456,27 @@ class DemoRenderingScreenshotTest {
         // Max time we'll keep retrying after the per-test minimum settle, waiting for
         // the SceneView centre to show non-flat pixels. Covers slow first-time CDN
         // model downloads (~10s on emulator) plus Filament Engine init drift.
+        /**
+         * Slugs whose golden IS committed under `androidTest/assets/render-goldens/` —
+         * for these a missing golden is a hard FAILURE, not a first-run skip (#2323).
+         * Add a slug here in the SAME commit that adds its golden PNG.
+         */
+        val BASELINED_GOLDENS = setOf(
+            "animationphysics_default",
+            "cameragestures_default",
+            "customgeometry_default",
+            "debugoverlay_default",
+            "fog_default",
+            "geometry_default",
+            "lighting_default",
+            "lightinglab_default",
+            "linespaths_default",
+            "materials_default",
+            "modelviewer_default",
+            "pickingcollision_default",
+            "twodinthreed_default",
+        )
+
         const val MAX_SETTLE_MS = 25_000L
         const val POLL_INTERVAL_MS = 1_000L
 
