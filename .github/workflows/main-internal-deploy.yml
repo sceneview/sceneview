@@ -1,0 +1,291 @@
+name: Deploy Demo to Play Internal (per-push)
+
+# Maintainer fast test loop — every push to main that can affect the Android
+# demo app ships a signed AAB to the Play Store INTERNAL TESTING track, so the
+# maintainer's opted-in device auto-updates within minutes of a merge.
+#
+# Relationship to play-store.yml (#1321 context):
+#
+# - play-store.yml went tag-only in #1321 because per-push deploys churned the
+#   internal track with snapshots nobody installed AND burned ~12 min of runner
+#   time per merge. This workflow deliberately reintroduces per-push internal
+#   deploys, but with the #1321 pain points addressed:
+#     * `concurrency.cancel-in-progress: true` — a burst of merges builds ONLY
+#       the newest commit; superseded runs are cancelled, not queued.
+#     * a `paths:` filter — pushes that cannot change the demo app (docs,
+#       website, mcp/, iOS, scripts…) never trigger a build.
+#     * internal-track ONLY — production stays tag-only via play-store.yml.
+# - Release deploys (tag push → internal+production) still go exclusively
+#   through play-store.yml. This workflow never touches production.
+#
+# versionCode scheme — SHARED with play-store.yml (epoch-minutes):
+#
+#   VERSION_CODE = unix_epoch_seconds / 60   (~29.7M in mid-2026)
+#
+# Google Play requires every uploaded versionCode to be unique for the app,
+# and a device only updates to a HIGHER versionCode than the one it runs —
+# across ALL tracks. Because this workflow and play-store.yml upload builds of
+# the same package (io.github.sceneview.demo), they MUST share one strictly
+# increasing scheme: if the release workflow used a small counter (its old
+# `github.run_number`, in the hundreds) while this one used epoch-minutes,
+# every future release would carry a versionCode far below the internal
+# builds → Play would reject the rollout and the maintainer's device would
+# never leave the snapshot build. Epoch-minutes is monotonic wall-clock time,
+# needs zero cross-workflow coordination, and stays below Play's max
+# versionCode (2,100,000,000) until ~year 5960.
+#
+# Same-minute tie: two builds in the same minute produce the same code; Play
+# rejects the second upload loudly ("version code already used") and the next
+# push gets a fresh minute. Acceptable for a dev loop; the concurrency group
+# below makes it near-impossible within this workflow anyway.
+#
+# FGS note (#2505 / #2188 / #2120): an internal upload carrying the
+# FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION permission surfaces the Play
+# Console "Foreground service type declarations" form. That is expected, not
+# a bug — internal-track uploads are fine; only DO NOT promote such a build
+# to production before the declaration form is filled in Play Console →
+# App content. The best-effort declaration step below mirrors play-store.yml.
+
+on:
+  push:
+    # `branches: [main]` is required — `paths:` alone does NOT scope the push
+    # trigger to a branch (see telemetry-ci.yml for the same footgun note).
+    branches: [main]
+    paths:
+      - 'sceneview/**'
+      - 'arsceneview/**'
+      - 'sceneview-core/**'
+      - 'samples/android-demo/**'
+      - 'samples/common/**'
+      - 'assets/**'
+  workflow_dispatch:
+
+# Keep only the LATEST commit's build: a newer push cancels any in-progress
+# or pending run of this workflow. Deliberately a DIFFERENT group from
+# play-store.yml's `play-store-deploy` (cancel-in-progress: false) — sharing
+# the group would let a fresh main push cancel an in-flight RELEASE deploy.
+# The cross-workflow Play Edits race is handled by the release-window guard
+# step below instead.
+concurrency:
+  group: main-internal-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Needed by the release-window guard to list play-store.yml runs.
+  actions: read
+
+jobs:
+  deploy:
+    name: Build & upload internal AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # ── Release-window guard ─────────────────────────────────────────────
+      # Google's Play Edits API races when two workflows upload-and-commit to
+      # the same packageName concurrently (see play-store.yml's max-parallel
+      # rationale — "This Edit has been deleted"). A tag release usually rides
+      # right behind a push to main, so during a release window this per-push
+      # deploy could collide with play-store.yml. If a play-store.yml run is
+      # queued or in progress, SKIP this deploy entirely: the tag deploy
+      # targets the internal track too, so the maintainer's device still gets
+      # that exact build — nothing is lost.
+      - name: Skip if a Play Store release deploy is running
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ACTIVE=$(gh run list -R "$GITHUB_REPOSITORY" \
+            --workflow=play-store.yml \
+            --status=in_progress --json databaseId --jq 'length' || echo 0)
+          QUEUED=$(gh run list -R "$GITHUB_REPOSITORY" \
+            --workflow=play-store.yml \
+            --status=queued --json databaseId --jq 'length' || echo 0)
+          if [ "${ACTIVE:-0}" -gt 0 ] || [ "${QUEUED:-0}" -gt 0 ]; then
+            echo "::notice::play-store.yml deploy in flight — skipping per-push internal deploy (the release covers the internal track)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: ./.github/actions/setup-gradle
+        if: steps.guard.outputs.skip != 'true'
+
+      # Auto-versioning (scheme shared with play-store.yml — see header):
+      #   versionCode = epoch-minutes (strictly increasing wall-clock)
+      #   versionName = "<VERSION_NAME>-main.<short_sha>" so the maintainer can
+      #                 read exactly which commit is on the device
+      #                 (Play Console + the app's About tab both show it).
+      - name: Calculate version
+        id: version
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          VERSION_CODE=$(( $(date +%s) / 60 ))
+          BASE_VERSION=$(grep -E '^VERSION_NAME=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+          VERSION_NAME="${BASE_VERSION}-main.$(git rev-parse --short HEAD)"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION_NAME ($VERSION_CODE)"
+
+      - name: Validate keystore secret
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::UPLOAD_KEYSTORE_BASE64 secret is not set. Cannot build release AAB."
+            exit 1
+          fi
+
+      - name: Decode keystore
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 -d > samples/android-demo/release.keystore
+
+      # Same pre-flight guards as play-store.yml: these builds land on a real
+      # device (the maintainer's), so a blank ARCore / Sketchfab key must fail
+      # loudly here, not silently on the phone (#1177, #1909, #2095).
+      - name: Verify ARCore Cloud key wiring (#1177)
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
+        run: bash .claude/scripts/verify-arcore-key.sh
+
+      - name: Verify Sketchfab API key wiring (#1909, #2095)
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        run: bash .claude/scripts/verify-sketchfab-key.sh
+
+      - name: Build release AAB
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          SCENEVIEW_DEMO_KEYSTORE_FILE: release.keystore
+          SCENEVIEW_DEMO_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+          SCENEVIEW_DEMO_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          SCENEVIEW_DEMO_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+          # Required for Streetscape Geometry / Geospatial / Cloud Anchors demos.
+          ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
+          # Explore tab's Sketchfab gallery (see play-store.yml).
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        run: |
+          build_aab() {
+            ./gradlew :samples:android-demo:bundleRelease \
+              -PversionCode=${{ steps.version.outputs.code }} \
+              -PversionName=${{ steps.version.outputs.name }}
+          }
+          aab_ok() {
+            local aab
+            aab=$(ls samples/android-demo/build/outputs/bundle/release/*.aab 2>/dev/null | head -n1)
+            [ -n "$aab" ] && [ -s "$aab" ] && unzip -tq "$aab" >/dev/null 2>&1
+          }
+          # Zip-integrity + one clean rebuild on corruption — same rationale as
+          # play-store.yml (#1412/#1415): a truncated AAB from a flaky runner
+          # must not surface only at upload time.
+          build_aab
+          if ! aab_ok; then
+            echo "::warning::release AAB missing or corrupt after first build — cleaning and rebuilding once"
+            ./gradlew :samples:android-demo:clean
+            build_aab
+            aab_ok || { echo "::error::release AAB still corrupt after a clean rebuild — aborting"; exit 1; }
+          fi
+
+      # Manifest validation gate (#1301) — same as play-store.yml. A pre-upload
+      # guard must never block a deploy (#1416): continue-on-error.
+      - name: Validate AAB manifest before upload
+        if: steps.guard.outputs.skip != 'true'
+        continue-on-error: true
+        env:
+          EXPECT_PKG: io.github.sceneview.demo
+          EXPECT_NAME: ${{ steps.version.outputs.name }}
+          EXPECT_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          AAB=$(ls samples/android-demo/build/outputs/bundle/release/*.aab | head -n1)
+          bash .claude/scripts/validate-release-artifact.sh \
+            "$AAB" "$EXPECT_PKG" "$EXPECT_NAME" "$EXPECT_CODE"
+
+      # "What's new" for the internal track = the commit subject, so the
+      # maintainer sees in Play Console / the update card what he is testing.
+      # Play caps release notes at 500 chars per locale.
+      - name: Write internal release notes
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          mkdir -p whatsnew
+          SUBJECT=$(git log -1 --pretty=%s)
+          NOTE="main@$(git rev-parse --short HEAD): ${SUBJECT}"
+          printf '%s' "${NOTE:0:500}" > whatsnew/whatsnew-en-GB
+          cat whatsnew/whatsnew-en-GB
+
+      # Best-effort FGS declaration — mirrors play-store.yml (#2120/#2505).
+      # continue-on-error: if it fails, the upload commit surfaces the FGS
+      # error and the failure is visible in the run.
+      - name: Declare Foreground Service permissions (Play Console)
+        if: steps.guard.outputs.skip != 'true'
+        continue-on-error: true
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python3 -m venv /tmp/fgs-venv
+          /tmp/fgs-venv/bin/pip install --quiet -r .github/workflows/requirements/play-store.txt
+          /tmp/fgs-venv/bin/python3 << 'PYEOF'
+          import json, os, sys
+          import requests
+          from google.oauth2 import service_account
+          from google.auth.transport.requests import Request
+
+          creds = service_account.Credentials.from_service_account_info(
+              json.loads(os.environ["SERVICE_ACCOUNT_JSON"]),
+              scopes=["https://www.googleapis.com/auth/androidpublisher"],
+          )
+          creds.refresh(Request())
+          token = creds.token
+
+          # Play Console internal API identifiers (see play-store.yml, #2120).
+          DEV_ID = "4638313286439917620"
+          APP_ID = "4976357948291389972"
+          payload = {"3": [{"1": 21, "2": 1}], "5": {"1": 2}}
+
+          url = (
+              f"https://playconsoleapps-pa.clients6.google.com"
+              f"/v1/developers/{DEV_ID}/apps/{APP_ID}/permissionDeclarationData:update"
+          )
+          r = requests.post(
+              url,
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Content-Type": "application/json+protobuf",
+              },
+              json=payload,
+              timeout=30,
+          )
+          print(f"FGS declaration: HTTP {r.status_code}")
+          if r.status_code != 200:
+              print("FGS declaration failed — commit may still fail with FGS error.",
+                    file=sys.stderr)
+          PYEOF
+
+      - name: Publish to Play Store (internal)
+        if: steps.guard.outputs.skip != 'true'
+        uses: r0adkll/upload-google-play@v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+          packageName: io.github.sceneview.demo
+          releaseFiles: samples/android-demo/build/outputs/bundle/release/*.aab
+          track: internal
+          status: completed
+          whatsNewDirectory: whatsnew
+          # Internal track auto-submits; changesNotSentForReview is rejected
+          # by Play Console (see play-store.yml, #2211).
+          changesNotSentForReview: false
+          # 5 = "immediate" — this IS the maintainer's fast test loop; surface
+          # the update on the opted-in device as fast as Play allows (#2209
+          # explains why the default 0 is a silent multi-day delay).
+          inAppUpdatePriority: 5
+
+      - name: Clean up keystore
+        if: always()
+        run: rm -f samples/android-demo/release.keystore
