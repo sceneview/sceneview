@@ -23,6 +23,12 @@ name: Deploy Demo to Play Store
 #
 # To deploy an interim build between releases, use `workflow_dispatch`
 # below and pick the desired track.
+#
+# Per-push INTERNAL deploys are back (2026-07) — but in a separate, leaner
+# workflow: `main-internal-deploy.yml` (paths-filtered, cancel-in-progress,
+# internal track only — the maintainer's fast test loop). This workflow
+# remains the ONLY path to production. Both share the epoch-minutes
+# versionCode scheme — see the `Calculate version` step for the invariant.
 
 on:
   push:
@@ -137,14 +143,31 @@ jobs:
       - uses: ./.github/actions/setup-gradle
 
       # Auto-versioning:
-      #   versionCode = run_number (always increasing)
+      #   versionCode = epoch-minutes: $(date +%s) / 60 (~29.7M in mid-2026)
       #   versionName = - "X.Y.Z" when HEAD is exactly on a release tag (clean public version)
       #                 - "X.Y.Z-<short_sha>" when on main past the latest tag (snapshot)
       #                 - "YYYY.MM.DD-<short_sha>" when there is no tag yet
+      #
+      # WHY epoch-minutes and not github.run_number (the pre-2026-07 scheme):
+      # Google Play requires every uploaded versionCode to be unique for the
+      # app, and a device only ever updates to a HIGHER versionCode than the
+      # one it runs — evaluated across ALL tracks of the app.
+      # main-internal-deploy.yml ships per-push internal-track builds of the
+      # SAME package using epoch-minute versionCodes; if this workflow kept
+      # `github.run_number` (a few hundred), every future release AAB would
+      # carry a versionCode far BELOW the internal snapshots already on
+      # testers' devices → Play rejects the rollout / devices never update.
+      # Both Play-uploading workflows therefore share ONE scheme:
+      # epoch-minutes is strictly increasing wall-clock time, needs no
+      # cross-workflow counter coordination, and stays below Play's hard max
+      # versionCode (2,100,000,000) until ~year 5960. Two builds in the same
+      # minute would tie — Play then rejects the second upload loudly; the
+      # `play-store-deploy` concurrency group plus the internal workflow's
+      # release-window guard make that practically unreachable.
       - name: Calculate version
         id: version
         run: |
-          VERSION_CODE=${{ github.run_number }}
+          VERSION_CODE=$(( $(date +%s) / 60 ))
           EXACT_TAG=$(git describe --tags --exact-match HEAD 2>/dev/null || echo "")
           if [ -n "$EXACT_TAG" ]; then
             VERSION_NAME="${EXACT_TAG#v}"
