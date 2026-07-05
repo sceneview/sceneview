@@ -138,6 +138,9 @@ ARSceneView(
     planeDetection: .horizontal,        // .horizontal | .vertical | .both | .none
     showPlaneOverlay: true,
     showCoachingOverlay: true,
+    showPlacementReticle: true,   // built-in smoothed placement cursor (#894)
+    // groundingShadows: true is the default — tap-placed models get a
+    // RealityKit contact shadow automatically (opt out with false).
     onTapOnPlane: { position, arView in
         let anchor = AnchorNode.world(position: position)
         let cube = GeometryNode.cube(size: 0.1, color: .blue)

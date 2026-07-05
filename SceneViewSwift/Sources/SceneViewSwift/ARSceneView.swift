@@ -29,6 +29,8 @@ public struct ARSceneView: UIViewRepresentable {
     private var planeDetection: PlaneDetectionMode
     private var showPlaneOverlay: Bool
     private var showCoachingOverlay: Bool
+    private var showPlacementReticle: Bool
+    private var groundingShadows: Bool
     private var cameraExposure: Float?
     private var onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)?
     private var onSessionStarted: ((ARView) -> Void)?
@@ -75,6 +77,22 @@ public struct ARSceneView: UIViewRepresentable {
     ///   - planeDetection: Which plane orientations to detect. Default horizontal.
     ///   - showPlaneOverlay: Whether to visualize detected planes. Default true.
     ///   - showCoachingOverlay: Whether to show coaching when tracking limited. Default true.
+    ///   - showPlacementReticle: Whether to show a placement reticle — a small disc,
+    ///     snapped to the real surface at the screen centre, that previews exactly where
+    ///     a tap-to-place tap will land. Runs the same
+    ///     `raycast(from:allowing:.estimatedPlane, alignment:.any)` query as `onTapOnPlane`,
+    ///     once per AR frame; the reticle hides whenever the ray misses every surface.
+    ///     Orientation is smoothed with a per-frame slerp factor of `0.75` (ARCore Depth
+    ///     Lab's `OrientedReticle` value — Android `PlacementReticle` parity, #2241/#894)
+    ///     so the disc doesn't jitter while ARKit refines the surface estimate. Default false.
+    ///   - groundingShadows: Whether entities placed via `onTapOnPlane` automatically get
+    ///     RealityKit's `GroundingShadowComponent(castsShadow: true)`, so placed models
+    ///     project a contact shadow onto the detected surface and read as grounded instead
+    ///     of floating — the RealityKit analogue of Android's `ShadowReceiverPlane`
+    ///     (#2241/#894). Applied to every model entity of anchors added to
+    ///     `arView.scene` *synchronously inside* the `onTapOnPlane` callback (the
+    ///     documented placement flow); content anchored later (e.g. after an async model
+    ///     load) must set the component itself. Default true.
     ///   - imageTrackingDatabase: Set of reference images to detect. Use
     ///     `AugmentedImageNode.createImageDatabase()` or
     ///     `AugmentedImageNode.referenceImages(inGroupNamed:)` to create.
@@ -101,6 +119,8 @@ public struct ARSceneView: UIViewRepresentable {
         planeDetection: PlaneDetectionMode = .horizontal,
         showPlaneOverlay: Bool = true,
         showCoachingOverlay: Bool = true,
+        showPlacementReticle: Bool = false,
+        groundingShadows: Bool = true,
         cameraExposure: Float? = nil,
         imageTrackingDatabase: Set<ARReferenceImage>? = nil,
         faceTracking: Bool = false,
@@ -111,6 +131,8 @@ public struct ARSceneView: UIViewRepresentable {
         self.planeDetection = planeDetection
         self.showPlaneOverlay = showPlaneOverlay
         self.showCoachingOverlay = showCoachingOverlay
+        self.showPlacementReticle = showPlacementReticle
+        self.groundingShadows = groundingShadows
         self.cameraExposure = cameraExposure
         self.imageTrackingDatabase = imageTrackingDatabase
         self.faceTracking = faceTracking
@@ -264,6 +286,12 @@ public struct ARSceneView: UIViewRepresentable {
         // translucent overlay entity per plane — see `PlaneVisualizer`.
         context.coordinator.showPlaneOverlay = showPlaneOverlay && planeDetection != .none
 
+        // Placement reticle + grounding shadows (#894 — iOS half of #2241 Sprint-1).
+        // The reticle is driven per frame from `session(_:didUpdate:)`; grounding
+        // shadows are applied in `handleTap` to the anchors the callback places.
+        context.coordinator.showPlacementReticle = showPlacementReticle
+        context.coordinator.groundingShadows = groundingShadows
+
         // Coaching overlay
         if showCoachingOverlay {
             let coaching = ARCoachingOverlayView()
@@ -305,6 +333,11 @@ public struct ARSceneView: UIViewRepresentable {
         context.coordinator.onTapOnPlane = onTapOnPlane
         context.coordinator.onImageDetected = onImageDetected
         context.coordinator.onFrame = onFrame
+        // Reactive like the light slots: toggling the flags on a later render
+        // takes effect immediately — the per-frame reticle update tears the
+        // reticle entity down when the flag turns false.
+        context.coordinator.showPlacementReticle = showPlacementReticle
+        context.coordinator.groundingShadows = groundingShadows
 
         // Apply camera exposure override via post-processing (iOS 15.0+).
         // Converts the EV value to a CIColorControls brightness offset and installs
@@ -536,6 +569,39 @@ public struct ARSceneView: UIViewRepresentable {
         /// `session(_:didAdd:)` path cannot be exercised headlessly.
         var planeOverlays: [UUID: PlaneVisualizer] = [:]
 
+        /// Whether the centre-screen placement reticle is active. Set from
+        /// `makeUIView` / `updateUIView`; consumed once per AR frame in
+        /// ``session(_:didUpdate:)`` (#894 — Android `PlacementReticle` parity).
+        var showPlacementReticle: Bool = false
+
+        /// Whether anchors placed via `onTapOnPlane` automatically receive
+        /// `GroundingShadowComponent(castsShadow: true)` on their model
+        /// entities (#894 — Android `ShadowReceiverPlane` analogue).
+        var groundingShadows: Bool = true
+
+        /// World anchor hosting the reticle disc. Created lazily on the first
+        /// successful raycast, hidden (`isEnabled = false`) while the ray
+        /// misses, removed on teardown (#2407/#2408 pattern) or when
+        /// `showPlacementReticle` turns false. `internal` so the teardown leak
+        /// test can provision it headlessly (a headless raycast never hits).
+        var reticleAnchor: AnchorEntity?
+
+        /// Smoothing state for the reticle pose. `nil` after a miss so the next
+        /// surface is re-acquired verbatim — the same reset contract as
+        /// Android's `ReticleOrientationSmoother` (#2582).
+        private var reticleOrientation: simd_quatf?
+        private var reticlePosition: SIMD3<Float>?
+
+        /// Per-frame slerp/lerp fraction toward the raycast pose — ARCore Depth
+        /// Lab's `OrientedReticle` damping value, shared with Android's
+        /// `PlacementReticleNode.DEFAULT_ORIENTATION_SMOOTHING`.
+        static let reticleSmoothing: Float = 0.75
+
+        /// Reticle disc footprint (metres) — visual parity with the built-in
+        /// disc of Android's `PlacementReticle` (`PlacementScene.RETICLE_RADIUS`
+        /// = 0.07 m radius → 14 cm diameter).
+        static let reticleDiameter: Float = 0.14
+
         // Light-slot reactive plumbing — same pattern as ``SceneView`` (#1017)
         // adapted for AR. The anchor refs let the diff in `refreshARLightSlot`
         // tear down the previous light's `AnchorEntity` before adding a new one.
@@ -593,6 +659,11 @@ public struct ARSceneView: UIViewRepresentable {
             mainLightAnchor = nil
             fillLightAnchor = nil
 
+            // Placement reticle (#894) — same coordinator-owned-anchor rule as
+            // the overlays and lights above.
+            if let reticle = reticleAnchor { arView.scene.removeAnchor(reticle) }
+            reticleAnchor = nil
+
             // Stop the AR session so the camera + sensor pipeline goes idle and
             // ARKit drops its hold; detach the delegate so no late frame
             // callback fires into a torn-down coordinator.
@@ -616,16 +687,20 @@ public struct ARSceneView: UIViewRepresentable {
             let overlayAnchors = planeOverlays.values.map(\.anchor)
             let main = mainLightAnchor
             let fill = fillLightAnchor
+            let reticle = reticleAnchor
             planeOverlays.removeAll()
             mainLightAnchor = nil
             fillLightAnchor = nil
+            reticleAnchor = nil
             guard let arView = arView,
-                  !overlayAnchors.isEmpty || main != nil || fill != nil else { return }
+                  !overlayAnchors.isEmpty || main != nil || fill != nil
+                    || reticle != nil else { return }
             let detach = {
                 MainActor.assumeIsolated {
                     for anchor in overlayAnchors { arView.scene.removeAnchor(anchor) }
                     if let main = main { arView.scene.removeAnchor(main) }
                     if let fill = fill { arView.scene.removeAnchor(fill) }
+                    if let reticle = reticle { arView.scene.removeAnchor(reticle) }
                 }
             }
             if Thread.isMainThread {
@@ -645,18 +720,139 @@ public struct ARSceneView: UIViewRepresentable {
                 allowing: .estimatedPlane,
                 alignment: .any
             )
-            if let firstResult = results.first {
-                let column = firstResult.worldTransform.columns.3
-                let position = SIMD3<Float>(column.x, column.y, column.z)
-                onTapOnPlane?(position, arView)
+            guard let firstResult = results.first,
+                  let onTapOnPlane = onTapOnPlane else { return }
+            let column = firstResult.worldTransform.columns.3
+            let position = SIMD3<Float>(column.x, column.y, column.z)
+
+            // Grounding shadows (#894): snapshot the scene's anchors, let the
+            // callback place its content, then give every model entity the
+            // callback anchored a RealityKit contact shadow. Covers the
+            // documented synchronous placement flow; asynchronously anchored
+            // content must set `GroundingShadowComponent` itself.
+            let anchorsBefore = groundingShadows
+                ? Set(arView.scene.anchors.map(\.id)) : []
+            onTapOnPlane(position, arView)
+            if groundingShadows {
+                applyGroundingShadows(in: arView, addedSince: anchorsBefore)
             }
+        }
+
+        /// Applies `GroundingShadowComponent(castsShadow: true)` to every model
+        /// entity under anchors that joined `arView.scene` after the snapshot —
+        /// the RealityKit analogue of Android's invisible `ShadowReceiverPlane`
+        /// (#2241/#894): RealityKit itself renders the contact shadow onto the
+        /// detected real-world surface, no shadow-catcher geometry needed.
+        func applyGroundingShadows(in arView: ARView, addedSince existing: Set<Entity.ID>) {
+            for anchor in arView.scene.anchors where !existing.contains(anchor.id) {
+                Self.applyGroundingShadow(to: anchor)
+            }
+        }
+
+        /// Recursively sets the grounding-shadow component on `entity` and its
+        /// descendants that render a model. Idempotent — re-setting the
+        /// component on an entity that already has one is a no-op overwrite.
+        static func applyGroundingShadow(to entity: Entity) {
+            if entity.components.has(ModelComponent.self) {
+                entity.components.set(GroundingShadowComponent(castsShadow: true))
+            }
+            for child in entity.children {
+                applyGroundingShadow(to: child)
+            }
+        }
+
+        // MARK: - Placement reticle (#894)
+
+        /// Per-frame reticle update, driven from ``session(_:didUpdate:)`` —
+        /// ARKit delivers session callbacks on the main thread for
+        /// `ARSceneView` (no `delegateQueue` override), so touching RealityKit
+        /// and `arView.bounds` here is safe. `internal` so tests can drive the
+        /// disabled/teardown paths headlessly.
+        func updatePlacementReticle(in arView: ARView) {
+            guard showPlacementReticle else {
+                // Flag turned off (or never on): tear the reticle down.
+                if let anchor = reticleAnchor {
+                    arView.scene.removeAnchor(anchor)
+                    reticleAnchor = nil
+                }
+                reticleOrientation = nil
+                reticlePosition = nil
+                return
+            }
+
+            // The same query the tap-to-place path uses, cast from the screen
+            // centre — what the reticle shows is exactly where a tap lands.
+            let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
+            guard let result = arView.raycast(
+                from: center,
+                allowing: .estimatedPlane,
+                alignment: .any
+            ).first else {
+                // Ray misses every surface: hide, and forget the damping state
+                // so the next surface is re-acquired verbatim (Android
+                // `ReticleOrientationSmoother.reset()` contract).
+                reticleAnchor?.isEnabled = false
+                reticleOrientation = nil
+                reticlePosition = nil
+                return
+            }
+
+            let anchor = reticleAnchor ?? makeReticleAnchor(in: arView)
+            anchor.isEnabled = true
+
+            let target = Transform(matrix: result.worldTransform)
+            // Exponential per-frame damping toward the hit pose (factor 0.75,
+            // Depth Lab / Android PlacementReticle parity) — kills the jitter
+            // of ARKit's frame-to-frame surface refinement. The first sample
+            // after a miss applies verbatim, so the reticle never "rolls in".
+            let rotation = reticleOrientation.map {
+                simd_slerp($0, target.rotation, Self.reticleSmoothing)
+            } ?? target.rotation
+            let position = reticlePosition.map {
+                simd_mix($0, target.translation, SIMD3<Float>(repeating: Self.reticleSmoothing))
+            } ?? target.translation
+            reticleOrientation = rotation
+            reticlePosition = position
+            anchor.transform = Transform(
+                scale: .one, rotation: rotation, translation: position
+            )
+        }
+
+        /// Builds the reticle — a thin translucent disc in the design-system
+        /// cyan, matching Android `PlacementReticle`'s built-in disc
+        /// (`PlacementScene.DEFAULT_RETICLE_COLOR` = #44E7FF at ~60 % alpha),
+        /// hosted on a world anchor whose transform tracks the smoothed
+        /// raycast pose.
+        private func makeReticleAnchor(in arView: ARView) -> AnchorEntity {
+            let anchor = AnchorEntity(world: .zero)
+            let mesh = MeshResource.generatePlane(
+                width: Self.reticleDiameter,
+                depth: Self.reticleDiameter,
+                cornerRadius: Self.reticleDiameter / 2
+            )
+            // Alpha rides the blending opacity, not the tint: RealityKit is
+            // known to drop the base-color alpha on some material paths, which
+            // would render the disc fully opaque.
+            var material = UnlitMaterial(
+                color: .init(red: 0x44 / 255.0, green: 0xE7 / 255.0, blue: 1.0, alpha: 1.0)
+            )
+            material.blending = .transparent(opacity: .init(floatLiteral: 0.6))
+            let disc = ModelEntity(mesh: mesh, materials: [material])
+            // Nudge off the surface along the plane normal so the disc never
+            // z-fights the detected-plane overlay fill (a 1 mm box).
+            disc.position.y = 0.002
+            anchor.addChild(disc)
+            arView.scene.addAnchor(anchor)
+            reticleAnchor = anchor
+            return anchor
         }
 
         // MARK: - ARSessionDelegate
 
         public func session(_ session: ARSession, didUpdate frame: ARFrame) {
-            guard let arView = arView, let onFrame = onFrame else { return }
-            onFrame(frame, arView)
+            guard let arView = arView else { return }
+            updatePlacementReticle(in: arView)
+            onFrame?(frame, arView)
         }
 
         public func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {

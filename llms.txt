@@ -1179,8 +1179,9 @@ Semantics: `snapToPlane = true` (default) is plane-only (#1891 contract);
 in-polygon. Project acceptance policies (max distance, custom rules) go through `predicate`
 (construction-time). The smoothing knob and callback are live-updatable on recomposition.
 
-Platform matrix: **iOS** — continuous `ARView.raycast` reticle planned under the parity epic
-(#894); tap-to-place itself ships today. **Web** — coming soon.
+Platform matrix: **iOS** — ships (v4.20+, #894): `ARSceneView(showPlacementReticle: true)` runs
+the tap-to-place raycast every frame and drives a surface-snapped disc (orientation slerp `0.75`,
+hidden while the ray misses); tap-to-place itself already ships. **Web** — coming soon.
 
 ### ShadowReceiverPlane — invisible AR shadow catcher (#2241, v4.19+)
 
@@ -1204,8 +1205,10 @@ Shadows require a shadow-casting directional light — `ARSceneView`'s default
 `isShadowCaster` before suspecting the catcher. This is NOT a plane visualisation (no grid,
 no fill — that is `PlaneNode`); declare both on the same plane if you want both.
 
-Platform matrix: **iOS** — `GroundingShadowComponent` equivalent planned under #894. **Web** —
-coming soon.
+Platform matrix: **iOS** — ships (v4.20+, #894): entities placed synchronously in `onTapOnPlane`
+get `GroundingShadowComponent(castsShadow: true)` automatically (RealityKit renders the contact
+shadow itself — no catcher geometry; opt out with `ARSceneView(groundingShadows: false)`;
+async-anchored content sets the component itself). **Web** — coming soon.
 
 ### Depth hit test — place on any real surface
 
@@ -4667,6 +4670,8 @@ ARSceneView(
     planeDetection: .horizontal,
     showPlaneOverlay: true,
     showCoachingOverlay: true,
+    showPlacementReticle: Bool = false,      // continuous smoothed placement cursor (#894)
+    groundingShadows: Bool = true,           // contact shadows on tap-placed models (#894)
     onTapOnPlane: { position in /* SIMD3<Float> world-space */ }
 )
 .content { arView in /* add content */ }
@@ -4679,6 +4684,8 @@ public struct ARSceneView: UIViewRepresentable {
         planeDetection: PlaneDetectionMode = .horizontal,
         showPlaneOverlay: Bool = true,
         showCoachingOverlay: Bool = true,
+        showPlacementReticle: Bool = false,      // continuous smoothed placement cursor (#894)
+        groundingShadows: Bool = true,           // contact shadows on tap-placed models (#894)
         cameraExposure: Float? = nil,
         imageTrackingDatabase: Set<ARReferenceImage>? = nil,
         faceTracking: Bool = false,
