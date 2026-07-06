@@ -45,6 +45,11 @@ jobs:
     name: QA gate + bump PR (${{ inputs.version }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Shell-injection hardening: the version input reaches shell ONLY via this
+    # env var (never ${{ }} inside run: bodies) — env interpolation is inert,
+    # and the regex validation below rejects anything but 4.x.y anyway.
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
 
     steps:
       - uses: actions/checkout@v7
@@ -54,7 +59,7 @@ jobs:
 
       - name: Validate version input
         run: |
-          V="${{ inputs.version }}"
+          V="$RELEASE_VERSION"
           echo "$V" | grep -qE '^4\.[0-9]+\.[0-9]+$' \
             || { echo "::error::version must be 4.x.y (major 4 frozen, no pre-releases here)"; exit 1; }
           git rev-parse "v$V" >/dev/null 2>&1 \
@@ -80,7 +85,7 @@ jobs:
 
       - name: Bump + verify 0 mismatch
         run: |
-          V="${{ inputs.version }}"
+          V="$RELEASE_VERSION"
           sed -i "s/^VERSION_NAME=.*/VERSION_NAME=$V/" gradle.properties
           bash .claude/scripts/sync-versions.sh --fix
           # M7b made --fix complete; verify it stayed that way.
@@ -90,13 +95,13 @@ jobs:
             || { echo "::error::residual version mismatches — sync-versions coverage regressed"; exit 1; }
 
       - name: Collate changelog
-        run: bash .claude/scripts/collate-changelog.sh "${{ inputs.version }}"
+        run: bash .claude/scripts/collate-changelog.sh "$RELEASE_VERSION"
 
       - name: Open release PR (auto-merge)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          V="${{ inputs.version }}"
+          V="$RELEASE_VERSION"
           BRANCH="release/v$V"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
