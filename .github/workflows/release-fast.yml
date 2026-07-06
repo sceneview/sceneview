@@ -1,0 +1,117 @@
+# release-fast.yml — one-click release checkpoint (M7c, follow-up of #2596/M7b).
+#
+# Replaces the local-machine release recipe with a dispatchable pipeline:
+#
+#   dispatch(version) ─▶ web device-QA gate (BLOCKING) ─▶ bump via the now-complete
+#   sync-versions.sh --fix (M7b, 0 residuals) ─▶ changelog collate ─▶ release PR
+#   with auto-merge ─▶ [tag-release.yml] tags the merge commit and dispatches
+#   release.yml on the tag ref.
+#
+# WHY PR-then-tag and not a direct push: main is protected by the required
+# "CI Gate" check with no push restrictions but no GITHUB_TOKEN bypass — a
+# workflow cannot push the bump commit directly (only human admins can, which
+# is exactly what the manual recipe did). The PR path keeps the required check
+# honest AND gives the bump diff a reviewable surface for free.
+#
+# WHY the companion tag workflow: a tag created here with GITHUB_TOKEN would
+# NOT trigger release.yml (GitHub suppresses workflow-to-workflow events for
+# the default token). tag-release.yml therefore creates the tag at merge time
+# and explicitly dispatches release.yml on the tag ref (release.yml already
+# accepts workflow_dispatch).
+name: Release fast
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (X.Y.Z — major 4 is frozen, minor bumps only)"
+        required: true
+      skip_web_qa:
+        description: "Skip the BLOCKING web device-QA leg (emergencies only)"
+        type: boolean
+        default: false
+
+# One release pipeline at a time — same guard family as release.yml.
+concurrency:
+  group: release-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  checkpoint:
+    name: QA gate + bump PR (${{ inputs.version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Shell-injection hardening: the version input reaches shell ONLY via this
+    # env var (never ${{ }} inside run: bodies) — env interpolation is inert,
+    # and the regex validation below rejects anything but 4.x.y anyway.
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate version input
+        run: |
+          V="$RELEASE_VERSION"
+          echo "$V" | grep -qE '^4\.[0-9]+\.[0-9]+$' \
+            || { echo "::error::version must be 4.x.y (major 4 frozen, no pre-releases here)"; exit 1; }
+          git rev-parse "v$V" >/dev/null 2>&1 \
+            && { echo "::error::tag v$V already exists"; exit 1; }
+          CURRENT=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)
+          [ "$CURRENT" = "$V" ] && { echo "::error::VERSION_NAME already $V"; exit 1; }
+          echo "Releasing $CURRENT -> $V"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Web device-QA gate (BLOCKING)
+        if: ${{ !inputs.skip_web_qa }}
+        run: |
+          bash .claude/scripts/device-qa.sh --platform=web
+          VERDICT=$(python3 -c "import json; print(json.load(open('device-qa-report.json'))['releaseGate']['verdict'])")
+          echo "releaseGate.verdict = $VERDICT"
+          [ "$VERDICT" = "blocked" ] && { echo "::error::web leg BLOCKED — a demo breaks for real users, not tagging"; exit 1; }
+          # Keep the working tree clean for the bump commit.
+          git checkout -- . || true
+          git clean -fd device-qa-artifacts 2>/dev/null || true
+
+      - name: Bump + verify 0 mismatch
+        run: |
+          V="$RELEASE_VERSION"
+          sed -i "s/^VERSION_NAME=.*/VERSION_NAME=$V/" gradle.properties
+          bash .claude/scripts/sync-versions.sh --fix
+          # M7b made --fix complete; verify it stayed that way.
+          OUT=$(bash .claude/scripts/sync-versions.sh || true)
+          echo "$OUT" | tail -5
+          echo "$OUT" | grep -q "Errors (MISMATCH): 0" \
+            || { echo "::error::residual version mismatches — sync-versions coverage regressed"; exit 1; }
+
+      - name: Collate changelog
+        run: bash .claude/scripts/collate-changelog.sh "$RELEASE_VERSION"
+
+      - name: Open release PR (auto-merge)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="$RELEASE_VERSION"
+          BRANCH="release/v$V"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          # Version/changelog surfaces only — never QA artifacts.
+          git add -A ':!device-qa-report.json' ':!device-qa-artifacts' ':!ar-qa-summary.json' ':!web-qa-summary.json'
+          git commit -m "release: $V — version bump + changelog collate" \
+            -m "Automated by release-fast.yml (web QA verdict gated, sync-versions 0 mismatch). Merging this PR tags v$V via tag-release.yml, which dispatches release.yml on the tag."
+          git push origin "$BRANCH"
+          gh pr create --title "release: $V — version bump + changelog collate" \
+            --body "One-click release pipeline (release-fast.yml). Web device-QA gate passed (or explicitly skipped: \`${{ inputs.skip_web_qa }}\`); sync-versions 0 mismatch; changelog collated. **Merging this PR tags \`v$V\`** (tag-release.yml) and launches release.yml." \
+            --base main --head "$BRANCH"
+          gh pr merge "$BRANCH" --squash --auto
