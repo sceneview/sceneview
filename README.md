@@ -424,7 +424,7 @@ You get:
 - **Only** Compose-native 3D/AR SDK for Android — no alternative exists
 - **Compose-native successor** to Google Sceneform (archived 2021) — see [above](#the-compose-native-successor-to-sceneform)
 - **~5MB** footprint vs 50-100MB+ for Unity/Unreal
-- **42+ node types** as declarative composables
+- **44+ node types** as declarative composables
 - **MCP server** with 28+ tools — no other 3D SDK has this
 
 Listed on the [MCP Registry](https://registry.modelcontextprotocol.io). See the [MCP README](./mcp/README.md) for full setup and tool reference.
