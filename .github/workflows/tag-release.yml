@@ -40,7 +40,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           SUBJECT=$(git log -1 --pretty=%s)
-          V=$(echo "$SUBJECT" | sed -n 's/^release: \([0-9][0-9.]*\) — version bump.*/\1/p')
+          # Squash-merge subject = the PR title + " (#N)": match that shape.
+          V=$(echo "$SUBJECT" | sed -n 's/^release: \([0-9][0-9.]*\) — version bump + changelog collate\( (#[0-9]*)\)\{0,1\}$/\1/p')
           [ -z "$V" ] && { echo "Not a release commit — nothing to do."; exit 0; }
           PROP=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)
           [ "$PROP" != "$V" ] && { echo "::error::commit says $V but VERSION_NAME=$PROP — refusing to tag"; exit 1; }

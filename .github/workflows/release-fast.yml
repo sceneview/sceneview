@@ -106,7 +106,7 @@ jobs:
           git commit -m "release: $V — version bump + changelog collate" \
             -m "Automated by release-fast.yml (web QA verdict gated, sync-versions 0 mismatch). Merging this PR tags v$V via tag-release.yml, which dispatches release.yml on the tag."
           git push origin "$BRANCH"
-          gh pr create --title "release: $V" \
+          gh pr create --title "release: $V — version bump + changelog collate" \
             --body "One-click release pipeline (release-fast.yml). Web device-QA gate passed (or explicitly skipped: \`${{ inputs.skip_web_qa }}\`); sync-versions 0 mismatch; changelog collated. **Merging this PR tags \`v$V\`** (tag-release.yml) and launches release.yml." \
             --base main --head "$BRANCH"
           gh pr merge "$BRANCH" --squash --auto
