@@ -12,7 +12,14 @@ export const meta = {
 // Be robust to args arriving as a JSON string (some invocation paths stringify it).
 let A = args
 if (typeof A === 'string') {
-  try { A = JSON.parse(A) } catch { A = {} }
+  try { A = JSON.parse(A) } catch {
+    // A non-JSON string is a caller mistake (free-text description). Falling back
+    // silently to main...HEAD once produced a PASS on an EMPTY diff (2026-07-03,
+    // PR #2574 first run) — fail loudly instead.
+    throw new Error(
+      `review-fanout: args must be JSON ({"diffRef":…,"pr":…}) — got a non-JSON string: "${A.slice(0, 120)}"`,
+    )
+  }
 }
 A = A || {}
 const diffRef = A.diffRef || 'main...HEAD'
@@ -66,6 +73,8 @@ const REVIEWERS = [
 
 const reviewPrompt = (key) =>
   `Review the SceneView change for ${ctx}. First \`git fetch origin --quiet\` so the refs resolve, then review the diff: \`git diff ${diffRef}\` (also check \`git diff\` for any uncommitted work). Read the WHOLE diff and the surrounding code, then apply your ${key}-reviewer mandate.
+
+⛔ STRICTLY READ-ONLY on this checkout: NEVER \`git checkout\`/\`switch\`/\`reset\`/\`stash\` or edit files here — you share the orchestrator's live worktree and a branch switch corrupts it (#2431). Inspect other refs with \`git show <ref>:<path>\` / \`git diff\`; if you truly need a mutable checkout, clone to /tmp yourself.
 
 Map your output to the schema: every issue you'd FAIL on → a finding with severity:"error"; every should-fix → severity:"warning". Set verdict accordingly (any error ⇒ FAIL). Be concrete with file:line, and reproduce any runtime claim before asserting it. A clean PASS is valid — do not invent findings.`
 
