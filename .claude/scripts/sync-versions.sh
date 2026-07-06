@@ -1503,6 +1503,70 @@ if changed:
         fi
     fi
 
+    # ── The former "7 manual residuals" (releases 4.19.0/4.20.0) — now automated.
+    # Each is context-anchored to ANY stale semver (not just the previous version:
+    # the 4.20.0 release found cache-busters still at 4.18.0). No blind global
+    # find-replace (#2562 SVG-corruption class): every sed is scoped to its exact
+    # line shape.
+    SEMVER='[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}'
+
+    # llms.txt — prose label + npm package prose + CDN snippet + flutter snippet.
+    LLMS="$REPO_ROOT/llms.txt"
+    if [ -f "$LLMS" ]; then
+        if grep -qE "Maven artifacts \(version [0-9]+\.[0-9]+\.[0-9]+\)" "$LLMS" && \
+           ! grep -q "Maven artifacts (version $SOURCE_VERSION)" "$LLMS"; then
+            _sed_inplace "s/Maven artifacts (version $SEMVER)/Maven artifacts (version $SOURCE_VERSION)/" "$LLMS"
+            echo -e "  Fixed: llms.txt (prose version label -> $SOURCE_VERSION)"
+        fi
+        if grep -qE "Package: .sceneview-web. v[0-9]+\.[0-9]+\.[0-9]+" "$LLMS" && \
+           ! grep -q "Package: \`sceneview-web\` v$SOURCE_VERSION" "$LLMS"; then
+            _sed_inplace "s/Package: \(.\)sceneview-web\(.\) v$SEMVER/Package: \1sceneview-web\2 v$SOURCE_VERSION/" "$LLMS"
+            echo -e "  Fixed: llms.txt (sceneview-web package prose -> $SOURCE_VERSION)"
+        fi
+        if grep -q "sceneview-web@" "$LLMS" && ! grep -q "sceneview-web@$SOURCE_VERSION" "$LLMS"; then
+            _sed_inplace "s|sceneview-web@$SEMVER|sceneview-web@$SOURCE_VERSION|g" "$LLMS"
+            echo -e "  Fixed: llms.txt (sceneview-web@ CDN snippet -> $SOURCE_VERSION)"
+        fi
+        if grep -q "sceneview_flutter: ^" "$LLMS" && ! grep -q "sceneview_flutter: ^$SOURCE_VERSION" "$LLMS"; then
+            _sed_inplace "s/sceneview_flutter: ^$SEMVER/sceneview_flutter: ^$SOURCE_VERSION/" "$LLMS"
+            echo -e "  Fixed: llms.txt (flutter snippet -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # samples/android-demo/build.gradle — versionName ternary default.
+    DEMO_GRADLE="$REPO_ROOT/samples/android-demo/build.gradle"
+    if [ -f "$DEMO_GRADLE" ] && ! grep -q "property('versionName') : \"$SOURCE_VERSION\"" "$DEMO_GRADLE"; then
+        _sed_inplace "s/property('versionName') : \"$SEMVER\"/property('versionName') : \"$SOURCE_VERSION\"/" "$DEMO_GRADLE"
+        echo -e "  Fixed: samples/android-demo/build.gradle (versionName ternary -> $SOURCE_VERSION)"
+    fi
+
+    # website-static/web.html — JSON-LD softwareVersion.
+    if [ -f "$WEBSITE_WEB" ] && ! grep -q "\"softwareVersion\": \"$SOURCE_VERSION\"" "$WEBSITE_WEB"; then
+        _sed_inplace "s/\"softwareVersion\": \"$SEMVER\"/\"softwareVersion\": \"$SOURCE_VERSION\"/" "$WEBSITE_WEB"
+        echo -e "  Fixed: website-static/web.html (softwareVersion -> $SOURCE_VERSION)"
+    fi
+
+    # website-static/playground.html — the two AI-prompt version pins.
+    if [ -f "$WEBSITE_PLAYGROUND" ]; then
+        if ! grep -q "arsceneview:$SOURCE_VERSION" "$WEBSITE_PLAYGROUND"; then
+            _sed_inplace "s|arsceneview:$SEMVER|arsceneview:$SOURCE_VERSION|g" "$WEBSITE_PLAYGROUND"
+            echo -e "  Fixed: playground.html (prompt arsceneview: -> $SOURCE_VERSION)"
+        fi
+        if ! grep -q "sceneview-web@$SOURCE_VERSION" "$WEBSITE_PLAYGROUND"; then
+            _sed_inplace "s|sceneview-web@$SEMVER|sceneview-web@$SOURCE_VERSION|g" "$WEBSITE_PLAYGROUND"
+            echo -e "  Fixed: playground.html (prompt sceneview-web@ -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # sceneview.js?v= cache-busters — EVERY html under website-static (incl.
+    # embed/ and preview/, which went stale across two releases).
+    find "$REPO_ROOT/website-static" -name '*.html' -print0 | while IFS= read -r -d '' HTMLF; do
+        if grep -q "sceneview\.js?v=" "$HTMLF" && ! grep -q "sceneview\.js?v=$SOURCE_VERSION" "$HTMLF"; then
+            _sed_inplace "s|sceneview\.js?v=$SEMVER|sceneview.js?v=$SOURCE_VERSION|g" "$HTMLF"
+            echo -e "  Fixed: ${HTMLF#$REPO_ROOT/} (cache-buster -> $SOURCE_VERSION)"
+        fi
+    done
+
     echo ""
     echo -e "${GREEN}Fixes applied. Re-run without --fix to verify.${NC}"
 fi
