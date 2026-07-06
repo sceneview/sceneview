@@ -5107,12 +5107,17 @@ After loading, the library registers itself on `window.sceneview`.
 
 ---
 
-### ⚠️ Web API model — builder DSL, NOT a Node scene-graph
+### ⚠️ Web API model — builder DSL, NOT a published Node scene-graph
 
-**The Web target does NOT have a `Node` class or a node scene-graph.** This is a
-deliberate, documented divergence from SceneView Android (`io.github.sceneview.node.Node`)
-and SceneView Apple (`SceneViewSwift` entities). Do **not** generate Android/iOS-style
-node-tree code for `sceneview-web` — it will not compile.
+**The Web target's published API does NOT include a `Node` class or a node scene-graph.**
+This is a documented divergence from SceneView Android (`io.github.sceneview.node.Node`)
+and SceneView Apple (`SceneViewSwift` entities) that is being closed incrementally
+(issue #2024, v5 milestone): as of 4.20.x an incubating Kotlin-only transform-node slice
+exists inside the module, but it is **not part of the exported JS API**
+(`window.sceneview.*` / `sceneview-web.d.ts`) and its nodes carry **no renderables**.
+Do **not** generate Android/iOS-style node-tree code for `sceneview-web` — for plain-JS
+consumers it will not run, and the builder DSL below remains the only path that puts
+pixels on screen.
 
 | Concept | Android / iOS | Web (`sceneview-web`) |
 |---|---|---|
@@ -5120,9 +5125,9 @@ node-tree code for `sceneview-web` — it will not compile.
 | Add a primitive | `CubeNode` / `SphereNode` / … | `geometry { cube(); … }`, or `sceneView.addGeometry(GeometryConfig)` |
 | Add a light | `LightNode(...)` | `light { directional(); … }`, or `sceneView.addLight(LightConfig)` |
 | Configure the camera | `CameraNode(...)` | `camera { eye(...); target(...) }` (a `CameraConfig`) |
-| Parent / child hierarchy | `node.parent = other` / `node.childNodes` | **not available** — content is flat, placed in world space |
+| Parent / child hierarchy | `node.parent = other` / `node.childNodes` | **not in the published JS API** — content is flat, placed in world space (Kotlin-side node graph incubating, #2024) |
 | Per-content transform | `node.position` / `node.rotation` / `node.scale` (mutable, reactive) | set once via the `*Config` `position(...)` / `rotation(...)` / `scale(...)` builders; not re-mutable after `create()` |
-| Transform inheritance | composed parent→child via Filament `TransformManager` | none — every asset is a world-space leaf |
+| Transform inheritance | composed parent→child via Filament `TransformManager` | none in the published API — every asset is a world-space leaf (composed transforms arrive with #2024) |
 
 The Web target is configured by a **fire-and-forget builder DSL**: you describe the
 scene inside `SceneView.create(canvas) { … }` and the library builds it once. Content
@@ -5142,14 +5147,16 @@ SceneView.create(canvas, configure = {
     geometry { cube(); size(1.0); position(2.0, 0.0, 0.0); color(1.0, 0.0, 0.0, 1.0) }
 }) { sceneView -> sceneView.startRendering() }
 
-// ❌ Web — Android/iOS Node code does NOT compile here:
-// val node = ModelNode(modelInstance); node.parent = sceneNode   // no Node class on Web
+// ❌ Web — Android/iOS Node code does NOT work here:
+// val node = ModelNode(modelInstance); node.parent = sceneNode   // no published Node API on Web (yet — #2024)
 ```
 
 A node scene-graph for the Web target (`Node` base type, parent/child, composed
 transforms — bringing the Web API to parity with Android/iOS) is tracked as a
-**v5 milestone** effort. Until then, this builder-DSL model is the complete and
-correct Web API.
+**v5 milestone** effort (#2024) and is landing incrementally: the first slice
+(Kotlin-only transform nodes, no renderables, no JS export) shipped after 4.20.0.
+Until the exported `NodeHandle` API lands, this builder-DSL model is the complete
+and correct **published** Web API.
 
 ---
 

@@ -41,8 +41,9 @@ import io.github.sceneview.web.bindings.EntityManager
  * **Not yet part of the published JS API.** The `@JsExport` `NodeHandle`
  * surface, the concrete `ModelNode`/`GeometryNode`/`LightNode` subtypes, the
  * `isVisible` render cascade, collision, and gestures land in later slices —
- * see the phasing table in the design doc. Until then this type is consumed
- * only inside the `sceneview-web` module.
+ * see the phasing table in the design doc. Until then this type is not part
+ * of the exported JS API — it is reachable from Kotlin/JS consumers of the
+ * module as an incubating surface (nodes carry no renderables yet).
  */
 open class Node internal constructor(
     internal val backend: NodeBackend,
