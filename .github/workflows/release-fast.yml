@@ -103,11 +103,8 @@ jobs:
           git checkout -b "$BRANCH"
           # Version/changelog surfaces only — never QA artifacts.
           git add -A ':!device-qa-report.json' ':!device-qa-artifacts' ':!ar-qa-summary.json' ':!web-qa-summary.json'
-          git commit -m "release: $V — version bump + changelog collate
-
-Automated by release-fast.yml (web QA verdict gated, sync-versions
-0 mismatch). Merging this PR tags v$V via tag-release.yml, which
-dispatches release.yml on the tag."
+          git commit -m "release: $V — version bump + changelog collate" \
+            -m "Automated by release-fast.yml (web QA verdict gated, sync-versions 0 mismatch). Merging this PR tags v$V via tag-release.yml, which dispatches release.yml on the tag."
           git push origin "$BRANCH"
           gh pr create --title "release: $V" \
             --body "One-click release pipeline (release-fast.yml). Web device-QA gate passed (or explicitly skipped: \`${{ inputs.skip_web_qa }}\`); sync-versions 0 mismatch; changelog collated. **Merging this PR tags \`v$V\`** (tag-release.yml) and launches release.yml." \
