@@ -1,0 +1,53 @@
+# tag-release.yml — companion of release-fast.yml (M7c).
+#
+# When a release-fast bump PR merges to main (squash commit titled
+# "release: X.Y.Z — …"), this workflow creates the annotated tag vX.Y.Z on the
+# merge commit and explicitly dispatches release.yml on the tag ref.
+#
+# The explicit dispatch exists because GitHub suppresses workflow-to-workflow
+# events for the default GITHUB_TOKEN: a tag pushed here would never fire
+# release.yml's `on: push: tags:` trigger by itself. release.yml already
+# accepts workflow_dispatch, and running it on the tag ref is equivalent to
+# the tag-push path.
+#
+# Safety: fires ONLY on main pushes whose HEAD commit subject matches the
+# release-fast commit shape AND whose version matches gradle.properties —
+# a hand-written commit that merely says "release:" without the bump does
+# nothing. Existing tags are never moved.
+name: Tag release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    name: Tag merged release commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Detect release commit and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SUBJECT=$(git log -1 --pretty=%s)
+          V=$(echo "$SUBJECT" | sed -n 's/^release: \([0-9][0-9.]*\) — version bump.*/\1/p')
+          [ -z "$V" ] && { echo "Not a release commit — nothing to do."; exit 0; }
+          PROP=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)
+          [ "$PROP" != "$V" ] && { echo "::error::commit says $V but VERSION_NAME=$PROP — refusing to tag"; exit 1; }
+          git rev-parse "v$V" >/dev/null 2>&1 && { echo "v$V already exists — nothing to do."; exit 0; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$V" -m "SceneView $V"
+          git push origin "v$V"
+          echo "Tagged v$V — dispatching release.yml on the tag ref."
+          gh workflow run release.yml --ref "v$V"
