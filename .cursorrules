@@ -87,7 +87,7 @@ struct ContentView: View {
 }
 ```
 
-## 42+ node types
+## 44+ node types
 ModelNode, CubeNode, SphereNode, CylinderNode, PlaneNode, MeshNode,
 ImageNode, VideoNode, ViewNode, LightNode, DynamicSkyNode, FogNode,
 ReflectionProbeNode, LineNode, PathNode, BillboardNode, TextNode,
