@@ -1,11 +1,13 @@
 package io.github.sceneview.web
 
+import io.github.sceneview.scene.SceneGraph
 import io.github.sceneview.web.bindings.*
 import io.github.sceneview.web.nodes.CameraConfig
 import io.github.sceneview.web.nodes.GeometryConfig
 import io.github.sceneview.web.nodes.LightConfig
 import io.github.sceneview.web.nodes.LightType
 import io.github.sceneview.web.nodes.ModelConfig
+import io.github.sceneview.web.nodes.Node
 import kotlinx.browser.window
 import org.khronos.webgl.ArrayBuffer
 import org.khronos.webgl.Uint8Array
@@ -94,6 +96,20 @@ class SceneView private constructor(
     private val models = mutableListOf<LoadedModel>()
     private var assetLoader: AssetLoader? = null
     private val lightEntities = mutableListOf<Entity>()
+
+    /**
+     * Retained-mode node tree (#2024, slice 1). Holds the [Node]s added via
+     * [addNode] — the `sceneview-core` [SceneGraph] tracks membership
+     * (roots, recursive removal, per-frame dispatch) while transform
+     * inheritance itself is composed by Filament's `TransformManager`
+     * parent tree, mirroring Android.
+     *
+     * Slice 1 ships the pure transform graph (empty pivot nodes); the
+     * concrete `ModelNode`/`GeometryNode`/`LightNode` subtypes and the
+     * `@JsExport` handles arrive in later slices — see
+     * `.claude/plans/v5-web-node-graph.md`.
+     */
+    val sceneGraph = SceneGraph()
 
     /**
      * Tracks the Filament `IndirectLight` (IBL) handle currently bound to the
@@ -646,6 +662,32 @@ class SceneView private constructor(
      * The Filament.js LightManager.Builder is accessed via:
      *   Filament.LightManager.Builder(type).intensity(n).direction([x,y,z]).build(engine, entity)
      */
+    /**
+     * Adds a [node] to the retained node tree (#2024).
+     *
+     * @param node The node to add.
+     * @param parent Optional parent — when non-null, [node] is attached as a
+     *   child (Filament composes `world = parentWorld * local` for it); when
+     *   null it becomes a root node. Mirrors Android's `SceneScope` attach.
+     */
+    fun addNode(node: Node, parent: Node? = null) {
+        sceneGraph.addNode(node, parent)
+        requestRender()
+    }
+
+    /**
+     * Removes a [node] (and its whole subtree) from the node tree.
+     *
+     * Removal only detaches — it does **not** free the nodes' Filament
+     * entities, so a removed node can be re-added. Call [Node.destroy] to
+     * release a node's engine resources for good (the Android
+     * `removeNode` vs `destroy` split).
+     */
+    fun removeNode(node: Node) {
+        sceneGraph.removeNode(node)
+        requestRender()
+    }
+
     fun addLight(config: LightConfig) {
         // `unsafeCast`, NOT `as Entity` — see the create() camera-entity note:
         // `as` against the external `Entity` class emits `instanceof Entity`,
@@ -1052,6 +1094,16 @@ class SceneView private constructor(
         stopRendering()
         cameraController?.dispose()
 
+        // Tear down the retained node tree (#2024). Snapshot every tracked
+        // node FIRST, then drop the graph's tracking (which detaches each
+        // child from its parent — Filament setParent(null) on live entities),
+        // then destroy each node exactly once (isDestroyed-guarded) so every
+        // transform component + entity is freed — the same
+        // component-then-entity rule as the light teardown below.
+        val graphNodes = sceneGraph.findAllNodes { true }
+        sceneGraph.rootNodes.toList().forEach { sceneGraph.removeNode(it) }
+        graphNodes.forEach { (it as? Node)?.destroy() }
+
         // #1597 (Tier-2): mark every model superseded BEFORE releasing its
         // asset so any in-flight loadResources callback that fires after
         // teardown is a no-op instead of a use-after-free on a freed
@@ -1146,6 +1198,16 @@ class SceneView private constructor(
         // Track animation time
         val deltaSeconds = if (lastTimestamp > 0) (timestamp - lastTimestamp) / 1000.0 else 0.0
         lastTimestamp = timestamp
+
+        // Fan the frame tick out through the retained node tree (#2024) so
+        // Node.onFrame overrides can animate. The empty-graph guard keeps the
+        // idle rAF tick as lean as #2332 left it — a scene with no nodes pays
+        // one list-isEmpty check. Node mutations that change pixels must call
+        // requestRender() themselves (nodes carry no renderables in slice 1,
+        // so a transform write alone never dirties the frame).
+        if (sceneGraph.rootNodes.isNotEmpty()) {
+            sceneGraph.dispatchFrame(deltaSeconds.toFloat())
+        }
 
         // Update glTF animations for all loaded models. Indexed loop (not
         // forEach) so the per-frame closure + iterator allocation is gone — this

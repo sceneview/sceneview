@@ -282,6 +282,21 @@ external class TransformManager {
     fun setTransform(instance: dynamic, xform: dynamic) // mat4
     fun getTransform(instance: dynamic): dynamic // mat4
     fun getWorldTransform(instance: dynamic): dynamic // mat4
+
+    /**
+     * Re-parents [instance] under [newParentInstance], after which Filament
+     * composes `world = parentWorld * local` for the child automatically —
+     * the same `TransformManager.setParent` call Android `Node` uses for its
+     * scene-graph hierarchy (issue #2024, phase P1 of
+     * `.claude/plans/v5-web-node-graph.md`).
+     *
+     * Pass `null` to detach (the JS analog of Android's `setParent(i, 0)`).
+     */
+    fun setParent(instance: dynamic, newParentInstance: dynamic) // TransformManager$Instance?
+
+    /** Returns the parent [Entity] of [instance] (the null entity if detached). */
+    fun getParent(instance: dynamic): Entity
+
     fun create(entity: Entity)
     fun destroy(entity: Entity)
     fun openLocalTransformTransaction()
