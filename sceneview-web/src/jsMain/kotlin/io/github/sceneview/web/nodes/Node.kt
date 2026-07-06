@@ -43,7 +43,8 @@ import io.github.sceneview.web.bindings.EntityManager
  * `isVisible` render cascade, collision, and gestures land in later slices —
  * see the phasing table in the design doc. Until then this type is not part
  * of the exported JS API — it is reachable from Kotlin/JS consumers of the
- * module as an incubating surface (nodes carry no renderables yet).
+ * module as an incubating surface ([ModelNode]/[GeometryNode] wrap renderable
+ * content since slice 2; the base [Node] is a pure transform pivot).
  */
 open class Node internal constructor(
     internal val backend: NodeBackend,

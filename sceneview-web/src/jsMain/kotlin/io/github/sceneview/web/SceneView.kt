@@ -471,15 +471,6 @@ class SceneView private constructor(
         scale: Float = 1f,
     ) = loadModelInternal(url, onLoaded, autoAnimate, scale, onAssetCreated = null)
 
-    /**
-     * The actual pipeline behind [loadModel]. [onAssetCreated] is the node
-     * adoption hook (#2024 slice 2): it fires synchronously right after the
-     * asset's entities enter the scene (and the root scale is baked) but
-     * BEFORE the first frame can render them — so [addModelNode] re-parents
-     * the asset root under its pivot with no one-frame visual jump — and
-     * before the async `loadResources` completes ([onLoaded] keeps firing at
-     * resources-done, as always).
-     */
     /** The asset's animation player, `null` when it has no animations. */
     private fun assetAnimatorOrNull(asset: FilamentAsset): Animator? =
         @Suppress("SwallowedException")
@@ -489,6 +480,15 @@ class SceneView private constructor(
             null
         }
 
+    /**
+     * The actual pipeline behind [loadModel]. [onAssetCreated] is the node
+     * adoption hook (#2024 slice 2): it fires synchronously right after the
+     * asset's entities enter the scene (and the root scale is baked) but
+     * BEFORE the first frame can render them — so `addModelNode` re-parents
+     * the asset root under its pivot with no one-frame visual jump — and
+     * before the async `loadResources` completes ([onLoaded] keeps firing at
+     * resources-done, as always).
+     */
     internal fun loadModelInternal(
         url: String,
         onLoaded: ((FilamentAsset) -> Unit)? = null,

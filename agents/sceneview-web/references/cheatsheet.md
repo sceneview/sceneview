@@ -111,11 +111,18 @@ sceneView.loadModel(url, onLoaded)
 sceneView.loadEnvironment(iblUrl, skyboxUrl)
 sceneView.loadDefaultEnvironment()
 sceneView.addLight(config: LightConfig)
-sceneView.addGeometry(config: GeometryConfig)
+sceneView.addGeometry(config: GeometryConfig)  // returns FilamentAsset?
 sceneView.enableCameraControls(distance, targetX, targetY, targetZ, autoRotate)
 sceneView.fitToModels()
 sceneView.resize(width, height)
 sceneView.startRendering(); sceneView.stopRendering(); sceneView.destroy()
+
+// Kotlin-only incubating node factories (#2024 slice 2 — NOT in the JS export):
+// each returns a retained, transformable node mirroring the Android name
+sceneView.addModelNode(url, parent, autoAnimate, scale, onLoaded)  // ModelNode
+sceneView.addGeometryNode(config)                                  // GeometryNode
+sceneView.addCubeNode(size); sceneView.addSphereNode(radius)
+sceneView.addCylinderNode(radius, height); sceneView.addPlaneNode(sizeX, sizeZ)
 ```
 
 Geometry DSL types: `cube` (`size(w,h,d)`), `sphere` (`radius(r)`),
