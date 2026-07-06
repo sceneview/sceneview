@@ -100,7 +100,7 @@ roborazzi = "1.64.0"
 # IMPORTANT: detekt 2.x uses NEW plugin id "dev.detekt" + NEW artifact
 # coordinates "dev.detekt:detekt-gradle-plugin" (renamed from
 # io.gitlab.arturbosch.detekt).
-detekt = "2.0.0-alpha.0"
+detekt = "2.0.0-alpha.5"
 
 [libraries]
 # AndroidX Core
