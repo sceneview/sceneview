@@ -4,6 +4,7 @@ import io.github.sceneview.math.Transform
 import io.github.sceneview.math.copyColumnsInto
 import io.github.sceneview.web.bindings.Engine
 import io.github.sceneview.web.bindings.Entity
+import io.github.sceneview.web.bindings.EntityManager
 
 /**
  * Engine-side backing of a [Node] — the thin seam between the pure-Kotlin
@@ -28,6 +29,14 @@ internal interface NodeBackend {
      * on its side — mirroring Android `Node`'s `transformManager.setParent`.
      */
     fun setParent(parent: NodeBackend?)
+
+    /**
+     * Re-parents an engine entity this node does NOT own (e.g. a gltfio
+     * asset's root entity) under this node's transform component, so the
+     * foreign subtree inherits this node's transform — the web analog of
+     * Android `ModelNode` adopting `modelInstance.root` (#2024 slice 2).
+     */
+    fun adoptChildEntity(child: Entity)
 
     /** Frees every engine resource owned by the node (transform component + entity). */
     fun destroy()
@@ -79,7 +88,42 @@ internal class FilamentNodeBackend(
     }
 
     override fun setParent(parent: NodeBackend?) {
-        transformManager.setParent(instance, (parent as? FilamentNodeBackend)?.instance)
+        // A JS `null` parent is REJECTED by embind at runtime ("null is not
+        // a valid TransformManager$Instance" — proven in-browser against the
+        // pinned Filament.js by the kotlin-bundle.spec.ts #2024-P1 probe).
+        // The working detach is the null INSTANCE (native instance 0):
+        // `getInstance()` of an entity that never got a transform component —
+        // exactly Android's `setParent(i, 0)`.
+        transformManager.setParent(
+            instance,
+            (parent as? FilamentNodeBackend)?.instance ?: nullParentInstance(),
+        )
+    }
+
+    /**
+     * The engine's null `TransformManager$Instance`, obtained through a
+     * lazily-created component-less sentinel entity (one per page, never
+     * destroyed — a bare entity id, no engine resources). The sentinel must
+     * NEVER be given a transform component, or its instance stops being 0.
+     */
+    private fun nullParentInstance(): dynamic =
+        transformManager.getInstance(detachSentinel ?: EntityManager.get().create().also {
+            detachSentinel = it
+        })
+
+    private companion object {
+        /** Shared across all backends — entity ids are engine-global. */
+        private var detachSentinel: Entity? = null
+    }
+
+    override fun adoptChildEntity(child: Entity) {
+        // gltfio asset roots always carry a transform component, but be
+        // defensive — setParent on a missing instance is a WASM abort, not a
+        // catchable Kotlin exception.
+        if (!transformManager.hasComponent(child)) {
+            transformManager.create(child)
+        }
+        transformManager.setParent(transformManager.getInstance(child), instance)
     }
 
     override fun destroy() {

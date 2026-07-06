@@ -37,6 +37,7 @@ class NodeTest {
         var parentBackend: NodeBackend? = null
         var setParentCalls = 0
         var destroyCalls = 0
+        var adoptedEntities = mutableListOf<io.github.sceneview.web.bindings.Entity>()
 
         override fun setLocalTransform(transform: Transform) {
             lastTransform = transform
@@ -46,6 +47,10 @@ class NodeTest {
         override fun setParent(parent: NodeBackend?) {
             parentBackend = parent
             setParentCalls++
+        }
+
+        override fun adoptChildEntity(child: io.github.sceneview.web.bindings.Entity) {
+            adoptedEntities.add(child)
         }
 
         override fun destroy() {

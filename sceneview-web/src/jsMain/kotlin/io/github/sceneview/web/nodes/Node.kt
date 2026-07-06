@@ -294,10 +294,27 @@ open class Node internal constructor(
     private val parentNode: Node? get() = parent as Node?
 
     /**
+     * Re-parents an engine entity this node does not own (a gltfio asset's
+     * root) under this node's transform component, so the whole foreign
+     * subtree inherits this node's transform — the web analog of Android
+     * `ModelNode` adopting `modelInstance.root` (#2024 slice 2). The adopted
+     * entity's lifecycle stays with its current owner; [destroy] does not
+     * free it.
+     */
+    internal fun adoptChildEntity(child: Entity) {
+        backend.adoptChildEntity(child)
+    }
+
+    /**
      * Composes the pristine TRS state into a matrix and pushes it to the
      * engine — the compose-only write path (never decomposes back).
+     *
+     * No-op after [destroy]: the entity and its transform component are
+     * freed, so a late transform write must never reach the engine (WASM
+     * use-after-free, not a catchable exception).
      */
     private fun applyLocalTransform() {
+        if (isDestroyed) return
         backend.setLocalTransform(Transform(_position, _quaternion, _scale))
     }
 }
