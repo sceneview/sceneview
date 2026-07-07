@@ -1,8 +1,5 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -66,9 +63,10 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
         controls = {
             Text(
                 text = "The whole AR scene is a single `PlacementScene { anchor -> ... }` call. " +
-                    "It bundles the plane hint, the centre reticle, tap-to-place and the " +
-                    "instant-placement fallback — Sceneform `ArFragment` parity in one line. " +
-                    "Aim the cyan reticle at a surface and tap to drop a model.",
+                    "With coaching + ground shadows on, it bundles the animated onboarding guide, " +
+                    "a ring reticle that brightens once a surface is ready, tap-to-place, the " +
+                    "instant-placement fallback and a contact shadow under each model. " +
+                    "Aim the ring at a surface and tap to drop a model.",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Button(
@@ -88,6 +86,11 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 playbackDataset = arPlaybackDataset,
+                // Modern consumer-AR placement UX: onboarding guide while searching, a ring
+                // reticle that flips to "ready" on a surface, and a contact shadow under each
+                // placed model. The plane grid fades after the first placement (default).
+                coaching = true,
+                groundShadows = true,
                 onPlaced = { anchor ->
                     // Declare what rides each placed anchor. PlacementScene already created the
                     // Anchor from the tapped hit — the caller just attaches content to it.
@@ -110,12 +113,10 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
             )
 
             // Overlays — driven by the controller's Compose-observable placement count.
+            // The bottom onboarding hint is now handled by PlacementScene's built-in coaching
+            // guide (`coaching = true`), so the demo only surfaces the placed-count.
             val placedCount = controllerHolder.value?.count ?: 0
             PlacedCountPill(placedCount, Modifier.align(Alignment.TopCenter))
-            PlacementHint(
-                visible = placedCount == 0,
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
         }
     }
 }
@@ -135,28 +136,5 @@ private fun PlacedCountPill(count: Int, modifier: Modifier = Modifier) {
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelLarge,
         )
-    }
-}
-
-/** First-launch "aim & tap" hint — fades out once the first model lands. */
-@Composable
-private fun PlacementHint(visible: Boolean, modifier: Modifier = Modifier) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = modifier.padding(bottom = 32.dp),
-    ) {
-        Surface(
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            shape = MaterialTheme.shapes.large,
-        ) {
-            Text(
-                text = stringResource(R.string.demo_placement_scene_hint),
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-            )
-        }
     }
 }

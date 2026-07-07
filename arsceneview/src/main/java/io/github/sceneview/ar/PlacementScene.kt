@@ -1,7 +1,10 @@
 package io.github.sceneview.ar
 
 import android.view.MotionEvent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -18,6 +21,7 @@ import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
+import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
@@ -49,10 +53,21 @@ import java.io.File
  * ```
  *
  * What it wires for you:
- *  - An [ARSceneView] with [planeRenderer] enabled so the user sees detected surfaces.
- *  - A built-in **reticle** — a thin unlit disc that snaps to the center-screen hit-test result
- *    each frame, so the user can see *where* the next tap will land. Themed via [reticleColor]
- *    (defaults to the DESIGN.md primary cyan). Hide it with `showReticle = false`.
+ *  - An [ARSceneView] with [planeRenderer] enabled so the user sees detected surfaces. When
+ *    [fadePlaneOnFirstPlacement] is `true` (the default), the plane grid is a **discovery aid**
+ *    only — it shows while the user is finding a surface, then recedes once the first model is
+ *    placed, exactly as Google's AR design guidance recommends ("visually highlight only the
+ *    surface the user is pointing at; avoid a permanently decorated floor").
+ *  - A built-in **reticle** in the modern consumer-AR idiom (Scene Viewer / IKEA Place / Houzz):
+ *    a thin [ring][PlacementReticleStyle.RING] that snaps to the center-screen hit-test each
+ *    frame and **changes state** — dim while *searching* for a surface, bright with a centre dot
+ *    once *ready* for a tap — so the user gets an unambiguous "you can place now" signal without
+ *    any text. Themed via [reticleColor], switch geometry with [reticleStyle], hide it with
+ *    `showReticle = false`.
+ *  - Optional **onboarding coaching** ([coaching], off by default): the [PlaneDiscoveryGuide]
+ *    overlay — an animated hand hint + "move your phone to find a surface" pill after 3 s, a
+ *    "Need help?" tip card after 8 s, faded out the instant a surface is found — the same UX
+ *    Google's ARCore Elements ships. Enable it and the one-liner gains full first-run guidance.
  *  - **Tap-to-place**: each tap on a tracked surface resolves an ARCore [HitResult], creates an
  *    [Anchor], and invokes [onPlaced] inside the [ARSceneScope] so the caller declares whatever
  *    content should ride that anchor. Taps that fall on existing scene nodes are ignored, so a
@@ -80,8 +95,22 @@ import java.io.File
  * @param instantPlacement      Enable the instant-placement fallback so taps land before a plane
  *                              has converged. Default `true` (Sceneform `ArFragment` parity).
  * @param showReticle           Show the built-in center-screen placement reticle. Default `true`.
- * @param reticleColor          Reticle disc color. Defaults to the DESIGN.md primary cyan,
- *                              semi-transparent.
+ * @param reticleStyle          Reticle geometry — a [PlacementReticleStyle.RING] (the modern
+ *                              consumer-AR default) or the legacy [PlacementReticleStyle.DISC].
+ * @param reticleColor          Reticle tint. Defaults to the DESIGN.md primary cyan; the
+ *                              searching / ready phase modulates its opacity automatically.
+ * @param fadePlaneOnFirstPlacement Hide the plane-detection grid once the first model is placed,
+ *                              so the surface stops being highlighted after it has served its
+ *                              discovery purpose. Default `true`. Set `false` to keep the grid
+ *                              visible for the whole session.
+ * @param coaching              Overlay the [PlaneDiscoveryGuide] onboarding UX (animated hand
+ *                              hint + guidance pill + help tips) while the user is finding a
+ *                              surface. Default `false` — opt in for a guided first run.
+ * @param groundShadows         Attach an invisible [ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane]
+ *                              to every detected plane so placed models cast a **contact shadow**
+ *                              on the real floor instead of floating. Default `false`. Needs a
+ *                              shadow-casting light — `ARSceneView`'s default HDR light
+ *                              estimation provides one.
  * @param playbackDataset       Optional recorded ARCore MP4 dataset to replay instead of the live
  *                              camera feed. Forwarded verbatim to [ARSceneView]. Default `null`
  *                              (live camera).
@@ -104,7 +133,11 @@ fun PlacementScene(
     planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
     instantPlacement: Boolean = true,
     showReticle: Boolean = true,
-    reticleColor: Color = DEFAULT_RETICLE_COLOR,
+    reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,
+    reticleColor: Color = RETICLE_TINT,
+    fadePlaneOnFirstPlacement: Boolean = true,
+    coaching: Boolean = false,
+    groundShadows: Boolean = false,
     playbackDataset: File? = null,
     sessionConfiguration: ((session: com.google.ar.core.Session, Config) -> Unit)? = null,
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,
@@ -120,66 +153,124 @@ fun PlacementScene(
     // onSizeChanged; until measured the reticle stays hidden so it never races a (0,0) hit.
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
 
-    ARSceneView(
-        modifier = modifier.onSizeChanged { viewportSize = it },
-        engine = engine,
-        modelLoader = modelLoader,
-        materialLoader = materialLoader,
-        playbackDataset = playbackDataset,
-        planeRenderer = planeRenderer,
-        planeFindingMode = planeFindingMode,
-        instantPlacementMode = if (instantPlacement) {
-            Config.InstantPlacementMode.LOCAL_Y_UP
-        } else {
-            Config.InstantPlacementMode.DISABLED
-        },
-        sessionConfiguration = sessionConfiguration,
-        onSessionUpdated = { _, frame -> latestFrame = frame },
-        onGestureListener = rememberOnGestureListener(
-            onSingleTapConfirmed = { event: MotionEvent, node ->
-                // A tap on an existing scene node is a gesture on that node (drag / scale /
-                // rotate) — don't spawn a fresh anchor on top of it.
-                if (node != null) return@rememberOnGestureListener
-                val frame = latestFrame ?: return@rememberOnGestureListener
-                placementHit(frame, frame.hitTest(event), instantPlacement)
-                    ?.let { hit -> controller.add(hit.createAnchor()) }
+    // Reticle searching↔ready state — driven by the centre-screen hit test each frame.
+    var reticlePhase by remember { mutableStateOf(ReticlePhase.SEARCHING) }
+
+    // Onboarding-coaching signals, only tracked when `coaching` is on (a null failure and false
+    // booleans are ignored by the guide when it isn't rendered).
+    var cameraReady by remember { mutableStateOf(false) }
+    var isTracking by remember { mutableStateOf(false) }
+    var anyPlaneTracked by remember { mutableStateOf(false) }
+    var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+
+    // Live session — captured so `groundShadows` can enumerate detected planes for shadow
+    // catchers. Only needed when that feature is on.
+    var session by remember { mutableStateOf<com.google.ar.core.Session?>(null) }
+
+    // The plane grid guides discovery, then recedes once the first model is placed (Google AR
+    // design guidance — don't keep the floor decorated after it has served its purpose).
+    val placedAny by remember { derivedStateOf { controller.count > 0 } }
+    val showPlaneRenderer = planeRenderer && !(fadePlaneOnFirstPlacement && placedAny)
+
+    Box(modifier = modifier.fillMaxSize()) {
+        ARSceneView(
+            modifier = Modifier.fillMaxSize().onSizeChanged { viewportSize = it },
+            engine = engine,
+            modelLoader = modelLoader,
+            materialLoader = materialLoader,
+            playbackDataset = playbackDataset,
+            planeRenderer = showPlaneRenderer,
+            planeFindingMode = planeFindingMode,
+            instantPlacementMode = if (instantPlacement) {
+                Config.InstantPlacementMode.LOCAL_Y_UP
+            } else {
+                Config.InstantPlacementMode.DISABLED
+            },
+            sessionConfiguration = sessionConfiguration,
+            onSessionUpdated = { updatedSession, frame ->
+                latestFrame = frame
+                if (groundShadows && session !== updatedSession) session = updatedSession
+                if (coaching) {
+                    cameraReady = true
+                    isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                    if (!anyPlaneTracked) {
+                        anyPlaneTracked = updatedSession.getAllTrackables(Plane::class.java)
+                            .any { it.trackingState == TrackingState.TRACKING }
+                    }
+                }
+            },
+            onTrackingFailureChanged = { reason -> if (coaching) trackingFailure = reason },
+            onGestureListener = rememberOnGestureListener(
+                onSingleTapConfirmed = { event: MotionEvent, node ->
+                    // A tap on an existing scene node is a gesture on that node (drag / scale /
+                    // rotate) — don't spawn a fresh anchor on top of it.
+                    if (node != null) return@rememberOnGestureListener
+                    val frame = latestFrame ?: return@rememberOnGestureListener
+                    placementHit(frame, frame.hitTest(event), instantPlacement)
+                        ?.let { hit -> controller.add(hit.createAnchor()) }
+                }
+            ),
+        ) {
+            // Built-in reticle — a thin ring that snaps to the centre-screen hit-test each frame
+            // so the user previews where the next tap lands and gets a searching↔ready signal.
+            // Purely visual: the tap handler above runs its own hit-test at the tap coordinates,
+            // so placement is not centre-only.
+            if (showReticle && viewportSize != IntSize.Zero) {
+                val centreX = viewportSize.width / 2f
+                val centreY = viewportSize.height / 2f
+                // PlacementReticle adds Depth-Lab orientation smoothing over HitResultNode and
+                // reports each hit change, driving the searching↔ready phase. Instant-placement
+                // hits are accepted by the tap handler but not by the reticle's plane-only snap,
+                // so the ring reads READY only on a real tracked surface.
+                PlacementReticle(
+                    xPx = centreX,
+                    yPx = centreY,
+                    onHitResultChanged = { hit -> reticlePhase = reticlePhaseFor(hit != null) },
+                ) {
+                    PlacementReticleVisual(
+                        materialLoader = materialLoader,
+                        phase = reticlePhase,
+                        tint = reticleColor,
+                        style = reticleStyle,
+                    )
+                }
             }
-        ),
-    ) {
-        // Built-in reticle — a thin unlit disc that snaps to the centre-screen hit-test each
-        // frame so the user previews where the next tap lands. Purely visual: the tap handler
-        // above runs its own hit-test at the tap coordinates, so placement is not centre-only.
-        if (showReticle && viewportSize != IntSize.Zero) {
-            val reticleMaterial = remember(materialLoader, reticleColor) {
-                materialLoader.createUnlitColorInstance(reticleColor)
+
+            // Contact shadows — an invisible shadow-catcher per detected plane so placed models
+            // read as grounded on the real floor (ARCore Depth Lab `ShadowReceiverMeshShader`
+            // pattern). Off by default; needs a shadow-casting light (ARSceneView's default HDR
+            // light estimation provides one). Only enumerated once the first surface exists.
+            if (groundShadows) {
+                val planes by io.github.sceneview.ar.arcore.rememberDetectedPlanes(session)
+                planes.forEach { plane ->
+                    key(plane) {
+                        ShadowReceiverPlane(plane = plane)
+                    }
+                }
             }
-            val centreX = viewportSize.width / 2f
-            val centreY = viewportSize.height / 2f
-            HitResultNode(
-                hitTest = { frame ->
-                    placementHit(frame, frame.hitTest(centreX, centreY), instantPlacement)
-                },
-            ) {
-                // 7 cm radius, 5 mm tall disc — sits flush on the detected surface. The
-                // HitResultNode pose orients +Y along the surface normal, so the disc lays flat.
-                CylinderNode(
-                    radius = RETICLE_RADIUS,
-                    height = RETICLE_HEIGHT,
-                    sideCount = RETICLE_SIDES,
-                    materialInstance = reticleMaterial,
-                )
+
+            // One caller-declared content block per created anchor. The `key` gives each anchor
+            // its own remember slot so models load independently (Filament instances are
+            // single-parent).
+            controller.anchors.forEach { anchor ->
+                key(anchor) {
+                    onPlaced(anchor)
+                }
             }
+
+            content?.invoke(this, controller)
         }
 
-        // One caller-declared content block per created anchor. The `key` gives each anchor its
-        // own remember slot so models load independently (Filament instances are single-parent).
-        controller.anchors.forEach { anchor ->
-            key(anchor) {
-                onPlaced(anchor)
-            }
+        // Opt-in onboarding overlay — a sibling of ARSceneView in the same Box, as its KDoc
+        // requires. It self-hides the moment a surface is found and never re-onboards.
+        if (coaching) {
+            PlaneDiscoveryGuide(
+                cameraReady = cameraReady,
+                isTracking = isTracking,
+                anyPlaneTracked = anyPlaneTracked,
+                trackingFailureReason = trackingFailure,
+            )
         }
-
-        content?.invoke(this, controller)
     }
 }
 

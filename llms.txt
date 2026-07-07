@@ -929,8 +929,10 @@ SceneView {
 
 **Start here for AR placement.** `PlacementScene` is the high-level composable that bundles the
 whole tap-to-place pipeline — Sceneform `ArFragment` parity in one call. It wires an `ARSceneView`
-with plane rendering, a built-in centre-screen reticle, tap-to-place anchor creation, and an
-instant-placement fallback. You only declare *what* rides each placed anchor:
+with plane rendering, a built-in centre-screen **ring reticle** that brightens when a surface is
+ready, tap-to-place anchor creation, and an instant-placement fallback. Opt in to `coaching` for
+the animated onboarding guide and `groundShadows` for contact shadows under placed models. You
+only declare *what* rides each placed anchor:
 
 ```kotlin
 import io.github.sceneview.ar.PlacementScene
@@ -965,7 +967,11 @@ Signature:
     planeFindingMode: Config.PlaneFindingMode = HORIZONTAL_AND_VERTICAL,
     instantPlacement: Boolean = true,        // place before a plane converges (ArFragment parity)
     showReticle: Boolean = true,             // built-in centre-screen placement reticle
-    reticleColor: Color = DEFAULT_RETICLE_COLOR,   // DESIGN.md primary cyan
+    reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
+    reticleColor: Color = RETICLE_TINT,      // DESIGN.md primary cyan; opacity varies searching↔ready
+    fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
+    coaching: Boolean = false,               // opt-in PlaneDiscoveryGuide onboarding overlay
+    groundShadows: Boolean = false,          // opt-in contact shadow under placed models
     playbackDataset: File? = null,
     sessionConfiguration: ((Session, Config) -> Unit)? = null,
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,   // required — what to place
