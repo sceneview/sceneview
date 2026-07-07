@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-06-04'
+  last-updated: '2026-07-07'
   keywords:
   - sceneview
   - sceneview-web
@@ -119,6 +119,21 @@ sceneview.createViewer('viewer').then(function (sv) {
 `setCameraTarget`, `setAutoRotate`, `setAutoRotateSpeed`, `setZoomLimits`,
 `setBackgroundColor`, `fitToModels`, `startRendering`, `stopRendering`,
 `resize`, `dispose`.
+
+Since #2024 slice 3 the viewer also exposes a minimal **imperative node
+surface**: `addNode()`, `addModelNode(url)` (→ `Promise<NodeHandle>`),
+`addCubeNode(size)`, `addSphereNode(radius)`, `addLightNode("directional" |
+"point" | "spot")` each return an opaque `NodeHandle` you keep to mutate content
+after build (`setPosition`, `setRotation` in Euler degrees, `setScale`,
+`setScaleUniform`, `setVisible`, `visible`, `addChild`, `removeChild`,
+`getWorldPosition`, `destroy`); `removeNode(handle)` detaches and frees it. This
+is the thing the builder DSL cannot do. See `references/cheatsheet.md` for the
+full signatures. `CameraNode` and `addGeometryNode` remain Kotlin-only.
+
+```js
+const cube = sv.addCubeNode(0.2);
+cube.setPosition(0, 1, 0);
+```
 
 ## The minimal correct example — Kotlin/JS DSL
 

@@ -59,9 +59,9 @@ internal class FilamentNodeBackend(
 
     /**
      * Reusable flat 16-element column-major JS array passed to
-     * `TransformManager.setTransform` — same scratch pattern as
-     * `SceneView.transformScratch` (#2268), so a transform write never
-     * allocates a fresh JS array.
+     * `TransformManager.setTransform` — the same reused-scratch pattern
+     * `SceneView` uses for its own per-frame transform writes (#2268), so a
+     * transform write never allocates a fresh JS array.
      */
     private val matrixScratch: dynamic = js("new Array(16)")
 

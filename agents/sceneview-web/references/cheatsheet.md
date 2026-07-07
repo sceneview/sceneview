@@ -52,6 +52,42 @@ sv.resize(width, height)
 sv.dispose()                            // release all GPU resources
 ```
 
+### Node scene-graph factories (`window.sceneview`, since #2024 slice 3)
+
+Each factory adds a retained node to the scene and returns an opaque
+`NodeHandle` you keep to mutate the content imperatively after `create()` —
+the thing the fire-and-forget builder DSL cannot do. Angles are Euler degrees.
+
+```js
+sv.addNode()                            // → NodeHandle — empty pivot / grouping transform
+sv.addModelNode(url)                    // → Promise<NodeHandle> (resolves once loaded)
+sv.addCubeNode(size)                    // → NodeHandle (content already in scene)
+sv.addSphereNode(radius)                // → NodeHandle
+sv.addLightNode(type)                   // type: "directional" | "point" | "spot" — else throws
+sv.removeNode(handle)                   // detach + free the node's Filament entity
+```
+
+#### `NodeHandle` methods
+
+```js
+h.setPosition(x, y, z)                  // parent space (world for a root node)
+h.setRotation(x, y, z)                  // Euler degrees, ZYX (same as Android Node.rotation)
+h.setScale(x, y, z)                     // non-uniform
+h.setScaleUniform(s)                    // uniform — the common case
+h.setVisible(v)                         // content node: actually adds/removes from the scene
+h.visible                               // Boolean getter
+h.addChild(child)                       // parent `child` under `h` (child keeps its local transform)
+h.removeChild(child)
+h.getWorldPosition()                    // → [x, y, z] composed through the parent chain
+h.destroy()                             // remove from graph + free its Filament entity (idempotent)
+```
+
+```js
+const cube = sv.addCubeNode(0.2);
+cube.setPosition(0, 1, 0);
+sv.addModelNode("models/helmet.glb").then(model => model.addChild(cube));
+```
+
 ## Kotlin/JS DSL
 
 ```kotlin
@@ -117,12 +153,15 @@ sceneView.fitToModels()
 sceneView.resize(width, height)
 sceneView.startRendering(); sceneView.stopRendering(); sceneView.destroy()
 
-// Kotlin-only incubating node factories (#2024 slice 2 — NOT in the JS export):
-// each returns a retained, transformable node mirroring the Android name
-sceneView.addModelNode(url, parent, autoAnimate, scale, onLoaded)  // ModelNode
-sceneView.addGeometryNode(config)                                  // GeometryNode
-sceneView.addCubeNode(size); sceneView.addSphereNode(radius)
-sceneView.addCylinderNode(radius, height); sceneView.addPlaneNode(sizeX, sizeZ)
+// Kotlin node factories — each returns a retained, transformable node
+// mirroring the Android name. Since #2024 slice 3, addModelNode / addCubeNode /
+// addSphereNode / addLightNode are ALSO reachable from plain JS as the
+// `sv.*` → NodeHandle factories above (returning an opaque handle, not the
+// Kotlin node). The rest below stay Kotlin-only — NOT in the plain-JS export:
+sceneView.addModelNode(url, parent, autoAnimate, scale, onLoaded)  // ModelNode  (JS: sv.addModelNode(url))
+sceneView.addGeometryNode(config)                                  // GeometryNode (Kotlin-only)
+sceneView.addCubeNode(size); sceneView.addSphereNode(radius)       // (JS: sv.addCubeNode/addSphereNode)
+sceneView.addCylinderNode(radius, height); sceneView.addPlaneNode(sizeX, sizeZ)  // Kotlin-only
 ```
 
 Geometry DSL types: `cube` (`size(w,h,d)`), `sphere` (`radius(r)`),

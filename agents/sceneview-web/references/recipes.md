@@ -136,3 +136,12 @@ the full list. Use absolute URLs for models.
 
 Android (`sceneview` skill) and iOS (`sceneview-ios` skill) expose the same node
 concepts with platform-idiomatic shapes. **Don't copy-paste between platforms.**
+
+Web now exposes a minimal `NodeHandle` imperative surface since #2024 slice 3 —
+plain-JS callers create a node with `sv.addNode()` / `sv.addModelNode(url)` /
+`sv.addCubeNode(size)` / `sv.addSphereNode(radius)` / `sv.addLightNode(type)`,
+keep the returned handle, and mutate it after build (`setPosition`,
+`setRotation` in Euler degrees, `setScale`, `setVisible`, `addChild`,
+`getWorldPosition`, `destroy`). This is a first, minimal slice: no gestures, no
+collision, no transform object, and `CameraNode` / `addGeometryNode` remain
+Kotlin-only. Full Android/iOS node parity continues under #2024.

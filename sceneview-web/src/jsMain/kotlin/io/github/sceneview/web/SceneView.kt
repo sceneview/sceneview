@@ -1141,9 +1141,9 @@ class SceneView private constructor(
             val current = readMat4(tm.getTransform(instance))
             val s = scale.toDouble()
             // Filament.js `setTransform` expects a plain JS `number[]`, not a
-            // Kotlin `DoubleArray` (which lowers to a Float64Array) — mirror the
-            // `transformScratch` pattern and write into a fresh JS array. This
-            // runs once per load, so the one allocation is immaterial.
+            // Kotlin `DoubleArray` (which lowers to a Float64Array) — build a
+            // plain JS array and write into it. This runs once per load, so the
+            // one allocation is immaterial (no need for a reused scratch here).
             val out: dynamic = js("new Array(16)")
             for (i in 0 until 16) out[i] = current[i]
             // Scale the 3×3 linear block (columns 0,1,2 → indices 0,1,2,4,5,6,8,9,10),
