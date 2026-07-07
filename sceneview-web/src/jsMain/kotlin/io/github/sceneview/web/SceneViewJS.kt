@@ -21,6 +21,28 @@ class SceneViewJS {
     private var _sceneView: SceneView? = null
     private var disposed = false
 
+    /**
+     * The [NodeHost] the handles created by this viewer call back into. A
+     * private field (not `SceneViewJS : NodeHost`) so the `@JsExport` class does
+     * not surface the internal `Node`-typed [NodeHost] methods on its exported
+     * shape (Kotlin/JS warns "exported declaration uses non-exportable parameter
+     * type 'Node'" for public overrides). The handle keeps the reference; JS
+     * never sees it.
+     */
+    private val nodeHost: NodeHost = object : NodeHost {
+        override fun requestRender() {
+            _sceneView?.requestRender()
+        }
+
+        override fun applyNodeVisibility(node: io.github.sceneview.web.nodes.Node) {
+            _sceneView?.applyNodeVisibility(node)
+        }
+
+        override fun removeNodeInternal(node: io.github.sceneview.web.nodes.Node) {
+            _sceneView?.removeNode(node)
+        }
+    }
+
     internal fun attach(sv: SceneView) {
         _sceneView = sv
     }
@@ -176,6 +198,111 @@ class SceneViewJS {
             // repaint so an idle scene reflects it (#2332).
             it.requestRender()
         }
+    }
+
+    // --- Node scene-graph (#2024 slice 3 / P4) -----------------------------
+    //
+    // The first `@JsExport` scene-graph surface: plain-JS callers create a
+    // node, keep the returned `NodeHandle`, and mutate it after `create()`.
+    // Each factory runs the exact retained-node pipeline the Kotlin DSL uses
+    // (`addNode`/`addModelNode`/`addCubeNode`/`addSphereNode`/`addLightNode`),
+    // so the JS surface and the Kotlin surface build byte-identical graphs.
+
+    /**
+     * Adds an empty pivot [io.github.sceneview.web.nodes.Node] to the scene and
+     * returns a [NodeHandle] to it — the web mirror of an Android `Node()` used
+     * as a grouping transform. Parent other nodes under it with
+     * [NodeHandle.addChild] to move them together.
+     */
+    @JsName("addNode")
+    fun addNode(): NodeHandle {
+        val sv = _sceneView ?: throw IllegalStateException("SceneViewer not initialized")
+        val node = io.github.sceneview.web.nodes.Node(sv.engine, sv.newEntity())
+        sv.addNode(node)
+        return NodeHandle(node, nodeHost)
+    }
+
+    /**
+     * Loads a glTF/GLB model and returns a Promise that resolves with a
+     * [NodeHandle] once the model has finished loading — the JS mirror of
+     * `SceneView.addModelNode(url)`. Rejects if the viewer is uninitialised.
+     *
+     * Resolving on load (rather than immediately) keeps the JS contract simple:
+     * the handle is usable the moment the caller gets it, with its content
+     * already in the scene.
+     */
+    @JsName("addModelNode")
+    fun addModelNode(url: String): Promise<NodeHandle> {
+        val sv = _sceneView ?: return Promise.reject(Throwable("SceneViewer not initialized"))
+        return Promise { resolve, reject ->
+            try {
+                // `addModelNode` returns the pivot node synchronously and starts
+                // the async load; `onLoaded` fires (with the asset) once the
+                // model is in the scene. Resolve the handle then, wrapping the
+                // very node `addModelNode` returned. `onLoaded` is a NAMED param
+                // — `addModelNode` has trailing `parent`/`autoAnimate`/`scale`
+                // params, so a trailing lambda would bind to the wrong one.
+                //
+                // A nullable holder lets the `onLoaded` closure reference the
+                // pivot; it is assigned synchronously (before any async load can
+                // complete), so `pivot` is always non-null when `onLoaded` runs.
+                var pivot: io.github.sceneview.web.nodes.ModelNode? = null
+                pivot = sv.addModelNode(url, onLoaded = { resolve(NodeHandle(pivot!!, nodeHost)) })
+            } catch (e: Throwable) {
+                reject(e)
+            }
+        }
+    }
+
+    /**
+     * Adds a cube primitive and returns its [NodeHandle] — JS mirror of
+     * `SceneView.addCubeNode(size)`. The content is in the scene synchronously.
+     */
+    @JsName("addCubeNode")
+    fun addCubeNode(size: Double): NodeHandle {
+        val sv = _sceneView ?: throw IllegalStateException("SceneViewer not initialized")
+        return NodeHandle(sv.addCubeNode(size), nodeHost)
+    }
+
+    /**
+     * Adds a sphere primitive and returns its [NodeHandle] — JS mirror of
+     * `SceneView.addSphereNode(radius)`.
+     */
+    @JsName("addSphereNode")
+    fun addSphereNode(radius: Double): NodeHandle {
+        val sv = _sceneView ?: throw IllegalStateException("SceneViewer not initialized")
+        return NodeHandle(sv.addSphereNode(radius), nodeHost)
+    }
+
+    /**
+     * Adds a light and returns its [NodeHandle] — JS mirror of
+     * `SceneView.addLightNode(config)`. [type] is one of `"directional"`,
+     * `"point"`, or `"spot"`; any other value throws.
+     */
+    @JsName("addLightNode")
+    fun addLightNode(type: String): NodeHandle {
+        val sv = _sceneView ?: throw IllegalStateException("SceneViewer not initialized")
+        val config = io.github.sceneview.web.nodes.LightConfig().apply {
+            when (type) {
+                "directional" -> directional()
+                "point" -> point()
+                "spot" -> spot()
+                else -> throw IllegalArgumentException(
+                    "Unknown light type '$type' — expected 'directional', 'point', or 'spot'",
+                )
+            }
+        }
+        return NodeHandle(sv.addLightNode(config), nodeHost)
+    }
+
+    /**
+     * Removes a node (and its subtree) from the graph and frees its Filament
+     * entity — the JS mirror of `SceneView.removeNode` + `Node.destroy`.
+     * Equivalent to [NodeHandle.destroy].
+     */
+    @JsName("removeNode")
+    fun removeNode(node: NodeHandle) {
+        node.destroy()
     }
 
     /**

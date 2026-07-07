@@ -54,6 +54,9 @@ fun SceneView.addModelNode(
         onLoaded = onLoaded,
         autoAnimate = autoAnimate,
         scale = scale,
+        // Node-owned: this content is framed via its ModelNode pivot, so the
+        // flat-content auto-centre pass (P4) must not also re-parent/centre it.
+        nodeOwned = true,
         onAssetCreated = { asset ->
             if (node.isDestroyed) {
                 console.warn(
@@ -136,7 +139,9 @@ fun SceneView.addPlaneNode(
  */
 private fun SceneView.attachGeometry(node: GeometryNode, config: GeometryConfig, parent: Node?) {
     addNode(node, parent)
-    addGeometry(config)?.let { asset ->
+    // Node-owned geometry: framed via this GeometryNode pivot, so it is excluded
+    // from the flat-content auto-centre pass (#2024 P4).
+    addGeometry(config, nodeOwned = true)?.let { asset ->
         node.adoptChildEntity(asset.getRoot())
         node.asset = asset
     }
@@ -194,4 +199,29 @@ fun SceneView.addCameraNode(parent: Node? = null): CameraNode {
     addNode(node, parent)
     node.controller = FilamentCameraController(camera)
     return node
+}
+
+/**
+ * Render-side visibility cascade for a content node (#2024 slice 3 / P4).
+ *
+ * Adds or removes the node's asset entities from the Filament `Scene` so a
+ * hidden [ModelNode] / [GeometryNode] actually disappears and a re-shown one
+ * comes back — the design-doc Phase 4 cascade. Uses the already-bound
+ * `Scene.addEntities` / `Scene.removeEntities` (proven in the kotlin-bundle
+ * smoke test's rendering path), so **no new embind binding** is introduced. A
+ * no-op for pivot nodes (no owned asset) and for light nodes (a [LightNode]'s
+ * `asset` is `null`; light visibility is a later slice). The transform-graph
+ * `isVisible` flag is owned by [Node]; this only performs the scene-membership
+ * side-effect. A same-package extension (not a `SceneView` member) to keep the
+ * class under the detekt function budget — same reason as the factories above.
+ */
+fun SceneView.applyNodeVisibility(node: Node) {
+    val asset = when (node) {
+        is ModelNode -> node.asset
+        is GeometryNode -> node.asset
+        else -> null
+    } ?: return
+    val entities = asset.getEntities()
+    if (node.isVisible) scene.addEntities(entities) else scene.removeEntities(entities)
+    requestRender()
 }
