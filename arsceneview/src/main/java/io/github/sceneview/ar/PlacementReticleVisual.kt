@@ -60,11 +60,14 @@ internal val RETICLE_TINT: Color = Color(0xFF_44_E7_FF)
 /** Ring outer radius (major radius + tube), metres — ~8 cm across on the surface. */
 internal const val RING_MAJOR_RADIUS = 0.06f
 
-/** Ring tube thickness (minor radius), metres — a thin ~1 cm band. */
-internal const val RING_MINOR_RADIUS = 0.008f
+/**
+ * Ring tube thickness (minor radius), metres — a slim ~5 mm band (~8% of the major radius, the
+ * sleek proportion consumer AR reticles use; a thicker tube reads as a heavy "toy" target).
+ */
+internal const val RING_MINOR_RADIUS = 0.005f
 
 /** Centre-dot radius shown only in the READY phase, metres. */
-internal const val RING_DOT_RADIUS = 0.014f
+internal const val RING_DOT_RADIUS = 0.013f
 
 /** Ring / dot height off the surface, metres — a hair above the plane to avoid z-fighting. */
 internal const val RETICLE_LIFT = 0.004f
@@ -103,13 +106,17 @@ internal fun reticleAlphaFor(phase: ReticlePhase): Float =
  * class), and their colour is mutated in place on phase change rather than recreating the
  * instance — so the searching→ready transition is allocation-free.
  *
+ * Public so callers building a **custom** AR placement flow (or a non-AR design-time preview of
+ * one) can render the same reticle their users see in [PlacementScene]. Declare it inside a node
+ * whose pose orients +Y along the target surface normal.
+ *
  * @param materialLoader loader that builds the unlit reticle materials.
  * @param phase          the current searching / ready state.
  * @param tint           reticle hue; its alpha is overridden per [phase].
  * @param style          ring or disc geometry.
  */
 @Composable
-internal fun io.github.sceneview.NodeScope.PlacementReticleVisual(
+fun io.github.sceneview.NodeScope.PlacementReticleVisual(
     materialLoader: MaterialLoader,
     phase: ReticlePhase,
     tint: Color = RETICLE_TINT,
