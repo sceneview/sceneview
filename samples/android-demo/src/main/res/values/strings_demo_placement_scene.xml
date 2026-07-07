@@ -7,5 +7,4 @@
 <resources>
     <string name="demo_placement_scene_title">Placement Scene</string>
     <string name="demo_placement_scene_subtitle">One-line tap-to-place AR (Sceneform ArFragment parity)</string>
-    <string name="demo_placement_scene_hint">Aim the reticle at a surface and tap to place</string>
 </resources>
