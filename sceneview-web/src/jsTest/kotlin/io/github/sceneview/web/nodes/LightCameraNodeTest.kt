@@ -53,6 +53,9 @@ class LightCameraNodeTest {
 
     private fun fakeEntity(id: Int): Entity = id.asDynamic().unsafeCast<Entity>()
 
+    /** Round to 3 dp — LightConfig stores Float, applyConfig widens to Double. */
+    private fun round3(v: Double): Double = kotlin.math.round(v * 1000.0) / 1000.0
+
     // --- LightNode -----------------------------------------------------------
 
     @Test
@@ -110,6 +113,62 @@ class LightCameraNodeTest {
 
         assertEquals(Triple(2.0, 3.0, 4.0), controller.position)
         assertEquals(null, controller.direction)
+    }
+
+    @Test
+    fun applyConfigThenWireFlushesTheConfigValuesNotTheDefaults() {
+        // The #2024 slice-2b bug: SceneView.addLightNode builds the light from
+        // `config`, then wires the controller — whose flush pushes the NODE's
+        // fields. If those fields were never seeded from `config`, the flush
+        // clobbers the custom light back to the defaults (100k white). This
+        // asserts the addLightNode seed order (applyConfig BEFORE wire) lands
+        // the CUSTOM values on the controller — the flat-path byte-identity the
+        // KDoc + changelog claim. (The existing wiring test sets fields via the
+        // node setters, not from a LightConfig, so it does not cover this glue.)
+        val config = LightConfig().apply {
+            directional()
+            intensity(500_000.0)
+            color(1.0f, 0.2f, 0.2f)
+            direction(0.1f, -0.9f, 0.3f)
+        }
+        val light = LightNode(RecordingBackend(), config.type)
+
+        light.applyConfig(config)              // addLightNode: seed BEFORE wire
+        val controller = RecordingLightController()
+        light.controller = controller          // addLightNode: wire → flush
+
+        assertEquals(500_000.0, controller.intensity, "custom intensity must survive the flush")
+        val color = controller.color!!
+        assertEquals(1.0, round3(color.first), "custom colour R must survive the flush")
+        assertEquals(0.2, round3(color.second), "custom colour G must survive the flush")
+        assertEquals(0.2, round3(color.third), "custom colour B must survive the flush")
+        val direction = controller.direction!!
+        assertEquals(0.1, round3(direction.first), "custom direction x must survive the flush")
+        assertEquals(-0.9, round3(direction.second), "custom direction y must survive the flush")
+        assertEquals(0.3, round3(direction.third), "custom direction z must survive the flush")
+        // A directional light must not push a position.
+        assertEquals(null, controller.position)
+    }
+
+    @Test
+    fun applyConfigSeedsPositionForANonDirectionalLight() {
+        val config = LightConfig().apply {
+            point()
+            intensity(80_000.0)
+            position(1.5f, 2.5f, 3.5f)
+        }
+        val light = LightNode(RecordingBackend(), config.type)
+
+        light.applyConfig(config)
+        val controller = RecordingLightController()
+        light.controller = controller
+
+        assertEquals(80_000.0, controller.intensity)
+        val position = controller.position!!
+        assertEquals(1.5, round3(position.first))
+        assertEquals(2.5, round3(position.second))
+        assertEquals(3.5, round3(position.third))
+        assertEquals(null, controller.direction, "a point light must not push a direction")
     }
 
     @Test

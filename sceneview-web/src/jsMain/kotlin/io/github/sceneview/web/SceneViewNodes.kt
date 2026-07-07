@@ -166,6 +166,14 @@ fun SceneView.addLightNode(config: LightConfig, parent: Node? = null): LightNode
     addNode(node, parent)
     val lightEntity = buildLightEntity(config)
     node.adoptChildEntity(lightEntity)
+
+    // Seed the node's cached light state from `config` BEFORE wiring the
+    // controller: the controller's flush-on-wire pushes the node's cached
+    // fields, so without this seed it would clobber the `config` values
+    // buildLightEntity just applied and render a custom light as the default
+    // 100k white (#2024 slice-2b review). See LightNode.applyConfig.
+    node.applyConfig(config)
+
     node.controller = FilamentLightController(engine.getLightManager(), lightEntity)
     return node
 }

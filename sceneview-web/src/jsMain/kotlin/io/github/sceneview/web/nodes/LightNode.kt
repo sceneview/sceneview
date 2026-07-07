@@ -102,6 +102,28 @@ class LightNode internal constructor(
         _positionX = x; _positionY = y; _positionZ = z
         if (!isDestroyed) controller?.setPosition(x, y, z)
     }
+
+    /**
+     * Seeds this node's cached light state from a [LightConfig] — the single
+     * `config → node` mapping, called by `SceneView.addLightNode` *before* the
+     * controller is wired so the flush-on-wire pushes the config's real values,
+     * not this node's defaults.
+     *
+     * Without this seed the controller flush would clobber the values
+     * `buildLightEntity(config)` just applied, rendering a custom
+     * `light { intensity(…); color(…) }` as the default 100k white (#2024
+     * slice-2b review). Directional lights carry a direction; point/spot carry
+     * a position — matching the flush-on-wire's own type split.
+     */
+    internal fun applyConfig(config: LightConfig) {
+        intensity = config.intensity
+        color(config.colorR.toDouble(), config.colorG.toDouble(), config.colorB.toDouble())
+        if (config.type == LightType.DIRECTIONAL) {
+            direction(config.directionX.toDouble(), config.directionY.toDouble(), config.directionZ.toDouble())
+        } else {
+            position(config.positionX.toDouble(), config.positionY.toDouble(), config.positionZ.toDouble())
+        }
+    }
 }
 
 /**
