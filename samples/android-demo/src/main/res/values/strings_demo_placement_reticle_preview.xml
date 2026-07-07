@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="demo_placement_reticle_preview_title">AR Placement Reticle Preview</string>
-    <string name="demo_placement_reticle_preview_subtitle">Non-AR preview of the placement reticle — searching vs ready, ring vs disc</string>
+    <string name="demo_placement_reticle_preview_subtitle">Non-AR preview of AR placement — reticle (searching/ready, ring/disc) and a placed model with a contact shadow</string>
 </resources>
