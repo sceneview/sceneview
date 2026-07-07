@@ -54,8 +54,11 @@ enum class ReticlePhase {
 /**
  * Default reticle tint — the DESIGN.md primary cyan. The [ReticlePhase] modulates its alpha, so
  * this is the fully-opaque hue; the searching state renders it faded.
+ *
+ * Public because it is the documented default of the public [PlacementScene]/[PlacementReticleVisual]
+ * `reticleColor` params — a caller (or an AI copying the signature) must be able to name it.
  */
-internal val RETICLE_TINT: Color = Color(0xFF_44_E7_FF)
+val RETICLE_TINT: Color = Color(0xFF_44_E7_FF)
 
 /** Ring outer radius (major radius + tube), metres — ~8 cm across on the surface. */
 internal const val RING_MAJOR_RADIUS = 0.06f

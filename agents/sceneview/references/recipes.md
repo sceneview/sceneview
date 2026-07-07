@@ -63,6 +63,28 @@ are:
 
 ## Recipe: complete tap-to-place UX (onboarding + reticle + grounded shadow) — #2241
 
+**The one-liner (preferred).** `PlacementScene` bundles the animated onboarding guide, a ring
+reticle that brightens once a surface is ready, tap-to-place, the instant-placement fallback, the
+plane grid fading after first placement, and a per-model contact shadow — all opt-in via flags:
+
+```kotlin
+PlacementScene(
+    coaching = true,        // animated onboarding guide while searching for a surface
+    groundShadows = true,   // contact shadow under each placed model
+    // reticleStyle = PlacementReticleStyle.RING is the default; DISC for the legacy flat puck
+    onPlaced = { anchor ->
+        AnchorNode(anchor = anchor) {
+            rememberModelInstance(modelLoader, "models/model.glb")?.let {
+                ModelNode(modelInstance = it, scaleToUnits = 0.3f)
+            }
+        }
+    },
+)
+```
+
+**The manual assembly (custom flow).** Only hand-wire the pieces when you need a bespoke pipeline
+`PlacementScene`'s flags don't cover — the building blocks are public:
+
 ```kotlin
 var cameraReady by remember { mutableStateOf(false) }
 var isTracking by remember { mutableStateOf(false) }

@@ -133,8 +133,11 @@ fun PlacementScene(
     planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
     instantPlacement: Boolean = true,
     showReticle: Boolean = true,
-    reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,
+    // reticleColor keeps its pre-existing positional slot (immediately after showReticle) so a
+    // caller that passed it positionally on the older signature still compiles; reticleStyle is
+    // appended right after as a purely additive param.
     reticleColor: Color = RETICLE_TINT,
+    reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,
     fadePlaneOnFirstPlacement: Boolean = true,
     coaching: Boolean = false,
     groundShadows: Boolean = false,
@@ -305,7 +308,12 @@ class PlacementController internal constructor() {
     }
 }
 
-/** Default reticle color — DESIGN.md primary cyan, semi-transparent. */
+/**
+ * Legacy reticle color — DESIGN.md primary cyan, semi-transparent (alpha `0x99`). This was the
+ * default before the ring reticle landed; the current default is the opaque [RETICLE_TINT], whose
+ * alpha the [ReticlePhase] modulates. Retained for the standalone [ARSceneScope.PlacementReticle]
+ * and any caller that wants the old flat tint.
+ */
 val DEFAULT_RETICLE_COLOR: Color = Color(0x99_44_E7_FF)
 
 /** Reticle disc radius, meters. */
