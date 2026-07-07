@@ -1,5 +1,6 @@
 package io.github.sceneview.ar.node
 
+import com.google.android.filament.Box
 import com.google.android.filament.Engine
 import com.google.ar.core.Plane
 import com.google.ar.core.TrackingState
@@ -111,16 +112,54 @@ open class ShadowReceiverPlaneNode(
         size = plane.meshSize(),
         materialInstance = materialInstance,
         builderApply = {
-            // Shadow catcher contract: receives, never casts.
+            // Mirror PlaneVisualizer's device-proven flat shadow-receiver recipe
+            // (PlaneVisualizer.kt: castShadows(false).receiveShadows(true).culling(false)
+            // .boundingBox(non-degenerate)). The original node had only the first two; missing
+            // culling(false) + a valid AABB on a flat (zero-Y) quad crashed the FL2+ cascaded
+            // shadow path on-device at plane detection (#2620) — the FL1 emulator never hit it.
             castShadows(false)
             receiveShadows(true)
+            // A flat quad is never worth frustum-culling; culling it (default on) feeds a
+            // zero-thickness volume into the shadow-focus math on real devices.
+            culling(false)
         }
     ).also { addChildNode(it) }
 
     private var lastMeshSize = plane.meshSize()
 
+    // The base PlaneNode's init runs `trackable = plane`, whose setter calls update(trackable) —
+    // dispatched to THIS override — BEFORE the subclass properties above (meshNode, lastMeshSize)
+    // are initialized. Accessing meshNode there NPE'd the instant a plane was detected on-device
+    // (#2620). This flag gates update() until construction finishes; the base already applied the
+    // pose by then, and the first real per-frame update runs normally.
+    private var constructed = false
+
+    init {
+        // Hardening (secondary): a flat plane's geometry-derived AABB has a zero Y half-extent;
+        // give the shadow receiver a non-degenerate box that also encloses placed models above the
+        // floor, matching PlaneVisualizer's device-proven flat-receiver recipe.
+        applyShadowReceiverBounds()
+        // Construction is complete — update() may now touch meshNode/lastMeshSize safely.
+        constructed = true
+    }
+
+    /** Overrides the flat plane's degenerate AABB with a valid one (non-zero Y extent). */
+    private fun applyShadowReceiverBounds() {
+        val size = plane.meshSize()
+        meshNode.axisAlignedBoundingBox = Box(
+            0f, SHADOW_AABB_CENTER_Y, 0f,
+            size.x / 2f, SHADOW_AABB_HALF_HEIGHT, size.z / 2f
+        )
+    }
+
     override fun update(trackable: Plane?) {
         super.update(trackable)
+
+        // The base PlaneNode's `init { trackable = plane }` calls update() once BEFORE this
+        // subclass's meshNode/lastMeshSize are initialized — reading meshNode there NPE'd the
+        // instant a plane was detected on-device (#2620, the actual 4.21.0 crash). Bail until the
+        // constructor has finished; super.update() above has already applied the pose.
+        if (!constructed) return
 
         // Follow ARCore's refined plane extents — but only re-upload the quad's vertex buffer
         // when the extents actually changed, not on every frame update.
@@ -129,6 +168,8 @@ open class ShadowReceiverPlaneNode(
             if (meshSize != lastMeshSize) {
                 lastMeshSize = meshSize
                 meshNode.updateGeometry(size = meshSize)
+                // updateGeometry re-derives the flat (zero-Y) AABB — restore the valid one.
+                applyShadowReceiverBounds()
             }
         }
     }
@@ -158,6 +199,17 @@ open class ShadowReceiverPlaneNode(
          * or no longer — tracking can report 0 extents; a zero-area quad catches no shadow).
          */
         const val DEFAULT_EXTENT_METERS = 1.0f
+
+        /**
+         * Y half-extent (metres) of the shadow receiver's overridden AABB. The quad is flat, but a
+         * shadow **receiver** needs a non-degenerate bounding box or Filament crashes building the
+         * shadow map on-device (#2620). 0.6 m (with [SHADOW_AABB_CENTER_Y]) spans roughly
+         * floor→1.1 m, enclosing typical placed models above the surface.
+         */
+        const val SHADOW_AABB_HALF_HEIGHT = 0.6f
+
+        /** Y centre (metres) of the overridden AABB — see [SHADOW_AABB_HALF_HEIGHT]. */
+        const val SHADOW_AABB_CENTER_Y = 0.5f
 
         /** Up-facing XZ quad sized to the plane's bounding extents. */
         private fun Plane.meshSize() = Size(

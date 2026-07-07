@@ -158,6 +158,53 @@ class ShadowReceiverPlaneContractTest {
     }
 
     @Test
+    fun `update guards against the base-constructor call before subclass init (NPE #2620)`() {
+        // The ACTUAL 4.21.0 crash: base PlaneNode's `init { trackable = plane }` calls update()
+        // — dispatched to this override — before meshNode is initialized, so the override
+        // dereferenced a null meshNode and NPE'd the instant a plane was detected on-device.
+        // update() MUST bail until construction completes.
+        assertTrue(
+            "ShadowReceiverPlaneNode.update() must early-return until construction finishes " +
+                "(the base PlaneNode calls update() from its init before meshNode exists, #2620).",
+            nodeSource.contains(Regex("""if\s*\(\s*!constructed\s*\)\s*return"""))
+        )
+        assertTrue(
+            "The `constructed` guard must be flipped true at the end of the init block.",
+            nodeSource.contains("constructed = true")
+        )
+    }
+
+    @Test
+    fun `node mirrors PlaneVisualizer's device-proven flat shadow-receiver recipe`() {
+        // #2620 REGRESSION GUARD. PlaneVisualizer (shipped + device-QA'd for years) builds its
+        // flat shadow receiver with castShadows(false) + receiveShadows(true) + culling(false) +
+        // a non-degenerate boundingBox. The original ShadowReceiverPlaneNode had only the first
+        // two; the missing culling(false) + a flat (zero-Y) geometry-derived AABB crashed the
+        // FL2+ cascaded-shadow path on real devices at plane detection (the FL1 emulator never
+        // hit it, so it shipped in 4.21.0). Keep all four levers in sync with PlaneVisualizer.
+        assertTrue(
+            "The shadow-catcher mesh must be built with culling(false) — mirroring PlaneVisualizer; " +
+                "a flat quad's zero-thickness culling volume feeds the on-device shadow-focus math (#2620).",
+            nodeSource.contains(Regex("""culling\(\s*false\s*\)"""))
+        )
+        assertTrue(
+            "ShadowReceiverPlaneNode must override meshNode.axisAlignedBoundingBox (a flat plane's " +
+                "auto AABB is degenerate and crashes Filament's shadow map on-device, #2620).",
+            nodeSource.contains(Regex("""meshNode\.axisAlignedBoundingBox\s*="""))
+        )
+        assertTrue(
+            "The overridden shadow-receiver AABB must use a NON-zero Y half-extent " +
+                "(SHADOW_AABB_HALF_HEIGHT) — a zero Y extent is the degenerate box that crashes.",
+            nodeSource.contains(Regex("""SHADOW_AABB_HALF_HEIGHT\s*=\s*(0\.\d*[1-9]|[1-9])"""))
+        )
+        assertTrue(
+            "The valid AABB must be re-applied after updateGeometry() (which re-derives the flat " +
+                "degenerate box), or the crash returns once ARCore refines the plane extents.",
+            nodeSource.substringAfter("updateGeometry(").contains("applyShadowReceiverBounds()")
+        )
+    }
+
+    @Test
     fun `node destroys its material after the renderable teardown`() {
         // Destroy order matters: destroying the Material (and thus its default instance) while
         // the mesh renderable is still registered is the SIGABRT class fixed in #851/#852.
