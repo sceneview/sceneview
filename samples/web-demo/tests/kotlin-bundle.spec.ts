@@ -122,4 +122,87 @@ test.describe('SceneView Kotlin/JS bundle — browser init', () => {
     expect(headlessGpuOk, 'canvas element is missing or zero-sized').toBe(true);
     expect(hasContent, 'canvas is blank — the Kotlin bundle rendered nothing').toBe(true);
   });
+
+  /**
+   * #2024 P1 in-browser proof: `TransformManager.setParent` exists on the
+   * pinned Filament.js WASM and composes `world = parentWorld * local`.
+   *
+   * This is the design doc's §7 risk mitigation ("P1 unit-test asserts a
+   * 2-entity composition before any node code depends on it") that Karma
+   * could never run (no WASM). The node graph (`Node`, `ModelNode`,
+   * `GeometryNode`, the delegating `model{}`/`geometry{}` DSL — slices 1+2)
+   * re-parents every asset root through this exact call, so this spec is
+   * the release gate's early tripwire for a Filament.js version bump that
+   * drops or changes it.
+   */
+  test('TransformManager.setParent composes world transforms (#2024 P1)', async ({ page }) => {
+    await page.goto('/kotlin-bundle/index.html');
+
+    // Wait for the bundle's own init to finish so `window.Filament` is the
+    // fully-initialised WASM module (not the pre-init loader shim).
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__smoke?.status), { timeout: 30_000 })
+      .toBe('resolved');
+
+    const result = await page.evaluate(() => {
+      const F = (window as any).Filament;
+      if (!F?.Engine?.create) return { error: 'Filament global not initialised' };
+
+      // A tiny second engine on an offscreen canvas — independent of the
+      // viewer's, so this probe can't disturb the rendering assertions above.
+      const probeCanvas = document.createElement('canvas');
+      probeCanvas.width = 8;
+      probeCanvas.height = 8;
+      document.body.appendChild(probeCanvas);
+      let step = 'Engine.create';
+      try {
+        const engine = F.Engine.create(probeCanvas);
+        step = 'getTransformManager';
+        const tm = engine.getTransformManager();
+        if (typeof tm.setParent !== 'function') return { error: 'setParent missing' };
+
+        step = 'EntityManager.create';
+        const em = F.EntityManager.get();
+        const parent = em.create();
+        const child = em.create();
+        step = 'tm.create';
+        tm.create(parent);
+        tm.create(child);
+
+        // Parent FIRST, then write both locals — each out-of-transaction
+        // setTransform updates the subtree's world transforms immediately.
+        step = 'setParent(child, parent)';
+        tm.setParent(tm.getInstance(child), tm.getInstance(parent));
+        step = 'setTransform(parent)';
+        tm.setTransform(tm.getInstance(parent), [1,0,0,0, 0,1,0,0, 0,0,1,0, 2,0,0,1]);
+        step = 'setTransform(child)';
+        tm.setTransform(tm.getInstance(child),  [1,0,0,0, 0,1,0,0, 0,0,1,0, 3,0,0,1]);
+        step = 'getWorldTransform(child)';
+        const worldX = tm.getWorldTransform(tm.getInstance(child))[12];
+
+        // Detach. embind REJECTS a JS `null` parent ("null is not a valid
+        // TransformManager$Instance") and raw ints are not Entities — the
+        // working null INSTANCE is `getInstance()` of an entity that has NO
+        // transform component (native instance 0), exactly Android's
+        // `setParent(i, 0)`.
+        step = 'null-instance via component-less entity';
+        const detachSentinel = em.create();
+        const nullInstance = tm.getInstance(detachSentinel);
+        step = 'setParent(child, nullInstance)';
+        tm.setParent(tm.getInstance(child), nullInstance);
+        step = 'getWorldTransform(detached)';
+        const detachedWorldX = tm.getWorldTransform(tm.getInstance(child))[12];
+
+        return { worldX, detachedWorldX };
+      } catch (e: any) {
+        return { error: `${step}: ${e?.name ?? ''} ${e?.message ?? String(e)}` };
+      }
+    });
+
+    expect((result as any).error, `setParent probe failed: ${(result as any).error}`).toBeUndefined();
+    // world = parentWorld(x+2) * local(x+3) → x = 5
+    expect((result as any).worldX).toBeCloseTo(5, 3);
+    // detached → world = local → x = 3
+    expect((result as any).detachedWorldX).toBeCloseTo(3, 3);
+  });
 });

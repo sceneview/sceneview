@@ -46,8 +46,8 @@ translate Compose code character by character.**
 | --- | --- |
 | `SceneView { … }` composable | `SceneView.create(canvas, configure = { … })` |
 | `rememberModelInstance(loader, path)` | `model(path) { }` in the DSL, or `loadModel(path)` |
-| `ModelNode(modelInstance, …)` | `model(url) { autoAnimate(true); scale(...) }` |
-| `CubeNode(size, material)` | `geometry { cube(); size(...); color(...) }` |
+| `ModelNode(modelInstance, …)` | `model(url) { autoAnimate(true); scale(...) }` — or the Kotlin-only `sceneView.addModelNode(url)` returning a retained `ModelNode` (#2024 slice 2, not JS-exported) |
+| `CubeNode(size, material)` | `geometry { cube(); size(...); color(...) }` — or the Kotlin-only `sceneView.addCubeNode(size)` / `addSphereNode` / `addCylinderNode` / `addPlaneNode` (#2024 slice 2) |
 | `LightNode(type = …, intensity = …)` | `light { directional(); intensity(...) }` |
 | `rememberCameraNode` / `rememberCameraManipulator` | `camera { eye(...); target(...) }` + `cameraControls(true)` |
 | `rememberEnvironment(...)` | `environment(iblUrl, skyboxUrl)` |

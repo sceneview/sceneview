@@ -5112,12 +5112,13 @@ After loading, the library registers itself on `window.sceneview`.
 **The Web target's published API does NOT include a `Node` class or a node scene-graph.**
 This is a documented divergence from SceneView Android (`io.github.sceneview.node.Node`)
 and SceneView Apple (`SceneViewSwift` entities) that is being closed incrementally
-(issue #2024, v5 milestone): as of 4.20.x an incubating Kotlin-only transform-node slice
-exists inside the module, but it is **not part of the exported JS API**
-(`window.sceneview.*` / `sceneview-web.d.ts`) and its nodes carry **no renderables**.
-Do **not** generate Android/iOS-style node-tree code for `sceneview-web` — for plain-JS
-consumers it will not run, and the builder DSL below remains the only path that puts
-pixels on screen.
+(issue #2024, v5 milestone): an incubating Kotlin-only node slice exists inside the
+module — since slice 2 its `ModelNode`/`GeometryNode` DO wrap renderable content via
+`addModelNode`/`addGeometryNode`/typed primitive factories — but none of it is part of
+the **exported JS API** (`window.sceneview.*` / `sceneview-web.d.ts`). Do **not**
+generate Android/iOS-style node-tree code for plain-JS `sceneview-web` consumers — it
+will not run; for them the builder DSL below remains the only path that puts pixels on
+screen.
 
 | Concept | Android / iOS | Web (`sceneview-web`) |
 |---|---|---|
@@ -5130,11 +5131,12 @@ pixels on screen.
 | Transform inheritance | composed parent→child via Filament `TransformManager` | none in the published API — every asset is a world-space leaf (composed transforms arrive with #2024) |
 
 The Web target is configured by a **fire-and-forget builder DSL**: you describe the
-scene inside `SceneView.create(canvas) { … }` and the library builds it once. Content
-is loaded into a flat internal list (no persistent, addressable, mutable `Node`
-objects). The 4 `*Config` classes (`ModelConfig`, `GeometryConfig`, `LightConfig`,
-`CameraConfig`) are builder *inputs*, not scene-graph nodes — they are consumed when
-the scene is built and are not retained as handles.
+scene inside `SceneView.create(canvas) { … }` and the library builds it once. Since
+slice 2 of #2024 the DSL internally materialises retained Kotlin-side nodes (identical
+visual result), but the published JS API exposes **no node handles** until P4's
+`NodeHandle` lands. The 4 `*Config` classes (`ModelConfig`, `GeometryConfig`,
+`LightConfig`, `CameraConfig`) are builder *inputs*, not scene-graph nodes — they are
+consumed when the scene is built and are not retained as handles.
 
 **Correct Web code** (parity with the Android example, NOT a node tree):
 
@@ -5153,8 +5155,9 @@ SceneView.create(canvas, configure = {
 
 A node scene-graph for the Web target (`Node` base type, parent/child, composed
 transforms — bringing the Web API to parity with Android/iOS) is tracked as a
-**v5 milestone** effort (#2024) and is landing incrementally: the first slice
-(Kotlin-only transform nodes, no renderables, no JS export) shipped after 4.20.0.
+**v5 milestone** effort (#2024) and is landing incrementally: slice 1 (Kotlin-only
+transform nodes) and slice 2a (`ModelNode`/`GeometryNode` content nodes + DSL
+delegation — still Kotlin-only, no JS export) shipped after 4.20.0.
 Until the exported `NodeHandle` API lands, this builder-DSL model is the complete
 and correct **published** Web API.
 

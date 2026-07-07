@@ -469,6 +469,32 @@ class SceneView private constructor(
         onLoaded: ((FilamentAsset) -> Unit)? = null,
         autoAnimate: Boolean = true,
         scale: Float = 1f,
+    ) = loadModelInternal(url, onLoaded, autoAnimate, scale, onAssetCreated = null)
+
+    /** The asset's animation player, `null` when it has no animations. */
+    private fun assetAnimatorOrNull(asset: FilamentAsset): Animator? =
+        @Suppress("SwallowedException")
+        try {
+            asset.getInstance().getAnimator()
+        } catch (e: Throwable) {
+            null
+        }
+
+    /**
+     * The actual pipeline behind [loadModel]. [onAssetCreated] is the node
+     * adoption hook (#2024 slice 2): it fires synchronously right after the
+     * asset's entities enter the scene (and the root scale is baked) but
+     * BEFORE the first frame can render them — so `addModelNode` re-parents
+     * the asset root under its pivot with no one-frame visual jump — and
+     * before the async `loadResources` completes ([onLoaded] keeps firing at
+     * resources-done, as always).
+     */
+    internal fun loadModelInternal(
+        url: String,
+        onLoaded: ((FilamentAsset) -> Unit)? = null,
+        autoAnimate: Boolean = true,
+        scale: Float = 1f,
+        onAssetCreated: ((FilamentAsset) -> Unit)? = null,
     ) {
         val loader = assetLoader ?: engine.createAssetLoader().also { assetLoader = it }
 
@@ -527,18 +553,15 @@ class SceneView private constructor(
                 // `scale == 1f`.
                 applyRootScale(asset, scale)
 
+                // #2024 slice 2: let a ModelNode pivot adopt the asset root
+                // before the first frame can paint the untransformed asset.
+                onAssetCreated?.invoke(asset)
+
                 // The scene graph just changed — paint it (#2332).
                 requestRender()
 
-                // Get the animator from the asset instance for animation playback
-                val animator = @Suppress("SwallowedException") try { // no animation → null
-                    asset.getInstance().getAnimator()
-                } catch (e: Throwable) {
-                    null
-                }
-
                 val loadedModel = LoadedModel(
-                    asset, animator, autoAnimate = autoAnimate, scale = scale,
+                    asset, assetAnimatorOrNull(asset), autoAnimate = autoAnimate, scale = scale,
                 )
                 models.add(loadedModel)
                 loadedAssets.replaceWith(url, asset)
@@ -752,8 +775,11 @@ class SceneView private constructor(
      * the same PBR material system as loaded glTF models.
      *
      * @param config Geometry configuration (type, size, color, position, scale)
+     * @return The created gltfio asset (its buffers still uploading async), or
+     *   `null` if the geometry build failed. Callers that don't need the
+     *   handle can keep ignoring it — the return is additive (#2024 slice 2).
      */
-    fun addGeometry(config: GeometryConfig) {
+    fun addGeometry(config: GeometryConfig): FilamentAsset? {
         val glbBuffer = GeometryGLBBuilder.buildGLB(config)
         val loader = assetLoader ?: engine.createAssetLoader().also { assetLoader = it }
 
@@ -774,13 +800,7 @@ class SceneView private constructor(
                 val entities = asset.getEntities()
                 scene.addEntities(entities)
 
-                val animator = @Suppress("SwallowedException") try { // no animation → null
-                    asset.getInstance().getAnimator()
-                } catch (e: Throwable) {
-                    null
-                }
-
-                val loadedModel = LoadedModel(asset, animator)
+                val loadedModel = LoadedModel(asset, assetAnimatorOrNull(asset))
                 models.add(loadedModel)
                 // Track for leak-free teardown (#1597). Geometry has no logical
                 // URL identity, so synthesise a unique key — each primitive is
@@ -821,13 +841,16 @@ class SceneView private constructor(
                 // The scene graph just changed — paint it (#2332).
                 requestRender()
                 console.log("SceneView: Geometry '${config.geometryType.name.lowercase()}' added")
+                return asset
             } else {
                 console.error("SceneView: Failed to create geometry asset for ${config.geometryType}")
                 settleGeometry()
+                return null
             }
         } catch (e: Throwable) {
             console.error("SceneView: Error creating geometry ${config.geometryType}", e)
             settleGeometry()
+            return null
         }
     }
 
@@ -1370,16 +1393,20 @@ class SceneViewBuilder(private val sceneView: SceneView) {
             sceneView.loadDefaultEnvironment()
         }
 
+        // #2024 slice 2: the DSL delegates to the retained node tree — each
+        // model{}/geometry{} becomes a real Node (identity pivot over the
+        // asset root, so the visual result is byte-identical to the flat
+        // path) and is addressable via sceneView.sceneGraph afterwards.
         modelConfigs.forEach { config ->
-            sceneView.loadModel(
+            sceneView.addModelNode(
                 config.url,
-                config.onLoaded,
                 autoAnimate = config.autoAnimate,
                 scale = config.scale,
+                onLoaded = config.onLoaded,
             )
         }
         geometryConfigs.forEach { config ->
-            sceneView.addGeometry(config)
+            sceneView.addGeometryNode(config)
         }
         if (cameraControlsEnabled) {
             val cam = cameraConfig
