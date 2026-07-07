@@ -205,4 +205,136 @@ test.describe('SceneView Kotlin/JS bundle — browser init', () => {
     // detached → world = local → x = 3
     expect((result as any).detachedWorldX).toBeCloseTo(3, 3);
   });
+
+  /**
+   * #2024 P1 in-browser proof (slice 2b): the `LightManager` instance mutators
+   * that `LightNode` pushes its config through — `getInstance`, `setIntensity`,
+   * `setColor`, `setDirection`, `setPosition` — exist on the pinned Filament.js
+   * WASM and round-trip a value.
+   *
+   * embind REJECTS `null` and raw ints as instances (BindingError), and Karma
+   * stubs the Filament externals, so `jsTest` can NEVER validate a
+   * `LightManager` binding — only the real WASM module can. `LightNode`'s
+   * setters (`nodes/LightNode.kt`) call these on `getInstance(entity)` of a
+   * real light entity, so this spec is the gate that proves the binding design
+   * BEFORE the node code depends on it (the mandatory embind probe-first rule).
+   */
+  test('LightManager instance mutators round-trip (#2024 P1 slice 2b)', async ({ page }) => {
+    await page.goto('/kotlin-bundle/index.html');
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__smoke?.status), { timeout: 30_000 })
+      .toBe('resolved');
+
+    const result = await page.evaluate(() => {
+      const F = (window as any).Filament;
+      if (!F?.Engine?.create) return { error: 'Filament global not initialised' };
+
+      const probeCanvas = document.createElement('canvas');
+      probeCanvas.width = 8;
+      probeCanvas.height = 8;
+      document.body.appendChild(probeCanvas);
+      let step = 'Engine.create';
+      try {
+        const engine = F.Engine.create(probeCanvas);
+        step = 'getLightManager';
+        const lm = engine.getLightManager();
+        for (const m of ['getInstance', 'setIntensity', 'getIntensity', 'setColor',
+                         'getColor', 'setDirection', 'getDirection', 'setPosition']) {
+          if (typeof lm[m] !== 'function') return { error: `LightManager.${m} missing` };
+        }
+
+        step = 'EntityManager.create';
+        const entity = F.EntityManager.get().create();
+
+        // Build a directional light the exact way SceneView.addLight /
+        // LightNode does — enum TYPE object (not a raw int), then build(engine,
+        // entity). A bare int for the type throws a BindingError.
+        step = 'LightManager.Builder(DIRECTIONAL).build';
+        F.LightManager.Builder(F.LightManager$Type.DIRECTIONAL)
+          .intensity(50000.0)
+          .direction([0.0, -1.0, -0.5])
+          .color([1.0, 1.0, 1.0])
+          .castShadows(true)
+          .build(engine, entity);
+
+        step = 'getInstance';
+        const inst = lm.getInstance(entity);
+
+        // Mutate through the SAME instance bindings LightNode's setters use,
+        // then read back — proving each embind method accepts the instance and
+        // its argument shape (Double for intensity, float3 array for the rest).
+        step = 'setIntensity';
+        lm.setIntensity(inst, 12345.0);
+        const intensity = lm.getIntensity(inst);
+        step = 'setColor';
+        lm.setColor(inst, [0.25, 0.5, 0.75]);
+        const color = lm.getColor(inst);
+        step = 'setDirection';
+        lm.setDirection(inst, [1.0, 0.0, 0.0]);
+        const direction = lm.getDirection(inst);
+
+        return { intensity, color, direction };
+      } catch (e: any) {
+        return { error: `${step}: ${e?.name ?? ''} ${e?.message ?? String(e)}` };
+      }
+    });
+
+    expect((result as any).error, `LightManager probe failed: ${(result as any).error}`).toBeUndefined();
+    expect((result as any).intensity).toBeCloseTo(12345, 0);
+    // color round-trips as a float3 [r,g,b].
+    expect((result as any).color[0]).toBeCloseTo(0.25, 2);
+    expect((result as any).color[1]).toBeCloseTo(0.5, 2);
+    expect((result as any).color[2]).toBeCloseTo(0.75, 2);
+    // direction is normalised by Filament; the +x unit vector stays [1,0,0].
+    expect((result as any).direction[0]).toBeCloseTo(1, 2);
+  });
+
+  /**
+   * #2024 P1 in-browser proof (slice 2b): `Camera.setModelMatrix` accepts a
+   * column-major flat 16-number mat4 and round-trips through `getModelMatrix`.
+   *
+   * `CameraNode` (`nodes/CameraNode.kt`) syncs the camera from its node
+   * `worldTransform` every frame via this exact call (Android's
+   * `camera.setModelMatrix(worldTransform)` pattern). Karma stubs `Camera`, so
+   * only the real WASM module proves the binding — the embind probe-first rule.
+   */
+  test('Camera.setModelMatrix round-trips a mat4 (#2024 P1 slice 2b)', async ({ page }) => {
+    await page.goto('/kotlin-bundle/index.html');
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__smoke?.status), { timeout: 30_000 })
+      .toBe('resolved');
+
+    const result = await page.evaluate(() => {
+      const F = (window as any).Filament;
+      if (!F?.Engine?.create) return { error: 'Filament global not initialised' };
+
+      const probeCanvas = document.createElement('canvas');
+      probeCanvas.width = 8;
+      probeCanvas.height = 8;
+      document.body.appendChild(probeCanvas);
+      let step = 'Engine.create';
+      try {
+        const engine = F.Engine.create(probeCanvas);
+        step = 'createCamera';
+        const cameraEntity = F.EntityManager.get().create();
+        const camera = engine.createCamera(cameraEntity);
+        if (typeof camera.setModelMatrix !== 'function') return { error: 'setModelMatrix missing' };
+
+        // A pure translation to (2,3,4) — the same column-major layout
+        // Transform.copyColumnsInto produces (translation in elements 12/13/14).
+        step = 'setModelMatrix';
+        camera.setModelMatrix([1,0,0,0, 0,1,0,0, 0,0,1,0, 2,3,4,1]);
+        step = 'getPosition';
+        const pos = camera.getPosition();
+        return { px: pos[0], py: pos[1], pz: pos[2] };
+      } catch (e: any) {
+        return { error: `${step}: ${e?.name ?? ''} ${e?.message ?? String(e)}` };
+      }
+    });
+
+    expect((result as any).error, `setModelMatrix probe failed: ${(result as any).error}`).toBeUndefined();
+    expect((result as any).px).toBeCloseTo(2, 3);
+    expect((result as any).py).toBeCloseTo(3, 3);
+    expect((result as any).pz).toBeCloseTo(4, 3);
+  });
 });

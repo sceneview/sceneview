@@ -1,10 +1,15 @@
 package io.github.sceneview.web
 
 import io.github.sceneview.web.bindings.FilamentAsset
+import io.github.sceneview.web.nodes.CameraNode
 import io.github.sceneview.web.nodes.CubeNode
 import io.github.sceneview.web.nodes.CylinderNode
+import io.github.sceneview.web.nodes.FilamentCameraController
+import io.github.sceneview.web.nodes.FilamentLightController
 import io.github.sceneview.web.nodes.GeometryConfig
 import io.github.sceneview.web.nodes.GeometryNode
+import io.github.sceneview.web.nodes.LightConfig
+import io.github.sceneview.web.nodes.LightNode
 import io.github.sceneview.web.nodes.ModelNode
 import io.github.sceneview.web.nodes.Node
 import io.github.sceneview.web.nodes.PlaneNode
@@ -42,7 +47,7 @@ fun SceneView.addModelNode(
     scale: Float = 1f,
     onLoaded: ((FilamentAsset) -> Unit)? = null,
 ): ModelNode {
-    val node = ModelNode(engine)
+    val node = ModelNode(engine, newEntity())
     addNode(node, parent)
     loadModelInternal(
         url,
@@ -75,14 +80,14 @@ fun SceneView.addModelNode(
  * the Android node names an AI already knows.
  */
 fun SceneView.addGeometryNode(config: GeometryConfig, parent: Node? = null): GeometryNode =
-    GeometryNode(engine).also { attachGeometry(it, config, parent) }
+    GeometryNode(engine, newEntity()).also { attachGeometry(it, config, parent) }
 
 /** Adds a box primitive as a [CubeNode] — web mirror of Android `CubeNode`. */
 fun SceneView.addCubeNode(
     size: Double = 1.0,
     parent: Node? = null,
     config: GeometryConfig.() -> Unit = {},
-): CubeNode = CubeNode(engine).also {
+): CubeNode = CubeNode(engine, newEntity()).also {
     attachGeometry(it, GeometryConfig().apply { cube(); size(size) }.apply(config), parent)
 }
 
@@ -91,7 +96,7 @@ fun SceneView.addSphereNode(
     radius: Double = 1.0,
     parent: Node? = null,
     config: GeometryConfig.() -> Unit = {},
-): SphereNode = SphereNode(engine).also {
+): SphereNode = SphereNode(engine, newEntity()).also {
     attachGeometry(it, GeometryConfig().apply { sphere(); radius(radius) }.apply(config), parent)
 }
 
@@ -101,7 +106,7 @@ fun SceneView.addCylinderNode(
     height: Double = 2.0,
     parent: Node? = null,
     config: GeometryConfig.() -> Unit = {},
-): CylinderNode = CylinderNode(engine).also {
+): CylinderNode = CylinderNode(engine, newEntity()).also {
     attachGeometry(
         it,
         GeometryConfig().apply { cylinder(); radius(radius); height(height) }.apply(config),
@@ -115,7 +120,7 @@ fun SceneView.addPlaneNode(
     sizeZ: Double = 1.0,
     parent: Node? = null,
     config: GeometryConfig.() -> Unit = {},
-): PlaneNode = PlaneNode(engine).also {
+): PlaneNode = PlaneNode(engine, newEntity()).also {
     attachGeometry(
         it,
         GeometryConfig().apply { plane(); size(sizeX, 1.0, sizeZ) }.apply(config),
@@ -135,4 +140,50 @@ private fun SceneView.attachGeometry(node: GeometryNode, config: GeometryConfig,
         node.adoptChildEntity(asset.getRoot())
         node.asset = asset
     }
+}
+
+/**
+ * Adds a Filament light wrapped in a [LightNode] added to the retained node
+ * tree — the web mirror of Android's `LightNode()` (#2024 slice 2b).
+ *
+ * Runs the exact [SceneView.addLight] pipeline (same `LightManager.Builder`,
+ * `scene.addEntity`, `lightEntities` tracking for #1700 teardown), then
+ * re-parents the built light entity under the returned node's pivot and wires a
+ * [FilamentLightController] so `node.intensity`/`color(...)`/`direction(...)`/
+ * `position(...)` push straight through the `LightManager` instance bindings —
+ * proven in-browser by the `kotlin-bundle.spec.ts` #2024-P1 slice-2b probe.
+ *
+ * Because the light entity is built from [config], the node's initial light
+ * looks byte-identical to today's flat `light { }` path — the pivot is an
+ * identity transform over the same light entity, so the visual result is
+ * unchanged. Runtime mutation of the returned node is the additive part.
+ */
+fun SceneView.addLightNode(config: LightConfig, parent: Node? = null): LightNode {
+    // newEntity() (not the external EntityManager.get() default) — this runs
+    // during create() via the light{} DSL, before the external companion
+    // resolves. See SceneView.newEntity.
+    val node = LightNode(engine, config.type, newEntity())
+    addNode(node, parent)
+    val lightEntity = buildLightEntity(config)
+    node.adoptChildEntity(lightEntity)
+    node.controller = FilamentLightController(engine.getLightManager(), lightEntity)
+    return node
+}
+
+/**
+ * Adds a [CameraNode] that drives the [SceneView] camera from its scene-graph
+ * transform — the web mirror of Android's `CameraNode()` (#2024 slice 2b).
+ *
+ * The node pushes its `worldTransform` to `Camera.setModelMatrix` every frame
+ * (via [CameraNode.onFrame]) — proven in-browser by the `kotlin-bundle.spec.ts`
+ * #2024-P1 slice-2b probe. **Use with `cameraControls(false)`**: the default
+ * orbit controller writes `camera.lookAt(...)` every frame it moves, so a
+ * `CameraNode` and the orbit controller both driving the same camera would
+ * fight. See [CameraNode]'s doc for the deferred full-DSL-rewire rationale.
+ */
+fun SceneView.addCameraNode(parent: Node? = null): CameraNode {
+    val node = CameraNode(engine, newEntity())
+    addNode(node, parent)
+    node.controller = FilamentCameraController(camera)
+    return node
 }

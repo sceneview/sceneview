@@ -5114,8 +5114,10 @@ This is a documented divergence from SceneView Android (`io.github.sceneview.nod
 and SceneView Apple (`SceneViewSwift` entities) that is being closed incrementally
 (issue #2024, v5 milestone): an incubating Kotlin-only node slice exists inside the
 module — since slice 2 its `ModelNode`/`GeometryNode` DO wrap renderable content via
-`addModelNode`/`addGeometryNode`/typed primitive factories — but none of it is part of
-the **exported JS API** (`window.sceneview.*` / `sceneview-web.d.ts`). Do **not**
+`addModelNode`/`addGeometryNode`/typed primitive factories, and since slice 2b
+`LightNode`/`CameraNode` wrap lights and camera-driving via `addLightNode`/`addCameraNode`
+(the `light { }` DSL block now delegates to a retained `LightNode`) — but none of it is
+part of the **exported JS API** (`window.sceneview.*` / `sceneview-web.d.ts`). Do **not**
 generate Android/iOS-style node-tree code for plain-JS `sceneview-web` consumers — it
 will not run; for them the builder DSL below remains the only path that puts pixels on
 screen.
