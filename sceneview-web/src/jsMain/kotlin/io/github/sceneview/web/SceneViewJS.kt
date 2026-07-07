@@ -325,4 +325,4 @@ class SceneViewJS {
  * Gradle `buildConfig` plugin, so this literal is the single source of truth for the JS surface.
  * Bump it together with every other version location (see CLAUDE.md "Version Location Map").
  */
-const val SCENEVIEW_VERSION = "4.20.0"
+const val SCENEVIEW_VERSION = "4.21.0"

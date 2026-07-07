@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- `sync-versions.sh --fix` now covers the 7 formerly-manual version locations (llms.txt prose/CDN/flutter/package labels, demo build.gradle versionName ternary, web.html JSON-LD, playground prompts, and `sceneview.js?v=` cache-busters across ALL website pages incl. embed/preview) — a release version bump is now a single command, verified by a 9.9.9 blank-bump round-trip reaching 0 MISMATCH.

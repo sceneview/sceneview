@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- One-click releases: `release-fast.yml` (dispatch with a version → BLOCKING web device-QA gate → complete `sync-versions --fix` bump → changelog collate → auto-merge release PR) + `tag-release.yml` (tags the merged release commit and dispatches `release.yml` on the tag — working around GITHUB_TOKEN event suppression). Main stays protected; the bump rides a reviewable PR (M7c).
