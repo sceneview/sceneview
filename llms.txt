@@ -5137,6 +5137,8 @@ The builder DSL below stays fully supported and is the simplest path for a stati
 | Add a model | `ModelNode(...)` added to a `Node` tree | builder `model("url.glb") { ... }` / `sceneView.loadModel(url)`, **or** plain-JS `sv.addModelNode(url)` → `Promise<NodeHandle>` |
 | Add a primitive | `CubeNode` / `SphereNode` / … | builder `geometry { cube(); … }`, **or** plain-JS `sv.addCubeNode(size)` / `sv.addSphereNode(radius)` → `NodeHandle` |
 | Add a light | `LightNode(...)` | builder `light { directional(); … }`, **or** plain-JS `sv.addLightNode("directional"\|"point"\|"spot")` → `NodeHandle` |
+| Add an empty pivot / group | `Node()` | plain-JS `sv.addNode()` → `NodeHandle` (parent others under it with `addChild`) |
+| Remove a node | `node.parent = null` / `node.destroy()` | plain-JS `sv.removeNode(handle)` or `handle.destroy()` (detaches + frees the Filament entity) |
 | Configure the camera | `CameraNode(...)` | `camera { eye(...); target(...) }` (a `CameraConfig`) — **not** exported as a `NodeHandle` yet |
 | Parent / child hierarchy | `node.parent = other` / `node.childNodes` | `handle.addChild(child)` / `handle.removeChild(child)` (exported since slice 3); builder-DSL content stays flat |
 | Per-content transform | `node.position` / `node.rotation` / `node.scale` (mutable, reactive) | builder `*Config` sets it once (not re-mutable); a `NodeHandle` IS re-mutable via `setPosition` / `setRotation` / `setScale` |
@@ -5168,6 +5170,8 @@ sceneview.createViewer("canvas").then(function (sv) {
     model.setRotation(0, 45, 0);             // Euler degrees
     model.addChild(cube);                    // re-parent — cube now follows the model
   });
+
+  // sv.removeNode(cube) or cube.destroy() detaches + frees the Filament entity
 });
 
 // ❌ Still NOT exported to plain JS: the Kotlin ModelNode/LightNode/CameraNode classes
