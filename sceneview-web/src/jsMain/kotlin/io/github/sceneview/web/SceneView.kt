@@ -712,6 +712,35 @@ class SceneView private constructor(
     }
 
     fun addLight(config: LightConfig) {
+        buildLightEntity(config)
+    }
+
+    /**
+     * Creates a fresh Filament entity through the runtime `Filament` global.
+     *
+     * `unsafeCast`, NOT the `external EntityManager.get()` companion: the
+     * `external class EntityManager` captures `$module$filament.EntityManager`
+     * at MODULE-LOAD — before `Filament.init()` attaches the embind classes —
+     * so `EntityManager.get()` is `undefined` during `create()`
+     * (→ "Cannot read properties of undefined (reading 'get')"). The `js(...)`
+     * global resolves lazily, the same fix `create()`'s camera-entity and
+     * [buildLightEntity]'s light-entity use. The retained node factories
+     * ([io.github.sceneview.web.addLightNode] / `addCameraNode`) go through
+     * this so a node built during init never trips the module-load hole
+     * (#2024 slice 2b).
+     */
+    internal fun newEntity(): Entity =
+        js("Filament.EntityManager.get().create()").unsafeCast<Entity>()
+
+    /**
+     * Builds a Filament light from [config], adds its entity to the scene, and
+     * tracks it in [lightEntities] for leak-free teardown (#1700) — the shared
+     * body of [addLight] and the retained `addLightNode` factory (#2024 slice
+     * 2b). Returns the built light entity so `addLightNode` can re-parent it
+     * under a [io.github.sceneview.web.nodes.LightNode] pivot and mutate it
+     * through the `LightManager` instance bindings afterwards.
+     */
+    internal fun buildLightEntity(config: LightConfig): Entity {
         // `unsafeCast`, NOT `as Entity` — see the create() camera-entity note:
         // `as` against the external `Entity` class emits `instanceof Entity`,
         // and `Filament.Entity` is `undefined` at runtime, which throws. This
@@ -765,6 +794,7 @@ class SceneView private constructor(
         lightEntities.add(entity)
         // A new light re-lights every pixel — repaint (#2332).
         requestRender()
+        return entity
     }
 
     /**
@@ -1357,7 +1387,12 @@ class SceneViewBuilder(private val sceneView: SceneView) {
 
         // If no explicit light was configured, add model-viewer-like 3-point lighting
         if (lightConfig != null) {
-            sceneView.addLight(lightConfig!!)
+            // #2024 slice 2b: an explicit light{} becomes a retained LightNode
+            // (identity pivot over the same built light entity, so the lit
+            // result is byte-identical to the flat path) and is addressable via
+            // sceneView.sceneGraph afterwards. The default 3-point fill below
+            // stays flat — it is an implementation default, not user content.
+            sceneView.addLightNode(lightConfig!!)
         } else {
             // Key light — main directional, slightly warm
             val keyLight = LightConfig().apply {
