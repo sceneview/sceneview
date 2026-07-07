@@ -4,9 +4,11 @@ import io.github.sceneview.scene.SceneGraph
 import io.github.sceneview.web.bindings.*
 import io.github.sceneview.web.nodes.CameraConfig
 import io.github.sceneview.web.nodes.GeometryConfig
+import io.github.sceneview.web.nodes.GeometryNode
 import io.github.sceneview.web.nodes.LightConfig
 import io.github.sceneview.web.nodes.LightType
 import io.github.sceneview.web.nodes.ModelConfig
+import io.github.sceneview.web.nodes.ModelNode
 import io.github.sceneview.web.nodes.Node
 import kotlinx.browser.window
 import org.khronos.webgl.ArrayBuffer
@@ -112,6 +114,21 @@ class SceneView private constructor(
     val sceneGraph = SceneGraph()
 
     /**
+     * The single content-root pivot [Node] the auto-centre pass translates
+     * (#2024 slice 3 / P4). Replaces the pre-slice-3 whole-scene design where
+     * `refreshContentCentering` offset every flat asset's *own* root entity
+     * transform individually: now every flat asset's root is re-parented under
+     * this one node, and centring the union is a single node translation —
+     * exactly the iOS `contentRoot` Entity approach (the doc at the old
+     * `refreshContentCentering` said this was the ideal but impossible without a
+     * root node; slice 1's `Node` makes it possible). Lazily created on the
+     * first centring pass so a scene with `autoCenterContent = false` never
+     * allocates it. Node-owned content (`addModelNode`/…) is framed through its
+     * own pivot and is excluded from this pass.
+     */
+    private var contentRoot: Node? = null
+
+    /**
      * Tracks the Filament `IndirectLight` (IBL) handle currently bound to the
      * scene so [loadEnvironment] can destroy a previous IBL before binding a
      * new one and [destroy] can release it — without this the GPU resource
@@ -177,16 +194,6 @@ class SceneView private constructor(
      */
     private val transformManager: TransformManager = engine.getTransformManager()
 
-    /**
-     * Reusable flat 16-element column-major mat4 scratch buffer for the
-     * auto-center pass writeback. Filament.js expects a JS `number[]` for
-     * `setTransform`, so this stays a `dynamic` JS array (preallocated once),
-     * mutated in place every frame by [applyTranslatedTransform] — zero
-     * allocation after warmup, versus the prior two fresh 16-element arrays per
-     * model per frame (#2268).
-     */
-    private val transformScratch: dynamic = js("new Array(16)")
-
     /** Tracks a loaded glTF asset with its animation state. */
     private class LoadedModel(
         val asset: FilamentAsset,
@@ -220,22 +227,6 @@ class SceneView private constructor(
         var loaded: Boolean = false
 
         /**
-         * The asset's root-entity transform *before* any auto-center offset
-         * was applied — captured the first frame [refreshContentCentering]
-         * touches this model. The auto-center pass re-runs every time a
-         * deferred async sibling grows the union (#1540), so it must compose
-         * each new offset onto this stored base rather than onto the
-         * already-offset transform — otherwise the translation accumulates.
-         *
-         * Stored as a reusable column-major `DoubleArray(16)` rather than a
-         * `dynamic` JS `number[]` so the per-frame auto-center pass reads it
-         * with primitive (un-boxed) `double`s and never allocates (#2268). A
-         * mat4 is a flat 16-element column-major matrix; the translation lives
-         * at indices 12, 13, 14.
-         */
-        var baseTransform: DoubleArray? = null
-
-        /**
          * `true` once this model's [asset] has been destroyed — either
          * replaced by a 2nd `loadModel` of the same URL, or torn down by
          * [destroy]. Set the instant the asset is freed so the still-pending
@@ -248,6 +239,29 @@ class SceneView private constructor(
          * heap (#1597 Tier-2 review).
          */
         var superseded: Boolean = false
+
+        /**
+         * `true` once this asset's root entity has been re-parented under the
+         * shared [contentRoot] pivot (#2024 slice 3 / P4 root-node centering) —
+         * done once per model, the first frame the centering pass touches it.
+         * After that the model no longer carries a per-asset `baseTransform`
+         * offset: the single `contentRoot` node translation centres the whole
+         * union, exactly like the iOS `contentRoot` Entity. Nodes created
+         * through the node factories (`addModelNode`/…) already own their asset
+         * root under a pivot, so those are excluded from the flat-content
+         * centering pass via [LoadedModel.nodeOwned].
+         */
+        var adoptedByContentRoot: Boolean = false
+
+        /**
+         * `true` when this model's asset root is owned by a scene-graph node
+         * pivot (`addModelNode`/`addGeometryNode`/typed factories) rather than
+         * being flat world-space content. The flat-content centering pass
+         * ([refreshContentCentering]) skips node-owned assets — their framing is
+         * the caller's responsibility through the node transform. Flat
+         * `loadModel` / `addGeometry` content stays `false` and is centred.
+         */
+        var nodeOwned: Boolean = false
     }
 
     /** Orbit camera controller -- initialized when cameraControls is enabled. */
@@ -494,6 +508,7 @@ class SceneView private constructor(
         onLoaded: ((FilamentAsset) -> Unit)? = null,
         autoAnimate: Boolean = true,
         scale: Float = 1f,
+        nodeOwned: Boolean = false,
         onAssetCreated: ((FilamentAsset) -> Unit)? = null,
     ) {
         val loader = assetLoader ?: engine.createAssetLoader().also { assetLoader = it }
@@ -548,9 +563,9 @@ class SceneView private constructor(
                 // #2432: bake the consumer's uniform `scale` into the root
                 // entity transform now that the entities are in the scene. Done
                 // before any render/auto-centre frame can run on this model so
-                // the auto-centre pass captures an already-scaled `baseTransform`
-                // and never has to special-case scale. A no-op for the default
-                // `scale == 1f`.
+                // the asset's local transform is already scaled when the pass
+                // re-parents it under the content-root pivot (#2024 P4) and never
+                // has to special-case scale. A no-op for the default `scale == 1f`.
                 applyRootScale(asset, scale)
 
                 // #2024 slice 2: let a ModelNode pivot adopt the asset root
@@ -562,7 +577,7 @@ class SceneView private constructor(
 
                 val loadedModel = LoadedModel(
                     asset, assetAnimatorOrNull(asset), autoAnimate = autoAnimate, scale = scale,
-                )
+                ).apply { this.nodeOwned = nodeOwned }
                 models.add(loadedModel)
                 loadedAssets.replaceWith(url, asset)
 
@@ -805,11 +820,16 @@ class SceneView private constructor(
      * the same PBR material system as loaded glTF models.
      *
      * @param config Geometry configuration (type, size, color, position, scale)
+     * @param nodeOwned `true` when the primitive is created through a node
+     *   factory (`addGeometryNode`/typed factories, #2024) — its [LoadedModel]
+     *   is then marked node-owned and excluded from the flat-content
+     *   auto-centre pass, since it is framed via its own pivot (P4). Flat
+     *   `addGeometry` callers leave it `false` (the default).
      * @return The created gltfio asset (its buffers still uploading async), or
      *   `null` if the geometry build failed. Callers that don't need the
      *   handle can keep ignoring it — the return is additive (#2024 slice 2).
      */
-    fun addGeometry(config: GeometryConfig): FilamentAsset? {
+    fun addGeometry(config: GeometryConfig, nodeOwned: Boolean = false): FilamentAsset? {
         val glbBuffer = GeometryGLBBuilder.buildGLB(config)
         val loader = assetLoader ?: engine.createAssetLoader().also { assetLoader = it }
 
@@ -831,6 +851,7 @@ class SceneView private constructor(
                 scene.addEntities(entities)
 
                 val loadedModel = LoadedModel(asset, assetAnimatorOrNull(asset))
+                    .apply { this.nodeOwned = nodeOwned }
                 models.add(loadedModel)
                 // Track for leak-free teardown (#1597). Geometry has no logical
                 // URL identity, so synthesise a unique key — each primitive is
@@ -909,7 +930,9 @@ class SceneView private constructor(
      * Shared by [fitToModels] and [refreshContentCentering] so the union-AABB
      * read happens exactly once per call site instead of being duplicated.
      */
-    private fun contentBoxes(): List<ContentCentering.Aabb> = models.mapNotNull { model ->
+    private fun contentBoxes(
+        source: List<LoadedModel> = models,
+    ): List<ContentCentering.Aabb> = source.mapNotNull { model ->
         // #1597: skip models whose resources are still in flight — their box is
         // not yet readable, so including them would frame on a wrong diagonal.
         if (!model.loaded) return@mapNotNull null
@@ -966,8 +989,8 @@ class SceneView private constructor(
     }
 
     /**
-     * Translate every loaded asset's root entity so the union bounding box of
-     * all content lands centred on the world origin (the orbit-camera target),
+     * Translate the single content-root pivot so the union bounding box of all
+     * flat content lands centred on the world origin (the orbit-camera target),
      * then dolly the orbit camera so that union fits the frustum.
      *
      * Runs every render frame until the content's union diagonal has settled
@@ -991,15 +1014,34 @@ class SceneView private constructor(
      * large models were previously mis-framed because only auto-centring ran.
      *
      * Library-level port of the iOS `refreshContentCentering` (#1026 / #1391):
-     * on iOS an intermediate `contentRoot` Entity is translated; the web
-     * Filament `Scene` has no parent root, so each asset's own root entity is
-     * offset instead — the visual result is identical. Closes #1052, #1540.
+     * on iOS an intermediate `contentRoot` Entity is translated. Slice 3 / P4
+     * brings the web port to the same design — a single real [contentRoot]
+     * [Node] pivot is translated, and every flat asset's root entity is
+     * re-parented under it (once), so centring the whole union collapses to one
+     * node translation instead of the pre-slice-3 per-asset offset bookkeeping.
+     * The visual result is identical (the pivot is a pure translation, so each
+     * asset's world transform is `contentRoot(offset) * assetLocal`, i.e. the
+     * same `base + offset` the old path wrote per asset). Closes #1052, #1540.
+     *
+     * ## Node-owned content is excluded
+     *
+     * Content created through the node factories (`addModelNode` /
+     * `addGeometryNode` / typed primitives) already owns its asset root under
+     * its own scene-graph pivot; its framing is the caller's responsibility
+     * through the node transform, so those models ([LoadedModel.nodeOwned]) are
+     * skipped here. Only flat `loadModel` / `addGeometry` world-space content is
+     * centred — the exact set the pre-slice-3 pass touched.
      */
     private fun refreshContentCentering() {
         if (!autoCenterGate.shouldRun(autoCenterContent, models.isNotEmpty())) return
 
+        // Only flat (non-node-owned) content is auto-centred through the shared
+        // content-root pivot — node-owned assets are framed via their own pivot.
+        val flatModels = models.filter { !it.nodeOwned }
+        if (flatModels.isEmpty()) return
+
         // Single union-AABB read, shared with the dolly fit below (#1540 de-dup).
-        val union = ContentCentering.union(contentBoxes())
+        val union = ContentCentering.union(contentBoxes(flatModels))
         val offset = ContentCentering.centeringOffset(union) ?: return
 
         // Skip frames where the union diagonal has not moved since the last
@@ -1011,36 +1053,40 @@ class SceneView private constructor(
             return
         }
 
-        // Apply the centring translation to each asset's root entity via the
-        // cached [transformManager]. The first time this model is touched its
-        // current transform is captured as `baseTransform`; every subsequent
-        // re-frame (a deferred async sibling grew the union — #1540) composes
-        // the new offset onto that *base* rather than onto the already-offset
-        // transform, so the translation never accumulates. Composing onto the
-        // base keeps any per-model scale/position the consumer set intact.
-        //
-        // #2268: all `setTransform` calls coalesce into one upload by wrapping
-        // the loop in a local transform transaction, and the per-model writeback
-        // reuses [transformScratch] (mutated in place) so the pass allocates
-        // nothing after the one-time `baseTransform` capture.
-        val tm = transformManager
-        tm.openLocalTransformTransaction()
-        try {
-            for (model in models) {
-                try {
-                    val root = model.asset.getRoot()
-                    if (!tm.hasComponent(root)) tm.create(root)
-                    val instance = tm.getInstance(root)
-                    val base = model.baseTransform
-                        ?: readMat4(tm.getTransform(instance)).also { model.baseTransform = it }
-                    applyTranslatedTransform(tm, instance, base, offset, transformScratch)
-                } catch (e: Throwable) {
-                    console.error("SceneView: auto-center failed for a model", e)
-                }
-            }
-        } finally {
-            tm.commitLocalTransformTransaction()
+        // Re-parent every flat asset root under the single content-root pivot
+        // (once per model), then translate that one node by the centring offset.
+        // Re-parenting keeps each asset's own local transform (including the
+        // #2432 root-scale bake), so the world transform stays
+        // `contentRoot(offset) * assetLocal` — byte-identical to the old
+        // per-asset `base + offset`, but with one node translation instead of N
+        // writes. The `TransformManager.setParent` call is the same one the node
+        // graph uses everywhere else (proven in the kotlin-bundle probe).
+        // The shared content-root pivot, created lazily and registered as a
+        // scene-graph root so `destroy`'s node teardown frees its entity. See
+        // the `contentRoot` field.
+        val root = contentRoot ?: Node(engine, newEntity()).also {
+            it.name = "content-root"
+            contentRoot = it
+            addNode(it)
         }
+        for (model in flatModels) {
+            if (model.adoptedByContentRoot) continue
+            try {
+                root.adoptChildEntity(model.asset.getRoot())
+                model.adoptedByContentRoot = true
+            } catch (e: Throwable) {
+                console.error("SceneView: failed to adopt a model under the content root", e)
+            }
+        }
+        // The offset is the translation that centres the union on the origin;
+        // set it directly as the pivot's position (the pivot starts at origin,
+        // so this is absolute, and re-runs on a grown union simply overwrite it —
+        // no accumulation, replacing the old per-asset base bookkeeping).
+        root.position = io.github.sceneview.math.Position(
+            offset[0].toFloat(),
+            offset[1].toFloat(),
+            offset[2].toFloat(),
+        )
 
         // Auto-dolly: fit the orbit camera to the content size (#1540). The
         // union is already centred on the origin by the offset above, so the
@@ -1058,10 +1104,9 @@ class SceneView private constructor(
     /**
      * Read the column-major 4x4 [mat] (a Filament.js flat 16-element JS
      * `number[]`) into a fresh primitive [DoubleArray] of 16 un-boxed `double`s.
-     * Used once per model to snapshot its base transform before the auto-center
-     * pass first offsets it (#1540), so later re-frames compose onto an
-     * immutable base. Allocates exactly one [DoubleArray] per model lifetime —
-     * the per-frame writeback reuses [transformScratch] instead (#2268).
+     * Used by [applyRootScale] to read the asset root's current transform before
+     * multiplying in the #2432 uniform scale. Allocates one [DoubleArray] per
+     * call — fine, it runs once per load, not per frame.
      */
     private fun readMat4(mat: dynamic): DoubleArray {
         val out = DoubleArray(16)
@@ -1069,33 +1114,6 @@ class SceneView private constructor(
             out[i] = (mat[i] as Number).toDouble()
         }
         return out
-    }
-
-    /**
-     * Compose the column-major 4x4 [base] transform with [offset] added to its
-     * translation column (indices 12, 13, 14) and push the result to the
-     * [TransformManager] for [instance] — all without allocating.
-     *
-     * The result is written into the caller-supplied reusable [scratch] JS
-     * `number[]` (16 elements, mutated in place) and handed to `setTransform`,
-     * so a per-frame auto-center pass over N models allocates nothing
-     * (#2268). The base is read from a primitive [DoubleArray] of un-boxed
-     * `double`s, so no per-element boxing happens on the read side either.
-     */
-    private fun applyTranslatedTransform(
-        tm: TransformManager,
-        instance: dynamic,
-        base: DoubleArray,
-        offset: DoubleArray,
-        scratch: dynamic,
-    ) {
-        for (i in 0 until 16) {
-            scratch[i] = base[i]
-        }
-        scratch[12] = base[12] + offset[0]
-        scratch[13] = base[13] + offset[1]
-        scratch[14] = base[14] + offset[2]
-        tm.setTransform(instance, scratch)
     }
 
     /**

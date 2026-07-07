@@ -5107,61 +5107,80 @@ After loading, the library registers itself on `window.sceneview`.
 
 ---
 
-### ⚠️ Web API model — builder DSL, NOT a published Node scene-graph
+### ⚠️ Web API model — builder DSL, plus a minimal exported `NodeHandle`
 
-**The Web target's published API does NOT include a `Node` class or a node scene-graph.**
-This is a documented divergence from SceneView Android (`io.github.sceneview.node.Node`)
-and SceneView Apple (`SceneViewSwift` entities) that is being closed incrementally
-(issue #2024, v5 milestone): an incubating Kotlin-only node slice exists inside the
-module — since slice 2 its `ModelNode`/`GeometryNode` DO wrap renderable content via
-`addModelNode`/`addGeometryNode`/typed primitive factories, and since slice 2b
-`LightNode`/`CameraNode` wrap lights and camera-driving via `addLightNode`/`addCameraNode`
-(the `light { }` DSL block now delegates to a retained `LightNode`) — but none of it is
-part of the **exported JS API** (`window.sceneview.*` / `sceneview-web.d.ts`). Do **not**
-generate Android/iOS-style node-tree code for plain-JS `sceneview-web` consumers — it
-will not run; for them the builder DSL below remains the only path that puts pixels on
-screen.
+**The Web target is still primarily a fire-and-forget builder DSL, but since slice 3
+of #2024 it ALSO exports a minimal `NodeHandle` node surface to plain JS.** This is a
+documented (and narrowing) divergence from SceneView Android
+(`io.github.sceneview.node.Node`) and SceneView Apple (`SceneViewSwift` entities),
+being closed incrementally (issue #2024, v5 milestone):
+
+- Since slice 2 the module's Kotlin `ModelNode`/`GeometryNode` wrap renderable content,
+  and since slice 2b `LightNode`/`CameraNode` wrap lights and camera-driving (the
+  `light { }` DSL delegates to a retained `LightNode`). Those Kotlin node classes and the
+  `addModelNode`/`addGeometryNode`/`addLightNode`/`addCameraNode` **Kotlin** factories are
+  **still Kotlin-only — NOT exported to plain JS.**
+- **Slice 3 / P4 exports the first plain-JS node surface: `NodeHandle`.** Plain-JS
+  callers create a node via `sv.addNode()` / `sv.addCubeNode(size)` /
+  `sv.addSphereNode(radius)` / `sv.addLightNode(type)` / `sv.addModelNode(url)`, keep the
+  returned handle, and **address it after `create()`** — `setPosition` / `setRotation`
+  (Euler degrees) / `setScale` / `setScaleUniform` / `setVisible` / `addChild` /
+  `removeChild` / `getWorldPosition` / `destroy`. This is the thing the builder DSL could
+  never do: mutate content imperatively after the scene is built. It is a **minimal first
+  slice** — no gestures, no collision, no transform object; those are additive later.
+
+The builder DSL below stays fully supported and is the simplest path for a static scene;
+`NodeHandle` is the additive imperative surface for scenes that mutate at runtime.
 
 | Concept | Android / iOS | Web (`sceneview-web`) |
 |---|---|---|
-| Add a model | `ModelNode(...)` added to a `Node` tree | `model("url.glb") { ... }` inside the `configure` block, or `sceneView.loadModel(url)` |
-| Add a primitive | `CubeNode` / `SphereNode` / … | `geometry { cube(); … }`, or `sceneView.addGeometry(GeometryConfig)` |
-| Add a light | `LightNode(...)` | `light { directional(); … }`, or `sceneView.addLight(LightConfig)` |
-| Configure the camera | `CameraNode(...)` | `camera { eye(...); target(...) }` (a `CameraConfig`) |
-| Parent / child hierarchy | `node.parent = other` / `node.childNodes` | **not in the published JS API** — content is flat, placed in world space (Kotlin-side node graph incubating, #2024) |
-| Per-content transform | `node.position` / `node.rotation` / `node.scale` (mutable, reactive) | set once via the `*Config` `position(...)` / `rotation(...)` / `scale(...)` builders; not re-mutable after `create()` |
-| Transform inheritance | composed parent→child via Filament `TransformManager` | none in the published API — every asset is a world-space leaf (composed transforms arrive with #2024) |
+| Add a model | `ModelNode(...)` added to a `Node` tree | builder `model("url.glb") { ... }` / `sceneView.loadModel(url)`, **or** plain-JS `sv.addModelNode(url)` → `Promise<NodeHandle>` |
+| Add a primitive | `CubeNode` / `SphereNode` / … | builder `geometry { cube(); … }`, **or** plain-JS `sv.addCubeNode(size)` / `sv.addSphereNode(radius)` → `NodeHandle` |
+| Add a light | `LightNode(...)` | builder `light { directional(); … }`, **or** plain-JS `sv.addLightNode("directional"\|"point"\|"spot")` → `NodeHandle` |
+| Configure the camera | `CameraNode(...)` | `camera { eye(...); target(...) }` (a `CameraConfig`) — **not** exported as a `NodeHandle` yet |
+| Parent / child hierarchy | `node.parent = other` / `node.childNodes` | `handle.addChild(child)` / `handle.removeChild(child)` (exported since slice 3); builder-DSL content stays flat |
+| Per-content transform | `node.position` / `node.rotation` / `node.scale` (mutable, reactive) | builder `*Config` sets it once (not re-mutable); a `NodeHandle` IS re-mutable via `setPosition` / `setRotation` / `setScale` |
+| Transform inheritance | composed parent→child via Filament `TransformManager` | composed for `NodeHandle` parent/child (Filament `TransformManager`, same as Android); builder-DSL flat content is a world-space leaf |
 
-The Web target is configured by a **fire-and-forget builder DSL**: you describe the
-scene inside `SceneView.create(canvas) { … }` and the library builds it once. Since
-slice 2 of #2024 the DSL internally materialises retained Kotlin-side nodes (identical
-visual result), but the published JS API exposes **no node handles** until P4's
-`NodeHandle` lands. The 4 `*Config` classes (`ModelConfig`, `GeometryConfig`,
-`LightConfig`, `CameraConfig`) are builder *inputs*, not scene-graph nodes — they are
-consumed when the scene is built and are not retained as handles.
-
-**Correct Web code** (parity with the Android example, NOT a node tree):
+**Correct Web code** — the builder DSL (simplest for a static scene):
 
 ```kotlin
-// ✅ Web — builder DSL
+// ✅ Web — builder DSL (Kotlin/JS)
 SceneView.create(canvas, configure = {
     camera { eye(0.0, 1.5, 5.0); target(0.0, 0.0, 0.0) }
     light  { directional(); intensity(100_000.0) }
     model("models/damaged_helmet.glb")
     geometry { cube(); size(1.0); position(2.0, 0.0, 0.0); color(1.0, 0.0, 0.0, 1.0) }
 }) { sceneView -> sceneView.startRendering() }
-
-// ❌ Web — Android/iOS Node code does NOT work here:
-// val node = ModelNode(modelInstance); node.parent = sceneNode   // no published Node API on Web (yet — #2024)
 ```
 
-A node scene-graph for the Web target (`Node` base type, parent/child, composed
-transforms — bringing the Web API to parity with Android/iOS) is tracked as a
-**v5 milestone** effort (#2024) and is landing incrementally: slice 1 (Kotlin-only
-transform nodes) and slice 2a (`ModelNode`/`GeometryNode` content nodes + DSL
-delegation — still Kotlin-only, no JS export) shipped after 4.20.0.
-Until the exported `NodeHandle` API lands, this builder-DSL model is the complete
-and correct **published** Web API.
+**Correct Web code** — the exported `NodeHandle` surface (plain JS, mutate after build):
+
+```js
+// ✅ Web — plain-JS NodeHandle (window.sceneview.*, since slice 3 / P4)
+sceneview.createViewer("canvas").then(function (sv) {
+  var cube = sv.addCubeNode(1.0);            // → NodeHandle, content already in scene
+  cube.setPosition(2, 0, 0);
+  cube.setScaleUniform(1.5);
+  cube.setVisible(false);                    // actually removes it from the scene
+
+  sv.addModelNode("models/helmet.glb").then(function (model) {
+    model.setRotation(0, 45, 0);             // Euler degrees
+    model.addChild(cube);                    // re-parent — cube now follows the model
+  });
+});
+
+// ❌ Still NOT exported to plain JS: the Kotlin ModelNode/LightNode/CameraNode classes
+//    and the addGeometryNode/addCameraNode Kotlin factories. From JS use the NodeHandle
+//    factories above.
+```
+
+The 4 `*Config` classes (`ModelConfig`, `GeometryConfig`, `LightConfig`, `CameraConfig`)
+remain builder *inputs*, not scene-graph nodes. Full Web↔Android/iOS node parity
+(`CameraNode` handle, collision, gestures, smooth transforms) continues under #2024:
+slice 1 (Kotlin transform nodes), slice 2a/2b (content + light/camera nodes, Kotlin-only)
+and now slice 3 / P4 (`NodeHandle` export + root-node centering) have shipped
+incrementally after 4.20.0.
 
 ---
 
@@ -5331,6 +5350,28 @@ sv.startRendering()
 sv.stopRendering()
 sv.resize(width, height)
 sv.dispose()
+
+// Node scene-graph (since slice 3 / P4 of #2024) — each returns a NodeHandle
+sv.addNode()                       // → NodeHandle (empty pivot)
+sv.addModelNode(url)               // → Promise<NodeHandle> (resolves when loaded)
+sv.addCubeNode(size)               // → NodeHandle
+sv.addSphereNode(radius)           // → NodeHandle
+sv.addLightNode(type)              // type: "directional" | "point" | "spot" → NodeHandle
+sv.removeNode(handle)              // detach + free the node's entity
+```
+
+NodeHandle methods (opaque handle to a retained node; address it after create()):
+```js
+handle.setPosition(x, y, z)        // local position
+handle.setRotation(x, y, z)        // Euler degrees (ZYX)
+handle.setScale(x, y, z)           // non-uniform scale
+handle.setScaleUniform(s)          // uniform scale
+handle.setVisible(v)               // Boolean — model/geometry: add/remove from scene
+handle.visible                     // Boolean (read-only)
+handle.addChild(childHandle)       // re-parent (child keeps its local transform)
+handle.removeChild(childHandle)
+handle.getWorldPosition()          // → [x, y, z] composed through the parent chain
+handle.destroy()                   // remove + free entity (idempotent)
 ```
 
 ---

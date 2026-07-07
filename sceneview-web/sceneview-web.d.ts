@@ -34,6 +34,58 @@ export interface ViewerOptions {
 }
 
 /**
+ * An opaque handle to a retained scene-graph node — the first `@JsExport`
+ * node surface of `sceneview-web` (issue #2024, slice 3 / P4). Obtain one from
+ * a {@link SceneViewer} node factory (`addNode` / `addCubeNode` /
+ * `addSphereNode` / `addLightNode` / `addModelNode`) and use it to address the
+ * node after creation — move, rotate, scale, show/hide, re-parent, or destroy
+ * it. Method names mirror the Kotlin / Android `Node` API 1:1.
+ *
+ * Opaque by design: the wrapped Kotlin node and its Filament internals are not
+ * exposed. This is a minimal first slice — richer surfaces (a transform
+ * object, collision, gestures) are additive later and won't break these.
+ */
+export interface NodeHandle {
+  /** Local position in the parent's space (world space for a root node).
+   *  +x right, +y up, -z forward — Android `Node.position` axes. */
+  setPosition(x: number, y: number, z: number): void;
+
+  /** Local rotation as Euler angles in **degrees** (ZYX order) — Android
+   *  `Node.rotation`. */
+  setRotation(x: number, y: number, z: number): void;
+
+  /** Non-uniform local scale per axis. Prefer {@link setScaleUniform} for the
+   *  common uniform case. */
+  setScale(x: number, y: number, z: number): void;
+
+  /** Uniform local scale on all three axes — the common case. */
+  setScaleUniform(s: number): void;
+
+  /** Show/hide the node's renderable content. For a model/geometry node this
+   *  adds/removes its asset entities from the scene, so it actually
+   *  disappears/reappears. An empty pivot node only flips the stored flag. */
+  setVisible(v: boolean): void;
+
+  /** Whether the node is currently marked visible. */
+  readonly visible: boolean;
+
+  /** Parent `child` under this node (child keeps its local transform, so its
+   *  world transform recomposes under this node). */
+  addChild(child: NodeHandle): void;
+
+  /** Detach `child` from this node (no-op if it is not a child). */
+  removeChild(child: NodeHandle): void;
+
+  /** The node's world-space position as a fresh `[x, y, z]` array, composed
+   *  through the parent chain. */
+  getWorldPosition(): [number, number, number];
+
+  /** Remove the node (and its subtree) from the graph and free its Filament
+   *  entity. Idempotent; the handle must not be used afterwards. */
+  destroy(): void;
+}
+
+/**
  * The viewer instance returned by every `sceneview.*` factory.
  *
  * Method names mirror Kotlin's `SceneViewJS` 1:1. All numbers are
@@ -94,6 +146,34 @@ export interface SceneViewer {
    *  Pass `false` for narrative scenes with intentional off-centre
    *  placement. Port of iOS `autoCenterContent` (#1026). */
   setAutoCenterContent(enabled: boolean): void;
+
+  // --- Node scene-graph (#2024 slice 3 / P4) --------------------------------
+  // The first exported node surface: create a node, keep the returned
+  // NodeHandle, and address it after `create()`. Node-created content is
+  // framed via its own node transform (excluded from library auto-centring).
+
+  /** Add an empty pivot node and return a handle to it. Parent other nodes
+   *  under it (`handle.addChild`) to move them together. */
+  addNode(): NodeHandle;
+
+  /** Load a glTF/GLB model as a node. The Promise resolves with the handle
+   *  once the model has finished loading (its content already in the scene).
+   *  Rejects if the viewer is uninitialised. */
+  addModelNode(url: string): Promise<NodeHandle>;
+
+  /** Add a cube primitive of the given edge size and return its handle. */
+  addCubeNode(size: number): NodeHandle;
+
+  /** Add a sphere primitive of the given radius and return its handle. */
+  addSphereNode(radius: number): NodeHandle;
+
+  /** Add a light node and return its handle. `type` is `"directional"`,
+   *  `"point"`, or `"spot"`. */
+  addLightNode(type: 'directional' | 'point' | 'spot'): NodeHandle;
+
+  /** Remove a node (and its subtree) and free its Filament entity —
+   *  equivalent to `handle.destroy()`. */
+  removeNode(node: NodeHandle): void;
 
   /** Release Filament resources. The viewer is unusable after this. */
   dispose(): void;
