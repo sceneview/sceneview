@@ -438,7 +438,7 @@ SceneView(...) {
 
 Key behaviors:
 - `scaleToUnits`: uniformly scales to fit within a cube of this size (meters). `null` = original size.
-- `centerOrigin`: `Position(0,0,0)` = center model. `Position(0,-1,0)` = center horizontal, bottom-aligned. `null` = keep original. Composes **additively** with `position` — the alignment offset (`origin * size`) is added to `position`, so a non-zero `centerOrigin` takes effect even when `position` is left at its default, and the two can be combined (bottom-align *and* place at a point). Applied once on creation (not reactive, like `scaleToUnits`).
+- `centerOrigin`: aligns the model's bounding box with the node origin — the AABB point selected by the normalized origin (`-1..1` per axis, `0` = AABB center) lands on the node origin, whatever the asset's authored pivot. `Position(0,0,0)` = center model. `Position(0,-1,0)` = center horizontal, bottom-aligned (model sits on the origin). `null` = keep the authored pivot. Composes **additively** with `position` — the alignment offset (`-(center + origin * halfExtent) * scale`) is added to `position`, so a non-zero `centerOrigin` takes effect even when `position` is left at its default, and the two can be combined (bottom-align *and* place at a point). Applied once on creation (not reactive, like `scaleToUnits`).
 - `autoAnimate = true` + `animationName = null`: plays ALL animations.
 - `animationName = "Walk"`: plays only that named animation (stops previous). Reactive to Compose state.
 
@@ -4744,7 +4744,7 @@ public struct ModelNode: @unchecked Sendable {
 }
 ```
 
-`centerOrigin(_:)` recenters the model so the supplied target (in model-local space) sits at the origin. Pass `.zero` to center, `SIMD3(0, -1, 0)` to bottom-align (useful for grounded placement), etc. Mirrors Kotlin `ModelNode(centerOrigin = Position(0,-1,0))`.
+`centerOrigin(_:)` moves the model so its visual-bounds **centre** sits at the supplied target point. Pass `.zero` to center the model on the origin — the equivalent of Kotlin `ModelNode(centerOrigin = Position(0,0,0))`. Unlike Android's normalized `-1..1` origin, the target is an **absolute** model-space point: `SIMD3(0, -1, 0)` puts the bounds centre 1 m below the origin (it does NOT bottom-align). To ground a model (bottom resting on the origin), pass `SIMD3(0, bounds.extents.y / 2, 0)` where `bounds = entity.visualBounds(relativeTo: nil)`.
 
 ### iOS: GeometryNode
 
@@ -5870,7 +5870,7 @@ public struct ModelNode: @unchecked Sendable {
     public func rotation(_ rotation: simd_quatf) -> ModelNode
     public func rotation(angle: Float, axis: SIMD3<Float>) -> ModelNode
     public func scaleToUnits(_ units: Float = 1.0) -> ModelNode   // fits in cube of 'units' meters
-    public func centerOrigin(_ target: SIMD3<Float> = .zero) -> ModelNode  // recenters bounds; `.zero` = center, `[0,-1,0]` = bottom-aligned
+    public func centerOrigin(_ target: SIMD3<Float> = .zero) -> ModelNode  // moves the bounds centre to `target` (absolute point, NOT Android's normalized origin); `.zero` = center on origin
 
     // Animation — `speed` is now actually applied to the RealityKit animation (was a no-op before v4.0.10)
     public var animationCount: Int

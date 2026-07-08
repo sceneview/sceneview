@@ -21,7 +21,6 @@ import io.github.sceneview.ar.PlacementScene
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberArPlaybackDataset
-import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -101,7 +100,6 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
                             ModelNode(
                                 modelInstance = it,
                                 scaleToUnits = 0.3f,
-                                centerOrigin = Position(0.0f, 0.0f, 0.0f),
                             )
                         }
                     }
