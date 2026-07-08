@@ -31,8 +31,7 @@ import java.io.FileOutputStream
  *
  * ## What it does
  *
- * For each demo in [DemoCategory.AUGMENTED_REALITY] (13 demos, see
- * [ALL_DEMOS]) it:
+ * For each demo in [DemoCategory.AUGMENTED_REALITY] (see [ALL_DEMOS]) it:
  *
  * 1. Deploys the bundled ARCore recording into the app's external files dir.
  * 2. Deep-links the demo with `--es ar_playback_file <path>` so any demo that
@@ -85,7 +84,7 @@ import java.io.FileOutputStream
  * ## Why most demos get a crash-survival check, not a golden
  *
  * Only `ar-record-playback` reads [DemoSettings.arPendingPlaybackFile] and
- * mounts `ARSceneView(playbackDataset = file)`. The other 12 AR demos build a
+ * mounts `ARSceneView(playbackDataset = file)`. The other AR demos build a
  * **live** `ARSceneView`. Driving them through a recorded session still has
  * real value — ARCore session creation, demo composition, the Filament
  * engine, model loading and the AR overlay all execute on the emulator, which
@@ -143,9 +142,25 @@ class ARReplayHarnessTest {
             arDemos.isNotEmpty(),
         )
 
+        // Persist the verdict INCREMENTALLY, not just once after the loop. Every
+        // AR demo is deep-linked into MainActivity's process — which is ALSO the
+        // instrumentation host (the manifest declares no `android:process`) — so a
+        // native crash (Filament/GL on a software-GPU emulator) or an lmkd
+        // OOM-kill of that RAM-heavy process takes THIS test process down with it.
+        // When that happens `am instrument` exits non-zero with no JUnit output,
+        // and a trailing-only `writeSummary` would never run: the whole sweep
+        // vanishes with no machine-readable verdict at all
+        // ([#2620](https://github.com/sceneview/sceneview/issues/2620) — the CI
+        // x86_64 / swiftshader AR leg failed exactly this way, rc=1 and no summary,
+        // silently for over a week). Writing the summary before each launch and
+        // tagging the about-to-run demo in `inProgress` guarantees a mid-sweep
+        // process death still leaves an honest PARTIAL verdict on disk that names
+        // the culprit. On a healthy host the final write below clears `inProgress`
+        // and the summary is identical to the old behaviour.
         val results = ArrayList<DemoResult>(arDemos.size)
         try {
             for (demo in arDemos) {
+                writeSummary(results, inProgress = demo.id)
                 results += replayDemo(demo.id, deployed)
                 // Land on the demo list between demos so onNewIntent fires cleanly
                 // for the next deep-link.
@@ -155,7 +170,7 @@ class ARReplayHarnessTest {
             deployed.delete()
         }
 
-        val summaryPath = writeSummary(results)
+        val summaryPath = writeSummary(results, inProgress = null)
 
         // The harness fails if ANY demo crashed during replay. Demos that the
         // recording could not advance (live-only demos that ignore the playback
@@ -258,13 +273,21 @@ class ARReplayHarnessTest {
      * `{ harness, passed, total, <items> }` skeleton so the slice-5
      * orchestrator can merge platform reports without special-casing each.
      *
+     * Called after **every** demo (not just once at the end) so a mid-sweep
+     * process death still leaves a partial verdict on disk — see the call site.
+     * [inProgress], when non-null, records the demo currently being replayed as a
+     * top-level `inProgress` field: if the shared MainActivity/instrumentation
+     * process dies replaying it, that field names the exact culprit for
+     * `ar-replay-qa.sh` to surface ([#2620](https://github.com/sceneview/sceneview/issues/2620)).
+     * The final post-loop write passes `null`, clearing it.
+     *
      * `passed` counts only genuine passes — `replayed` and live-only `alive`.
      * A `skipped` demo (#1645: replay demo that advanced 0 frames because the
      * emulator cannot do ARCore dataset playback) is reported in its own
      * `skipped` count and is NOT folded into `passed`, so a green AR leg
      * genuinely means the recorded session replayed.
      */
-    private fun writeSummary(results: List<DemoResult>): File {
+    private fun writeSummary(results: List<DemoResult>, inProgress: String?): File {
         val demos = JSONArray()
         for (r in results) {
             val obj = JSONObject()
@@ -284,7 +307,11 @@ class ARReplayHarnessTest {
             .put("skipped", skipped)
             .put("failed", failed)
             .put("total", results.size)
-            .put("demos", demos)
+        // Non-null only between launching a demo and its verdict landing in
+        // `results`. If the shared process dies in that window this is the last
+        // thing written, so it pinpoints the crashing demo (#2620).
+        if (inProgress != null) root.put("inProgress", inProgress)
+        root.put("demos", demos)
 
         device.executeShellCommand("mkdir -p /sdcard/Download/SceneView")
         val file = File("/sdcard/Download/SceneView/ar-qa-summary.json")
@@ -378,12 +405,15 @@ class ARReplayHarnessTest {
         const val REPLAY_DEMO_ID = "ar-record-playback"
 
         /**
-         * Reason surfaced for a [VERDICT_SKIPPED] replay demo: ARCore dataset
-         * playback (`Session.setPlaybackDataset`) needs camera-stream support
-         * the x86 software-GPU CI emulator does not provide.
+         * Reason surfaced for a [VERDICT_SKIPPED] replay demo: the recorded
+         * ARCore dataset (`Session.setPlaybackDataset`) advanced 0 frames. This
+         * reproduces on BOTH the software-GPU CI emulator (no replayable camera
+         * stream) AND host-GPU local emulators, so the message must not
+         * over-specify "software-GPU CI emulator" ([#2620](https://github.com/sceneview/sceneview/issues/2620)).
          */
         const val REASON_PLAYBACK_UNSUPPORTED =
-            "ARCore dataset playback not supported on this emulator " +
-                "(software-GPU CI emulator has no replayable camera stream)"
+            "ARCore dataset playback not supported on this emulator configuration " +
+                "(0 replayable frames — reproduces on both software-GPU CI and " +
+                "host-GPU local emulators)"
     }
 }
