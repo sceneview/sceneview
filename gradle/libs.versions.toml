@@ -89,7 +89,7 @@ androidxTestRules = "1.7.0"
 androidxTestExtJunit = "1.3.0"
 androidxTestUiAutomator = "2.4.0"
 robolectric = "4.16.1"
-roborazzi = "1.64.0"
+roborazzi = "1.66.0"
 
 # Code Quality
 # detekt 2.0.0-alpha.0 (Sep 2025) is the first release built against Kotlin 2.x
