@@ -51,7 +51,6 @@ import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.demos.internal.DemoMath
-import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -309,7 +308,6 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                                 ModelNode(
                                     modelInstance = instance,
                                     scaleToUnits = 0.3f,
-                                    centerOrigin = Position(0.0f, 0.0f, 0.0f),
                                     // The bundled DamagedHelmet GLB carries a residual +90° X
                                     // root rotation that lands it face-down on the plane —
                                     // correct it at placement time. See #1477.

@@ -66,8 +66,7 @@ fun My3DScreen() {
         rememberModelInstance(modelLoader, "models/chair.glb")?.let { instance ->
             ModelNode(
                 modelInstance = instance,
-                scaleToUnits = 1.0f,
-                centerOrigin = Position(0f, 0f, 0f)
+                scaleToUnits = 1.0f
             )
         }
 

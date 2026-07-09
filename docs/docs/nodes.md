@@ -280,7 +280,7 @@ instance?.let {
 
 - **`scaleToUnits` and `scale` are mutually exclusive.** When `scaleToUnits != null`, the `scale` parameter is **ignored** — the model's scale is computed from its bounding box.
 - **Switching animations:** provide `animationName` as reactive state, set `autoAnimate = false`. The previous animation is stopped automatically when `animationName` changes.
-- **`centerOrigin` convention:** `null` keeps the model's authoring origin, `Position(0,0,0)` centers on the bounding box, `Position(0,-1,0)` bottom-aligns. Composes **additively** with `position` — the alignment offset (`origin * size`) is added to `position`, so a non-zero `centerOrigin` takes effect even when `position` keeps its default, and the two can be combined (bottom-align *and* place at a point). Applied once on creation (not reactive, like `scaleToUnits`).
+- **`centerOrigin` convention:** the bounding-box point selected by the normalized origin (`-1..1` per axis, `0` = AABB center) lands on the node origin, whatever the asset's authored pivot. `null` keeps the model's authored pivot, `Position(0,0,0)` centers the bounding box on the node origin, `Position(0,-1,0)` bottom-aligns (the model sits on the origin). Composes **additively** with `position` — the alignment offset (`-(center + origin * halfExtent) * scale`) is added to `position`, so a non-zero `centerOrigin` takes effect even when `position` keeps its default, and the two can be combined (bottom-align *and* place at a point). Applied once on creation (not reactive, like `scaleToUnits`).
 - **`autoAnimate = true` ignores `animationName`** — the code explicitly ORs the two to avoid double-playing.
 
 ---

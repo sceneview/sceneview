@@ -55,7 +55,6 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
-import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -400,7 +399,6 @@ private fun InstantPlacementScene(
                                 ModelNode(
                                     modelInstance = it,
                                     scaleToUnits = 0.3f,
-                                    centerOrigin = Position(0.0f, 0.0f, 0.0f),
                                     isVisible = textured,
                                     isEditable = true
                                 )

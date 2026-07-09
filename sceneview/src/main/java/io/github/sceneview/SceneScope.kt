@@ -246,13 +246,16 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      *                       **Note:** when set, the [scale] parameter is ignored — the model's scale
      *                       is computed from its bounding box. Use `null` to control scale manually.
      * @param centerOrigin   Origin alignment relative to the model's bounding box, applied once on
-     *                       creation. The resulting translation (`origin * size`) is composed
-     *                       **additively** with [position] — so a non-zero `centerOrigin` is
-     *                       honoured even when [position] keeps its default, and the two can be
+     *                       creation: the bounding-box point selected by the normalized origin
+     *                       (`-1..1` per axis, `0` = AABB center) lands on the node origin. The
+     *                       resulting translation (`-(center + origin * halfExtent) * scale`) is
+     *                       composed **additively** with [position] — so a non-zero `centerOrigin`
+     *                       is honoured even when [position] keeps its default, and the two can be
      *                       combined (e.g. bottom-align a model *and* place it at a point).
-     *                       - `null` keeps the model's original center
-     *                       - `Position(0,0,0)` centers horizontally and vertically
-     *                       - `Position(0,-1,0)` = centered horizontally, bottom-aligned
+     *                       - `null` keeps the model's authored pivot
+     *                       - `Position(0,0,0)` centers the bounding box on the node origin
+     *                       - `Position(0,-1,0)` = centered horizontally, bottom-aligned (the
+     *                         model sits on the node origin)
      * @param position       Local position, added on top of the [centerOrigin] offset. Defaults to
      *                       the origin, so by default the node sits exactly where [centerOrigin]
      *                       placed it.
@@ -284,7 +287,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         content: (@Composable NodeScope.() -> Unit)? = null
     ) {
         // `centerOriginOffset` is the translation ModelNodeImpl's constructor bakes into the node
-        // for `centerOrigin` (`position += origin * size`). Capture it BEFORE applying the
+        // for `centerOrigin` (`-(center + origin * halfExtent) * scale`). Capture it BEFORE applying the
         // declarative props (and before the user `apply` lambda) so the `position` param can be
         // composed additively on top of it. Previously the composable assigned
         // `node.position = position` here and again in the SideEffect below, which overwrote — and
@@ -1732,9 +1735,9 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
  * Resolves the effective node position for the [SceneScope.ModelNode] composable.
  *
  * `ModelNode`'s constructor bakes its `centerOrigin` alignment into the node as a translation
- * (`position += origin * size`); [centerOriginOffset] is that baked translation, captured once
- * right after construction. The declarative `position` param is then composed **additively** on
- * top of it.
+ * (`position -= (center + origin * halfExtent) * scale`, see `centerOriginTranslation`);
+ * [centerOriginOffset] is that baked translation, captured once right after construction. The
+ * declarative `position` param is then composed **additively** on top of it.
  *
  * This is the fix for a silent no-op: the composable previously assigned `node.position = position`
  * (default `(0,0,0)`) on creation and on every recomposition, which overwrote — and so discarded —

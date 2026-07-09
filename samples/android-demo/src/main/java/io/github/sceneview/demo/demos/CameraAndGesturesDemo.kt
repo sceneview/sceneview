@@ -258,7 +258,6 @@ private fun CameraModesSection(
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = 0.5f,
-                        centerOrigin = Position(0.0f, 0.0f, 0.0f)
                     )
                 }
             }
@@ -582,7 +581,6 @@ private fun NodeGesturesSection(
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = MODEL_SCALE_UNITS,
-                        centerOrigin = Position(x = 0f, y = 0f, z = 0f),
                         isEditable = editable,
                         apply = {
                             isPositionEditable = positionEditable

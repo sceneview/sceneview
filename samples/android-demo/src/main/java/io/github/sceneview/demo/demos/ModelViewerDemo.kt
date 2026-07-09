@@ -914,10 +914,11 @@ private fun GallerySection(
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = slug.scaleToUnits,
-                        // centerOrigin lets SceneView re-centre the model on the
-                        // world origin so the camera (looking at 0,0,0) frames
-                        // the body, not the model's authored pivot point.
-                        centerOrigin = Position(0f, 0f, 0f),
+                        // Framing is handled by the scene's default autoCenterContent, which
+                        // recentres the content root once the union bounding box is known. A
+                        // previous `centerOrigin = Position(0, 0, 0)` here was a silent no-op
+                        // (#2622 — the old formula ignored the AABB center) and was removed to
+                        // keep this scene byte-for-byte identical now that centerOrigin works.
                     )
                 }
             }

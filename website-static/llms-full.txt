@@ -120,9 +120,11 @@ if (instance != null) {
     ModelNode(
         modelInstance = instance,
         scaleToUnits = 1.0f,
-        // centerOrigin composes additively with position: the model is bottom-aligned
-        // (y = -1) AND placed at z = -2. centerOrigin alone (no position) bottom-aligns at
-        // the origin; pass both to align AND position.
+        // centerOrigin aligns the model's bounding box with the node origin: the AABB point
+        // selected by the normalized origin (-1..1 per axis, 0 = AABB center) lands on the node
+        // origin, whatever the asset's authored pivot. Position(y = -1f) bottom-aligns (the model
+        // sits on the origin). Composes additively with position via the offset
+        // -(center + origin * halfExtent) * scale — here bottom-aligned AND placed at z = -2.
         centerOrigin = Position(y = -1f),
         position = Position(x = 0f, y = 0f, z = -2f),
         rotation = Rotation(y = 45f),

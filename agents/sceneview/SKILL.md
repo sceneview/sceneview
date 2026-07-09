@@ -87,7 +87,6 @@ fun ModelViewerDemo() {
             ModelNode(
                 modelInstance = instance,
                 scaleToUnits = 0.3f,
-                centerOrigin = Position(0f, 0f, 0f),
             )
         }
     }
