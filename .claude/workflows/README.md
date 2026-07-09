@@ -147,6 +147,27 @@ Every `*.js` in this directory MUST:
 6. **`isolation:'worktree'`** only for agents that mutate files in parallel; lean-clone in the agent prompt otherwise. `budget`-gate deep loops (`while (budget.total && budget.remaining() > 50_000)`).
 7. **Report incrementally** (`log()` at phase boundaries) so a budget/session cap never loses everything.
 8. **Be resumable** — pure of `Date.now()`/`Math.random()`; stamp timestamps after return or pass via `args`.
+9. **Codify `{model, effort}` on every `agent()` call** per the routing matrix below — never
+   leave a background agent on session-inherit (an inherited Fable default dies on the monthly
+   Fable quota mid-fan-out; that killed reviews twice, see STATE history). Where a call uses
+   `agentType: 'sv-*'`, the model/effort live in that agent's frontmatter
+   (`.claude/agents/sv-*.md`) — do not duplicate them in the opts.
+
+### Model & effort routing matrix (single source of truth)
+
+Cheap + mechanical → small model, low effort; judgment + gate → big model, high effort.
+`fable` is **never** hard-pinned in workflows/agents (monthly-quota SPOF for background work);
+it stays the interactive orchestrator's session model. `haiku` has no `xhigh`/`max`.
+
+| Classe de tâche | model | effort | Exemples |
+|---|---|---|---|
+| Probe mécanique / script-driven (curl, gh, gradle, parse) | `haiku` | `low` | store-status probes, disk check |
+| Discovery / sweep read-only (Explore) | `sonnet` | `medium` | audit-sweep, phase2 scan, doc-drift audit, parity audit |
+| Synthèse / rapport / PR body / triage | `sonnet` | `medium` (`low` si trivial) | reconcile trackers, draft-PR open, STATE bullet |
+| Patch de code / fix d'issue / doc patch | `opus` | `high` | fix-issue-batch workers, doc-drift patches |
+| Review indépendante (gate merge) | `opus` | `high` | sv-code/sv-security reviewers, triptych lenses |
+| Safety gate final / vérif adversariale d'ERROR | `opus` | `xhigh` | sv-impact-reviewer, review-fanout verify |
+| Device-QA serial driver / étape release state-changing | `opus` | `medium` | device-qa-orchestrate run, release tag+push |
 
 Validate every script before committing: `bash .claude/scripts/check-saved-workflows.sh`
 (static: ESM `node --check` + meta-block + resume-safety; never executes the workflow).

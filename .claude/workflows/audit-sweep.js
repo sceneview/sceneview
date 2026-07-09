@@ -92,7 +92,7 @@ ${DEPTH}
 Be concrete: EVERY finding needs a repo-relative file path, a best-known line number, the issue, a fix sketch, and the impact. If the class genuinely does NOT appear on this surface, return an empty findings array and say so in the summary — never invent findings to look productive (honesty rule). Use raw \`adb\` for nothing; you are read-only anyway.
 
 Return your structured findings for the ${s} surface.`,
-    { label: `audit:${s}`, phase: 'Audit', agentType: 'Explore', schema: FINDINGS })
+    { label: `audit:${s}`, phase: 'Audit', agentType: 'Explore', schema: FINDINGS, model: 'sonnet', effort: 'medium' })
 })
 
 const results = (await parallel(auditTasks)).filter(Boolean)
@@ -202,7 +202,7 @@ C) Create ONE sub-issue PER HIGH finding:
 D) Use \`--repo sceneview/sceneview\` on every \`gh\` call. Capture each created issue NUMBER (parse it from the URL gh prints). If a \`gh\` call fails (auth, rate-limit), do NOT fake a number — report the failure in \`note\` and set the number to 0.
 
 Return the umbrella number + URL, the list of sub-issue numbers/titles, and a note.`,
-  { label: 'frame-issues', phase: 'Frame', schema: FRAME_SCHEMA })
+  { label: 'frame-issues', phase: 'Frame', schema: FRAME_SCHEMA, model: 'opus', effort: 'medium' })
 
 const subIssues = (framed && Array.isArray(framed.subIssues)) ? framed.subIssues : []
 log(`Frame done — umbrella #${(framed && framed.umbrella) || '?'}, ${subIssues.length} sub-issue(s) for ${highs.length} HIGH finding(s)`)

@@ -40,7 +40,7 @@ const disk = await agent(
   bash .claude/scripts/disk-gated-spawn-check.sh; echo "EXIT=$?"
 
 The script prints a machine-readable \`DISK_FREE_GB=<n>\` line and exits 0 when free space clears its threshold (default 15 GB), 1 below it. Do NOT run any cleanup, do NOT spawn anything, do NOT clone — just report. Parse DISK_FREE_GB into freeGb, set safe=true iff EXIT=0, and put the verbatim output in raw.`,
-  { label: 'preflight:disk', phase: 'Preflight', schema: DISK_SCHEMA })
+  { label: 'preflight:disk', phase: 'Preflight', schema: DISK_SCHEMA, model: 'haiku', effort: 'low' })
 
 if (disk) {
   log(`Disk preflight: ${disk.freeGb} GB free — ${disk.safe ? 'SAFE to spawn' : 'BELOW threshold (cleanup advised; build-heavy fan-out risky)'}. Hard cap ~2 build-heavy agents (runtime also caps concurrency).`)
@@ -90,7 +90,7 @@ From the result:
 - Pick the TOP ${MAX}, ordered highest-priority first (ties broken by ascending number).
 
 Return the chosen issues with each one's number, title, and resolved priority bucket. Do NOT claim, clone, or modify anything — selection only.`,
-    { label: 'preflight:select-issues', phase: 'Preflight', schema: PICK_SCHEMA })
+    { label: 'preflight:select-issues', phase: 'Preflight', schema: PICK_SCHEMA, model: 'sonnet', effort: 'medium' })
   chosen = (pick && Array.isArray(pick.issues) ? pick.issues : []).slice(0, MAX)
   log(`Auto-selected ${chosen.length} issue(s): ${chosen.map(i => `#${i.number}[${i.priority}]`).join(', ') || '(none open / all in-progress)'}`)
 }
@@ -240,6 +240,8 @@ const results = await pipeline(
       label: `fix:#${item.number}`,
       phase: 'Cycle',
       schema: FIX_SCHEMA,
+      model: 'opus',
+      effort: 'high',
     }),
   // Stage 2 — graded review (medium+ only): the orchestrator-level adversarial fan-out the worker
   // cannot run itself (#1243). Trivial/skipped/failed pass straight through.
@@ -256,7 +258,7 @@ const results = await pipeline(
     if (rec === 'MERGE' || rec === 'MERGE_AFTER_WARNINGS') {
       await agent(
         `Finalize SceneView PR #${fixRes.pr} (issue #${item.number}): run \`gh pr merge ${fixRes.pr} --repo ${REPO} --squash --auto\`, then \`bash .claude/scripts/claim.sh --release ${item.number}\`. Report one line. Do NOT watch CI.`,
-        { label: `merge:#${item.number}`, phase: 'Review' },
+        { label: `merge:#${item.number}`, phase: 'Review', model: 'haiku', effort: 'low' },
       )
       return { ...fixRes, outcome: 'merged', reviewRecommendation: rec, reviewWarnings: (review.warnings || []).length }
     }
@@ -265,7 +267,7 @@ const results = await pipeline(
     if (review.breakingApi) {
       await agent(
         `Mark SceneView PR #${fixRes.pr} as a DRAFT — it has a confirmed BREAKING public-API change and needs the maintainer: \`gh pr ready ${fixRes.pr} --repo ${REPO} --undo\`. Do NOT merge. Report one line.`,
-        { label: `draft:#${item.number}`, phase: 'Review' },
+        { label: `draft:#${item.number}`, phase: 'Review', model: 'haiku', effort: 'low' },
       )
     }
     return { ...fixRes, outcome: 'blocked-by-review', reviewRecommendation: rec, breakingApi: !!review.breakingApi, blockers: (review.confirmedErrors || []).length, note: `${fixRes.note || ''} | review=${rec}${review.breakingApi ? ' BREAKING-API → drafted, maintainer gate' : ''}; PR #${fixRes.pr} open, claim held`.trim() }

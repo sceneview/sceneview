@@ -64,7 +64,7 @@ TASK — build the candidate-drift worklist (do NOT patch anything yet):
 3. Distil into a DEDUPED list of concrete candidates. Each candidate names exactly one doc surface, the symbol at issue, the doc file to inspect/patch, and why it's suspect. Drop noise (the script's known false positives: a local val/var inside a refactored body, an internal-only symbol). Prefer high-signal candidates an Opus agent can actually act on. Cap at the ~20 most worthwhile; the long tail is fine to omit (the script's truncation is intentional).
 
 Return the structured worklist.`,
-  { label: 'doc-drift:audit', phase: 'Audit', schema: WORKLIST })
+  { label: 'doc-drift:audit', phase: 'Audit', schema: WORKLIST, model: 'sonnet', effort: 'medium' })
 
 const candidates = (audit && Array.isArray(audit.candidates)) ? audit.candidates : []
 log(`Audit: ${candidates.length} candidate(s) — ${audit ? audit.note : 'no worklist returned'}`)
@@ -120,7 +120,7 @@ PROCEDURE:
 3. You touch ONLY doc/prose files for THIS candidate. Never edit library logic. Never edit another candidate's file. Do NOT git add/commit/push — the PR phase bundles everything.
 
 Return your structured result: action='patched' (with the file you edited + the source file:line that proves the API) or action='deferred' (with the precise reason).`,
-  { label: `doc-drift:patch:${c.surface}:${(c.symbol || '').slice(0, 24)}`, phase: 'Patch', schema: PATCH })
+  { label: `doc-drift:patch:${c.surface}:${(c.symbol || '').slice(0, 24)}`, phase: 'Patch', schema: PATCH, model: 'opus', effort: 'high' })
 
 const results = (await pipeline(candidates, patchStage)).filter(Boolean)
 
@@ -172,7 +172,7 @@ TASK:
 4. Report: the PR URL (or the issue URL, or "no action — docs in sync"), the branch name, and the exact files committed.
 
 End the PR body with: 🤖 Generated with [Claude Code](https://claude.com/claude-code)`,
-    { label: 'doc-drift:pr', phase: 'PR' })
+    { label: 'doc-drift:pr', phase: 'PR', model: 'sonnet', effort: 'low' })
 
   log(`PR phase: ${prResult ? String(prResult).slice(0, 160) : 'no result'}`)
 }

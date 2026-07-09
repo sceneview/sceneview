@@ -65,10 +65,10 @@ const VERDICT_SCHEMA = {
 // (single source of truth). If the type isn't registered in this session, fall back to a
 // general agent that READS the .md and adopts the role — so a reviewer is never silently dropped.
 const REVIEWERS = [
-  { key: 'code', agentType: 'sv-code-reviewer' },
-  { key: 'security', agentType: 'sv-security-reviewer' },
-  { key: 'impact', agentType: 'sv-impact-reviewer' },
-  { key: 'doc', agentType: 'sv-doc-freshness' },
+  { key: 'code', agentType: 'sv-code-reviewer', model: 'opus', effort: 'high' },
+  { key: 'security', agentType: 'sv-security-reviewer', model: 'opus', effort: 'high' },
+  { key: 'impact', agentType: 'sv-impact-reviewer', model: 'opus', effort: 'xhigh' },
+  { key: 'doc', agentType: 'sv-doc-freshness', model: 'sonnet', effort: 'medium' },
 ]
 
 const reviewPrompt = (key) =>
@@ -84,13 +84,14 @@ log(`Running ${REVIEWERS.length} independent reviewers on ${diffRef} (${ctx})`)
 async function runReviewer(r) {
   const opts = { label: `review:${r.key}`, phase: 'Review', schema: REVIEW_SCHEMA }
   try {
+    // model/effort come from the sv-* agent frontmatter (.claude/agents/*.md)
     return await agent(reviewPrompt(r.key), { ...opts, agentType: r.agentType })
   } catch (e) {
     log(`agentType '${r.agentType}' unavailable — adopting its mandate from file`)
     try {
       return await agent(
         `Read the file \`.claude/agents/${r.agentType}.md\` and adopt that reviewer role EXACTLY — its mandate, hard checks, and output fields. Then: ${reviewPrompt(r.key)}`,
-        { ...opts, label: `review:${r.key}(fallback)` },
+        { ...opts, label: `review:${r.key}(fallback)`, model: r.model, effort: r.effort },
       )
     } catch (e2) {
       // Total reviewer failure → null → filtered → reviewersRan < expected ⇒ REVIEW_INCOMPLETE.
@@ -120,7 +121,7 @@ const reviewed = await pipeline(
   proposed fix: ${f.fix || '(none given)'}
 
 Try to REFUTE it. Read the actual code at that location and reproduce the failure if it is a runtime/compile claim (e.g. grep the call site, check the signature, trace the thread). Default to real=false if you cannot independently confirm a genuine, merge-blocking problem. Only real=true if you confirm it.`,
-          { label: `verify:${r.key}`, phase: 'Verify', schema: VERDICT_SCHEMA },
+          { label: `verify:${r.key}`, phase: 'Verify', schema: VERDICT_SCHEMA, model: 'opus', effort: 'xhigh' },
         ).then((v) => ({ ...f, reviewer: r.key, verified: v })),
       ),
     ).then((verified) => ({ ...res, verifiedErrors: verified.filter(Boolean) }))

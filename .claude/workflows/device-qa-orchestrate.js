@@ -88,7 +88,7 @@ GATE POLICY you must reflect honestly (do NOT re-grade — just surface the repo
 - If the disk gate trips (exit 2) or the report was never written, say so plainly: ran=false, reportVerdict='missing'.
 
 Return your structured verdict. Be precise; the orchestrator's gate reads your fields directly.`,
-  { label: `device-qa:${PLATFORM}`, phase: 'Run', schema: RUN_VERDICT })
+  { label: `device-qa:${PLATFORM}`, phase: 'Run', schema: RUN_VERDICT, model: 'opus', effort: 'medium' })
 
 phase('Grade')
 
