@@ -188,10 +188,15 @@ For imperative code, use `modelLoader.loadModelInstanceAsync`.
 ## Android CLI (preferred for agent-driven QA)
 
 Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)
-(tested against **v1.0** — stable, Google I/O May 2026, adds Journeys-from-CLI/CI
-and `android studio *` subcommands — and still compatible with the first-release
-**v0.7.15411012**, April 2026) is the agent-focused
-front-end for `adb` / `uiautomator` / `emulator` / `sdkmanager`. SceneView's QA scripts
+(tested against **v1.0.15498356** — stable, Google I/O May 2026, adds the
+`android studio *` subcommands; the Journeys-from-CLI that Google's docs
+announce is **NOT in this binary** (no `journeys` command — verified on-device
+2026-07-09) — and still compatible with the first-release **v0.7.15411012**,
+April 2026) is the agent-focused
+front-end for `adb` / `uiautomator` / `emulator` / `sdkmanager`. Install note:
+`dl.google.com/.../latest/` still serves **0.7**; reaching 1.0 requires running
+`android update` afterwards (global upgrade — the unpacked payload in
+`~/.android/bin` is shared, no side-by-side). SceneView's QA scripts
 and CI install it on the fly and use it for:
 
 - `android layout --device=<serial> -o ui.json --pretty` — JSON UI tree with

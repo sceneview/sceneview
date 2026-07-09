@@ -255,10 +255,13 @@ no crash" mandate. The earlier assessment ("not adopted — blocked on an AGP
   **already-installed** APK (our emulator-installed `io.github.sceneview.demo`)
   instead of driving a Gradle build — sidestepping the AGP-9 requirement
   entirely. This repo can stay on its current AGP.
-- **Out of Studio Labs and runnable headless.** Journeys has shipped in Studio
-  Labs since **Otter 3 (Jan 2026)**, and the **android CLI 1.0** (I/O May 2026)
-  executes journeys straight from the terminal / CI — no Gemini-in-Studio
-  session in the loop for a headless run.
+- **Out of Studio Labs — but NOT yet headless.** Journeys has shipped in Studio
+  Labs since **Otter 3 (Jan 2026)**. Google's docs announce Journeys execution
+  from the **android CLI 1.0** (I/O May 2026), but the shipped binary
+  `1.0.15498356` has **no `journeys` command** (verified on-device 2026-07-09:
+  absent from `android help`, from the `studio` group, and from `strings` on
+  the payload). Until the CLI actually ships it, running a journey requires an
+  interactive Android Studio session (Gemini + Studio Labs).
 - **It is the only credible pinch/zoom lead.** Neither Maestro (pinch is still
   open upstream — [maestro#2169](https://github.com/mobile-dev-inc/maestro/issues/2169))
   nor the android CLI has a real multi-touch pinch. 3D camera zoom is currently
@@ -266,10 +269,13 @@ no crash" mandate. The earlier assessment ("not adopted — blocked on an AGP
   above). Journeys drives Gemini-piloted gestures, so it is the one path that
   could exercise a genuine pinch-to-zoom instead of the deep-link workaround.
 
-**Status: spike planned.** Prototype one journey — "open demo X, pinch to zoom,
-assert no crash" — against the pre-installed demo APK via
-`JOURNEYS_CUSTOM_APP_ID` + `android` CLI 1.0, and compare it to the Maestro
-catalog. The open empirical question is whether the Journeys executor issues a
+**Status: spike blocked on tooling (2026-07-09).** The plan stands — prototype
+one journey ("open demo X, pinch to zoom, assert no crash") against the
+pre-installed demo APK via `JOURNEYS_CUSTOM_APP_ID` — but the headless path is
+blocked until the `android` CLI actually ships its `journeys` command (absent
+from `1.0.15498356`); meanwhile it requires an interactive Studio host
+(Gemini + Studio Labs). Re-probe on each CLI release, then compare to the
+Maestro catalog. The open empirical question is whether the Journeys executor issues a
 **real multi-touch pinch** the Filament orbit camera reacts to; that is the
 whole point of the spike and can only be settled on device. The other audit
 items (Gradle Managed Devices + ATD images, Firebase Test Lab Spark tier,
