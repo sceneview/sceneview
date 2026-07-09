@@ -70,13 +70,30 @@ open class PlaneNode(
      */
     val extentZ: Float get() = plane.extentZ
 
+    // `trackable = plane` below virtually dispatches the open update() — a subclass override
+    // runs BEFORE the subclass's own fields are initialized (#2624, the bug class behind the
+    // 4.21.0 ShadowReceiverPlaneNode crash #2621). This flag gates this class's update() tail
+    // until construction completes; init then applies the initial state explicitly, so the
+    // construction end-state is byte-for-byte unchanged.
+    private var constructed = false
+
     init {
         trackable = plane
+        constructed = true
+        // Apply the initial pose that the gated update() skipped during the constructor dispatch.
+        applyTrackableState()
     }
 
     override fun update(trackable: Plane?) {
         super.update(trackable)
 
+        // Bail while the constructor dispatch is in flight (#2624) — init applies the state below.
+        if (!constructed) return
+        applyTrackableState()
+    }
+
+    /** The class-specific trackable refresh — gated behind [constructed] (#2624). */
+    private fun applyTrackableState() {
         // Only follow the plane while ARCore is actively tracking it. A paused / stopped plane
         // keeps its last pose so subsumed-plane content does not teleport to the AR origin.
         if (plane.trackingState == TrackingState.TRACKING) {

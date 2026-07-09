@@ -73,6 +73,27 @@ open class TrackableNode<T : Trackable>(
         }
     }
 
+    /**
+     * Refreshes this node's state from the given [trackable] — called per frame, and once from
+     * the [trackable] property setter.
+     *
+     * **Subclassing warning (#2624).** Several node constructors assign `trackable` from their
+     * `init` block ([PlaneNode], [AugmentedImageNode], [AugmentedFaceNode],
+     * [StreetscapeGeometryNode]), so this open method is virtually dispatched **before a
+     * subclass's own fields are initialized** — an override that touches subclass state crashes
+     * at construction (the 4.21.0 `ShadowReceiverPlaneNode` NPE, #2621). If your override reads
+     * any of your own properties, gate it with a `constructed` flag flipped at the end of your
+     * `init` block:
+     * ```kotlin
+     * private var constructed = false
+     * init { constructed = true }
+     * override fun update(trackable: MyTrackable?) {
+     *     super.update(trackable)
+     *     if (!constructed) return // base ctor dispatch — your fields don't exist yet
+     *     /* your state */
+     * }
+     * ```
+     */
     open fun update(trackable: T?) {
         trackingState = trackable?.trackingState ?: TrackingState.STOPPED
     }
