@@ -1,5 +1,7 @@
 ---
 description: Verify the REAL live state of published artifacts (iOS App Store, Maven Central, npm) vs the expected version — CI-green is never proof of live. Runs the store-status workflow.
+model: sonnet
+effort: low
 ---
 
 # /store-status — is what's LIVE actually our version?

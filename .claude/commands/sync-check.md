@@ -1,5 +1,7 @@
 ---
 description: Verify SceneView repo synchronization — versions across 30+ files and published artifacts.
+model: sonnet
+effort: low
 ---
 
 # /sync-check — Verify SceneView repo synchronization
