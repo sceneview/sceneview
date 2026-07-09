@@ -78,7 +78,7 @@ CRITICAL: iOS V1 is a deliberate STRICT SUBSET of Android — an **honestly docu
 // Pipeline: each platform's gaps are adversarially verified the moment that platform audit returns.
 const audited = await pipeline(
   TARGETS,
-  (t) => agent(auditPrompt(t), { label: `audit:${t}`, phase: 'Audit', schema: GAPS_SCHEMA }).then((r) => (r ? { ...r, platform: t } : null)),
+  (t) => agent(auditPrompt(t), { label: `audit:${t}`, phase: 'Audit', schema: GAPS_SCHEMA, model: 'sonnet', effort: 'medium' }).then((r) => (r ? { ...r, platform: t } : null)),
   (r, t) => {
     if (!r) return null
     const gaps = r.gaps || []
@@ -94,7 +94,7 @@ const audited = await pipeline(
   target status: ${g.targetStatus || '?'}
 
 Try to REFUTE it. Open the actual source on BOTH platforms: does the reference \`refLocation\` resolve to that public symbol? Is it genuinely missing/divergent on the target, or is it actually mirrored under a different name, or left as an HONEST documented deferral ("Coming soon")? Default realGap=false unless you independently confirm a genuine, silent parity break. Set deferredHonestly=true if the target documents the gap.`,
-          { label: `verify:${t}:${(g.symbol || '').slice(0, 24)}`, phase: 'Verify', schema: VERDICT_SCHEMA },
+          { label: `verify:${t}:${(g.symbol || '').slice(0, 24)}`, phase: 'Verify', schema: VERDICT_SCHEMA, model: 'opus', effort: 'high' },
         ).then((v) => ({ ...g, platform: t, verified: v })),
       ),
     ).then((verified) => ({ ...r, verifiedGaps: verified.filter(Boolean) }))

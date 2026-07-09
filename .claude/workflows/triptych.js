@@ -62,12 +62,12 @@ phase('Verify')
 
 const tasks = LENSES.map(L => () =>
   agent(`${COMMON}\n\nYOUR LENS — ${L.key}: ${L.brief}\n\nReturn your structured verdict.`,
-    { label: `review:${L.key}`, phase: 'Verify', schema: VERDICT }))
+    { label: `review:${L.key}`, phase: 'Verify', schema: VERDICT, model: 'opus', effort: 'high' }))
 
 // Updated-everywhere leg — runs impact-check + the all-platforms surface audit.
 const impactTask = () => agent(
   `${COMMON}\n\nYOUR LENS — updated-everywhere: run \`bash .claude/scripts/impact-check.sh\` and reason over its output for the diff. Verify EVERY impacted surface is in sync: llms.txt, KDoc, docs/docs/*, samples/recipes, README, CLAUDE.md, the agents/sceneview* skills, the version map (sync-versions.sh), changelog.d fragment present, MCP generated artefacts. A missing doc/changelog/parity update for a public change is a blocker. List exactly which surfaces are stale.`,
-  { label: 'review:updated-everywhere', phase: 'Verify', schema: VERDICT })
+  { label: 'review:updated-everywhere', phase: 'Verify', schema: VERDICT, model: 'sonnet', effort: 'medium' })
 
 // Visual device-QA leg — ONE serial agent (single emulator/sim lease). It is the
 // only QA agent in this batch, so it never contends for the device.
@@ -91,7 +91,7 @@ If the diff touches a demo/sample/UI on a platform you can drive locally:
 - iOS → simulator via XcodeBuildMCP, drive the demo, screenshot.
 - Web → Playwright (\`samples/web-demo/tests/\`).
 Assert: no crash, the change renders as intended, no rendering corruption (drift/skew/black viewport/frozen billboard). If the platform can't be driven locally (e.g. true ARCore tracking on arm64), say so HONESTLY and mark applicable=false — never fake a pass. If a demo path is KEY-GATED (Sketchfab Explore, ARCore Cloud) and the build has no API key (SKETCHFAB_API_KEY / ARCORE_API_KEY), mark applicable=false with notes 'key missing — path NOT tested', and alert that QA could not be complete — NEVER report a key-gated path as passing on a keyless build (#2343). Return your structured verdict.`,
-  { label: 'visual-qa', phase: 'Verify', schema: VQ })
+  { label: 'visual-qa', phase: 'Verify', schema: VQ, model: 'opus', effort: 'medium' })
 
 const all = await parallel([...tasks, impactTask, visualTask])
 

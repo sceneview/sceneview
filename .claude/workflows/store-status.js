@@ -29,7 +29,7 @@ Run exactly:
   ${RESOLVE_MAIN}
   grep -E '^VERSION_NAME=' "$MAIN/gradle.properties" | head -1 | cut -d= -f2 | tr -d '[:space:]'
 Return that value verbatim as your entire output.`,
-    { label: 'probe:expected-version', phase: 'Probe' })
+    { label: 'probe:expected-version', phase: 'Probe', model: 'haiku', effort: 'low' })
   expected = String(vRaw || '').trim().replace(/^["']|["']$/g, '')
 }
 if (!expected || !/^\d+\.\d+\.\d+/.test(expected)) {
@@ -84,7 +84,7 @@ Run exactly:
 Parse the JSON: read \`resultCount\`, and from \`results[0]\` read \`version\`, \`currentVersionReleaseDate\`, \`trackName\`.
 If resultCount is 0 (app not found / not yet live) return version=null, currentVersionReleaseDate=null, and say so in \`raw\`.
 Do NOT guess or infer a version from anywhere else — report only what the live lookup returns. Return your structured verdict.`,
-  { label: 'probe:ios-itunes', phase: 'Probe', schema: IOS_SCHEMA })
+  { label: 'probe:ios-itunes', phase: 'Probe', schema: IOS_SCHEMA, model: 'haiku', effort: 'low' })
 
 const POM_URL = `https://repo1.maven.org/maven2/io/github/sceneview/sceneview/${V}/sceneview-${V}.pom`
 const mavenProbe = () => agent(
@@ -92,14 +92,14 @@ const mavenProbe = () => agent(
 Run exactly:
   curl -sI -o /dev/null -w "%{http_code}" "${POM_URL}"
 Report the integer HTTP status as \`httpCode\` (200 = the artifact's .pom is live on repo1; 404 = not present / still propagating) and echo the URL. Do not follow up with other endpoints. Return your structured verdict.`,
-  { label: 'probe:maven-repo1', phase: 'Probe', schema: MAVEN_SCHEMA })
+  { label: 'probe:maven-repo1', phase: 'Probe', schema: MAVEN_SCHEMA, model: 'haiku', effort: 'low' })
 
 const npmProbe = () => agent(
   `You verify that the EXACT npm version sceneview-web@${V} is published (the published web CDN artifact is sceneview-web).
 Run exactly:
   npm view sceneview-web@${V} version
 If that exact version is published, npm echoes "${V}" — set version to that. If the exact version is NOT published, npm prints nothing / an error to stderr — set version=null and capture the message in \`raw\`. Do not fall back to the dist-tag latest. Return your structured verdict.`,
-  { label: 'probe:npm-sceneview-web', phase: 'Probe', schema: NPM_SCHEMA })
+  { label: 'probe:npm-sceneview-web', phase: 'Probe', schema: NPM_SCHEMA, model: 'haiku', effort: 'low' })
 
 const [ios, maven, npmRes] = await parallel([iosProbe, mavenProbe, npmProbe])
 
@@ -222,7 +222,7 @@ PY
 This file is gitignored runtime evidence (\`.claude/data/\`), never committed. Its \`verdict\` is "${verdict}"; claim-gate.sh blocks an "all-live ✅" STATE.md claim unless verdict=ALL_LIVE and the record is fresh.
 
 After editing, print a 3-line confirmation: (1) the absolute STATE.md path you edited, (2) the new bullet text verbatim, (3) the absolute probe path written + its verdict. Do NOT git add / commit / push. Do NOT modify any file other than STATE.md and .claude/data/last-store-probe.json.`,
-  { label: 'report:update-state', phase: 'Report' })
+  { label: 'report:update-state', phase: 'Report', model: 'sonnet', effort: 'low' })
 
 const reportConfirm = await reportTask()
 

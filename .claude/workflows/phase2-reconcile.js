@@ -119,7 +119,7 @@ This surface's standing tracker issue (read it for the already-known MED backlog
 Be concrete: EVERY item needs a short imperative title, a repo-relative file path, a best-known line number, and a rationale that states the concrete MED cost plus a fix sketch. If this surface genuinely has NO standing MED backlog beyond what its tracker already lists, return an empty items array and say so in the summary — never invent items to look productive (honesty rule). You are read-only; use raw \`adb\` for nothing.
 
 Return your structured MED backlog for the ${s} surface.`,
-    { label: `triage:${s}`, phase: 'Triage', agentType: 'Explore', schema: FINDINGS })
+    { label: `triage:${s}`, phase: 'Triage', agentType: 'Explore', schema: FINDINGS, model: 'sonnet', effort: 'medium' })
 })
 
 const results = (await parallel(triageTasks)).filter(Boolean)
@@ -224,7 +224,7 @@ C) For a surface with NO new MED items, do nothing and report action "unchanged"
 D) Capture each tracker's NUMBER (parse it from the URL gh prints on create, or echo it on update). If a \`gh\` call fails (auth, rate-limit), do NOT fake a number — set number 0, action "failed", and explain in \`note\`.
 
 Return one entry per surface (number + action + url) and a note.`,
-  { label: 'reconcile-trackers', phase: 'Reconcile', schema: RECONCILE_SCHEMA })
+  { label: 'reconcile-trackers', phase: 'Reconcile', schema: RECONCILE_SCHEMA, model: 'sonnet', effort: 'medium' })
 
 const trackers = (reconciled && Array.isArray(reconciled.trackers)) ? reconciled.trackers : []
 const created = trackers.filter((t) => t.action === 'created').length

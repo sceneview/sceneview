@@ -63,7 +63,7 @@ Run these, from the repo root, and reason over their output:
    nextVersion must keep major=${FROZEN_MAJOR} (e.g. 4.17.0 + minor → 4.18.0; + patch → 4.17.1).
 
 clean = (syncMismatch==0) AND qualityGatePass AND ciGreen AND bumpKind in {patch,minor} AND NOT needsHuman. Put every failing reason in blockers. Be honest — a half-green CI or a single real MISMATCH means clean=false.`,
-  { label: 'preflight', phase: 'Preflight', schema: PREFLIGHT })
+  { label: 'preflight', phase: 'Preflight', schema: PREFLIGHT, model: 'sonnet', effort: 'medium' })
 
 if (!preflight) {
   log('Preflight agent returned null — BLOCKED')
@@ -174,7 +174,7 @@ This is a SINGLE \`/release\` actor — never run a second release agent concurr
 6. \`git tag v${nextVersion}\` then \`git push origin HEAD --tags\` (push the current main HEAD + the new tag — this triggers release.yml: Maven Central / npm sceneview-web / GitHub Release, plus the store workflows). Set pushedTag="v${nextVersion}", tagged=true.
 
 If ANY step fails (dirty mcp diff, non-zero MISMATCH after --fix, push rejected), STOP, set tagged=false, leave pushedTag empty, and explain in blockers. Do NOT force-push, do NOT bump a major.`,
-  { label: 'tag', phase: 'Tag', schema: TAG })
+  { label: 'tag', phase: 'Tag', schema: TAG, model: 'opus', effort: 'medium' })
 
 if (!tag || !tag.tagged) {
   const tb = (tag && tag.blockers && tag.blockers.length) ? tag.blockers : ['tag step did not complete (agent returned null or tagged=false)']
