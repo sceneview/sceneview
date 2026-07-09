@@ -199,57 +199,9 @@ open class AugmentedFaceNode(
         }
 
         if (meshNode == null) {
-            meshNode = MeshNode(
-                engine = engine,
-                primitiveType = PrimitiveType.TRIANGLES,
-                vertexBuffer = VertexBuffer.Builder()
-                    // Position + Tangents (quaternion) + UV Coordinates
-                    .bufferCount(3)
-                    // Position Attribute (x, y, z)
-                    .attribute(POSITION, 0, AttributeType.FLOAT3)
-                    // Tangents Attribute (Quaternion: x, y, z, w) — encodes normal + tangent
-                    // + bitangent for PBR lighting. Must be FLOAT4.
-                    .attribute(TANGENTS, 1, AttributeType.FLOAT4)
-                    .normalized(TANGENTS)
-                    // Uv Attribute (x, y)
-                    .attribute(UV0, 2, AttributeType.FLOAT2)
-                    .vertexCount(vertexCount)
-                    .build(engine).apply {
-                        // Fill all slots before the node becomes visible,
-                        // so Filament can compute a non-empty AABB (build:552).
-                        setBufferAt(engine, 0, vertices) // positions  (dynamic)
-                        // Slot 1 (TANGENTS, FLOAT4) MUST be a 16-byte-per-vertex buffer
-                        // even for unlit materials — Filament asserts on stride mismatch.
-                        // For lit materials we upload the just-computed Mikkelsen quats;
-                        // for unlit we upload an identity-quaternion buffer ONCE here
-                        // (built lazily) and never touch it again per frame.
-                        setBufferAt(
-                            engine, 1,
-                            tangents ?: identityTangentsBuffer(vertexCount)
-                        )
-                        setBufferAt(engine, 2, uvs)      // UVs        (static)
-                    },
-                indexBuffer = IndexBuffer.Builder()
-                    .bufferType(IndexBuffer.Builder.IndexType.USHORT)
-                    .indexCount(indices.limit())
-                    .build(engine).apply {
-                        setBuffer(engine, indices)       // indices    (static)
-                    },
-                materialInstance = meshMaterialInstance,
-                builder = {
-                    // Filament computes AABB asynchronously after vertex buffer upload.
-                    // If a render frame starts before AABB is updated, Filament aborts with
-                    // "AABB can't be empty" (build:552). Disabling culling avoids this race
-                    // condition. For a face mesh this may be acceptable since the mesh is always
-                    // within the camera frustum while tracking.
-                    culling(false)
-                    castShadows(false)
-                    receiveShadows(false)
-                    builder()
-                }
-            ).apply { parent = centerNode }
+            meshNode = createFaceMeshNode(vertices, tangents, uvs, indices, vertexCount)
 
-            // Early return — buffers already filled above,
+            // Early return — buffers already filled at construction,
             // next frame will go to the update branch below
             centerNode.pose = augmentedFace.centerPose
             regionNodes.forEach { (regionType, regionNode) ->
@@ -276,6 +228,66 @@ open class AugmentedFaceNode(
             regionNode.pose = augmentedFace.getRegionPose(regionType)
         }
     }
+
+    /**
+     * Builds the face [MeshNode] once ARCore provides valid mesh buffers — extracted verbatim
+     * from the first-TRACKING-frame branch of [applyTrackableState].
+     */
+    private fun createFaceMeshNode(
+        vertices: java.nio.FloatBuffer,
+        tangents: ByteBuffer?,
+        uvs: java.nio.FloatBuffer,
+        indices: java.nio.ShortBuffer,
+        vertexCount: Int,
+    ): MeshNode = MeshNode(
+        engine = engine,
+        primitiveType = PrimitiveType.TRIANGLES,
+        vertexBuffer = VertexBuffer.Builder()
+            // Position + Tangents (quaternion) + UV Coordinates
+            .bufferCount(3)
+            // Position Attribute (x, y, z)
+            .attribute(POSITION, 0, AttributeType.FLOAT3)
+            // Tangents Attribute (Quaternion: x, y, z, w) — encodes normal + tangent
+            // + bitangent for PBR lighting. Must be FLOAT4.
+            .attribute(TANGENTS, 1, AttributeType.FLOAT4)
+            .normalized(TANGENTS)
+            // Uv Attribute (x, y)
+            .attribute(UV0, 2, AttributeType.FLOAT2)
+            .vertexCount(vertexCount)
+            .build(engine).apply {
+                // Fill all slots before the node becomes visible,
+                // so Filament can compute a non-empty AABB (build:552).
+                setBufferAt(engine, 0, vertices) // positions  (dynamic)
+                // Slot 1 (TANGENTS, FLOAT4) MUST be a 16-byte-per-vertex buffer
+                // even for unlit materials — Filament asserts on stride mismatch.
+                // For lit materials we upload the just-computed Mikkelsen quats;
+                // for unlit we upload an identity-quaternion buffer ONCE here
+                // (built lazily) and never touch it again per frame.
+                setBufferAt(
+                    engine, 1,
+                    tangents ?: identityTangentsBuffer(vertexCount)
+                )
+                setBufferAt(engine, 2, uvs)      // UVs        (static)
+            },
+        indexBuffer = IndexBuffer.Builder()
+            .bufferType(IndexBuffer.Builder.IndexType.USHORT)
+            .indexCount(indices.limit())
+            .build(engine).apply {
+                setBuffer(engine, indices)       // indices    (static)
+            },
+        materialInstance = meshMaterialInstance,
+        builder = {
+            // Filament computes AABB asynchronously after vertex buffer upload.
+            // If a render frame starts before AABB is updated, Filament aborts with
+            // "AABB can't be empty" (build:552). Disabling culling avoids this race
+            // condition. For a face mesh this may be acceptable since the mesh is always
+            // within the camera frustum while tracking.
+            culling(false)
+            castShadows(false)
+            receiveShadows(false)
+            builder()
+        }
+    ).apply { parent = centerNode }
 
     /**
      * Updates face tracking state each frame.
