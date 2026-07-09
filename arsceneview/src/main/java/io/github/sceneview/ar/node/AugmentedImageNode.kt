@@ -80,13 +80,31 @@ open class AugmentedImageNode(
             super.isVisible = value
         }
 
+    // `trackable = augmentedImage` below virtually dispatches the open update() — a subclass
+    // override runs BEFORE the subclass's own fields are initialized (#2624, the bug class behind
+    // the 4.21.0 ShadowReceiverPlaneNode crash #2621). This flag gates this class's update() tail
+    // (which also drives the open `trackingMethod` setter and its user callback) until
+    // construction completes; init then applies the initial state explicitly, so the construction
+    // end-state is byte-for-byte unchanged — the callback now simply sees a fully-constructed node.
+    private var constructed = false
+
     init {
         trackable = augmentedImage
+        constructed = true
+        // Apply the initial state that the gated update() skipped during the constructor dispatch.
+        applyTrackableState()
     }
 
     override fun update(trackable: AugmentedImage?) {
         super.update(trackable)
 
+        // Bail while the constructor dispatch is in flight (#2624) — init applies the state below.
+        if (!constructed) return
+        applyTrackableState()
+    }
+
+    /** The class-specific trackable refresh — gated behind [constructed] (#2624). */
+    private fun applyTrackableState() {
         trackingMethod = augmentedImage.trackingMethod
         if (trackingState == TrackingState.TRACKING &&
             trackingMethod == TrackingMethod.FULL_TRACKING

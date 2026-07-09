@@ -140,13 +140,34 @@ open class AugmentedFaceNode(
         PoseNode(engine).apply { parent = this@AugmentedFaceNode }
     }
 
+    // `trackable = augmentedFace` below virtually dispatches the open update() — a subclass
+    // override runs BEFORE the subclass's own fields are initialized (#2624, the bug class behind
+    // the 4.21.0 ShadowReceiverPlaneNode crash #2621). This flag gates this class's update() tail
+    // (the whole mesh build can run during construction when the face is already TRACKING) until
+    // construction completes; init then applies the initial state explicitly, so the construction
+    // end-state is byte-for-byte unchanged.
+    private var constructed = false
+
     init {
         trackable = augmentedFace
+        constructed = true
+        // Apply the initial state that the gated update() skipped during the constructor dispatch.
+        applyTrackableState()
     }
 
     override fun update(trackable: AugmentedFace?) {
         super.update(trackable)
 
+        // Bail while the constructor dispatch is in flight (#2624) — init applies the state below.
+        if (!constructed) return
+        applyTrackableState()
+    }
+
+    /**
+     * The class-specific trackable refresh — lazy mesh build + per-frame buffer/pose updates —
+     * gated behind [constructed] (#2624).
+     */
+    private fun applyTrackableState() {
         if (augmentedFace.trackingState != TrackingState.TRACKING) return
 
         // Guard: buffers are not yet populated in the very first TRACKING frame.
