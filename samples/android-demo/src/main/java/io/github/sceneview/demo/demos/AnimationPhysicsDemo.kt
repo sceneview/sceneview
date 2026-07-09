@@ -852,13 +852,14 @@ private fun AnimationSection(
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = activeModel.scaleToUnits,
-                        // Center the model on its bounding-box origin so it stays inside the
-                        // viewport on small screens (Pixel_7a was cropping the previous model).
-                        centerOrigin = Position(0f, 0f, 0f),
-                        // Lift the model so its feet rest on y=0 (ground plane) instead of
-                        // floating with bbox-center at origin. After centering on the bbox
-                        // origin the half-height equals scaleToUnits / 2, so translating up
-                        // by that much puts the feet at y=0 regardless of the active model.
+                        // Lift the model so its feet rest on y=0 (ground plane). These assets
+                        // are authored roughly bbox-centered on their pivot, so half the scaled
+                        // height (scaleToUnits / 2) puts the feet at y=0. A previous
+                        // `centerOrigin = Position(0, 0, 0)` here was a silent no-op (#2622 —
+                        // the old formula ignored the AABB center) and was removed to keep this
+                        // scene's framing byte-for-byte identical; adopting the now-working
+                        // `centerOrigin = Position(0, -1, 0)` (which grounds ANY asset exactly,
+                        // replacing this manual lift) is a separate, visually-QA'd enhancement.
                         position = Position(0f, activeModel.scaleToUnits * 0.5f, 0f),
                         // autoAnimate = false so the ModelNode init doesn't fire-and-forget
                         // all animations — we drive them from the LaunchedEffect above so
@@ -1229,7 +1230,6 @@ private fun PhysicsSection(
                                 ModelNode(
                                     modelInstance = instance,
                                     scaleToUnits = slug.scaleToUnits,
-                                    centerOrigin = Position(0f, 0f, 0f),
                                 )
                             }
                         }

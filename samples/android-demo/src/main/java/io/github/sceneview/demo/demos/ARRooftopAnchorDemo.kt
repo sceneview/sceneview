@@ -43,7 +43,6 @@ import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.demos.internal.friendlyArSessionError
 import io.github.sceneview.demo.rememberArPlaybackDataset
-import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -368,7 +367,6 @@ fun ARRooftopAnchorDemo(onBack: () -> Unit) {
                                 ModelNode(
                                     modelInstance = instance,
                                     scaleToUnits = 0.7f,
-                                    centerOrigin = Position(0.0f, 0.0f, 0.0f)
                                 )
                             }
                         }

@@ -211,7 +211,6 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
                 ModelNode(
                     modelInstance = instance,
                     scaleToUnits = 0.5f,
-                    centerOrigin = Position(0f, 0f, 0f),
                 )
             }
         }
@@ -255,7 +254,6 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = 0.5f,
-                        centerOrigin = Position(0f, 0f, 0f),
                     )
                 }
             }

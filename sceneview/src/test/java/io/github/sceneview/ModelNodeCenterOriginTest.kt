@@ -8,7 +8,8 @@ import org.junit.Test
  * Regression pins for the silent-no-op `centerOrigin` bug in the [SceneScope.ModelNode] composable.
  *
  * `ModelNode`'s constructor bakes `centerOrigin` into the node as a translation
- * (`position += origin * size`). The composable captures that baked offset once and composes the
+ * (`-(center + origin * halfExtent) * scale`, pinned by `ModelNodeCenterOriginFormulaTest`). The
+ * composable captures that baked offset once and composes the
  * declarative `position` param **additively** on top of it via [resolveModelNodePosition]. Before
  * the fix the composable assigned `node.position = position` (default `(0,0,0)`) on creation and on
  * every recomposition, which overwrote — and so silently discarded — any non-zero `centerOrigin`
@@ -39,11 +40,12 @@ class ModelNodeCenterOriginTest {
 
     /**
      * The core regression: a non-zero `centerOrigin` offset MUST survive when the `position` param
-     * is left at its default `(0,0,0)`. `(0, -0.5, 0)` here is a representative non-zero bottom-align
-     * offset — the actual value the constructor bakes is `origin * size` (full bounding-box extent),
-     * but the helper under test is agnostic to its provenance, so any non-zero offset exercises the
-     * regression. Pre-fix the composable returned `position` (`(0,0,0)`) — the silent no-op that
-     * rendered the model at the origin instead of bottom-aligned.
+     * is left at its default `(0,0,0)`. `(0, -0.5, 0)` here is a representative non-zero alignment
+     * offset — the actual value the constructor bakes is `-(center + origin * halfExtent) * scale`
+     * (see `ModelNodeCenterOriginFormulaTest`), but the helper under test is agnostic to its
+     * provenance, so any non-zero offset exercises the regression. Pre-fix the composable returned
+     * `position` (`(0,0,0)`) — the silent no-op that rendered the model at the origin instead of
+     * aligned.
      */
     @Test
     fun centerOriginOffsetSurvivesWhenPositionIsDefault() {

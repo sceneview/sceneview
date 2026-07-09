@@ -303,15 +303,24 @@ open class ModelNode(
     }
 
     /**
-     * Sets up a root transform on the current model to make it centered.
+     * Sets up a root transform on the current model to align its bounding box with the node
+     * origin.
      *
-     * @param origin Coordinate inside the model unit cube from where it is centered
-     * - defaults to [0, 0, 0] will center the model on its center
-     * - center horizontal | bottom aligned = [0, -1, 0]
+     * Translates the node by `-(center + origin * halfExtent) * scale` so the point of the
+     * model's bounding box selected by [origin] lands exactly on the node's local origin,
+     * whatever the authored pivot of the asset. Composes additively with the current [position]
+     * (apply it once, after [scaleToUnitCube] — the constructor's `centerOrigin` parameter
+     * already does both in the right order).
+     *
+     * @param origin Point of the model's bounding box to align with the node origin, in
+     * normalized AABB coordinates (`0` = bounding-box center, `±1` = bounding-box faces):
+     * - defaults to [0, 0, 0]: the bounding-box center lands on the node origin (true centering,
+     *   even for models whose authored pivot is off-center)
+     * - center horizontal | bottom aligned = [0, -1, 0]: the model sits on the node origin
      * - left | top aligned: [-1, 1, 0]
      */
     fun centerOrigin(origin: Position = Position(x = 0.0f, y = 0.0f, z = 0.0f)) {
-        position += origin * size
+        position += centerOriginTranslation(center, halfExtent, scale, origin)
     }
 
     /**
@@ -699,3 +708,23 @@ inline operator fun <reified T : MaterialInstance> List<T>.get(name: String): T 
 /** Returns the first [MaterialInstance] whose name matches [name], or `null`. */
 inline fun <reified T : MaterialInstance> List<T>.getOrNull(name: String): T? =
     firstOrNull { it.name == name }
+
+/**
+ * Computes the [ModelNode.centerOrigin] translation: the offset that moves the point of the
+ * model's bounding box selected by [origin] (normalized AABB coordinates, `-1..1` per axis,
+ * `0` = AABB center) onto the node's local origin.
+ *
+ * The anchor point in unscaled model space is `center + origin * halfExtent`; negating it and
+ * applying the node [scale] yields the parent-space translation that cancels it out. Using the
+ * AABB [center] (not just the extents) makes the alignment correct for assets whose bounding
+ * box is not authored centered on their pivot.
+ *
+ * Pure math, extracted so the formula is JVM-unit-testable without a Filament `Engine`
+ * (see `ModelNodeCenterOriginFormulaTest`), mirroring the `resolveModelNodePosition` precedent.
+ */
+internal fun centerOriginTranslation(
+    center: Float3,
+    halfExtent: Float3,
+    scale: Scale,
+    origin: Position
+): Position = -(center + origin * halfExtent) * scale
