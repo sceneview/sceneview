@@ -26,8 +26,18 @@ set -o pipefail
 # --- Pinned version --------------------------------------------------------
 # Maestro is pinned so a CI run and a local run exercise byte-identical tool
 # behaviour. Bump deliberately (and re-validate the flows) — never float.
-# 1.39.0 is the release current at the time slice #1562 landed.
-MAESTRO_VERSION="1.39.0"
+#
+# 2.6.1 (June 2026) is the current release. Why this bump from 1.39.0:
+#   - 2.5.0 rewrote the Android driver on gRPC → ≈ +41 % throughput on the
+#     60-demo catalog (the direct perf win that motivated the upgrade).
+#   - 2.6.0 made iOS parallel execution reliable (multiple simulators in one
+#     run without flakiness).
+#   - The 2.x line dropped the legacy Rhino JS engine — GraalJS is now the only
+#     script engine. Our flows use only simple `${VAR}` substitution plus one
+#     standard-ECMAScript conditional (`${CAMERA_DISTANCE != ""}`), so nothing
+#     Rhino-only exists to break (audited at bump time — no importPackage /
+#     java.lang.* / `for each` / __proto__ / runScript / evalScript usage).
+MAESTRO_VERSION="2.6.1"
 
 # Maestro installs under ~/.maestro by its official installer; the binary is
 # at ~/.maestro/bin/maestro. We keep that convention so a user who already has

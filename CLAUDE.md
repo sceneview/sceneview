@@ -188,7 +188,9 @@ For imperative code, use `modelLoader.loadModelInstanceAsync`.
 ## Android CLI (preferred for agent-driven QA)
 
 Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)
-(tested against **v0.7.15411012**, first release April 2026) is the agent-focused
+(tested against **v1.0** — stable, Google I/O May 2026, adds Journeys-from-CLI/CI
+and `android studio *` subcommands — and still compatible with the first-release
+**v0.7.15411012**, April 2026) is the agent-focused
 front-end for `adb` / `uiautomator` / `emulator` / `sdkmanager`. SceneView's QA scripts
 and CI install it on the fly and use it for:
 
@@ -206,11 +208,14 @@ and CI install it on the fly and use it for:
 **When to use what:**
 - Screenshots, UI dumps, install+launch → `android` CLI (via `.claude/scripts/lib/android-cli.sh`)
 - `input tap/swipe/keyevent`, `am force-stop`, `pm grant`, `emu sensor set`, `logcat`,
-  `adb pull` → still `adb` — the CLI has no equivalent in v0.7
+  `adb pull` → still `adb` — the CLI has no equivalent as of v1.0 (was already the
+  case in v0.7)
 
 The helper auto-installs the CLI to `~/.local/bin/android` on first use and falls back to
 `adb` if the install fails or on multi-device hosts (the `screen capture` subcommand
-has no `--device` flag in v0.7 — but `android layout --device=<serial>` does work).
+had no `--device` flag through v0.7 — re-verify on v1.0 — but `android layout
+--device=<serial>` does work). The helper installs v1.0 via Homebrew when the
+formula is available, else falls back to the direct dl.google.com download.
 Telemetry is disabled via `--no-metrics` on every invocation.
 
 **SceneView agent skills.** This repo ships three platform-specific agent

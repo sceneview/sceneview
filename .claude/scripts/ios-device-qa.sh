@@ -17,6 +17,10 @@
 #   4. run the Maestro catalog (or a single category subflow)
 #   5. sweep the simulator log for crash markers (Maestro 1.39 cannot read the
 #      device log from a flow — same gap the Android wrapper covers with adb).
+#      TODO(#1560): re-evaluate this gap on Maestro 2.6.x — the 2.x line reworked
+#      iOS log/driver handling; if a flow can now surface the simulator log
+#      directly, this out-of-band sweep may become redundant. Logic unchanged
+#      for now (validate on device before dropping the sweep).
 #
 # Usage:
 #   bash .claude/scripts/ios-device-qa.sh [--install] [--flow <name>] \
