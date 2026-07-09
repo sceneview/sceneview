@@ -69,6 +69,7 @@ fun SceneView(
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
     cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(cameraNode.worldPosition),
     viewNodeWindowManager: ViewNode.WindowManager? = null,
+    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording (no MediaProjection) — see "Record the scene to MP4"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
@@ -163,6 +164,7 @@ fun ARSceneView(
     onConfigDowngraded: ((downgrade: ARConfigDowngrade) -> Unit)? = null,  // A requested capability was silently downgraded — see "ARConfigDowngrade" (#2096).
     onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
     onTrackingFailureChanged: ((trackingFailureReason: TrackingFailureReason?) -> Unit)? = null,
+    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording of the composited AR scene — see "Record the scene to MP4"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     permissionHandler: ARPermissionHandler? = /* auto from ComponentActivity */,
@@ -2866,6 +2868,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
+| `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | In-app video recording — mirror frames to a `MediaRecorder` surface, no MediaProjection (see "Record the scene to MP4") |
 | `rememberView(engine)` | `View` | Filament view (one per viewport) |
 | `rememberARView(engine)` | `View` | AR-tuned view (Filmic tone mapper — round-trips the camera background, #1434) |
 | `rememberRenderer(engine)` | `Renderer` | Filament renderer (one per window) |
@@ -3390,6 +3393,62 @@ The MCP exposes 5 tools: `setup_rerun_project`, `generate_ar_logger`, `generate_
 
 ---
 
+## Record the scene to MP4 — Surface mirroring (no MediaProjection)
+
+`SurfaceMirrorer` (`io.github.sceneview.utils.SurfaceMirrorer`, #2626) copies every rendered frame GPU-side onto additional `Surface`s. Attach a `MediaRecorder` input surface and you get a **shareable MP4 of exactly what the scene renders** — in AR, the camera feed and the virtual content composited. No MediaProjection: no system consent dialog, no `mediaProjection` foreground service (and no Play Console FGS declaration), and no overlay UI in the frame — only the 3D/AR scene is mirrored, never your Compose UI.
+
+Works identically on `SceneView` (3D) and `ARSceneView` (AR) via the `surfaceMirrorer` parameter.
+
+```kotlin
+import io.github.sceneview.rememberSurfaceMirrorer
+
+@Composable
+fun RecordableARScreen() {
+    val context = LocalContext.current
+    val surfaceMirrorer = rememberSurfaceMirrorer()
+    var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
+
+    ARSceneView(  // or SceneView(...) — same parameter
+        modifier = Modifier.fillMaxSize(),
+        surfaceMirrorer = surfaceMirrorer,
+    ) { /* nodes */ }
+
+    Button(onClick = {
+        recorder?.let { active ->                        // ── Stop ──
+            surfaceMirrorer.stopMirroring(active.surface)
+            active.stop(); active.release()
+            recorder = null
+        } ?: run {                                       // ── Start ──
+            val outputFile = File(context.getExternalFilesDir(null), "scene_${System.currentTimeMillis()}.mp4")
+            recorder = MediaRecorder(context).apply {
+                setVideoSource(MediaRecorder.VideoSource.SURFACE)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+                setVideoSize(1280, 720)
+                setVideoEncodingBitRate(8_000_000)
+                setVideoFrameRate(30)
+                setOutputFile(outputFile.absolutePath)
+                prepare()
+                surfaceMirrorer.startMirroring(surface, width = 1280, height = 720)
+                start()
+            }
+        }
+    }) { Text(if (recorder != null) "Stop recording" else "Record") }
+}
+```
+
+Key facts:
+- `startMirroring(surface, left = 0, bottom = 0, width = null, height = null)` — `width`/`height` are the destination rectangle on the recording surface; pass the `MediaRecorder` video size. `null` defaults to the scene view's size (correct when the surface matches it). The frame is letterboxed to preserve aspect ratio.
+- `stopMirroring(surface)` — idempotent; call before `recorder.stop()`. Main thread (Filament rule). `startMirroring` is JNI-free and safe from any thread.
+- Multiple surfaces can be mirrored at once (e.g. recorder + live preview/RTMP encoder).
+- The mirror copy runs only while frames render — pausing the lifecycle pauses the feed.
+- Audio: add `setAudioSource(...)` / `setAudioEncoder(...)` to the `MediaRecorder` for mic audio (needs `RECORD_AUDIO` permission).
+- Don't confuse with **AR Recording & Playback** below: `ARRecorder` records an ARCore *dataset* MP4 (camera + sensor tracks, for session replay/debugging — virtual content is NOT in the video). `SurfaceMirrorer` records the *rendered* scene — the shareable video with virtual content composited.
+
+Sample: `VideoRecordingDemo` (Android demo registry id `video-recording`) — Record/Stop button over a rotating model, saves an MP4 to app files.
+
+---
+
 ## AR Recording & Playback — debug without a phone
 
 ARCore captures the **entire** AR session (camera frames, IMU, planes, depth, anchors, light estimation) into an MP4. SceneView wraps this with [`ARRecorder`](arsceneview/src/main/java/io/github/sceneview/ar/recording/ARRecorder.kt) for recording and a `playbackDataset` parameter on `ARSceneView` for replay. The replayed session re-runs as if you were there: hit-tests return the same results, planes appear at the same moment, anchors track at the same poses.
@@ -3868,6 +3927,31 @@ setSpatialAudioListenerPose(cameraPos, cameraForward, cameraUp)  // call as the 
 
 ## Recipes — "I want to..."
 
+### Record the scene to MP4 (in-app, no MediaProjection)
+
+```kotlin
+val surfaceMirrorer = rememberSurfaceMirrorer()
+SceneView(surfaceMirrorer = surfaceMirrorer, ...)  // or ARSceneView — records camera feed + virtual content
+
+// Start: point a MediaRecorder's input surface at the scene.
+val recorder = MediaRecorder(context).apply {
+    setVideoSource(MediaRecorder.VideoSource.SURFACE)
+    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+    setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+    setVideoSize(1280, 720)
+    setOutputFile(outputFile.absolutePath)
+    prepare()
+}
+surfaceMirrorer.startMirroring(recorder.surface, width = 1280, height = 720)
+recorder.start()
+
+// Stop:
+surfaceMirrorer.stopMirroring(recorder.surface)
+recorder.stop(); recorder.release()
+```
+
+No consent dialog, no foreground service, no UI in the frame. Full guide: "Record the scene to MP4 — Surface mirroring".
+
 ### Show a 3D model with orbit camera
 
 ```kotlin
@@ -4220,6 +4304,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `materials` — Materials. PBR extension showcase, runtime material streaming, and occlusion material.
 - `secondary-camera` — Secondary Camera (PiP). Picture-in-picture camera view.
 - `spatial-audio` — Spatial Audio. 3D positional sound that pans as you orbit.
+- `video-recording` — Video Recording. Record the scene to MP4 in-app — no MediaProjection.
 
 ### Augmented Reality
 

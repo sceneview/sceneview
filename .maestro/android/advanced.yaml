@@ -67,3 +67,8 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: spatial-audio
       DEMO_NAME: Spatial Audio
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: video-recording
+      DEMO_NAME: Video Recording
