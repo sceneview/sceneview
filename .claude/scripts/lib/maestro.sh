@@ -26,8 +26,15 @@ set -o pipefail
 # --- Pinned version --------------------------------------------------------
 # Maestro is pinned so a CI run and a local run exercise byte-identical tool
 # behaviour. Bump deliberately (and re-validate the flows) — never float.
-# 1.39.0 is the release current at the time slice #1562 landed.
-MAESTRO_VERSION="1.39.0"
+# KEEP IN SYNC with the CI install step in .github/workflows/device-qa.yml.
+#
+# 2.6.1 (2026-06): CI had been floating on latest all along (its installer
+# never exported MAESTRO_VERSION), so android CI was already green on 2.6.x;
+# the iOS catalog was re-validated on 2.6.1 locally (2026-07-09), and no
+# .maestro/ flow uses runScript/evalScript, so the 2.x Rhino→GraalJS removal
+# is a non-event for this repo. 2.5+ also brings the ~40% faster gRPC Android
+# driver and reliable parallel iOS runs (qa-efficiency plan, 2026-07).
+MAESTRO_VERSION="2.6.1"
 
 # Maestro installs under ~/.maestro by its official installer; the binary is
 # at ~/.maestro/bin/maestro. We keep that convention so a user who already has

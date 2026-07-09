@@ -234,9 +234,13 @@ jobs:
         # The canonical installer host is `get.maestro.mobile.dev` —
         # `get.maestro.dev` does not resolve (run 25979438767: `curl: (6)
         # Could not resolve host: get.maestro.dev`).
+        # MAESTRO_VERSION pins the install — KEEP IN SYNC with
+        # .claude/scripts/lib/maestro.sh. Before 2026-07 this step floated on
+        # latest (the pin was never exported here), so CI and local runs could
+        # silently diverge — exactly what maestro.sh's pin exists to prevent.
         run: |
           set -euo pipefail
-          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          MAESTRO_VERSION="2.6.1" curl -fsSL "https://get.maestro.mobile.dev" | bash
           test -x "$HOME/.maestro/bin/maestro"
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
 
