@@ -1,0 +1,118 @@
+name: Site Metrics Refresh
+
+# Weekly refresh of the "Community & Metrics" numbers on the public website
+# (website-static/index.html — data-metric="stars"/"contributors"/"releases"/
+# "web-downloads" anchors). Replaces a retired Claude scheduled routine that
+# used to update these by hand — this job spends zero AI quota.
+#
+# In scope (mirrors what the retired routine covered): GitHub stars,
+# contributors, releases (sceneview/sceneview), and npm downloads for the
+# sceneview-web package. `forks` and `mcp-downloads` (sceneview-mcp package)
+# are separate metric cards on the same page that this job deliberately does
+# NOT touch — out of scope here.
+#
+# WHY A PR INSTEAD OF A LITERAL DIRECT PUSH: `main` requires the "CI Gate"
+# status check (branch protection) and GitHub only allows a direct push once
+# a commit SHA already carries a passing required check — a brand-new commit
+# never does. That's why every other automated main-commit in this repo
+# (release-fast.yml, tag-release.yml) goes through `gh pr create` +
+# `gh pr merge --squash --auto` rather than `git push origin main`; this
+# workflow follows the same proven pattern. It resolves fast here because
+# ci.yml has `paths-ignore: website-static/**` — a metrics-only diff
+# registers no other check runs, so CI Gate's documented "docs-only bypass"
+# (ci-gate.yml) goes green after its ~2 min grace period instead of waiting
+# on a build.
+on:
+  schedule:
+    # Monday 07:00 UTC, weekly.
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: site-metrics
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh-metrics:
+    name: Refresh community metrics
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Fetch GitHub + npm metrics
+        id: metrics
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          API="https://api.github.com/repos/sceneview/sceneview"
+
+          # Stars: a direct field on the repo object.
+          STARS=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$API" | jq -r '.stargazers_count')
+
+          # Contributors / releases: the API has no total-count field, so ask
+          # for 1-per-page and read the last-page number out of the
+          # pagination Link header (the standard cheap-total-count trick).
+          # If there's no Link header at all, everything fit on one page —
+          # fall back to fetching up to 100 and counting the array.
+          count_via_link_header() {
+            endpoint="$1"
+            link=$(curl -sf -D - -o /dev/null -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$endpoint?per_page=1")
+            last=$(printf '%s' "$link" | grep -i '^link:' | grep -oE 'page=[0-9]+>; rel="last"' | grep -oE '[0-9]+' || true)
+            if [ -n "$last" ]; then
+              echo "$last"
+            else
+              curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$endpoint?per_page=100" | jq 'length'
+            fi
+          }
+
+          CONTRIBUTORS=$(count_via_link_header "$API/contributors")
+          RELEASES=$(count_via_link_header "$API/releases")
+
+          WEB_DOWNLOADS=$(curl -sf "https://api.npmjs.org/downloads/point/last-month/sceneview-web" | jq -r '.downloads')
+
+          echo "stars=$STARS" >> "$GITHUB_OUTPUT"
+          echo "contributors=$CONTRIBUTORS" >> "$GITHUB_OUTPUT"
+          echo "releases=$RELEASES" >> "$GITHUB_OUTPUT"
+          echo "web_downloads=$WEB_DOWNLOADS" >> "$GITHUB_OUTPUT"
+          echo "Fetched: stars=$STARS contributors=$CONTRIBUTORS releases=$RELEASES web_downloads=$WEB_DOWNLOADS"
+
+      - name: Update website-static/index.html
+        run: |
+          bash .claude/scripts/update-site-metrics.sh \
+            --stars "${{ steps.metrics.outputs.stars }}" \
+            --contributors "${{ steps.metrics.outputs.contributors }}" \
+            --releases "${{ steps.metrics.outputs.releases }}" \
+            --web-downloads "${{ steps.metrics.outputs.web_downloads }}"
+
+      - name: Commit and open auto-merge PR if metrics changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- website-static/index.html; then
+            echo "No metric change this week — nothing to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="chore/site-metrics-${{ github.run_id }}"
+          git checkout -b "$BRANCH"
+          git add website-static/index.html
+          git commit -m "chore(site): refresh community metrics [skip ci]" \
+            -m "Automated weekly refresh (site-metrics.yml) — stars/contributors/releases from the GitHub API, web downloads from api.npmjs.org. Replaces the retired Claude scheduled routine; zero AI quota spent."
+          git push origin "$BRANCH"
+
+          gh pr create --title "chore(site): refresh community metrics [skip ci]" \
+            --body "Automated weekly community-metrics refresh (site-metrics.yml). Docs-only diff (website-static/index.html) — merges itself once CI Gate reports green." \
+            --base main --head "$BRANCH"
+          gh pr merge "$BRANCH" --squash --auto
