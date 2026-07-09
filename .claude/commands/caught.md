@@ -1,5 +1,7 @@
 ---
 description: Log a caught false claim / recurring miss to the claim-ledger; on the 3rd occurrence of a class, promote it to a feedback_*.md memory rule. Part of the Evidence-Stamped Claim Gate (#2346).
+model: haiku
+effort: low
 ---
 
 # /caught — record a caught miss, promote a 3×-recurring class to a rule

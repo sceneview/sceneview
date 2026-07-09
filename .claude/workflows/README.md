@@ -169,6 +169,32 @@ it stays the interactive orchestrator's session model. `haiku` has no `xhigh`/`m
 | Safety gate final / vérif adversariale d'ERROR | `opus` | `xhigh` | sv-impact-reviewer, review-fanout verify |
 | Device-QA serial driver / étape release state-changing | `opus` | `medium` | device-qa-orchestrate run, release tag+push |
 
+### Token economy (quota discipline)
+
+Measured on 30 days of this repo's sessions (125 sessions, 5.3B tokens, 2026-07-09,
+details in the local `.claude/plans/qa-efficiency-2026-07.md`): **95.2% of all tokens
+are `cache_read`** — the conversation history re-transmitted on every turn. Visual QA
+is 6–23% depending on attribution; screenshot pixels are <0.05%. The quota killer is
+**session length × loop turns**, not images. Hence:
+
+1. **One chantier = one session; reset, don't linger.** Never leave a session open
+   across days — every resume re-pays the whole history (one 4-day device-QA session
+   alone cost 117M tokens). Close with `/handoff` + a relay issue instead.
+2. **Close the device-QA session when the run ends.** QA runs get a dedicated session
+   that dies with its verdict; don't reuse it as a work session.
+3. **Cap fix→re-verify loops at 3 attempts**, then stop and file/escalate with a
+   summary (observed 23–28-turn screenshot loops are the single worst pattern).
+4. **Text-first verification**: exit codes, report JSON, `android layout` UI tree,
+   logs BEFORE any screenshot; a screenshot only confirms visuals no text can prove
+   (size/count rule in §9.5 — don't bother compressing further, it's <0.05%).
+5. **Read discipline**: big files once, by slices (`limit`/`offset`); never re-Read
+   STATE.md / MEMORY.md / llms.txt every turn — `Read` is the #1 text-volume tool,
+   ahead of ALL QA commands combined.
+6. **Fan-out must earn its overhead**: each subagent costs a fixed ~60–90k tokens of
+   context setup before any work. Delegate broad searches to ONE Explore agent that
+   returns a conclusion; reserve parallel fan-out for genuinely independent, long
+   tasks (reviews, per-surface audits).
+
 Validate every script before committing: `bash .claude/scripts/check-saved-workflows.sh`
 (static: ESM `node --check` + meta-block + resume-safety; never executes the workflow).
 That is distinct from `check-workflow-scripts.sh`, which validates the CI YAML in `.github/workflows/`.

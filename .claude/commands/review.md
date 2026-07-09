@@ -1,5 +1,7 @@
 ---
 description: Review current changes at an effort level — checklist (low) → adversarial multi-agent triptych (high) → weighted scorecard (--score) → coverage (--coverage). Generator ≠ evaluator.
+model: opus
+effort: high
 ---
 
 # /review — one review skill, four depths

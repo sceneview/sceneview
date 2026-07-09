@@ -1,5 +1,7 @@
 ---
 description: Daily SceneView maintenance sweep — CI status, open issues, dependencies, quality gate.
+model: sonnet
+effort: medium
 ---
 
 # /maintain — SceneView daily maintenance sweep

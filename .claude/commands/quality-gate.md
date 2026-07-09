@@ -1,5 +1,7 @@
 ---
 description: Comprehensive pre-push quality gate — compile, unit tests, bundle build, website JS validation.
+model: sonnet
+effort: low
 ---
 
 # /quality-gate — Comprehensive pre-push quality gate
