@@ -252,32 +252,43 @@ Why this is correct and bounded:
   AVD-snapshot caching and a fresh runner per job. The golden snapshot is a
   *local* QA speed-up; the CI emulator options are unchanged.
 
-## Android Studio Journeys — assessed, not adopted (yet)
+## Android Studio Journeys — spike planned (the pinch/zoom lead)
 
 [#1672](https://github.com/sceneview/sceneview/issues/1672) also proposed
 [Android Studio Journeys](https://developer.android.com/studio/gemini/journeys)
 — natural-language functional tests (`.journey.xml`) executed by Gemini. They
 are an attractive fit for SceneView's "drive the demos like a real user, assert
-no crash" mandate, but **they are not adopted in this PR**:
+no crash" mandate. The earlier assessment ("not adopted — blocked on an AGP
+9.0.0 bump") is **stale** on the three points that mattered:
 
-- **Hard AGP-version blocker.** Journeys' headless Gradle runner
-  (`testJourneysTestDefaultDebugTestSuite`) requires **AGP 9.0.0+**. This repo
-  is on **AGP 8.13.2** (`gradle/libs.versions.toml`). An AGP-9 major bump
-  touches every module, the Filament/`.filamat` ABI invariant, and CI — it is
-  its own scoped task, not in scope for a QA-tooling change.
-- **Preview, IDE-coupled.** Journeys is a Studio Labs *preview* feature. Its
-  execution still leans on Gemini-in-Studio; the headless CI path is new and
-  not yet a stable, version-pinnable artifact like Maestro's CLI.
-- **Maestro already covers the same ground.** The 42-demo Maestro catalog
-  already drives every demo as a real user and asserts no crash, runs headless
-  in CI, and is version-pinned (`lib/maestro.sh`). The marginal win from
-  Journeys is layout-drift resilience — real, but not worth an AGP-9 major bump
-  on its own.
+- **No AGP-9 bump is required.** The old blocker was the headless Gradle runner
+  building the app itself. `JOURNEYS_CUSTOM_APP_ID` runs a journey against an
+  **already-installed** APK (our emulator-installed `io.github.sceneview.demo`)
+  instead of driving a Gradle build — sidestepping the AGP-9 requirement
+  entirely. This repo can stay on its current AGP.
+- **Out of Studio Labs — but NOT yet headless.** Journeys has shipped in Studio
+  Labs since **Otter 3 (Jan 2026)**. Google's docs announce Journeys execution
+  from the **android CLI 1.0** (I/O May 2026), but the shipped binary
+  `1.0.15498356` has **no `journeys` command** (verified on-device 2026-07-09:
+  absent from `android help`, from the `studio` group, and from `strings` on
+  the payload). Until the CLI actually ships it, running a journey requires an
+  interactive Android Studio session (Gemini + Studio Labs).
+- **It is the only credible pinch/zoom lead.** Neither Maestro (pinch is still
+  open upstream — [maestro#2169](https://github.com/mobile-dev-inc/maestro/issues/2169))
+  nor the android CLI has a real multi-touch pinch. 3D camera zoom is currently
+  faked via the `camera_distance` deep-link param (see "Optional zoom QA"
+  above). Journeys drives Gemini-piloted gestures, so it is the one path that
+  could exercise a genuine pinch-to-zoom instead of the deep-link workaround.
 
-**Verdict:** revisit Journeys when an AGP 9.x bump lands for other reasons.
-At that point, prototype one `.journey.xml` (e.g. model-viewer orbit) and run
-it alongside the Maestro catalog. Until then the emulator-snapshot win above is
-the concrete, scriptable, CI-safe outcome of this issue. The other audit
+**Status: spike blocked on tooling (2026-07-09).** The plan stands — prototype
+one journey ("open demo X, pinch to zoom, assert no crash") against the
+pre-installed demo APK via `JOURNEYS_CUSTOM_APP_ID` — but the headless path is
+blocked until the `android` CLI actually ships its `journeys` command (absent
+from `1.0.15498356`); meanwhile it requires an interactive Studio host
+(Gemini + Studio Labs). Re-probe on each CLI release, then compare to the
+Maestro catalog. The open empirical question is whether the Journeys executor issues a
+**real multi-touch pinch** the Filament orbit camera reacts to; that is the
+whole point of the spike and can only be settled on device. The other audit
 items (Gradle Managed Devices + ATD images, Firebase Test Lab Spark tier,
 emulator gRPC API) remain open backlog — none is blocked, but each is a
 separate change.

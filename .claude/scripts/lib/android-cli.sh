@@ -19,9 +19,12 @@
 
 set -o pipefail
 
-# Tested with android CLI 0.7.15411012 (April 2026 first release).
-# Per-arch install URLs are computed in android_cli_ensure (no single const).
-ANDROID_CLI_VERSION_HINT="0.7+"
+# Tested with android CLI v1.0 (stable, Google I/O May 2026 — Journeys runnable
+# from the CLI/CI, `android studio *` subcommands) and v0.7.15411012 (April 2026
+# first release). This helper is written to work with BOTH: v1.0 is preferred,
+# v0.7 remains supported (some hosts still carry 0.7). Per-arch install URLs are
+# computed in android_cli_ensure (no single const).
+ANDROID_CLI_VERSION_HINT="1.0+ (0.7 compatible)"
 
 # Always-on global flags. `--no-metrics` keeps CI logs clean and disables
 # telemetry; we never want the binary to phone home from the SceneView repo.
@@ -54,6 +57,27 @@ android_cli_ensure() {
   if [[ -n "${CI:-}" ]]; then
     echo "[android-cli] not installed and CI=1 — install it via your workflow before calling this helper." >&2
     return 1
+  fi
+  # PREFERRED install path (android CLI v1.0, I/O May 2026): Homebrew. Only
+  # fires when the formula is actually available on this host — otherwise we
+  # fall straight through to the custom dl.google.com install below, so a host
+  # without the formula (or without brew) is unaffected.
+  # TODO: confirm the published formula name once v1.0 lands in homebrew-core.
+  # Likely `android-cli` (Google's agent CLI — NOT `android-commandlinetools`,
+  # which is the unrelated Android SDK command-line tools cask). Add a `apt`
+  # branch here too if Google ships a Debian package (blog mentioned brew/apt).
+  local brew_formula="android-cli"
+  if command -v brew >/dev/null 2>&1 \
+     && brew info "$brew_formula" >/dev/null 2>&1; then
+    echo "[android-cli] installing $brew_formula via Homebrew (preferred)" >&2
+    if brew list "$brew_formula" >/dev/null 2>&1 || brew install "$brew_formula" >&2; then
+      if android_cli_locate; then
+        # Silence the first-run ToS blurb (see custom-install note below).
+        "$ANDROID_CLI_BIN" --version </dev/null >/dev/null 2>&1 || true
+        return 0
+      fi
+    fi
+    echo "[android-cli] brew install did not yield a usable binary — falling back to direct download" >&2
   fi
   local os arch url
   os="$(uname -s)"

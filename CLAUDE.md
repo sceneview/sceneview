@@ -188,8 +188,15 @@ For imperative code, use `modelLoader.loadModelInstanceAsync`.
 ## Android CLI (preferred for agent-driven QA)
 
 Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)
-(tested against **v0.7.15411012**, first release April 2026) is the agent-focused
-front-end for `adb` / `uiautomator` / `emulator` / `sdkmanager`. SceneView's QA scripts
+(tested against **v1.0.15498356** — stable, Google I/O May 2026, adds the
+`android studio *` subcommands; the Journeys-from-CLI that Google's docs
+announce is **NOT in this binary** (no `journeys` command — verified on-device
+2026-07-09) — and still compatible with the first-release **v0.7.15411012**,
+April 2026) is the agent-focused
+front-end for `adb` / `uiautomator` / `emulator` / `sdkmanager`. Install note:
+`dl.google.com/.../latest/` still serves **0.7**; reaching 1.0 requires running
+`android update` afterwards (global upgrade — the unpacked payload in
+`~/.android/bin` is shared, no side-by-side). SceneView's QA scripts
 and CI install it on the fly and use it for:
 
 - `android layout --device=<serial> -o ui.json --pretty` — JSON UI tree with
@@ -206,11 +213,14 @@ and CI install it on the fly and use it for:
 **When to use what:**
 - Screenshots, UI dumps, install+launch → `android` CLI (via `.claude/scripts/lib/android-cli.sh`)
 - `input tap/swipe/keyevent`, `am force-stop`, `pm grant`, `emu sensor set`, `logcat`,
-  `adb pull` → still `adb` — the CLI has no equivalent in v0.7
+  `adb pull` → still `adb` — the CLI has no equivalent as of v1.0 (was already the
+  case in v0.7)
 
 The helper auto-installs the CLI to `~/.local/bin/android` on first use and falls back to
 `adb` if the install fails or on multi-device hosts (the `screen capture` subcommand
-has no `--device` flag in v0.7 — but `android layout --device=<serial>` does work).
+had no `--device` flag through v0.7 — re-verify on v1.0 — but `android layout
+--device=<serial>` does work). The helper installs v1.0 via Homebrew when the
+formula is available, else falls back to the direct dl.google.com download.
 Telemetry is disabled via `--no-metrics` on every invocation.
 
 **SceneView agent skills.** This repo ships three platform-specific agent
