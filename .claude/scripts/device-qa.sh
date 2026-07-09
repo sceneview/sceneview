@@ -177,7 +177,16 @@ warn() { echo "[device-qa] WARNING: $*" >&2; }
 # --- Disk gate -------------------------------------------------------------
 # A full cross-platform pass spins up an emulator + simulator + browser +
 # multiple Gradle/xcodebuild builds. Refuse to start on a near-full disk.
-if ! bash "$SCRIPT_DIR/disk-gated-spawn-check.sh" --quiet >/dev/null 2>&1; then
+#
+# The threshold scales with the platform selection: the default 15 GB fits a
+# full pass (emulator AVD + Gradle + xcodebuild), but a web-only run needs
+# ~3 GB (npm + Playwright browsers). GitHub ubuntu runners float between
+# ~14-21 GB free depending on the image of the day, so gating `--platform=web`
+# at 15 GB failed CI at random (run 29033630233 aborted before any test) —
+# on a leg that is the BLOCKING release gate.
+DISK_MIN_GB=15
+[[ "$PLATFORM" == "web" ]] && DISK_MIN_GB=5
+if ! bash "$SCRIPT_DIR/disk-gated-spawn-check.sh" --quiet --min-gb="$DISK_MIN_GB" >/dev/null 2>&1; then
   warn "free disk is below the safe threshold — run cleanup before a full pass:"
   warn "  bash .claude/scripts/gradle-cache-cleanup.sh"
   warn "  bash .claude/scripts/worktree-auto-prune.sh --yes --keep \"\$(git rev-parse --show-toplevel)\""
