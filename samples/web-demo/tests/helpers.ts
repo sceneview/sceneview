@@ -174,7 +174,14 @@ export async function installIwer(page: Page): Promise<{ injected: boolean; erro
         return;
       }
       const device = new I.XRDevice(I.metaQuest3);
-      device.installRuntime();
+      // forceInstall (iwer >= 2.3.0): headless Chromium ships a NATIVE
+      // navigator.xr (which answers isSessionSupported=false — no device),
+      // and 2.3.0 added a guard that silently SKIPS installRuntime when one
+      // is present, instead of overriding it like <= 2.2.x did. Without the
+      // flag the shim never takes on CI, setupXR() keeps the AR/VR buttons
+      // display:none, and every webxr spec false-fails (2026-07-09, the day
+      // 2.3.0 shipped). 2.2.x accepts-and-ignores the unknown option.
+      device.installRuntime({ forceInstall: true });
       // Surface a flag tests can check to confirm the shim took, plus the
       // device handle itself so `driveWebXrSession` can nudge pose /
       // controllers programmatically (no recorded fixture needed — #1674/#1748
