@@ -123,7 +123,7 @@ fun MyARScreen() {
     animationLoop: Boolean = true,
     animationSpeed: Float = 1f,
     scaleToUnits: Float? = null,       // uniformly scale to fit this size (meters)
-    centerOrigin: Position? = null,    // Position(0,0,0) = center, Position(0,-1,0) = bottom-aligned; composes additively with `position`
+    centerOrigin: Position? = null,    // normalized origin -1..1 (0 = AABB center): that bounding-box point lands on the node origin, whatever the authored pivot. Position(0,0,0) = center, Position(0,-1,0) = bottom-aligned. Offset -(center + origin*halfExtent)*scale; composes additively with `position`
     position: Position = Position(x = 0f),  // added on top of the centerOrigin offset
     rotation: Rotation = Rotation(x = 0f),
     scale: Scale = Scale(1f),

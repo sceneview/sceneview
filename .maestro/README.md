@@ -197,6 +197,17 @@ optionally, so a checkout without the file builds keyless and silently.
   error` / `NSException`). The wrapper scripts (`qa-android-demos.sh`,
   `ios-device-qa.sh`) also do this sweep. Per-demo `assertVisible` crash
   detection works standalone.
+- **SwiftUI sheet content is invisible to Maestro on recent runtimes.** With a
+  presented sheet visibly open and rendered (screenshot-verified on the
+  iPhone 17 / iOS 26.3 simulator with Maestro 2.6.1, 2026-07-09), the
+  accessibility hierarchy Maestro sees contains only the gear FAB and the
+  status bar — none of the sheet's control labels (`Subject`, `Playback`,
+  `Density`, …). `flows/demo-settings.yaml` therefore marks its `ASSERT_TEXT`
+  sheet-content assertion `optional: true` (advisory): the tap that opens the
+  sheet still composes its content (a compose crash kills the app), and the
+  hard crash gates remain the final FAB re-assert plus the wrapper's
+  simulator-log sweep. Re-promote the assertion to hard once a Maestro/runtime
+  combo traverses sheet content again.
 
 ## Emulator boot snapshots — faster, deterministic Android QA
 

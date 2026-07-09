@@ -52,7 +52,6 @@ import io.github.sceneview.demo.demos.internal.rememberTexturesSettled
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
-import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -290,7 +289,6 @@ fun TapToPlaceArSession(
                             ModelNode(
                                 modelInstance = it,
                                 scaleToUnits = placed.spec.scaleToUnits,
-                                centerOrigin = Position(0.0f, 0.0f, 0.0f),
                                 // Per-asset placement correction (#1477). `rotationOverride`
                                 // wins when supplied; otherwise fall back to the shared
                                 // helmet −90° X correction keyed by asset path.

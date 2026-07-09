@@ -42,7 +42,6 @@ import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberArPlaybackDataset
-import io.github.sceneview.math.Position
 import io.github.sceneview.rememberARView
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -285,7 +284,6 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = 0.3f,
-                        centerOrigin = Position(0f, 0f, 0f),
                     )
                 }
             }

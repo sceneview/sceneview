@@ -64,7 +64,6 @@ import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
-import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -228,7 +227,6 @@ fun ARRerunDemo(onBack: () -> Unit) {
                             ModelNode(
                                 modelInstance = instance,
                                 scaleToUnits = 0.3f,
-                                centerOrigin = Position(0f, 0f, 0f)
                             )
                         }
                     }

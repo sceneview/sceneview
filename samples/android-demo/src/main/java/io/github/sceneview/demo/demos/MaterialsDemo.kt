@@ -289,7 +289,6 @@ private fun PbrSection(
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = slug.scaleToUnits,
-                        centerOrigin = Position(0f, 0f, 0f),
                     )
                 }
             }

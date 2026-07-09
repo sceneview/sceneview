@@ -177,7 +177,16 @@ warn() { echo "[device-qa] WARNING: $*" >&2; }
 # --- Disk gate -------------------------------------------------------------
 # A full cross-platform pass spins up an emulator + simulator + browser +
 # multiple Gradle/xcodebuild builds. Refuse to start on a near-full disk.
-if ! bash "$SCRIPT_DIR/disk-gated-spawn-check.sh" --quiet >/dev/null 2>&1; then
+#
+# The threshold scales with the platform selection: the default 15 GB fits a
+# full pass (emulator AVD + Gradle + xcodebuild), but a web-only run needs
+# ~3 GB (npm + Playwright browsers). GitHub ubuntu runners float between
+# ~14-21 GB free depending on the image of the day, so gating `--platform=web`
+# at 15 GB failed CI at random (run 29033630233 aborted before any test) —
+# on a leg that is the BLOCKING release gate.
+DISK_MIN_GB=15
+[[ "$PLATFORM" == "web" ]] && DISK_MIN_GB=5
+if ! bash "$SCRIPT_DIR/disk-gated-spawn-check.sh" --quiet --min-gb="$DISK_MIN_GB" >/dev/null 2>&1; then
   warn "free disk is below the safe threshold — run cleanup before a full pass:"
   warn "  bash .claude/scripts/gradle-cache-cleanup.sh"
   warn "  bash .claude/scripts/worktree-auto-prune.sh --yes --keep \"\$(git rev-parse --show-toplevel)\""
@@ -216,6 +225,7 @@ RESULT_STATUSES=()   # passed | failed | skipped
 RESULT_REASONS=()
 RESULT_SUMMARIES=()  # path to a platform JSON summary, or "" if none
 RESULT_DURATIONS=()
+RESULT_LOGS=()       # path to a captured device/simulator log, or "" if none
 
 record() {
   RESULT_PLATFORMS+=("$1")
@@ -223,6 +233,7 @@ record() {
   RESULT_REASONS+=("$3")
   RESULT_SUMMARIES+=("$4")
   RESULT_DURATIONS+=("$5")
+  RESULT_LOGS+=("${6:-}")
   log "$1 -> $2 ${3:+($3)}"
 }
 
@@ -396,12 +407,24 @@ run_ios() {
       && log "ios recording: $ARTIFACTS/$(basename "$ios_rec")"
   fi
 
+  # Surface the simulator os_log captured by ios-device-qa.sh's crash-gate
+  # tail, and attach its artifact path to the iOS verdict — a red run's exact
+  # log is inspectable straight from device-qa-report.json.
+  local ios_log="$REPO_ROOT/tools/qa-screenshots/ios/ios-sim-${flow}.log"
+  local ios_log_artifact=""
+  if [[ -s "$ios_log" ]]; then
+    if cp "$ios_log" "$ARTIFACTS/" 2>/dev/null; then
+      ios_log_artifact="$ARTIFACTS/$(basename "$ios_log")"
+      log "ios simulator log: $ios_log_artifact"
+    fi
+  fi
+
   if [[ $rc -eq 0 ]]; then
-    record ios passed "flow=$flow" "" "$(( $(date +%s) - started ))"
+    record ios passed "flow=$flow" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
   elif [[ $rc -eq 1 && ! $CI_MODE ]] && grep -q 'no available simulator' "$ARTIFACTS/ios-output.txt" 2>/dev/null; then
-    record ios skipped "no iOS simulator available" "" "$(( $(date +%s) - started ))"
+    record ios skipped "no iOS simulator available" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
   else
-    record ios failed "ios-device-qa.sh rc=$rc (flow=$flow)" "" "$(( $(date +%s) - started ))"
+    record ios failed "ios-device-qa.sh rc=$rc (flow=$flow)" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
   fi
 }
 
@@ -699,6 +722,7 @@ for i in "${!RESULT_PLATFORMS[@]}"; do
   export "DQ_REASON_$i=${RESULT_REASONS[$i]}"
   export "DQ_SUMMARY_$i=${RESULT_SUMMARIES[$i]}"
   export "DQ_DURATION_$i=${RESULT_DURATIONS[$i]}"
+  export "DQ_LOG_$i=${RESULT_LOGS[$i]}"
   if is_advisory "${RESULT_PLATFORMS[$i]}"; then
     export "DQ_ADVISORY_$i=true"
   else
@@ -736,6 +760,9 @@ for i in range(n):
         "reason":   os.environ.get(f"DQ_REASON_{i}", ""),
         "durationSec": int(os.environ.get(f"DQ_DURATION_{i}", "0") or 0),
         "summary":  embedded,
+        # Path to the captured device/simulator log for this leg (currently
+        # the iOS crash-gate os_log tail), or null if the leg keeps none.
+        "log":      os.environ.get(f"DQ_LOG_{i}", "") or None,
     })
 
 # --- Release-gate verdict (#1651 / #1670) ----------------------------------

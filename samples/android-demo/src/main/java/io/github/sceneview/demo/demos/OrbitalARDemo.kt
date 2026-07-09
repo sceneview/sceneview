@@ -543,7 +543,6 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                                 ModelNode(
                                     modelInstance = instance,
                                     scaleToUnits = planet.scaleToUnits,
-                                    centerOrigin = Position(0f, 0f, 0f),
                                     position = Position(
                                         x = cos(orbitAngle) * ORBIT_RADIUS,
                                         y = planet.height,

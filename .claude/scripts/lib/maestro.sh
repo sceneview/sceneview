@@ -26,17 +26,14 @@ set -o pipefail
 # --- Pinned version --------------------------------------------------------
 # Maestro is pinned so a CI run and a local run exercise byte-identical tool
 # behaviour. Bump deliberately (and re-validate the flows) — never float.
+# KEEP IN SYNC with the CI install step in .github/workflows/device-qa.yml.
 #
-# 2.6.1 (June 2026) is the current release. Why this bump from 1.39.0:
-#   - 2.5.0 rewrote the Android driver on gRPC → ≈ +41 % throughput on the
-#     60-demo catalog (the direct perf win that motivated the upgrade).
-#   - 2.6.0 made iOS parallel execution reliable (multiple simulators in one
-#     run without flakiness).
-#   - The 2.x line dropped the legacy Rhino JS engine — GraalJS is now the only
-#     script engine. Our flows use only simple `${VAR}` substitution plus one
-#     standard-ECMAScript conditional (`${CAMERA_DISTANCE != ""}`), so nothing
-#     Rhino-only exists to break (audited at bump time — no importPackage /
-#     java.lang.* / `for each` / __proto__ / runScript / evalScript usage).
+# 2.6.1 (2026-06): CI had been floating on latest all along (its installer
+# never exported MAESTRO_VERSION), so android CI was already green on 2.6.x;
+# the iOS catalog was re-validated on 2.6.1 locally (2026-07-09), and no
+# .maestro/ flow uses runScript/evalScript, so the 2.x Rhino→GraalJS removal
+# is a non-event for this repo. 2.5+ also brings the ~40% faster gRPC Android
+# driver and reliable parallel iOS runs (qa-efficiency plan, 2026-07).
 MAESTRO_VERSION="2.6.1"
 
 # Maestro installs under ~/.maestro by its official installer; the binary is

@@ -15,12 +15,12 @@
 #   3. (best-effort) screen-record the run for visual review — parity with the
 #      Android leg; skipped silently if the host lacks hardware Metal
 #   4. run the Maestro catalog (or a single category subflow)
-#   5. sweep the simulator log for crash markers (Maestro 1.39 cannot read the
-#      device log from a flow — same gap the Android wrapper covers with adb).
-#      TODO(#1560): re-evaluate this gap on Maestro 2.6.x — the 2.x line reworked
-#      iOS log/driver handling; if a flow can now surface the simulator log
-#      directly, this out-of-band sweep may become redundant. Logic unchanged
-#      for now (validate on device before dropping the sweep).
+#   5. capture the simulator's unified log for the whole run and sweep it for
+#      crash markers (Maestro 1.39 cannot read the device log from a flow —
+#      same gap the Android wrapper covers with adb). The captured log is kept
+#      as a run artifact next to the .mov, so a crash line is inspectable
+#      after the fact (inspired by XcodeBuildMCP's automatic per-app os_log
+#      capture on launch_app_sim).
 #
 # Usage:
 #   bash .claude/scripts/ios-device-qa.sh [--install] [--flow <name>] \
@@ -71,6 +71,10 @@ source "$SCRIPT_DIR/lib/maestro.sh"
 source "$SCRIPT_DIR/lib/qa-keys.sh"
 
 BUNDLE_ID="io.github.sceneview.demo"
+# The demo app's CFBundleExecutable — what `log stream` sees as the process
+# name. NOT "SceneViewDemo" (that's the scheme/project name): the built bundle
+# is SceneView.app and the unified log tags its lines `SceneView[pid]`.
+PROCESS_NAME="SceneView"
 DEMO_DIR="samples/ios-demo"
 XCODE_PROJECT="SceneViewDemo.xcodeproj"
 XCODE_SCHEME="SceneViewDemo"
@@ -90,7 +94,7 @@ while [[ $# -gt 0 ]]; do
       # echoed.
       export SKETCHFAB_API_KEY="${2:?--sketchfab-key needs a value}"; shift 2 ;;
     -h|--help)
-      sed -n '2,42p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "[ios-qa] unknown argument: $1" >&2; exit 2 ;;
@@ -213,20 +217,46 @@ fi
 # background NSException or a watchdog kill can be missed — so we also grep the
 # simulator log. This complements (does not replace) the orchestrator runner's
 # sweep (umbrella slice #1566).
-LOG_FILE="$(mktemp)"
+#
+# The log is a KEPT run artifact (not a mktemp) so the exact os_log of a red
+# run is inspectable after the fact and device-qa.sh can attach its path to
+# the per-leg verdict in device-qa-report.json.
+#
+# Predicate — verified empirically against the installed demo app (iPhone 17,
+# iOS 26.3 sim), three ORed legs because no single one sees every failure:
+#   process == "SceneView"      the app's own runtime output (~22k lines over
+#                               a flow run) — where NSException / Fatal error
+#                               markers land, since the crashing process logs
+#                               those itself;
+#   subsystem == "$BUNDLE_ID"   the app's structured Logger() calls (only
+#                               SketchfabConfig today, but future-proof);
+#   eventMessage CONTAINS ...   the SYSTEM side. A signal death (SIGSEGV etc.)
+#                               kills the app before it can log anything — the
+#                               only record is runningboardd/SpringBoard's
+#                               "[app<bundle-id>:pid] Process exited: ...
+#                               code:SIGSEGV(11)", which names the bundle id
+#                               in the message but matches neither filter
+#                               above (verified with a synthetic kill -SEGV).
+SIM_LOG="${IOS_QA_LOG_FILE:-$QA_VIDEO_DIR/ios-sim-${FLOW}.log}"
+: > "$SIM_LOG"
 xcrun simctl spawn "$BOOTED_UDID" log stream \
-  --predicate "process == \"SceneViewDemo\"" --style compact \
-  > "$LOG_FILE" 2>/dev/null &
+  --predicate "process == \"$PROCESS_NAME\" OR subsystem == \"$BUNDLE_ID\" OR eventMessage CONTAINS \"$BUNDLE_ID\"" \
+  --style compact \
+  > "$SIM_LOG" 2>/dev/null &
 LOG_PID=$!
 # Make sure the log tail — and the screen recording — die with the script.
 # The recording is stopped with SIGINT (not the default SIGKILL) so the .mov
 # is finalised rather than left truncated.
-trap 'kill -INT "${REC_PID:-}" 2>/dev/null || true; kill "$LOG_PID" 2>/dev/null || true; rm -f "$LOG_FILE"' EXIT
+trap 'kill -INT "${REC_PID:-}" 2>/dev/null || true; kill "$LOG_PID" 2>/dev/null || true' EXIT
 
 # --- Run the Maestro flow --------------------------------------------------
+# `--udid` pins Maestro to the iOS simulator explicitly. Without it, Maestro
+# picks a default device — and on a host where the Android QA emulator pool
+# has a Pixel_7a running (the common case, #1654), it targets THAT and the
+# whole iOS leg silently runs against the wrong platform.
 echo "[ios-qa] running Maestro flow: $FLOW_FILE"
 MAESTRO_RC=0
-maestro_run "$FLOW_FILE" || MAESTRO_RC=$?
+maestro_run "$FLOW_FILE" --udid "$BOOTED_UDID" || MAESTRO_RC=$?
 
 # Stop the screen recording cleanly — SIGINT, never SIGKILL, or the .mov is
 # left truncated/unplayable. `wait` lets recordVideo finalise the container.
@@ -238,12 +268,21 @@ if [[ -n "$REC_PID" ]]; then
   fi
 fi
 
-# Give the log stream a moment to flush, then stop it.
+# Give the log stream a moment to flush, then stop it. The captured log is
+# kept — device-qa.sh picks this exact line up to attach the path to the iOS
+# verdict in device-qa-report.json.
 sleep 1
 kill "$LOG_PID" 2>/dev/null || true
+echo "[ios-qa] simulator log: $SIM_LOG"
 
 # --- Crash log sweep -------------------------------------------------------
-CRASHES="$(grep -E "Fatal error|NSException|EXC_BAD_ACCESS|did crash|Terminating app" "$LOG_FILE" 2>/dev/null || true)"
+# In-process markers (Fatal error / NSException / "Terminating app due to")
+# plus the runningboardd signal-exit record (`code:SIGSEGV(11)` etc.) that is
+# the ONLY trace of a signal death. Deliberately NOT matched: bare
+# "Terminating app" (Foundation logs "[Start] Terminating app <bundle-id>" on
+# every CLEAN terminate between demos) and SIGKILL (how launch/terminate stops
+# the previous instance) — both would false-positive a healthy run.
+CRASHES="$(grep -E "Fatal error|NSException|EXC_BAD_ACCESS|did crash|Terminating app due to|code:SIG(SEGV|ABRT|BUS|ILL|TRAP|FPE)" "$SIM_LOG" 2>/dev/null || true)"
 if [[ -n "$CRASHES" ]]; then
   echo "[ios-qa] CRASH detected in the simulator log:" >&2
   echo "$CRASHES" | tail -20 >&2
