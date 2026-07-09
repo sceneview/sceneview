@@ -139,6 +139,12 @@ open class ShadowReceiverPlaneNode(
         // give the shadow receiver a non-degenerate box that also encloses placed models above the
         // floor, matching PlaneVisualizer's device-proven flat-receiver recipe.
         applyShadowReceiverBounds()
+        // An INVISIBLE utility surface must never win touch resolution: the quad has a real
+        // collision shape and SceneView routes gestures to the FIRST touchable hit, so a touchable
+        // shadow catcher silently swallowed every tap/drag that started on the floor it covers —
+        // placed models could not be dragged and floor taps died (#2630).
+        isTouchable = false
+        meshNode.isTouchable = false
         // Construction is complete — update() may now touch meshNode/lastMeshSize safely.
         constructed = true
     }

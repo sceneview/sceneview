@@ -130,87 +130,105 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
 
     private val moveGestureDetector = MoveGestureDetector(context,
         object : MoveGestureDetector.SimpleOnMoveListener {
-            var moveBeginEvent: Pair<MotionEvent, Node?>? = null
+            // Pin the whole gesture to the node it began on. The node and an explicit
+            // in-progress flag are stored separately (not `e to touchedNode`): dispatch must
+            // keep firing at the listener when the gesture began on empty space (node == null),
+            // and retaining the begin MotionEvent is both useless and unsafe — the framework
+            // recycles it. The old code destructured the stored begin Pair with a binding named
+            // `e`, SHADOWING the live `e` parameter — every onMove delivered the finger-DOWN
+            // event, so AR drag re-hit-tested the same start pixel and nodes never moved (#2629).
+            var moveBeginNode: Node? = null
+            var moveInProgress = false
 
             override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent) =
                 super.onMoveBegin(detector, e).also {
-                    moveBeginEvent = e to touchedNode
+                    moveBeginNode = touchedNode
+                    moveInProgress = true
                     touchedNode?.onMoveBegin(detector, e)
                     listener?.onMoveBegin(detector, e, touchedNode)
                 }
 
             override fun onMove(detector: MoveGestureDetector, e: MotionEvent) =
                 super.onMove(detector, e).also {
-                    moveBeginEvent?.let { (e, node) ->
-                        node?.onMove(detector, e)
-                        listener?.onMove(detector, e, node)
+                    if (moveInProgress) {
+                        moveBeginNode?.onMove(detector, e)
+                        listener?.onMove(detector, e, moveBeginNode)
                     }
                 }
 
             override fun onMoveEnd(detector: MoveGestureDetector, e: MotionEvent) =
                 super.onMoveEnd(detector, e).also {
-                    moveBeginEvent?.let { (e, node) ->
-                        node?.onMoveEnd(detector, e)
-                        listener?.onMoveEnd(detector, e, node)
+                    if (moveInProgress) {
+                        moveBeginNode?.onMoveEnd(detector, e)
+                        listener?.onMoveEnd(detector, e, moveBeginNode)
                     }
-                    moveBeginEvent = null
+                    moveBeginNode = null
+                    moveInProgress = false
                 }
         }
     )
 
     private val rotateGestureDetector = RotateGestureDetector(context,
         object : RotateGestureDetector.SimpleOnRotateListener {
-            var rotateBeginEvent: Pair<MotionEvent, Node?>? = null
+            // Same live-event contract as the move listener above (#2629).
+            var rotateBeginNode: Node? = null
+            var rotateInProgress = false
 
             override fun onRotateBegin(detector: RotateGestureDetector, e: MotionEvent) =
                 super.onRotateBegin(detector, e).also {
-                    rotateBeginEvent = e to touchedNode
+                    rotateBeginNode = touchedNode
+                    rotateInProgress = true
                     touchedNode?.onRotateBegin(detector, e)
                     listener?.onRotateBegin(detector, e, touchedNode)
                 }
 
             override fun onRotate(detector: RotateGestureDetector, e: MotionEvent) =
                 super.onRotate(detector, e).also {
-                    rotateBeginEvent?.let { (e, node) ->
-                        node?.onRotate(detector, e)
-                        listener?.onRotate(detector, e, node)
+                    if (rotateInProgress) {
+                        rotateBeginNode?.onRotate(detector, e)
+                        listener?.onRotate(detector, e, rotateBeginNode)
                     }
                 }
 
             override fun onRotateEnd(detector: RotateGestureDetector, e: MotionEvent) {
-                rotateBeginEvent?.let { (e, node) ->
-                    node?.onRotateEnd(detector, e)
-                    listener?.onRotateEnd(detector, e, node)
+                if (rotateInProgress) {
+                    rotateBeginNode?.onRotateEnd(detector, e)
+                    listener?.onRotateEnd(detector, e, rotateBeginNode)
                 }
-                rotateBeginEvent = null
+                rotateBeginNode = null
+                rotateInProgress = false
             }
         })
 
     private val scaleGestureDetector = ScaleGestureDetector(context,
         object : ScaleGestureDetector.SimpleOnScaleListener {
-            var scaleBeginEvent: Pair<MotionEvent, Node?>? = null
+            // Same live-event contract as the move listener above (#2629).
+            var scaleBeginNode: Node? = null
+            var scaleInProgress = false
 
             override fun onScaleBegin(detector: ScaleGestureDetector, e: MotionEvent) =
                 super.onScaleBegin(detector, e).also {
-                    scaleBeginEvent = e to touchedNode
+                    scaleBeginNode = touchedNode
+                    scaleInProgress = true
                     touchedNode?.onScaleBegin(detector, e)
                     listener?.onScaleBegin(detector, e, touchedNode)
                 }
 
             override fun onScale(detector: ScaleGestureDetector, e: MotionEvent) =
                 super.onScale(detector, e).also {
-                    scaleBeginEvent?.let { (e, node) ->
-                        node?.onScale(detector, e)
-                        listener?.onScale(detector, e, node)
+                    if (scaleInProgress) {
+                        scaleBeginNode?.onScale(detector, e)
+                        listener?.onScale(detector, e, scaleBeginNode)
                     }
                 }
 
             override fun onScaleEnd(detector: ScaleGestureDetector, e: MotionEvent) {
-                scaleBeginEvent?.let { (e, node) ->
-                    node?.onScaleEnd(detector, e)
-                    listener?.onScaleEnd(detector, e, node)
+                if (scaleInProgress) {
+                    scaleBeginNode?.onScaleEnd(detector, e)
+                    listener?.onScaleEnd(detector, e, scaleBeginNode)
                 }
-                scaleBeginEvent = null
+                scaleBeginNode = null
+                scaleInProgress = false
             }
         }
     )

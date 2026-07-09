@@ -294,4 +294,29 @@ class ShadowReceiverPlaneContractTest {
             ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
             ((bytes[offset + 2].toInt() and 0xFF) shl 16) or
             ((bytes[offset + 3].toInt() and 0xFF) shl 24)
+
+    // ── 5. Touch resolution (#2630) ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `shadow catcher is untouchable — an invisible quad must never swallow taps (#2630)`() {
+        // SceneView routes gestures to the FIRST touchable hit; a touchable invisible shadow
+        // catcher silently ate every tap/drag starting on the floor it covers (placed models
+        // undraggable, floor taps dead). Both the node and its mesh child must opt out.
+        assertTrue(
+            "ShadowReceiverPlaneNode.init must set isTouchable = false on the node (#2630)",
+            nodeSource.contains(Regex("""(^|\s)isTouchable\s*=\s*false""", RegexOption.MULTILINE))
+        )
+        assertTrue(
+            "ShadowReceiverPlaneNode.init must set meshNode.isTouchable = false (#2630)",
+            nodeSource.contains(Regex("""meshNode\.isTouchable\s*=\s*false"""))
+        )
+        // Both must run during construction — before the `constructed = true` publication point —
+        // so no frame can ever hit-test a touchable catcher.
+        val constructedAt = nodeSource.indexOf("constructed = true")
+        val touchableAt = nodeSource.indexOf("meshNode.isTouchable = false")
+        assertTrue(
+            "meshNode.isTouchable = false must be set inside init, before `constructed = true`",
+            touchableAt in 1 until constructedAt
+        )
+    }
 }
