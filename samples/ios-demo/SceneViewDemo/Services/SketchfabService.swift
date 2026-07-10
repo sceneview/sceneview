@@ -227,6 +227,9 @@ actor SketchfabService {
             delegate.continuation = continuation
             delegateSession.downloadTask(with: remoteURL).resume()
         }
+        // The staged file is caller-owned from here; if a step below throws,
+        // don't orphan a multi-MB file in tmp/ (no-op once the move succeeds).
+        defer { try? FileManager.default.removeItem(at: tempURL) }
 
         try FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(),
