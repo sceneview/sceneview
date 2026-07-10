@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -27,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -42,11 +42,13 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.arcore.subsumedBy
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.demos.internal.ArPlacement
+import io.github.sceneview.ar.PlaneDiscoveryGuide
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.rememberTexturesSettled
 import io.github.sceneview.demo.rememberArPlaybackDataset
@@ -128,6 +130,9 @@ fun TapToPlaceArSession(
 
     // Keep a reference to the latest Frame for hit testing in the gesture callback.
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    // Planes currently tracked — feeds one invisible ShadowReceiverPlane each so placed
+    // models ground with a real contact shadow (#2241 PR 5).
+    var trackedPlanes by remember { mutableStateOf<List<Plane>>(emptyList()) }
 
     Box(
         modifier = modifier
@@ -152,8 +157,15 @@ fun TapToPlaceArSession(
                 // Recompute "is there any plane the user can actually tap?" each frame
                 // (#2234). Detection is cheap — ARCore caches the trackable set
                 // internally and we only scan Planes.
-                state.anyPlaneTracked = session.getAllTrackables(Plane::class.java)
-                    .any { it.trackingState == TrackingState.TRACKING }
+                // Exclude subsumed (merged) planes — ARCore can keep a subsumed plane in
+                // TRACKING with a non-null `subsumedBy`; rendering a ShadowReceiverPlane for
+                // it double-darkens the multiplicative shadow and z-fights the coplanar quad
+                // it was merged into (ARCore's recommended pre-render check).
+                val tracked = session.getAllTrackables(Plane::class.java)
+                    .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
+                state.anyPlaneTracked = tracked.isNotEmpty()
+                // Change-only write (60 Hz path): drives the ShadowReceiverPlane set.
+                if (trackedPlanes != tracked) trackedPlanes = tracked
             },
             onTrackingFailureChanged = { reason ->
                 state.trackingFailureReason = reason
@@ -214,55 +226,35 @@ fun TapToPlaceArSession(
                 onScaleEnd = { _, _, _ -> state.activeGesture = null }
             )
         ) {
-            // Placement reticle (#1882). A thin unlit cyan disc that follows the
-            // centre-of-screen hit-test result each frame. Purely visual — the tap
-            // handler above runs its own hit-test at the tap coordinates, so the user
-            // can place anywhere on screen, not only at the centre dot.
-            //
-            // Allocate the reticle material once and unconditionally so toggling
-            // `showReticle` doesn't leak a fresh MaterialInstance on every flip — the
-            // `remember` slot must stay stable across recompositions.
-            val reticleMaterial = remember(materialLoader) {
-                materialLoader.createUnlitColorInstance(
-                    Color(0x99_44_E7_FF)  // semi-transparent cyan
-                )
-            }
+            // Placement reticle (#1882 → #2241 PR 5). `PlacementReticle` replaces the
+            // demo-local HitResultNode + CylinderNode block: same centre-of-screen hit
+            // test and default cyan disc, plus the Depth Lab orientation smoothing
+            // (slerp 0.75) so the disc no longer jitters as ARCore refines the normal.
+            // Acceptance stays single-sourced: the same PlacementHitPolicy the tap
+            // handler uses runs in the reticle predicate (the node's built-in filters
+            // already cover tracking state and plane-in-polygon; the policy re-checks
+            // them plus the 5 m cap).
             if (viewportSize != IntSize.Zero && showReticle) {
-                val centreX = viewportSize.width / 2f
-                val centreY = viewportSize.height / 2f
-                HitResultNode(
-                    hitTest = { frame ->
-                        val candidate = frame.hitTest(centreX, centreY).firstOrNull { result ->
-                            val trackable = result.trackable
-                            PlacementHitPolicy.accept(
-                                isPlane = trackable is Plane,
-                                isPoseInPolygon = trackable is Plane &&
-                                    trackable.isPoseInPolygon(result.hitPose),
-                                isTrackableTracking =
-                                    trackable.trackingState == TrackingState.TRACKING,
-                                distanceMeters = result.distance,
-                                snapToPlane = snapToPlane,
-                            )
-                        }
-                        // Push the hit out to Compose state so the "Aim at a surface…"
-                        // prompt can react. Only write on change to avoid churning the
-                        // snapshot at 60 Hz with the same value.
-                        if (state.reticleHit !== candidate) {
-                            state.reticleHit = candidate
-                        }
-                        candidate
+                PlacementReticle(
+                    xPx = viewportSize.width / 2f,
+                    yPx = viewportSize.height / 2f,
+                    snapToPlane = snapToPlane,
+                    predicate = { result ->
+                        val trackable = result.trackable
+                        PlacementHitPolicy.accept(
+                            isPlane = trackable is Plane,
+                            isPoseInPolygon = trackable is Plane &&
+                                trackable.isPoseInPolygon(result.hitPose),
+                            isTrackableTracking =
+                                trackable.trackingState == TrackingState.TRACKING,
+                            distanceMeters = result.distance,
+                            snapToPlane = snapToPlane,
+                        )
                     },
-                ) {
-                    // Thin disc — 7 cm radius, 5 mm tall — sits flush on the detected
-                    // surface. HitResultNode's pose orients +Y along the surface normal
-                    // so the disc naturally lays flat.
-                    CylinderNode(
-                        radius = 0.07f,
-                        height = 0.005f,
-                        sideCount = 48,
-                        materialInstance = reticleMaterial,
-                    )
-                }
+                    // Push the hit out to Compose state so the "Aim at a surface…"
+                    // prompt can react. The callback already fires only on change.
+                    onHitResultChanged = { state.reticleHit = it },
+                )
             }
 
             // One AnchorNode + ModelNode per placement. Wrapping each in `key(id)` gives
@@ -302,6 +294,15 @@ fun TapToPlaceArSession(
                 }
             }
 
+            // Invisible shadow catcher on every tracked plane (#2241 PR 5) — placed
+            // models read as grounded instead of floating. The mesh renders nothing
+            // by itself (shadow_receiver.filamat, shadowMultiplier).
+            trackedPlanes.forEach { plane ->
+                key(plane) {
+                    ShadowReceiverPlane(plane = plane)
+                }
+            }
+
             extraSceneContent?.invoke(this)
         }
 
@@ -330,6 +331,18 @@ fun BoxScope.TapToPlaceStatusOverlays(
 ) {
     val uxState = state.uxState
     val placed = state.placedCount
+
+    // ARCore-Elements onboarding (#2241 PR 5): timed hand-hint + snackbar + help card
+    // while scanning, contextual copy on tracking loss, 750 ms fade-out on the first
+    // plane. Replaces the static "Scanning…" affordance as the primary SCANNING /
+    // TRACKING_LOST renderer; the top status pill below stays as the compact
+    // vocabulary layered above it (#2234).
+    PlaneDiscoveryGuide(
+        cameraReady = state.cameraReady,
+        isTracking = state.isTracking,
+        anyPlaneTracked = state.anyPlaneTracked,
+        trackingFailureReason = ForcedTrackingFailure.override ?: state.trackingFailureReason,
+    )
 
     // Top status pill — translucent capsule, M3 Expressive (AR-View visual style).
     val effectiveReason = ForcedTrackingFailure.override ?: state.trackingFailureReason

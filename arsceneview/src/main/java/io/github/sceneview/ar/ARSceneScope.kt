@@ -482,12 +482,20 @@ class ARSceneScope internal constructor(
      *
      * @param xPx                    View X coordinate in pixels (screen centre on most UIs).
      * @param yPx                    View Y coordinate in pixels.
-     * @param snapToPlane            Accept detected-plane hits (#1891 default acceptance).
-     *                               `false` + `depthPoint = false` accepts nothing.
+     * @param snapToPlane            `true` = plane-only (#1891 default); `false` = free
+     *                               placement (adds feature-point hits, planes stay
+     *                               in-polygon). Route project-specific acceptance
+     *                               (e.g. a max-distance cap) through [predicate].
      * @param depthPoint             Also accept depth-based hits (needs depth mode enabled).
      * @param orientationSmoothing   Per-frame slerp fraction in `0..1` toward the hit
      *                               orientation (default 0.75 = Depth Lab; `1.0f` = raw).
      *                               Live-updatable on recomposition.
+     * @param predicate              Custom acceptance filter for each candidate hit. When
+     *                               set it REPLACES the built-in trackable-type / in-polygon
+     *                               / tracking-state checks (only the camera-distance floor
+     *                               still applies) — re-check any built-in condition you
+     *                               still need inside it. Construction-time only — not
+     *                               live-updatable on recomposition.
      * @param onHitResultChanged     Invoked on every hit change (including to/from `null`) —
      *                               drives AIMING/READY host state.
      * @param apply                  Additional imperative configuration on the node.
@@ -500,6 +508,7 @@ class ARSceneScope internal constructor(
         snapToPlane: Boolean = true,
         depthPoint: Boolean = false,
         orientationSmoothing: Float = PlacementReticleNodeImpl.DEFAULT_ORIENTATION_SMOOTHING,
+        predicate: ((HitResult) -> Boolean)? = null,
         onHitResultChanged: ((HitResult?) -> Unit)? = null,
         apply: PlacementReticleNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null
@@ -512,6 +521,7 @@ class ARSceneScope internal constructor(
                 snapToPlane = snapToPlane,
                 depthPoint = depthPoint,
                 orientationSmoothing = orientationSmoothing,
+                predicate = predicate,
                 onHitResultChanged = onHitResultChanged
             ).apply(apply)
         }
