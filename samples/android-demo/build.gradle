@@ -225,7 +225,11 @@ dependencies {
     // Sketchfab API client — OkHttp for network, kotlinx-serialization for JSON.
     // Used by io.github.sceneview.demo.sketchfab.SketchfabService to stream
     // models from api.sketchfab.com instead of bundling GLBs in the APK.
+    // okhttp-coroutines provides Call.executeAsync(): cancelling the calling
+    // coroutine aborts the socket, so a re-typed Explore search never stacks
+    // zombie requests behind the debounce (#2644).
     implementation libs.okhttp
+    implementation libs.okhttp.coroutines
     implementation libs.kotlinx.serialization.json
 
     // Google Fused Location Provider — required by ARCore Geospatial mode
@@ -270,6 +274,10 @@ dependencies {
     testImplementation libs.androidx.compose.ui
 
     testImplementation libs.kotlin.coroutines.test
+    // Local HTTP double for SketchfabService's cooperative-cancellation test
+    // (#2644) — proves an aborted search releases its socket instead of
+    // running to completion behind the debounce.
+    testImplementation libs.mockwebserver3
 
     // UiAutomator-based interaction tests. Drives the real demo app process through
     // DemoHostActivity (debug flavour) — no ComposeTestRule, no Filament thread-adoption
