@@ -80,10 +80,9 @@ then destroys it.
 ### 2. Property updates via keyed `DisposableEffect` (and `SideEffect`)
 
 Position, rotation, scale, visibility, and other node properties are pushed to the Filament
-entity from an effect that runs on the main thread. The **transform-declaring nodes** (`Node`,
-`ModelNode`, `SphereNode`, `ViewNode`) key each transform component on its scalar values, so the
-value is re-applied to the runtime node **only when the declared value actually changes** — not
-on an unrelated recomposition:
+entity from an effect that runs on the main thread. **Every node composable** keys each
+transform component on its scalar values, so the value is re-applied to the runtime node
+**only when the declared value actually changes** — not on an unrelated recomposition:
 
 ```kotlin
 // From SceneScope.Node()
@@ -104,9 +103,10 @@ Keying on the components means a recomposition that did **not** change a transfo
 runtime node untouched — so a transform that a gesture or a frame-loop driver wrote directly on
 the node survives the recomposition
 ([#2639](https://github.com/sceneview/sceneview/issues/2639)). The geometry/media nodes
-(`CubeNode`, `TextNode`, …) still push their transform from an unkeyed `SideEffect` that
-re-applies on every recomposition — migrating them is tracked in
-[#2653](https://github.com/sceneview/sceneview/issues/2653).
+(`CubeNode`, `TextNode`, …) used the same unkeyed-`SideEffect` idiom until
+[#2653](https://github.com/sceneview/sceneview/issues/2653) migrated their transforms to this
+component-keyed idiom too; their `SideEffect` now only carries diffed geometry/material updates
+(and idempotent text/bitmap setters).
 
 Because these effects run on the main thread after composition, Filament's JNI calls (which
 *must* happen on the main thread) are naturally satisfied.

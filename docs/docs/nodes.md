@@ -25,7 +25,7 @@ Artifact versions: `io.github.sceneview:sceneview:4.21.2` and `io.github.scenevi
 - [Threading rule — Filament JNI is main-thread only](#threading-rule)
 - [Loading models: `rememberModelInstance`](#remembermodelinstance)
 - [Creating materials: `materialLoader.*`](#materialloader)
-- [Recomposition model: two-tier transform application (keyed `DisposableEffect` vs `SideEffect`)](#recomposition-model)
+- [Recomposition model: component-keyed transforms (`DisposableEffect`) + diffed props (`SideEffect`)](#recomposition-model)
 
 **Standard nodes**
 
@@ -201,14 +201,12 @@ Common factory methods on `MaterialLoader`:
 
 ## Recomposition model
 
-All node composables share the same skeleton — a `remember`'d node impl, an effect that
-pushes declarative params to that runtime node, and `NodeLifecycle` to attach/dispose — but
-they split into **two tiers** by *how* they push the transform (`position` / `rotation` /
-`scale`).
+All node composables share the same skeleton — a `remember`'d node impl, effects that
+push declarative params to that runtime node, and `NodeLifecycle` to attach/dispose.
 
-**Transform-declaring nodes** — `Node`, `ModelNode`, `SphereNode`, `ViewNode` — push each
-transform component through a **component-keyed `DisposableEffect`**, so a component is
-re-applied to the runtime node **only when its declared value actually changes**:
+**Every node composable** pushes each transform component (`position` / `rotation` /
+`scale`) through a **component-keyed `DisposableEffect`**, so a component is re-applied
+to the runtime node **only when its declared value actually changes**:
 
 ```kotlin
 val node = remember(engine, /* stable id */) {
@@ -227,38 +225,40 @@ NodeLifecycle(node, content) // attaches to scene + disposes on leave
 ```
 
 Because the effect body runs only when a declared component changes, a **bare** recomposition
-(one where `rotation` never changed) no longer re-applies the declared value — so a rotation a
+(one where `rotation` never changed) never re-applies the declared value — so a rotation a
 gesture (`NodeGestureDelegate`) or a frame-loop driver (physics, animation, camera-follow) wrote
 directly on the runtime node **survives** the recomposition. Reverting this back to an unkeyed
 `SideEffect` reintroduces [#2639](https://github.com/sceneview/sceneview/issues/2639) (a
-gesture-rotated model snapping back to its declared rotation). The keys are the individual scalar
-components, not the `Float3` wrapper.
+gesture-rotated model snapping back to its declared rotation) — the geometry/media nodes
+(`CubeNode`, `CylinderNode`, `ConeNode`, `TorusNode`, `CapsuleNode`, `PlaneNode`, `ImageNode`,
+`BillboardNode`, `TextNode`, `VideoNode`, `LineNode`, `PathNode`, `ShapeNode`, plus `LightNode`'s
+position) carried exactly that unkeyed idiom until
+[#2653](https://github.com/sceneview/sceneview/issues/2653) migrated them. The keys are the
+individual scalar components, not the `Float3` wrapper.
 
-**Geometry / media nodes** — `CubeNode`, `CylinderNode`, `PlaneNode`, `ImageNode`, `TextNode`,
-`VideoNode` — still push their transform from the **older unkeyed `SideEffect` idiom**, which
-re-applies `position` / `rotation` / `scale` after **every** successful recomposition:
+**Non-transform parameters** still flow through an unkeyed `SideEffect`, which is correct for
+them — geometry and material changes are **diffed** against the previous value before doing any
+work, and text/bitmap props are cheap idempotent setters:
 
 ```kotlin
 SideEffect {
-    // Runs EVERY recomposition — geometry/material diffing plus an unconditional transform re-apply.
-    node.position = position
-    node.rotation = rotation
-    node.scale = scale
+    // Runs every recomposition, but only acts on change: geometry/material diffing.
+    if (listOf(size, center) != prevGeometry.value) {
+        node.updateGeometry(center = center, size = size)
+        prevGeometry.value = listOf(size, center)
+    }
+    if (materialInstance != null && materialInstance != prevMaterial.value) {
+        node.setMaterialInstanceAt(0, materialInstance)
+        prevMaterial.value = materialInstance
+    }
 }
 ```
 
-Migrating these to the keyed-`DisposableEffect` idiom (so a runtime-mutated transform survives a
-bare recomposition here too) is tracked in
-**[#2653](https://github.com/sceneview/sceneview/issues/2653)**.
-
 Key consequences:
 
-- **On transform-declaring nodes (`Node` / `ModelNode` / `SphereNode` / `ViewNode`), a declared
-  `position` / `rotation` / `scale` is applied only when it changes** — a runtime transform a gesture
-  or frame driver wrote is not clobbered by an unrelated recomposition (#2639).
-- **On geometry / media nodes (`CubeNode` etc.), `position` / `rotation` / `scale` are still
-  reapplied on every recomposition** — declaring them *and* driving them from a gesture/frame driver
-  can fight until [#2653](https://github.com/sceneview/sceneview/issues/2653) lands.
+- **A declared `position` / `rotation` / `scale` is applied only when it actually changes** — on
+  every node composable, a runtime transform a gesture or frame driver wrote is not clobbered by
+  an unrelated recomposition (#2639, #2653).
 - **Changing geometry parameters (`size`, `radius`, `stacks`, …) triggers `updateGeometry()`** under the hood — a O(vertex count) rebuild. Cheap for small meshes, not free.
 - **Changing the `modelInstance` reference rebuilds the node** — use the same instance when toggling props.
 - **Never call `node.destroy()` manually** — let the composable's `NodeLifecycle` do it.
@@ -983,7 +983,7 @@ child.worldPosition = Position(5f, 0f, 0f)
 
 ## Reactive params
 
-Every visual parameter that is **stored as state on the node impl** (position, rotation, scale, visibility, color, intensity, …) can be driven directly by Compose state, and none of these reallocate the node. Transform components (`position` / `rotation` / `scale`) on `Node` / `ModelNode` / `SphereNode` / `ViewNode` are pushed through **component-keyed `DisposableEffect`s** — applied only when the declared value changes (see [Recomposition model](#recomposition-model)) — while other parameters, and the transforms of the geometry/media nodes, still flow through `SideEffect`.
+Every visual parameter that is **stored as state on the node impl** (position, rotation, scale, visibility, color, intensity, …) can be driven directly by Compose state, and none of these reallocate the node. Transform components (`position` / `rotation` / `scale`) on every node composable are pushed through **component-keyed `DisposableEffect`s** — applied only when the declared value changes (see [Recomposition model](#recomposition-model)) — while non-transform parameters flow through `SideEffect` (diffed for geometry/material, idempotent for text/bitmap props).
 
 ```kotlin
 var glowing by remember { mutableStateOf(false) }
