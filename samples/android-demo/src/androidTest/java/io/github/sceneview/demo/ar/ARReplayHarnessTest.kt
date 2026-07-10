@@ -1,7 +1,9 @@
 package io.github.sceneview.demo.ar
 
+import android.content.ContentValues
 import android.content.Context
 import android.os.SystemClock
+import android.provider.MediaStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
@@ -16,7 +18,6 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
-import java.io.FileOutputStream
 
 /**
  * **Autonomous AR replay harness** — slice 4 of the device-QA umbrella
@@ -112,10 +113,28 @@ class ARReplayHarnessTest {
     private lateinit var context: Context
     private lateinit var device: UiDevice
 
+    /**
+     * Shard selection, parsed from instrumentation args
+     * `-e ar_shard_index <i> -e ar_shard_count <n>` (see [resolveShard]).
+     *
+     * `ar-replay-qa.sh` splits the AR sweep into [shardCount] separate
+     * `am instrument` invocations — with an `am force-stop` between them — so no
+     * single instrumentation process replays all ~32 AR demos back-to-back. On
+     * the software-GPU CI emulator a single ~4-minute sweep sustains enough
+     * CPU/RAM pressure to sever the `am instrument -w` adb connection mid-run
+     * (rc=255, no verdict recovered — [#2643](https://github.com/sceneview/sceneview/issues/2643)).
+     * Bounding each process to a handful of demos keeps every shard short enough
+     * to complete, and a severed shard costs only its own demos, not the whole
+     * sweep. Default (no args): one shard, every AR demo — the old behaviour.
+     */
+    private var shardIndex: Int = 0
+    private var shardCount: Int = 1
+
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
         device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        resolveShard()
         // Pre-grant runtime permissions: AGP reinstalls the demo APK before each
         // test class, wiping any prior `pm grant`. Without CAMERA the AR demos
         // block at the permission prompt instead of mounting the ARSceneView.
@@ -136,11 +155,20 @@ class ARReplayHarnessTest {
         )
         val deployed = deployFixtureToAppPrivateDir(recording!!)
 
-        val arDemos = ALL_DEMOS.filter { it.category == DemoCategory.AUGMENTED_REALITY }
+        val allArDemos = ALL_DEMOS.filter { it.category == DemoCategory.AUGMENTED_REALITY }
         assertTrue(
             "Expected at least one Augmented Reality demo in ALL_DEMOS",
-            arDemos.isNotEmpty(),
+            allArDemos.isNotEmpty(),
         )
+        // Replay only this shard's slice (round-robin over the registry order, so
+        // heavy demos spread across shards). Default shardCount==1 → every demo.
+        val arDemos = allArDemos.filterIndexed { idx, _ -> idx % shardCount == shardIndex }
+        // `plannedDemos` records every demo this shard INTENDS to replay, written
+        // into the summary before the sweep starts. If the process is severed
+        // mid-shard, the recovered summary still enumerates the whole shard, so
+        // `ar-replay-qa.sh` can mark the demos never reached as `skipped`
+        // (environmental) rather than losing them silently (#2643).
+        val plannedDemos = arDemos.map { it.id }
 
         // Persist the verdict INCREMENTALLY, not just once after the loop. Every
         // AR demo is deep-linked into MainActivity's process — which is ALSO the
@@ -160,7 +188,7 @@ class ARReplayHarnessTest {
         val results = ArrayList<DemoResult>(arDemos.size)
         try {
             for (demo in arDemos) {
-                writeSummary(results, inProgress = demo.id)
+                writeSummary(results, inProgress = demo.id, plannedDemos = plannedDemos)
                 results += replayDemo(demo.id, deployed)
                 // Land on the demo list between demos so onNewIntent fires cleanly
                 // for the next deep-link.
@@ -170,7 +198,7 @@ class ARReplayHarnessTest {
             deployed.delete()
         }
 
-        val summaryPath = writeSummary(results, inProgress = null)
+        val summaryPath = writeSummary(results, inProgress = null, plannedDemos = plannedDemos)
 
         // The harness fails if ANY demo crashed during replay. Demos that the
         // recording could not advance (live-only demos that ignore the playback
@@ -287,7 +315,11 @@ class ARReplayHarnessTest {
      * `skipped` count and is NOT folded into `passed`, so a green AR leg
      * genuinely means the recorded session replayed.
      */
-    private fun writeSummary(results: List<DemoResult>, inProgress: String?): File {
+    private fun writeSummary(
+        results: List<DemoResult>,
+        inProgress: String?,
+        plannedDemos: List<String>,
+    ): String {
         val demos = JSONArray()
         for (r in results) {
             val obj = JSONObject()
@@ -307,16 +339,87 @@ class ARReplayHarnessTest {
             .put("skipped", skipped)
             .put("failed", failed)
             .put("total", results.size)
+            .put("shardIndex", shardIndex)
+            .put("shardCount", shardCount)
+        // The demos this shard set out to replay. If the shared process is
+        // severed mid-sweep, the recovered summary still names every planned
+        // demo — `ar-replay-qa.sh` marks the ones with no verdict `skipped`
+        // (environmental), so no demo is lost silently (#2643).
+        root.put("plannedDemos", JSONArray(plannedDemos))
         // Non-null only between launching a demo and its verdict landing in
         // `results`. If the shared process dies in that window this is the last
         // thing written, so it pinpoints the crashing demo (#2620).
         if (inProgress != null) root.put("inProgress", inProgress)
         root.put("demos", demos)
 
-        device.executeShellCommand("mkdir -p /sdcard/Download/SceneView")
-        val file = File("/sdcard/Download/SceneView/ar-qa-summary.json")
-        FileOutputStream(file).use { it.write(root.toString(2).toByteArray()) }
-        return file
+        return writeSummaryFile(root.toString(2))
+    }
+
+    /**
+     * Persists the summary JSON to `Download/SceneView/ar-qa-summary.json` via
+     * the **MediaStore** API and returns that public path.
+     *
+     * A raw `java.io.File` write to `/sdcard/Download/…` is silently swallowed by
+     * scoped storage for a third-party app on `targetSdk >= 30` — it never lands
+     * where `adb pull` (shell view) can see it, which is why #2620's incremental
+     * summary was never recovered on the CI emulator and the OOM-killed leg could
+     * not name the in-flight demo ([#2643](https://github.com/sceneview/sceneview/issues/2643)).
+     * MediaStore is the one location a permission-less app can publish to the
+     * shared `Download/` collection — the same pattern `DemoInteractionTest`
+     * uses for its QA screenshots. Delete-then-insert keeps the incremental
+     * rewrites idempotent (no orphaned rows across the ~per-demo calls).
+     */
+    private fun writeSummaryFile(json: String): String {
+        val resolver = context.contentResolver
+        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        val relativePath = "Download/SceneView/"
+        val displayName = "ar-qa-summary.json"
+
+        val selection = "${MediaStore.Downloads.RELATIVE_PATH}=? AND " +
+            "${MediaStore.Downloads.DISPLAY_NAME}=?"
+        val args = arrayOf(relativePath, displayName)
+        resolver.query(collection, arrayOf(MediaStore.Downloads._ID), selection, args, null)
+            ?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    val oldUri = android.content.ContentUris.withAppendedId(collection, id)
+                    resolver.delete(oldUri, null, null)
+                }
+            }
+
+        val pending = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+            put(MediaStore.Downloads.MIME_TYPE, "application/json")
+            put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(collection, pending)
+            ?: error("MediaStore insert returned null for ar-qa-summary.json")
+        resolver.openOutputStream(uri)?.use { out ->
+            out.write(json.toByteArray())
+        } ?: error("MediaStore openOutputStream returned null for ar-qa-summary.json")
+        resolver.update(
+            uri,
+            ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) },
+            null,
+            null,
+        )
+        return "/sdcard/$relativePath$displayName"
+    }
+
+    /**
+     * Parses the `-e ar_shard_index <i> -e ar_shard_count <n>` instrumentation
+     * args into [shardIndex] / [shardCount]. Absent or malformed args fall back
+     * to the whole sweep (index 0, count 1). `count` is clamped to `>= 1` and
+     * `index` to `0 <= index < count` so a bad invocation can never drop demos.
+     */
+    private fun resolveShard() {
+        val arguments = InstrumentationRegistry.getArguments()
+        val count = arguments.getString("ar_shard_count")?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+        val index = (arguments.getString("ar_shard_index")?.toIntOrNull() ?: 0)
+            .coerceIn(0, count - 1)
+        shardCount = count
+        shardIndex = index
     }
 
     private data class DemoResult(
@@ -379,8 +482,10 @@ class ARReplayHarnessTest {
         /**
          * Time to leave each demo running before reading its verdict. Long
          * enough for ARCore session init + a few replayed frames (~5 s on a
-         * Pixel 7a emulator), short enough that a 13-demo sweep stays well
-         * under the instrumentation timeout.
+         * Pixel 7a emulator), short enough that a whole shard of the AR sweep
+         * stays well under the instrumentation timeout (the sweep is split into
+         * shards on CI so no one process replays every AR demo — see
+         * [shardCount]).
          */
         const val REPLAY_WINDOW_MILLIS = 7_000L
 

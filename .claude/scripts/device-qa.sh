@@ -610,10 +610,12 @@ run_ar() {
   case $rc in
     0) record ar passed "ar-replay-qa.sh" "$kept" "$(( $(date +%s) - started ))" ;;
     2) record ar skipped "no device for ar-replay-qa.sh" "$kept" "$(( $(date +%s) - started ))" ;;
-    # rc=3 (#1645): no demo crashed, but `ar-record-playback` replayed 0 frames
-    # — ARCore dataset playback is unsupported on this emulator. The recorded
-    # session was not exercised, so the AR leg is `skipped`, never a pass.
-    3) record ar skipped "ARCore dataset playback unsupported on emulator (ar-record-playback replayed 0 frames)" "$kept" "$(( $(date +%s) - started ))" ;;
+    # rc=3: no demo crashed, but one or more demos were not validated —
+    # `ar-record-playback` replayed 0 frames (ARCore dataset playback unsupported
+    # on this emulator, #1645) and/or a shard was severed under emulator pressure
+    # so its demos are recorded `skipped` (environmental, #2643). Per-demo reasons
+    # are in ar-qa-summary.json. The AR leg is `skipped`, never a pass.
+    3) record ar skipped "AR demos not fully validated — see ar-qa-summary.json (playback 0 frames #1645 / shard severed #2643)" "$kept" "$(( $(date +%s) - started ))" ;;
     *) record ar failed "ar-replay-qa.sh rc=$rc" "$kept" "$(( $(date +%s) - started ))" ;;
   esac
 }
