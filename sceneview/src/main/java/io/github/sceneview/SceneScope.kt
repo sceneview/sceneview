@@ -314,15 +314,33 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
             }
             modelNode to offset
         }
-        SideEffect {
+        // Push declarative props to the underlying node only when they actually change — NOT on
+        // every successful recomposition. The previous `SideEffect { node.rotation = rotation; … }`
+        // re-applied the declared transform each frame, silently clobbering any rotation/position/
+        // scale a gesture (NodeGestureDelegate) or a frame-loop driver (physics, animation, camera
+        // follow) had written on the runtime node — so a user-rotated model snapped back to its
+        // declared `rotation` on the next recomposition (#2639). This mirrors the exact idiom the
+        // bare `Node` composable already uses: component-keyed `DisposableEffect`s. The keys are the
+        // individual scalar components (not the `Float3` wrapper), because `Float3` from
+        // `dev.romainguy.kotlin.math` uses reference equality — a fresh `Rotation(x = …)` each
+        // recomposition would `==`-compare as unequal and re-trigger the effect, re-clobbering the
+        // gesture state. Component-wise keys let Compose recognise identical values and stay idle.
+        DisposableEffect(node, position.x, position.y, position.z) {
             // Additive so a non-zero `centerOrigin` survives — see resolveModelNodePosition.
-            node.position = resolveModelNodePosition(centerOriginOffset, position)
-            node.rotation = rotation
-            // Don't clobber scaleToUnits-computed scale on every recomposition.
-            if (scaleToUnits == null) node.scale = scale
-            node.isVisible = isVisible
-            node.isEditable = isEditable
+            node.position = resolveModelNodePosition(centerOriginOffset, position); onDispose {}
         }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            // Don't clobber scaleToUnits-computed scale on every recomposition.
+            if (scaleToUnits == null) {
+                node.scale = scale
+            }
+            onDispose {}
+        }
+        DisposableEffect(node, isVisible) { node.isVisible = isVisible; onDispose {} }
+        DisposableEffect(node, isEditable) { node.isEditable = isEditable; onDispose {} }
         // Switch animation reactively when animationName changes.
         if (animationName != null) {
             DisposableEffect(node, animationName) {
