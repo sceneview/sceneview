@@ -410,15 +410,20 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
             }).apply(nodeApply)
         }
         SideEffect {
-            // Push every reactive prop on each recomposition so Compose state changes
+            // Push the light props on each recomposition so Compose state changes
             // (sliders, colour pickers, toggles) actually drive the underlying Light.
             // The builder `apply` block only runs at creation time — without this
             // SideEffect, sliders that live-modified intensity / direction / colour
             // silently had no effect on the rendered scene.
-            node.position = position
             intensity?.let { node.intensity = it }
             direction?.let { node.lightDirection = it }
             color?.let { node.color = it }
+        }
+        // The transform is component-keyed so a position a gesture or a frame-loop driver wrote
+        // on the runtime node survives a bare recomposition — see SphereNode for the full
+        // rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -507,9 +512,18 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.setMaterialInstanceAt(0, materialInstance)
                 prevCubeMaterial.value = materialInstance
             }
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        }
+        // Transform props are component-keyed so a bare recomposition never re-applies the
+        // declared transform over one a gesture or a frame-loop driver wrote on the runtime
+        // node — see SphereNode for the full rationale (#2639, #2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -647,9 +661,16 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.setMaterialInstanceAt(0, materialInstance)
                 prevCylinderMaterial.value = materialInstance
             }
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -705,9 +726,16 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.setMaterialInstanceAt(0, materialInstance)
                 prevConeMaterial.value = materialInstance
             }
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -769,9 +797,16 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.setMaterialInstanceAt(0, materialInstance)
                 prevTorusMaterial.value = materialInstance
             }
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -833,9 +868,16 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.setMaterialInstanceAt(0, materialInstance)
                 prevCapsuleMaterial.value = materialInstance
             }
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -891,9 +933,16 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.setMaterialInstanceAt(0, materialInstance)
                 prevPlaneMaterial.value = materialInstance
             }
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -935,9 +984,16 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         }
         SideEffect {
             node.bitmap = bitmap
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -973,10 +1029,15 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 normal = normal
             ).apply(apply)
         }
-        SideEffect {
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -1012,10 +1073,15 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 normal = normal
             ).apply(apply)
         }
-        SideEffect {
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -1059,8 +1125,14 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         }
         SideEffect {
             node.bitmap = bitmap
-            node.position = position
-            node.scale = scale
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653). No `rotation`
+        // param here: the billboard rotates itself toward the camera every frame.
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -1118,8 +1190,14 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
             node.textColor = textColor
             node.backgroundColor = backgroundColor
             node.typeface = typeface
-            node.position = position
-            node.scale = scale
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653). No `rotation`
+        // param here: the text label rotates itself toward the camera every frame.
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -1175,10 +1253,15 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 size = size
             ).apply(apply)
         }
-        SideEffect {
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -1372,9 +1455,16 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.setMaterialInstanceAt(0, materialInstance)
                 prevLineMaterial.value = materialInstance
             }
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -1435,9 +1525,16 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.setMaterialInstanceAt(0, materialInstance)
                 prevPathMaterial.value = materialInstance
             }
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
@@ -1626,9 +1723,16 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.setMaterialInstanceAt(0, materialInstance)
                 prevShapeMaterial.value = materialInstance
             }
-            node.position = position
-            node.rotation = rotation
-            node.scale = scale
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
