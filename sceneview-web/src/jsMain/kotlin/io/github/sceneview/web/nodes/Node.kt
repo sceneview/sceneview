@@ -230,7 +230,16 @@ open class Node internal constructor(
             field = value
             oldParent?.let { it._childNodes = it._childNodes - this }
             (value as Node?)?.let { it._childNodes = it._childNodes + this }
-            backend.setParent((value as Node?)?.backend)
+            // Guard ONLY the engine write — never a top-level `return`. destroy()
+            // runs its internal `parent = null` detach AFTER [isDestroyed] is set
+            // and still needs the Kotlin-side child-list cleanup above; a naive
+            // early-return would break it. After destroy() the entity + transform
+            // component are freed, so a late setParent on a RETAINED destroyed node
+            // would hit a freed instance — a WASM use-after-free abort, not a
+            // catchable exception. Symmetric to the [applyLocalTransform] guard.
+            if (!isDestroyed) {
+                backend.setParent((value as Node?)?.backend)
+            }
         }
 
     private var _childNodes = setOf<SceneNode>()

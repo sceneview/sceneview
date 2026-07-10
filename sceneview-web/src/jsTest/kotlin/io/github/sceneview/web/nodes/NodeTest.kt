@@ -376,6 +376,27 @@ class NodeTest {
     }
 
     @Test
+    fun parentSetterAfterDestroyDoesNotReachBackend() {
+        val parent = node("parent")
+        val child = node("child")
+
+        child.destroy()
+        val callsBeforeReparent = child.fake.setParentCalls
+
+        // A caller retains a destroyed node and re-parents it. The Filament
+        // entity + transform component are already freed, so the engine write
+        // (TransformManager.setParent on a freed instance) would be a WASM
+        // use-after-free abort — uncatchable. The guard must skip it, exactly
+        // like the transform-write guard skips setLocalTransform after destroy.
+        child.parent = parent
+
+        assertEquals(
+            callsBeforeReparent, child.fake.setParentCalls,
+            "no engine setParent may run on a destroyed node"
+        )
+    }
+
+    @Test
     fun destroyDetachesFromLivingParent() {
         val parent = node("parent")
         val child = node("child")

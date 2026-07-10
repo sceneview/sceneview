@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **sceneview-web**: `Node.parent` setter now guards the engine write after `destroy()` — re-parenting a retained, destroyed node no longer reaches `TransformManager.setParent` on a freed instance (a WASM use-after-free abort), closing the last unguarded hierarchy-write path (#2611 review, symmetric to the existing transform-write guard). The `#2024` P1 browser probe also asserts the detach-sentinel invariant: the sentinel entity never gains a transform component, so `nullParentInstance()` stays native instance 0.
