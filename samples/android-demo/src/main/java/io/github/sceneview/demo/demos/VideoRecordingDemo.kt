@@ -214,6 +214,10 @@ private fun startRecording(
     } else {
         MediaRecorder()
     }
+    // Captured before the try so the failure path stops exactly the surface THIS call
+    // started — never sibling mirrors another recording may own (SurfaceMirrorer is
+    // multi-surface, and stopping all of them here would tear down unrelated captures).
+    var startedSurface: android.view.Surface? = null
     return runCatching {
         recorder.apply {
             setVideoSource(MediaRecorder.VideoSource.SURFACE)
@@ -229,12 +233,14 @@ private fun startRecording(
         // [RecordingSession] — and letterbox the scene into the 720p frame
         // (width/height = the MediaRecorder video size).
         val recorderSurface = recorder.surface
+        startedSurface = recorderSurface
         surfaceMirrorer.startMirroring(recorderSurface, width = VIDEO_WIDTH, height = VIDEO_HEIGHT)
         recorder.start()
         RecordingSession(recorder, recorderSurface, outputFile)
     }.getOrElse { e ->
         Log.e(TAG, "Failed to start recording", e)
-        surfaceMirrorer.mirroredSurfaces.forEach { surfaceMirrorer.stopMirroring(it) }
+        // Stop only the surface we started in this call — not every mirrored surface.
+        startedSurface?.let { surfaceMirrorer.stopMirroring(it) }
         runCatching { recorder.release() }
         null
     }
