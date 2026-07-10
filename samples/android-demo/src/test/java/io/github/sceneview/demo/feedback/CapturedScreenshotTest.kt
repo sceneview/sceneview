@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * Pure-JVM tests for the transparent-hole probe (#2654) — the guard that stops
@@ -14,7 +15,12 @@ import org.robolectric.RobolectricTestRunner
  * the compositor returns [android.view.PixelCopy.SUCCESS] without compositing
  * the Filament `SurfaceView` (observed on the emulator's gfxstream: the
  * viewport region reads back `alpha == 0`).
+ *
+ * [GraphicsMode.Mode.NATIVE] runs the bitmap ops on real Skia (same as the
+ * sibling snapshot tests) so the alpha round-trip matches production instead
+ * of a Robolectric shadow.
  */
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
 class CapturedScreenshotTest {
 
@@ -48,8 +54,9 @@ class CapturedScreenshotTest {
 
     @Test
     fun `tiny decoration transparency stays under the threshold`() {
-        // 2 transparent rows out of 100 (~2 % sampled) — decoration edge
-        // cases must not flip the warning on.
+        // Rows 0-1 transparent, but the stride-4 sampler only visits y=0 →
+        // 1 sampled row of 25 (4 %) — just under the 5 % gate. Decoration
+        // edge cases must not flip the warning on.
         val bmp = bitmapOf(200, 100, Color.WHITE)
         for (y in 0 until 2) {
             for (x in 0 until bmp.width) bmp.setPixel(x, y, Color.TRANSPARENT)

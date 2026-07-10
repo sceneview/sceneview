@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
+import androidx.annotation.VisibleForTesting
 import androidx.core.content.FileProvider
 import androidx.core.view.drawToBitmap
 import kotlinx.coroutines.Dispatchers
@@ -102,7 +103,7 @@ private const val TRANSPARENT_HOLE_SAMPLE_STEP = 4
  * still reporting [PixelCopy.SUCCESS] (#2654). Strided sampling keeps this a
  * sub-millisecond check on the already-downscaled capture.
  */
-@androidx.annotation.VisibleForTesting
+@VisibleForTesting
 internal fun hasTransparentHole(bitmap: Bitmap): Boolean {
     val row = IntArray(bitmap.width)
     var sampled = 0
