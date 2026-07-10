@@ -469,6 +469,7 @@ silent stub.
 | Symbol | Why iOS can't | iOS path |
 |---|---|---|
 | `ARSceneView(playbackDataset:)` / `ARSceneView(playbackDatasetUri:)` (#1770) | ARKit has no deterministic recording playback | Record-only via [#1032 ReplayKit](https://github.com/sceneview/sceneview/issues/1032); replay stays Android-only |
+| `SurfaceMirrorer` / `rememberSurfaceMirrorer()` (+ `surfaceMirrorer` on `SceneView`/`ARSceneView`, #2626) | In-app scene→MP4 mirroring via Filament `Renderer.copyFrame`; RealityKit has no per-frame surface-copy equivalent | iOS records the scene via ReplayKit `RPScreenRecorder` — see [ARRecorder](#arrecorder-v430-record-only) above; the `surfaceMirrorer` parameter stays Android-only |
 | `rememberARPlaybackStatus(session)` (#1770) | Mirrors ARCore `Session.getPlaybackStatus` — no ARKit counterpart | iOS-skip; surface "Live AR only" in UI |
 | `ARRecorder.addTrack / recordTrack / State.IO_ERROR` (#1770) | ARCore custom-data-track + RecordingStatus disk-IO surface; no ARKit analogue | iOS-skip with doc warning |
 | `ARSessionFailure` sealed taxonomy + `onSessionFailure` callback (#1759) | Wraps the 25 ARCore `*Exception` types; ARKit surfaces failures via `ARErrorCode` instead | Use SwiftUI `onSessionFailed` (raw `Error`) and switch on `ARError.Code` |

@@ -50,6 +50,9 @@ mirroring the same surface.
 ## AR recording / playback
 [`ARRecordPlaybackDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARRecordPlaybackDemo.kt) — `val recorder = rememberARRecorder(); recorder.start(file); recorder.stop()`. To replay, pass `playbackDataset = file` to `ARSceneView`.
 
+## Video recording (rendered scene → MP4, no MediaProjection)
+[`VideoRecordingDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/VideoRecordingDemo.kt) — `val surfaceMirrorer = rememberSurfaceMirrorer(); SceneView(surfaceMirrorer = surfaceMirrorer)` (also on `ARSceneView`). Point a `MediaRecorder` (SURFACE video source, `MPEG_4`/`H264`) at the scene: `surfaceMirrorer.startMirroring(recorder.surface, width = 1280, height = 720); recorder.start()`, then `surfaceMirrorer.stopMirroring(recorder.surface); recorder.stop()`. Captures exactly what Filament renders (in AR, camera feed + virtual content composited) — never the Compose UI — with no MediaProjection consent dialog or foreground service. `startMirroring` is JNI-free / any-thread; `stopMirroring` is main-thread only. **Unlike `ARRecorder`** (which records an ARCore dataset for deterministic replay), this produces a shareable video.
+
 ## Cross-platform parity
 
 Apple (`SceneViewSwift`) and Web (`sceneview-web`) expose the same node names

@@ -69,6 +69,7 @@ import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.ViewNode
+import io.github.sceneview.utils.SurfaceMirrorer
 import io.github.sceneview.utils.destroy
 import io.github.sceneview.utils.intervalSeconds
 import kotlinx.coroutines.Dispatchers
@@ -154,6 +155,9 @@ import io.github.sceneview.node.findActivity
  * @param collisionSystem       Hit-testing and collision system. Use [rememberCollisionSystem].
  * @param cameraManipulator     Orbit/pan/zoom camera controller. Use [rememberCameraManipulator].
  * @param viewNodeWindowManager Off-screen window manager required for [SceneScope.ViewNode].
+ * @param surfaceMirrorer       Mirrors every rendered frame to additional [android.view.Surface]s
+ *                              — attach a `MediaRecorder` input surface for clean in-app video
+ *                              recording (no MediaProjection). Use [rememberSurfaceMirrorer].
  * @param onGestureListener     Gesture callbacks — tap, double-tap, drag, pinch, etc.
  * @param onTouchEvent          Raw touch event callback with optional hit-test result.
  * @param activity              Host [ComponentActivity] (auto-resolved from [LocalContext]).
@@ -268,6 +272,20 @@ fun SceneView(
      * Obtain with [rememberViewNodeManager].
      */
     viewNodeWindowManager: ViewNode.WindowManager? = null,
+    /**
+     * Mirrors every rendered frame to additional [android.view.Surface]s — the clean way to
+     * video-record the scene in-app (attach a `MediaRecorder` input surface; no MediaProjection
+     * consent dialog, no foreground service, no overlay UI in the frame).
+     * Obtain with [rememberSurfaceMirrorer], then call
+     * [SurfaceMirrorer.startMirroring][io.github.sceneview.utils.SurfaceMirrorer.startMirroring] /
+     * [SurfaceMirrorer.stopMirroring][io.github.sceneview.utils.SurfaceMirrorer.stopMirroring].
+     *
+     * Wiring a non-null `surfaceMirrorer` keeps the window swap chain `CONFIG_READABLE` for the
+     * composable's whole lifetime — a small always-on GPU-readback cost that does not revert when
+     * you set it back to null (it clears only at surface detach). Prefer passing it unconditionally
+     * over toggling it per-recording.
+     */
+    surfaceMirrorer: SurfaceMirrorer? = null,
     /**
      * The listener invoked for all gesture detector callbacks.
      */
@@ -554,6 +572,7 @@ fun SceneView(
 
     // Wire resize and surface callbacks.
     SideEffect {
+        sceneRenderer.surfaceMirrorer = surfaceMirrorer
         sceneRenderer.onSurfaceResized = { width, height ->
             // Remember the size so a manipulator swapped in later (without a surface resize)
             // can inherit it — see [lastViewportRef] (#2514).

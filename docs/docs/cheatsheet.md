@@ -121,6 +121,26 @@ ARSceneView(
 ) { /* DSL */ }
 ```
 
+**Two different "recordings" — pick by what you capture:**
+
+- **`SurfaceMirrorer`** (`sceneview` **and** `arsceneview`) — records **the rendered scene to an
+  MP4**: exactly what Filament draws (in AR, camera feed + virtual content composited), no Compose
+  UI. In-app, no MediaProjection consent dialog / foreground service. Share-ready video.
+- **`ARRecorder`** (above, `arsceneview` only) — records an **ARCore session dataset** (raw sensor
+  streams) for deterministic **replay** through `playbackDataset` — a debugging tool, not a video.
+
+```kotlin
+val surfaceMirrorer = rememberSurfaceMirrorer()
+SceneView(surfaceMirrorer = surfaceMirrorer) { /* DSL */ }   // or ARSceneView(surfaceMirrorer = …)
+
+// Point a MediaRecorder (SURFACE video source) at the scene; frame is letterboxed to fit.
+surfaceMirrorer.startMirroring(recorder.surface, width = 1280, height = 720)  // any thread, JNI-free
+recorder.start()
+// …record…
+surfaceMirrorer.stopMirroring(recorder.surface)                              // main thread only
+recorder.stop(); recorder.release()
+```
+
 ### Camera exposure override
 
 `cameraExposure` is Filament's **absolute exposure scale** (the single-`Float` `setExposure`

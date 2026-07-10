@@ -185,6 +185,8 @@ ARSceneView(
    `ARSceneView(playbackDataset:)`, `StreetscapeGeometry`, terrain/rooftop
    anchors have no ARKit equivalent. `ARRecorder` on iOS is **record-only**
    (ReplayKit screen capture) — there is no deterministic playback.
+   `SurfaceMirrorer` / `rememberSurfaceMirrorer()` (in-app scene→MP4 recording,
+   #2626) is **Android-only** — on iOS record the scene via that same ReplayKit path.
 
 7. **`SceneView` is cross-platform (iOS/macOS/visionOS); `ARSceneView` is iOS
    only.** macOS and visionOS get 3D but not the ARKit camera view.

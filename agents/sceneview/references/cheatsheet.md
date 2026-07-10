@@ -29,6 +29,7 @@ SceneView(
     renderQuality = RenderQuality.Default,              // Cinematic / Default / Performance
     onGestureListener = rememberOnGestureListener(/* … */),
     onFrame = { frameTimeNanos -> /* … */ },
+    surfaceMirrorer = rememberSurfaceMirrorer(),        // optional: record the rendered scene to MP4 in-app (no MediaProjection). Also on ARSceneView
 ) { /* SceneScope content */ }
 ```
 
@@ -89,7 +90,8 @@ iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); retic
 | `rememberFillLightNode(engine) { … }` | `LightNode` | Default fill (use `null` to disable) |
 | `rememberCameraManipulator(...)` | `CameraGestureDetector.CameraManipulator?` | Orbit/pan controller; `null` to lock |
 | `rememberOnGestureListener(onSingleTapConfirmed = …)` | `GestureDetector.OnGestureListener` | Wire AR taps |
-| `rememberARRecorder()` | `ARRecorder` | Record/replay AR sessions (no args) |
+| `rememberARRecorder()` | `ARRecorder` | Record/replay AR sessions — ARCore **dataset** for deterministic replay (no args) |
+| `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | Record the **rendered scene** to MP4 in-app (no MediaProjection). Pass to `SceneView`/`ARSceneView(surfaceMirrorer = …)`, then `startMirroring(surface)` / `stopMirroring(surface)` |
 
 ## Common 3D nodes
 

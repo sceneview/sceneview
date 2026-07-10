@@ -48,7 +48,7 @@ This directory contains sample apps demonstrating SceneView capabilities across 
 
 | Sample | Description |
 |---|---|
-| `android-demo` | Play Store demo app — Explore, AR View, Samples, About tabs (59 demos: 30 non-AR + 29 AR, Material 3) |
+| `android-demo` | Play Store demo app — Explore, AR View, Samples, About tabs (49 demos: 17 non-AR + 32 AR, Material 3) |
 
 ## Common recipes (copy-paste ready)
 

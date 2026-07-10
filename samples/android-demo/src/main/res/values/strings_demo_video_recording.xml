@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `video-recording` demo (registered by
+     `VideoRecordingFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_video_recording_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_video_recording_title">Video Recording</string>
+    <string name="demo_video_recording_subtitle">Record the scene to MP4 in-app — no MediaProjection</string>
+    <string name="demo_video_recording_loading">Loading model…</string>
+    <string name="demo_video_recording_explainer">SurfaceMirrorer mirrors the rendered frames onto a MediaRecorder surface — no consent dialog, no foreground service, and the UI never appears in the video. Recordings land in the app files dir.</string>
+    <string name="demo_video_recording_record">Record</string>
+    <string name="demo_video_recording_stop">Stop</string>
+    <string name="demo_video_recording_saved">Saved: %1$s (%2$d KB)</string>
+</resources>

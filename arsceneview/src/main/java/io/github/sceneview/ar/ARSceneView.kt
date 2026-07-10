@@ -62,6 +62,7 @@ import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.exceptions.PlaybackFailedException
 import io.github.sceneview.SceneNodeManager
 import io.github.sceneview.SceneRenderer
+import io.github.sceneview.utils.SurfaceMirrorer
 import io.github.sceneview.RenderQuality
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.applyRenderQuality
@@ -250,6 +251,11 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 [onSessionFailed]; pick the one that matches your codebase.
  * @param onSessionUpdated         Called once per AR frame before the scene is updated.
  * @param onTrackingFailureChanged Called when the camera [TrackingFailureReason] changes.
+ * @param surfaceMirrorer          Mirrors every rendered frame (camera feed + virtual content
+ *                                 composited) to additional [android.view.Surface]s — attach a
+ *                                 `MediaRecorder` input surface for clean in-app AR video
+ *                                 recording (no MediaProjection). Use
+ *                                 [rememberSurfaceMirrorer][io.github.sceneview.rememberSurfaceMirrorer].
  * @param onGestureListener        Gesture callbacks — tap, double-tap, drag, pinch, etc.
  * @param onTouchEvent             Raw touch event callback with optional hit result.
  * @param permissionHandler        [ARPermissionHandler] for camera permission and ARCore install
@@ -730,6 +736,21 @@ fun ARSceneView(
      * Listen for camera tracking failure.
      */
     onTrackingFailureChanged: ((trackingFailureReason: TrackingFailureReason?) -> Unit)? = null,
+    /**
+     * Mirrors every rendered frame — camera feed + virtual content composited — to additional
+     * [android.view.Surface]s. The clean way to video-record the AR scene in-app: attach a
+     * `MediaRecorder` input surface; no MediaProjection consent dialog, no foreground service,
+     * no overlay UI in the frame.
+     * Obtain with [rememberSurfaceMirrorer][io.github.sceneview.rememberSurfaceMirrorer], then
+     * call [SurfaceMirrorer.startMirroring][io.github.sceneview.utils.SurfaceMirrorer.startMirroring] /
+     * [SurfaceMirrorer.stopMirroring][io.github.sceneview.utils.SurfaceMirrorer.stopMirroring].
+     *
+     * Wiring a non-null `surfaceMirrorer` keeps the window swap chain `CONFIG_READABLE` for the
+     * composable's whole lifetime — a small always-on GPU-readback cost that does not revert when
+     * you set it back to null (it clears only at surface detach). Prefer passing it unconditionally
+     * over toggling it per-recording.
+     */
+    surfaceMirrorer: SurfaceMirrorer? = null,
     /**
      * The listener invoked for all the gesture detector callbacks.
      */
@@ -1363,6 +1384,7 @@ fun ARSceneView(
 
     // Wire resize and surface callbacks — AR needs additional display geometry + plane renderer.
     SideEffect {
+        sceneRenderer.surfaceMirrorer = surfaceMirrorer
         sceneRenderer.onSurfaceResized = { width, height ->
             cameraNode.updateProjection()
             arCore.session?.setDisplayGeometry(display.rotation, width, height)
