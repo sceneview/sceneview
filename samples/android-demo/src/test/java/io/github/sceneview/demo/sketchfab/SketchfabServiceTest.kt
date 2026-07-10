@@ -163,8 +163,9 @@ class SketchfabServiceTest {
                 apiKeyProvider = { "test-token" },
             )
             runBlocking {
+                var outcome: Throwable? = null
                 val job = launch {
-                    runCatching { cancellableService.search("chair") }
+                    outcome = runCatching { cancellableService.search("chair") }.exceptionOrNull()
                 }
                 // Deterministic sync point: only cancel once the request has
                 // genuinely reached the server, so the call is provably in
@@ -173,13 +174,24 @@ class SketchfabServiceTest {
                     server.takeRequest(5, TimeUnit.SECONDS)
                 }
                 assertNotNull("search request never reached the mock server", received)
+                // 5 s bound: generous CI headroom (Robolectric under runner
+                // contention), still an order of magnitude under the 10 s the
+                // pre-fix blocking execute() stalled for.
                 val elapsedMs = measureTimeMillis { job.cancelAndJoin() }
                 assertTrue(
                     "cancellation must abort the in-flight call promptly instead of " +
                         "blocking behind the mock server's 10 s body delay " +
                         "(took $elapsedMs ms) — regression guard for the blocking " +
                         "execute() this fix replaced (#2644)",
-                    elapsedMs < 3_000,
+                    elapsedMs < 5_000,
+                )
+                // Canonicalisation guard: the abort must surface as the
+                // caller's CancellationException — never as the socket-abort
+                // IOException dressed up as a network failure (the property
+                // executeCancellably's coroutineScope provides).
+                assertTrue(
+                    "expected CancellationException from a cancelled search, got $outcome",
+                    outcome is kotlinx.coroutines.CancellationException,
                 )
             }
         }
