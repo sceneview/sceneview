@@ -9,7 +9,7 @@
 #
 # Zoom QA (#1571): the model-viewer entry below also passes CAMERA_DISTANCE, so
 # flows/demo.yaml additionally re-launches it at a near + far framing via the
-# `--ef camera_distance` deep-link param — Maestro has no pinch gesture, so this
+# `camera_distance` deep-link param — Maestro has no pinch gesture, so this
 # is the only way the harness can exercise 3D camera zoom. model-viewer is the
 # natural host: it drives the shared hero-orbit camera the param overrides.
 appId: io.github.sceneview.demo

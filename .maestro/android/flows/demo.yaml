@@ -23,8 +23,11 @@
 #     to the demo screen — no tab navigation, no list scrolling. Maestro's
 #     `launchApp` has no `deepLink` property (that key is silently unparsed and
 #     aborts the flow on Maestro 1.39); instead `arguments:` are delivered as
-#     intent extras on the launch intent — strings via `--es`, booleans via
-#     `--ez`, floats via `--ef`. `MainActivity` reads `--es demo <id>` (the QA
+#     intent extras on the launch intent — booleans as `--ez`-style boolean
+#     extras, and env-interpolated values (`${CAMERA_DISTANCE}`) as **String**
+#     extras, NOT `--ef` floats (verified on-emulator, Maestro 2.6.1 — #2652;
+#     MainActivity coerces the extra type-agnostically for this reason).
+#     `MainActivity` reads `--es demo <id>` (the QA
 #     ingress channel, `DeepLinkRouter.validate`) before any URL deep link, so
 #     this routes through the very same closed-registry allow-list the public
 #     `sceneview://demo/<id>` scheme uses (DeepLinkRouter.parse / .validate).
@@ -32,7 +35,7 @@
 #     the single screenshot is deterministic frame-to-frame.
 #   - Exercise REAL interaction: drag to orbit the camera, swipe to pan, tap
 #     the centre of the viewport (hits demo controls / picks nodes). 3D zoom
-#     has no Maestro pinch gesture, so it is driven by the `--ef camera_distance`
+#     has no Maestro pinch gesture, so it is driven by the `camera_distance`
 #     deep-link param instead — see the optional zoom section below (#1571).
 #   - Capture exactly ONE screenshot per demo (no screenshot-by-screenshot
 #     loop — that was the slow pattern in the old qa-android-demos.sh). The
@@ -123,12 +126,13 @@ appId: io.github.sceneview.demo
 # --- Optional: 3D camera zoom QA (#1571) -----------------------------------
 # Maestro has no pinch gesture, so 3D camera zoom is driven by a deep-link
 # param instead. When the caller sets CAMERA_DISTANCE (non-empty), re-launch
-# the demo at a NEAR framing then a FAR framing — the `camera_distance` float
-# extra (`--ef`) feeds DemoSettings.cameraDistance via DeepLinkRouter, and the
-# shared hero-orbit camera frames the model at that distance. Each launch is a
-# cold start (stopApp: true) so the extra is read fresh in onCreate. Two extra
-# screenshots (-zoom-near / -zoom-far) let a visual diff confirm the scene
-# reframes.
+# the demo at a NEAR framing then a FAR framing — the `camera_distance` extra
+# (delivered by Maestro as a String; coerced type-agnostically by MainActivity
+# → DeepLinkRouter.coerceCameraDistanceExtra, #2652) feeds
+# DemoSettings.cameraDistance, and the shared hero-orbit camera frames the
+# model at that distance. Each launch is a cold start (stopApp: true) so the
+# extra is read fresh in onCreate. Two extra screenshots (-zoom-near /
+# -zoom-far) let a visual diff confirm the scene reframes.
 #
 # The gate is typeof-guarded, NOT a bare `${CAMERA_DISTANCE != ""}`. Most
 # callers never set CAMERA_DISTANCE, so it is `undefined` here; under Maestro
@@ -151,6 +155,49 @@ appId: io.github.sceneview.demo
             camera_distance: ${CAMERA_DISTANCE}
       - waitForAnimationToEnd:
           timeout: 6000
+      # Cold-start render settle (#2652). Each zoom relaunch is a cold start,
+      # and ~6 s is NOT enough for engine warm-up + model + IBL load on the
+      # emulator — the base screenshot above only renders because ~12 s of
+      # orbit swipes incidentally elapse before it. Worse, `qa_mode` freezes
+      # scene animation, so `waitForAnimationToEnd` returns as soon as the UI
+      # is static — a frozen BLACK viewport is "settled" to it. Without a real
+      # settle both zoom captures land on that black cold-start viewport,
+      # byte-identical, and the near-vs-far diff proves nothing.
+      #
+      # No swipes here, deliberately: a drag hands the camera to the ORBIT
+      # fallback manipulator for ~3 s (HeroOrbitCameraManipulator
+      # resumeAfterMillis), which would race the screenshot with a
+      # non-canonical angle. Zero interaction keeps the frozen-QA framing
+      # (staticYaw 45°, radius = camera_distance) — the near/far diff then
+      # isolates exactly one variable: the orbit radius.
+      #
+      # 1) Wait for the demo's model-load scrim text to clear — the explicit
+      #    "model instance is now in the scene" signal (model-viewer shows
+      #    "Loading model…"; other demos "Loading helmet…", "Streaming…", …).
+      #    Demos without a scrim (or already loaded) pass through instantly.
+      #    `optional`: a wedged scrim must not abort the zoom section — the
+      #    screenshot then shows the wedged state honestly.
+      - extendedWaitUntil:
+          notVisible: "(Loading|Streaming).*"
+          timeout: 20000
+          optional: true
+          label: "Zoom-near: wait for model-load scrim to clear"
+      # 2) Fixed render warm-up. The scrim clears when the model INSTANCE
+      #    exists, not when a lit frame is presented — IBL load + shader
+      #    compilation still follow. Maestro has no sleep command and
+      #    `waitForAnimationToEnd` can't wait on a qa_mode-frozen scene, so
+      #    wait on a marker that never exists: the full timeout elapses
+      #    deterministically and `optional` turns the "failure" into the
+      #    intended no-op.
+      - extendedWaitUntil:
+          visible: "__sceneview-zoom-qa-render-warmup__"
+          timeout: 9000
+          optional: true
+          label: "Zoom-near: 9 s render warm-up (IBL + shaders + first lit frame)"
+      # 3) Settle any scrim cross-fade still in flight (mirrors the base
+      #    path's pre-screenshot settle).
+      - waitForAnimationToEnd:
+          timeout: 3000
       - assertVisible: "Navigate back"
       - takeScreenshot: "demo-${DEMO_ID}-zoom-near"
       - tapOn: "Navigate back"
@@ -169,6 +216,19 @@ appId: io.github.sceneview.demo
             camera_distance: "40"
       - waitForAnimationToEnd:
           timeout: 6000
+      # Same cold-start render settle as the near framing above (#2652).
+      - extendedWaitUntil:
+          notVisible: "(Loading|Streaming).*"
+          timeout: 20000
+          optional: true
+          label: "Zoom-far: wait for model-load scrim to clear"
+      - extendedWaitUntil:
+          visible: "__sceneview-zoom-qa-render-warmup__"
+          timeout: 9000
+          optional: true
+          label: "Zoom-far: 9 s render warm-up (IBL + shaders + first lit frame)"
+      - waitForAnimationToEnd:
+          timeout: 3000
       - assertVisible: "Navigate back"
       - takeScreenshot: "demo-${DEMO_ID}-zoom-far"
       - tapOn: "Navigate back"

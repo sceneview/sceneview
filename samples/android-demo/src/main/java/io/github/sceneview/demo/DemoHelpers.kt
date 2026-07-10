@@ -667,8 +667,9 @@ class HeroOrbitCameraManipulator(
  *
  * ### Deep-link zoom override (#1571)
  *
- * When [DemoSettings.cameraDistance] is non-null — set from the `--ef camera_distance <f>`
- * intent extra or the `sceneview://demo/<id>?cameraDistance=<f>` deep link — it replaces
+ * When [DemoSettings.cameraDistance] is non-null — set from the `camera_distance` intent
+ * extra (`adb --ef` or a Maestro launch argument, any Bundle type — #2652) or the
+ * `sceneview://demo/<id>?cameraDistance=<f>` deep link — it replaces
  * [radius] as the orbit distance, so the device-QA harness can launch a demo at a near or
  * far framing without a pinch gesture (Maestro has none). When `null` the caller's [radius]
  * (typically per-demo auto-fit) is used unchanged, so showcase behaviour is unaffected.

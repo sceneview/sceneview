@@ -381,6 +381,67 @@ class DeepLinkRouterTest {
         assertNull(DeepLinkRouter.parseTabParam(null))
     }
 
+    // ── camera_distance intent-extra coercion (#2652) ─────────────────────
+
+    @Test
+    fun `camera distance extra accepts every sender encoding`() {
+        // adb --ef delivers a Float; Maestro launchApp delivers env-interpolated
+        // values as String extras and could deliver bare YAML numbers as
+        // Integer/Double. All must resolve identically (#2652).
+        assertEquals(0.6f, DeepLinkRouter.coerceCameraDistanceExtra(0.6f))
+        assertEquals(0.6f, DeepLinkRouter.coerceCameraDistanceExtra(0.6))
+        assertEquals(40f, DeepLinkRouter.coerceCameraDistanceExtra(40))
+        assertEquals(40f, DeepLinkRouter.coerceCameraDistanceExtra(40L))
+        assertEquals(0.6f, DeepLinkRouter.coerceCameraDistanceExtra("0.6"))
+        assertEquals(40f, DeepLinkRouter.coerceCameraDistanceExtra("40"))
+    }
+
+    @Test
+    fun `camera distance extra rejects garbage without throwing`() {
+        assertNull(DeepLinkRouter.coerceCameraDistanceExtra(null))
+        assertNull(DeepLinkRouter.coerceCameraDistanceExtra("not-a-number"))
+        assertNull(DeepLinkRouter.coerceCameraDistanceExtra(""))
+        assertNull(DeepLinkRouter.coerceCameraDistanceExtra(true))
+        assertNull(DeepLinkRouter.coerceCameraDistanceExtra(Float.NaN))
+        assertNull(DeepLinkRouter.coerceCameraDistanceExtra(Double.POSITIVE_INFINITY))
+        assertNull(DeepLinkRouter.coerceCameraDistanceExtra("NaN"))
+    }
+
+    @Test
+    fun `camera distance extra applies the shared clamp on every encoding`() {
+        // Below CAMERA_DISTANCE_MIN (0.05) and above CAMERA_DISTANCE_MAX (100)
+        // must drop to null — auto-fit framing — never crash or pass through.
+        assertNull(DeepLinkRouter.coerceCameraDistanceExtra(0.01f))
+        assertNull(DeepLinkRouter.coerceCameraDistanceExtra("0.01"))
+        assertNull(DeepLinkRouter.coerceCameraDistanceExtra(500))
+        assertNull(DeepLinkRouter.coerceCameraDistanceExtra("500"))
+        // Boundary values are inclusive.
+        assertEquals(
+            DeepLinkRouter.CAMERA_DISTANCE_MIN,
+            DeepLinkRouter.coerceCameraDistanceExtra(DeepLinkRouter.CAMERA_DISTANCE_MIN),
+        )
+        assertEquals(
+            DeepLinkRouter.CAMERA_DISTANCE_MAX,
+            DeepLinkRouter.coerceCameraDistanceExtra(DeepLinkRouter.CAMERA_DISTANCE_MAX),
+        )
+    }
+
+    @Test
+    fun `camera distance URL query applies the same clamp as the extra channel`() {
+        assertEquals(
+            0.6f,
+            DeepLinkRouter.parseCameraDistance(
+                Uri.parse("sceneview://demo/model-viewer?cameraDistance=0.6"),
+            ),
+        )
+        assertNull(
+            DeepLinkRouter.parseCameraDistance(
+                Uri.parse("sceneview://demo/model-viewer?cameraDistance=junk"),
+            ),
+        )
+        assertNull(DeepLinkRouter.parseCameraDistance(null))
+    }
+
     @Test
     fun `every ALIAS_INITIAL_TAB key is a known retired alias on a non-default tab`() {
         // Guards against a typo'd key drifting from DEMO_ID_ALIASES, and against
