@@ -8,11 +8,15 @@
 #   DEMO_NAME  Human label, used only for screenshot file naming / readable logs.
 #
 # Optional parameters:
-#   CAMERA_DISTANCE  Camera-to-model distance (zoom level), in metres. When set
-#                    (non-empty), an extra section at the end of this subflow
-#                    re-launches the demo twice more — once near, once far — to
-#                    exercise 3D camera zoom, which Maestro cannot do by pinch
-#                    (#1571). Leave unset for the plain single-screenshot sweep.
+#   CAMERA_DISTANCE  Camera-to-model distance (zoom level), in metres. When the
+#                    caller sets it (non-empty), an extra section at the end of
+#                    this subflow re-launches the demo twice more — once near,
+#                    once far — to exercise 3D camera zoom, which Maestro cannot
+#                    do by pinch (#1571). Omit it for the plain single-screenshot
+#                    sweep — the zoom section is typeof-guarded, so an omitted
+#                    (undefined) value skips cleanly. Do NOT give it an `env:`
+#                    default in this subflow: a subflow-level default MASKS the
+#                    caller's value (Maestro subflow env precedence, #2633).
 #
 # Strategy:
 #   - launchApp with the `demo` + `qa_mode` intent extras so we jump straight
@@ -37,10 +41,14 @@
 #     drop us out of the app; `assertVisible` on any app element then fails the
 #     flow. A FATAL/ANR sweep of logcat is done once, globally, by catalog.yaml.
 appId: io.github.sceneview.demo
-env:
-  # Default the optional zoom param to empty so callers that don't set it skip
-  # the zoom section. Per-flow `env:` blocks override this when zoom is wanted.
-  CAMERA_DISTANCE: ""
+# NOTE: deliberately NO `env:` default for CAMERA_DISTANCE here. A default
+# declared in THIS subflow's own `env:` block MASKS the value the caller passes
+# via `runFlow → env:` — that inverted precedence is exactly what silently
+# disabled the zoom QA (#1571) for two releases (root cause of #2633, verified
+# on Maestro 2.6.1/GraalJS: a child `env:` default wins over the parent's
+# `runFlow → env:` value). Callers pass CAMERA_DISTANCE just like DEMO_ID; when
+# omitted it is `undefined`, and the optional zoom section below is
+# typeof-guarded so it skips cleanly.
 ---
 # Cold-launch straight into the demo. `arguments:` become intent extras on the
 # launch intent — `demo` (string, `--es`) drives MainActivity's QA ingress
@@ -120,10 +128,17 @@ env:
 # shared hero-orbit camera frames the model at that distance. Each launch is a
 # cold start (stopApp: true) so the extra is read fresh in onCreate. Two extra
 # screenshots (-zoom-near / -zoom-far) let a visual diff confirm the scene
-# reframes. The whole section is skipped when CAMERA_DISTANCE is empty.
+# reframes.
+#
+# The gate is typeof-guarded, NOT a bare `${CAMERA_DISTANCE != ""}`. Most
+# callers never set CAMERA_DISTANCE, so it is `undefined` here; under Maestro
+# 2.6.1/GraalJS `undefined != ""` evaluates to TRUE (it does not throw), so a
+# bare condition would fire the zoom for EVERY demo. The `typeof` guard
+# short-circuits on the undefined case so the section skips cleanly, and fires
+# only when a caller actually passed a non-empty distance (#2633 / #1571).
 - runFlow:
     when:
-      true: ${CAMERA_DISTANCE != ""}
+      true: ${typeof CAMERA_DISTANCE !== 'undefined' && CAMERA_DISTANCE !== ''}
     commands:
       # Near framing — a small camera distance zooms IN on the model.
       - launchApp:
