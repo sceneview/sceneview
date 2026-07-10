@@ -342,7 +342,28 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
             return
         }
         onProgress?(1.0)
-        continuation?.resume(returning: location)
+        // `location` is a temporary file that URLSession DELETES the instant
+        // this delegate method returns (Apple's documented contract: "you must
+        // move this file or open it for reading before this method returns").
+        // The async caller in `downloadBinary` relocates the file only AFTER the
+        // continuation resumes — i.e. after this method has already returned and
+        // the temp file is gone — so its `moveItem` threw `NSFileNoSuchFile` on
+        // every download. The failure was swallowed by `SketchfabAssetResolver`'s
+        // fallback, so every streamed model silently rendered the BUNDLED asset
+        // instead of the live Sketchfab USDZ (the whole streamed path was dead;
+        // the S3 bytes were fully downloaded, then discarded). Stage the file
+        // into a caller-owned temp URL HERE, synchronously, before returning, so
+        // it survives until the caller moves it to the cache. (#2356)
+        let staged = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sketchfab-dl-\(UUID().uuidString).usdz")
+        do {
+            try FileManager.default.moveItem(at: location, to: staged)
+        } catch {
+            continuation?.resume(throwing: error)
+            continuation = nil
+            return
+        }
+        continuation?.resume(returning: staged)
         continuation = nil
     }
 
