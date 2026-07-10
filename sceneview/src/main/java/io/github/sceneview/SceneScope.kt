@@ -187,13 +187,11 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         // (PhysicsBody, animations, camera follow) had just written via `node.onFrame`,
         // so PhysicsDemo spheres never appeared to move.
         //
-        // Keyed on the individual scalar components (not the Float3 wrapper) because
-        // `Float3` from `dev.romainguy.kotlin.math` uses reference equality by default —
-        // each recomposition that literally writes `Position(x = ...)` produces a *new*
-        // instance that `==`-compares as unequal to the previous one, which would
-        // re-trigger the effect and re-clobber driver state. Component-wise keys let
-        // `DisposableEffect` recognise identical values across recompositions and stay
-        // idle while a frame driver owns the node.
+        // Keyed on the individual scalar components (not the Float3 wrapper): `Float3` from
+        // `dev.romainguy.kotlin.math` is a mutable data class — keying on the wrapper instance
+        // can miss in-place mutations of a retained instance, so we key on the scalar components;
+        // a fresh structurally-equal instance per recomposition keeps the effect idle while a
+        // frame driver owns the node.
         DisposableEffect(node, position.x, position.y, position.z) {
             node.position = position; onDispose {}
         }
@@ -290,7 +288,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         // for `centerOrigin` (`-(center + origin * halfExtent) * scale`). Capture it BEFORE applying the
         // declarative props (and before the user `apply` lambda) so the `position` param can be
         // composed additively on top of it. Previously the composable assigned
-        // `node.position = position` here and again in the SideEffect below, which overwrote — and
+        // `node.position = position` here and again in the position DisposableEffect below, which overwrote — and
         // so silently discarded — any non-zero `centerOrigin` (e.g. `Position(0,-1,0)` to
         // bottom-align). Discovered while fixing the Materials → Occlusion demo (#2304).
         val (node, centerOriginOffset) = remember(engine, modelInstance) {
@@ -305,7 +303,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 this.rotation = rotation
                 // Don't reset position/scale here — the constructor already baked `centerOrigin`
                 // into position and `scaleToUnits` into scale. `position` is applied additively in
-                // the SideEffect below; if scaleToUnits is null, scale stays at its default
+                // the position DisposableEffect below; if scaleToUnits is null, scale stays at its default
                 // (Scale(1f)) and apply() can override either way.
                 if (scaleToUnits == null) this.scale = scale
                 this.isVisible = isVisible
@@ -321,10 +319,11 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         // follow) had written on the runtime node — so a user-rotated model snapped back to its
         // declared `rotation` on the next recomposition (#2639). This mirrors the exact idiom the
         // bare `Node` composable already uses: component-keyed `DisposableEffect`s. The keys are the
-        // individual scalar components (not the `Float3` wrapper), because `Float3` from
-        // `dev.romainguy.kotlin.math` uses reference equality — a fresh `Rotation(x = …)` each
-        // recomposition would `==`-compare as unequal and re-trigger the effect, re-clobbering the
-        // gesture state. Component-wise keys let Compose recognise identical values and stay idle.
+        // individual scalar components (not the `Float3` wrapper): `Float3` from
+        // `dev.romainguy.kotlin.math` is a mutable data class — keying on the wrapper instance can
+        // miss in-place mutations of a retained instance, so we key on the scalar components; a
+        // fresh structurally-equal `Rotation` per recomposition keeps the effect idle, leaving any
+        // gesture-mutated rotation untouched.
         DisposableEffect(node, position.x, position.y, position.z) {
             // Additive so a non-zero `centerOrigin` survives — see resolveModelNodePosition.
             node.position = resolveModelNodePosition(centerOriginOffset, position); onDispose {}
@@ -577,8 +576,9 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         // successful recomposition and clobbers any position a frame-loop driver
         // (PhysicsBody, animations, camera follow) wrote via `node.onFrame` in between, so
         // PhysicsDemo spheres never appeared to move. Component-wise keys (not the Float3
-        // wrapper — `dev.romainguy.kotlin.math.Float3` uses reference equality, so a freshly
-        // allocated `Position(x = …)` always `!=` the previous instance) let
+        // wrapper — `dev.romainguy.kotlin.math.Float3` is a mutable data class, so keying on the
+        // wrapper instance can miss in-place mutations of a retained instance; a fresh
+        // structurally-equal `Position` per recomposition keeps the effect idle) let
         // `DisposableEffect` stay idle while a frame driver owns the node. Mirrors the fix
         // already applied to the bare `Node` composable above.
         DisposableEffect(node, position.x, position.y, position.z) {
@@ -1300,8 +1300,9 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 content = viewContent
             ).apply(apply)
         }
-        // Keyed on scalar components (Float3 uses reference equality so a fresh
-        // Position(x = …) on each recomposition would re-trigger even when unchanged).
+        // Keyed on scalar components (Float3 is a mutable data class — keying on the wrapper
+        // instance can miss in-place mutations of a retained instance; a fresh structurally-equal
+        // Position per recomposition keeps the effect idle).
         DisposableEffect(node, position.x, position.y, position.z) {
             node.position = position; onDispose {}
         }

@@ -22,9 +22,12 @@ import org.junit.Test
  * rotation untouched, while a genuine declared-rotation change still propagates.
  *
  * The test module has no Compose UI-test dependency, so — like [MainLightReactivityTest] — this
- * pins the semantics by simulating the two effect contracts in plain JVM. If anyone reverts the
- * transform application back into an unkeyed `SideEffect`, [keyedEffectDoesNotClobberGestureRotationOnUnchangedRecompose]
- * fails.
+ * pins the *intended contract* by simulating the two effect patterns in plain JVM: it documents
+ * that an unkeyed-`SideEffect` applier re-clobbers a gesture rotation on an unchanged recompose
+ * while a component-keyed applier stays idle. It is a semantic model of that contract, **not** a
+ * guard on the production wiring — it never touches `SceneScope.ModelNode`, so it would not, on its
+ * own, fail if that composable regressed to an unkeyed `SideEffect`. The KDoc rationale in
+ * `SceneScope.kt` is the source of truth for the production effect keying.
  */
 class ModelNodeRotationRecomposeTest {
 
