@@ -219,14 +219,17 @@ fun ExploreTabScreen(
         } catch (ce: kotlinx.coroutines.CancellationException) {
             throw ce
         } catch (t: Throwable) {
-            // A rejected key (401/403) or a WAF challenge (CloudFront's
-            // bot mitigation in front of Sketchfab — see SketchfabService
-            // KDoc) flips `keyRejected` so the banner shows; a transient
-            // 429 / network blip just surfaces an empty result set rather
-            // than a crash. The empty-state UI explains.
-            if (t is SketchfabService.SketchfabError.KeyRejected ||
-                t is SketchfabService.SketchfabError.WafChallenge
-            ) {
+            // Only a rejected key (401/403 — dead, revoked, or mis-scoped
+            // token) latches the permanent "Sketchfab unavailable" banner.
+            // A WAF challenge is deliberately NOT latched here (#2644): it is
+            // transient bot mitigation, historically tripped by fast typing
+            // stacking un-cancellable search calls — and `keyRejected` is only
+            // reset by the feeds effect (pull-to-refresh / animated toggle),
+            // so latching it made a brief throttle masquerade as a dead key.
+            // Now that SketchfabService cancels superseded calls the burst is
+            // gone at the source; a residual WAF blip / 429 / network error
+            // surfaces the search empty state and clears on the next query.
+            if (t is SketchfabService.SketchfabError.KeyRejected) {
                 keyRejected = true
             }
             emptyList()

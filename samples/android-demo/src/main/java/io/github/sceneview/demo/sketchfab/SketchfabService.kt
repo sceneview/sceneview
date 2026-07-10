@@ -2,7 +2,13 @@ package io.github.sceneview.demo.sketchfab
 
 import android.content.Context
 import androidx.annotation.VisibleForTesting
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.Cache
@@ -10,8 +16,11 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.coroutines.executeAsync
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.coroutineContext
 
 /**
  * Thread-safe client for the Sketchfab Data API v3.
@@ -25,10 +34,24 @@ import java.io.IOException
  * Mirrors the iOS scaffold (`SketchfabService.swift`) — keep both in sync when
  * adding endpoints.
  *
- * All public methods are `suspend` and dispatch work to [Dispatchers.IO].
+ * All public methods are `suspend`, dispatch work to [Dispatchers.IO], and are
+ * **cooperatively cancellable**: every network round-trip goes through OkHttp's
+ * [executeAsync], so cancelling the calling coroutine aborts the underlying
+ * call (socket included). That property is what keeps the Explore tab's
+ * debounced live search from stacking zombie requests — with the old blocking
+ * `execute()` each re-keyed Compose effect abandoned a request that kept
+ * running to completion, and a fast-typing burst of those parallel calls is
+ * exactly the bot signature CloudFront's WAF throttles (#2644, #2191).
+ *
+ * @param baseUrl API root; overridable so tests can point at a local
+ *   MockWebServer. Production code always uses [SketchfabConfig.BASE_URL].
+ * @param apiKeyProvider resolves the API token per request; overridable so
+ *   tests can inject a fake without mutating global [SketchfabConfig] state.
  */
-class SketchfabService private constructor(
+class SketchfabService @VisibleForTesting internal constructor(
     private val context: Context,
+    private val baseUrl: String = SketchfabConfig.BASE_URL,
+    private val apiKeyProvider: () -> String? = { SketchfabConfig.apiKey },
 ) {
     companion object {
         @Volatile private var INSTANCE: SketchfabService? = null
@@ -39,6 +62,39 @@ class SketchfabService private constructor(
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: SketchfabService(context.applicationContext).also { INSTANCE = it }
             }
+
+        /**
+         * Hard ceiling for one API call, end to end (DNS + connect + headers +
+         * body). OkHttp ships per-phase 10 s defaults but NO overall cap, so on
+         * a degraded mobile link a single call could hold its IO thread far
+         * longer than any UI that still wants the answer. 20 s is generous for
+         * a JSON feed page yet short enough that stacked-up work drains (#2644).
+         * Binary GLB downloads stream well past 20 s legitimately, so the
+         * download path lifts the ceiling — see [downloadBinary].
+         */
+        private const val CALL_TIMEOUT_SECONDS = 20L
+
+        /**
+         * Statuses worth exactly one retry. Live probing (2026-07-10, #2644)
+         * showed Sketchfab's search backend answering in ~1.5–2.2 s against a
+         * ~2.2 s origin deadline — under load a majority of search calls die
+         * as HTTP 408 (observed: 7 of 12 in a burst), and an identical retry
+         * moments later flips to 200. That server-side degradation is what
+         * users experienced as "the search lost the connection". 429/5xx are
+         * standard transient-retry citizens; 4xx auth/shape errors are not.
+         */
+        private val TRANSIENT_HTTP_CODES = setOf(408, 429, 500, 502, 503, 504)
+
+        /**
+         * Pause before the single transient retry. CloudFront in front of the
+         * API caches error responses briefly (observed `Cache-Control:
+         * max-age=300` on 408s, loosely enforced per edge), so an *immediate*
+         * replay risks re-reading the cached failure; ~750 ms is enough to
+         * usually skip past it while staying imperceptible next to the 350 ms
+         * search debounce. Uses [kotlinx.coroutines.delay], so a superseded
+         * search cancels its pending retry along with everything else.
+         */
+        private const val TRANSIENT_RETRY_DELAY_MS = 750L
     }
 
     /**
@@ -75,6 +131,10 @@ class SketchfabService private constructor(
         // the UI shows the "Sketchfab unavailable" banner instead of three
         // self-hiding feeds.
         .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
+        // Overall per-call ceiling for the JSON endpoints (#2644) — see
+        // [CALL_TIMEOUT_SECONDS]. The GLB download path derives a no-ceiling
+        // client from this one in [downloadBinary].
+        .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
     @VisibleForTesting
@@ -243,16 +303,15 @@ class SketchfabService private constructor(
         path: String,
         block: HttpUrl.Builder.() -> Unit,
     ): HttpUrl {
-        val base = SketchfabConfig.BASE_URL.toHttpUrl()
+        val base = baseUrl.toHttpUrl()
         return base.newBuilder()
             .addPathSegments(path)
             .apply(block)
             .build()
     }
 
-    @Suppress("ThrowsCount") // fine-grained error types (WAF, key-rejected, request-failed) need multiple throws
-    private fun authenticatedGet(url: HttpUrl): String {
-        val apiKey = SketchfabConfig.apiKey ?: throw SketchfabError.MissingApiKey
+    private suspend fun authenticatedGet(url: HttpUrl): String {
+        val apiKey = apiKeyProvider() ?: throw SketchfabError.MissingApiKey
         val request = Request.Builder()
             .url(url)
             .header("Authorization", "Token $apiKey")
@@ -261,99 +320,193 @@ class SketchfabService private constructor(
             .header("User-Agent", SketchfabConfig.USER_AGENT)
             .get()
             .build()
-        client.newCall(request).execute().use { response ->
-            // AWS WAF in front of Sketchfab returns HTTP 202 + empty body +
-            // `x-amzn-waf-action: challenge` (or `block`) when it wants the
-            // client to solve a JS / CAPTCHA challenge. The body is empty, so
-            // the JSON decoder would otherwise throw `Expected start of the
-            // object '{', but had 'EOF' instead`. Surface it as a typed error
-            // so the UI shows the SketchfabDisabledBanner instead of three
-            // silent self-hiding feeds (#2191). The companion fix is the
-            // app-identifying User-Agent injected above — sending
-            // `okhttp/<version>` is the bot signature that triggered the
-            // challenge in the first place.
-            val wafAction = response.header("x-amzn-waf-action")
-            if (wafAction != null) {
-                throw SketchfabError.WafChallenge(wafAction)
-            }
-            if (!response.isSuccessful) {
-                // 401 Unauthorized / 403 Forbidden mean the API key itself was
-                // rejected (missing scope, revoked, or a typo'd secret) — a
-                // distinct failure from a transient 429 / 5xx. Surface it as
-                // its own error so the Explore feed can show the
-                // "Sketchfab unavailable" banner instead of silently
-                // collapsing into an empty feed (#2095).
-                if (response.code == 401 || response.code == 403) {
-                    throw SketchfabError.KeyRejected(response.code)
-                }
-                throw SketchfabError.RequestFailed(response.code)
-            }
-            // Force UTF-8 decoding regardless of the Content-Type charset.
-            // `body.string()` honours the response charset and falls back to
-            // ISO-8859-1 when the header lacks a `charset=` parameter — which
-            // can happen with edge-cache rewrites — corrupting any non-ASCII
-            // character in model names like `Myślinice` (Polish ś → U+FFFD).
-            // The Sketchfab API always returns UTF-8 bytes, so decoding them
-            // as UTF-8 explicitly is both correct and defensive (#1181).
-            return response.body.source().readString(Charsets.UTF_8)
+        return try {
+            fetchOnce(request)
+        } catch (e: SketchfabError.RequestFailed) {
+            // Exactly one retry for transient statuses (#2644): the degraded
+            // Sketchfab search backend 408s a majority of burst queries, and
+            // the same query re-sent moments later flips to 200 — see
+            // [TRANSIENT_HTTP_CODES]. Piling more retries onto an unhealthy
+            // origin would make things worse, so one is the cap. delay() is
+            // cancellable: a superseded search abandons its pending retry the
+            // same way it abandons the in-flight call.
+            if (e.statusCode !in TRANSIENT_HTTP_CODES) throw e
+            delay(TRANSIENT_RETRY_DELAY_MS)
+            fetchOnce(request)
         }
     }
 
+    /**
+     * Run [block] with [call]'s lifecycle tied to the calling coroutine for
+     * its WHOLE duration. [executeAsync] alone only binds cancellation to the
+     * response-await phase; once the headers are in, reading the body is a
+     * blocking Okio read that would run to completion regardless — the exact
+     * zombie-request gap this fix exists to close (#2644). The watcher extends
+     * the tie: cancellation at ANY phase invokes [okhttp3.Call.cancel], which
+     * closes the socket and aborts an in-flight read with an IOException.
+     *
+     * Two deliberate properties:
+     *  - On normal completion the watcher is cancelled; its `finally` still
+     *    runs [okhttp3.Call.cancel], which is a documented no-op on a
+     *    finished call.
+     *  - [coroutineScope] re-canonises the outcome: when the caller IS
+     *    cancelled, the function completes with the caller's
+     *    CancellationException — the socket-abort IOException can never
+     *    masquerade as a network failure to `catch` blocks upstream.
+     */
+    private suspend fun <T> executeCancellably(
+        call: okhttp3.Call,
+        block: suspend () -> T,
+    ): T = coroutineScope {
+        val tie = launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                awaitCancellation()
+            } finally {
+                call.cancel()
+            }
+        }
+        try {
+            block()
+        } finally {
+            tie.cancel()
+        }
+    }
+
+    @Suppress("ThrowsCount") // fine-grained error types (WAF, key-rejected, request-failed) need multiple throws
+    private suspend fun fetchOnce(request: Request): String {
+        // executeAsync (not the blocking execute()): cancelling the calling
+        // coroutine cancels the OkHttp call and closes its socket — see
+        // [executeCancellably] for why the tie must outlive the await phase.
+        // This is the load-bearing half of the #2644 fix: when the Explore
+        // search effect re-keys on the next debounced query, the superseded
+        // request dies instead of completing in the background and stacking
+        // WAF pressure.
+        val call = client.newCall(request)
+        return executeCancellably(call) {
+            call.executeAsync().use { response ->
+                // AWS WAF in front of Sketchfab returns HTTP 202 + empty body +
+                // `x-amzn-waf-action: challenge` (or `block`) when it wants the
+                // client to solve a JS / CAPTCHA challenge. The body is empty, so
+                // the JSON decoder would otherwise throw `Expected start of the
+                // object '{', but had 'EOF' instead`. Surface it as a typed error
+                // so the UI shows the SketchfabDisabledBanner instead of three
+                // silent self-hiding feeds (#2191). The companion fix is the
+                // app-identifying User-Agent injected above — sending
+                // `okhttp/<version>` is the bot signature that triggered the
+                // challenge in the first place.
+                val wafAction = response.header("x-amzn-waf-action")
+                if (wafAction != null) {
+                    throw SketchfabError.WafChallenge(wafAction)
+                }
+                if (!response.isSuccessful) {
+                    // 401 Unauthorized / 403 Forbidden mean the API key itself was
+                    // rejected (missing scope, revoked, or a typo'd secret) — a
+                    // distinct failure from a transient 429 / 5xx. Surface it as
+                    // its own error so the Explore feed can show the
+                    // "Sketchfab unavailable" banner instead of silently
+                    // collapsing into an empty feed (#2095).
+                    if (response.code == 401 || response.code == 403) {
+                        throw SketchfabError.KeyRejected(response.code)
+                    }
+                    throw SketchfabError.RequestFailed(response.code)
+                }
+                // Force UTF-8 decoding regardless of the Content-Type charset.
+                // `body.string()` honours the response charset and falls back to
+                // ISO-8859-1 when the header lacks a `charset=` parameter — which
+                // can happen with edge-cache rewrites — corrupting any non-ASCII
+                // character in model names like `Myślinice` (Polish ś → U+FFFD).
+                // The Sketchfab API always returns UTF-8 bytes, so decoding them
+                // as UTF-8 explicitly is both correct and defensive (#1181).
+                response.body.source().readString(Charsets.UTF_8)
+            }
+        }
+    }
+
+    /**
+     * Derived client for GLB binary streaming: same pool/cache/dispatcher as
+     * [client], but with the overall call ceiling lifted — a large model on a
+     * slow link legitimately streams for minutes, and the per-phase read
+     * timeout (OkHttp's 10 s default between socket reads) already catches a
+     * genuinely dead transfer. `newBuilder()` shares resources, so this is a
+     * view over the same engine, not a second connection pool.
+     */
+    private val downloadClient: OkHttpClient by lazy {
+        client.newBuilder().callTimeout(0, TimeUnit.MILLISECONDS).build()
+    }
+
     @Suppress("NestedBlockDepth") // OkHttp use{} + temp-file try/catch + streaming loop is inherently nested
-    private fun downloadBinary(
+    private suspend fun downloadBinary(
         remoteUrl: String,
         destination: File,
         onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null,
     ) {
         // The signed CDN URL must NOT carry the Sketchfab auth header.
         val request = Request.Builder().url(remoteUrl).get().build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw SketchfabError.DownloadFailed("HTTP ${response.code}")
-            }
-            val body = response.body
-            val totalBytes = body.contentLength() // -1 when unknown
-            destination.parentFile?.mkdirs()
-            // Stream into a per-call unique temp file, then atomically rename
-            // onto `destination`. Concurrent downloads of the same uid (the
-            // prefetch + per-slug resolve fan-out) therefore never share an
-            // output stream and can't leave a truncated GLB in the cache.
-            val temp = File.createTempFile(
-                "${destination.nameWithoutExtension}-",
-                ".glb.tmp",
-                destination.parentFile,
-            )
-            try {
-                var bytesRead = 0L
-                // Throttle callbacks: fire at most every 256 KB or 1 % of total,
-                // whichever is larger — keeps UI smooth without saturating the
-                // channel on fast connections.
-                val throttle = if (totalBytes > 0L) maxOf(totalBytes / 100L, 256 * 1024L)
-                               else 256 * 1024L
-                var nextReport = throttle
-                val buffer = ByteArray(8 * 1024)
-                temp.outputStream().use { out ->
-                    body.byteStream().use { input ->
-                        var n: Int
-                        while (input.read(buffer).also { n = it } != -1) {
-                            out.write(buffer, 0, n)
-                            bytesRead += n
-                            if (onProgress != null && bytesRead >= nextReport) {
-                                onProgress(bytesRead, totalBytes)
-                                nextReport = bytesRead + throttle
+        // Tied to the caller for the WHOLE stream (#2644, see
+        // [executeCancellably]): cancelling mid-download cancels the call, the
+        // closed socket aborts the read loop, the finally below reclaims the
+        // temp file, and coroutineScope surfaces the caller's
+        // CancellationException — never a bogus DownloadFailed.
+        val call = downloadClient.newCall(request)
+        executeCancellably(call) {
+            call.executeAsync().use { response ->
+                if (!response.isSuccessful) {
+                    throw SketchfabError.DownloadFailed("HTTP ${response.code}")
+                }
+                val body = response.body
+                val totalBytes = body.contentLength() // -1 when unknown
+                destination.parentFile?.mkdirs()
+                // Stream into a per-call unique temp file, then atomically rename
+                // onto `destination`. Concurrent downloads of the same uid (the
+                // prefetch + per-slug resolve fan-out) therefore never share an
+                // output stream and can't leave a truncated GLB in the cache.
+                val temp = File.createTempFile(
+                    "${destination.nameWithoutExtension}-",
+                    ".glb.tmp",
+                    destination.parentFile,
+                )
+                try {
+                    var bytesRead = 0L
+                    // Throttle callbacks: fire at most every 256 KB or 1 % of total,
+                    // whichever is larger — keeps UI smooth without saturating the
+                    // channel on fast connections.
+                    val throttle = if (totalBytes > 0L) maxOf(totalBytes / 100L, 256 * 1024L)
+                                   else 256 * 1024L
+                    var nextReport = throttle
+                    val buffer = ByteArray(8 * 1024)
+                    temp.outputStream().use { out ->
+                        body.byteStream().use { input ->
+                            var n: Int
+                            while (input.read(buffer).also { n = it } != -1) {
+                                // Belt-and-braces next to the watcher: bail out
+                                // of the CPU side of the loop as soon as the
+                                // caller is cancelled, before touching the
+                                // socket again. Throws CancellationException;
+                                // the finally below reclaims the temp file.
+                                coroutineContext.ensureActive()
+                                out.write(buffer, 0, n)
+                                bytesRead += n
+                                if (onProgress != null && bytesRead >= nextReport) {
+                                    onProgress(bytesRead, totalBytes)
+                                    nextReport = bytesRead + throttle
+                                }
                             }
+                            // Final notification at 100 %.
+                            onProgress?.invoke(bytesRead, totalBytes)
                         }
-                        // Final notification at 100 %.
-                        onProgress?.invoke(bytesRead, totalBytes)
                     }
+                    if (!temp.renameTo(destination)) {
+                        temp.copyTo(destination, overwrite = true)
+                    }
+                } catch (io: IOException) {
+                    throw SketchfabError.DownloadFailed(io.message ?: "io error", cause = io)
+                } finally {
+                    // Success renames temp away; every failure path — IOException,
+                    // cancellation mid-stream, copyTo fallback — leaves it behind.
+                    // One cleanup covers them all: no truncated GLB, no orphaned
+                    // .tmp accumulating in the cache dir.
+                    if (temp.exists()) temp.delete()
                 }
-                if (!temp.renameTo(destination)) {
-                    temp.copyTo(destination, overwrite = true)
-                    temp.delete()
-                }
-            } catch (io: IOException) {
-                temp.delete()
-                throw SketchfabError.DownloadFailed(io.message ?: "io error", cause = io)
             }
         }
     }

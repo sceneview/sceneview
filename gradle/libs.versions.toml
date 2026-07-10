@@ -150,8 +150,13 @@ fuel-coroutines = { group = "com.github.kittinunf.fuel", name = "fuel-coroutines
 
 # OkHttp (HTTP client used by Sketchfab service in android-demo)
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
-# MockWebServer — JVM-only test double for the feedback uploader / ticket-status
-# OkHttp calls (#1930 review). Same okhttp version as the runtime client.
+# Call.executeAsync() — cooperatively-cancellable suspend calls. Cancelling the
+# coroutine aborts the socket, so a re-keyed Compose search effect no longer
+# leaks a completed-anyway request behind it (#2644). Same version as okhttp.
+okhttp-coroutines = { group = "com.squareup.okhttp3", name = "okhttp-coroutines", version.ref = "okhttp" }
+# MockWebServer — JVM-only test double for SketchfabService's cancellation
+# behaviour (#2644). Same okhttp version as the runtime client.
+mockwebserver3 = { group = "com.squareup.okhttp3", name = "mockwebserver3", version.ref = "okhttp" }
 
 # Kotlinx Serialization (JSON parsing for Sketchfab API responses)
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
