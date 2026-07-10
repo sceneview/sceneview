@@ -218,6 +218,11 @@ lower-level unified AR+VR API. See `llms.txt § WebXR`.
    Safari iOS 18+. VR: Meta Quest Browser, desktop Chrome with a headset.
    Always gate on `checkSupport` and provide a non-XR fallback.
 
+7. **In-app scene→MP4 recording is Android-only for now.** Android's
+   `SurfaceMirrorer` / `rememberSurfaceMirrorer()` (#2626) has no Web port yet
+   (coming soon). To record on Web today, capture the render `<canvas>` with the
+   platform-native `canvas.captureStream()` + `MediaRecorder`.
+
 ## Haptic feedback
 
 `sceneview-web` exposes a `SceneViewHaptic` class that wraps the browser

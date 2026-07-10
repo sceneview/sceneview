@@ -4945,6 +4945,7 @@ These symbols do not exist on iOS (no `@available(*, deprecated)` factory — th
 | Symbol | Why iOS can't | iOS path |
 |---|---|---|
 | `ARSceneView(playbackDataset:)` | ARKit has no deterministic recording playback | Record-only via [#1032 ReplayKit](https://github.com/sceneview/sceneview/issues/1032); replay stays Android-only |
+| `SurfaceMirrorer` / `rememberSurfaceMirrorer()` (+ `SceneView`/`ARSceneView(surfaceMirrorer:)`) | In-app scene→MP4 mirroring rides Filament `Renderer.copyFrame`; RealityKit has no per-frame surface-copy equivalent | iOS records the scene via [ReplayKit `RPScreenRecorder`](https://github.com/sceneview/sceneview/issues/1032) (see `cheatsheet-ios.md` "Recording"); the `surfaceMirrorer` parameter stays Android-only |
 | `ARSceneView(renderQuality:)` | The one-line `renderQuality` preset is on the AR composable on Android only; the iOS `.renderQuality(_:)` modifier is 3D-`SceneView`-only (#2524) | Tune AR on iOS via `ARSceneView(cameraExposure:)` + IBL; use `.renderQuality(_:)` on the 3D `SceneView` path |
 | `SurfaceType.texture` | RealityKit always renders to `MTKView` | N/A — no port needed |
 | `StreetscapeGeometry` | ARGeoTrackingConfiguration exists but no mesh equivalent | iOS-skip with doc warning |
