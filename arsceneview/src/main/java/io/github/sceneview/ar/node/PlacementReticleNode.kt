@@ -79,8 +79,11 @@ internal class ReticleOrientationSmoother(smoothing: Float) {
  *                              placement (adds feature-point hits, planes stay
  *                              in-polygon).
  * @param depthPoint            Also accept depth hits (needs depth mode enabled).
- * @param predicate             Extra acceptance filter ANDed with the built-in ones
- *                              (e.g. a max-distance policy). Construction-time only.
+ * @param predicate             Custom acceptance filter for each candidate hit. When set
+ *                              it REPLACES the built-in trackable-type / in-polygon /
+ *                              tracking-state checks (only the camera-distance floor still
+ *                              applies) — re-check any built-in condition you still need
+ *                              inside it. Construction-time only.
  * @param orientationSmoothing  Per-frame slerp fraction in `0..1` toward the hit
  *                              orientation. Default [DEFAULT_ORIENTATION_SMOOTHING]
  *                              (= 0.75, the Depth Lab value); `1.0f` = raw orientation.

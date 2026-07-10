@@ -42,6 +42,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.arcore.subsumedBy
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForcedTrackingFailure
@@ -157,8 +158,12 @@ fun TapToPlaceArSession(
                 // Recompute "is there any plane the user can actually tap?" each frame
                 // (#2234). Detection is cheap — ARCore caches the trackable set
                 // internally and we only scan Planes.
+                // Exclude subsumed (merged) planes — ARCore can keep a subsumed plane in
+                // TRACKING with a non-null `subsumedBy`; rendering a ShadowReceiverPlane for
+                // it double-darkens the multiplicative shadow and z-fights the coplanar quad
+                // it was merged into (ARCore's recommended pre-render check).
                 val tracked = session.getAllTrackables(Plane::class.java)
-                    .filter { it.trackingState == TrackingState.TRACKING }
+                    .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
                 state.anyPlaneTracked = tracked.isNotEmpty()
                 // Change-only write (60 Hz path): drives the ShadowReceiverPlane set.
                 if (trackedPlanes != tracked) trackedPlanes = tracked
