@@ -87,8 +87,15 @@ jobs:
         run: |
           V="$RELEASE_VERSION"
           sed -i "s/^VERSION_NAME=.*/VERSION_NAME=$V/" gradle.properties
-          bash .claude/scripts/sync-versions.sh --fix
-          # M7b made --fix complete; verify it stayed that way.
+          # `|| true` is load-bearing: sync-versions.sh --fix EXITS 1 by contract
+          # whenever it had mismatches to fix ("1 = mismatches found (or fixed if
+          # --fix)"), because $ERRORS is the pre-fix count and is never recomputed
+          # after fixing. This step's shell is `bash -e`, so an unguarded --fix
+          # aborted the whole step the instant it returned 1 — BEFORE the verify
+          # pass below ever ran (issue #2619). The writes did persist; only the
+          # premature set -e exit made CI look like a coverage regression.
+          bash .claude/scripts/sync-versions.sh --fix || true
+          # M7b made --fix complete; the verify pass below is the real gate.
           OUT=$(bash .claude/scripts/sync-versions.sh || true)
           echo "$OUT" | tail -5
           echo "$OUT" | grep -q "Errors (MISMATCH): 0" \
