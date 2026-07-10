@@ -279,6 +279,11 @@ fun SceneView(
      * Obtain with [rememberSurfaceMirrorer], then call
      * [SurfaceMirrorer.startMirroring][io.github.sceneview.utils.SurfaceMirrorer.startMirroring] /
      * [SurfaceMirrorer.stopMirroring][io.github.sceneview.utils.SurfaceMirrorer.stopMirroring].
+     *
+     * Wiring a non-null `surfaceMirrorer` keeps the window swap chain `CONFIG_READABLE` for the
+     * composable's whole lifetime — a small always-on GPU-readback cost that does not revert when
+     * you set it back to null (it clears only at surface detach). Prefer passing it unconditionally
+     * over toggling it per-recording.
      */
     surfaceMirrorer: SurfaceMirrorer? = null,
     /**
