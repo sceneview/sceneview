@@ -193,7 +193,15 @@ test.describe('SceneView Kotlin/JS bundle — browser init', () => {
         step = 'getWorldTransform(detached)';
         const detachedWorldX = tm.getWorldTransform(tm.getInstance(child))[12];
 
-        return { worldX, detachedWorldX };
+        // The invariant `nullParentInstance()` depends on: the sentinel entity
+        // must NEVER be granted a transform component, or `getInstance(sentinel)`
+        // stops being native instance 0 and the detach silently re-parents to a
+        // real node instead. Using it as a null parent above must not have
+        // materialised a component on it. (#2613)
+        step = 'hasComponent(detachSentinel)';
+        const sentinelHasComponent = tm.hasComponent(detachSentinel);
+
+        return { worldX, detachedWorldX, sentinelHasComponent };
       } catch (e: any) {
         return { error: `${step}: ${e?.name ?? ''} ${e?.message ?? String(e)}` };
       }
@@ -204,6 +212,12 @@ test.describe('SceneView Kotlin/JS bundle — browser init', () => {
     expect((result as any).worldX).toBeCloseTo(5, 3);
     // detached → world = local → x = 3
     expect((result as any).detachedWorldX).toBeCloseTo(3, 3);
+    // The detach sentinel must stay component-less — the invariant that keeps
+    // its instance native-0 (the null parent). (#2613)
+    expect(
+      (result as any).sentinelHasComponent,
+      'detach sentinel gained a transform component — nullParentInstance() invariant broken',
+    ).toBe(false);
   });
 
   /**
