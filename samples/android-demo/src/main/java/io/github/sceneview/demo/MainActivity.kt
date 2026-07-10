@@ -109,8 +109,9 @@ class MainActivity : ComponentActivity() {
             ?.takeIf { isWithinAppFilesDir(it) }
         // Optional camera-to-model distance (zoom level). Maestro has no pinch gesture, so
         // the device-QA flows drive 3D zoom by deep link instead (#1571). Same dual-ingress
-        // policy: the `--ef camera_distance <f>` QA extra wins over the URL query parameter.
-        // Both go through DeepLinkRouter.validateCameraDistance, so a non-finite or
+        // policy: the `camera_distance` QA extra (any Bundle type — Float from `adb --ef`,
+        // String from Maestro launchApp arguments, #2652) wins over the URL query parameter.
+        // Both go through the DeepLinkRouter clamp, so a non-finite, unparseable, or
         // out-of-range value is dropped to null (default framing) rather than crashing.
         DemoSettings.cameraDistance = resolveCameraDistance(intent)
         // Optional initial tab for a consolidated (segmented-button) demo. Set from the alias
@@ -163,22 +164,28 @@ class MainActivity : ComponentActivity() {
      * Resolves the optional camera-to-model distance (zoom level) from an incoming intent.
      *
      * Two ingress channels, mirroring the `demo` extra's dual-channel policy:
-     *  1. `--ef camera_distance <f>` — the QA extra, used by the Maestro device-QA flows
-     *     and `adb shell am`. Takes precedence.
+     *  1. The `camera_distance` intent extra — used by the Maestro device-QA flows and
+     *     `adb shell am`. Takes precedence. The extra's Bundle type depends on the
+     *     sender — `adb --ef` delivers a `Float`, but Maestro's `launchApp` delivers
+     *     env-interpolated values as `String` extras (and could deliver a bare YAML
+     *     number as `Integer`/`Double`) — so the raw value is read type-agnostically and
+     *     coerced by [DeepLinkRouter.coerceCameraDistanceExtra]. Reading only
+     *     `getFloatExtra` here silently ignored Maestro's zoom parameter (#2652).
      *  2. `?cameraDistance=<f>` query parameter on a `sceneview://demo/<id>` URL deep link.
      *
-     * Both are clamped by [DeepLinkRouter.validateCameraDistance] / [parseCameraDistance] to
-     * a finite, in-range value; anything absent, unparseable, or out of range resolves to
-     * `null` so the launched demo keeps its own auto-fit framing and never crashes.
-     *
-     * `Float.NaN` is the sentinel for "extra absent" — `getFloatExtra` has no nullable
-     * overload — and `validateCameraDistance` rejects NaN, so an absent extra correctly
-     * falls through to the URL channel.
+     * Both are clamped by [DeepLinkRouter.coerceCameraDistanceExtra] /
+     * [DeepLinkRouter.parseCameraDistance] to a finite, in-range value; anything absent,
+     * unparseable, of an unsupported type, or out of range resolves to `null` so the
+     * launched demo keeps its own auto-fit framing and never crashes.
      */
     private fun resolveCameraDistance(intent: Intent?): Float? {
         if (intent == null) return null
-        val fromExtra = DeepLinkRouter.validateCameraDistance(
-            intent.getFloatExtra("camera_distance", Float.NaN),
+        // Bundle.get is deprecated in favour of the typed getters, but "which type did
+        // the sender use?" is exactly the unknown being resolved here — the typed
+        // getters would each silently drop the other senders' encodings.
+        @Suppress("DEPRECATION")
+        val fromExtra = DeepLinkRouter.coerceCameraDistanceExtra(
+            intent.extras?.get("camera_distance"),
         )
         return fromExtra ?: DeepLinkRouter.parseCameraDistance(intent.data)
     }

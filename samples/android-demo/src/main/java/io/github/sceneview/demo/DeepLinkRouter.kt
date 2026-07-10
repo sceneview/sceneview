@@ -227,7 +227,8 @@ internal object DeepLinkRouter {
      * caller treats as "keep the demo's default framing". Never throws.
      *
      * Mirrors [validateCameraDistance] — both ingress channels (URL deep link and the
-     * `--ef camera_distance` intent extra) apply the identical clamp.
+     * `camera_distance` intent extra, see [coerceCameraDistanceExtra]) apply the
+     * identical clamp.
      */
     fun parseCameraDistance(data: Uri?): Float? {
         if (data == null) return null
@@ -238,8 +239,9 @@ internal object DeepLinkRouter {
 
     /**
      * Validates an already-parsed camera distance against the accepted range. Shared by
-     * the URL deep-link path ([parseCameraDistance]) and the `--ef camera_distance`
-     * intent-extra path so both ingress channels behave identically.
+     * the URL deep-link path ([parseCameraDistance]) and the `camera_distance`
+     * intent-extra path ([coerceCameraDistanceExtra]) so both ingress channels behave
+     * identically.
      *
      * Returns [value] iff it is non-null, finite, and within
      * `[CAMERA_DISTANCE_MIN, CAMERA_DISTANCE_MAX]`; otherwise `null`.
@@ -247,6 +249,32 @@ internal object DeepLinkRouter {
     fun validateCameraDistance(value: Float?): Float? {
         if (value == null || !value.isFinite()) return null
         return value.takeIf { it in CAMERA_DISTANCE_MIN..CAMERA_DISTANCE_MAX }
+    }
+
+    /**
+     * Coerces a raw `camera_distance` intent-extra value — whatever Bundle type it
+     * arrived under — to a validated camera distance, or `null`.
+     *
+     * The extra's type depends on who launched the intent, and all senders must work
+     * (#2652):
+     *  - `adb shell am start --ef camera_distance 0.6` → `Float` (the documented channel);
+     *  - Maestro's `launchApp` → `arguments:` — an env-interpolated value
+     *    (`camera_distance: ${CAMERA_DISTANCE}`) reaches the intent as a **`String`**
+     *    extra, and a bare unquoted YAML number could arrive as `Integer`/`Double`.
+     *    Reading only `getFloatExtra` silently dropped the Maestro value to NaN, so the
+     *    zoom-QA near/far relaunches (#1571) rendered at the auto-fit framing instead of
+     *    the requested distance — verified on-emulator: `--ef` reframes, `--es` was
+     *    ignored.
+     *
+     * Every branch funnels through [validateCameraDistance], so the accepted range and
+     * non-finite rejection are identical across encodings. Unsupported types (and an
+     * absent extra, `null`) return `null` — "keep the demo's auto-fit framing". Never
+     * throws.
+     */
+    fun coerceCameraDistanceExtra(value: Any?): Float? = when (value) {
+        is Number -> validateCameraDistance(value.toFloat())
+        is String -> validateCameraDistance(value.toFloatOrNull())
+        else -> null
     }
 
     /**

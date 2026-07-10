@@ -156,11 +156,20 @@ optionally, so a checkout without the file builds keyless and silently.
 7. **Optional zoom QA** ([#1571](https://github.com/sceneview/sceneview/issues/1571)):
    when the caller sets the `CAMERA_DISTANCE` env var, `flows/demo.yaml`
    additionally re-launches the demo at a near + far framing via the
-   `camera_distance` float extra (`--ef`). That extra feeds
-   `DemoSettings.cameraDistance` through `DeepLinkRouter`, overriding the 3D
-   hero-orbit camera distance — the only way to exercise 3D zoom, since Maestro
-   has no pinch gesture. `3d-basics.yaml` sets it on `model-viewer`, producing
-   `demo-model-viewer-zoom-near` / `-zoom-far` screenshots.
+   `camera_distance` intent extra. Maestro delivers env-interpolated launch
+   arguments as **String** extras (not `--ef` floats — verified on-emulator,
+   [#2652](https://github.com/sceneview/sceneview/issues/2652)), so
+   `MainActivity` coerces the extra type-agnostically
+   (`DeepLinkRouter.coerceCameraDistanceExtra`) before it feeds
+   `DemoSettings.cameraDistance`, overriding the 3D hero-orbit camera distance
+   — the only way to exercise 3D zoom, since Maestro has no pinch gesture.
+   Each zoom relaunch is a cold start, so before its screenshot the flow waits
+   for the model-load scrim to clear plus a fixed 9 s render warm-up (engine +
+   IBL + shader compilation; a plain `waitForAnimationToEnd` returns early on
+   a `qa_mode`-frozen black viewport, which is how the near/far captures used
+   to come out black and byte-identical, #2652). `3d-basics.yaml` sets it on
+   `model-viewer`, producing `demo-model-viewer-zoom-near` / `-zoom-far`
+   screenshots.
 
 **iOS** — `ios/flows/demo.yaml` runs once per demo with `DEMO_ID` /
 `DEMO_NAME` / `ASSERT_TEXT` env vars:
@@ -182,8 +191,10 @@ optionally, so a checkout without the file builds keyless and silently.
 - **No pinch gesture.** Maestro cannot pinch, so 3D camera zoom cannot be
   driven by touch. On **Android** this is solved by the `camera_distance`
   deep-link param ([#1571](https://github.com/sceneview/sceneview/issues/1571),
-  see step 7 above): the demo registry exposes a `camera_distance` float extra
-  (`--ef`) and a `sceneview://demo/<id>?cameraDistance=<f>` query parameter that
+  see step 7 above): the demo app accepts a `camera_distance` intent extra of
+  any Bundle type (Float from `adb --ef`, String from Maestro launch arguments
+  — [#2652](https://github.com/sceneview/sceneview/issues/2652)) and a
+  `sceneview://demo/<id>?cameraDistance=<f>` query parameter that
   override the hero-orbit camera distance, so `flows/demo.yaml` can deep-link a
   near + far framing. The matching iOS and web deep-link params are tracked in
   [#1563](https://github.com/sceneview/sceneview/issues/1563) /

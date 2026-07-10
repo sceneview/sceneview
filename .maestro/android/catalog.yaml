@@ -32,7 +32,8 @@
 # Zoom QA (#1571):
 #   Maestro has no pinch gesture, so 3D camera zoom cannot be driven by touch.
 #   It is driven by a deep-link param instead: the demo registry (DeepLinkRouter
-#   / the intent extras) exposes a `camera_distance` float extra (`--ef`) and a
+#   / the intent extras) exposes a `camera_distance` extra (any Bundle type —
+#   Maestro delivers a String, `adb --ef` a Float, #2652) and a
 #   `sceneview://demo/<id>?cameraDistance=<f>` query parameter that override the
 #   3D hero-orbit camera distance. flows/demo.yaml has an optional zoom section
 #   (gated on the CAMERA_DISTANCE env var) that re-launches a demo at a near +
