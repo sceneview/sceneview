@@ -178,23 +178,42 @@ warn() { echo "[device-qa] WARNING: $*" >&2; }
 # A full cross-platform pass spins up an emulator + simulator + browser +
 # multiple Gradle/xcodebuild builds. Refuse to start on a near-full disk.
 #
-# The threshold scales with the platform selection: the default 15 GB fits a
-# full pass (emulator AVD + Gradle + xcodebuild), but a web-only run needs
-# ~3 GB (npm + Playwright browsers). GitHub ubuntu runners float between
-# ~14-21 GB free depending on the image of the day, so gating `--platform=web`
-# at 15 GB failed CI at random (run 29033630233 aborted before any test) —
-# on a leg that is the BLOCKING release gate.
+# The threshold scales with the platform selection. The default 15 GB fits a
+# full cross-platform pass (emulator AVD + Gradle + xcodebuild). Single-leg CI
+# jobs need far less, and GitHub ubuntu runners float between ~14-21 GB free
+# depending on the image of the day, so a blanket 15 GB gate aborts CI at
+# random (run 29033630233 killed the BLOCKING web leg before any test ran):
+#   • web            ~5 GB — npm + Playwright browsers, no emulator/build.
+#   • android | ar   ~8 GB — reuse the prebuilt demo APK, boot one emulator,
+#                    assembleDebug to inject the keys (#2343), sideload the
+#                    ~300 MB ARCore APK. Well under a full pass — a 15 GB gate
+#                    false-aborted the advisory `ar` leg (#2640) exactly as it
+#                    once did the web leg.
 DISK_MIN_GB=15
-[[ "$PLATFORM" == "web" ]] && DISK_MIN_GB=5
+case "$PLATFORM" in
+  web)        DISK_MIN_GB=5 ;;
+  android|ar) DISK_MIN_GB=8 ;;
+esac
+DISK_GATE_SKIP=false   # set below when an advisory-only --ci run trips the gate
 if ! bash "$SCRIPT_DIR/disk-gated-spawn-check.sh" --quiet --min-gb="$DISK_MIN_GB" >/dev/null 2>&1; then
   warn "free disk is below the safe threshold — run cleanup before a full pass:"
   warn "  bash .claude/scripts/gradle-cache-cleanup.sh"
   warn "  bash .claude/scripts/worktree-auto-prune.sh --yes --keep \"\$(git rev-parse --show-toplevel)\""
-  # Hard-stop in CI; on a dev box a single light leg (web) may still be fine,
-  # so warn and let the caller's --platform choice proceed.
+  # A BLOCKING leg (web, or an `all` pass that includes it) must hard-stop in CI
+  # so a genuine shortage is never hidden. But a single ADVISORY leg (ar/android)
+  # is already non-blocking (#1651/#1670) and an infra-level disk shortage is not
+  # a product crash — hard-failing it with exit 2 turned the job red and wrote no
+  # report (#2640). Flag it here and, once the report machinery is up, record an
+  # honest `skipped` (WARN, exit 0 — the #1645 path): the job stays green with a
+  # truthful report and, because no demo ever launches, no real crash is masked.
+  # On a dev box (not --ci) a single light leg may still be fine: warn + proceed.
   if $CI_MODE; then
-    echo "[device-qa] CI mode + low disk — aborting before any platform ran." >&2
-    exit 2
+    if [[ "$PLATFORM" != "all" ]] && is_advisory "$PLATFORM"; then
+      DISK_GATE_SKIP=true
+    else
+      echo "[device-qa] CI mode + low disk — aborting before any platform ran." >&2
+      exit 2
+    fi
   fi
 fi
 
@@ -621,6 +640,18 @@ case "$PLATFORM" in
   all) LEGS=(web android ar ios) ;;
   *)   LEGS=("$PLATFORM") ;;
 esac
+
+# The --ci disk gate tripped for an advisory-only selection (see the disk gate
+# near the top): record every selected leg as an honest `skipped` and run
+# nothing. The aggregation below turns an all-advisory `skipped` set into
+# WARN / exit 0 (#1645/#1670) with a truthful report — no demo ran, so no crash
+# is masked, and the job stays green instead of a misleading exit-2 failure.
+if $DISK_GATE_SKIP; then
+  for leg in "${LEGS[@]}"; do
+    record "$leg" skipped "disk gate: free disk below ${DISK_MIN_GB} GB on the CI runner — advisory leg not run (#1645)" "" 0
+  done
+  LEGS=()
+fi
 
 for leg in "${LEGS[@]}"; do
   case "$leg" in
