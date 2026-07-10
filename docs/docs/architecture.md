@@ -77,23 +77,38 @@ When the composable leaves the tree, `onDispose` detaches the node synchronously
 Filament entity is gone before `node.destroy()` releases its material/mesh resources) and
 then destroys it.
 
-### 2. Property updates via `SideEffect`
+### 2. Property updates via keyed `DisposableEffect` (and `SideEffect`)
 
 Position, rotation, scale, visibility, and other node properties are pushed to the Filament
-entity inside a `SideEffect` block that runs after every recomposition:
+entity from an effect that runs on the main thread. The **transform-declaring nodes** (`Node`,
+`ModelNode`, `SphereNode`, `ViewNode`) key each transform component on its scalar values, so the
+value is re-applied to the runtime node **only when the declared value actually changes** — not
+on an unrelated recomposition:
 
 ```kotlin
 // From SceneScope.Node()
 val node = remember(engine) { Node(engine = engine).apply(apply) }
-SideEffect {
-    node.position = position
-    node.rotation = rotation
-    node.scale = scale
-    node.isVisible = isVisible
+DisposableEffect(node, position.x, position.y, position.z) {
+    node.position = position; onDispose {}
 }
+DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+    node.rotation = rotation; onDispose {}
+}
+DisposableEffect(node, scale.x, scale.y, scale.z) {
+    node.scale = scale; onDispose {}
+}
+DisposableEffect(node, isVisible) { node.isVisible = isVisible; onDispose {} }
 ```
 
-Because `SideEffect` runs on the main thread after composition, Filament's JNI calls (which
+Keying on the components means a recomposition that did **not** change a transform leaves the
+runtime node untouched — so a transform that a gesture or a frame-loop driver wrote directly on
+the node survives the recomposition
+([#2639](https://github.com/sceneview/sceneview/issues/2639)). The geometry/media nodes
+(`CubeNode`, `TextNode`, …) still push their transform from an unkeyed `SideEffect` that
+re-applies on every recomposition — migrating them is tracked in
+[#2653](https://github.com/sceneview/sceneview/issues/2653).
+
+Because these effects run on the main thread after composition, Filament's JNI calls (which
 *must* happen on the main thread) are naturally satisfied.
 
 ### 3. Scene-level sync via `snapshotFlow`
@@ -234,7 +249,7 @@ Every frame follows this sequence:
 
 ```text
  1.  Compose recomposition
-     └─ SideEffect pushes updated node properties to Filament entities
+     └─ keyed DisposableEffect / SideEffect pushes changed node properties to Filament entities
 
  2.  Choreographer frame callback (withFrameNanos)
      ├─ modelLoader.updateLoad()         ← finishes async resource loads
