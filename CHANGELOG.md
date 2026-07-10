@@ -2,6 +2,76 @@
 
 ## Unreleased
 
+## v4.21.2 — AR drag gestures unfrozen, groundShadows NPE + centerOrigin correctness (2026-07-10)
+
+### Fixed
+
+- `GestureDetector`: move/rotate/scale listeners dispatched the gesture-BEGIN
+  `MotionEvent` (a stale, framework-recycled reference) to nodes on every
+  mid-gesture callback — a destructured binding shadowed the live event. In AR
+  this froze drag entirely: `PoseNode.onMove` re-hit-tested the finger-DOWN
+  pixel every frame, so a dragged `AnchorNode`/model never moved. Gestures now
+  pin the begin node and forward the live event ([#2629](https://github.com/sceneview/sceneview/issues/2629)).
+- `ShadowReceiverPlaneNode`: the invisible shadow-catcher quad was touchable
+  and won first-hit touch resolution over anything behind it — taps and drags
+  starting on a floor covered by a shadow catcher were silently swallowed
+  (placed models undraggable, floor taps dead). The node and its mesh child now
+  opt out of touch (`isTouchable = false`) ([#2630](https://github.com/sceneview/sceneview/issues/2630)).
+- **arsceneview**: fixed a `NullPointerException` crash on real devices the instant an ARCore plane was detected with `PlacementScene(groundShadows = true)` (#2621, regression in 4.21.0, root-caused via the AR device-QA leg failure #2620). The base `PlaneNode`'s `init { trackable = plane }` invokes `update(trackable)` — dispatched to `ShadowReceiverPlaneNode`'s override — *before* the subclass's `meshNode` field is initialized, so the override dereferenced a null `meshNode` and crashed on the first detected plane (the emulator never converges a plane, so it slipped through emulator QA). `update()` now no-ops until construction finishes. The receiver additionally mirrors `PlaneVisualizer`'s device-proven flat-receiver recipe (`culling(false)` + a non-degenerate bounding box).
+- **sceneview**: `ModelNode.centerOrigin` now actually aligns the model's bounding box with the node origin (#2622). The old formula (`position += origin * size`) was sign-inverted (bottom-aligning shifted the model *down*), double magnitude (full extent instead of half extent), and ignored the AABB center — so `origin = (0,0,0)` ("center the model") was a silent no-op and `origin = (0,-1,0)` left the model a full scaled height *below* the origin instead of sitting on it. The new formula (`position -= (center + origin * halfExtent) * scale`) lands the bounding-box point selected by the normalized origin (`-1..1` per axis) exactly on the node origin, whatever the asset's authored pivot — matching what the KDoc always promised. This lines up with iOS `centerOrigin(_:)` **only for the centering case** (Android `Position(0,0,0)` ↔ iOS `.zero`); for a non-zero origin the platforms deliberately diverge — Android's origin is a **normalized** `-1..1` bounding-box coordinate, whereas iOS's target is an **absolute** point in metres, so an Android snippet ported verbatim mis-places the model (`llms.txt` documents the divergence and the iOS `SIMD3(0, bounds.extents.y/2, 0)` grounding workaround). Formula extracted as a pure, JVM-tested helper (`ModelNodeCenterOriginFormulaTest`, non-centered-AABB fixtures).
+  **Migration (behavior change):** if you compensated the old offset manually (e.g. added `position` corrections or a `scaleToUnits / 2` lift on top of `centerOrigin`), remove the compensation — `centerOrigin = Position(0,-1,0)` alone now grounds the model exactly. If you passed `centerOrigin = Position(0,0,0)` relying on it doing nothing, pass `null` (or drop the parameter) to keep the asset's authored pivot; `(0,0,0)` now genuinely centers the bounding box on the node origin. The in-repo demos passed `Position(0,0,0)` as a no-op everywhere; those arguments are removed in this change so every demo renders byte-for-byte identically.
+- **arsceneview**: hardened the four remaining carriers of the init-time open-dispatch bug class behind the 4.21.0 `groundShadows` crash (#2624, audit of #2621). `PlaneNode`, `AugmentedImageNode`, `AugmentedFaceNode` and `StreetscapeGeometryNode` all run `init { trackable = … }`, whose setter virtually dispatches the open `update()` — so any subclass override executed **before the subclass's fields were initialized** (exactly how `ShadowReceiverPlaneNode` NPE'd on-device in 4.21.0). Each carrier now gates its class-specific `update()` tail behind a `constructed` flag (the proven `ShadowReceiverPlaneNode` pattern) and re-applies the initial trackable state at the end of `init`, so the construction end-state is byte-for-byte unchanged — a user callback like `onTrackingMethodChanged` now simply observes a fully-constructed node. `TrackableNode.update`'s KDoc documents the hazard + guard recipe for user subclasses (which cannot be protected library-side), and a source-level contract test (`TrackableNodeConstructionGuardContractTest`) pins the guard structure in all four files. Audit table with per-node verdicts: #2624.
+- **device-qa (CI)**: the pre-flight disk gate aborted `--platform=web` CI runs
+  at random — it required 15 GB free (a threshold sized for a full local
+  multi-platform pass) while GitHub ubuntu runners float between ~14-21 GB
+  depending on the image, and the web leg is the BLOCKING release gate. The
+  threshold now scales with the platform selection (web-only: 5 GB).
+- **web-demo (tests)**: the WebXR Playwright specs false-failed from the day
+  `iwer` 2.3.0 shipped (2026-07-09) — 2.3.0 added a guard that silently skips
+  `installRuntime()` when a native `navigator.xr` exists, and headless
+  Chromium ships one (answering `isSessionSupported=false`), so the shim never
+  took on CI and the AR/VR buttons stayed `display:none`. The test helper now
+  passes the official `{ forceInstall: true }` escape hatch — honored by
+  2.3.0, accepted-and-ignored by 2.2.x, no version pin needed. Verified 3/3
+  specs pass under both 2.2.1 and 2.3.0.
+
+### Tests
+
+- AR device-QA leg (`ar-replay-qa.sh` + `ARReplayHarnessTest`): the harness now writes its
+  machine-readable summary **incrementally** with an `inProgress` marker, and the script
+  streams `logcat` + tees the instrumentation output into the artifact bundle. When the
+  instrumentation host process dies mid-sweep — a demo crashing the shared `MainActivity`
+  process, or an lmkd OOM-kill, as happened silently on the CI x86_64/swiftshader emulator
+  for over a week — the leg now leaves an honest partial verdict that **names the crashing
+  demo** and captures the crash signature, instead of a bare `rc=1` with no summary at all
+  ([#2620](https://github.com/sceneview/sceneview/issues/2620)).
+- **device-qa (iOS leg)**: root-caused the `3d-basics` flow failure on
+  `demo-settings.yaml` — not an app regression: Maestro 2.6.1 on the iOS 26.3
+  runtime does not traverse a presented SwiftUI sheet's content at all (with
+  the sheet visibly open and screenshot-verified, the accessibility hierarchy
+  contains only the gear FAB and the status bar). The sheet-content
+  `ASSERT_TEXT` assertion is now `optional: true` (advisory) with the real
+  crash gates unchanged (FAB re-assert + the simulator-log sweep); documented
+  in `.maestro/README.md` known limitations.
+- **device-qa (Maestro pin)**: bumped the pinned Maestro from 1.39.0 to 2.6.1
+  in `lib/maestro.sh` and — new — actually pinned the CI install in
+  `device-qa.yml`, which had been silently floating on latest all along (so
+  android CI was already green on 2.6.x while local runs pinned 1.39). No
+  `.maestro/` flow uses `runScript`/`evalScript`, so the 2.x Rhino→GraalJS
+  removal is a non-event; the iOS catalog was re-validated on 2.6.1 locally.
+- **device-qa (iOS leg)**: `ios-device-qa.sh` now keeps the simulator's unified
+  log as a run artifact instead of a discarded mktemp, and fixes the crash-gate
+  predicate — it filtered on `process == "SceneViewDemo"`, which never matched
+  anything (the built bundle's `CFBundleExecutable` is `SceneView`), so the
+  post-run crash sweep had been silently blind. The stream now filters on
+  `process == "SceneView" OR subsystem == "io.github.sceneview.demo"` (verified
+  against the installed demo app: the process filter carries the runtime +
+  crash markers, the subsystem filter the app's structured `Logger` calls), and
+  `device-qa.sh` copies the log into the artifacts dir and attaches its path as
+  a new `log` field on the iOS platform record in `device-qa-report.json`.
+  Inspired by XcodeBuildMCP's automatic per-app os_log capture (QA-efficiency
+  spike, 2026-07-09).
+
 ## v4.21.0 — Consumer-grade AR placement + Web node scene-graph (2026-07-07)
 
 Highlights: `PlacementScene` gets a Scene-Viewer/IKEA-grade placement UX — a ring
