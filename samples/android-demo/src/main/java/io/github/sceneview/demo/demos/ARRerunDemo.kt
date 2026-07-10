@@ -63,6 +63,8 @@ import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.rerunSaveActionUx
+import io.github.sceneview.demo.demos.internal.rerunSaveFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -288,13 +290,17 @@ fun ARRerunDemo(onBack: () -> Unit) {
 
             // Primary action on-screen (#1964) — "Save & Share recording" is
             // the demo's core action, so it lives bottom-start instead of in
-            // the Settings sheet. The label reflects the in-flight save state.
+            // the Settings sheet. The button is gated on the bridge's actual
+            // connection state (#2658): with no reachable sidecar a save can
+            // only fail, so the CTA is disabled and its label states why inline
+            // instead of leading straight to a failure dialog. Label also
+            // reflects the in-flight save state.
+            val saveUx = rerunSaveActionUx(sharing = sharing, isConnected = isConnected)
             SceneActionBar(
                 SceneAction(
-                    label = if (sharing) "Saving on dev machine…"
-                        else "Save & Share recording",
+                    label = saveUx.label,
                     onClick = onSaveAndShare,
-                    enabled = !sharing,
+                    enabled = saveUx.enabled,
                 ),
             )
         }
@@ -420,9 +426,10 @@ private fun ShareResultDialog(
             if (result.success) {
                 ShareResultBody(result, onCopyPath, onCopyUrl)
             } else {
+                // Never surface the bridge's raw internal reason (e.g. "call
+                // connect() first") — map it to actionable setup copy (#2658).
                 Text(
-                    text = result.reason
-                        ?: "The sidecar didn't acknowledge the save command.",
+                    text = rerunSaveFailureMessage(result.reason),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
