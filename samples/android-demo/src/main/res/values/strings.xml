@@ -230,7 +230,7 @@
     <!-- Stage 3 per-demo offline indicator chip (DemoScaffold v2) -->
     <string name="demo_chip_streamed">Streamed (cached)</string>
     <string name="demo_chip_streaming">Streaming…</string>
-    <string name="demo_chip_bundled">Bundled fallback</string>
+    <string name="demo_chip_bundled">Offline model</string>
 
     <!-- DemoScaffold v2 bottom-sheet settings (#1154) -->
     <string name="demo_settings_title">Settings</string>

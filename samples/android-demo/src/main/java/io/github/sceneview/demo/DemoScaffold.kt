@@ -101,7 +101,7 @@ enum class AssetSourceState { Streamed, Streaming, Bundled }
  * - `controls != null` → a `Tune` FAB pinned to the bottom-end opens the controls
  *   sheet. While the sheet is closed, a small peek chip ("Settings") sits above
  *   the FAB to advertise the gesture (see [#951] discoverability lesson).
- * - `assetSource != null` → an "Streamed / Streaming / Bundled fallback" chip
+ * - `assetSource != null` → an "Streamed / Streaming / Offline model" chip
  *   pinned to the top-end of the scene area, advertising the offline origin
  *   of the currently visible asset (#1152 Stage 3). The chip auto-hides when
  *   `null` so legacy demos stay untouched.
