@@ -739,8 +739,17 @@ private fun RenderContent(
                     // plane_renderer_shadow.filamat writes only to the shadow buffer —
                     // the plane itself is transparent, but the shadow cast by the
                     // model onto it is rendered (#2235).
+                    //
+                    // The quad MUST be an XZ (horizontal) plane — Size(x, y = 0, z) —
+                    // not XY. plane_renderer_shadow's vertex shader FORCES `pos.y =
+                    // 0.005` (see arsceneview/src/main/materials/plane_renderer_shadow.mat),
+                    // so an XY quad (Size(x, y), z = 0) whose two triangles vary only in
+                    // x and y collapses every vertex onto y = 0.005 → a zero-area line
+                    // segment that catches no shadow. An XZ quad varies in x and z, so
+                    // the forced-y is a harmless z-fight lift and the footprint survives.
+                    // This matches ShadowReceiverPlaneNode.meshSize()'s XZ convention (#2581).
                     PlaneNode(
-                        size = Size(x = planeSize, y = planeSize),
+                        size = Size(x = planeSize, y = 0f, z = planeSize),
                         materialInstance = shadowMaterialInstance,
                         position = Position(x = 0f, y = groundY, z = 0f),
                     )

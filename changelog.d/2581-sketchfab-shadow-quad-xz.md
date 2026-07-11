@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- Sketchfab model viewer: the ground shadow is now visible. Its shadow-receiver quad was built in the XY plane (`Size(x, y)`), but `plane_renderer_shadow`'s vertex shader forces `pos.y = 0.005`, which flattened that quad to a zero-area line — no shadow was caught. It is now an XZ (horizontal) quad (`Size(x, y = 0, z)`), matching the shader contract and the `ShadowReceiverPlaneNode` convention (#2581).
