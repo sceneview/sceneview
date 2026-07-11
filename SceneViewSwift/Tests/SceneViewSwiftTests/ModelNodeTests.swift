@@ -433,5 +433,115 @@ final class ModelNodeTests: XCTestCase {
         // scaleFactor = 2.0 / 4.0 = 0.5
         XCTAssertEqual(node.entity.scale.x, 0.5, accuracy: 0.05)
     }
+
+    // MARK: - centerOrigin(normalized:) — Android parity (#2632)
+    //
+    // The normalized overload takes a bounding-box point in normalized AABB
+    // coordinates (-1...1 per axis, 0 = box centre) and aligns it with the node
+    // origin, translating by `-(center + origin * extents/2)` — mirroring
+    // Android's `-(center + origin * halfExtent) * scale` (scale is baked into
+    // the RealityKit visual bounds). See ModelNodeCenterOriginFormulaTest on the
+    // Android side. The pure-math helper is pinned first, then verified against a
+    // real RealityKit box.
+
+    /// `origin = (0,0,0)` must translate by `-center` — cancel the AABB centre.
+    func testCenterOriginTranslationCentersNonCenteredBox() {
+        // Non-centered fixture (mirrors the Android formula test): center=(1,2,1).
+        let t = ModelNode.centerOriginTranslation(
+            center: SIMD3(1, 2, 1), extents: SIMD3(2, 4, 2), origin: .zero
+        )
+        XCTAssertEqual(t.x, -1, accuracy: 1e-6)
+        XCTAssertEqual(t.y, -2, accuracy: 1e-6)
+        XCTAssertEqual(t.z, -1, accuracy: 1e-6)
+    }
+
+    /// `origin = (0,-1,0)` (bottom aligned) must lift the bottom-centre anchor onto
+    /// the origin: `-(center + (0,-1,0) * extents/2)`.
+    func testCenterOriginTranslationBottomAligns() {
+        let center = SIMD3<Float>(1, 2, 1)
+        let extents = SIMD3<Float>(2, 4, 2)
+        let t = ModelNode.centerOriginTranslation(
+            center: center, extents: extents, origin: SIMD3(0, -1, 0)
+        )
+        // anchor = center + (0,-1,0)*(1,2,1) = (1,0,1) => translation = (-1,0,-1)
+        XCTAssertEqual(t.x, -1, accuracy: 1e-6)
+        XCTAssertEqual(t.y, 0, accuracy: 1e-6)
+        XCTAssertEqual(t.z, -1, accuracy: 1e-6)
+        // Invariant: the selected AABB point, once translated, lands on the origin.
+        let anchor = center + SIMD3<Float>(0, -1, 0) * (extents / 2) + t
+        XCTAssertEqual(anchor.x, 0, accuracy: 1e-6)
+        XCTAssertEqual(anchor.y, 0, accuracy: 1e-6)
+        XCTAssertEqual(anchor.z, 0, accuracy: 1e-6)
+    }
+
+    /// `origin = (1,-1,0)` selects the +x / -y corner-edge — per-axis half extents.
+    func testCenterOriginTranslationUsesPerAxisHalfExtents() {
+        let t = ModelNode.centerOriginTranslation(
+            center: .zero, extents: SIMD3(4, 2, 1), origin: SIMD3(1, -1, 0)
+        )
+        // anchor = (0,0,0) + (1,-1,0)*(2,1,0.5) = (2,-1,0) => translation = (-2,1,0)
+        XCTAssertEqual(t.x, -2, accuracy: 1e-6)
+        XCTAssertEqual(t.y, 1, accuracy: 1e-6)
+        XCTAssertEqual(t.z, 0, accuracy: 1e-6)
+    }
+
+    /// A real, origin-centred RealityKit box: `.zero` must not move it (centre
+    /// already on the origin), matching the absolute `centerOrigin(.zero)`.
+    func testCenterOriginNormalizedZeroIsNoOpForCenteredBox() {
+        let mesh = MeshResource.generateBox(size: 2.0)
+        let material = SimpleMaterial(color: .white, isMetallic: false)
+        let node = ModelNode(ModelEntity(mesh: mesh, materials: [material]))
+            .centerOrigin(normalized: .zero)
+        XCTAssertEqual(node.entity.position.x, 0, accuracy: 1e-4)
+        XCTAssertEqual(node.entity.position.y, 0, accuracy: 1e-4)
+        XCTAssertEqual(node.entity.position.z, 0, accuracy: 1e-4)
+    }
+
+    /// A real box of height 2 centred at origin (bottom at y = -1): bottom-aligning
+    /// must raise the node so the bottom face rests on y = 0 (position.y = +1).
+    func testCenterOriginNormalizedBottomAlignsRealBox() {
+        let mesh = MeshResource.generateBox(size: 2.0)
+        let material = SimpleMaterial(color: .white, isMetallic: false)
+        let node = ModelNode(ModelEntity(mesh: mesh, materials: [material]))
+            .centerOrigin(normalized: SIMD3(0, -1, 0))
+        XCTAssertEqual(node.entity.position.x, 0, accuracy: 1e-4)
+        XCTAssertEqual(node.entity.position.y, 1, accuracy: 1e-4)
+        XCTAssertEqual(node.entity.position.z, 0, accuracy: 1e-4)
+    }
+
+    /// Top-aligning a real origin-centred box (top at y = +1) must hang it from the
+    /// origin (position.y = -1) — the sign is opposite bottom alignment.
+    func testCenterOriginNormalizedTopAlignsRealBox() {
+        let mesh = MeshResource.generateBox(size: 2.0)
+        let material = SimpleMaterial(color: .white, isMetallic: false)
+        let node = ModelNode(ModelEntity(mesh: mesh, materials: [material]))
+            .centerOrigin(normalized: SIMD3(0, 1, 0))
+        XCTAssertEqual(node.entity.position.y, -1, accuracy: 1e-4)
+    }
+
+    /// Parity: for a centred box, `centerOrigin(normalized: .zero)` and the absolute
+    /// `centerOrigin(.zero)` must land the model at the same position.
+    func testCenterOriginNormalizedZeroMatchesAbsoluteZero() {
+        let mesh = MeshResource.generateBox(width: 4.0, height: 2.0, depth: 1.0)
+        let material = SimpleMaterial(color: .white, isMetallic: false)
+        let normalized = ModelNode(ModelEntity(mesh: mesh, materials: [material]))
+            .centerOrigin(normalized: .zero)
+        let absolute = ModelNode(ModelEntity(mesh: mesh, materials: [material]))
+            .centerOrigin(.zero)
+        XCTAssertEqual(normalized.entity.position.x, absolute.entity.position.x, accuracy: 1e-4)
+        XCTAssertEqual(normalized.entity.position.y, absolute.entity.position.y, accuracy: 1e-4)
+        XCTAssertEqual(normalized.entity.position.z, absolute.entity.position.z, accuracy: 1e-4)
+    }
+
+    /// The normalized overload is `@discardableResult` and chains like the rest of
+    /// the builder surface.
+    func testCenterOriginNormalizedChaining() {
+        let mesh = MeshResource.generateBox(size: 1.0)
+        let material = SimpleMaterial(color: .white, isMetallic: false)
+        let node = ModelNode(ModelEntity(mesh: mesh, materials: [material]))
+            .scaleToUnits(1.0)
+            .centerOrigin(normalized: SIMD3(0, -1, 0))
+        XCTAssertNotNil(node.entity.model)
+    }
 }
 #endif

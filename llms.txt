@@ -4807,7 +4807,8 @@ public struct ModelNode: @unchecked Sendable {
     public func scale(_ uniform: Float) -> ModelNode
     public func rotation(_ rotation: simd_quatf) -> ModelNode
     public func scaleToUnits(_ units: Float = 1.0) -> ModelNode
-    public func centerOrigin(_ target: SIMD3<Float> = .zero) -> ModelNode  // mirrors Android `centerOrigin`
+    public func centerOrigin(_ target: SIMD3<Float> = .zero) -> ModelNode  // absolute: moves the bounds centre to `target`
+    public func centerOrigin(normalized origin: SIMD3<Float>) -> ModelNode  // normalized (-1..1, 0 = centre) — Android `centerOrigin(Position)` parity
 
     // Animation — `speed` is now wired through RealityKit (was no-op before v4.0.10)
     public var animationCount: Int
@@ -4829,7 +4830,10 @@ public struct ModelNode: @unchecked Sendable {
 }
 ```
 
-`centerOrigin(_:)` moves the model so its visual-bounds **centre** sits at the supplied target point. Pass `.zero` to center the model on the origin — the equivalent of Kotlin `ModelNode(centerOrigin = Position(0,0,0))`. Unlike Android's normalized `-1..1` origin, the target is an **absolute** model-space point: `SIMD3(0, -1, 0)` puts the bounds centre 1 m below the origin (it does NOT bottom-align). To ground a model (bottom resting on the origin), pass `SIMD3(0, bounds.extents.y / 2, 0)` where `bounds = entity.visualBounds(relativeTo: nil)`.
+There are two `centerOrigin` overloads:
+
+- **`centerOrigin(_ target:)`** — absolute: moves the model so its visual-bounds **centre** sits at the supplied model-space point (in metres). Pass `.zero` to center on the origin — the equivalent of Kotlin `ModelNode(centerOrigin = Position(0,0,0))`. The target is an **absolute** point, so `SIMD3(0, -1, 0)` puts the bounds centre 1 m below the origin (it does NOT bottom-align).
+- **`centerOrigin(normalized origin:)`** — Android parity (#2632): `origin` is a **normalized** AABB coordinate (`-1..1` per axis, `0` = box centre, `±1` = box faces), and the selected AABB point is aligned with the node origin via `-(center + origin * extents/2)`. `centerOrigin(normalized: SIMD3(0, -1, 0))` bottom-aligns exactly like Android's `Position(0, -1, 0)` (the model sits on the origin); `.zero` is identical to `centerOrigin(.zero)`. Prefer this overload when porting an Android snippet verbatim — it replaces the former manual grounding workaround `centerOrigin(SIMD3(0, bounds.extents.y / 2, 0))`.
 
 ### iOS: GeometryNode
 
@@ -5956,7 +5960,8 @@ public struct ModelNode: @unchecked Sendable {
     public func rotation(_ rotation: simd_quatf) -> ModelNode
     public func rotation(angle: Float, axis: SIMD3<Float>) -> ModelNode
     public func scaleToUnits(_ units: Float = 1.0) -> ModelNode   // fits in cube of 'units' meters
-    public func centerOrigin(_ target: SIMD3<Float> = .zero) -> ModelNode  // moves the bounds centre to `target` (absolute point, NOT Android's normalized origin); `.zero` = center on origin
+    public func centerOrigin(_ target: SIMD3<Float> = .zero) -> ModelNode  // moves the bounds centre to `target` (absolute point); `.zero` = center on origin
+    public func centerOrigin(normalized origin: SIMD3<Float>) -> ModelNode  // normalized AABB origin (-1..1, 0 = centre) — Android `centerOrigin(Position)` parity; `SIMD3(0,-1,0)` bottom-aligns
 
     // Animation — `speed` is now actually applied to the RealityKit animation (was a no-op before v4.0.10)
     public var animationCount: Int
