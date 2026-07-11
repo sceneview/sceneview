@@ -34,8 +34,8 @@ startCommand:
   type: stdio
   command: node dist/index.js
 
-# Per-user credentials surfaced to the subscriber's MCP config. Both optional:
-# free tools never need them; only the Pro / Sketchfab paths consume them.
+# Per-user credentials surfaced to the subscriber's MCP config. All optional:
+# free tools never need them; only the Pro / Sketchfab / Tripo paths consume them.
 credentials:
   - name: SCENEVIEW_API_KEY
     required: false
@@ -54,5 +54,14 @@ credentials:
     docs_url: https://sketchfab.com/settings/password
     mapping:
       env: SKETCHFAB_API_KEY
+  - name: TRIPO_API_KEY
+    required: false
+    description: >-
+      Optional. Bring-your-own Tripo AI API key to enable `generate_3d_model`
+      (text/image -> GLB generation, billed to your own Tripo account).
+      Without it, that single tool is disabled; everything else works.
+    docs_url: https://platform.tripo3d.ai/api-keys
+    mapping:
+      env: TRIPO_API_KEY
 
 credentials_mode: per_user

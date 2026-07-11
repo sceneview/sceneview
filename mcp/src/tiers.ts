@@ -32,6 +32,7 @@ const FREE_TOOLS: readonly string[] = [
   "get_collision_guide",
   "get_platform_roadmap",
   "search_models",
+  "generate_3d_model",
   "analyze_project",
   "search_android_docs",
   "fetch_android_doc",

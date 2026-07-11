@@ -124,6 +124,7 @@ Every developer tool is **free**: setup guides for every platform, code samples,
 | Tool | What it does |
 |---|---|
 | `search_models` | Searches Sketchfab for free 3D models (BYOK — set `SKETCHFAB_API_KEY`) |
+| `generate_3d_model` | Generates a brand-new GLB from a text prompt or image via Tripo AI (BYOK — set `TRIPO_API_KEY`) |
 | `analyze_project` | Scans a local SceneView project on disk — detects platform, extracts version, flags outdated deps and known anti-patterns |
 | `search_android_docs` | Searches Google's stock Android docs knowledge base (needs the `android` CLI on PATH) |
 | `fetch_android_doc` | Fetches a full Android docs entry by its `kb://...` URI (needs the `android` CLI on PATH) |
@@ -160,6 +161,38 @@ Generated SceneView code is only useful if it points at an asset that actually e
 ```
 
 Call it like `search_models({ query: "red sports car", category: "cars-vehicles", maxResults: 6 })`. If the key is missing, the tool returns a clear message explaining how to get one instead of failing silently.
+
+## `generate_3d_model` — create brand-new 3D assets from the AI
+
+When no existing model fits, `generate_3d_model` closes the other half of the asset loop: it generates a fresh GLB from a **text prompt** (text→3D) or a **source image** (image→3D) via the [Tripo AI](https://www.tripo3d.ai) API, then returns a direct GLB download URL plus license/attribution metadata — ready for `rememberModelInstance(modelLoader, ...)` and AR placement.
+
+Two quality tiers:
+
+| `quality` | Tripo model | Topology | Latency | Approx. cost (July 2026) |
+|---|---|---|---|---|
+| `"fast"` (default) | P1 (`P1-20260311`) | low-poly, AR-ready | ~25–30 s | ~$0.10–0.25 of your credits |
+| `"hd"` | H3.1 (`v3.1-20260211`) | quad mesh, detailed geometry + textures | up to ~100 s | ~$0.41 of your credits |
+
+**Bring your own key (BYOK).** Exactly like `search_models`: SceneView never proxies the request or holds your key — generations are billed to **your** Tripo account. To set it up:
+
+1. Create an API key at [platform.tripo3d.ai/api-keys](https://platform.tripo3d.ai/api-keys) (new accounts get free trial credits)
+2. Set `TRIPO_API_KEY` in your MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "sceneview": {
+      "command": "npx",
+      "args": ["-y", "sceneview-mcp"],
+      "env": { "TRIPO_API_KEY": "YOUR_KEY_HERE" }
+    }
+  }
+}
+```
+
+Call it like `generate_3d_model({ prompt: "a low-poly cactus in a striped pot" })` or `generate_3d_model({ imageUrl: "https://example.com/chair.jpg", quality: "hd" })`. Provide exactly one of `prompt` / `imageUrl`.
+
+**⚠️ The GLB download URL expires ~5 minutes after generation** — download the file immediately and self-host it (e.g. copy it into your app's `assets/models/`). The tool result repeats this warning. Missing key, task failures, rate limits, and poll timeouts (2 min fast / 4 min hd cap) all return clear, actionable messages instead of hanging or crashing.
 
 ## `analyze_project` — local project scan
 
@@ -229,7 +262,7 @@ The MCP server is tested with **2,918 unit tests** across 132 test suites coveri
       Tests  2918 passed (2918)
 ```
 
-All tools work **fully offline** except `sceneview://known-issues` (GitHub API, cached 10 min) and `search_models` (Sketchfab, BYOK).
+All tools work **fully offline** except `sceneview://known-issues` (GitHub API, cached 10 min), `search_models` (Sketchfab, BYOK), and `generate_3d_model` (Tripo AI, BYOK).
 
 ---
 
@@ -253,7 +286,7 @@ Install Node.js from [nodejs.org](https://nodejs.org/) (LTS recommended). npm an
 
 ### Firewall or proxy issues
 
-The only network calls are to the GitHub API (for known issues) and Sketchfab (when `SKETCHFAB_API_KEY` is set). Everything else works offline.
+The only network calls are to the GitHub API (for known issues), Sketchfab (when `SKETCHFAB_API_KEY` is set), and Tripo AI (when `TRIPO_API_KEY` is set and `generate_3d_model` is called). Everything else works offline.
 
 ```json
 {
@@ -325,6 +358,7 @@ mcp/
     artifact.ts          # HTML artifact generator (model-viewer, charts, product 360)
     issues.ts            # GitHub issues fetcher (cached)
     search-models.ts     # Sketchfab BYOK search
+    generate-model.ts    # Tripo BYOK text/image -> GLB generation
     analyze-project.ts   # Local project scanner
     proxy.ts             # Pro-tool proxy to hosted gateway
   llms.txt               # Bundled API reference (copied from repo root)

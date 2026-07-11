@@ -623,6 +623,38 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   {
+    name: "generate_3d_model",
+    description:
+      "Generates a brand-new 3D model (GLB) from a text prompt OR a source image using the Tripo AI API — use this when `search_models` finds no suitable existing asset and the user needs a custom one (\"a low-poly cactus in a striped pot\"). Returns a direct GLB download URL (expires ~5 minutes — download it immediately and self-host it) plus license/attribution metadata, ready for `rememberModelInstance(modelLoader, ...)` and AR placement. Quality tiers: \"fast\" (default, Tripo P1 low-poly — AR-ready, ~25-30 s) or \"hd\" (Tripo H3.1 quad topology with detailed geometry/textures — up to ~100 s, pricier). Requires a `TRIPO_API_KEY` environment variable (BYOK — generations are billed to the USER'S Tripo account, roughly $0.10-0.25 per fast generation and ~$0.41 per hd generation as of July 2026; nothing is charged by SceneView). If the key is missing, the tool returns setup instructions for platform.tripo3d.ai/api-keys.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        prompt: {
+          type: "string",
+          description:
+            "Text description of the model to generate (text→3D), e.g. \"a low-poly cactus in a striped pot\". Max 1024 characters. Provide exactly one of `prompt` or `imageUrl`.",
+        },
+        imageUrl: {
+          type: "string",
+          description:
+            "Public HTTPS URL of a source image to convert to 3D (image→3D). JPEG or PNG, max 20 MB. Provide exactly one of `prompt` or `imageUrl`.",
+        },
+        quality: {
+          type: "string",
+          enum: ["fast", "hd"],
+          description:
+            '"fast" (default): Tripo P1 low-poly — cheap, AR-ready, ~25-30 s. "hd": Tripo H3.1 quad topology + detailed geometry/textures — up to ~100 s, higher credit cost.',
+        },
+      },
+      required: [],
+    },
+    annotations: {
+      readOnlyHint: false,
+      openWorldHint: true,
+      destructiveHint: false,
+    },
+  },
+  {
     name: "analyze_project",
     description:
       "Scans a local SceneView project on the user's machine and returns a structured analysis: detected project type (Android, iOS, Web), extracted SceneView dependency version, whether it is outdated vs the latest known release, and any known anti-patterns found by reading source files (threading violations, LightNode trailing-lambda bug, deprecated 2.x APIs, Sceneform imports). Safe: scans at most 30 source files and 500 KB total, never writes to disk. Use this when a user asks 'is my project up to date?', 'what's wrong with my SceneView code?', or when you want a fast sanity check of a project before generating code for it.",
