@@ -349,10 +349,21 @@ class SketchfabService @VisibleForTesting internal constructor(
      *  - On normal completion the watcher is cancelled; its `finally` still
      *    runs [okhttp3.Call.cancel], which is a documented no-op on a
      *    finished call.
-     *  - [coroutineScope] re-canonises the outcome: when the caller IS
-     *    cancelled, the function completes with the caller's
-     *    CancellationException — the socket-abort IOException can never
-     *    masquerade as a network failure to `catch` blocks upstream.
+     *  - When the caller IS cancelled, the function completes with the
+     *    caller's CancellationException — the socket-abort IOException can
+     *    never masquerade as a network failure to `catch` blocks upstream.
+     *    [coroutineScope] alone does NOT guarantee this: the socket close the
+     *    watcher triggers aborts an in-flight blocking body read with an
+     *    IOException (`SocketException: Socket closed`), and when the block
+     *    completes with that non-cancellation exception `coroutineScope`
+     *    surfaces IT, not the cancellation (kotlinx prefers the first
+     *    non-cancellation exception when finalising a cancelling scope). The
+     *    [ensureActive] below closes that race: an IOException thrown while the
+     *    scope is already cancelled is re-canonised into the caller's
+     *    CancellationException; a genuine network IOException on a still-active
+     *    scope is rethrown unchanged. Without it the Explore search's
+     *    `catch (CancellationException)` fast-path is bypassed under load and a
+     *    superseded query flashes its error/empty state (#2665 CI flake, #2644).
      */
     private suspend fun <T> executeCancellably(
         call: okhttp3.Call,
@@ -367,6 +378,14 @@ class SketchfabService @VisibleForTesting internal constructor(
         }
         try {
             block()
+        } catch (e: IOException) {
+            // If the caller cancelled us, the closed-socket IOException is just
+            // the shape the abort took — surface the cancellation instead.
+            // ensureActive() throws the scope's CancellationException when the
+            // scope is cancelling; otherwise it is a no-op and we rethrow the
+            // real network failure below.
+            coroutineContext.ensureActive()
+            throw e
         } finally {
             tie.cancel()
         }
