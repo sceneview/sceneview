@@ -145,6 +145,17 @@ extract_refs() {
         case "$file" in
             *Tests.swift|*+Tests.swift|*Test.swift) continue ;;
         esac
+        # Skip the android-demo multi-source streaming layer
+        # (io/github/sceneview/demo/sources/, issue #2645). These files stream
+        # models from remote providers (Sketchfab / Icosa Gallery / Poly Haven):
+        # they build cache filenames dynamically from remote model IDs and probe
+        # URL extensions (`url.endsWith(".glb")`, a `"model.gltf"` download-name
+        # fallback), so any *.glb/*.gltf literal there is a remote/dynamic token,
+        # never a bundled-asset path. Nothing in this package ships a bundled
+        # asset, so skipping the whole dir cannot mask a real broken ref.
+        case "$file" in
+            */android-demo/src/main/java/io/github/sceneview/demo/sources/*) continue ;;
+        esac
         # The vendored Filament/SceneView engine bundled under the web demo's
         # resources/js/ (byte-identical copies of website-static/js/, self-hosted
         # per issue #1586) carries exactly one false-positive: the JSDoc usage

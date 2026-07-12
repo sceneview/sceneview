@@ -55,7 +55,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -64,10 +63,13 @@ import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.feedback.DriveFeedbackChipReveal
 import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
-import io.github.sceneview.demo.sketchfab.SketchfabConfig
-import io.github.sceneview.demo.sketchfab.SketchfabModel
 import io.github.sceneview.demo.sketchfab.SketchfabService
-import io.github.sceneview.demo.ui.explore.components.FeaturedSketchfabCard
+import io.github.sceneview.demo.sources.FeedKind
+import io.github.sceneview.demo.sources.GalleryModel
+import io.github.sceneview.demo.sources.ModelSource
+import io.github.sceneview.demo.sources.ModelSourceId
+import io.github.sceneview.demo.sources.rememberModelSources
+import io.github.sceneview.demo.ui.explore.components.FeaturedModelCard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
@@ -101,9 +103,16 @@ fun ExploreTabScreen(
     DriveFeedbackChipReveal(scroll)
     val recentSearches = rememberRecentSearches()
 
+    // Multi-source resilience (#2645): the tab browses whichever catalog the
+    // user picks (Sketchfab | Icosa | Poly Haven), remembering the last choice.
+    // A single degraded source never blanks the tab — the samples row + the
+    // picker + the other sources stay usable.
+    val sources = rememberModelSources()
+    val selectedSource = sources.selected
+
     var searchQuery by remember { mutableStateOf("") }
     var animatedOnly by remember { mutableStateOf(false) }
-    var selectedModel by remember { mutableStateOf<SketchfabModel?>(null) }
+    var selectedModel by remember { mutableStateOf<GalleryModel?>(null) }
 
     // Search execution state (#1239). Until v4.3.5 the SearchField persisted
     // queries to recent searches but never executed them — `searchQuery` was
@@ -114,11 +123,11 @@ fun ExploreTabScreen(
     //   - searchResults.isEmpty()  → query ran and returned 0 hits
     //   - searchResults non-empty  → render results section, hide trending/staff/recent
     var activeSearchQuery by remember { mutableStateOf("") }
-    var searchResults by remember { mutableStateOf<List<SketchfabModel>?>(null) }
+    var searchResults by remember { mutableStateOf<List<GalleryModel>?>(null) }
 
-    var staffPicks by remember { mutableStateOf<List<SketchfabModel>>(emptyList()) }
-    var mostLiked by remember { mutableStateOf<List<SketchfabModel>>(emptyList()) }
-    var recent by remember { mutableStateOf<List<SketchfabModel>>(emptyList()) }
+    // Feeds keyed by the source's advertised [FeedKind]s (each source exposes
+    // its own subset — Poly Haven has no "staff picks", for instance).
+    var feedsByKind by remember { mutableStateOf<Map<FeedKind, List<GalleryModel>>>(emptyMap()) }
     var loadingFeeds by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     // `true` once a feed/search request fails with HTTP 401/403 — the API key
@@ -135,44 +144,54 @@ fun ExploreTabScreen(
     // `refreshTick` gives us a single cancel-then-restart pipeline.
     var refreshTick by remember { mutableStateOf(0) }
 
-    val sketchfabService = SketchfabService.getInstance(LocalContext.current)
+    // Switching source resets the browse + search state so the previous
+    // catalog's cards never flash under the new source's headers; the feeds
+    // effect below then reloads for the newly-selected source.
+    val onSelectSource: (ModelSource) -> Unit = { source ->
+        if (source.id != sources.selected.id) {
+            sources.select(source)
+            searchQuery = ""
+            activeSearchQuery = ""
+            searchResults = null
+            feedsByKind = emptyMap()
+            keyRejected = false
+        }
+    }
 
-    /** (re)load the three feeds when the animated toggle flips, on first composition, or on pull-to-refresh. */
-    LaunchedEffect(animatedOnly, refreshTick) {
-        if (SketchfabConfig.apiKey == null) return@LaunchedEffect
+    /** (Re)load the selected source's feeds on source switch, animated toggle, first composition, or pull-to-refresh. */
+    LaunchedEffect(selectedSource.id, animatedOnly, refreshTick) {
         loadingFeeds = true
-        // Reset before every (re)load so a recovered key (e.g. a corrected
-        // secret on the next build, or a transient 403 that clears) drops the
-        // "Sketchfab unavailable" banner instead of latching it forever.
+        // Reset the Sketchfab "key rejected" banner before every (re)load so a
+        // transient 401/403 that clears drops the banner instead of latching it.
         keyRejected = false
-        val animatedParam: Boolean? = if (animatedOnly) true else null
-        // supervisorScope so a single feed failure (transient 429, network
-        // blip) doesn't cancel the other two — surviving feeds still render
-        // (#980). Each `catchingFeed` re-throws CancellationException so the
-        // parent LaunchedEffect cancellation (toggle re-keys, pull-to-refresh
-        // re-keys, navigation away) still tears down the in-flight requests
-        // cleanly. A 401/403 from any feed flips `keyRejected` so the banner
-        // shows rather than the feed silently self-hiding (#2095).
+        val source = selectedSource
+        // supervisorScope so a single feed failure (transient 429, network blip,
+        // decode error) doesn't cancel the sibling feeds — surviving feeds still
+        // render (#980, #2645). Each `catchingFeed` re-throws CancellationException
+        // so the parent LaunchedEffect cancellation (source switch, toggle,
+        // pull-to-refresh, navigation away) tears down in-flight requests cleanly.
+        // A Sketchfab 401/403 flips `keyRejected` so the banner shows instead of
+        // the feed silently self-hiding (#2095).
         try {
             supervisorScope {
                 val onRejected = { keyRejected = true }
-                val a = async {
-                    catchingFeed(onRejected) { sketchfabService.staffPicks(animated = animatedParam, limit = 10) }
+                val deferred = source.feedKinds.map { kind ->
+                    kind to async {
+                        catchingFeed(onRejected) {
+                            source.feed(
+                                kind = kind,
+                                animatedOnly = animatedOnly && source.supportsAnimatedFilter,
+                                limit = 10,
+                            )
+                        }
+                    }
                 }
-                val b = async {
-                    catchingFeed(onRejected) { sketchfabService.featured(animated = animatedParam, limit = 10) }
-                }
-                val c = async {
-                    catchingFeed(onRejected) { sketchfabService.recentlyAdded(animated = animatedParam, limit = 10) }
-                }
-                staffPicks = a.await()
-                mostLiked = b.await()
-                recent = c.await()
+                feedsByKind = deferred.associate { (kind, d) -> kind to d.await() }
             }
         } finally {
-            // try/finally so loadingFeeds + isRefreshing always reset even if
-            // the coroutine was cancelled mid-flight (otherwise the skeleton
-            // spinners would stay forever after navigating away mid-refresh).
+            // try/finally so loadingFeeds + isRefreshing always reset even if the
+            // coroutine was cancelled mid-flight (otherwise the skeleton spinners
+            // would stay forever after navigating away mid-refresh).
             loadingFeeds = false
             isRefreshing = false
         }
@@ -192,7 +211,7 @@ fun ExploreTabScreen(
     // avoids re-running on trailing-space whitespace changes.
     LaunchedEffect(searchQuery) {
         val trimmed = searchQuery.trim()
-        if (trimmed.length < 2 || SketchfabConfig.apiKey == null) return@LaunchedEffect
+        if (trimmed.length < 2) return@LaunchedEffect
         kotlinx.coroutines.delay(350)
         if (trimmed != activeSearchQuery) {
             activeSearchQuery = trimmed
@@ -204,15 +223,15 @@ fun ExploreTabScreen(
     // have results to render. CancellationException is re-thrown so the
     // structured concurrency teardown still applies on navigation away.
     //
-    // Note: `SketchfabService.search` does NOT accept an `animated` filter
-    // (that's only on the staffPicks/featured/recentlyAdded endpoints). The
-    // animated chip therefore has no effect on the search results — that's a
-    // Sketchfab API limitation, not a wiring gap.
-    LaunchedEffect(activeSearchQuery) {
-        if (activeSearchQuery.isBlank() || SketchfabConfig.apiKey == null) return@LaunchedEffect
+    // Note: source search does NOT accept an `animated` filter (Sketchfab only
+    // exposes it on the feed endpoints; the CC sources have no such concept), so
+    // the animated chip has no effect on search results. Re-keys on the source
+    // id so switching catalogs re-runs the query against the new one.
+    LaunchedEffect(activeSearchQuery, selectedSource.id) {
+        if (activeSearchQuery.isBlank()) return@LaunchedEffect
         searchResults = null  // signal loading
         searchResults = try {
-            sketchfabService.search(
+            selectedSource.search(
                 query = activeSearchQuery,
                 limit = 24,
             )
@@ -236,18 +255,12 @@ fun ExploreTabScreen(
         }
     }
 
-    // Capture the apiKey resolution exactly once per composition so the body +
-    // banner + search-field hint stay coherent (the property reads BuildConfig
-    // + System.getenv, so re-reading on every recomposition is harmless but
-    // wasted work). Used to drive the #1909 defensive banner: when null the
-    // build was shipped without a Sketchfab token and the carousels/search
-    // would otherwise be silent dead UI.
-    val apiKeyAvailable = SketchfabConfig.apiKey != null
-
     val body = @Composable {
         ExploreBody(
             scroll = scroll,
-            apiKeyAvailable = apiKeyAvailable,
+            sources = sources.sources,
+            selectedSource = selectedSource,
+            onSelectSource = onSelectSource,
             keyRejected = keyRejected,
             searchQuery = searchQuery,
             onSearchQueryChange = { newValue ->
@@ -271,9 +284,7 @@ fun ExploreTabScreen(
             onToggleAnimated = { animatedOnly = !animatedOnly },
             curatedSamples = curatedSamples,
             onSampleClick = onSampleClick,
-            mostLiked = mostLiked,
-            staffPicks = staffPicks,
-            recent = recent,
+            feedsByKind = feedsByKind,
             loadingFeeds = loadingFeeds,
             onModelClick = { selectedModel = it },
         )
@@ -287,54 +298,57 @@ fun ExploreTabScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         ParticleBackground(modifier = Modifier.fillMaxSize())
 
-        // Pull-to-refresh is only wired when the Sketchfab carousels are visible —
-        // without an API key there's nothing dynamic to refresh and pulling would
-        // spin a spinner that immediately settles, which is worse than no affordance
-        // at all. onRefresh just bumps `refreshTick`; the LaunchedEffect above
-        // owns the single cancel-then-restart pipeline.
-        if (apiKeyAvailable) {
-            PullToRefreshBox(
-                isRefreshing = isRefreshing,
-                onRefresh = {
-                    if (!isRefreshing) {
-                        isRefreshing = true
-                        refreshTick++
-                    }
-                },
-            ) {
-                body()
-            }
-        } else {
+        // Every available source has live feeds to refresh (Icosa / Poly Haven
+        // need no key), so pull-to-refresh is always wired. onRefresh just bumps
+        // `refreshTick`; the LaunchedEffect above owns the single
+        // cancel-then-restart pipeline.
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                if (!isRefreshing) {
+                    isRefreshing = true
+                    refreshTick++
+                }
+            },
+        ) {
             body()
         }
     }
 
     selectedModel?.let { model ->
-        SketchfabModelViewerScreen(model = model, onDismiss = { selectedModel = null })
+        GalleryModelViewerScreen(
+            model = model,
+            source = selectedSource,
+            onDismiss = { selectedModel = null },
+        )
     }
 }
 
 @Composable
 private fun ExploreBody(
     scroll: androidx.compose.foundation.ScrollState,
-    apiKeyAvailable: Boolean,
+    sources: List<ModelSource>,
+    selectedSource: ModelSource,
+    onSelectSource: (ModelSource) -> Unit,
     keyRejected: Boolean,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onSearchSubmit: (String) -> Unit,
     activeSearchQuery: String,
-    searchResults: List<SketchfabModel>?,
+    searchResults: List<GalleryModel>?,
     animatedOnly: Boolean,
     onToggleAnimated: () -> Unit,
     curatedSamples: List<DemoEntry>,
     onSampleClick: (DemoEntry) -> Unit,
-    mostLiked: List<SketchfabModel>,
-    staffPicks: List<SketchfabModel>,
-    recent: List<SketchfabModel>,
+    feedsByKind: Map<FeedKind, List<GalleryModel>>,
     loadingFeeds: Boolean,
-    onModelClick: (SketchfabModel) -> Unit,
+    onModelClick: (GalleryModel) -> Unit,
 ) {
     val isSearching = activeSearchQuery.isNotBlank()
+    // Only Sketchfab's "key rejected" (401/403) surfaces the unavailable banner;
+    // the CC sources never reach it, and a missing Sketchfab key simply drops the
+    // chip from the picker rather than showing dead UI (#1909/#2095, #2645).
+    val showSketchfabBanner = selectedSource.id == ModelSourceId.SKETCHFAB && keyRejected
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -368,28 +382,32 @@ private fun ExploreBody(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
             onSubmit = onSearchSubmit,
-            apiKeyAvailable = apiKeyAvailable,
+            // Placeholder names the catalog being searched so the field reflects
+            // the picked source (Sketchfab / Icosa Gallery / Poly Haven), #2645.
+            sourceName = selectedSource.id.displayName,
+            // The selected source is always usable (Sketchfab is dropped from the
+            // picker when it has no key), so the search field is always live.
+            apiKeyAvailable = true,
         )
 
-        // Defensive banner (#1909, #2095) — Sketchfab-backed surfaces below
-        // (carousels + search) become silent dead UI in two cases:
-        //   • the release build shipped without a SKETCHFAB_API_KEY secret
-        //     (apiKey == null), or
-        //   • the key is present but the API rejected it with 401/403
-        //     (`keyRejected`) — revoked, wrong scope, or a typo.
-        // Either way, surface it explicitly so QA + curious users see WHY the
-        // page looks empty instead of assuming "the app is broken". The banner
-        // is intentionally outlined (not error-colored) — unavailable is not
-        // the same as crashed.
-        if (!apiKeyAvailable || keyRejected) {
-            SketchfabDisabledBanner(keyRejected = keyRejected)
+        // Source picker (#2645) — stays visible even mid-search so switching
+        // catalogs re-runs the query against the new one. Hidden only when a
+        // single source is available (nothing to choose between).
+        if (sources.size > 1) {
+            SourcePickerRow(sources = sources, selected = selectedSource, onSelect = onSelectSource)
         }
 
-        // FiltersBar (Animated chip) and the "Try a sample" carousel both
-        // belong to the browse experience — when searching, the screen is
-        // dedicated to results so they get hidden too (#2229). The full
-        // browse layout returns the moment the query clears.
-        if (apiKeyAvailable && !isSearching) {
+        // "Sketchfab unavailable" banner (#2095) — only when the Sketchfab key was
+        // rejected at runtime. Intentionally outlined (not error-colored): the tab
+        // is degraded but functional (samples + other sources still work).
+        if (showSketchfabBanner) {
+            SketchfabDisabledBanner(keyRejected = true)
+        }
+
+        // FiltersBar (Animated chip) and the "Try a sample" carousel both belong
+        // to the browse experience — hidden while searching (#2229). The Animated
+        // filter is meaningful only for Sketchfab; the CC sources don't expose it.
+        if (selectedSource.supportsAnimatedFilter && !isSearching) {
             FiltersBar(animatedOnly = animatedOnly, onToggle = onToggleAnimated)
         }
 
@@ -415,57 +433,41 @@ private fun ExploreBody(
             }
         }
 
-        // The Sketchfab carousels are only rendered when the API key is wired
-        // in via gradle.properties / CI secret. On end-user Play Store builds
-        // the key is always present (see release.yml). Builds without the key
-        // silently fall back to the "Try a sample" carousel + curated category
-        // grid below — the SketchfabDisabledBanner above already tells the
-        // user WHY the dynamic carousels are missing (#1909).
-        if (apiKeyAvailable) {
-            if (isSearching) {
-                // Active search (#1239): render results section, hide the three
-                // default feeds. searchResults == null ⇒ still loading;
-                // empty ⇒ ran but 0 hits; non-empty ⇒ render carousel.
-                when {
-                    searchResults == null -> FeedSection(
-                        title = stringResource(R.string.explore_search_results),
-                        models = emptyList(),
-                        loading = true,
-                        onModelClick = onModelClick,
-                    )
-                    searchResults.isEmpty() -> Text(
-                        text = stringResource(R.string.explore_search_no_results, activeSearchQuery),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    else -> FeedSection(
-                        title = stringResource(R.string.explore_search_results),
-                        models = searchResults,
-                        loading = false,
-                        onModelClick = onModelClick,
-                    )
-                }
-            } else {
-                // No `feedsError` Text — when the API is unreachable each empty
-                // FeedSection self-hides and the page falls back to the "Try a
-                // sample" carousel + Categories grid silently. A red dev-style
-                // error banner here was the v4.1.0 "horrible UI" complaint.
-                FeedSection(
-                    title = stringResource(R.string.explore_trending_models),
-                    models = mostLiked,
-                    loading = loadingFeeds && mostLiked.isEmpty(),
+        if (isSearching) {
+            // Active search (#1239): render the results section, hide the feeds.
+            // searchResults == null ⇒ still loading; empty ⇒ ran but 0 hits;
+            // non-empty ⇒ render carousel.
+            when {
+                searchResults == null -> FeedSection(
+                    title = stringResource(R.string.explore_search_results),
+                    models = emptyList(),
+                    loading = true,
                     onModelClick = onModelClick,
                 )
-                FeedSection(
-                    title = stringResource(R.string.explore_staff_picks),
-                    models = staffPicks,
-                    loading = loadingFeeds && staffPicks.isEmpty(),
+                searchResults.isEmpty() -> Text(
+                    text = stringResource(R.string.explore_search_no_results, activeSearchQuery),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                else -> FeedSection(
+                    title = stringResource(R.string.explore_search_results),
+                    models = searchResults,
+                    loading = false,
                     onModelClick = onModelClick,
                 )
+            }
+        } else {
+            // One carousel per feed the selected source advertises. When a source
+            // is unreachable each empty FeedSection self-hides and the page falls
+            // back to the "Try a sample" carousel + the picker (switch sources) —
+            // a degraded source never blanks the tab (#2645). No red dev-style
+            // error banner: that was the v4.1.0 "horrible UI" complaint.
+            selectedSource.feedKinds.forEach { kind ->
+                val models = feedsByKind[kind].orEmpty()
                 FeedSection(
-                    title = stringResource(R.string.explore_recently_added),
-                    models = recent,
-                    loading = loadingFeeds && recent.isEmpty(),
+                    title = feedTitle(kind),
+                    models = models,
+                    loading = loadingFeeds && models.isEmpty(),
                     onModelClick = onModelClick,
                 )
             }
@@ -490,6 +492,7 @@ private fun SearchField(
     value: String,
     onValueChange: (String) -> Unit,
     onSubmit: (String) -> Unit,
+    sourceName: String,
     apiKeyAvailable: Boolean = true,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -497,7 +500,7 @@ private fun SearchField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(stringResource(R.string.explore_search_placeholder)) },
+            placeholder = { Text(stringResource(R.string.explore_search_placeholder, sourceName)) },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             singleLine = true,
             // When the API key is missing the search bar is purely cosmetic —
@@ -647,6 +650,50 @@ private fun FiltersBar(animatedOnly: Boolean, onToggle: () -> Unit) {
     }
 }
 
+/**
+ * Source-picker chip row (#2645): one [FilterChip] per available [ModelSource]
+ * (Sketchfab | Icosa Gallery | Poly Haven), the selected one highlighted.
+ * Horizontally scrollable so three chips never crowd a narrow phone.
+ */
+@Composable
+private fun SourcePickerRow(
+    sources: List<ModelSource>,
+    selected: ModelSource,
+    onSelect: (ModelSource) -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+    ) {
+        Text(
+            text = stringResource(R.string.explore_source_label),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.align(Alignment.CenterVertically),
+        )
+        sources.forEach { source ->
+            FilterChip(
+                selected = source.id == selected.id,
+                onClick = { onSelect(source) },
+                label = { Text(source.id.displayName) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                ),
+            )
+        }
+    }
+}
+
+/** Localised carousel title for a [FeedKind]. */
+@Composable
+private fun feedTitle(kind: FeedKind): String = when (kind) {
+    FeedKind.TRENDING -> stringResource(R.string.explore_trending_models)
+    FeedKind.STAFF_PICKS -> stringResource(R.string.explore_staff_picks)
+    FeedKind.RECENTLY_ADDED -> stringResource(R.string.explore_recently_added)
+}
+
 @Composable
 private fun CarouselSection(
     title: String,
@@ -698,9 +745,9 @@ private suspend inline fun <T> catchingFeed(
 @Composable
 private fun FeedSection(
     title: String,
-    models: List<SketchfabModel>,
+    models: List<GalleryModel>,
     loading: Boolean,
-    onModelClick: (SketchfabModel) -> Unit,
+    onModelClick: (GalleryModel) -> Unit,
 ) {
     // Hide the entire section when the feed is empty and we're not still
     // loading — better than telling users "Nothing here yet" when the
@@ -735,8 +782,8 @@ private fun FeedSection(
             // scroll on a half-card mid-name.
             flingBehavior = rememberSnapFlingBehavior(lazyListState = state),
         ) {
-            items(models, key = { it.uid }) { m ->
-                FeaturedSketchfabCard(model = m, onClick = { onModelClick(m) })
+            items(models, key = { it.cardKey }) { m ->
+                FeaturedModelCard(model = m, onClick = { onModelClick(m) })
             }
         }
     }

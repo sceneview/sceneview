@@ -24,20 +24,25 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import io.github.sceneview.demo.sketchfab.SketchfabModel
+import io.github.sceneview.demo.sources.GalleryModel
+import io.github.sceneview.demo.sources.formattedFaceCount
+import io.github.sceneview.demo.sources.preferredThumbnailUrl
+import io.github.sceneview.demo.sources.primaryTagDisplay
 
 /**
- * Horizontal-carousel card for a Sketchfab model. Mirrors the iOS
- * `FeaturedSketchfabCard` in `ExploreTab.swift`: 200×160 thumbnail, name,
- * primary tag, poly count, and an "Animated" pill when applicable.
+ * Horizontal-carousel card for a [GalleryModel] from any source (Sketchfab,
+ * Icosa Gallery, Poly Haven). Mirrors the iOS `FeaturedModelCard`: 200×160
+ * thumbnail, name, primary tag, poly count, and an "Animated" pill when
+ * applicable.
  *
- * Tap → opens the [io.github.sceneview.demo.ui.explore.SketchfabModelViewerScreen]
- * which renders the GLB inside SceneView. The Sketchfab viewer is NEVER
- * opened externally — the whole point of the demo is to show off SceneView.
+ * Tap → opens the [io.github.sceneview.demo.ui.explore.GalleryModelViewerScreen]
+ * which renders the streamed GLB inside SceneView. The origin catalog's web
+ * viewer is NEVER opened externally — the whole point of the demo is to show
+ * off SceneView.
  */
 @Composable
-fun FeaturedSketchfabCard(
-    model: SketchfabModel,
+fun FeaturedModelCard(
+    model: GalleryModel,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -122,23 +127,4 @@ private fun AnimatedPill(modifier: Modifier = Modifier) {
             fontWeight = FontWeight.SemiBold,
         )
     }
-}
-
-// ── Display helpers on SketchfabModel ─────────────────────────────────────
-
-/** Pick a thumbnail close to the card's render size. */
-fun SketchfabModel.preferredThumbnailUrl(minWidth: Int = 320, maxWidth: Int = 640): String? {
-    val images = thumbnails.images
-    val sweetSpot = images.firstOrNull { it.width in minWidth..maxWidth }
-    return (sweetSpot ?: images.maxByOrNull { it.width } ?: images.firstOrNull())?.url
-}
-
-/** First tag in Title Case, or a generic fallback. */
-fun SketchfabModel.primaryTagDisplay(): String =
-    tags?.firstOrNull()?.name?.replaceFirstChar { it.titlecase() } ?: "3D Model"
-
-fun SketchfabModel.formattedFaceCount(): String = when {
-    faceCount >= 1_000_000 -> String.format("%.1fM", faceCount / 1_000_000.0)
-    faceCount >= 1_000 -> String.format("%.1fk", faceCount / 1_000.0)
-    else -> faceCount.toString()
 }
