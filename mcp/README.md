@@ -4,7 +4,7 @@
 
 [![npm version](https://img.shields.io/npm/v/sceneview-mcp?color=6c35aa)](https://www.npmjs.com/package/sceneview-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/sceneview-mcp?color=blue)](https://www.npmjs.com/package/sceneview-mcp)
-[![Tests](https://img.shields.io/badge/tests-2918%20passing-brightgreen)](#quality)
+[![Tests](https://img.shields.io/badge/tests-1898%20passing-brightgreen)](#quality)
 [![MCP](https://img.shields.io/badge/MCP-v1.12-blue)](https://modelcontextprotocol.io/)
 [![Registry](https://img.shields.io/badge/MCP%20Registry-listed-blueviolet)](https://registry.modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
@@ -249,7 +249,7 @@ The assistant calls `validate_code` with the generated snippet and checks it aga
 
 ## Quality
 
-The MCP server is tested with **2,918 unit tests** across 132 test suites covering:
+The MCP server is tested with **1,898 unit tests** across 81 test suites covering:
 
 - Every tool response (correct output, error handling, edge cases)
 - All 33 code samples (compilable structure, correct imports, no deprecated APIs)
@@ -258,8 +258,8 @@ The MCP server is tested with **2,918 unit tests** across 132 test suites coveri
 - Resource responses (API reference, GitHub issues integration)
 
 ```
- Test Files  132 passed (132)
-      Tests  2918 passed (2918)
+ Test Files  81 passed (81)
+      Tests  1898 passed (1898)
 ```
 
 All tools work **fully offline** except `sceneview://known-issues` (GitHub API, cached 10 min), `search_models` (Sketchfab, BYOK), and `generate_3d_model` (Tripo AI, BYOK).
@@ -337,7 +337,7 @@ Enabled by default on the free tier (MCP client name/version and tool names — 
 cd mcp
 npm install
 npm run prepare  # Copy llms.txt + build TypeScript
-npm test         # 2918 tests
+npm test         # 1898 tests
 npm run dev      # Start with tsx (hot reload)
 ```
 
@@ -369,7 +369,7 @@ mcp/
 1. Fork the repository
 2. Create a feature branch
 3. Add tests for new tools or rules
-4. Run `npm test` — all 2918+ tests must pass
+4. Run `npm test` — all 1898+ tests must pass
 5. Submit a pull request
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full guide.
