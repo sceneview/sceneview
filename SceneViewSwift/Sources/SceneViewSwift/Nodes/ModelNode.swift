@@ -385,6 +385,67 @@ public struct ModelNode: @unchecked Sendable {
         return self
     }
 
+    /// Aligns the AABB point selected by a **normalized** origin with the node origin —
+    /// Android `ModelNode.centerOrigin(Position)` parity.
+    ///
+    /// Unlike the absolute ``centerOrigin(_:)`` above (whose argument is a model-space
+    /// point in metres that the bounding-box **centre** is moved to), `origin` here is a
+    /// point of the bounding box in **normalized AABB coordinates** — `0` = box centre,
+    /// `±1` = box faces, per axis. The model is translated so that the selected AABB point
+    /// lands exactly on the node's local origin, whatever the asset's authored pivot:
+    ///
+    /// - `.zero` — the bounding-box centre lands on the origin (identical to `centerOrigin(.zero)`).
+    /// - `SIMD3(0, -1, 0)` — centre-horizontal, **bottom aligned**: the model sits on the origin.
+    /// - `SIMD3(0, 1, 0)` — top aligned: the model hangs from the origin.
+    /// - `SIMD3(-1, 1, 0)` — left | top aligned.
+    ///
+    /// On an **unpositioned** entity this lets an Android grounding snippet port across:
+    /// `centerOrigin(normalized: SIMD3(0, -1, 0))` grounds a model like Android's
+    /// `Position(0, -1, 0)`, replacing the former manual workaround
+    /// `centerOrigin(SIMD3(0, bounds.extents.y / 2, 0))`. Apply after ``scaleToUnits(_:)``
+    /// so the bounds reflect the final scale.
+    ///
+    /// **Apply before positioning.** Unlike Android's `centerOrigin` (which composes additively —
+    /// `position += translation`, independent of the current position), this reads the entity's
+    /// **world** visual-bounds, so it does not compose with a previously-set position: call it on
+    /// an unpositioned, unparented entity (load → scaleToUnits → centerOrigin, before `.position(_:)`
+    /// or anchoring), and a later `.position(_:)` replaces the grounding offset.
+    ///
+    /// Mirrors Android's `ModelNode.centerOrigin(origin)` and its
+    /// `-(center + origin * halfExtent) * scale` translation (scale is already baked into the
+    /// RealityKit visual bounds here).
+    ///
+    /// - Parameter origin: AABB point in normalized coordinates (`-1...1` per axis, `0` = centre).
+    /// - Returns: Self with the alignment offset applied.
+    @discardableResult
+    public func centerOrigin(normalized origin: SIMD3<Float>) -> ModelNode {
+        let bounds = entity.visualBounds(relativeTo: nil)
+        entity.position = entity.position + Self.centerOriginTranslation(
+            center: bounds.center,
+            extents: bounds.extents,
+            origin: origin
+        )
+        return self
+    }
+
+    /// Computes the ``centerOrigin(normalized:)`` translation: the offset that moves the AABB
+    /// point selected by `origin` (normalized coordinates, `-1...1` per axis, `0` = centre) onto
+    /// the node's local origin.
+    ///
+    /// The anchor point in model space is `center + origin * (extents / 2)`; negating it yields the
+    /// translation that cancels it out. Using the AABB `center` (not just the extents) keeps the
+    /// alignment correct for assets whose bounding box is not authored centred on their pivot.
+    ///
+    /// Pure math, extracted so the formula is unit-testable without a live RealityKit scene —
+    /// mirrors Android's `centerOriginTranslation` (`ModelNodeCenterOriginFormulaTest`).
+    static func centerOriginTranslation(
+        center: SIMD3<Float>,
+        extents: SIMD3<Float>,
+        origin: SIMD3<Float>
+    ) -> SIMD3<Float> {
+        -(center + origin * (extents / 2))
+    }
+
     // MARK: - Collision
 
     /// Generates collision shapes for this model, enabling hit testing.
