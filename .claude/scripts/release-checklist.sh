@@ -399,6 +399,58 @@ else
 fi
 echo ""
 
+# ─── 16. Store preflight (Apple agreements / App Review / cert expiry) ───────
+# Sections 14 (device-QA) and 15 (vitals) validate the *build*. Section 16
+# validates the *account*: the human-only store blockers that silently 403 a
+# deploy — an expired Apple Program License Agreement (REQUIRED_AGREEMENTS_
+# MISSING_OR_EXPIRED), an App Review rejection (2.1 / 3.1.1 #2534), or a
+# distribution cert / profile about to lapse. These are what stalled 4.18–4.21
+# for days, undetected, at deploy minute 40 — this surfaces them BEFORE the tag
+# (#2612 P1).
+#
+# ADVISORY-FIRST, exactly like §14/§15: a real blocker is graded but only
+# hard-blocks under STORE_PREFLIGHT_HARD=1. No creds locally (the usual case)
+# → the script SKIPs honestly and this reads WARN, never a fake PASS and never
+# a FAIL. Reuses app-store.yml's ASC secrets — no new scope.
+echo -e "${CYAN}--- Store preflight (Apple agreements / review / certs) ---${NC}"
+
+PREFLIGHT_SCRIPT="$REPO_ROOT/.claude/scripts/store-preflight.sh"
+if [ -x "$PREFLIGHT_SCRIPT" ]; then
+    PREFLIGHT_JSON="$(mktemp 2>/dev/null || echo /tmp/store-preflight-$$.json)"
+    PREFLIGHT_LOG="$(mktemp 2>/dev/null || echo /tmp/store-preflight-$$.log)"
+    # GATE_HARD is opt-in via STORE_PREFLIGHT_HARD so the default run stays
+    # advisory. The script exits non-zero ONLY under GATE_HARD on a blocker.
+    if GATE_HARD="${STORE_PREFLIGHT_HARD:-0}" STORE_PREFLIGHT_JSON_OUT="$PREFLIGHT_JSON" \
+        bash "$PREFLIGHT_SCRIPT" > "$PREFLIGHT_LOG" 2>&1; then
+        PF_VERDICT=$(python3 -c "import json; print(json.load(open('$PREFLIGHT_JSON')).get('verdict','?'))" 2>/dev/null || echo "?")
+        PF_DETAIL=$(python3 -c "import json; print(json.load(open('$PREFLIGHT_JSON')).get('detail','') or '')" 2>/dev/null || echo "")
+        case "$PF_VERDICT" in
+            pass)    check "Store preflight (ASC)" "PASS" "$PF_DETAIL" ;;
+            warn)    check "Store preflight (ASC)" "WARN" "${PF_DETAIL:-review store state before tagging}" ;;
+            blocked) check "Store preflight (ASC)" "WARN" "store blocker present (advisory) — ${PF_DETAIL:-see store-preflight.sh}" ;;
+            skip)    check "Store preflight (ASC)" "WARN" "skipped — ${PF_DETAIL:-no ASC creds available}" ;;
+            *)       check "Store preflight (ASC)" "WARN" "advisory — verdict '$PF_VERDICT' (see log)" ;;
+        esac
+    else
+        # A non-zero exit is EXPECTED only under STORE_PREFLIGHT_HARD=1 on a real
+        # `blocked` verdict — that alone is a release FAIL. ANY other non-zero
+        # (the advisory script itself crashed, jq/openssl missing, a bug) must
+        # NOT freeze the release: the preflight is advisory-first, so a broken
+        # preflight reads WARN ("store blockers unchecked"), never a hard block.
+        PF_VERDICT=$(python3 -c "import json; print(json.load(open('$PREFLIGHT_JSON')).get('verdict','?'))" 2>/dev/null || echo "?")
+        PF_DETAIL=$(python3 -c "import json; print(json.load(open('$PREFLIGHT_JSON')).get('detail','') or '')" 2>/dev/null || echo "")
+        if [ "${STORE_PREFLIGHT_HARD:-0}" = "1" ] && [ "$PF_VERDICT" = "blocked" ]; then
+            check "Store preflight (ASC)" "FAIL" "store blocker — ${PF_DETAIL:-see store-preflight.sh output}"
+        else
+            check "Store preflight (ASC)" "WARN" "preflight errored — store blockers unchecked (advisory)"
+        fi
+    fi
+    rm -f "$PREFLIGHT_JSON" "$PREFLIGHT_LOG"
+else
+    check "Store preflight (ASC)" "WARN" "store-preflight.sh missing — store blockers not checked"
+fi
+echo ""
+
 # ─── Summary ───────────────────────────────────────────────────────────
 echo -e "${CYAN}=== Release Readiness Summary ===${NC}"
 echo ""

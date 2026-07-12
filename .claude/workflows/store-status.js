@@ -1,6 +1,6 @@
 export const meta = {
   name: 'store-status',
-  description: 'Verify the REAL live state of published SceneView artifacts — CI-green is NEVER proof of live. Probes iTunes (iOS app), Maven Central (repo1 HTTP 200), npm in parallel, compares to the expected version, flags mismatches, and updates the store/live bullet in STATE.md. ASC reject-state + Play review-state are flagged as a known gap needing an authenticated browser session.',
+  description: 'Verify the REAL live state of published SceneView artifacts — CI-green is NEVER proof of live. Probes iTunes (iOS app), Maven Central (repo1 HTTP 200), npm in parallel, compares to the expected version, flags mismatches, and updates the store/live bullet in STATE.md. ASC App Review state is now probed by store-preflight.sh; the ASC Resolution Center rejection thread + Play review-state remain a browser-only gap.',
   phases: [
     { title: 'Probe', detail: 'parallel live probes — iTunes lookup (id 6761329763) + Maven repo1 .pom HTTP code + npm sceneview-web version' },
     { title: 'Report', detail: 'pure-JS compare to expected version → mismatches; agent updates the store/live bullet in STATE.md NOW' },
@@ -151,7 +151,7 @@ if (!npmRes) {
   mismatches.push(`npm: sceneview-web@${expected} not confirmed (got ${npmRes.version === null ? 'no exact-version match' : npmRes.version}) — the exact version is not published.`)
 }
 
-const KNOWN_GAP = 'KNOWN GAP — ASC rejection-state (App Store Connect Resolution Center) and Play review-state are NOT machine-queryable here; they need an authenticated browser session (Chrome MCP). Flagged for a dedicated session — not faked.'
+const KNOWN_GAP = 'KNOWN GAP — the ASC Resolution Center rejection thread and Play review-state are NOT machine-queryable here; they need an authenticated browser session (Chrome MCP). ASC App Review *state* (REJECTED / READY_FOR_SALE …) is now probed by .claude/scripts/store-preflight.sh. Flagged for a dedicated session — not faked.'
 
 const liveLine = mismatches.length === 0
   ? `all probed surfaces match expected ${expected} (iOS App Store ${ios && ios.version ? ios.version : '?'}, Maven repo1 200, npm ${expected})`
