@@ -19,6 +19,7 @@ import io.github.sceneview.utils.readBuffer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.Buffer
 
@@ -242,13 +243,17 @@ class EnvironmentLoader(
         textureOptions: HDRLoader.Options = HDRLoader.Options(),
         createSkybox: Boolean = true,
     ): Environment? = context.loadFileBuffer(url)?.let { buffer ->
-        createHDREnvironment(
-            buffer = buffer,
-            indirectLightSpecularFilter = indirectLightSpecularFilter,
-            indirectLightApply = indirectLightApply,
-            textureOptions = textureOptions,
-            createSkybox = createSkybox
-        )
+        // Filament asserts on JNI thread mismatch — build on Main, mirroring
+        // MaterialLoader.loadMaterial / ModelLoader.loadModel.
+        withContext(Dispatchers.Main) {
+            createHDREnvironment(
+                buffer = buffer,
+                indirectLightSpecularFilter = indirectLightSpecularFilter,
+                indirectLightApply = indirectLightApply,
+                textureOptions = textureOptions,
+                createSkybox = createSkybox
+            )
+        }
     }
 
     /**
@@ -378,10 +383,18 @@ class EnvironmentLoader(
     suspend fun loadKTX1Environment(
         iblUrl: String? = null,
         skyboxUrl: String? = null
-    ): Environment = createKTX1Environment(
-        iblBuffer = iblUrl?.let { context.loadFileBuffer(iblUrl) },
-        skyboxBuffer = skyboxUrl?.let { context.loadFileBuffer(skyboxUrl) }
-    )
+    ): Environment {
+        // Load both buffers on the caller's (IO) dispatcher first, then build on Main —
+        // Filament asserts on JNI thread mismatch (same pattern as MaterialLoader.loadMaterial).
+        val iblBuffer = iblUrl?.let { context.loadFileBuffer(iblUrl) }
+        val skyboxBuffer = skyboxUrl?.let { context.loadFileBuffer(skyboxUrl) }
+        return withContext(Dispatchers.Main) {
+            createKTX1Environment(
+                iblBuffer = iblBuffer,
+                skyboxBuffer = skyboxBuffer
+            )
+        }
+    }
 
     /**
      * Utility for decoding and producing environment resources from an HDR file.
@@ -406,13 +419,17 @@ class EnvironmentLoader(
         textureOptions: HDRLoader.Options = HDRLoader.Options(),
         createSkybox: Boolean = true,
     ): Environment? = context.loadFileBuffer(url)?.let { buffer ->
-        createHDREnvironment(
-            buffer = buffer,
-            indirectLightSpecularFilter = indirectLightSpecularFilter,
-            indirectLightApply = indirectLightApply,
-            textureOptions = textureOptions,
-            createSkybox = createSkybox
-        )
+        // Filament asserts on JNI thread mismatch — build on Main, mirroring
+        // MaterialLoader.loadMaterial / ModelLoader.loadModel.
+        withContext(Dispatchers.Main) {
+            createHDREnvironment(
+                buffer = buffer,
+                indirectLightSpecularFilter = indirectLightSpecularFilter,
+                indirectLightApply = indirectLightApply,
+                textureOptions = textureOptions,
+                createSkybox = createSkybox
+            )
+        }
     }
 
     fun destroyEnvironment(environment: Environment) {
