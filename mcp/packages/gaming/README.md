@@ -27,7 +27,7 @@ Then restart Claude Desktop and ask:
 
 ### Option B — hosted HTTP MCP URL (ChatGPT, Claude Desktop "Remote MCP", Cursor URL)
 
-The 7 gaming tools are also exposed (along with sceneview-mcp + automotive/healthcare/interior/rerun verticals — 63 tools total) on the shared SceneView gateway:
+The 7 gaming tools are also exposed (along with sceneview-mcp + automotive/healthcare/interior/rerun verticals and the gateway's widget tool — 67 tools total) on the shared SceneView gateway:
 
 ```
 https://sceneview-mcp.mcp-tools-lab.workers.dev/mcp/public
