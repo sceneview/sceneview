@@ -4833,7 +4833,8 @@ public struct ModelNode: @unchecked Sendable {
 There are two `centerOrigin` overloads:
 
 - **`centerOrigin(_ target:)`** — absolute: moves the model so its visual-bounds **centre** sits at the supplied model-space point (in metres). Pass `.zero` to center on the origin — the equivalent of Kotlin `ModelNode(centerOrigin = Position(0,0,0))`. The target is an **absolute** point, so `SIMD3(0, -1, 0)` puts the bounds centre 1 m below the origin (it does NOT bottom-align).
-- **`centerOrigin(normalized origin:)`** — Android parity (#2632): `origin` is a **normalized** AABB coordinate (`-1..1` per axis, `0` = box centre, `±1` = box faces), and the selected AABB point is aligned with the node origin via `-(center + origin * extents/2)`. `centerOrigin(normalized: SIMD3(0, -1, 0))` bottom-aligns exactly like Android's `Position(0, -1, 0)` (the model sits on the origin); `.zero` is identical to `centerOrigin(.zero)`. Prefer this overload when porting an Android snippet verbatim — it replaces the former manual grounding workaround `centerOrigin(SIMD3(0, bounds.extents.y / 2, 0))`.
+- **`centerOrigin(normalized origin:)`** — Android parity (#2632): `origin` is a **normalized** AABB coordinate (`-1..1` per axis, `0` = box centre, `±1` = box faces), and the selected AABB point is aligned with the node origin via `-(center + origin * extents/2)`. `centerOrigin(normalized: SIMD3(0, -1, 0))` bottom-aligns like Android's `Position(0, -1, 0)` (the model sits on the origin); `.zero` is identical to `centerOrigin(.zero)`. Prefer this overload when porting an Android grounding snippet (on an unpositioned entity) — it replaces the former manual grounding workaround `centerOrigin(SIMD3(0, bounds.extents.y / 2, 0))`.
+  - **Apply before positioning.** Unlike Android's `centerOrigin` (which composes additively — `position += translation`, independent of the current position), this reads the entity's **world** visual-bounds, so it does not compose with a previously-set position: call it on an unpositioned, unparented entity (load → scaleToUnits → centerOrigin, before `.position(_:)` or anchoring), and a later `.position(_:)` replaces the grounding offset.
 
 ### iOS: GeometryNode
 
@@ -5991,6 +5992,7 @@ Key behaviors:
 - `load(_:)` calls `Entity(named:)` — file must be in the app bundle or an accessible URL.
 - `load(from:)` downloads to a temp file, loads, then cleans up.
 - `scaleToUnits(_:)` mirrors Android's `ModelNode(scaleToUnits = 1f)`.
+- `centerOrigin(normalized:)` — **apply before positioning.** Unlike Android's `centerOrigin` (which composes additively — `position += translation`, independent of the current position), this reads the entity's **world** visual-bounds, so it does not compose with a previously-set position: call it on an unpositioned, unparented entity (load → scaleToUnits → centerOrigin, before `.position(_:)` or anchoring), and a later `.position(_:)` replaces the grounding offset.
 
 #### LightNode — light source
 

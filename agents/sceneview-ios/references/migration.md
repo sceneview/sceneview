@@ -51,7 +51,7 @@ table** in `cheatsheet-ios.md`. Key shape differences:
 | `ARSceneView { }` | `ARSceneView(...)` |
 | `rememberModelInstance(loader, path)` (nullable) | `try await ModelNode.load(path)` (`async throws`) |
 | `CubeNode(size, material)` | `GeometryNode.cube(size:color:)` |
-| `ModelNode(centerOrigin = Position(0,-1,0))` (normalized AABB origin) | `.centerOrigin(normalized: SIMD3(0, -1, 0))` (bottom-align — same normalized `-1..1` semantics) |
+| `ModelNode(centerOrigin = Position(0,-1,0))` (normalized AABB origin) | `.centerOrigin(normalized: SIMD3(0, -1, 0))` (bottom-align — same normalized `-1..1` semantics; apply before positioning: does not compose additively with a prior `.position`) |
 | `LightNode(type = LightManager.Type.POINT, …)` | `LightNode.point(color:intensity:attenuationRadius:)` |
 | `AnchorNode(anchor: arcoreAnchor)` | `AnchorNode.world(position:)` / `.plane(...)` |
 | `rememberEnvironmentLoader` + `rememberEnvironment` | `.environment(.studio)` modifier |

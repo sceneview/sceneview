@@ -399,10 +399,17 @@ public struct ModelNode: @unchecked Sendable {
     /// - `SIMD3(0, 1, 0)` — top aligned: the model hangs from the origin.
     /// - `SIMD3(-1, 1, 0)` — left | top aligned.
     ///
-    /// This makes an Android snippet port verbatim: `centerOrigin(normalized: SIMD3(0, -1, 0))`
-    /// grounds a model exactly like Android's `Position(0, -1, 0)`, replacing the former manual
-    /// workaround `centerOrigin(SIMD3(0, bounds.extents.y / 2, 0))`. Apply after ``scaleToUnits(_:)``
+    /// On an **unpositioned** entity this lets an Android grounding snippet port across:
+    /// `centerOrigin(normalized: SIMD3(0, -1, 0))` grounds a model like Android's
+    /// `Position(0, -1, 0)`, replacing the former manual workaround
+    /// `centerOrigin(SIMD3(0, bounds.extents.y / 2, 0))`. Apply after ``scaleToUnits(_:)``
     /// so the bounds reflect the final scale.
+    ///
+    /// **Apply before positioning.** Unlike Android's `centerOrigin` (which composes additively —
+    /// `position += translation`, independent of the current position), this reads the entity's
+    /// **world** visual-bounds, so it does not compose with a previously-set position: call it on
+    /// an unpositioned, unparented entity (load → scaleToUnits → centerOrigin, before `.position(_:)`
+    /// or anchoring), and a later `.position(_:)` replaces the grounding offset.
     ///
     /// Mirrors Android's `ModelNode.centerOrigin(origin)` and its
     /// `-(center + origin * halfExtent) * scale` translation (scale is already baked into the
