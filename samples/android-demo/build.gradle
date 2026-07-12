@@ -191,6 +191,16 @@ android {
             includeAndroidResources = true
             all {
                 systemProperty 'robolectric.logging.enabled', 'true'
+                // #2692: the CI Unit-tests job intermittently hangs in THIS task and
+                // gets force-cancelled at the job's 30 min timeout with zero output —
+                // no attribution possible. Name every test as it starts so the log's
+                // last line identifies the hanging test, and fail the task at 25 min
+                // (before the job kill) so partial reports survive as artifacts.
+                testLogging {
+                    events 'started', 'failed'
+                    displayGranularity = 2
+                }
+                timeout = java.time.Duration.ofMinutes(25)
             }
         }
     }
