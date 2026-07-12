@@ -1,15 +1,20 @@
 package io.github.sceneview.demo.sources
 
 import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -160,6 +165,122 @@ class GalleryServiceHttpTest {
             assertEquals("vase", hits.first().id)
             // Blank query short-circuits to empty (no crash, no full-catalog dump).
             assertTrue(poly.search(query = "   ", limit = 10).isEmpty())
+        }
+    }
+
+    @Test fun `poly haven dedups a concurrent cold index fetch to a single request`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            // Two responses are available, but a correct in-flight dedup issues
+            // exactly ONE request. The body delay keeps the first fetch in-flight
+            // long enough for the second concurrent caller to reach the (still
+            // empty) cache — without it the race window can close before the
+            // second caller looks, hiding a regression. The sequential existing
+            // test (`… index cached`) never exercises this path.
+            repeat(2) {
+                server.enqueue(
+                    MockResponse.Builder().code(200).body(POLY_INDEX)
+                        .bodyDelay(300, TimeUnit.MILLISECONDS).build(),
+                )
+            }
+            val poly = PolyHavenService(context, baseUrl = server.url("/").toString())
+
+            // Fire TRENDING + RECENTLY_ADDED CONCURRENTLY, mirroring the Explore
+            // tab's parallel cold-open feeds (the exact scenario the reviewer
+            // flagged). `async` dispatches each `feed()` onto Dispatchers.IO, so
+            // both genuinely reach `modelsIndex()` at once.
+            val (trending, recent) = coroutineScope {
+                val a = async { poly.feed(FeedKind.TRENDING, limit = 10) }
+                val b = async { poly.feed(FeedKind.RECENTLY_ADDED, limit = 10) }
+                a.await() to b.await()
+            }
+
+            assertEquals("barrel", trending.first().id)
+            assertEquals("vase", recent.first().id)
+            // The whole point: concurrent cold callers collapse to ONE round-trip.
+            assertEquals(1, server.requestCount)
+        }
+    }
+
+    // ── Download hardening (#2645 review) ─────────────────────────────────
+
+    @Test fun `icosa single-file download sanitises a hostile id into the cache dir`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val binaryUrl = server.url("/cdn/evil.glb").toString()
+            val detail = """
+                {
+                  "assetId": "evil",
+                  "displayName": "Evil",
+                  "formats": [ { "formatType": "GLTF2", "root": { "url": "$binaryUrl" } } ]
+                }
+            """.trimIndent()
+            server.enqueue(MockResponse.Builder().code(200).body(detail).build())     // asset detail
+            server.enqueue(MockResponse.Builder().code(200).body("GLBDATA").build())  // the GLB bytes
+            val icosa = IcosaGalleryService(context, baseUrl = server.url("/v1/").toString())
+
+            // An id that tries to climb out of the per-source cache directory.
+            val model = GalleryModel(
+                sourceId = ModelSourceId.ICOSA,
+                id = "../../../../tmp/evil",
+                name = "Evil",
+            )
+            val file = icosa.download(model)
+
+            // The cached file must stay confined to gallery/icosa/ — the traversal
+            // segments are flattened by NetworkModelDownloader.sanitize, not honoured.
+            val cacheRoot = File(context.cacheDir, NetworkModelDownloader.CACHE_DIR_NAME).canonicalFile
+            assertTrue(
+                "downloaded file escaped the cache dir: ${file.canonicalPath}",
+                file.canonicalPath.startsWith(cacheRoot.path + File.separator),
+            )
+            assertTrue(file.exists() && file.length() > 0L)
+        }
+    }
+
+    @Test fun `readBoundedBody rejects an over-cap body and accepts one under it`() {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse.Builder().code(200).body("x".repeat(500)).build())
+            server.enqueue(MockResponse.Builder().code(200).body("small").build())
+            val client = OkHttpClient()
+
+            client.newCall(Request.Builder().url(server.url("/big")).build()).execute().use { resp ->
+                val thrown = runCatching { resp.readBoundedBody(maxBytes = 64) }.exceptionOrNull()
+                assertTrue("over-cap body should throw IOException, got $thrown", thrown is IOException)
+            }
+            client.newCall(Request.Builder().url(server.url("/ok")).build()).execute().use { resp ->
+                assertEquals("small", resp.readBoundedBody(maxBytes = 64))
+            }
+        }
+    }
+
+    @Test fun `downloadSingle aborts over-cap streams without poisoning the cache`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            // (a) known Content-Length over the cap → header fast-fail.
+            server.enqueue(MockResponse.Builder().code(200).body("x".repeat(1000)).build())
+            // (b) chunked body (length hidden, -1) over the cap → mid-stream guard,
+            //     the case that matters for a genuinely unbounded hostile stream.
+            server.enqueue(MockResponse.Builder().code(200).chunkedBody("x".repeat(1000), 64).build())
+            val downloader = NetworkModelDownloader(context, maxModelBytes = 100)
+
+            val known = runCatching {
+                downloader.downloadSingle(ModelSourceId.ICOSA, "known.glb", server.url("/known").toString())
+            }.exceptionOrNull()
+            assertTrue("known-length over-cap should throw, got $known", known is IOException)
+
+            val chunked = runCatching {
+                downloader.downloadSingle(ModelSourceId.ICOSA, "chunked.glb", server.url("/chunked").toString())
+            }.exceptionOrNull()
+            assertTrue("chunked over-cap should throw, got $chunked", chunked is IOException)
+
+            // No partial file renamed into place, and no leftover temp files.
+            val dir = File(File(context.cacheDir, NetworkModelDownloader.CACHE_DIR_NAME), ModelSourceId.ICOSA.slug)
+            assertTrue("known.glb poisoned the cache", !File(dir, "known.glb").exists())
+            assertTrue("chunked.glb poisoned the cache", !File(dir, "chunked.glb").exists())
+            val temps = dir.listFiles()?.filter { it.name.endsWith(".tmp") } ?: emptyList()
+            assertTrue("leftover temp files: $temps", temps.isEmpty())
         }
     }
 

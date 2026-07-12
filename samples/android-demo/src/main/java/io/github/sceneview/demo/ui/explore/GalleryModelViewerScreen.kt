@@ -351,8 +351,14 @@ private fun PreviewContent(
         Spacer(Modifier.height(12.dp))
         StatsRow(model)
         Spacer(Modifier.height(20.dp))
+        // Gate the CTA on `downloadable`: some catalogs (e.g. a Sketchfab model
+        // outside the free tier) expose a model but not a format the demo can
+        // fetch and render. Disabling the button — instead of letting the tap
+        // fail into the download error state — keeps the KDoc on
+        // [GalleryModel.downloadable] truthful and the affordance honest (#2645).
         Button(
             onClick = onOpenInSceneView,
+            enabled = model.downloadable,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.tertiary,
@@ -371,7 +377,10 @@ private fun PreviewContent(
         }
         Spacer(Modifier.height(8.dp))
         Text(
-            text = stringResource(R.string.sketchfab_rendered_locally),
+            text = stringResource(
+                if (model.downloadable) R.string.sketchfab_rendered_locally
+                else R.string.gallery_not_downloadable,
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth(),

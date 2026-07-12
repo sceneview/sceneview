@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.annotation.VisibleForTesting
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -64,6 +66,13 @@ class PolyHavenService @VisibleForTesting internal constructor(
     @Volatile private var cachedIndex: Map<String, PolyHavenAsset>? = null
     @Volatile private var cachedAtMs: Long = 0L
 
+    // Serialises the COLD index fetch. The Explore tab fires TRENDING +
+    // RECENTLY_ADDED (and often a search) concurrently at cold open; without a
+    // guard each caller races past the still-empty cache and issues its own GET
+    // of the whole catalog, defeating the TTL cache. The mutex collapses those
+    // concurrent cold callers to a single request (#2645 review).
+    private val indexMutex = Mutex()
+
     override suspend fun feed(kind: FeedKind, animatedOnly: Boolean, limit: Int): List<GalleryModel> =
         withContext(Dispatchers.IO) {
             val index = modelsIndex()
@@ -114,14 +123,23 @@ class PolyHavenService @VisibleForTesting internal constructor(
     // ── Internal helpers ──────────────────────────────────────────────────
 
     private suspend fun modelsIndex(): Map<String, PolyHavenAsset> {
-        val cached = cachedIndex
-        if (cached != null && System.currentTimeMillis() - cachedAtMs < INDEX_TTL_MS) return cached
-        val url = buildUrl("assets") { addQueryParameter("t", "models") }
-        val index = json.decodeFromString<Map<String, PolyHavenAsset>>(getBody(url))
-        cachedIndex = index
-        cachedAtMs = System.currentTimeMillis()
-        return index
+        freshCachedIndex()?.let { return it }
+        return indexMutex.withLock {
+            // Re-check inside the lock: a concurrent caller may have populated the
+            // cache while we waited, so we never re-issue an identical request.
+            freshCachedIndex() ?: run {
+                val url = buildUrl("assets") { addQueryParameter("t", "models") }
+                val index = json.decodeFromString<Map<String, PolyHavenAsset>>(getBody(url))
+                cachedIndex = index
+                cachedAtMs = System.currentTimeMillis()
+                index
+            }
+        }
     }
+
+    /** The cached index if still within its TTL, else `null`. */
+    private fun freshCachedIndex(): Map<String, PolyHavenAsset>? =
+        cachedIndex?.takeIf { System.currentTimeMillis() - cachedAtMs < INDEX_TTL_MS }
 
     @VisibleForTesting
     internal fun buildUrl(path: String, block: HttpUrl.Builder.() -> Unit): HttpUrl =
@@ -138,7 +156,7 @@ class PolyHavenService @VisibleForTesting internal constructor(
             if (!response.isSuccessful) {
                 throw IOException("Poly Haven request failed with HTTP ${response.code}")
             }
-            return response.body.source().readString(Charsets.UTF_8)
+            return response.readBoundedBody()
         }
     }
 

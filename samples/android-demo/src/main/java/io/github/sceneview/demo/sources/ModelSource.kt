@@ -1,6 +1,8 @@
 package io.github.sceneview.demo.sources
 
+import okhttp3.Response
 import java.io.File
+import java.io.IOException
 
 /**
  * One curated feed of a [ModelSource], in browse-layout display order.
@@ -85,4 +87,28 @@ interface ModelSource {
         model: GalleryModel,
         onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null,
     ): File
+}
+
+/**
+ * Upper bound on the JSON body a keyless source will buffer from an index /
+ * feed / detail endpoint (32 MB). The catalogs return compact JSON; a body this
+ * large means a hostile or misbehaving endpoint, so we refuse it instead of
+ * buffering an unbounded response into memory (#2645 review — OOM guard).
+ */
+internal const val MAX_SOURCE_JSON_BYTES: Long = 32L * 1024 * 1024
+
+/**
+ * Read this response's body as a UTF-8 string, refusing bodies larger than
+ * [maxBytes]. [okio.BufferedSource.request] buffers at most `maxBytes + 1` bytes
+ * and reports whether that many exist — so an oversized body is rejected having
+ * pulled only the cap into memory, never the whole (possibly unbounded) stream.
+ *
+ * @throws IOException when the body exceeds [maxBytes].
+ */
+internal fun Response.readBoundedBody(maxBytes: Long = MAX_SOURCE_JSON_BYTES): String {
+    val source = body.source()
+    if (source.request(maxBytes + 1)) {
+        throw IOException("Response body exceeds $maxBytes B cap")
+    }
+    return source.readString(Charsets.UTF_8)
 }

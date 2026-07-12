@@ -93,8 +93,11 @@ class IcosaGalleryService @VisibleForTesting internal constructor(
         val rootUrl = format.root?.url ?: throw IOException("Icosa format for ${model.id} has no root URL")
 
         if (rootUrl.substringBefore('?').endsWith(".glb", ignoreCase = true)) {
-            // Self-contained GLB — single-file fetch.
-            downloader.downloadSingle(id, "${model.id}.glb", rootUrl, onProgress)
+            // Self-contained GLB — single-file fetch. Sanitise the (untrusted,
+            // server-supplied) id into a single safe path segment before it
+            // becomes a cache filename — the multi-file branch already routes
+            // through NetworkModelDownloader.sanitize (#2645 review).
+            downloader.downloadSingle(id, "${NetworkModelDownloader.sanitize(model.id)}.glb", rootUrl, onProgress)
         } else {
             // Multi-file glTF — fetch the root plus its resources side by side.
             val rootRelative = format.root.relativePath?.takeIf { it.isNotBlank() }
@@ -130,7 +133,7 @@ class IcosaGalleryService @VisibleForTesting internal constructor(
             if (!response.isSuccessful) {
                 throw IOException("Icosa request failed with HTTP ${response.code}")
             }
-            return response.body.source().readString(Charsets.UTF_8)
+            return response.readBoundedBody()
         }
     }
 

@@ -39,6 +39,9 @@ import kotlin.coroutines.coroutineContext
 class NetworkModelDownloader @VisibleForTesting internal constructor(
     context: Context,
     private val client: OkHttpClient = defaultClient,
+    // Per-file streaming ceiling. Overridable only so a unit test can drive the
+    // abort path without streaming half a gigabyte; production uses the default.
+    private val maxModelBytes: Long = MAX_MODEL_BYTES,
 ) {
     private val root: File = File(context.cacheDir, CACHE_DIR_NAME)
 
@@ -126,6 +129,11 @@ class NetworkModelDownloader @VisibleForTesting internal constructor(
                 }
                 val body = response.body
                 val totalBytes = body.contentLength() // -1 when unknown
+                // Fast-fail when the server advertises an over-cap size, before
+                // opening the temp file (#2645 review — disk-fill / OOM guard).
+                if (totalBytes > maxModelBytes) {
+                    throw IOException("Download too large: $totalBytes B exceeds $maxModelBytes B cap for $url")
+                }
                 destination.parentFile?.mkdirs()
                 // Stream into a per-call unique temp file, then atomically rename
                 // onto `destination` so a cancelled / failed transfer never
@@ -143,6 +151,14 @@ class NetworkModelDownloader @VisibleForTesting internal constructor(
                                 coroutineContext.ensureActive()
                                 out.write(buffer, 0, n)
                                 bytesRead += n
+                                // Enforce the cap mid-stream too — a chunked
+                                // response hides its size (contentLength == -1),
+                                // so the header check above can't catch it. The
+                                // `finally` below deletes the partial temp, so a
+                                // rejected transfer never poisons the cache.
+                                if (bytesRead > maxModelBytes) {
+                                    throw IOException("Download exceeded $maxModelBytes B cap for $url")
+                                }
                                 if (onProgress != null && bytesRead >= nextReport) {
                                     onProgress(bytesRead, totalBytes)
                                     nextReport = bytesRead + throttle
@@ -219,6 +235,13 @@ class NetworkModelDownloader @VisibleForTesting internal constructor(
         /** Cache cap shared across the CC sources (250 MB), matching the samples-side Sketchfab budget. */
         const val CACHE_MAX_BYTES: Long = 250L * 1024 * 1024
 
+        /**
+         * Per-file streaming ceiling (512 MB). A single model file above this is
+         * either hostile or a demo mistake — abort rather than fill the disk /
+         * OOM, since [pruneCacheIfNeeded] only runs *after* a full download.
+         */
+        const val MAX_MODEL_BYTES: Long = 512L * 1024 * 1024
+
         private val defaultClient: OkHttpClient by lazy {
             OkHttpClient.Builder()
                 // Force HTTP/1.1 + explicit UA for the same WAF-friendliness reason
@@ -240,8 +263,8 @@ class NetworkModelDownloader @VisibleForTesting internal constructor(
                 .joinToString("/")
                 .ifEmpty { "resource" }
 
-        /** Flatten an id into a single safe path segment for the bundle directory. */
-        private fun sanitize(id: String): String =
+        /** Flatten an id into a single safe path segment for a cache filename / directory. */
+        internal fun sanitize(id: String): String =
             id.map { if (it.isLetterOrDigit() || it == '-' || it == '_') it else '_' }.joinToString("")
                 .ifEmpty { "asset" }
     }

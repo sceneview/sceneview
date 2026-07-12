@@ -61,6 +61,9 @@
     <string name="sketchfab_animated">Animated</string>
     <string name="sketchfab_open_in_sceneview">Open in SceneView</string>
     <string name="sketchfab_rendered_locally">Rendered locally by Filament — no external viewer.</string>
+    <!-- Shown under a disabled CTA when the origin catalog exposes a model but
+         not a downloadable format the demo can render (#2645). -->
+    <string name="gallery_not_downloadable">This model isn\'t available to download from its source.</string>
     <string name="sketchfab_loading_model">Loading %s…</string>
     <string name="sketchfab_streaming_from">Streaming from Sketchfab · rendering in SceneView</string>
     <!-- Multi-source generalisation of sketchfab_streaming_from (#2645): %s is
