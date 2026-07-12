@@ -382,6 +382,9 @@ private fun ExploreBody(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
             onSubmit = onSearchSubmit,
+            // Placeholder names the catalog being searched so the field reflects
+            // the picked source (Sketchfab / Icosa Gallery / Poly Haven), #2645.
+            sourceName = selectedSource.id.displayName,
             // The selected source is always usable (Sketchfab is dropped from the
             // picker when it has no key), so the search field is always live.
             apiKeyAvailable = true,
@@ -489,6 +492,7 @@ private fun SearchField(
     value: String,
     onValueChange: (String) -> Unit,
     onSubmit: (String) -> Unit,
+    sourceName: String,
     apiKeyAvailable: Boolean = true,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -496,7 +500,7 @@ private fun SearchField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(stringResource(R.string.explore_search_placeholder)) },
+            placeholder = { Text(stringResource(R.string.explore_search_placeholder, sourceName)) },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             singleLine = true,
             // When the API key is missing the search bar is purely cosmetic —

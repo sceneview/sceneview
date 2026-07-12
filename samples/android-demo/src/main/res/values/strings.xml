@@ -24,7 +24,7 @@
     <string name="explore_animation_count">%d animations</string>
     <string name="explore_loading">Loading 3D model</string>
     <string name="explore_heading">Explore</string>
-    <string name="explore_search_placeholder">Search 3D models on Sketchfab</string>
+    <string name="explore_search_placeholder">Search 3D models on %1$s</string>
     <string name="explore_filter_animated">Animated</string>
     <string name="explore_try_a_sample">Try a sample</string>
     <string name="explore_trending_models">Trending models</string>
