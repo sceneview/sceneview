@@ -725,6 +725,44 @@ Reactive: `text`, `fontSize`, `textColor`, `backgroundColor`, `position`, `scale
 )
 ```
 
+### SplatNode — 3D Gaussian Splatting (radiance-field captures) (#2646)
+Renders a `SplatCloud` (the KMP data model: flat `positions`/`scales`/`rotations`/`colors`/`opacities`
+arrays) as camera-facing gaussian discs — instanced quads, per-splat data in RGBA16F textures,
+premultiplied-alpha blending. Clouds above 65535 splats are split into multiple draws internally.
+```kotlin
+@Composable fun SplatNode(
+    splatCloud: SplatCloud,          // io.github.sceneview.core.splat.SplatCloud (must be non-empty)
+    cameraPositionProvider: (() -> Position)? = null,  // enables the back-to-front painter's sort
+    splatCount: Int = splatCloud.count,  // render only the first N texels — LOD / reveal hook
+    position: Position = Position(x = 0f),
+    rotation: Rotation = Rotation(x = 0f),
+    scale: Scale = Scale(1f),
+    apply: SplatNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null
+)
+
+@Composable fun rememberSplatCloud(vararg keys: Any?, creator: () -> SplatCloud): SplatCloud
+```
+
+Usage:
+```kotlin
+var cameraPosition by remember { mutableStateOf(Position()) }
+SceneView(
+    cameraNode = cameraNode,
+    onFrame = { cameraPosition = cameraNode.worldPosition }
+) {
+    SplatNode(
+        splatCloud = cloud,                            // e.g. from rememberSplatCloud { ... }
+        cameraPositionProvider = { cameraPosition }    // re-sorts off the main thread on camera motion
+    )
+}
+```
+
+Current scope (P1): isotropic billboards (max-axis scale — anisotropic screen-space ellipses are
+planned) and SH degree 0 color. Without a `cameraPositionProvider` the compositing order stays
+as loaded (expect popping when orbiting). `.ply` / `.spz` file loaders arrive with the #2646
+loader workstream — until then build `SplatCloud` from arrays.
+
 ### VideoNode — video on 3D plane
 ```kotlin
 // Simple — asset path (recommended):

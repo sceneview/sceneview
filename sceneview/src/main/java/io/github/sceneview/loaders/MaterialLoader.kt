@@ -95,6 +95,9 @@ class MaterialLoader(
     private val semanticsOverlayMaterial by lazy {
         createMaterial("$kMaterialsAssetFolder/semantics_overlay.filamat")
     }
+    private val splatMaterial by lazy {
+        createMaterial("$kMaterialsAssetFolder/splat.filamat")
+    }
 
     private val materials = java.util.Collections.synchronizedList(mutableListOf<Material>())
     private val materialInstances = java.util.Collections.synchronizedList(mutableListOf<MaterialInstance>())
@@ -476,6 +479,44 @@ class MaterialLoader(
     ): MaterialInstance = createInstance(semanticsOverlayMaterial).apply {
         setSemanticsTexture(semanticTexture)
         setSemanticsOpacity(opacity)
+    }
+
+    /**
+     * Creates a [MaterialInstance] of the **Gaussian Splatting material** (`splat.filamat`) —
+     * one per instanced draw batch of an [io.github.sceneview.node.SplatNode] (#2646).
+     *
+     * The material draws hardware-instanced camera-facing quads whose per-splat centre /
+     * half-extent / colour / opacity are fetched **in the vertex shader** from the two square
+     * `RGBA16F` data textures, indexed by `getInstanceIndex() + instanceOffset`. See
+     * [io.github.sceneview.splat.SplatBuffers] for the exact texel layout contract.
+     *
+     * Both textures are sampled with `NEAREST` filtering and `CLAMP_TO_EDGE` wrapping: texels
+     * are addressed exactly at their centres, and any interpolation would blend adjacent
+     * splats' attributes into garbage.
+     *
+     * @param positionScaleTexture per-splat `xyz = centre (model space), w = billboard half-extent`.
+     * @param colorOpacityTexture  per-splat `rgb = linear colour, a = straight opacity`.
+     * @param textureSize          side of the two square data textures (the shader's `texWidth`).
+     * @param instanceOffset       global splat index of this batch's instance 0 — batches above
+     *                             the 65535 instances/draw cap share the textures and shift
+     *                             their indexing by this offset.
+     */
+    @MainThread
+    fun createSplatInstance(
+        positionScaleTexture: Texture,
+        colorOpacityTexture: Texture,
+        textureSize: Int,
+        instanceOffset: Int = 0
+    ): MaterialInstance = createInstance(splatMaterial).apply {
+        val dataSampler = TextureSampler(
+            TextureSampler.MinFilter.NEAREST,
+            TextureSampler.MagFilter.NEAREST,
+            TextureSampler.WrapMode.CLAMP_TO_EDGE
+        )
+        setTexture("splatPositionScale", positionScaleTexture, dataSampler)
+        setTexture("splatColorOpacity", colorOpacityTexture, dataSampler)
+        setParameter("texWidth", textureSize)
+        setParameter("instanceOffset", instanceOffset)
     }
 
     fun destroyMaterial(material: Material) {
