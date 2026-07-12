@@ -95,4 +95,56 @@ class WebXRHitTestGuardTest {
         assertTrue(lateSource.cancelled, "the late source must be cancelled")
         assertEquals(stalePriorSource, hitTestSource, "the field must be untouched when not running")
     }
+
+    // ── ARSceneView variant (#2668 MED-2 review follow-up) ──────────────────────────────────
+    //
+    // `ARSceneView.startSession`'s hit-test `.then` has a different lifecycle from
+    // `WebXRSession`: the promise can resolve BETWEEN onReady() and the caller's start(),
+    // while `isRunning` is still false but the session is alive. Its guard therefore keys
+    // on teardown (`sceneViewDestroyed`, set by both stop() and onend), not on `isRunning`.
+
+    /**
+     * Reproduces the guarded body of `ARSceneView.startSession`'s hit-test `.then`:
+     * adopt [source] unless the scene view was already torn down, in which case cancel it.
+     */
+    private fun onArHitTestSourceResolved(
+        sceneViewDestroyed: Boolean,
+        source: FakeHitTestSource,
+        assign: (FakeHitTestSource) -> Unit,
+    ) {
+        if (!sceneViewDestroyed) {
+            assign(source)
+        } else {
+            source.cancel()
+        }
+    }
+
+    /**
+     * The pre-start window: the source resolves after onReady() but before the caller's
+     * start() — isRunning is still false, yet the session is alive. An `isRunning`-keyed
+     * guard would wrongly cancel here and hit testing would never work; the
+     * teardown-keyed guard must adopt the source.
+     */
+    @Test
+    fun arSourceResolvingBeforeStartIsStillAdopted() {
+        var hitTestSource: FakeHitTestSource? = null
+        val source = FakeHitTestSource()
+
+        onArHitTestSourceResolved(sceneViewDestroyed = false, source = source) { hitTestSource = it }
+
+        assertEquals(source, hitTestSource, "a source resolving before start() must be adopted")
+        assertFalse(source.cancelled, "the pre-start source must not be cancelled")
+    }
+
+    /** After stop()/onend (sceneViewDestroyed = true), a late source must be cancelled, not adopted. */
+    @Test
+    fun arSourceResolvingAfterTeardownIsCancelledAndNotAdopted() {
+        var hitTestSource: FakeHitTestSource? = null // stop() already set this to null
+        val source = FakeHitTestSource()
+
+        onArHitTestSourceResolved(sceneViewDestroyed = true, source = source) { hitTestSource = it }
+
+        assertTrue(source.cancelled, "a source resolving after teardown must be cancelled, not leaked")
+        assertNull(hitTestSource, "stop()'s intentional null must not be clobbered")
+    }
 }
