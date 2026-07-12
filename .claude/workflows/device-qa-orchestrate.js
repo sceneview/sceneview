@@ -7,7 +7,11 @@ export const meta = {
   ],
 }
 
-// args: { platform?: 'android'|'ios'|'web'|'ar'|'all', fast?: boolean }
+// args: { platform?: 'android'|'ios'|'web'|'ar'|'all', fast?: boolean, advisory?: string }
+//   advisory: optional CSV forwarded to device-qa.sh --advisory=<csv> to override the
+//   default advisory set (android,ar) — e.g. add 'ios' when the host has no simulator
+//   runtime and the iOS proof lives in CI (ios.yml / nightly #1601). The report still
+//   surfaces the leg's failure loudly as WARN — never a silent pass.
 //   platform — which device-QA leg(s) to run (default 'all').
 //   fast     — pass --fast for a per-category subset rather than the full catalog.
 const a = args || {}
@@ -17,7 +21,8 @@ const FAST = a.fast === true
 const REPORT_PATH = 'device-qa-report.json'
 // The script writes the report to the repo root by default. Express the command
 // the agent runs verbatim; the agent resolves the absolute repo-root path itself.
-const CMD = `bash .claude/scripts/device-qa.sh --platform=${PLATFORM}${FAST ? ' --fast' : ''}`
+const ADVISORY = typeof a.advisory === 'string' && /^[a-z-]+(,[a-z-]+)*$/.test(a.advisory) ? a.advisory : null
+const CMD = `bash .claude/scripts/device-qa.sh --platform=${PLATFORM}${FAST ? ' --fast' : ''}${ADVISORY ? ` --advisory=${ADVISORY}` : ''}`
 
 // Structured verdict the serial agent returns — read straight from
 // device-qa-report.json so the gate logic below never re-parses prose.
