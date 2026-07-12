@@ -22,11 +22,15 @@
 # human-only, by policy). It detects, deep-links, and defers to a human.
 #
 # WHAT IT DOES (Apple / App Store Connect, P1) ───────────────────────────────
-#   (a) Agreements canary — a cheap authenticated GET (/apps, /salesReports)
-#       that trips REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED when the PLA lapses.
-#       There is NO /agreements read endpoint — the error-code canary is the
-#       only key-auth signal, and which GET trips it depends on which agreement
-#       lapsed, so probe two endpoints and treat ANY hit as a blocker.
+#   (a) Agreements canary — a cheap authenticated GET (/apps) that trips
+#       REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED when the PLA lapses. There is NO
+#       /agreements read endpoint — this error-code canary is the only key-auth
+#       signal. We probe the single /apps endpoint (a param-free, always-valid
+#       GET) and treat a REQUIRED_AGREEMENTS_* hit as a blocker.
+#       TODO second canary candidate: /v1/financeReports — a different agreement
+#       (Paid Apps / banking) can lapse without tripping /apps; that endpoint
+#       needs a required `vendorNumber` param, so calibrate it live before wiring
+#       it in (a malformed required-param probe would 400 before it could canary).
 #   (b) App Review state — the latest appStoreVersion + its state (REJECTED /
 #       WAITING_FOR_REVIEW / READY_FOR_SALE …) via the app's related-resource
 #       URL. A REJECTED state is a loud WARN.
@@ -146,7 +150,7 @@ EOF
 # ── Arg parse ────────────────────────────────────────────────────────────────
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --json) STORE_PREFLIGHT_JSON_OUT="${2:-}"; shift 2 ;;
+    --json) [ -n "${2:-}" ] || { echo "--json requires a path" >&2; usage >&2; exit 2; }; STORE_PREFLIGHT_JSON_OUT="$2"; shift 2 ;;
     --json=*) STORE_PREFLIGHT_JSON_OUT="${1#*=}"; shift ;;
     --hard) GATE_HARD=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -219,11 +223,14 @@ fi
 # ASC memory rule: use direct related-resource URLs, NEVER a /relationships/…
 # form, and log the HTTP status of every call.
 ASC_JWT_TOKEN=""
+ASC_HDR_FILE=""   # 0600 temp file holding the Authorization header (kept out of argv)
 asc_get() { # asc_get <path-or-absolute-url>
   local url="$1" resp status body
   case "$url" in http*) : ;; *) url="${ASC_API_BASE%/}/$url" ;; esac
+  # The bearer token goes via -H @<file> (curl ≥ 7.55), NEVER as a literal argv
+  # header — argv is world-readable in the process table on a shared host.
   resp=$(curl -sS --max-time "$CURL_TIMEOUT" \
-      -H "Authorization: Bearer $ASC_JWT_TOKEN" \
+      -H @"$ASC_HDR_FILE" \
       -H "Accept: application/json" \
       -w $'\n%{http_code}' "$url" 2>/dev/null) || resp=$'\n000'
   status="${resp##*$'\n'}"
@@ -367,9 +374,11 @@ else
     skip_all "ASC API creds not set (APP_STORE_CONNECT_KEY_ID / _ISSUER_ID / _API_KEY) — no live secrets."
   fi
 
-  # Materialise the .p8 into a private temp file.
+  # Materialise the .p8 and the bearer header into private (0600) temp files.
+  # The header file keeps the JWT out of the curl argv (process table).
   KEY_FILE="$(mktemp)"; chmod 600 "$KEY_FILE"
-  trap 'rm -f "$KEY_FILE"' EXIT
+  ASC_HDR_FILE="$(mktemp)"; chmod 600 "$ASC_HDR_FILE"
+  trap 'rm -f "$KEY_FILE" "$ASC_HDR_FILE"' EXIT
   if [ -n "$ASC_API_KEY_PATH" ]; then
     [ -f "$ASC_API_KEY_PATH" ] || skip_all "APP_STORE_CONNECT_API_KEY_PATH points at a missing file."
     cat "$ASC_API_KEY_PATH" > "$KEY_FILE"
@@ -379,29 +388,37 @@ else
 
   ASC_JWT_TOKEN=$(asc_jwt "$KEY_FILE" "$ASC_KEY_ID" "$ASC_ISSUER_ID") \
     || skip_all "could not sign the ASC JWT (bad .p8 key?) — nothing probed."
+  printf 'Authorization: Bearer %s\n' "$ASC_JWT_TOKEN" > "$ASC_HDR_FILE"
 
   VERDICT="pass"
 
-  # (a) Agreements canary — probe 2 endpoints, ANY REQUIRED_AGREEMENTS hit = blocker.
+  # (a) Agreements canary — a single param-free GET /apps. A
+  # REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED error-code in the body = blocker.
+  # (See the header TODO for /financeReports as a second canary — deferred
+  # because its required vendorNumber param would 400 before it could canary.)
   AGREEMENTS_STATE="ok"
-  for ep in "apps?limit=1" "salesReports?filter%5BfrequencyDaily%5D=DAILY&limit=1"; do
-    r=$(asc_get "$ep"); st="${r%%$'\t'*}"; body="${r#*$'\t'}"
-    if printf '%s' "$body" | grep -q "REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED"; then
-      AGREEMENTS_STATE="missing"; break
-    fi
-    # A 401 means the JWT/key is wrong, not that agreements lapsed — don't mislabel.
-    if [ "$st" = "401" ]; then AGREEMENTS_STATE="unknown"; break; fi
-    # 000 = network failure: leave as unknown unless another endpoint answers ok.
-    [ "$st" = "000" ] && AGREEMENTS_STATE="unknown"
-  done
+  r=$(asc_get "apps?limit=1"); st="${r%%$'\t'*}"; body="${r#*$'\t'}"
+  if printf '%s' "$body" | grep -q "REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED"; then
+    AGREEMENTS_STATE="missing"
+  # A 401 means the JWT/key is wrong, not that agreements lapsed — don't mislabel.
+  # 000 = network failure. Either way the canary is inconclusive → unknown, which
+  # grade_agreements renders as a conservative WARN (never a fake PASS).
+  elif [ "$st" = "401" ] || [ "$st" = "000" ]; then
+    AGREEMENTS_STATE="unknown"
+  fi
   grade_agreements
 
   # (b) App Review state — latest appStoreVersion via the app's related-resource URL.
   # Direct related-resource form (NO /relationships/…): /apps/{id}/appStoreVersions.
-  r=$(asc_get "apps/${ASC_APP_ID}/appStoreVersions?limit=1&sort=-versionString&fields%5BappStoreVersions%5D=versionString,appStoreState")
+  # ASC's appStoreVersions collection has NO documented `sort` param (an unknown
+  # query param is rejected 400 PARAMETER_ERROR), and versionString sorts
+  # lexicographically ('4.9.0' > '4.21.0'), so we page the versions and pick the
+  # newest by createdDate client-side — that is the one currently in review.
+  r=$(asc_get "apps/${ASC_APP_ID}/appStoreVersions?limit=200&fields%5BappStoreVersions%5D=versionString,appStoreState,createdDate")
   body="${r#*$'\t'}"
-  REVIEW_VERSION=$(printf '%s' "$body" | jq -r '.data[0].attributes.versionString // ""' 2>/dev/null || echo "")
-  REVIEW_STATE=$(printf '%s' "$body" | jq -r '.data[0].attributes.appStoreState // ""' 2>/dev/null || echo "")
+  latest=$(printf '%s' "$body" | jq -c 'if (.data|type=="array") and ((.data|length)>0) then (.data|max_by(.attributes.createdDate)) else null end' 2>/dev/null || echo "null")
+  REVIEW_VERSION=$(printf '%s' "$latest" | jq -r '.attributes.versionString // ""' 2>/dev/null || echo "")
+  REVIEW_STATE=$(printf '%s' "$latest" | jq -r '.attributes.appStoreState // ""' 2>/dev/null || echo "")
   grade_review
 
   # (c) Cert + profile expiry.

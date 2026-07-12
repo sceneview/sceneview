@@ -432,9 +432,18 @@ if [ -x "$PREFLIGHT_SCRIPT" ]; then
             *)       check "Store preflight (ASC)" "WARN" "advisory — verdict '$PF_VERDICT' (see log)" ;;
         esac
     else
-        # Non-zero exit only happens under STORE_PREFLIGHT_HARD=1 on a real blocker.
+        # A non-zero exit is EXPECTED only under STORE_PREFLIGHT_HARD=1 on a real
+        # `blocked` verdict — that alone is a release FAIL. ANY other non-zero
+        # (the advisory script itself crashed, jq/openssl missing, a bug) must
+        # NOT freeze the release: the preflight is advisory-first, so a broken
+        # preflight reads WARN ("store blockers unchecked"), never a hard block.
+        PF_VERDICT=$(python3 -c "import json; print(json.load(open('$PREFLIGHT_JSON')).get('verdict','?'))" 2>/dev/null || echo "?")
         PF_DETAIL=$(python3 -c "import json; print(json.load(open('$PREFLIGHT_JSON')).get('detail','') or '')" 2>/dev/null || echo "")
-        check "Store preflight (ASC)" "FAIL" "store blocker — ${PF_DETAIL:-see store-preflight.sh output}"
+        if [ "${STORE_PREFLIGHT_HARD:-0}" = "1" ] && [ "$PF_VERDICT" = "blocked" ]; then
+            check "Store preflight (ASC)" "FAIL" "store blocker — ${PF_DETAIL:-see store-preflight.sh output}"
+        else
+            check "Store preflight (ASC)" "WARN" "preflight errored — store blockers unchecked (advisory)"
+        fi
     fi
     rm -f "$PREFLIGHT_JSON" "$PREFLIGHT_LOG"
 else

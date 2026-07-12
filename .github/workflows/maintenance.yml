@@ -582,7 +582,7 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── 9. Store preflight (Apple agreements / App Review / cert expiry) ────────
+  # ── 10. Store preflight (Apple agreements / App Review / cert expiry) ───────
   # Detection tier of "store publishing as code" (#2612 P1). CI-green means the
   # build UPLOADED, not that the store account can accept it. This job runs the
   # read-only ASC preflight daily so a silent, human-only store blocker —
@@ -663,7 +663,7 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── 10. sceneview-mcp npm freshness ────────────────────────────────────────
+  # ── 11. sceneview-mcp npm freshness ────────────────────────────────────────
   # sceneview-mcp is on an INDEPENDENT npm track (#1705) — it does NOT ship on
   # every SDK release, so it silently rots when mcp/ changes without a tag (it
   # fell a month behind at 4.0.12). WARN-only: if the local mcp/package.json

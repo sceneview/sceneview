@@ -60,9 +60,11 @@ Workflow({ name: "store-status" })   # iTunes lookup + Maven repo1 + npm, vs exp
 ```
 
 It probes `itunes.apple.com/lookup?id=6761329763`, Maven repo1, and npm, compares to
-the expected `VERSION_NAME`, and flags any mismatch. **ASC rejection-state + Play
-review-state need an authenticated browser session (Chrome MCP)** — that is a known gap;
-flag it for a dedicated session, never infer "approved" from a CI badge.
+the expected `VERSION_NAME`, and flags any mismatch. **ASC App Review state is now probed
+by `.claude/scripts/store-preflight.sh`** (REJECTED / READY_FOR_SALE …). The **ASC
+Resolution Center rejection thread and Play review-state still need an authenticated
+browser session (Chrome MCP)** — that remains a known gap; flag it for a dedicated
+session, never infer "approved" from a CI badge.
 
 ## 2. Local version alignment (run the script)
 

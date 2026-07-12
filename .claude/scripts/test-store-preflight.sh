@@ -118,6 +118,13 @@ KEYS_OK=$(jq -e '.schemaVersion==1 and .source=="app-store-connect-api" and (.ap
   && ok "JSON summary has the expected schema keys" \
   || bad "JSON summary is missing expected keys"
 
+# 11. --json with no path → usage error, exit 2 (the documented contract — under
+# `set -euo pipefail` a bare `shift 2` would instead exit 1 silently).
+set +e; bash "$SCRIPT" --json >/dev/null 2>&1; RC=$?; set -e
+[ "$RC" -eq 2 ] \
+  && ok "--json with no value → exit 2 (usage contract)" \
+  || bad "--json with no value should exit 2, not a silent exit 1 (rc=$RC)"
+
 echo ""
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
