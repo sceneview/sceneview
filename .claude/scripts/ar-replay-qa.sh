@@ -169,6 +169,7 @@ DEVICE_SUMMARY="/sdcard/Download/SceneView/ar-qa-summary.json"
 PKG="io.github.sceneview.demo"
 ANY_SHARD_NONZERO=0
 SHARDS_PULLED=0
+MISSING_SHARDS=""
 
 echo "[ar-replay-qa] running ARReplayHarnessTest in $SHARD_COUNT shard(s)…"
 shard=0
@@ -209,7 +210,10 @@ while [[ "$shard" -lt "$SHARD_COUNT" ]]; do
       echo "[ar-replay-qa] shard $shard verdict pulled (am instrument rc=$shard_status)"
       break
     fi
-    [[ "$attempt" -eq 3 ]] && echo "[ar-replay-qa] shard $shard: no summary pulled (am instrument rc=$shard_status)" >&2
+    if [[ "$attempt" -eq 3 ]]; then
+      echo "[ar-replay-qa] shard $shard: no summary pulled (am instrument rc=$shard_status)" >&2
+      MISSING_SHARDS="${MISSING_SHARDS:+$MISSING_SHARDS,}$shard"
+    fi
     sleep 1
   done
   shard=$((shard + 1))
@@ -251,16 +255,22 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 MERGE_VERDICT="$(
-  OUT_DIR="$OUT_DIR" LOCAL_SUMMARY="$LOCAL_SUMMARY" python3 <<'PY'
+  OUT_DIR="$OUT_DIR" LOCAL_SUMMARY="$LOCAL_SUMMARY" \
+  SHARD_COUNT="$SHARD_COUNT" MISSING_SHARDS="$MISSING_SHARDS" python3 <<'PY'
 import glob, json, os
 
 out_dir = os.environ["OUT_DIR"]
 local_summary = os.environ["LOCAL_SUMMARY"]
+shard_count = int(os.environ.get("SHARD_COUNT", "0") or 0)
+missing_shards = [int(s) for s in os.environ.get("MISSING_SHARDS", "").split(",") if s]
 ENV_REASON = ("instrumentation host severed under emulator memory/CPU pressure — "
               "demo not exercised this run (environmental, not a product crash) (#2643)")
+IN_FLIGHT_REASON = ("was in-flight when its shard's instrumentation was severed — "
+                    "prime suspect for the kill, see ar-logcat.txt (#2620/#2643)")
 
 by_id = {}       # demoId -> demo verdict object
 planned = set()  # every demo any shard set out to replay
+in_flight = []   # inProgress demos from severed shards (final summary non-null)
 recording = None
 
 for path in sorted(glob.glob(os.path.join(out_dir, "ar-shard-*.json"))):
@@ -276,19 +286,27 @@ for path in sorted(glob.glob(os.path.join(out_dir, "ar-shard-*.json"))):
         did = d.get("id")
         if did:
             by_id[did] = d
+    # A pulled summary whose `inProgress` is non-null is a severed shard's last
+    # write: that demo was actively replaying when the process died (#2620).
+    prog = data.get("inProgress")
+    if prog:
+        in_flight.append(prog)
 
 # A planned demo with no verdict → its shard was severed before reaching it.
+# The one that was in-flight at severance keeps the sharper suspect reason.
 for pid in planned:
     if pid not in by_id:
+        reason = IN_FLIGHT_REASON if pid in in_flight else ENV_REASON
         by_id[pid] = {"id": pid, "verdict": "skipped", "replayedFrames": 0,
-                      "reason": ENV_REASON}
+                      "reason": reason}
 
 demos = [by_id[k] for k in sorted(by_id)]
 passed = sum(1 for d in demos if d.get("verdict") in ("replayed", "alive"))
 skipped = sum(1 for d in demos if d.get("verdict") == "skipped")
 failed = sum(1 for d in demos if d.get("verdict") == "crashed")
 env_skips = sum(1 for d in demos
-                if d.get("verdict") == "skipped" and d.get("reason") == ENV_REASON)
+                if d.get("verdict") == "skipped"
+                and d.get("reason") in (ENV_REASON, IN_FLIGHT_REASON))
 
 merged = {
     "harness": "ar-replay",
@@ -298,12 +316,20 @@ merged = {
     "failed": failed,
     "total": len(demos),
     "environmentalSkips": env_skips,
+    "shardCount": shard_count,
+    "missingShards": missing_shards,
+    "inProgress": in_flight or None,
     "demos": demos,
 }
 with open(local_summary, "w") as f:
     json.dump(merged, f, indent=2)
 
-if failed > 0:
+# A shard that produced NO summary leaves its demos entirely unaccounted —
+# neither planned nor verdict'd. That absence must never grade as a pass
+# (#2643 review ERROR 1: the #2620 original sin recurring at shard level).
+if missing_shards:
+    print("shardloss")
+elif failed > 0:
     print("fail")
 elif len(demos) == 0:
     print("empty")
@@ -339,6 +365,19 @@ case "$MERGE_VERDICT" in
   empty)
     echo "[ar-replay-qa] no demos accounted for after merge — treating as skipped." >&2
     exit 3
+    ;;
+  shardloss)
+    echo "[ar-replay-qa] FAIL — shard(s) [$MISSING_SHARDS] of $SHARD_COUNT produced no" >&2
+    echo "[ar-replay-qa] summary at all: their demos are UNACCOUNTED for this run (not" >&2
+    echo "[ar-replay-qa] planned, not verdict'd). Never grading that as a pass (#2643)." >&2
+    echo "[ar-replay-qa] Diagnose with the per-shard instrumentation output + logcat:" >&2
+    echo "[ar-replay-qa]   instrumentation: $INSTR_FILE" >&2
+    echo "[ar-replay-qa]   logcat:          $LOGCAT_FILE" >&2
+    echo "[ar-replay-qa] --- logcat crash signature (grep) -------------------------" >&2
+    grep -aiE 'FATAL|signal [0-9]|SIGSEGV|SIGABRT|tombstone|lowmemorykiller|lmkd|Process io.github.sceneview.demo.*(died|killed)|libfilament|JNI DETECTED' \
+      "$LOGCAT_FILE" 2>/dev/null | tail -40 >&2 || true
+    echo "[ar-replay-qa] -----------------------------------------------------------" >&2
+    exit 1
     ;;
   *)
     echo "[ar-replay-qa] FAIL — one or more AR demos crashed during recorded-session replay." >&2
