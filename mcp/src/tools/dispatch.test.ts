@@ -82,4 +82,22 @@ describe("tools library — dispatchTool", () => {
     const result = await dispatchTool("get_node_reference", { nodeType: "ModelNode" });
     expect(result.content[0]?.text).toMatch(/ModelNode/);
   });
+
+  it("wires generate_3d_model and surfaces the BYOK missing-key guidance", async () => {
+    // Ensure the BYOK env var is absent so no network is attempted.
+    const originalKey = process.env.TRIPO_API_KEY;
+    delete process.env.TRIPO_API_KEY;
+    try {
+      const result = await dispatchTool("generate_3d_model", { prompt: "a low-poly chair" });
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain("TRIPO_API_KEY");
+      expect(result.content[0]?.text).toContain("platform.tripo3d.ai/api-keys");
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.TRIPO_API_KEY;
+      } else {
+        process.env.TRIPO_API_KEY = originalKey;
+      }
+    }
+  });
 });
