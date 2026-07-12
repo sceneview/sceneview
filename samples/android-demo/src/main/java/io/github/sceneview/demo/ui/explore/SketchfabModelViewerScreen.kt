@@ -610,8 +610,10 @@ private fun RenderContent(
     }
 
     // Premium studio HDR — much more flattering on PBR materials than the
-    // neutral_ibl SDK default. `createSkybox = false` keeps the sheet's surface
-    // background (no big white skybox behind the model).
+    // neutral_ibl SDK default. `createSkybox = false` (no big white skybox behind
+    // the model) pairs with `isOpaque = false` on the SceneView below: together
+    // they let the sheet's Compose `Surface` show through as the backdrop, which
+    // is what makes the ground shadow visible (#2581).
     val environment: Environment = remember(environmentLoader) {
         environmentLoader.createHDREnvironment(
             assetFileLocation = "environments/studio_2k.hdr",
@@ -706,6 +708,19 @@ private fun RenderContent(
                     // stage transition — the viewport would pop in opaque
                     // instead of morphing in. (Carried over from #1203.)
                     surfaceType = SurfaceType.TextureSurface,
+                    // Translucent render target so the ground shadow is actually
+                    // VISIBLE (#2581). `plane_renderer_shadow` only DARKENS what is
+                    // behind it (transparent unlit quad, baseColor black α 0.6,
+                    // shadowMultiplier). With the default `isOpaque = true` the
+                    // framebuffer is cleared to opaque black (`createSkybox = false`
+                    // → no skybox to fill it), so the shadow multiplies black onto
+                    // black and never shows — even on a real FL2+ device. With
+                    // `isOpaque = false` the clear alpha is 0 (SceneView.kt) and the
+                    // TextureView composites the ~0.6-α shadow texels over the sheet's
+                    // light Compose `Surface` behind it, so the contact shadow reads
+                    // as a soft dark patch under the model — the sheet-surface backdrop
+                    // this viewer was always documented to want (RenderContent KDoc).
+                    isOpaque = false,
                     engine = engine,
                     modelLoader = modelLoader,
                     environmentLoader = environmentLoader,
