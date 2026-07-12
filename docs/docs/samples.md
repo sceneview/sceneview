@@ -22,7 +22,7 @@ git clone https://github.com/sceneview/sceneview.git
 4-tab showcase (**Explore / AR View / Samples / About**) backed by an
 append-only demo registry of **49 demos** (17 non-AR + 32 AR):
 
-- **Explore tab**: Featured 3D & AR demos and Sketchfab model streaming
+- **Explore tab**: Featured 3D & AR demos and multi-source model streaming (Sketchfab / Icosa Gallery / Poly Haven)
 - **AR View tab**: Live `ARSceneView` camera with plane detection and tap-to-place
 - **Samples tab**: The full demo catalog, grouped into six categories —
   3D Basics, Lighting & Environment, Content, Interaction, Advanced,
