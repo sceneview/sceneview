@@ -283,7 +283,17 @@ class WebXRSession private constructor(
             val hitTestOptions = js("{}")
             hitTestOptions.space = viewerSpace
             session.asDynamic().requestHitTestSource(hitTestOptions).then { source: XRHitTestSource ->
-                hitTestSource = source
+                // #2668 MED-2: this promise can resolve after stop() already ran
+                // `hitTestSource?.cancel(); hitTestSource = null`. Without this guard the
+                // late resolution unconditionally overwrites that intentional null with a
+                // fresh, never-cancelled XRHitTestSource — renderFrame never runs again once
+                // isRunning is false, so it would never be read or cancelled: a leaked
+                // resource on the WebXR device layer. Cancel it immediately instead.
+                if (isRunning) {
+                    hitTestSource = source
+                } else {
+                    source.cancel()
+                }
             }
         }
     }
