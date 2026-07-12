@@ -971,10 +971,14 @@ class ARSceneScope internal constructor(
      * pose and refined extents every frame, receives shadows, and never casts them.
      *
      * This is *not* a plane visualisation (no grid, no fill — see [PlaneNode] for that); declare
-     * both on the same [Plane] if you want a visible overlay *and* grounded shadows.
+     * both on the same [Plane] if you want a visible overlay *and* grounded shadows ([PlaneNode]
+     * carries no shadow receiver of its own, so the pair is safe).
      *
      * ```kotlin
-     * ARSceneView(onSessionCreated = { arSession = it }) {
+     * ARSceneView(
+     *     planeRenderer = false, // its own shadow receiver would stack with the catchers (#2657)
+     *     onSessionCreated = { arSession = it },
+     * ) {
      *     val planes by rememberDetectedPlanes(session = arSession)
      *     planes.forEach { plane ->
      *         ShadowReceiverPlane(plane = plane)
@@ -982,6 +986,12 @@ class ARSceneScope internal constructor(
      *     // A placed ModelNode casts the shadow (castShadows is on by default).
      * }
      * ```
+     *
+     * **Never keep `ShadowReceiverPlane`s and `planeRenderer = true` live on the same plane** —
+     * the V1 plane renderer attaches its own coplanar `shadowMultiplier` shadow receiver to every
+     * tracked plane, so stacking both z-fights and double-darkens the shadow (0.4 × 0.4 ≈
+     * near-black, #2657). Gate them mutually exclusively (grid while scanning, catchers after
+     * placement), or use [PlacementScene], which enforces the exclusion for you.
      *
      * Shadows require a shadow-casting directional light — `ARSceneView`'s default
      * `ENVIRONMENTAL_HDR` light estimation provides one.

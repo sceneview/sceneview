@@ -1011,7 +1011,9 @@ Signature:
     reticleColor: Color = RETICLE_TINT,      // DESIGN.md primary cyan; opacity varies searching↔ready
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in PlaneDiscoveryGuide onboarding overlay
-    groundShadows: Boolean = false,          // opt-in contact shadow under placed models
+    groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
+                                             // against the plane grid's own receiver: exactly one
+                                             // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
     sessionConfiguration: ((Session, Config) -> Unit)? = null,
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,   // required — what to place
@@ -1238,7 +1240,10 @@ Filament `shadowMultiplier` material (the AR shadow-catcher feature; port of Dep
 shadows, never casts; `shadowIntensity` in `0..1` (default 0.6 = Depth Lab) tunable live.
 
 ```kotlin
-ARSceneView(onSessionCreated = { arSession = it }) {
+ARSceneView(
+    planeRenderer = false, // its own shadow receiver would stack with the catchers (#2657)
+    onSessionCreated = { arSession = it },
+) {
     detectedPlanes.forEach { plane ->
         key(plane) { ShadowReceiverPlane(plane = plane) }
     }
@@ -1246,10 +1251,17 @@ ARSceneView(onSessionCreated = { arSession = it }) {
 }
 ```
 
+Never keep `ShadowReceiverPlane`s AND `planeRenderer = true` live on the same plane — the plane
+renderer attaches its own coplanar shadow receiver, so stacking both z-fights and double-darkens
+shadows (#2657). Gate them mutually exclusively (grid while scanning, shadow receivers after
+placement), or just use `PlacementScene(groundShadows = true)`, which enforces the exclusion
+for you.
+
 Shadows require a shadow-casting directional light — `ARSceneView`'s default
 `ENVIRONMENTAL_HDR` light estimation provides one; diagnose the estimated main light's
 `isShadowCaster` before suspecting the catcher. This is NOT a plane visualisation (no grid,
-no fill — that is `PlaneNode`); declare both on the same plane if you want both.
+no fill — that is `PlaneNode`, which carries no shadow receiver); declare `PlaneNode` and
+`ShadowReceiverPlane` on the same plane if you want a visible overlay and grounded shadows.
 
 Platform matrix: **iOS** — ships (v4.20+, #894): entities placed synchronously in `onTapOnPlane`
 get `GroundingShadowComponent(castsShadow: true)` automatically (RealityKit renders the contact

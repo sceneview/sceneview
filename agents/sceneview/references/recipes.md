@@ -95,9 +95,14 @@ var anyPlaneTracked by remember { mutableStateOf(false) }
 var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }
 var reticleHit by remember { mutableStateOf<HitResult?>(null) }
 val planes = remember { mutableStateListOf<Plane>() }
+val anchors = remember { mutableStateListOf<Anchor>() }
 
 Box {
     ARSceneView(
+        // Grid while scanning, shadow receivers after placement — NEVER both (#2657): the plane
+        // renderer carries its own coplanar shadow receiver, so stacking ShadowReceiverPlanes on
+        // top z-fights and double-darkens the contact shadow to near-black.
+        planeRenderer = anchors.isEmpty(),
         onSessionUpdated = { session, frame ->
             cameraReady = true
             isTracking = frame.camera.trackingState == TrackingState.TRACKING
@@ -108,16 +113,23 @@ Box {
         },
         onTrackingFailureChanged = { failure = it },
         onGestureListener = rememberOnGestureListener(
-            onSingleTapConfirmed = { _, _ -> reticleHit?.createAnchor()?.let { /* AnchorNode + ModelNode */ } }
+            onSingleTapConfirmed = { _, _ -> reticleHit?.createAnchor()?.let { anchors += it } }
         ),
     ) {
         PlacementReticle(xPx = viewWidth / 2f, yPx = viewHeight / 2f,
             onHitResultChanged = { reticleHit = it })
-        planes.forEach { key(it) { ShadowReceiverPlane(plane = it) } }
+        if (anchors.isNotEmpty()) {  // the grid is gone — the catchers are the single receiver
+            planes.forEach { key(it) { ShadowReceiverPlane(plane = it) } }
+        }
+        anchors.forEach { key(it) { AnchorNode(anchor = it) { /* ModelNode(...) */ } } }
     }
     PlaneDiscoveryGuide(cameraReady, isTracking, anyPlaneTracked, failure)
 }
 ```
 
-The demo-app reference implementation is `samples/android-demo/.../common/placement/TapToPlaceArSession.kt`.
+The demo-app reference implementation is
+`samples/android-demo/.../common/placement/TapToPlaceArSession.kt`, which expresses this gating as
+the mutually-exclusive `shouldRenderPlaneGrid` / `shouldCatchGroundShadows` predicates in
+`TapToPlaceState.kt` (#2657) — copy that pattern whenever you hand-wire `ShadowReceiverPlane`s
+alongside a plane renderer.
 
