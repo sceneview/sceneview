@@ -347,10 +347,14 @@ jobs:
           api-level: 30
           target: google_apis
           arch: x86_64
-          # -memory 4096: the SceneView Filament 3D demo is GPU/RAM-heavy; the
+          # -memory 6144: the SceneView Filament 3D demo is GPU/RAM-heavy; the
           # default emulator RAM let the device go offline mid-Maestro-flow on
-          # the software-GPU CI runner (#1643).
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096
+          # the software-GPU CI runner (#1643). The AR replay sweep is heavier
+          # still — 6 GB gives lmkd headroom so it stops thrashing the
+          # pre-installed Google apps, one contributor to the severed
+          # `am instrument` connection the AR leg now shards around (#2643). The
+          # ubuntu-latest runner has ~16 GB, so a 6 GB guest is safe.
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 6144
           disable-animations: true
           # NOTE: ReactiveCircus/android-emulator-runner runs each LINE of this
           # `script:` as a separate `sh -c` invocation — env vars do NOT persist
