@@ -187,7 +187,7 @@ HitResultNode(xPx = screenCenterX, yPx = screenCenterY) { SphereNode(radius = 0.
 ReticleNode(xPx = screenCenterX, yPx = screenCenterY, onHitResultChanged = { hit -> }) { /* marker */ }
 PlaneDiscoveryGuide(cameraReady, isTracking, anyPlaneTracked, trackingFailureReason) — ARCore-Elements onboarding overlay: hand hint at 3 s, help at 8 s, 750 ms fade-out on first plane, contextual lost copy (#2241)
 PlacementReticle(xPx, yPx, snapToPlane=true, depthPoint=false, orientationSmoothing=0.75f, predicate=null, onHitResultChanged) — slerp-smoothed placement cursor, built-in cyan disc; snapToPlane=false = free placement (#2241)
-ShadowReceiverPlane(plane, shadowIntensity=0.6f) — invisible shadow catcher on a detected plane (shadowMultiplier material), placed models ground with a contact shadow (#2241)
+ShadowReceiverPlane(plane, shadowIntensity=0.6f) — invisible shadow catcher on a detected plane (shadowMultiplier material), placed models ground with a contact shadow (#2241). Never alongside planeRenderer=true — the plane renderer's own coplanar receiver would stack and double-darken (#2657); PlacementScene gates this for you
 DepthHitResultNode(xPx = screenCenterX, yPx = screenCenterY) { /* rides any real surface */ }
 AugmentedImageNode(augmentedImage = image) { ModelNode(...) }
 AugmentedFaceNode(augmentedFace = face, meshMaterialInstance = faceMaterial)

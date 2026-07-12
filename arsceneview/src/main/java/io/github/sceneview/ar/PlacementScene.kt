@@ -102,7 +102,10 @@ import java.io.File
  * @param fadePlaneOnFirstPlacement Hide the plane-detection grid once the first model is placed,
  *                              so the surface stops being highlighted after it has served its
  *                              discovery purpose. Default `true`. Set `false` to keep the grid
- *                              visible for the whole session.
+ *                              visible for the whole session — with [groundShadows] on, contact
+ *                              shadows are then served by the grid's own built-in receiver and
+ *                              no [ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane] is
+ *                              spawned (never two coplanar receivers on one plane, #2657).
  * @param coaching              Overlay the [PlaneDiscoveryGuide] onboarding UX (animated hand
  *                              hint + guidance pill + help tips) while the user is finding a
  *                              surface. Default `false` — opt in for a guided first run.
@@ -110,7 +113,14 @@ import java.io.File
  *                              to every detected plane so placed models cast a **contact shadow**
  *                              on the real floor instead of floating. Default `false`. Needs a
  *                              shadow-casting light — `ARSceneView`'s default HDR light
- *                              estimation provides one.
+ *                              estimation provides one. The catchers attach **only while the
+ *                              plane grid is not rendered** — the V1 plane renderer carries its
+ *                              own coplanar shadow receiver on every tracked plane, so while the
+ *                              grid shows, that receiver already catches the contact shadows and
+ *                              spawning a second one would z-fight and double-darken them
+ *                              (0.4 × 0.4 ≈ near-black, #2657). Exactly one shadow receiver is
+ *                              ever live on a plane, in every flag combination — see
+ *                              [shouldRenderPlaneGrid] / [shouldCatchGroundShadows].
  * @param playbackDataset       Optional recorded ARCore MP4 dataset to replay instead of the live
  *                              camera feed. Forwarded verbatim to [ARSceneView]. Default `null`
  *                              (live camera).
@@ -171,9 +181,15 @@ fun PlacementScene(
     var session by remember { mutableStateOf<com.google.ar.core.Session?>(null) }
 
     // The plane grid guides discovery, then recedes once the first model is placed (Google AR
-    // design guidance — don't keep the floor decorated after it has served its purpose).
-    val placedAny by remember { derivedStateOf { controller.count > 0 } }
-    val showPlaneRenderer = planeRenderer && !(fadePlaneOnFirstPlacement && placedAny)
+    // design guidance — don't keep the floor decorated after it has served its purpose). The
+    // grid also carries the V1 plane renderer's own shadow receiver, so this predicate and the
+    // ShadowReceiverPlane spawn below are mutually exclusive by construction — a plane is never
+    // covered by two coplanar shadowMultiplier receivers at once (#2657).
+    val placedCount by remember { derivedStateOf { controller.count } }
+    val showPlaneRenderer =
+        shouldRenderPlaneGrid(planeRenderer, fadePlaneOnFirstPlacement, placedCount)
+    val spawnShadowCatchers =
+        shouldCatchGroundShadows(groundShadows, planeRenderer, fadePlaneOnFirstPlacement, placedCount)
 
     Box(modifier = modifier.fillMaxSize()) {
         ARSceneView(
@@ -242,8 +258,10 @@ fun PlacementScene(
             // Contact shadows — an invisible shadow-catcher per detected plane so placed models
             // read as grounded on the real floor (ARCore Depth Lab `ShadowReceiverMeshShader`
             // pattern). Off by default; needs a shadow-casting light (ARSceneView's default HDR
-            // light estimation provides one). Only enumerated once the first surface exists.
-            if (groundShadows) {
+            // light estimation provides one). Never spawned while the plane grid renders: the
+            // grid's own receiver already catches contact shadows, and a second coplanar
+            // receiver would z-fight and double-darken them (#2657).
+            if (spawnShadowCatchers) {
                 val planes by io.github.sceneview.ar.arcore.rememberDetectedPlanes(session)
                 planes.forEach { plane ->
                     key(plane) {
@@ -276,6 +294,51 @@ fun PlacementScene(
         }
     }
 }
+
+/**
+ * Whether [PlacementScene] renders the plane-detection grid — and, crucially, the V1 plane
+ * renderer's OWN shadow receiver that ships with it (`plane_renderer_shadow.filamat`, a
+ * `shadowMultiplier` quad on every tracked plane, `isShadowReceiver = true` by default).
+ *
+ * Pure function of the composable's flags plus the live placement count, extracted (mirroring the
+ * demo-level `TapToPlaceState` fix for #2657) so the single-shadow-receiver invariant is pinned
+ * by pure-JVM unit tests without Compose or an ARCore session.
+ *
+ * @param planeRenderer             The [PlacementScene] `planeRenderer` flag.
+ * @param fadePlaneOnFirstPlacement The [PlacementScene] `fadePlaneOnFirstPlacement` flag.
+ * @param placedCount               Number of anchors placed so far.
+ */
+internal fun shouldRenderPlaneGrid(
+    planeRenderer: Boolean,
+    fadePlaneOnFirstPlacement: Boolean,
+    placedCount: Int,
+): Boolean = planeRenderer && !(fadePlaneOnFirstPlacement && placedCount > 0)
+
+/**
+ * Whether [PlacementScene] attaches a contact-shadow catcher
+ * ([ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane]) per tracked plane.
+ *
+ * Defined as `groundShadows && !`[shouldRenderPlaneGrid] so the two are **mutually exclusive by
+ * construction**: while the grid renders, its built-in V1 receiver is the single shadow receiver
+ * on the plane; once the grid is gone (either `planeRenderer = false`, or it faded after the
+ * first placement), the catcher takes over as the single receiver. A plane is therefore never
+ * covered by two coplanar `shadowMultiplier` receivers at once — the #2657 z-fight +
+ * double-darkening (0.4 × 0.4 ≈ 0.16, near-black) is impossible in any flag combination,
+ * including the previously latent `planeRenderer = true` + `fadePlaneOnFirstPlacement = false` +
+ * `groundShadows = true` footgun.
+ *
+ * @param groundShadows             The [PlacementScene] `groundShadows` flag.
+ * @param planeRenderer             The [PlacementScene] `planeRenderer` flag.
+ * @param fadePlaneOnFirstPlacement The [PlacementScene] `fadePlaneOnFirstPlacement` flag.
+ * @param placedCount               Number of anchors placed so far.
+ */
+internal fun shouldCatchGroundShadows(
+    groundShadows: Boolean,
+    planeRenderer: Boolean,
+    fadePlaneOnFirstPlacement: Boolean,
+    placedCount: Int,
+): Boolean = groundShadows &&
+    !shouldRenderPlaneGrid(planeRenderer, fadePlaneOnFirstPlacement, placedCount)
 
 /**
  * Holds the [Anchor]s created by tap-to-place inside a [PlacementScene].
