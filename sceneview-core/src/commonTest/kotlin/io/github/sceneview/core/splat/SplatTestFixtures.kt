@@ -1,6 +1,5 @@
 package io.github.sceneview.core.splat
 
-import kotlin.math.ln
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
@@ -202,7 +201,6 @@ internal fun quaternionAboutZ(radians: Float): FloatArray {
 }
 
 /** Natural log helper for readable fixtures. */
-internal fun logOf(x: Float): Float = ln(x)
 
 /** Length of an xyzw quaternion. */
 internal fun quatLength(q: FloatArray, offset: Int): Float {

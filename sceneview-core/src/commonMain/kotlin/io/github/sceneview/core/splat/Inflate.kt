@@ -110,7 +110,15 @@ private class Inflater(private val input: ByteArray, start: Int) {
     private var outLen = 0
 
     fun inflate(sizeHint: Int): ByteArray {
-        if (sizeHint in 1..MAX_SIZE_HINT) out = ByteArray(maxOf(sizeHint, INITIAL_CAPACITY))
+        // Trust the trailer's ISIZE only within a sane expansion ratio of the
+        // compressed input: a ~30-byte stream claiming ISIZE=256 MB must not
+        // force that allocation up-front (memory-amplification DoS). DEFLATE
+        // rarely exceeds ~1000x on real data; past the clamp, `ensureCapacity`
+        // grows organically and the ISIZE check still validates at the end.
+        val clamped = minOf(sizeHint.toLong(), input.size.toLong() * MAX_EXPANSION_RATIO)
+        if (clamped in 1..MAX_SIZE_HINT.toLong()) {
+            out = ByteArray(maxOf(clamped.toInt(), INITIAL_CAPACITY))
+        }
         var lastBlock = false
         while (!lastBlock) {
             lastBlock = readBit() == 1
@@ -257,6 +265,7 @@ private class Inflater(private val input: ByteArray, start: Int) {
     private companion object {
         const val INITIAL_CAPACITY = 1 shl 16
         const val MAX_SIZE_HINT = 1 shl 28
+        const val MAX_EXPANSION_RATIO = 1024L
         const val BLOCK_STORED = 0
         const val BLOCK_FIXED = 1
         const val BLOCK_DYNAMIC = 2

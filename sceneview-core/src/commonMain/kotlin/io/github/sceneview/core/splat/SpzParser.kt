@@ -6,7 +6,9 @@ import kotlin.math.sqrt
 
 /**
  * Parser for Niantic **SPZ** files, the gzip-compressed 3D Gaussian Splatting interchange format
- * (https://github.com/nianticlabs/spz). Decode formulas mirror the reference `load-spz.cc` exactly.
+ * (https://github.com/nianticlabs/spz). Decode formulas follow the reference `load-spz.cc`; the v3 smallest-three
+ * bit layout is validated by encode/decode round-trip only — pending a real-world
+ * exporter fixture, treat v3 as an anticipated layout (v2 is the established format).
  *
  * Supported: the legacy gzip container, version **2** (`first-three` quaternion, 3 bytes) and
  * version **3** (`smallest-three` quaternion, 4 bytes) — the formats exported by Scaniverse, Marble,
@@ -59,14 +61,16 @@ internal object SpzParser {
         val shDim = dimForDegree(shDegree)
         val rotStride = if (smallestThree) 4 else 3
 
-        // Structure-of-arrays offsets, in serialization order.
-        var offset = HEADER_SIZE
-        val positionsOffset = offset; offset += numPoints * 9
-        val alphasOffset = offset; offset += numPoints
-        val colorsOffset = offset; offset += numPoints * 3
-        val scalesOffset = offset; offset += numPoints * 3
-        val rotationsOffset = offset; offset += numPoints * rotStride
-        offset += numPoints * shDim * 3 // sh (ignored, but must be present)
+        // Structure-of-arrays offsets, in serialization order. Long arithmetic:
+        // a lying header (numPoints ~2^31/9) must trip THIS check, not wrap Int
+        // and sneak past it (same defense PLY's `needed` uses).
+        var offset = HEADER_SIZE.toLong()
+        val positionsOffset = offset.toInt(); offset += numPoints.toLong() * 9
+        val alphasOffset = offset.toInt(); offset += numPoints.toLong()
+        val colorsOffset = offset.toInt(); offset += numPoints.toLong() * 3
+        val scalesOffset = offset.toInt(); offset += numPoints.toLong() * 3
+        val rotationsOffset = offset.toInt(); offset += numPoints.toLong() * rotStride
+        offset += numPoints.toLong() * shDim * 3 // sh (ignored, but must be present)
         if (offset > d.size) {
             splatError("SPZ: data truncated (need $offset bytes, have ${d.size})")
         }
