@@ -46,10 +46,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -73,7 +69,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -84,12 +79,13 @@ import io.github.sceneview.fitDistanceForBounds
 import io.github.sceneview.toAabb
 import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
-import io.github.sceneview.demo.sketchfab.SketchfabModel
-import io.github.sceneview.demo.sketchfab.SketchfabService
+import io.github.sceneview.demo.sources.GalleryModel
+import io.github.sceneview.demo.sources.ModelSource
+import io.github.sceneview.demo.sources.attributionLine
+import io.github.sceneview.demo.sources.formattedFaceCount
+import io.github.sceneview.demo.sources.preferredThumbnailUrl
+import io.github.sceneview.demo.sources.primaryTagDisplay
 import io.github.sceneview.demo.ui.explore.components.AsyncNetworkImage
-import io.github.sceneview.demo.ui.explore.components.formattedFaceCount
-import io.github.sceneview.demo.ui.explore.components.preferredThumbnailUrl
-import io.github.sceneview.demo.ui.explore.components.primaryTagDisplay
 import com.google.android.filament.Engine
 import com.google.android.filament.LightManager
 import io.github.sceneview.environment.Environment
@@ -112,27 +108,28 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Detail sheet for a Sketchfab [model]. Two-state UI:
+ * Detail sheet for a [GalleryModel] from any [ModelSource] (Sketchfab, Icosa
+ * Gallery, Poly Haven). Two-state UI:
  *
- *  1. **Preview**  : large thumbnail + stats + "Open in SceneView" CTA.
+ *  1. **Preview**  : large thumbnail + stats + attribution + "Open in SceneView" CTA.
  *  2. **Rendering**: SceneView composable renders the downloaded GLB.
  *
  * Constraints from the product brief:
- *  - All models render through the **SceneView SDK** — never the Sketchfab
- *    iframe / web viewer / external app. The whole point of the demo app is
- *    to showcase the SDK; falling back to Sketchfab's player undermines it.
- *  - No "View on Sketchfab" external link.
+ *  - All models render through the **SceneView SDK** — never the origin
+ *    catalog's iframe / web viewer / external app. The whole point of the demo
+ *    app is to showcase the SDK; falling back to a third-party player undermines it.
+ *  - No "View on <catalog>" external link — attribution is surfaced as text only.
  *
- * The bottom sheet uses M3 [ModalBottomSheet] with the `fillMaxSize` skip-partially-expanded
- * state for a near-full-height experience (we want enough room for the live
- * SceneView surface).
+ * The download is delegated to [source] so a Sketchfab uid, an Icosa asset, or
+ * a multi-file Poly Haven glTF all flow through the same viewer.
  */
 @Composable
-fun SketchfabModelViewerScreen(
-    model: SketchfabModel,
+fun GalleryModelViewerScreen(
+    model: GalleryModel,
+    source: ModelSource,
     onDismiss: () -> Unit,
 ) {
-    var stage by remember(model.uid) { mutableStateOf<Stage>(Stage.Preview) }
+    var stage by remember(model.cardKey) { mutableStateOf<Stage>(Stage.Preview) }
 
     // Pre-warm the Filament Engine on the first transition out of Preview.
     //
@@ -190,7 +187,7 @@ fun SketchfabModelViewerScreen(
         // Stage.Error opts out — there is no hero so reusing the bounds
         // would animate the error card sliding out of empty space.
         val heroShape = RoundedCornerShape(24.dp)
-        val heroKey = "sketchfab-hero-${model.uid}"
+        val heroKey = "gallery-hero-${model.cardKey}"
         SharedTransitionLayout {
             AnimatedContent(
                 targetState = stage,
@@ -228,6 +225,7 @@ fun SketchfabModelViewerScreen(
                     )
                     Stage.Downloading -> DownloadingContent(
                         model = model,
+                        source = source,
                         onReady = { file -> stage = Stage.Rendering(file) },
                         onError = { stage = Stage.Error(it) },
                         heroModifier = heroModifier,
@@ -279,7 +277,7 @@ private sealed interface Stage {
 
 @Composable
 private fun PreviewContent(
-    model: SketchfabModel,
+    model: GalleryModel,
     onOpenInSceneView: () -> Unit,
     heroModifier: Modifier = Modifier,
 ) {
@@ -341,6 +339,15 @@ private fun PreviewContent(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(Modifier.height(4.dp))
+        // Attribution + license + origin catalog (#2645). Every source serves
+        // CC / CC0 content, so crediting the creator is a courtesy (and, for
+        // CC-BY, a requirement) regardless of which catalog the model came from.
+        Text(
+            text = model.attributionLine(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Spacer(Modifier.height(12.dp))
         StatsRow(model)
         Spacer(Modifier.height(20.dp))
@@ -374,7 +381,7 @@ private fun PreviewContent(
 }
 
 @Composable
-private fun StatsRow(model: SketchfabModel) {
+private fun StatsRow(model: GalleryModel) {
     val scroll = rememberScrollState()
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -382,8 +389,7 @@ private fun StatsRow(model: SketchfabModel) {
     ) {
         if (model.faceCount > 0) StatChip(label = "${model.formattedFaceCount()} polys")
         if (model.animationCount > 0) StatChip(label = "${model.animationCount} anim")
-        if (model.likeCount > 0) StatChip(label = "${model.likeCount} likes")
-        model.tags.orEmpty().take(3).forEach { tag -> StatChip(label = tag.name) }
+        model.tags.take(3).forEach { tag -> StatChip(label = tag) }
     }
 }
 
@@ -423,19 +429,19 @@ private fun StatChip(label: String) {
  */
 @Composable
 private fun DownloadingContent(
-    model: SketchfabModel,
+    model: GalleryModel,
+    source: ModelSource,
     onReady: (File) -> Unit,
     onError: (String) -> Unit,
     heroModifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     // Capture outside the coroutine so stringResource() is called on the composition thread.
     val downloadFailedMsg = stringResource(R.string.sketchfab_download_failed)
 
     // (bytesRead, totalBytes) — totalBytes == -1L when server omits Content-Length.
     var downloadProgress by remember { mutableStateOf<Pair<Long, Long>?>(null) }
 
-    LaunchedEffect(model.uid) {
+    LaunchedEffect(model.cardKey) {
         // Conflated channel: only the latest progress event matters for the UI.
         val progressChannel = Channel<Pair<Long, Long>>(Channel.CONFLATED)
         // Collect on the main coroutine so Compose state is written on the UI thread.
@@ -444,7 +450,7 @@ private fun DownloadingContent(
         }
         val result = withContext(Dispatchers.IO) {
             runCatching {
-                SketchfabService.getInstance(context).downloadModel(model.uid) { read, total ->
+                source.download(model) { read, total ->
                     progressChannel.trySend(Pair(read, total))
                 }
             }
@@ -525,15 +531,16 @@ private fun DownloadingContent(
                     )
                     Spacer(Modifier.height(4.dp))
                     // Show "X.X / Y.Y MB" when total is known, fallback label otherwise.
+                    val streamingFrom = stringResource(R.string.gallery_streaming_from, source.id.displayName)
                     val progressText = progress?.let { (read, total) ->
                         if (total > 0L) {
                             val readMb = "%.1f".format(read / 1_000_000.0)
                             val totalMb = "%.1f".format(total / 1_000_000.0)
                             "$readMb / $totalMb MB"
                         } else {
-                            stringResource(R.string.sketchfab_streaming_from)
+                            streamingFrom
                         }
-                    } ?: stringResource(R.string.sketchfab_streaming_from)
+                    } ?: streamingFrom
                     Text(
                         text = progressText,
                         style = MaterialTheme.typography.bodySmall,
@@ -574,7 +581,7 @@ private fun DownloadingContent(
 @Composable
 private fun RenderContent(
     file: File,
-    model: SketchfabModel,
+    model: GalleryModel,
     engine: Engine,
     modelLoader: ModelLoader,
     environmentLoader: EnvironmentLoader,
@@ -582,7 +589,7 @@ private fun RenderContent(
 ) {
     // Engine + loaders are now hoisted to the sheet root and pre-warmed on
     // Preview → Downloading transition (see KDoc on `engineNeeded` in
-    // [SketchfabModelViewerScreen]). By the time RenderContent enters the
+    // [GalleryModelViewerScreen]). By the time RenderContent enters the
     // composition, Filament is already initialised; this composable just
     // wires the (already-async) glTF parse into the live SceneView surface.
     // #2193 root-cause + follow-up review.

@@ -38,6 +38,9 @@
     <string name="explore_search_results">Search results</string>
     <string name="explore_search_no_results">No results for "%s"</string>
     <string name="explore_search_loading">Searching…</string>
+    <!-- Source picker chip row (#2645): label preceding the Sketchfab | Icosa
+         Gallery | Poly Haven chips that let the user switch model catalog. -->
+    <string name="explore_source_label">Source</string>
     <!-- Defensive banner shown when SketchfabConfig.apiKey is null (#1909).
          End-user release builds with a missing or revoked secret would
          otherwise silently render an Explore tab without carousels and a
@@ -60,6 +63,9 @@
     <string name="sketchfab_rendered_locally">Rendered locally by Filament — no external viewer.</string>
     <string name="sketchfab_loading_model">Loading %s…</string>
     <string name="sketchfab_streaming_from">Streaming from Sketchfab · rendering in SceneView</string>
+    <!-- Multi-source generalisation of sketchfab_streaming_from (#2645): %s is
+         the origin catalog display name (Sketchfab / Icosa Gallery / Poly Haven). -->
+    <string name="gallery_streaming_from">Streaming from %s · rendering in SceneView</string>
     <string name="sketchfab_rendered_by">Rendered by SceneView · %s polys</string>
     <string name="sketchfab_could_not_open">Couldn\'t open this model</string>
     <string name="sketchfab_try_again">Try again</string>
@@ -284,7 +290,7 @@
     <!-- In-app bug report — lightweight, permission-free (successor of #1932/#2188) -->
     <string name="feedback_button">Feedback</string>
     <string name="feedback_action_cd">Send feedback</string>
-    <!-- Generic close a11y label — also reused by SketchfabModelViewerScreen. -->
+    <!-- Generic close a11y label — also reused by GalleryModelViewerScreen. -->
     <string name="feedback_cd_close">Close</string>
     <string name="feedback_report_title">Report a bug</string>
     <string name="feedback_report_body">The report bundles your device info, the app\'s recent log, and an optional screenshot. Nothing leaves your device until you choose where to send it.</string>
