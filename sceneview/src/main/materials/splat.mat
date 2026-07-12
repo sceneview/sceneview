@@ -1,0 +1,121 @@
+// splat.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    3D Gaussian Splatting (3DGS) renderer. Draws one hardware-instanced,
+//             camera-facing quad per gaussian; the per-splat centre / scale / colour /
+//             opacity is fetched in the VERTEX shader from two RGBA16F data textures,
+//             indexed by the instance id. The fragment applies an isotropic gaussian
+//             falloff and premultiplied-alpha compositing (radiance-field alpha blend).
+// Used by:    io.github.sceneview.node.SplatNode (P1b of epic #2646).
+// Parameters:
+//   splatPositionScale — sampler2d RGBA16F: rgb = splat model-space centre (shader applies getWorldFromModelMatrix), a = isotropic
+//                        billboard half-extent (≈3σ). Fetched in vertex{} by instance id.
+//   splatColorOpacity  — sampler2d RGBA16F: rgb = linear SH0 colour, a = opacity 0..1.
+//   texWidth           — int: side of the (square) data textures; texel(i) is at
+//                        uv = (i % texWidth + .5, i / texWidth + .5) / texWidth.
+//   instanceOffset     — int: base global splat index for THIS renderable's instance 0.
+//                        Splat counts above the 65535 instances/draw cap are drawn as
+//                        multiple renderables sharing the two textures; each batch offsets
+//                        getInstanceIndex() by its base so the texture indexing stays global.
+// matc profile: B (lean Android — "-a opengl -p mobile", see tools/GenerateFilamat.sh).
+//
+// Rendering notes (Filament 1.71.5, no compute/SSBO → CPU painter's sort, see #2646 spike):
+//   * instanced:true + getInstanceIndex() feed one unit quad to N gaussians (cap 65535/draw).
+//   * Vertex-stage textureLod fetch is the only way to feed ≥100k per-splat attributes
+//     (uniform arrays can't). A helper cannot take a `sampler2d` argument in matc — the
+//     fetch is INLINED (spike finding 1).
+//   * mulMat4x4Float3(m, v) returns a float4 (homogeneous) — take .xyz (spike finding 2).
+//   * blending:transparent composites ONE*src + (1-a)*dst and does NOT premultiply unlit
+//     baseColor for us, so the fragment premultiplies `baseColor.rgb *= a` — the #2224 /
+//     #2325 wash-out lesson applies verbatim.
+//   * depthWrite off + depthCulling on: gaussians read the opaque depth buffer (so solid
+//     geometry occludes them) but do not write depth among themselves — correct alpha
+//     compositing relies on the CPU back-to-front instance order, not the z-buffer.
+//   * P1 ships ISOTROPIC billboards (max-axis scale). Anisotropic 2D-covariance projection
+//     (rotation + 3-axis scale → screen-space ellipse) is P2 — a vertex-math extension of
+//     this same proven material, not a new capability.
+material {
+    "name" : "Splat",
+
+    "parameters" : [
+        {
+            "type" : "sampler2d",
+            "name" : "splatPositionScale",
+            "format" : "float",
+            "precision" : "high"
+        },
+        {
+            "type" : "sampler2d",
+            "name" : "splatColorOpacity",
+            "format" : "float"
+        },
+        {
+            "type" : "int",
+            "name" : "texWidth"
+        },
+        {
+            "type" : "int",
+            "name" : "instanceOffset"
+        }
+    ],
+    "requires" : [
+        "position"
+    ],
+    "variables" : [
+        "quadUv",
+        "splatColor"
+    ],
+    "shadingModel" : "unlit",
+    "blending" : "transparent",
+    "instanced" : true,
+    "doubleSided" : true,
+    "depthWrite" : false,
+    "depthCulling" : true
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        int idx = getInstanceIndex() + materialParams.instanceOffset;
+        int tw = materialParams.texWidth;
+        // Texel centre of splat `idx` in the square data textures.
+        highp float2 uv = (float2(float(idx % tw), float(idx / tw)) + 0.5) / float(tw);
+
+        // Per-splat attributes (inlined fetch — samplers can't be helper args under matc).
+        highp float4 posScale = textureLod(materialParams_splatPositionScale, uv, 0.0);
+        float4 col = textureLod(materialParams_splatColorOpacity, uv, 0.0);
+
+        // Camera-facing billboard: the world-space camera right/up axes are the first two
+        // ROWS of the view (ViewFromWorld) matrix.
+        highp mat4 view = getViewFromWorldMatrix();
+        float3 camRight = float3(view[0][0], view[1][0], view[2][0]);
+        float3 camUp    = float3(view[0][1], view[1][1], view[2][1]);
+
+        // Unit quad corner in [-1, 1]^2, instanced N times (the only vertex attribute).
+        float2 corner = getPosition().xy;
+
+        // Splat centre in world space (node transform applied), then offset along the
+        // camera plane by the isotropic half-extent.
+        highp float3 center = mulMat4x4Float3(getWorldFromModelMatrix(), posScale.xyz).xyz;
+        material.worldPosition = float4(
+            center + (corner.x * camRight + corner.y * camUp) * posScale.w,
+            1.0
+        );
+
+        // Custom material `variables` are float4 interpolants — pad the float2 corner.
+        material.quadUv = float4(corner, 0.0, 0.0);
+        material.splatColor = col;
+    }
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        // Isotropic gaussian footprint: exp(-0.5 * r^2 * k), k = 9 → ~3σ at the quad edge
+        // (|uv| = 1 ⇒ g ≈ 0.011), so the disc fades smoothly to nothing instead of a hard quad.
+        float2 uv = variable_quadUv.xy;
+        float g = exp(-0.5 * dot(uv, uv) * 9.0);
+        float a = variable_splatColor.a * g;
+
+        // #2224 / #2325 — premultiply. blending:transparent composites ONE*src + (1-a)*dst,
+        // so the emitted rgb must already be alpha-weighted for a correct radiance-field blend.
+        material.baseColor = float4(variable_splatColor.rgb * a, a);
+    }
+}

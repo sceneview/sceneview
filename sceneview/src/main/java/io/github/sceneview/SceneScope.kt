@@ -25,6 +25,7 @@ import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
 import com.google.android.filament.Scene as FilamentScene
 import com.google.android.filament.VertexBuffer
+import io.github.sceneview.core.splat.SplatCloud
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.geometries.Capsule
 import io.github.sceneview.geometries.Cone
@@ -63,6 +64,7 @@ import io.github.sceneview.node.PhysicsBody
 import io.github.sceneview.node.ReflectionProbeNode as ReflectionProbeNodeComposable
 import io.github.sceneview.node.ShapeNode as ShapeNodeImpl
 import io.github.sceneview.node.SphereNode as SphereNodeImpl
+import io.github.sceneview.node.SplatNode as SplatNodeImpl
 import io.github.sceneview.node.TextNode as TextNodeImpl
 import io.github.sceneview.node.TorusNode as TorusNodeImpl
 import io.github.sceneview.node.VideoNode as VideoNodeImpl
@@ -1579,6 +1581,78 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.setMaterialInstanceAt(0, materialInstance)
                 prevMeshMaterial.value = materialInstance
             }
+        }
+        NodeLifecycle(node, content)
+    }
+
+    // ── SplatNode ─────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A 3D Gaussian Splatting renderer node — draws a [SplatCloud] as camera-facing gaussian
+     * discs with view-dependent back-to-front compositing (#2646).
+     *
+     * ```kotlin
+     * var cameraPosition by remember { mutableStateOf(Position()) }
+     * SceneView(
+     *     cameraNode = cameraNode,
+     *     onFrame = { cameraPosition = cameraNode.worldPosition }
+     * ) {
+     *     SplatNode(
+     *         splatCloud = cloud,
+     *         cameraPositionProvider = { cameraPosition }
+     *     )
+     * }
+     * ```
+     *
+     * @param splatCloud             The gaussians to render (must be non-empty). Changing the
+     *                               instance recreates the node.
+     * @param cameraPositionProvider Per-frame camera **world** position for the painter's sort;
+     *                               `null` keeps the as-loaded order (view-independent).
+     * @param splatCount             Number of splats rendered, coerced to `0..splatCloud.count`.
+     *                               Defaults to the full cloud; lower it for LOD / reveal effects.
+     * @param position               World-space position.
+     * @param rotation               World-space rotation (Euler angles in degrees).
+     * @param scale                  Uniform or non-uniform scale.
+     * @param apply                  Additional configuration on the [SplatNodeImpl].
+     * @param content                Optional child nodes.
+     *
+     * @see io.github.sceneview.node.SplatNode
+     * @see rememberSplatCloud
+     */
+    @Composable
+    fun SplatNode(
+        splatCloud: SplatCloud,
+        cameraPositionProvider: (() -> Position)? = null,
+        splatCount: Int = splatCloud.count,
+        position: Position = Position(x = 0f),
+        rotation: Rotation = Rotation(x = 0f),
+        scale: Scale = Scale(1f),
+        apply: SplatNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null
+    ) {
+        val node = remember(engine, splatCloud) {
+            SplatNodeImpl(
+                materialLoader = materialLoader,
+                splatCloud = splatCloud,
+                cameraPositionProvider = cameraPositionProvider
+            ).apply(apply)
+        }
+        SideEffect {
+            // Cheap var assignments — keep the latest lambda + count without re-keying the node.
+            node.cameraPositionProvider = cameraPositionProvider
+            node.splatCount = splatCount
+        }
+        // Transform props are component-keyed so a bare recomposition never re-applies the
+        // declared transform over one a gesture or a frame-loop driver wrote on the runtime
+        // node — see SphereNode for the full rationale (#2639, #2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
         }
         NodeLifecycle(node, content)
     }
