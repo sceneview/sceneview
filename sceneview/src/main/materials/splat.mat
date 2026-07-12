@@ -7,7 +7,7 @@
 //             falloff and premultiplied-alpha compositing (radiance-field alpha blend).
 // Used by:    io.github.sceneview.node.SplatNode (P1b of epic #2646).
 // Parameters:
-//   splatPositionScale — sampler2d RGBA16F: rgb = splat world-space centre, a = isotropic
+//   splatPositionScale — sampler2d RGBA16F: rgb = splat model-space centre (shader applies getWorldFromModelMatrix), a = isotropic
 //                        billboard half-extent (≈3σ). Fetched in vertex{} by instance id.
 //   splatColorOpacity  — sampler2d RGBA16F: rgb = linear SH0 colour, a = opacity 0..1.
 //   texWidth           — int: side of the (square) data textures; texel(i) is at

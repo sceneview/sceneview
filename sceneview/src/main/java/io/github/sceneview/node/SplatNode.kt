@@ -42,7 +42,11 @@ import kotlin.math.max
  * `splat.filamat` material: the vertex shader fetches the per-splat centre / half-extent /
  * colour / opacity from two square `RGBA16F` data textures indexed by the instance id, and the
  * fragment applies an isotropic gaussian falloff with premultiplied-alpha blending
- * (see [SplatBuffers] for the exact texel layout contract). Filament 1.71.5 has no compute
+ * (see [SplatBuffers] for the exact texel layout contract). Splat centres are therefore
+ * stored as **half-floats**: positional precision degrades with distance from the model
+ * origin (~1 cm at 16 m) — fine for object/room-scale captures; very large outdoor scans
+ * may show sub-splat wobble (a 32-bit position texture is a P2/#2646 option if P1c device
+ * validation shows it matters). Filament 1.71.5 has no compute
  * shaders, so correct alpha compositing relies on a **CPU painter's sort**:
  *
  * - **Isotropic billboards** — each splat renders as the circumscribed disc of its gaussian
@@ -352,6 +356,9 @@ open class SplatNode(
      * the [EngineDestroyQueue] contract, see ImageNode / #874).
      */
     override fun destroy() {
+        // Re-entry guard: a second destroy() would re-enqueue the data textures
+        // on the EngineDestroyQueue (benign today, but future-proof it).
+        if (isDestroyed) return
         isDestroyed = true
         coroutineScope.cancel()
         // Renderable components first (while entity ids are still valid), then the entities.

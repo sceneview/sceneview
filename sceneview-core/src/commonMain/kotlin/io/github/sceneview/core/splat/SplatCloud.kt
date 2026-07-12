@@ -24,6 +24,10 @@ package io.github.sceneview.core.splat
  * - [opacities] — per-splat alpha `a` (stride 1) in `0..1`, with the logistic `sigmoid()` already
  *   applied.
  *
+ * Ownership: every array is freshly allocated by the parser for this instance and is
+ * never retained or shared internally — the caller owns them (mutation is visible to
+ * every consumer of this instance, so treat them as read-only once handed to a node).
+ *
  * @property count number of splats; each `*Array` length is `count * stride`.
  */
 class SplatCloud(
