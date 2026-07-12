@@ -72,6 +72,11 @@ Box {
 }
 ```
 
+Never keep `ShadowReceiverPlane`s AND `planeRenderer = true` live on the same plane — the plane
+renderer attaches its own coplanar shadow receiver, so stacking both z-fights and double-darkens
+shadows (#2657). Gate them mutually exclusively (grid while scanning, shadow receivers after
+placement), or just use `PlacementScene`, which handles this for you.
+
 `PlaneDiscoveryGuide` = timed hand-hint/help onboarding (replaces static "Scanning…" banners).
 `snapToPlane=false` on the reticle = free placement (points accepted, planes in-polygon).
 iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); reticle = `showPlacementReticle: true`, contact shadows = `groundingShadows` (default on) — #894 shipped.

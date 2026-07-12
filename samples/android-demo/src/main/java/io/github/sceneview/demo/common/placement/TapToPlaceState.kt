@@ -158,6 +158,31 @@ internal fun deriveUxState(
 }
 
 /**
+ * Whether to render the plane-detection grid — and, crucially, the V1 plane renderer's OWN
+ * shadow receiver that ships with it (`plane_renderer_shadow.filamat`, a `shadowMultiplier`
+ * quad on every tracked plane).
+ *
+ * The grid guides surface discovery, then recedes once the first model is placed — mirroring
+ * [io.github.sceneview.ar.PlacementScene]'s `fadePlaneOnFirstPlacement` and Google's AR design
+ * guidance (stop decorating the floor after it has served its discovery purpose). Hiding it
+ * after placement is what breaks the #2657 double-receiver stack: it removes the V1 renderer's
+ * built-in shadow receiver so it can never coexist with the [shouldCatchGroundShadows]
+ * `ShadowReceiverPlane` on the same plane.
+ */
+internal fun shouldRenderPlaneGrid(placedCount: Int): Boolean = placedCount == 0
+
+/**
+ * Whether to attach a contact-shadow catcher (`ShadowReceiverPlane`) per tracked plane.
+ *
+ * Only once a model is placed is there anything casting a shadow — and by then the plane grid
+ * (and its V1 shadow receiver, see [shouldRenderPlaneGrid]) has receded, so the catcher is the
+ * SINGLE shadow receiver on the plane. This is exactly the inverse of [shouldRenderPlaneGrid]:
+ * the two are mutually exclusive by construction, so a plane is never covered by two coplanar
+ * `shadowMultiplier` receivers at once (the #2657 z-fight + double-darkening, 0.4 × 0.4 ≈ 0.16).
+ */
+internal fun shouldCatchGroundShadows(placedCount: Int): Boolean = placedCount > 0
+
+/**
  * Single source of truth for "does this hit accept a placement / reticle lock".
  *
  * Both the `onSingleTapConfirmed` handler and the `HitResultNode(hitTest = …)` lambda

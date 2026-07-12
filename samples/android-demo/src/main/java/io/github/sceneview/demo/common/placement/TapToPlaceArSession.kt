@@ -131,7 +131,8 @@ fun TapToPlaceArSession(
     // Keep a reference to the latest Frame for hit testing in the gesture callback.
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
     // Planes currently tracked — feeds one invisible ShadowReceiverPlane each so placed
-    // models ground with a real contact shadow (#2241 PR 5).
+    // models ground with a real contact shadow (#2241 PR 5). Only consumed once a model is
+    // placed (#2657 — the grid's own shadow receiver covers the pre-placement phase).
     var trackedPlanes by remember { mutableStateOf<List<Plane>>(emptyList()) }
 
     Box(
@@ -145,7 +146,13 @@ fun TapToPlaceArSession(
             modelLoader = modelLoader,
             materialLoader = materialLoader,
             playbackDataset = playbackDataset,
-            planeRenderer = true,
+            // #2657: fade the plane grid — and, crucially, the V1 plane renderer's OWN shadow
+            // receiver (plane_renderer_shadow.filamat) that rides with it — once the first model
+            // is placed, so it never coexists with the ShadowReceiverPlane below on the same
+            // plane. Two coplanar shadowMultiplier receivers z-fight and double-darken the contact
+            // shadow (0.4 × 0.4 ≈ 0.16, near-black). Mirrors PlacementScene.fadePlaneOnFirstPlacement
+            // + Google AR design guidance (stop decorating the floor once discovery is done).
+            planeRenderer = shouldRenderPlaneGrid(state.placedCount),
             sessionConfiguration = sessionConfiguration,
             // Typed Config.*Mode params (#1766) — both planeFindingMode and
             // lightEstimationMode are already the ARSceneView defaults, so no
@@ -294,12 +301,21 @@ fun TapToPlaceArSession(
                 }
             }
 
-            // Invisible shadow catcher on every tracked plane (#2241 PR 5) — placed
-            // models read as grounded instead of floating. The mesh renders nothing
-            // by itself (shadow_receiver.filamat, shadowMultiplier).
-            trackedPlanes.forEach { plane ->
-                key(plane) {
-                    ShadowReceiverPlane(plane = plane)
+            // Contact-shadow catcher per tracked plane (#2241 PR 5) — placed models read as
+            // grounded instead of floating. The mesh renders nothing by itself
+            // (shadow_receiver.filamat, shadowMultiplier).
+            //
+            // #2657: gated on "something has been placed". The V1 plane renderer above ALSO
+            // receives shadows on every plane; an always-on ShadowReceiverPlane stacked a SECOND
+            // coplanar shadowMultiplier quad on the same plane → z-fight + double-darkening. By
+            // the time a model exists to cast a shadow, the grid (and its receiver) has receded
+            // (shouldRenderPlaneGrid → false), so exactly ONE shadow receiver is ever live on a
+            // plane. The two predicates are mutually exclusive by construction.
+            if (shouldCatchGroundShadows(state.placedCount)) {
+                trackedPlanes.forEach { plane ->
+                    key(plane) {
+                        ShadowReceiverPlane(plane = plane)
+                    }
                 }
             }
 
