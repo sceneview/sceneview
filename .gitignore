@@ -102,6 +102,9 @@ DerivedData/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
 samples/ios-demo/.build/
+# Xcode-resolved SPM checkout/state — generated, and `workspace-state.json`
+# bakes in absolute machine paths, so it must never be committed.
+samples/ios-demo/SourcePackages/
 # SwiftPM build dir at any depth (root `.build/` appears when `swift build` is
 # run from the worktree root).
 .build/
