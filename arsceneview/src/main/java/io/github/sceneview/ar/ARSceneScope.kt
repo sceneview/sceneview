@@ -224,8 +224,26 @@ class ARSceneScope internal constructor(
                 apply()
             }
         }
+        // Push the declared pose to the underlying node only when it actually changes — NOT on
+        // every successful recomposition. The previous bare `SideEffect { node.pose = pose }`
+        // re-applied the declared pose each recomposition, silently clobbering a pose a drag
+        // gesture had just written on the runtime node ([PoseNodeImpl.onMove] sets `pose` when
+        // `isPositionEditable`) — the exact #2639 defect fixed for `ModelNode`'s transform. This
+        // mirrors that fix's component-keyed `DisposableEffect` idiom. The keys are the pose's
+        // individual scalar components (translation + rotation quaternion) because
+        // `com.google.ar.core.Pose` does not override `equals()` — keying on the instance would
+        // never dedupe, so every recomposition would re-trigger the effect and re-clobber the
+        // gesture-mutated pose (#2672).
+        DisposableEffect(
+            node,
+            pose.tx(), pose.ty(), pose.tz(),
+            pose.qx(), pose.qy(), pose.qz(), pose.qw()
+        ) {
+            node.pose = pose; onDispose {}
+        }
+        // Cheap idempotent reference updates — they never overwrite gesture/frame-driver state,
+        // and staying unkeyed keeps recomposed lambdas live (see ReticleNode below).
         SideEffect {
-            node.pose = pose
             node.visibleCameraTrackingStates = visibleCameraTrackingStates
             node.onPoseChanged = onPoseChanged
         }
