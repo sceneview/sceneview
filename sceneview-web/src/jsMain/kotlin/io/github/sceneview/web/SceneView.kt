@@ -542,6 +542,22 @@ class SceneView private constructor(
         window.fetch(url).then { response ->
             response.arrayBuffer()
         }.then { buffer ->
+            // #1597 (Tier-2): if destroy() ran while this initial GLB fetch was
+            // in flight, the loader/engine/scene are freed WASM handles — bail
+            // out before createAsset/addEntities touch them (use-after-free),
+            // but still settle so pendingLoads never leaks. The `superseded`
+            // guard below only covers the late loadResources/onDone step, NOT
+            // this initial continuation. Mirrors loadEnvironment's KTX guard
+            // (#2687) — same `destroyed` flag, checked before the first engine
+            // call.
+            if (destroyed) {
+                console.log(
+                    "SceneView: dropped stale model load for $url " +
+                        "(SceneView destroyed before fetch resolved)",
+                )
+                settleLoad()
+                return@then
+            }
             // Filament.js gltfio `createAsset` expects a typed-array VIEW
             // (Uint8Array), NOT a raw ArrayBuffer — passing the ArrayBuffer
             // throws an embind BindingError. Mirrors the conversion the
