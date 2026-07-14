@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **sceneview-web**: `loadModel` no longer use-after-frees a destroyed engine when `destroy()` runs while the initial GLB fetch is in flight — the fetch `.then` continuation now bails on the `destroyed` flag before `createAsset`/`addEntities` touch the freed WASM engine/scene, still settling `pendingLoads` so the render-gate counter never leaks. The existing `superseded` guard only covered the late `loadResources`/`onDone` step, not this initial continuation; this mirrors the `loadEnvironment` KTX guard (#2691, sibling of #2673, part of #2668).
