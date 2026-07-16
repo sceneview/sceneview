@@ -23,17 +23,16 @@ This is a placeholder. The About screen states "Filament JNI planned" for hardwa
 
 ## Filament Java/JNI desktop support — what exists
 
-> **Version note.** The `v1.71.0` references below are a research snapshot
-> (March 2026). When executing any recipe in this document, substitute the
-> **current** `filament` version from `gradle/libs.versions.toml` (1.72.1 at
-> the time of writing): the committed `.filamat` blobs are compiled for that
-> exact runtime (MATERIAL_VERSION 72), and an older `filament-android` AAR or
-> desktop tarball **cannot load them** — the exact ABI mismatch CONTRIBUTING.md
-> ("Filament runtime ↔ `.filamat` ABI invariant") warns about.
+> **Version note.** Filament version references in this document follow the
+> `filament` pin in `gradle/libs.versions.toml` and are bumped in lockstep with
+> it (per #1502). Never substitute an older release when executing a recipe:
+> the committed `.filamat` blobs only load on a material-version-matching
+> runtime — the ABI invariant CONTRIBUTING.md ("Filament runtime ↔ `.filamat`
+> ABI invariant") warns about.
 
 ### Official support status
 
-Filament (v1.71.0, March 2026) officially supports desktop platforms (macOS, Linux, Windows)
+Filament (v1.72.1, July 2026) officially supports desktop platforms (macOS, Linux, Windows)
 via its native C++ API. It also provides **Java/JNI bindings** for desktop use:
 
 - **`filament-java.jar`** — Java classes (Engine, Scene, View, Camera, Renderer, Material, etc.)
@@ -69,8 +68,8 @@ This works with the OpenGL backend. Vulkan headless has had issues (glX symbol l
 
 - **No Maven Central artifacts for desktop** — only `com.google.android.filament:filament-android`
   is published to Maven Central (as AAR for Android)
-- **No pre-built desktop JNI in GitHub releases** — the `filament-v1.71.0-mac.tgz`,
-  `filament-v1.71.0-linux.tgz`, `filament-v1.71.0-windows.tgz` archives contain native
+- **No pre-built desktop JNI in GitHub releases** — the `filament-v1.72.1-mac.tgz`,
+  `filament-v1.72.1-linux.tgz`, `filament-v1.72.1-windows.tgz` archives contain native
   C++ libraries and tools, but NOT `filament-java.jar` or `libfilament-jni`
 - **The CI release workflow does not build Java for desktop** — Java is only enabled in
   the Android build job
@@ -88,7 +87,7 @@ By default it attempts to compile Java bindings. The `-j` flag can skip Java com
 
 **Steps:**
 
-1. Clone `google/filament` (v1.71.0)
+1. Clone `google/filament` (v1.72.1)
 2. Build for each desktop platform with Java enabled:
    ```bash
    export JAVA_HOME=/path/to/jdk17
@@ -115,7 +114,7 @@ These classes are the same ones used on desktop (pure Java, no Android APIs).
 
 **Steps:**
 
-1. Download `com.google.android.filament:filament-android:1.71.0` AAR
+1. Download `com.google.android.filament:filament-android:1.72.1` AAR
 2. Extract `classes.jar` (rename to `filament-java.jar`)
 3. Build only the native JNI shared library from Filament source for each desktop platform
 4. Load with `System.loadLibrary("filament-jni")` or `Filament.init()`
@@ -209,7 +208,7 @@ sceneview-desktop/
 
 | Artifact | Maven Central | GitHub Releases | Build from source |
 |---|---|---|---|
-| filament-android (AAR) | Yes (v1.71.0) | Yes | Yes |
+| filament-android (AAR) | Yes (v1.72.1) | Yes | Yes |
 | filament-java.jar (desktop) | No | No | Yes |
 | libfilament-jni (macOS arm64) | No | No | Yes |
 | libfilament-jni (macOS x86_64) | No | No | Yes |
@@ -309,5 +308,5 @@ If full Filament JNI is too expensive, consider:
 - [Filament issue #142 — macOS JNI loading](https://github.com/google/filament/issues/142)
 - [Compose Multiplatform LWJGL integration](https://github.com/JetBrains/compose-multiplatform/tree/master/experimental/lwjgl-integration)
 - [Compose Multiplatform OpenGL issue](https://github.com/JetBrains/compose-multiplatform/issues/3810)
-- [Filament releases (v1.71.0)](https://github.com/google/filament/releases)
+- [Filament releases (v1.72.1)](https://github.com/google/filament/releases)
 - [Filament Android on Maven Central](https://central.sonatype.com/artifact/com.google.android.filament/filament-android)
