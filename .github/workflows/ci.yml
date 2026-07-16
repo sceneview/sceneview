@@ -305,6 +305,47 @@ jobs:
             samples/android-demo/build/reports/tests/
           if-no-files-found: ignore
 
+  # ── Public-API surface check (binary-compatibility-validator, #2723) ─────
+  # BLOCKING — same tier as `Unit tests`. `apiCheck` compares the compiled
+  # public ABI of the published library modules (sceneview, arsceneview,
+  # sceneview-core) against their committed `.api` dumps under `<module>/api/`.
+  # A public signature added/removed/retyped without re-running `./gradlew
+  # apiDump` fails this check → the `CI Gate` aggregator (which polls every
+  # non-advisory check for the head SHA) goes red and blocks auto-merge. This
+  # is the binary-level guard for the exact signatures `llms.txt` promises.
+  #
+  # Path-gated on `android` exactly like `unit-test` (the `android` filter
+  # includes `sceneview-core/**`), so it is deliberately NOT in ci-gate.yml's
+  # `REQUIRED_CHECKS` and a docs-only PR reports it `skipped` (→ green). It is
+  # NOT advisory: a red `apiCheck` must fail the PR.
+  api-check:
+    name: API compatibility
+    needs: changes
+    if: inputs.force-all || needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Binary API check
+        # JVM-surface validation only (klib/native ABI validation is disabled
+        # in the root `apiValidation {}` — not buildable on ubuntu). Runs
+        # against the committed dumps; the failure message names the offending
+        # symbol and tells the author to run `apiDump`.
+        run: ./gradlew apiCheck --stacktrace
+
+      - name: How to fix a failed API check
+        if: failure()
+        run: |
+          echo "::notice::Public API drift detected. If the change is"
+          echo "::notice::intentional, run './gradlew apiDump' locally and"
+          echo "::notice::commit the updated <module>/api/*.api files so the"
+          echo "::notice::public-API delta is reviewable in this PR. See"
+          echo "::notice::CONTRIBUTING.md → 'Public API changes'."
+
   # ── JaCoCo coverage (advisory — off the PR-critical path) ────────────────
   # SEPARATE from the `unit-test` gate above (#1955). JaCoCo instrumentation
   # + XML/HTML report generation is the slow pole that made the old combined
