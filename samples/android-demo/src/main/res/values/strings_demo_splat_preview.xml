@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `splat-preview` demo (registered by
+     `SplatPreviewFragment.kt`). Android's resource merger fans every
+     `res/values/*.xml` file in, so `R.string.demo_splat_preview_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_splat_preview_title">Gaussian Splatting</string>
+    <string name="demo_splat_preview_subtitle">Render a 3D Gaussian Splat radiance-field cloud</string>
+    <string name="demo_splat_preview">Gaussian Splatting</string>
+    <string name="demo_splat_preview_desc">SplatNode renders a rainbow-sphere 3D Gaussian Splat cloud</string>
+</resources>

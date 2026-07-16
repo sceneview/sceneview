@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **samples/android-demo**: new **Gaussian Splatting** demo (`splat-preview`, 3D Basics → Advanced) — decodes a bundled synthetic rainbow-sphere `.ply` (8 000 gaussians) with the shared `SplatParser` and renders it through `SplatNode`, with a gesture orbit that feeds the node's back-to-front painter's sort and a reveal slider driving `SplatNode.splatCount`. First on-device render of the SplatNode pipeline (P1c of #2646). Emulator QA confirmed the within-batch alpha-blend order is stable — no splat popping across a slow camera orbit (#2646).

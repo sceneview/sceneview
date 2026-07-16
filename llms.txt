@@ -4403,6 +4403,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `materials` — Materials. PBR extension showcase, runtime material streaming, and occlusion material.
 - `secondary-camera` — Secondary Camera (PiP). Picture-in-picture camera view.
 - `spatial-audio` — Spatial Audio. 3D positional sound that pans as you orbit.
+- `splat-preview` — Gaussian Splatting. Render a 3D Gaussian Splat radiance-field cloud.
 - `video-recording` — Video Recording. Record the scene to MP4 in-app — no MediaProjection.
 
 ### Augmented Reality
