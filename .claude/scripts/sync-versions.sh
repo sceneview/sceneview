@@ -1567,6 +1567,18 @@ if changed:
         fi
     done
 
+    # gpt/knowledge-*.md are GENERATED from llms.txt (tools/generate-gpt-knowledge.js,
+    # #2724) and embed VERSION_NAME in their banners — regenerate them after the
+    # llms.txt/version fixes above, otherwise a version bump leaves them stale and
+    # red-fails the blocking repo-hygiene drift gate.
+    if [ -f "$REPO_ROOT/tools/generate-gpt-knowledge.js" ] && command -v node >/dev/null 2>&1; then
+        if node "$REPO_ROOT/tools/generate-gpt-knowledge.js" >/dev/null 2>&1; then
+            echo -e "  Fixed: gpt/knowledge-*.md regenerated from llms.txt"
+        else
+            echo -e "  ${YELLOW}WARN: gpt/ regeneration failed — run 'node tools/generate-gpt-knowledge.js' manually${NC}"
+        fi
+    fi
+
     echo ""
     echo -e "${GREEN}Fixes applied. Re-run without --fix to verify.${NC}"
 fi
