@@ -73,6 +73,9 @@ const PRO_TOOLS: readonly string[] = [
   "get_hud_overlay",
   "get_ar_showroom",
   "list_car_models",
+  "get_ev_charging_station_viewer",
+  "get_car_paint_shader",
+  "validate_automotive_code",
 
   // Gaming package
   "get_physics_game",
@@ -81,6 +84,7 @@ const PRO_TOOLS: readonly string[] = [
   "get_inventory_3d",
   "get_character_viewer",
   "list_game_models",
+  "validate_game_code",
 
   // Healthcare package
   "get_surgical_planning",
@@ -89,6 +93,7 @@ const PRO_TOOLS: readonly string[] = [
   "get_anatomy_viewer",
   "get_molecule_viewer",
   "list_medical_models",
+  "validate_medical_code",
 
   // Interior package
   "get_room_planner",
@@ -97,6 +102,18 @@ const PRO_TOOLS: readonly string[] = [
   "get_material_switcher",
   "get_furniture_placement",
   "list_furniture_models",
+  "validate_interior_code",
+
+  // Rerun package (Pro per its README — "All 5 rerun tools are Pro tier").
+  // Until #2697 these five (and the six package additions above) rode the
+  // unknown-tool default-to-pro fallback; behaviour is unchanged, the map
+  // is just explicit now so a forgotten mapping is distinguishable from a
+  // deliberate Pro tool.
+  "setup_rerun_project",
+  "generate_ar_logger",
+  "generate_python_sidecar",
+  "embed_web_viewer",
+  "explain_concept",
 ] as const;
 
 // ─── Tier map ─────────────────────────────────────────────────────────────────
@@ -132,10 +149,10 @@ export function getFreeToolNames(): string[] {
 
 export const PRO_UPGRADE_MESSAGE = `## \u{1F512} Pro Feature
 
-This tool is part of a specialized package (Automotive / Gaming / Healthcare / Interior) or a heavier generation tool. SceneView MCP Pro unlocks them.
+This tool is part of a specialized package (Automotive / Gaming / Healthcare / Interior / Rerun) or a heavier generation tool. SceneView MCP Pro unlocks them.
 
 **Upgrade for \u20AC19/month** to unlock:
-- 4 vertical packages (Automotive, Gaming, Healthcare, Interior — 24 specialized tools)
+- 5 vertical packages (Automotive, Gaming, Healthcare, Interior, Rerun — 35 specialized tools)
 - 3D preview, artifact, and scene-generation helpers
 
 All setup, migration, and reference guides remain free.

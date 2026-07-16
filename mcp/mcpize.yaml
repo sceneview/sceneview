@@ -17,9 +17,9 @@ name: sceneview-mcp
 description: >-
   Cross-platform 3D & AR MCP for Android (Compose + Filament), iOS / macOS /
   visionOS (SwiftUI + RealityKit), and Web (Filament.js + WebXR). 28 free
-  tools (samples, guides, validator, analyze) + 27 Pro tools (3D preview /
+  tools (samples, guides, validator, analyze) + 38 Pro tools (3D preview /
   artifact / scene generation, Automotive / Gaming / Healthcare /
-  Interior packages).
+  Interior / Rerun packages).
 
 runtime: typescript
 entry: dist/index.js
@@ -40,7 +40,7 @@ credentials:
   - name: SCENEVIEW_API_KEY
     required: false
     description: >-
-      Optional. SceneView Pro subscription key (sv_live_...) — unlocks the 27
+      Optional. SceneView Pro subscription key (sv_live_...) — unlocks the 38
       Pro tools through the hosted gateway. Leave empty to use only the 28
       free tools.
     docs_url: https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing
