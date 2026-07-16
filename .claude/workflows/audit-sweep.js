@@ -12,7 +12,14 @@ export const meta = {
 //   surfaces — module surfaces to audit; each maps 1:1 to a top-level module dir.
 // Depth scales with budget: if budget.total is set, agents go DEEPER (more findings,
 // LOW micro-issues included); otherwise default depth (HIGH/MED focus).
-const a = args || {}
+// Be robust to args arriving as a JSON string (some invocation paths stringify it — same guard as review-fanout.js).
+let a = args
+if (typeof a === 'string') {
+  try { a = JSON.parse(a) } catch {
+    throw new Error('audit-sweep: args must be JSON — got a non-JSON string: ' + a.slice(0, 120))
+  }
+}
+a = a || {}
 const DEFAULT_SURFACES = ['sceneview', 'arsceneview', 'sceneview-core', 'SceneViewSwift', 'sceneview-web']
 const SURFACES = (Array.isArray(a.surfaces) && a.surfaces.length) ? a.surfaces : DEFAULT_SURFACES
 const TRIGGER = (a.trigger && String(a.trigger).trim())

@@ -11,7 +11,14 @@ export const meta = {
 
 // args: { dry?: boolean }
 //   dry — preflight + device-QA + verify-live only; NEVER commits/pushes a tag.
-const a = args || {}
+// Be robust to args arriving as a JSON string (some invocation paths stringify it — same guard as review-fanout.js).
+let a = args
+if (typeof a === 'string') {
+  try { a = JSON.parse(a) } catch {
+    throw new Error('release-checkpoint: args must be JSON — got a non-JSON string: ' + a.slice(0, 120))
+  }
+}
+a = a || {}
 const DRY = a.dry === true
 
 const REPO = 'sceneview/sceneview'

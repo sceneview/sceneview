@@ -11,7 +11,14 @@ export const meta = {
 //   pr       — review a GitHub PR by number (reviewers run `gh pr diff <pr>`)
 //   branch   — else review this local branch vs base (default origin/main)
 //   platforms— hint for the visual-QA leg: "android" | "ios" | "web" | "none"
-const a = args || {}
+// Be robust to args arriving as a JSON string (some invocation paths stringify it — same guard as review-fanout.js).
+let a = args
+if (typeof a === 'string') {
+  try { a = JSON.parse(a) } catch {
+    throw new Error('triptych: args must be JSON — got a non-JSON string: ' + a.slice(0, 120))
+  }
+}
+a = a || {}
 const BASE = a.base || 'origin/main'
 const TARGET = a.pr
   ? `GitHub PR #${a.pr} — get the diff with: gh pr diff ${a.pr} --repo sceneview/sceneview`
