@@ -651,6 +651,14 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-check-doc-drift.sh
 
+      # Store-preflight grader self-test — same rationale (#2612 P1). Exercises
+      # the ASC blocker grading / gate / JSON offline via the FAKE seam and the
+      # openssl ES256 JWT builder; needs no App Store Connect secret.
+      - name: Self-test store-preflight.sh
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-store-preflight.sh
+
       # Doc↔API drift (ADVISORY, #docs). Warns when this PR changed a public
       # API surface without updating llms.txt / KDoc / docs/docs / recipes.
       # AI-first SDK: stale prose makes AI emit stale user code. Non-blocking

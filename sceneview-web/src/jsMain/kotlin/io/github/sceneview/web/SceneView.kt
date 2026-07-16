@@ -73,6 +73,15 @@ class SceneView private constructor(
     private var pendingLoads = 0
 
     /**
+     * #1597 (Tier-2): set as the FIRST statement of [destroy] so any in-flight
+     * async callback that lands after teardown — e.g. a [loadEnvironment] KTX
+     * fetch resolving after the WASM Engine is freed — can bail out instead of
+     * calling into a destroyed engine/scene (use-after-free). Callbacks that
+     * bail MUST still run their settle helper so [pendingLoads] never leaks.
+     */
+    private var destroyed = false
+
+    /**
      * Stored bound reference to [renderLoop] so the per-frame
      * `requestAnimationFrame` reschedule reuses one function object instead of
      * allocating a fresh member-reference wrapper every tick (#2332).
@@ -533,6 +542,22 @@ class SceneView private constructor(
         window.fetch(url).then { response ->
             response.arrayBuffer()
         }.then { buffer ->
+            // #1597 (Tier-2): if destroy() ran while this initial GLB fetch was
+            // in flight, the loader/engine/scene are freed WASM handles — bail
+            // out before createAsset/addEntities touch them (use-after-free),
+            // but still settle so pendingLoads never leaks. The `superseded`
+            // guard below only covers the late loadResources/onDone step, NOT
+            // this initial continuation. Mirrors loadEnvironment's KTX guard
+            // (#2687) — same `destroyed` flag, checked before the first engine
+            // call.
+            if (destroyed) {
+                console.log(
+                    "SceneView: dropped stale model load for $url " +
+                        "(SceneView destroyed before fetch resolved)",
+                )
+                settleLoad()
+                return@then
+            }
             // Filament.js gltfio `createAsset` expects a typed-array VIEW
             // (Uint8Array), NOT a raw ArrayBuffer — passing the ArrayBuffer
             // throws an embind BindingError. Mirrors the conversion the
@@ -657,6 +682,18 @@ class SceneView private constructor(
 
         // Fetch and create IBL (indirect lighting) from a KTX1 file
         window.fetch(iblUrl).then { it.arrayBuffer() }.then { buffer ->
+            // #1597 (Tier-2): if destroy() ran while the fetch was in flight,
+            // the engine/scene are freed WASM handles — bail out before
+            // touching them, but still settle so pendingLoads never leaks.
+            // Same pattern as loadModel's `superseded` guard.
+            if (destroyed) {
+                console.log(
+                    "SceneView: dropped stale IBL load for $iblUrl " +
+                        "(SceneView destroyed before fetch resolved)",
+                )
+                settleIbl()
+                return@then
+            }
             // Uint8Array view, not the raw ArrayBuffer — see loadModel (embind
             // BindingError otherwise).
             val ibl = engine.createIblFromKtx1(Uint8Array(buffer.unsafeCast<ArrayBuffer>()))
@@ -680,6 +717,16 @@ class SceneView private constructor(
                 if (!skySettled) { skySettled = true; pendingLoads--; requestRender() }
             }
             window.fetch(url).then { it.arrayBuffer() }.then { buffer ->
+                // #1597 (Tier-2): same destroy() guard as the IBL above — never
+                // touch a freed engine/scene, but always settle the counter.
+                if (destroyed) {
+                    console.log(
+                        "SceneView: dropped stale skybox load for $url " +
+                            "(SceneView destroyed before fetch resolved)",
+                    )
+                    settleSky()
+                    return@then
+                }
                 // Uint8Array view, not the raw ArrayBuffer — see loadModel.
                 val sky = engine.createSkyFromKtx1(Uint8Array(buffer.unsafeCast<ArrayBuffer>()))
                 // Same leak-free swap as the IBL above (issue #1496).
@@ -1162,6 +1209,10 @@ class SceneView private constructor(
 
     /** Clean up all Filament resources. */
     fun destroy() {
+        // #1597 (Tier-2): flag FIRST so any async callback still in flight
+        // (loadEnvironment's KTX fetches) bails out instead of calling into
+        // the freed engine/scene below.
+        destroyed = true
         stopRendering()
         cameraController?.dispose()
 

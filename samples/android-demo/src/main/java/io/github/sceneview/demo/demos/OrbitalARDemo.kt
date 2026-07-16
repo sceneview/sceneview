@@ -406,7 +406,7 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     // are still null, we're "Streaming…". If `SketchfabConfig.apiKey` is
     // absent up-front, the resolver short-circuits to the bundled fallback
     // and every slot resolves quickly to its fallback file — chip says
-    // "Bundled fallback" instead.
+    // "Offline model" instead.
     val streamedSlugs = ORBITAL_PLANETS.mapNotNull { it.streamedSlug }
     val assetSource: AssetSourceState? = if (streamedSlugs.isEmpty()) {
         null

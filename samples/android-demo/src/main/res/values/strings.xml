@@ -24,7 +24,7 @@
     <string name="explore_animation_count">%d animations</string>
     <string name="explore_loading">Loading 3D model</string>
     <string name="explore_heading">Explore</string>
-    <string name="explore_search_placeholder">Search 3D models on Sketchfab</string>
+    <string name="explore_search_placeholder">Search 3D models on %1$s</string>
     <string name="explore_filter_animated">Animated</string>
     <string name="explore_try_a_sample">Try a sample</string>
     <string name="explore_trending_models">Trending models</string>
@@ -38,6 +38,9 @@
     <string name="explore_search_results">Search results</string>
     <string name="explore_search_no_results">No results for "%s"</string>
     <string name="explore_search_loading">Searching…</string>
+    <!-- Source picker chip row (#2645): label preceding the Sketchfab | Icosa
+         Gallery | Poly Haven chips that let the user switch model catalog. -->
+    <string name="explore_source_label">Source</string>
     <!-- Defensive banner shown when SketchfabConfig.apiKey is null (#1909).
          End-user release builds with a missing or revoked secret would
          otherwise silently render an Explore tab without carousels and a
@@ -58,8 +61,14 @@
     <string name="sketchfab_animated">Animated</string>
     <string name="sketchfab_open_in_sceneview">Open in SceneView</string>
     <string name="sketchfab_rendered_locally">Rendered locally by Filament — no external viewer.</string>
+    <!-- Shown under a disabled CTA when the origin catalog exposes a model but
+         not a downloadable format the demo can render (#2645). -->
+    <string name="gallery_not_downloadable">This model isn\'t available to download from its source.</string>
     <string name="sketchfab_loading_model">Loading %s…</string>
     <string name="sketchfab_streaming_from">Streaming from Sketchfab · rendering in SceneView</string>
+    <!-- Multi-source generalisation of sketchfab_streaming_from (#2645): %s is
+         the origin catalog display name (Sketchfab / Icosa Gallery / Poly Haven). -->
+    <string name="gallery_streaming_from">Streaming from %s · rendering in SceneView</string>
     <string name="sketchfab_rendered_by">Rendered by SceneView · %s polys</string>
     <string name="sketchfab_could_not_open">Couldn\'t open this model</string>
     <string name="sketchfab_try_again">Try again</string>
@@ -230,7 +239,7 @@
     <!-- Stage 3 per-demo offline indicator chip (DemoScaffold v2) -->
     <string name="demo_chip_streamed">Streamed (cached)</string>
     <string name="demo_chip_streaming">Streaming…</string>
-    <string name="demo_chip_bundled">Bundled fallback</string>
+    <string name="demo_chip_bundled">Offline model</string>
 
     <!-- DemoScaffold v2 bottom-sheet settings (#1154) -->
     <string name="demo_settings_title">Settings</string>
@@ -284,7 +293,7 @@
     <!-- In-app bug report — lightweight, permission-free (successor of #1932/#2188) -->
     <string name="feedback_button">Feedback</string>
     <string name="feedback_action_cd">Send feedback</string>
-    <!-- Generic close a11y label — also reused by SketchfabModelViewerScreen. -->
+    <!-- Generic close a11y label — also reused by GalleryModelViewerScreen. -->
     <string name="feedback_cd_close">Close</string>
     <string name="feedback_report_title">Report a bug</string>
     <string name="feedback_report_body">The report bundles your device info, the app\'s recent log, and an optional screenshot. Nothing leaves your device until you choose where to send it.</string>

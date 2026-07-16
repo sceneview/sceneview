@@ -48,9 +48,9 @@ class RerunBridgeTest {
 
     private fun acceptAndReadLines(count: Int, timeoutMillis: Long = 5000L): List<String> = runBlocking {
         withTimeout(timeoutMillis) {
-            val client = serverSocket.accept()
+            val client = acceptWithin(timeoutMillis)
             acceptedSocket = client
-            val reader = BufferedReader(InputStreamReader(client.getInputStream(), Charsets.UTF_8))
+            val reader = client.lineReader(timeoutMillis)
             val lines = ArrayList<String>(count)
             for (i in 0 until count) {
                 val line = reader.readLine() ?: break
@@ -58,6 +58,31 @@ class RerunBridgeTest {
             }
             lines
         }
+    }
+
+    /**
+     * Accept a client connection bounded by a wire-level [ServerSocket.setSoTimeout],
+     * so [ServerSocket.accept] throws [java.net.SocketTimeoutException] within
+     * [timeoutMillis] instead of blocking forever. A blocking JVM socket call is
+     * NOT a coroutine suspension point, so an enclosing `withTimeout` can never
+     * cancel it — the wire-level timeout is the only deadline that actually
+     * interrupts the read (issue #2688).
+     */
+    private fun acceptWithin(timeoutMillis: Long): Socket {
+        serverSocket.soTimeout = timeoutMillis.toInt()
+        return serverSocket.accept()
+    }
+
+    /**
+     * Wrap an accepted client socket's input in a line reader, first arming a
+     * wire-level [Socket.setSoTimeout] so a missing/misrouted line surfaces as a
+     * [java.net.SocketTimeoutException] within [timeoutMillis] rather than a
+     * [BufferedReader.readLine] that blocks forever — no `withTimeout` can
+     * interrupt a blocking read (issue #2688).
+     */
+    private fun Socket.lineReader(timeoutMillis: Long): BufferedReader {
+        soTimeout = timeoutMillis.toInt()
+        return BufferedReader(InputStreamReader(getInputStream(), Charsets.UTF_8))
     }
 
     @Test
@@ -93,9 +118,9 @@ class RerunBridgeTest {
             // doesn't drop our events before the writer loop picks them up.
             val lines = runBlocking {
                 withTimeout(5000L) {
-                    val client = serverSocket.accept()
+                    val client = acceptWithin(5000L)
                     acceptedSocket = client
-                    val reader = BufferedReader(InputStreamReader(client.getInputStream(), Charsets.UTF_8))
+                    val reader = client.lineReader(5000L)
                     val collected = ArrayList<String>()
                     // Send one, read one, send next, read next — the conflated
                     // channel drops if we batch, so we pace ourselves.
@@ -158,9 +183,9 @@ class RerunBridgeTest {
             // Wait for the writer loop to actually open the socket — connect()
             // is fire-and-forget on a coroutine so isConnected only flips after
             // the socket is established.
-            val client = serverSocket.accept()
+            val client = acceptWithin(5000L)
             acceptedSocket = client
-            val reader = BufferedReader(InputStreamReader(client.getInputStream(), Charsets.UTF_8))
+            val reader = client.lineReader(5000L)
 
             // Poll briefly for the state flip (the writer assignment is async).
             val connectedWithin = waitFor(timeoutMillis = 2000L) { bridge.isConnected }
@@ -233,7 +258,7 @@ class RerunBridgeTest {
             bridge.connect()
             // Accept and drain the first connection so it doesn't linger in
             // the server's backlog and confuse the second accept() call below.
-            val firstClient = serverSocket.accept()
+            val firstClient = acceptWithin(5000L)
             bridge.disconnect()
             firstClient.close()
             // Second connect should work — bridge is reusable.

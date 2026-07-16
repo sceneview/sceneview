@@ -16,9 +16,9 @@ version: 1
 name: sceneview-mcp
 description: >-
   Cross-platform 3D & AR MCP for Android (Compose + Filament), iOS / macOS /
-  visionOS (SwiftUI + RealityKit), and Web (Filament.js + WebXR). 26 free
-  tools (samples, guides, validator, analyze) + 35 Pro tools (scene
-  generation, multi-platform setup, Automotive / Gaming / Healthcare /
+  visionOS (SwiftUI + RealityKit), and Web (Filament.js + WebXR). 28 free
+  tools (samples, guides, validator, analyze) + 27 Pro tools (3D preview /
+  artifact / scene generation, Automotive / Gaming / Healthcare /
   Interior packages).
 
 runtime: typescript
@@ -34,14 +34,14 @@ startCommand:
   type: stdio
   command: node dist/index.js
 
-# Per-user credentials surfaced to the subscriber's MCP config. Both optional:
-# free tools never need them; only the Pro / Sketchfab paths consume them.
+# Per-user credentials surfaced to the subscriber's MCP config. All optional:
+# free tools never need them; only the Pro / Sketchfab / Tripo paths consume them.
 credentials:
   - name: SCENEVIEW_API_KEY
     required: false
     description: >-
-      Optional. SceneView Pro subscription key (sv_live_...) — unlocks the 35
-      Pro tools through the hosted gateway. Leave empty to use only the 26
+      Optional. SceneView Pro subscription key (sv_live_...) — unlocks the 27
+      Pro tools through the hosted gateway. Leave empty to use only the 28
       free tools.
     docs_url: https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing
     mapping:
@@ -54,5 +54,14 @@ credentials:
     docs_url: https://sketchfab.com/settings/password
     mapping:
       env: SKETCHFAB_API_KEY
+  - name: TRIPO_API_KEY
+    required: false
+    description: >-
+      Optional. Bring-your-own Tripo AI API key to enable `generate_3d_model`
+      (text/image -> GLB generation, billed to your own Tripo account).
+      Without it, that single tool is disabled; everything else works.
+    docs_url: https://platform.tripo3d.ai/api-keys
+    mapping:
+      env: TRIPO_API_KEY
 
 credentials_mode: per_user

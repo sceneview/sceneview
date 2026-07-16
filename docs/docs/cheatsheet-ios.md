@@ -16,7 +16,7 @@ A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it
 
 ```swift
 // Package.swift or Xcode SPM
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.21.2")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.22.0")
 ```
 
 ```swift
@@ -146,7 +146,7 @@ On user denial throws `ARRecorderError.photoLibraryDenied`; on
 
 | Node | Factory / Init | Key Parameters |
 |---|---|---|
-| `ModelNode` | `ModelNode.load("file.usdz")` | `async throws`, `.scaleToUnits()`, `.position()`, `.rotation()` |
+| `ModelNode` | `ModelNode.load("file.usdz")` | `async throws`, `.scaleToUnits()`, `.centerOrigin(normalized:)`, `.position()`, `.rotation()` |
 | `GeometryNode` | `.cube(size:color:)` | `size`, `color`, `cornerRadius` |
 | | `.sphere(radius:color:)` | `radius`, `color` |
 | | `.cylinder(radius:height:color:)` | `radius`, `height`, `color` |
@@ -399,6 +399,7 @@ model?.stopAllAnimations()
 | `ARSceneView { }` | `ARSceneView(...)` |
 | `rememberModelInstance(loader, path)` | `ModelNode.load(path)` |
 | `ModelNode(modelInstance, scaleToUnits)` | `model.scaleToUnits(units)` |
+| `ModelNode(centerOrigin = Position(0,-1,0))` (normalized AABB origin) | `.centerOrigin(normalized: SIMD3(0, -1, 0))` (apply before positioning — does not compose additively with a prior `.position`) |
 | `CubeNode(size, material)` | `GeometryNode.cube(size:color:)` |
 | `SphereNode(radius, material)` | `GeometryNode.sphere(radius:color:)` |
 | `LightNode(type, apply = { })` | `LightNode.directional(...)` / `.point(...)` / `.spot(...)` |

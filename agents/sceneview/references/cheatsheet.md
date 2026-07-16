@@ -8,8 +8,8 @@ doubt **read the demo, do not improvise**.
 
 | Composable | Artifact | Demo |
 | --- | --- | --- |
-| `SceneView { … }` | `io.github.sceneview:sceneview:4.21.2` | `ModelViewerDemo.kt` |
-| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.21.2` | `ARPlacementDemo.kt` |
+| `SceneView { … }` | `io.github.sceneview:sceneview:4.22.0` | `ModelViewerDemo.kt` |
+| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.22.0` | `ARPlacementDemo.kt` |
 
 ## `SceneView` parameters (most common)
 
@@ -71,6 +71,11 @@ Box {
     PlaneDiscoveryGuide(cameraReady, isTracking, anyPlaneTracked, failure)  // onboarding overlay
 }
 ```
+
+Never keep `ShadowReceiverPlane`s AND `planeRenderer = true` live on the same plane — the plane
+renderer attaches its own coplanar shadow receiver, so stacking both z-fights and double-darkens
+shadows (#2657). Gate them mutually exclusively (grid while scanning, shadow receivers after
+placement), or just use `PlacementScene`, which handles this for you.
 
 `PlaneDiscoveryGuide` = timed hand-hint/help onboarding (replaces static "Scanning…" banners).
 `snapToPlane=false` on the reticle = free placement (points accepted, planes in-polygon).

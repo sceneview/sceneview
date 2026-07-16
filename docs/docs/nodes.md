@@ -9,7 +9,7 @@ A scannable, AI-first reference for every node type exposed by `SceneView` and `
 
 All examples assume you are inside a `SceneView { … }` or `ARSceneView { … }` block (for AR nodes). Import the `io.github.sceneview.*` / `io.github.sceneview.ar.*` packages as needed.
 
-Artifact versions: `io.github.sceneview:sceneview:4.21.2` and `io.github.sceneview:arsceneview:4.21.2`.
+Artifact versions: `io.github.sceneview:sceneview:4.22.0` and `io.github.sceneview:arsceneview:4.22.0`.
 
 ---
 
@@ -1067,6 +1067,7 @@ LightNode(
 | `ModelNode(scaleToUnits = 1f, scale = Scale(2f))` | `scale` is silently ignored | Pick one — they are mutually exclusive |
 | Using `MeshNode` for loaded glTF content | No animations, no PBR textures | Use `ModelNode` with `rememberModelInstance` |
 | Not handling `rememberModelInstance` returning `null` | Conditional branches crash at launch | Use `?.let { }` or `if (instance != null)` guards |
+| glTF with WebP-encoded textures (`EXT_texture_webp`) | Model loads/animates but renders untextured; Logcat shows `Missing texture provider for image/webp` | Android's Filament build has no WebP decoder — re-encode textures to PNG/JPEG/KTX2 before bundling ([#2305](https://github.com/sceneview/sceneview/issues/2305), [details](troubleshooting.md#model-loads-but-renders-untextured-webp-textures)) |
 | Calling `node.destroy()` manually | Use-after-free, crashes on recomposition | Let the composable own the lifecycle |
 
 ---

@@ -66,6 +66,7 @@ import {
   WEB_RENDERING_GUIDE,
 } from "../extra-guides.js";
 import { searchModels, formatSearchResults } from "../search-models.js";
+import { generateModel, formatGenerateResult, type GenerateQuality } from "../generate-model.js";
 import { analyzeProject, formatAnalysisReport } from "../analyze-project.js";
 import {
   searchAndroidDocs,
@@ -872,6 +873,20 @@ export async function dispatchTool(
       return {
         content: withDisclaimer([{ type: "text", text: searchText }]),
         isError: searchResult.ok ? undefined : true,
+      };
+    }
+
+    // ── generate_3d_model ────────────────────────────────────────────────────
+    case "generate_3d_model": {
+      const genResult = await generateModel({
+        prompt: args?.prompt as string | undefined,
+        imageUrl: args?.imageUrl as string | undefined,
+        quality: args?.quality as GenerateQuality | undefined,
+      });
+      const genText = formatGenerateResult(genResult);
+      return {
+        content: withDisclaimer([{ type: "text", text: genText }]),
+        isError: genResult.ok ? undefined : true,
       };
     }
 

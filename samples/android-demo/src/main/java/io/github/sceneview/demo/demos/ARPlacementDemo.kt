@@ -153,7 +153,7 @@ fun ARPlacementDemo(onBack: () -> Unit) {
 
     // Per-demo offline indicator chip (#1152 Stage 3). The chip reflects the
     // selected slug's resolve state — `null` means no slug picked yet (cycle
-    // mode), so we surface "Bundled fallback" (the cycle is 100% bundled).
+    // mode), so we surface "Offline model" (the cycle is 100% bundled).
     val assetSource = when {
         selectedSlug == null -> AssetSourceState.Bundled
         SketchfabConfig.apiKey == null -> AssetSourceState.Bundled

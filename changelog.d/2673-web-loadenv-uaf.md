@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **sceneview-web**: `loadEnvironment` / `loadDefaultEnvironment` no longer use-after-free a destroyed engine when `destroy()` runs while a KTX fetch is in flight — both the IBL and skybox `.then` callbacks now bail out on a new `destroyed` flag (set first in `destroy()`), still settling `pendingLoads` so the render-gate counter never leaks. Same #1597 Tier-2 guard as `loadModel`'s `superseded` flag (#2673, part of #2668).

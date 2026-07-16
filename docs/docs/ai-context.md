@@ -9,8 +9,8 @@ Paste this at the start of your conversation:
 
 ```
 I'm building with SceneView — the Compose-native 3D & AR SDK for Android.
-- 3D only: io.github.sceneview:sceneview:4.21.2
-- 3D + AR: io.github.sceneview:arsceneview:4.21.2
+- 3D only: io.github.sceneview:sceneview:4.22.0
+- 3D + AR: io.github.sceneview:arsceneview:4.22.0
 - Use SceneView { } or ARSceneView { } composables
 - Nodes are composables inside the content block
 - Load models with rememberModelInstance(modelLoader, "models/file.glb")
@@ -27,7 +27,7 @@ For the best experience with Claude, install the SceneView MCP server:
 npx sceneview-mcp
 ```
 
-This gives Claude direct access to 28 tools: code generation, validation,
+This gives Claude direct access to 31 tools: code generation, validation,
 samples, model search (Sketchfab), and the complete API reference.
 
 ## Industry-specific MCPs

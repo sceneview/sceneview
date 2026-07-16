@@ -10,14 +10,14 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (25 mats → 25 filamats):
-#   sceneview/src/main/materials/         (13) → sceneview/src/main/assets/materials/
+# Inventory (26 mats → 26 filamats):
+#   sceneview/src/main/materials/         (14) → sceneview/src/main/assets/materials/
 #   arsceneview/src/main/materials/        (9) → arsceneview/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/
 #
 # Usage:
-#   bash tools/GenerateFilamat.sh                 # regenerate all 25 filamats
-#   bash tools/GenerateFilamat.sh --check         # diff all 24 against committed blobs; exit 1 on drift
+#   bash tools/GenerateFilamat.sh                 # regenerate all 26 filamats
+#   bash tools/GenerateFilamat.sh --check         # diff all 26 against committed blobs; exit 1 on drift
 #   bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 #   bash tools/GenerateFilamat.sh --ci-tolerant   # treat matc download failure as WARN, not FAIL
 #   bash tools/GenerateFilamat.sh --help
@@ -120,6 +120,7 @@ MATS=(
     "sceneview:semantics_overlay:sceneview/src/main/materials/semantics_overlay.mat:sceneview/src/main/assets/materials/semantics_overlay.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "sceneview:opaque_textured:sceneview/src/main/materials/opaque_textured.mat:sceneview/src/main/assets/materials/opaque_textured.filamat:-p all -a all"
     "sceneview:opaque_unlit_colored:sceneview/src/main/materials/opaque_unlit_colored.mat:sceneview/src/main/assets/materials/opaque_unlit_colored.filamat:-a opengl -p mobile"
+    "sceneview:splat:sceneview/src/main/materials/splat.mat:sceneview/src/main/assets/materials/splat.filamat:-a opengl -p mobile"
     "sceneview:transparent_colored:sceneview/src/main/materials/transparent_colored.mat:sceneview/src/main/assets/materials/transparent_colored.filamat:-p all -a all"
     "sceneview:transparent_textured:sceneview/src/main/materials/transparent_textured.mat:sceneview/src/main/assets/materials/transparent_textured.filamat:-p all -a all"
     "sceneview:transparent_unlit_colored:sceneview/src/main/materials/transparent_unlit_colored.mat:sceneview/src/main/assets/materials/transparent_unlit_colored.filamat:-a opengl -p mobile"

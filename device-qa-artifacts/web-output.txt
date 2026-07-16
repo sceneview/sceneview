@@ -1,58 +1,42 @@
 
-Running 36 tests using 1 worker
+Running 41 tests using 1 worker
 
-[WebServer] (node:65607) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[WebServer] (node:36111) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
 [WebServer] (Use `node --trace-deprecation ...` to show where the warning was created)
-  ✓   1 [chromium] › tests/audio.spec.ts:125:7 › SceneView Web Demo — Spatial Audio › Spatial Audio panel exposes Play / Stop controls (2.5s)
+  ✓   1 [chromium] › tests/audio.spec.ts:125:7 › SceneView Web Demo — Spatial Audio › Spatial Audio panel exposes Play / Stop controls (3.0s)
   ✓   2 [chromium] › tests/audio.spec.ts:138:7 › SceneView Web Demo — Spatial Audio › clicking Play constructs an AudioContext and the PannerNode graph (#1944) (2.6s)
   ✓   3 [chromium] › tests/audio.spec.ts:179:7 › SceneView Web Demo — Spatial Audio › clicking Stop after Play tears the graph down (2.8s)
-  ✓   4 [chromium] › tests/catalog.spec.ts:97:7 › Web Demo — catalog coverage › Models tab — CDN gallery loads and model chips switch the scene (9.3s)
+  ✓   4 [chromium] › tests/catalog.spec.ts:97:7 › Web Demo — catalog coverage › Models tab — CDN gallery loads and model chips switch the scene (9.1s)
   ✓   5 [chromium] › tests/catalog.spec.ts:129:7 › Web Demo — catalog coverage › Models tab — Sketchfab source toggle renders its search UI (2.5s)
   ✓   6 [chromium] › tests/catalog.spec.ts:154:9 › Web Demo — catalog coverage › Geometry tab — cube adds, recolours and renders (5.2s)
-  ✓   7 [chromium] › tests/catalog.spec.ts:154:9 › Web Demo — catalog coverage › Geometry tab — sphere adds, recolours and renders (5.2s)
+  ✓   7 [chromium] › tests/catalog.spec.ts:154:9 › Web Demo — catalog coverage › Geometry tab — sphere adds, recolours and renders (5.1s)
   ✓   8 [chromium] › tests/catalog.spec.ts:154:9 › Web Demo — catalog coverage › Geometry tab — cylinder adds, recolours and renders (5.2s)
   ✓   9 [chromium] › tests/catalog.spec.ts:154:9 › Web Demo — catalog coverage › Geometry tab — plane adds, recolours and renders (5.2s)
-  ✓  10 [chromium] › tests/catalog.spec.ts:176:7 › Web Demo — catalog coverage › Geometry tab — Clear All Geometry does not throw (3.5s)
+  ✓  10 [chromium] › tests/catalog.spec.ts:176:7 › Web Demo — catalog coverage › Geometry tab — Clear All Geometry does not throw (3.6s)
   ✓  11 [chromium] › tests/catalog.spec.ts:197:9 › Web Demo — catalog coverage › Lighting tab — directional light adds, recolours and renders (5.1s)
   ✓  12 [chromium] › tests/catalog.spec.ts:197:9 › Web Demo — catalog coverage › Lighting tab — point light adds, recolours and renders (5.9s)
-  ✓  13 [chromium] › tests/catalog.spec.ts:197:9 › Web Demo — catalog coverage › Lighting tab — spot light adds, recolours and renders (5.2s)
+  ✓  13 [chromium] › tests/catalog.spec.ts:197:9 › Web Demo — catalog coverage › Lighting tab — spot light adds, recolours and renders (5.1s)
   ✓  14 [chromium] › tests/catalog.spec.ts:236:7 › Web Demo — catalog coverage › Lighting tab — Remove Added Lights does not throw (3.5s)
-  ✓  15 [chromium] › tests/catalog.spec.ts:252:7 › Web Demo — catalog coverage › Animation tab — animated model plays, loops and stops (7.1s)
+  ✓  15 [chromium] › tests/catalog.spec.ts:252:7 › Web Demo — catalog coverage › Animation tab — animated model plays, loops and stops (7.0s)
   ✓  16 [chromium] › tests/catalog.spec.ts:286:7 › Web Demo — catalog coverage › Text tab — 3D text adds, restyles, renders and clears (5.9s)
   ✓  17 [chromium] › tests/catalog.spec.ts:316:7 › Web Demo — catalog coverage › Environment tab — IBL preset, intensity, background and bloom all apply (6.9s)
-  ✓  18 [chromium] › tests/catalog.spec.ts:360:7 › Web Demo — catalog coverage › Physics tab — Double Pendulum runs, sliders + reset work (9.6s)
+  ✓  18 [chromium] › tests/catalog.spec.ts:360:7 › Web Demo — catalog coverage › Physics tab — Double Pendulum runs, sliders + reset work (9.5s)
   ✓  19 [chromium] › tests/catalog.spec.ts:387:7 › Web Demo — catalog coverage › Physics tab — #double-pendulum deep link opens it directly (2.3s)
-  ✓  20 [chromium] › tests/catalog.spec.ts:401:7 › Web Demo — catalog coverage › Spatial Audio tab — orbiting bell scene builds and renders (6.8s)
+  ✓  20 [chromium] › tests/catalog.spec.ts:401:7 › Web Demo — catalog coverage › Spatial Audio tab — orbiting bell scene builds and renders (6.9s)
   ✓  21 [chromium] › tests/catalog.spec.ts:425:7 › Web Demo — catalog coverage › Settings tab — quality, bloom, auto-rotate and background all apply (7.4s)
   ✓  22 [chromium] › tests/catalog.spec.ts:462:7 › Web Demo — catalog coverage › Top-bar auto-rotate button toggles without errors (2.4s)
   ✓  23 [chromium] › tests/catalog.spec.ts:476:7 › Web Demo — catalog coverage › every tab switches cleanly with no console errors (10.1s)
   ✓  24 [chromium] › tests/catalog.spec.ts:509:7 › Web Demo — catalog coverage › WebXR AR/VR buttons are present in the DOM (presence only) (2.2s)
   -  25 [chromium] › tests/kotlin-bundle.spec.ts:48:7 › SceneView Kotlin/JS bundle — browser init › createViewer() resolves, renders, and never throws during init
-  ✓  26 [chromium] › tests/render.spec.ts:19:7 › SceneView Web Demo Rendering › page loads and shows canvas (2.4s)
-  ✓  27 [chromium] › tests/render.spec.ts:37:7 › SceneView Web Demo Rendering › canvas renders non-blank content (4.3s)
-  ✓  28 [chromium] › tests/render.spec.ts:68:7 › SceneView Web Demo Rendering › model results panel is visible (2.3s)
-  ✓  29 [chromium] › tests/render.spec.ts:88:7 › SceneView Web Demo Rendering › every tab activates its matching panel (2.9s)
-  ✓  30 [chromium] › tests/render.spec.ts:130:7 › SceneView Web Demo Rendering › catalog tabs expose working controls (issue #1362) (2.9s)
-  ✓  31 [chromium] › tests/render.spec.ts:168:7 › SceneView Web Demo Rendering › switching models updates the scene (6.3s)
-  ✓  32 [chromium] › tests/render.spec.ts:192:7 › SceneView Web Demo Rendering › top bar branding is correct (2.3s)
-  ✓  33 [chromium] › tests/render.spec.ts:209:7 › SceneView Web Demo Rendering › XR buttons exist (may be hidden) (2.2s)
-  ✓  34 [chromium] › tests/webxr.spec.ts:44:7 › Web Demo — WebXR (IWER) › IWER runtime installs and enter-ar click does not crash the page (2.6s)
-  ✓  35 [chromium] › tests/webxr.spec.ts:111:7 › Web Demo — WebXR (IWER) › IWER drives a full immersive-ar session — request, frame loop, end (2.4s)
-  ✓  36 [chromium] › tests/webxr.spec.ts:150:7 › Web Demo — WebXR (IWER) › IWER drives an immersive-vr session — request, frame loop, end (2.4s)
-
-  1 skipped
-  35 passed (2.6m)
-[web-perf-qa] checking lighthouse availability
-[web-perf-qa] lighthouse 12.8.2
-[web-perf-qa] starting http-server on :8090 (root: /tmp/sv-reticle/samples/web-demo/site)
-[web-perf-qa] waiting for http://localhost:8090/ to respond
-[web-perf-qa] Lighthouse target: http://localhost:8090/  (preset=mobile)
-[web-perf-qa] FCP: 3151.68 ms  (budget 4000.0 ms)
-[web-perf-qa] LCP: 3325.38 ms  (budget 4400.0 ms)
-[web-perf-qa] CLS: 0.18  (budget 0.1)
-[web-perf-qa] performance score (Lighthouse 0..1): 0.78  (floor 0.65)
-[web-perf-qa] BUDGET BREACH: cls 0.18 > 0.1
-[web-perf-qa] verdict: FAILED — 1 budget breach(es)
-[web-perf-qa] summary: /tmp/sv-reticle/samples/web-demo/test-results/web-perf-summary.json
-[web-perf-qa] raw lighthouse JSON: /tmp/sv-reticle/samples/web-demo/test-results/web-perf-lighthouse.json
-[web-perf-qa] stopping dev server (pid=65827)
+  -  26 [chromium] › tests/kotlin-bundle.spec.ts:138:7 › SceneView Kotlin/JS bundle — browser init › TransformManager.setParent composes world transforms (#2024 P1)
+  -  27 [chromium] › tests/kotlin-bundle.spec.ts:236:7 › SceneView Kotlin/JS bundle — browser init › LightManager instance mutators round-trip (#2024 P1 slice 2b)
+  -  28 [chromium] › tests/kotlin-bundle.spec.ts:315:7 › SceneView Kotlin/JS bundle — browser init › Camera.setModelMatrix round-trips a mat4 (#2024 P1 slice 2b)
+  -  29 [chromium] › tests/node-handle.spec.ts:33:7 › SceneView Kotlin/JS bundle — NodeHandle export › NodeHandle factories create + address a node, transforms compose (#2024 P4)
+  -  30 [chromium] › tests/node-handle.spec.ts:119:7 › SceneView Kotlin/JS bundle — NodeHandle export › addModelNode resolves a NodeHandle and its transform composes (#2024 P4)
+  ✓  31 [chromium] › tests/render.spec.ts:19:7 › SceneView Web Demo Rendering › page loads and shows canvas (2.3s)
+  ✓  32 [chromium] › tests/render.spec.ts:37:7 › SceneView Web Demo Rendering › canvas renders non-blank content (4.3s)
+  ✓  33 [chromium] › tests/render.spec.ts:68:7 › SceneView Web Demo Rendering › model results panel is visible (2.4s)
+  ✓  34 [chromium] › tests/render.spec.ts:88:7 › SceneView Web Demo Rendering › every tab activates its matching panel (2.9s)
+  ✓  35 [chromium] › tests/render.spec.ts:130:7 › SceneView Web Demo Rendering › catalog tabs expose working controls (issue #1362) (2.9s)
+  ✓  36 [chromium] › tests/render.spec.ts:168:7 › SceneView Web Demo Rendering › switching models updates the scene (6.2s)
+  ✓  37 [chromium] › tests/render.spec.ts:192:7 › SceneView Web Demo Rendering › top bar branding is correct (2.3s)

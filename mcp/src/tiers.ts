@@ -14,7 +14,13 @@ export type Tier = "free" | "pro";
 // the 3 generation tools (preview, artifact, scene generation).
 
 const FREE_TOOLS: readonly string[] = [
-  "get_started",
+  // Gateway-only widget tool. It is defined in
+  // `mcp-gateway/src/mcp/widget-tools.ts`, NOT in this package's
+  // TOOL_DEFINITIONS — the stdio server never lists or serves it. The entry
+  // here is load-bearing anyway: the gateway's tier gate
+  // (`mcp-gateway/src/mcp/access.ts`) resolves tiers through this map and
+  // unknown tools default to "pro", so removing this line would silently
+  // paywall the anonymous ChatGPT 3D-viewer widget.
   "view_3d_model",
   "list_samples",
   "get_sample",
@@ -32,6 +38,7 @@ const FREE_TOOLS: readonly string[] = [
   "get_collision_guide",
   "get_platform_roadmap",
   "search_models",
+  "generate_3d_model",
   "analyze_project",
   "search_android_docs",
   "fetch_android_doc",

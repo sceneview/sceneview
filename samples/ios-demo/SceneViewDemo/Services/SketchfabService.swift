@@ -148,7 +148,16 @@ actor SketchfabService {
     /// and the cached path returned without hitting the network.
     func downloadModel(
         uid: String,
-        progress: (@Sendable (Double) -> Void)? = nil
+        progress: (@Sendable (Double) -> Void)? = nil,
+        // Test seam (#2663). Pins the streamed-download -> cache persistence
+        // path — silently dead from #2252 until #2662 — with no live API key
+        // and no network. `resolvedURL` bypasses the keyed `downloadURL(for:)`
+        // resolve; `protocolClasses` installs a `URLProtocol` stub on the
+        // download session (see `downloadBinary`). Production callers pass
+        // neither: both default to `nil`, leaving live behaviour byte-for-byte
+        // unchanged. Mirrors the existing `init(session:)` / `buildURL` seams.
+        resolvedURL: URL? = nil,
+        protocolClasses: [AnyClass]? = nil
     ) async throws -> URL {
         let cacheURL = try cacheFileURL(for: uid)
         if FileManager.default.fileExists(atPath: cacheURL.path) {
@@ -156,8 +165,18 @@ actor SketchfabService {
             return cacheURL
         }
 
-        let remoteURL = try await downloadURL(for: uid)
-        try await downloadBinary(from: remoteURL, to: cacheURL, progress: progress)
+        let remoteURL: URL
+        if let resolvedURL {
+            remoteURL = resolvedURL
+        } else {
+            remoteURL = try await downloadURL(for: uid)
+        }
+        try await downloadBinary(
+            from: remoteURL,
+            to: cacheURL,
+            progress: progress,
+            protocolClasses: protocolClasses
+        )
         pruneCacheIfNeeded()
         return cacheURL
     }
@@ -205,18 +224,32 @@ actor SketchfabService {
         }
     }
 
-    private func downloadBinary(
+    /// Stream `remoteURL` to `destination`, surfacing progress via the delegate.
+    ///
+    /// Exposed `internal` (not `private`) so the #2663 regression pin can drive
+    /// the persistence path directly — the exact code that was silently dead
+    /// from #2252 until #2662 (the URLSession temp file was deleted before it
+    /// could be persisted, so every streamed model fell back to bundled). When
+    /// `protocolClasses` is non-nil it is installed on the download session's
+    /// configuration so a test `URLProtocol` stub can serve the bytes with no
+    /// live network; production passes `nil`.
+    func downloadBinary(
         from remoteURL: URL,
         to destination: URL,
-        progress: (@Sendable (Double) -> Void)?
+        progress: (@Sendable (Double) -> Void)?,
+        protocolClasses: [AnyClass]? = nil
     ) async throws {
         // Use URLSessionDownloadDelegate so intermediate progress values are
         // surfaced via the `progress` callback instead of always emitting 1.0
         // at completion (#982). `URLSession.download(from:)` in async mode does
         // not expose per-byte callbacks — the delegate path is the only way.
         let delegate = DownloadProgressDelegate(onProgress: progress)
+        let configuration = URLSessionConfiguration.default
+        if let protocolClasses {
+            configuration.protocolClasses = protocolClasses
+        }
         let delegateSession = URLSession(
-            configuration: .default,
+            configuration: configuration,
             delegate: delegate,
             delegateQueue: nil
         )

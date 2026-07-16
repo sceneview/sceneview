@@ -65,7 +65,7 @@ ARSceneView(
 
 | Node | Factory | Notes |
 | --- | --- | --- |
-| `ModelNode` | `ModelNode.load("file.usdz")` | `async throws`. Then `.scaleToUnits(_:)`, `.playAllAnimations()` |
+| `ModelNode` | `ModelNode.load("file.usdz")` | `async throws`. Then `.scaleToUnits(_:)`, `.centerOrigin(normalized:)` (apply before positioning), `.playAllAnimations()` |
 | `GeometryNode` | `.cube(size:color:)` `.sphere(radius:color:)` `.cylinder(radius:height:color:)` `.plane(width:depth:color:)` `.cone(height:radius:color:)` `.torus(...)` `.capsule(...)` | also `material: .pbr(...)` overloads; `unlit: Bool` for flat fill |
 | `LightNode` | `.directional(color:intensity:castsShadow:)` `.point(color:intensity:attenuationRadius:)` `.spot(color:intensity:innerAngle:outerAngle:)` | aim via `.position(_:)` / `.lookAt(_:)` |
 | `TextNode` | `TextNode(text:fontSize:color:depth:)` | `.centered()` |

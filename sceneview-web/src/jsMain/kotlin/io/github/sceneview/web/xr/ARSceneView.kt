@@ -139,7 +139,18 @@ class ARSceneView private constructor(
                                 val hitTestOptions = js("{}")
                                 hitTestOptions.space = viewerSpace
                                 session.asDynamic().requestHitTestSource(hitTestOptions).then { source: XRHitTestSource ->
-                                    arView.hitTestSource = source
+                                    // #2668 MED-2 (review follow-up): a source resolving after
+                                    // stop()/onend must not overwrite the intentional
+                                    // `hitTestSource = null` — cancel it instead of leaking it.
+                                    // Guarded on teardown (`sceneViewDestroyed`), NOT on
+                                    // `isRunning`: the promise can legitimately resolve between
+                                    // onReady() and the caller's start(), when isRunning is
+                                    // still false but the session is alive.
+                                    if (!arView.sceneViewDestroyed) {
+                                        arView.hitTestSource = source
+                                    } else {
+                                        source.cancel()
+                                    }
                                 }
                             }
 
