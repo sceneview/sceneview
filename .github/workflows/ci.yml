@@ -669,6 +669,19 @@ jobs:
         shell: bash
         run: bash .claude/scripts/check-doc-drift.sh
 
+      # GPT knowledge-base drift (BLOCKING, #2724). The `gpt/knowledge-*.md`
+      # files uploaded to the "SceneView 3D & AR Assistant" Custom GPT are
+      # GENERATED from `llms.txt` by `tools/generate-gpt-knowledge.js`. Unlike
+      # the heuristic doc-drift check above, this is a deterministic
+      # regenerate-and-compare, so it is a hard gate (same class as the
+      # committed-generated-file invariants): if `llms.txt` changed without
+      # regenerating the knowledge files, the AI-facing GPT surface goes stale
+      # and CI must fail. Fix locally with `node tools/generate-gpt-knowledge.js`.
+      - name: GPT knowledge base in sync with llms.txt
+        if: always()
+        shell: bash
+        run: node tools/generate-gpt-knowledge.js --check
+
       # Stale demo-class / demo-id reference guard self-test — pin the guard's
       # contract (catches deletions, ignores live iOS .swift refs + plain-prose
       # phrases) before trusting it. Same self-test-first discipline as above.

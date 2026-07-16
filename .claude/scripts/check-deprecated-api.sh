@@ -68,6 +68,14 @@ is_whitelisted() {
     docs/docs/index.md) return 0 ;;
     docs/docs/llms.txt) return 0 ;;
     llms.txt) return 0 ;;
+    # gpt/knowledge-*.md are GENERATED slices of the whitelisted llms.txt by
+    # tools/generate-gpt-knowledge.js (#2724), so they carry the same
+    # Sceneform-mapping positioning text by construction. knowledge-practices.md
+    # is whitelisted below as the migration guide; the other three inherit
+    # llms.txt's rationale.
+    gpt/knowledge-overview.md) return 0 ;;
+    gpt/knowledge-api.md) return 0 ;;
+    gpt/knowledge-samples.md) return 0 ;;
 
     # PlacementScene — the Sceneform `ArFragment` parity bundle (#1765). Its
     # KDoc, demo prose, JVM test header and changelog fragment all reference

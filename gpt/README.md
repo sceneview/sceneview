@@ -27,7 +27,16 @@ Upload these files from this directory:
 1. `knowledge-overview.md` — Platform overview, setup, architecture
 2. `knowledge-api.md` — API reference, composables, node types
 3. `knowledge-practices.md` — Best practices, patterns, troubleshooting
-4. `knowledge-samples.md` — All 39 code sample descriptions and tags
+4. `knowledge-samples.md` — Recipes and the full sample/demo catalog
+
+> **These four `knowledge-*.md` files are GENERATED from the repo-root
+> [`llms.txt`](../llms.txt) by [`tools/generate-gpt-knowledge.js`](../tools/generate-gpt-knowledge.js) —
+> do not edit them by hand.** `llms.txt` is the single source of truth for the
+> SceneView API surface; run `node tools/generate-gpt-knowledge.js` after
+> changing it and re-upload the refreshed files to the GPT. A CI drift gate
+> (`ci.yml` → `repo-hygiene`) fails the build if the committed files fall out
+> of sync (issue #2724). `system-prompt.md` and `openapi-schema.json` remain
+> hand-maintained.
 
 ### Actions (Optional)
 Import `openapi-schema.json` to enable live code validation and 3D preview generation via the SceneView API.

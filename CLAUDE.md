@@ -460,6 +460,13 @@ stale docs make an AI emit stale code. Keeping them in sync is enforced at
    safe). Draft + human review means a wrong prose patch can never land
    silently — this is where the "auto-fix" power lives, not on every PR.
 
+Alongside the two heuristic tiers, one surface gets a **deterministic,
+blocking gate**: `gpt/knowledge-*.md` is GENERATED from `llms.txt` by
+`tools/generate-gpt-knowledge.js`, and `ci.yml` → `repo-hygiene` fails when
+the committed files drift (`--check`). Generated files can be gated hard
+because there is no false-positive risk — never hand-edit them;
+`sync-versions.sh --fix` regenerates them on every version bump (#2724).
+
 Why not block per-PR or auto-fix per-PR? Blocking frustrates internal-only
 refactors that get mis-classified; per-PR auto-fix is costly on every PR and a
 green "bot fixed docs" check invites rubber-stamping a subtly-wrong prose
@@ -540,6 +547,7 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 | | `docs/docs/platforms.md` | install line |
 | | `docs/docs/android-xr.md` | install snippets |
 | | `docs/docs/migration.md` | "upgrade to" version |
+| | `gpt/knowledge-*.md` (×4) | GENERATED from `llms.txt` — `node tools/generate-gpt-knowledge.js`, never hand-edit; `sync-versions.sh --fix` regenerates (#2724) |
 | **Website** | `website-static/index.html` | softwareVersion, badge, code |
 | | `sceneview.github.io/index.html` | deployed version (separate repo) |
 | **Samples** | `samples/android-demo/build.gradle` | versionName default |
