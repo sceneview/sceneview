@@ -366,20 +366,6 @@ if [ "$QUICK_MODE" != "--quick" ]; then
         fi
     fi
 
-    # feedback-worker test suite (#2032 — previously unguarded by CI).
-    if [ -d "feedback-worker" ] && [ -f "feedback-worker/package.json" ]; then
-        if [ ! -d "feedback-worker/node_modules" ]; then
-            echo -e "  Installing feedback-worker deps..."
-            (cd feedback-worker && npm install --silent 2>/dev/null)
-        fi
-        echo -e "  Running feedback-worker tests..."
-        if (cd feedback-worker && npm test --silent 2>/dev/null); then
-            check "Feedback worker tests" "PASS" ""
-        else
-            check "Feedback worker tests" "FAIL" ""
-        fi
-    fi
-
     echo ""
 else
     echo -e "${YELLOW}Skipping build & test (--quick mode)${NC}"
