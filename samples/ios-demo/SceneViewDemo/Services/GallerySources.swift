@@ -32,6 +32,11 @@ struct SketchfabSource: ModelSource {
         let models: [SketchfabModel]
         switch kind {
         case .trending:
+            // Deliberate: the "Trending" carousel maps to featured() (likeCount
+            // ordering), NOT mostPopular() — strict parity with the merged
+            // Android port (SketchfabSource.kt: TRENDING -> service.featured()).
+            // Renaming the carousel or remapping it is a cross-platform decision,
+            // not something to drift on one platform.
             models = try await SketchfabService.shared.featured(animated: animated, limit: limit)
         case .staffPicks:
             models = try await SketchfabService.shared.staffPicks(animated: animated, limit: limit)

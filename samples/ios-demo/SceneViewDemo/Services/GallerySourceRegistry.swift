@@ -39,7 +39,7 @@ final class GallerySourcesRegistry {
         let available = all.filter(\.isAvailable)
         // Icosa + Poly Haven are always available, so `available` is never empty.
         self.sources = available
-        let saved = SelectedSourceStore().load()
+        let saved = store.load()
         self.selected = available.first { $0.id == saved } ?? available[0]
     }
 

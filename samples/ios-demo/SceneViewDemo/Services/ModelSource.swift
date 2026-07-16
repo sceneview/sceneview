@@ -267,17 +267,30 @@ func fetchBoundedData(
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.setValue("SceneViewDemo/iOS", forHTTPHeaderField: "User-Agent")
 
-    let (data, response) = try await session.data(for: request)
+    let (bytes, response) = try await session.bytes(for: request)
     guard let http = response as? HTTPURLResponse else {
         throw GallerySourceError.decodeFailed
     }
     guard (200..<300).contains(http.statusCode) else {
         throw GallerySourceError.requestFailed(statusCode: http.statusCode)
     }
-    // `expectedContentLength` is the header value (or -1 when chunked); reject an
-    // honestly-advertised oversize body, then hard-cap the materialised bytes.
-    if http.expectedContentLength > Int64(maxBytes) || data.count > maxBytes {
+    // Reject an honestly-advertised oversize body up front, then enforce the cap
+    // DURING transfer: the body is streamed and abandoned the moment it exceeds
+    // `maxBytes`, so a chunked / no-Content-Length response can never materialise
+    // an unbounded in-memory buffer. This matches the okio bounded read the
+    // Android port uses (#2685) — not just a post-buffer size check.
+    if http.expectedContentLength > Int64(maxBytes) {
         throw GallerySourceError.responseTooLarge(cap: maxBytes)
+    }
+    var data = Data()
+    if http.expectedContentLength > 0 {
+        data.reserveCapacity(Int(http.expectedContentLength))
+    }
+    for try await byte in bytes {
+        data.append(byte)
+        if data.count > maxBytes {
+            throw GallerySourceError.responseTooLarge(cap: maxBytes)
+        }
     }
     return data
 }

@@ -269,10 +269,11 @@ struct ExploreTab: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
-                    // Source picker (#2645 / #2700) — stays visible even mid-search
-                    // so switching catalogs re-runs the query against the new one.
-                    // Hidden only when a single source is available (nothing to
-                    // choose between).
+                    // Source picker (#2645 / #2700) — stays visible even mid-search.
+                    // Switching catalogs resets browse + search state back to the
+                    // new source's feeds (see selectSource — parity with Android's
+                    // onSelectSource in ExploreTabScreen.kt). Hidden only when a
+                    // single source is available (nothing to choose between).
                     if sources.sources.count > 1 {
                         sourcePickerRow
                     }
