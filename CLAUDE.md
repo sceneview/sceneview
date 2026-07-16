@@ -762,6 +762,7 @@ Source of truth: `gradle.properties` → `VERSION_NAME=X.Y.Z`
 6. CLAUDE.md session state is current
 7. No model-viewer or Three.js in website code
 8. No external CDN dependencies in website
+9. Public-API ABI matches the committed `.api` dumps (`./gradlew apiCheck` — intentional changes re-run `apiDump` and commit the diff)
 
 ---
 

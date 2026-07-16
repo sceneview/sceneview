@@ -1,0 +1,2436 @@
+public abstract class io/github/sceneview/ar/ARConfigDowngrade {
+	public static final field $stable I
+}
+
+public final class io/github/sceneview/ar/ARConfigDowngrade$CameraConfig : io/github/sceneview/ar/ARConfigDowngrade {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/CameraConfig;Lcom/google/ar/core/CameraConfig;)V
+	public final fun component1 ()Lcom/google/ar/core/CameraConfig;
+	public final fun component2 ()Lcom/google/ar/core/CameraConfig;
+	public final fun copy (Lcom/google/ar/core/CameraConfig;Lcom/google/ar/core/CameraConfig;)Lio/github/sceneview/ar/ARConfigDowngrade$CameraConfig;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARConfigDowngrade$CameraConfig;Lcom/google/ar/core/CameraConfig;Lcom/google/ar/core/CameraConfig;ILjava/lang/Object;)Lio/github/sceneview/ar/ARConfigDowngrade$CameraConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEffective ()Lcom/google/ar/core/CameraConfig;
+	public final fun getRequested ()Lcom/google/ar/core/CameraConfig;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARConfigDowngrade$DepthMode : io/github/sceneview/ar/ARConfigDowngrade {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/Config$DepthMode;Lcom/google/ar/core/Config$DepthMode;)V
+	public final fun component1 ()Lcom/google/ar/core/Config$DepthMode;
+	public final fun component2 ()Lcom/google/ar/core/Config$DepthMode;
+	public final fun copy (Lcom/google/ar/core/Config$DepthMode;Lcom/google/ar/core/Config$DepthMode;)Lio/github/sceneview/ar/ARConfigDowngrade$DepthMode;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARConfigDowngrade$DepthMode;Lcom/google/ar/core/Config$DepthMode;Lcom/google/ar/core/Config$DepthMode;ILjava/lang/Object;)Lio/github/sceneview/ar/ARConfigDowngrade$DepthMode;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEffective ()Lcom/google/ar/core/Config$DepthMode;
+	public final fun getRequested ()Lcom/google/ar/core/Config$DepthMode;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARCore {
+	public static final field $stable I
+	public field features Ljava/util/Set;
+	public fun <init> (Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;)V
+	public final fun checkPermissionAndInstall (Lio/github/sceneview/ar/ARPermissionHandler;)Z
+	public final fun create (Landroid/content/Context;Lio/github/sceneview/ar/ARPermissionHandler;Ljava/util/Set;)V
+	public final fun create (Landroid/content/Context;Ljava/util/Set;)V
+	public final fun createSession (Landroid/content/Context;)V
+	public final fun destroy ()V
+	public final fun getCheckAvailability ()Z
+	public final fun getCheckCameraPermission ()Z
+	public final fun getFeatures ()Ljava/util/Set;
+	public final fun getOnArSessionFailed ()Lkotlin/jvm/functions/Function1;
+	public final fun getOnSessionConfigChanged ()Lkotlin/jvm/functions/Function2;
+	public final fun getOnSessionCreated ()Lkotlin/jvm/functions/Function1;
+	public final fun getOnSessionPaused ()Lkotlin/jvm/functions/Function1;
+	public final fun getOnSessionResumed ()Lkotlin/jvm/functions/Function1;
+	public final fun getPermissionHandler ()Lio/github/sceneview/ar/ARPermissionHandler;
+	public final fun onException (Ljava/lang/Exception;)V
+	public final fun pause ()V
+	public final fun resume (Landroid/content/Context;)V
+	public final fun resume (Landroid/content/Context;Lio/github/sceneview/ar/ARPermissionHandler;)V
+	public final fun setCheckAvailability (Z)V
+	public final fun setCheckCameraPermission (Z)V
+	public final fun setFeatures (Ljava/util/Set;)V
+	public final fun setPermissionHandler (Lio/github/sceneview/ar/ARPermissionHandler;)V
+}
+
+public final class io/github/sceneview/ar/ARCoreKt {
+	public static final field kDefaultHitTestInstantDistance F
+	public static final fun getDescription (Lcom/google/ar/core/TrackingFailureReason;Landroid/content/Context;)Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARDefaultCameraNode : io/github/sceneview/ar/node/ARCameraNode {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/ARDefaultCameraNode$Companion;
+	public static final field DEFAULT_APERTURE F
+	public static final field DEFAULT_ISO F
+	public static final field DEFAULT_SHUTTER_SPEED F
+	public fun <init> (Lcom/google/android/filament/Engine;)V
+}
+
+public final class io/github/sceneview/ar/ARDefaultCameraNode$Companion {
+}
+
+public final class io/github/sceneview/ar/ARFactoriesKt {
+	public static final fun createARCameraNode (Lcom/google/android/filament/Engine;)Lio/github/sceneview/ar/node/ARCameraNode;
+	public static final fun createARCameraStream (Lio/github/sceneview/loaders/MaterialLoader;)Lio/github/sceneview/ar/camera/ARCameraStream;
+	public static final fun createAREnvironment (Lcom/google/android/filament/Engine;Ljava/nio/Buffer;)Lio/github/sceneview/environment/Environment;
+	public static synthetic fun createAREnvironment$default (Lcom/google/android/filament/Engine;Ljava/nio/Buffer;ILjava/lang/Object;)Lio/github/sceneview/environment/Environment;
+}
+
+public abstract interface class io/github/sceneview/ar/ARPermissionHandler {
+	public abstract fun checkARCoreAvailability ()Lcom/google/ar/core/ArCoreApk$Availability;
+	public abstract fun hasCameraPermission ()Z
+	public abstract fun openAppSettings ()V
+	public abstract fun requestARCoreInstall (Z)Z
+	public abstract fun requestCameraPermission (Lkotlin/jvm/functions/Function1;)V
+	public abstract fun shouldShowPermissionRationale ()Z
+}
+
+public final class io/github/sceneview/ar/ARSceneKt {
+	public static final fun ARScene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Ljava/util/Set;Ljava/io/File;Lkotlin/jvm/functions/Function1;Lcom/google/ar/core/Config$FlashMode;Lkotlin/jvm/functions/Function2;ZLio/github/sceneview/ar/scene/PlaneRendererBase$Version;Lio/github/sceneview/ar/camera/ARCameraStream;Lcom/google/android/filament/View;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/ar/node/ARCameraNode;Ljava/lang/Float;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/node/ViewNode$WindowManager;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Lio/github/sceneview/ar/ARPermissionHandler;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIII)V
+	public static final fun ARSceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Ljava/util/Set;Ljava/io/File;Landroid/net/Uri;Lkotlin/jvm/functions/Function1;Lcom/google/ar/core/Config$FlashMode;Lcom/google/ar/core/Config$PlaneFindingMode;Lcom/google/ar/core/Config$DepthMode;Lcom/google/ar/core/Config$InstantPlacementMode;Lcom/google/ar/core/Config$GeospatialMode;Lcom/google/ar/core/Config$StreetscapeGeometryMode;Lcom/google/ar/core/Config$CloudAnchorMode;Lcom/google/ar/core/Config$AugmentedFaceMode;Lcom/google/ar/core/Config$ImageStabilizationMode;Lcom/google/ar/core/Config$SemanticMode;Lcom/google/ar/core/Config$UpdateMode;Lcom/google/ar/core/Config$FocusMode;Lkotlin/jvm/functions/Function2;ZLio/github/sceneview/ar/scene/PlaneRendererBase$Version;Lio/github/sceneview/ar/scene/SceneUnderstanding;Lio/github/sceneview/ar/camera/ARCameraStream;Lcom/google/android/filament/View;Lio/github/sceneview/RenderQuality;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/ar/node/ARCameraNode;Ljava/lang/Float;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/node/ViewNode$WindowManager;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Lio/github/sceneview/ar/ARPermissionHandler;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIIIII)V
+	public static final fun frontCameraConfig (Lcom/google/ar/core/Session;)Lcom/google/ar/core/CameraConfig;
+	public static final fun highestResolutionCameraConfig (Lcom/google/ar/core/Session;)Lcom/google/ar/core/CameraConfig;
+	public static final fun rememberARCameraNode (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/node/ARCameraNode;
+	public static final fun rememberARCameraStream (Lio/github/sceneview/loaders/MaterialLoader;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/camera/ARCameraStream;
+	public static final fun rememberAREnvironment (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/environment/Environment;
+}
+
+public final class io/github/sceneview/ar/ARSceneScope : io/github/sceneview/SceneScope {
+	public static final field $stable I
+	public final fun AnchorNode (Lcom/google/ar/core/Anchor;ZLjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun AugmentedFaceNode (Lcom/google/ar/core/AugmentedFace;Lcom/google/android/filament/MaterialInstance;ZLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun AugmentedImageNode (Lcom/google/ar/core/AugmentedImage;ZLjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun CloudAnchorNode (Lcom/google/ar/core/Anchor;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun DepthHitResultNode (FFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun DepthHitResultNode (Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun DepthMeshNode (Lio/github/sceneview/ar/node/DepthMeshNode;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun HitResultNode (FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
+	public final fun HitResultNode (Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun PlacementReticle (FFZZFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun PlaneNode (Lcom/google/ar/core/Plane;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun PointCloudNode (Lio/github/sceneview/ar/node/PointCloudNode;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun PoseNode (Lcom/google/ar/core/Pose;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun ReticleNode (FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
+	public final fun RooftopAnchorNode (Lio/github/sceneview/ar/node/RooftopAnchorNode;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun SceneMeshNode (Lcom/google/ar/core/StreetscapeGeometry;Ljava/util/Set;Lcom/google/ar/core/StreetscapeGeometry$Quality;Lcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun ShadowReceiverPlane (Lcom/google/ar/core/Plane;FLjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun StreetscapeGeometryNode (Lcom/google/ar/core/StreetscapeGeometry;Ljava/util/Set;Lcom/google/ar/core/StreetscapeGeometry$Quality;Lcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun TerrainAnchorNode (Lio/github/sceneview/ar/node/TerrainAnchorNode;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun TrackableNode (Lcom/google/ar/core/Trackable;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun rememberDepthCollider (JIFZLandroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/physics/DepthCollider;
+	public final fun rememberDepthMesh (JIFLcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/node/DepthMeshNode;
+	public final fun rememberPointCloud (FJLcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/node/PointCloudNode;
+}
+
+public abstract class io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/ARSessionFailure$Companion;
+	public synthetic fun <init> (Ljava/lang/Exception;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public static final fun from (Ljava/lang/Exception;)Lio/github/sceneview/ar/ARSessionFailure;
+	public fun getCause ()Ljava/lang/Exception;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$AnchorNotSupportedForHosting : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/AnchorNotSupportedForHostingException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/AnchorNotSupportedForHostingException;
+	public final fun copy (Lcom/google/ar/core/exceptions/AnchorNotSupportedForHostingException;)Lio/github/sceneview/ar/ARSessionFailure$AnchorNotSupportedForHosting;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$AnchorNotSupportedForHosting;Lcom/google/ar/core/exceptions/AnchorNotSupportedForHostingException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$AnchorNotSupportedForHosting;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/AnchorNotSupportedForHostingException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$ApkTooOld : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/UnavailableApkTooOldException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/UnavailableApkTooOldException;
+	public final fun copy (Lcom/google/ar/core/exceptions/UnavailableApkTooOldException;)Lio/github/sceneview/ar/ARSessionFailure$ApkTooOld;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$ApkTooOld;Lcom/google/ar/core/exceptions/UnavailableApkTooOldException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$ApkTooOld;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/UnavailableApkTooOldException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$ArCoreNotInstalled : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/UnavailableArcoreNotInstalledException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/UnavailableArcoreNotInstalledException;
+	public final fun copy (Lcom/google/ar/core/exceptions/UnavailableArcoreNotInstalledException;)Lio/github/sceneview/ar/ARSessionFailure$ArCoreNotInstalled;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$ArCoreNotInstalled;Lcom/google/ar/core/exceptions/UnavailableArcoreNotInstalledException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$ArCoreNotInstalled;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/UnavailableArcoreNotInstalledException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$CameraNotAvailable : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/CameraNotAvailableException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/CameraNotAvailableException;
+	public final fun copy (Lcom/google/ar/core/exceptions/CameraNotAvailableException;)Lio/github/sceneview/ar/ARSessionFailure$CameraNotAvailable;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$CameraNotAvailable;Lcom/google/ar/core/exceptions/CameraNotAvailableException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$CameraNotAvailable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/CameraNotAvailableException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$CloudAnchorsNotConfigured : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/CloudAnchorsNotConfiguredException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/CloudAnchorsNotConfiguredException;
+	public final fun copy (Lcom/google/ar/core/exceptions/CloudAnchorsNotConfiguredException;)Lio/github/sceneview/ar/ARSessionFailure$CloudAnchorsNotConfigured;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$CloudAnchorsNotConfigured;Lcom/google/ar/core/exceptions/CloudAnchorsNotConfiguredException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$CloudAnchorsNotConfigured;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/CloudAnchorsNotConfiguredException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$Companion {
+	public final fun from (Ljava/lang/Exception;)Lio/github/sceneview/ar/ARSessionFailure;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$DataInvalidFormat : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/DataInvalidFormatException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/DataInvalidFormatException;
+	public final fun copy (Lcom/google/ar/core/exceptions/DataInvalidFormatException;)Lio/github/sceneview/ar/ARSessionFailure$DataInvalidFormat;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$DataInvalidFormat;Lcom/google/ar/core/exceptions/DataInvalidFormatException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$DataInvalidFormat;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/DataInvalidFormatException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$DataUnsupportedVersion : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/DataUnsupportedVersionException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/DataUnsupportedVersionException;
+	public final fun copy (Lcom/google/ar/core/exceptions/DataUnsupportedVersionException;)Lio/github/sceneview/ar/ARSessionFailure$DataUnsupportedVersion;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$DataUnsupportedVersion;Lcom/google/ar/core/exceptions/DataUnsupportedVersionException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$DataUnsupportedVersion;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/DataUnsupportedVersionException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$DeadlineExceeded : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/DeadlineExceededException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/DeadlineExceededException;
+	public final fun copy (Lcom/google/ar/core/exceptions/DeadlineExceededException;)Lio/github/sceneview/ar/ARSessionFailure$DeadlineExceeded;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$DeadlineExceeded;Lcom/google/ar/core/exceptions/DeadlineExceededException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$DeadlineExceeded;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/DeadlineExceededException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$DeviceNotCompatible : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/UnavailableDeviceNotCompatibleException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/UnavailableDeviceNotCompatibleException;
+	public final fun copy (Lcom/google/ar/core/exceptions/UnavailableDeviceNotCompatibleException;)Lio/github/sceneview/ar/ARSessionFailure$DeviceNotCompatible;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$DeviceNotCompatible;Lcom/google/ar/core/exceptions/UnavailableDeviceNotCompatibleException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$DeviceNotCompatible;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/UnavailableDeviceNotCompatibleException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$Fatal : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/FatalException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/FatalException;
+	public final fun copy (Lcom/google/ar/core/exceptions/FatalException;)Lio/github/sceneview/ar/ARSessionFailure$Fatal;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$Fatal;Lcom/google/ar/core/exceptions/FatalException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$Fatal;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/FatalException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$FineLocationMissing : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/FineLocationPermissionNotGrantedException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/FineLocationPermissionNotGrantedException;
+	public final fun copy (Lcom/google/ar/core/exceptions/FineLocationPermissionNotGrantedException;)Lio/github/sceneview/ar/ARSessionFailure$FineLocationMissing;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$FineLocationMissing;Lcom/google/ar/core/exceptions/FineLocationPermissionNotGrantedException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$FineLocationMissing;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/FineLocationPermissionNotGrantedException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$GooglePlayServicesLocationLibraryNotLinked : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/GooglePlayServicesLocationLibraryNotLinkedException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/GooglePlayServicesLocationLibraryNotLinkedException;
+	public final fun copy (Lcom/google/ar/core/exceptions/GooglePlayServicesLocationLibraryNotLinkedException;)Lio/github/sceneview/ar/ARSessionFailure$GooglePlayServicesLocationLibraryNotLinked;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$GooglePlayServicesLocationLibraryNotLinked;Lcom/google/ar/core/exceptions/GooglePlayServicesLocationLibraryNotLinkedException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$GooglePlayServicesLocationLibraryNotLinked;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/GooglePlayServicesLocationLibraryNotLinkedException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$ImageInsufficientQuality : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/ImageInsufficientQualityException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/ImageInsufficientQualityException;
+	public final fun copy (Lcom/google/ar/core/exceptions/ImageInsufficientQualityException;)Lio/github/sceneview/ar/ARSessionFailure$ImageInsufficientQuality;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$ImageInsufficientQuality;Lcom/google/ar/core/exceptions/ImageInsufficientQualityException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$ImageInsufficientQuality;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/ImageInsufficientQualityException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$MetadataNotFound : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/MetadataNotFoundException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/MetadataNotFoundException;
+	public final fun copy (Lcom/google/ar/core/exceptions/MetadataNotFoundException;)Lio/github/sceneview/ar/ARSessionFailure$MetadataNotFound;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$MetadataNotFound;Lcom/google/ar/core/exceptions/MetadataNotFoundException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$MetadataNotFound;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/MetadataNotFoundException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$MissingGlContext : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/MissingGlContextException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/MissingGlContextException;
+	public final fun copy (Lcom/google/ar/core/exceptions/MissingGlContextException;)Lio/github/sceneview/ar/ARSessionFailure$MissingGlContext;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$MissingGlContext;Lcom/google/ar/core/exceptions/MissingGlContextException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$MissingGlContext;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/MissingGlContextException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$NotTracking : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/NotTrackingException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/NotTrackingException;
+	public final fun copy (Lcom/google/ar/core/exceptions/NotTrackingException;)Lio/github/sceneview/ar/ARSessionFailure$NotTracking;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$NotTracking;Lcom/google/ar/core/exceptions/NotTrackingException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$NotTracking;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/NotTrackingException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$NotYetAvailable : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/NotYetAvailableException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/NotYetAvailableException;
+	public final fun copy (Lcom/google/ar/core/exceptions/NotYetAvailableException;)Lio/github/sceneview/ar/ARSessionFailure$NotYetAvailable;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$NotYetAvailable;Lcom/google/ar/core/exceptions/NotYetAvailableException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$NotYetAvailable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/NotYetAvailableException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$Other : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/Exception;)V
+	public final fun component1 ()Ljava/lang/Exception;
+	public final fun copy (Ljava/lang/Exception;)Lio/github/sceneview/ar/ARSessionFailure$Other;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$Other;Ljava/lang/Exception;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$Other;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$PlaybackFailed : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/PlaybackFailedException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/PlaybackFailedException;
+	public final fun copy (Lcom/google/ar/core/exceptions/PlaybackFailedException;)Lio/github/sceneview/ar/ARSessionFailure$PlaybackFailed;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$PlaybackFailed;Lcom/google/ar/core/exceptions/PlaybackFailedException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$PlaybackFailed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/PlaybackFailedException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$RecordingFailed : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/RecordingFailedException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/RecordingFailedException;
+	public final fun copy (Lcom/google/ar/core/exceptions/RecordingFailedException;)Lio/github/sceneview/ar/ARSessionFailure$RecordingFailed;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$RecordingFailed;Lcom/google/ar/core/exceptions/RecordingFailedException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$RecordingFailed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/RecordingFailedException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$ResourceExhausted : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/ResourceExhaustedException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/ResourceExhaustedException;
+	public final fun copy (Lcom/google/ar/core/exceptions/ResourceExhaustedException;)Lio/github/sceneview/ar/ARSessionFailure$ResourceExhausted;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$ResourceExhausted;Lcom/google/ar/core/exceptions/ResourceExhaustedException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$ResourceExhausted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/ResourceExhaustedException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$SdkTooOld : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/UnavailableSdkTooOldException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/UnavailableSdkTooOldException;
+	public final fun copy (Lcom/google/ar/core/exceptions/UnavailableSdkTooOldException;)Lio/github/sceneview/ar/ARSessionFailure$SdkTooOld;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$SdkTooOld;Lcom/google/ar/core/exceptions/UnavailableSdkTooOldException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$SdkTooOld;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/UnavailableSdkTooOldException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$SessionNotPaused : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/SessionNotPausedException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/SessionNotPausedException;
+	public final fun copy (Lcom/google/ar/core/exceptions/SessionNotPausedException;)Lio/github/sceneview/ar/ARSessionFailure$SessionNotPaused;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$SessionNotPaused;Lcom/google/ar/core/exceptions/SessionNotPausedException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$SessionNotPaused;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/SessionNotPausedException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$SessionPaused : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/SessionPausedException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/SessionPausedException;
+	public final fun copy (Lcom/google/ar/core/exceptions/SessionPausedException;)Lio/github/sceneview/ar/ARSessionFailure$SessionPaused;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$SessionPaused;Lcom/google/ar/core/exceptions/SessionPausedException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$SessionPaused;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/SessionPausedException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$SessionUnsupported : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/SessionUnsupportedException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/SessionUnsupportedException;
+	public final fun copy (Lcom/google/ar/core/exceptions/SessionUnsupportedException;)Lio/github/sceneview/ar/ARSessionFailure$SessionUnsupported;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$SessionUnsupported;Lcom/google/ar/core/exceptions/SessionUnsupportedException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$SessionUnsupported;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/SessionUnsupportedException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$TextureNotSet : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/TextureNotSetException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/TextureNotSetException;
+	public final fun copy (Lcom/google/ar/core/exceptions/TextureNotSetException;)Lio/github/sceneview/ar/ARSessionFailure$TextureNotSet;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$TextureNotSet;Lcom/google/ar/core/exceptions/TextureNotSetException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$TextureNotSet;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/TextureNotSetException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$UnsupportedConfiguration : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/UnsupportedConfigurationException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/UnsupportedConfigurationException;
+	public final fun copy (Lcom/google/ar/core/exceptions/UnsupportedConfigurationException;)Lio/github/sceneview/ar/ARSessionFailure$UnsupportedConfiguration;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$UnsupportedConfiguration;Lcom/google/ar/core/exceptions/UnsupportedConfigurationException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$UnsupportedConfiguration;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/UnsupportedConfigurationException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ARSessionFailure$UserDeclinedInstall : io/github/sceneview/ar/ARSessionFailure {
+	public static final field $stable I
+	public fun <init> (Lcom/google/ar/core/exceptions/UnavailableUserDeclinedInstallationException;)V
+	public final fun component1 ()Lcom/google/ar/core/exceptions/UnavailableUserDeclinedInstallationException;
+	public final fun copy (Lcom/google/ar/core/exceptions/UnavailableUserDeclinedInstallationException;)Lio/github/sceneview/ar/ARSessionFailure$UserDeclinedInstall;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/ARSessionFailure$UserDeclinedInstall;Lcom/google/ar/core/exceptions/UnavailableUserDeclinedInstallationException;ILjava/lang/Object;)Lio/github/sceneview/ar/ARSessionFailure$UserDeclinedInstall;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCause ()Lcom/google/ar/core/exceptions/UnavailableUserDeclinedInstallationException;
+	public synthetic fun getCause ()Ljava/lang/Exception;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/ActivityARPermissionHandler : io/github/sceneview/ar/ARPermissionHandler {
+	public static final field $stable I
+	public fun <init> (Landroidx/activity/ComponentActivity;)V
+	public fun checkARCoreAvailability ()Lcom/google/ar/core/ArCoreApk$Availability;
+	public final fun getAppSettingsLauncher ()Landroidx/activity/result/ActivityResultLauncher;
+	public final fun getCameraPermissionLauncher ()Landroidx/activity/result/ActivityResultLauncher;
+	public fun hasCameraPermission ()Z
+	public fun openAppSettings ()V
+	public fun requestARCoreInstall (Z)Z
+	public fun requestCameraPermission (Lkotlin/jvm/functions/Function1;)V
+	public fun shouldShowPermissionRationale ()Z
+}
+
+public final class io/github/sceneview/ar/CloudAnchorEntry {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/CloudAnchorEntry$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JI)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JI)Lio/github/sceneview/ar/CloudAnchorEntry;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/CloudAnchorEntry;Ljava/lang/String;Ljava/lang/String;JIILjava/lang/Object;)Lio/github/sceneview/ar/CloudAnchorEntry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCloudAnchorId ()Ljava/lang/String;
+	public final fun getExpiresAtEpochMs ()J
+	public final fun getHostedAtEpochMs ()J
+	public final fun getName ()Ljava/lang/String;
+	public final fun getTtlDays ()I
+	public fun hashCode ()I
+	public final fun isExpired (J)Z
+	public static synthetic fun isExpired$default (Lio/github/sceneview/ar/CloudAnchorEntry;JILjava/lang/Object;)Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/CloudAnchorEntry$Companion {
+}
+
+public abstract interface class io/github/sceneview/ar/CloudAnchorRegistry {
+	public abstract fun add (Lio/github/sceneview/ar/CloudAnchorEntry;)V
+	public abstract fun clear ()V
+	public abstract fun get (Ljava/lang/String;)Lio/github/sceneview/ar/CloudAnchorEntry;
+	public abstract fun list ()Ljava/util/List;
+	public fun purgeExpired (J)I
+	public static synthetic fun purgeExpired$default (Lio/github/sceneview/ar/CloudAnchorRegistry;JILjava/lang/Object;)I
+	public abstract fun remove (Ljava/lang/String;)Z
+}
+
+public final class io/github/sceneview/ar/CloudAnchorRegistry$DefaultImpls {
+	public static fun purgeExpired (Lio/github/sceneview/ar/CloudAnchorRegistry;J)I
+	public static synthetic fun purgeExpired$default (Lio/github/sceneview/ar/CloudAnchorRegistry;JILjava/lang/Object;)I
+}
+
+public final class io/github/sceneview/ar/ComposableSingletons$ARSceneScopeKt {
+	public static final field INSTANCE Lio/github/sceneview/ar/ComposableSingletons$ARSceneScopeKt;
+	public fun <init> ()V
+	public final fun getLambda$-829785509$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function3;
+}
+
+public final class io/github/sceneview/ar/ComposableSingletons$PlaneDiscoveryGuideKt {
+	public static final field INSTANCE Lio/github/sceneview/ar/ComposableSingletons$PlaneDiscoveryGuideKt;
+	public fun <init> ()V
+	public final fun getLambda$-245446278$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function3;
+	public final fun getLambda$-608761358$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function2;
+	public final fun getLambda$-705560747$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function3;
+	public final fun getLambda$1423115325$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function2;
+}
+
+public final class io/github/sceneview/ar/PlacementController {
+	public static final field $stable I
+	public final fun clear ()V
+	public final fun getAnchors ()Ljava/util/List;
+	public final fun getCount ()I
+}
+
+public final class io/github/sceneview/ar/PlacementReticleStyle : java/lang/Enum {
+	public static final field DISC Lio/github/sceneview/ar/PlacementReticleStyle;
+	public static final field RING Lio/github/sceneview/ar/PlacementReticleStyle;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/PlacementReticleStyle;
+	public static fun values ()[Lio/github/sceneview/ar/PlacementReticleStyle;
+}
+
+public final class io/github/sceneview/ar/PlacementReticleVisualKt {
+	public static final fun PlacementReticleVisual-uDo3WH8 (Lio/github/sceneview/NodeScope;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/ar/ReticlePhase;JLio/github/sceneview/ar/PlacementReticleStyle;Landroidx/compose/runtime/Composer;II)V
+	public static final fun getRETICLE_TINT ()J
+}
+
+public final class io/github/sceneview/ar/PlacementSceneKt {
+	public static final fun PlacementScene-c8To9hI (Landroidx/compose/ui/Modifier;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLcom/google/ar/core/Config$PlaneFindingMode;ZZJLio/github/sceneview/ar/PlacementReticleStyle;ZZZLjava/io/File;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
+	public static final fun getDEFAULT_RETICLE_COLOR ()J
+	public static final fun placementHit (Lcom/google/ar/core/Frame;Ljava/util/List;Z)Lcom/google/ar/core/HitResult;
+}
+
+public final class io/github/sceneview/ar/PlacementTrackableKind : java/lang/Enum {
+	public static final field INSTANT_PLACEMENT Lio/github/sceneview/ar/PlacementTrackableKind;
+	public static final field OTHER Lio/github/sceneview/ar/PlacementTrackableKind;
+	public static final field PLANE_IN_POLYGON Lio/github/sceneview/ar/PlacementTrackableKind;
+	public static final field PLANE_OUT_OF_POLYGON Lio/github/sceneview/ar/PlacementTrackableKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/PlacementTrackableKind;
+	public static fun values ()[Lio/github/sceneview/ar/PlacementTrackableKind;
+}
+
+public final class io/github/sceneview/ar/PlaneDiscoveryGuideDurations {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (JJJJ)V
+	public synthetic fun <init> (JJJJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun copy (JJJJ)Lio/github/sceneview/ar/PlaneDiscoveryGuideDurations;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/PlaneDiscoveryGuideDurations;JJJJILjava/lang/Object;)Lio/github/sceneview/ar/PlaneDiscoveryGuideDurations;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFadeInMs ()J
+	public final fun getFadeOutMs ()J
+	public final fun getHandHintAfterMs ()J
+	public final fun getHelpAfterMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/PlaneDiscoveryGuideKt {
+	public static final fun PlaneDiscoveryGuide (Landroidx/compose/foundation/layout/BoxScope;ZZZLcom/google/ar/core/TrackingFailureReason;Landroidx/compose/ui/Modifier;Lio/github/sceneview/ar/PlaneDiscoveryGuideState;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
+	public static final fun PlaneDiscoveryGuideOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/PlaneDiscoveryPhase;Lcom/google/ar/core/TrackingFailureReason;Landroidx/compose/ui/Modifier;Lio/github/sceneview/ar/PlaneDiscoveryGuideDurations;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public static final fun PlaneDiscoveryHelpCard (Landroidx/compose/ui/Modifier;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)V
+	public static final fun rememberPlaneDiscoveryGuideState (Lio/github/sceneview/ar/PlaneDiscoveryGuideDurations;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/PlaneDiscoveryGuideState;
+}
+
+public final class io/github/sceneview/ar/PlaneDiscoveryGuideState {
+	public static final field $stable I
+	public static final field MIN_DELAY_MS J
+	public fun <init> ()V
+	public fun <init> (Lio/github/sceneview/ar/PlaneDiscoveryGuideDurations;)V
+	public synthetic fun <init> (Lio/github/sceneview/ar/PlaneDiscoveryGuideDurations;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getDurations ()Lio/github/sceneview/ar/PlaneDiscoveryGuideDurations;
+	public final fun getPhase ()Lio/github/sceneview/ar/PlaneDiscoveryPhase;
+	public final fun isDone ()Z
+	public final fun nextTransitionDelayMillis (J)Ljava/lang/Long;
+	public final fun update (ZZZLcom/google/ar/core/TrackingFailureReason;J)Lio/github/sceneview/ar/PlaneDiscoveryPhase;
+}
+
+public final class io/github/sceneview/ar/PlaneDiscoveryHandHintKt {
+	public static final fun PlaneDiscoveryHandHint-3IgeMak (Landroidx/compose/ui/Modifier;JILandroidx/compose/runtime/Composer;II)V
+}
+
+public final class io/github/sceneview/ar/PlaneDiscoveryPhase : java/lang/Enum {
+	public static final field DONE Lio/github/sceneview/ar/PlaneDiscoveryPhase;
+	public static final field FADING_OUT Lio/github/sceneview/ar/PlaneDiscoveryPhase;
+	public static final field HAND_HINT Lio/github/sceneview/ar/PlaneDiscoveryPhase;
+	public static final field HELP_OFFERED Lio/github/sceneview/ar/PlaneDiscoveryPhase;
+	public static final field LOST Lio/github/sceneview/ar/PlaneDiscoveryPhase;
+	public static final field SILENT Lio/github/sceneview/ar/PlaneDiscoveryPhase;
+	public static final field WAITING Lio/github/sceneview/ar/PlaneDiscoveryPhase;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/PlaneDiscoveryPhase;
+	public static fun values ()[Lio/github/sceneview/ar/PlaneDiscoveryPhase;
+}
+
+public final class io/github/sceneview/ar/PlaneVisualizer : io/github/sceneview/collision/TransformProvider {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/PlaneVisualizer$Companion;
+	public fun <init> (Lcom/google/android/filament/Engine;Lcom/google/android/filament/Scene;Lcom/google/ar/core/Plane;)V
+	public final fun destroy ()V
+	public fun getTransformationMatrix ()Lio/github/sceneview/collision/Matrix;
+	public final fun setEnabled (Z)V
+	public final fun setPlaneMaterial (Lcom/google/android/filament/MaterialInstance;)V
+	public final fun setShadowMaterial (Lcom/google/android/filament/MaterialInstance;)V
+	public final fun setShadowReceiver (Z)V
+	public final fun setVisible (Z)V
+	public final fun updatePlane ()V
+}
+
+public final class io/github/sceneview/ar/PlaneVisualizer$Companion {
+}
+
+public final class io/github/sceneview/ar/PlaneVisualizerV2 : io/github/sceneview/collision/TransformProvider {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/PlaneVisualizerV2$Companion;
+	public static final field DEPTH_REBUILD_INTERVAL_MS J
+	public static final field REFLECTION_FADE_IN_MS J
+	public static final field SCAN_IN_DURATION_MS J
+	public fun <init> (Lcom/google/android/filament/Engine;Lcom/google/android/filament/Scene;Lcom/google/ar/core/Plane;)V
+	public final fun destroy ()V
+	public fun getTransformationMatrix ()Lio/github/sceneview/collision/Matrix;
+	public final fun setEnabled (Z)V
+	public final fun setFrame (Lcom/google/ar/core/Frame;Lcom/google/ar/core/Camera;)V
+	public final fun setPlaneMaterial (Lcom/google/android/filament/MaterialInstance;)V
+	public final fun setShadowMaterial (Lcom/google/android/filament/MaterialInstance;)V
+	public final fun setShadowReceiver (Z)V
+	public final fun setVisible (Z)V
+	public final fun updatePlane ()V
+}
+
+public final class io/github/sceneview/ar/PlaneVisualizerV2$Companion {
+}
+
+public final class io/github/sceneview/ar/ReticlePhase : java/lang/Enum {
+	public static final field READY Lio/github/sceneview/ar/ReticlePhase;
+	public static final field SEARCHING Lio/github/sceneview/ar/ReticlePhase;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/ReticlePhase;
+	public static fun values ()[Lio/github/sceneview/ar/ReticlePhase;
+}
+
+public final class io/github/sceneview/ar/SharedPreferencesCloudAnchorRegistry : io/github/sceneview/ar/CloudAnchorRegistry {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/SharedPreferencesCloudAnchorRegistry$Companion;
+	public static final field DEFAULT_PREFS_NAME Ljava/lang/String;
+	public static final field PREFS_KEY Ljava/lang/String;
+	public fun <init> (Landroid/content/Context;Ljava/lang/String;)V
+	public synthetic fun <init> (Landroid/content/Context;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Landroid/content/SharedPreferences;)V
+	public fun add (Lio/github/sceneview/ar/CloudAnchorEntry;)V
+	public fun clear ()V
+	public fun get (Ljava/lang/String;)Lio/github/sceneview/ar/CloudAnchorEntry;
+	public fun list ()Ljava/util/List;
+	public fun purgeExpired (J)I
+	public fun remove (Ljava/lang/String;)Z
+}
+
+public final class io/github/sceneview/ar/SharedPreferencesCloudAnchorRegistry$Companion {
+}
+
+public final class io/github/sceneview/ar/arcore/ARSession : com/google/ar/core/Session {
+	public static final field $stable I
+	public fun <init> (Landroid/content/Context;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;)V
+	public synthetic fun <init> (Landroid/content/Context;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun configure (Lcom/google/ar/core/Config;)V
+	public final fun getDisplayHeight ()I
+	public final fun getDisplayRotation ()I
+	public final fun getDisplayWidth ()I
+	public final fun getFrame ()Lcom/google/ar/core/Frame;
+	public final fun getHasAugmentedImageDatabase ()Z
+	public final fun getOnConfigChanged ()Lkotlin/jvm/functions/Function2;
+	public final fun getOnPaused ()Lkotlin/jvm/functions/Function1;
+	public final fun getOnResumed ()Lkotlin/jvm/functions/Function1;
+	public final fun isResumed ()Z
+	public fun pause ()V
+	public fun resume ()V
+	public fun setDisplayGeometry (III)V
+	public final fun setDisplayHeight (I)V
+	public final fun setDisplayRotation (I)V
+	public final fun setDisplayWidth (I)V
+	public final fun setHasAugmentedImageDatabase (Z)V
+	public final fun setResumed (Z)V
+	public final fun updateOrNull ()Lcom/google/ar/core/Frame;
+}
+
+public abstract class io/github/sceneview/ar/arcore/AddImageResult {
+	public static final field $stable I
+}
+
+public final class io/github/sceneview/ar/arcore/AddImageResult$Added : io/github/sceneview/ar/arcore/AddImageResult {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/arcore/AddImageResult$Added;
+}
+
+public final class io/github/sceneview/ar/arcore/AddImageResult$Error : io/github/sceneview/ar/arcore/AddImageResult {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/Throwable;)V
+	public final fun component1 ()Ljava/lang/Throwable;
+	public final fun copy (Ljava/lang/Throwable;)Lio/github/sceneview/ar/arcore/AddImageResult$Error;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/arcore/AddImageResult$Error;Ljava/lang/Throwable;ILjava/lang/Object;)Lio/github/sceneview/ar/arcore/AddImageResult$Error;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCause ()Ljava/lang/Throwable;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/arcore/AddImageResult$LowQuality : io/github/sceneview/ar/arcore/AddImageResult {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/arcore/AddImageResult$LowQuality;
+}
+
+public final class io/github/sceneview/ar/arcore/ArCoreApkKt {
+	public static final fun awaitAvailability (Lcom/google/ar/core/ArCoreApk;Landroid/content/Context;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class io/github/sceneview/ar/arcore/ArSessionKt {
+	public static final fun addAugmentedImage (Lcom/google/ar/core/Config;Lcom/google/ar/core/Session;Ljava/lang/String;Landroid/graphics/Bitmap;Ljava/lang/Float;)V
+	public static synthetic fun addAugmentedImage$default (Lcom/google/ar/core/Config;Lcom/google/ar/core/Session;Ljava/lang/String;Landroid/graphics/Bitmap;Ljava/lang/Float;ILjava/lang/Object;)V
+	public static final fun canHostCloudAnchor (Lcom/google/ar/core/Session;Lio/github/sceneview/ar/node/ARCameraNode;)Z
+	public static final fun configure (Lcom/google/ar/core/Session;Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class io/github/sceneview/ar/arcore/AugmentedImageKt {
+	public static final fun isTracking (Lcom/google/ar/core/AugmentedImage;)Z
+}
+
+public final class io/github/sceneview/ar/arcore/CameraConfigFilterBuilder {
+	public static final field $stable I
+	public fun <init> ()V
+	public final fun depthSensor (Lcom/google/ar/core/CameraConfig$DepthSensorUsage;[Lcom/google/ar/core/CameraConfig$DepthSensorUsage;)V
+	public final fun getDepthSensor ()Ljava/util/Set;
+	public final fun getFacing ()Lcom/google/ar/core/CameraConfig$FacingDirection;
+	public final fun getStereoCamera ()Ljava/util/Set;
+	public final fun getTargetFps ()Ljava/util/Set;
+	public final fun setDepthSensor (Ljava/util/Set;)V
+	public final fun setFacing (Lcom/google/ar/core/CameraConfig$FacingDirection;)V
+	public final fun setStereoCamera (Ljava/util/Set;)V
+	public final fun setTargetFps (Ljava/util/Set;)V
+	public final fun stereoCamera (Lcom/google/ar/core/CameraConfig$StereoCameraUsage;[Lcom/google/ar/core/CameraConfig$StereoCameraUsage;)V
+	public final fun targetFps (Lcom/google/ar/core/CameraConfig$TargetFps;[Lcom/google/ar/core/CameraConfig$TargetFps;)V
+}
+
+public final class io/github/sceneview/ar/arcore/CameraConfigFilterDslKt {
+	public static final fun cameraConfigFilter (Lkotlin/jvm/functions/Function1;)Lkotlin/jvm/functions/Function1;
+}
+
+public final class io/github/sceneview/ar/arcore/CameraImageBitmapKt {
+	public static final field DEFAULT_JPEG_QUALITY I
+	public static final fun captureCameraBitmap (Lcom/google/ar/core/Frame;I)Landroid/graphics/Bitmap;
+	public static synthetic fun captureCameraBitmap$default (Lcom/google/ar/core/Frame;IILjava/lang/Object;)Landroid/graphics/Bitmap;
+	public static final fun toArgbBitmap (Landroid/media/Image;II)Landroid/graphics/Bitmap;
+	public static synthetic fun toArgbBitmap$default (Landroid/media/Image;IIILjava/lang/Object;)Landroid/graphics/Bitmap;
+}
+
+public final class io/github/sceneview/ar/arcore/CameraIntrinsicsSnapshot {
+	public static final field $stable I
+	public fun <init> (Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Float2;II)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Float2;
+	public final fun component2 ()Ldev/romainguy/kotlin/math/Float2;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun copy (Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Float2;II)Lio/github/sceneview/ar/arcore/CameraIntrinsicsSnapshot;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/arcore/CameraIntrinsicsSnapshot;Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Float2;IIILjava/lang/Object;)Lio/github/sceneview/ar/arcore/CameraIntrinsicsSnapshot;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFocalLength ()Ldev/romainguy/kotlin/math/Float2;
+	public final fun getImageHeight ()I
+	public final fun getImageWidth ()I
+	public final fun getPrincipalPoint ()Ldev/romainguy/kotlin/math/Float2;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/arcore/CameraKt {
+	public static final fun getDisplayOrientedPose (Lcom/google/ar/core/Camera;)Lcom/google/ar/core/Pose;
+	public static final fun getProjectionTransform (Lcom/google/ar/core/Camera;FF)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun getViewTransform (Lcom/google/ar/core/Camera;)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun intrinsics (Lcom/google/ar/core/Camera;Z)Lio/github/sceneview/ar/arcore/CameraIntrinsicsSnapshot;
+	public static synthetic fun intrinsics$default (Lcom/google/ar/core/Camera;ZILjava/lang/Object;)Lio/github/sceneview/ar/arcore/CameraIntrinsicsSnapshot;
+	public static final fun isTracking (Lcom/google/ar/core/Camera;)Z
+}
+
+public final class io/github/sceneview/ar/arcore/DepthHitResult {
+	public static final field $stable I
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;F)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component2 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component3 ()F
+	public final fun copy (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;F)Lio/github/sceneview/ar/arcore/DepthHitResult;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/arcore/DepthHitResult;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FILjava/lang/Object;)Lio/github/sceneview/ar/arcore/DepthHitResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDistance ()F
+	public final fun getNormal ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getPosition ()Ldev/romainguy/kotlin/math/Float3;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/arcore/DepthHitResultKt {
+	public static final fun hitTestDepth (Lcom/google/ar/core/Frame;FF)Lio/github/sceneview/ar/arcore/DepthHitResult;
+}
+
+public final class io/github/sceneview/ar/arcore/EarthKt {
+	public static final fun createAnchor (Lcom/google/ar/core/Earth;DDDLdev/romainguy/kotlin/math/Float3;)Lcom/google/ar/core/Anchor;
+	public static final fun createAnchor (Lcom/google/ar/core/Earth;DDDLdev/romainguy/kotlin/math/Quaternion;)Lcom/google/ar/core/Anchor;
+}
+
+public final class io/github/sceneview/ar/arcore/FrameKt {
+	public static final fun cameraImage (Lcom/google/ar/core/Frame;)Landroid/media/Image;
+	public static final fun depthImage (Lcom/google/ar/core/Frame;)Landroid/media/Image;
+	public static final fun fps (Lcom/google/ar/core/Frame;Lcom/google/ar/core/Frame;)D
+	public static final fun getUpdatedAugmentedFaces (Lcom/google/ar/core/Frame;)Ljava/util/Collection;
+	public static final fun getUpdatedAugmentedImages (Lcom/google/ar/core/Frame;)Ljava/util/Collection;
+	public static final fun getUpdatedPlanes (Lcom/google/ar/core/Frame;)Ljava/util/Collection;
+	public static final fun getUpdatedStreetscapeGeometries (Lcom/google/ar/core/Frame;)Ljava/util/Collection;
+	public static final fun getUpdatedTrackables (Lcom/google/ar/core/Frame;)Ljava/util/Collection;
+	public static final fun hitTest (Lcom/google/ar/core/Frame;Ldev/romainguy/kotlin/math/Ray;)Ljava/util/List;
+	public static final fun intervalSeconds (Lcom/google/ar/core/Frame;Lcom/google/ar/core/Frame;)D
+	public static final fun isTrackingPlane (Lcom/google/ar/core/Frame;)Z
+	public static final fun rawDepthConfidenceImage (Lcom/google/ar/core/Frame;)Landroid/media/Image;
+	public static final fun rawDepthImage (Lcom/google/ar/core/Frame;)Landroid/media/Image;
+	public static final fun semanticConfidenceImage (Lcom/google/ar/core/Frame;)Landroid/media/Image;
+	public static final fun semanticImage (Lcom/google/ar/core/Frame;)Landroid/media/Image;
+	public static final fun semanticLabelFraction (Lcom/google/ar/core/Frame;Lcom/google/ar/core/SemanticLabel;)F
+}
+
+public final class io/github/sceneview/ar/arcore/GeospatialKt {
+	public static final fun awaitVpsAvailability (Lcom/google/ar/core/Session;DDLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static final fun rememberCameraGeospatialPose (Lcom/google/ar/core/Session;Landroidx/compose/runtime/Composer;I)Landroidx/compose/runtime/State;
+	public static final fun rememberEarthState (Lcom/google/ar/core/Session;Landroidx/compose/runtime/Composer;I)Landroidx/compose/runtime/State;
+	public static final fun snapshot (Lcom/google/ar/core/GeospatialPose;)Lio/github/sceneview/ar/arcore/GeospatialPoseSnapshot;
+}
+
+public final class io/github/sceneview/ar/arcore/GeospatialPoseSnapshot {
+	public static final field $stable I
+	public fun <init> (DDDDDDD)V
+	public final fun component1 ()D
+	public final fun component2 ()D
+	public final fun component3 ()D
+	public final fun component4 ()D
+	public final fun component5 ()D
+	public final fun component6 ()D
+	public final fun component7 ()D
+	public final fun copy (DDDDDDD)Lio/github/sceneview/ar/arcore/GeospatialPoseSnapshot;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/arcore/GeospatialPoseSnapshot;DDDDDDDILjava/lang/Object;)Lio/github/sceneview/ar/arcore/GeospatialPoseSnapshot;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAltitude ()D
+	public final fun getHeading ()D
+	public final fun getHorizontalAccuracy ()D
+	public final fun getLatitude ()D
+	public final fun getLongitude ()D
+	public final fun getOrientationYawAccuracy ()D
+	public final fun getVerticalAccuracy ()D
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/arcore/HitResultKt {
+	public static final fun createAnchorOrNull (Lcom/google/ar/core/HitResult;)Lcom/google/ar/core/Anchor;
+	public static final fun filterTypes (Ljava/util/List;Ljava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLkotlin/Pair;Lkotlin/jvm/functions/Function1;)Ljava/util/List;
+	public static synthetic fun filterTypes$default (Ljava/util/List;Ljava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLkotlin/Pair;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/util/List;
+	public static final fun findByType (Ljava/util/List;Ljava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLkotlin/Pair;Lkotlin/jvm/functions/Function1;)Lcom/google/ar/core/HitResult;
+	public static synthetic fun findByType$default (Ljava/util/List;Ljava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLkotlin/Pair;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/ar/core/HitResult;
+	public static final fun firstByTypeOrNull (Ljava/util/List;Ljava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLkotlin/Pair;Lkotlin/jvm/functions/Function1;)Lcom/google/ar/core/HitResult;
+	public static synthetic fun firstByTypeOrNull$default (Ljava/util/List;Ljava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLkotlin/Pair;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/google/ar/core/HitResult;
+	public static final fun getDistance (Lcom/google/ar/core/HitResult;)F
+	public static final fun isValid (Lcom/google/ar/core/HitResult;Ljava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLkotlin/Pair;Lkotlin/jvm/functions/Function1;)Z
+	public static synthetic fun isValid$default (Lcom/google/ar/core/HitResult;Ljava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLkotlin/Pair;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Z
+}
+
+public final class io/github/sceneview/ar/arcore/PlaneKt {
+	public static final fun diffPlanes (Ljava/util/Set;Ljava/util/Set;)Lio/github/sceneview/ar/arcore/PlanesDiff;
+	public static final fun getPolygon (Lcom/google/ar/core/Plane;)Ljava/nio/FloatBuffer;
+	public static final fun getSubsumedBy (Lcom/google/ar/core/Plane;)Lcom/google/ar/core/Plane;
+	public static final fun rememberDetectedPlanes (Lcom/google/ar/core/Session;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Landroidx/compose/runtime/State;
+}
+
+public final class io/github/sceneview/ar/arcore/PlanesDiff {
+	public static final field $stable I
+	public fun <init> (Ljava/util/List;Ljava/util/List;Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;Ljava/util/List;Ljava/util/List;)Lio/github/sceneview/ar/arcore/PlanesDiff;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/arcore/PlanesDiff;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Lio/github/sceneview/ar/arcore/PlanesDiff;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAdded ()Ljava/util/List;
+	public final fun getRemoved ()Ljava/util/List;
+	public final fun getUpdated ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/arcore/PoseKt {
+	public static final fun distanceTo (Lcom/google/ar/core/Pose;Lcom/google/ar/core/Pose;)F
+	public static final fun distanceToPlane (Lcom/google/ar/core/Pose;Lcom/google/ar/core/Pose;)F
+	public static final fun getPosition (Lcom/google/ar/core/Pose;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun getQuaternion (Lcom/google/ar/core/Pose;)Ldev/romainguy/kotlin/math/Quaternion;
+	public static final fun getRotation (Lcom/google/ar/core/Pose;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun getTransform (Lcom/google/ar/core/GeospatialPose;)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun getTransform (Lcom/google/ar/core/Pose;)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun getXDirection (Lcom/google/ar/core/Pose;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun getYDirection (Lcom/google/ar/core/Pose;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun getZDirection (Lcom/google/ar/core/Pose;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun toTransform (Lcom/google/ar/core/Pose;[F)Ldev/romainguy/kotlin/math/Mat4;
+}
+
+public final class io/github/sceneview/ar/arcore/RuntimeAugmentedImageDatabase {
+	public static final field $stable I
+	public fun <init> ()V
+	public final fun addImage (Ljava/lang/String;Landroid/graphics/Bitmap;Ljava/lang/Float;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun addImage$default (Lio/github/sceneview/ar/arcore/RuntimeAugmentedImageDatabase;Ljava/lang/String;Landroid/graphics/Bitmap;Ljava/lang/Float;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun applyTo (Lcom/google/ar/core/Config;Lcom/google/ar/core/Session;)V
+	public final fun bind (Lcom/google/ar/core/Session;)V
+	public final fun clear (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun getImageNames ()Ljava/util/List;
+	public final fun getSize ()I
+	public final fun unbind ()V
+}
+
+public final class io/github/sceneview/ar/arcore/RuntimeAugmentedImageDatabaseKt {
+	public static final fun rememberRuntimeAugmentedImageDatabase (Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/ar/arcore/RuntimeAugmentedImageDatabase;
+}
+
+public final class io/github/sceneview/ar/arcore/TrackableKt {
+	public static final fun createAnchorOrNull (Lcom/google/ar/core/Trackable;Lcom/google/ar/core/Pose;)Lcom/google/ar/core/Anchor;
+	public static final fun isTracking (Lcom/google/ar/core/Trackable;)Z
+}
+
+public final class io/github/sceneview/ar/body/BodyLandmark {
+	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/ar/body/Joint;FFFF)V
+	public final fun component1 ()Lio/github/sceneview/ar/body/Joint;
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun component5 ()F
+	public final fun copy (Lio/github/sceneview/ar/body/Joint;FFFF)Lio/github/sceneview/ar/body/BodyLandmark;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/body/BodyLandmark;Lio/github/sceneview/ar/body/Joint;FFFFILjava/lang/Object;)Lio/github/sceneview/ar/body/BodyLandmark;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getInFrameLikelihood ()F
+	public final fun getJoint ()Lio/github/sceneview/ar/body/Joint;
+	public final fun getX ()F
+	public final fun getY ()F
+	public final fun getZ ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/body/BodyPose {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/body/BodyPose$Companion;
+	public fun <init> (Ljava/util/Map;)V
+	public final fun component1 ()Ljava/util/Map;
+	public final fun copy (Ljava/util/Map;)Lio/github/sceneview/ar/body/BodyPose;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/body/BodyPose;Ljava/util/Map;ILjava/lang/Object;)Lio/github/sceneview/ar/body/BodyPose;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun get (Lio/github/sceneview/ar/body/Joint;)Lio/github/sceneview/ar/body/BodyLandmark;
+	public final fun getLandmarks ()Ljava/util/Map;
+	public fun hashCode ()I
+	public final fun isTracked ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/body/BodyPose$Companion {
+	public final fun fromMediaPipeLandmarks (Ljava/util/List;)Lio/github/sceneview/ar/body/BodyPose;
+}
+
+public final class io/github/sceneview/ar/body/BodyPose$RawLandmark {
+	public static final field $stable I
+	public fun <init> (FFFF)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun copy (FFFF)Lio/github/sceneview/ar/body/BodyPose$RawLandmark;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/body/BodyPose$RawLandmark;FFFFILjava/lang/Object;)Lio/github/sceneview/ar/body/BodyPose$RawLandmark;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getVisibility ()F
+	public final fun getX ()F
+	public final fun getY ()F
+	public final fun getZ ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/body/Joint : java/lang/Enum {
+	public static final field Companion Lio/github/sceneview/ar/body/Joint$Companion;
+	public static final field HEAD Lio/github/sceneview/ar/body/Joint;
+	public static final field LEFT_ELBOW Lio/github/sceneview/ar/body/Joint;
+	public static final field LEFT_FOOT Lio/github/sceneview/ar/body/Joint;
+	public static final field LEFT_HAND Lio/github/sceneview/ar/body/Joint;
+	public static final field LEFT_HIP Lio/github/sceneview/ar/body/Joint;
+	public static final field LEFT_KNEE Lio/github/sceneview/ar/body/Joint;
+	public static final field LEFT_SHOULDER Lio/github/sceneview/ar/body/Joint;
+	public static final field MEDIAPIPE_LANDMARK_COUNT I
+	public static final field NECK Lio/github/sceneview/ar/body/Joint;
+	public static final field RIGHT_ELBOW Lio/github/sceneview/ar/body/Joint;
+	public static final field RIGHT_FOOT Lio/github/sceneview/ar/body/Joint;
+	public static final field RIGHT_HAND Lio/github/sceneview/ar/body/Joint;
+	public static final field RIGHT_HIP Lio/github/sceneview/ar/body/Joint;
+	public static final field RIGHT_KNEE Lio/github/sceneview/ar/body/Joint;
+	public static final field RIGHT_SHOULDER Lio/github/sceneview/ar/body/Joint;
+	public static final field ROOT Lio/github/sceneview/ar/body/Joint;
+	public static final field SPINE Lio/github/sceneview/ar/body/Joint;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/body/Joint;
+	public static fun values ()[Lio/github/sceneview/ar/body/Joint;
+}
+
+public final class io/github/sceneview/ar/body/Joint$Companion {
+	public final fun fromMediaPipeLandmarkIndex (I)Lio/github/sceneview/ar/body/Joint;
+}
+
+public final class io/github/sceneview/ar/body/JointKt {
+	public static final fun getSKELETON_BONES ()Ljava/util/List;
+}
+
+public class io/github/sceneview/ar/camera/ARCameraStream : io/github/sceneview/components/RenderableComponent {
+	public static final field $stable I
+	public static final field CAMERA_PRIORITY_BACKGROUND I
+	public static final field CAMERA_PRIORITY_DEPTH_PRIME I
+	public static final field Companion Lio/github/sceneview/ar/camera/ARCameraStream$Companion;
+	public fun <init> (Lio/github/sceneview/loaders/MaterialLoader;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Lio/github/sceneview/loaders/MaterialLoader;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun destroy ()V
+	public final fun getArFog ()Lio/github/sceneview/ar/node/ARFogConfig;
+	public fun getAxisAlignedBoundingBox ()Lcom/google/android/filament/Box;
+	public final fun getCameraTexture ()Lcom/google/android/filament/Texture;
+	public final fun getCameraTextureIds ()[I
+	public final fun getCameraTextures ()Ljava/util/Map;
+	public final fun getDepthOcclusionMaterial ()Lcom/google/android/filament/Material;
+	public final fun getDepthTexture ()Lcom/google/android/filament/Texture;
+	public fun getEnabledAttributes ()Ljava/util/List;
+	public final fun getEngine ()Lcom/google/android/filament/Engine;
+	public final fun getEntity ()I
+	public fun getLightChannel (I)Z
+	public fun getMaterialInstance ()Lcom/google/android/filament/MaterialInstance;
+	public fun getMaterialInstanceAt (I)Lcom/google/android/filament/MaterialInstance;
+	public fun getMaterialInstances ()Ljava/util/List;
+	public fun getMorphTargetCount ()I
+	public final fun getPersonMaskTexture ()Lcom/google/android/filament/Texture;
+	public final fun getPersonOcclusionMaterial ()Lcom/google/android/filament/Material;
+	public fun getPrimitiveCount ()I
+	public fun getRenderableInstance ()I
+	public fun getRenderableManager ()Lcom/google/android/filament/RenderableManager;
+	public final fun getStandardMaterial ()Lcom/google/android/filament/Material;
+	public final fun isDepthOcclusionEnabled ()Z
+	public final fun isPersonOcclusionEnabled ()Z
+	public fun isShadowCaster ()Z
+	public fun isShadowReceiver ()Z
+	public fun set (Ljava/util/List;ILcom/google/android/filament/MaterialInstance;)V
+	public final fun setArFog (Lio/github/sceneview/ar/node/ARFogConfig;)V
+	public fun setAxisAlignedBoundingBox (Lcom/google/android/filament/Box;)V
+	public fun setBlendOrder (I)V
+	public fun setBlendOrderAt (II)V
+	public fun setBonesAsMatrices (Ljava/nio/Buffer;II)V
+	public fun setBonesAsQuaternions (Ljava/nio/Buffer;II)V
+	public final fun setCameraTexture (Lcom/google/android/filament/Texture;)V
+	public final fun setCameraTextures (Ljava/util/Map;)V
+	public fun setCulling (Z)V
+	public final fun setDepthOcclusionEnabled (Z)V
+	public final fun setDepthOcclusionMaterial (Lcom/google/android/filament/Material;)V
+	public fun setGeometry (Lio/github/sceneview/geometries/Geometry;)V
+	public fun setGeometryAt (ILcom/google/android/filament/RenderableManager$PrimitiveType;Lcom/google/android/filament/VertexBuffer;Lcom/google/android/filament/IndexBuffer;II)V
+	public fun setGlobalBlendOrderEnabled (Z)V
+	public fun setGlobalBlendOrderEnabledAt (IZ)V
+	public fun setLayerMask (II)V
+	public fun setLayerVisible (Z)V
+	public fun setLightChannel (IZ)V
+	public fun setMaterialInstance (Lcom/google/android/filament/MaterialInstance;)V
+	public fun setMaterialInstanceAt (ILcom/google/android/filament/MaterialInstance;)V
+	public fun setMaterialInstances (Lcom/google/android/filament/MaterialInstance;)V
+	public fun setMaterialInstances (Ljava/util/List;)V
+	public fun setMorphWeights ([FI)V
+	public final fun setPersonOcclusionEnabled (Z)V
+	public final fun setPersonOcclusionMaterial (Lcom/google/android/filament/Material;)V
+	public fun setPriority (I)V
+	public fun setScreenSpaceContactShadows (Z)V
+	public fun setShadowCaster (Z)V
+	public fun setShadowReceiver (Z)V
+	public fun setSkinningBuffer (Lcom/google/android/filament/SkinningBuffer;II)V
+	public final fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public final class io/github/sceneview/ar/camera/ARCameraStream$Companion {
+}
+
+public final class io/github/sceneview/ar/camera/ARCameraStreamKt {
+	public static final field kCameraTextureParameter Ljava/lang/String;
+	public static final field kDepthTextureParameter Ljava/lang/String;
+	public static final field kFogColorParameter Ljava/lang/String;
+	public static final field kFogDensityParameter Ljava/lang/String;
+	public static final field kFogEnabledParameter Ljava/lang/String;
+	public static final field kFogEndParameter Ljava/lang/String;
+	public static final field kFogStartParameter Ljava/lang/String;
+	public static final field kPersonTextureParameter Ljava/lang/String;
+	public static final field kUVTransformParameter Ljava/lang/String;
+}
+
+public abstract interface class io/github/sceneview/ar/collaborative/CollaborativeMessage {
+	public abstract fun getPeerId ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/collaborative/CollaborativeMessage$Bye : io/github/sceneview/ar/collaborative/CollaborativeMessage {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$Bye;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/collaborative/CollaborativeMessage$Bye;Ljava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$Bye;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getPeerId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/collaborative/CollaborativeMessage$Hello : io/github/sceneview/ar/collaborative/CollaborativeMessage {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$Hello;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/collaborative/CollaborativeMessage$Hello;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$Hello;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDisplayName ()Ljava/lang/String;
+	public fun getPeerId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/collaborative/CollaborativeMessage$NodeState : io/github/sceneview/ar/collaborative/CollaborativeMessage {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[F)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()[F
+	public final fun component5 ()[F
+	public final fun component6 ()[F
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[F)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$NodeState;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/collaborative/CollaborativeMessage$NodeState;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[FILjava/lang/Object;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$NodeState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getModelKey ()Ljava/lang/String;
+	public final fun getNodeKey ()Ljava/lang/String;
+	public fun getPeerId ()Ljava/lang/String;
+	public final fun getQuaternion ()[F
+	public final fun getScale ()[F
+	public final fun getTranslation ()[F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/collaborative/CollaborativeMessage$ParticipantPose : io/github/sceneview/ar/collaborative/CollaborativeMessage {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;J[F[F)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()[F
+	public final fun component4 ()[F
+	public final fun copy (Ljava/lang/String;J[F[F)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$ParticipantPose;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/collaborative/CollaborativeMessage$ParticipantPose;Ljava/lang/String;J[F[FILjava/lang/Object;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$ParticipantPose;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEpochMs ()J
+	public fun getPeerId ()Ljava/lang/String;
+	public final fun getQuaternion ()[F
+	public final fun getTranslation ()[F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/collaborative/CollaborativeMessage$SharedAnchor : io/github/sceneview/ar/collaborative/CollaborativeMessage {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$SharedAnchor;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/collaborative/CollaborativeMessage$SharedAnchor;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$SharedAnchor;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCloudAnchorId ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public fun getPeerId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/collaborative/CollaborativeSession {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/collaborative/CollaborativeSession$Companion;
+	public static final field DEFAULT_POSE_RATE_HZ I
+	public fun <init> (Lio/github/sceneview/ar/collaborative/CollaborativeTransport;)V
+	public fun <init> (Lio/github/sceneview/ar/collaborative/CollaborativeTransport;Ljava/lang/String;)V
+	public fun <init> (Lio/github/sceneview/ar/collaborative/CollaborativeTransport;Ljava/lang/String;I)V
+	public fun <init> (Lio/github/sceneview/ar/collaborative/CollaborativeTransport;Ljava/lang/String;ILjava/lang/String;)V
+	public fun <init> (Lio/github/sceneview/ar/collaborative/CollaborativeTransport;Ljava/lang/String;ILjava/lang/String;Lkotlinx/coroutines/CoroutineDispatcher;)V
+	public synthetic fun <init> (Lio/github/sceneview/ar/collaborative/CollaborativeTransport;Ljava/lang/String;ILjava/lang/String;Lkotlinx/coroutines/CoroutineDispatcher;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun broadcastLocalPose (Lcom/google/ar/core/Pose;)V
+	public final fun getParticipants ()Ljava/util/List;
+	public final fun getPlacedNodes ()Ljava/util/List;
+	public final fun getSharedAnchorNode ()Lio/github/sceneview/ar/node/CloudAnchorNode;
+	public final fun getSharedCloudAnchorId ()Ljava/lang/String;
+	public final fun host (Lcom/google/ar/core/Session;Lcom/google/ar/core/Anchor;Lcom/google/android/filament/Engine;)V
+	public final fun host (Lcom/google/ar/core/Session;Lcom/google/ar/core/Anchor;Lcom/google/android/filament/Engine;I)V
+	public final fun host (Lcom/google/ar/core/Session;Lcom/google/ar/core/Anchor;Lcom/google/android/filament/Engine;ILjava/lang/String;)V
+	public final fun host (Lcom/google/ar/core/Session;Lcom/google/ar/core/Anchor;Lcom/google/android/filament/Engine;ILjava/lang/String;Lkotlin/jvm/functions/Function2;)V
+	public static synthetic fun host$default (Lio/github/sceneview/ar/collaborative/CollaborativeSession;Lcom/google/ar/core/Session;Lcom/google/ar/core/Anchor;Lcom/google/android/filament/Engine;ILjava/lang/String;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
+	public final fun isStarted ()Z
+	public final fun onFrame (Lcom/google/ar/core/Frame;)V
+	public final fun placeNode (Ljava/lang/String;Ljava/lang/String;[F[F)V
+	public final fun placeNode (Ljava/lang/String;Ljava/lang/String;[F[F[F)V
+	public static synthetic fun placeNode$default (Lio/github/sceneview/ar/collaborative/CollaborativeSession;Ljava/lang/String;Ljava/lang/String;[F[F[FILjava/lang/Object;)V
+	public final fun resolve (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Session;Ljava/lang/String;)V
+	public final fun resolve (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Session;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun resolve$default (Lio/github/sceneview/ar/collaborative/CollaborativeSession;Lcom/google/android/filament/Engine;Lcom/google/ar/core/Session;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun start ()V
+	public final fun stop ()V
+}
+
+public final class io/github/sceneview/ar/collaborative/CollaborativeSession$Companion {
+}
+
+public final class io/github/sceneview/ar/collaborative/CollaborativeState {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/collaborative/CollaborativeState$Companion;
+	public static final field MAX_NODES I
+	public static final field MAX_PARTICIPANTS I
+	public fun <init> (Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;I)V
+	public fun <init> (Ljava/lang/String;II)V
+	public synthetic fun <init> (Ljava/lang/String;IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun apply (Lio/github/sceneview/ar/collaborative/CollaborativeMessage;)Z
+	public final fun getParticipants ()Ljava/util/List;
+	public final fun getPlacedNodes ()Ljava/util/List;
+	public final fun getSharedAnchor ()Lio/github/sceneview/ar/collaborative/CollaborativeMessage$SharedAnchor;
+	public final fun removeNode (Ljava/lang/String;)Z
+	public final fun removeParticipant (Ljava/lang/String;)Z
+	public final fun retainParticipants (Ljava/util/Set;)Z
+}
+
+public final class io/github/sceneview/ar/collaborative/CollaborativeState$Companion {
+}
+
+public abstract interface class io/github/sceneview/ar/collaborative/CollaborativeTransport {
+	public abstract fun close ()V
+	public abstract fun getLocalPeerId ()Ljava/lang/String;
+	public abstract fun getPeers ()Lkotlinx/coroutines/flow/StateFlow;
+	public abstract fun incoming (Lkotlin/jvm/functions/Function2;)Ljava/lang/AutoCloseable;
+	public abstract fun send ([B)V
+}
+
+public final class io/github/sceneview/ar/collaborative/CollaborativeWireFormat {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/collaborative/CollaborativeWireFormat;
+	public static final field TYPE_ANCHOR Ljava/lang/String;
+	public static final field TYPE_BYE Ljava/lang/String;
+	public static final field TYPE_HELLO Ljava/lang/String;
+	public static final field TYPE_NODE Ljava/lang/String;
+	public static final field TYPE_POSE Ljava/lang/String;
+	public final fun anchor (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public final fun bye (Ljava/lang/String;)Ljava/lang/String;
+	public final fun hello (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public final fun node (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[F)Ljava/lang/String;
+	public final fun parse (Ljava/lang/String;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage;
+	public final fun pose (Ljava/lang/String;J[F[F)Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/collaborative/LoopbackCollaborativeTransport : io/github/sceneview/ar/collaborative/CollaborativeTransport {
+	public static final field $stable I
+	public synthetic fun <init> (Ljava/lang/String;Lio/github/sceneview/ar/collaborative/LoopbackCollaborativeTransport$LoopbackHub;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public fun getLocalPeerId ()Ljava/lang/String;
+	public fun getPeers ()Lkotlinx/coroutines/flow/StateFlow;
+	public fun incoming (Lkotlin/jvm/functions/Function2;)Ljava/lang/AutoCloseable;
+	public fun send ([B)V
+}
+
+public final class io/github/sceneview/ar/collaborative/LoopbackCollaborativeTransport$LoopbackHub {
+	public static final field $stable I
+	public fun <init> ()V
+	public final fun getPeerCount ()I
+	public final fun join (Ljava/lang/String;)Lio/github/sceneview/ar/collaborative/LoopbackCollaborativeTransport;
+}
+
+public final class io/github/sceneview/ar/collaborative/NearbyCollaborativeTransport : io/github/sceneview/ar/collaborative/CollaborativeTransport {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/collaborative/NearbyCollaborativeTransport$Companion;
+	public static final field REQUIRED_PERMISSIONS_API_31_PLUS Ljava/util/List;
+	public static final field REQUIRED_PERMISSIONS_PRE_API_31 Ljava/util/List;
+	public fun <init> (Landroid/content/Context;)V
+	public fun <init> (Landroid/content/Context;Ljava/lang/String;)V
+	public fun <init> (Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function2;)V
+	public synthetic fun <init> (Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function2;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public fun getLocalPeerId ()Ljava/lang/String;
+	public fun getPeers ()Lkotlinx/coroutines/flow/StateFlow;
+	public fun incoming (Lkotlin/jvm/functions/Function2;)Ljava/lang/AutoCloseable;
+	public final fun isStarted ()Z
+	public fun send ([B)V
+	public final fun start ()V
+}
+
+public final class io/github/sceneview/ar/collaborative/NearbyCollaborativeTransport$Companion {
+}
+
+public final class io/github/sceneview/ar/collaborative/Participant {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;[F[FJ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;[F[FJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()[F
+	public final fun component4 ()[F
+	public final fun component5 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;[F[FJ)Lio/github/sceneview/ar/collaborative/Participant;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/collaborative/Participant;Ljava/lang/String;Ljava/lang/String;[F[FJILjava/lang/Object;)Lio/github/sceneview/ar/collaborative/Participant;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDisplayName ()Ljava/lang/String;
+	public final fun getHasPose ()Z
+	public final fun getId ()Ljava/lang/String;
+	public final fun getLastSeenEpochMs ()J
+	public final fun getQuaternion ()[F
+	public final fun getTranslation ()[F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/collaborative/PlacedNode {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;[F[F[FLjava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()[F
+	public final fun component4 ()[F
+	public final fun component5 ()[F
+	public final fun component6 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;[F[F[FLjava/lang/String;)Lio/github/sceneview/ar/collaborative/PlacedNode;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/collaborative/PlacedNode;Ljava/lang/String;Ljava/lang/String;[F[F[FLjava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/ar/collaborative/PlacedNode;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getModelKey ()Ljava/lang/String;
+	public final fun getNodeKey ()Ljava/lang/String;
+	public final fun getOwnerPeerId ()Ljava/lang/String;
+	public final fun getQuaternion ()[F
+	public final fun getScale ()[F
+	public final fun getTranslation ()[F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/collaborative/RememberCollaborativeSessionKt {
+	public static final fun rememberCollaborativeSession (Lio/github/sceneview/ar/collaborative/CollaborativeTransport;Ljava/lang/String;IZLandroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/collaborative/CollaborativeSession;
+}
+
+public final class io/github/sceneview/ar/light/LightEstimator {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/light/LightEstimator$Companion;
+	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/environment/IBLPrefilter;)V
+	public final fun destroy ()V
+	public final fun getEnableColorCorrection ()Z
+	public final fun getEngine ()Lcom/google/android/filament/Engine;
+	public final fun getEnvironmentalHdrMainLightDirection ()Z
+	public final fun getEnvironmentalHdrMainLightIntensity ()Z
+	public final fun getEnvironmentalHdrReflections ()Z
+	public final fun getEnvironmentalHdrSpecularFilter ()Z
+	public final fun getEnvironmentalHdrSphericalHarmonics ()Z
+	public final fun getIblPrefilter ()Lio/github/sceneview/environment/IBLPrefilter;
+	public final fun getLastColorCorrection ()Ldev/romainguy/kotlin/math/Float4;
+	public final fun isEnabled ()Z
+	public final fun setEnableColorCorrection (Z)V
+	public final fun setEnabled (Z)V
+	public final fun setEnvironmentalHdrMainLightDirection (Z)V
+	public final fun setEnvironmentalHdrMainLightIntensity (Z)V
+	public final fun setEnvironmentalHdrReflections (Z)V
+	public final fun setEnvironmentalHdrSpecularFilter (Z)V
+	public final fun setEnvironmentalHdrSphericalHarmonics (Z)V
+	public final fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;Lcom/google/android/filament/Camera;)Lio/github/sceneview/ar/light/LightEstimator$Estimation;
+}
+
+public final class io/github/sceneview/ar/light/LightEstimator$Companion {
+}
+
+public final class io/github/sceneview/ar/light/LightEstimator$Estimation {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (Ldev/romainguy/kotlin/math/Float4;Ljava/lang/Float;Ldev/romainguy/kotlin/math/Float3;Lcom/google/android/filament/Texture;[F)V
+	public synthetic fun <init> (Ldev/romainguy/kotlin/math/Float4;Ljava/lang/Float;Ldev/romainguy/kotlin/math/Float3;Lcom/google/android/filament/Texture;[FILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Float4;
+	public final fun component2 ()Ljava/lang/Float;
+	public final fun component3 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component4 ()Lcom/google/android/filament/Texture;
+	public final fun component5 ()[F
+	public final fun copy (Ldev/romainguy/kotlin/math/Float4;Ljava/lang/Float;Ldev/romainguy/kotlin/math/Float3;Lcom/google/android/filament/Texture;[F)Lio/github/sceneview/ar/light/LightEstimator$Estimation;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/light/LightEstimator$Estimation;Ldev/romainguy/kotlin/math/Float4;Ljava/lang/Float;Ldev/romainguy/kotlin/math/Float3;Lcom/google/android/filament/Texture;[FILjava/lang/Object;)Lio/github/sceneview/ar/light/LightEstimator$Estimation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIrradiance ()[F
+	public final fun getMainLightColor ()Ldev/romainguy/kotlin/math/Float4;
+	public final fun getMainLightDirection ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getMainLightIntensity ()Ljava/lang/Float;
+	public final fun getReflections ()Lcom/google/android/filament/Texture;
+	public fun hashCode ()I
+	public final fun setIrradiance ([F)V
+	public final fun setMainLightColor (Ldev/romainguy/kotlin/math/Float4;)V
+	public final fun setMainLightDirection (Ldev/romainguy/kotlin/math/Float3;)V
+	public final fun setMainLightIntensity (Ljava/lang/Float;)V
+	public final fun setReflections (Lcom/google/android/filament/Texture;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public class io/github/sceneview/ar/node/ARCameraNode : io/github/sceneview/node/CameraNode {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;)V
+	public final fun getFrame ()Lcom/google/ar/core/Frame;
+	public fun getPose ()Lcom/google/ar/core/Pose;
+	public final fun getSession ()Lcom/google/ar/core/Session;
+	public fun getTrackingState ()Lcom/google/ar/core/TrackingState;
+	public fun onCameraUpdated (Lcom/google/ar/core/Camera;)V
+	public fun onTrackingStateChanged (Lcom/google/ar/core/TrackingState;)V
+	public final fun setFrame (Lcom/google/ar/core/Frame;)V
+	protected fun setPose (Lcom/google/ar/core/Pose;)V
+	public final fun setSession (Lcom/google/ar/core/Session;)V
+	protected fun setTrackingState (Lcom/google/ar/core/TrackingState;)V
+	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public final class io/github/sceneview/ar/node/ARFogConfig {
+	public static final field $stable I
+	public synthetic fun <init> (FFFJZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (FFFJZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4-0d7_KjU ()J
+	public final fun component5 ()Z
+	public final fun copy-42QJj7c (FFFJZ)Lio/github/sceneview/ar/node/ARFogConfig;
+	public static synthetic fun copy-42QJj7c$default (Lio/github/sceneview/ar/node/ARFogConfig;FFFJZILjava/lang/Object;)Lio/github/sceneview/ar/node/ARFogConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getColor-0d7_KjU ()J
+	public final fun getDensity ()F
+	public final fun getEnabled ()Z
+	public final fun getEnd ()F
+	public final fun getStart ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/node/ARFogNodeKt {
+	public static final fun ARFogNode-cd68TDI (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/camera/ARCameraStream;FFFJZLandroidx/compose/runtime/Composer;II)V
+	public static final fun computeARFogFactor (FFFFZ)F
+	public static synthetic fun computeARFogFactor$default (FFFFZILjava/lang/Object;)F
+}
+
+public class io/github/sceneview/ar/node/AnchorNode : io/github/sceneview/ar/node/PoseNode {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Anchor;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Anchor;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun destroy ()V
+	public fun detachAnchor ()V
+	public final fun getAnchor ()Lcom/google/ar/core/Anchor;
+	public final fun getOnAnchorChanged ()Lkotlin/jvm/functions/Function1;
+	public final fun getOnTrackingStateChanged ()Lkotlin/jvm/functions/Function1;
+	public final fun getOnUpdated ()Lkotlin/jvm/functions/Function1;
+	public fun getTrackingState ()Lcom/google/ar/core/TrackingState;
+	public final fun getUpdateAnchorPose ()Z
+	public final fun getVisibleTrackingStates ()Ljava/util/Set;
+	public fun isPositionEditable ()Z
+	public fun isVisible ()Z
+	public fun onMoveBegin (Lio/github/sceneview/gesture/MoveGestureDetector;Landroid/view/MotionEvent;)Z
+	public fun onMoveEnd (Lio/github/sceneview/gesture/MoveGestureDetector;Landroid/view/MotionEvent;)V
+	public final fun setAnchor (Lcom/google/ar/core/Anchor;)V
+	public final fun setOnAnchorChanged (Lkotlin/jvm/functions/Function1;)V
+	public final fun setOnTrackingStateChanged (Lkotlin/jvm/functions/Function1;)V
+	public final fun setOnUpdated (Lkotlin/jvm/functions/Function1;)V
+	public fun setPositionEditable (Z)V
+	protected fun setTrackingState (Lcom/google/ar/core/TrackingState;)V
+	public final fun setUpdateAnchorPose (Z)V
+	public fun setVisible (Z)V
+	public final fun setVisibleTrackingStates (Ljava/util/Set;)V
+	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public class io/github/sceneview/ar/node/AugmentedFaceNode : io/github/sceneview/ar/node/TrackableNode {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/AugmentedFace;Lcom/google/android/filament/MaterialInstance;ZLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/AugmentedFace;Lcom/google/android/filament/MaterialInstance;ZLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun destroy ()V
+	public final fun getAugmentedFace ()Lcom/google/ar/core/AugmentedFace;
+	public final fun getCenterNode ()Lio/github/sceneview/ar/node/PoseNode;
+	public final fun getMeshNode ()Lio/github/sceneview/node/MeshNode;
+	public final fun getRegionNodes ()Ljava/util/Map;
+	public fun update (Lcom/google/ar/core/AugmentedFace;)V
+	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+	public synthetic fun update (Lcom/google/ar/core/Trackable;)V
+}
+
+public class io/github/sceneview/ar/node/AugmentedImageNode : io/github/sceneview/ar/node/TrackableNode {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/AugmentedImage;ZLjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/AugmentedImage;ZLjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getApplyImageScale ()Z
+	public final fun getAugmentedImage ()Lcom/google/ar/core/AugmentedImage;
+	public final fun getImageName ()Ljava/lang/String;
+	public final fun getOnTrackingMethodChanged ()Lkotlin/jvm/functions/Function1;
+	public fun getTrackingMethod ()Lcom/google/ar/core/AugmentedImage$TrackingMethod;
+	public final fun getVisibleTrackingMethods ()Ljava/util/Set;
+	public fun isVisible ()Z
+	public final fun setApplyImageScale (Z)V
+	protected fun setTrackingMethod (Lcom/google/ar/core/AugmentedImage$TrackingMethod;)V
+	public fun setVisible (Z)V
+	public fun update (Lcom/google/ar/core/AugmentedImage;)V
+	public synthetic fun update (Lcom/google/ar/core/Trackable;)V
+}
+
+public class io/github/sceneview/ar/node/CloudAnchorNode : io/github/sceneview/ar/node/AnchorNode {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/node/CloudAnchorNode$Companion;
+	public fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Anchor;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Anchor;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun cancelHost ()V
+	public fun destroy ()V
+	public final fun getCloudAnchorId ()Ljava/lang/String;
+	public final fun getHostState ()Lcom/google/ar/core/Anchor$CloudAnchorState;
+	public final fun getHostTask ()Lcom/google/ar/core/HostCloudAnchorFuture;
+	public final fun getOnHosted ()Lkotlin/jvm/functions/Function2;
+	public final fun host (Lcom/google/ar/core/Session;ILkotlin/jvm/functions/Function2;)Lcom/google/ar/core/HostCloudAnchorFuture;
+	public static synthetic fun host$default (Lio/github/sceneview/ar/node/CloudAnchorNode;Lcom/google/ar/core/Session;ILkotlin/jvm/functions/Function2;ILjava/lang/Object;)Lcom/google/ar/core/HostCloudAnchorFuture;
+	public fun onHosted (Ljava/lang/String;Lcom/google/ar/core/Anchor$CloudAnchorState;)V
+	public final fun setHostTask (Lcom/google/ar/core/HostCloudAnchorFuture;)V
+	public final fun setOnHosted (Lkotlin/jvm/functions/Function2;)V
+}
+
+public final class io/github/sceneview/ar/node/CloudAnchorNode$Companion {
+	public final fun getTTL_DAYS_RANGE ()Lkotlin/ranges/IntRange;
+	public final fun resolve (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Session;Ljava/lang/String;Lkotlin/jvm/functions/Function2;)Lcom/google/ar/core/ResolveCloudAnchorFuture;
+}
+
+public class io/github/sceneview/ar/node/DepthHitResultNode : io/github/sceneview/ar/node/PoseNode {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;FF)V
+	public fun <init> (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function2;)V
+	public final fun getDepthHitResult ()Lio/github/sceneview/ar/arcore/DepthHitResult;
+	public final fun getHitTest ()Lkotlin/jvm/functions/Function2;
+	public final fun getUpdate ()Z
+	protected final fun setDepthHitResult (Lio/github/sceneview/ar/arcore/DepthHitResult;)V
+	public final fun setUpdate (Z)V
+	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public class io/github/sceneview/ar/node/DepthMeshNode : io/github/sceneview/node/MeshNode {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/node/DepthMeshNode$Companion;
+	public static final field DEFAULT_REFRESH_INTERVAL_MS J
+	public fun <init> (Lcom/google/android/filament/Engine;JIFLcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;JIFLcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun destroy ()V
+	public final fun getCurrentIndexBuffer ()Lcom/google/android/filament/IndexBuffer;
+	public final fun getCurrentVertexBuffer ()Lcom/google/android/filament/VertexBuffer;
+	public final fun getEdgeThresholdMeters ()F
+	public final fun getLatestSnapshot ()Lio/github/sceneview/ar/node/DepthMeshSnapshot;
+	public final fun getOnMeshRebuilt ()Lkotlin/jvm/functions/Function1;
+	public final fun getRefreshIntervalMs ()J
+	public final fun getStride ()I
+	protected fun nowMs ()J
+	public final fun setEdgeThresholdMeters (F)V
+	protected final fun setLatestSnapshot (Lio/github/sceneview/ar/node/DepthMeshSnapshot;)V
+	public final fun setOnMeshRebuilt (Lkotlin/jvm/functions/Function1;)V
+	public final fun setRefreshIntervalMs (J)V
+	public final fun setStride (I)V
+	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public final class io/github/sceneview/ar/node/DepthMeshNode$Companion {
+}
+
+public final class io/github/sceneview/ar/node/DepthMeshSnapshot {
+	public static final field $stable I
+	public fun <init> ([F[IIILdev/romainguy/kotlin/math/Mat4;J)V
+	public final fun component1 ()[F
+	public final fun component2 ()[I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Ldev/romainguy/kotlin/math/Mat4;
+	public final fun component6 ()J
+	public final fun copy ([F[IIILdev/romainguy/kotlin/math/Mat4;J)Lio/github/sceneview/ar/node/DepthMeshSnapshot;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/node/DepthMeshSnapshot;[F[IIILdev/romainguy/kotlin/math/Mat4;JILjava/lang/Object;)Lio/github/sceneview/ar/node/DepthMeshSnapshot;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeight ()I
+	public final fun getIndices ()[I
+	public final fun getPositions ()[F
+	public final fun getTimestampMs ()J
+	public final fun getTriangleCount ()I
+	public final fun getVertexCount ()I
+	public final fun getWidth ()I
+	public final fun getWorldTransform ()Ldev/romainguy/kotlin/math/Mat4;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public class io/github/sceneview/ar/node/HitResultNode : io/github/sceneview/ar/node/TrackableNode {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;J)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function2;)V
+	public fun getHitResult ()Lcom/google/ar/core/HitResult;
+	public final fun getHitTest ()Lkotlin/jvm/functions/Function2;
+	public final fun getRefreshIntervalMs ()J
+	public final fun getUpdate ()Z
+	protected fun nowMs ()J
+	protected fun resolveHitPose (Lcom/google/ar/core/Pose;)Lcom/google/ar/core/Pose;
+	public fun setHitResult (Lcom/google/ar/core/HitResult;)V
+	public final fun setRefreshIntervalMs (J)V
+	public final fun setUpdate (Z)V
+	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public final class io/github/sceneview/ar/node/MeshClassification : java/lang/Enum {
+	public static final field BUILDING Lio/github/sceneview/ar/node/MeshClassification;
+	public static final field CEILING Lio/github/sceneview/ar/node/MeshClassification;
+	public static final field DOOR Lio/github/sceneview/ar/node/MeshClassification;
+	public static final field FLOOR Lio/github/sceneview/ar/node/MeshClassification;
+	public static final field SEAT Lio/github/sceneview/ar/node/MeshClassification;
+	public static final field TABLE Lio/github/sceneview/ar/node/MeshClassification;
+	public static final field TERRAIN Lio/github/sceneview/ar/node/MeshClassification;
+	public static final field UNLABELED Lio/github/sceneview/ar/node/MeshClassification;
+	public static final field WALL Lio/github/sceneview/ar/node/MeshClassification;
+	public static final field WINDOW Lio/github/sceneview/ar/node/MeshClassification;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/node/MeshClassification;
+	public static fun values ()[Lio/github/sceneview/ar/node/MeshClassification;
+}
+
+public class io/github/sceneview/ar/node/PlacementReticleNode : io/github/sceneview/ar/node/ReticleNode {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/node/PlacementReticleNode$Companion;
+	public static final field DEFAULT_ORIENTATION_SMOOTHING F
+	public fun <init> (Lcom/google/android/filament/Engine;FFZZFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;FFZZFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getHitResult ()Lcom/google/ar/core/HitResult;
+	public final fun getOrientationSmoothing ()F
+	protected fun resolveHitPose (Lcom/google/ar/core/Pose;)Lcom/google/ar/core/Pose;
+	public fun setHitResult (Lcom/google/ar/core/HitResult;)V
+	public final fun setOrientationSmoothing (F)V
+}
+
+public final class io/github/sceneview/ar/node/PlacementReticleNode$Companion {
+}
+
+public class io/github/sceneview/ar/node/PlaneNode : io/github/sceneview/ar/node/TrackableNode {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Plane;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Plane;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getExtentX ()F
+	public final fun getExtentZ ()F
+	public final fun getPlane ()Lcom/google/ar/core/Plane;
+	public final fun getType ()Lcom/google/ar/core/Plane$Type;
+	public fun update (Lcom/google/ar/core/Plane;)V
+	public synthetic fun update (Lcom/google/ar/core/Trackable;)V
+}
+
+public class io/github/sceneview/ar/node/PointCloudNode : io/github/sceneview/node/MeshNode {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/node/PointCloudNode$Companion;
+	public static final field DEFAULT_CONFIDENCE_THRESHOLD F
+	public static final field DEFAULT_REFRESH_INTERVAL_MS J
+	public fun <init> (Lcom/google/android/filament/Engine;FJLcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;FJLcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun destroy ()V
+	public final fun getConfidenceThreshold ()F
+	public final fun getOnPointCloudUpdated ()Lkotlin/jvm/functions/Function1;
+	public final fun getPointCount ()I
+	public final fun getRefreshIntervalMs ()J
+	protected fun nowMs ()J
+	public final fun setConfidenceThreshold (F)V
+	public final fun setOnPointCloudUpdated (Lkotlin/jvm/functions/Function1;)V
+	protected final fun setPointCount (I)V
+	public final fun setRefreshIntervalMs (J)V
+	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public final class io/github/sceneview/ar/node/PointCloudNode$Companion {
+}
+
+public class io/github/sceneview/ar/node/PoseNode : io/github/sceneview/node/Node {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Pose;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Pose;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun createAnchor ()Lcom/google/ar/core/Anchor;
+	public fun createAnchorNode ()Lio/github/sceneview/ar/node/AnchorNode;
+	public fun getCameraTrackingState ()Lcom/google/ar/core/TrackingState;
+	public final fun getFrame ()Lcom/google/ar/core/Frame;
+	public final fun getMoveHitTest ()Lkotlin/jvm/functions/Function3;
+	public final fun getOnPoseChanged ()Lkotlin/jvm/functions/Function1;
+	public final fun getPose ()Lcom/google/ar/core/Pose;
+	public final fun getSession ()Lcom/google/ar/core/Session;
+	public final fun getVisibleCameraTrackingStates ()Ljava/util/Set;
+	public fun isRotationEditable ()Z
+	public fun isVisible ()Z
+	public fun onCameraTrackingChanged (Lcom/google/ar/core/TrackingState;)V
+	public fun onMove (Lio/github/sceneview/gesture/MoveGestureDetector;Landroid/view/MotionEvent;)Z
+	public fun onMove (Lio/github/sceneview/gesture/MoveGestureDetector;Landroid/view/MotionEvent;Lcom/google/ar/core/Pose;)Z
+	public fun onPoseChanged (Lcom/google/ar/core/Pose;)V
+	protected fun setCameraTrackingState (Lcom/google/ar/core/TrackingState;)V
+	public final fun setFrame (Lcom/google/ar/core/Frame;)V
+	public final fun setMoveHitTest (Lkotlin/jvm/functions/Function3;)V
+	public final fun setOnPoseChanged (Lkotlin/jvm/functions/Function1;)V
+	public final fun setPose (Lcom/google/ar/core/Pose;)V
+	public fun setRotationEditable (Z)V
+	public final fun setSession (Lcom/google/ar/core/Session;)V
+	public fun setVisible (Z)V
+	public final fun setVisibleCameraTrackingStates (Ljava/util/Set;)V
+	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public class io/github/sceneview/ar/node/ReticleNode : io/github/sceneview/ar/node/HitResultNode {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getHitResult ()Lcom/google/ar/core/HitResult;
+	public final fun getOnHitResultChanged ()Lkotlin/jvm/functions/Function1;
+	public fun setHitResult (Lcom/google/ar/core/HitResult;)V
+	public final fun setOnHitResultChanged (Lkotlin/jvm/functions/Function1;)V
+}
+
+public class io/github/sceneview/ar/node/RooftopAnchorNode : io/github/sceneview/ar/node/AnchorNode {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/node/RooftopAnchorNode$Companion;
+	public final fun getAltitudeAboveRooftop ()D
+	public final fun getEusQuaternion ()Ldev/romainguy/kotlin/math/Quaternion;
+	public final fun getLatitude ()D
+	public final fun getLongitude ()D
+}
+
+public final class io/github/sceneview/ar/node/RooftopAnchorNode$Companion {
+	public final fun resolve (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Session;DDDLdev/romainguy/kotlin/math/Quaternion;Lkotlin/jvm/functions/Function2;)Lcom/google/ar/core/ResolveAnchorOnRooftopFuture;
+}
+
+public class io/github/sceneview/ar/node/SceneMeshNode : io/github/sceneview/ar/node/StreetscapeGeometryNode {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/StreetscapeGeometry;Lcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/StreetscapeGeometry;Lcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getClassification ()Lio/github/sceneview/ar/node/MeshClassification;
+}
+
+public final class io/github/sceneview/ar/node/SceneMeshNodeKt {
+	public static final fun toMeshClassification (Lcom/google/ar/core/StreetscapeGeometry$Type;)Lio/github/sceneview/ar/node/MeshClassification;
+}
+
+public class io/github/sceneview/ar/node/ShadowReceiverPlaneNode : io/github/sceneview/ar/node/PlaneNode {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/node/ShadowReceiverPlaneNode$Companion;
+	public static final field DEFAULT_EXTENT_METERS F
+	public static final field DEFAULT_SHADOW_INTENSITY F
+	public static final field MATERIAL_FILE_LOCATION Ljava/lang/String;
+	public static final field MATERIAL_SHADOW_INTENSITY Ljava/lang/String;
+	public static final field SHADOW_AABB_CENTER_Y F
+	public static final field SHADOW_AABB_HALF_HEIGHT F
+	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/MaterialLoader;Lcom/google/ar/core/Plane;FLjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/MaterialLoader;Lcom/google/ar/core/Plane;FLjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun destroy ()V
+	public final fun getMaterialInstance ()Lcom/google/android/filament/MaterialInstance;
+	public final fun getMeshNode ()Lio/github/sceneview/node/PlaneNode;
+	public final fun getShadowIntensity ()F
+	public final fun setShadowIntensity (F)V
+	public fun update (Lcom/google/ar/core/Plane;)V
+	public synthetic fun update (Lcom/google/ar/core/Trackable;)V
+}
+
+public final class io/github/sceneview/ar/node/ShadowReceiverPlaneNode$Companion {
+}
+
+public class io/github/sceneview/ar/node/StreetscapeGeometryNode : io/github/sceneview/ar/node/TrackableNode {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/StreetscapeGeometry;Lcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lcom/google/ar/core/StreetscapeGeometry;Lcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getMeshNode ()Lio/github/sceneview/node/MeshNode;
+	public final fun getQuality ()Lcom/google/ar/core/StreetscapeGeometry$Quality;
+	public final fun getStreetscapeGeometry ()Lcom/google/ar/core/StreetscapeGeometry;
+	public final fun getType ()Lcom/google/ar/core/StreetscapeGeometry$Type;
+	public fun update (Lcom/google/ar/core/StreetscapeGeometry;)V
+	public synthetic fun update (Lcom/google/ar/core/Trackable;)V
+}
+
+public class io/github/sceneview/ar/node/TerrainAnchorNode : io/github/sceneview/ar/node/AnchorNode {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/node/TerrainAnchorNode$Companion;
+	public final fun getAltitudeAboveTerrain ()D
+	public final fun getEusQuaternion ()Ldev/romainguy/kotlin/math/Quaternion;
+	public final fun getLatitude ()D
+	public final fun getLongitude ()D
+}
+
+public final class io/github/sceneview/ar/node/TerrainAnchorNode$Companion {
+	public final fun resolve (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Session;DDDLdev/romainguy/kotlin/math/Quaternion;Lkotlin/jvm/functions/Function2;)Lcom/google/ar/core/ResolveAnchorOnTerrainFuture;
+}
+
+public class io/github/sceneview/ar/node/TrackableNode : io/github/sceneview/ar/node/PoseNode {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun createAnchor ()Lcom/google/ar/core/Anchor;
+	public fun createAnchorNode ()Lio/github/sceneview/ar/node/AnchorNode;
+	public final fun getAnchors ()Ljava/util/Collection;
+	public final fun getOnTrackingStateChanged ()Lkotlin/jvm/functions/Function1;
+	public final fun getOnUpdated ()Lkotlin/jvm/functions/Function1;
+	public final fun getTrackable ()Lcom/google/ar/core/Trackable;
+	public final fun getTrackingState ()Lcom/google/ar/core/TrackingState;
+	public final fun getVisibleTrackingStates ()Ljava/util/Set;
+	public fun isVisible ()Z
+	public final fun setOnTrackingStateChanged (Lkotlin/jvm/functions/Function1;)V
+	public final fun setOnUpdated (Lkotlin/jvm/functions/Function1;)V
+	public final fun setTrackable (Lcom/google/ar/core/Trackable;)V
+	protected final fun setTrackingState (Lcom/google/ar/core/TrackingState;)V
+	public fun setVisible (Z)V
+	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+	public fun update (Lcom/google/ar/core/Trackable;)V
+}
+
+public final class io/github/sceneview/ar/physics/DepthCollider : io/github/sceneview/node/FloorProvider {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/physics/DepthCollider$Companion;
+	public fun <init> (Lio/github/sceneview/ar/node/DepthMeshNode;)V
+	public synthetic fun <init> (Lio/github/sceneview/ar/node/DepthMeshNode;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun destroy ()V
+	public fun floorYAt (FFFF)Ljava/lang/Float;
+	public final fun floorYAt (Ldev/romainguy/kotlin/math/Float3;F)Ljava/lang/Float;
+	public final fun getLastRebuildTimestampMs ()J
+	public final fun getTriangleCount ()I
+	public final fun setBodiesRegion ([FF)V
+}
+
+public final class io/github/sceneview/ar/physics/DepthCollider$Companion {
+}
+
+public final class io/github/sceneview/ar/postprocessing/ARDepthOfFieldKt {
+	public static final fun applyARDepthOfField (Lcom/google/android/filament/View;Lio/github/sceneview/components/CameraComponent;Lio/github/sceneview/ar/postprocessing/ARDepthOfFieldOptions;)V
+	public static final fun arDepthOfField (Lcom/google/android/filament/View;Lio/github/sceneview/components/CameraComponent;Lio/github/sceneview/ar/postprocessing/ARDepthOfFieldOptions;Landroidx/compose/runtime/Composer;I)V
+	public static final fun depthFocusDistance (Lcom/google/ar/core/Frame;FF)Ljava/lang/Float;
+}
+
+public final class io/github/sceneview/ar/postprocessing/ARDepthOfFieldOptions {
+	public static final field $stable I
+	public fun <init> (FFZ)V
+	public synthetic fun <init> (FFZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()Z
+	public final fun copy (FFZ)Lio/github/sceneview/ar/postprocessing/ARDepthOfFieldOptions;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/postprocessing/ARDepthOfFieldOptions;FFZILjava/lang/Object;)Lio/github/sceneview/ar/postprocessing/ARDepthOfFieldOptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBlurStrength ()F
+	public final fun getEnabled ()Z
+	public final fun getFocusDepth ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/recording/ARRecordInterpretation {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/recording/ARRecordInterpretation$Companion;
+	public fun <init> (IIDFFLjava/util/Map;IIF)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()D
+	public final fun component4 ()F
+	public final fun component5 ()F
+	public final fun component6 ()Ljava/util/Map;
+	public final fun component7 ()I
+	public final fun component8 ()I
+	public final fun component9 ()F
+	public final fun copy (IIDFFLjava/util/Map;IIF)Lio/github/sceneview/ar/recording/ARRecordInterpretation;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/recording/ARRecordInterpretation;IIDFFLjava/util/Map;IIFILjava/lang/Object;)Lio/github/sceneview/ar/recording/ARRecordInterpretation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationSeconds ()D
+	public final fun getFailureReasonFrameCounts ()Ljava/util/Map;
+	public final fun getFrameCount ()I
+	public final fun getHorizontalPlaneCount ()I
+	public final fun getPlaneAreaMeters2 ()F
+	public final fun getPlaneCount ()I
+	public final fun getTrackedFrameCount ()I
+	public final fun getTrackedFrameRatio ()D
+	public final fun getTrajectoryExtentMeters ()F
+	public final fun getTrajectoryLengthMeters ()F
+	public final fun getVerticalPlaneCount ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/recording/ARRecordInterpretation$Companion {
+	public final fun getEMPTY ()Lio/github/sceneview/ar/recording/ARRecordInterpretation;
+}
+
+public final class io/github/sceneview/ar/recording/ARRecordInterpreter {
+	public static final field $stable I
+	public fun <init> ()V
+	public final fun getInterpretation ()Lio/github/sceneview/ar/recording/ARRecordInterpretation;
+	public final fun ingest (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+	public final fun reset ()V
+}
+
+public final class io/github/sceneview/ar/recording/ARRecordInterpreterCore {
+	public static final field $stable I
+	public fun <init> ()V
+	public final fun fold (Lio/github/sceneview/ar/recording/FrameSample;)Lio/github/sceneview/ar/recording/ARRecordInterpretation;
+	public final fun reset ()V
+}
+
+public final class io/github/sceneview/ar/recording/ARRecordInterpreterKt {
+	public static final fun rememberARRecordInterpreter (Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/ar/recording/ARRecordInterpreter;
+}
+
+public final class io/github/sceneview/ar/recording/ARRecorder {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/recording/ARRecorder$Companion;
+	public static final field MAX_PENDING_TRACKS I
+	public fun <init> ()V
+	public final fun addTrack (Ljava/util/UUID;Ljava/lang/String;)Lio/github/sceneview/ar/recording/ARRecorder$TrackHandle;
+	public final fun attach (Lcom/google/ar/core/Session;)V
+	public final fun clearError ()V
+	public final fun clearTracks ()V
+	public final fun detach ()V
+	public static final fun exportToDownloads (Landroid/content/Context;Ljava/io/File;)Landroid/net/Uri;
+	public static final fun exportToDownloads (Landroid/content/Context;Ljava/io/File;Ljava/lang/String;)Landroid/net/Uri;
+	public static final fun exportToDownloads (Landroid/content/Context;Ljava/io/File;Ljava/lang/String;Ljava/lang/String;)Landroid/net/Uri;
+	public final fun getErrorMessage ()Ljava/lang/String;
+	public final fun getRecordingFile ()Ljava/io/File;
+	public final fun getState ()Lio/github/sceneview/ar/recording/ARRecorder$State;
+	public static final fun pickCameraConfig (Ljava/util/List;Landroid/util/Size;)Lcom/google/ar/core/CameraConfig;
+	public final fun recordFrame (Lcom/google/ar/core/Session;)V
+	public final fun recordTrack (Lio/github/sceneview/ar/recording/ARRecorder$TrackHandle;Lcom/google/ar/core/Frame;Ljava/nio/ByteBuffer;)Z
+	public final fun start (Lcom/google/ar/core/Session;Ljava/io/File;Ljava/lang/Integer;Landroid/util/Size;)Z
+	public final fun start (Ljava/io/File;Ljava/lang/Integer;Landroid/util/Size;)Z
+	public static synthetic fun start$default (Lio/github/sceneview/ar/recording/ARRecorder;Lcom/google/ar/core/Session;Ljava/io/File;Ljava/lang/Integer;Landroid/util/Size;ILjava/lang/Object;)Z
+	public static synthetic fun start$default (Lio/github/sceneview/ar/recording/ARRecorder;Ljava/io/File;Ljava/lang/Integer;Landroid/util/Size;ILjava/lang/Object;)Z
+	public final fun stop ()Ljava/io/File;
+	public static final fun surfaceRotationToDegrees (I)I
+}
+
+public final class io/github/sceneview/ar/recording/ARRecorder$Companion {
+	public final fun exportToDownloads (Landroid/content/Context;Ljava/io/File;)Landroid/net/Uri;
+	public final fun exportToDownloads (Landroid/content/Context;Ljava/io/File;Ljava/lang/String;)Landroid/net/Uri;
+	public final fun exportToDownloads (Landroid/content/Context;Ljava/io/File;Ljava/lang/String;Ljava/lang/String;)Landroid/net/Uri;
+	public static synthetic fun exportToDownloads$default (Lio/github/sceneview/ar/recording/ARRecorder$Companion;Landroid/content/Context;Ljava/io/File;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Landroid/net/Uri;
+	public final fun pickCameraConfig (Ljava/util/List;Landroid/util/Size;)Lcom/google/ar/core/CameraConfig;
+	public final fun surfaceRotationToDegrees (I)I
+}
+
+public final class io/github/sceneview/ar/recording/ARRecorder$State : java/lang/Enum {
+	public static final field ERROR Lio/github/sceneview/ar/recording/ARRecorder$State;
+	public static final field IDLE Lio/github/sceneview/ar/recording/ARRecorder$State;
+	public static final field IO_ERROR Lio/github/sceneview/ar/recording/ARRecorder$State;
+	public static final field RECORDING Lio/github/sceneview/ar/recording/ARRecorder$State;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/recording/ARRecorder$State;
+	public static fun values ()[Lio/github/sceneview/ar/recording/ARRecorder$State;
+}
+
+public final class io/github/sceneview/ar/recording/ARRecorder$TrackHandle {
+	public static final field $stable I
+	public fun <init> (Ljava/util/UUID;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/util/UUID;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/util/UUID;Ljava/lang/String;)Lio/github/sceneview/ar/recording/ARRecorder$TrackHandle;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/recording/ARRecorder$TrackHandle;Ljava/util/UUID;Ljava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/ar/recording/ARRecorder$TrackHandle;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMimeType ()Ljava/lang/String;
+	public final fun getUuid ()Ljava/util/UUID;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/recording/ARRecorderKt {
+	public static final fun rememberARPlaybackStatus (Lcom/google/ar/core/Session;Landroidx/compose/runtime/Composer;I)Landroidx/compose/runtime/State;
+	public static final fun rememberARRecorder (Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/ar/recording/ARRecorder;
+}
+
+public final class io/github/sceneview/ar/recording/FrameSample {
+	public static final field $stable I
+	public fun <init> (JZLcom/google/ar/core/TrackingFailureReason;FFFLjava/util/List;)V
+	public synthetic fun <init> (JZLcom/google/ar/core/TrackingFailureReason;FFFLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()Z
+	public final fun component3 ()Lcom/google/ar/core/TrackingFailureReason;
+	public final fun component4 ()F
+	public final fun component5 ()F
+	public final fun component6 ()F
+	public final fun component7 ()Ljava/util/List;
+	public final fun copy (JZLcom/google/ar/core/TrackingFailureReason;FFFLjava/util/List;)Lio/github/sceneview/ar/recording/FrameSample;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/recording/FrameSample;JZLcom/google/ar/core/TrackingFailureReason;FFFLjava/util/List;ILjava/lang/Object;)Lio/github/sceneview/ar/recording/FrameSample;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCameraX ()F
+	public final fun getCameraY ()F
+	public final fun getCameraZ ()F
+	public final fun getFailureReason ()Lcom/google/ar/core/TrackingFailureReason;
+	public final fun getPlanes ()Ljava/util/List;
+	public final fun getTimestampNanos ()J
+	public final fun getTracking ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/recording/PlaneSample {
+	public static final field $stable I
+	public fun <init> (IFFZ)V
+	public final fun component1 ()I
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()Z
+	public final fun copy (IFFZ)Lio/github/sceneview/ar/recording/PlaneSample;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/recording/PlaneSample;IFFZILjava/lang/Object;)Lio/github/sceneview/ar/recording/PlaneSample;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExtentX ()F
+	public final fun getExtentZ ()F
+	public final fun getId ()I
+	public final fun getVertical ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/rerun/RememberRerunBridgeKt {
+	public static final fun rememberRerunBridge (Ljava/lang/String;IIZLandroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/rerun/RerunBridge;
+}
+
+public final class io/github/sceneview/ar/rerun/RerunBridge {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/rerun/RerunBridge$Companion;
+	public static final field DEFAULT_HOST Ljava/lang/String;
+	public static final field DEFAULT_PORT I
+	public static final field DEFAULT_RATE_HZ I
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;I)V
+	public fun <init> (Ljava/lang/String;II)V
+	public fun <init> (Ljava/lang/String;IILjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;IILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun close ()V
+	public final fun closeAsync ()Lkotlinx/coroutines/Job;
+	public final fun connect ()V
+	public final fun disconnect ()V
+	public final fun getEventsSent ()J
+	public final fun isConnected ()Z
+	public final fun logAnchors (Ljava/util/Collection;J)V
+	public final fun logCameraPose (Lcom/google/ar/core/Pose;J)V
+	public final fun logCameraTrail ([FJLjava/lang/String;)V
+	public static synthetic fun logCameraTrail$default (Lio/github/sceneview/ar/rerun/RerunBridge;[FJLjava/lang/String;ILjava/lang/Object;)V
+	public final fun logFrame (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+	public final fun logHitResult (Lcom/google/ar/core/HitResult;J)V
+	public final fun logPlanes (Ljava/util/Collection;J)V
+	public final fun logPointCloud (Lcom/google/ar/core/PointCloud;J)V
+	public final fun logScalar (FLjava/lang/String;J)V
+	public final fun requestSaveAndShare (Lkotlin/jvm/functions/Function1;)V
+	public final fun setEnabled (Z)V
+}
+
+public final class io/github/sceneview/ar/rerun/RerunBridge$Companion {
+}
+
+public final class io/github/sceneview/ar/rerun/RerunBridge$ShareResult {
+	public static final field $stable I
+	public fun <init> (ZLjava/lang/String;Ljava/lang/String;ILjava/lang/String;)V
+	public final fun component1 ()Z
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()I
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (ZLjava/lang/String;Ljava/lang/String;ILjava/lang/String;)Lio/github/sceneview/ar/rerun/RerunBridge$ShareResult;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/rerun/RerunBridge$ShareResult;ZLjava/lang/String;Ljava/lang/String;ILjava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/ar/rerun/RerunBridge$ShareResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEvents ()I
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getReason ()Ljava/lang/String;
+	public final fun getSuccess ()Z
+	public final fun getViewerUrl ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/scene/AnchorKt {
+	public static final fun destroy (Lcom/google/ar/core/Anchor;)V
+}
+
+public final class io/github/sceneview/ar/scene/PlaneRenderer : io/github/sceneview/ar/scene/PlaneRendererBase {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/scene/PlaneRenderer$Companion;
+	public static final field MATERIAL_COLOR Ljava/lang/String;
+	public static final field MATERIAL_TEXTURE Ljava/lang/String;
+	public static final field MATERIAL_UV_SCALE Ljava/lang/String;
+	public field viewSize Landroid/util/Size;
+	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/MaterialLoader;Lcom/google/android/filament/Scene;)V
+	public fun destroy ()V
+	public final fun getEngine ()Lcom/google/android/filament/Engine;
+	public final fun getMaxHitTestPerSecond ()I
+	public final fun getPlaneMaterial ()Lcom/google/android/filament/Material;
+	public final fun getPlaneRendererMode ()Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;
+	public final fun getPlaneTexture ()Lcom/google/android/filament/Texture;
+	public fun getViewSize ()Landroid/util/Size;
+	public fun isEnabled ()Z
+	public fun isShadowReceiver ()Z
+	public fun isVisible ()Z
+	public fun setEnabled (Z)V
+	public final fun setMaxHitTestPerSecond (I)V
+	public final fun setPlaneRendererMode (Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;)V
+	public fun setShadowReceiver (Z)V
+	public fun setViewSize (Landroid/util/Size;)V
+	public fun setVisible (Z)V
+	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public final class io/github/sceneview/ar/scene/PlaneRenderer$Companion {
+}
+
+public final class io/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode : java/lang/Enum {
+	public static final field RENDER_ALL Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;
+	public static final field RENDER_CENTER Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;
+	public static fun values ()[Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;
+}
+
+public abstract interface class io/github/sceneview/ar/scene/PlaneRendererBase {
+	public abstract fun destroy ()V
+	public abstract fun getViewSize ()Landroid/util/Size;
+	public abstract fun isEnabled ()Z
+	public abstract fun isShadowReceiver ()Z
+	public abstract fun isVisible ()Z
+	public abstract fun setEnabled (Z)V
+	public abstract fun setShadowReceiver (Z)V
+	public abstract fun setViewSize (Landroid/util/Size;)V
+	public abstract fun setVisible (Z)V
+	public abstract fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public final class io/github/sceneview/ar/scene/PlaneRendererBase$Version : java/lang/Enum {
+	public static final field V1 Lio/github/sceneview/ar/scene/PlaneRendererBase$Version;
+	public static final field V2 Lio/github/sceneview/ar/scene/PlaneRendererBase$Version;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/scene/PlaneRendererBase$Version;
+	public static fun values ()[Lio/github/sceneview/ar/scene/PlaneRendererBase$Version;
+}
+
+public final class io/github/sceneview/ar/scene/PlaneRendererV2 : io/github/sceneview/ar/scene/PlaneRendererBase {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/scene/PlaneRendererV2$Companion;
+	public static final field MATERIAL_COLOR Ljava/lang/String;
+	public static final field MATERIAL_GRID_ALPHA Ljava/lang/String;
+	public static final field MATERIAL_GRID_TINT Ljava/lang/String;
+	public static final field MATERIAL_METALLIC Ljava/lang/String;
+	public static final field MATERIAL_REFLECTANCE Ljava/lang/String;
+	public static final field MATERIAL_REFLECTION_FADE_IN Ljava/lang/String;
+	public static final field MATERIAL_ROUGHNESS Ljava/lang/String;
+	public static final field MATERIAL_SCAN_PLANE_RADIUS Ljava/lang/String;
+	public static final field MATERIAL_SCAN_PROGRESS Ljava/lang/String;
+	public static final field MATERIAL_SURFACE_ALPHA Ljava/lang/String;
+	public static final field MATERIAL_TEXTURE Ljava/lang/String;
+	public static final field MATERIAL_UV_SCALE Ljava/lang/String;
+	public field viewSize Landroid/util/Size;
+	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/MaterialLoader;Lcom/google/android/filament/Scene;)V
+	public fun destroy ()V
+	public final fun getEngine ()Lcom/google/android/filament/Engine;
+	public final fun getMaxHitTestPerSecond ()I
+	public final fun getPlaneMaterial ()Lcom/google/android/filament/Material;
+	public final fun getPlaneRendererMode ()Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;
+	public final fun getPlaneTexture ()Lcom/google/android/filament/Texture;
+	public fun getViewSize ()Landroid/util/Size;
+	public fun isEnabled ()Z
+	public fun isShadowReceiver ()Z
+	public fun isVisible ()Z
+	public fun setEnabled (Z)V
+	public final fun setMaxHitTestPerSecond (I)V
+	public final fun setPlaneRendererMode (Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;)V
+	public fun setShadowReceiver (Z)V
+	public fun setViewSize (Landroid/util/Size;)V
+	public fun setVisible (Z)V
+	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public final class io/github/sceneview/ar/scene/PlaneRendererV2$Companion {
+}
+
+public final class io/github/sceneview/ar/scene/SceneUnderstanding {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/scene/SceneUnderstanding$Companion;
+	public fun <init> ()V
+	public fun <init> (ZZZZ)V
+	public synthetic fun <init> (ZZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun component2 ()Z
+	public final fun component3 ()Z
+	public final fun component4 ()Z
+	public final fun copy (ZZZZ)Lio/github/sceneview/ar/scene/SceneUnderstanding;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/scene/SceneUnderstanding;ZZZZILjava/lang/Object;)Lio/github/sceneview/ar/scene/SceneUnderstanding;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLighting ()Z
+	public final fun getOcclusion ()Z
+	public final fun getPhysics ()Z
+	public final fun getPlaneVisualization ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/scene/SceneUnderstanding$Companion {
+	public final fun getFull ()Lio/github/sceneview/ar/scene/SceneUnderstanding;
+	public final fun getMinimal ()Lio/github/sceneview/ar/scene/SceneUnderstanding;
+	public final fun getNone ()Lio/github/sceneview/ar/scene/SceneUnderstanding;
+}
+
+public final class io/github/sceneview/ar/xr/XrFaceMesh {
+	public static final field $stable I
+	public static final field INDICES_PER_TRIANGLE I
+	public static final field INSTANCE Lio/github/sceneview/ar/xr/XrFaceMesh;
+	public static final field VERTEX_STRIDE I
+	public final fun centroid (Lio/github/sceneview/ar/xr/XrFaceMeshData;)Ldev/romainguy/kotlin/math/Float3;
+	public final fun extent (Lio/github/sceneview/ar/xr/XrFaceMeshData;)Ldev/romainguy/kotlin/math/Float3;
+	public final fun getRegionCount ()I
+	public final fun isValid (Lio/github/sceneview/ar/xr/XrFaceMeshData;)Z
+	public final fun lerp (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;F)Ldev/romainguy/kotlin/math/Float3;
+	public final fun regionDistance (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)F
+	public final fun trackedRegionCount ([Ldev/romainguy/kotlin/math/Float3;)I
+	public final fun vertexAt (Lio/github/sceneview/ar/xr/XrFaceMeshData;I)Ldev/romainguy/kotlin/math/Float3;
+}
+
+public final class io/github/sceneview/ar/xr/XrFaceMeshData {
+	public static final field $stable I
+	public fun <init> ([F[F[I)V
+	public final fun component1 ()[F
+	public final fun component2 ()[F
+	public final fun component3 ()[I
+	public final fun copy ([F[F[I)Lio/github/sceneview/ar/xr/XrFaceMeshData;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/xr/XrFaceMeshData;[F[F[IILjava/lang/Object;)Lio/github/sceneview/ar/xr/XrFaceMeshData;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIndices ()[I
+	public final fun getNormals ()[F
+	public final fun getTriangleCount ()I
+	public final fun getVertexCount ()I
+	public final fun getVertices ()[F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public class io/github/sceneview/ar/xr/XrFaceNode : io/github/sceneview/node/Node {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;Landroidx/xr/arcore/Face;Lcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Landroidx/xr/arcore/Face;Lcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun destroy ()V
+	public final fun getFace ()Landroidx/xr/arcore/Face;
+	public final fun getMesh ()Lio/github/sceneview/ar/xr/XrFaceMeshData;
+	public final fun getMeshMaterialInstance ()Lcom/google/android/filament/MaterialInstance;
+	public final fun getRegionNodes ()Ljava/util/List;
+	public final fun getRegionPositions ()[Ldev/romainguy/kotlin/math/Float3;
+	public final fun isTracking ()Z
+	public final fun regionNode (Lio/github/sceneview/ar/xr/XrFaceRegion;)Lio/github/sceneview/node/Node;
+	public final fun update ()V
+	public final fun update (Ljava/util/Map;Lio/github/sceneview/ar/xr/XrFaceMeshData;)V
+}
+
+public final class io/github/sceneview/ar/xr/XrFaceNodeKt {
+	public static final fun XrFaceNode (Lio/github/sceneview/SceneScope;Landroidx/xr/arcore/Face;Lcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public static final fun readFaceMesh (Landroidx/xr/arcore/Face;)Lio/github/sceneview/ar/xr/XrFaceMeshData;
+	public static final fun readFaceRegions (Landroidx/xr/arcore/Face;)Ljava/util/Map;
+}
+
+public final class io/github/sceneview/ar/xr/XrFaceRegion : java/lang/Enum {
+	public static final field CENTER Lio/github/sceneview/ar/xr/XrFaceRegion;
+	public static final field FOREHEAD_LEFT Lio/github/sceneview/ar/xr/XrFaceRegion;
+	public static final field FOREHEAD_RIGHT Lio/github/sceneview/ar/xr/XrFaceRegion;
+	public static final field NOSE_TIP Lio/github/sceneview/ar/xr/XrFaceRegion;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getUpstreamName ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/xr/XrFaceRegion;
+	public static fun values ()[Lio/github/sceneview/ar/xr/XrFaceRegion;
+}
+
+public final class io/github/sceneview/ar/xr/XrFeatures {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/xr/XrFeatures;
+	public final fun isAvailable (Landroid/content/Context;)Z
+}
+
+public final class io/github/sceneview/ar/xr/XrHandBone {
+	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/ar/xr/XrHandJoint;Lio/github/sceneview/ar/xr/XrHandJoint;)V
+	public final fun component1 ()Lio/github/sceneview/ar/xr/XrHandJoint;
+	public final fun component2 ()Lio/github/sceneview/ar/xr/XrHandJoint;
+	public final fun copy (Lio/github/sceneview/ar/xr/XrHandJoint;Lio/github/sceneview/ar/xr/XrHandJoint;)Lio/github/sceneview/ar/xr/XrHandBone;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/xr/XrHandBone;Lio/github/sceneview/ar/xr/XrHandJoint;Lio/github/sceneview/ar/xr/XrHandJoint;ILjava/lang/Object;)Lio/github/sceneview/ar/xr/XrHandBone;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFrom ()Lio/github/sceneview/ar/xr/XrHandJoint;
+	public final fun getTo ()Lio/github/sceneview/ar/xr/XrHandJoint;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/xr/XrHandJoint : java/lang/Enum {
+	public static final field INDEX_DISTAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field INDEX_INTERMEDIATE Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field INDEX_METACARPAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field INDEX_PROXIMAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field INDEX_TIP Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field LITTLE_DISTAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field LITTLE_INTERMEDIATE Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field LITTLE_METACARPAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field LITTLE_PROXIMAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field LITTLE_TIP Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field MIDDLE_DISTAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field MIDDLE_INTERMEDIATE Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field MIDDLE_METACARPAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field MIDDLE_PROXIMAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field MIDDLE_TIP Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field PALM Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field RING_DISTAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field RING_INTERMEDIATE Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field RING_METACARPAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field RING_PROXIMAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field RING_TIP Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field THUMB_DISTAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field THUMB_METACARPAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field THUMB_PROXIMAL Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field THUMB_TIP Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static final field WRIST Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/xr/XrHandJoint;
+	public static fun values ()[Lio/github/sceneview/ar/xr/XrHandJoint;
+}
+
+public class io/github/sceneview/ar/xr/XrHandNode : io/github/sceneview/node/Node {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;Landroidx/xr/arcore/Hand;Lio/github/sceneview/ar/xr/XrHandedness;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Landroidx/xr/arcore/Hand;Lio/github/sceneview/ar/xr/XrHandedness;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun destroy ()V
+	public final fun getHand ()Landroidx/xr/arcore/Hand;
+	public final fun getHandedness ()Lio/github/sceneview/ar/xr/XrHandedness;
+	public final fun getJointNodes ()Ljava/util/List;
+	public final fun getJointPositions ()[Ldev/romainguy/kotlin/math/Float3;
+	public final fun isTracking ()Z
+	public final fun jointNode (Lio/github/sceneview/ar/xr/XrHandJoint;)Lio/github/sceneview/node/Node;
+	public final fun update ()V
+	public final fun update (Ljava/util/Map;)V
+}
+
+public final class io/github/sceneview/ar/xr/XrHandNodeKt {
+	public static final fun XrHandNode (Lio/github/sceneview/SceneScope;Landroidx/xr/arcore/Hand;Lio/github/sceneview/ar/xr/XrHandedness;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public static final fun readHandJoints (Landroidx/xr/arcore/Hand;)Ljava/util/Map;
+}
+
+public final class io/github/sceneview/ar/xr/XrHandSkeleton {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/xr/XrHandSkeleton;
+	public final fun boneLength (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)F
+	public final fun boneMidpoint (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;
+	public final fun getBONES ()Ljava/util/List;
+	public final fun getJointCount ()I
+	public final fun lerp (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;F)Ldev/romainguy/kotlin/math/Float3;
+	public final fun totalBoneLength ([Ldev/romainguy/kotlin/math/Float3;)F
+	public final fun trackedJointCount ([Ldev/romainguy/kotlin/math/Float3;)I
+}
+
+public final class io/github/sceneview/ar/xr/XrHandedness : java/lang/Enum {
+	public static final field LEFT Lio/github/sceneview/ar/xr/XrHandedness;
+	public static final field RIGHT Lio/github/sceneview/ar/xr/XrHandedness;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/xr/XrHandedness;
+	public static fun values ()[Lio/github/sceneview/ar/xr/XrHandedness;
+}
+
+public abstract interface annotation class io/github/sceneview/ar/xr/XrPreviewApi : java/lang/annotation/Annotation {
+}
+

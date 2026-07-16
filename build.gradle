@@ -8,6 +8,46 @@ plugins {
     alias(libs.plugins.dokka) apply false
     alias(libs.plugins.publish) apply false
     alias(libs.plugins.detekt) apply false
+    // Public-API surface tracking (#2723). Applied (NOT `apply false`): the
+    // binary-compatibility-validator is a root-project plugin that registers
+    // the `apiDump` / `apiCheck` tasks and configures every non-ignored
+    // subproject from here.
+    alias(libs.plugins.binary.compatibility.validator)
+}
+
+// ── Public-API surface tracking (binary-compatibility-validator, #2723) ──────
+// Dumps the public ABI of the published library modules to committed `.api`
+// files. `./gradlew apiDump` regenerates them; `./gradlew apiCheck` (blocking
+// in ci.yml, same tier as the unit tests) fails a PR whose compiled public
+// surface no longer matches its committed dump — so a public signature change
+// is an intentional, reviewable diff. For the AI-first SDK this guards the
+// exact signatures that `llms.txt` promises against silent drift.
+apiValidation {
+    // Validate ONLY the three published library modules: sceneview,
+    // arsceneview (Android libraries) and sceneview-core (KMP). Everything
+    // else is ignored by project name:
+    ignoredProjects += [
+        // Samples / demo apps — not published, no API contract.
+        "common",
+        "android-demo",
+        "android-tv-demo",
+        "desktop-demo",
+        // sceneview-web is a JS-only KMP module published to npm, not Maven.
+        // Its single `js(IR)` target has no JVM/bytecode surface for the
+        // (JVM-based) validator to dump, and klib ABI validation is left
+        // disabled (see below). Its public API is only documented by the
+        // hand-written sceneview-web.d.ts — no automated JS ABI gate exists
+        // yet (shortlist #2642 item 12), so web API drift is NOT caught here.
+        "sceneview-web",
+    ]
+
+    // Klib (Kotlin/Native + JS) ABI validation stays DISABLED (the default).
+    // It is still experimental and, crucially, the iOS native klibs cannot be
+    // built on the ubuntu-latest CI runner that hosts `apiCheck`. sceneview-core
+    // is a KMP module, but its `jvm("android")` target dump already captures the
+    // whole shared commonMain public API, so the common surface is covered.
+    // Enabling klib validation is tracked as a follow-up once it stabilises and
+    // a macOS CI leg hosts it. (Equivalent: `klib { enabled = false }`.)
 }
 
 // Force patched versions of transitive npm dependencies (Dependabot security alerts)

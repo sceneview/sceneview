@@ -223,6 +223,49 @@ the full convention.
 
 After your changes are merged, the Discord bot will award you the **Contributor** role.
 
+### Public API changes
+
+SceneView is an **AI-first SDK**: `llms.txt` and the KDoc promise *exact* public
+signatures so an AI can generate correct code on the first try. To stop a public
+signature from changing silently, the published library modules — `sceneview`,
+`arsceneview` and `sceneview-core` — have their public ABI tracked by Kotlin's
+[`binary-compatibility-validator`](https://github.com/Kotlin/binary-compatibility-validator).
+Each module's public surface is dumped to a committed text file under
+`<module>/api/<module>.api`, and CI runs a **blocking** `apiCheck` (the
+`API compatibility` job in `ci.yml`, same tier as the unit tests).
+
+**If your change touches a public signature** (adds/removes/renames a public
+class, function, property, or changes a public type), `apiCheck` will fail with
+a diff naming the offending symbol, e.g.:
+
+```
+> API check failed for project sceneview-core.
+  +	public static final fun temporaryGateProbe (J)D
+  You can run :sceneview-core:apiDump task to overwrite API declarations
+```
+
+When the change is **intentional**, regenerate the dumps and commit the diff:
+
+```bash
+./gradlew apiDump          # rewrites <module>/api/*.api for every module
+git add '**/api/*.api'
+```
+
+The updated `.api` diff then rides along in your PR, so the reviewer sees the
+exact public-API delta — a new symbol, a removed one, or a changed signature —
+as a first-class part of the review. Treat a *removed* or *retyped* public symbol
+as a breaking change: it needs a deprecation cycle and a matching update to
+`llms.txt`, the KDoc, and the cross-platform surfaces (see
+[CLAUDE.md](CLAUDE.md) "Documentation drift").
+
+> **Scope.** Only the JVM public surface is validated. `sceneview-core`'s
+> `jvm("android")` dump already captures the shared `commonMain` API. Native
+> (iOS) and JS klib ABI validation stays disabled for now — it is experimental
+> and not buildable on the ubuntu CI runner. `sceneview-web` (a JS-only KMP
+> module published to npm, not Maven) has no JVM surface and is excluded; its
+> public API is documented via the hand-written `sceneview-web.d.ts` — there is
+> no automated JS ABI gate yet (a `.d.ts` drift gate is shortlist #2642 item 12).
+
 ### CI on docs-only PRs
 
 **Docs-only PRs** — changes confined to `*.md`, `docs/**`, `website-static/**`,
@@ -233,8 +276,9 @@ is pure noise. You will see fewer green checks than on a code PR; this is
 correct. Specifically:
 
 - **`ci.yml`** — the single consolidated PR workflow (`build`, `lint`,
-  `unit-test`, `web-desktop`, `flutter-demo`, `compile-kmp`, `repo-hygiene`,
-  `quality-gate`) — carries a `paths-ignore` filter for those paths, so it
+  `unit-test`, `api-check`, `web-desktop`, `flutter-demo`, `compile-kmp`,
+  `repo-hygiene`, `quality-gate`) — carries a `paths-ignore` filter for those
+  paths, so it
   does not trigger on a docs-only PR. (Before #1370 this was three separate
   workflows — `ci.yml`, `pr-check.yml`, `quality-gate.yml` — each with its
   own `changes` job; they are now one workflow with one path-detection job.)

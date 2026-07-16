@@ -82,6 +82,17 @@ mediapipeTasksVision = "0.10.26"
 mavenPublish = "0.37.0"
 dokka = "2.2.0"
 
+# Public-API surface tracking (#2723)
+# Kotlin binary-compatibility-validator — dumps the public ABI of the
+# published Android/KMP-JVM modules to committed `.api` files so any change
+# to a public signature is a reviewable diff (the `apiCheck` CI gate fails
+# a PR whose code no longer matches its committed dump). Validates the JVM
+# surface only: the `jvm("android")` dump of sceneview-core already captures
+# the shared commonMain API; native/JS klib ABI validation stays disabled
+# (experimental + not buildable on the ubuntu CI runner). See CONTRIBUTING.md
+# "Public API changes".
+binaryCompatibilityValidator = "0.18.1"
+
 # Testing
 androidxTestJunit = "1.3.0"
 androidxTestRunner = "1.7.0"
@@ -219,3 +230,4 @@ publish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
 detekt = { id = "dev.detekt", version.ref = "detekt" }
 roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
+binary-compatibility-validator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version.ref = "binaryCompatibilityValidator" }
