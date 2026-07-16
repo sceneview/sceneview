@@ -8,6 +8,10 @@ enum SketchfabError: Error, LocalizedError {
     case downloadFailed
     case modelNotFound
     case unsupportedFormat
+    /// The resolved USDZ exceeds `SketchfabConfig.maxModelBytes` — a hostile or
+    /// mistaken over-cap asset is refused before streaming, mirroring the Android
+    /// `NetworkModelDownloader.MAX_MODEL_BYTES` guard (#2645 / #2700).
+    case modelTooLarge(bytes: Int)
 
     var errorDescription: String? {
         switch self {
@@ -23,6 +27,8 @@ enum SketchfabError: Error, LocalizedError {
             return "No downloadable format available for the requested model."
         case .unsupportedFormat:
             return "This model isn't available in USDZ, the format required to view it on this device."
+        case .modelTooLarge(let bytes):
+            return "This model is too large to stream (\(bytes) bytes)."
         }
     }
 }
@@ -138,6 +144,13 @@ actor SketchfabService {
         )
         guard let usdz = response.appleFormat, let url = URL(string: usdz.url) else {
             throw SketchfabError.unsupportedFormat
+        }
+        // Bounded model download (#2645 / #2700): refuse an over-cap asset before
+        // streaming it into the cache, mirroring the Android per-file ceiling.
+        // `size == 0` means the API omitted it — allow it (the stream itself is
+        // still capped by the CDN's signed-URL contents).
+        if usdz.size > 0 && usdz.size > SketchfabConfig.maxModelBytes {
+            throw SketchfabError.modelTooLarge(bytes: usdz.size)
         }
         return url
     }
@@ -292,7 +305,12 @@ actor SketchfabService {
         // USDZ is the only format we download (RealityKit can't load GLB/glTF),
         // so the cached file must carry the .usdz extension — RealityKit
         // dispatches its loader on the file extension.
-        try cacheRoot().appendingPathComponent("\(uid).usdz")
+        //
+        // Sanitize the (server-supplied) uid into a single safe path segment
+        // before it becomes a cache filename — carries forward the Android
+        // path-traversal hardening so a crafted uid can never escape the cache
+        // directory (#2645 / #2700).
+        try cacheRoot().appendingPathComponent("\(GalleryCache.sanitize(uid)).usdz")
     }
 
     private func touch(_ url: URL) {

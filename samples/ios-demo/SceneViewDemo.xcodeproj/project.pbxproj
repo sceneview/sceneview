@@ -56,6 +56,9 @@
 		A10000010000000000000001 /* SceneViewDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* SceneViewDemoApp.swift */; };
 		A10000010000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* Assets.xcassets */; };
 		B4A94ABD8B5DA5F4E4CE4834 /* SketchfabService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FFA4BE9A50A8347603AA10E /* SketchfabService.swift */; };
+		DA0000000000000000000A01 /* ModelSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB0000000000000000000A01 /* ModelSource.swift */; };
+		DA0000000000000000000A02 /* GallerySources.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB0000000000000000000A02 /* GallerySources.swift */; };
+		DA0000000000000000000A03 /* GallerySourceRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB0000000000000000000A03 /* GallerySourceRegistry.swift */; };
 		E11525001A2B40A19EAECE6700000001 /* SketchfabSlug.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11525101A2B40A19EAECE6700000001 /* SketchfabSlug.swift */; };
 		E11525011A2B40A19EAECE6700000002 /* SampleAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11525111A2B40A19EAECE6700000002 /* SampleAssets.swift */; };
 		E11525021A2B40A19EAECE6700000003 /* SketchfabAssetResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11525121A2B40A19EAECE6700000003 /* SketchfabAssetResolver.swift */; };
@@ -179,6 +182,9 @@
 		5FA64989921B8BD7A9F30B31 /* ComingSoonScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComingSoonScreen.swift; path = SceneViewDemo/Views/ComingSoonScreen.swift; sourceTree = SOURCE_ROOT; };
 		6C214F8F9A1B35560E551895 /* SketchfabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabModels.swift; path = SceneViewDemo/Services/SketchfabModels.swift; sourceTree = SOURCE_ROOT; };
 		8FFA4BE9A50A8347603AA10E /* SketchfabService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabService.swift; path = SceneViewDemo/Services/SketchfabService.swift; sourceTree = SOURCE_ROOT; };
+		DB0000000000000000000A01 /* ModelSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ModelSource.swift; path = SceneViewDemo/Services/ModelSource.swift; sourceTree = SOURCE_ROOT; };
+		DB0000000000000000000A02 /* GallerySources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GallerySources.swift; path = SceneViewDemo/Services/GallerySources.swift; sourceTree = SOURCE_ROOT; };
+		DB0000000000000000000A03 /* GallerySourceRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GallerySourceRegistry.swift; path = SceneViewDemo/Services/GallerySourceRegistry.swift; sourceTree = SOURCE_ROOT; };
 		E11525101A2B40A19EAECE6700000001 /* SketchfabSlug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabSlug.swift; path = SceneViewDemo/Services/SketchfabSlug.swift; sourceTree = SOURCE_ROOT; };
 		E11525111A2B40A19EAECE6700000002 /* SampleAssets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SampleAssets.swift; path = SceneViewDemo/Services/SampleAssets.swift; sourceTree = SOURCE_ROOT; };
 		E11525121A2B40A19EAECE6700000003 /* SketchfabAssetResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabAssetResolver.swift; path = SceneViewDemo/Services/SketchfabAssetResolver.swift; sourceTree = SOURCE_ROOT; };
@@ -371,6 +377,9 @@
 				E11525101A2B40A19EAECE6700000001 /* SketchfabSlug.swift */,
 				E11525111A2B40A19EAECE6700000002 /* SampleAssets.swift */,
 				E11525121A2B40A19EAECE6700000003 /* SketchfabAssetResolver.swift */,
+				DB0000000000000000000A01 /* ModelSource.swift */,
+				DB0000000000000000000A02 /* GallerySources.swift */,
+				DB0000000000000000000A03 /* GallerySourceRegistry.swift */,
 				E6E3457CB732DF2AE71757CC /* MovableLightDemo.swift */,
 				C20000000000000000000060 /* AppStoreUpdater.swift */,
 			);
@@ -799,6 +808,9 @@
 				E11525001A2B40A19EAECE6700000001 /* SketchfabSlug.swift in Sources */,
 				E11525011A2B40A19EAECE6700000002 /* SampleAssets.swift in Sources */,
 				E11525021A2B40A19EAECE6700000003 /* SketchfabAssetResolver.swift in Sources */,
+				DA0000000000000000000A01 /* ModelSource.swift in Sources */,
+				DA0000000000000000000A02 /* GallerySources.swift in Sources */,
+				DA0000000000000000000A03 /* GallerySourceRegistry.swift in Sources */,
 				C10000000000000000000025 /* OrbitalARDemo.swift in Sources */,
 				C10000000000000000000031 /* ARRecorderDemo.swift in Sources */,
 				C10000000000000000000032 /* ARLightingDemo.swift in Sources */,

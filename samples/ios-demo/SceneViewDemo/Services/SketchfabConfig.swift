@@ -81,6 +81,12 @@ enum SketchfabConfig {
     /// Maximum cache size on disk, in bytes (500 MB).
     static let maxCacheBytes: Int64 = 500 * 1024 * 1024
 
+    /// Per-model streaming ceiling, in bytes (512 MB). A single model above this
+    /// is either hostile or a mistake — refuse it before streaming rather than
+    /// fill the disk. Mirrors the Android `NetworkModelDownloader.MAX_MODEL_BYTES`
+    /// guard (#2645 / #2700).
+    static let maxModelBytes: Int = 512 * 1024 * 1024
+
     /// Subdirectory under `Caches/` where downloaded GLB files live.
     static let cacheDirectoryName = "sketchfab"
 }
