@@ -4,13 +4,17 @@ Reference content for the **Data safety** form in Google Play Console
 (*App content → Data safety*). Transcribe these answers into the Play Console
 questionnaire — this file is the source of truth, not a file the CI uploads.
 
-> **Why this exists.** The demo app's optional **in-app feedback** feature
-> (umbrella [#1930](https://github.com/sceneview/sceneview/issues/1930)) records
-> the screen and microphone and uploads them to the SceneView feedback service.
-> That is data collection in Play's terms, so the Data safety form must declare
-> it — even though the feature is strictly opt-in. The data flow is described in
-> [`.github/PRIVACY_POLICY.md`](../../../../.github/PRIVACY_POLICY.md) and
-> [`feedback-worker/DEPLOY.md`](../../../../feedback-worker/DEPLOY.md).
+> **Why this exists.** The demo app's only feature that touches user-provided
+> data is the optional **in-app bug reporter**. It runs **entirely on-device**:
+> no runtime permission, no screen recording, no microphone, no background
+> service, and no upload to any SceneView-operated server. The report (device
+> info, the app's own recent log, and an optional screenshot of the app window)
+> is handed to the user, who chooses whether to send it — through the Android
+> **system share sheet**, or as a **pre-filled GitHub issue they review and
+> submit themselves**. Because the app never transmits this data off the device
+> on its own — the only egress is a user-initiated share/submit — it is **not
+> "collected" or "shared" in Play's terms**. The flow is described in
+> [`.github/PRIVACY_POLICY.md`](../../../../.github/PRIVACY_POLICY.md).
 
 ---
 
@@ -18,111 +22,70 @@ questionnaire — this file is the source of truth, not a file the CI uploads.
 
 | Question | Answer |
 |---|---|
-| Does your app collect or share any of the required user data types? | **Yes** |
-| Is all of the user data collected by your app encrypted in transit? | **Yes** — every feedback upload is sent over HTTPS. |
-| Do you provide a way for users to request that their data be deleted? | **Yes** — see *Data deletion* below. Recordings also auto-delete after 90 days. |
+| Does your app collect or share any of the required user data types? | **No** |
+
+The app does not collect or share user data. Normal use (browsing the 3D/AR
+demos) transmits nothing off-device, and the in-app bug reporter only assembles
+a report locally and hands it to the user; any transfer is a **user-initiated**
+share-sheet action or a GitHub issue the user submits themselves. Under Play's
+Data safety definitions, data moved only by the user's own action through the
+Android share functionality (and content the user chooses to post to a public
+issue tracker) is **not** app "collection" or "sharing", so the remaining
+sections of the questionnaire do not apply.
 
 ---
 
 ## Section 2 — Data types collected
 
-Only the data types below are collected, and **only when the user explicitly
-uses the in-app feedback feature**. Normal app use (browsing 3D/AR demos)
-collects nothing.
+**None.** No data type in the Play catalogue is collected by the app:
 
-For every data type below:
+- **Not collected:** Location, Personal info (name, email, user IDs, address,
+  phone), Financial info, Health & fitness, Messages, Photos & videos, Audio,
+  Contacts, Calendar, Files & docs, App activity, Web browsing history,
+  Installed apps, Search history, App info & performance / Diagnostics, and
+  Device or other IDs.
 
-- **Collected:** Yes — **Shared:** Yes (sent to Cloudflare for hosting/transcription
-  and surfaced on a public GitHub issue — see *Data sharing* below).
-- **Processing:** sent off-device (not processed ephemerally — the recording is
-  stored for up to 90 days).
-- **Required or optional:** **Optional** — users choose whether to send feedback
-  at all; the whole feature is opt-in and consent-gated.
-- **Purpose:** **App functionality** (the feedback/bug-reporting feature). Not
-  used for analytics, advertising, personalisation, or account management.
+The bug reporter reads only data the app already holds about *itself* (its own
+version/build, the current device model / OS / ABI / screen metrics, and the
+tail of the app's own logcat), plus an optional screenshot of the app's own
+window. This information is placed into a report and shown to the user; the app
+never sends it anywhere by itself, so there is nothing to declare as collected.
 
-### Audio → "Voice or sound recordings"
-
-- **What:** The user's microphone audio recorded while they narrate a bug or
-  idea, plus the audio track of the screen recording.
-- **Why:** So maintainers can hear the user describe the problem; the audio is
-  transcribed to text (Cloudflare Workers AI / Whisper) to pre-fill a GitHub
-  issue.
-
-### Photos and videos → "Videos"
-
-- **What:** A short screen recording (`.mp4`) of the app while the user records
-  feedback. It can include the AR camera viewfinder if an AR demo is open.
-- **Why:** So maintainers can see exactly what the user did and reproduce the
-  bug.
-
-> Map this to the **"Videos"** data type in the Play form. The recording is a
-> capture of the app's own screen, not the user's photo library — the app never
-> reads the gallery.
-
-### App info and performance → "Diagnostics"
-
-- **What:** Device/app context attached to each feedback submission: app
-  version and build number, Android version and API level, device manufacturer
-  and model, device locale, and free RAM at submission time.
-- **Why:** So maintainers know which build, OS, and device the report came from.
-
-> No advertising ID, no IP address, no account/user identifier, and no
-> persistent device identifier are collected or stored. The feedback service
-> hashes the request IP transiently for rate limiting only and never stores the
-> raw IP — there is nothing to declare under *Device or other IDs*.
-
-### Data types NOT collected
-
-For completeness, the app does **not** collect any of: Location, Personal info
-(name, email, user IDs, address, phone), Financial info, Health & fitness,
-Messages, Contacts, Calendar, Files & docs, Web browsing history, Installed
-apps, Search history, or Device/other IDs.
+> The screenshot is a capture of the app's **own** window (via `PixelCopy`),
+> not the user's photo library — the app never reads the gallery and holds no
+> media/storage permission.
 
 ---
 
 ## Section 3 — Data sharing
 
-The feedback data **is shared** with third parties, so answer **"Yes"** to data
-sharing for the Audio, Videos, and Diagnostics types above.
-
-| Recipient | What is shared | Why |
-|---|---|---|
-| Cloudflare | Screen recording + audio (private R2 storage); audio (Workers AI transcription) | Hosting and speech-to-text for the feedback service. |
-| GitHub | Transcript of the audio, any typed text, and the device/app context | A pre-filled **public** GitHub issue is created so maintainers can triage. The raw recording and audio are **not** posted publicly. |
-
-In Play's "data sharing" sense this counts as **transfer to service providers**
-plus, for the transcript + context, **publicly visible** information (it appears
-on a public GitHub issue). The user is told this on the in-app consent screen
-and in the privacy policy before they submit.
-
-The data is **not** sold, and **not** shared for advertising or analytics.
+**Not applicable.** The app does not share user data with third parties. When the
+user opens the share sheet or the pre-filled GitHub issue, *they* choose the
+recipient and initiate the transfer; Play excludes user-initiated share-sheet
+transfers from "sharing". The app itself sends nothing to any server, and no data
+is sold or shared for advertising or analytics.
 
 ---
 
 ## Section 4 — Security practices
 
-- **Encryption in transit:** Yes — all uploads use HTTPS.
-- **At rest:** Screen recordings and audio are stored in a **private** Cloudflare
-  R2 bucket (not publicly listable or indexable). Playback is gated behind an
-  admin token; without it, the viewer page exposes only the transcript and
-  context.
-- **Retention:** Screen recordings and audio are **automatically deleted after
-  90 days** by a scheduled job. After deletion only the transcript and context
-  remain (the same information already on the public GitHub issue).
+- **Encryption in transit:** Not applicable — the app performs no data upload.
+  Anything the user chooses to send travels over the transport of the app they
+  picked in the share sheet (e.g. GitHub over HTTPS).
+- **At rest:** The optional screenshot is written to the app's private cache
+  (`FileProvider`, `cache/feedback/`) only long enough for the share sheet to
+  read it, and is swept on app start; nothing is stored on any server.
 
 ---
 
 ## Section 5 — Data deletion
 
-- **Automatic:** Recordings and audio auto-purge after 90 days.
-- **On request:** A user can ask for earlier deletion by opening an issue at
-  <https://github.com/sceneview/sceneview/issues> or emailing
-  `thomas.gorisse@gmail.com`, quoting the feedback ID shown on the GitHub issue
-  created from their submission. Maintainers can delete the R2 media and the
-  feedback record on request.
+Not applicable — the app stores no user data on a server, so there is nothing to
+delete server-side. A user who submitted a public GitHub issue can edit or ask
+maintainers to remove it at
+<https://github.com/sceneview/sceneview/issues>.
 
-When the Play Console asks for a **data deletion URL**, use:
+When the Play Console asks for a **data deletion URL** (only if it insists), use:
 <https://github.com/sceneview/sceneview/issues/new>
 
 ---
@@ -140,7 +103,7 @@ Set the Data safety form's privacy-policy link to the published policy:
 
 ## Content rating note
 
-The `PLAY_STORE_SETUP.md` content-rating questionnaire previously answered "No"
-to *user data collection*. Once the feedback feature ships, the content-rating
-questionnaire's data-collection question must be answered **Yes** to stay
-consistent with this Data safety declaration.
+The content-rating questionnaire's *user-data-collection* question is answered
+**No** — consistent with this Data safety declaration. (Earlier versions of the
+app shipped a screen-and-microphone recorder that uploaded to a SceneView
+feedback service and required a **Yes**; that capability has been retired.)
