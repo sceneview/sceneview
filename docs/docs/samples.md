@@ -138,6 +138,7 @@ Markdown recipes with side-by-side Kotlin and Swift code:
 | Recipe | File | Topics |
 |---|---|---|
 | Model Viewer | `samples/recipes/model-viewer.md` | Load glTF, HDR environment, orbit camera |
+| Ground Shadow Catcher | `samples/recipes/ground-shadow-catcher.md` | Invisible contact-shadow floor, FL2+ flat-quad hardening |
 | AR Tap-to-Place | `samples/recipes/ar-tap-to-place.md` | Plane detection, anchor placement |
 | Physics | `samples/recipes/physics.md` | Rigid body, gravity, collision, bounce |
 | Procedural Geometry | `samples/recipes/procedural-geometry.md` | Cubes, spheres, custom shapes |
