@@ -35,8 +35,9 @@ apiValidation {
         // sceneview-web is a JS-only KMP module published to npm, not Maven.
         // Its single `js(IR)` target has no JVM/bytecode surface for the
         // (JVM-based) validator to dump, and klib ABI validation is left
-        // disabled (see below) — so it is validated separately at the JS
-        // layer, not here.
+        // disabled (see below). Its public API is only documented by the
+        // hand-written sceneview-web.d.ts — no automated JS ABI gate exists
+        // yet (shortlist #2642 item 12), so web API drift is NOT caught here.
         "sceneview-web",
     ]
 

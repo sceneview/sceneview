@@ -263,7 +263,8 @@ as a breaking change: it needs a deprecation cycle and a matching update to
 > (iOS) and JS klib ABI validation stays disabled for now — it is experimental
 > and not buildable on the ubuntu CI runner. `sceneview-web` (a JS-only KMP
 > module published to npm, not Maven) has no JVM surface and is excluded; its
-> API is validated separately at the JS layer.
+> public API is documented via the hand-written `sceneview-web.d.ts` — there is
+> no automated JS ABI gate yet (a `.d.ts` drift gate is shortlist #2642 item 12).
 
 ### CI on docs-only PRs
 
