@@ -125,6 +125,28 @@ set +e; bash "$SCRIPT" --json >/dev/null 2>&1; RC=$?; set -e
   && ok "--json with no value → exit 2 (usage contract)" \
   || bad "--json with no value should exit 2, not a silent exit 1 (rc=$RC)"
 
+# 12. Stale open reviewSubmissions (#2731) → verdict=warn even though the
+# version probe says READY_FOR_SALE — this is the silent-submission detector.
+run_fake '{"agreements":"ok","reviewState":"READY_FOR_SALE","reviewVersion":"4.18.0","certDays":200,"profileDays":150,"reviewSubmissionsStale":4}'
+{ [ "$RC" -eq 0 ] && [ "$(verdict)" = "warn" ] && grep -qi "never submitted" <<<"$OUT"; } \
+  && ok "stale open reviewSubmissions → warn (#2731 detector)" \
+  || bad "stale reviewSubmissions should warn (rc=$RC verdict=$(verdict))"
+
+# 13. Healthy in-flight review (WAITING_FOR_REVIEW, 0 stale) → still pass, and
+# the JSON carries the in-flight state.
+run_fake '{"agreements":"ok","reviewState":"READY_FOR_SALE","reviewVersion":"4.22.0","certDays":200,"profileDays":150,"reviewSubmissionsStale":0,"reviewSubmissionsInFlight":"WAITING_FOR_REVIEW"}'
+{ [ "$RC" -eq 0 ] && [ "$(verdict)" = "pass" ] \
+  && [ "$(jq -r '.apple.reviewSubmissionsInFlight' "$TMP/out.json")" = "WAITING_FOR_REVIEW" ]; } \
+  && ok "in-flight WAITING_FOR_REVIEW → pass + JSON carries state" \
+  || bad "healthy in-flight submission should pass (rc=$RC verdict=$(verdict))"
+
+# 14. Pre-#2731 fixture (no reviewSubmissions keys) → benign default, still pass.
+run_fake '{"agreements":"ok","reviewState":"READY_FOR_SALE","reviewVersion":"4.21.2","certDays":200,"profileDays":150}'
+{ [ "$RC" -eq 0 ] && [ "$(verdict)" = "pass" ] \
+  && [ "$(jq -r '.apple.openReviewSubmissionsStale' "$TMP/out.json")" = "0" ]; } \
+  && ok "fixture without reviewSubmissions keys defaults benign (0 stale)" \
+  || bad "legacy fixture should default to 0 stale / pass (rc=$RC verdict=$(verdict))"
+
 echo ""
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
