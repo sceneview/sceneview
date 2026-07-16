@@ -46,8 +46,9 @@ import kotlin.math.max
  * stored as **half-floats**: positional precision degrades with distance from the model
  * origin (~1 cm at 16 m) — fine for object/room-scale captures; very large outdoor scans
  * may show sub-splat wobble (a 32-bit position texture is a P2/#2646 option if P1c device
- * validation shows it matters). Filament 1.71.5 has no compute
- * shaders, so correct alpha compositing relies on a **CPU painter's sort**:
+ * validation shows it matters). Filament's Android Java API exposes no compute
+ * shaders (verified through 1.72.1), so correct alpha compositing relies on a
+ * **CPU painter's sort**:
  *
  * - **Isotropic billboards** — each splat renders as the circumscribed disc of its gaussian
  *   (radius = 3 sigma of the largest scale axis). Anisotropic screen-space ellipses
@@ -177,8 +178,9 @@ open class SplatNode(
                     renderableManager.setLayerMask(renderableManager.getInstance(entity), 0xff, 0x00)
                 } else {
                     if (visible != batchBuiltCounts[index]) {
-                        // Instance count is baked at build time (no runtime setter in Filament
-                        // 1.71.5) — rebuild the renderable in place on the same entity. The
+                        // Instance count is baked at build time (still no runtime setter in
+                        // Filament 1.72.1 — RenderableManager only exposes getInstanceCount) —
+                        // rebuild the renderable in place on the same entity. The
                         // rebuild resets the layer mask, so re-assert visibility below.
                         buildBatchRenderable(entity, index, visible)
                         batchBuiltCounts[index] = visible

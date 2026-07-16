@@ -23,6 +23,14 @@ This is a placeholder. The About screen states "Filament JNI planned" for hardwa
 
 ## Filament Java/JNI desktop support — what exists
 
+> **Version note.** The `v1.71.0` references below are a research snapshot
+> (March 2026). When executing any recipe in this document, substitute the
+> **current** `filament` version from `gradle/libs.versions.toml` (1.72.1 at
+> the time of writing): the committed `.filamat` blobs are compiled for that
+> exact runtime (MATERIAL_VERSION 72), and an older `filament-android` AAR or
+> desktop tarball **cannot load them** — the exact ABI mismatch CONTRIBUTING.md
+> ("Filament runtime ↔ `.filamat` ABI invariant") warns about.
+
 ### Official support status
 
 Filament (v1.71.0, March 2026) officially supports desktop platforms (macOS, Linux, Windows)

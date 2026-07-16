@@ -28,8 +28,9 @@ kotlinMath = "1.8.0"
 # integration approach and slicing plan (issue #1738).
 jetpackXrArCore = "1.0.0-alpha15"
 
-# Filament 1.71.5 — must match the binary version of .filamat files committed
-# under sceneview/src/main/assets/materials/ and website-static/materials/.
+# Filament 1.72.1 — must match the material-binary version (MATERIAL_VERSION 72)
+# of the .filamat files committed under sceneview/src/main/assets/materials/,
+# arsceneview/src/main/assets/materials/ and website-static/materials/.
 # Those were recompiled to material-binary version 71 in commit `efd296f1`
 # (Apr 11) when Filament was first bumped 1.70.2 → 1.71.0. The follow-up
 # `4a31b579` (May 11) reverted ONLY the runtime to 1.70.2 thinking the
