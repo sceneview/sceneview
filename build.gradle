@@ -84,4 +84,33 @@ subprojects {
             }
         }
     }
+
+    // ── CI hang diagnostics + fail-fast for JVM unit tests (#2692) ────────────
+    // The `Unit tests` CI job intermittently hung >30 min with ZERO output and
+    // was force-cancelled at its job timeout, naming NO culprit test — the log
+    // went silent the moment `testDebugUnitTest` started, so every hang was
+    // unattributable. Two safeguards convert that silent 30-min kill into a
+    // named, thread-dumped failure:
+    //
+    //   1. `testLogging` emits a `started` event per test method, so the CI log
+    //      always names the test currently running. The NEXT hang points at the
+    //      exact test instead of going dark. (`passed` is deliberately omitted —
+    //      `started` already names the culprit and a line-per-pass is noise.)
+    //   2. A per-task `timeout` fires at 15 min — comfortably above the whole
+    //      suite's normal <20-min wall time yet well under the job's 30-min
+    //      ceiling — so a genuinely hung test task self-cancels with a Gradle
+    //      thread dump (stack trace of the stuck thread) instead of silently
+    //      eating the job. `--stacktrace` on the CI step then attributes it.
+    //
+    // Scoped to JVM `Test` tasks only: KMP `jsTest` / native test tasks are a
+    // different task type and are unaffected, and instrumented
+    // `connectedAndroidTest` tasks are `DeviceProviderInstrumentTestTask`, not
+    // `Test`, so they are never timeout-killed by this convention.
+    tasks.withType(Test).configureEach {
+        testLogging {
+            events "started", "skipped", "failed"
+            exceptionFormat = "full"
+        }
+        timeout.set(java.time.Duration.ofMinutes(15))
+    }
 }
