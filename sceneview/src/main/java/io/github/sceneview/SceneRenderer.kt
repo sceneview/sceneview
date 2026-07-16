@@ -309,9 +309,18 @@ class SceneRenderer(
             onSurfaceDestroyed?.invoke()
             nativeWindowSurface = null
             swapChainReadable = false
+            // Detach the DisplayHelper (unregisters its display-changed listener) BEFORE
+            // destroying the swap chain and flushAndWait(). Destroying the surface makes an
+            // adaptive-refresh display switch its refresh rate back, posting a display-changed
+            // event onto the main-thread queue; flushAndWait() then blocks the main thread so
+            // that queued event is delivered only after detach() has nulled the DisplayHelper's
+            // renderer, NPEing inside Filament's DisplayHelper.updateDisplayInfo — a race that
+            // is unfixed in the pinned Filament 1.71.5 (google/filament#9352, fixed upstream in
+            // 1.71.6). Unregistering the listener first (as SceneView 2.3.0 did) closes the
+            // window. (#2709)
+            displayHelper?.detach()
             swapChainRef.getAndSet(null)?.let { engine.destroySwapChain(it) }
             engine.flushAndWait()
-            displayHelper?.detach()
         }
 
         override fun onResized(width: Int, height: Int) {
