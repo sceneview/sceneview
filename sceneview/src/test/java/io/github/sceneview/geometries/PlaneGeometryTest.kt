@@ -128,4 +128,62 @@ class PlaneGeometryTest {
             }
         }
     }
+
+    // region shadow-receiver quad orientation contract (#2581)
+    //
+    // plane_renderer_shadow.mat's vertex shader FORCES `pos.y = 0.005` (it assigns, not
+    // adds). A shadow-receiver quad mounted with that material must therefore be built in the
+    // XZ plane — Size(x, y = 0, z) — so its footprint varies in x AND z and survives the
+    // forced-y flattening. An XY quad — Size(x, y), z = 0 — varies only in x and y, so forcing
+    // y constant collapses all four corners onto a single line (zero area → no shadow), which
+    // is exactly the SketchfabModelViewerScreen bug in #2581. These tests lock the geometry
+    // convention the demo fix relies on.
+
+    /** Emulates plane_renderer_shadow's `pos.y = 0.005f` (assignment, not addition). */
+    private fun forceShaderY(vertices: List<Geometry.Vertex>, y: Float = 0.005f) =
+        vertices.map { Float3(it.position.x, y, it.position.z) }
+
+    /** Twice the area of the XZ-projected quad via the shoelace formula over its 4 corners. */
+    private fun xzDoubleArea(corners: List<Float3>): Float {
+        var sum = 0f
+        for (i in corners.indices) {
+            val a = corners[i]
+            val b = corners[(i + 1) % corners.size]
+            sum += a.x * b.z - b.x * a.z
+        }
+        return kotlin.math.abs(sum)
+    }
+
+    @Test
+    fun `XZ shadow quad keeps a non-degenerate footprint under the forced-y shadow shader`() {
+        // Size(x, y = 0, z) — the ShadowReceiverPlaneNode / correct convention.
+        val vertices = Plane.getVertices(Float3(4f, 0f, 4f), Float3(0f), Float3(0f, 1f, 0f))
+        val flattened = forceShaderY(vertices)
+
+        // x and z still span the full 4 m footprint after y is forced constant.
+        assertEquals(4f, flattened.maxOf { it.x } - flattened.minOf { it.x }, 0.001f)
+        assertEquals(4f, flattened.maxOf { it.z } - flattened.minOf { it.z }, 0.001f)
+        // Non-zero area → the quad still catches shadow. (16 m² footprint → 2*area = 32.)
+        assertTrue(
+            "XZ shadow quad collapsed under the forced-y shader",
+            xzDoubleArea(flattened) > 1f
+        )
+    }
+
+    @Test
+    fun `XY shadow quad degenerates to a line under the forced-y shadow shader (the bug)`() {
+        // Size(x, y), z = 0 — the buggy convention: PlaneNode(size = Size(x, y)).
+        val vertices = Plane.getVertices(Float3(4f, 4f, 0f), Float3(0f), Float3(0f, 1f, 0f))
+        val flattened = forceShaderY(vertices)
+
+        // z never varied (z-extent 0) and y is now constant → only x varies → a line segment.
+        assertEquals(0f, flattened.maxOf { it.z } - flattened.minOf { it.z }, 0.001f)
+        assertEquals(
+            "XY shadow quad should collapse to zero area under the forced-y shader",
+            0f,
+            xzDoubleArea(flattened),
+            0.001f
+        )
+    }
+    // endregion
 }

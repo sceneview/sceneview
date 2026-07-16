@@ -626,8 +626,10 @@ private fun RenderContent(
     }
 
     // Premium studio HDR — much more flattering on PBR materials than the
-    // neutral_ibl SDK default. `createSkybox = false` keeps the sheet's surface
-    // background (no big white skybox behind the model).
+    // neutral_ibl SDK default. `createSkybox = false` (no big white skybox behind
+    // the model) pairs with `isOpaque = false` on the SceneView below: together
+    // they let the sheet's Compose `Surface` show through as the backdrop, which
+    // is what makes the ground shadow visible (#2581).
     val environment: Environment = remember(environmentLoader) {
         environmentLoader.createHDREnvironment(
             assetFileLocation = "environments/studio_2k.hdr",
@@ -722,6 +724,19 @@ private fun RenderContent(
                     // stage transition — the viewport would pop in opaque
                     // instead of morphing in. (Carried over from #1203.)
                     surfaceType = SurfaceType.TextureSurface,
+                    // Translucent render target so the ground shadow is actually
+                    // VISIBLE (#2581). `plane_renderer_shadow` only DARKENS what is
+                    // behind it (transparent unlit quad, baseColor black α 0.6,
+                    // shadowMultiplier). With the default `isOpaque = true` the
+                    // framebuffer is cleared to opaque black (`createSkybox = false`
+                    // → no skybox to fill it), so the shadow multiplies black onto
+                    // black and never shows — even on a real FL2+ device. With
+                    // `isOpaque = false` the clear alpha is 0 (SceneView.kt) and the
+                    // TextureView composites the ~0.6-α shadow texels over the sheet's
+                    // light Compose `Surface` behind it, so the contact shadow reads
+                    // as a soft dark patch under the model — the sheet-surface backdrop
+                    // this viewer was always documented to want (RenderContent KDoc).
+                    isOpaque = false,
                     engine = engine,
                     modelLoader = modelLoader,
                     environmentLoader = environmentLoader,
@@ -755,8 +770,17 @@ private fun RenderContent(
                     // plane_renderer_shadow.filamat writes only to the shadow buffer —
                     // the plane itself is transparent, but the shadow cast by the
                     // model onto it is rendered (#2235).
+                    //
+                    // The quad MUST be an XZ (horizontal) plane — Size(x, y = 0, z) —
+                    // not XY. plane_renderer_shadow's vertex shader FORCES `pos.y =
+                    // 0.005` (see arsceneview/src/main/materials/plane_renderer_shadow.mat),
+                    // so an XY quad (Size(x, y), z = 0) whose two triangles vary only in
+                    // x and y collapses every vertex onto y = 0.005 → a zero-area line
+                    // segment that catches no shadow. An XZ quad varies in x and z, so
+                    // the forced-y is a harmless z-fight lift and the footprint survives.
+                    // This matches ShadowReceiverPlaneNode.meshSize()'s XZ convention (#2581).
                     PlaneNode(
-                        size = Size(x = planeSize, y = planeSize),
+                        size = Size(x = planeSize, y = 0f, z = planeSize),
                         materialInstance = shadowMaterialInstance,
                         position = Position(x = 0f, y = groundY, z = 0f),
                     )
