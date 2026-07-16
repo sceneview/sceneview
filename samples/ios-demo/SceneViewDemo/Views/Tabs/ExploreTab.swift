@@ -210,34 +210,50 @@ final class RecentSearches {
 struct ExploreTab: View {
     @State private var searchText = ""
     @State private var selectedModel: ModelItem?
-    @State private var viewingSketchfabModel: SketchfabModel?
-    /// Which carousel the user tapped from — set together with
-    /// `viewingSketchfabModel` so the destination's `.navigationTransition
-    /// (.zoom(sourceID:))` builds the same ID as the source card. Without this
-    /// prefix the matched source ID would be `"sketchfab-hero-\(uid)"` on both
-    /// the Staff Picks card and the Most Liked card for the same model (the
-    /// Sketchfab API returns overlapping uids across feeds), giving SwiftUI two
-    /// matched sources with the same key in the same namespace.
-    @State private var viewingFeedID: String?
+    /// The source-agnostic model the user tapped — pushes `GalleryModelViewerScreen`.
+    @State private var viewingModel: GalleryModel?
     @State private var selectedCategory: SketchfabCategory?
     @State private var recentSearches = RecentSearches()
-    @State private var sketchfabStaffPicks: [SketchfabModel] = []
-    @State private var sketchfabMostLiked: [SketchfabModel] = []
-    @State private var sketchfabRecent: [SketchfabModel] = []
+
+    // Multi-source resilience (#2645 / #2700): the tab browses whichever catalog
+    // the user picks (Sketchfab | Icosa Gallery | Poly Haven), remembering the
+    // last choice. A single degraded source never blanks the tab — the picker +
+    // the samples row + the other sources stay usable.
+    @State private var sources = GallerySourcesRegistry()
+    /// Feeds keyed by the selected source's advertised `FeedKind`s (each source
+    /// exposes its own subset — Poly Haven has no "staff picks", for instance).
+    @State private var feedsByKind: [FeedKind: [GalleryModel]] = [:]
     @State private var isLoadingFeeds = false
-    @State private var feedsError: String?
-    /// Defensive banner state (#1909). When the release build was published
-    /// without a valid `SKETCHFAB_API_KEY` user-defined build setting, the
-    /// Explore carousels + search go silent — the banner explains why, and
-    /// this `@State` opens the explanatory sheet on tap.
+    /// `true` once a Sketchfab feed/search fails with HTTP 401/403 — the key is
+    /// present but rejected. Drives the disabled banner so the user sees an
+    /// explanation instead of a silently empty feed. Reset on every (re)load and
+    /// on source switch. A missing key simply drops Sketchfab from the picker
+    /// (no banner), matching the Android behaviour (#2095 / #2645).
+    @State private var keyRejected = false
     @State private var showSketchfabDisabledInfo = false
-    /// When `true`, all three carousels filter to `animated=true` (skeletal rigs).
+    /// When `true`, the Sketchfab feeds filter to `animated=true` (skeletal rigs).
+    /// Ignored by the CC sources, which don't expose the flag.
     @State private var animatedOnly = false
+
+    // Search execution state (#1239 parity). `activeSearchQuery` (set on submit
+    // or on a recent-search tap) drives the search `.task`. `searchResults`:
+    //   - `nil`      → query is loading
+    //   - `.isEmpty` → query ran and returned 0 hits
+    //   - non-empty  → render the results carousel, hide the feeds
+    @State private var activeSearchQuery = ""
+    @State private var searchResults: [GalleryModel]?
+
     /// Shared namespace for the iOS 18 zoom transition: the carousel card's
-    /// thumbnail morphs into the SketchfabModelViewerScreen hero when the
-    /// navigation pushes the viewer.
+    /// thumbnail morphs into the GalleryModelViewerScreen hero on push.
     @Namespace private var heroNamespace
     private let favoritesManager = FavoritesManager.shared
+
+    /// The currently selected source (Sketchfab | Icosa | Poly Haven).
+    private var selectedSource: any ModelSource { sources.selected }
+    private var isSearching: Bool { !activeSearchQuery.isEmpty }
+    private var allFeedsEmpty: Bool {
+        selectedSource.feedKinds.allSatisfy { (feedsByKind[$0] ?? []).isEmpty }
+    }
 
     /// Curated featured set — first 6 bundled models, picked for visual variety.
     /// Used as fallback when no Sketchfab API key is configured.
@@ -250,38 +266,49 @@ struct ExploreTab: View {
     }
 
     var body: some View {
-        // Capture the apiKey resolution exactly once per body evaluation —
-        // drives both the banner and the search-bar hint so they stay in
-        // sync (#1909). On TestFlight / App Store builds with a missing
-        // secret this is `nil`, the banner appears at the top of the
-        // ScrollView, and the carousels fall back to `bundledFeaturedSection`.
-        let apiKeyAvailable = SketchfabConfig.apiKey != nil
-        return NavigationStack {
+        NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
-                    // Defensive banner (#1909) — sits above everything when the
-                    // release build was published without a Sketchfab token.
-                    // The curated samples + categories still work; the banner
-                    // tells the user WHY the dynamic carousels are missing
-                    // instead of silently rendering an emptier-than-expected
-                    // page.
-                    if !apiKeyAvailable {
+                    // Source picker (#2645 / #2700) — stays visible even mid-search
+                    // so switching catalogs re-runs the query against the new one.
+                    // Hidden only when a single source is available (nothing to
+                    // choose between).
+                    if sources.sources.count > 1 {
+                        sourcePickerRow
+                    }
+                    // "Sketchfab unavailable" banner — only when the selected
+                    // source is Sketchfab and its key was rejected at runtime
+                    // (401/403). A missing key drops Sketchfab from the picker, so
+                    // this never fires in that case. Outlined (not error-colored):
+                    // the tab is degraded but functional (other sources work).
+                    if selectedSource.id == .sketchfab && keyRejected {
                         sketchfabDisabledBanner
                     }
-                    // Home feed mix — samples first (always available), then live Sketchfab
-                    // feeds when an API key is configured. Each row shows SceneView SDK
-                    // content (bundled or streamed) — never the Sketchfab web viewer.
-                    trySampleSection
-                    if !sketchfabStaffPicks.isEmpty || !sketchfabMostLiked.isEmpty || !sketchfabRecent.isEmpty {
-                        filtersBar
+                    // "Try a sample" + the Animated filter belong to the browse
+                    // experience — hidden while searching. The Animated filter is
+                    // meaningful only for Sketchfab; the CC sources hide it.
+                    if !isSearching {
+                        trySampleSection
+                        if selectedSource.supportsAnimatedFilter {
+                            filtersBar
+                        }
                     }
-                    if sketchfabStaffPicks.isEmpty && sketchfabMostLiked.isEmpty && sketchfabRecent.isEmpty {
-                        bundledFeaturedSection
+
+                    if isSearching {
+                        searchResultsSection
                     } else {
-                        feedSection(title: "Staff Picks",   feedID: "staff", models: sketchfabStaffPicks)
-                        feedSection(title: "Most Liked",    feedID: "liked", models: sketchfabMostLiked)
-                        feedSection(title: "Recently Added", feedID: "recent", models: sketchfabRecent)
+                        // One carousel per feed the selected source advertises.
+                        // Each empty section self-hides; if every feed is empty and
+                        // we're not still loading, fall back to the bundled curated
+                        // carousel so the tab is never blank (#2645 / #2700).
+                        ForEach(selectedSource.feedKinds, id: \.self) { kind in
+                            galleryFeedSection(kind: kind, models: feedsByKind[kind] ?? [])
+                        }
+                        if allFeedsEmpty && !isLoadingFeeds {
+                            bundledFeaturedSection
+                        }
                     }
+
                     categoriesSection
                     if !recentSearches.items.isEmpty {
                         recentSearchesSection
@@ -292,47 +319,46 @@ struct ExploreTab: View {
                 .padding(.bottom, 24)
             }
             .navigationTitle("Explore")
-            // When no Sketchfab key is wired, the search bar is dead UI —
-            // `onSubmit(of: .search)` only pushes the query into
-            // `recentSearches`. Make that visible by tagging the prompt so
-            // users understand WHY their query went nowhere (#1909).
+            // Placeholder names the catalog being searched so the field reflects
+            // the picked source (Sketchfab / Icosa Gallery / Poly Haven), #2645.
+            // The selected source is always usable (Sketchfab is dropped from the
+            // picker when it has no key), so the field is always live.
             .searchable(
                 text: $searchText,
-                prompt: apiKeyAvailable
-                    ? "Search 3D models on Sketchfab"
-                    : "Sketchfab search disabled — API key missing"
+                prompt: "Search 3D models on \(selectedSource.id.displayName)"
             )
-            .onSubmit(of: .search) {
-                let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !q.isEmpty {
-                    recentSearches.push(q)
-                    #if os(iOS)
-                    SceneViewHaptic.shared.light()
-                    #endif
+            .onSubmit(of: .search) { submitSearch() }
+            .onChange(of: searchText) { _, newValue in
+                // Clearing the field cancels the active search and restores the
+                // default carousels (#1239 parity).
+                if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    activeSearchQuery = ""
+                    searchResults = nil
                 }
             }
-            .task { await loadSketchfabFeeds() }
-            // Pull-to-refresh on the Sketchfab carousels — matches the Android
-            // ExploreTabScreen.PullToRefreshBox added in #1203. Only fires
-            // when an API key is configured (loadSketchfabFeeds early-returns
-            // otherwise) so builds without the key don't spin a useless
-            // spinner. `force: true` bypasses the "already loaded" guard so
-            // a manual refresh actually re-fetches.
-            .refreshable { await loadSketchfabFeeds(force: true) }
+            // Reload the selected source's feeds on first appearance, source
+            // switch, or Animated toggle. `.task(id:)` cancels the previous run
+            // when the key changes — the single cancel-then-restart pipeline that
+            // mirrors the Android LaunchedEffect.
+            .task(id: feedsTaskKey) { await loadFeeds() }
+            // Execute the search when the active query (or source) changes.
+            .task(id: searchTaskKey) { await runSearch() }
+            // Pull-to-refresh — every available source has live feeds to refresh
+            // (Icosa / Poly Haven need no key), so it's always wired.
+            .refreshable { await loadFeeds(force: true) }
             .navigationDestination(item: $selectedModel) { model in
                 ModelViewerScreen(model: model)
             }
-            .navigationDestination(item: $viewingSketchfabModel) { model in
-                SketchfabModelViewerScreen(model: model)
+            .navigationDestination(item: $viewingModel) { model in
+                GalleryModelViewerScreen(model: model, source: source(for: model))
                     // iOS 18 zoom navigation transition — the source thumbnail
-                    // matchedTransitionSource lives on the FeaturedSketchfabCard
-                    // identified by `(viewingFeedID, model.uid)` since the same
-                    // Sketchfab model can appear in more than one carousel.
+                    // matchedTransitionSource lives on the FeaturedGalleryCard
+                    // identified by `model.cardKey` (unique across sources + feeds).
                     // `.zoom(sourceID:in:)` is unavailable on macOS, where the
                     // destination simply pushes with the default transition.
                     #if os(iOS)
                     .navigationTransition(.zoom(
-                        sourceID: "sketchfab-hero-\(viewingFeedID ?? "any")-\(model.uid)",
+                        sourceID: "gallery-hero-\(model.cardKey)",
                         in: heroNamespace
                     ))
                     #endif
@@ -341,6 +367,7 @@ struct ExploreTab: View {
                 CategorySheet(category: category) { query in
                     searchText = query
                     recentSearches.push(query)
+                    activeSearchQuery = query
                 }
                 .presentationDetents([.medium, .large])
                 #if os(iOS)
@@ -348,25 +375,73 @@ struct ExploreTab: View {
                 .presentationCornerRadius(28)
                 #endif
             }
-            // #1909 explanation alert. `.alert(...)` is the SwiftUI counterpart
-            // of the Android `AlertDialog` in ExploreTabScreen.kt — same copy,
-            // so QA can compare both apps side-by-side.
+            // `.alert(...)` is the SwiftUI counterpart of the Android `AlertDialog`
+            // in ExploreTabScreen.kt — surfaced when the Sketchfab key is rejected.
             .alert(
-                "Sketchfab integration is off",
+                "Sketchfab unavailable",
                 isPresented: $showSketchfabDisabledInfo
             ) {
                 Button("Got it", role: .cancel) { showSketchfabDisabledInfo = false }
             } message: {
-                Text("This build was published without a Sketchfab API key, so the Staff Picks, Most Liked and Recently Added carousels are hidden and search is disabled.\n\nThe curated samples and category grid below still work — they bundle local 3D models.\n\nIf you're building locally, pass SKETCHFAB_API_KEY=<your-token> to xcodebuild or add it to your scheme's environment variables. Grab a token at Sketchfab → Settings → Password & API → API Token.")
+                Text("The Sketchfab API key was rejected (revoked, wrong scope, or a rate-limit burst), so its Trending, Staff Picks and Recently Added carousels are unavailable right now.\n\nSwitch to Icosa Gallery or Poly Haven from the source picker — those Creative-Commons catalogs are always available and need no key.")
             }
         }
     }
 
-    /// Outlined banner shown above the Explore content when
-    /// `SketchfabConfig.apiKey == nil`. Mirrors the Android
-    /// `SketchfabDisabledBanner` (#1909) so QA can compare both apps
-    /// side-by-side. Neutral styling (secondary fill) — the app is degraded
-    /// but functional, not crashed.
+    // MARK: - Task keys
+
+    /// Re-keys the feeds `.task` on source switch or Animated toggle.
+    private var feedsTaskKey: String { "\(selectedSource.id.slug)|\(animatedOnly)" }
+    /// Re-keys the search `.task` on query change or source switch.
+    private var searchTaskKey: String { "\(activeSearchQuery)|\(selectedSource.id.slug)" }
+
+    /// Resolve the concrete source that produced `model` (robust against a source
+    /// switch while the viewer is on screen).
+    private func source(for model: GalleryModel) -> any ModelSource {
+        sources.sources.first { $0.id == model.sourceId } ?? selectedSource
+    }
+
+    // MARK: - Source picker
+
+    /// Source-picker chip row (#2645 / #2700): one chip per available `ModelSource`
+    /// (Sketchfab | Icosa Gallery | Poly Haven), the selected one highlighted.
+    private var sourcePickerRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Text("Source")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                ForEach(sources.sources, id: \.id) { source in
+                    SourceChip(
+                        title: source.id.displayName,
+                        isOn: source.id == selectedSource.id
+                    ) {
+                        selectSource(source)
+                    }
+                }
+            }
+        }
+        .scrollClipDisabled()
+    }
+
+    /// Switch the active source, resetting browse + search state so the previous
+    /// catalog's cards never flash under the new source's headers.
+    private func selectSource(_ source: any ModelSource) {
+        guard source.id != selectedSource.id else { return }
+        searchText = ""
+        activeSearchQuery = ""
+        searchResults = nil
+        feedsByKind = [:]
+        keyRejected = false
+        sources.select(source)
+        #if os(iOS)
+        SceneViewHaptic.shared.selection()
+        #endif
+    }
+
+    /// Outlined banner shown when the selected Sketchfab source was rejected at
+    /// runtime (401/403). Mirrors the Android `SketchfabDisabledBanner` (#2095).
+    /// Neutral styling — the app is degraded but functional (other sources work).
     private var sketchfabDisabledBanner: some View {
         Button {
             showSketchfabDisabledInfo = true
@@ -376,10 +451,10 @@ struct ExploreTab: View {
                     .font(.title3)
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Sketchfab carousels disabled")
+                    Text("Sketchfab unavailable")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
-                    Text("API key missing — search and trending feeds are unavailable.")
+                    Text("The API key was rejected — try Icosa Gallery or Poly Haven.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -398,47 +473,94 @@ struct ExploreTab: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Shows why Sketchfab features are disabled in this build.")
+        .accessibilityHint("Shows why Sketchfab is unavailable and how to switch source.")
     }
 
-    // MARK: - Sketchfab data loading
+    // MARK: - Multi-source data loading
 
-    /// Loads the three curated feeds in parallel. Falls back silently to the bundled
-    /// `featuredModels` carousel when no API key is configured or the network call fails.
+    /// (Re)load the selected source's feeds, one `FeedKind` at a time with
+    /// per-feed resilience: a single degraded feed (network blip, rate limit,
+    /// decode error) never cancels its siblings, so surviving feeds still render.
+    /// Mirrors the Android `supervisorScope` in `ExploreTabScreen.kt` (#2645).
     ///
-    /// Pass `force: true` from `.refreshable {}` so manual pull-to-refresh
-    /// bypasses the "already loaded" guard and actually re-fetches.
-    private func loadSketchfabFeeds(force: Bool = false) async {
-        guard SketchfabConfig.apiKey != nil else { return }
-        if !force,
-           !sketchfabStaffPicks.isEmpty || !sketchfabMostLiked.isEmpty || !sketchfabRecent.isEmpty {
-            return
-        }
+    /// A Sketchfab 401/403 flips `keyRejected` so the banner shows instead of the
+    /// feed silently self-hiding. Pass `force: true` from pull-to-refresh.
+    private func loadFeeds(force: Bool = false) async {
+        let source = selectedSource
+        // The `.task(id:)` re-runs on source/animated change; skip a redundant
+        // reload when we already have feeds and this isn't a manual refresh.
+        if !force && !feedsByKind.isEmpty { return }
         isLoadingFeeds = true
+        keyRejected = false
         defer { isLoadingFeeds = false }
 
-        async let staff = SketchfabService.shared.staffPicks(animated: animatedOnly ? true : nil, limit: 10)
-        async let liked = SketchfabService.shared.featured(animated: animatedOnly ? true : nil, limit: 10)
-        async let recent = SketchfabService.shared.recentlyAdded(animated: animatedOnly ? true : nil, limit: 10)
+        let animated = animatedOnly && source.supportsAnimatedFilter
+        let results = await withTaskGroup(
+            of: (FeedKind, [GalleryModel], Bool).self
+        ) { group -> [(FeedKind, [GalleryModel], Bool)] in
+            for kind in source.feedKinds {
+                group.addTask {
+                    do {
+                        let models = try await source.feed(kind: kind, animatedOnly: animated, limit: 10)
+                        return (kind, models, false)
+                    } catch let SketchfabError.requestFailed(statusCode)
+                        where statusCode == 401 || statusCode == 403 {
+                        return (kind, [], true)
+                    } catch {
+                        return (kind, [], false)
+                    }
+                }
+            }
+            var collected: [(FeedKind, [GalleryModel], Bool)] = []
+            for await item in group { collected.append(item) }
+            return collected
+        }
 
+        // Ignore a stale result if the user switched source mid-flight.
+        guard source.id == selectedSource.id else { return }
+        var byKind: [FeedKind: [GalleryModel]] = [:]
+        var rejected = false
+        for (kind, models, wasRejected) in results {
+            byKind[kind] = models
+            rejected = rejected || wasRejected
+        }
+        feedsByKind = byKind
+        keyRejected = rejected
+    }
+
+    /// Execute the active search against the selected source. `nil` results means
+    /// "in flight"; an empty list means "0 hits"; non-empty renders the carousel.
+    /// Source search does not accept an `animated` filter (Sketchfab only exposes
+    /// it on the feed endpoints; the CC sources have no such concept), #2645.
+    private func runSearch() async {
+        let source = selectedSource
+        let query = activeSearchQuery
+        guard !query.isEmpty else { return }
+        searchResults = nil
         do {
-            let (s, l, r) = try await (staff, liked, recent)
-            sketchfabStaffPicks = s
-            sketchfabMostLiked = l
-            sketchfabRecent = r
-            feedsError = nil
+            let results = try await source.search(query: query, limit: 24)
+            guard source.id == selectedSource.id && query == activeSearchQuery else { return }
+            searchResults = results
+        } catch let SketchfabError.requestFailed(statusCode)
+            where statusCode == 401 || statusCode == 403 {
+            keyRejected = true
+            searchResults = []
         } catch {
-            feedsError = "Couldn't reach Sketchfab — showing offline picks"
+            // A transient blip surfaces the empty state and clears on the next
+            // query — no permanent latch (matches the Android WAF handling).
+            searchResults = []
         }
     }
 
-    /// Triggered when the user toggles a filter chip. Clears the current feeds
-    /// (so the loading state shows again) then re-runs the parallel fetch.
-    private func reloadWithFilters() {
-        sketchfabStaffPicks = []
-        sketchfabMostLiked = []
-        sketchfabRecent = []
-        Task { await loadSketchfabFeeds() }
+    /// Explicit Enter press: record the query and fire the search.
+    private func submitSearch() {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        recentSearches.push(query)
+        activeSearchQuery = query
+        #if os(iOS)
+        SceneViewHaptic.shared.light()
+        #endif
     }
 
     // MARK: - "Try a sample" section (home-feed mix — samples + models)
@@ -482,11 +604,12 @@ struct ExploreTab: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 FilterChip(label: "Animated", systemImage: "wand.and.stars", isOn: animatedOnly) {
+                    // The feeds `.task(id:)` re-keys on `animatedOnly` and reloads.
+                    feedsByKind = [:]
                     animatedOnly.toggle()
                     #if os(iOS)
                     SceneViewHaptic.shared.selection()
                     #endif
-                    reloadWithFilters()
                 }
                 // Future chips (V1.1): License, Min poly count, Author.
             }
@@ -494,42 +617,91 @@ struct ExploreTab: View {
         .scrollClipDisabled()
     }
 
-    // MARK: - Feed section helpers (Staff Picks / Most Liked / Recently Added)
+    // MARK: - Feed section helpers (source-agnostic carousels)
 
-    /// One horizontal carousel of Sketchfab models, used three times in the body.
-    private func feedSection(title: String, feedID: String, models: [SketchfabModel]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.title2.weight(.bold))
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
-                    ForEach(models) { model in
-                        FeaturedSketchfabCard(
-                            model: model,
-                            transitionNamespace: heroNamespace,
-                            transitionFeedID: feedID,
-                        ) {
-                            // Push directly to the viewer. The viewer's initial
-                            // state is `Stage.Preview` (description / tags /
-                            // CTA), mirroring Android's `Stage.Preview` in
-                            // SketchfabModelViewerScreen.kt — the download only
-                            // fires after the user taps the CTA.
-                            viewingFeedID = feedID
-                            viewingSketchfabModel = model
-                            #if os(iOS)
-                            SceneViewHaptic.shared.light()
-                            #endif
-                        }
-                    }
-                }
-                .padding(.bottom, 4)
-            }
-            .scrollClipDisabled()
+    /// Localised carousel title for a `FeedKind`.
+    private func feedTitle(_ kind: FeedKind) -> String {
+        switch kind {
+        case .trending: return "Trending"
+        case .staffPicks: return "Staff Picks"
+        case .recentlyAdded: return "Recently Added"
         }
     }
 
-    /// Fallback single-row carousel of bundled local models, shown when no Sketchfab
-    /// API key is configured (or while the live data is still loading).
+    /// One horizontal carousel of source-agnostic `GalleryModel`s. Self-hides when
+    /// the feed is empty and we're not still loading — better than telling users
+    /// "Nothing here yet" when a source is unreachable (a degraded source never
+    /// blanks the tab, #2645 / #2700).
+    @ViewBuilder
+    private func galleryFeedSection(kind: FeedKind, models: [GalleryModel]) -> some View {
+        if !models.isEmpty || isLoadingFeeds {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text(feedTitle(kind))
+                        .font(.title2.weight(.bold))
+                    if isLoadingFeeds && models.isEmpty {
+                        Spacer()
+                        ProgressView().controlSize(.small)
+                    }
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(models, id: \.cardKey) { model in
+                            FeaturedGalleryCard(model: model, transitionNamespace: heroNamespace) {
+                                viewingModel = model
+                                #if os(iOS)
+                                SceneViewHaptic.shared.light()
+                                #endif
+                            }
+                        }
+                    }
+                    .padding(.bottom, 4)
+                }
+                .scrollClipDisabled()
+            }
+        }
+    }
+
+    /// Search-results carousel (#1239 parity). `searchResults == nil` ⇒ loading;
+    /// empty ⇒ 0 hits; non-empty ⇒ render the carousel.
+    @ViewBuilder
+    private var searchResultsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Search results")
+                    .font(.title2.weight(.bold))
+                if searchResults == nil {
+                    Spacer()
+                    ProgressView().controlSize(.small)
+                }
+            }
+            if let searchResults {
+                if searchResults.isEmpty {
+                    Text("No results for \u{201C}\(activeSearchQuery)\u{201D}")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 14) {
+                            ForEach(searchResults, id: \.cardKey) { model in
+                                FeaturedGalleryCard(model: model, transitionNamespace: heroNamespace) {
+                                    viewingModel = model
+                                    #if os(iOS)
+                                    SceneViewHaptic.shared.light()
+                                    #endif
+                                }
+                            }
+                        }
+                        .padding(.bottom, 4)
+                    }
+                    .scrollClipDisabled()
+                }
+            }
+        }
+    }
+
+    /// Fallback single-row carousel of bundled local models, shown only when every
+    /// live source feed is empty (all sources unreachable) so the tab is never blank.
     private var bundledFeaturedSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -540,12 +712,6 @@ struct ExploreTab: View {
                     ProgressView()
                         .controlSize(.small)
                 }
-            }
-            if let feedsError {
-                Text(feedsError)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 4)
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
@@ -602,7 +768,10 @@ struct ExploreTab: View {
             VStack(spacing: 6) {
                 ForEach(recentSearches.items, id: \.self) { query in
                     RecentSearchRow(query: query) {
+                        // Tapping a recent search re-runs it against the current
+                        // source (#1239 parity).
                         searchText = query
+                        activeSearchQuery = query
                     } onRemove: {
                         recentSearches.remove(query)
                     }
@@ -654,37 +823,24 @@ private struct FeaturedCard: View {
     }
 }
 
-// MARK: - Featured Sketchfab card (live image from sketchfab.com CDN)
+// MARK: - Featured gallery card (source-agnostic — live image from the source CDN)
 
-private struct FeaturedSketchfabCard: View {
-    let model: SketchfabModel
+/// One carousel card for a source-agnostic `GalleryModel` (Sketchfab | Icosa |
+/// Poly Haven). Replaces the former Sketchfab-only card so adding a source never
+/// touches the UI (#2645 / #2700).
+private struct FeaturedGalleryCard: View {
+    let model: GalleryModel
     /// Namespace used by iOS 18's `.navigationTransition(.zoom(sourceID:in:))`
-    /// to animate the card thumbnail into the SketchfabModelViewerScreen's hero
-    /// when the parent NavigationStack pushes it. Optional so the card stays
-    /// usable in contexts that don't wire up the zoom transition (e.g. future
-    /// list views that present via .sheet).
+    /// to animate the card thumbnail into the GalleryModelViewerScreen's hero.
+    /// Optional so the card stays usable in contexts without the zoom transition.
     var transitionNamespace: Namespace.ID? = nil
-    /// Carousel id used in the matched source key so a model appearing in two
-    /// feeds (Staff Picks + Most Liked) doesn't collide on the same namespace
-    /// key. Pairs with `viewingFeedID` on ExploreTab.
-    var transitionFeedID: String? = nil
     let onTap: () -> Void
-
-    /// Pick a thumbnail close to the card's render size (≥320 wide, ≤640) to avoid
-    /// downloading the 2k-pixel original for a 200×160 view.
-    private var thumbnailURL: URL? {
-        let images = model.thumbnails.images
-        let preferred = images.first(where: { $0.width >= 320 && $0.width <= 640 })
-            ?? images.max(by: { $0.width < $1.width })
-            ?? images.first
-        return preferred.flatMap { URL(string: $0.url) }
-    }
 
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .topLeading) {
-                    AsyncImage(url: thumbnailURL) { phase in
+                    AsyncImage(url: model.preferredThumbnailURL()) { phase in
                         switch phase {
                         case .empty:
                             ZStack {
@@ -711,7 +867,7 @@ private struct FeaturedSketchfabCard: View {
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .modifier(MatchedSourceModifier(
-                        id: "sketchfab-hero-\(transitionFeedID ?? "any")-\(model.uid)",
+                        id: "gallery-hero-\(model.cardKey)",
                         namespace: transitionNamespace
                     ))
 
@@ -749,13 +905,13 @@ private struct FeaturedSketchfabCard: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(model.name), Sketchfab model")
+        .accessibilityLabel("\(model.name), \(model.sourceId.displayName) model")
     }
 }
 
 /// Conditionally applies `.matchedTransitionSource(id:in:)` when a namespace is
 /// provided. iOS 18+ wires this into `.navigationTransition(.zoom(...))` so
-/// the card thumbnail morphs into the SketchfabModelViewerScreen's hero on push.
+/// the card thumbnail morphs into the GalleryModelViewerScreen's hero on push.
 /// Returns the unmodified view when no namespace is passed.
 private struct MatchedSourceModifier: ViewModifier {
     let id: String
@@ -770,36 +926,11 @@ private struct MatchedSourceModifier: ViewModifier {
     }
 }
 
-// MARK: - Helpers on SketchfabModel for card / sheet display
-
-private extension SketchfabModel {
-    /// True when the Sketchfab model carries one or more skeletal animations.
-    var isAnimated: Bool { animationCount > 0 }
-
-    var formattedFaceCount: String {
-        if faceCount >= 1_000_000 { return String(format: "%.1fM", Double(faceCount) / 1_000_000) }
-        if faceCount >= 1_000 { return String(format: "%.1fk", Double(faceCount) / 1_000) }
-        return "\(faceCount)"
-    }
-
-    var formattedLikeCount: String {
-        if likeCount >= 1_000 { return String(format: "%.1fk", Double(likeCount) / 1_000) }
-        return "\(likeCount)"
-    }
-
-    /// First tag in Title Case, or a generic fallback.
-    var primaryTagDisplay: String {
-        tags?.first?.name.capitalized ?? "3D Model"
-    }
-}
-
-// Sketchfab models render through `SketchfabModelViewerScreen` (SceneView SDK),
-// not via Sketchfab's web iframe viewer. The whole point of this demo app is to
-// showcase SceneView's renderer. The previous intermediate `SketchfabModelSheet`
-// (preview state with description + "Open in SceneView" CTA) was removed in
-// favour of a direct card → viewer push so iOS 18's
-// `.navigationTransition(.zoom)` can fire — matches the Android UX added in
-// #1203 (single tap → modal viewer that starts loading immediately).
+// Gallery models render through `GalleryModelViewerScreen` (SceneView SDK), not
+// via any catalog's web iframe viewer. The whole point of this demo app is to
+// showcase SceneView's renderer. Single tap → viewer that shows the preview
+// state first — matches the Android UX in `GalleryModelViewerScreen.kt` (#1203,
+// renamed from `SketchfabModelViewerScreen.kt` in #2645 / #2685).
 
 // MARK: - Sample promo card (compact entry-point to a Scenes tab demo)
 
@@ -879,6 +1010,32 @@ private struct FilterChip: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(label) filter, \(isOn ? "on" : "off")")
+    }
+}
+
+// MARK: - Source chip (Sketchfab | Icosa Gallery | Poly Haven picker)
+
+/// One chip in the source-picker row (#2645 / #2700). The selected source is
+/// filled; the others are tinted-outline.
+private struct SourceChip: View {
+    let title: String
+    let isOn: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.tint.opacity(0.12)),
+                    in: Capsule()
+                )
+                .foregroundStyle(isOn ? AnyShapeStyle(.white) : AnyShapeStyle(.tint))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title) source, \(isOn ? "selected" : "not selected")")
     }
 }
 
@@ -1308,25 +1465,32 @@ struct ModelViewerScreen: View {
     #endif
 }
 
-// MARK: - Sketchfab model viewer (downloads GLB via SketchfabService, renders in SceneView)
+// MARK: - Gallery model viewer (source-agnostic — renders USDZ sources in SceneView)
 
-/// Full-screen viewer for a model coming from the Sketchfab API.
+/// Full-screen viewer for a source-agnostic `GalleryModel` (Sketchfab | Icosa |
+/// Poly Haven). iOS port of Android's `GalleryModelViewerScreen.kt` (renamed from
+/// `SketchfabModelViewerScreen.kt` in #2645 / #2685). See #2700.
 ///
-/// Downloads the GLB through `SketchfabService.downloadModel(uid:progress:)`, caches it under
-/// `Caches/sketchfab/`, then loads it into `SceneView` via `ModelNode.load(contentsOf: URL)`.
+/// **Render path (Sketchfab):** downloads the USDZ through the source's
+/// `download(model:progress:)`, caches it, then loads it into `SceneView` via
+/// `ModelNode.load(contentsOf:)`. Every model the user renders flows through
+/// SceneView's renderer (RealityKit on iOS) — never a web iframe viewer.
 ///
-/// This is the showcase path for the demo: every model the user touches — bundled or
-/// streamed — flows through SceneView's renderer (RealityKit on iOS). The Sketchfab web
-/// viewer / iframe / embed is intentionally never used.
+/// **Honest degradation (Icosa / Poly Haven):** these Creative-Commons catalogs
+/// are glTF-native, and RealityKit loads only USDZ, so their in-app 3D render is
+/// honestly deferred: the viewer shows the preview (thumbnail + attribution +
+/// tags) with a clearly-labelled "3D preview coming soon" state instead of a
+/// fake or a crash. Browse + credit are fully available. The Android demo renders
+/// these via Filament; keep the two in sync when Apple-side glTF support lands.
 ///
-/// Wow-factor polish (2026-05-11 session `wow-factor-sketchfab`):
+/// Wow-factor polish (carried from the Sketchfab viewer):
 /// - Premium studio HDR environment by default (PBR-flattering reflections).
-/// - Cross-fade from the Sketchfab thumbnail (Ken-Burns zoom) to the live SceneView
-///   so the model "comes to life" instead of popping in.
+/// - Cross-fade from the source thumbnail (Ken-Burns zoom) to the live SceneView.
 /// - Subtle radial vignette overlay for cinematic / Apple-Store framing.
-/// - Auto-rotate on by default — the model presents itself from every angle.
-struct SketchfabModelViewerScreen: View {
-    let model: SketchfabModel
+/// - Auto-rotate on by default.
+struct GalleryModelViewerScreen: View {
+    let model: GalleryModel
+    let source: any ModelSource
     @State private var loadedNode: ModelNode?
     @State private var isLoading = false
     @State private var downloadProgress: Double = 0
@@ -1340,17 +1504,25 @@ struct SketchfabModelViewerScreen: View {
     @State private var thumbnailZoom: CGFloat = 1.0
     @State private var sceneRevealed = false
     /// Mirrors Android's `Stage.Preview` initial state — gates the network
-    /// download behind an explicit "Open in SceneView" CTA so the user sees
-    /// the description / tags / non-downloadable warning before committing.
-    /// Flips to `true` on CTA tap (or on retry from the error state).
+    /// download behind an explicit "Open in SceneView" CTA so the user sees the
+    /// attribution / tags / not-renderable state before committing.
     @State private var hasUserOpened = false
     @Environment(\.dismiss) private var dismiss
 
-    /// Largest Sketchfab thumbnail (for the during-download Ken-Burns hero).
+    /// `true` when a model from this source can be rendered in-app through
+    /// SceneView (RealityKit). Sketchfab serves USDZ → renders; the glTF-native
+    /// CC sources are browse + search only (honest "coming soon"). See #2700.
+    private var canRenderInApp: Bool { source.rendersInApp && model.downloadable }
+
+    /// Largest source thumbnail (for the during-download Ken-Burns hero).
     private var heroThumbnailURL: URL? {
-        let images = model.thumbnails.images
-        let preferred = images.max(by: { $0.width < $1.width }) ?? images.first
-        return preferred.flatMap { URL(string: $0.url) }
+        model.preferredThumbnailURL(minWidth: 640, maxWidth: 1280)
+    }
+
+    private var ctaTitle: String {
+        if canRenderInApp { return "Open in SceneView" }
+        if !source.rendersInApp { return "3D preview coming soon" }
+        return "Not downloadable"
     }
 
     var body: some View {
@@ -1372,7 +1544,7 @@ struct SketchfabModelViewerScreen: View {
                     .ignoresSafeArea()
                     .opacity(sceneRevealed ? 1 : 0)
 
-                // Thumbnail cross-fade overlay — shows the Sketchfab image with a
+                // Thumbnail cross-fade overlay — shows the source image with a
                 // slow Ken-Burns zoom during download. Fades out (over 0.6 s)
                 // once the SceneView has had time to mount the loaded ModelNode,
                 // producing the "come to life" transition.
@@ -1383,9 +1555,7 @@ struct SketchfabModelViewerScreen: View {
                 }
 
                 // Cinematic vignette — radial dark gradient at the corners,
-                // invisible in the centre. Costs nothing to render and gives the
-                // viewer the "Apple Store hero" framing without obscuring the
-                // model.
+                // invisible in the centre.
                 vignette
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
@@ -1399,7 +1569,7 @@ struct SketchfabModelViewerScreen: View {
                         Text("Loading \(model.name)\u{2026}")
                             .font(.subheadline)
                             .foregroundStyle(.white)
-                        Text("Streaming from Sketchfab \u{00B7} rendering in SceneView")
+                        Text("Streaming from \(model.sourceId.displayName) \u{00B7} rendering in SceneView")
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.6))
                     }
@@ -1416,11 +1586,10 @@ struct SketchfabModelViewerScreen: View {
                     controlsOverlay
                 }
             } else {
-                // `Stage.Preview` — show description / tags / "Open in SceneView"
-                // CTA before committing to the download. Matches Android's
-                // `Stage.Preview` `PreviewContent`. The non-downloadable warning
-                // is surfaced here so the user is not pushed into a viewer that
-                // can't render the model on the Sketchfab free tier.
+                // `Stage.Preview` — thumbnail + attribution / tags + CTA before
+                // committing to the download. Matches Android's `PreviewContent`.
+                // The not-renderable state is surfaced here so the user is never
+                // pushed into a viewer that can't render the model.
                 previewContent
             }
         }
@@ -1444,7 +1613,7 @@ struct SketchfabModelViewerScreen: View {
         // the .task only fires once they've consented from the preview state.
         .task(id: hasUserOpened) {
             guard hasUserOpened else { return }
-            await loadFromSketchfab()
+            await loadFromSource()
         }
         .onAppear {
             // Start the Ken-Burns slow zoom on the thumbnail the moment the screen
@@ -1467,10 +1636,10 @@ struct SketchfabModelViewerScreen: View {
         }
     }
 
-    /// `Stage.Preview` parallel to Android's `PreviewContent`. Description +
-    /// tag chips + "Open in SceneView" CTA. Disables the CTA when the model
-    /// is not downloadable on the user's Sketchfab tier (carries the warning
-    /// the dropped `SketchfabModelSheet` used to surface).
+    /// `Stage.Preview` parallel to Android's `PreviewContent`. Thumbnail +
+    /// attribution + tag chips + CTA. When the source can't render in-app
+    /// (glTF-only CC catalogs, or a non-downloadable Sketchfab model) the CTA is
+    /// disabled and an honest explanation replaces the "come to life" promise.
     @ViewBuilder
     private var previewContent: some View {
         ScrollView {
@@ -1488,18 +1657,18 @@ struct SketchfabModelViewerScreen: View {
                 .frame(maxHeight: 280)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
-                if let desc = model.description, !desc.isEmpty {
-                    Text(desc.trimmingCharacters(in: .whitespacesAndNewlines))
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.85))
-                        .lineLimit(8)
-                }
+                // Attribution line — author · license · via <source>. For CC-BY
+                // assets crediting the author is a licence requirement, so it is
+                // surfaced regardless of which catalog the model came from.
+                Text(model.attributionLine)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.85))
 
-                if let tags = model.tags, !tags.isEmpty {
+                if !model.tags.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(tags.prefix(10), id: \.name) { tag in
-                                Text(tag.name)
+                            ForEach(model.tags.prefix(10), id: \.self) { tag in
+                                Text(tag)
                                     .font(.caption)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 4)
@@ -1513,24 +1682,25 @@ struct SketchfabModelViewerScreen: View {
                 Divider().overlay(.white.opacity(0.2))
 
                 Button {
+                    guard canRenderInApp else { return }
                     hasUserOpened = true
                     #if os(iOS)
                     SceneViewHaptic.shared.selection()
                     #endif
                 } label: {
-                    Label(model.downloadable ? "Open in SceneView" : "Not downloadable",
-                          systemImage: "cube.transparent.fill")
+                    Label(ctaTitle,
+                          systemImage: canRenderInApp ? "cube.transparent.fill" : "cube.transparent")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                         .background(.tint, in: Capsule())
                         .foregroundStyle(.white)
                 }
-                .disabled(!model.downloadable)
-                .opacity(model.downloadable ? 1.0 : 0.5)
+                .disabled(!canRenderInApp)
+                .opacity(canRenderInApp ? 1.0 : 0.5)
 
-                if !model.downloadable {
-                    Text("This model is not downloadable on the Sketchfab free tier and can't be rendered in SceneView yet.")
+                if !canRenderInApp {
+                    Text(notRenderableExplanation)
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.6))
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -1540,8 +1710,19 @@ struct SketchfabModelViewerScreen: View {
         }
     }
 
-    /// Error overlay extracted for re-use from both Downloading/Rendering and
-    /// future Retry flows.
+    /// Honest explanation for the non-render state — the iOS subset boundary.
+    private var notRenderableExplanation: String {
+        if !source.rendersInApp {
+            return "3D preview is coming soon on iOS for \(model.sourceId.displayName). "
+                + "This Creative-Commons model is glTF-only, and SceneView on Apple "
+                + "platforms (RealityKit) renders USDZ. You can browse and credit it "
+                + "now — Sketchfab models render live in SceneView."
+        }
+        return "This model is not downloadable on the Sketchfab free tier and can't "
+            + "be rendered in SceneView yet."
+    }
+
+    /// Error overlay extracted for re-use from Downloading/Rendering + Retry.
     @ViewBuilder
     private func errorOverlay(message: String) -> some View {
         VStack(spacing: 8) {
@@ -1570,14 +1751,14 @@ struct SketchfabModelViewerScreen: View {
         .padding()
     }
 
-    private func loadFromSketchfab() async {
+    private func loadFromSource() async {
         guard loadedNode == nil else { return }
         isLoading = true
         errorMessage = nil
         downloadProgress = 0
         do {
-            let localURL = try await SketchfabService.shared.downloadModel(
-                uid: model.uid,
+            let localURL = try await source.download(
+                model: model,
                 progress: { p in
                     Task { @MainActor in
                         self.downloadProgress = p
@@ -1608,7 +1789,7 @@ struct SketchfabModelViewerScreen: View {
             .environment(selectedEnvironment)
             .cameraControls(.orbit)
             .autoRotate(speed: 0.4)
-            .id("sketchfab-auto-\(loadedNode != nil)-\(selectedEnvironment.name)")
+            .id("gallery-auto-\(loadedNode != nil)-\(selectedEnvironment.name)")
         } else {
             SceneView { root in
                 if let loadedNode {
@@ -1618,12 +1799,11 @@ struct SketchfabModelViewerScreen: View {
             }
             .environment(selectedEnvironment)
             .cameraControls(.orbit)
-            .id("sketchfab-manual-\(loadedNode != nil)-\(selectedEnvironment.name)")
+            .id("gallery-manual-\(loadedNode != nil)-\(selectedEnvironment.name)")
         }
     }
 
-    /// Cinematic vignette — costs ~0 GPU and lifts the model in the centre
-    /// without obscuring it. Matches the "Apple Store" / Sketchfab hero look.
+    /// Cinematic vignette — costs ~0 GPU and lifts the model in the centre.
     private var vignette: some View {
         RadialGradient(
             colors: [.black.opacity(0.0), .black.opacity(0.35)],
@@ -1648,11 +1828,7 @@ struct SketchfabModelViewerScreen: View {
                 }
             }
             .scaleEffect(thumbnailZoom)
-            // Soft blur so the thumbnail feels like a "preview state" rather
-            // than the final render, and the transition to SceneView reads as
-            // "now it's real and live".
             .blur(radius: 6)
-            // Slight darkening so the foreground progress card stays legible.
             Color.black.opacity(0.30)
         }
     }
