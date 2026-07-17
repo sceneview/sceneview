@@ -13,6 +13,15 @@
 # node names from a single file (SceneScope.kt). This script is the dedicated,
 # from-scratch detector across all four doc surfaces.
 #
+# FUTURE SIGNAL (#2723, note only — no coupling today): the committed
+# `<module>/api/*.api` dumps produced by binary-compatibility-validator are a
+# DETERMINISTIC public-API delta — a PR that changed `.api` files is a
+# high-precision "public surface moved" marker this heuristic could consume
+# later (e.g. escalate a doc-drift WARN when the `.api` diff is non-empty but
+# the doc surfaces are untouched). Intentionally NOT wired here yet: the
+# `.api` gate already blocks per-PR on its own, and keeping this detector
+# git-diff-only avoids a hard dependency on the Gradle dump being present.
+#
 # TWO MODES
 # ---------
 #   (default)  Diff mode — advisory. Looks only at what the current

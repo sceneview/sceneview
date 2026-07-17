@@ -9,7 +9,14 @@ export const meta = {
 
 // args: { version?: string } — expected version to verify live. If absent, the
 // Probe phase reads it from the root gradle.properties VERSION_NAME.
-const a = args || {}
+// Be robust to args arriving as a JSON string (some invocation paths stringify it — same guard as review-fanout.js).
+let a = args
+if (typeof a === 'string') {
+  try { a = JSON.parse(a) } catch {
+    throw new Error('store-status: args must be JSON — got a non-JSON string: ' + a.slice(0, 120))
+  }
+}
+a = a || {}
 const APP_ID = '6761329763'
 
 // Resolve the canonical (non-worktree) main repo root from the AGENT'S OWN CWD — never a

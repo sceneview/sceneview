@@ -111,6 +111,11 @@
     <string name="ar_status_tap_to_place">Tap a surface to place %s</string>
     <string name="ar_status_one_placed">1 placed · tap to add</string>
     <string name="ar_status_n_placed">%d placed · tap to add</string>
+    <!-- Gesture pill + aiming hint (TapToPlaceArSession.kt) — #2482 plan §3.5 -->
+    <string name="ar_gesture_moving">Moving</string>
+    <string name="ar_gesture_rotating">Rotating</string>
+    <string name="ar_gesture_scaling">Scaling</string>
+    <string name="ar_aim_at_surface">Aim at a surface…</string>
     <string name="ar_starting_session">Starting AR session…</string>
     <string name="ar_starting_session_subtitle">Hold up — initializing ARCore.</string>
     <string name="ar_permission_required_title">Camera permission is required to run AR</string>

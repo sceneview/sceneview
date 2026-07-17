@@ -12,7 +12,14 @@ export const meta = {
 //   issues — explicit issue numbers to drive. If empty/omitted, the preflight
 //            agent queries open issues and selects the top `max` in priority order.
 //   max    — cap on auto-selected issues (default 6).
-const a = args || {}
+// Be robust to args arriving as a JSON string (some invocation paths stringify it — same guard as review-fanout.js).
+let a = args
+if (typeof a === 'string') {
+  try { a = JSON.parse(a) } catch {
+    throw new Error('fix-issue-batch: args must be JSON — got a non-JSON string: ' + a.slice(0, 120))
+  }
+}
+a = a || {}
 const MAX = Number(a.max) > 0 ? Number(a.max) : 6
 const GIVEN = Array.isArray(a.issues) ? a.issues.map(Number).filter(n => Number.isFinite(n) && n > 0) : []
 

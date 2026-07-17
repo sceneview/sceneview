@@ -1,6 +1,6 @@
 {
   "name": "sceneview-mcp",
-  "version": "4.0.13",
+  "version": "4.0.14",
   "mcpName": "io.github.sceneview/mcp",
   "description": "MCP server for SceneView — cross-platform 3D & AR SDK for Android and iOS. Give Claude the full SceneView SDK so it writes correct, compilable code.",
   "keywords": [
@@ -75,7 +75,7 @@
     "@biomejs/biome": "^2.0.0",
     "@types/node": "^26.0.1",
     "tsx": "^4.0.0",
-    "typescript": "^6.0.2",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.5"
   },
   "overrides": {

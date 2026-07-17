@@ -223,6 +223,49 @@ the full convention.
 
 After your changes are merged, the Discord bot will award you the **Contributor** role.
 
+### Public API changes
+
+SceneView is an **AI-first SDK**: `llms.txt` and the KDoc promise *exact* public
+signatures so an AI can generate correct code on the first try. To stop a public
+signature from changing silently, the published library modules — `sceneview`,
+`arsceneview` and `sceneview-core` — have their public ABI tracked by Kotlin's
+[`binary-compatibility-validator`](https://github.com/Kotlin/binary-compatibility-validator).
+Each module's public surface is dumped to a committed text file under
+`<module>/api/<module>.api`, and CI runs a **blocking** `apiCheck` (the
+`API compatibility` job in `ci.yml`, same tier as the unit tests).
+
+**If your change touches a public signature** (adds/removes/renames a public
+class, function, property, or changes a public type), `apiCheck` will fail with
+a diff naming the offending symbol, e.g.:
+
+```
+> API check failed for project sceneview-core.
+  +	public static final fun temporaryGateProbe (J)D
+  You can run :sceneview-core:apiDump task to overwrite API declarations
+```
+
+When the change is **intentional**, regenerate the dumps and commit the diff:
+
+```bash
+./gradlew apiDump          # rewrites <module>/api/*.api for every module
+git add '**/api/*.api'
+```
+
+The updated `.api` diff then rides along in your PR, so the reviewer sees the
+exact public-API delta — a new symbol, a removed one, or a changed signature —
+as a first-class part of the review. Treat a *removed* or *retyped* public symbol
+as a breaking change: it needs a deprecation cycle and a matching update to
+`llms.txt`, the KDoc, and the cross-platform surfaces (see
+[CLAUDE.md](CLAUDE.md) "Documentation drift").
+
+> **Scope.** Only the JVM public surface is validated. `sceneview-core`'s
+> `jvm("android")` dump already captures the shared `commonMain` API. Native
+> (iOS) and JS klib ABI validation stays disabled for now — it is experimental
+> and not buildable on the ubuntu CI runner. `sceneview-web` (a JS-only KMP
+> module published to npm, not Maven) has no JVM surface and is excluded; its
+> public API is documented via the hand-written `sceneview-web.d.ts` — there is
+> no automated JS ABI gate yet (a `.d.ts` drift gate is shortlist #2642 item 12).
+
 ### CI on docs-only PRs
 
 **Docs-only PRs** — changes confined to `*.md`, `docs/**`, `website-static/**`,
@@ -233,8 +276,9 @@ is pure noise. You will see fewer green checks than on a code PR; this is
 correct. Specifically:
 
 - **`ci.yml`** — the single consolidated PR workflow (`build`, `lint`,
-  `unit-test`, `web-desktop`, `flutter-demo`, `compile-kmp`, `repo-hygiene`,
-  `quality-gate`) — carries a `paths-ignore` filter for those paths, so it
+  `unit-test`, `api-check`, `web-desktop`, `flutter-demo`, `compile-kmp`,
+  `repo-hygiene`, `quality-gate`) — carries a `paths-ignore` filter for those
+  paths, so it
   does not trigger on a docs-only PR. (Before #1370 this was three separate
   workflows — `ci.yml`, `pr-check.yml`, `quality-gate.yml` — each with its
   own `changes` job; they are now one workflow with one path-detection job.)
@@ -276,11 +320,11 @@ Recompile Filament materials using the [current Filament version](https://github
 
 Filament refuses any material whose binary version field does not match the runtime, with `Filament panic — material version N ≠ runtime M` on first frame. There is no compile-time check; the mismatch only manifests at runtime, demo by demo. v4.1.0 shipped with the runtime at 1.70.2 and blobs at 1.71 (two parallel branches each fixed half of the pair) — 10 demos crashed; v4.1.1 hot-fixed by realigning both sides to 1.71.
 
-**The 25 committed blobs that must stay in sync with their `.mat` sources**, spread across three modules:
+**The 26 committed blobs that must stay in sync with their `.mat` sources**, spread across three modules:
 
 ```
-sceneview/src/main/assets/materials/     (13) — image_texture, occlusion, opaque/transparent
-                                                colored/textured/unlit, semantics_overlay,
+sceneview/src/main/assets/materials/     (14) — image_texture, occlusion, opaque/transparent
+                                                colored/textured/unlit, semantics_overlay, splat,
                                                 video_texture(_chroma_key), view_texture_lit/_unlit
 arsceneview/src/main/assets/materials/    (9) — camera_stream_flat/_depth/_person_occlusion,
                                                 face_mesh(_occluder), plane_renderer(_shadow)(_v2),
@@ -291,7 +335,7 @@ website-static/materials/                 (3) — lit_colored, transparent_color
 **The `tools/GenerateFilamat.sh` workflow.** [`tools/GenerateFilamat.sh`](tools/GenerateFilamat.sh) is the single entry point for every Filament material in the repo. It auto-downloads the `matc` toolchain pinned to the Filament version in [`gradle/libs.versions.toml`](gradle/libs.versions.toml) and compiles each `.mat` to its `.filamat` blob — no manual `matc` install needed.
 
 ```
-bash tools/GenerateFilamat.sh                 # regenerate all 22 .filamat blobs in place
+bash tools/GenerateFilamat.sh                 # regenerate all 26 .filamat blobs in place
 bash tools/GenerateFilamat.sh --check         # diff against committed blobs; exit 1 on drift
 bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 bash tools/GenerateFilamat.sh --ci-tolerant   # treat a matc download failure as WARN, not FAIL

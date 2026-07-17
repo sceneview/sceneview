@@ -1,0 +1,1522 @@
+public final class io/github/sceneview/animation/AnimationFrame {
+	public fun <init> (FZ)V
+	public final fun component1 ()F
+	public final fun component2 ()Z
+	public final fun copy (FZ)Lio/github/sceneview/animation/AnimationFrame;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/AnimationFrame;FZILjava/lang/Object;)Lio/github/sceneview/animation/AnimationFrame;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationTime ()F
+	public final fun getFinished ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/AnimationPlaybackKt {
+	public static final fun computeAnimationFrame (JJFFZ)Lio/github/sceneview/animation/AnimationFrame;
+	public static final fun scaleToFitUnits (FFFF)F
+	public static synthetic fun scaleToFitUnits$default (FFFFILjava/lang/Object;)F
+}
+
+public final class io/github/sceneview/animation/AnimationSequence {
+	public fun <init> (Ljava/util/List;Z)V
+	public synthetic fun <init> (Ljava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun evaluate (F)F
+	public final fun getLoop ()Z
+	public final fun getSteps ()Ljava/util/List;
+	public final fun getTotalDuration ()F
+}
+
+public final class io/github/sceneview/animation/AnimationSequenceBuilder {
+	public fun <init> ()V
+	public final fun delay (F)V
+	public final fun getLoop ()Z
+	public final fun setLoop (Z)V
+	public final fun step (FFFLkotlin/jvm/functions/Function1;)V
+	public static synthetic fun step$default (Lio/github/sceneview/animation/AnimationSequenceBuilder;FFFLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+}
+
+public final class io/github/sceneview/animation/AnimationSequenceKt {
+	public static final fun advanceSequence (Lio/github/sceneview/animation/SequenceState;F)Lio/github/sceneview/animation/SequenceState;
+	public static final fun animationSequence (Lkotlin/jvm/functions/Function1;)Lio/github/sceneview/animation/AnimationSequence;
+}
+
+public final class io/github/sceneview/animation/AnimationState {
+	public fun <init> (FFFFLkotlin/jvm/functions/Function1;Lio/github/sceneview/animation/PlaybackMode;ZZ)V
+	public synthetic fun <init> (FFFFLkotlin/jvm/functions/Function1;Lio/github/sceneview/animation/PlaybackMode;ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun component5 ()Lkotlin/jvm/functions/Function1;
+	public final fun component6 ()Lio/github/sceneview/animation/PlaybackMode;
+	public final fun component7 ()Z
+	public final fun component8 ()Z
+	public final fun copy (FFFFLkotlin/jvm/functions/Function1;Lio/github/sceneview/animation/PlaybackMode;ZZ)Lio/github/sceneview/animation/AnimationState;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/AnimationState;FFFFLkotlin/jvm/functions/Function1;Lio/github/sceneview/animation/PlaybackMode;ZZILjava/lang/Object;)Lio/github/sceneview/animation/AnimationState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationSeconds ()F
+	public final fun getEasing ()Lkotlin/jvm/functions/Function1;
+	public final fun getElapsedSeconds ()F
+	public final fun getEndValue ()F
+	public final fun getFraction ()F
+	public final fun getLinearFraction ()F
+	public final fun getPlaybackMode ()Lio/github/sceneview/animation/PlaybackMode;
+	public final fun getStartValue ()F
+	public final fun getValue ()F
+	public fun hashCode ()I
+	public final fun isFinished ()Z
+	public final fun isReversed ()Z
+	public final fun isRunning ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/AnimationTimeUtilsKt {
+	public static final fun fractionToTime (FF)F
+	public static final fun frameCount (FI)I
+	public static final fun frameToTime (II)F
+	public static final fun millisToSeconds (J)F
+	public static final fun secondsToMillis (F)J
+	public static final fun timeToFraction (FF)F
+	public static final fun timeToFrame (FI)I
+}
+
+public final class io/github/sceneview/animation/Easing {
+	public static final field INSTANCE Lio/github/sceneview/animation/Easing;
+	public final fun cubicBezier (FFFF)Lkotlin/jvm/functions/Function1;
+	public final fun getEaseIn ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseInBack ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseInBounce ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseInCirc ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseInElastic ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseInExpo ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseInOut ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseInOutQuad ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseInOutSine ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseInQuad ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseInQuart ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseInQuint ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseInSine ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseOut ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseOutBack ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseOutBounce ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseOutCirc ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseOutElastic ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseOutExpo ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseOutQuad ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseOutQuart ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseOutQuint ()Lkotlin/jvm/functions/Function1;
+	public final fun getEaseOutSine ()Lkotlin/jvm/functions/Function1;
+	public final fun getLinear ()Lkotlin/jvm/functions/Function1;
+	public final fun spring (FF)Lkotlin/jvm/functions/Function1;
+	public static synthetic fun spring$default (Lio/github/sceneview/animation/Easing;FFILjava/lang/Object;)Lkotlin/jvm/functions/Function1;
+}
+
+public final class io/github/sceneview/animation/InterpolationKt {
+	public static final fun lerp (FFF)F
+	public static final fun lerp (Ldev/romainguy/kotlin/math/Float4;Ldev/romainguy/kotlin/math/Float4;F)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun slerp (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Quaternion;F)Ldev/romainguy/kotlin/math/Quaternion;
+}
+
+public final class io/github/sceneview/animation/Keyframe {
+	public fun <init> (FFLkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (FFLkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()Lkotlin/jvm/functions/Function1;
+	public final fun copy (FFLkotlin/jvm/functions/Function1;)Lio/github/sceneview/animation/Keyframe;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/Keyframe;FFLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/sceneview/animation/Keyframe;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEasing ()Lkotlin/jvm/functions/Function1;
+	public final fun getTime ()F
+	public final fun getValue ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/KeyframeAnimationKt {
+	public static final fun advanceKeyframeAnimation (Lio/github/sceneview/animation/KeyframeAnimationState;F)Lio/github/sceneview/animation/KeyframeAnimationState;
+}
+
+public final class io/github/sceneview/animation/KeyframeAnimationState {
+	public fun <init> (Lio/github/sceneview/animation/KeyframeTrack;FFZZ)V
+	public synthetic fun <init> (Lio/github/sceneview/animation/KeyframeTrack;FFZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lio/github/sceneview/animation/KeyframeTrack;
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()Z
+	public final fun component5 ()Z
+	public final fun copy (Lio/github/sceneview/animation/KeyframeTrack;FFZZ)Lio/github/sceneview/animation/KeyframeAnimationState;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/KeyframeAnimationState;Lio/github/sceneview/animation/KeyframeTrack;FFZZILjava/lang/Object;)Lio/github/sceneview/animation/KeyframeAnimationState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getElapsedSeconds ()F
+	public final fun getLoop ()Z
+	public final fun getSpeed ()F
+	public final fun getTrack ()Lio/github/sceneview/animation/KeyframeTrack;
+	public final fun getValue ()F
+	public fun hashCode ()I
+	public final fun isFinished ()Z
+	public final fun isRunning ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/KeyframeTrack {
+	public fun <init> (Ljava/util/List;)V
+	public final fun evaluate (F)F
+	public final fun getDuration ()F
+	public final fun getKeyframes ()Ljava/util/List;
+}
+
+public final class io/github/sceneview/animation/PlaybackMode : java/lang/Enum {
+	public static final field LOOP Lio/github/sceneview/animation/PlaybackMode;
+	public static final field ONCE Lio/github/sceneview/animation/PlaybackMode;
+	public static final field PING_PONG Lio/github/sceneview/animation/PlaybackMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/animation/PlaybackMode;
+	public static fun values ()[Lio/github/sceneview/animation/PlaybackMode;
+}
+
+public final class io/github/sceneview/animation/PlaybackState {
+	public fun <init> (JFZ)V
+	public synthetic fun <init> (JFZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()F
+	public final fun component3 ()Z
+	public final fun copy (JFZ)Lio/github/sceneview/animation/PlaybackState;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/PlaybackState;JFZILjava/lang/Object;)Lio/github/sceneview/animation/PlaybackState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLoop ()Z
+	public final fun getSpeed ()F
+	public final fun getStartTimeNanos ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/PropertyAnimationKt {
+	public static final fun animate (Lio/github/sceneview/animation/AnimationState;F)Lio/github/sceneview/animation/AnimationState;
+}
+
+public final class io/github/sceneview/animation/SequenceState {
+	public fun <init> (Lio/github/sceneview/animation/AnimationSequence;FZ)V
+	public synthetic fun <init> (Lio/github/sceneview/animation/AnimationSequence;FZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lio/github/sceneview/animation/AnimationSequence;
+	public final fun component2 ()F
+	public final fun component3 ()Z
+	public final fun copy (Lio/github/sceneview/animation/AnimationSequence;FZ)Lio/github/sceneview/animation/SequenceState;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/SequenceState;Lio/github/sceneview/animation/AnimationSequence;FZILjava/lang/Object;)Lio/github/sceneview/animation/SequenceState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCurrentStepIndex ()I
+	public final fun getElapsedSeconds ()F
+	public final fun getSequence ()Lio/github/sceneview/animation/AnimationSequence;
+	public final fun getValue ()F
+	public fun hashCode ()I
+	public final fun isFinished ()Z
+	public final fun isRunning ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/SequenceStep {
+	public fun <init> (FFFLkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (FFFLkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()Lkotlin/jvm/functions/Function1;
+	public final fun copy (FFFLkotlin/jvm/functions/Function1;)Lio/github/sceneview/animation/SequenceStep;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/SequenceStep;FFFLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/sceneview/animation/SequenceStep;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationSeconds ()F
+	public final fun getEasing ()Lkotlin/jvm/functions/Function1;
+	public final fun getEndValue ()F
+	public final fun getStartValue ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/SmoothTransformKt {
+	public static final fun cancelSmooth (Lio/github/sceneview/animation/SmoothTransformState;)Lio/github/sceneview/animation/SmoothTransformState;
+	public static final fun cancelSmooth (Lio/github/sceneview/animation/SmoothTransformTRSState;)Lio/github/sceneview/animation/SmoothTransformTRSState;
+	public static final fun setSmoothTarget (Lio/github/sceneview/animation/SmoothTransformState;Ldev/romainguy/kotlin/math/Mat4;Ljava/lang/Float;)Lio/github/sceneview/animation/SmoothTransformState;
+	public static final fun setSmoothTarget (Lio/github/sceneview/animation/SmoothTransformTRSState;Lio/github/sceneview/animation/SmoothTransformTRSTarget;Ljava/lang/Float;)Lio/github/sceneview/animation/SmoothTransformTRSState;
+	public static synthetic fun setSmoothTarget$default (Lio/github/sceneview/animation/SmoothTransformState;Ldev/romainguy/kotlin/math/Mat4;Ljava/lang/Float;ILjava/lang/Object;)Lio/github/sceneview/animation/SmoothTransformState;
+	public static synthetic fun setSmoothTarget$default (Lio/github/sceneview/animation/SmoothTransformTRSState;Lio/github/sceneview/animation/SmoothTransformTRSTarget;Ljava/lang/Float;ILjava/lang/Object;)Lio/github/sceneview/animation/SmoothTransformTRSState;
+	public static final fun updateSmoothTransform (Lio/github/sceneview/animation/SmoothTransformState;D)Lio/github/sceneview/animation/SmoothTransformResult;
+	public static final fun updateSmoothTransform (Lio/github/sceneview/animation/SmoothTransformTRSState;D)Lio/github/sceneview/animation/SmoothTransformTRSResult;
+}
+
+public final class io/github/sceneview/animation/SmoothTransformResult {
+	public fun <init> (Lio/github/sceneview/animation/SmoothTransformState;Z)V
+	public final fun component1 ()Lio/github/sceneview/animation/SmoothTransformState;
+	public final fun component2 ()Z
+	public final fun copy (Lio/github/sceneview/animation/SmoothTransformState;Z)Lio/github/sceneview/animation/SmoothTransformResult;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/SmoothTransformResult;Lio/github/sceneview/animation/SmoothTransformState;ZILjava/lang/Object;)Lio/github/sceneview/animation/SmoothTransformResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArrived ()Z
+	public final fun getState ()Lio/github/sceneview/animation/SmoothTransformState;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/SmoothTransformState {
+	public fun <init> (Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;FF)V
+	public synthetic fun <init> (Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;FFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Mat4;
+	public final fun component2 ()Ldev/romainguy/kotlin/math/Mat4;
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun copy (Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;FF)Lio/github/sceneview/animation/SmoothTransformState;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/SmoothTransformState;Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;FFILjava/lang/Object;)Lio/github/sceneview/animation/SmoothTransformState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getConvergenceDelta ()F
+	public final fun getCurrent ()Ldev/romainguy/kotlin/math/Mat4;
+	public final fun getSpeed ()F
+	public final fun getTarget ()Ldev/romainguy/kotlin/math/Mat4;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/SmoothTransformTRSResult {
+	public fun <init> (Lio/github/sceneview/animation/SmoothTransformTRSState;Z)V
+	public final fun component1 ()Lio/github/sceneview/animation/SmoothTransformTRSState;
+	public final fun component2 ()Z
+	public final fun copy (Lio/github/sceneview/animation/SmoothTransformTRSState;Z)Lio/github/sceneview/animation/SmoothTransformTRSResult;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/SmoothTransformTRSResult;Lio/github/sceneview/animation/SmoothTransformTRSState;ZILjava/lang/Object;)Lio/github/sceneview/animation/SmoothTransformTRSResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArrived ()Z
+	public final fun getState ()Lio/github/sceneview/animation/SmoothTransformTRSState;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/SmoothTransformTRSState {
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/animation/SmoothTransformTRSTarget;FF)V
+	public synthetic fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/animation/SmoothTransformTRSTarget;FFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component2 ()Ldev/romainguy/kotlin/math/Quaternion;
+	public final fun component3 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component4 ()Lio/github/sceneview/animation/SmoothTransformTRSTarget;
+	public final fun component5 ()F
+	public final fun component6 ()F
+	public final fun copy (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/animation/SmoothTransformTRSTarget;FF)Lio/github/sceneview/animation/SmoothTransformTRSState;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/SmoothTransformTRSState;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/animation/SmoothTransformTRSTarget;FFILjava/lang/Object;)Lio/github/sceneview/animation/SmoothTransformTRSState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getConvergenceDelta ()F
+	public final fun getPosition ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getQuaternion ()Ldev/romainguy/kotlin/math/Quaternion;
+	public final fun getScale ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getSpeed ()F
+	public final fun getTarget ()Lio/github/sceneview/animation/SmoothTransformTRSTarget;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/SmoothTransformTRSTarget {
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component2 ()Ldev/romainguy/kotlin/math/Quaternion;
+	public final fun component3 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun copy (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/animation/SmoothTransformTRSTarget;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/SmoothTransformTRSTarget;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Lio/github/sceneview/animation/SmoothTransformTRSTarget;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPosition ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getQuaternion ()Ldev/romainguy/kotlin/math/Quaternion;
+	public final fun getScale ()Ldev/romainguy/kotlin/math/Float3;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/SpringAnimator {
+	public fun <init> (Lio/github/sceneview/animation/SpringConfig;F)V
+	public synthetic fun <init> (Lio/github/sceneview/animation/SpringConfig;FILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getConfig ()Lio/github/sceneview/animation/SpringConfig;
+	public final fun getValue ()F
+	public final fun isSettled ()Z
+	public final fun reset ()V
+	public final fun update (F)F
+}
+
+public final class io/github/sceneview/animation/SpringConfig {
+	public static final field Companion Lio/github/sceneview/animation/SpringConfig$Companion;
+	public fun <init> (FFF)V
+	public synthetic fun <init> (FFFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun copy (FFF)Lio/github/sceneview/animation/SpringConfig;
+	public static synthetic fun copy$default (Lio/github/sceneview/animation/SpringConfig;FFFILjava/lang/Object;)Lio/github/sceneview/animation/SpringConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDampingRatio ()F
+	public final fun getInitialVelocity ()F
+	public final fun getStiffness ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/animation/SpringConfig$Companion {
+	public final fun getBOUNCY ()Lio/github/sceneview/animation/SpringConfig;
+	public final fun getSMOOTH ()Lio/github/sceneview/animation/SpringConfig;
+	public final fun getSTIFF ()Lio/github/sceneview/animation/SpringConfig;
+}
+
+public final class io/github/sceneview/collision/AABB {
+	public static final field Companion Lio/github/sceneview/collision/AABB$Companion;
+	public fun <init> (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)V
+	public final fun component1 ()Lio/github/sceneview/collision/Vector3;
+	public final fun component2 ()Lio/github/sceneview/collision/Vector3;
+	public final fun contains (Lio/github/sceneview/collision/Vector3;)Z
+	public final fun copy (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/AABB;
+	public static synthetic fun copy$default (Lio/github/sceneview/collision/AABB;Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;ILjava/lang/Object;)Lio/github/sceneview/collision/AABB;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCenter ()Lio/github/sceneview/collision/Vector3;
+	public final fun getMax ()Lio/github/sceneview/collision/Vector3;
+	public final fun getMin ()Lio/github/sceneview/collision/Vector3;
+	public final fun getSize ()Lio/github/sceneview/collision/Vector3;
+	public fun hashCode ()I
+	public final fun intersects (Lio/github/sceneview/collision/AABB;)Z
+	public final fun rayIntersection (Lio/github/sceneview/collision/Ray;)Z
+	public fun toString ()Ljava/lang/String;
+	public final fun union (Lio/github/sceneview/collision/AABB;)Lio/github/sceneview/collision/AABB;
+}
+
+public final class io/github/sceneview/collision/AABB$Companion {
+	public final fun fromTriangles (Ljava/util/List;)Lio/github/sceneview/collision/AABB;
+}
+
+public final class io/github/sceneview/collision/Box : io/github/sceneview/collision/CollisionShape {
+	public static final field Companion Lio/github/sceneview/collision/Box$Companion;
+	public fun <init> ()V
+	public fun <init> (Lio/github/sceneview/collision/Vector3;)V
+	public fun <init> (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)V
+	public fun boxIntersection (Lio/github/sceneview/collision/Box;)Z
+	public final fun getCenter ()Lio/github/sceneview/collision/Vector3;
+	public final fun getExtents ()Lio/github/sceneview/collision/Vector3;
+	public final fun getRotation ()Lio/github/sceneview/collision/Quaternion;
+	public final fun getSize ()Lio/github/sceneview/collision/Vector3;
+	public fun makeCopy ()Lio/github/sceneview/collision/Box;
+	public synthetic fun makeCopy ()Lio/github/sceneview/collision/CollisionShape;
+	public fun rayIntersection (Lio/github/sceneview/collision/Ray;Lio/github/sceneview/collision/RayHit;)Z
+	public final fun setCenter (Lio/github/sceneview/collision/Vector3;)V
+	public final fun setRotation (Lio/github/sceneview/collision/Quaternion;)V
+	public final fun setSize (Lio/github/sceneview/collision/Vector3;)V
+	public fun shapeIntersection (Lio/github/sceneview/collision/CollisionShape;)Z
+	public fun sphereIntersection (Lio/github/sceneview/collision/Sphere;)Z
+	public fun transform (Lio/github/sceneview/collision/TransformProvider;)Lio/github/sceneview/collision/CollisionShape;
+	public fun transform (Lio/github/sceneview/collision/TransformProvider;Lio/github/sceneview/collision/CollisionShape;)V
+}
+
+public final class io/github/sceneview/collision/Box$Companion {
+}
+
+public final class io/github/sceneview/collision/Capsule : io/github/sceneview/collision/CollisionShape {
+	public static final field Companion Lio/github/sceneview/collision/Capsule$Companion;
+	public fun <init> ()V
+	public fun <init> (FFLio/github/sceneview/collision/Vector3;)V
+	public synthetic fun <init> (FFLio/github/sceneview/collision/Vector3;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun boxIntersection (Lio/github/sceneview/collision/Box;)Z
+	public final fun capsuleIntersection (Lio/github/sceneview/collision/Capsule;)Z
+	public final fun getCenter ()Lio/github/sceneview/collision/Vector3;
+	public final fun getHeight ()F
+	public final fun getRadius ()F
+	public final fun getSegmentEndpoints ()Lkotlin/Pair;
+	public fun makeCopy ()Lio/github/sceneview/collision/Capsule;
+	public synthetic fun makeCopy ()Lio/github/sceneview/collision/CollisionShape;
+	public fun rayIntersection (Lio/github/sceneview/collision/Ray;Lio/github/sceneview/collision/RayHit;)Z
+	public final fun setCenter (Lio/github/sceneview/collision/Vector3;)V
+	public final fun setHeight (F)V
+	public final fun setRadius (F)V
+	public final fun setRotation (Lio/github/sceneview/collision/Quaternion;)V
+	public fun shapeIntersection (Lio/github/sceneview/collision/CollisionShape;)Z
+	public fun sphereIntersection (Lio/github/sceneview/collision/Sphere;)Z
+	public fun transform (Lio/github/sceneview/collision/TransformProvider;)Lio/github/sceneview/collision/CollisionShape;
+	public fun transform (Lio/github/sceneview/collision/TransformProvider;Lio/github/sceneview/collision/CollisionShape;)V
+}
+
+public final class io/github/sceneview/collision/Capsule$Companion {
+}
+
+public final class io/github/sceneview/collision/ChangeId {
+	public static final field Companion Lio/github/sceneview/collision/ChangeId$Companion;
+	public static final field EMPTY_ID I
+	public fun <init> ()V
+	public final fun checkChanged (I)Z
+	public final fun get ()I
+	public final fun isEmpty ()Z
+	public final fun update ()V
+}
+
+public final class io/github/sceneview/collision/ChangeId$Companion {
+}
+
+public final class io/github/sceneview/collision/CollisionResponseKt {
+	public static final fun reflect (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Vector3;
+	public static final fun separationVector (Lio/github/sceneview/collision/Sphere;Lio/github/sceneview/collision/Sphere;)Lio/github/sceneview/collision/Vector3;
+	public static final fun spherePlaneResponse (Lio/github/sceneview/collision/Sphere;Lio/github/sceneview/collision/Vector3;FLio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/CollisionResult;
+	public static synthetic fun spherePlaneResponse$default (Lio/github/sceneview/collision/Sphere;Lio/github/sceneview/collision/Vector3;FLio/github/sceneview/collision/Vector3;ILjava/lang/Object;)Lio/github/sceneview/collision/CollisionResult;
+	public static final fun sphereSphereResponse (Lio/github/sceneview/collision/Sphere;Lio/github/sceneview/collision/Sphere;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/CollisionResult;
+	public static synthetic fun sphereSphereResponse$default (Lio/github/sceneview/collision/Sphere;Lio/github/sceneview/collision/Sphere;Lio/github/sceneview/collision/Vector3;ILjava/lang/Object;)Lio/github/sceneview/collision/CollisionResult;
+}
+
+public final class io/github/sceneview/collision/CollisionResult {
+	public fun <init> (ZLio/github/sceneview/collision/Vector3;FLio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)V
+	public synthetic fun <init> (ZLio/github/sceneview/collision/Vector3;FLio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun component2 ()Lio/github/sceneview/collision/Vector3;
+	public final fun component3 ()F
+	public final fun component4 ()Lio/github/sceneview/collision/Vector3;
+	public final fun component5 ()Lio/github/sceneview/collision/Vector3;
+	public final fun copy (ZLio/github/sceneview/collision/Vector3;FLio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/CollisionResult;
+	public static synthetic fun copy$default (Lio/github/sceneview/collision/CollisionResult;ZLio/github/sceneview/collision/Vector3;FLio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;ILjava/lang/Object;)Lio/github/sceneview/collision/CollisionResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBounceDirection ()Lio/github/sceneview/collision/Vector3;
+	public final fun getCollided ()Z
+	public final fun getContactPoint ()Lio/github/sceneview/collision/Vector3;
+	public final fun getNormal ()Lio/github/sceneview/collision/Vector3;
+	public final fun getPenetrationDepth ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract class io/github/sceneview/collision/CollisionShape {
+	public fun <init> ()V
+	public abstract fun boxIntersection (Lio/github/sceneview/collision/Box;)Z
+	public final fun getId ()Lio/github/sceneview/collision/ChangeId;
+	public abstract fun makeCopy ()Lio/github/sceneview/collision/CollisionShape;
+	protected final fun onChanged ()V
+	public abstract fun rayIntersection (Lio/github/sceneview/collision/Ray;Lio/github/sceneview/collision/RayHit;)Z
+	public abstract fun shapeIntersection (Lio/github/sceneview/collision/CollisionShape;)Z
+	public abstract fun sphereIntersection (Lio/github/sceneview/collision/Sphere;)Z
+	public abstract fun transform (Lio/github/sceneview/collision/TransformProvider;)Lio/github/sceneview/collision/CollisionShape;
+	public abstract fun transform (Lio/github/sceneview/collision/TransformProvider;Lio/github/sceneview/collision/CollisionShape;)V
+}
+
+public final class io/github/sceneview/collision/MathHelper {
+	public static final field INSTANCE Lio/github/sceneview/collision/MathHelper;
+	public final fun almostEqualRelativeAndAbs (FF)Z
+	public final fun clamp (FFF)F
+	public final fun lerp (FFF)F
+}
+
+public final class io/github/sceneview/collision/Matrix {
+	public static final field Companion Lio/github/sceneview/collision/Matrix$Companion;
+	public fun <init> ()V
+	public fun <init> ([F)V
+	public final fun decomposeRotation (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Matrix;)V
+	public final fun decomposeRotation (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Quaternion;)V
+	public final fun decomposeScale (Lio/github/sceneview/collision/Vector3;)V
+	public final fun decomposeTranslation (Lio/github/sceneview/collision/Vector3;)V
+	public final fun extractQuaternion (Lio/github/sceneview/collision/Quaternion;)V
+	public final fun getData ()[F
+	public final fun makeRotation (Lio/github/sceneview/collision/Quaternion;)V
+	public final fun makeScale (F)V
+	public final fun makeScale (Lio/github/sceneview/collision/Vector3;)V
+	public final fun makeTranslation (Lio/github/sceneview/collision/Vector3;)V
+	public final fun makeTrs (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Quaternion;Lio/github/sceneview/collision/Vector3;)V
+	public final fun set (Lio/github/sceneview/collision/Matrix;)V
+	public final fun set ([F)V
+	public final fun setData ([F)V
+	public final fun setTranslation (Lio/github/sceneview/collision/Vector3;)V
+	public final fun transformDirection (Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Vector3;
+	public final fun transformPoint (Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Vector3;
+}
+
+public final class io/github/sceneview/collision/Matrix$Companion {
+	public final fun equals (Lio/github/sceneview/collision/Matrix;Lio/github/sceneview/collision/Matrix;)Z
+	public final fun getIDENTITY_DATA ()[F
+	public final fun invert (Lio/github/sceneview/collision/Matrix;Lio/github/sceneview/collision/Matrix;)Z
+	public final fun multiply (Lio/github/sceneview/collision/Matrix;Lio/github/sceneview/collision/Matrix;Lio/github/sceneview/collision/Matrix;)V
+}
+
+public final class io/github/sceneview/collision/MeshCollider {
+	public static final field INSTANCE Lio/github/sceneview/collision/MeshCollider;
+	public final fun rayMeshIntersection (Lio/github/sceneview/collision/Ray;Ljava/util/List;)Lio/github/sceneview/collision/MeshCollider$MeshHitResult;
+	public final fun rayTriangleIntersection (Lio/github/sceneview/collision/Ray;Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/MeshCollider$MeshHitResult;
+}
+
+public final class io/github/sceneview/collision/MeshCollider$MeshHitResult {
+	public fun <init> (ZFLio/github/sceneview/collision/Vector3;ILio/github/sceneview/collision/Vector3;FF)V
+	public synthetic fun <init> (ZFLio/github/sceneview/collision/Vector3;ILio/github/sceneview/collision/Vector3;FFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun component2 ()F
+	public final fun component3 ()Lio/github/sceneview/collision/Vector3;
+	public final fun component4 ()I
+	public final fun component5 ()Lio/github/sceneview/collision/Vector3;
+	public final fun component6 ()F
+	public final fun component7 ()F
+	public final fun copy (ZFLio/github/sceneview/collision/Vector3;ILio/github/sceneview/collision/Vector3;FF)Lio/github/sceneview/collision/MeshCollider$MeshHitResult;
+	public static synthetic fun copy$default (Lio/github/sceneview/collision/MeshCollider$MeshHitResult;ZFLio/github/sceneview/collision/Vector3;ILio/github/sceneview/collision/Vector3;FFILjava/lang/Object;)Lio/github/sceneview/collision/MeshCollider$MeshHitResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDistance ()F
+	public final fun getHit ()Z
+	public final fun getNormal ()Lio/github/sceneview/collision/Vector3;
+	public final fun getPoint ()Lio/github/sceneview/collision/Vector3;
+	public final fun getTriangleIndex ()I
+	public final fun getU ()F
+	public final fun getV ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/collision/MeshCollider$Triangle {
+	public fun <init> (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)V
+	public final fun aabb ()Lio/github/sceneview/collision/AABB;
+	public final fun centroid ()Lio/github/sceneview/collision/Vector3;
+	public final fun component1 ()Lio/github/sceneview/collision/Vector3;
+	public final fun component2 ()Lio/github/sceneview/collision/Vector3;
+	public final fun component3 ()Lio/github/sceneview/collision/Vector3;
+	public final fun copy (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/MeshCollider$Triangle;
+	public static synthetic fun copy$default (Lio/github/sceneview/collision/MeshCollider$Triangle;Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;ILjava/lang/Object;)Lio/github/sceneview/collision/MeshCollider$Triangle;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getV0 ()Lio/github/sceneview/collision/Vector3;
+	public final fun getV1 ()Lio/github/sceneview/collision/Vector3;
+	public final fun getV2 ()Lio/github/sceneview/collision/Vector3;
+	public fun hashCode ()I
+	public final fun normal ()Lio/github/sceneview/collision/Vector3;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/collision/Octree {
+	public static final field Companion Lio/github/sceneview/collision/Octree$Companion;
+	public fun <init> (Lio/github/sceneview/collision/AABB;II)V
+	public synthetic fun <init> (Lio/github/sceneview/collision/AABB;IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun clear ()V
+	public final fun getBounds ()Lio/github/sceneview/collision/AABB;
+	public final fun getObjectCount ()I
+	public final fun insert (Lio/github/sceneview/collision/AABB;I)V
+	public final fun insert (Lio/github/sceneview/collision/Octree$OctreeObject;)V
+	public final fun isSubdivided ()Z
+	public final fun query (Lio/github/sceneview/collision/AABB;)Ljava/util/List;
+	public final fun query (Lio/github/sceneview/collision/AABB;Ljava/util/List;)Ljava/util/List;
+	public final fun queryRay (Lio/github/sceneview/collision/Ray;)Ljava/util/List;
+	public final fun queryRay (Lio/github/sceneview/collision/Ray;Ljava/util/List;)Ljava/util/List;
+}
+
+public final class io/github/sceneview/collision/Octree$Companion {
+	public final fun fromTriangles (Ljava/util/List;I)Lio/github/sceneview/collision/Octree;
+	public static synthetic fun fromTriangles$default (Lio/github/sceneview/collision/Octree$Companion;Ljava/util/List;IILjava/lang/Object;)Lio/github/sceneview/collision/Octree;
+}
+
+public final class io/github/sceneview/collision/Octree$OctreeObject {
+	public fun <init> (Lio/github/sceneview/collision/AABB;I)V
+	public final fun component1 ()Lio/github/sceneview/collision/AABB;
+	public final fun component2 ()I
+	public final fun copy (Lio/github/sceneview/collision/AABB;I)Lio/github/sceneview/collision/Octree$OctreeObject;
+	public static synthetic fun copy$default (Lio/github/sceneview/collision/Octree$OctreeObject;Lio/github/sceneview/collision/AABB;IILjava/lang/Object;)Lio/github/sceneview/collision/Octree$OctreeObject;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAabb ()Lio/github/sceneview/collision/AABB;
+	public final fun getIndex ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/collision/OctreeKt {
+	public static final fun acceleratedRayMeshIntersection (Lio/github/sceneview/collision/Ray;Ljava/util/List;Lio/github/sceneview/collision/Octree;)Lio/github/sceneview/collision/MeshCollider$MeshHitResult;
+}
+
+public final class io/github/sceneview/collision/Plane {
+	public static final field Companion Lio/github/sceneview/collision/Plane$Companion;
+	public fun <init> (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)V
+	public final fun getCenter ()Lio/github/sceneview/collision/Vector3;
+	public final fun getNormal ()Lio/github/sceneview/collision/Vector3;
+	public final fun rayIntersection (Lio/github/sceneview/collision/Ray;Lio/github/sceneview/collision/RayHit;)Z
+	public final fun setCenter (Lio/github/sceneview/collision/Vector3;)V
+	public final fun setNormal (Lio/github/sceneview/collision/Vector3;)V
+}
+
+public final class io/github/sceneview/collision/Plane$Companion {
+}
+
+public final class io/github/sceneview/collision/Preconditions {
+	public static final field INSTANCE Lio/github/sceneview/collision/Preconditions;
+	public final fun checkElementIndex (II)V
+	public final fun checkElementIndex (IILjava/lang/String;)V
+	public final fun checkNotNull (Ljava/lang/Object;)Ljava/lang/Object;
+	public final fun checkNotNull (Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+	public final fun checkState (Z)V
+	public final fun checkState (ZLjava/lang/Object;)V
+}
+
+public final class io/github/sceneview/collision/Quaternion {
+	public static final field Companion Lio/github/sceneview/collision/Quaternion$Companion;
+	public fun <init> ()V
+	public fun <init> (FFFF)V
+	public fun <init> (Lio/github/sceneview/collision/Quaternion;)V
+	public fun <init> (Lio/github/sceneview/collision/Vector3;)V
+	public fun <init> (Lio/github/sceneview/collision/Vector3;F)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEulerAngles ()Lio/github/sceneview/collision/Vector3;
+	public final fun getW ()F
+	public final fun getX ()F
+	public final fun getY ()F
+	public final fun getZ ()F
+	public fun hashCode ()I
+	public final fun inverted ()Lio/github/sceneview/collision/Quaternion;
+	public final fun negated ()Lio/github/sceneview/collision/Quaternion;
+	public final fun normalize ()Z
+	public final fun normalized ()Lio/github/sceneview/collision/Quaternion;
+	public final fun set (FFFF)V
+	public final fun set (Lio/github/sceneview/collision/Quaternion;)V
+	public final fun set (Lio/github/sceneview/collision/Vector3;F)V
+	public final fun setIdentity ()V
+	public final fun setW (F)V
+	public final fun setX (F)V
+	public final fun setY (F)V
+	public final fun setZ (F)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/collision/Quaternion$Companion {
+	public final fun add (Lio/github/sceneview/collision/Quaternion;Lio/github/sceneview/collision/Quaternion;)Lio/github/sceneview/collision/Quaternion;
+	public final fun axisAngle (Lio/github/sceneview/collision/Vector3;F)Lio/github/sceneview/collision/Quaternion;
+	public final fun equals (Lio/github/sceneview/collision/Quaternion;Lio/github/sceneview/collision/Quaternion;)Z
+	public final fun eulerAngles (Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Quaternion;
+	public final fun identity ()Lio/github/sceneview/collision/Quaternion;
+	public final fun inverseRotateVector (Lio/github/sceneview/collision/Quaternion;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Vector3;
+	public final fun lookRotation (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Quaternion;
+	public final fun multiply (Lio/github/sceneview/collision/Quaternion;Lio/github/sceneview/collision/Quaternion;)Lio/github/sceneview/collision/Quaternion;
+	public final fun rotateVector (Lio/github/sceneview/collision/Quaternion;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Vector3;
+	public final fun rotationBetweenVectors (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Quaternion;
+	public final fun slerp (Lio/github/sceneview/collision/Quaternion;Lio/github/sceneview/collision/Quaternion;F)Lio/github/sceneview/collision/Quaternion;
+}
+
+public final class io/github/sceneview/collision/Ray {
+	public fun <init> ()V
+	public fun <init> (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)V
+	public final fun getDirection ()Lio/github/sceneview/collision/Vector3;
+	public final fun getOrigin ()Lio/github/sceneview/collision/Vector3;
+	public final fun getPoint (F)Lio/github/sceneview/collision/Vector3;
+	public final fun setDirection (Lio/github/sceneview/collision/Vector3;)V
+	public final fun setOrigin (Lio/github/sceneview/collision/Vector3;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public class io/github/sceneview/collision/RayHit {
+	public fun <init> ()V
+	public final fun getDistance ()F
+	public final fun getPoint ()Lio/github/sceneview/collision/Vector3;
+	public final fun getWorldPosition ()Ldev/romainguy/kotlin/math/Float3;
+	public fun reset ()V
+	public final fun set (Lio/github/sceneview/collision/RayHit;)V
+	public final fun setDistance (F)V
+	public final fun setPoint (Lio/github/sceneview/collision/Vector3;)V
+}
+
+public final class io/github/sceneview/collision/Sphere : io/github/sceneview/collision/CollisionShape {
+	public static final field Companion Lio/github/sceneview/collision/Sphere$Companion;
+	public fun <init> ()V
+	public fun <init> (F)V
+	public fun <init> (FLio/github/sceneview/collision/Vector3;)V
+	public fun boxIntersection (Lio/github/sceneview/collision/Box;)Z
+	public final fun getCenter ()Lio/github/sceneview/collision/Vector3;
+	public final fun getRadius ()F
+	public synthetic fun makeCopy ()Lio/github/sceneview/collision/CollisionShape;
+	public fun makeCopy ()Lio/github/sceneview/collision/Sphere;
+	public fun rayIntersection (Lio/github/sceneview/collision/Ray;Lio/github/sceneview/collision/RayHit;)Z
+	public final fun setCenter (Lio/github/sceneview/collision/Vector3;)V
+	public final fun setRadius (F)V
+	public fun shapeIntersection (Lio/github/sceneview/collision/CollisionShape;)Z
+	public fun sphereIntersection (Lio/github/sceneview/collision/Sphere;)Z
+	public fun transform (Lio/github/sceneview/collision/TransformProvider;)Lio/github/sceneview/collision/CollisionShape;
+	public fun transform (Lio/github/sceneview/collision/TransformProvider;Lio/github/sceneview/collision/CollisionShape;)V
+}
+
+public final class io/github/sceneview/collision/Sphere$Companion {
+}
+
+public abstract interface class io/github/sceneview/collision/TransformProvider {
+	public abstract fun getTransformationMatrix ()Lio/github/sceneview/collision/Matrix;
+}
+
+public final class io/github/sceneview/collision/Vector3 {
+	public static final field Companion Lio/github/sceneview/collision/Vector3$Companion;
+	public fun <init> ()V
+	public fun <init> (FFF)V
+	public fun <init> (Lio/github/sceneview/collision/Vector3;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getX ()F
+	public final fun getY ()F
+	public final fun getZ ()F
+	public fun hashCode ()I
+	public final fun length ()F
+	public final fun lengthSquared ()F
+	public final fun negated ()Lio/github/sceneview/collision/Vector3;
+	public final fun normalized ()Lio/github/sceneview/collision/Vector3;
+	public final fun scaled (F)Lio/github/sceneview/collision/Vector3;
+	public final fun set (FFF)V
+	public final fun set (Lio/github/sceneview/collision/Vector3;)V
+	public final fun setX (F)V
+	public final fun setY (F)V
+	public final fun setZ (F)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/collision/Vector3$Companion {
+	public final fun add (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Vector3;
+	public final fun angleBetweenVectors (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)F
+	public final fun back ()Lio/github/sceneview/collision/Vector3;
+	public final fun cross (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Vector3;
+	public final fun dot (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)F
+	public final fun down ()Lio/github/sceneview/collision/Vector3;
+	public final fun equals (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Z
+	public final fun forward ()Lio/github/sceneview/collision/Vector3;
+	public final fun left ()Lio/github/sceneview/collision/Vector3;
+	public final fun lerp (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;F)Lio/github/sceneview/collision/Vector3;
+	public final fun max (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Vector3;
+	public final fun min (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Vector3;
+	public final fun multiply (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Vector3;
+	public final fun one ()Lio/github/sceneview/collision/Vector3;
+	public final fun right ()Lio/github/sceneview/collision/Vector3;
+	public final fun subtract (Lio/github/sceneview/collision/Vector3;Lio/github/sceneview/collision/Vector3;)Lio/github/sceneview/collision/Vector3;
+	public final fun up ()Lio/github/sceneview/collision/Vector3;
+	public final fun zero ()Lio/github/sceneview/collision/Vector3;
+}
+
+public final class io/github/sceneview/core/splat/SplatCloud {
+	public fun <init> (I[F[F[F[F[F)V
+	public final fun getColors ()[F
+	public final fun getCount ()I
+	public final fun getOpacities ()[F
+	public final fun getPositions ()[F
+	public final fun getRotations ()[F
+	public final fun getScales ()[F
+}
+
+public final class io/github/sceneview/core/splat/SplatParseException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class io/github/sceneview/core/splat/SplatParser {
+	public static final field INSTANCE Lio/github/sceneview/core/splat/SplatParser;
+	public final fun fromPly ([B)Lio/github/sceneview/core/splat/SplatCloud;
+	public final fun fromSpz ([B)Lio/github/sceneview/core/splat/SplatCloud;
+	public final fun parse ([B)Lio/github/sceneview/core/splat/SplatCloud;
+}
+
+public final class io/github/sceneview/geometries/BoundingBox {
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component2 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun copy (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/geometries/BoundingBox;
+	public static synthetic fun copy$default (Lio/github/sceneview/geometries/BoundingBox;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Lio/github/sceneview/geometries/BoundingBox;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCenter ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getHalfExtent ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getMax ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getMin ()Ldev/romainguy/kotlin/math/Float3;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/geometries/CSG {
+	public static final field INSTANCE Lio/github/sceneview/geometries/CSG;
+	public final fun intersection (Lio/github/sceneview/geometries/GeometryData;Lio/github/sceneview/geometries/GeometryData;)Lio/github/sceneview/geometries/GeometryData;
+	public final fun invertNormals (Lio/github/sceneview/geometries/GeometryData;)Lio/github/sceneview/geometries/GeometryData;
+	public final fun merge (Lio/github/sceneview/geometries/GeometryData;Lio/github/sceneview/geometries/GeometryData;)Lio/github/sceneview/geometries/GeometryData;
+	public final fun subtract (Lio/github/sceneview/geometries/GeometryData;Lio/github/sceneview/geometries/GeometryData;)Lio/github/sceneview/geometries/GeometryData;
+	public final fun union (Lio/github/sceneview/geometries/GeometryData;Lio/github/sceneview/geometries/GeometryData;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/CapsuleGeometryKt {
+	public static final fun generateCapsule (FFLdev/romainguy/kotlin/math/Float3;III)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generateCapsule$default (FFLdev/romainguy/kotlin/math/Float3;IIIILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/CubeGeometryKt {
+	public static final fun generateCube (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generateCube$default (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/CylinderGeometryKt {
+	public static final fun generateCylinder (FFLdev/romainguy/kotlin/math/Float3;I)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generateCylinder$default (FFLdev/romainguy/kotlin/math/Float3;IILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/ExtrudeGeometryKt {
+	public static final fun generateExtrude (Ljava/util/List;Ljava/util/List;Z)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generateExtrude$default (Ljava/util/List;Ljava/util/List;ZILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/GeometryData {
+	public fun <init> (Ljava/util/List;Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;Ljava/util/List;)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun copy$default (Lio/github/sceneview/geometries/GeometryData;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIndices ()Ljava/util/List;
+	public final fun getVertices ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/geometries/GeometryDataKt {
+	public static final fun boundingBox (Lio/github/sceneview/geometries/GeometryData;)Lio/github/sceneview/geometries/BoundingBox;
+	public static final fun getHasColors (Lio/github/sceneview/geometries/GeometryData;)Z
+	public static final fun getHasNormals (Lio/github/sceneview/geometries/GeometryData;)Z
+	public static final fun getHasUvCoordinates (Lio/github/sceneview/geometries/GeometryData;)Z
+}
+
+public final class io/github/sceneview/geometries/HeightmapGeometryKt {
+	public static final fun generateHeightmap (FFLdev/romainguy/kotlin/math/Float3;IILkotlin/jvm/functions/Function2;)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generateHeightmap$default (FFLdev/romainguy/kotlin/math/Float3;IILkotlin/jvm/functions/Function2;ILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+	public static final fun generatePerlinTerrain (FFLdev/romainguy/kotlin/math/Float3;IIFFI)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generatePerlinTerrain$default (FFLdev/romainguy/kotlin/math/Float3;IIFFIILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/IcosphereGeometryKt {
+	public static final fun generateIcosphere (FLdev/romainguy/kotlin/math/Float3;I)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generateIcosphere$default (FLdev/romainguy/kotlin/math/Float3;IILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/LatheGeometryKt {
+	public static final fun generateLathe (Ljava/util/List;Ldev/romainguy/kotlin/math/Float3;IZ)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generateLathe$default (Ljava/util/List;Ldev/romainguy/kotlin/math/Float3;IZILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/LineGeometryKt {
+	public static final fun generateLine (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generateLine$default (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/PathGeometryKt {
+	public static final fun generatePath (Ljava/util/List;Z)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generatePath$default (Ljava/util/List;ZILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/PlaneGeometryKt {
+	public static final fun generatePlane (Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generatePlane$default (Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/RoundedCubeGeometryKt {
+	public static final fun generateRoundedCube (Ldev/romainguy/kotlin/math/Float3;FLdev/romainguy/kotlin/math/Float3;I)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generateRoundedCube$default (Ldev/romainguy/kotlin/math/Float3;FLdev/romainguy/kotlin/math/Float3;IILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/ShapeGeometryKt {
+	public static final fun generateShape (Ljava/util/List;Ljava/util/List;Ljava/util/List;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Float4;)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generateShape$default (Ljava/util/List;Ljava/util/List;Ljava/util/List;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Float4;ILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/SphereGeometryKt {
+	public static final fun generateSphere (FLdev/romainguy/kotlin/math/Float3;II)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generateSphere$default (FLdev/romainguy/kotlin/math/Float3;IIILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/geometries/TorusGeometryKt {
+	public static final fun generateTorus (FFLdev/romainguy/kotlin/math/Float3;II)Lio/github/sceneview/geometries/GeometryData;
+	public static synthetic fun generateTorus$default (FFLdev/romainguy/kotlin/math/Float3;IIILjava/lang/Object;)Lio/github/sceneview/geometries/GeometryData;
+}
+
+public final class io/github/sceneview/gesture/GestureTransformsKt {
+	public static final fun applyRotationGesture (FFF)F
+	public static synthetic fun applyRotationGesture$default (FFFILjava/lang/Object;)F
+	public static final fun applyScaleGesture (Ldev/romainguy/kotlin/math/Float3;FFLkotlin/ranges/ClosedFloatingPointRange;)Ldev/romainguy/kotlin/math/Float3;
+	public static synthetic fun applyScaleGesture$default (Ldev/romainguy/kotlin/math/Float3;FFLkotlin/ranges/ClosedFloatingPointRange;ILjava/lang/Object;)Ldev/romainguy/kotlin/math/Float3;
+}
+
+public abstract interface class io/github/sceneview/gesture/OnGestureListener {
+	public fun onDoubleTap (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public fun onDown (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public fun onFling (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;Ldev/romainguy/kotlin/math/Float2;)Z
+	public fun onLongPress (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)V
+	public fun onMove (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public fun onMoveBegin (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public fun onMoveEnd (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)V
+	public fun onRotate (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public fun onRotateBegin (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public fun onRotateEnd (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)V
+	public fun onScale (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public fun onScaleBegin (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public fun onScaleEnd (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)V
+	public fun onScroll (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;Ldev/romainguy/kotlin/math/Float2;)Z
+	public fun onSingleTapConfirmed (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public fun onSingleTapUp (Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+}
+
+public final class io/github/sceneview/gesture/OnGestureListener$DefaultImpls {
+	public static fun onDoubleTap (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public static fun onDown (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public static fun onFling (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;Ldev/romainguy/kotlin/math/Float2;)Z
+	public static fun onLongPress (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)V
+	public static fun onMove (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public static fun onMoveBegin (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public static fun onMoveEnd (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)V
+	public static fun onRotate (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public static fun onRotateBegin (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public static fun onRotateEnd (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)V
+	public static fun onScale (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public static fun onScaleBegin (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public static fun onScaleEnd (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)V
+	public static fun onScroll (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;Ldev/romainguy/kotlin/math/Float2;)Z
+	public static fun onSingleTapConfirmed (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+	public static fun onSingleTapUp (Lio/github/sceneview/gesture/OnGestureListener;Lio/github/sceneview/gesture/TouchEvent;Ljava/lang/Object;)Z
+}
+
+public final class io/github/sceneview/gesture/TouchAction : java/lang/Enum {
+	public static final field CANCEL Lio/github/sceneview/gesture/TouchAction;
+	public static final field DOWN Lio/github/sceneview/gesture/TouchAction;
+	public static final field MOVE Lio/github/sceneview/gesture/TouchAction;
+	public static final field UP Lio/github/sceneview/gesture/TouchAction;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/gesture/TouchAction;
+	public static fun values ()[Lio/github/sceneview/gesture/TouchAction;
+}
+
+public final class io/github/sceneview/gesture/TouchEvent {
+	public fun <init> (FFLio/github/sceneview/gesture/TouchAction;I)V
+	public synthetic fun <init> (FFLio/github/sceneview/gesture/TouchAction;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()Lio/github/sceneview/gesture/TouchAction;
+	public final fun component4 ()I
+	public final fun copy (FFLio/github/sceneview/gesture/TouchAction;I)Lio/github/sceneview/gesture/TouchEvent;
+	public static synthetic fun copy$default (Lio/github/sceneview/gesture/TouchEvent;FFLio/github/sceneview/gesture/TouchAction;IILjava/lang/Object;)Lio/github/sceneview/gesture/TouchEvent;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAction ()Lio/github/sceneview/gesture/TouchAction;
+	public final fun getPointerCount ()I
+	public final fun getX ()F
+	public final fun getY ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/logging/LogKt {
+	public static final fun logWarning (Ljava/lang/String;Ljava/lang/String;)V
+}
+
+public final class io/github/sceneview/math/CameraProjectionKt {
+	public static final fun exposureEV100 (FFF)F
+	public static final fun exposureFactor (F)F
+	public static final fun viewToRay (Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Ray;
+	public static final fun viewToWorld (Ldev/romainguy/kotlin/math/Float2;FLdev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float3;
+	public static synthetic fun viewToWorld$default (Ldev/romainguy/kotlin/math/Float2;FLdev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;ILjava/lang/Object;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun worldToView (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float2;
+}
+
+public final class io/github/sceneview/math/ColorKt {
+	public static final fun colorFromHex (Ljava/lang/String;)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun colorFromRgb (IIII)Ldev/romainguy/kotlin/math/Float4;
+	public static synthetic fun colorFromRgb$default (IIIIILjava/lang/Object;)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun colorGradient (Ljava/util/List;F)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun hslToRgb (FFF)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun hsvToRgb (FFF)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun lerpColor (Ldev/romainguy/kotlin/math/Float4;Ldev/romainguy/kotlin/math/Float4;F)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun luminance (Ldev/romainguy/kotlin/math/Float4;)F
+	public static final fun toHsl (Ldev/romainguy/kotlin/math/Float4;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun toHsv (Ldev/romainguy/kotlin/math/Float4;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun toLinearSpace (Ldev/romainguy/kotlin/math/Float4;)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun toSrgbSpace (Ldev/romainguy/kotlin/math/Float4;)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun withAlpha (Ldev/romainguy/kotlin/math/Float4;F)Ldev/romainguy/kotlin/math/Float4;
+}
+
+public final class io/github/sceneview/math/MathKt {
+	public static final fun Transform (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun Transform (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Mat4;
+	public static synthetic fun Transform$default (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Ldev/romainguy/kotlin/math/Mat4;
+	public static synthetic fun Transform$default (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun almostEquals (FF)Z
+	public static final fun colorOf (FF)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun colorOf (FFFF)Ldev/romainguy/kotlin/math/Float4;
+	public static synthetic fun colorOf$default (FFFFILjava/lang/Object;)Ldev/romainguy/kotlin/math/Float4;
+	public static synthetic fun colorOf$default (FFILjava/lang/Object;)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun compareTo (FFF)F
+	public static final fun copyColumnsInto (Ldev/romainguy/kotlin/math/Mat3;[FI)[F
+	public static final fun copyColumnsInto (Ldev/romainguy/kotlin/math/Mat4;[FI)[F
+	public static synthetic fun copyColumnsInto$default (Ldev/romainguy/kotlin/math/Mat3;[FIILjava/lang/Object;)[F
+	public static synthetic fun copyColumnsInto$default (Ldev/romainguy/kotlin/math/Mat4;[FIILjava/lang/Object;)[F
+	public static final fun equals (FFF)Z
+	public static final fun getCenter (Ljava/util/List;)Ldev/romainguy/kotlin/math/Float2;
+	public static final fun getCenter (Ljava/util/List;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun getQuaternion (Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Quaternion;
+	public static final fun lerp (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;F)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun lookAt (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun lookTowards (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Quaternion;
+	public static final fun normalToTangent (Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Quaternion;
+	public static final fun slerp (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;DF)Lkotlin/Triple;
+	public static final fun slerp (Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;DF)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun times (Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun toCollisionRay (Ldev/romainguy/kotlin/math/Ray;)Lio/github/sceneview/collision/Ray;
+	public static final fun toColor ([F)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun toColumnsDoubleArray (Ldev/romainguy/kotlin/math/Mat4;)[D
+	public static final fun toColumnsFloatArray (Ldev/romainguy/kotlin/math/Mat3;)[F
+	public static final fun toColumnsFloatArray (Ldev/romainguy/kotlin/math/Mat4;)[F
+	public static final fun toDirection ([F)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun toFloat3 (Lio/github/sceneview/collision/Vector3;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun toFloat3 ([F)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun toFloat4 ([D)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun toFloat4 ([F)Ldev/romainguy/kotlin/math/Float4;
+	public static final fun toLinearSpace ([F)[F
+	public static final fun toMatrix (Ldev/romainguy/kotlin/math/Mat4;)Lio/github/sceneview/collision/Matrix;
+	public static final fun toPosition ([F)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun toQuaternion (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/RotationsOrder;)Ldev/romainguy/kotlin/math/Quaternion;
+	public static synthetic fun toQuaternion$default (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/RotationsOrder;ILjava/lang/Object;)Ldev/romainguy/kotlin/math/Quaternion;
+	public static final fun toRotation (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/RotationsOrder;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun toRotation ([F)Ldev/romainguy/kotlin/math/Float3;
+	public static synthetic fun toRotation$default (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/RotationsOrder;ILjava/lang/Object;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun toScale ([F)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun toSize ([F)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun toTransform ([D)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun toTransform ([F)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun toVector3 (Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/collision/Vector3;
+}
+
+public final class io/github/sceneview/math/Noise {
+	public static final field INSTANCE Lio/github/sceneview/math/Noise;
+	public final fun fbm2D (FFIFF)F
+	public static synthetic fun fbm2D$default (Lio/github/sceneview/math/Noise;FFIFFILjava/lang/Object;)F
+	public final fun fbm3D (FFFIFF)F
+	public static synthetic fun fbm3D$default (Lio/github/sceneview/math/Noise;FFFIFFILjava/lang/Object;)F
+	public final fun perlin2D (FF)F
+	public final fun perlin3D (FFF)F
+}
+
+public final class io/github/sceneview/math/PlatformKt {
+	public static final fun ulp (F)F
+}
+
+public final class io/github/sceneview/math/SplinesKt {
+	public static final fun catmullRom (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FF)Ldev/romainguy/kotlin/math/Float3;
+	public static synthetic fun catmullRom$default (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFILjava/lang/Object;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun catmullRomSpline (Ljava/util/List;IF)Ljava/util/List;
+	public static synthetic fun catmullRomSpline$default (Ljava/util/List;IFILjava/lang/Object;)Ljava/util/List;
+	public static final fun cubicBezier (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;F)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun cubicBezierSpline (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;I)Ljava/util/List;
+	public static synthetic fun cubicBezierSpline$default (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;IILjava/lang/Object;)Ljava/util/List;
+	public static final fun cubicBezierTangent (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;F)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun quadraticBezier (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;F)Ldev/romainguy/kotlin/math/Float3;
+}
+
+public final class io/github/sceneview/math/TransformConversionsKt {
+	public static final fun computeWorldToLocal (Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun localToWorldPosition (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun localToWorldQuaternion (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Quaternion;
+	public static final fun localToWorldQuaternion (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Quaternion;)Ldev/romainguy/kotlin/math/Quaternion;
+	public static final fun localToWorldRotation (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun localToWorldRotation (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun localToWorldScale (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun localToWorldTransform (Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun worldToLocalPosition (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun worldToLocalQuaternion (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Quaternion;
+	public static final fun worldToLocalQuaternion (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Quaternion;)Ldev/romainguy/kotlin/math/Quaternion;
+	public static final fun worldToLocalRotation (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun worldToLocalRotation (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun worldToLocalScale (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float3;
+	public static final fun worldToLocalTransform (Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Mat4;
+}
+
+public final class io/github/sceneview/physics/DoublePendulum {
+	public static final field INSTANCE Lio/github/sceneview/physics/DoublePendulum;
+	public static final field MAX_TIME_STEP F
+	public final fun step (Lio/github/sceneview/physics/DoublePendulumState;F)Lio/github/sceneview/physics/DoublePendulumState;
+}
+
+public final class io/github/sceneview/physics/DoublePendulumKt {
+	public static final field DEFAULT_GRAVITY F
+	public static final field HALF_PI F
+}
+
+public final class io/github/sceneview/physics/DoublePendulumLink {
+	public fun <init> ()V
+	public fun <init> (FFFF)V
+	public synthetic fun <init> (FFFFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun copy (FFFF)Lio/github/sceneview/physics/DoublePendulumLink;
+	public static synthetic fun copy$default (Lio/github/sceneview/physics/DoublePendulumLink;FFFFILjava/lang/Object;)Lio/github/sceneview/physics/DoublePendulumLink;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAngle ()F
+	public final fun getAngularVelocity ()F
+	public final fun getLength ()F
+	public final fun getMass ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/physics/DoublePendulumState {
+	public fun <init> ()V
+	public fun <init> (Lio/github/sceneview/physics/DoublePendulumLink;Lio/github/sceneview/physics/DoublePendulumLink;Ldev/romainguy/kotlin/math/Float3;FF)V
+	public synthetic fun <init> (Lio/github/sceneview/physics/DoublePendulumLink;Lio/github/sceneview/physics/DoublePendulumLink;Ldev/romainguy/kotlin/math/Float3;FFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lio/github/sceneview/physics/DoublePendulumLink;
+	public final fun component2 ()Lio/github/sceneview/physics/DoublePendulumLink;
+	public final fun component3 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component4 ()F
+	public final fun component5 ()F
+	public final fun copy (Lio/github/sceneview/physics/DoublePendulumLink;Lio/github/sceneview/physics/DoublePendulumLink;Ldev/romainguy/kotlin/math/Float3;FF)Lio/github/sceneview/physics/DoublePendulumState;
+	public static synthetic fun copy$default (Lio/github/sceneview/physics/DoublePendulumState;Lio/github/sceneview/physics/DoublePendulumLink;Lio/github/sceneview/physics/DoublePendulumLink;Ldev/romainguy/kotlin/math/Float3;FFILjava/lang/Object;)Lio/github/sceneview/physics/DoublePendulumState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDamping ()F
+	public final fun getGravity ()F
+	public final fun getJoint ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getLink1 ()Lio/github/sceneview/physics/DoublePendulumLink;
+	public final fun getLink2 ()Lio/github/sceneview/physics/DoublePendulumLink;
+	public final fun getPivot ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getTip ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getTotalEnergy ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/physics/PhysicsSimulationKt {
+	public static final field GRAVITY F
+	public static final field SLEEP_THRESHOLD F
+	public static final fun applyImpulse (Lio/github/sceneview/physics/PhysicsState;Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/physics/PhysicsState;
+	public static final fun simulateStep (Lio/github/sceneview/physics/PhysicsState;F)Lio/github/sceneview/physics/PhysicsState;
+	public static final fun simulateStep (Lio/github/sceneview/physics/PhysicsState;FLkotlin/jvm/functions/Function4;)Lio/github/sceneview/physics/PhysicsState;
+}
+
+public final class io/github/sceneview/physics/PhysicsState {
+	public fun <init> ()V
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZ)V
+	public synthetic fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component2 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun component5 ()F
+	public final fun component6 ()Z
+	public final fun copy (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZ)Lio/github/sceneview/physics/PhysicsState;
+	public static synthetic fun copy$default (Lio/github/sceneview/physics/PhysicsState;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFFZILjava/lang/Object;)Lio/github/sceneview/physics/PhysicsState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFloorY ()F
+	public final fun getPosition ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getRadius ()F
+	public final fun getRestitution ()F
+	public final fun getVelocity ()Ldev/romainguy/kotlin/math/Float3;
+	public fun hashCode ()I
+	public final fun isAsleep ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/rendering/AssetPath {
+	public static final field Companion Lio/github/sceneview/rendering/AssetPath$Companion;
+	public static final synthetic fun box-impl (Ljava/lang/String;)Lio/github/sceneview/rendering/AssetPath;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public static final fun getDirectory-impl (Ljava/lang/String;)Ljava/lang/String;
+	public static final fun getExtension-impl (Ljava/lang/String;)Ljava/lang/String;
+	public static final fun getFilename-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public static final fun getStem-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public static final fun isEnvironment-impl (Ljava/lang/String;)Z
+	public static final fun isModel-impl (Ljava/lang/String;)Z
+	public static final fun isTexture-impl (Ljava/lang/String;)Z
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/rendering/AssetPath$Companion {
+	public final fun getENVIRONMENT_EXTENSIONS ()Ljava/util/Set;
+	public final fun getMODEL_EXTENSIONS ()Ljava/util/Set;
+	public final fun getTEXTURE_EXTENSIONS ()Ljava/util/Set;
+}
+
+public abstract interface class io/github/sceneview/rendering/EnvironmentLoader {
+	public abstract fun loadEnvironment (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class io/github/sceneview/rendering/MaterialDefaultsKt {
+	public static final field PRIORITY_DEFAULT I
+	public static final field PRIORITY_FIRST I
+	public static final field PRIORITY_LAST I
+	public static final field kMaterialDefaultMetallic F
+	public static final field kMaterialDefaultReflectance F
+	public static final field kMaterialDefaultRoughness F
+}
+
+public abstract interface class io/github/sceneview/rendering/MaterialLoader {
+	public abstract fun loadMaterial (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class io/github/sceneview/rendering/ModelLoader {
+	public abstract fun createInstance (Ljava/lang/Object;)Ljava/lang/Object;
+	public abstract fun loadModel (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun loadModel (Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun loadModel$default (Lio/github/sceneview/rendering/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class io/github/sceneview/rendering/ModelLoader$DefaultImpls {
+	public static synthetic fun loadModel$default (Lio/github/sceneview/rendering/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class io/github/sceneview/rendering/NodeTransform {
+	public static final field INSTANCE Lio/github/sceneview/rendering/NodeTransform;
+	public final fun getLocalPosition (Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;
+	public final fun getLocalQuaternion (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Quaternion;)Ldev/romainguy/kotlin/math/Quaternion;
+	public final fun getLocalRotation (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;
+	public final fun getLocalTransform (Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Mat4;
+	public final fun getWorldPosition (Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;
+	public final fun getWorldQuaternion (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Quaternion;)Ldev/romainguy/kotlin/math/Quaternion;
+	public final fun getWorldRotation (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;
+	public final fun getWorldTransform (Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Mat4;
+}
+
+public abstract interface class io/github/sceneview/rendering/SceneNode {
+	public abstract fun addChildNode (Lio/github/sceneview/rendering/SceneNode;)V
+	public abstract fun destroy ()V
+	public abstract fun getChildNodes ()Ljava/util/Set;
+	public abstract fun getName ()Ljava/lang/String;
+	public abstract fun getParent ()Lio/github/sceneview/rendering/SceneNode;
+	public abstract fun getPosition ()Ldev/romainguy/kotlin/math/Float3;
+	public abstract fun getQuaternion ()Ldev/romainguy/kotlin/math/Quaternion;
+	public abstract fun getRotation ()Ldev/romainguy/kotlin/math/Float3;
+	public abstract fun getScale ()Ldev/romainguy/kotlin/math/Float3;
+	public abstract fun getTransform ()Ldev/romainguy/kotlin/math/Mat4;
+	public abstract fun getWorldPosition ()Ldev/romainguy/kotlin/math/Float3;
+	public abstract fun getWorldQuaternion ()Ldev/romainguy/kotlin/math/Quaternion;
+	public abstract fun getWorldRotation ()Ldev/romainguy/kotlin/math/Float3;
+	public abstract fun getWorldScale ()Ldev/romainguy/kotlin/math/Float3;
+	public abstract fun getWorldTransform ()Ldev/romainguy/kotlin/math/Mat4;
+	public abstract fun isHittable ()Z
+	public abstract fun isVisible ()Z
+	public abstract fun lookAt (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)V
+	public static synthetic fun lookAt$default (Lio/github/sceneview/rendering/SceneNode;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)V
+	public abstract fun lookTowards (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)V
+	public static synthetic fun lookTowards$default (Lio/github/sceneview/rendering/SceneNode;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)V
+	public fun onAddedToScene ()V
+	public fun onFrame (F)V
+	public fun onRemovedFromScene ()V
+	public abstract fun removeChildNode (Lio/github/sceneview/rendering/SceneNode;)V
+	public abstract fun setHittable (Z)V
+	public abstract fun setName (Ljava/lang/String;)V
+	public abstract fun setPosition (Ldev/romainguy/kotlin/math/Float3;)V
+	public abstract fun setQuaternion (Ldev/romainguy/kotlin/math/Quaternion;)V
+	public abstract fun setRotation (Ldev/romainguy/kotlin/math/Float3;)V
+	public abstract fun setScale (Ldev/romainguy/kotlin/math/Float3;)V
+	public abstract fun setTransform (Ldev/romainguy/kotlin/math/Mat4;)V
+	public abstract fun setVisible (Z)V
+	public abstract fun setWorldPosition (Ldev/romainguy/kotlin/math/Float3;)V
+	public abstract fun setWorldQuaternion (Ldev/romainguy/kotlin/math/Quaternion;)V
+	public abstract fun setWorldRotation (Ldev/romainguy/kotlin/math/Float3;)V
+	public abstract fun setWorldScale (Ldev/romainguy/kotlin/math/Float3;)V
+	public abstract fun setWorldTransform (Ldev/romainguy/kotlin/math/Mat4;)V
+}
+
+public final class io/github/sceneview/rendering/SceneNode$DefaultImpls {
+	public static synthetic fun lookAt$default (Lio/github/sceneview/rendering/SceneNode;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)V
+	public static synthetic fun lookTowards$default (Lio/github/sceneview/rendering/SceneNode;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)V
+	public static fun onAddedToScene (Lio/github/sceneview/rendering/SceneNode;)V
+	public static fun onFrame (Lio/github/sceneview/rendering/SceneNode;F)V
+	public static fun onRemovedFromScene (Lio/github/sceneview/rendering/SceneNode;)V
+}
+
+public abstract interface class io/github/sceneview/rendering/TransformManagerBridge {
+	public abstract fun create (I)I
+	public abstract fun create (II)I
+	public abstract fun destroy (I)V
+	public abstract fun getInstance (I)I
+	public abstract fun getParent (I)Ljava/lang/Integer;
+	public abstract fun getTransform (I)Ldev/romainguy/kotlin/math/Mat4;
+	public abstract fun getWorldTransform (I)Ldev/romainguy/kotlin/math/Mat4;
+	public abstract fun hasComponent (I)Z
+	public abstract fun setParent (II)V
+	public abstract fun setTransform (ILdev/romainguy/kotlin/math/Mat4;)V
+}
+
+public final class io/github/sceneview/rendering/Vertex {
+	public fun <init> ()V
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Float4;)V
+	public synthetic fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Float4;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component2 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component3 ()Ldev/romainguy/kotlin/math/Float2;
+	public final fun component4 ()Ldev/romainguy/kotlin/math/Float4;
+	public final fun copy (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Float4;)Lio/github/sceneview/rendering/Vertex;
+	public static synthetic fun copy$default (Lio/github/sceneview/rendering/Vertex;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float2;Ldev/romainguy/kotlin/math/Float4;ILjava/lang/Object;)Lio/github/sceneview/rendering/Vertex;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getColor ()Ldev/romainguy/kotlin/math/Float4;
+	public final fun getNormal ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getPosition ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getUvCoordinate ()Ldev/romainguy/kotlin/math/Float2;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/rendering/VertexKt {
+	public static final fun getHasColors (Ljava/util/List;)Z
+	public static final fun getHasNormals (Ljava/util/List;)Z
+	public static final fun getHasUvCoordinates (Ljava/util/List;)Z
+	public static final fun getOffsets (Ljava/util/List;)Ljava/util/List;
+}
+
+public final class io/github/sceneview/scene/HitResult {
+	public fun <init> (Lio/github/sceneview/rendering/SceneNode;FLdev/romainguy/kotlin/math/Float3;)V
+	public final fun component1 ()Lio/github/sceneview/rendering/SceneNode;
+	public final fun component2 ()F
+	public final fun component3 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun copy (Lio/github/sceneview/rendering/SceneNode;FLdev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/scene/HitResult;
+	public static synthetic fun copy$default (Lio/github/sceneview/scene/HitResult;Lio/github/sceneview/rendering/SceneNode;FLdev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Lio/github/sceneview/scene/HitResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDistance ()F
+	public final fun getNode ()Lio/github/sceneview/rendering/SceneNode;
+	public final fun getPoint ()Ldev/romainguy/kotlin/math/Float3;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/scene/SceneGraph {
+	public fun <init> ()V
+	public final fun addNode (Lio/github/sceneview/rendering/SceneNode;Lio/github/sceneview/rendering/SceneNode;)V
+	public static synthetic fun addNode$default (Lio/github/sceneview/scene/SceneGraph;Lio/github/sceneview/rendering/SceneNode;Lio/github/sceneview/rendering/SceneNode;ILjava/lang/Object;)V
+	public final fun dispatchFrame (F)V
+	public final fun findAllNodes (Lkotlin/jvm/functions/Function1;)Ljava/util/List;
+	public final fun findNode (Lkotlin/jvm/functions/Function1;)Lio/github/sceneview/rendering/SceneNode;
+	public final fun getRootNodes ()Ljava/util/List;
+	public final fun hitTest (Lio/github/sceneview/collision/Ray;)Ljava/util/List;
+	public final fun removeNode (Lio/github/sceneview/rendering/SceneNode;)V
+	public final fun setCollisionShape (Lio/github/sceneview/rendering/SceneNode;Lio/github/sceneview/collision/CollisionShape;)V
+}
+
+public final class io/github/sceneview/triangulation/Delaunator {
+	public fun <init> (Ljava/util/List;)V
+	public final fun getEdges ()Lkotlin/sequences/Sequence;
+	public final fun getHalfEdges ()[Ljava/lang/Integer;
+	public final fun getHullEdges ()Ljava/util/List;
+	public final fun getPoints ()Ljava/util/List;
+	public final fun getTriangles ()[Ljava/lang/Integer;
+	public final fun getVoronoiCells ()Lkotlin/sequences/Sequence;
+	public final fun setHalfEdges ([Ljava/lang/Integer;)V
+	public final fun setTriangles ([Ljava/lang/Integer;)V
+}
+
+public final class io/github/sceneview/triangulation/Delaunator$Edge : io/github/sceneview/triangulation/Delaunator$IEdge {
+	public fun <init> (ILio/github/sceneview/triangulation/Delaunator$IPoint;Lio/github/sceneview/triangulation/Delaunator$IPoint;)V
+	public fun getIndex ()I
+	public fun getP ()Lio/github/sceneview/triangulation/Delaunator$IPoint;
+	public fun getQ ()Lio/github/sceneview/triangulation/Delaunator$IPoint;
+}
+
+public abstract interface class io/github/sceneview/triangulation/Delaunator$IEdge {
+	public abstract fun getIndex ()I
+	public abstract fun getP ()Lio/github/sceneview/triangulation/Delaunator$IPoint;
+	public abstract fun getQ ()Lio/github/sceneview/triangulation/Delaunator$IPoint;
+}
+
+public abstract interface class io/github/sceneview/triangulation/Delaunator$IPoint {
+	public abstract fun getX ()D
+	public abstract fun getY ()D
+	public abstract fun setX (D)V
+	public abstract fun setY (D)V
+}
+
+public abstract interface class io/github/sceneview/triangulation/Delaunator$ITriangle {
+	public abstract fun getIndex ()I
+	public abstract fun getPoints ()Ljava/util/List;
+}
+
+public abstract interface class io/github/sceneview/triangulation/Delaunator$IVoronoiCell {
+	public abstract fun getIndex ()I
+	public abstract fun getPoints ()Ljava/util/List;
+}
+
+public final class io/github/sceneview/triangulation/Delaunator$Point : io/github/sceneview/triangulation/Delaunator$IPoint {
+	public fun <init> (DD)V
+	public final fun div (I)Lio/github/sceneview/triangulation/Delaunator$Point;
+	public fun getX ()D
+	public fun getY ()D
+	public final fun minus (Lio/github/sceneview/triangulation/Delaunator$Point;)Lio/github/sceneview/triangulation/Delaunator$Point;
+	public final fun plus (Lio/github/sceneview/triangulation/Delaunator$Point;)Lio/github/sceneview/triangulation/Delaunator$Point;
+	public fun setX (D)V
+	public fun setY (D)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/triangulation/Delaunator$Triangle : io/github/sceneview/triangulation/Delaunator$ITriangle {
+	public fun <init> (Ljava/util/List;I)V
+	public fun getIndex ()I
+	public fun getPoints ()Ljava/util/List;
+}
+
+public final class io/github/sceneview/triangulation/Delaunator$VoronoiCell : io/github/sceneview/triangulation/Delaunator$IVoronoiCell {
+	public fun <init> (ILjava/util/List;)V
+	public fun getIndex ()I
+	public fun getPoints ()Ljava/util/List;
+}
+
+public final class io/github/sceneview/triangulation/Earcut {
+	public static final field INSTANCE Lio/github/sceneview/triangulation/Earcut;
+	public final fun deviation (Lio/github/sceneview/triangulation/Earcut$Input;Ljava/util/List;)D
+	public final fun deviation ([D[IILjava/util/List;)D
+	public final fun flatten ([[[D)Lio/github/sceneview/triangulation/Earcut$Input;
+	public final fun getXComparator ()Ljava/util/Comparator;
+	public final fun toXY ([D)[D
+	public final fun triangulate (Lio/github/sceneview/triangulation/Earcut$Input;)Ljava/util/List;
+	public final fun triangulate (Ljava/util/List;Ljava/util/List;)Ljava/util/List;
+	public final fun triangulate ([D[II)Ljava/util/List;
+	public static synthetic fun triangulate$default (Lio/github/sceneview/triangulation/Earcut;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Ljava/util/List;
+	public static synthetic fun triangulate$default (Lio/github/sceneview/triangulation/Earcut;[D[IIILjava/lang/Object;)Ljava/util/List;
+}
+
+public final class io/github/sceneview/triangulation/Earcut$AnyToXYTransform {
+	public fun <init> (DDD)V
+	public final fun setSourceNormal (DDD)V
+	public final fun transform (Lio/github/sceneview/triangulation/Earcut$Point3;)V
+	public final fun transform ([D)V
+}
+
+public final class io/github/sceneview/triangulation/Earcut$Input {
+	public fun <init> ([D[II)V
+	public final fun getDimensions ()I
+	public final fun getHoleIndices ()[I
+	public final fun getVertices ()[D
+}
+
+public final class io/github/sceneview/triangulation/Earcut$Point3 {
+	public fun <init> ()V
+	public fun <init> (DDD)V
+	public synthetic fun <init> (DDDILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun cross (Lio/github/sceneview/triangulation/Earcut$Point3;)Lio/github/sceneview/triangulation/Earcut$Point3;
+	public final fun div (D)Lio/github/sceneview/triangulation/Earcut$Point3;
+	public final fun getX ()D
+	public final fun getY ()D
+	public final fun getZ ()D
+	public final fun minus (Lio/github/sceneview/triangulation/Earcut$Point3;)Lio/github/sceneview/triangulation/Earcut$Point3;
+	public final fun normalize ()V
+	public final fun plus (Lio/github/sceneview/triangulation/Earcut$Point3;)Lio/github/sceneview/triangulation/Earcut$Point3;
+	public final fun set (DDD)V
+	public final fun setX (D)V
+	public final fun setY (D)V
+	public final fun setZ (D)V
+	public final fun times (D)Lio/github/sceneview/triangulation/Earcut$Point3;
+}
+
+public final class io/github/sceneview/triangulation/Earcut$VertexIndex {
+	public field next Lio/github/sceneview/triangulation/Earcut$VertexIndex;
+	public field prev Lio/github/sceneview/triangulation/Earcut$VertexIndex;
+	public fun <init> (IDD)V
+	public final fun getI ()I
+	public final fun getNext ()Lio/github/sceneview/triangulation/Earcut$VertexIndex;
+	public final fun getNextZ ()Lio/github/sceneview/triangulation/Earcut$VertexIndex;
+	public final fun getPrev ()Lio/github/sceneview/triangulation/Earcut$VertexIndex;
+	public final fun getPrevZ ()Lio/github/sceneview/triangulation/Earcut$VertexIndex;
+	public final fun getSteiner ()Z
+	public final fun getX ()D
+	public final fun getY ()D
+	public final fun getZ ()D
+	public final fun setI (I)V
+	public final fun setNext (Lio/github/sceneview/triangulation/Earcut$VertexIndex;)V
+	public final fun setNextZ (Lio/github/sceneview/triangulation/Earcut$VertexIndex;)V
+	public final fun setPrev (Lio/github/sceneview/triangulation/Earcut$VertexIndex;)V
+	public final fun setPrevZ (Lio/github/sceneview/triangulation/Earcut$VertexIndex;)V
+	public final fun setSteiner (Z)V
+	public final fun setX (D)V
+	public final fun setY (D)V
+	public final fun setZ (D)V
+}
+
+public final class io/github/sceneview/utils/DurationKt {
+	public static final fun fps (JLjava/lang/Long;)D
+	public static final fun interval (JLjava/lang/Long;)J
+	public static final fun intervalSeconds (JLjava/lang/Long;)D
+}
+
+public final class io/github/sceneview/utils/TimeSourceKt {
+	public static final fun nanoTime ()J
+}
+
