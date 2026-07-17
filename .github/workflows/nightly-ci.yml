@@ -117,9 +117,14 @@ jobs:
             echo "Previous night still terminating (attempt $attempt/4) — waiting 30s..."
             sleep 30
           done
+          # `|| echo "[]"` (a valid empty array, NOT ""): under `set -e` an
+          # unguarded transient API blip would red this job, flip the run
+          # conclusion, and feed a manufactured "bad night" back into the
+          # very signal this job grades (review finding, PR #2743). An empty
+          # array degrades to the honest "nothing to grade" branch instead.
           RUNS=$(gh run list --repo "$REPO" --workflow=nightly-ci.yml \
             --event schedule --status completed --limit 2 \
-            --json databaseId,conclusion,createdAt,url)
+            --json databaseId,conclusion,url 2>/dev/null || echo "[]")
           COUNT=$(jq 'length' <<<"$RUNS")
           if [ "$COUNT" -lt 2 ]; then
             echo "Fewer than 2 completed scheduled nights on record — nothing to grade."
