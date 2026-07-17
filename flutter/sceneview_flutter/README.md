@@ -1,4 +1,4 @@
-# sceneview_flutter
+# flutter_sceneview
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub](https://img.shields.io/badge/GitHub-sceneview%2Fsceneview-black)](https://github.com/sceneview/sceneview)
@@ -27,20 +27,28 @@ Flutter plugin for [SceneView](https://sceneview.github.io) — 3D and AR scenes
 
 ## Installation
 
-> **Status:** the plugin is not yet on pub.dev for the 4.0 line. The pub.dev
-> registry still holds an unrelated 0.0.1 demo from an earlier prototype. Add the
-> plugin as a Git dependency for now — pub.dev publishing for `4.0.x` is tracked
-> in [#923](https://github.com/sceneview/sceneview/issues/923).
+> **Naming note:** this package publishes to pub.dev as **`flutter_sceneview`**
+> ([#2735](https://github.com/sceneview/sceneview/issues/2735)). The pub.dev
+> packages named `sceneview` and `sceneview_flutter` are unrelated third-party
+> uploads — do not use them.
 
 In your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  sceneview_flutter:
+  flutter_sceneview: ^4.22.0
+```
+
+Or as a Git dependency (note: at tags `v4.22.0` and earlier the package name
+was `sceneview_flutter` — the dependency key must match the name at the ref):
+
+```yaml
+dependencies:
+  flutter_sceneview:
     git:
       url: https://github.com/sceneview/sceneview
       path: flutter/sceneview_flutter
-      ref: v4.0.9   # any released `v[0-9]+.[0-9]+.[0-9]+` tag
+      ref: main
 ```
 
 Then run:
@@ -86,7 +94,7 @@ dependencies — so the **host app** must add the package in Xcode:
 ### 3D Scene
 
 ```dart
-import 'package:sceneview_flutter/sceneview_flutter.dart';
+import 'package:flutter_sceneview/flutter_sceneview.dart';
 
 final controller = SceneViewController();
 
@@ -102,7 +110,7 @@ SceneView(
 ### AR Scene
 
 ```dart
-import 'package:sceneview_flutter/sceneview_flutter.dart';
+import 'package:flutter_sceneview/flutter_sceneview.dart';
 
 final controller = SceneViewController();
 

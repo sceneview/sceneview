@@ -536,7 +536,7 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 | | `react-native/react-native-sceneview/package.json` | `"version": "X.Y.Z"` |
 | **Flutter** | `flutter/sceneview_flutter/pubspec.yaml` | `version: X.Y.Z` |
 | | `flutter/.../android/build.gradle` | `version 'X.Y.Z'` |
-| | `flutter/.../ios/sceneview_flutter.podspec` | `s.version = 'X.Y.Z'` |
+| | `flutter/.../ios/flutter_sceneview.podspec` | `s.version = 'X.Y.Z'` |
 | **Docs** | `llms.txt` | `io.github.sceneview:sceneview:X.Y.Z` |
 | | `README.md` | install snippets |
 | | `CLAUDE.md` | code examples section |

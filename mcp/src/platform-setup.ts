@@ -433,9 +433,11 @@ SceneView Flutter uses **PlatformView** to embed native SceneView (Android: Fila
 
 ### 1. Dependencies
 
-> **Note:** the 4.0 line of \`sceneview_flutter\` is not yet on pub.dev
-> (registry still holds an unrelated 0.0.1 demo) — see #923. Use the
-> git dependency snippet below for now.
+> **Note:** the plugin publishes to pub.dev as \`flutter_sceneview\`
+> (first publish pending — see #2735; the pub.dev names \`sceneview\` and
+> \`sceneview_flutter\` are unrelated third-party uploads). Until then use
+> the git snippet below — its dependency key stays \`sceneview_flutter\`
+> because that was the package name at the pinned tag.
 
 \`\`\`yaml
 # pubspec.yaml
@@ -503,7 +505,7 @@ const FLUTTER_AR = `## SceneView Flutter — AR Setup
 ### 1. Dependencies
 
 \`\`\`yaml
-# pub.dev publish for 4.x is pending — see #923. Use the git ref:
+# pub.dev publish (as flutter_sceneview) pending — see #2735. Git ref keeps the at-tag name:
 dependencies:
   sceneview_flutter:
     git:

@@ -99,7 +99,7 @@ A Flutter plugin that bridges to native SceneView rendering on both Android (Fil
 
 - **Android**: `ComposeView` hosting `SceneView { }` composable
 - **iOS**: `UIHostingController` hosting SwiftUI `SceneView { }`
-- **Install**: Git dependency via `git: { url: https://github.com/sceneview/sceneview, path: flutter/sceneview_flutter, ref: v4.4.0 }` in pubspec.yaml — pub.dev publish pending ([#923](https://github.com/sceneview/sceneview/issues/923))
+- **Install**: Git dependency via `git: { url: https://github.com/sceneview/sceneview, path: flutter/sceneview_flutter, ref: v4.4.0 }` in pubspec.yaml — pub.dev publish as `flutter_sceneview` pending ([#2735](https://github.com/sceneview/sceneview/issues/2735))
 
 [:octicons-arrow-right-24: Flutter Quickstart](quickstart-flutter.md)
 
