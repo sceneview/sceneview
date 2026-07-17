@@ -61,7 +61,7 @@ tvMaterial = "1.1.0"
 
 # Play Services
 playAppUpdate = "2.1.0"
-playServicesLocation = "21.3.0"
+playServicesLocation = "21.4.0"
 playServicesNearby = "19.3.0"
 
 # ML Kit (object detection demo — see ARMLObjectLabelDemo, #1737)
