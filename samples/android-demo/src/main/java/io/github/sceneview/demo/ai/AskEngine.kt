@@ -121,7 +121,7 @@ class CannedAskEngine : AskEngine {
     override suspend fun ask(image: Bitmap, question: String): Result<String> {
         delay(CANNED_LATENCY_MS)
         return Result.success(
-            "Canned QA answer — captured a ${image.width}×${image.height} camera frame. " +
+            "Canned QA answer for a ${image.width}×${image.height} frame. " +
                 "Real Gemini Nano answers need an AICore device (Pixel 8+), not an emulator."
         )
     }

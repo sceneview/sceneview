@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.media.Image
 import android.os.Build
 import android.view.Surface
@@ -52,6 +53,7 @@ import io.github.sceneview.rememberOnGestureListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -119,6 +121,25 @@ fun PointAndAskDemo(onBack: () -> Unit) {
 
     // The question is a fixed English prompt in P1 (best Nano quality; free-form input is P3).
     val question = stringResource(R.string.demo_point_and_ask_question)
+
+    // Capture timeout — a tap can only complete once ARCore delivers a CPU camera image,
+    // which never happens when tracking can't start (tap before scanning finishes) or on
+    // emulators whose camera stream / dataset playback is broken (#1645). Under qaMode the
+    // timeout falls back to a synthetic frame so the tap → answer flow stays deterministic
+    // for the device-QA harness; otherwise it surfaces the transient Failed card instead of
+    // spinning forever.
+    LaunchedEffect(askState) {
+        if (askState != AskState.Capturing) return@LaunchedEffect
+        delay(if (DemoSettings.qaMode) QA_CAPTURE_TIMEOUT_MS else CAPTURE_TIMEOUT_MS)
+        // Still Capturing after the delay (any state change restarts this effect).
+        if (DemoSettings.qaMode) {
+            askState = AskState.Thinking
+            val synthetic = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888)
+            scope.askAboutBitmap(synthetic, askEngine, question) { askState = it }
+        } else {
+            askState = AskState.Failed
+        }
+    }
 
     DemoScaffold(
         title = stringResource(R.string.demo_point_and_ask_title),
@@ -294,14 +315,22 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     }
 }
 
+/** Capture must complete within this window on a normal device before failing the round. */
+private const val CAPTURE_TIMEOUT_MS = 12_000L
+
 /**
- * Converts [image] to an upright bitmap off the main thread, runs one [AskEngine.ask]
- * round-trip, and reports the resulting [AskState] on the caller's (main) dispatcher.
- * Always closes [image] and recycles the intermediate bitmap — including when the scope
- * is cancelled mid-flight: [CoroutineStart.UNDISPATCHED] enters the `try` synchronously
- * before the first suspension, so the `finally` close runs even if the composition is
- * disposed during the capture window (leaking one CPU image stalls ARCore within a few
- * frames).
+ * Shorter window under [DemoSettings.qaMode], after which a synthetic frame stands in for
+ * the camera image — emulators without a working camera stream / dataset playback (#1645)
+ * would otherwise never complete the flow.
+ */
+private const val QA_CAPTURE_TIMEOUT_MS = 5_000L
+
+/**
+ * Converts [image] to an upright bitmap off the main thread, then delegates to
+ * [askAboutBitmap]. Always closes [image] — including when the scope is cancelled
+ * mid-flight: [CoroutineStart.UNDISPATCHED] enters the `try` synchronously before the
+ * first suspension, so the `finally` close runs even if the composition is disposed
+ * during the capture window (leaking one CPU image stalls ARCore within a few frames).
  */
 private fun CoroutineScope.askAboutImage(
     image: Image,
@@ -320,6 +349,19 @@ private fun CoroutineScope.askAboutImage(
         onResult(AskState.Failed)
         return@launch
     }
+    askAboutBitmap(bitmap, askEngine, question, onResult)
+}
+
+/**
+ * Runs one [AskEngine.ask] round-trip over [bitmap] and reports the resulting [AskState].
+ * Takes ownership of [bitmap] (recycled when the round completes).
+ */
+private fun CoroutineScope.askAboutBitmap(
+    bitmap: Bitmap,
+    askEngine: AskEngine,
+    question: String,
+    onResult: (AskState) -> Unit,
+) = launch {
     val result = try {
         askEngine.ask(bitmap, question)
     } finally {
