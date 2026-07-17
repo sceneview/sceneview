@@ -282,6 +282,26 @@ fi
 
 echo ""
 
+# ─── 4c-bis. sceneview-web.d.ts ↔ Kotlin/JS surface drift (issue #2736) ─
+# The npm typings are hand-written (#946) and consumed by real users and by
+# AI codegen; check-web-dts.sh asserts the `sceneview` namespace registry
+# (Main.kt) and the SceneViewJS/NodeHandle/SceneViewHaptic member surfaces
+# match the d.ts in both directions. Deterministic (bash+awk, no toolchain)
+# → hard FAIL on drift.
+echo -e "${CYAN}--- sceneview-web.d.ts drift ---${NC}"
+if [ -x ".claude/scripts/check-web-dts.sh" ]; then
+    if bash .claude/scripts/check-web-dts.sh > /tmp/check-web-dts.log 2>&1; then
+        check "sceneview-web.d.ts in sync with JS surface" "PASS"
+    else
+        DRIFT_COUNT=$(grep -c '^\[FAIL\]' /tmp/check-web-dts.log 2>/dev/null || echo "?")
+        check "sceneview-web.d.ts in sync with JS surface" "FAIL" "$DRIFT_COUNT mismatch(es) — see /tmp/check-web-dts.log"
+    fi
+else
+    check "sceneview-web.d.ts drift check" "WARN" ".claude/scripts/check-web-dts.sh missing"
+fi
+
+echo ""
+
 # ─── 4d. Worktree-prune regression suite (advisory) ────────────────────
 # Pins the safety contract of `.claude/scripts/worktree-auto-prune.sh`
 # (locked-tree skip #1833, broad subprocess detect #1834, forensic log

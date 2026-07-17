@@ -692,6 +692,20 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-check-doc-drift.sh
 
+      # sceneview-web.d.ts drift gate (#2736) — the npm typings are
+      # hand-written (#946); this asserts the `sceneview` namespace registry
+      # and the exported class surfaces match the d.ts bidirectionally.
+      # Self-test first, same rationale as the doc-drift pair above.
+      - name: Self-test check-web-dts.sh
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-web-dts.sh
+
+      - name: Check sceneview-web.d.ts drift
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/check-web-dts.sh
+
       # Store-preflight grader self-test — same rationale (#2612 P1). Exercises
       # the ASC blocker grading / gate / JSON offline via the FAKE seam and the
       # openssl ES256 JWT builder; needs no App Store Connect secret.
