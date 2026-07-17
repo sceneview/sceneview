@@ -1,3 +1,7 @@
+## 4.22.0
+
+- Version alignment with SceneView v4.22.0 (first version published to pub.dev via the automated OIDC `pub-publish` release job, #2735 — the registry previously served an unrelated 0.0.1 placeholder). Cumulative since 4.17.0: DisplayHelper NPE fix on screen close, Sketchfab viewer ground-shadow hardening, Explore multi-source (Sketchfab | Icosa Gallery | Poly Haven), SplatNode P1 (3D Gaussian Splatting, Android), centerOrigin normalized-origin parity. No breaking Flutter API change.
+
 ## 4.17.0
 
 - Version alignment with SceneView v4.17.0. Performance & correctness release: hot-path audit cutting per-frame allocations / matrix decompositions / JNI across Android 3D, AR, KMP core, Apple and Web; the #2187 transform-drift is now fully fixed (component setters no longer re-decompose). No breaking Flutter API change.
