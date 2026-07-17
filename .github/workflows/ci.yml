@@ -464,7 +464,11 @@ jobs:
 
       - name: JS tests (informational)
         continue-on-error: true
-        run: ./gradlew :sceneview-core:jsTest --stacktrace
+        # sceneview-web jsTest covers the pure-JS node/tracker/splat maths
+        # (e.g. SplatWebBuffersTest, #2646) that the Karma suite runs without a
+        # WebGL context; the browser rendering itself is gated by the blocking
+        # bundle smoke test below.
+        run: ./gradlew :sceneview-core:jsTest :sceneview-web:jsTest --stacktrace
 
       # In-browser smoke test of the COMPILED Kotlin/JS bundle (the artifact
       # published to npm/CDN), against the real Filament WASM module. The

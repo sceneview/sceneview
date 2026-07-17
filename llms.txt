@@ -760,8 +760,15 @@ SceneView(
 
 Current scope (P1): isotropic billboards (max-axis scale — anisotropic screen-space ellipses are
 planned) and SH degree 0 color. Without a `cameraPositionProvider` the compositing order stays
-as loaded (expect popping when orbiting). `.ply` / `.spz` file loaders arrive with the #2646
-loader workstream — until then build `SplatCloud` from arrays.
+as loaded (expect popping when orbiting). Build a `SplatCloud` from arrays, or parse a file with
+the KMP `SplatParser.fromPly(bytes)` / `.fromSpz(bytes)` / `.parse(bytes)` (auto-detect) in
+`io.github.sceneview.core.splat`.
+
+**Web (#2646 P2):** the same rendering ships in `sceneview-web` (Kotlin/JS + Filament.js, WebGL2).
+Plain JS: `viewer.addSplatNode(url)` (`.ply` / `.spz`) → `Promise<NodeHandle>`. Kotlin/JS:
+`SceneView.addSplatNode(url, onLoaded = …)` or `addSplatNode(splatCloud)` for an already-parsed
+cloud. Same isotropic-P1 scope; the painter's sort re-runs on camera motion automatically (the web
+node feeds it the live camera position). iOS is tracked separately under #2646.
 
 ### VideoNode — video on 3D plane
 ```kotlin

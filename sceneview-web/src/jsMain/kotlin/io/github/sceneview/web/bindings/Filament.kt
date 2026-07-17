@@ -89,10 +89,13 @@ external class Engine {
     fun destroyScene(scene: Scene)
     fun destroyCameraComponent(camera: Entity)
     fun destroyMaterial(material: Material)
+    fun destroyMaterialInstance(materialInstance: MaterialInstance)
     fun destroyEntity(entity: Entity)
     fun destroyIndirectLight(indirectLight: IndirectLight)
     fun destroySkybox(skybox: Skybox)
     fun destroyTexture(texture: Texture)
+    fun destroyVertexBuffer(vertexBuffer: VertexBuffer)
+    fun destroyIndexBuffer(indexBuffer: IndexBuffer)
 
     // Manager accessors
     fun getLightManager(): LightManager
@@ -218,7 +221,82 @@ external class SkyboxBuilder {
 
 // --- Texture ---
 
-external class Texture
+external class Texture {
+    /**
+     * Uploads [pbd] (a `Filament.PixelBuffer(typedArray, format, datatype)` descriptor)
+     * into mip [level]. Instance method — safe to call through this external class (the
+     * module-load capture hole only affects statics/companions; see `FilamentHelpers.kt`).
+     */
+    fun setImage(engine: Engine, level: Int, pbd: dynamic)
+}
+
+/**
+ * `Filament.Texture$Builder` — obtain instances lazily via
+ * `js("Filament.Texture.Builder()")` + `unsafeCast` (the static `Builder()` lives on the
+ * runtime global, which is `undefined` at module load — same rule as
+ * `LightManagerBuilder`). Fluent instance methods are safe to type here.
+ */
+external class TextureBuilder {
+    fun width(width: Int): TextureBuilder
+    fun height(height: Int): TextureBuilder
+    fun levels(levels: Int): TextureBuilder
+    fun sampler(sampler: dynamic): TextureBuilder // Texture$Sampler enum
+    fun format(format: dynamic): TextureBuilder // Texture$InternalFormat enum
+    fun build(engine: Engine): Texture
+}
+
+// --- VertexBuffer / IndexBuffer (splat rendering, #2646 P2) ---
+
+external class VertexBuffer {
+    /** [data] is a typed array (e.g. Float32Array) — the glue wraps it for the driver. */
+    fun setBufferAt(engine: Engine, bufferIndex: Int, data: dynamic)
+}
+
+/** `Filament.VertexBuffer$Builder` — obtain via `js("Filament.VertexBuffer.Builder()")`. */
+external class VertexBufferBuilder {
+    fun bufferCount(count: Int): VertexBufferBuilder
+    fun vertexCount(count: Int): VertexBufferBuilder
+    fun attribute(
+        attrib: dynamic, // VertexAttribute enum
+        bufferIndex: Int,
+        attribType: dynamic, // VertexBuffer$AttributeType enum
+        offset: Int,
+        stride: Int
+    ): VertexBufferBuilder
+    fun build(engine: Engine): VertexBuffer
+}
+
+external class IndexBuffer {
+    /** [data] is a typed array (e.g. Uint16Array for USHORT indices). */
+    fun setBuffer(engine: Engine, data: dynamic)
+}
+
+/** `Filament.IndexBuffer$Builder` — obtain via `js("Filament.IndexBuffer.Builder()")`. */
+external class IndexBufferBuilder {
+    fun indexCount(count: Int): IndexBufferBuilder
+    fun bufferType(indexType: dynamic): IndexBufferBuilder // IndexBuffer$IndexType enum
+    fun build(engine: Engine): IndexBuffer
+}
+
+/**
+ * `Filament.RenderableManager$Builder` — obtain via
+ * `js("Filament.RenderableManager.Builder(n)")`. `instances()` and
+ * `globalBlendOrderEnabled()` are embind-registered in the pinned npm runtime even though
+ * its `filament.d.ts` omits them (the `.d.ts` historically lags `jsbindings.cpp` — the
+ * same gap as `Animator.applyAnimation`'s time argument, see the binding note above).
+ */
+external class RenderableManagerBuilder {
+    fun geometry(slot: Int, primitiveType: dynamic, vb: VertexBuffer, ib: IndexBuffer): RenderableManagerBuilder
+    fun material(slot: Int, materialInstance: MaterialInstance): RenderableManagerBuilder
+    fun boundingBox(box: dynamic): RenderableManagerBuilder // {center: float3, halfExtent: float3}
+    fun instances(count: Int): RenderableManagerBuilder
+    fun culling(enabled: Boolean): RenderableManagerBuilder
+    fun castShadows(enabled: Boolean): RenderableManagerBuilder
+    fun receiveShadows(enabled: Boolean): RenderableManagerBuilder
+    fun blendOrder(primitiveIndex: Int, order: Int): RenderableManagerBuilder
+    fun globalBlendOrderEnabled(primitiveIndex: Int, enabled: Boolean): RenderableManagerBuilder
+    fun build(engine: Engine, entity: Entity)
+}
 
 // --- Material ---
 
@@ -312,6 +390,13 @@ external class RenderableManager {
     fun setMaterialInstanceAt(instance: dynamic, primitiveIndex: Int, materialInstance: MaterialInstance)
     fun getMaterialInstanceAt(instance: dynamic, primitiveIndex: Int): MaterialInstance
     fun getAxisAlignedBoundingBox(instance: dynamic): Box
+
+    /**
+     * Sets the renderable's layer visibility mask — `values = 0x00` hides it without
+     * destroying it (the instanced-draw "hide the whole batch" path of
+     * `SplatNode.splatCount`, #2646 P2).
+     */
+    fun setLayerMask(instance: dynamic, select: Int, values: Int)
 }
 
 // --- AssetLoader (gltfio) ---

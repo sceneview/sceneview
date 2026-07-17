@@ -255,6 +255,29 @@ class SceneViewJS {
     }
 
     /**
+     * Loads a Gaussian Splatting file (`.ply` INRIA / `.spz` Niantic) and returns a
+     * Promise that resolves with the [NodeHandle] of its [io.github.sceneview.web.nodes.SplatNode]
+     * once the cloud is parsed and in the scene — the JS mirror of
+     * `SceneView.addSplatNode(url)` (#2646 P2). Rejects on fetch/parse failure or an
+     * uninitialised viewer.
+     */
+    @JsName("addSplatNode")
+    fun addSplatNode(url: String): Promise<NodeHandle> {
+        val sv = _sceneView ?: return Promise.reject(Throwable("SceneViewer not initialized"))
+        return Promise { resolve, reject ->
+            try {
+                sv.addSplatNode(
+                    url,
+                    onLoaded = { splat -> resolve(NodeHandle(splat, nodeHost)) },
+                    onError = { reject(it) },
+                )
+            } catch (e: Throwable) {
+                reject(e)
+            }
+        }
+    }
+
+    /**
      * Adds a cube primitive and returns its [NodeHandle] — JS mirror of
      * `SceneView.addCubeNode(size)`. The content is in the scene synchronously.
      */

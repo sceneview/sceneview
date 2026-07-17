@@ -135,6 +135,26 @@ const cube = sv.addCubeNode(0.2);
 cube.setPosition(0, 1, 0);
 ```
 
+Since #2646 P2 the viewer also renders **3D Gaussian Splatting** (radiance-field
+captures — Scaniverse / Polycam / Luma / INRIA): `addSplatNode(url)` fetches a
+`.ply` (INRIA) or `.spz` (Niantic) file, parses it through the shared KMP
+`sceneview-core` parsers, and returns a `Promise<NodeHandle>` that resolves once
+the cloud is in the scene. Same Filament engine as Android, WebGL2 backend, same
+rendering: camera-facing gaussian discs (instanced quads, per-splat data in
+RGBA16F textures, premultiplied-alpha blending), with a back-to-front painter's
+sort that re-runs on camera motion. Kotlin/JS additionally exposes
+`SceneView.addSplatNode(splatCloud)` for an already-parsed
+`io.github.sceneview.core.splat.SplatCloud`.
+
+```js
+sv.addSplatNode('models/splats/capture.ply').then((splat) => {
+  splat.setPosition(0, 1, 0);   // it's a NodeHandle like any other
+});
+```
+
+Current scope (P2): isotropic billboards (max-axis scale — anisotropic
+screen-space ellipses are planned) and SH degree-0 colour, matching Android P1.
+
 ## The minimal correct example — Kotlin/JS DSL
 
 Verified against `SceneView.kt` (`create`, `SceneViewBuilder`):
