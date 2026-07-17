@@ -543,12 +543,20 @@ private fun DownloadingContent(
                     // Show "X.X / Y.Y MB" when total is known, fallback label otherwise.
                     val streamingFrom = stringResource(R.string.gallery_streaming_from, source.id.displayName)
                     val progressText = progress?.let { (read, total) ->
-                        if (total > 0L) {
-                            val readMb = "%.1f".format(read / 1_000_000.0)
-                            val totalMb = "%.1f".format(total / 1_000_000.0)
-                            "$readMb / $totalMb MB"
-                        } else {
-                            streamingFrom
+                        when {
+                            total > 0L -> {
+                                val readMb = "%.1f".format(read / 1_000_000.0)
+                                val totalMb = "%.1f".format(total / 1_000_000.0)
+                                "$readMb / $totalMb MB"
+                            }
+                            // No reliable Content-Length: still surface the cumulative
+                            // bytes downloaded so the counter animates instead of freezing
+                            // on a static label next to the spinner.
+                            read > 0L -> {
+                                val readMb = "%.1f".format(read / 1_000_000.0)
+                                "$readMb MB · $streamingFrom"
+                            }
+                            else -> streamingFrom
                         }
                     } ?: streamingFrom
                     Text(
