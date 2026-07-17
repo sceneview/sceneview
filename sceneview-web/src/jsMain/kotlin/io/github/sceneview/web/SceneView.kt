@@ -47,6 +47,44 @@ class SceneView private constructor(
     private var isRunning = false
     private var lastTimestamp = 0.0
 
+    /**
+     * On-demand render gate (#2332). The render loop runs every animation frame
+     * for input/animation/upload bookkeeping, but only submits a GPU frame when
+     * something actually changed — see [RenderGate]. An idle static scene then
+     * costs ~one near-empty rAF callback instead of a full SSAO+bloom+TAA
+     * pipeline pass every frame. Starts dirty so the first frame always paints.
+     */
+    private val renderGate = RenderGate()
+
+    /**
+     * Count of asynchronous resource loads currently in flight — a model fetch
+     * + `loadResources`, a geometry build, or an environment KTX fetch. While
+     * `> 0` the gate treats the scene as active so streamed geometry/textures
+     * paint smoothly as they upload, then settle once every load terminates.
+     * Each load increments exactly once on entry and decrements exactly once on
+     * its first terminal outcome (success, supersession, or error).
+     */
+    private var pendingLoads = 0
+
+    /**
+     * Stored bound reference to [renderLoop] so the per-frame
+     * `requestAnimationFrame` reschedule reuses one function object instead of
+     * allocating a fresh member-reference wrapper every tick (#2332).
+     */
+    private val renderLoopRef: (Double) -> Unit = ::renderLoop
+
+    /**
+     * Mark the scene dirty so the render loop submits at least one more GPU
+     * frame (plus a short settle tail). Call from any mutation that changes what
+     * the next frame should look like but does not itself move the camera or run
+     * an animation — a new light, a background-color change, a resize, or a
+     * freshly loaded/streamed asset. Cheap and idempotent, so callers never
+     * debounce. Delegates to [RenderGate.requestRender].
+     */
+    internal fun requestRender() {
+        renderGate.requestRender()
+    }
+
     /** Monotonic counter for synthesising unique tracker keys for un-keyed
      *  (procedural geometry) assets — see [loadedAssets]. */
     private var assetKeySeq = 0
@@ -325,6 +363,8 @@ class SceneView private constructor(
             near = 0.1,
             far = 1000.0
         )
+        // A new viewport / projection changes every pixel — repaint (#2332).
+        requestRender()
     }
 
     /** Enable automatic viewport resizing when the canvas CSS size changes. */
@@ -367,6 +407,20 @@ class SceneView private constructor(
         // Derive the base path for resolving relative resource URIs
         val basePath = url.substringBeforeLast('/') + "/"
 
+        // #2332: keep the render gate "active" for the whole async load so the
+        // model streams in smoothly, then settles. Decrement exactly once on the
+        // first terminal outcome (loaded, superseded, parse failure, or fetch
+        // error) so the count can never under- or over-shoot.
+        pendingLoads++
+        var loadSettled = false
+        fun settleLoad() {
+            if (!loadSettled) {
+                loadSettled = true
+                pendingLoads--
+                requestRender()
+            }
+        }
+
         window.fetch(url).then { response ->
             response.arrayBuffer()
         }.then { buffer ->
@@ -392,6 +446,8 @@ class SceneView private constructor(
                 // Add all entities to the scene so they become visible
                 val entities = asset.getEntities()
                 scene.addEntities(entities)
+                // The scene graph just changed — paint it (#2332).
+                requestRender()
 
                 // Get the animator from the asset instance for animation playback
                 val animator = @Suppress("SwallowedException") try { // no animation → null
@@ -428,6 +484,7 @@ class SceneView private constructor(
                                 "SceneView: dropped stale loadResources for $url " +
                                     "(asset superseded before resources finished)",
                             )
+                            settleLoad()
                             return@loadResources
                         }
                         // Release the source glTF data now that resources are loaded
@@ -440,6 +497,9 @@ class SceneView private constructor(
                         autoCenterGate.reset()
                         console.log("SceneView: Model loaded from $url (${entities.size} entities)")
                         onLoaded?.invoke(asset)
+                        // Resources are uploaded — request a repaint and let the
+                        // gate's settle tail flush the final texture uploads (#2332).
+                        settleLoad()
                     },
                     onFetched = null,
                     basePath = basePath,
@@ -447,9 +507,11 @@ class SceneView private constructor(
                 )
             } else {
                 console.error("SceneView: AssetLoader failed to parse model from $url")
+                settleLoad()
             }
         }.catch { error ->
             console.error("SceneView: Error fetching model from $url", error)
+            settleLoad()
         }
     }
 
@@ -464,6 +526,14 @@ class SceneView private constructor(
 
     /** Load an IBL (Image-Based Lighting) from a KTX file URL. */
     fun loadEnvironment(iblUrl: String, skyboxUrl: String? = null) {
+        // #2332: each KTX fetch is an in-flight load — keep the gate active until
+        // it lands, decrementing exactly once on success or error.
+        pendingLoads++
+        var iblSettled = false
+        fun settleIbl() {
+            if (!iblSettled) { iblSettled = true; pendingLoads--; requestRender() }
+        }
+
         // Fetch and create IBL (indirect lighting) from a KTX1 file
         window.fetch(iblUrl).then { it.arrayBuffer() }.then { buffer ->
             val ibl = engine.createIblFromKtx1(buffer)
@@ -473,20 +543,29 @@ class SceneView private constructor(
             indirectLight.replaceWith(ibl)
             scene.setIndirectLight(ibl)
             console.log("SceneView: IBL loaded from $iblUrl")
+            settleIbl()
         }.catch { error ->
             console.error("SceneView: Error loading IBL from $iblUrl", error)
+            settleIbl()
         }
 
         // Optionally load a skybox from a separate KTX file
         skyboxUrl?.let { url ->
+            pendingLoads++
+            var skySettled = false
+            fun settleSky() {
+                if (!skySettled) { skySettled = true; pendingLoads--; requestRender() }
+            }
             window.fetch(url).then { it.arrayBuffer() }.then { buffer ->
                 val sky = engine.createSkyFromKtx1(buffer)
                 // Same leak-free swap as the IBL above (issue #1496).
                 skybox.replaceWith(sky)
                 scene.setSkybox(sky)
                 console.log("SceneView: Skybox loaded from $url")
+                settleSky()
             }.catch { error ->
                 console.error("SceneView: Error loading skybox from $url", error)
+                settleSky()
             }
         }
     }
@@ -536,6 +615,8 @@ class SceneView private constructor(
         builder.build(engine, entity)
         scene.addEntity(entity)
         lightEntities.add(entity)
+        // A new light re-lights every pixel — repaint (#2332).
+        requestRender()
     }
 
     /**
@@ -550,6 +631,14 @@ class SceneView private constructor(
     fun addGeometry(config: GeometryConfig) {
         val glbBuffer = GeometryGLBBuilder.buildGLB(config)
         val loader = assetLoader ?: engine.createAssetLoader().also { assetLoader = it }
+
+        // #2332: a geometry build + GPU upload is an in-flight load — keep the
+        // gate active until its buffers land, decrementing exactly once.
+        pendingLoads++
+        var geomSettled = false
+        fun settleGeometry() {
+            if (!geomSettled) { geomSettled = true; pendingLoads--; requestRender() }
+        }
 
         try {
             val asset = loader.createAsset(glbBuffer)
@@ -585,23 +674,32 @@ class SceneView private constructor(
                         // the stale callback so it never touches a dead
                         // FilamentAsset. (Geometry has a unique key so it is
                         // never replaced, but teardown still races it.)
-                        if (loadedModel.superseded) return@loadResources
+                        if (loadedModel.superseded) {
+                            settleGeometry()
+                            return@loadResources
+                        }
                         asset.releaseSourceData()
                         // #1597: getBoundingBox() is only readable post-load —
                         // mark loaded so the auto-center pass includes it.
                         loadedModel.loaded = true
                         autoCenterGate.reset()
+                        // Buffers uploaded — repaint + flush via the settle tail (#2332).
+                        settleGeometry()
                     },
                     onFetched = null,
                     basePath = "",
                     asyncInterval = null
                 )
+                // The scene graph just changed — paint it (#2332).
+                requestRender()
                 console.log("SceneView: Geometry '${config.geometryType.name.lowercase()}' added")
             } else {
                 console.error("SceneView: Failed to create geometry asset for ${config.geometryType}")
+                settleGeometry()
             }
         } catch (e: Throwable) {
             console.error("SceneView: Error creating geometry ${config.geometryType}", e)
+            settleGeometry()
         }
     }
 
@@ -612,6 +710,10 @@ class SceneView private constructor(
     fun fitToModels() {
         if (models.isEmpty()) return
         fitToBounds(ContentCentering.union(contentBoxes()))
+        // The camera dolly/target moved — repaint (#2332). The orbit controller
+        // also detects the move on its next tick, but request explicitly so a
+        // fit on an otherwise-idle scene paints immediately.
+        requestRender()
     }
 
     /**
@@ -860,17 +962,25 @@ class SceneView private constructor(
     /**
      * The render loop -- called every frame via requestAnimationFrame.
      *
-     * Each frame:
+     * Each frame ALWAYS:
      * 1. Auto-resizes viewport if CSS size changed
      * 2. Updates orbit camera controller (rotation, damping)
      * 3. Advances glTF animations
      * 4. Calls engine.execute() to process pending async operations
-     * 5. Renders the frame via beginFrame/renderView/endFrame
+     *
+     * …then submits a GPU frame (beginFrame/renderView/endFrame) **only when the
+     * scene is dirty** — the camera moved, an animation is playing, an async
+     * load is in flight, the auto-center pass is still running, a resize was
+     * just applied, or a mutation called [requestRender] (#2332). The rAF loop
+     * itself is never gated, so an idle static scene keeps ticking cheaply and
+     * resumes painting the instant anything changes — the gate can only ever
+     * cost a stale frame, never a frozen canvas. See [RenderGate].
      */
     private fun renderLoop(timestamp: Double) {
         if (!isRunning) return
 
-        // Auto-resize viewport if canvas CSS size changed
+        // Auto-resize viewport if canvas CSS size changed. resize() marks the
+        // scene dirty, so a resize while otherwise idle still repaints.
         if (autoResize) {
             val w = canvas.clientWidth
             val h = canvas.clientHeight
@@ -880,49 +990,66 @@ class SceneView private constructor(
             }
         }
 
-        // Auto-center content on the first frame its bounds are non-degenerate
-        // (i.e. async-loaded models have populated). No-op once centered or
-        // when autoCenterContent is disabled. Port of iOS #1026 — closes #1052.
+        // The auto-center pass runs (and may move content) on any frame where it
+        // is enabled, has content, and has not yet latched. Capture that *before*
+        // running it so the final, latching reframe still counts as activity and
+        // paints. No-op once centered / disabled. Port of iOS #1026 (#1052).
+        val autoCenterActive = autoCenterContent && models.isNotEmpty() && !autoCenterGate.didCenter
         refreshContentCentering()
 
-        // Update orbit camera
-        cameraController?.update()
+        // Update orbit camera — reports whether the eye/target actually moved
+        // this frame (auto-rotate, damping tail, or a fresh drag/zoom/pan).
+        val cameraMoved = cameraController?.update() ?: false
 
         // Track animation time
         val deltaSeconds = if (lastTimestamp > 0) (timestamp - lastTimestamp) / 1000.0 else 0.0
         lastTimestamp = timestamp
 
-        // Update glTF animations for all loaded models
-        models.forEach { model ->
-            model.animator?.let { animator ->
-                val count = animator.getAnimationCount()
-                if (count > 0) {
-                    model.animationTime += deltaSeconds
-                    val duration = animator.getAnimationDuration(0)
-                    if (duration > 0) {
-                        // Loop the animation
-                        model.animationTime = model.animationTime % duration
-                    }
-                    // Apply animation 0 at the accumulated (looped) time so
-                    // skeletal/keyframe animations actually advance. The time
-                    // argument is mandatory — without it the animator re-applies
-                    // every frame at t=0 and the model renders frozen (#1697).
-                    animator.applyAnimation(0, model.animationTime)
-                    animator.updateBoneMatrices()
+        // Update glTF animations for all loaded models. Indexed loop (not
+        // forEach) so the per-frame closure + iterator allocation is gone — this
+        // runs every tick, including idle ones (#2332). `animating` keeps the
+        // gate live for as long as any animation is actually playing.
+        var animating = false
+        for (i in models.indices) {
+            val model = models[i]
+            val animator = model.animator ?: continue
+            val count = animator.getAnimationCount()
+            if (count > 0) {
+                animating = true
+                model.animationTime += deltaSeconds
+                val duration = animator.getAnimationDuration(0)
+                if (duration > 0) {
+                    // Loop the animation
+                    model.animationTime = model.animationTime % duration
                 }
+                // Apply animation 0 at the accumulated (looped) time so
+                // skeletal/keyframe animations actually advance. The time
+                // argument is mandatory — without it the animator re-applies
+                // every frame at t=0 and the model renders frozen (#1697).
+                animator.applyAnimation(0, model.animationTime)
+                animator.updateBoneMatrices()
             }
         }
 
-        // Process any pending async Filament operations (texture uploads, etc.)
+        // Process any pending async Filament operations (texture uploads, etc.).
+        // Always runs so streamed uploads progress even on gated frames.
         engine.execute()
 
-        // Render frame
-        if (renderer.beginFrame(swapChain)) {
-            renderer.renderView(view)
-            renderer.endFrame()
+        // Render frame — only when something changed (#2332). `pendingLoads > 0`
+        // keeps streaming content painting; the gate's settle tail flushes the
+        // final uploads after activity stops.
+        val active = cameraMoved || animating || pendingLoads > 0 || autoCenterActive
+        if (renderGate.shouldRender(active)) {
+            if (renderer.beginFrame(swapChain)) {
+                renderer.renderView(view)
+                renderer.endFrame()
+                // Consume one owed settle frame only on an actual submit — a
+                // frame Filament skipped for pacing must not burn the budget.
+                renderGate.didRender()
+            }
         }
 
-        animationFrameId = window.requestAnimationFrame(::renderLoop)
+        animationFrameId = window.requestAnimationFrame(renderLoopRef)
     }
 }
 

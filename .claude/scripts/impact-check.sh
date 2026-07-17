@@ -12,11 +12,19 @@
 #   SV_IMPACT_TRACE=1         force `set -x` regardless of TTY
 #   SV_IMPACT_TRACE_AUTO=0    disable auto `set -x` when stdout is not a TTY
 #
-# Robustness contract (#1782 / #1786):
+# Robustness contract (#1782 / #1786 / #2370):
 #   - Every check echoes a trace line BEFORE running, so an unexpected death
 #     under `set -euo pipefail` points at the failing predicate.
 #   - Path-dependent checks (sparse-checkout / lean-clone aware) [SKIP]
-#     instead of dying when their inputs are absent.
+#     instead of dying when their inputs are absent. A check whose result
+#     depends on a COMPLETE set of inputs (e.g. the node-count total, summed
+#     across both the 3D and AR node dirs) also [SKIP]s on a PARTIAL checkout
+#     rather than emitting a false count — a partial total would FALSE-FAIL
+#     every doc claim ("Claims 42, actual 24").
+#   - History-dependent checks pick a diff base that exists: a shallow
+#     (`--depth 1`) clone has no `HEAD~1`, so they fall back to `origin/main`
+#     and uncommitted working-tree edits, and [SKIP] honestly when no base is
+#     resolvable — never a silent "nothing changed" no-op.
 #   - An ERR trap names the dying check on any other unexpected failure.
 #   - Default exit code is 0 (report-only); `--fail` opts in to non-zero
 #     for use in the quality gate.
@@ -113,27 +121,29 @@ trace "node count consistency (count *Node.kt sources)"
 ANDROID_3D_DIR="sceneview/src/main/java/io/github/sceneview/node"
 ANDROID_AR_DIR="arsceneview/src/main/java/io/github/sceneview/ar/node"
 
-if [[ -d "$ANDROID_3D_DIR" ]]; then
+# The "N+ node types" marketing total is the SUM of the 3D + AR node sources.
+# Both dirs must be present to compute a COMPLETE total. A lean / sparse clone
+# that omits EITHER one (e.g. a worker that sparse-checks out `sceneview` but
+# not `arsceneview`) would otherwise compute a partial total and FALSE-FAIL
+# every doc claim ("Claims 42, actual 24"). So the claim comparison runs only
+# when both source dirs exist; a partial checkout SKIPs instead of failing
+# (#2370 — lean-clone is the standard batch-agent workflow).
+if [[ ! -d "$ANDROID_3D_DIR" ]] || [[ ! -d "$ANDROID_AR_DIR" ]]; then
+    MISSING_NODE_DIRS=""
+    [[ ! -d "$ANDROID_3D_DIR" ]] && MISSING_NODE_DIRS="$MISSING_NODE_DIRS $ANDROID_3D_DIR"
+    [[ ! -d "$ANDROID_AR_DIR" ]] && MISSING_NODE_DIRS="$MISSING_NODE_DIRS $ANDROID_AR_DIR"
+    echo -e "${CYAN}--- Node count consistency (skipped: node sources not fully in checkout) ---${NC}"
+    check "Node count consistency" "SKIP" "partial count — missing:${MISSING_NODE_DIRS}"
+else
     # `grep -c` rather than `grep | wc -l`: one fewer process and one fewer
     # pipefail surface (per shellcheck SC2126).
     NODES_3D=$(find "$ANDROID_3D_DIR" -maxdepth 1 -name '*Node.kt' -print 2>/dev/null \
         | grep -cEv 'NodeState|NodeAnimationDelegate|NodeGestureDelegate|RenderableNode|GeometryNode' \
         || true)
-else
-    NODES_3D=0
-fi
-if [[ -d "$ANDROID_AR_DIR" ]]; then
     NODES_AR=$(find "$ANDROID_AR_DIR" -maxdepth 1 -name '*Node.kt' -print 2>/dev/null \
         | grep -c '' || true)
-else
-    NODES_AR=0
-fi
-ACTUAL_NODES=$((NODES_3D + NODES_AR))
+    ACTUAL_NODES=$((NODES_3D + NODES_AR))
 
-if [[ ! -d "$ANDROID_3D_DIR" ]] && [[ ! -d "$ANDROID_AR_DIR" ]]; then
-    echo -e "${CYAN}--- Node count consistency (skipped: Android sources not in checkout) ---${NC}"
-    check "Node count consistency" "SKIP" "no Android sources"
-else
     echo -e "${CYAN}--- Node count consistency (actual: $ACTUAL_NODES) ---${NC}"
     # Check each file that claims a node count. The list spans every
     # current-state surface that states a marketing "N+ node types" total.
@@ -293,13 +303,39 @@ echo ""
 echo -e "${CYAN}--- Sample app build (fast check) ---${NC}"
 trace "Android sample build dry-run gate"
 
-# Only check if Android SDK source changed
+# Only check if Android SDK source changed.
 if [[ ! -d ".git" ]]; then
     check "Android demo assembleDebug" "SKIP" "not a git repository"
 elif [[ ! -x "./gradlew" ]]; then
     check "Android demo assembleDebug" "SKIP" "gradlew not present in checkout"
+elif [[ ! -d "samples/android-demo" ]]; then
+    # The gradle dry-run cannot configure :samples:android-demo without the
+    # module tree on disk. A lean / sparse clone that omits samples/ SKIPs with
+    # a clear note rather than running a doomed dry-run (#2370).
+    check "Android demo assembleDebug" "SKIP" "samples/android-demo not in checkout (lean/sparse clone)"
 else
-    CHANGED_SRC=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '^sceneview/src|^arsceneview/src|^samples/' 2>/dev/null || true)
+    # Pick a diff base that actually exists. A full clone has HEAD~1 (the CI
+    # case — behaviour preserved). A shallow (`--depth 1`) clone does NOT, so
+    # `git diff HEAD~1 HEAD` would error → empty result → a misleading
+    # "No source changed" PASS. Fall back to origin/main when it diverges, and
+    # always fold in uncommitted working-tree edits (the batch-agent case).
+    # Never silently no-op just because the base ref was unavailable (#2370).
+    SRC_FILTER='^sceneview/src|^arsceneview/src|^samples/'
+    CHANGED_SRC=""
+    DIFF_BASE=""
+    if git rev-parse --verify -q HEAD~1 >/dev/null 2>&1; then
+        DIFF_BASE="HEAD~1"
+        CHANGED_SRC=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E "$SRC_FILTER" || true)
+    elif git rev-parse --verify -q origin/main >/dev/null 2>&1 \
+         && [[ "$(git rev-parse origin/main 2>/dev/null)" != "$(git rev-parse HEAD 2>/dev/null)" ]]; then
+        DIFF_BASE="origin/main"
+        CHANGED_SRC=$(git diff --name-only origin/main HEAD 2>/dev/null | grep -E "$SRC_FILTER" || true)
+    fi
+    # Uncommitted working-tree edits are the common lean-clone signal — fold
+    # them in regardless of which (if any) commit base was found.
+    WT_CHANGED=$(git diff --name-only HEAD 2>/dev/null | grep -E "$SRC_FILTER" || true)
+    CHANGED_SRC=$(printf '%s\n%s\n' "$CHANGED_SRC" "$WT_CHANGED" | sort -u | grep -v '^$' || true)
+
     if [[ -n "$CHANGED_SRC" ]]; then
         trace "gradle :samples:android-demo:assembleDebug --dry-run"
         if ./gradlew :samples:android-demo:assembleDebug --dry-run > /dev/null 2>&1; then
@@ -307,6 +343,10 @@ else
         else
             check "Android demo assembleDebug (dry-run)" "FAIL" "Gradle task resolution failed"
         fi
+    elif [[ -z "$DIFF_BASE" ]] && [[ "$(git rev-parse --is-shallow-repository 2>/dev/null)" == "true" ]]; then
+        # Shallow clone, no HEAD~1, origin/main == HEAD, clean tree: we genuinely
+        # cannot tell what changed. SKIP honestly instead of claiming "no change".
+        check "Android demo assembleDebug" "SKIP" "shallow clone, no diff base & clean tree"
     else
         check "Android demo assembleDebug" "PASS" "No SDK/sample source changed"
     fi

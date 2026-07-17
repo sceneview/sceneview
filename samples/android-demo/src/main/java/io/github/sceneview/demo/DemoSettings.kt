@@ -82,4 +82,47 @@ object DemoSettings {
     @Volatile
     @JvmField
     var arPlaybackFrameCount: Int = 0
+
+    /**
+     * Optional 0-based tab index a consolidated (segmented-button) demo should pre-select
+     * when it starts, instead of its default first tab. Set at launch from the alias that
+     * opened it (e.g. `shape` → the Shape tab of `custom-geometry`) or an explicit
+     * `--es tab <i>` extra / `?tab=<id|index>` deep-link query, resolved by
+     * [DeepLinkRouter.resolveInitialTab] (#2315).
+     *
+     * Consumed exactly once via [consumeInitialTab] in the demo's `remember { … }`
+     * initializer, then cleared so a later in-app navigation to another consolidated demo
+     * isn't affected. An out-of-range value is clamped to the default tab by
+     * [initialDemoMode] — never a crash. Plain `var` (not Compose state): it is read once at
+     * composition entry and written back to `null` in the same block, so observing it would
+     * only invite a read-then-write-in-composition snapshot warning for no benefit.
+     */
+    @JvmField
+    var initialTab: Int? = null
+
+    /**
+     * Returns the pending [initialTab] and clears it, so the launch-time pre-selection
+     * applies to exactly one demo and a subsequent navigation falls back to the default tab.
+     */
+    fun consumeInitialTab(): Int? {
+        val value = initialTab
+        initialTab = null
+        return value
+    }
+}
+
+/**
+ * Resolves the one-shot launch-time initial tab ([DemoSettings.initialTab], consumed here)
+ * into one of a consolidated demo's segmented [entries], clamped: an absent or out-of-range
+ * index falls back to [default] (the demo's normal first tab). This is the single seam every
+ * consolidated demo uses so alias / `?tab=` pre-selection (#2315) stays uniform and a bad
+ * index can never crash a demo.
+ *
+ * Call once, inside the demo's `remember { mutableStateOf(initialDemoMode(...)) }`
+ * initializer — `remember` runs the block exactly once per composition entry, so the pending
+ * value is consumed exactly once.
+ */
+fun <T> initialDemoMode(entries: List<T>, default: T): T {
+    val index = DemoSettings.consumeInitialTab() ?: return default
+    return entries.getOrNull(index) ?: default
 }

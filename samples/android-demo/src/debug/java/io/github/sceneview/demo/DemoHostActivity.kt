@@ -83,6 +83,14 @@ class DemoHostActivity : ComponentActivity() {
         val demoId = intent.getStringExtra(EXTRA_DEMO_ID)
             ?: error("DemoHostActivity launched without $EXTRA_DEMO_ID extra")
 
+        // Honor alias / `--es tab <i>` pre-selection for consolidated demos, mirroring the
+        // main-app MainActivity ingress (#2315). This host launches a single demo directly,
+        // so set the one-shot tab before the composable consumes it via initialDemoMode().
+        DemoSettings.initialTab = DeepLinkRouter.resolveInitialTab(
+            rawId = demoId,
+            tabParam = intent.getStringExtra(DeepLinkRouter.QUERY_PARAM_TAB),
+        )
+
         setContent {
             SceneViewDemoTheme {
                 DemoById(demoId)

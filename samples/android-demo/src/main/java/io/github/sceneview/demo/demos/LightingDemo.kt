@@ -46,6 +46,7 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.LoadingScrim
+import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.math.Direction
@@ -87,7 +88,9 @@ private enum class LightingMode { Types, Movable }
 fun LightingDemo(onBack: () -> Unit) {
     // rememberSaveable so the chosen mode survives configuration changes /
     // process death — consistent with the rest of the demo catalogue.
-    var mode by rememberSaveable { mutableStateOf(LightingMode.Types) }
+    var mode by rememberSaveable {
+        mutableStateOf(initialDemoMode(LightingMode.entries, LightingMode.Types))
+    }
 
     when (mode) {
         LightingMode.Types -> LightTypesScene(

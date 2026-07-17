@@ -600,6 +600,52 @@ jobs:
           #       POST /v1/reviewSubmissionItems (attach version) →
           #       PATCH /v1/reviewSubmissions/{id} {submitted: true}
           try:
+              # 5a. Cancel any STALE open reviewSubmission first (#2301).
+              #
+              # App Store Connect allows only ONE open reviewSubmission per
+              # app. A previous run that died between the CREATE below and the
+              # final `submitted: true` PATCH (e.g. reviewSubmissionItems
+              # errored) leaves an open, unsubmitted reviewSubmission attached
+              # to the app — the next run's POST then 409s ("stranded resource
+              # blocks CREATE", the same class #1831 fixed on the old API).
+              #
+              # The app→reviewSubmissions related-resource list IS exposed by
+              # Apple (unlike the appStoreVersionSubmission traversal that
+              # #1831 found 404s for this service-account tier), and it
+              # supports filter[platform] + filter[state]. The non-terminal
+              # states below are the "open" ones that block a new CREATE;
+              # COMPLETE / COMPLETING are terminal and harmless, so we leave
+              # them alone. Cancellation is PATCH {canceled: true} — there is
+              # NO DELETE for reviewSubmissions (verified against Apple's API +
+              # Fastlane spaceship; the issue's "DELETE" wording is wrong).
+              OPEN_STATES = "READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,UNRESOLVED_ISSUES"
+              ls = requests.get(
+                  f"{BASE}/apps/{app_id}/reviewSubmissions"
+                  f"?filter[platform]=IOS&filter[state]={OPEN_STATES}&limit=10",
+                  headers=headers,
+              )
+              print(f"Stale-open reviewSubmissions probe → {ls.status_code}")
+              if ls.status_code == 200:
+                  for stale in (ls.json() or {}).get("data", []):
+                      stale_id = stale["id"]
+                      stale_state = stale.get("attributes", {}).get("state", "?")
+                      cancel = requests.patch(
+                          f"{BASE}/reviewSubmissions/{stale_id}",
+                          headers=headers,
+                          json={"data": {
+                              "type": "reviewSubmissions",
+                              "id": stale_id,
+                              "attributes": {"canceled": True},
+                          }},
+                      )
+                      print(
+                          f"Canceling stale open reviewSubmission {stale_id} "
+                          f"(was {stale_state}) → {cancel.status_code}"
+                      )
+              elif ls.status_code not in (404,):
+                  # Non-fatal: a probe failure shouldn't block a fresh CREATE.
+                  print(f"::warning::Could not list reviewSubmissions: {ls.status_code} {ls.text[:200]}")
+
               # Create review submission
               rs_payload = {
                   "data": {

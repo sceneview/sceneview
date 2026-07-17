@@ -52,6 +52,7 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.rememberHeroYaw
@@ -99,7 +100,9 @@ import java.io.File
  */
 @Composable
 fun ModelViewerDemo(onBack: () -> Unit) {
-    var mode by remember { mutableStateOf(ModelViewerMode.Single) }
+    var mode by remember {
+        mutableStateOf(initialDemoMode(ModelViewerMode.entries, ModelViewerMode.Single))
+    }
     when (mode) {
         ModelViewerMode.Single -> SingleModelSection(onBack, mode) { mode = it }
         ModelViewerMode.Multi -> MultiModelSection(onBack, mode) { mode = it }
@@ -414,10 +417,14 @@ private fun rememberStreamedModelInstance(
     streamedFileUrl: String?,
 ): io.github.sceneview.model.ModelInstance? {
     // rememberModelInstance is called on every recomposition, in a stable slot.
-    // When there is no active stream we feed it an empty path: the URL overload
-    // sees a scheme-less location, the asset reader fails fast, and it returns
-    // null — no model is loaded and the bundled helmet keeps rendering.
-    val instance = rememberModelInstance(modelLoader, streamedFileUrl ?: "")
+    // The named `fileLocation =` argument binds to the URL-capable overload — without it
+    // the two-arg positional call binds to the asset-path overload, which feeds the
+    // `cached.toURI()` `file://…` URL straight to `AssetManager.open`; that throws, the
+    // instance stays `null`, and "Surprise me" silently never swaps in the streamed model
+    // (#1422 / the #2302 overload trap). When there is no active stream we feed it an empty
+    // path: the URL overload sees a scheme-less location, delegates to the asset reader,
+    // which fails fast and returns null — the bundled helmet keeps rendering.
+    val instance = rememberModelInstance(modelLoader, fileLocation = streamedFileUrl ?: "")
     return if (streamedFileUrl == null) null else instance
 }
 
@@ -794,20 +801,24 @@ private fun GallerySection(
         val slug = selectedSlug ?: return@produceState
         value = runCatching { resolver.resolve(slug) }
             .fold(
-                onSuccess = { GalleryResolveState.Resolved(it.toURI().toString()) },
+                onSuccess = { GalleryResolveState.Resolved(it) },
                 onFailure = { GalleryResolveState.Error(it.message ?: it.javaClass.simpleName) },
             )
     }
-    val resolvedPath = (resolveState as? GalleryResolveState.Resolved)?.path
+    val resolvedFile = (resolveState as? GalleryResolveState.Resolved)?.file
     val resolveError = (resolveState as? GalleryResolveState.Error)?.message
 
-    val modelInstance = resolvedPath?.let { path ->
-        // `rememberModelInstance(modelLoader, fileLocation)` accepts a `file://`
-        // URL; the underlying SceneView API auto-detects the scheme and uses
-        // `loadModelInstance` on the IO dispatcher (Filament JNI back to main
-        // is handled internally — we never touch JNI off-main here).
-        rememberModelInstance(modelLoader, path)
-    }
+    // Load the resolved file (streamed GLB or bundled fallback) through
+    // [rememberFileModelInstance] → `ModelLoader.loadModelInstance("file://…")`,
+    // NOT the two-argument `rememberModelInstance(modelLoader, fileUri)`. The
+    // latter binds to the asset-path overload — Kotlin prefers the candidate that
+    // needs no default argument — which feeds the `file://` string straight to
+    // `AssetManager.open`; that throws, the instance stays `null`, and the
+    // "Streaming model…" scrim hangs forever even though the bundled fallback
+    // resolved instantly offline (#2306 — same root cause as #1422 / the
+    // Multi-Model section above). Called unconditionally so its `produceState`
+    // slot stays stable (#1464).
+    val modelInstance = rememberFileModelInstance(modelLoader, resolvedFile)
 
     // Per-demo offline indicator chip (#1152 Stage 3). When no API key is
     // configured we know up-front the resolver will fall back to bundled
@@ -886,6 +897,14 @@ private fun GallerySection(
                 val instance = modelInstance
                 val slug = selectedSlug
                 if (instance != null && slug != null) {
+                    // KNOWN ISSUE (#2306 follow-up): switching chips leaves the previous
+                    // model stacked in the scene. Device-QA proved this is NOT fixable here:
+                    // the ModelNode IS disposed on every switch (its `onDispose` runs — verified
+                    // via logcat) and `key(modelInstance)` re-keys correctly, yet the old
+                    // renderable stays in the Filament scene — `ModelNode` disposal does not
+                    // remove the model's renderable entities. That is a library-level
+                    // node-disposal bug (#2400); a demo-side `key()` wrapper is a no-op for
+                    // the symptom, so it is intentionally NOT applied here.
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = slug.scaleToUnits,
@@ -920,8 +939,8 @@ private sealed interface GalleryResolveState {
     /** Resolve coroutine in flight. */
     data object Loading : GalleryResolveState
 
-    /** Resolve succeeded — [path] is a `file://` URL ready for the model loader. */
-    data class Resolved(val path: String) : GalleryResolveState
+    /** Resolve succeeded — [file] is the on-disk GLB (streamed or bundled fallback). */
+    data class Resolved(val file: File) : GalleryResolveState
 
     /** Resolve failed — [message] is a short human-readable reason. */
     data class Error(val message: String) : GalleryResolveState
