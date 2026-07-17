@@ -369,7 +369,7 @@ fun WallPlacementScene(
                         it.type == Plane.Type.HORIZONTAL_UPWARD_FACING
                 }
                 floorY = floors.minOfOrNull { it.centerPose.ty() }
-                // Nearest-to-centre tracked vertical plane = the current wall of interest.
+                // First tracked vertical plane = the current wall of interest.
                 val wall = updatedSession.getAllTrackables(Plane::class.java).firstOrNull {
                     it.trackingState == TrackingState.TRACKING && it.type == Plane.Type.VERTICAL
                 }

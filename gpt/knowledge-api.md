@@ -999,6 +999,64 @@ detach every placed anchor (e.g. a "Clear All" button), or read `controller.coun
 instant-placement hits. For placement against arbitrary real geometry (sofas, slopes) use
 `DepthHitResultNode`; for full manual control drop down to `ARSceneView` + `HitResultNode`.
 
+### WallPlacementScene — place on a wall, aligned to the floor↔wall edge (v4.11.0+, #2740)
+
+**Use this instead of `PlacementScene` for vertical-surface products** — a TV, framed art, a mirror,
+a shelf. Placing on a wall is harder than dropping a model on the floor: ARCore converges vertical
+planes slowly and noisily, so anchoring at the raw hit pose leaves the object tilted and floating.
+`WallPlacementScene` decouples the two axes the way Amazon "AR View" / IKEA Place do it — orientation
+comes from the **wall** (the object is made flush and upright, never inheriting hit-pose noise) and
+height comes from the **floor** (seated at `floorY + mountHeight`, stable while the wall jitters). It
+tracks the live floor↔wall seam (the "orange alignment line") and surfaces it via `onSeamChanged`.
+
+```kotlin
+import io.github.sceneview.ar.WallPlacementScene
+
+@Composable
+fun WallTvScreen() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    WallPlacementScene(
+        modifier = Modifier.fillMaxSize(),
+        engine = engine,
+        modelLoader = modelLoader,
+        mountHeight = 1.2f,                      // TV centre height above the floor, meters
+    ) { anchor ->                                // invoked once per tap-created wall Anchor
+        AnchorNode(anchor = anchor) {
+            val instance = rememberModelInstance(modelLoader, "models/tv.glb")
+            instance?.let { ModelNode(modelInstance = it, scaleToUnits = 1.4f) }
+        }
+    }
+}
+```
+
+Signature:
+```kotlin
+@Composable fun WallPlacementScene(
+    modifier: Modifier = Modifier,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    mountHeight: Float = 1.2f,                   // anchor height above the floor (base-on-floor:
+                                                 // pass the object half-height; hung: centre height)
+    planeRenderer: Boolean = true,
+    onSeamChanged: ((FloorWallSeam?) -> Unit)? = null,   // live floor↔wall edge — draw the guide
+    onPhaseChanged: ((WallPlacementPhase) -> Unit)? = null, // FINDING_FLOOR→FINDING_WALL→ALIGNING_EDGE→PLACED
+    playbackDataset: File? = null,
+    sessionConfiguration: ((Session, Config) -> Unit)? = null,
+    onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,
+    content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
+)
+```
+
+It enables `HORIZONTAL_AND_VERTICAL` plane finding, accepts only vertical-plane hits inside the
+polygon, and shares `PlacementController` with `PlacementScene` (`controller.clear()` /
+`controller.count`). The placement math is exposed as pure functions for custom flows:
+`wallFacingRotation(wallNormal)`, `floorWallSeam(wallNormal, wallPoint, floorY)`,
+`wallAnchorPose(wallHit, wallNormal, floorY, mountHeight)`. This first increment surfaces the seam +
+phase via callbacks so an app draws its own guide; an in-scene 3D seam line and a gizmo/D-pad
+fine-adjust UI are tracked follow-ups on #2740.
+
 **⚠️ Important nesting rule:** AR composables (`AnchorNode`, `CloudAnchorNode`, `AugmentedImageNode`, etc.) can only be declared at the `ARSceneView { }` root level — they are NOT available inside `Node { content }` or other node's `content` blocks. To nest models under an anchor, use `AnchorNode(anchor) { ModelNode(...) }` — the `content` block of `AnchorNode` provides a regular `NodeScope`.
 
 **⚠️ ARCore Cloud API key — required for `CloudAnchorNode`, `StreetscapeGeometryNode`, and any `Config.GeospatialMode.ENABLED` session.** When generating code that uses these features, you MUST include both:
