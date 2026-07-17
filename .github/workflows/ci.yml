@@ -285,10 +285,17 @@ jobs:
         # `:samples:common:testDebugUnitTest` runs the shared-helper
         # regression suite — LifecycleAwareLaunchedEffect, LifecyclePauseGate,
         # rememberMaterialInstance, InAppUpdateManager. See #972.
+        #
+        # `:sceneview-core:androidTest` runs the ~55-file commonTest suite of
+        # the shared KMP core (math, collision, animation, easing, springs —
+        # consumed by Android, iOS AND web) on the `jvm("android")` target:
+        # plain sub-minute JVM tests, no emulator. Before #2733 this suite
+        # gated nothing — only `jsTest` ran it, marked informational.
         run: |
           ./gradlew \
             :sceneview:testDebugUnitTest \
             :arsceneview:testDebugUnitTest \
+            :sceneview-core:androidTest \
             :samples:common:testDebugUnitTest \
             :samples:android-demo:testDebugUnitTest \
             --stacktrace
