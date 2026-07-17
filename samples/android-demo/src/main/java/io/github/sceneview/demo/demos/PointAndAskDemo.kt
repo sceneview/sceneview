@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface as M3Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +52,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +63,7 @@ import kotlinx.coroutines.withContext
 /** Test tags for the Point & Ask QA flows (Maestro / layout dumps). */
 object PointAndAskTestTags {
     const val ANSWER_CARD = "point_and_ask_answer_card"
+    const val QUESTION_FIELD = "point_and_ask_question_field"
 }
 
 /** Lifecycle of one "ask" round-trip, driving the bottom card. */
@@ -73,8 +77,12 @@ private sealed interface AskState {
     /** Frame captured, Gemini Nano inference in flight. */
     data object Thinking : AskState
 
-    /** Answer displayed until the next tap or reset. */
-    data class Answered(val text: String) : AskState
+    /**
+     * Answer text so far. While [streaming] the model is still appending deltas (P3
+     * progressive display); once `false` the answer is complete and stays until the
+     * next tap or reset.
+     */
+    data class Answered(val text: String, val streaming: Boolean = false) : AskState
 
     /** Inference or capture failed — transient, retry on next tap. */
     data object Failed : AskState
@@ -97,8 +105,10 @@ private sealed interface AskState {
  *    helpers; acquisition happens in `onSessionUpdated` (the only place the latest frame's CPU
  *    image is reliably available) and the YUV → ARGB conversion runs off the main thread.
  *
- * P1 of [#2648](https://github.com/sceneview/sceneview/issues/2648) — the answer card is
- * screen-space; world-space anchoring of the answer at the tapped pose is P2.
+ * P1+P3 of [#2648](https://github.com/sceneview/sceneview/issues/2648): P3 adds the
+ * free-form question field (controls sheet; blank = default prompt) and **streamed**
+ * answers — `askStream` deltas grow the card live with a typing cursor. The answer card
+ * is still screen-space; world-space anchoring at the tapped pose is P2.
  */
 @Composable
 fun PointAndAskDemo(onBack: () -> Unit) {
@@ -119,8 +129,11 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     var askState by remember { mutableStateOf<AskState>(AskState.Idle) }
     var isTracking by remember { mutableStateOf(false) }
 
-    // The question is a fixed English prompt in P1 (best Nano quality; free-form input is P3).
-    val question = stringResource(R.string.demo_point_and_ask_question)
+    // Free-form question (P3): blank = the default English prompt (best Nano quality).
+    // Saveable so a rotation mid-session keeps the user's custom question.
+    val defaultQuestion = stringResource(R.string.demo_point_and_ask_question)
+    var questionText by rememberSaveable { mutableStateOf("") }
+    val question = questionText.trim().ifBlank { defaultQuestion }
 
     // Capture timeout — a tap can only complete once ARCore delivers a CPU camera image,
     // which never happens when tracking can't start (tap before scanning finishes) or on
@@ -145,10 +158,23 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_point_and_ask_title),
         onBack = onBack,
         onReset = { askState = AskState.Idle },
-        controls = if (DemoSettings.qaMode) {
-            { ForceTrackingFailureMenu() }
-        } else {
-            null
+        onResetSettings = { questionText = "" },
+        controls = {
+            // Free-form question (P3) — blank falls back to the default prompt, which the
+            // placeholder shows. The next tap asks THIS question about the camera frame.
+            OutlinedTextField(
+                value = questionText,
+                onValueChange = { questionText = it },
+                label = { Text(stringResource(R.string.demo_point_and_ask_question_label)) },
+                placeholder = { Text(defaultQuestion) },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(PointAndAskTestTags.QUESTION_FIELD),
+            )
+            if (DemoSettings.qaMode) {
+                ForceTrackingFailureMenu()
+            }
         },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -182,7 +208,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 },
                 onGestureListener = rememberOnGestureListener(
                     onSingleTapConfirmed = { _, _ ->
-                        val busy = askState == AskState.Capturing || askState == AskState.Thinking
+                        val busy = askState == AskState.Capturing ||
+                            askState == AskState.Thinking ||
+                            (askState as? AskState.Answered)?.streaming == true
                         if (engineStatus == AskEngineStatus.Ready && !busy) {
                             askState = AskState.Capturing
                         }
@@ -290,8 +318,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                         is AskState.Answered -> BottomCard(
                             testTag = PointAndAskTestTags.ANSWER_CARD,
                         ) {
+                            // "▌" = live-typing cursor while deltas keep arriving.
                             Text(
-                                text = ask.text,
+                                text = if (ask.streaming) "${ask.text}▌" else ask.text,
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                             Spacer(Modifier.height(4.dp))
@@ -353,8 +382,10 @@ private fun CoroutineScope.askAboutImage(
 }
 
 /**
- * Runs one [AskEngine.ask] round-trip over [bitmap] and reports the resulting [AskState].
- * Takes ownership of [bitmap] (recycled when the round completes).
+ * Runs one streamed [AskEngine.askStream] round-trip over [bitmap], reporting a growing
+ * [AskState.Answered] per delta and the final state on completion. A failure mid-stream
+ * keeps the text already received (marked complete) — only a failure before any delta
+ * surfaces [AskState.Failed]. Takes ownership of [bitmap] (recycled when the round ends).
  */
 private fun CoroutineScope.askAboutBitmap(
     bitmap: Bitmap,
@@ -362,17 +393,20 @@ private fun CoroutineScope.askAboutBitmap(
     question: String,
     onResult: (AskState) -> Unit,
 ) = launch {
-    val result = try {
-        askEngine.ask(bitmap, question)
+    var text = ""
+    try {
+        askEngine.askStream(bitmap, question).collect { delta ->
+            text += delta
+            onResult(AskState.Answered(text, streaming = true))
+        }
+        onResult(if (text.isBlank()) AskState.Failed else AskState.Answered(text))
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        onResult(if (text.isBlank()) AskState.Failed else AskState.Answered(text))
     } finally {
         bitmap.recycle()
     }
-    onResult(
-        result.fold(
-            onSuccess = { AskState.Answered(it) },
-            onFailure = { AskState.Failed },
-        )
-    )
 }
 
 /** Shared bottom-overlay card chrome for every Point & Ask state. */

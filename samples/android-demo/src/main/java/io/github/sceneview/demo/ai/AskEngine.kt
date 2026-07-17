@@ -16,6 +16,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.mapNotNull
 
 /** Availability of the on-device answer engine, as the demo UI sees it. */
 sealed interface AskEngineStatus {
@@ -47,8 +48,13 @@ interface AskEngine {
     /** Triggers the model download, re-emitting progress; ends on [AskEngineStatus.Ready] or [AskEngineStatus.Unavailable]. */
     fun download(): Flow<AskEngineStatus>
 
-    /** One image + question round-trip. The caller owns [image] and may recycle it afterwards. */
-    suspend fun ask(image: Bitmap, question: String): Result<String>
+    /**
+     * One image + question round-trip, streamed: emits text **deltas** as the model produces
+     * them (P3 of #2648 — progressive display). The flow completes normally when the answer
+     * is done and throws on inference failure. The caller owns [image] and may recycle it
+     * once the flow terminates.
+     */
+    fun askStream(image: Bitmap, question: String): Flow<String>
 
     fun close()
 }
@@ -92,13 +98,13 @@ class GeminiNanoAskEngine : AskEngine {
         }
     }
 
-    override suspend fun ask(image: Bitmap, question: String): Result<String> = runCatching {
-        val response = model.generateContent(
+    override fun askStream(image: Bitmap, question: String): Flow<String> =
+        model.generateContentStream(
             generateContentRequest(ImagePart(image), TextPart(question)) {}
-        )
-        response.candidates.firstOrNull()?.text?.takeIf { it.isNotBlank() }
-            ?: error("Gemini Nano returned an empty answer")
-    }
+        ).mapNotNull { chunk ->
+            // Each streamed GenerateContentResponse carries a text DELTA.
+            chunk.candidates.firstOrNull()?.text?.takeIf { it.isNotEmpty() }
+        }
 
     override fun close() {
         if (clientCreated) runCatching { model.close() }
@@ -118,18 +124,23 @@ class CannedAskEngine : AskEngine {
 
     override fun download(): Flow<AskEngineStatus> = flowOf(AskEngineStatus.Ready)
 
-    override suspend fun ask(image: Bitmap, question: String): Result<String> {
+    override fun askStream(image: Bitmap, question: String): Flow<String> = flow {
         delay(CANNED_LATENCY_MS)
-        return Result.success(
-            "Canned QA answer for a ${image.width}×${image.height} frame. " +
-                "Real Gemini Nano answers need an AICore device (Pixel 8+), not an emulator."
-        )
+        // Echo the question so QA can prove the free-form-question plumbing end-to-end,
+        // then stream word by word so the progressive-display UI state is observable.
+        val answer = "Canned QA answer to \"$question\" — ${image.width}×${image.height} frame. " +
+            "Real Gemini Nano answers need an AICore device (Pixel 8+), not an emulator."
+        answer.split(" ").forEachIndexed { i, word ->
+            if (i > 0) delay(CANNED_WORD_DELAY_MS)
+            emit(if (i == 0) word else " $word")
+        }
     }
 
     override fun close() = Unit
 
     private companion object {
         const val CANNED_LATENCY_MS = 600L
+        const val CANNED_WORD_DELAY_MS = 50L
     }
 }
 

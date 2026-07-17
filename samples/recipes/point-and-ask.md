@@ -87,6 +87,24 @@ Key imports: `io.github.sceneview.ar.arcore.cameraImage`,
 `io.github.sceneview.ar.arcore.toArgbBitmap`, `com.google.mlkit.genai.prompt.*`,
 `com.google.mlkit.genai.common.FeatureStatus`.
 
+### Streamed answers (progressive display)
+
+`generateContent` above returns the full answer in one shot — simplest to start
+with. For a live "typing" card, use `generateContentStream`: it emits text
+**deltas** to concatenate as they arrive (this is what the reference demo does):
+
+```kotlin
+var text = ""
+generativeModel.generateContentStream(
+    generateContentRequest(ImagePart(bitmap), TextPart(question)) {}
+).collect { chunk ->
+    chunk.candidates.firstOrNull()?.text?.let { delta ->
+        text += delta
+        answer = text          // recomposes the card per delta
+    }
+}
+```
+
 ## iOS (Swift + SwiftUI)
 
 Not available yet — SceneViewSwift has no on-device multimodal prompt API wired
@@ -102,9 +120,12 @@ feature). Tracked on [#2648](https://github.com/sceneview/sceneview/issues/2648)
 | Frame capture | `frame.cameraImage()` inside `onSessionUpdated` (current frame only) |
 | YUV → Bitmap | `Image.toArgbBitmap(rotationDegrees)` — off main thread, close the Image |
 | Multimodal ask | `generateContent(generateContentRequest(ImagePart, TextPart) {})` |
+| Streamed answers | `generateContentStream(request)` — a `Flow` of text deltas to concatenate |
 | Rotation | 90° at portrait `ROTATION_0` (map from display rotation for other orientations) |
 | Emulator QA | AICore is never available on emulators — inject a canned engine under QA mode (see `PointAndAskDemo.kt` / `AskEngine.kt`) |
 
 Reference demo: [`PointAndAskDemo.kt`](../android-demo/src/main/java/io/github/sceneview/demo/demos/PointAndAskDemo.kt)
 (demo id `point-and-ask`), with the production-grade extras: download CTA with
-progress, capture timeout, cancellation-safe Image close, deterministic QA engine.
+progress, capture timeout, cancellation-safe Image close, deterministic QA engine,
+streamed answers with a live typing cursor, and a free-form question field
+(blank falls back to the default prompt).
