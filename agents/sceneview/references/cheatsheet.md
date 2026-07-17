@@ -79,6 +79,10 @@ placement), or just use `PlacementScene`, which handles this for you.
 
 `PlaneDiscoveryGuide` = timed hand-hint/help onboarding (replaces static "Scanning…" banners).
 `snapToPlane=false` on the reticle = free placement (points accepted, planes in-polygon).
+**Vertical surfaces (#2740):** `WallPlacementScene(mountHeight = …, onSeamChanged = …, onPlaced = …)`
+— wall-flush upright orientation + floor-relative height; exposes the floor↔wall seam for the
+"align to the edge" guide. Pure math helpers: `wallFacingRotation` / `roomFacingNormal` /
+`floorWallSeam` / `wallAnchorPose`.
 iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); reticle = `showPlacementReticle: true`, contact shadows = `groundingShadows` (default on) — #894 shipped.
 
 ## Remember helpers (always use these)

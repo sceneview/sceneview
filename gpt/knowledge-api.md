@@ -999,7 +999,7 @@ detach every placed anchor (e.g. a "Clear All" button), or read `controller.coun
 instant-placement hits. For placement against arbitrary real geometry (sofas, slopes) use
 `DepthHitResultNode`; for full manual control drop down to `ARSceneView` + `HitResultNode`.
 
-### WallPlacementScene — place on a wall, aligned to the floor↔wall edge (v4.11.0+, #2740)
+### WallPlacementScene — place on a wall, aligned to the floor↔wall edge (#2740)
 
 **Use this instead of `PlacementScene` for vertical-surface products** — a TV, framed art, a mirror,
 a shelf. Placing on a wall is harder than dropping a model on the floor: ARCore converges vertical
@@ -1052,8 +1052,9 @@ Signature:
 It enables `HORIZONTAL_AND_VERTICAL` plane finding, accepts only vertical-plane hits inside the
 polygon, and shares `PlacementController` with `PlacementScene` (`controller.clear()` /
 `controller.count`). The placement math is exposed as pure functions for custom flows:
-`wallFacingRotation(wallNormal)`, `floorWallSeam(wallNormal, wallPoint, floorY)`,
-`wallAnchorPose(wallHit, wallNormal, floorY, mountHeight)`. This first increment surfaces the seam +
+`wallFacingRotation(wallNormal)`, `roomFacingNormal(wallNormal, towardViewer)` (flips an ARCore
+plane normal toward the camera — its sign is not guaranteed), `floorWallSeam(wallNormal, wallPoint,
+floorY)`, `wallAnchorPose(wallHit, wallNormal, floorY, mountHeight)`. This first increment surfaces the seam +
 phase via callbacks so an app draws its own guide; an in-scene 3D seam line and a gizmo/D-pad
 fine-adjust UI are tracked follow-ups on #2740.
 

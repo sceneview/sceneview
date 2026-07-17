@@ -50,8 +50,9 @@ import kotlin.math.sqrt
  *    rests on the floor and a TV hangs at a stable height even while the wall plane jitters.
  *
  * This file is deliberately split into a **pure-geometry core** (the functions below —
- * [wallFacingRotation], [floorWallSeam], [wallAnchorPose], [nextWallPlacementPhase],
- * [wallPlacementHit]) that is unit-tested on the JVM without Compose or an ARCore session
+ * [wallFacingRotation], [roomFacingNormal], [floorWallSeam], [wallAnchorPose],
+ * [nextWallPlacementPhase], [wallPlacementHit]) that is unit-tested on the JVM without Compose or an
+ * ARCore session
  * (mirroring [placementHit]/[isPlacementHit] in [PlacementScene]), plus one thin [WallPlacementScene]
  * composable that wires the core to [ARSceneView].
  *
@@ -93,6 +94,23 @@ fun wallYaw(wallNormal: Direction): Float {
     val horizontalLength = sqrt(nx * nx + nz * nz)
     if (horizontalLength < WALL_NORMAL_EPSILON) return 0f
     return atan2(nx / horizontalLength, nz / horizontalLength)
+}
+
+/**
+ * Ensures a wall normal points **into the room** (toward the viewer): ARCore does not guarantee a
+ * vertical plane's `+Y` (centre-pose) normal faces the observer — it can point wall-ward, which
+ * would seat the placed object with its back to the room. If [wallNormal] faces away from
+ * [towardViewer] (negative dot product), it is negated.
+ *
+ * @param wallNormal   the vertical plane's normal, either sign.
+ * @param towardViewer a vector from the wall toward the viewer (e.g. `cameraPos - wallPoint`).
+ * @return [wallNormal] or its negation, whichever points toward the viewer.
+ */
+fun roomFacingNormal(wallNormal: Direction, towardViewer: Direction): Direction {
+    val dot = wallNormal.x * towardViewer.x +
+        wallNormal.y * towardViewer.y +
+        wallNormal.z * towardViewer.z
+    return if (dot < 0f) Direction(-wallNormal.x, -wallNormal.y, -wallNormal.z) else wallNormal
 }
 
 /**
@@ -350,6 +368,7 @@ fun WallPlacementScene(
     var wallNormal by remember { mutableStateOf<Direction?>(null) }
     var wallPoint by remember { mutableStateOf<Position?>(null) }
     var phase by remember { mutableStateOf(WallPlacementPhase.FINDING_FLOOR) }
+    var lastSeam by remember { mutableStateOf<FloorWallSeam?>(null) }
 
     Box(modifier = modifier.fillMaxSize()) {
         ARSceneView(
@@ -375,10 +394,20 @@ fun WallPlacementScene(
                 }
                 if (wall != null) {
                     val c = wall.centerPose
-                    // A vertical plane's centre-pose Y axis is its outward normal.
+                    // A vertical plane's centre-pose Y axis is its normal — ARCore does not
+                    // guarantee its sign, so flip it toward the camera (into the room).
                     val n = c.yAxis
-                    wallNormal = Direction(n[0], n[1], n[2])
-                    wallPoint = Position(c.tx(), c.ty(), c.tz())
+                    val cam = frame.camera.pose
+                    val point = Position(c.tx(), c.ty(), c.tz())
+                    wallNormal = roomFacingNormal(
+                        wallNormal = Direction(n[0], n[1], n[2]),
+                        towardViewer = Direction(
+                            cam.tx() - point.x,
+                            cam.ty() - point.y,
+                            cam.tz() - point.z,
+                        ),
+                    )
+                    wallPoint = point
                 } else {
                     wallNormal = null
                     wallPoint = null
@@ -395,7 +424,10 @@ fun WallPlacementScene(
                 }
 
                 val seam = computeSeam(wallNormal, wallPoint, floorY)
-                onSeamChanged?.invoke(seam)
+                if (seam != lastSeam) {
+                    lastSeam = seam
+                    onSeamChanged?.invoke(seam)
+                }
             },
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { event: MotionEvent, node ->
@@ -405,7 +437,16 @@ fun WallPlacementScene(
                         ?: return@rememberOnGestureListener
                     val plane = hit.trackable as? Plane ?: return@rememberOnGestureListener
                     val hitPos = hit.hitPose.let { Position(it.tx(), it.ty(), it.tz()) }
-                    val normal = plane.centerPose.yAxis.let { Direction(it[0], it[1], it[2]) }
+                    val cam = frame.camera.pose
+                    // Flip the plane normal toward the camera so the front face points into the room.
+                    val normal = roomFacingNormal(
+                        wallNormal = plane.centerPose.yAxis.let { Direction(it[0], it[1], it[2]) },
+                        towardViewer = Direction(
+                            cam.tx() - hitPos.x,
+                            cam.ty() - hitPos.y,
+                            cam.tz() - hitPos.z,
+                        ),
+                    )
                     // Floor-relative height when a floor is known; otherwise seat at the raw hit
                     // height so placement still works before the floor converges.
                     val resolvedFloorY = floorY ?: (hitPos.y - mountHeight)

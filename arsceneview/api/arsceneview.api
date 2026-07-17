@@ -761,6 +761,7 @@ public final class io/github/sceneview/ar/WallPlacementKt {
 	public static final fun WallPlacementScene (Landroidx/compose/ui/Modifier;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;FZLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Ljava/io/File;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final fun floorWallSeam (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;F)Lio/github/sceneview/ar/FloorWallSeam;
 	public static final fun nextWallPlacementPhase (ZZZ)Lio/github/sceneview/ar/WallPlacementPhase;
+	public static final fun roomFacingNormal (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;
 	public static final fun wallAnchorPose (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FF)Lio/github/sceneview/ar/WallAnchorPose;
 	public static final fun wallFacingRotation (Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Quaternion;
 	public static final fun wallPlacementHit (Lcom/google/ar/core/Frame;Ljava/util/List;)Lcom/google/ar/core/HitResult;

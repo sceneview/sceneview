@@ -183,6 +183,28 @@ class WallPlacementMathTest {
         )
     }
 
+    // ── roomFacingNormal ──────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `wall-ward normal is flipped toward the viewer`() {
+        // Wall at origin, camera at z=2 (in front). ARCore handed us a normal pointing INTO the
+        // wall (-Z): it must be negated so the placed object faces the room.
+        val flipped = roomFacingNormal(
+            wallNormal = Direction(0f, 0f, -1f),
+            towardViewer = Direction(0f, 0f, 2f),
+        )
+        assertVecEquals(Direction(0f, 0f, 1f), flipped)
+    }
+
+    @Test
+    fun `room-facing normal is kept as-is`() {
+        val kept = roomFacingNormal(
+            wallNormal = Direction(0f, 0f, 1f),
+            towardViewer = Direction(0.5f, -0.2f, 2f),
+        )
+        assertVecEquals(Direction(0f, 0f, 1f), kept)
+    }
+
     // ── computeSeam null-gating ───────────────────────────────────────────────────────────────
 
     @Test
