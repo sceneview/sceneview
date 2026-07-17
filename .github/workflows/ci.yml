@@ -556,6 +556,13 @@ jobs:
         working-directory: samples/flutter-demo
         run: flutter pub get
 
+      # pub.dev publish preflight (#2735): catches archive/pubspec problems
+      # (missing files, invalid metadata, size limits) on the PR that
+      # introduces them instead of at release time in the `pub-publish` job.
+      - name: pub.dev publish preflight (--dry-run)
+        working-directory: flutter/sceneview_flutter
+        run: flutter pub publish --dry-run
+
       - name: flutter analyze
         working-directory: samples/flutter-demo
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
