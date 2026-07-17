@@ -1,0 +1,2 @@
+<!-- category: Tests -->
+- **Device-QA: Maestro runs are now pinned to the leased QA emulator (`--device "$ANDROID_SERIAL"`).** Maestro does not honor `ANDROID_SERIAL`; on a host with several adb devices connected (e.g. a personal phone on wireless debugging next to the pool emulator) it silently drove the wrong device, producing an invalid QA verdict against whatever app was on that device. `maestro_run` now forwards the leased serial explicitly, keeping the emulator-first rule true on multi-device hosts.

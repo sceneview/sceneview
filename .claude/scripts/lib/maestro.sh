@@ -125,16 +125,24 @@ maestro_run() {
     return 2
   fi
   maestro_ensure || return 1
+  # Pin Maestro to the leased device: maestro does NOT honor ANDROID_SERIAL,
+  # and with several adb devices connected (e.g. a personal phone on wireless
+  # debugging next to the QA emulator) it silently drives the wrong one — the
+  # emulator-first rule must hold even on multi-device hosts.
+  local -a device_args=()
+  if [[ -n "${ANDROID_SERIAL:-}" ]]; then
+    device_args=(--device "$ANDROID_SERIAL")
+  fi
   # Bound the run: a flow that hangs (e.g. waiting on an element that never
   # appears) must fail fast instead of silently eating the CI job budget
   # (#1560). `timeout` exit 124 propagates as a normal non-zero failure.
   # On macOS, `timeout` is not available by default — use `gtimeout` (from
   # homebrew coreutils) if present, otherwise run unbounded (#2184).
   if command -v timeout >/dev/null 2>&1; then
-    timeout "${MAESTRO_TEST_TIMEOUT:-900}" "$MAESTRO_BIN" test "$flow" "$@"
+    timeout "${MAESTRO_TEST_TIMEOUT:-900}" "$MAESTRO_BIN" "${device_args[@]}" test "$flow" "$@"
   elif command -v gtimeout >/dev/null 2>&1; then
-    gtimeout "${MAESTRO_TEST_TIMEOUT:-900}" "$MAESTRO_BIN" test "$flow" "$@"
+    gtimeout "${MAESTRO_TEST_TIMEOUT:-900}" "$MAESTRO_BIN" "${device_args[@]}" test "$flow" "$@"
   else
-    "$MAESTRO_BIN" test "$flow" "$@"
+    "$MAESTRO_BIN" "${device_args[@]}" test "$flow" "$@"
   fi
 }
