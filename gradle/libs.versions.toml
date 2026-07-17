@@ -10,7 +10,7 @@ appcompat = "1.7.1"
 fragmentKtx = "1.8.9"
 
 # Compose
-composeBom = "2026.05.01"
+composeBom = "2026.06.01"
 composeMaterial3Expressive = "1.5.0-alpha18"
 activityCompose = "1.13.0"
 navigationCompose = "2.9.8"
@@ -28,8 +28,9 @@ kotlinMath = "1.8.0"
 # integration approach and slicing plan (issue #1738).
 jetpackXrArCore = "1.0.0-alpha15"
 
-# Filament 1.71.5 — must match the binary version of .filamat files committed
-# under sceneview/src/main/assets/materials/ and website-static/materials/.
+# Filament 1.72.1 — must match the material-binary version (MATERIAL_VERSION 72)
+# of the .filamat files committed under sceneview/src/main/assets/materials/,
+# arsceneview/src/main/assets/materials/ and website-static/materials/.
 # Those were recompiled to material-binary version 71 in commit `efd296f1`
 # (Apr 11) when Filament was first bumped 1.70.2 → 1.71.0. The follow-up
 # `4a31b579` (May 11) reverted ONLY the runtime to 1.70.2 thinking the
@@ -37,13 +38,17 @@ jetpackXrArCore = "1.0.0-alpha15"
 # SIGABRT at material-load on Lighting / Geometry / Animation / MovableLight /
 # MultiModel demos (Filament 1.70.2 cannot parse v71 packages). v4.1.1
 # restores the consistent pair: 1.71.0 runtime + v71 .filamat.
-# 1.71.1–1.71.5 are patch releases with no material-format version change
-# (no MATERIAL_VERSION bump) — the .filamat blobs compiled at 1.71.0 remain
-# valid at 1.71.5. No matc recompile is required for this patch bump
-# (1.71.5 landed on repo1.maven.org, verified 2026-05-28).
+# 1.71.1–1.71.5 were patch releases with no material-format version change
+# (no MATERIAL_VERSION bump) — the .filamat blobs compiled at 1.71.0 stayed
+# valid through 1.71.5.
+# 1.72.1 (#2590) DOES cross a material-format boundary: MATERIAL_VERSION 71 → 72.
+# All 26 committed .filamat blobs were recompiled with the matching matc 1.72.1
+# toolchain in the SAME change (bash tools/GenerateFilamat.sh) — the paired
+# runtime+blob update that the ABI invariant requires (1.72.1 landed on
+# repo1.maven.org, verified 2026-07-16).
 # Session #800 / #961 track future Filament bumps with the same paired-update
 # guarantee.
-filament = "1.71.5"
+filament = "1.72.1"
 arCore = "1.54.0"
 
 # Networking
@@ -61,11 +66,15 @@ tvMaterial = "1.1.0"
 
 # Play Services
 playAppUpdate = "2.1.0"
-playServicesLocation = "21.3.0"
+playServicesLocation = "21.4.0"
 playServicesNearby = "19.3.0"
 
 # ML Kit (object detection demo — see ARMLObjectLabelDemo, #1737)
 mlkitObjectDetection = "17.0.2"
+
+# ML Kit GenAI Prompt API (Point & Ask demo — see PointAndAskDemo, #2648).
+# Beta artifact: image+text prompts against Gemini Nano on-device via AICore.
+mlkitGenaiPrompt = "1.0.0-beta3"
 
 # MediaPipe Tasks Vision (body-tracking demo — see ARBodyTrackerDemo, #1763)
 # Bumped 0.20230731 → 0.10.26: pre-0.10.26 MediaPipe .so files have 4 KB ELF
@@ -196,6 +205,11 @@ play-services-nearby = { group = "com.google.android.gms", name = "play-services
 # The bundled artifact carries the detector weights inside the APK, so the demo works
 # without the on-device dynamic ML provider being available (#1737).
 mlkit-object-detection = { group = "com.google.mlkit", name = "object-detection", version.ref = "mlkitObjectDetection" }
+
+# ML Kit GenAI Prompt API — Gemini Nano on-device (image+text → text) through AICore.
+# No model weights in the APK: the model lives in the system AICore app. Demo-only
+# dependency for PointAndAskDemo (#2648).
+mlkit-genai-prompt = { group = "com.google.mlkit", name = "genai-prompt", version.ref = "mlkitGenaiPrompt" }
 mediapipe-tasks-vision = { group = "com.google.mediapipe", name = "tasks-vision", version.ref = "mediapipeTasksVision" }
 
 # Testing

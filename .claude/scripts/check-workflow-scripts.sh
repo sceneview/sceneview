@@ -2,7 +2,7 @@
 # Validate shell blocks in .github/workflows/*.yml so we catch CI portability
 # bugs at PR-check time instead of after the workflow ships to main.
 #
-# Two flavours of block, checked differently:
+# Three flavours of block, checked differently:
 #
 # 1. `with.script:` blocks inside `uses:` steps (e.g.
 #    `ReactiveCircus/android-emulator-runner@v2`). The runner action executes
@@ -16,6 +16,16 @@
 #    shellcheck warnings still surface portability concerns. We treat these
 #    as informational only (warnings, not gate failures), so the existing
 #    `run:` corpus stays green.
+#
+# 3. `with.script:` blocks for `actions/github-script` specifically (e.g.
+#    `.github/workflows/issue-intake.yml`, #2734). Unlike flavour 1, this
+#    action's `script:` is JavaScript executed by Node — wrapped internally
+#    in an async function, never shelled through `sh -c` — so running it
+#    through `dash -n` is a guaranteed false positive (JS syntax like
+#    `const x = await foo()` is not valid POSIX sh). These blocks are routed
+#    to a separate bucket and checked with `node --check` instead, after
+#    wrapping in an async IIFE so top-level `await` (which
+#    actions/github-script supports) doesn't trip a spurious syntax error.
 #
 # Three real-world bugs that this gate would have caught at #1 time:
 #   - PR #1068 used `[[ ... ]]` inside a `with.script:` block — shipped to
@@ -64,7 +74,7 @@ fi
 TMPDIR_SCRIPTS="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_SCRIPTS"' EXIT
 
-mkdir -p "$TMPDIR_SCRIPTS/run" "$TMPDIR_SCRIPTS/with-script"
+mkdir -p "$TMPDIR_SCRIPTS/run" "$TMPDIR_SCRIPTS/with-script" "$TMPDIR_SCRIPTS/github-script"
 
 # Extract every script block via a Python helper so we don't reinvent YAML
 # parsing in shell. Emits one file per block under $TMPDIR_SCRIPTS/{run,with-script}.
@@ -97,6 +107,7 @@ def walk_steps(jobs):
 
 count_run = 0
 count_script = 0
+count_gh_script = 0
 for wf in sorted(glob.glob(os.path.join(workflows_dir, "*.yml"))):
     try:
         with open(wf) as f:
@@ -121,21 +132,34 @@ for wf in sorted(glob.glob(os.path.join(workflows_dir, "*.yml"))):
                 f.write(run_block)
             count_run += 1
 
-        # `with.script:` block. ReactiveCircus/android-emulator-runner@v2
-        # runs each line via `sh -c <line>` → dash on Linux runners. THIS
-        # is where bashisms are genuinely fatal.
+        # `with.script:` block. ReactiveCircus/android-emulator-runner@v2 and
+        # most other actions run each line via `sh -c <line>` → dash on Linux
+        # runners. THIS is where bashisms are genuinely fatal.
+        #
+        # actions/github-script is the one well-known exception: its
+        # `script:` is JavaScript run by Node (wrapped in an async
+        # function), never shelled — route it to a separate bucket so it's
+        # checked with `node --check`, not `dash -n` (see flavour 3 above).
         uses = step.get("uses", "")
+        uses_action = uses.split("@")[0] if uses else ""
+        is_github_script = uses_action == "actions/github-script"
         with_block = step.get("with") or {}
         script = with_block.get("script") if isinstance(with_block, dict) else None
         if isinstance(script, str) and script.strip():
             name = step.get("name") or f"step{idx}"
-            uses_slug = slug(uses.split("@")[0] if uses else "uses")
-            fname = f"{wf_slug}__{slug(job_name)}__{idx:02d}__{uses_slug}__{slug(name)}.sh"
-            with open(os.path.join(out_dir, "with-script", fname), "w") as f:
-                f.write(script)
-            count_script += 1
+            uses_slug = slug(uses_action or "uses")
+            if is_github_script:
+                fname = f"{wf_slug}__{slug(job_name)}__{idx:02d}__{uses_slug}__{slug(name)}.js"
+                with open(os.path.join(out_dir, "github-script", fname), "w") as f:
+                    f.write(script)
+                count_gh_script += 1
+            else:
+                fname = f"{wf_slug}__{slug(job_name)}__{idx:02d}__{uses_slug}__{slug(name)}.sh"
+                with open(os.path.join(out_dir, "with-script", fname), "w") as f:
+                    f.write(script)
+                count_script += 1
 
-print(f"check-workflow-scripts: extracted {count_run} run blocks + {count_script} with.script blocks from {workflows_dir}")
+print(f"check-workflow-scripts: extracted {count_run} run blocks + {count_script} with.script blocks + {count_gh_script} actions/github-script blocks from {workflows_dir}")
 PY
 
 # ── Pass 1: `with.script:` blocks — MUST parse under dash (CI runs them
@@ -195,6 +219,36 @@ for f in "$TMPDIR_SCRIPTS/with-script"/*.sh; do
     fi
 done
 echo "  checked $SCRIPT_COUNT with.script: block(s)"
+
+# ── Pass 1b: `with.script:` blocks for actions/github-script — JavaScript
+# run by Node, wrapped internally in an async function; NOT shell, so `dash
+# -n` is a guaranteed false positive here. Wrap in an async IIFE (mirroring
+# what actions/github-script does internally) so top-level `await` parses,
+# then `node --check` for a real syntax check. ───────────────────────────────
+echo ""
+echo "── Validating actions/github-script with.script: blocks under node ──"
+GH_SCRIPT_COUNT=0
+if command -v node >/dev/null 2>&1; then
+    for f in "$TMPDIR_SCRIPTS/github-script"/*.js; do
+        [ -f "$f" ] || continue
+        GH_SCRIPT_COUNT=$((GH_SCRIPT_COUNT + 1))
+        rel="$(basename "$f")"
+        wrapped="$f.wrapped.js"
+        {
+            echo "async function __check() {"
+            cat "$f"
+            echo "}"
+        } > "$wrapped"
+        if ! node --check "$wrapped" 2> "$f.node.err"; then
+            echo "::error::node syntax error in $rel"
+            sed 's/^/    /' "$f.node.err"
+            EXIT=1
+        fi
+    done
+    echo "  checked $GH_SCRIPT_COUNT actions/github-script block(s)"
+else
+    echo "::warning::node not installed — actions/github-script with.script: blocks not syntax-checked."
+fi
 
 # ── Pass 2: `run:` blocks — bash on Linux/macOS runners, so we only surface
 # shellcheck warnings (informational, never fails the gate). The existing
@@ -313,6 +367,8 @@ if [ $EXIT -ne 0 ]; then
     echo "           actions exec each line via 'sh -c' = dash on Linux"
     echo "           runners; replace [[ ]] with [ ], arrays with"
     echo "           newline-separated strings, etc.);"
+    echo "         - an actions/github-script with.script: block has a"
+    echo "           JavaScript syntax error (checked via 'node --check');"
     echo "         - an if: expression references a context disallowed in"
     echo "           if: (e.g. 'secrets') — read it into env:/with: instead."
     exit 1

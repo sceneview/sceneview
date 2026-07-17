@@ -9,6 +9,11 @@
 // `src/jsMain/kotlin/io/github/sceneview/web/Main.kt` — they're a
 // small, stable surface so a hand-written declaration costs less than
 // wiring `kotlin.js.dtsGenerator`. See #946.
+//
+// Sync is MACHINE-CHECKED since #2736: `.claude/scripts/check-web-dts.sh`
+// (quality-gate + repo-hygiene CI) fails when the `api[...]` namespace
+// registry in Main.kt or the public members of SceneViewJS / NodeHandle /
+// SceneViewHaptic diverge from these declarations, in either direction.
 
 export as namespace sceneview;
 
@@ -178,6 +183,40 @@ export interface SceneViewer {
   /** Release Filament resources. The viewer is unusable after this. */
   dispose(): void;
 }
+
+/**
+ * Cross-platform haptic facade (mirrors Android `SceneViewHaptic` and iOS
+ * `SceneViewSwift.SceneViewHaptic`), backed by the Web Vibration API.
+ * Browsers without `navigator.vibrate` (Safari, all iOS browsers) no-op
+ * silently. Available as `sceneview.haptic.*`.
+ */
+export interface SceneViewHaptic {
+  /** Light tap (10 ms) — taps, button presses, selections. */
+  light(): void;
+  /** Medium tap (20 ms) — placing an anchor, mode-change confirmation. */
+  medium(): void;
+  /** Heavy tap (40 ms) — boundary hit, drag-lock engagement. */
+  heavy(): void;
+  /** Success notification pattern (`[10, 50, 20]`). */
+  success(): void;
+  /** Warning notification pattern (`[30, 30, 30]`). */
+  warning(): void;
+  /** Error notification pattern (`[50, 30, 50]`). */
+  error(): void;
+  /** Selection tick (5 ms) — drag tick, picker scroll. */
+  selection(): void;
+  /** Continuous vibration for `durationMs` milliseconds. `intensity` is
+   *  accepted for cross-platform API parity (Android/iOS) but **ignored** —
+   *  the Web Vibration API exposes durations only, no amplitude. */
+  continuous(intensity: number, durationMs: number): void;
+  /** Custom vibrate/pause pattern in milliseconds, alternating on/off
+   *  starting with on (e.g. `[100, 50, 100]`). Some browsers cap total
+   *  duration or require a user-gesture handler. */
+  pattern(durationsMs: number[] | Int32Array): void;
+}
+
+/** Shared haptic facade instance — `sceneview.haptic.light()` etc. */
+export const haptic: SceneViewHaptic;
 
 /** Create a viewer attached to the canvas with the given DOM id.
  *  Defaults: `autoRotate=true`, `cameraControls=true`. */

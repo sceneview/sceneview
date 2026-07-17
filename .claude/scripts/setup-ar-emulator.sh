@@ -63,7 +63,9 @@
 # Flags:
 #   --check          Read-only inspection: prints current AVD config + ARCore
 #                    state + pool state (running emulator count, RAM-budgeted
-#                    cap, free RAM, active leases) + golden-snapshot presence.
+#                    cap, free RAM, active leases) + golden-snapshot presence
+#                    + camera-id topology of the running emulator (#2754 —
+#                    no HAL id 0 means ARCore live-camera AR cannot start).
 #                    No mutation.
 #   --clean          Wipe the AVD's userdata and recreate config from scratch.
 #                    Also drops the golden `qa-clean` snapshot — re-seed it with
@@ -422,10 +424,41 @@ show_snapshot_status() {
   fi
 }
 
+# Camera-id topology of a RUNNING emulator (#2754). ARCore's device APK hard-requires
+# the back camera at id "0"; arm64 AVDs enumerate back="10"/front="1" (never "0"), and
+# ARCore ships no arm64 emulator build (`_x86_for_emulator` has no arm64 libs) — so
+# live-camera AR sessions can NEVER start on an arm64 AVD. Surfacing the topology here
+# keeps that failure loud instead of masked behind a black viewport.
+show_camera_topology() {
+  local serial
+  serial="$("$ADB_BIN" devices 2>/dev/null | awk '/^emulator-[0-9]+/ && $2=="device" {print $1; exit}')"
+  if [[ -z "$serial" ]]; then
+    log "camera topology: no running emulator to probe"
+    return 0
+  fi
+  local dump ids
+  dump="$("$ADB_BIN" -s "$serial" shell dumpsys media.camera 2>/dev/null)" || true
+  ids="$(printf '%s\n' "$dump" | grep -oE 'Device [0-9]+ maps to "[0-9]+"' | grep -oE '"[0-9]+"' | tr -d '"' | tr '\n' ' ' || true)"
+  if [[ -z "$ids" ]]; then
+    log "camera topology: probe failed on $serial (dumpsys media.camera empty)"
+    return 0
+  fi
+  log "camera topology on $serial: HAL ids = ${ids% }"
+  if printf '%s' " $ids " | grep -q ' 0 '; then
+    log "  back camera at id 0 present — ARCore live-camera sessions can start"
+  else
+    log "  ⚠ NO camera id 0 — ARCore live-camera AR CANNOT start on this AVD (#2754)."
+    log "    arm64 AVDs never expose id 0 and ARCore has no arm64 emulator build."
+    log "    Camera-frame demos need the qa_mode fallback (PR #2753 pattern);"
+    log "    real camera AR needs an x86_64-under-Rosetta AVD or a physical device."
+  fi
+}
+
 if $CHECK_ONLY; then
   show_config
   show_snapshot_status
   show_ram_and_emulator_status
+  show_camera_topology
 else
   apply_ar_config
   show_config
@@ -707,6 +740,16 @@ if [[ -n "$serial" ]]; then
     if ! $CHECK_ONLY; then
       install_arcore "$serial" && log "ARCore installed OK on $serial"
     fi
+  fi
+  # Honest arm64 limitation notice (#2754): the device APK installed above runs, but
+  # it requires the back camera at HAL id "0", which arm64 AVDs never expose — and
+  # ARCore ships no arm64 emulator build. Say it loudly here instead of letting AR
+  # demos fail later with a silent black viewport and no tracking.
+  if [[ "$IMG_ARCH" == "arm64-v8a" ]]; then
+    log "⚠ arm64 AVD: live-camera AR sessions CANNOT start (ARCore has no arm64"
+    log "  emulator build — #2754). 3D demos, UI/state QA and dataset-replay QA are"
+    log "  fine; camera-frame demos rely on their qa_mode fallback (PR #2753 pattern)."
+    log "  Real camera AR: x86_64-under-Rosetta AVD or a physical device."
   fi
 else
   log "(no emulator running — skipped ARCore check)"

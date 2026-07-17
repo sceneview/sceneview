@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="demo_point_and_ask_title">Point &amp; Ask</string>
+    <string name="demo_point_and_ask_subtitle">Tap what the camera sees — Gemini Nano explains it, fully on-device</string>
+
+    <!-- Top status pill -->
+    <string name="demo_point_and_ask_status_checking">Checking Gemini Nano availability…</string>
+    <string name="demo_point_and_ask_status_ready">Point at something and tap to ask</string>
+    <string name="demo_point_and_ask_status_limited">Gemini Nano isn\'t ready — see below</string>
+    <string name="demo_point_and_ask_status_thinking">Gemini Nano is thinking…</string>
+
+    <!-- Bottom cards -->
+    <string name="demo_point_and_ask_unavailable_title">Gemini Nano isn\'t available on this device</string>
+    <string name="demo_point_and_ask_unavailable_body">Point &amp; Ask needs Google AICore (Pixel 8 or newer, recent flagship phones). Answers run fully on-device — there is no cloud fallback, by design.</string>
+    <string name="demo_point_and_ask_download_title">Gemini Nano can run on this device — the model just needs a one-time download.</string>
+    <string name="demo_point_and_ask_download_cta">Download model</string>
+    <string name="demo_point_and_ask_downloading">Downloading Gemini Nano…</string>
+    <string name="demo_point_and_ask_downloading_progress">Downloading Gemini Nano… %1$d MB</string>
+    <string name="demo_point_and_ask_answer_source">Gemini Nano · on-device</string>
+    <string name="demo_point_and_ask_error">Gemini Nano couldn\'t answer — tap to try again</string>
+
+    <!-- Free-form question input (P3) -->
+    <string name="demo_point_and_ask_question_label">Ask anything about what you see</string>
+
+    <!-- The default prompt sent to the model — English on purpose (best on-device answer quality). -->
+    <string name="demo_point_and_ask_question" translatable="false">What am I looking at? Answer in one short sentence.</string>
+</resources>

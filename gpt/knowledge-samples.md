@@ -90,6 +90,61 @@ fun ARTapToPlace() {
 }
 ```
 
+### Point & Ask — AI explains what the camera sees (on-device, offline)
+
+Tap → capture the AR camera frame → **Gemini Nano on-device** (ML Kit GenAI
+Prompt API, `com.google.mlkit:genai-prompt:1.0.0-beta3`, minSdk 26) → answer.
+No cloud; frames never leave the device. AICore devices only (Pixel 8+,
+recent flagships) — gate with `checkStatus()` and degrade honestly.
+
+```kotlin
+val generativeModel = remember { Generation.getClient() }   // Gemini Nano via AICore
+var ready by remember { mutableStateOf(false) }
+LaunchedEffect(Unit) { ready = generativeModel.checkStatus() == FeatureStatus.AVAILABLE }
+// DOWNLOADABLE -> generativeModel.download() (Flow of progress); UNAVAILABLE -> explain, don't hide.
+
+var captureRequested by remember { mutableStateOf(false) }
+ARSceneView(
+    engine = engine, modelLoader = modelLoader,
+    onSessionUpdated = { _, frame ->
+        // Must use THIS frame's CPU image — acquiring from a stored older frame throws.
+        if (captureRequested && frame.camera.trackingState == TrackingState.TRACKING) {
+            frame.cameraImage()?.let { image ->            // null while warming up
+                captureRequested = false
+                scope.launch {
+                    val bitmap = withContext(Dispatchers.Default) {   // JPEG round-trip: off main
+                        image.use { it.toArgbBitmap(rotationDegrees = 90) }  // ALWAYS close the Image
+                    } ?: return@launch
+                    try {
+                        val response = generativeModel.generateContent(
+                            generateContentRequest(
+                                ImagePart(bitmap),
+                                TextPart("What am I looking at? Answer in one short sentence.")
+                            ) {}
+                        )
+                        answer = response.candidates.firstOrNull()?.text
+                    } finally { bitmap.recycle() }
+                }
+            }
+        }
+    },
+    onGestureListener = rememberOnGestureListener(
+        onSingleTapConfirmed = { _, _ -> if (ready) captureRequested = true }
+    ),
+)
+```
+
+Gotchas: a leaked CPU `Image` stalls ARCore within a few frames (`use { }` closes
+it); `toArgbBitmap` is main-thread-hostile; 90° is the portrait `ROTATION_0`
+rotation; emulators never have AICore — inject a canned engine under QA mode.
+
+Streamed variant: `generateContentStream(request)` returns a `Flow` of
+`GenerateContentResponse` **deltas** — concatenate `candidates.first().text`
+per emission for a live "typing" card. The reference demo streams, and its
+question is a free-form user field (blank falls back to the default prompt).
+Working demo: `point-and-ask` (`PointAndAskDemo.kt` + `AskEngine.kt`). Full
+recipe (one-shot + streamed variants): `samples/recipes/point-and-ask.md`.
+
 ### Procedural geometry (no model files)
 
 ```kotlin
@@ -476,6 +531,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
 - `placement-reticle-preview` — AR Placement Reticle Preview. Non-AR preview of AR placement — reticle (searching/ready, ring/disc) and a placed model with a contact shadow.
 - `placement-scene` — Placement Scene. One-line tap-to-place AR (Sceneform ArFragment parity).
+- `point-and-ask` — Point & Ask. Tap what the camera sees — Gemini Nano explains it, fully on-device.
 
 <!-- END GENERATED DEMOS -->
 

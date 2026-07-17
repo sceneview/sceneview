@@ -1,9 +1,27 @@
 # Website Filament materials
 
-The three `.mat` sources in this directory back the **web** 3D viewer
-(`sceneview-web`, Filament.js / WebGL2 + WASM). They are **intentionally
-distinct** from the 13 Android `sceneview/src/main/materials/` sources — same
-shading concept, leaner shader surface for the browser renderer.
+The three `.mat` sources in this directory are the **web-profile material set**
+(`sceneview-web`, Filament.js / WebGL2 + WASM — see the runtime-status note
+below for what actually loads them). They are **intentionally distinct** from
+the 13 Android `sceneview/src/main/materials/` sources — same shading concept,
+leaner shader surface for the browser renderer.
+
+## Runtime status — source-of-record only (read before wiring the blobs)
+
+**The current web viewers do NOT load these `.filamat` blobs at runtime.**
+`website-static/js/sceneview.js` builds its materials through gltfio's
+ubershader provider (glTF `baseColorFactor` / `baseColorMap`), and
+`sceneview-web` deliberately avoids custom `.filamat` files (see
+`GeometryGLBBuilder.kt`). The blobs are kept compiled as **source-of-record**,
+tracked by the unified `tools/GenerateFilamat.sh` inventory and drift gate, and
+follow the Android `filament` toolchain in `gradle/libs.versions.toml`
+(currently matc 1.72.1 → MATERIAL_VERSION 72).
+
+⚠️ Because Filament requires an **exact MATERIAL_VERSION match**, these v72
+blobs are NOT loadable by the web runtimes as shipped today (`sceneview-web`
+pins npm `filament` 1.52.3; `website-static` vendors Filament.js 1.70.2).
+Before wiring any of these blobs into a web viewer, bump that viewer's
+Filament.js runtime to a release whose material version matches the blobs.
 
 | Material | Shading | Blending | Parameters |
 |---|---|---|---|

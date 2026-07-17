@@ -285,10 +285,17 @@ jobs:
         # `:samples:common:testDebugUnitTest` runs the shared-helper
         # regression suite — LifecycleAwareLaunchedEffect, LifecyclePauseGate,
         # rememberMaterialInstance, InAppUpdateManager. See #972.
+        #
+        # `:sceneview-core:androidTest` runs the ~55-file commonTest suite of
+        # the shared KMP core (math, collision, animation, easing, springs —
+        # consumed by Android, iOS AND web) on the `jvm("android")` target:
+        # plain sub-minute JVM tests, no emulator. Before #2733 this suite
+        # gated nothing — only `jsTest` ran it, marked informational.
         run: |
           ./gradlew \
             :sceneview:testDebugUnitTest \
             :arsceneview:testDebugUnitTest \
+            :sceneview-core:androidTest \
             :samples:common:testDebugUnitTest \
             :samples:android-demo:testDebugUnitTest \
             --stacktrace
@@ -556,6 +563,13 @@ jobs:
         working-directory: samples/flutter-demo
         run: flutter pub get
 
+      # pub.dev publish preflight (#2735): catches archive/pubspec problems
+      # (missing files, invalid metadata, size limits) on the PR that
+      # introduces them instead of at release time in the `pub-publish` job.
+      - name: pub.dev publish preflight (--dry-run)
+        working-directory: flutter/sceneview_flutter
+        run: flutter pub publish --dry-run
+
       - name: flutter analyze
         working-directory: samples/flutter-demo
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
@@ -691,6 +705,20 @@ jobs:
         if: always()
         shell: bash
         run: bash .claude/scripts/test-check-doc-drift.sh
+
+      # sceneview-web.d.ts drift gate (#2736) — the npm typings are
+      # hand-written (#946); this asserts the `sceneview` namespace registry
+      # and the exported class surfaces match the d.ts bidirectionally.
+      # Self-test first, same rationale as the doc-drift pair above.
+      - name: Self-test check-web-dts.sh
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-web-dts.sh
+
+      - name: Check sceneview-web.d.ts drift
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/check-web-dts.sh
 
       # Store-preflight grader self-test — same rationale (#2612 P1). Exercises
       # the ASC blocker grading / gate / JSON offline via the FAKE seam and the

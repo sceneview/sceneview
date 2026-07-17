@@ -3,6 +3,17 @@ plugins {
 }
 
 kotlin {
+    // TypeScript declarations: `sceneview-web.d.ts` stays HAND-WRITTEN,
+    // guarded by `.claude/scripts/check-web-dts.sh` (quality-gate +
+    // repo-hygiene CI, #2736). Kotlin's `generateTypeScriptDefinitions()`
+    // was evaluated and rejected: the published npm/browser surface is NOT
+    // the `@JsExport` surface — Main.kt#main() assembles the `sceneview`
+    // global namespace dynamically (`api["createViewer"] = ::jsCreateViewer`),
+    // which the compiler cannot see, and the typings rely on
+    // `export as namespace sceneview` + hand-shaped Promise signatures that
+    // a generated ES-module d.ts cannot express. Generation would therefore
+    // document the wrong surface; the deterministic guard keeps the manual
+    // file honest instead.
     js(IR) {
         outputModuleName.set("sceneview")
         browser {
