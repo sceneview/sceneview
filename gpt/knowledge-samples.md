@@ -137,8 +137,13 @@ ARSceneView(
 Gotchas: a leaked CPU `Image` stalls ARCore within a few frames (`use { }` closes
 it); `toArgbBitmap` is main-thread-hostile; 90° is the portrait `ROTATION_0`
 rotation; emulators never have AICore — inject a canned engine under QA mode.
+
+Streamed variant: `generateContentStream(request)` returns a `Flow` of
+`GenerateContentResponse` **deltas** — concatenate `candidates.first().text`
+per emission for a live "typing" card. The reference demo streams, and its
+question is a free-form user field (blank falls back to the default prompt).
 Working demo: `point-and-ask` (`PointAndAskDemo.kt` + `AskEngine.kt`). Full
-recipe (with download CTA + capture timeout): `samples/recipes/point-and-ask.md`.
+recipe (one-shot + streamed variants): `samples/recipes/point-and-ask.md`.
 
 ### Procedural geometry (no model files)
 
