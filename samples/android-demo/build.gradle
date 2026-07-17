@@ -256,6 +256,12 @@ dependencies {
     // See ARMLObjectLabelDemo (#1737).
     implementation libs.mlkit.object.detection
 
+    // ML Kit GenAI Prompt API — Gemini Nano on-device for the Point & Ask demo.
+    // Zero bundled weights (the model lives in the system AICore app); availability
+    // is runtime-gated per device and the demo degrades honestly when AICore is
+    // absent (every emulator). See PointAndAskDemo / AskEngine (#2648).
+    implementation libs.mlkit.genai.prompt
+
     // MediaPipe Tasks Vision — on-device Pose Landmarker for the AR Body Tracker demo.
     // ARCore has no native body-tracking API, so the demo feeds the AR CPU camera image
     // to MediaPipe and projects the 33 image-space landmarks onto SceneView's 17

@@ -72,6 +72,10 @@ playServicesNearby = "19.3.0"
 # ML Kit (object detection demo — see ARMLObjectLabelDemo, #1737)
 mlkitObjectDetection = "17.0.2"
 
+# ML Kit GenAI Prompt API (Point & Ask demo — see PointAndAskDemo, #2648).
+# Beta artifact: image+text prompts against Gemini Nano on-device via AICore.
+mlkitGenaiPrompt = "1.0.0-beta3"
+
 # MediaPipe Tasks Vision (body-tracking demo — see ARBodyTrackerDemo, #1763)
 # Bumped 0.20230731 → 0.10.26: pre-0.10.26 MediaPipe .so files have 4 KB ELF
 # PT_LOAD alignment which Google Play rejects since Jan 2026 (16 KB page-size
@@ -201,6 +205,11 @@ play-services-nearby = { group = "com.google.android.gms", name = "play-services
 # The bundled artifact carries the detector weights inside the APK, so the demo works
 # without the on-device dynamic ML provider being available (#1737).
 mlkit-object-detection = { group = "com.google.mlkit", name = "object-detection", version.ref = "mlkitObjectDetection" }
+
+# ML Kit GenAI Prompt API — Gemini Nano on-device (image+text → text) through AICore.
+# No model weights in the APK: the model lives in the system AICore app. Demo-only
+# dependency for PointAndAskDemo (#2648).
+mlkit-genai-prompt = { group = "com.google.mlkit", name = "genai-prompt", version.ref = "mlkitGenaiPrompt" }
 mediapipe-tasks-vision = { group = "com.google.mediapipe", name = "tasks-vision", version.ref = "mediapipeTasksVision" }
 
 # Testing
