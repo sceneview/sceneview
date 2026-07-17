@@ -460,6 +460,13 @@ stale docs make an AI emit stale code. Keeping them in sync is enforced at
    safe). Draft + human review means a wrong prose patch can never land
    silently — this is where the "auto-fix" power lives, not on every PR.
 
+Alongside the two heuristic tiers, one surface gets a **deterministic,
+blocking gate**: `gpt/knowledge-*.md` is GENERATED from `llms.txt` by
+`tools/generate-gpt-knowledge.js`, and `ci.yml` → `repo-hygiene` fails when
+the committed files drift (`--check`). Generated files can be gated hard
+because there is no false-positive risk — never hand-edit them;
+`sync-versions.sh --fix` regenerates them on every version bump (#2724).
+
 Why not block per-PR or auto-fix per-PR? Blocking frustrates internal-only
 refactors that get mis-classified; per-PR auto-fix is costly on every PR and a
 green "bot fixed docs" check invites rubber-stamping a subtly-wrong prose
@@ -474,7 +481,7 @@ One unified showcase app per platform — all features integrated into tabs.
 | `samples/android-demo` | Android | Play Store app — 4-tab Material 3 (Explore, AR View, Samples, About), 49 demos (17 non-AR + 32 AR) |
 | `samples/android-tv-demo` | Android TV | D-pad controls, model cycling, auto-rotation |
 | `samples/web-demo` | Web | Browser 3D viewer, Filament.js (WASM), WebXR AR/VR |
-| `samples/ios-demo` | iOS | App Store app — 3-tab SwiftUI (3D, AR, Samples) |
+| `samples/ios-demo` | iOS | App Store app — 4-tab SwiftUI (Explore multi-source, AR, Samples, About) |
 | `samples/desktop-demo` | Desktop | Wireframe placeholder (NOT SceneView) — Compose Canvas, no Filament |
 | `samples/flutter-demo` | Flutter | PlatformView bridge demo (Android + iOS) |
 | `samples/react-native-demo` | React Native | Fabric bridge demo (Android + iOS) |
@@ -540,6 +547,7 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 | | `docs/docs/platforms.md` | install line |
 | | `docs/docs/android-xr.md` | install snippets |
 | | `docs/docs/migration.md` | "upgrade to" version |
+| | `gpt/knowledge-*.md` (×4) | GENERATED from `llms.txt` — `node tools/generate-gpt-knowledge.js`, never hand-edit; `sync-versions.sh --fix` regenerates (#2724) |
 | **Website** | `website-static/index.html` | softwareVersion, badge, code |
 | | `sceneview.github.io/index.html` | deployed version (separate repo) |
 | **Samples** | `samples/android-demo/build.gradle` | versionName default |
@@ -698,7 +706,7 @@ Hooks trigger automatically on specific Claude Code actions:
 | `check-saved-workflows.sh` | Static validator for the `.claude/workflows/*.js` saved workflows (async-wrapped `node --check` + meta block + resume-safety). Distinct from `check-workflow-scripts.sh`, which validates the CI YAML |
 | `cross-platform-check.sh` | Compare Android vs iOS vs Web API surface, report gaps |
 | `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.). Section 16 runs `store-preflight.sh` (advisory) |
-| `store-preflight.sh` | Read-only App Store Connect preflight (#2612 P1) — detects the human-only store blockers that silently 403 a deploy: an expired Apple agreement (`REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED` canary), an App Review rejection, and cert/profile expiry (< `CERT_EXPIRY_WARN_DAYS`, default 30). Signs the ASC ES256 JWT with openssl only; reuses `app-store.yml`'s ASC secrets (no new scope); SKIPs honestly without creds. Advisory-first — a blocker hard-blocks only under `GATE_HARD=1`. Wired into `release-checklist.sh` §16, the `/store-status` command doc (probe-set wiring is a P1 follow-up), and a daily `maintenance.yml` job. Self-tested by `test-store-preflight.sh` (in `repo-hygiene`) |
+| `store-preflight.sh` | Read-only App Store Connect preflight (#2612 P1) — detects the human-only store blockers that silently 403 a deploy: an expired Apple agreement (`REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED` canary), an App Review rejection, cert/profile expiry (< `CERT_EXPIRY_WARN_DAYS`, default 30), and (since #2731) an open never-submitted reviewSubmission (`READY_FOR_REVIEW`/`UNRESOLVED_ISSUES`) — the silent-submission signature the IOS-scoped version-state probe alone can't see. Signs the ASC ES256 JWT with openssl only; reuses `app-store.yml`'s ASC secrets (no new scope); SKIPs honestly without creds. Advisory-first — a blocker hard-blocks only under `GATE_HARD=1`. Wired into `release-checklist.sh` §16, the `/store-status` command doc (probe-set wiring is a P1 follow-up), and a daily `maintenance.yml` job. Self-tested by `test-store-preflight.sh` (in `repo-hygiene`) |
 | `lib/android-cli.sh` | Shared helpers for Google's `android` CLI (screenshot, layout, install+launch) with `adb` fallback |
 | `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool + snapshot state), `--clean` (wipe+recreate), `--seed-snapshot` (seed the golden `qa-clean` boot snapshot), `--no-snapshot` (force cold boot). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. Boot snapshots (#1672): once seeded, the base-port emulator cold-boots from the immutable `qa-clean` snapshot — faster and deterministic, and fixes the userdata storage-degradation bug. **Use this for routine QA — never QA on a personal device.** |
 | `lib/emulator-select.sh` | Sourced helper for `setup-ar-emulator.sh` / `device-qa.sh` / `qa-android-demos.sh` — RAM monitoring (`vm_stat`/`/proc/meminfo`), RAM-budgeted pool-cap computation, a per-emulator lease registry, RAM-scaled `-memory`, multi-port boot, and stale-lease reclaim. The adaptive pool runs as many emulators as live host RAM safely allows (floor 1, `EMU_POOL_MAX` ceiling), superseding #1647's strict-single design (#1654). |
@@ -754,6 +762,7 @@ Source of truth: `gradle.properties` → `VERSION_NAME=X.Y.Z`
 6. CLAUDE.md session state is current
 7. No model-viewer or Three.js in website code
 8. No external CDN dependencies in website
+9. Public-API ABI matches the committed `.api` dumps (`./gradlew apiCheck` — intentional changes re-run `apiDump` and commit the diff)
 
 ---
 

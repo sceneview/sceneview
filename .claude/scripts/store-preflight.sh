@@ -107,9 +107,11 @@ VERDICT="skip"          # pass | warn | blocked | skip
 DETAIL=""               # short human summary for the JSON / checklist line
 AGREEMENTS_STATE="unknown"   # ok | missing | unknown
 REVIEW_STATE=""              # e.g. REJECTED, READY_FOR_SALE
-REVIEW_VERSION=""            # latest appStoreVersion string
+REVIEW_VERSION=""            # latest IOS appStoreVersion string
 CERT_MIN_DAYS=""             # soonest cert expiry (days), "" if unknown
 PROFILE_MIN_DAYS=""          # soonest profile expiry (days), "" if unknown
+RS_STALE_COUNT=""            # open READY_FOR_REVIEW/UNRESOLVED_ISSUES reviewSubmissions (#2731)
+RS_IN_FLIGHT=""              # WAITING_FOR_REVIEW/IN_REVIEW states currently in flight
 declare -a NOTES=()          # per-probe machine notes for the JSON
 
 # Rank helper: worst verdict wins. blocked > warn > skip > pass.
@@ -257,6 +259,8 @@ emit_json() {
     --arg reviewVersion "$REVIEW_VERSION" \
     --arg certDays "$CERT_MIN_DAYS" \
     --arg profileDays "$PROFILE_MIN_DAYS" \
+    --arg rsStale "$RS_STALE_COUNT" \
+    --arg rsInFlight "$RS_IN_FLIGHT" \
     --arg appId "$ASC_APP_ID" \
     --argjson certWarnDays "$CERT_EXPIRY_WARN_DAYS" \
     --argjson notes "$notes_json" \
@@ -271,7 +275,9 @@ emit_json() {
         reviewState: (if $reviewState == "" then null else $reviewState end),
         reviewVersion: (if $reviewVersion == "" then null else $reviewVersion end),
         certMinDaysToExpiry: (if $certDays == "" then null else ($certDays|tonumber) end),
-        profileMinDaysToExpiry: (if $profileDays == "" then null else ($profileDays|tonumber) end)
+        profileMinDaysToExpiry: (if $profileDays == "" then null else ($profileDays|tonumber) end),
+        openReviewSubmissionsStale: (if $rsStale == "" then null else ($rsStale|tonumber) end),
+        reviewSubmissionsInFlight: (if $rsInFlight == "" then null else $rsInFlight end)
       },
       thresholds: { certExpiryWarnDays: $certWarnDays },
       notes: $notes
@@ -320,6 +326,29 @@ grade_review() {
   esac
 }
 
+# Open reviewSubmissions (#2731). A READY_FOR_REVIEW submission is ASSEMBLED
+# BUT NEVER SUBMITTED — exactly what a deploy that dies between the CREATE and
+# the final `submitted: true` PATCH leaves behind. 4.19.0→4.22.0 each piled one
+# up while the version probe above kept PASSing on READY_FOR_SALE, so this is
+# the direct detector for the silent-submission-failure class. UNRESOLVED_ISSUES
+# (Apple flagged problems) also deserves eyes; WAITING_FOR_REVIEW / IN_REVIEW
+# are the healthy in-flight states.
+grade_review_submissions() {
+  if [ -z "$RS_STALE_COUNT" ]; then
+    NOTES+=("reviewSubmissions: probe returned no data")
+    line WARN "Open review submissions" "probe returned no data"
+    bump warn
+  elif [ "$RS_STALE_COUNT" -gt 0 ] 2>/dev/null; then
+    NOTES+=("reviewSubmissions: $RS_STALE_COUNT stale open (READY_FOR_REVIEW/UNRESOLVED_ISSUES) — assembled but never submitted, see #2731")
+    line WARN "Open review submissions" "$RS_STALE_COUNT stale open — never submitted (#2731)"
+    bump warn
+  elif [ -n "$RS_IN_FLIGHT" ]; then
+    line PASS "Open review submissions" "in flight: $RS_IN_FLIGHT"
+  else
+    line PASS "Open review submissions" "none open"
+  fi
+}
+
 grade_expiry() { # grade_expiry <label> <days> <notekey>
   local label="$1" days="$2" key="$3"
   if [ -z "$days" ]; then
@@ -360,9 +389,14 @@ if [ -n "$STORE_PREFLIGHT_FAKE" ]; then
   REVIEW_VERSION=$(jq -r '.reviewVersion // ""' "$STORE_PREFLIGHT_FAKE")
   CERT_MIN_DAYS=$(jq -r '(.certDays // "") | tostring' "$STORE_PREFLIGHT_FAKE"); [ "$CERT_MIN_DAYS" = "null" ] && CERT_MIN_DAYS=""
   PROFILE_MIN_DAYS=$(jq -r '(.profileDays // "") | tostring' "$STORE_PREFLIGHT_FAKE"); [ "$PROFILE_MIN_DAYS" = "null" ] && PROFILE_MIN_DAYS=""
+  # Fixtures written before #2731 omit the reviewSubmissions keys — default to
+  # the benign shape (0 stale, nothing in flight) so their verdicts are stable.
+  RS_STALE_COUNT=$(jq -r '(.reviewSubmissionsStale // 0) | tostring' "$STORE_PREFLIGHT_FAKE")
+  RS_IN_FLIGHT=$(jq -r '.reviewSubmissionsInFlight // ""' "$STORE_PREFLIGHT_FAKE")
   VERDICT="pass"
   grade_agreements
   grade_review
+  grade_review_submissions
   grade_expiry "Distribution certificate" "$CERT_MIN_DAYS" "certificate"
   grade_expiry "Provisioning profile" "$PROFILE_MIN_DAYS" "profile"
 else
@@ -408,18 +442,37 @@ else
   fi
   grade_agreements
 
-  # (b) App Review state — latest appStoreVersion via the app's related-resource URL.
+  # (b) App Review state — latest IOS appStoreVersion via the app's related-resource URL.
   # Direct related-resource form (NO /relationships/…): /apps/{id}/appStoreVersions.
   # ASC's appStoreVersions collection has NO documented `sort` param (an unknown
   # query param is rejected 400 PARAMETER_ERROR), and versionString sorts
   # lexicographically ('4.9.0' > '4.21.0'), so we page the versions and pick the
   # newest by createdDate client-side — that is the one currently in review.
-  r=$(asc_get "apps/${ASC_APP_ID}/appStoreVersions?limit=200&fields%5BappStoreVersions%5D=versionString,appStoreState,createdDate")
+  # Scoped to platform IOS client-side (#2731): the collection mixes platforms,
+  # and the macOS listing's permanently-editable draft otherwise pollutes the
+  # pick. NOTE: createdDate is still a heuristic — a REUSED draft keeps its
+  # original createdDate, which is how this probe stayed green through four
+  # broken releases. The reviewSubmissions probe below is the reliable detector.
+  r=$(asc_get "apps/${ASC_APP_ID}/appStoreVersions?limit=200&fields%5BappStoreVersions%5D=versionString,appStoreState,createdDate,platform")
   body="${r#*$'\t'}"
-  latest=$(printf '%s' "$body" | jq -c 'if (.data|type=="array") and ((.data|length)>0) then (.data|max_by(.attributes.createdDate)) else null end' 2>/dev/null || echo "null")
+  latest=$(printf '%s' "$body" | jq -c '(.data // []) | map(select(.attributes.platform=="IOS")) | if length>0 then max_by(.attributes.createdDate) else null end' 2>/dev/null || echo "null")
   REVIEW_VERSION=$(printf '%s' "$latest" | jq -r '.attributes.versionString // ""' 2>/dev/null || echo "")
   REVIEW_STATE=$(printf '%s' "$latest" | jq -r '.attributes.appStoreState // ""' 2>/dev/null || echo "")
   grade_review
+
+  # (b2) Open reviewSubmissions (#2731) — the app→reviewSubmissions
+  # related-resource list supports filter[platform] + filter[state]
+  # (already exercised by app-store.yml's stale-cancel probe).
+  r=$(asc_get "apps/${ASC_APP_ID}/reviewSubmissions?filter%5Bplatform%5D=IOS&filter%5Bstate%5D=READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,UNRESOLVED_ISSUES&limit=20&fields%5BreviewSubmissions%5D=state,platform")
+  rs_status="${r%%$'\t'*}"; body="${r#*$'\t'}"
+  if [ "$rs_status" = "200" ]; then
+    RS_STALE_COUNT=$(printf '%s' "$body" | jq -r '[.data[]? | select(.attributes.state=="READY_FOR_REVIEW" or .attributes.state=="UNRESOLVED_ISSUES")] | length' 2>/dev/null || echo "")
+    RS_IN_FLIGHT=$(printf '%s' "$body" | jq -r '[.data[]? | select(.attributes.state=="WAITING_FOR_REVIEW" or .attributes.state=="IN_REVIEW") | .attributes.state] | unique | join(",")' 2>/dev/null || echo "")
+  else
+    RS_STALE_COUNT=""; RS_IN_FLIGHT=""
+    NOTES+=("reviewSubmissions: probe HTTP ${rs_status:-?}")
+  fi
+  grade_review_submissions
 
   # (c) Cert + profile expiry.
   r=$(asc_get "certificates?limit=200&fields%5Bcertificates%5D=name,certificateType,expirationDate")
@@ -440,7 +493,7 @@ else
 fi
 
 # ── Summary + JSON + exit policy ─────────────────────────────────────────────
-DETAIL="agreements=${AGREEMENTS_STATE} review=${REVIEW_VERSION:-?}:${REVIEW_STATE:-?} cert=${CERT_MIN_DAYS:-?}d profile=${PROFILE_MIN_DAYS:-?}d"
+DETAIL="agreements=${AGREEMENTS_STATE} review=${REVIEW_VERSION:-?}:${REVIEW_STATE:-?} rsStale=${RS_STALE_COUNT:-?} cert=${CERT_MIN_DAYS:-?}d profile=${PROFILE_MIN_DAYS:-?}d"
 echo ""
 case "$VERDICT" in
   pass)    echo -e "${GREEN}Store preflight: no store-side blockers detected.${NC} $DETAIL" ;;

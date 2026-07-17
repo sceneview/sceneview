@@ -288,9 +288,10 @@ jobs:
           # Deps live in a requirements file so Dependabot can track/bump them (#1286).
           # Absolute path via $GITHUB_WORKSPACE — this job sets
           # `working-directory: samples/ios-demo`, so a repo-root-relative
-          # path would not resolve and the pip install would fail (silently,
-          # since this step is `continue-on-error`), skipping every App Store
-          # submission since #1286.
+          # path would not resolve and the pip install would fail, skipping
+          # every App Store submission (it did exactly that, silently, back
+          # when this step was `continue-on-error` — #1286). Since #2731 the
+          # step is fatal, so a pip failure is a loud red step.
           $RUNNER_TEMP/asc-venv/bin/pip install -r "$GITHUB_WORKSPACE/.github/workflows/requirements/app-store.txt" --quiet
 
           # Wait for Apple to process the build
@@ -323,12 +324,24 @@ jobs:
           app_id = r.json()["data"][0]["id"]
           print(f"App ID: {app_id}")
 
-          # 2. Get the latest valid build
-          r = requests.get(f"{BASE}/builds?filter[app]={app_id}&sort=-uploadedDate&limit=1&filter[processingState]=VALID", headers=headers)
-          builds = r.json().get("data", [])
+          # 2. Get the latest valid build. Apple's processing routinely exceeds
+          # the 120s pre-sleep, and the old single-shot `exit(0)` here was a
+          # silent "never reached App Review" path of exactly the class #2731
+          # fixed (review-fanout WARNING on PR #2738): a tag release would go
+          # green having skipped submission entirely. Poll up to 10 more
+          # minutes (well inside the 20-min JWT), then FAIL loudly — a tag
+          # deploy whose build never turns VALID must be red, not green.
+          builds = []
+          for attempt in range(1, 11):
+              r = requests.get(f"{BASE}/builds?filter[app]={app_id}&sort=-uploadedDate&limit=1&filter[processingState]=VALID", headers=headers)
+              builds = r.json().get("data", [])
+              if builds:
+                  break
+              print(f"No VALID build yet (attempt {attempt}/10) — Apple still processing, retrying in 60s...")
+              time.sleep(60)
           if not builds:
-              print("No valid build found yet — still processing. Skipping submission.")
-              exit(0)
+              print("::error::No VALID build after ~12 minutes — Apple processing overran or the upload failed. The release was NOT submitted for review; re-run this job once the build shows as processed in App Store Connect.")
+              raise SystemExit(1)
           build_id = builds[0]["id"]
           build_version = builds[0]["attributes"]["version"]
           print(f"Latest build: {build_version} (ID: {build_id})")
@@ -382,8 +395,17 @@ jobs:
           # (`/appStoreVersionSubmissions?filter[appStoreVersion]={id}`)
           # were tested in #1831 v1/v2 and return 404 / 403 respectively
           # for our key.
+          #
+          # filter[platform]=IOS is MANDATORY (#2731): without it the
+          # "reuse the first editable draft" fallback below can grab the
+          # macOS platform's permanently-editable draft (the macOS app has
+          # never shipped), and every downstream call 409s — build attach,
+          # localization sync (against the WRONG listing), and the
+          # reviewSubmissionItems CREATE ("Supported platforms are not
+          # compatible"). That exact hijack silently killed every iOS
+          # App Review submission from 4.19.0 through 4.22.0.
           r = requests.get(
-              f"{BASE}/apps/{app_id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW&include=appStoreVersionSubmission",
+              f"{BASE}/apps/{app_id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW&filter[platform]=IOS&include=appStoreVersionSubmission",
               headers=headers,
           )
           versions = r.json().get("data", [])
@@ -445,6 +467,13 @@ jobs:
           # 4. Attach the build to the version
           payload = {"data": {"type": "builds", "id": build_id}}
           r = requests.patch(f"{BASE}/appStoreVersions/{version_id}/relationships/build", headers=headers, json=payload)
+          # 2xx or bust (#2731): the pre-fix runs printed "Build attached: 409"
+          # and sailed on — a version with no build can never pass review, so
+          # any non-2xx here means the submission below is doomed. Fail now,
+          # loudly, with the response body.
+          if r.status_code not in (200, 204):
+              print(f"::error::Build attach failed: {r.status_code} {r.text[:300]}")
+              raise SystemExit(1)
           print(f"Build attached: {r.status_code}")
 
           # 4b. Sync App Store localization metadata (en-US).
@@ -711,11 +740,17 @@ jobs:
                   state = rp.json()["data"]["attributes"].get("state", "?")
                   print(f"Successfully submitted for App Store review! State: {state}")
               else:
-                  print(f"Submission PATCH response: {rp.status_code} - {rp.text[:300]}")
+                  print(f"::error::Submission PATCH failed: {rp.status_code} - {rp.text[:300]}")
+                  raise SystemExit(1)
           except SystemExit:
-              print("::warning::App Store review submission failed (non-fatal, see errors above)")
+              # FATAL (#2731). This used to be a swallowed ::warning and the
+              # step stayed green — four consecutive releases (4.19.0→4.22.0)
+              # "shipped" without ever reaching App Review and nobody saw it.
+              # A tag-push deploy that cannot submit for review IS a failed
+              # deploy: re-raise so the job goes red and the release flow stops.
+              print("::error::App Store review submission FAILED — this release did NOT reach App Review (#2731).")
+              raise
           PYEOF
-        continue-on-error: true
 
       - name: Clean up keychain and keys
         if: always()

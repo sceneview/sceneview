@@ -1,7 +1,7 @@
 {
   "name": "@sceneview-sdk/react-native",
   "version": "4.22.0",
-  "description": "React Native bindings for SceneView \u2014 3D and AR scenes powered by Filament (Android) and RealityKit (iOS)",
+  "description": "React Native bindings for SceneView — 3D and AR scenes powered by Filament (Android) and RealityKit (iOS)",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
   "types": "lib/typescript/src/index.d.ts",
@@ -73,7 +73,9 @@
     "fast-xml-parser": "^5.7.0",
     "@babel/core": "^7.29.6",
     "shell-quote": "^1.8.4",
-    "js-yaml": "^3.15.0"
+    "js-yaml": "^3.15.0",
+    "ws@^7.0.0": "^7.5.11",
+    "ws@^6.0.0": "^6.2.4"
   },
   "react-native-builder-bob": {
     "source": "src",

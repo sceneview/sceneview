@@ -154,6 +154,39 @@ if $INSTALL; then
   fi
 fi
 
+# --- Launchability gate (#2725) ---------------------------------------------
+# A stale/partial prior install can leave the package listed by `pm list
+# packages` while its launcher activity is NOT resolvable. `adb install -r`
+# over that residue "succeeds", and Maestro then fails every flow with
+# "Unable to launch app" — proven 2026-07-14: the whole catalog leg died in
+# 34 s and was graded a genuine FAIL. Probe the actual launch component; if
+# unresolvable, do ONE clean uninstall + reinstall (needs the APK), re-probe,
+# and otherwise fail fast with a clear diagnostic instead of letting 49 demos
+# fail one by one.
+qa_launchable() {
+  adb shell cmd package resolve-activity --brief "${PACKAGE}/${ACTIVITY}" 2>/dev/null \
+    | tr -d '\r' | grep -q "^${PACKAGE}/"
+}
+if ! qa_launchable; then
+  echo "[qa] WARNING: ${PACKAGE}/${ACTIVITY} is not resolvable — stale/partial install residue (#2725)." >&2
+  if [[ -f "$APK" ]]; then
+    echo "[qa] remediation: clean uninstall + reinstall from $APK"
+    adb uninstall "$PACKAGE" >/dev/null 2>&1 || true
+    adb install -r -g "$APK" || {
+      echo "[qa] ERROR: clean reinstall failed." >&2
+      exit 1
+    }
+    if ! qa_launchable; then
+      echo "[qa] ERROR: ${PACKAGE}/${ACTIVITY} still not resolvable after a clean reinstall — aborting before the flow burns the whole catalog." >&2
+      exit 1
+    fi
+    echo "[qa] remediation OK — launch activity resolvable."
+  else
+    echo "[qa] ERROR: no APK at $APK to reinstall from — rerun with --install (or build the demo APK first)." >&2
+    exit 1
+  fi
+fi
+
 # --- Crash gate: clear logcat so the post-run FATAL/ANR sweep is scoped -----
 adb logcat -c 2>/dev/null || true
 

@@ -52,11 +52,16 @@ and the `llms.txt` demo list from those fragments, so the catalog never drifts.
 
 **`samples/ios-demo/`** — App Store ready, SwiftUI
 
-3-tab SwiftUI app:
+4-tab SwiftUI app:
 
-- **3D tab**: RealityKit model viewer with environment controls
+- **Explore tab**: multi-source model streaming — Sketchfab / Icosa Gallery /
+  Poly Haven (#2700, parity with the Android Explore tab). Browse + search work
+  for every catalog; in-app 3D rendering is USDZ-based (Sketchfab) today — the
+  glTF-native CC catalogs show an honest "3D preview coming soon" viewer state
+  until RealityKit can load glTF.
 - **AR tab**: ARKit surface detection and model placement
 - **Samples tab**: Feature gallery
+- **About tab**: Platform info, version, and GitHub links
 
 Open `samples/ios-demo/` in Xcode and run.
 
@@ -138,6 +143,7 @@ Markdown recipes with side-by-side Kotlin and Swift code:
 | Recipe | File | Topics |
 |---|---|---|
 | Model Viewer | `samples/recipes/model-viewer.md` | Load glTF, HDR environment, orbit camera |
+| Ground Shadow Catcher | `samples/recipes/ground-shadow-catcher.md` | Invisible contact-shadow floor, FL2+ flat-quad hardening |
 | AR Tap-to-Place | `samples/recipes/ar-tap-to-place.md` | Plane detection, anchor placement |
 | Physics | `samples/recipes/physics.md` | Rigid body, gravity, collision, bounce |
 | Procedural Geometry | `samples/recipes/procedural-geometry.md` | Cubes, spheres, custom shapes |

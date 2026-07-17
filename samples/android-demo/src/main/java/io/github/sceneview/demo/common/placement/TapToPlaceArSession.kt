@@ -433,7 +433,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
             shape = MaterialTheme.shapes.small
         ) {
             Text(
-                text = gestureLabel(state.activeGesture),
+                text = state.activeGesture?.let { stringResource(gestureLabelRes(it)) } ?: "",
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                 style = MaterialTheme.typography.labelLarge
             )
@@ -457,7 +457,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
             shape = MaterialTheme.shapes.small,
         ) {
             Text(
-                text = "Aim at a surface…",
+                text = stringResource(R.string.ar_aim_at_surface),
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                 style = MaterialTheme.typography.labelLarge,
             )
@@ -465,9 +465,8 @@ fun BoxScope.TapToPlaceStatusOverlays(
     }
 }
 
-private fun gestureLabel(gesture: PlacementGesture?): String = when (gesture) {
-    PlacementGesture.MOVING -> "Moving"
-    PlacementGesture.ROTATING -> "Rotating"
-    PlacementGesture.SCALING -> "Scaling"
-    null -> ""
+private fun gestureLabelRes(gesture: PlacementGesture): Int = when (gesture) {
+    PlacementGesture.MOVING -> R.string.ar_gesture_moving
+    PlacementGesture.ROTATING -> R.string.ar_gesture_rotating
+    PlacementGesture.SCALING -> R.string.ar_gesture_scaling
 }

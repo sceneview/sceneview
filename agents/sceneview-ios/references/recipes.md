@@ -147,6 +147,16 @@ and [`DoublePendulumDemo.swift`](https://github.com/sceneview/sceneview/blob/mai
 [`ARSceneMeshDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARSceneMeshDemo.swift)
 — LiDAR scene reconstruction mesh (`SceneReconstructionNode`).
 
+## 35. Multi-source Explore tab (demo-app pattern)
+[`ModelSource.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Services/ModelSource.swift)
+— source-agnostic catalog protocol behind the demo's Explore tab
+(Sketchfab | Icosa Gallery | Poly Haven), mirroring the Android `ModelSource`
+port (#2685 → #2700): bounded streaming JSON reads, per-feed resilience,
+persisted source selection (`GallerySourcesRegistry`). Render boundary:
+RealityKit loads USDZ only, so the glTF-native CC catalogs are
+browse/search-only behind `ModelSource.rendersInApp` with an honest
+"coming soon" viewer state.
+
 ## Cross-platform parity
 
 Android (`sceneview` skill) and Web (`sceneview-web` skill) expose the same

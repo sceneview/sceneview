@@ -63,22 +63,24 @@ Optional extras still not in the repo:
 1. Go to **Policy → App content → Content rating**
 2. Start questionnaire → Category: **Utility / Productivity**
 3. No violence or mature content. Answer the **user-data-collection** question
-   **Yes** — the opt-in in-app feedback feature collects audio, screen
-   recordings, and device info (see *Data safety* below).
+   **No** — the app collects no user data (the in-app bug reporter runs
+   entirely on-device and only the user, by their own action, sends a report;
+   see *Data safety* below).
 4. Apply rating
 
 ### Data safety
 
-The app's optional in-app feedback feature records the screen and microphone
-and uploads them to the SceneView feedback service, so the Play Console
-**Data safety** form must declare data collection. The exact answers to
-transcribe into the questionnaire are in
+The app collects no user data. The in-app bug reporter composes its report
+on-device and hands it to the user, who chooses whether to send it via the
+Android share sheet or a pre-filled GitHub issue they submit — a user-initiated
+transfer that Play does not count as app collection or sharing. The exact
+answers to transcribe into the questionnaire (all "No") are in
 [`distribution/play-store/DATA_SAFETY.md`](distribution/play-store/DATA_SAFETY.md).
 
 ### Privacy Policy
 
-The app collects user data through the opt-in feedback feature, so a privacy
-policy is required. Use the published policy at
+A privacy policy is still linked for transparency even though the app collects
+no user data. Use the published policy at
 <https://sceneview.github.io/privacy.html> (source:
 [`docs/docs/privacy.md`](../../docs/docs/privacy.md) and
 [`.github/PRIVACY_POLICY.md`](../../.github/PRIVACY_POLICY.md)).

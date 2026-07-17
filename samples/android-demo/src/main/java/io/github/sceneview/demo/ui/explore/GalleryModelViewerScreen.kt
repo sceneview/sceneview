@@ -86,6 +86,7 @@ import io.github.sceneview.demo.sources.formattedFaceCount
 import io.github.sceneview.demo.sources.preferredThumbnailUrl
 import io.github.sceneview.demo.sources.primaryTagDisplay
 import io.github.sceneview.demo.ui.explore.components.AsyncNetworkImage
+import com.google.android.filament.Box as FilamentBox
 import com.google.android.filament.Engine
 import com.google.android.filament.LightManager
 import io.github.sceneview.environment.Environment
@@ -779,10 +780,43 @@ private fun RenderContent(
                     // segment that catches no shadow. An XZ quad varies in x and z, so
                     // the forced-y is a harmless z-fight lift and the footprint survives.
                     // This matches ShadowReceiverPlaneNode.meshSize()'s XZ convention (#2581).
+                    //
+                    // FL2+ shadow-receiver hardening (#2699) — mirror the device-proven
+                    // flat-quad recipe that `ShadowReceiverPlaneNode` (#2620) documents.
+                    // A flat (zero-Y) shadow catcher latently crashes the FL2+ cascaded
+                    // shadow path on real devices unless it also:
+                    //   • never casts (`isShadowCaster = false`) — a flat receiver has no
+                    //     business feeding the shadow caster set;
+                    //   • explicitly receives (`isShadowReceiver = true`);
+                    //   • skips frustum culling (`setCulling(false)`) — a zero-thickness
+                    //     quad otherwise feeds a degenerate volume into the shadow-focus
+                    //     math; and
+                    //   • carries a NON-degenerate AABB. The geometry-derived box of a flat
+                    //     quad has a zero Y half-extent, which is exactly what crashes the
+                    //     cascade build. We override it with a box that also encloses the
+                    //     model standing above the floor (local y 0 → model height).
+                    // The FL1 SwiftShader emulator never exercises this path, so the bug
+                    // only ever surfaces on-device — hence the belt-and-braces guard here.
                     PlaneNode(
                         size = Size(x = planeSize, y = 0f, z = planeSize),
                         materialInstance = shadowMaterialInstance,
                         position = Position(x = 0f, y = groundY, z = 0f),
+                        apply = {
+                            isShadowCaster = false
+                            isShadowReceiver = true
+                            setCulling(false)
+                            // Non-degenerate AABB, in node-local space: half-height = the
+                            // model's half-height (coerced > 0) so the box spans local
+                            // y 0 → model top and encloses the shadow caster above the
+                            // catcher. `planeSize` is stable for this node's lifetime (one
+                            // model per detail sheet), so the composable never re-derives
+                            // the flat geometry AABB and clobbers this override.
+                            val halfHeight = he[1].coerceAtLeast(0.5f)
+                            axisAlignedBoundingBox = FilamentBox(
+                                0f, halfHeight, 0f,
+                                planeSize / 2f, halfHeight, planeSize / 2f,
+                            )
+                        },
                     )
 
                     // No `scaleToUnits` — render at true glTF size; the orbit radius is

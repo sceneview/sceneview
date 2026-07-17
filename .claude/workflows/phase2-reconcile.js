@@ -13,7 +13,14 @@ export const meta = {
 // We collect the standing MED-severity debt per surface and fold it into the
 // per-surface tracker issues (#2328 sceneview / #2329 arsceneview / #2330 core /
 // #2331 SceneViewSwift / #2332 web), creating one where it doesn't yet exist.
-const a = args || {}
+// Be robust to args arriving as a JSON string (some invocation paths stringify it — same guard as review-fanout.js).
+let a = args
+if (typeof a === 'string') {
+  try { a = JSON.parse(a) } catch {
+    throw new Error('phase2-reconcile: args must be JSON — got a non-JSON string: ' + a.slice(0, 120))
+  }
+}
+a = a || {}
 const DEFAULT_SURFACES = ['sceneview', 'arsceneview', 'sceneview-core', 'SceneViewSwift', 'sceneview-web']
 const SURFACES = (Array.isArray(a.surfaces) && a.surfaces.length) ? a.surfaces : DEFAULT_SURFACES
 

@@ -85,9 +85,21 @@ describe("tier map entries all resolve to mounted tools (no phantoms)", () => {
     expect(getToolTier("view_3d_model")).toBe("free");
   });
 
-  // NOT asserted (yet): the reverse direction — every mounted tool having an
-  // explicit tier entry. 11 mounted tools currently rely on the default-to-pro
-  // fallback (the 5 rerun tools, get_ev_charging_station_viewer,
-  // get_car_paint_shader, and the 4 validate_*_code tools). Tracked as a
-  // follow-up; once they are explicitly mapped, add that assertion here.
+  it("every mounted tool has an explicit tier entry (no default-to-pro strays)", () => {
+    // Reverse of the phantom guard, enabled by #2697 (the 11 stray tools —
+    // 5 rerun, 2 automotive, 4 validators — are now explicitly mapped). The
+    // unknown→pro fallback in getToolTier() stays as a safety net, but no
+    // mounted tool may RELY on it: an unmapped tool is indistinguishable
+    // from a forgotten mapping, which is how the get_started phantom class
+    // starts.
+    const mapped = new Set([...getFreeToolNames(), ...getProToolNames()]);
+    const strays = getAllTools()
+      .map((t) => t.name)
+      .filter((n) => !mapped.has(n));
+    expect(
+      strays,
+      `These mounted tools have no explicit entry in mcp/src/tiers.ts and ` +
+        `silently default to "pro": ${strays.join(", ")}`,
+    ).toEqual([]);
+  });
 });

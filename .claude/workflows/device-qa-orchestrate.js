@@ -14,7 +14,14 @@ export const meta = {
 //   surfaces the leg's failure loudly as WARN — never a silent pass.
 //   platform — which device-QA leg(s) to run (default 'all').
 //   fast     — pass --fast for a per-category subset rather than the full catalog.
-const a = args || {}
+// Be robust to args arriving as a JSON string (some invocation paths stringify it — same guard as review-fanout.js).
+let a = args
+if (typeof a === 'string') {
+  try { a = JSON.parse(a) } catch {
+    throw new Error('device-qa-orchestrate: args must be JSON — got a non-JSON string: ' + a.slice(0, 120))
+  }
+}
+a = a || {}
 const VALID = ['android', 'ios', 'web', 'ar', 'all']
 const PLATFORM = VALID.includes(a.platform) ? a.platform : 'all'
 const FAST = a.fast === true
