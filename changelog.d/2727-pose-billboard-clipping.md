@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- Pose Placement AR demo: the live X/Y/Z coordinate readout no longer clips off the right screen edge. It was a world-space label floating above the lantern, so moving the X slider pushed it (and the lantern) past the screen edge and cut the numbers off. It is now a screen-anchored Compose overlay that stays fully on-screen and readable for any slider value. ([#2727](https://github.com/sceneview/sceneview/issues/2727))
