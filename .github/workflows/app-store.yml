@@ -324,12 +324,24 @@ jobs:
           app_id = r.json()["data"][0]["id"]
           print(f"App ID: {app_id}")
 
-          # 2. Get the latest valid build
-          r = requests.get(f"{BASE}/builds?filter[app]={app_id}&sort=-uploadedDate&limit=1&filter[processingState]=VALID", headers=headers)
-          builds = r.json().get("data", [])
+          # 2. Get the latest valid build. Apple's processing routinely exceeds
+          # the 120s pre-sleep, and the old single-shot `exit(0)` here was a
+          # silent "never reached App Review" path of exactly the class #2731
+          # fixed (review-fanout WARNING on PR #2738): a tag release would go
+          # green having skipped submission entirely. Poll up to 10 more
+          # minutes (well inside the 20-min JWT), then FAIL loudly — a tag
+          # deploy whose build never turns VALID must be red, not green.
+          builds = []
+          for attempt in range(1, 11):
+              r = requests.get(f"{BASE}/builds?filter[app]={app_id}&sort=-uploadedDate&limit=1&filter[processingState]=VALID", headers=headers)
+              builds = r.json().get("data", [])
+              if builds:
+                  break
+              print(f"No VALID build yet (attempt {attempt}/10) — Apple still processing, retrying in 60s...")
+              time.sleep(60)
           if not builds:
-              print("No valid build found yet — still processing. Skipping submission.")
-              exit(0)
+              print("::error::No VALID build after ~12 minutes — Apple processing overran or the upload failed. The release was NOT submitted for review; re-run this job once the build shows as processed in App Store Connect.")
+              raise SystemExit(1)
           build_id = builds[0]["id"]
           build_version = builds[0]["attributes"]["version"]
           print(f"Latest build: {build_version} (ID: {build_id})")
