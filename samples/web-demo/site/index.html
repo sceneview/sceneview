@@ -1269,6 +1269,11 @@
       // multi-file glTF root). Revoked when the next model loads so the blob-URL
       // keyspace never grows without bound.
       var activeObjectUrls = [];
+      // Keys this page added to the global Filament.assets map for the
+      // CURRENT multi-file model — purged on the next load (#2751 review:
+      // without this the global map grew forever and same-named resources
+      // from different models could shadow each other).
+      var activeAssetKeys = [];
 
       /**
        * Resolve the Sketchfab API key WITHOUT committing one. Read (in order) a
@@ -1527,6 +1532,10 @@
                 if (descriptor.url) window.open(descriptor.url, '_blank', 'noopener');
                 break;
               case 'url':
+                // Free any prior model's blob URLs immediately — without this a
+                // curated switch kept the previous gallery model's bytes alive
+                // until the NEXT blob-based load (#2751 review).
+                revokeActiveObjectUrls();
                 loadModel(descriptor.url, model.name);
                 break;
               case 'glb':
@@ -1556,6 +1565,10 @@
           try { URL.revokeObjectURL(u); } catch (e) { /* best-effort */ }
         });
         activeObjectUrls = [];
+        if (window.Filament && window.Filament.assets) {
+          activeAssetKeys.forEach(function(k) { delete window.Filament.assets[k]; });
+        }
+        activeAssetKeys = [];
       }
 
       /** Render a self-contained GLB from its already-streamed bytes. */
@@ -1567,12 +1580,20 @@
       }
 
       /**
-       * Render a multi-file glTF: pre-populate `Filament.assets` with each
-       * resource keyed by its absolute URI (resolved against the page, exactly as
-       * Filament.js `loadResources` resolves the glTF's relative URIs), then load
-       * the root .gltf from a blob URL so the engine resolves the buffers/textures
-       * from memory instead of the network. This is why the CC catalogs render
-       * in-app on web where iOS defers them.
+       * Render a multi-file glTF: pre-populate the global `Filament.assets`
+       * map with each resource, keyed by `new URL(relativePath,
+       * document.location)` — exactly the key `gltfio$FilamentAsset
+       * .loadResources` builds (filament.js resolves resource URIs against
+       * `basePath || document.location`, and `Filament.fetch` short-circuits
+       * on a pre-populated key before any HTTP request). Then load the root
+       * .gltf from a blob URL. Proven live against Icosa's "Pond"
+       * (multi-file GLTF2 on Backblaze) and guarded by the mocked bundle
+       * Playwright case. Every key added here is tracked in
+       * `activeAssetKeys` and deleted by `revokeActiveObjectUrls()` on the
+       * next load, so the global map never grows across models and two
+       * models sharing a resource filename can never shadow each other
+       * (#2751 review). This is why the CC catalogs render in-app on web
+       * where iOS defers them.
        */
       function loadGltfBundle(descriptor, name) {
         revokeActiveObjectUrls();
@@ -1582,6 +1603,7 @@
           try {
             var absoluteUri = '' + new URL(res.relativePath, document.location);
             window.Filament.assets[absoluteUri] = res.bytes;
+            activeAssetKeys.push(absoluteUri);
           } catch (e) {
             console.warn('Skipping glTF resource with unresolved path:', res.relativePath);
           }

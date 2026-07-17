@@ -186,6 +186,71 @@ test.describe('Web Demo — multi-source Explore (#2722)', () => {
     expectNoPageErrors(diag, 'Icosa in-app render');
   });
 
+  test('a multi-file glTF bundle (root .gltf + external .bin) renders in-app', async ({ page }) => {
+    // The #2751 review flagged the bundle path as untested: the other render
+    // test resolves to a self-contained GLB and never exercises the
+    // root-rewrite. This mocks an Icosa asset whose ONLY live format is a
+    // .gltf root referencing an external tri.bin, and asserts Filament
+    // renders it without a single console error ("Unable to parse glTF
+    // file" is a console.error, which expectNoPageErrors turns fatal).
+    test.slow();
+    const diag = captureDiagnostics(page);
+    await page.goto('/');
+    await waitForEngineReady(page);
+
+    // Minimal valid glTF 2.0: one triangle, POSITION+NORMAL in an external bin.
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const normals = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]);
+    const bin = Buffer.concat([Buffer.from(positions.buffer), Buffer.from(normals.buffer)]);
+    const rootGltf = {
+      asset: { version: '2.0' },
+      buffers: [{ uri: 'tri.bin', byteLength: bin.length }],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 36, target: 34962 },
+        { buffer: 0, byteOffset: 36, byteLength: 36, target: 34962 },
+      ],
+      accessors: [
+        { bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 0] },
+        { bufferView: 1, componentType: 5126, count: 3, type: 'VEC3' },
+      ],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 } }] }],
+      nodes: [{ mesh: 0 }],
+      scenes: [{ nodes: [0] }],
+      scene: 0,
+    };
+    await page.route('https://icosa-cdn.test/tri/scene.gltf', (route) =>
+      route.fulfill({ status: 200, contentType: 'model/gltf+json', body: JSON.stringify(rootGltf) }));
+    await page.route('https://icosa-cdn.test/tri/tri.bin', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/octet-stream', body: bin }));
+
+    const bundleAsset = {
+      ...icosaAsset('tri', 'Bundle Triangle', 'unused'),
+      formats: [{
+        formatType: 'GLTF2',
+        root: { url: 'https://icosa-cdn.test/tri/scene.gltf', relativePath: 'scene.gltf' },
+        resources: [{ url: 'https://icosa-cdn.test/tri/tri.bin', relativePath: 'tri.bin' }],
+      }],
+    };
+    const fulfillJson = (body: unknown) => ({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify(body),
+    });
+    await page.route(/api\.icosa\.gallery\/v1\/assets\/[^/?]+(\?|$)/, (route) =>
+      route.fulfill(fulfillJson(bundleAsset)));
+    await page.route(/api\.icosa\.gallery\/v1\/assets\?/, (route) =>
+      route.fulfill(fulfillJson({ assets: [bundleAsset] })));
+
+    await switchTab(page, 'models');
+    await page.locator('.source-chip[data-source="icosa"]').click();
+    await expect(page.locator('#model-results .result-card').first()).toBeVisible();
+    await page.locator('#model-results .result-card').first().click();
+    await waitForModelChipIdle(page);
+
+    expectNoPageErrors(diag, 'multi-file glTF bundle render');
+  });
+
   test('dead web.archive.org mirrors are never fetched when a live format exists', async ({ page }) => {
     // Regression guard for the live bug found on Icosa asset 5rf3YuZfJAW: the
     // legacy Poly-era GLB mirror lives on web.archive.org (404 + no CORS —

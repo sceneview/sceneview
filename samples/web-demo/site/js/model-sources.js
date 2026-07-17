@@ -48,6 +48,14 @@
    */
   var MAX_MODEL_BYTES = 512 * 1024 * 1024;
 
+  /**
+   * Ceiling on the NUMBER of resource files a multi-file glTF bundle may list
+   * (#2751 review): each file is size-capped individually, but the count comes
+   * from attacker-supplied catalog JSON and feeds a concurrent Promise.all.
+   * Real-world assets ship a handful of buffers + textures; 64 is generous.
+   */
+  var MAX_BUNDLE_RESOURCES = 64;
+
   var FeedKind = {
     TRENDING: 'trending',
     STAFF_PICKS: 'staffPicks',
@@ -213,9 +221,12 @@
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     if (options.signal && controller) {
       if (options.signal.aborted) controller.abort();
-      else options.signal.addEventListener('abort', function () { controller.abort(); });
+      else options.signal.addEventListener('abort', function () { controller.abort(); }, { once: true });
     }
-    var headers = { 'User-Agent': USER_AGENT };
+    // 'User-Agent' is a forbidden header name in browser fetch (silently
+    // dropped) — only send it in the Node runtime (#2751 review).
+    var headers = {};
+    if (typeof window === 'undefined') headers['User-Agent'] = USER_AGENT;
     if (options.headers) {
       for (var h in options.headers) {
         if (Object.prototype.hasOwnProperty.call(options.headers, h)) headers[h] = options.headers[h];
@@ -546,6 +557,15 @@
       var url = res.url;
       if (rel && rel !== '' && url && url !== '') resList.push({ relativePath: rel, url: url });
     });
+    // Defense-in-depth (#2751 review): the resource list is attacker-supplied
+    // catalog data. Each file is individually size-capped, but an unbounded
+    // COUNT would still yield unbounded aggregate memory/connections from the
+    // Promise.all below. Real assets ship a handful of buffers + textures.
+    if (resList.length > MAX_BUNDLE_RESOURCES) {
+      return Promise.reject(new Error(
+        'glTF bundle lists ' + resList.length + ' resources — exceeds the ' +
+        MAX_BUNDLE_RESOURCES + '-resource cap'));
+    }
     return Promise.all(resList.map(function (res) {
       return streamBoundedBytes(res.url, { signal: opts.signal }).then(function (bytes) {
         return { relativePath: res.relativePath, bytes: bytes };
