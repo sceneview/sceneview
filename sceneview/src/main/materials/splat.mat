@@ -18,7 +18,8 @@
 //                        getInstanceIndex() by its base so the texture indexing stays global.
 // matc profile: B (lean Android — "-a opengl -p mobile", see tools/GenerateFilamat.sh).
 //
-// Rendering notes (Filament 1.71.5, no compute/SSBO → CPU painter's sort, see #2646 spike):
+// Rendering notes (Filament 1.72.1 — Android Java API still exposes no compute/SSBO →
+// CPU painter's sort, see #2646 spike):
 //   * instanced:true + getInstanceIndex() feed one unit quad to N gaussians (cap 65535/draw).
 //   * Vertex-stage textureLod fetch is the only way to feed ≥100k per-splat attributes
 //     (uniform arrays can't). A helper cannot take a `sampler2d` argument in matc — the
