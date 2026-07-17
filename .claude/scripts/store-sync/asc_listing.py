@@ -119,7 +119,18 @@ def diff_screenshots(device_dir, display_type, local_files, remote_checksums):
 
     `remote_checksums` is the ordered list of `sourceFileChecksum` (MD5) the
     live appScreenshotSet carries. Order matters — the App Store displays
-    screenshots in set order."""
+    screenshots in set order.
+
+    UNVALIDATED ASSUMPTION (review-fanout warning, PR #2764): equality relies
+    on Apple's `sourceFileChecksum` being the plain MD5 of the exact uploaded
+    PNG bytes. That is what the reservation-upload flow implies (the checksum
+    is declared FOR the source file), but it has never been checked against a
+    live set because the repo screenshots have never been uploaded. Before
+    Phase C wires this diff into maintenance.yml / release-checklist.sh as a
+    drift SIGNAL, run one live dry-run against a really-uploaded set and
+    confirm md5_of(local png) == sourceFileChecksum; if Apple normalizes or
+    re-encodes, re-key this diff on whatever Apple actually stores. Until
+    then a checksum mismatch here is a candidate, not a verdict."""
     local = [(f.name, md5_of(f)) for f in local_files]
     local_sums = [s for _, s in local]
     if local_sums == list(remote_checksums):

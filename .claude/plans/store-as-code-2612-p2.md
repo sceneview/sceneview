@@ -67,6 +67,10 @@ Deux scripts Python exécutables, un par store, code path UNIQUE local + CI :
   `ipad-13→APP_IPAD_PRO_3GEN_129` ; step app-store.yml ; header de
   capture-appstore-screenshots.sh mis à jour (le « NOT part of this script » devient faux).
 - **C — drift visible** : job maintenance.yml + release-checklist §17 (advisory).
+  ⚠️ Prérequis (warning fanout PR #2764) : valider l'hypothèse
+  `sourceFileChecksum == MD5(png committé)` par un dry-run live sur un set
+  RÉELLEMENT uploadé (donc après Phase B) avant de traiter le diff screenshots
+  comme signal — sinon chaque run rapporterait un drift fantôme.
 - **D — Data safety as code** : `data-safety.csv` généré depuis DATA_SAFETY.md +
   push `applications.dataSafety` dans `--apply`. ⚠️ endpoint write-only (pas de GET) →
   premier push réel = gated Thomas avec vérif console après coup ; d'ici là le CSV
