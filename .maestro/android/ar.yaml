@@ -1,4 +1,4 @@
-# Maestro flow — "Augmented Reality" demo category (29 demos).
+# Maestro flow — "Augmented Reality" demo category (33 demos).
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/ar.yaml
@@ -164,3 +164,23 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: point-and-ask
       DEMO_NAME: Point and Ask
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-hand-tracking
+      DEMO_NAME: AR Hand Tracking
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-plane-renderer-v2
+      DEMO_NAME: AR Plane Renderer V2
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: ar-xr-face
+      DEMO_NAME: AR XR Face
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: placement-reticle-preview
+      DEMO_NAME: AR Placement Reticle Preview
