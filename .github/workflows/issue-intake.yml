@@ -23,6 +23,11 @@ on:
     types: [opened]
 
 permissions:
+  # A `permissions:` block zeroes every unlisted scope — without an explicit
+  # `contents: read` the checkout of issue-intake-labels.js would run with
+  # contents: none and can fail at runtime (only ever exercised on a real
+  # external issue, so it would fail silently in production, not in CI).
+  contents: read
   issues: write
 
 concurrency:
