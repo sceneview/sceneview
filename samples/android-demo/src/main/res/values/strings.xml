@@ -144,6 +144,21 @@
     <string name="samples_back_about">About</string>
     <string name="samples_chip_preview">Preview</string>
     <string name="samples_chip_soon">Soon</string>
+    <string name="samples_chip_in_review">In review</string>
+
+    <!-- Wall Placement demo (#2740) -->
+    <string name="demo_wall_placement_title">Wall Placement</string>
+    <string name="demo_wall_placement_subtitle">Mount a TV on a wall — floor↔wall edge alignment, Amazon AR-View style</string>
+    <string name="wall_phase_finding_floor">Point at the floor and move slowly to scan it</string>
+    <string name="wall_phase_finding_wall">Floor locked — now aim at the wall</string>
+    <string name="wall_phase_aligning_edge">Align the orange line with the floor↔wall edge, then tap the wall</string>
+    <string name="wall_phase_placed">Placed — fine-tune with the D-pad, or tap the wall again</string>
+    <string name="wall_dpad_left">Nudge left</string>
+    <string name="wall_dpad_right">Nudge right</string>
+    <string name="wall_dpad_up">Nudge up</string>
+    <string name="wall_dpad_down">Nudge down</string>
+    <string name="wall_dpad_rotate_left">Rotate left</string>
+    <string name="wall_dpad_rotate_right">Rotate right</string>
     <string name="samples_footer_version">SceneView v%s</string>
     <string name="samples_footer_repo">github.com/sceneview/sceneview</string>
 
