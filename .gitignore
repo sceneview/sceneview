@@ -250,3 +250,6 @@ tools/qa-screenshots/android/*
 **/* (2)*
 **/* (3)*
 
+
+# Local branch/worktree archives (diffs of dead worktrees) — never commit
+.claude/worktree-archives/
