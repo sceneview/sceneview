@@ -119,6 +119,16 @@ object SampleAssets {
             displayName = "Nile (Classical Statue)",
             author = "rigsters",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
+            // Restored to `khronos_toy_car.glb` now that the asset is fixed (#1433).
+            // The bundled GLB previously had a valid header but failed to parse in
+            // `gltfio` ("Unable to parse glTF file"): a babylon.js export bug left an
+            // out-of-bounds `clearcoatTexture` index and webp images on the core
+            // `source` instead of via `EXT_texture_webp`. #2390 worked around it by
+            // repointing this fallback (and "Coffee Mug") at decodable GLBs, which
+            // made "Nile" share the helmet with "Vintage Camera" (a #1433 relaxation).
+            // The asset has been re-exported (dangling texture dropped, normalized,
+            // Draco decompressed) so it decodes; restoring it makes all four gallery
+            // chips distinct again.
             fallbackBundledPath = "models/khronos_toy_car.glb",
             scaleToUnits = 0.85f,
             hasBakedAnimation = false,
@@ -265,6 +275,9 @@ object SampleAssets {
             displayName = "Coffee Mug",
             author = "FrenchBaguette",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
+            // Restored to `khronos_toy_car.glb` (the re-exported, now-decodable asset —
+            // see the Gallery "Nile" entry above). #2390 had temporarily repointed this
+            // at `khronos_lantern.glb` while the toy_car GLB was unparseable.
             fallbackBundledPath = "models/khronos_toy_car.glb",
             scaleToUnits = 0.10f,
             hasBakedAnimation = false,

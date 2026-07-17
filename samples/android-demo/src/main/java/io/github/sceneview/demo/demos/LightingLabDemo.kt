@@ -41,6 +41,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
+import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.environment.Environment
@@ -86,7 +87,9 @@ import com.google.android.filament.Scene as FilamentScene
  */
 @Composable
 fun LightingLabDemo(onBack: () -> Unit) {
-    var mode by remember { mutableStateOf(LightingLabMode.Sky) }
+    var mode by remember {
+        mutableStateOf(initialDemoMode(LightingLabMode.entries, LightingLabMode.Sky))
+    }
     when (mode) {
         LightingLabMode.Sky -> SkySection(onBack, mode) { mode = it }
         LightingLabMode.Environment -> EnvironmentSection(onBack, mode) { mode = it }

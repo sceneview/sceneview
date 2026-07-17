@@ -124,6 +124,10 @@ class MainActivity : ComponentActivity() {
         // Both go through DeepLinkRouter.validateCameraDistance, so a non-finite or
         // out-of-range value is dropped to null (default framing) rather than crashing.
         DemoSettings.cameraDistance = resolveCameraDistance(intent)
+        // Optional initial tab for a consolidated (segmented-button) demo. Set from the alias
+        // that opened it (`--es demo shape` → Shape tab) or an explicit `--es tab <i>` extra /
+        // `?tab=<id|index>` query. Absent / unparseable → null (demo keeps its default tab).
+        DemoSettings.initialTab = resolveInitialTab(intent)
         setContent {
             SceneViewDemoTheme {
                 SceneViewDemoApp(activity = this)
@@ -145,6 +149,25 @@ class MainActivity : ComponentActivity() {
         DemoSettings.arPendingPlaybackFile = intent.getStringExtra("ar_playback_file")
             ?.takeIf { isWithinAppFilesDir(it) }
         DemoSettings.cameraDistance = resolveCameraDistance(intent)
+        DemoSettings.initialTab = resolveInitialTab(intent)
+    }
+
+    /**
+     * Resolves the optional initial tab a consolidated demo should pre-select from an
+     * incoming intent (#2315). Mirrors the `demo` / `camera_distance` dual-ingress policy:
+     * the `--es tab <v>` QA extra wins over the `?tab=<v>` URL query, and both fall back to
+     * the alias that launched the demo (`--es demo shape` → the Shape tab of
+     * `custom-geometry`). [DeepLinkRouter.resolveInitialTab] owns the precedence + parsing;
+     * an absent / unparseable value resolves to `null` so the demo keeps its default first
+     * tab and never crashes on a bad index.
+     */
+    private fun resolveInitialTab(intent: Intent?): Int? {
+        if (intent == null) return null
+        val rawId = intent.getStringExtra("demo")
+            ?: intent.data?.let(DeepLinkRouter::extractCandidate)
+        val tabParam = intent.getStringExtra(DeepLinkRouter.QUERY_PARAM_TAB)
+            ?: DeepLinkRouter.parseTabParam(intent.data)
+        return DeepLinkRouter.resolveInitialTab(rawId, tabParam)
     }
 
     /**

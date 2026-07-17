@@ -187,6 +187,20 @@ open class Node(
     private var _quaternion: Quaternion = Quaternion()
     private var _scale: Scale = Scale(1.0f)
 
+    // Local-space transform cache (#2405). `null` whenever the cache is dirty (initially, until
+    // the first read or write). The local matrix is read at 60–120 Hz — once per frame per
+    // animated node (`NodeAnimationDelegate.onFrame` reads `node.transform`), plus every
+    // collision/query read — and each read otherwise paid a `TransformManager.getTransform()`
+    // JNI round-trip (which itself allocates a `FloatArray(16)` + a `Mat4`).
+    //
+    // The two — and ONLY two — writers of this node's local Filament matrix (the `transform`
+    // setter and `applyCachedTransform()`) POPULATE this cache with the exact matrix they push,
+    // so even mid-animation (write then read each frame) the read is served without JNI. Filament
+    // round-trips the matrix unchanged, so the cached value is byte-identical to a `getTransform()`
+    // read. A reparent does NOT change the local (parent-relative) matrix, so it deliberately
+    // leaves this cache valid; only a LOCAL transform write refreshes it.
+    private var _transform: Transform? = null
+
     // World-space TRS cache (#2264, completes the #2187 fix for world-space getters).
     //
     // `_worldTransform` is `null` whenever the cache is dirty (initially, after a
@@ -228,7 +242,11 @@ open class Node(
      * reading it back.
      */
     private fun applyCachedTransform() {
-        transformManager.setTransform(transformInstance, Transform(_position, _quaternion, _scale))
+        val composed = Transform(_position, _quaternion, _scale)
+        transformManager.setTransform(transformInstance, composed)
+        // Populate the local-matrix cache with the exact matrix just pushed to Filament, so a
+        // subsequent `transform` read is served without a `getTransform()` JNI round-trip (#2405).
+        _transform = composed
         onTransformChanged()
     }
 
@@ -401,9 +419,13 @@ open class Node(
      * @see TransformManager.setTransform
      */
     open var transform: Transform
-        get() = transformManager.getTransform(transformInstance)
+        get() = _transform ?: transformManager.getTransform(transformInstance).also { _transform = it }
         set(value) {
             transformManager.setTransform(transformInstance, value)
+            // Populate the local-matrix cache (#2405): Filament round-trips the matrix unchanged, so
+            // the cached `value` is byte-identical to a subsequent `getTransform()` read. This keeps
+            // the per-frame `node.transform` read free even while a smooth animation writes every tick.
+            _transform = value
             // Synchronise the TRS caches from the new matrix so that any subsequent
             // getter for `position`, `quaternion`, or `scale` reads the pristine value
             // rather than re-decomposing the matrix (#2187).
@@ -426,8 +448,26 @@ open class Node(
 
     // ---- Parent / children ----
 
+    // Parent-entity (#2403) / parent-instance (#2404) caches. A validity FLAG is required — not a
+    // null sentinel — because `null` is a legitimate cached value (a detached / root node has no
+    // parent). Without the cache, `parentEntity` paid a `getParentOrNull()` JNI round-trip and
+    // `parentInstance` paid that PLUS a `getInstance()` on every read. The single Filament write
+    // path for the parent is the `parentInstance` setter (`setParent`); it invalidates both caches,
+    // so the first read after a reparent re-fetches the fresh value once and every read after that
+    // is served without JNI.
+    private var _parentEntityValid = false
+    private var _parentEntity: Entity? = null
+    private var _parentInstanceValid = false
+    private var _parentInstance: EntityInstance? = null
+
     var parentEntity: Entity?
-        get() = transformManager.getParentOrNull(transformInstance)
+        get() {
+            if (!_parentEntityValid) {
+                _parentEntity = transformManager.getParentOrNull(transformInstance)
+                _parentEntityValid = true
+            }
+            return _parentEntity
+        }
         set(value) {
             if (parentEntity != value) {
                 parentInstance = value?.let { transformManager.getInstance(it) }
@@ -435,10 +475,20 @@ open class Node(
         }
 
     var parentInstance: EntityInstance?
-        get() = parentEntity?.let { transformManager.getInstance(it) }
+        get() {
+            if (!_parentInstanceValid) {
+                _parentInstance = parentEntity?.let { transformManager.getInstance(it) }
+                _parentInstanceValid = true
+            }
+            return _parentInstance
+        }
         set(value) {
             if (parentInstance != value) {
                 transformManager.setParent(transformInstance, value ?: 0)
+                // The reparent changed both parent caches; invalidate so the next read re-fetches
+                // the fresh entity/instance from Filament (#2403 / #2404).
+                _parentEntityValid = false
+                _parentInstanceValid = false
                 // Reparenting changes this node's (and its descendants') world transform
                 // even though `transform` (local) is unchanged. Invalidate the world-space
                 // cache so subsequent reads re-fetch from Filament (#2264).

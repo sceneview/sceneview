@@ -57,6 +57,7 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.gesture.CameraGestureDetector
@@ -100,7 +101,9 @@ import kotlin.math.sin
  */
 @Composable
 fun TwoDInThreeDDemo(onBack: () -> Unit) {
-    var mode by remember { mutableStateOf(TwoDInThreeDMode.Text) }
+    var mode by remember {
+        mutableStateOf(initialDemoMode(TwoDInThreeDMode.entries, TwoDInThreeDMode.Text))
+    }
     when (mode) {
         TwoDInThreeDMode.Text -> TextSection(onBack, mode) { mode = it }
         TwoDInThreeDMode.Image -> ImageSection(onBack, mode) { mode = it }

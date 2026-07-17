@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ViewInAr
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -301,6 +302,97 @@ class DeepLinkRouterTest {
                 "sceneview://demo/$retired must resolve to '$consolidated'",
                 consolidated,
                 DeepLinkRouter.parse(Uri.parse("sceneview://demo/$retired"), consolidatedRegistry),
+            )
+        }
+    }
+
+    // ── Initial-tab pre-selection: alias + ?tab= deep-link param (#2315) ──────
+    //
+    // Consolidated demos open on their default first tab unless an alias (e.g.
+    // `shape`) or an explicit `--es tab` / `?tab=` value pre-selects another. The
+    // resolution is pure (raw id + raw param → index); the bad-index clamp lives in
+    // the demo composable (initialDemoMode), out of this unit's reach.
+
+    @Test
+    fun `resolveInitialTab maps a non-default alias to its tab`() {
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", null))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("movable-light", null))
+        assertEquals(2, DeepLinkRouter.resolveInitialTab("scene-gallery", null))
+        assertEquals(3, DeepLinkRouter.resolveInitialTab("billboard", null))
+    }
+
+    @Test
+    fun `resolveInitialTab returns null for a default-tab alias or a plain id`() {
+        // Aliases that land on tab 0 are intentionally absent from ALIAS_INITIAL_TAB.
+        assertNull(DeepLinkRouter.resolveInitialTab("custom-mesh", null))
+        assertNull(DeepLinkRouter.resolveInitialTab("text", null))
+        // A live consolidated id with no tab hint keeps its default tab.
+        assertNull(DeepLinkRouter.resolveInitialTab("custom-geometry", null))
+        assertNull(DeepLinkRouter.resolveInitialTab(null, null))
+    }
+
+    @Test
+    fun `explicit tab param wins over the alias default`() {
+        // `?tab=0` forces the default tab even when launched via the `shape` alias.
+        assertEquals(0, DeepLinkRouter.resolveInitialTab("shape", "0"))
+        // An explicit integer index on a plain id.
+        assertEquals(2, DeepLinkRouter.resolveInitialTab("custom-geometry", "2"))
+        // An explicit alias-token tab value resolves through ALIAS_INITIAL_TAB.
+        assertEquals(3, DeepLinkRouter.resolveInitialTab("two-d-in-three-d", "billboard"))
+    }
+
+    @Test
+    fun `resolveInitialTab falls back to the alias when the tab param is unusable`() {
+        // A negative / unparseable / blank explicit value is ignored; the alias applies.
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", "-1"))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", "garbage"))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", "  "))
+    }
+
+    @Test
+    fun `parseTabValue accepts a non-negative index or an alias token`() {
+        assertEquals(0, DeepLinkRouter.parseTabValue("0"))
+        // Out-of-range index is passed through — the demo clamps it, not the router.
+        assertEquals(5, DeepLinkRouter.parseTabValue("5"))
+        // Trimmed, then looked up as an alias token.
+        assertEquals(2, DeepLinkRouter.parseTabValue(" occlusion-material "))
+    }
+
+    @Test
+    fun `parseTabValue returns null for blank, negative or unknown tokens`() {
+        assertNull(DeepLinkRouter.parseTabValue(null))
+        assertNull(DeepLinkRouter.parseTabValue(""))
+        assertNull(DeepLinkRouter.parseTabValue("   "))
+        assertNull(DeepLinkRouter.parseTabValue("-1"))
+        assertNull(DeepLinkRouter.parseTabValue("not-a-tab"))
+    }
+
+    @Test
+    fun `parseTabParam reads the tab query parameter`() {
+        assertEquals(
+            "1",
+            DeepLinkRouter.parseTabParam(Uri.parse("sceneview://demo/custom-geometry?tab=1")),
+        )
+        assertEquals(
+            "shape",
+            DeepLinkRouter.parseTabParam(Uri.parse("sceneview://demo/custom-geometry?tab=shape")),
+        )
+        assertNull(DeepLinkRouter.parseTabParam(Uri.parse("sceneview://demo/custom-geometry")))
+        assertNull(DeepLinkRouter.parseTabParam(null))
+    }
+
+    @Test
+    fun `every ALIAS_INITIAL_TAB key is a known retired alias on a non-default tab`() {
+        // Guards against a typo'd key drifting from DEMO_ID_ALIASES, and against
+        // listing a tab-0 alias (those are meant to be omitted — absent = default).
+        DeepLinkRouter.ALIAS_INITIAL_TAB.forEach { (alias, index) ->
+            assertTrue(
+                "ALIAS_INITIAL_TAB key '$alias' must be a known retired alias id",
+                DeepLinkRouter.DEMO_ID_ALIASES.containsKey(alias),
+            )
+            assertTrue(
+                "ALIAS_INITIAL_TAB only lists non-default tabs; '$alias' -> $index must be >= 1",
+                index >= 1,
             )
         }
     }

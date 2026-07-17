@@ -31,6 +31,7 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberPausableHeroYaw
 import io.github.sceneview.math.Position
@@ -61,7 +62,9 @@ import kotlin.math.sin
  */
 @Composable
 fun CustomGeometryDemo(onBack: () -> Unit) {
-    var mode by remember { mutableStateOf(CustomGeometryMode.CustomMesh) }
+    var mode by remember {
+        mutableStateOf(initialDemoMode(CustomGeometryMode.entries, CustomGeometryMode.CustomMesh))
+    }
     when (mode) {
         CustomGeometryMode.CustomMesh -> CustomMeshSection(onBack, mode) { mode = it }
         CustomGeometryMode.Shape -> ShapeSection(onBack, mode) { mode = it }

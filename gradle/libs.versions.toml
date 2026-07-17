@@ -2,7 +2,7 @@
 # Build tools
 agp = "8.13.2"
 kotlin = "2.3.21"
-composeMultiplatform = "1.11.0"
+composeMultiplatform = "1.11.1"
 
 # AndroidX Core
 coreKtx = "1.18.0"
