@@ -1,0 +1,67 @@
+name: Issue intake
+
+# Deterministic auto-labeling for newly opened issues -- no LLM, no external
+# API calls, < 1 minute. Parses the `### Platform` / `### Module` sections
+# GitHub renders from bug_report.yml's required dropdowns and applies the
+# matching existing `platform:*` / `module:*` label. See #2734.
+#
+# SECURITY: the issue title/body are UNTRUSTED external input -- any GitHub
+# user can open an issue with an arbitrary body. This workflow never
+# interpolates them into a `run:` shell step (the classic GitHub Actions
+# script-injection footgun, e.g. GHSA-...-injection advisories). All body
+# reading happens inside actions/github-script, where `context.payload
+# .issue.body` is a plain JS value handed to
+# `.github/scripts/issue-intake-labels.js` for pure string matching --
+# never shelled out to, never eval'd, never used to build a command.
+#
+# Labels are only ever chosen from a fixed allow-list of labels that already
+# exist in the repo (see issue-intake-labels.js) -- an unrecognized dropdown
+# value is a silent no-op, never a label created on the fly.
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+concurrency:
+  group: issue-intake-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: Auto-label from form dropdowns
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/scripts/issue-intake-labels.js
+          sparse-checkout-cone-mode: false
+
+      - name: Compute and apply labels
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { computeLabels } = require('./.github/scripts/issue-intake-labels.js');
+
+            // `body` is untrusted external input -- computeLabels() only
+            // ever does string matching against a fixed allow-list, never
+            // shell/eval. See issue-intake-labels.js for details.
+            const body = context.payload.issue.body || '';
+            const labels = computeLabels(body);
+
+            if (labels.length === 0) {
+              core.info('No matching Platform/Module dropdown value found -- no-op.');
+              return;
+            }
+
+            core.info(`Applying labels: ${labels.join(', ')}`);
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              labels,
+            });
