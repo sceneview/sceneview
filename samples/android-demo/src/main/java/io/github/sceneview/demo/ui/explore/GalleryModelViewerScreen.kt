@@ -876,7 +876,14 @@ private fun RenderContent(
             modifier = Modifier.padding(horizontal = 20.dp),
         )
         Text(
-            text = stringResource(R.string.sketchfab_rendered_by, model.formattedFaceCount()),
+            // Hide the "· N polys" suffix rather than show a misleading "0 polys" when the
+            // source exposes no face count (e.g. Poly Haven). Mirrors the StatsRow poly
+            // chip, which is likewise gated on faceCount > 0.
+            text = if (model.faceCount > 0) {
+                stringResource(R.string.sketchfab_rendered_by, model.formattedFaceCount())
+            } else {
+                stringResource(R.string.sketchfab_rendered_by_base)
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 20.dp),
