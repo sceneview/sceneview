@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+- Demo-catalog docs drift: every counter surface said **50 demos (17 non-AR + 33 AR)** while the registry actually ships **51 (18 non-AR + 33 AR)** — fixed in `docs/docs/samples.md`, `try.md`, `llms-full.txt`, `samples/README.md`, and `CLAUDE.md` (found by the #2239 Phase-0 audit).
+- Maestro device-QA coverage gap: 5 registered demos were driven by **no** flow entry — `splat-preview`, `ar-hand-tracking`, `ar-plane-renderer-v2`, `ar-xr-face`, `placement-reticle-preview` now have their own legs in `.maestro/android/advanced.yaml` / `ar.yaml`, and the stale `catalog.yaml` header (58) now documents the real arithmetic: 65 flow entries covering 51 registered demos (retired-alias entries QA the merged demos' tabs).
