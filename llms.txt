@@ -4464,6 +4464,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
 - `placement-reticle-preview` — AR Placement Reticle Preview. Non-AR preview of AR placement — reticle (searching/ready, ring/disc) and a placed model with a contact shadow.
 - `placement-scene` — Placement Scene. One-line tap-to-place AR (Sceneform ArFragment parity).
+- `point-and-ask` — Point & Ask. Tap what the camera sees — Gemini Nano explains it, fully on-device.
 
 <!-- END GENERATED DEMOS -->
 
