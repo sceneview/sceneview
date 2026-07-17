@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before filing: check the [migration guide](../MIGRATION.md) if you upgraded from v2.
+        Before filing: check the [migration guide](https://github.com/sceneview/sceneview/blob/main/MIGRATION.md) if you upgraded from v2.
 
   - type: dropdown
     id: platform
