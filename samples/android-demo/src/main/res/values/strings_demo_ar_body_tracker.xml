@@ -10,7 +10,7 @@
     <string name="demo_ar_body_tracker_explainer">Point the camera at a person. MediaPipe Pose Landmarker runs on-device on the AR camera image and SceneView projects the landmarks onto a 17-joint ARKit-parity skeleton. Note: ARCore has no native body tracking — this is an image-space pose overlay, not a world-anchored 3D skeleton like ARKit.</string>
     <string name="demo_ar_body_tracker_status_aim">Aim the camera at a person</string>
     <string name="demo_ar_body_tracker_status_tracked">Body tracked — %1$d joints</string>
-    <string name="demo_ar_body_tracker_status_no_model">Pose model unavailable — add pose_landmarker_lite.task to assets/mediapipe/</string>
+    <string name="demo_ar_body_tracker_status_no_model">Body tracking is unavailable right now — the rest of the AR scene still works.</string>
     <!-- Persistent in-viewport hint pill: shown when the camera feed is live but no body is
          detected yet. Kept brief so it fits on one line at bodyMedium size (#2485). -->
     <string name="demo_ar_body_tracker_hint_aim">Point camera at a person — full body visible</string>
