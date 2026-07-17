@@ -138,12 +138,22 @@ Gotchas: a leaked CPU `Image` stalls ARCore within a few frames (`use { }` close
 it); `toArgbBitmap` is main-thread-hostile; 90° is the portrait `ROTATION_0`
 rotation; emulators never have AICore — inject a canned engine under QA mode.
 
+Composited variant: `frame.cameraImage()` sees the **camera only** — placed 3D
+nodes are invisible to the model. To let the AI see the *augmented* scene
+(camera + virtual objects), capture the composited window instead:
+`PixelCopy.request(activity.window, bitmap, callback, mainHandler)` — already
+an upright ARGB frame (no YUV/rotation), but hide your Compose overlays first
+or they get baked into the AI's input. The reference demo uses this: long-press
+places a prop, then "Is there an animal in this room?" is answered about a dog
+that only exists in AR.
+
 Streamed variant: `generateContentStream(request)` returns a `Flow` of
 `GenerateContentResponse` **deltas** — concatenate `candidates.first().text`
 per emission for a live "typing" card. The reference demo streams, and its
 question is a free-form user field (blank falls back to the default prompt).
 Working demo: `point-and-ask` (`PointAndAskDemo.kt` + `AskEngine.kt`). Full
-recipe (one-shot + streamed variants): `samples/recipes/point-and-ask.md`.
+recipe (one-shot + composited + streamed variants):
+`samples/recipes/point-and-ask.md`.
 
 ### Procedural geometry (no model files)
 
@@ -531,7 +541,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
 - `placement-reticle-preview` — AR Placement Reticle Preview. Non-AR preview of AR placement — reticle (searching/ready, ring/disc) and a placed model with a contact shadow.
 - `placement-scene` — Placement Scene. One-line tap-to-place AR (Sceneform ArFragment parity).
-- `point-and-ask` — Point & Ask. Tap what the camera sees — Gemini Nano explains it, fully on-device.
+- `point-and-ask` — Point & Ask. Drop 3D props, tap the augmented scene — Gemini Nano explains what it sees, fully on-device.
 
 <!-- END GENERATED DEMOS -->
 
