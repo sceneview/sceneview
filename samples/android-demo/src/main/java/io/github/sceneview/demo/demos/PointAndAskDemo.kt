@@ -50,6 +50,7 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -296,7 +297,11 @@ fun PointAndAskDemo(onBack: () -> Unit) {
 /**
  * Converts [image] to an upright bitmap off the main thread, runs one [AskEngine.ask]
  * round-trip, and reports the resulting [AskState] on the caller's (main) dispatcher.
- * Always closes [image] and recycles the intermediate bitmap.
+ * Always closes [image] and recycles the intermediate bitmap — including when the scope
+ * is cancelled mid-flight: [CoroutineStart.UNDISPATCHED] enters the `try` synchronously
+ * before the first suspension, so the `finally` close runs even if the composition is
+ * disposed during the capture window (leaking one CPU image stalls ARCore within a few
+ * frames).
  */
 private fun CoroutineScope.askAboutImage(
     image: Image,
@@ -304,11 +309,12 @@ private fun CoroutineScope.askAboutImage(
     askEngine: AskEngine,
     question: String,
     onResult: (AskState) -> Unit,
-) = launch {
-    // JPEG round-trip conversion is main-thread-hostile — off to Default; `use` guarantees
-    // the native Image is closed (leaking one stalls ARCore within a few frames).
-    val bitmap = withContext(Dispatchers.Default) {
-        image.use { it.toArgbBitmap(rotationDegrees) }
+) = launch(start = CoroutineStart.UNDISPATCHED) {
+    // JPEG round-trip conversion is main-thread-hostile — off to Default.
+    val bitmap = try {
+        withContext(Dispatchers.Default) { image.toArgbBitmap(rotationDegrees) }
+    } finally {
+        image.close()
     }
     if (bitmap == null) {
         onResult(AskState.Failed)

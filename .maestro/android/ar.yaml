@@ -1,4 +1,4 @@
-# Maestro flow — "Augmented Reality" demo category (28 demos).
+# Maestro flow — "Augmented Reality" demo category (29 demos).
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/ar.yaml
