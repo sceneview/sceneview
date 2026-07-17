@@ -482,9 +482,84 @@ jobs:
           done
           echo "::notice::Both SPM manifests present and well-formed at tag ${GITHUB_REF_NAME}"
 
-  # NOTE: pub.dev / Flutter publish is not yet automated. Requires a
-  # `PUB_TOKEN` org-level secret + `dart pub publish --force`. Tracked
-  # separately in #962 follow-up.
+  # ── 4d. Publish sceneview_flutter to pub.dev (OIDC) ───────────────────────
+  # Automated pub.dev publishing via GitHub OIDC (no long-lived token — the
+  # pub client exchanges the Actions id-token when `id-token: write` is set
+  # and pub.dev has "Automated publishing" enabled for this repo + tag
+  # pattern). #2735 replaced the old "not yet automated" note (#962 follow-up).
+  #
+  # DELIBERATELY NOT in `create-release`'s needs-gate yet: until the pub.dev
+  # side is configured (package admin action, ~10 min), this job fails on
+  # auth — an HONEST red (never a swallowed error: that's the #2731 failure
+  # mode), but it must not block the user-visible GitHub Release. Promote it
+  # into the create-release gate after the first successful publish.
+  pub-publish:
+    name: Publish sceneview_flutter to pub.dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # OIDC token exchange for pub.dev automated publishing
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check if version already published
+        id: check-pub
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION=$(grep -E '^version:' flutter/sceneview_flutter/pubspec.yaml | awk '{print $2}')
+          else
+            VERSION=${GITHUB_REF_NAME#v}
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # pub.dev versions are immutable — mirror the npm publishers'
+          # skip-if-published so a workflow_dispatch retry after a partial
+          # failure stays idempotent.
+          PUBLISHED=$(curl -sf "https://pub.dev/api/packages/sceneview_flutter" \
+            | python3 -c "import json,sys; print(any(v['version'] == '$VERSION' for v in json.load(sys.stdin)['versions']))" \
+            2>/dev/null || echo "False")
+          if [ "$PUBLISHED" = "True" ]; then
+            echo "::notice::sceneview_flutter $VERSION already on pub.dev — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Publishing sceneview_flutter $VERSION (not yet on pub.dev)"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: subosito/flutter-action@v2
+        if: steps.check-pub.outputs.skip != 'true'
+        with:
+          # Keep pinned in lockstep with ci.yml's flutter-demo job.
+          flutter-version: "3.41.6"
+          channel: stable
+          cache: true
+
+      - name: Sync pubspec version from tag
+        if: steps.check-pub.outputs.skip != 'true'
+        run: |
+          # Belt-and-suspenders (mirrors publish-rn): the version-bump skill
+          # already updates pubspec.yaml in the bump commit, but a
+          # workflow_dispatch run against a stale tree would otherwise
+          # publish whatever pubspec.yaml currently says.
+          VERSION="${{ steps.check-pub.outputs.version }}"
+          sed -i -E "s/^version: .*/version: $VERSION/" flutter/sceneview_flutter/pubspec.yaml
+
+      - name: Validate package archive (--dry-run)
+        if: steps.check-pub.outputs.skip != 'true'
+        working-directory: flutter/sceneview_flutter
+        # Runs BEFORE the real publish so an archive/pubspec problem is
+        # distinguishable from the auth failure you get while pub.dev-side
+        # OIDC activation (#2735) is still pending.
+        run: flutter pub publish --dry-run
+
+      - name: Publish to pub.dev (OIDC)
+        if: steps.check-pub.outputs.skip != 'true'
+        working-directory: flutter/sceneview_flutter
+        run: |
+          if ! flutter pub publish --force; then
+            echo "::warning::pub.dev publish failed. If this is an auth error, enable 'Automated publishing' (GitHub Actions, repo sceneview/sceneview, tag pattern v{{version}}) on pub.dev — see #2735. Failing honestly rather than masking (#2731 lesson)."
+            exit 1
+          fi
 
   # ── 5. Create GitHub Release with auto-generated notes ────────────────────
   create-release:

@@ -1,3 +1,7 @@
+## 4.22.0
+
+- Version alignment with SceneView v4.22.0 (2026-07-12). First version published to pub.dev via the automated OIDC `pub-publish` release job (#2735) — the registry previously served an unrelated 0.0.1 placeholder; entries 4.18.x–4.21.x were never published there. Native-side highlights per the [v4.22.0 release notes](https://github.com/sceneview/sceneview/releases/tag/v4.22.0): public `SurfaceMirrorer` in-app video recording (#2626), normalized-origin `centerOrigin` parity (#2632), store-preflight release tooling. No breaking Flutter API change.
+
 ## 4.17.0
 
 - Version alignment with SceneView v4.17.0. Performance & correctness release: hot-path audit cutting per-frame allocations / matrix decompositions / JNI across Android 3D, AR, KMP core, Apple and Web; the #2187 transform-drift is now fully fixed (component setters no longer re-decompose). No breaking Flutter API change.
