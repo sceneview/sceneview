@@ -5,5 +5,5 @@
 // generators all report the actually-published versions instead of
 // stale hardcoded constants. See #941.
 
-export const PACKAGE_VERSION = "4.0.13" as const;
+export const PACKAGE_VERSION = "4.0.14" as const;
 export const LATEST_SCENEVIEW_RELEASE = "4.22.0" as const;
