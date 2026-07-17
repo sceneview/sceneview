@@ -19,6 +19,9 @@
     <string name="demo_point_and_ask_answer_source">Gemini Nano · on-device</string>
     <string name="demo_point_and_ask_error">Gemini Nano couldn\'t answer — tap to try again</string>
 
-    <!-- The prompt sent to the model — English on purpose (best on-device answer quality). -->
+    <!-- Free-form question input (P3) -->
+    <string name="demo_point_and_ask_question_label">Ask anything about what you see</string>
+
+    <!-- The default prompt sent to the model — English on purpose (best on-device answer quality). -->
     <string name="demo_point_and_ask_question" translatable="false">What am I looking at? Answer in one short sentence.</string>
 </resources>
