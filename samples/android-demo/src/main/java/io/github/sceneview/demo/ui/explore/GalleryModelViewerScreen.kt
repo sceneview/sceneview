@@ -681,8 +681,10 @@ private fun RenderContent(
     val cameraManipulator = rememberHeroOrbitCameraManipulator(
         trigger = instance != null,
         radius = autoFitRadius,
-        // Eye sits just above the look target for a gentle hero down-tilt (#2348).
-        yHeight = (framing?.lookAtY ?: 0f) + autoFitRadius * 0.06f,
+        // Eye sits above the look target for a hero down-tilt (#2348), raised further for
+        // flat models (see ModelFraming.eyeHeightOffset) so a grass/terrain slab is not
+        // viewed edge-on. Falls back to the calibrated 0.06 tilt while bounds are unmeasured.
+        yHeight = (framing?.lookAtY ?: 0f) + (framing?.eyeHeightOffset ?: (autoFitRadius * 0.06f)),
         // Aim the orbit pivot a little ABOVE the model's centre, not at the world origin
         // (#2348). The model is recentred so its bbox centre is at origin, but the 440 dp
         // render surface is the TOP portion of a taller camera viewport, so aiming dead at
@@ -914,11 +916,17 @@ private fun ErrorContent(message: String, onRetry: () -> Unit) {
 
 /**
  * Auto-fit framing for a loaded model (#2348): the orbit [radius] (fit distance), the
- * bounding-box [center] to recenter the model onto the orbit pivot, and the camera
- * [lookAtY] (world-Y the orbit pivot aims at, above the recentred model's origin) that
- * vertically centres the model in the render surface.
+ * bounding-box [center] to recenter the model onto the orbit pivot, the camera [lookAtY]
+ * (world-Y the orbit pivot aims at, above the recentred model's origin) that vertically
+ * centres the model in the render surface, and [eyeHeightOffset] — how far above [lookAtY]
+ * the orbit eye sits, which is raised for flat models so they are not viewed edge-on.
  */
-private data class ModelFraming(val radius: Float, val center: Position, val lookAtY: Float)
+private data class ModelFraming(
+    val radius: Float,
+    val center: Position,
+    val lookAtY: Float,
+    val eyeHeightOffset: Float,
+)
 
 /**
  * Computes the auto-fit framing for [instance] using the library helper
@@ -958,5 +966,41 @@ private fun computeAutoFitFraming(instance: ModelInstance, aspect: Float): Model
     val he = instance.model.boundingBox.halfExtent
     val lookAtY = he[1] * 0.55f
 
-    return ModelFraming(radius = radius, center = bounds.center, lookAtY = lookAtY)
+    // Adaptive camera elevation. A flat model — half-height small vs its larger
+    // half-footprint max(he[0], he[2]) — was orbited at the gentle ~3° hero tilt and so
+    // showed edge-on, "by the slice" (a Poly Haven grass patch looked like a thin line).
+    // `flatness` = he[1] / max(he[0], he[2]): a normal 3-D object (character, car,
+    // furniture) sits at flatness > FLAT_MODEL_RATIO and keeps the calibrated 0.06 tilt
+    // UNCHANGED (Scifi Girl, Porsche); a pancake-flat model (grass/terrain/rug, flatness
+    // → 0) ramps the eye up toward a ~23° top-down look so its surface is actually seen.
+    val footprint = maxOf(he[0], he[2])
+    val flatness = if (footprint > 0f) he[1] / footprint else Float.MAX_VALUE
+    val elevationFactor = if (flatness >= FLAT_MODEL_RATIO) {
+        HERO_EYE_TILT
+    } else {
+        // Continuous ramp: HERO_EYE_TILT at the threshold → FLAT_MODEL_EYE_TILT fully flat.
+        val t = (flatness / FLAT_MODEL_RATIO).coerceIn(0f, 1f)
+        FLAT_MODEL_EYE_TILT + (HERO_EYE_TILT - FLAT_MODEL_EYE_TILT) * t
+    }
+
+    return ModelFraming(
+        radius = radius,
+        center = bounds.center,
+        lookAtY = lookAtY,
+        eyeHeightOffset = radius * elevationFactor,
+    )
 }
+
+// Calibrated gentle hero down-tilt for normal 3-D models: the orbit eye sits
+// radius * this above the look target. atan(0.06) ≈ 3.4°. Unchanged from #2348 —
+// Scifi Girl / Porsche are framed on it and must not move.
+private const val HERO_EYE_TILT = 0.06f
+
+// A model counts as "flat" when its half-height is below this fraction of its larger
+// half-footprint. Cars/characters/furniture sit well above it (≈0.3+), so their framing
+// never changes; grass/terrain/rugs (ratio → 0) fall below it and get lifted.
+private const val FLAT_MODEL_RATIO = 0.15f
+
+// Eye tilt for a fully-flat model: atan(0.42) ≈ 23°, a clear top-down look at the surface.
+// Interpolated back down to HERO_EYE_TILT as the model approaches FLAT_MODEL_RATIO.
+private const val FLAT_MODEL_EYE_TILT = 0.42f
