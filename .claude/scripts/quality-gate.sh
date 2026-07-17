@@ -293,8 +293,11 @@ if [ -x ".claude/scripts/check-web-dts.sh" ]; then
     if bash .claude/scripts/check-web-dts.sh > /tmp/check-web-dts.log 2>&1; then
         check "sceneview-web.d.ts in sync with JS surface" "PASS"
     else
-        DRIFT_COUNT=$(grep -c '^\[FAIL\]' /tmp/check-web-dts.log 2>/dev/null || echo "?")
-        check "sceneview-web.d.ts in sync with JS surface" "FAIL" "$DRIFT_COUNT mismatch(es) — see /tmp/check-web-dts.log"
+        # grep -c prints "0" BEFORE exiting 1 on no-match, so `|| echo` would
+        # produce a two-line "0\n?" here; `|| true` + a default covers the
+        # only empty case (log unreadable, exit 2).
+        DRIFT_COUNT=$(grep -c '^\[FAIL\]' /tmp/check-web-dts.log 2>/dev/null || true)
+        check "sceneview-web.d.ts in sync with JS surface" "FAIL" "${DRIFT_COUNT:-?} mismatch(es) — see /tmp/check-web-dts.log"
     fi
 else
     check "sceneview-web.d.ts drift check" "WARN" ".claude/scripts/check-web-dts.sh missing"

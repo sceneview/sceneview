@@ -78,12 +78,17 @@ api_keys() {
 }
 
 # Member names of a d.ts interface block: `^export interface <Name> {` … `}`.
+# A member START is `name(`, `name:` or `name?:` at 2-space indent — requiring
+# the `(`/`:` right after the name keeps continuation lines of a future
+# multi-line member signature from being captured as phantom members
+# (review W2 on #2736's PR).
 dts_iface_members() { # $1 = interface name
     awk -v name="$1" '
         $0 ~ ("^export interface " name " \\{") { f = 1; next }
         f && /^\}/ { exit }
         f
-    ' "$DTS" | grep -oE '^  (readonly )?[A-Za-z0-9_]+' | awk '{print $NF}' | sort -u
+    ' "$DTS" | grep -oE '^  (readonly )?[A-Za-z0-9_]+\??[(:]' \
+             | sed -E 's/\??[(:]$//' | awk '{print $NF}' | sort -u
 }
 
 # Public member JS-names of ONE Kotlin class: 4-space-indented public
@@ -103,7 +108,12 @@ kt_members() { # $1 = kotlin file, $2 = class name
             next
         }
         /^    (override )?(public )?(fun|val|var) [A-Za-z0-9_]+/ {
-            if ($0 ~ /private|internal/) { pending = ""; next }
+            # No private/internal filter needed: a private/internal member
+            # declaration STARTS with its modifier, so it never matches the
+            # leading (override)?(public)?(fun|val|var) pattern above. A
+            # whole-line substring test here would wrongly drop a public
+            # member whose body merely mentions an internal identifier
+            # (review W1 on #2736 PR).
             if (pending != "") { print pending; pending = ""; next }
             line = $0
             sub(/^    (override )?(public )?(fun|val|var) /, "", line)
