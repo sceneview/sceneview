@@ -216,6 +216,12 @@ samples/web-demo/playwright-report/
 # directory is force-added (`git add -f`), matching how the rest of site/ is
 # tracked.
 
+# samples/web-demo/site/js/model-sources.js is SOURCE, not a build artifact —
+# the multi-source Explore catalog layer (#2722). It sits under the broad
+# `site/` ignore above, so like the kotlin-bundle fixture page it is
+# force-added (`git add -f`); this note exists because `git status` will
+# NEVER show it as modified-untracked — always `git add -f` after editing it.
+
 # Local MCP workspace artifacts (not canonical — canonical code is in mcp/packages/)
 mcp-automotive/
 mcp-healthcare/

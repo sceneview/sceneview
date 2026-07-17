@@ -186,6 +186,58 @@ test.describe('Web Demo — multi-source Explore (#2722)', () => {
     expectNoPageErrors(diag, 'Icosa in-app render');
   });
 
+  test('dead web.archive.org mirrors are never fetched when a live format exists', async ({ page }) => {
+    // Regression guard for the live bug found on Icosa asset 5rf3YuZfJAW: the
+    // legacy Poly-era GLB mirror lives on web.archive.org (404 + no CORS —
+    // fetch() throws), and it used to win format selection because its URL
+    // ends in `.glb`. `preferredFormat` must pick the live Icosa-hosted format
+    // and never touch the archive host.
+    test.slow();
+    const diag = captureDiagnostics(page);
+    await page.goto('/');
+    await waitForEngineReady(page);
+
+    let archiveHit = false;
+    await page.route(/web\.archive\.org/, async (route) => {
+      archiveHit = true;
+      await route.fulfill({ status: 404, body: '' });
+    });
+    const glbUrl = localGlbUrl(page);
+    const deadGlb = 'https://web.archive.org/web/20250101010101id_/https://poly.googleusercontent.com/downloads/dead.glb';
+    // Asset whose FIRST format is the dead archive .glb, followed by a live one.
+    const asset = {
+      ...icosaAsset('helmet', 'Damaged Helmet', glbUrl),
+      formats: [
+        { formatType: 'GLB', root: { url: deadGlb } },
+        { formatType: 'GLTF2', root: { url: glbUrl } },
+      ],
+    };
+    await page.route(/api\.icosa\.gallery\/v1\/assets\/[^/?]+(\?|$)/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'access-control-allow-origin': '*' },
+        body: JSON.stringify(asset),
+      });
+    });
+    await page.route(/api\.icosa\.gallery\/v1\/assets\?/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'access-control-allow-origin': '*' },
+        body: JSON.stringify({ assets: [asset] }),
+      });
+    });
+    await switchTab(page, 'models');
+    await page.locator('.source-chip[data-source="icosa"]').click();
+    await expect(page.locator('#model-results .result-card').first()).toBeVisible();
+    await page.locator('#model-results .result-card').first().click();
+    await waitForModelChipIdle(page);
+
+    expect(archiveHit, 'web.archive.org must never be fetched when a live format exists').toBe(false);
+    expectNoPageErrors(diag, 'archive-mirror deprioritization');
+  });
+
   test('the selected source persists across a reload', async ({ page }) => {
     await page.goto('/');
     await waitForEngineReady(page);
