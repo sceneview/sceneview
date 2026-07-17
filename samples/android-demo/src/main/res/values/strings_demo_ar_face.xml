@@ -7,4 +7,14 @@
 <resources>
     <string name="demo_ar_face_title">Augmented Faces</string>
     <string name="demo_ar_face_subtitle">Face mesh tracking and overlays</string>
+    <!-- Bottom status pill. Kept to one line at bodyMedium. -->
+    <string name="demo_ar_face_status_aim">Point the front camera at a face</string>
+    <string name="demo_ar_face_status_tracking">Tracking %1$d face(s)</string>
+    <!-- Advisory (NOT a verdict): the front camera is slower to open than the back
+         camera on many devices, so this is shown only after a long grace window and
+         must never claim the camera is permanently unavailable. -->
+    <string name="demo_ar_face_status_starting">Still starting the front camera — point it at a face</string>
+    <!-- Distinct hard-failure message, wired to the real ARCore session-failed callback
+         (permission denied, ARCore unavailable) — a genuine failure, not a slow start. -->
+    <string name="demo_ar_face_status_camera_failed">The front camera could not be started on this device</string>
 </resources>
