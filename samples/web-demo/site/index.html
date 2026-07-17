@@ -14,6 +14,8 @@
     <script src="js/filament/filament.js"></script>
     <!-- SceneView.js — self-hosted alongside the engine. -->
     <script src="js/sceneview.js"></script>
+    <!-- Source-agnostic model catalog layer (Sketchfab | Icosa | Poly Haven | bundled samples). -->
+    <script src="js/model-sources.js"></script>
 
     <style>
         :root {
@@ -145,33 +147,39 @@
             flex-direction: column; gap: 10px;
         }
 
-        /* Source toggle (CDN / Sketchfab) */
-        .source-toggle {
-            display: flex; gap: 0;
-            border-radius: var(--sv-radius);
-            overflow: hidden;
+        /* Source picker chips (SceneView | Icosa | Poly Haven | Sketchfab) */
+        .source-picker {
+            display: flex; flex-wrap: wrap; gap: 6px;
+        }
+        .source-chip {
+            padding: 7px 12px;
+            border-radius: 999px;
             border: 1px solid var(--sv-border);
             background: var(--sv-glass);
             backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-        }
-        .source-btn {
-            flex: 1;
-            padding: 8px 12px;
-            border: none;
-            background: transparent;
             color: var(--sv-text-dim);
             font-size: 12px; font-weight: 600; font-family: var(--sv-font);
             cursor: pointer;
             transition: all 0.2s;
         }
-        .source-btn.active {
+        .source-chip.active {
             background: rgba(0, 91, 193, 0.25);
             color: var(--sv-blue-light);
+            border-color: var(--sv-blue);
         }
-        .source-btn:hover:not(.active) {
+        .source-chip:hover:not(.active) {
             background: rgba(255,255,255,0.04);
             color: var(--sv-text);
         }
+
+        /* Feed / category section heading within the results list */
+        .result-section-label {
+            font-size: 11px; font-weight: 700;
+            color: var(--sv-text-faint);
+            text-transform: uppercase; letter-spacing: 0.06em;
+            padding: 8px 4px 2px;
+        }
+        .result-section-label.failed { color: #f0a35e; }
 
         .search-box {
             display: flex; gap: 0;
@@ -709,12 +717,9 @@
 
     <!-- Models panel -->
     <div id="panel-models" class="panel search-panel active">
-        <div class="source-toggle">
-            <button class="source-btn active" data-source="cdn">SceneView Models</button>
-            <button class="source-btn" data-source="sketchfab">Sketchfab Search</button>
-        </div>
+        <div id="source-picker" class="source-picker"></div>
         <div id="search-box" class="search-box" style="display:none">
-            <input id="search-input" class="search-input" type="text" placeholder="Search Sketchfab models..." autocomplete="off">
+            <input id="search-input" class="search-input" type="text" placeholder="Search models..." autocomplete="off">
             <button id="search-btn" class="search-btn">Search</button>
         </div>
         <div id="model-results" class="model-results"></div>
@@ -1030,12 +1035,12 @@
       // demo stayed stuck on its loading overlay — the deployed viewer and the
       // whole Playwright device-QA suite were red (#1573, #1586).
       var MODEL_BASE = 'models/';
-      var SKETCHFAB_API = 'https://api.sketchfab.com/v3/search?type=models&downloadable=true';
 
       // Curated, self-hosted model catalog. Every `file` MUST exist under
       // `samples/web-demo/site/models/` — `validate-demo-assets.sh` enforces
       // this. Kept lean (12 GLBs, ~60 MB) so the demo distribution stays
-      // small; the Sketchfab Search source toggle covers the wider catalog.
+      // small; the network catalog sources (Icosa, Poly Haven, Sketchfab)
+      // cover the wider catalogs.
       var CDN_MODELS = [
         { name: 'Damaged Helmet', file: 'khronos_damaged_helmet.glb', category: 'Showcase' },
         { name: 'Sheen Chair', file: 'sheen_chair.glb', category: 'Showcase' },
@@ -1053,11 +1058,23 @@
 
       // ---- State ----
       var sceneViewInstance = null;
-      var currentSource = 'cdn';
       var currentTab = 'models';
       var autoRotate = true;
       var bloomEnabled = false;
       var geometryCount = 0;
+
+      // ---- Explore (multi-source catalog) state ----
+      // The Explore/Models tab is source-agnostic (#2722): it browses whichever
+      // catalog the user picks — bundled samples, Icosa Gallery, Poly Haven, or
+      // (when an API key is configured) Sketchfab — via the `SceneViewSources`
+      // layer in js/model-sources.js. Selection is persisted; switching resets
+      // browse + search; a degraded source/feed never blanks the tab.
+      var exploreSources = [];
+      var selectedSource = null;
+      var selectedSourceStore = null;
+      // Monotonic token: an async browse/search result is discarded if the user
+      // switched source (or typed a new query) while it was in flight.
+      var exploreRequestToken = 0;
 
       // ---- DOM references ----
       var canvas = document.getElementById('scene-canvas');
@@ -1069,6 +1086,7 @@
       var searchBtn = document.getElementById('search-btn');
       var searchBox = document.getElementById('search-box');
       var modelResults = document.getElementById('model-results');
+      var sourcePicker = document.getElementById('source-picker');
       var controlsInfo = document.getElementById('controls-info');
 
       // ---- Initialization ----
@@ -1077,7 +1095,7 @@
         setupCanvas();
         initSceneView('khronos_damaged_helmet.glb', 'Damaged Helmet');
         setupTabs();
-        setupSourceToggle();
+        setupExplore();
         setupSearch();
         setupGeometry();
         setupLighting();
@@ -1088,7 +1106,6 @@
         setupAudio();
         setupSettings();
         setupXR();
-        showCDNModels();
         setupDeepLink();
       }
 
@@ -1240,94 +1257,190 @@
         stopAudioIfHidden(tab);
       }
 
-      // ---- Source toggle (CDN / Sketchfab) ----
+      // ---- Explore (multi-source catalog) ----
+      //
+      // Source-agnostic browse/search over the SceneViewSources layer (#2722),
+      // mirroring the Android (#2685) and iOS (#2721) ModelSource abstraction:
+      // switching source resets browse + search; a degraded source/feed never
+      // blanks the tab; Sketchfab is hidden without an API key; the CC catalogs
+      // (Icosa, Poly Haven) render in-app because the web renders glTF natively.
 
-      function setupSourceToggle() {
-        var buttons = document.querySelectorAll('.source-btn');
-        for (var i = 0; i < buttons.length; i++) {
-          (function(btn) {
-            btn.addEventListener('click', function() {
-              var source = btn.getAttribute('data-source');
-              setSource(source);
-            });
-          })(buttons[i]);
+      // Object URLs minted for the CURRENT model (a self-contained GLB blob, or a
+      // multi-file glTF root). Revoked when the next model loads so the blob-URL
+      // keyspace never grows without bound.
+      var activeObjectUrls = [];
+      // Keys this page added to the global Filament.assets map for the
+      // CURRENT multi-file model — purged on the next load (#2751 review:
+      // without this the global map grew forever and same-named resources
+      // from different models could shadow each other).
+      var activeAssetKeys = [];
+
+      /**
+       * Resolve the Sketchfab API key WITHOUT committing one. Read (in order) a
+       * deploy-injected `window.SCENEVIEW_SKETCHFAB_API_KEY` global or a
+       * `?sketchfab_key=` dev query param; otherwise null, which hides the
+       * Sketchfab chip — parity with Android/iOS.
+       */
+      function resolveSketchfabApiKey() {
+        if (typeof window.SCENEVIEW_SKETCHFAB_API_KEY === 'string' && window.SCENEVIEW_SKETCHFAB_API_KEY) {
+          return window.SCENEVIEW_SKETCHFAB_API_KEY;
         }
+        try {
+          var param = new URLSearchParams(window.location.search).get('sketchfab_key');
+          if (param) return param;
+        } catch (e) { /* URLSearchParams unavailable — ignore */ }
+        return null;
       }
 
-      function setSource(source) {
-        currentSource = source;
-        var buttons = document.querySelectorAll('.source-btn');
-        for (var i = 0; i < buttons.length; i++) {
-          buttons[i].classList.toggle('active', buttons[i].getAttribute('data-source') === source);
+      function setupExplore() {
+        var Sources = window.SceneViewSources;
+        if (!Sources) {
+          modelResults.appendChild(buildStatusRow('Model sources failed to load.', true));
+          return;
         }
-        if (source === 'cdn') {
-          searchBox.style.display = 'none';
-          showCDNModels();
-        } else {
-          searchBox.style.display = 'flex';
-          modelResults.innerHTML = '<div class="search-status">Search Sketchfab for downloadable 3D models.</div>';
-        }
-      }
-
-      // ---- CDN Model Gallery ----
-
-      function showCDNModels() {
-        modelResults.innerHTML = '';
-        var categories = {};
-        CDN_MODELS.forEach(function(m) {
-          if (!categories[m.category]) categories[m.category] = [];
-          categories[m.category].push(m);
+        exploreSources = Sources.buildSources({
+          curatedModels: CDN_MODELS,
+          modelBase: MODEL_BASE,
+          sketchfabApiKey: resolveSketchfabApiKey()
         });
+        selectedSourceStore = Sources.createSelectedSourceStore();
+        selectedSource = Sources.resolveInitialSource(exploreSources, selectedSourceStore.load());
+        renderSourcePicker();
+        applySelectedSource(selectedSource, /* persist */ false);
+      }
 
-        var catOrder = ['Showcase', 'Vehicles', 'Animated', 'Characters', 'Objects'];
-        catOrder.forEach(function(cat) {
-          var models = categories[cat];
-          if (!models) return;
+      function renderSourcePicker() {
+        sourcePicker.innerHTML = '';
+        exploreSources.forEach(function(source) {
+          var chip = document.createElement('button');
+          chip.className = 'source-chip' + (selectedSource && source.id === selectedSource.id ? ' active' : '');
+          chip.setAttribute('data-source', source.id);
+          chip.textContent = source.displayName;
+          chip.addEventListener('click', function() { selectSource(source); });
+          sourcePicker.appendChild(chip);
+        });
+      }
 
-          // Category label
+      function selectSource(source) {
+        if (selectedSource && source.id === selectedSource.id) return;
+        applySelectedSource(source, /* persist */ true);
+      }
+
+      /**
+       * Make `source` the active catalog. Switching RESETS browse + search
+       * (clears the query, drops any in-flight result via the request token) —
+       * strict parity with the Android/iOS ModelSource behaviour.
+       */
+      function applySelectedSource(source, persist) {
+        selectedSource = source;
+        if (persist && selectedSourceStore) selectedSourceStore.save(source.id);
+        exploreRequestToken++; // discard any in-flight browse/search from the old source
+        searchInput.value = '';
+        searchBox.style.display = source.supportsSearch ? 'flex' : 'none';
+        searchInput.setAttribute('placeholder', 'Search ' + source.displayName + '...');
+        // Update chip active state.
+        var chips = sourcePicker.querySelectorAll('.source-chip');
+        for (var i = 0; i < chips.length; i++) {
+          chips[i].classList.toggle('active', chips[i].getAttribute('data-source') === source.id);
+        }
+        renderBrowse();
+      }
+
+      function renderBrowse() {
+        var token = ++exploreRequestToken;
+        clearResults();
+        modelResults.appendChild(buildStatusRow('Loading ' + selectedSource.displayName + '...'));
+        selectedSource.browse({ limit: 12 })
+          .then(function(sections) {
+            if (token !== exploreRequestToken) return; // superseded
+            renderSections(sections);
+          })
+          .catch(function(err) {
+            if (token !== exploreRequestToken) return;
+            clearResults();
+            modelResults.appendChild(buildStatusRow(
+              "Couldn't load " + selectedSource.displayName + '. Pick another source above.', true));
+            console.warn('Browse error (' + selectedSource.id + '):', err);
+          });
+      }
+
+      function renderSections(sections) {
+        clearResults();
+        var anyModel = false;
+        var anyFailed = false;
+        sections.forEach(function(section) {
+          if (section.failed) anyFailed = true;
+          if (!section.models || section.models.length === 0) {
+            // A failed feed shows an honest one-line note; an empty-but-ok feed is
+            // simply skipped so surviving feeds fill the list.
+            if (section.failed) {
+              var warn = document.createElement('div');
+              warn.className = 'result-section-label failed';
+              warn.textContent = section.title + " — couldn't load";
+              modelResults.appendChild(warn);
+            }
+            return;
+          }
+          anyModel = true;
           var label = document.createElement('div');
-          label.style.cssText = 'font-size:11px;font-weight:700;color:var(--sv-text-faint);text-transform:uppercase;letter-spacing:0.06em;padding:8px 4px 2px;';
-          label.textContent = cat;
+          label.className = 'result-section-label';
+          label.textContent = section.title;
           modelResults.appendChild(label);
-
-          models.forEach(function(m) {
-            var card = document.createElement('div');
-            card.className = 'result-card';
-            card.innerHTML = '<div class="result-info">' +
-              '<div class="result-name">' + escapeHtml(m.name) + '</div>' +
-              '<div class="result-badge">' + m.file.split('.').pop().toUpperCase() + '</div>' +
-              '</div>';
-            card.addEventListener('click', function() {
-              highlightCard(card);
-              loadModel(MODEL_BASE + m.file, m.name);
-            });
-            modelResults.appendChild(card);
+          section.models.forEach(function(model) {
+            modelResults.appendChild(buildGalleryCard(model));
           });
         });
+        if (!anyModel) {
+          modelResults.appendChild(buildStatusRow(
+            anyFailed
+              ? "Couldn't load " + selectedSource.displayName + '. Pick another source above.'
+              : 'No models available from ' + selectedSource.displayName + '.',
+            anyFailed));
+        }
       }
 
-      // ---- Sketchfab Search ----
+      // ---- Search ----
 
       function setupSearch() {
         searchBtn.addEventListener('click', function() {
-          var q = searchInput.value.trim();
-          if (q) searchSketchfab(q);
+          runSearch(searchInput.value.trim());
         });
         searchInput.addEventListener('keydown', function(e) {
-          if (e.key === 'Enter') {
-            var q = searchInput.value.trim();
-            if (q) searchSketchfab(q);
-          }
+          if (e.key === 'Enter') runSearch(searchInput.value.trim());
         });
       }
 
-      // Helpers: build status row / result card via DOM construction.
-      // Sketchfab response fields (model.name, model.user.displayName,
-      // model.thumbnails[*].url) are attacker-controlled — string-concat
-      // into innerHTML allows a `"` inside any field to break out of an
-      // attribute. The Kotlin path in Main.kt was patched in #957; this
-      // inline JS path is the second copy of the same search and needs
-      // the same hygiene. See follow-up to #957.
+      function runSearch(query) {
+        if (!selectedSource || !selectedSource.supportsSearch) return;
+        if (!query) { renderBrowse(); return; }
+        var token = ++exploreRequestToken;
+        clearResults();
+        modelResults.appendChild(buildStatusRow('Searching "' + query + '"...'));
+        selectedSource.search(query, { limit: 24 })
+          .then(function(models) {
+            if (token !== exploreRequestToken) return;
+            clearResults();
+            if (!models || models.length === 0) {
+              modelResults.appendChild(buildStatusRow('No models found for "' + query + '".'));
+              return;
+            }
+            models.forEach(function(model) { modelResults.appendChild(buildGalleryCard(model)); });
+          })
+          .catch(function(err) {
+            if (token !== exploreRequestToken) return;
+            clearResults();
+            modelResults.appendChild(buildStatusRow(
+              'Search failed: ' + (err && err.message ? err.message : err), true));
+          });
+      }
+
+      // ---- Result cards ----
+      //
+      // Every field below (name, author, thumbnail URL) is attacker-controlled
+      // catalog data, so cards are built via DOM construction + textContent /
+      // setAttribute — never string-concatenated into innerHTML (a `"` inside a
+      // field would otherwise break out of an attribute). This carries forward
+      // the hygiene from #957.
       function buildStatusRow(text, isError) {
         var div = document.createElement('div');
         div.className = isError ? 'search-status error' : 'search-status';
@@ -1339,28 +1452,21 @@
           modelResults.removeChild(modelResults.firstChild);
         }
       }
-      function buildResultCard(model) {
-        var name = model.name || 'Untitled';
-        var author = (model.user && (model.user.displayName || model.user.username)) || 'Unknown';
-        var views = model.viewCount || 0;
-        var thumb = extractThumb(model);
 
+      function buildGalleryCard(model) {
+        var Sources = window.SceneViewSources;
         var card = document.createElement('div');
         card.className = 'result-card';
+        card.setAttribute('data-card-key', model.cardKey);
 
+        var thumb = Sources.preferredThumbnailUrl(model);
         if (thumb) {
           var img = document.createElement('img');
           img.className = 'result-thumb';
-          // setAttribute treats the value as an attribute string; a `"`
-          // inside `thumb` stays in the attribute, never terminates it.
           img.setAttribute('src', thumb);
           img.setAttribute('alt', '');
           img.setAttribute('loading', 'lazy');
-          // Re-attach the "hide on 404" handler as an event listener so
-          // we don't have an inline `onerror=` in the markup.
-          img.addEventListener('error', function() {
-            img.style.display = 'none';
-          });
+          img.addEventListener('error', function() { img.style.display = 'none'; });
           card.appendChild(img);
         }
 
@@ -1369,101 +1475,142 @@
 
         var nameDiv = document.createElement('div');
         nameDiv.className = 'result-name';
-        nameDiv.setAttribute('title', name);
-        nameDiv.textContent = name;
+        nameDiv.setAttribute('title', model.name);
+        nameDiv.textContent = model.name;
         info.appendChild(nameDiv);
 
-        var authorDiv = document.createElement('div');
-        authorDiv.className = 'result-author';
-        authorDiv.textContent = 'by ' + author;
-        info.appendChild(authorDiv);
-
-        var badge = document.createElement('div');
-        badge.className = 'result-badge';
-        badge.textContent = formatViews(views) + ' views';
-        info.appendChild(badge);
+        // Curated bundled models carry no attribution line — show the file format
+        // badge instead, matching the pre-#2722 look.
+        if (selectedSource.curated) {
+          var badge = document.createElement('div');
+          badge.className = 'result-badge';
+          badge.textContent = model.id.split('.').pop().toUpperCase();
+          info.appendChild(badge);
+        } else {
+          var attrDiv = document.createElement('div');
+          attrDiv.className = 'result-author';
+          attrDiv.textContent = Sources.attributionLine(model);
+          info.appendChild(attrDiv);
+          if (model.faceCount > 0) {
+            var faceBadge = document.createElement('div');
+            faceBadge.className = 'result-badge';
+            faceBadge.textContent = Sources.formattedFaceCount(model.faceCount) + ' tris' +
+              (model.isAnimated ? ' · animated' : '');
+            info.appendChild(faceBadge);
+          }
+        }
 
         card.appendChild(info);
+        card.addEventListener('click', function() {
+          highlightCard(card);
+          openGalleryModel(model);
+        });
         return card;
       }
 
-      function searchSketchfab(query) {
-        clearResults();
-        modelResults.appendChild(buildStatusRow('Searching "' + query + '"...'));
+      // ---- Download + render a gallery model ----
 
-        fetch(SKETCHFAB_API + '&q=' + encodeURIComponent(query) + '&count=20')
-          .then(function(r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-          })
-          .then(function(data) {
-            var results = data.results || [];
-            clearResults();
-            if (results.length === 0) {
-              modelResults.appendChild(
-                buildStatusRow('No downloadable models found for "' + query + '".')
-              );
-              return;
+      function openGalleryModel(model) {
+        if (model.downloadable === false) {
+          showChip('Not downloadable — view on ' + selectedSource.displayName);
+          setTimeout(hideChip, 3000);
+          if (model.externalUrl) window.open(model.externalUrl, '_blank', 'noopener');
+          return;
+        }
+        showChip('Loading ' + model.name + '...');
+        var onProgress = function(bytesRead, totalBytes) {
+          if (totalBytes > 0) {
+            showChip('Loading ' + model.name + ' — ' + Math.round((bytesRead / totalBytes) * 100) + '%');
+          }
+        };
+        selectedSource.download(model, { onProgress: onProgress })
+          .then(function(descriptor) {
+            switch (descriptor.type) {
+              case 'external':
+                showChip('Opening on ' + selectedSource.displayName);
+                setTimeout(hideChip, 2500);
+                if (descriptor.url) window.open(descriptor.url, '_blank', 'noopener');
+                break;
+              case 'url':
+                // Free any prior model's blob URLs immediately — without this a
+                // curated switch kept the previous gallery model's bytes alive
+                // until the NEXT blob-based load (#2751 review).
+                revokeActiveObjectUrls();
+                loadModel(descriptor.url, model.name);
+                break;
+              case 'glb':
+                loadModelBytes(descriptor.bytes, model.name);
+                break;
+              case 'gltf':
+                loadGltfBundle(descriptor, model.name);
+                break;
+              default:
+                throw new Error('Unknown render descriptor: ' + descriptor.type);
             }
-
-            results.forEach(function(model) {
-              var uid = model.uid;
-              var name = model.name || 'Untitled';
-              var card = buildResultCard(model);
-              card.addEventListener('click', function() {
-                highlightCard(card);
-                downloadSketchfabModel(uid, name);
-              });
-              modelResults.appendChild(card);
-            });
           })
           .catch(function(err) {
-            clearResults();
-            modelResults.appendChild(
-              buildStatusRow('Search failed: ' + (err && err.message ? err.message : err), true)
-            );
-          });
-      }
-
-      function extractThumb(model) {
-        if (!model.thumbnails || !model.thumbnails.images) return '';
-        var imgs = model.thumbnails.images;
-        for (var i = 0; i < imgs.length; i++) {
-          if (imgs[i].width >= 100 && imgs[i].width <= 400) return imgs[i].url || '';
-        }
-        return imgs.length > 0 ? (imgs[0].url || '') : '';
-      }
-
-      function downloadSketchfabModel(uid, name) {
-        showChip('Fetching download link...');
-
-        fetch('https://api.sketchfab.com/v3/models/' + uid + '/download')
-          .then(function(r) {
-            if (!r.ok) {
-              // Most models require auth for download — open Sketchfab page
-              showChip('Auth required — opening on Sketchfab');
-              setTimeout(hideChip, 3000);
-              window.open('https://sketchfab.com/3d-models/' + uid, '_blank');
-              return null;
-            }
-            return r.json();
-          })
-          .then(function(data) {
-            if (!data) return;
-            var glbUrl = data.gltf && data.gltf.url;
-            if (glbUrl) {
-              loadModel(glbUrl, name);
-            } else {
-              showChip('No GLB available — opening on Sketchfab');
-              setTimeout(hideChip, 3000);
-              window.open('https://sketchfab.com/3d-models/' + uid, '_blank');
-            }
-          })
-          .catch(function() {
-            showChip('Download unavailable — opening on Sketchfab');
+            hideChip();
+            showChip("Couldn't load model");
             setTimeout(hideChip, 3000);
-            window.open('https://sketchfab.com/3d-models/' + uid, '_blank');
+            // A miss on a network catalog is transient (offline, rate limit,
+            // removed asset) — the tab stays fully usable and the picker + other
+            // sources keep working. Warn, never a hard error.
+            console.warn('Gallery download error (' + model.cardKey + '):', err);
           });
+      }
+
+      /** Revoke the previous model's object URLs before minting new ones. */
+      function revokeActiveObjectUrls() {
+        activeObjectUrls.forEach(function(u) {
+          try { URL.revokeObjectURL(u); } catch (e) { /* best-effort */ }
+        });
+        activeObjectUrls = [];
+        if (window.Filament && window.Filament.assets) {
+          activeAssetKeys.forEach(function(k) { delete window.Filament.assets[k]; });
+        }
+        activeAssetKeys = [];
+      }
+
+      /** Render a self-contained GLB from its already-streamed bytes. */
+      function loadModelBytes(bytes, name) {
+        revokeActiveObjectUrls();
+        var url = URL.createObjectURL(new Blob([bytes], { type: 'model/gltf-binary' }));
+        activeObjectUrls.push(url);
+        loadModel(url, name);
+      }
+
+      /**
+       * Render a multi-file glTF: pre-populate the global `Filament.assets`
+       * map with each resource, keyed by `new URL(relativePath,
+       * document.location)` — exactly the key `gltfio$FilamentAsset
+       * .loadResources` builds (filament.js resolves resource URIs against
+       * `basePath || document.location`, and `Filament.fetch` short-circuits
+       * on a pre-populated key before any HTTP request). Then load the root
+       * .gltf from a blob URL. Proven live against Icosa's "Pond"
+       * (multi-file GLTF2 on Backblaze) and guarded by the mocked bundle
+       * Playwright case. Every key added here is tracked in
+       * `activeAssetKeys` and deleted by `revokeActiveObjectUrls()` on the
+       * next load, so the global map never grows across models and two
+       * models sharing a resource filename can never shadow each other
+       * (#2751 review). This is why the CC catalogs render in-app on web
+       * where iOS defers them.
+       */
+      function loadGltfBundle(descriptor, name) {
+        revokeActiveObjectUrls();
+        window.Filament = window.Filament || {};
+        window.Filament.assets = window.Filament.assets || {};
+        (descriptor.resources || []).forEach(function(res) {
+          try {
+            var absoluteUri = '' + new URL(res.relativePath, document.location);
+            window.Filament.assets[absoluteUri] = res.bytes;
+            activeAssetKeys.push(absoluteUri);
+          } catch (e) {
+            console.warn('Skipping glTF resource with unresolved path:', res.relativePath);
+          }
+        });
+        var rootUrl = URL.createObjectURL(new Blob([descriptor.rootBytes], { type: 'model/gltf+json' }));
+        activeObjectUrls.push(rootUrl);
+        loadModel(rootUrl, name);
       }
 
       // ---- Geometry Showcase ----
@@ -2325,18 +2472,6 @@
         var all = document.querySelectorAll('.result-card');
         for (var i = 0; i < all.length; i++) all[i].classList.remove('active');
         card.classList.add('active');
-      }
-
-      function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
-      }
-
-      function formatViews(n) {
-        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-        if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-        return String(n);
       }
 
       // ---- Auto-update check ----

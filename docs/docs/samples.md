@@ -72,6 +72,10 @@ Open `samples/ios-demo/` in Xcode and run.
 Browser 3D viewer with:
 
 - Filament.js WASM rendering (same engine as Android)
+- Models tab: source-agnostic multi-source catalog (#2722, parity with the
+  Android/iOS Explore) — curated SceneView samples, Icosa Gallery and
+  Poly Haven (keyless CC catalogs, rendered in-app), Sketchfab when an API
+  key is configured
 - WebXR AR/VR support ("Enter AR" / "Enter VR" buttons)
 - Orbit camera, auto-resize
 
