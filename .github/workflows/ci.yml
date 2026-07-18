@@ -732,6 +732,16 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-store-preflight.sh
 
+      # Store-sync scripts self-test (#2612 P2 Phase A) — play-store.yml's
+      # sync-listing job now delegates to store-sync/play_listing.py; this
+      # byte-compiles both scripts, runs their offline unit tests, asserts
+      # credential-less runs SKIP honestly, and pins the workflow↔script seam
+      # (a workflow that silently stops calling the script must go red here).
+      - name: Self-test store-sync scripts
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-store-sync.sh
+
       # Doc↔API drift (ADVISORY, #docs). Warns when this PR changed a public
       # API surface without updating llms.txt / KDoc / docs/docs / recipes.
       # AI-first SDK: stale prose makes AI emit stale user code. Non-blocking

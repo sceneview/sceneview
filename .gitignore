@@ -260,3 +260,7 @@ tools/qa-screenshots/android/*
 
 # Local branch/worktree archives (diffs of dead worktrees) — never commit
 .claude/worktree-archives/
+
+# Python bytecode caches (store-sync self-test runs py_compile)
+__pycache__/
+*.pyc
