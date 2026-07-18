@@ -259,6 +259,6 @@ SceneView(modifier = Modifier.fillMaxSize()) {
 
 - **Join the discussion**: [Discord #v4-planning](https://discord.gg/UbNDDBTNqb)
 - **Contribute**: Check [CONTRIBUTING.md](contributing.md) for guidelines
-- **Sponsor**: Help fund multi-platform development on [Open Collective](https://opencollective.com/sceneview)
+- **Sponsor**: Help fund multi-platform development on [GitHub Sponsors](https://github.com/sponsors/sceneview)
 
 [:octicons-arrow-right-24: Full roadmap on GitHub](https://github.com/sceneview/sceneview/blob/main/ROADMAP.md)

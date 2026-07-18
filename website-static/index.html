@@ -73,8 +73,8 @@
           gtag('event', 'tab_click', { tab_name: this.dataset.tab });
         });
       });
-      // Track CTA clicks (GitHub, pricing, Claude install, Discord)
-      document.querySelectorAll('a[href*="github.com/sceneview"], a[href*="pricing"], a[href*="claude://"], a[href*="discord"], a[href*="npmjs"]').forEach(function(link) {
+      // Track CTA clicks (GitHub, Claude install, Discord)
+      document.querySelectorAll('a[href*="github.com/sceneview"], a[href*="claude://"], a[href*="discord"], a[href*="npmjs"]').forEach(function(link) {
         link.addEventListener('click', function() {
           gtag('event', 'cta_click', { link_url: this.href, link_text: this.textContent.trim() });
         });
@@ -204,7 +204,6 @@
         <a href="/showcase.html" class="nav__link">Showcase</a>
         <a href="/playground.html" class="nav__link">Playground</a>
         <a href="/docs.html" class="nav__link" target="_blank" rel="noopener">Docs</a>
-        <a href="https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing" class="nav__link" target="_blank" rel="noopener">Pricing</a>
         <button class="nav__theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
           <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
@@ -1244,7 +1243,7 @@
         <a href="https://github.com/sponsors/sceneview" class="involved-card reveal" target="_blank" rel="noopener">
           <span class="material-symbols-outlined involved-card__icon">favorite</span>
           <h3 class="involved-card__name">Sponsor</h3>
-          <p class="involved-card__text">Support development on GitHub Sponsors, Open Collective, or Polar.</p>
+          <p class="involved-card__text">Support development on GitHub Sponsors.</p>
         </a>
 
         <a href="https://github.com/sceneview/sceneview/blob/main/CONTRIBUTING.md" class="involved-card reveal" target="_blank" rel="noopener">

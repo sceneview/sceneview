@@ -21,7 +21,6 @@ Same concepts, same simplicity — Android, iOS, Web, Desktop, TV, Flutter, Reac
 [![GitHub Release](https://img.shields.io/github/v/release/sceneview/sceneview?label=Release&color=1a73e8&logo=github)](https://github.com/sceneview/sceneview/releases/latest)
 [![Discord](https://img.shields.io/discord/893787194295222292?color=7389D8&label=Discord&logo=discord&logoColor=ffffff)](https://discord.gg/UbNDDBTNqb)
 [![Sponsors](https://img.shields.io/github/sponsors/sceneview?label=Sponsors&color=ea4aaa&logo=githubsponsors)](https://github.com/sponsors/sceneview)
-[![Open Collective](https://img.shields.io/opencollective/all/sceneview?label=Backers&color=7FADF2&logo=opencollective)](https://opencollective.com/sceneview)
 
 ## Try the demo apps
 
@@ -503,7 +502,5 @@ SceneView is free and open source. Sponsors help keep it maintained across 9 pla
 | | Platform | Link |
 |---|---|---|
 | :heart: | **GitHub Sponsors** (0% fees) | [Sponsor on GitHub](https://github.com/sponsors/sceneview) |
-| :blue_heart: | **Open Collective** (transparent) | [opencollective.com/sceneview](https://opencollective.com/sceneview) |
-| :star: | **MCP Pro** (unlock all tools) | [sceneview-mcp.mcp-tools-lab.workers.dev/pricing](https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing) |
 
 See [SPONSORS.md](.github/SPONSORS.md) for tiers and current sponsors.
