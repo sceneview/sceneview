@@ -333,7 +333,11 @@ def dry_run(sess, pkg, root):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    # allow_abbrev=False: argparse accepts any unambiguous prefix by default,
+    # so `--appl` — or any other near-miss — would resolve to --apply and push
+    # to the Play Console. A write flag on a store script must require its
+    # exact name (same reasoning as asc_listing.py).
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true",
                       help="push the repo listing to the Play Console (CI mode)")
