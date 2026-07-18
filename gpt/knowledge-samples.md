@@ -545,6 +545,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `placement-reticle-preview` — AR Placement Reticle Preview. Non-AR preview of AR placement — reticle (searching/ready, ring/disc) and a placed model with a contact shadow.
 - `placement-scene` — Placement Scene. One-line tap-to-place AR (Sceneform ArFragment parity).
 - `point-and-ask` — Point & Ask. Drop 3D props, tap the augmented scene — Gemini Nano explains what it sees, fully on-device.
+- `wall-placement` — Wall Placement. Mount a TV on a wall — floor↔wall edge alignment, Amazon AR-View style.
 
 <!-- END GENERATED DEMOS -->
 
