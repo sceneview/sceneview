@@ -19,7 +19,7 @@
 # The sceneview-web entry compiles with a SECOND pinned matc — `filamentWeb` in
 # gradle/libs.versions.toml, tracking the npm `filament` runtime the Kotlin/JS
 # bundle actually loads (MATERIAL_VERSION 52 track), not the Android runtime
-# (v71 track). Its blob is additionally emitted as a generated base64 Kotlin
+# (v72 track). Its blob is additionally emitted as a generated base64 Kotlin
 # file (SplatMaterialBlob.kt) so the single-file npm bundle needs no runtime
 # fetch — both artifacts are committed and --check-diffed (#2646 P2).
 #
