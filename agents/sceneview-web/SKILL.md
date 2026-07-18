@@ -122,6 +122,7 @@ sceneview.createViewer('viewer').then(function (sv) {
 
 Since #2024 slice 3 the viewer also exposes a minimal **imperative node
 surface**: `addNode()`, `addModelNode(url)` (→ `Promise<NodeHandle>`),
+`addSplatNode(url)` (→ `Promise<NodeHandle>`, 3D Gaussian Splatting, `.ply`/`.spz`, #2646 P2),
 `addCubeNode(size)`, `addSphereNode(radius)`, `addLightNode("directional" |
 "point" | "spot")` each return an opaque `NodeHandle` you keep to mutate content
 after build (`setPosition`, `setRotation` in Euler degrees, `setScale`,

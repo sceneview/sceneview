@@ -3401,6 +3401,7 @@ The builder DSL below stays fully supported and is the simplest path for a stati
 | Add a model | `ModelNode(...)` added to a `Node` tree | builder `model("url.glb") { ... }` / `sceneView.loadModel(url)`, **or** plain-JS `sv.addModelNode(url)` → `Promise<NodeHandle>` |
 | Add a primitive | `CubeNode` / `SphereNode` / … | builder `geometry { cube(); … }`, **or** plain-JS `sv.addCubeNode(size)` / `sv.addSphereNode(radius)` → `NodeHandle` |
 | Add a light | `LightNode(...)` | builder `light { directional(); … }`, **or** plain-JS `sv.addLightNode("directional"\|"point"\|"spot")` → `NodeHandle` |
+| Add a splat cloud | `SplatNode(splatCloud)` (#2646 P1) | plain-JS `sv.addSplatNode(url)` → `Promise<NodeHandle>` (`.ply` INRIA / `.spz` Niantic), **or** Kotlin/JS `SceneView.addSplatNode(url, onLoaded = …)` / `addSplatNode(splatCloud)` (#2646 P2) |
 | Add an empty pivot / group | `Node()` | plain-JS `sv.addNode()` → `NodeHandle` (parent others under it with `addChild`) |
 | Remove a node | `node.parent = null` / `node.destroy()` | plain-JS `sv.removeNode(handle)` or `handle.destroy()` (detaches + frees the Filament entity) |
 | Configure the camera | `CameraNode(...)` | `camera { eye(...); target(...) }` (a `CameraConfig`) — **not** exported as a `NodeHandle` yet |
@@ -3622,6 +3623,7 @@ sv.dispose()
 // Node scene-graph (since slice 3 / P4 of #2024) — each returns a NodeHandle
 sv.addNode()                       // → NodeHandle (empty pivot)
 sv.addModelNode(url)               // → Promise<NodeHandle> (resolves when loaded)
+sv.addSplatNode(url)               // → Promise<NodeHandle> (3D Gaussian Splatting; .ply/.spz, #2646 P2)
 sv.addCubeNode(size)               // → NodeHandle
 sv.addSphereNode(radius)           // → NodeHandle
 sv.addLightNode(type)              // type: "directional" | "point" | "spot" → NodeHandle
