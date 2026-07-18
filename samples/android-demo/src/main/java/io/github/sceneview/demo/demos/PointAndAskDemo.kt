@@ -171,7 +171,13 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     // props exactly as the user does. qaMode keeps the synthetic-frame fallback so the
     // flow stays deterministic on emulators (#1645).
     LaunchedEffect(askState) {
-        if (askState != AskState.Capturing) return@LaunchedEffect
+        if (askState != AskState.Capturing) {
+            // A state change mid-capture (e.g. reset) cancels the capturing run at its
+            // settle delay before the PixelCopy callback un-hides the overlays — this
+            // relaunch is the only place left to restore them.
+            hideOverlaysForCapture = false
+            return@LaunchedEffect
+        }
         if (DemoSettings.qaMode) {
             delay(QA_CAPTURE_TIMEOUT_MS)
             if (askState != AskState.Capturing) return@LaunchedEffect
@@ -219,7 +225,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         onBack = onBack,
         onReset = {
             askState = AskState.Idle
-            placedProps.forEach { it.anchor.detach() }
+            placedProps.forEach { runCatching { it.anchor.detach() } }
             placedProps.clear()
         },
         onResetSettings = { questionText = "" },

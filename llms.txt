@@ -4078,10 +4078,13 @@ fun ARTapToPlace() {
 }
 ```
 
-### Point & Ask — AI explains what the camera sees (on-device, offline)
+### Point & Ask — AI explains the AR scene (on-device, offline)
 
-Tap → capture the AR camera frame → **Gemini Nano on-device** (ML Kit GenAI
+Tap → capture the AR frame → **Gemini Nano on-device** (ML Kit GenAI
 Prompt API, `com.google.mlkit:genai-prompt:1.0.0-beta3`, minSdk 26) → answer.
+Camera-only capture below is the simpler baseline; the reference demo defaults
+to the composited capture (camera + placed virtual objects — see the
+"Composited variant" paragraph).
 No cloud; frames never leave the device. AICore devices only (Pixel 8+,
 recent flagships) — gate with `checkStatus()` and degrade honestly.
 
