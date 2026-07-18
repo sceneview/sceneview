@@ -42,7 +42,14 @@ source "$SCRIPT_DIR/lib/android-cli.sh"
 android_cli_ensure || true
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
-DEMOS_DEFAULT="model-viewer,ar-pose,reflection-probes,environment"
+# The COMMON showcase set (#2773) — the same five demos, same order, as iOS's
+# `capture-appstore-screenshots.sh`, so both stores show identical screens.
+# The previous default (ar-pose,reflection-probes,environment) had rotted:
+# post-consolidation `reflection-probes` AND `environment` both alias
+# `lighting-lab` (DeepLinkRouter.kt), so screenshots 3 & 4 captured the SAME
+# demo, and `ar-pose` is a placeholder on the iOS simulator. Every id below is
+# a standalone demo on BOTH platforms.
+DEMOS_DEFAULT="model-viewer,lighting,materials,geometry,double-pendulum"
 # Canonical Play Store listing directory — the same `graphics/` subdir the
 # `play-store.yml` listing-sync job uploads to the store (#1710).
 OUT_DIR_DEFAULT="samples/android-demo/distribution/play-store/en-GB/graphics"
@@ -169,6 +176,12 @@ else
   echo "[capture] adb install -r $APK_PATH" >&2
   adb install -r "$APK_PATH" >/dev/null
 fi
+
+# ── 3b. Force DARK mode (#2773) ──────────────────────────────────────────────
+# Uniform look with the iOS capture: render the 3D content on a dark surface
+# both stores. `cmd uimode night yes` flips the system dark theme; the demo
+# app follows DayNight. Non-fatal on API levels/emulators that reject it.
+adb ${ANDROID_SERIAL:+-s "$ANDROID_SERIAL"} shell "cmd uimode night yes" >/dev/null 2>&1 || true
 
 # ── 4. Capture loop ──────────────────────────────────────────────────────────
 mkdir -p "$OUT_DIR"
