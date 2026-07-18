@@ -1,6 +1,8 @@
-"""Offline unit tests for asc_listing.py's pure helpers (#2612 P2 Phase A).
+"""Offline unit tests for asc_listing.py (#2612 P2, Phases A+B).
 
-No network, no PyJWT/requests — run via test-store-sync.sh or
+No network, no PyJWT/requests: the pure helpers are imported directly, and
+the parts that do talk to Apple (_await_delivery, _upload_one) are driven
+through stubbed request objects. Run via test-store-sync.sh or
 `python3 -m unittest discover .claude/scripts/store-sync/test`.
 """
 

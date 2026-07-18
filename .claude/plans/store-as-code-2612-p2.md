@@ -56,8 +56,14 @@ Deux scripts Python exécutables, un par store, code path UNIQUE local + CI :
   « screenshots seulement » lançait AUSSI 2 archives macos-15 et **uploadait un
   build TestFlight** (effet de bord irréversible). Une garde `&& inputs.sync_screenshots
   != 'true'` réparait l'instance ; un fichier séparé répare la CLASSE (aucun build à
-  déclencher, tout futur job exempt par construction) et sort du concurrency group
-  `app-store-deploy`. Les 3 raisons initiales, découvertes en lisant le flux réel :
+  déclencher, tout futur job exempt par construction). ⚠️ **Le fichier séparé n'achète
+  PAS l'indépendance de concurrency** : le workflow **REJOINT délibérément** le groupe
+  `app-store-deploy` (tour 5 de review), parce que les deux workflows écrivent la MÊME
+  version éditable — un sync qui supprime des screenshots pendant qu'un deploy verrouille
+  la version la laisse partir en review avec un set tronqué. Une version antérieure de
+  ce plan disait l'inverse (« sort du concurrency group ») : c'était le design abandonné,
+  écrit ici comme s'il était le livré. Les 3 raisons initiales du fichier séparé,
+  découvertes en lisant le flux réel :
   (a) les screenshots **persistent d'une version ASC à l'autre** (une nouvelle
   version hérite du set) → c'est de la maintenance de listing, pas une étape
   par-release ; (b) le seul point d'insertion correct dans le flux tag serait

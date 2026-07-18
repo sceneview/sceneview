@@ -470,15 +470,21 @@ def _upload_one(requests, headers, set_id, path):
         # signature into a public repo's workflow log. Re-raise without the
         # original message (and never log req["headers"], same reason).
         try:
+            # allow_redirects=False: the presigned target is terminal, so a
+            # 3xx is an anomaly — and requests only strips Authorization/Cookie
+            # across hosts, so Apple's custom upload headers (and the body)
+            # would be replayed verbatim to whatever the redirect names.
             up = requests.request(req["method"], req["url"],
                                   headers=req["headers"], data=req["body"],
-                                  timeout=UPLOAD_TIMEOUT_S)
+                                  timeout=UPLOAD_TIMEOUT_S, allow_redirects=False)
         except Exception as e:
             raise RuntimeError(
                 f"chunk upload failed for {path.name}: {type(e).__name__}") from None
         if up.status_code not in (200, 201, 204):
             raise RuntimeError(
-                f"chunk upload failed for {path.name}: {up.status_code}")
+                f"chunk upload failed for {path.name}: {up.status_code}"
+                + (" (unexpected redirect — presigned target should be terminal)"
+                   if 300 <= up.status_code < 400 else ""))
 
     # Commit. `uploaded` is the attribute Apple documents and the one
     # fastlane/spaceship sends. An earlier cut retried with `isUploaded` on a
@@ -622,6 +628,34 @@ def apply_screenshots(headers, bundle_id, shots_dir):
             print(f"[apply] {device_dir} ({display_type}): already identical — nothing to do")
             continue
 
+        # Apple caps a set at 10. Refuse BEFORE any write — creating the set
+        # included: aborting after the POST would leave an EMPTY screenshot set
+        # on the draft, which App Review can reject. Nothing may start that
+        # cannot finish. (Not reachable with today's 4+2 committed screenshots;
+        # the guard is cheap and the capture script can grow.)
+        if len(uploads) > MAX_SCREENSHOTS_PER_SET:
+            print(f"::error::{device_dir} ({display_type}): {len(uploads)} screenshots "
+                  f"exceeds Apple's cap of {MAX_SCREENSHOTS_PER_SET} — refusing to touch "
+                  "the live set for an upload that cannot complete.")
+            raise SystemExit(1)
+
+        # Re-check the version is STILL editable before writing anything. The
+        # shared concurrency group rules out a same-repo deploy in parallel,
+        # but a human can submit for review from the console at any moment;
+        # writing into a locked version leaves it in review with a truncated
+        # set. A narrow TOCTOU window remains — this shrinks it to seconds
+        # rather than the whole run.
+        if delete_ids:
+            still = _editable_version(requests, headers, app_id)
+            if still is None or still[0] != version_id:
+                print(f"::error::{device_dir} ({display_type}): version {version_string} is no "
+                      "longer editable (submitted for review?) — refusing to delete its "
+                      "screenshots. This display type was NOT touched"
+                      + (f"; {len(changed)} screenshot(s) already uploaded earlier in this "
+                         f"run: {', '.join(changed)}" if changed else " and nothing was "
+                         "uploaded before it") + ".")
+                raise SystemExit(1)
+
         if set_id is None:
             r = requests.post(
                 f"{BASE}/appScreenshotSets",
@@ -642,40 +676,15 @@ def apply_screenshots(headers, bundle_id, shots_dir):
             print(f"[apply] {device_dir}: created {display_type} set {set_id}")
 
         # Delete-then-upload. Upload-then-delete is not an option: Apple caps
-        # a set at 10 screenshots, so 6 old + 6 new would be refused, and the
-        # new ones would land after the old ones anyway.
+        # a set at 10, so 6 old + 6 new would be refused, and the new ones
+        # would land after the old ones anyway.
         #
-        # A failed delete is FATAL for this display type rather than a
-        # warning: leftovers sit ahead of the new screenshots (breaking the
-        # very ordering this strategy exists to guarantee) and count against
-        # the cap, so the next reserve can 409 halfway through and leave a
-        # half-populated set. Stopping before the first upload leaves the
-        # live set untouched and re-runnable.
-        # Apple caps a set at 10. Refuse BEFORE deleting anything: otherwise
-        # the live set is wiped, the first 10 upload, and the 11th reserve
-        # 409s — leaving a truncated set. The destructive step must not start
-        # unless it can finish. (Not reachable with today's 4+2 committed
-        # screenshots; the guard is one line and the capture script can grow.)
-        if len(uploads) > MAX_SCREENSHOTS_PER_SET:
-            print(f"::error::{device_dir} ({display_type}): {len(uploads)} screenshots "
-                  f"exceeds Apple's cap of {MAX_SCREENSHOTS_PER_SET} — refusing to delete "
-                  "the live set for an upload that cannot complete.")
-            raise SystemExit(1)
-
-        # Re-check the version is STILL editable immediately before deleting.
-        # The concurrency group makes a same-repo deploy impossible in
-        # parallel, but a human can submit for review from the console at any
-        # moment; deleting screenshots out of a locked version leaves it in
-        # review with a truncated set. Narrow TOCTOU window remains — this
-        # shrinks it to seconds rather than the whole run.
-        if delete_ids:
-            still = _editable_version(requests, headers, app_id)
-            if still is None or still[0] != version_id:
-                print(f"::error::{device_dir} ({display_type}): version {version_string} is no "
-                      "longer editable (submitted for review?) — refusing to delete its "
-                      "screenshots. Nothing was changed.")
-                raise SystemExit(1)
-
+        # A failed delete is FATAL for this display type rather than a warning:
+        # leftovers sit ahead of the new screenshots (breaking the very
+        # ordering this strategy exists to produce) and count against the cap,
+        # so the next reserve can 409 halfway through and leave a
+        # half-populated set. Stopping before the first upload leaves the live
+        # set untouched and re-runnable.
         failed_deletes = []
         for shot_id in delete_ids:
             d = requests.delete(f"{BASE}/appScreenshots/{shot_id}", headers=headers, timeout=HTTP_TIMEOUT_S)
@@ -684,8 +693,10 @@ def apply_screenshots(headers, bundle_id, shots_dir):
         if failed_deletes:
             print(f"::error::{device_dir} ({display_type}): could not delete "
                   f"{len(failed_deletes)} live screenshot(s): {', '.join(failed_deletes)}. "
-                  "Stopping before upload — the live set is unchanged; re-run once the "
-                  "cause is cleared.")
+                  "Stopping before upload — this display type's live set is unchanged"
+                  + (f"; {len(changed)} screenshot(s) were already uploaded earlier in this "
+                     f"run: {', '.join(changed)}" if changed else "")
+                  + ". Re-run once the cause is cleared.")
             raise SystemExit(1)
 
         # From here the set is empty: an exception would leave it that way, so

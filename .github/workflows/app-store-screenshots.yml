@@ -17,9 +17,12 @@ name: Sync App Store screenshots
 #   fix that instance. A separate file fixes the class: a screenshot sync
 #   cannot start a build because there is no build here to start, and every
 #   future job added to app-store.yml is exempt by construction rather than
-#   by remembering a guard. It also leaves the `app-store-deploy` concurrency
-#   group untouched, so refreshing screenshots never queues behind — or
-#   ahead of — a release deploy.
+#   by remembering a guard.
+#
+#   What the separate file does NOT buy is concurrency independence — this
+#   workflow deliberately SHARES the `app-store-deploy` group, because both
+#   workflows write the same editable App Store version. See the
+#   `concurrency:` block below, which is the single source of truth on that.
 #
 # Screenshots persist from one App Store version to the next (a new version
 # inherits the previous set), so this is listing maintenance rather than a
@@ -70,9 +73,15 @@ jobs:
     steps:
       - name: Guard — confirm must be explicitly true
         id: guard
+        # Bound through env rather than interpolated into the shell. `confirm`
+        # is a type: choice input, so GitHub validates it server-side today —
+        # but that makes the safety of a credential-bearing job depend on an
+        # input's type declaration surviving future edits. env binding does not.
+        env:
+          CONFIRM: ${{ inputs.confirm }}
         run: |
-          if [ "${{ inputs.confirm }}" != "true" ]; then
-            echo "::warning::confirm was left at '${{ inputs.confirm }}' — nothing was uploaded. Re-run with confirm=true to publish the repo's screenshots."
+          if [ "$CONFIRM" != "true" ]; then
+            echo "::warning::confirm was left at '$CONFIRM' — nothing was uploaded. Re-run with confirm=true to publish the repo's screenshots."
             echo "go=false" >> "$GITHUB_OUTPUT"
           else
             echo "go=true" >> "$GITHUB_OUTPUT"
