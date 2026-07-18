@@ -86,13 +86,33 @@ else
   bad "asc_listing.py --dry-run without creds → rc=$RC, out: $(printf '%s' "$OUT" | head -2)"
 fi
 
-# 4. The write path SKIPs honestly without creds too — a run that uploaded
-#    nothing must never look like a successful upload.
+# 4. The write path SKIPs honestly without creds too — and ANNOTATES it.
+#    Someone dispatched this to upload; a bare log line under a green check
+#    reads as "uploaded" to anyone who doesn't open the log, so the skip must
+#    surface as a GitHub annotation (PR #2781 review).
 run_py "$SYNC_DIR/asc_listing.py" --apply-screenshots
-if [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q '^\[skip\]'; then
-  ok "asc_listing.py --apply-screenshots without creds → honest SKIP, exit 0"
+if [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q '^::warning::\[skip\]'; then
+  ok "asc_listing.py --apply-screenshots without creds → annotated SKIP, exit 0"
 else
   bad "asc_listing.py --apply-screenshots without creds → rc=$RC, out: $(printf '%s' "$OUT" | head -2)"
+fi
+
+# 4a. …while the read path stays a plain line (advisory tooling runs it often
+#     and must not spam annotations).
+run_py "$SYNC_DIR/asc_listing.py" --dry-run
+if printf '%s' "$OUT" | grep -q '^\[skip\]'; then
+  ok "asc_listing.py --dry-run SKIP stays un-annotated"
+else
+  bad "asc_listing.py --dry-run SKIP is no longer a plain [skip] line"
+fi
+
+# 4e. A flag that cannot do anything in the chosen mode must be refused, not
+#     ignored — same class as an abbreviation silently reaching a write.
+run_py "$SYNC_DIR/asc_listing.py" --apply-screenshots --fail-on-drift
+if [ "$RC" -eq 2 ]; then
+  ok "asc_listing.py --apply-screenshots --fail-on-drift → refused, exit 2"
+else
+  bad "asc_listing.py --apply-screenshots --fail-on-drift → rc=$RC (want 2)"
 fi
 
 # 4b. A near-miss flag must NOT reach the App Store write path. argparse

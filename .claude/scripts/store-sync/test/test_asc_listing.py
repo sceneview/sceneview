@@ -169,6 +169,87 @@ class UploadOperationsTest(unittest.TestCase):
         self.assertEqual(reqs[0]["headers"], {})
 
 
+class _StubResponse:
+    def __init__(self, payload, status_code=200):
+        self._payload = payload
+        self.status_code = status_code
+
+    def json(self):
+        return self._payload
+
+
+class _StubRequests:
+    """Minimal stand-in for the `requests` module: replays queued responses."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = 0
+
+    def get(self, url, headers=None):
+        self.calls += 1
+        return self._responses.pop(0)
+
+
+def _delivery(state, errors=None):
+    attrs = {"assetDeliveryState": {"state": state}}
+    if errors is not None:
+        attrs["assetDeliveryState"]["errors"] = errors
+    return _StubResponse({"data": {"attributes": attrs}})
+
+
+class AwaitDeliveryTest(unittest.TestCase):
+    """Apple's verdict must never be reported as a successful upload.
+
+    The first implementation returned one overloaded string and the caller
+    tested `state == "FAILED"`. A REJECTED asset comes back as FAILED *with*
+    an errors payload — rendered "FAILED errors=[…]", never equal to
+    "FAILED" — so a wrong-dimension PNG was reported as uploaded and the job
+    exited 0, with the previous set already deleted (PR #2781 review)."""
+
+    def test_complete_is_ok(self):
+        req = _StubRequests([_delivery("COMPLETE")])
+        ok, detail = al._await_delivery(req, {}, "id", "01.png")
+        self.assertTrue(ok)
+        self.assertEqual(detail, "COMPLETE")
+
+    def test_bare_failed_is_fatal(self):
+        ok, detail = al._await_delivery(_StubRequests([_delivery("FAILED")]), {}, "id", "01.png")
+        self.assertFalse(ok)
+        self.assertEqual(detail, "FAILED")
+
+    def test_failed_with_errors_payload_is_fatal(self):
+        # THE regression: the realistic rejection shape.
+        req = _StubRequests([_delivery("FAILED", [{"code": "IMAGE_WRONG_DIMENSIONS"}])])
+        ok, detail = al._await_delivery(req, {}, "id", "01.png")
+        self.assertFalse(ok, "a rejected screenshot must not count as uploaded")
+        self.assertIn("IMAGE_WRONG_DIMENSIONS", detail)
+
+    def test_errors_on_a_non_failed_state_is_still_fatal(self):
+        req = _StubRequests([_delivery("COMPLETE", [{"code": "SOMETHING"}])])
+        ok, _ = al._await_delivery(req, {}, "id", "01.png")
+        self.assertFalse(ok)
+
+    def test_poll_http_error_is_fatal(self):
+        # e.g. the JWT expiring mid-run — not evidence of success.
+        req = _StubRequests([_StubResponse({}, status_code=401)])
+        ok, detail = al._await_delivery(req, {}, "id", "01.png")
+        self.assertFalse(ok)
+        self.assertIn("401", detail)
+
+    def test_still_processing_times_out_as_non_fatal(self):
+        req = _StubRequests([_delivery("UPLOAD_COMPLETE") for _ in range(3)])
+        ok, detail = al._await_delivery(req, {}, "id", "01.png", attempts=3, delay=0)
+        self.assertTrue(ok, "still processing is not evidence of failure")
+        self.assertIn("still processing", detail)
+        self.assertEqual(req.calls, 3)
+
+    def test_polls_until_terminal(self):
+        req = _StubRequests([_delivery("AWAITING_UPLOAD"), _delivery("COMPLETE")])
+        ok, _ = al._await_delivery(req, {}, "id", "01.png", attempts=5, delay=0)
+        self.assertTrue(ok)
+        self.assertEqual(req.calls, 2)
+
+
 class WriteFlagSafetyTest(unittest.TestCase):
     """A near-miss flag must never resolve to the App Store write path.
 
@@ -183,6 +264,11 @@ class WriteFlagSafetyTest(unittest.TestCase):
 
     def test_read_and_write_modes_are_mutually_exclusive(self):
         self.assertEqual(al.main(["--dry-run", "--apply-screenshots"]), 2)
+
+    def test_fail_on_drift_is_refused_on_the_write_path(self):
+        # Silently ignoring a requested flag is the same class of defect as
+        # expanding an abbreviation into a write.
+        self.assertEqual(al.main(["--apply-screenshots", "--fail-on-drift"]), 2)
 
 
 class ResolveAscCredentialsTest(unittest.TestCase):

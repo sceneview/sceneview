@@ -143,16 +143,24 @@ def diff_screenshots(device_dir, display_type, local_files, remote_checksums):
     live appScreenshotSet carries. Order matters — the App Store displays
     screenshots in set order.
 
-    UNVALIDATED ASSUMPTION (review-fanout warning, PR #2764): equality relies
-    on Apple's `sourceFileChecksum` being the plain MD5 of the exact uploaded
-    PNG bytes. That is what the reservation-upload flow implies (the checksum
-    is declared FOR the source file), but it has never been checked against a
-    live set because the repo screenshots have never been uploaded. Before
-    Phase C wires this diff into maintenance.yml / release-checklist.sh as a
-    drift SIGNAL, run one live dry-run against a really-uploaded set and
-    confirm md5_of(local png) == sourceFileChecksum; if Apple normalizes or
-    re-encodes, re-key this diff on whatever Apple actually stores. Until
-    then a checksum mismatch here is a candidate, not a verdict."""
+    ASSUMPTION, stated precisely (PR #2764 + #2781 reviews):
+
+      - For screenshots uploaded by THIS script, equality holds by
+        construction: the client computes MD5 and declares it as
+        `sourceFileChecksum` in the commit PATCH, and Apple stores that value.
+        (Which also means the apply path cannot independently *verify* the
+        MD5 convention — Apple only echoes what we sent. An earlier comment
+        claimed that echo was a measurement; it was not.)
+      - For screenshots uploaded any OTHER way — the App Store Connect web
+        console being the realistic case — what Apple stores is not known to
+        be an MD5 of the source bytes, and may be absent.
+
+    Since the repo's screenshots have never been uploaded, every live set out
+    there today is in the second category. So before Phase C wires this diff
+    into maintenance.yml / release-checklist.sh as a drift SIGNAL, check one
+    real set: if console-uploaded assets do not key on MD5, this diff must be
+    re-keyed on whatever Apple actually stores. Until then a checksum mismatch
+    is a candidate, not a verdict."""
     local = [(f.name, md5_of(f)) for f in local_files]
     local_sums = [s for _, s in local]
     if local_sums == list(remote_checksums):
@@ -429,52 +437,63 @@ def _upload_one(requests, headers, set_id, path):
             raise RuntimeError(
                 f"chunk upload failed for {path.name}: {up.status_code}")
 
-    # Commit. Apple's documented attribute is `uploaded`, which is what
-    # fastlane/spaceship sends; some third-party write-ups use `isUploaded`.
-    # Try the documented name, fall back once rather than leave a reserved
-    # asset dangling in AWAITING_UPLOAD.
+    # Commit. `uploaded` is the attribute Apple documents and the one
+    # fastlane/spaceship sends. An earlier cut retried with `isUploaded` on a
+    # 400 — speculative (that name only appears in third-party write-ups),
+    # doomed if the real cause was anything else, and it overwrote the first
+    # response body so the actual rejection reason was lost. Fail on the first
+    # non-2xx and surface the body instead.
     commit = {"sourceFileChecksum": local_md5, "uploaded": True}
     r = requests.patch(
         f"{BASE}/appScreenshots/{shot_id}",
         headers={**headers, "Content-Type": "application/json"},
         json={"data": {"type": "appScreenshots", "id": shot_id, "attributes": commit}},
     )
-    if r.status_code == 400:
-        print(f"::warning::commit with 'uploaded' rejected for {path.name} "
-              f"({r.status_code}) — retrying with 'isUploaded'")
-        commit = {"sourceFileChecksum": local_md5, "isUploaded": True}
-        r = requests.patch(
-            f"{BASE}/appScreenshots/{shot_id}",
-            headers={**headers, "Content-Type": "application/json"},
-            json={"data": {"type": "appScreenshots", "id": shot_id, "attributes": commit}},
-        )
     if r.status_code not in (200, 201):
         raise RuntimeError(f"commit failed for {path.name}: {r.status_code} {r.text[:300]}")
 
-    live_checksum = r.json().get("data", {}).get("attributes", {}).get("sourceFileChecksum")
-    return shot_id, local_md5, live_checksum
+    # NOTE: this is Apple ECHOING the checksum we just declared — it is NOT an
+    # independent verification of `sourceFileChecksum == MD5(file)`. It only
+    # confirms the value was accepted and stored. See diff_screenshots().
+    echoed_checksum = r.json().get("data", {}).get("attributes", {}).get("sourceFileChecksum")
+    return shot_id, local_md5, echoed_checksum
 
 
 def _await_delivery(requests, headers, shot_id, name, attempts=15, delay=2):
-    """Poll one screenshot until Apple finishes processing it. Returns a state string.
+    """Poll one screenshot until Apple finishes processing it.
 
-    Bounded on purpose (~30s): a stuck asset must surface as a warning, not
-    hang the job.
+    Returns (ok, detail). `ok` is True ONLY for a clean COMPLETE; every other
+    terminal outcome — FAILED, an `errors` payload, a non-200 poll — is False
+    so the caller hard-fails.
+
+    The first cut returned a single string and the caller tested
+    `state == "FAILED"`. That silently defeated the hard-fail: an asset Apple
+    REJECTS comes back as state FAILED *with* an `errors` payload, which the
+    string form rendered as "FAILED errors=[…]" — never equal to "FAILED". A
+    wrong-dimension PNG was therefore reported as uploaded and the job exited
+    0, with the previous set already deleted (PR #2781 review). Terminal
+    verdict and diagnostic detail must not share one channel.
+
+    The bounded timeout (~30s) is the one non-fatal case: still processing is
+    not evidence of failure, so it warns and reports ok=True.
     """
     state = "UNKNOWN"
     for _ in range(attempts):
         r = requests.get(f"{BASE}/appScreenshots/{shot_id}", headers=headers)
         if r.status_code != 200:
-            return f"HTTP {r.status_code}"
+            return False, f"poll failed: HTTP {r.status_code}"
         delivery = r.json().get("data", {}).get("attributes", {}).get("assetDeliveryState") or {}
         state = delivery.get("state", "UNKNOWN")
-        if delivery.get("errors"):
-            return f"{state} errors={delivery['errors']}"
-        if state in ("COMPLETE", "FAILED"):
-            return state
+        errors = delivery.get("errors")
+        if errors:
+            return False, f"{state} errors={errors}"
+        if state == "COMPLETE":
+            return True, state
+        if state == "FAILED":
+            return False, state
         time.sleep(delay)
     print(f"::warning::{name} still {state} after {attempts * delay}s — not waiting further")
-    return state
+    return True, f"{state} (still processing)"
 
 
 def apply_screenshots(headers, bundle_id, shots_dir):
@@ -569,21 +588,29 @@ def apply_screenshots(headers, bundle_id, shots_dir):
         # the EDITABLE draft only — never the live READY_FOR_SALE listing —
         # and a re-run self-heals (plan_screenshot_sync re-uploads the lot).
         uploaded_checksums = []
+        all_echoed = True
         try:
             for path in uploads:
-                shot_id, local_md5, live_checksum = _upload_one(requests, headers, set_id, path)
-                state = _await_delivery(requests, headers, shot_id, path.name)
-                if state == "FAILED":
-                    print(f"::error::{path.name} failed Apple-side processing")
+                shot_id, local_md5, echoed = _upload_one(requests, headers, set_id, path)
+                ok, detail = _await_delivery(requests, headers, shot_id, path.name)
+                if not ok:
+                    print(f"::error::{path.name} was not delivered: {detail}")
                     raise SystemExit(1)
-                # Measure the assumption the drift diff relies on, instead of
-                # trusting it (review-fanout warning, PR #2764).
-                if live_checksum and live_checksum != local_md5:
-                    print(f"::warning::{path.name}: live sourceFileChecksum {live_checksum} "
-                          f"!= local MD5 {local_md5} — diff_screenshots() keys on MD5 equality; "
-                          "re-key it before Phase C treats screenshot drift as a signal")
+                # `echoed` is the checksum Apple echoed back from OUR commit,
+                # so a mismatch means Apple stored something other than what we
+                # declared. It does NOT independently confirm that
+                # sourceFileChecksum is an MD5 — Apple never recomputes it here.
+                if echoed is None:
+                    all_echoed = False
+                    print(f"[apply] {path.name}: uploaded, {detail} — no sourceFileChecksum "
+                          "returned, so the declared checksum could not be confirmed")
+                elif echoed != local_md5:
+                    all_echoed = False
+                    print(f"::warning::{path.name}: Apple stored sourceFileChecksum {echoed} "
+                          f"but we declared {local_md5} — diff_screenshots() keys on that "
+                          "value, so investigate before Phase C trusts the drift diff")
                 else:
-                    print(f"[apply] {path.name}: uploaded, {state}, checksum matches local MD5")
+                    print(f"[apply] {path.name}: uploaded, {detail}, declared checksum stored")
                 uploaded_checksums.append(local_md5)
                 changed.append(f"{device_dir}/{path.name}")
         except BaseException:
@@ -593,13 +620,22 @@ def apply_screenshots(headers, bundle_id, shots_dir):
                   "draft only, not the live listing.")
             raise
 
-        # Ordering probe. The delete-then-upload strategy assumes Apple keeps
-        # a set in creation order; nothing in the API contract promises it and
-        # this has never run live, so MEASURE it (same treatment as the MD5
-        # assumption) rather than asserting it in the docs.
+        # Ordering probe. delete-then-upload assumes Apple keeps a set in
+        # creation order; nothing in the API contract promises it and this has
+        # never run live, so check it instead of asserting it in the docs.
+        #
+        # This comparison is only meaningful when every checksum came back
+        # echoed and matching: the live values are then known identifiers for
+        # our files, and their SEQUENCE is real evidence about ordering. If any
+        # were missing or altered, a mismatch here could just as well be the
+        # checksum keying — so say the probe is inconclusive rather than
+        # blaming ordering for it.
         _, live_after = _live_sets(requests, headers, loc_id).get(display_type, (None, []))
         live_order = [s.get("checksum") for s in live_after]
-        if live_order and live_order != uploaded_checksums:
+        if not all_echoed:
+            print(f"[apply] {device_dir} ({display_type}): ordering probe inconclusive — "
+                  "checksums were not all confirmed, so sequence cannot be attributed")
+        elif live_order and live_order != uploaded_checksums:
             print(f"::warning::{device_dir} ({display_type}): live screenshot order does not "
                   "match upload order — creation order is NOT set order; an explicit reorder "
                   "(PATCH appScreenshotSets/{id}/relationships/appScreenshots) is required, "
@@ -638,6 +674,14 @@ def main(argv=None):
               "pick reading or writing, not both.")
         return 2
 
+    if args.apply_screenshots and args.fail_on_drift:
+        # Silently ignoring a flag is the same class of failure as expanding
+        # an abbreviation into a write: the operator asked for behaviour that
+        # will not happen. --fail-on-drift only means something while reading.
+        print("::error::--fail-on-drift is a --dry-run flag; it has no meaning with "
+              "--apply-screenshots (which fixes drift rather than reporting it).")
+        return 2
+
     meta_dir = pathlib.Path(args.metadata_dir)
     shots_dir = pathlib.Path(args.screenshots_dir)
     if args.apply_screenshots:
@@ -650,11 +694,12 @@ def main(argv=None):
 
     creds = resolve_asc_credentials()
     if creds is None:
-        print(
-            "[skip] No App Store Connect credential set "
-            "(APP_STORE_CONNECT_KEY_ID / _ISSUER_ID / _API_KEY[_PATH]) "
-            "— skipping honestly, not a green diff."
-        )
+        msg = ("No App Store Connect credential set "
+               "(APP_STORE_CONNECT_KEY_ID / _ISSUER_ID / _API_KEY[_PATH]) "
+               "— skipping honestly, not a green diff.")
+        # On the write path a human explicitly dispatched an upload, so a
+        # plain log line reads as "done" against a green check. Annotate it.
+        print(f"::warning::[skip] {msg}" if args.apply_screenshots else f"[skip] {msg}")
         return 0
 
     headers = _headers(*creds)
@@ -662,7 +707,9 @@ def main(argv=None):
     if args.apply_screenshots:
         changed, skipped = apply_screenshots(headers, args.bundle_id, shots_dir)
         if skipped:
-            print(f"[skip] {skipped}")
+            # Annotated, not a bare log line: someone dispatched this to
+            # upload, and a green check with no annotation reads as success.
+            print(f"::warning::[skip] {skipped}")
             return 0
         if not changed:
             print(f"[apply] {args.bundle_id}: live screenshots already match the repo "
