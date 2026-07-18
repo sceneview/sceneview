@@ -72,6 +72,9 @@ DEFAULT_SCREENSHOTS_DIR = "samples/ios-demo/appstore-screenshots"
 
 BASE = "https://api.appstoreconnect.apple.com/v1"
 
+# Apple's per-display-type screenshot limit.
+MAX_SCREENSHOTS_PER_SET = 10
+
 # Apple field caps — mirrors app-store.yml step 4b.
 FIELDS = [
     ("description", "description.txt", 4000),
@@ -83,8 +86,11 @@ FIELDS = [
 
 # Repo screenshot dir → ASC screenshotDisplayType. The capture script
 # (capture-appstore-screenshots.sh) emits these two dirs; add a row here when
-# it grows a new device class. test-store-sync.sh asserts every committed dir
-# has a mapping so a new dir can't silently escape the drift check.
+# it grows a new device class. An unmapped dir is not just skipped from the
+# drift diff — since Phase B it never reaches the App Store either, while the
+# run still reports success. test_asc_listing.py's
+# `test_committed_dirs_are_all_mapped` fails when a committed dir has no row
+# here (run by test-store-sync.sh via unittest discover, in repo-hygiene).
 DISPLAY_TYPE_MAP = {
     "iphone-6.9": "APP_IPHONE_67",
     "ipad-13": "APP_IPAD_PRO_3GEN_129",
@@ -431,8 +437,16 @@ def _upload_one(requests, headers, set_id, path):
 
     for req in upload_operations_to_requests(
             blob, reserved.get("attributes", {}).get("uploadOperations")):
-        up = requests.request(req["method"], req["url"],
-                              headers=req["headers"], data=req["body"])
+        # requests embeds the full URL in its exception messages, and these
+        # URLs are PRESIGNED — a ConnectionError traceback would print the
+        # signature into a public repo's workflow log. Re-raise without the
+        # original message (and never log req["headers"], same reason).
+        try:
+            up = requests.request(req["method"], req["url"],
+                                  headers=req["headers"], data=req["body"])
+        except Exception as e:
+            raise RuntimeError(
+                f"chunk upload failed for {path.name}: {type(e).__name__}") from None
         if up.status_code not in (200, 201, 204):
             raise RuntimeError(
                 f"chunk upload failed for {path.name}: {up.status_code}")
@@ -530,12 +544,17 @@ def apply_screenshots(headers, bundle_id, shots_dir):
 
     sets = _live_sets(requests, headers, loc_id)
     changed = []
+    # How many display types we actually looked at. Without this, "nothing
+    # uploaded" cannot be told apart from "nothing found to upload", and the
+    # caller would claim the live listing matches a repo it never read.
+    compared = 0
     for device_dir, display_type in sorted(DISPLAY_TYPE_MAP.items()):
         ddir = shots_dir / device_dir
         files = sorted(ddir.glob("*.png")) if ddir.is_dir() else []
         if not files:
             print(f"[apply] {device_dir}: no repo screenshots — leaving the live set alone")
             continue
+        compared += 1
 
         set_id, live_shots = sets.get(display_type, (None, []))
         action, delete_ids, uploads = plan_screenshot_sync(files, live_shots)
@@ -571,6 +590,17 @@ def apply_screenshots(headers, bundle_id, shots_dir):
         # the cap, so the next reserve can 409 halfway through and leave a
         # half-populated set. Stopping before the first upload leaves the
         # live set untouched and re-runnable.
+        # Apple caps a set at 10. Refuse BEFORE deleting anything: otherwise
+        # the live set is wiped, the first 10 upload, and the 11th reserve
+        # 409s — leaving a truncated set. The destructive step must not start
+        # unless it can finish. (Not reachable with today's 4+2 committed
+        # screenshots; the guard is one line and the capture script can grow.)
+        if len(uploads) > MAX_SCREENSHOTS_PER_SET:
+            print(f"::error::{device_dir} ({display_type}): {len(uploads)} screenshots "
+                  f"exceeds Apple's cap of {MAX_SCREENSHOTS_PER_SET} — refusing to delete "
+                  "the live set for an upload that cannot complete.")
+            raise SystemExit(1)
+
         failed_deletes = []
         for shot_id in delete_ids:
             d = requests.delete(f"{BASE}/appScreenshots/{shot_id}", headers=headers)
@@ -641,6 +671,9 @@ def apply_screenshots(headers, bundle_id, shots_dir):
                   "(PATCH appScreenshotSets/{id}/relationships/appScreenshots) is required, "
                   "and the docs claiming repo filename order need correcting")
 
+    if compared == 0:
+        return changed, (f"no repo screenshots found under {shots_dir} — nothing was "
+                         "compared or uploaded (live listing NOT verified)")
     return changed, None
 
 
@@ -712,6 +745,9 @@ def main(argv=None):
             print(f"::warning::[skip] {skipped}")
             return 0
         if not changed:
+            # Reachable only when at least one display type WAS compared —
+            # apply_screenshots() returns a skip reason otherwise, so this
+            # never claims the live listing matches a repo it did not read.
             print(f"[apply] {args.bundle_id}: live screenshots already match the repo "
                   "— nothing uploaded")
             return 0

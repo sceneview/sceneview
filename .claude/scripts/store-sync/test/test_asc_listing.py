@@ -250,6 +250,26 @@ class AwaitDeliveryTest(unittest.TestCase):
         self.assertEqual(req.calls, 2)
 
 
+class ScreenshotCapTest(unittest.TestCase):
+    """Apple caps a set at 10; the destructive step must not start otherwise."""
+
+    def test_cap_constant_matches_apples_limit(self):
+        self.assertEqual(al.MAX_SCREENSHOTS_PER_SET, 10)
+
+    def test_committed_dirs_are_within_the_cap(self):
+        repo_root = pathlib.Path(__file__).resolve().parents[4]
+        shots = repo_root / al.DEFAULT_SCREENSHOTS_DIR
+        for device_dir in al.DISPLAY_TYPE_MAP:
+            d = shots / device_dir
+            if not d.is_dir():
+                continue
+            count = len(list(d.glob("*.png")))
+            self.assertLessEqual(
+                count, al.MAX_SCREENSHOTS_PER_SET,
+                f"{device_dir} has {count} screenshots — an upload would delete the "
+                "live set and then fail partway")
+
+
 class WriteFlagSafetyTest(unittest.TestCase):
     """A near-miss flag must never resolve to the App Store write path.
 

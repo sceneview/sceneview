@@ -10,7 +10,7 @@
   never actually reached the store (#2612, #2384).
 
 <!-- category: Fixed -->
-- Store-sync scripts no longer accept abbreviated flags: `--apply` or
-  `--appl` used to resolve to `--apply-screenshots` via argparse prefix
-  matching, so a near-miss could publish assets to a store. Both scripts now
-  require the exact flag name (#2612).
+- `play_listing.py` accepted abbreviated flags: `--appl` expanded to `--apply`
+  via argparse prefix matching and reached the Play Console write path. Both
+  store-sync scripts now require exact flag names, which also keeps the new
+  `--apply-screenshots` upload unreachable by a near-miss (#2612).
