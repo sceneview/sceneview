@@ -75,10 +75,22 @@ BASE = "https://api.appstoreconnect.apple.com/v1"
 # Apple's per-display-type screenshot limit.
 MAX_SCREENSHOTS_PER_SET = 10
 
-# Worst-case seconds spent waiting on one asset (see _await_delivery), and the
-# credential window it has to fit inside (the JWT minted in _headers).
+# Explicit HTTP timeouts. The chunk PUT runs AFTER the live set is deleted, so
+# a blackholed socket would leave a display type empty until GitHub kills the
+# job — fail fast into the PARTIAL-state message instead. (play_listing.py has
+# no timeouts either; that is pre-existing and out of scope here.)
+HTTP_TIMEOUT_S = 60
+UPLOAD_TIMEOUT_S = 300
+
+# Worst-case seconds spent waiting on one asset (see _await_delivery) and the
+# two windows it has to fit inside: the JWT minted in _headers, and the CI job
+# timeout. The JOB timeout is the binding one (900 < 1200) — checking only the
+# JWT would stay silent at 8-10 screenshots and let the job be killed after the
+# live set was already deleted.
 ASSET_POLL_BUDGET_S = 120
 JWT_LIFETIME_S = 1200
+JOB_TIMEOUT_S = 900  # timeout-minutes: 15 in app-store-screenshots.yml
+RUN_BUDGET_S = min(JWT_LIFETIME_S, JOB_TIMEOUT_S)
 
 # Apple field caps — mirrors app-store.yml step 4b.
 FIELDS = [
@@ -288,7 +300,7 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir):
     no live version) — an honest SKIP, never silent."""
     import requests
 
-    r = requests.get(f"{BASE}/apps?filter[bundleId]={quote(bundle_id, safe='')}", headers=headers)
+    r = requests.get(f"{BASE}/apps?filter[bundleId]={quote(bundle_id, safe='')}", headers=headers, timeout=HTTP_TIMEOUT_S)
     r.raise_for_status()
     apps = r.json().get("data", [])
     if not apps:
@@ -339,7 +351,7 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir):
     r = requests.get(
         f"{BASE}/appStoreVersionLocalizations/{en_us['id']}/appScreenshotSets"
         "?include=appScreenshots&limit=50",
-        headers=headers,
+        headers=headers, timeout=HTTP_TIMEOUT_S,
     )
     r.raise_for_status()
     payload = r.json()
@@ -384,7 +396,7 @@ def _editable_version(requests, headers, app_id):
         f"{BASE}/apps/{app_id}/appStoreVersions"
         "?filter[platform]=IOS"
         "&filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW&limit=1",
-        headers=headers,
+        headers=headers, timeout=HTTP_TIMEOUT_S,
     )
     r.raise_for_status()
     data = r.json().get("data", [])
@@ -398,7 +410,7 @@ def _live_sets(requests, headers, loc_id):
     r = requests.get(
         f"{BASE}/appStoreVersionLocalizations/{loc_id}/appScreenshotSets"
         "?include=appScreenshots&limit=50",
-        headers=headers,
+        headers=headers, timeout=HTTP_TIMEOUT_S,
     )
     r.raise_for_status()
     payload = r.json()
@@ -434,21 +446,33 @@ def _upload_one(requests, headers, set_id, path):
             "relationships": {"appScreenshotSet": {
                 "data": {"type": "appScreenshotSets", "id": set_id}}},
         }},
+        timeout=HTTP_TIMEOUT_S,
     )
     if r.status_code not in (200, 201):
         raise RuntimeError(f"reserve failed for {path.name}: {r.status_code} {r.text[:300]}")
     reserved = r.json()["data"]
     shot_id = reserved["id"]
 
-    for req in upload_operations_to_requests(
-            blob, reserved.get("attributes", {}).get("uploadOperations")):
+    ops = upload_operations_to_requests(
+        blob, reserved.get("attributes", {}).get("uploadOperations"))
+    if blob and not ops:
+        # No operations means zero bytes were transferred. Committing anyway
+        # would mark an empty asset as uploaded — and since the old set is
+        # already deleted by then, the display type ends up empty while the
+        # run reports success.
+        raise RuntimeError(
+            f"reserve for {path.name} returned no uploadOperations — refusing to "
+            "commit an asset whose bytes were never uploaded")
+
+    for req in ops:
         # requests embeds the full URL in its exception messages, and these
         # URLs are PRESIGNED — a ConnectionError traceback would print the
         # signature into a public repo's workflow log. Re-raise without the
         # original message (and never log req["headers"], same reason).
         try:
             up = requests.request(req["method"], req["url"],
-                                  headers=req["headers"], data=req["body"])
+                                  headers=req["headers"], data=req["body"],
+                                  timeout=UPLOAD_TIMEOUT_S)
         except Exception as e:
             raise RuntimeError(
                 f"chunk upload failed for {path.name}: {type(e).__name__}") from None
@@ -467,6 +491,7 @@ def _upload_one(requests, headers, set_id, path):
         f"{BASE}/appScreenshots/{shot_id}",
         headers={**headers, "Content-Type": "application/json"},
         json={"data": {"type": "appScreenshots", "id": shot_id, "attributes": commit}},
+        timeout=HTTP_TIMEOUT_S,
     )
     if r.status_code not in (200, 201):
         raise RuntimeError(f"commit failed for {path.name}: {r.status_code} {r.text[:300]}")
@@ -510,7 +535,7 @@ def _await_delivery(requests, headers, shot_id, name, attempts=40, delay=3):
     """
     state = "UNKNOWN"
     for _ in range(attempts):
-        r = requests.get(f"{BASE}/appScreenshots/{shot_id}", headers=headers)
+        r = requests.get(f"{BASE}/appScreenshots/{shot_id}", headers=headers, timeout=HTTP_TIMEOUT_S)
         if r.status_code != 200:
             return False, f"poll failed: HTTP {r.status_code}"
         delivery = r.json().get("data", {}).get("attributes", {}).get("assetDeliveryState") or {}
@@ -535,7 +560,7 @@ def apply_screenshots(headers, bundle_id, shots_dir):
     """
     import requests
 
-    r = requests.get(f"{BASE}/apps?filter[bundleId]={quote(bundle_id, safe='')}", headers=headers)
+    r = requests.get(f"{BASE}/apps?filter[bundleId]={quote(bundle_id, safe='')}", headers=headers, timeout=HTTP_TIMEOUT_S)
     r.raise_for_status()
     apps = r.json().get("data", [])
     if not apps:
@@ -551,7 +576,7 @@ def apply_screenshots(headers, bundle_id, shots_dir):
     print(f"[apply] editable iOS version: {version_string} ({version_id})")
 
     r = requests.get(f"{BASE}/appStoreVersions/{version_id}/appStoreVersionLocalizations",
-                     headers=headers)
+                     headers=headers, timeout=HTTP_TIMEOUT_S)
     r.raise_for_status()
     en_us = next((loc for loc in r.json().get("data", [])
                   if loc.get("attributes", {}).get("locale") == "en-US"), None)
@@ -566,11 +591,12 @@ def apply_screenshots(headers, bundle_id, shots_dir):
     total_files = sum(len(list((shots_dir / d).glob("*.png")))
                       for d in DISPLAY_TYPE_MAP if (shots_dir / d).is_dir())
     worst_case = total_files * ASSET_POLL_BUDGET_S
-    if worst_case > JWT_LIFETIME_S:
+    if worst_case > RUN_BUDGET_S:
         print(f"::warning::worst-case polling for {total_files} screenshot(s) is "
-              f"{worst_case}s, beyond the {JWT_LIFETIME_S}s credential window — a very "
-              "slow run could expire mid-way. Re-running is safe (it resumes from the "
-              "current live state).")
+              f"{worst_case}s, beyond this run's {RUN_BUDGET_S}s budget (min of the "
+              f"{JWT_LIFETIME_S}s credential window and the {JOB_TIMEOUT_S}s job "
+              "timeout) — a very slow run could be cut off after the live set was "
+              "deleted. Re-running is safe (it resumes from the current live state).")
 
     sets = _live_sets(requests, headers, loc_id)
     changed = []
@@ -606,6 +632,7 @@ def apply_screenshots(headers, bundle_id, shots_dir):
                     "relationships": {"appStoreVersionLocalization": {
                         "data": {"type": "appStoreVersionLocalizations", "id": loc_id}}},
                 }},
+                timeout=HTTP_TIMEOUT_S,
             )
             if r.status_code not in (200, 201):
                 print(f"::error::could not create {display_type} set: "
@@ -635,9 +662,23 @@ def apply_screenshots(headers, bundle_id, shots_dir):
                   "the live set for an upload that cannot complete.")
             raise SystemExit(1)
 
+        # Re-check the version is STILL editable immediately before deleting.
+        # The concurrency group makes a same-repo deploy impossible in
+        # parallel, but a human can submit for review from the console at any
+        # moment; deleting screenshots out of a locked version leaves it in
+        # review with a truncated set. Narrow TOCTOU window remains — this
+        # shrinks it to seconds rather than the whole run.
+        if delete_ids:
+            still = _editable_version(requests, headers, app_id)
+            if still is None or still[0] != version_id:
+                print(f"::error::{device_dir} ({display_type}): version {version_string} is no "
+                      "longer editable (submitted for review?) — refusing to delete its "
+                      "screenshots. Nothing was changed.")
+                raise SystemExit(1)
+
         failed_deletes = []
         for shot_id in delete_ids:
-            d = requests.delete(f"{BASE}/appScreenshots/{shot_id}", headers=headers)
+            d = requests.delete(f"{BASE}/appScreenshots/{shot_id}", headers=headers, timeout=HTTP_TIMEOUT_S)
             if d.status_code not in (200, 204):
                 failed_deletes.append(f"{shot_id} ({d.status_code})")
         if failed_deletes:

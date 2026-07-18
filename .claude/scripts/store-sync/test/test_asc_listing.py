@@ -185,7 +185,7 @@ class _StubRequests:
         self._responses = list(responses)
         self.calls = 0
 
-    def get(self, url, headers=None):
+    def get(self, url, headers=None, timeout=None):
         self.calls += 1
         return self._responses.pop(0)
 
@@ -248,6 +248,47 @@ class AwaitDeliveryTest(unittest.TestCase):
         ok, _ = al._await_delivery(req, {}, "id", "01.png", attempts=5, delay=0)
         self.assertTrue(ok)
         self.assertEqual(req.calls, 2)
+
+
+class UploadWithoutOperationsTest(unittest.TestCase):
+    """A reserve that returns no uploadOperations must not be committed.
+
+    Reproduced in review (PR #2781): zero chunk PUTs, yet the commit PATCH
+    marked the asset uploaded and the run reported "6 screenshot(s) uploaded"
+    — with the previous set already deleted, leaving the display type empty."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.png = pathlib.Path(self.tmp.name) / "01.png"
+        self.png.write_bytes(b"not-actually-a-png")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_reserve_without_operations_raises(self):
+        class _Req:
+            def post(self, url, headers=None, json=None, timeout=None):
+                return _StubResponse({"data": {"id": "NEW1", "attributes": {}}}, 201)
+
+        with self.assertRaises(RuntimeError) as ctx:
+            al._upload_one(_Req(), {}, "SET1", self.png)
+        self.assertIn("no uploadOperations", str(ctx.exception))
+
+    def test_empty_file_is_not_forced_to_raise(self):
+        # A zero-byte file has nothing to send; the guard keys on `blob`.
+        empty = pathlib.Path(self.tmp.name) / "empty.png"
+        empty.write_bytes(b"")
+
+        class _Req:
+            def post(self, url, headers=None, json=None, timeout=None):
+                return _StubResponse({"data": {"id": "N", "attributes": {}}}, 201)
+
+            def patch(self, url, headers=None, json=None, timeout=None):
+                return _StubResponse({"data": {"attributes": {"sourceFileChecksum": al.md5_of(empty)}}}, 200)
+
+        shot_id, local_md5, echoed = al._upload_one(_Req(), {}, "SET1", empty)
+        self.assertEqual(shot_id, "N")
+        self.assertEqual(local_md5, echoed)
 
 
 class ScreenshotCapTest(unittest.TestCase):

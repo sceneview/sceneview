@@ -81,9 +81,11 @@ Three things worth knowing before you run it:
 
 - It targets the **editable** version and never creates one. With no editable
   version it skips (loudly) rather than inventing somewhere to write.
-- It **replaces** a display type's whole set (delete-then-upload) when
-  anything differs, so live order follows this directory's filename order.
-  Untouched display types are left alone.
+- It **replaces** a display type's whole set (delete-then-upload) when anything
+  differs. Live order is *expected* to follow this directory's filename order —
+  Apple does not promise that a set preserves creation order, so the script
+  probes the live order after uploading and warns if it diverges. Untouched
+  display types are left alone.
 - It is deliberately **not** part of `app-store.yml`. A dispatch there also
   runs `deploy-ios`/`deploy-macos`, which archive and upload a TestFlight
   build — refreshing screenshots must not do that.

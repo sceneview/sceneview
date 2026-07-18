@@ -195,12 +195,16 @@ else
   bad "the upload step lost its confirm guard — an unconfirmed dispatch would upload"
 fi
 
-# And it must not share the deploy concurrency group, or a sync would queue
-# against a release.
+# It MUST share the deploy concurrency group. Both workflows write to the same
+# editable App Store version: a sync that deletes a display type's screenshots
+# while a deploy locks that version for review leaves it in review with a
+# truncated set. Queueing costs minutes; the race costs a corrupted listing.
+# (The first cut used a separate group for exactly the wrong reason — "must not
+# serialise against a release" — so pin the corrected decision.)
 if grep -q 'group: app-store-deploy' "$SHOTS_WF"; then
-  bad "app-store-screenshots.yml joined the app-store-deploy concurrency group"
+  ok "app-store-screenshots.yml shares the app-store-deploy concurrency group"
 else
-  ok "app-store-screenshots.yml has its own concurrency group"
+  bad "app-store-screenshots.yml left the app-store-deploy group — a sync can now race a deploy on the same editable version"
 fi
 
 # 6. The extracted script must not have re-grown an inline-heredoc twin: the
