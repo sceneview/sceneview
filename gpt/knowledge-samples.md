@@ -614,14 +614,37 @@ fun DemoScaffold(
     title: String,
     onBack: () -> Unit,
     controls: (@Composable ColumnScope.() -> Unit)? = null,
+    bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)? = null,
     scene: @Composable BoxScope.() -> Unit,
 )
 ```
 
 - `controls == null` → scene fills the whole viewport, no FAB.
 - `controls != null` → FAB + peek chip + sheet. Controls render inside a vertically-scrolling `Column` so v1 side-panel `controls = { ... }` blocks port unchanged.
+- `bottomOverlay != null` → a floating bottom banner / status pill / answer card, laid out **by the scaffold** so it can never be masked by the bottom-end Settings FAB.
 
 **Gestures:** tap FAB or peek chip → opens sheet; long-press peek chip → toggles `DemoSettings.qaMode` (deterministic screenshot mode); drag handle / outside tap / back → dismiss. AR sessions keep tracking underneath while the sheet is open.
+
+**Bottom overlays go in the slot, never in `scene` at a bare `Alignment.BottomCenter` ([#2779](https://github.com/sceneview/sceneview/issues/2779)).** The FAB is scaffold chrome and its very existence depends on `controls`, so a demo placing its own bottom-center overlay cannot know whether — or by how much — it must get out of the way. Pixel 9 device QA found demos rendering status text straight under the FAB, words masked. The slot's receiver carries the one number that fixes it:
+
+```kotlin
+DemoScaffold(
+    title = stringResource(R.string.demo_my_title),
+    onBack = onBack,
+    controls = { /* … */ },              // ← decides whether a FAB exists at all
+    bottomOverlay = {
+        // Full-width card / banner: only its end edge can reach the FAB.
+        Surface(modifier = Modifier.fillMaxWidth().padding(end = settingsFabReservedSpace)) { /* … */ }
+
+        // Centred content-width pill: inset BOTH sides. A centred element grows
+        // outwards from the middle, so reserving only the end side would shift it
+        // off-centre without keeping its end edge out of the FAB band.
+        Text(text = status, modifier = Modifier.padding(horizontal = settingsFabReservedSpace))
+    },
+) { /* scene */ }
+```
+
+`settingsFabReservedSpace` resolves to `SETTINGS_FAB_RESERVED_SPACE` (88 dp = 56 dp FAB + 2 × 16 dp gutter) when the demo passes `controls`, and to `0.dp` when it does not — computed once, scaffold-side, from the same condition that composes the FAB. A demo whose `controls` is itself conditional (`controls = if (DemoSettings.qaMode) { … } else null`) therefore gets the correct inset with no duplicated condition to drift.
 
 **Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
 
