@@ -179,6 +179,22 @@ else
   ok "app-store.yml carries no screenshot upload (deploy jobs stay unreachable from a sync)"
 fi
 
+# The confirm gate moved from the job to the steps (so a no-op dispatch can
+# still emit an annotation instead of a silent green). That makes the upload
+# step's own `if:` load-bearing: without it, accepting the default confirm
+# would upload.
+if python3 - "$SHOTS_WF" <<'PYEOF'
+import sys, yaml
+steps = yaml.safe_load(open(sys.argv[1]))["jobs"]["sync-screenshots"]["steps"]
+upload = [s for s in steps if "asc_listing.py --apply-screenshots" in str(s.get("run", ""))]
+sys.exit(0 if upload and all("guard" in str(s.get("if", "")) for s in upload) else 1)
+PYEOF
+then
+  ok "the upload step is gated on the confirm guard"
+else
+  bad "the upload step lost its confirm guard — an unconfirmed dispatch would upload"
+fi
+
 # And it must not share the deploy concurrency group, or a sync would queue
 # against a release.
 if grep -q 'group: app-store-deploy' "$SHOTS_WF"; then

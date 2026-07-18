@@ -62,9 +62,31 @@ IPHONE_SIM="iPhone 17 Pro Max" IPAD_SIM="iPad Pro 13-inch (M5)" \
   WAIT_SECONDS=28 bash .claude/scripts/capture-appstore-screenshots.sh
 ```
 
-## Follow-up — CI auto-upload
+## Publishing these to the App Store
 
-Wiring these into the App Store deploy pipeline (`fastlane deliver` in
-`.github/workflows/app-store.yml`) is a **deliberate follow-up**, tracked
-separately. This directory + the capture script give a reproducible source
-of truth; the upload automation is the next step.
+The upload path exists (#2612 Phase B) — no fastlane involved:
+
+```bash
+# What differs between this directory and the live listing (read-only):
+python3 .claude/scripts/store-sync/asc_listing.py --dry-run
+
+# Push these screenshots to the EDITABLE App Store version:
+python3 .claude/scripts/store-sync/asc_listing.py --apply-screenshots
+```
+
+From CI: run the **`Sync App Store screenshots`** workflow
+(`.github/workflows/app-store-screenshots.yml`) with `confirm=true`.
+
+Three things worth knowing before you run it:
+
+- It targets the **editable** version and never creates one. With no editable
+  version it skips (loudly) rather than inventing somewhere to write.
+- It **replaces** a display type's whole set (delete-then-upload) when
+  anything differs, so live order follows this directory's filename order.
+  Untouched display types are left alone.
+- It is deliberately **not** part of `app-store.yml`. A dispatch there also
+  runs `deploy-ios`/`deploy-macos`, which archive and upload a TestFlight
+  build — refreshing screenshots must not do that.
+
+Screenshots persist from one App Store version to the next, so this is
+listing maintenance rather than a per-release step; nothing runs it on a tag.

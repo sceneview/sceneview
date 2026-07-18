@@ -75,6 +75,11 @@ BASE = "https://api.appstoreconnect.apple.com/v1"
 # Apple's per-display-type screenshot limit.
 MAX_SCREENSHOTS_PER_SET = 10
 
+# Worst-case seconds spent waiting on one asset (see _await_delivery), and the
+# credential window it has to fit inside (the JWT minted in _headers).
+ASSET_POLL_BUDGET_S = 120
+JWT_LIFETIME_S = 1200
+
 # Apple field caps — mirrors app-store.yml step 4b.
 FIELDS = [
     ("description", "description.txt", 4000),
@@ -473,7 +478,7 @@ def _upload_one(requests, headers, set_id, path):
     return shot_id, local_md5, echoed_checksum
 
 
-def _await_delivery(requests, headers, shot_id, name, attempts=15, delay=2):
+def _await_delivery(requests, headers, shot_id, name, attempts=40, delay=3):
     """Poll one screenshot until Apple finishes processing it.
 
     Returns (ok, detail). `ok` is True ONLY for a clean COMPLETE; every other
@@ -488,8 +493,20 @@ def _await_delivery(requests, headers, shot_id, name, attempts=15, delay=2):
     0, with the previous set already deleted (PR #2781 review). Terminal
     verdict and diagnostic detail must not share one channel.
 
-    The bounded timeout (~30s) is the one non-fatal case: still processing is
-    not evidence of failure, so it warns and reports ok=True.
+    The bound (40 × 3s = ~2 min per asset) is the one non-fatal case: still
+    processing is not evidence of failure, so it warns and reports ok=True.
+    The first cut used 30s, which is short next to real Apple processing
+    (fastlane polls for minutes) — and since the previous set is already
+    deleted by then, a slow-but-ultimately-REJECTED asset would have exited
+    the job green with a truncated live set. That is the same fake green the
+    (ok, detail) split closed, reached through slowness instead of through
+    string comparison. A timeout is therefore reported as INDETERMINATE and
+    surfaced again in the summary, not buried in one log line.
+
+    Budget: the JWT minted in main() lasts 1200s, and the workflow allows 15
+    min. 6 committed screenshots × 2 min worst case = 12 min, which fits
+    both. apply_screenshots() re-checks that budget against the actual upload
+    count before deleting anything.
     """
     state = "UNKNOWN"
     for _ in range(attempts):
@@ -542,8 +559,25 @@ def apply_screenshots(headers, bundle_id, shots_dir):
         return [], f"no en-US localization on version {version_string}"
     loc_id = en_us["id"]
 
+    # Worst-case polling budget vs the credential window, checked BEFORE
+    # anything is deleted. Not a blocker (the realistic case is seconds per
+    # asset), but a run that could outlive its own token should say so rather
+    # than fail halfway with an opaque 401.
+    total_files = sum(len(list((shots_dir / d).glob("*.png")))
+                      for d in DISPLAY_TYPE_MAP if (shots_dir / d).is_dir())
+    worst_case = total_files * ASSET_POLL_BUDGET_S
+    if worst_case > JWT_LIFETIME_S:
+        print(f"::warning::worst-case polling for {total_files} screenshot(s) is "
+              f"{worst_case}s, beyond the {JWT_LIFETIME_S}s credential window — a very "
+              "slow run could expire mid-way. Re-running is safe (it resumes from the "
+              "current live state).")
+
     sets = _live_sets(requests, headers, loc_id)
     changed = []
+    # Assets Apple had not finished processing when we stopped waiting. Not
+    # failures — but not confirmed successes either, so they are surfaced
+    # again at the end instead of scrolling past in the per-file log.
+    indeterminate = []
     # How many display types we actually looked at. Without this, "nothing
     # uploaded" cannot be told apart from "nothing found to upload", and the
     # caller would claim the live listing matches a repo it never read.
@@ -641,6 +675,8 @@ def apply_screenshots(headers, bundle_id, shots_dir):
                           "value, so investigate before Phase C trusts the drift diff")
                 else:
                     print(f"[apply] {path.name}: uploaded, {detail}, declared checksum stored")
+                if "still processing" in detail:
+                    indeterminate.append(f"{device_dir}/{path.name}")
                 uploaded_checksums.append(local_md5)
                 changed.append(f"{device_dir}/{path.name}")
         except BaseException:
@@ -670,6 +706,11 @@ def apply_screenshots(headers, bundle_id, shots_dir):
                   "match upload order — creation order is NOT set order; an explicit reorder "
                   "(PATCH appScreenshotSets/{id}/relationships/appScreenshots) is required, "
                   "and the docs claiming repo filename order need correcting")
+
+    if indeterminate:
+        print(f"::warning::{len(indeterminate)} screenshot(s) were still processing when "
+              f"polling stopped — delivery NOT confirmed: {', '.join(indeterminate)}. "
+              "Check App Store Connect, or re-run to re-verify.")
 
     if compared == 0:
         return changed, (f"no repo screenshots found under {shots_dir} — nothing was "

@@ -49,14 +49,31 @@ permissions:
 jobs:
   sync-screenshots:
     name: Upload App Store screenshots (en-US)
-    if: inputs.confirm == 'true'
+    # NOT gated at job level. `confirm` defaults to "false", so an operator who
+    # clicks "Run workflow" without touching the dropdown would otherwise get
+    # an all-skipped run whose conclusion is success — a green check, zero
+    # annotations, nothing uploaded. That is the same fake green the script's
+    # credential-less skip was upgraded to annotate. The guard below makes the
+    # no-op say so, and every later step is conditioned on it.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Guard — confirm must be explicitly true
+        id: guard
+        run: |
+          if [ "${{ inputs.confirm }}" != "true" ]; then
+            echo "::warning::confirm was left at '${{ inputs.confirm }}' — nothing was uploaded. Re-run with confirm=true to publish the repo's screenshots."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout (for appstore-screenshots/*)
+        if: steps.guard.outputs.go == 'true'
         uses: actions/checkout@v7
 
       - name: Upload screenshots to App Store Connect
+        if: steps.guard.outputs.go == 'true'
         env:
           # Same secrets as the deploy workflow — no new scope, no new secret.
           # asc_listing.py reads the .p8 CONTENT straight from env, so there
