@@ -212,9 +212,10 @@ samples/web-demo/playwright-report/
 # Kotlin/JS bundle smoke-test staging: the built bundle + version-matched
 # Filament runtime that .claude/scripts/web-bundle-smoke.sh copies into
 # samples/web-demo/site/kotlin-bundle/ are build artifacts. They are already
-# covered by the broad `site/` rule above; the fixture page index.html in that
-# directory is force-added (`git add -f`), matching how the rest of site/ is
-# tracked.
+# covered by the broad `site/` rule above; the fixture pages in that directory
+# (index.html, splat.html — #2646) and the splat asset
+# site/models/splats/rainbow_sphere.ply are force-added (`git add -f`), matching
+# how the rest of site/ is tracked.
 
 # samples/web-demo/site/js/model-sources.js is SOURCE, not a build artifact —
 # the multi-source Explore catalog layer (#2722). It sits under the broad

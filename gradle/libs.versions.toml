@@ -49,6 +49,17 @@ jetpackXrArCore = "1.0.0-alpha15"
 # Session #800 / #961 track future Filament bumps with the same paired-update
 # guarantee.
 filament = "1.72.1"
+# The WEB Filament runtime — MUST track the npm `filament` pin in
+# sceneview-web/build.gradle.kts (`npm("filament", ...)`) exactly. The Kotlin/JS
+# bundle runs against that npm build (staged by web-bundle-smoke.sh from the
+# Kotlin/JS build's node_modules), whose MATERIAL_VERSION is its minor digit
+# (1.52.x → v52) — a DIFFERENT track from the Android `filament` above (v72).
+# tools/GenerateFilamat.sh compiles the sceneview-web blobs (e.g. splat_web.mat,
+# #2646 P2) with the matc matching THIS version, so the web ABI invariant is
+# explicit and --check-able. Bumping the npm pin ⇒ bump this together and
+# regenerate the web blobs in the same PR (the CONTRIBUTING.md invariant,
+# applied to the web runtime).
+filamentWeb = "1.52.3"
 arCore = "1.54.0"
 
 # Networking

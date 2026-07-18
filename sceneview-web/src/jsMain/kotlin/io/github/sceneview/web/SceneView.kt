@@ -662,6 +662,60 @@ class SceneView private constructor(
     }
 
     /**
+     * Fetches + parses a Gaussian Splatting file (`.ply` INRIA / `.spz` Niantic) through
+     * the shared KMP `sceneview-core` parsers — the exact bytes-in contract of Android's
+     * `SplatParser` (#2646 P2). [onLoaded] fires with the parsed cloud, or `null` on
+     * fetch/parse failure (already `console.error`-ed; [onError] gets the cause).
+     *
+     * Follows `loadModel`'s async discipline: the render gate stays active for the whole
+     * load ([pendingLoads]), settles exactly once, and the `destroyed` guard drops a
+     * stale continuation instead of touching freed WASM handles (#1597 Tier-2).
+     */
+    internal fun loadSplatCloud(
+        url: String,
+        onError: ((Throwable) -> Unit)? = null,
+        onLoaded: (io.github.sceneview.core.splat.SplatCloud?) -> Unit,
+    ) {
+        pendingLoads++
+        var splatSettled = false
+        fun settleSplat() {
+            if (!splatSettled) { splatSettled = true; pendingLoads--; requestRender() }
+        }
+
+        window.fetch(url).then { it.arrayBuffer() }.then { buffer ->
+            if (destroyed) {
+                console.log(
+                    "SceneView: dropped stale splat load for $url " +
+                        "(SceneView destroyed before fetch resolved)",
+                )
+                settleSplat()
+                return@then
+            }
+            // Kotlin/JS ByteArray IS an Int8Array — view the fetched buffer directly,
+            // no copy, and hand it to the shared KMP parser.
+            val bytes = org.khronos.webgl.Int8Array(buffer.unsafeCast<ArrayBuffer>())
+                .unsafeCast<ByteArray>()
+            val cloud = try {
+                io.github.sceneview.core.splat.SplatParser.parse(bytes)
+            } catch (e: Throwable) {
+                console.error("SceneView: failed to parse splat file from $url", e)
+                onError?.invoke(e)
+                settleSplat()
+                onLoaded(null)
+                return@then
+            }
+            console.log("SceneView: splat cloud loaded from $url (${cloud.count} splats)")
+            onLoaded(cloud)
+            settleSplat()
+        }.catch { error ->
+            console.error("SceneView: Error fetching splat file from $url", error)
+            onError?.invoke(Throwable("fetch failed for $url: $error"))
+            settleSplat()
+            onLoaded(null)
+        }
+    }
+
+    /**
      * Load the default neutral IBL environment.
      * Provides physically-correct PBR reflections without a visible skybox —
      * models look like they're in a photography studio.
