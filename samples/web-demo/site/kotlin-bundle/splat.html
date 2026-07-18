@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SceneView Kotlin/JS bundle — SplatNode smoke test</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #000; }
+    #scene-canvas { width: 640px; height: 480px; display: block; }
+  </style>
+</head>
+<body>
+  <!--
+    SplatNode (#2646 P2) harness for the COMPILED Kotlin/JS bundle
+    (`sceneview-web.js`) — the real npm/CDN artifact, NOT the hand-authored
+    `js/sceneview.js`. Staged alongside a version-matched `filament.js`/`.wasm`
+    by `.claude/scripts/web-bundle-smoke.sh`. Driven by
+    `tests/splat-bundle.spec.ts`, which asserts `addSplatNode(url)` resolves,
+    the rainbow-sphere splat cloud renders non-blank, and the intra-batch alpha
+    blend stays stable across a camera orbit (the P1b gate, ported to web).
+
+    The splat asset is the byte-identical `rainbow_sphere.ply` the Android
+    splat-preview demo ships (8000 gaussians), served from `../models/splats/`.
+  -->
+  <canvas id="scene-canvas" width="640" height="480"></canvas>
+
+  <script src="./filament.js"></script>
+  <script src="./sceneview-web.js"></script>
+  <script>
+    // The spec polls these globals — same shape as the base kotlin-bundle
+    // fixture so the two share the helper assertions.
+    window.__smoke = {
+      status: 'pending',      // pending | resolved | rejected | no-api
+      error: null,
+      version: null,
+      splatLoaded: false,     // addSplatNode resolved and the node is in the scene
+    };
+    window.__initErrors = [];
+    (function () {
+      var orig = console.error;
+      console.error = function () {
+        try {
+          var msg = Array.prototype.map
+            .call(arguments, function (a) { return (a && a.message) ? a.message : String(a); })
+            .join(' ');
+          if (msg.indexOf('Failed to initialize Filament engine') !== -1) {
+            window.__initErrors.push(msg);
+          }
+        } catch (e) { /* never let logging instrumentation throw */ }
+        return orig.apply(console, arguments);
+      };
+    })();
+
+    window.addEventListener('load', function () {
+      if (!window.sceneview || typeof window.sceneview.createViewer !== 'function') {
+        window.__smoke.status = 'no-api';
+        return;
+      }
+      window.__smoke.version = window.sceneview.version;
+
+      // A non-rotating viewer so the spec drives the orbit deterministically
+      // (setCameraOrbit) and can compare fixed poses for blend stability.
+      window.sceneview.createViewerAutoRotate('scene-canvas', false)
+        .then(function (sv) {
+          window.__smoke.status = 'resolved';
+          window.__sv = sv;
+          if (typeof sv.addSplatNode !== 'function') {
+            window.__smoke.status = 'no-splat-api';
+            return;
+          }
+          // No environment/IBL needed — splats are unlit, self-coloured.
+          return sv.addSplatNode('../models/splats/rainbow_sphere.ply');
+        })
+        .then(function (handle) {
+          if (handle) {
+            window.__smoke.splatLoaded = true;
+            window.__splat = handle;
+          }
+        })
+        .catch(function (err) {
+          window.__smoke.status = 'rejected';
+          window.__smoke.error = (err && err.message) ? err.message : String(err);
+        });
+    });
+
+    // Drive the orbit camera to a fixed spherical pose (radians, metres) so the
+    // spec can sample identical, reproducible frames. The rainbow sphere is
+    // radius ~0.5 m, so a ~1.6 m distance frames it fully.
+    window.__orbitTo = function (theta, phi, distance) {
+      if (window.__sv && typeof window.__sv.setCameraOrbit === 'function') {
+        window.__sv.setCameraOrbit(theta, phi, distance);
+      }
+    };
+  </script>
+</body>
+</html>

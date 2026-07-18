@@ -14,6 +14,7 @@ import io.github.sceneview.web.nodes.ModelNode
 import io.github.sceneview.web.nodes.Node
 import io.github.sceneview.web.nodes.PlaneNode
 import io.github.sceneview.web.nodes.SphereNode
+import io.github.sceneview.web.nodes.SplatNode
 
 /**
  * Node-returning content factories for [SceneView] — #2024 slice 2.
@@ -145,6 +146,70 @@ private fun SceneView.attachGeometry(node: GeometryNode, config: GeometryConfig,
         node.adoptChildEntity(asset.getRoot())
         node.asset = asset
     }
+}
+
+/**
+ * Adds a Gaussian Splatting cloud wrapped in a [SplatNode] added to the retained node
+ * tree — the web mirror of Android's `SplatNode(splatCloud)` (#2646 P2).
+ *
+ * Synchronous overload for callers that already hold a parsed
+ * [io.github.sceneview.core.splat.SplatCloud] (the shared KMP parsers —
+ * `SplatParser.parse(bytes)`). Registers the node's batch renderables with the scene,
+ * wires the painter's-sort camera feed to this view's camera, and hooks repaint +
+ * scene-detach so `node.destroy()` cleans up completely.
+ */
+fun SceneView.addSplatNode(
+    splatCloud: io.github.sceneview.core.splat.SplatCloud,
+    parent: Node? = null,
+): SplatNode {
+    val node = SplatNode(engine, newEntity(), splatCloud)
+    node.onInvalidate = { requestRender() }
+    node.onDetach = { entities -> scene.removeEntities(entities) }
+    node.cameraPositionProvider = {
+        // Camera world position straight from Filament (a JS number[] float3).
+        val p: dynamic = camera.getPosition()
+        io.github.sceneview.math.Position(
+            (p[0].unsafeCast<Double>()).toFloat(),
+            (p[1].unsafeCast<Double>()).toFloat(),
+            (p[2].unsafeCast<Double>()).toFloat(),
+        )
+    }
+    addNode(node, parent)
+    scene.addEntities(node.batchEntities.toTypedArray())
+    requestRender()
+    return node
+}
+
+/**
+ * Fetches a `.ply` / `.spz` splat file, parses it through the shared KMP parsers, and
+ * adds the resulting [SplatNode] — the async URL twin of the [SplatCloud] overload,
+ * following [addModelNode]'s contract: the returned pivot [Node] is usable immediately
+ * (transform it while the fetch is in flight), and the [SplatNode] attaches under it
+ * when the load lands ([onLoaded] fires then; [onError] on fetch/parse failure).
+ *
+ * If the pivot is destroyed before the load lands, the cloud is dropped — nothing was
+ * registered yet, so there is nothing to leak.
+ */
+fun SceneView.addSplatNode(
+    url: String,
+    parent: Node? = null,
+    onLoaded: ((SplatNode) -> Unit)? = null,
+    onError: ((Throwable) -> Unit)? = null,
+): Node {
+    val pivot = Node(engine, newEntity())
+    addNode(pivot, parent)
+    loadSplatCloud(url, onError = onError) { cloud ->
+        if (cloud == null) return@loadSplatCloud
+        if (pivot.isDestroyed) {
+            console.warn(
+                "SceneView: splat pivot for $url was destroyed before its load finished — cloud dropped",
+            )
+            return@loadSplatCloud
+        }
+        val node = addSplatNode(cloud, parent = pivot)
+        onLoaded?.invoke(node)
+    }
+    return pivot
 }
 
 /**

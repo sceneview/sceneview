@@ -166,6 +166,12 @@ export interface SceneViewer {
    *  Rejects if the viewer is uninitialised. */
   addModelNode(url: string): Promise<NodeHandle>;
 
+  /** Load a 3D Gaussian Splatting capture (`.ply` INRIA or `.spz` Niantic) as a
+   *  node and return its handle. The Promise resolves once the splat cloud has
+   *  been fetched, parsed, and rendered into the scene. Rejects on a fetch/parse
+   *  failure or an uninitialised viewer (#2646 P2). */
+  addSplatNode(url: string): Promise<NodeHandle>;
+
   /** Add a cube primitive of the given edge size and return its handle. */
   addCubeNode(size: number): NodeHandle;
 
