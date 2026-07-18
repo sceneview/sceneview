@@ -1,4 +1,5 @@
-# Maestro flow — "Advanced" demo category (12 demos).
+# Maestro flow — "Advanced" demo category (14 flow entries: 8 live demos +
+# retired-alias ids that pre-select tabs of the demos that absorbed them).
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/advanced.yaml
@@ -72,3 +73,8 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: video-recording
       DEMO_NAME: Video Recording
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: splat-preview
+      DEMO_NAME: Splat Preview

@@ -46,7 +46,8 @@ log "building :sceneview-web:jsBrowserProductionWebpack"
 
 # 2. Stage bundle + version-matched filament.js/.wasm beside the fixture page.
 #    filament.js resolves filament.wasm relative to its own URL, so all three
-#    must sit together in $STAGE (the fixture index.html is checked in there).
+#    must sit together in $STAGE (the fixture index.html + splat.html are checked
+#    in there).
 mkdir -p "$STAGE"
 cp "$BUNDLE_OUT" "$STAGE/sceneview-web.js"
 if [[ -f "$FILAMENT_DIR/filament.js" && -f "$FILAMENT_DIR/filament.wasm" ]]; then
@@ -71,7 +72,11 @@ log "ensuring Playwright + chromium ($WEBDIR)"
     || npx playwright install chromium >/dev/null 2>&1
 )
 
-# 4. Run the smoke spec. playwright.config.ts auto-starts http-server on :8080
-#    (override with WEB_DEMO_URL). Its own reporters drive the output.
-log "running tests/kotlin-bundle.spec.ts"
-( cd "$WEBDIR" && npx playwright test tests/kotlin-bundle.spec.ts )
+# 4. Run the bundle specs. playwright.config.ts auto-starts http-server on :8080
+#    (override with WEB_DEMO_URL). Its own reporters drive the output. Both specs
+#    self-skip when the bundle is not staged, so this is the single place the
+#    staged bundle is exercised: the init-hang guard (kotlin-bundle) AND the
+#    SplatNode #2646 gate (splat-bundle, which also needs the staged bundle +
+#    the version-matched filament runtime).
+log "running tests/kotlin-bundle.spec.ts + tests/splat-bundle.spec.ts"
+( cd "$WEBDIR" && npx playwright test tests/kotlin-bundle.spec.ts tests/splat-bundle.spec.ts )

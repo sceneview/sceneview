@@ -156,6 +156,16 @@ extract_refs() {
         case "$file" in
             */android-demo/src/main/java/io/github/sceneview/demo/sources/*) continue ;;
         esac
+        # Skip the web-demo multi-source streaming module (issue #2722) — the
+        # web twin of the android-demo sources/ layer above. `model-sources.js`
+        # streams from Sketchfab / Icosa Gallery / Poly Haven and builds
+        # download names dynamically, carrying only a `'model.gltf'` fallback
+        # basename; it ships no bundled asset, so skipping it cannot mask a real
+        # broken ref. The curated bundled catalog lives in index.html (still
+        # scanned) and the vendored engine js/ keeps its narrow model.glb filter.
+        case "$file" in
+            */web-demo/site/js/model-sources.js) continue ;;
+        esac
         # The vendored Filament/SceneView engine bundled under the web demo's
         # resources/js/ (byte-identical copies of website-static/js/, self-hosted
         # per issue #1586) carries exactly one false-positive: the JSDoc usage

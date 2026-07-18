@@ -6,7 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_geometry_title">Geometry Primitives</string>
-    <string name="demo_geometry_subtitle">Cube, sphere, cylinder, cone, plane</string>
+    <string name="demo_geometry_subtitle">Cube, sphere, cylinder, plane</string>
     <string name="demo_geometry">Geometry Nodes</string>
     <string name="demo_geometry_desc">Procedural cube, sphere, cylinder, and plane geometry</string>
 </resources>

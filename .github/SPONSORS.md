@@ -20,9 +20,7 @@ and keeping the SDK up to date across all 9 platforms.
 | Platform | Link | Fees |
 |----------|------|------|
 | **GitHub Sponsors** | [github.com/sponsors/sceneview](https://github.com/sponsors/sceneview) | 0% (GitHub absorbs fees) |
-| **Open Collective** | [opencollective.com/sceneview](https://opencollective.com/sceneview) | 10% fiscal host + processing |
 GitHub Sponsors is the most cost-effective (zero platform fees).
-Open Collective provides full expense transparency and corporate invoicing.
 
 ---
 
@@ -32,7 +30,7 @@ Open Collective provides full expense transparency and corporate invoicing.
 
 <!-- Gold sponsor logos here -->
 
-*Become the first Gold Sponsor — [pick a tier](https://opencollective.com/sceneview/contribute)*
+*Become the first Gold Sponsor — [pick a tier](https://github.com/sponsors/sceneview)*
 
 ## Sponsors
 
@@ -40,7 +38,7 @@ Open Collective provides full expense transparency and corporate invoicing.
 
 <!-- Sponsor logos here -->
 
-*No sponsors yet — [become one!](https://opencollective.com/sceneview/contribute)*
+*No sponsors yet — [become one!](https://github.com/sponsors/sceneview)*
 
 ## Backers
 
@@ -48,7 +46,6 @@ Thank you to all our backers!
 
 <!-- backers will be listed here -->
 
-[![Backers on Open Collective](https://opencollective.com/sceneview/backers/badge.svg)](https://opencollective.com/sceneview#backers)
 
 ---
 
@@ -61,5 +58,3 @@ SceneView uses donations to pay for:
 - **3D assets** — Models and environments for demo apps
 - **Marketing** — Reaching more developers
 - **Hardware** — Devices for testing across platforms
-
-All expenses are transparent on [Open Collective](https://opencollective.com/sceneview).

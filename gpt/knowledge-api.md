@@ -730,8 +730,15 @@ SceneView(
 
 Current scope (P1): isotropic billboards (max-axis scale — anisotropic screen-space ellipses are
 planned) and SH degree 0 color. Without a `cameraPositionProvider` the compositing order stays
-as loaded (expect popping when orbiting). `.ply` / `.spz` file loaders arrive with the #2646
-loader workstream — until then build `SplatCloud` from arrays.
+as loaded (expect popping when orbiting). Build a `SplatCloud` from arrays, or parse a file with
+the KMP `SplatParser.fromPly(bytes)` / `.fromSpz(bytes)` / `.parse(bytes)` (auto-detect) in
+`io.github.sceneview.core.splat`.
+
+**Web (#2646 P2):** the same rendering ships in `sceneview-web` (Kotlin/JS + Filament.js, WebGL2).
+Plain JS: `viewer.addSplatNode(url)` (`.ply` / `.spz`) → `Promise<NodeHandle>`. Kotlin/JS:
+`SceneView.addSplatNode(url, onLoaded = …)` or `addSplatNode(splatCloud)` for an already-parsed
+cloud. Same isotropic-P1 scope; the painter's sort re-runs on camera motion automatically (the web
+node feeds it the live camera position). iOS is tracked separately under #2646.
 
 ### VideoNode — video on 3D plane
 ```kotlin
@@ -3453,6 +3460,7 @@ The builder DSL below stays fully supported and is the simplest path for a stati
 | Add a model | `ModelNode(...)` added to a `Node` tree | builder `model("url.glb") { ... }` / `sceneView.loadModel(url)`, **or** plain-JS `sv.addModelNode(url)` → `Promise<NodeHandle>` |
 | Add a primitive | `CubeNode` / `SphereNode` / … | builder `geometry { cube(); … }`, **or** plain-JS `sv.addCubeNode(size)` / `sv.addSphereNode(radius)` → `NodeHandle` |
 | Add a light | `LightNode(...)` | builder `light { directional(); … }`, **or** plain-JS `sv.addLightNode("directional"\|"point"\|"spot")` → `NodeHandle` |
+| Add a splat cloud | `SplatNode(splatCloud)` (#2646 P1) | plain-JS `sv.addSplatNode(url)` → `Promise<NodeHandle>` (`.ply` INRIA / `.spz` Niantic), **or** Kotlin/JS `SceneView.addSplatNode(url, onLoaded = …)` / `addSplatNode(splatCloud)` (#2646 P2) |
 | Add an empty pivot / group | `Node()` | plain-JS `sv.addNode()` → `NodeHandle` (parent others under it with `addChild`) |
 | Remove a node | `node.parent = null` / `node.destroy()` | plain-JS `sv.removeNode(handle)` or `handle.destroy()` (detaches + frees the Filament entity) |
 | Configure the camera | `CameraNode(...)` | `camera { eye(...); target(...) }` (a `CameraConfig`) — **not** exported as a `NodeHandle` yet |
@@ -3674,6 +3682,7 @@ sv.dispose()
 // Node scene-graph (since slice 3 / P4 of #2024) — each returns a NodeHandle
 sv.addNode()                       // → NodeHandle (empty pivot)
 sv.addModelNode(url)               // → Promise<NodeHandle> (resolves when loaded)
+sv.addSplatNode(url)               // → Promise<NodeHandle> (3D Gaussian Splatting; .ply/.spz, #2646 P2)
 sv.addCubeNode(size)               // → NodeHandle
 sv.addSphereNode(radius)           // → NodeHandle
 sv.addLightNode(type)              // type: "directional" | "point" | "spot" → NodeHandle

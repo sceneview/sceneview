@@ -20,7 +20,7 @@ git clone https://github.com/sceneview/sceneview.git
 **`samples/android-demo/`** — Play Store ready, Material 3 Expressive
 
 4-tab showcase (**Explore / AR View / Samples / About**) backed by an
-append-only demo registry of **50 demos** (17 non-AR + 33 AR):
+append-only demo registry of **51 demos** (18 non-AR + 33 AR):
 
 - **Explore tab**: Featured 3D & AR demos and multi-source model streaming (Sketchfab / Icosa Gallery / Poly Haven)
 - **AR View tab**: Live `ARSceneView` camera with plane detection and tap-to-place
@@ -72,6 +72,10 @@ Open `samples/ios-demo/` in Xcode and run.
 Browser 3D viewer with:
 
 - Filament.js WASM rendering (same engine as Android)
+- Models tab: source-agnostic multi-source catalog (#2722, parity with the
+  Android/iOS Explore) — curated SceneView samples, Icosa Gallery and
+  Poly Haven (keyless CC catalogs, rendered in-app), Sketchfab when an API
+  key is configured
 - WebXR AR/VR support ("Enter AR" / "Enter VR" buttons)
 - Orbit camera, auto-resize
 

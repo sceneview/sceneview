@@ -5,7 +5,7 @@
      Adding a new demo never needs to touch strings.xml — see #1870. -->
 <resources>
     <string name="demo_ar_scene_mesh_title">Scene Mesh</string>
-    <string name="demo_ar_scene_mesh_subtitle">Color-coded real-world geometry with ARKit ARMeshAnchor parity</string>
+    <string name="demo_ar_scene_mesh_subtitle">Color-coded real-world geometry via ARCore Streetscape (terrain + buildings)</string>
     <!-- Shown after ~15 s of tracking with no geometry found (#1615). -->
     <string name="demo_ar_scene_mesh_no_geometry_hint">No scene mesh found. This demo needs an outdoor location with Google Street View coverage — point at nearby buildings. It will not find geometry indoors.</string>
 </resources>

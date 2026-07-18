@@ -74,8 +74,10 @@ class NetworkModelDownloader @VisibleForTesting internal constructor(
     /**
      * Download a multi-file asset: the [rootRelativePath] plus every entry in
      * [resources] (relative-path → absolute-URL) into a per-id directory, then
-     * return the local root file. Progress is reported for the (usually
-     * dominant) root file only; resources are typically small textures/buffers.
+     * return the local root file. Progress is cumulative across EVERY file in the
+     * bundle (resources + root) — on many sources the resources are the dominant
+     * payload, so a root-only counter would spin or read "0.0 MB" for most of the
+     * download.
      *
      * The returned root sits alongside its resources so `ModelLoader` resolves
      * the glTF's external URIs from the same folder.
@@ -98,12 +100,28 @@ class NetworkModelDownloader @VisibleForTesting internal constructor(
             rootFile.setLastModified(System.currentTimeMillis())
             return@withContext rootFile
         }
+        // Cumulative progress across EVERY file in the bundle (resources + root), not
+        // just the root .gltf. On many sources the resources (Poly Haven .bin/textures,
+        // Icosa buffers) ARE the dominant payload, so reporting only the tiny root left
+        // the bar spinning or stuck at "0.0 MB". `completedBytes` is the monotonic sum of
+        // files already finished; each in-flight file adds its own `read` on top, so the
+        // forwarded counter only ever advances. The total is completed bytes + the current
+        // file's advertised size, or -1 when the server omits Content-Length — in which
+        // case the read counter still advances and the viewer surfaces it without a bar.
+        var completedBytes = 0L
+        val bundleProgress: ((Long, Long) -> Unit)? = onProgress?.let { report ->
+            { fileRead: Long, fileTotal: Long ->
+                val total = if (fileTotal > 0L) completedBytes + fileTotal else -1L
+                report(completedBytes + fileRead, total)
+            }
+        }
         for ((relativePath, url) in resources) {
             val resourceFile = File(assetDir, sanitizeRelative(relativePath))
             if (resourceFile.exists() && resourceFile.length() > 0L) continue
-            streamTo(url, resourceFile, onProgress = null)
+            streamTo(url, resourceFile, bundleProgress)
+            completedBytes += resourceFile.length()
         }
-        streamTo(rootUrl, rootFile, onProgress)
+        streamTo(rootUrl, rootFile, bundleProgress)
         pruneCacheIfNeeded()
         rootFile
     }

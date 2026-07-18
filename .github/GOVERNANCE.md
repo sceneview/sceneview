@@ -34,7 +34,6 @@ All participants are expected to follow our [Code of Conduct](CODE_OF_CONDUCT.md
 ## Funding
 
 SceneView is funded through:
-- [Open Collective](https://opencollective.com/sceneview)
-- [GitHub Sponsors](https://github.com/sponsors/SceneView)
+- [GitHub Sponsors](https://github.com/sponsors/sceneview)
 
 Funding supports development time, infrastructure, and community management.

@@ -61,6 +61,7 @@ the thing the fire-and-forget builder DSL cannot do. Angles are Euler degrees.
 ```js
 sv.addNode()                            // → NodeHandle — empty pivot / grouping transform
 sv.addModelNode(url)                    // → Promise<NodeHandle> (resolves once loaded)
+sv.addSplatNode(url)                    // → Promise<NodeHandle> (3D Gaussian Splatting; .ply/.spz)
 sv.addCubeNode(size)                    // → NodeHandle (content already in scene)
 sv.addSphereNode(radius)                // → NodeHandle
 sv.addLightNode(type)                   // type: "directional" | "point" | "spot" — else throws
