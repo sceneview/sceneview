@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.RotateLeft
@@ -26,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
@@ -61,6 +63,9 @@ import io.github.sceneview.rememberModelLoader
  * The TV is procedural (two [CubeNode]s: matte body + glossy screen) so the demo needs no
  * bundled asset and stays deterministic — consistent with the local-assets rule.
  */
+/** Height of the orange alignment-guide Canvas — must be non-zero or the stroke is clipped. */
+private val GUIDE_LINE_HEIGHT = 16.dp
+
 @Composable
 fun WallPlacementDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
@@ -131,16 +136,20 @@ fun WallPlacementDemo(onBack: () -> Unit) {
         // Orange alignment guide — fixed screen-space line the user physically aligns
         // with the floor↔wall seam (the Amazon "ligne orange" from the teardown).
         if (phase == WallPlacementPhase.ALIGNING_EDGE) {
+            // The Canvas needs an explicit height — `fillMaxWidth()` alone leaves it
+            // zero-high and the stroke gets clipped away entirely.
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(GUIDE_LINE_HEIGHT)
                     .align(Alignment.Center)
                     .padding(horizontal = 24.dp),
             ) {
+                val midY = size.height / 2f
                 drawLine(
                     color = Color(0xFFFF8A00),
-                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                    end = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                    start = Offset(0f, midY),
+                    end = Offset(size.width, midY),
                     strokeWidth = 6.dp.toPx(),
                     cap = StrokeCap.Round,
                 )
