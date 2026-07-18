@@ -46,8 +46,17 @@ Deux scripts Python exécutables, un par store, code path UNIQUE local + CI :
 
 - **`play-store.yml`** (Phase A) : le job `sync-listing` appelle `play_listing.py --apply`
   au lieu du heredoc. Zéro changement de comportement, de gate ou de secret.
-- **`app-store.yml`** (Phase B) : NOUVEAU step séparé « Upload App Store screenshots »
-  (asc_listing.py --apply-screenshots), gated minor-bump/dispatch comme le texte.
+- **`app-store.yml`** (Phase B — LIVRÉ, révisé à l'implémentation) : NOUVEAU **job**
+  `sync-screenshots` (`asc_listing.py --apply-screenshots`), **ubuntu-latest,
+  `workflow_dispatch`-only** — et non un step du job macOS gated minor-bump comme
+  prévu initialement. Les 3 raisons, découvertes en lisant le flux réel :
+  (a) les screenshots **persistent d'une version ASC à l'autre** (une nouvelle
+  version hérite du set) → c'est de la maintenance de listing, pas une étape
+  par-release ; (b) le seul point d'insertion correct dans le flux tag serait
+  *entre* 4b et la création de la reviewSubmission, donc **dans** la zone gelée —
+  l'alternative (uploader après) écrirait sur une version verrouillée ; (c) c'est
+  du REST pur : aucun besoin de Xcode ni de rebuild de 40 min sur un runner à ~10x.
+  Le script **ne crée jamais de version** : il cible l'éditable, SKIP honnête sinon.
   ⛔ Le script submit-for-review inline N'EST PAS touché (fraîchement réparé #2731 ;
   la 4.22.0 n'est toujours pas soumise — zone gelée tant que le cleanup ASC-side
   gated Thomas n'est pas fait).
@@ -62,10 +71,18 @@ Deux scripts Python exécutables, un par store, code path UNIQUE local + CI :
 - **A — fondation** : extraction `play_listing.py` (+ appel depuis play-store.yml) +
   `asc_listing.py` read-only + tests. Risque principal : régresser un fix accumulé →
   extraction ligne-à-ligne, la review compare heredoc vs script.
-- **B — upload screenshots iOS** : reserve → PUT chunks → `uploaded:true`,
-  skip-if-identical par checksum ; mapping `iphone-6.9→APP_IPHONE_67`,
-  `ipad-13→APP_IPAD_PRO_3GEN_129` ; step app-store.yml ; header de
-  capture-appstore-screenshots.sh mis à jour (le « NOT part of this script » devient faux).
+- **B — upload screenshots iOS** ✅ : reserve → PUT chunks → commit `uploaded:true`
+  + `sourceFileChecksum` (MD5), skip-if-identical, sinon delete-then-upload (#1710)
+  pour que l'ordre live = l'ordre des noms de fichiers ; mapping `iphone-6.9→APP_IPHONE_67`,
+  `ipad-13→APP_IPAD_PRO_3GEN_129` ; job `sync-screenshots` ; header de
+  capture-appstore-screenshots.sh corrigé (le « NOT part of this script » + la
+  mention fastlane étaient devenus faux). Protocole verrouillé sur fastlane/spaceship
+  (`{uploaded: true, sourceFileChecksum: MD5.hexdigest(bytes)}`) — le champ `isUploaded`
+  de certains write-ups est un artefact de wrapper Swift ; fallback une fois sur 400
+  plutôt que laisser un asset réservé en AWAITING_UPLOAD.
+  Durcissement attrapé en chemin : `allow_abbrev=False` sur les DEUX scripts — argparse
+  résolvait `--apply`/`--appl` en `--apply-screenshots`, donc une faute de frappe
+  publiait vers un store.
 - **C — drift visible** : job maintenance.yml + release-checklist §17 (advisory).
   ⚠️ Prérequis (warning fanout PR #2764) : valider l'hypothèse
   `sourceFileChecksum == MD5(png committé)` par un dry-run live sur un set

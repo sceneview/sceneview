@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
-"""asc_listing.py — App Store listing drift check, read-only (#2612 P2, Phase A).
+"""asc_listing.py — App Store listing drift check + screenshot upload (#2612 P2).
 
-READ-ONLY in this phase: diffs the live App Store listing against the repo's
-declared state and never writes. The upload half (screenshots via
-`appScreenshotSets`) is Phase B and will extend this script — until then any
---apply* flag exits with an explicit error rather than pretending.
+Two modes, `--dry-run` being the default:
+
+  --dry-run             read-only live-vs-repo diff, writes nothing (Phase A)
+  --apply-screenshots   upload the repo's screenshots to the EDITABLE App
+                        Store version, replacing that version's sets (Phase B)
+
+The apply path deliberately covers screenshots ONLY. Listing *text* is synced
+by app-store.yml's submit step (freshly repaired in #2731/#2738, and the
+4.22.0 submission is still pending) — duplicating its find-or-create-version
+logic here would risk regressing the accumulated fixes it carries (#1831
+editable-draft reuse, #2731 `filter[platform]=IOS`). This script therefore
+never CREATES a version: it targets an existing editable one and SKIPs
+honestly when there is none.
 
 What it diffs (en-US):
   - text fields — `samples/ios-demo/distribution/app-store/en-US/*.txt`
@@ -19,9 +28,19 @@ What it diffs (en-US):
     as "not live" is the expected, honest baseline — that is the #2384 gap
     Phase B closes.
 
-Version selection: the LIVE version (`READY_FOR_SALE`) — drift is measured
-against what users actually see. When the app has no live version yet, the
-check SKIPs. An editable draft, if present, is mentioned informationally.
+Version selection differs per mode, on purpose:
+  --dry-run           the LIVE version (`READY_FOR_SALE`) — drift is what
+                      users actually see. No live version → SKIP.
+  --apply-screenshots the EDITABLE version (`PREPARE_FOR_SUBMISSION` /
+                      `READY_FOR_REVIEW`) — the only one Apple lets us write
+                      to. No editable version → SKIP (never create one).
+Both filter on `filter[platform]=IOS`: without it a macOS draft can hijack
+the query and every downstream call targets the wrong listing (#2731).
+
+Screenshots persist from one App Store version to the next (a new version
+inherits the previous set), so uploading is listing MAINTENANCE, not a
+per-release step — which is why the workflow job that calls this is
+dispatch-gated rather than wired into the tag flow.
 
 Credentials — reuses app-store.yml / store-preflight.sh secrets, NO new scope,
 same alias set as store-preflight.sh:
@@ -148,6 +167,47 @@ def diff_screenshots(device_dir, display_type, local_files, remote_checksums):
     if extra:
         parts.append(f"{extra} live screenshot(s) not in the repo")
     return [f"{device_dir} ({display_type}): differs ({'; '.join(parts) or 'content mismatch'})"]
+
+
+def plan_screenshot_sync(local_files, remote):
+    """Decide what one display type needs. Returns (action, delete_ids, uploads).
+
+    `remote` is the ordered live set as [{"id": …, "checksum": …}, …].
+
+    Two outcomes only — "skip" when the live set is already byte-identical IN
+    ORDER, else "replace" (delete every live screenshot, upload every local
+    one). A finer per-file diff is deliberately NOT attempted: the App Store
+    displays screenshots in set order, so a partial update would still need a
+    reorder call, and delete-then-upload is the same deterministic,
+    idempotent shape the Play image sync already uses (#1710).
+    """
+    local = [(f, md5_of(f)) for f in local_files]
+    if [c for _, c in local] == [r.get("checksum") for r in remote]:
+        return "skip", [], []
+    return "replace", [r["id"] for r in remote if r.get("id")], [f for f, _ in local]
+
+
+def upload_operations_to_requests(blob, operations):
+    """Turn Apple's `uploadOperations` into concrete requests.
+
+    Each operation carries method/url/offset/length plus its own
+    requestHeaders (a presigned upload target). Apple may split one asset
+    into several chunks; slicing is pure arithmetic on the file bytes, so it
+    is unit-tested offline rather than discovered against the live API.
+    """
+    requests_ = []
+    for op in operations or []:
+        offset = int(op.get("offset") or 0)
+        length = int(op.get("length") if op.get("length") is not None else len(blob) - offset)
+        headers = {h["name"]: h["value"] for h in (op.get("requestHeaders") or [])
+                   if h.get("name")}
+        requests_.append({
+            "method": (op.get("method") or "PUT").upper(),
+            "url": op["url"],
+            "headers": headers,
+            "body": blob[offset:offset + length],
+        })
+    return requests_
 
 
 def resolve_asc_credentials(env=os.environ, home=None):
@@ -283,10 +343,230 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir):
     return drift, None
 
 
+def _editable_version(requests, headers, app_id):
+    """The one version Apple lets us write to, or None.
+
+    `filter[platform]=IOS` is mandatory (#2731): without it the macOS app's
+    permanently-editable draft can be returned instead, and every write then
+    lands on the wrong listing.
+    """
+    r = requests.get(
+        f"{BASE}/apps/{app_id}/appStoreVersions"
+        "?filter[platform]=IOS"
+        "&filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW&limit=1",
+        headers=headers,
+    )
+    r.raise_for_status()
+    data = r.json().get("data", [])
+    if not data:
+        return None
+    return data[0]["id"], data[0].get("attributes", {}).get("versionString", "?")
+
+
+def _live_sets(requests, headers, loc_id):
+    """Live screenshot sets for a localization: {displayType: (set_id, [shots])}."""
+    r = requests.get(
+        f"{BASE}/appStoreVersionLocalizations/{loc_id}/appScreenshotSets"
+        "?include=appScreenshots&limit=50",
+        headers=headers,
+    )
+    r.raise_for_status()
+    payload = r.json()
+    by_id = {inc["id"]: inc for inc in payload.get("included", [])
+             if inc.get("type") == "appScreenshots"}
+    sets = {}
+    for s in payload.get("data", []):
+        dtype = s.get("attributes", {}).get("screenshotDisplayType")
+        refs = (s.get("relationships", {}).get("appScreenshots", {}).get("data") or [])
+        shots = [{"id": ref["id"],
+                  "checksum": by_id.get(ref["id"], {}).get("attributes", {}).get("sourceFileChecksum")}
+                 for ref in refs]
+        sets[dtype] = (s["id"], shots)
+    return sets
+
+
+def _upload_one(requests, headers, set_id, path):
+    """Reserve → upload chunks → commit one screenshot. Returns (id, local_md5, live_checksum).
+
+    The chunk PUTs use ONLY the presigned headers Apple hands back — the ASC
+    JWT is deliberately not attached to them (different host, no need to
+    widen where the credential travels), and no upload header is ever logged.
+    """
+    blob = path.read_bytes()
+    local_md5 = md5_of(path)
+
+    r = requests.post(
+        f"{BASE}/appScreenshots",
+        headers={**headers, "Content-Type": "application/json"},
+        json={"data": {
+            "type": "appScreenshots",
+            "attributes": {"fileSize": len(blob), "fileName": path.name},
+            "relationships": {"appScreenshotSet": {
+                "data": {"type": "appScreenshotSets", "id": set_id}}},
+        }},
+    )
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f"reserve failed for {path.name}: {r.status_code} {r.text[:300]}")
+    reserved = r.json()["data"]
+    shot_id = reserved["id"]
+
+    for req in upload_operations_to_requests(
+            blob, reserved.get("attributes", {}).get("uploadOperations")):
+        up = requests.request(req["method"], req["url"],
+                              headers=req["headers"], data=req["body"])
+        if up.status_code not in (200, 201, 204):
+            raise RuntimeError(
+                f"chunk upload failed for {path.name}: {up.status_code}")
+
+    # Commit. Apple's documented attribute is `uploaded`, which is what
+    # fastlane/spaceship sends; some third-party write-ups use `isUploaded`.
+    # Try the documented name, fall back once rather than leave a reserved
+    # asset dangling in AWAITING_UPLOAD.
+    commit = {"sourceFileChecksum": local_md5, "uploaded": True}
+    r = requests.patch(
+        f"{BASE}/appScreenshots/{shot_id}",
+        headers={**headers, "Content-Type": "application/json"},
+        json={"data": {"type": "appScreenshots", "id": shot_id, "attributes": commit}},
+    )
+    if r.status_code == 400:
+        print(f"::warning::commit with 'uploaded' rejected for {path.name} "
+              f"({r.status_code}) — retrying with 'isUploaded'")
+        commit = {"sourceFileChecksum": local_md5, "isUploaded": True}
+        r = requests.patch(
+            f"{BASE}/appScreenshots/{shot_id}",
+            headers={**headers, "Content-Type": "application/json"},
+            json={"data": {"type": "appScreenshots", "id": shot_id, "attributes": commit}},
+        )
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f"commit failed for {path.name}: {r.status_code} {r.text[:300]}")
+
+    live_checksum = r.json().get("data", {}).get("attributes", {}).get("sourceFileChecksum")
+    return shot_id, local_md5, live_checksum
+
+
+def _await_delivery(requests, headers, shot_id, name, attempts=15, delay=2):
+    """Poll one screenshot until Apple finishes processing it. Returns a state string.
+
+    Bounded on purpose (~30s): a stuck asset must surface as a warning, not
+    hang the job.
+    """
+    state = "UNKNOWN"
+    for _ in range(attempts):
+        r = requests.get(f"{BASE}/appScreenshots/{shot_id}", headers=headers)
+        if r.status_code != 200:
+            return f"HTTP {r.status_code}"
+        delivery = r.json().get("data", {}).get("attributes", {}).get("assetDeliveryState") or {}
+        state = delivery.get("state", "UNKNOWN")
+        if delivery.get("errors"):
+            return f"{state} errors={delivery['errors']}"
+        if state in ("COMPLETE", "FAILED"):
+            return state
+        time.sleep(delay)
+    print(f"::warning::{name} still {state} after {attempts * delay}s — not waiting further")
+    return state
+
+
+def apply_screenshots(headers, bundle_id, shots_dir):
+    """Upload the repo's screenshots to the editable version. Returns (changed, skipped).
+
+    `skipped` is a human-readable reason when nothing could be done — an
+    honest SKIP, never a silent green.
+    """
+    import requests
+
+    r = requests.get(f"{BASE}/apps?filter[bundleId]={bundle_id}", headers=headers)
+    r.raise_for_status()
+    apps = r.json().get("data", [])
+    if not apps:
+        return [], f"no app found for bundleId {bundle_id}"
+    app_id = apps[0]["id"]
+
+    editable = _editable_version(requests, headers, app_id)
+    if editable is None:
+        return [], ("no editable iOS version (PREPARE_FOR_SUBMISSION / READY_FOR_REVIEW) — "
+                    "screenshots can only be written to an editable version, and this "
+                    "script never creates one (app-store.yml owns version creation)")
+    version_id, version_string = editable
+    print(f"[apply] editable iOS version: {version_string} ({version_id})")
+
+    r = requests.get(f"{BASE}/appStoreVersions/{version_id}/appStoreVersionLocalizations",
+                     headers=headers)
+    r.raise_for_status()
+    en_us = next((loc for loc in r.json().get("data", [])
+                  if loc.get("attributes", {}).get("locale") == "en-US"), None)
+    if en_us is None:
+        return [], f"no en-US localization on version {version_string}"
+    loc_id = en_us["id"]
+
+    sets = _live_sets(requests, headers, loc_id)
+    changed = []
+    for device_dir, display_type in sorted(DISPLAY_TYPE_MAP.items()):
+        ddir = shots_dir / device_dir
+        files = sorted(ddir.glob("*.png")) if ddir.is_dir() else []
+        if not files:
+            print(f"[apply] {device_dir}: no repo screenshots — leaving the live set alone")
+            continue
+
+        set_id, live_shots = sets.get(display_type, (None, []))
+        action, delete_ids, uploads = plan_screenshot_sync(files, live_shots)
+        if action == "skip":
+            print(f"[apply] {device_dir} ({display_type}): already identical — nothing to do")
+            continue
+
+        if set_id is None:
+            r = requests.post(
+                f"{BASE}/appScreenshotSets",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"data": {
+                    "type": "appScreenshotSets",
+                    "attributes": {"screenshotDisplayType": display_type},
+                    "relationships": {"appStoreVersionLocalization": {
+                        "data": {"type": "appStoreVersionLocalizations", "id": loc_id}}},
+                }},
+            )
+            if r.status_code not in (200, 201):
+                print(f"::error::could not create {display_type} set: "
+                      f"{r.status_code} {r.text[:300]}")
+                raise SystemExit(1)
+            set_id = r.json()["data"]["id"]
+            print(f"[apply] {device_dir}: created {display_type} set {set_id}")
+
+        # Delete-then-upload, so set ORDER is exactly the repo's filename order.
+        for shot_id in delete_ids:
+            d = requests.delete(f"{BASE}/appScreenshots/{shot_id}", headers=headers)
+            if d.status_code not in (200, 204):
+                print(f"::warning::could not delete live screenshot {shot_id}: {d.status_code}")
+
+        for path in uploads:
+            shot_id, local_md5, live_checksum = _upload_one(requests, headers, set_id, path)
+            state = _await_delivery(requests, headers, shot_id, path.name)
+            if state == "FAILED":
+                print(f"::error::{path.name} failed Apple-side processing")
+                raise SystemExit(1)
+            # Measure the assumption the drift diff relies on, instead of
+            # trusting it (review-fanout warning, PR #2764).
+            if live_checksum and live_checksum != local_md5:
+                print(f"::warning::{path.name}: live sourceFileChecksum {live_checksum} "
+                      f"!= local MD5 {local_md5} — diff_screenshots() keys on MD5 equality; "
+                      "re-key it before Phase C treats screenshot drift as a signal")
+            else:
+                print(f"[apply] {path.name}: uploaded, {state}, checksum matches local MD5")
+            changed.append(f"{device_dir}/{path.name}")
+
+    return changed, None
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    # allow_abbrev=False is a safety requirement, not a style choice: argparse
+    # otherwise accepts any unambiguous prefix, so `--apply` (the sibling
+    # play_listing.py's real flag, and the obvious thing to type by habit) or
+    # a typo like `--apply-screenshot` would silently resolve to
+    # --apply-screenshots and push assets to the App Store.
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
     ap.add_argument("--dry-run", action="store_true",
-                    help="read-only live-vs-repo diff (default and only mode in Phase A)")
+                    help="read-only live-vs-repo diff (default)")
+    ap.add_argument("--apply-screenshots", action="store_true",
+                    help="upload the repo screenshots to the EDITABLE version (writes)")
     ap.add_argument("--fail-on-drift", action="store_true",
                     help="exit 3 when drift is found")
     ap.add_argument("--bundle-id", default=os.environ.get("ASC_BUNDLE_ID", DEFAULT_BUNDLE_ID))
@@ -294,15 +574,25 @@ def main(argv=None):
     ap.add_argument("--screenshots-dir", default=DEFAULT_SCREENSHOTS_DIR)
     args, unknown = ap.parse_known_args(argv)
     if unknown:
-        # An --apply-style flag must fail loudly, not silently no-op — the
-        # write path is Phase B (#2612), not a forgotten default.
-        print(f"::error::Unknown option(s) {unknown} — asc_listing.py is READ-ONLY "
-              "in Phase A; the screenshot/metadata upload path is Phase B (#2612).")
+        # A mistyped write flag must fail loudly rather than silently
+        # degrade to the read-only default — a "successful" run that
+        # uploaded nothing is exactly the fake green this repo bans.
+        print(f"::error::Unknown option(s) {unknown}. Valid modes: --dry-run (default), "
+              "--apply-screenshots. Listing TEXT is synced by app-store.yml, not here.")
+        return 2
+
+    if args.apply_screenshots and args.dry_run:
+        print("::error::--dry-run and --apply-screenshots are mutually exclusive — "
+              "pick reading or writing, not both.")
         return 2
 
     meta_dir = pathlib.Path(args.metadata_dir)
     shots_dir = pathlib.Path(args.screenshots_dir)
-    if not meta_dir.is_dir():
+    if args.apply_screenshots:
+        if not shots_dir.is_dir():
+            print(f"::error::Screenshots dir not found: {shots_dir}")
+            return 2
+    elif not meta_dir.is_dir():
         print(f"::error::Metadata dir not found: {meta_dir}")
         return 2
 
@@ -315,7 +605,23 @@ def main(argv=None):
         )
         return 0
 
-    drift, skipped = dry_run(_headers(*creds), args.bundle_id, meta_dir, shots_dir)
+    headers = _headers(*creds)
+
+    if args.apply_screenshots:
+        changed, skipped = apply_screenshots(headers, args.bundle_id, shots_dir)
+        if skipped:
+            print(f"[skip] {skipped}")
+            return 0
+        if not changed:
+            print(f"[apply] {args.bundle_id}: live screenshots already match the repo "
+                  "— nothing uploaded")
+            return 0
+        print(f"[apply] {args.bundle_id}: {len(changed)} screenshot(s) uploaded:")
+        for item in changed:
+            print(f"  UPLOADED {item}")
+        return 0
+
+    drift, skipped = dry_run(headers, args.bundle_id, meta_dir, shots_dir)
     if skipped:
         print(f"[skip] {skipped}")
         return 0

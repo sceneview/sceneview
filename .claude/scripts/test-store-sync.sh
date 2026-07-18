@@ -81,12 +81,43 @@ else
   bad "asc_listing.py --dry-run without creds → rc=$RC, out: $(printf '%s' "$OUT" | head -2)"
 fi
 
-# 4. The Phase-B write path must be a loud error, not a silent no-op.
+# 4. The write path SKIPs honestly without creds too — a run that uploaded
+#    nothing must never look like a successful upload.
 run_py "$SYNC_DIR/asc_listing.py" --apply-screenshots
-if [ "$RC" -eq 2 ] && printf '%s' "$OUT" | grep -q 'Phase B'; then
-  ok "asc_listing.py --apply-screenshots → explicit Phase-B error, exit 2"
+if [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q '^\[skip\]'; then
+  ok "asc_listing.py --apply-screenshots without creds → honest SKIP, exit 0"
 else
-  bad "asc_listing.py --apply-screenshots → rc=$RC (want 2 + 'Phase B' message)"
+  bad "asc_listing.py --apply-screenshots without creds → rc=$RC, out: $(printf '%s' "$OUT" | head -2)"
+fi
+
+# 4b. A near-miss flag must NOT reach the App Store write path. argparse
+#     expands unambiguous prefixes unless allow_abbrev=False, so `--apply`
+#     (play_listing.py's real flag — the obvious thing to type by habit)
+#     would otherwise upload screenshots.
+for near_miss in --apply --appl --apply-screenshot; do
+  run_py "$SYNC_DIR/asc_listing.py" "$near_miss"
+  if [ "$RC" -eq 2 ] && printf '%s' "$OUT" | grep -q 'Unknown option'; then
+    ok "asc_listing.py $near_miss → rejected, exit 2 (no accidental upload)"
+  else
+    bad "asc_listing.py $near_miss → rc=$RC (want 2 + 'Unknown option')"
+  fi
+done
+
+# 4c. Same hardening on the Play side, where --apply is the real write flag.
+run_py "$SYNC_DIR/play_listing.py" --appl
+if [ "$RC" -ne 0 ]; then
+  ok "play_listing.py --appl → rejected (no accidental Play Console write)"
+else
+  bad "play_listing.py --appl → rc=0; abbreviation reached the write path"
+fi
+
+# 4d. Reading and writing are mutually exclusive — an ambiguous invocation
+#     must fail rather than silently pick one.
+run_py "$SYNC_DIR/asc_listing.py" --dry-run --apply-screenshots
+if [ "$RC" -eq 2 ]; then
+  ok "asc_listing.py --dry-run --apply-screenshots → refused, exit 2"
+else
+  bad "asc_listing.py --dry-run --apply-screenshots → rc=$RC (want 2)"
 fi
 
 # 5. Workflow↔script seam: play-store.yml must still call the script.
@@ -94,6 +125,22 @@ if grep -q 'store-sync/play_listing\.py --apply' "$ROOT/.github/workflows/play-s
   ok "play-store.yml sync-listing calls play_listing.py --apply"
 else
   bad "play-store.yml no longer references store-sync/play_listing.py --apply"
+fi
+
+# 5b. Same seam on the iOS side: app-store.yml's sync-screenshots job is the
+#     only CI caller of the upload path, and it must stay dispatch-gated (a
+#     screenshot upload silently joining the tag/release flow is exactly the
+#     coupling Phase B avoided).
+if grep -q 'store-sync/asc_listing\.py --apply-screenshots' "$ROOT/.github/workflows/app-store.yml"; then
+  ok "app-store.yml sync-screenshots calls asc_listing.py --apply-screenshots"
+else
+  bad "app-store.yml no longer references asc_listing.py --apply-screenshots"
+fi
+
+if grep -q "inputs.sync_screenshots == 'true'" "$ROOT/.github/workflows/app-store.yml"; then
+  ok "sync-screenshots job is still dispatch-gated"
+else
+  bad "sync-screenshots job lost its workflow_dispatch gate"
 fi
 
 # 6. The extracted script must not have re-grown an inline-heredoc twin: the

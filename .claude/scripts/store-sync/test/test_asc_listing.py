@@ -93,6 +93,98 @@ class DiffScreenshotsTest(unittest.TestCase):
         self.assertIn("1 live screenshot(s) not in the repo", drift[0])
 
 
+class PlanScreenshotSyncTest(unittest.TestCase):
+    """Phase B: what one display type needs before any network call."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        d = pathlib.Path(self.tmp.name)
+        self.f1 = d / "01-a.png"
+        self.f2 = d / "02-b.png"
+        self.f1.write_bytes(b"one")
+        self.f2.write_bytes(b"two")
+        self.m1 = al.md5_of(self.f1)
+        self.m2 = al.md5_of(self.f2)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_identical_in_order_skips(self):
+        action, delete, uploads = al.plan_screenshot_sync(
+            [self.f1, self.f2],
+            [{"id": "A", "checksum": self.m1}, {"id": "B", "checksum": self.m2}])
+        self.assertEqual(action, "skip")
+        self.assertEqual((delete, uploads), ([], []))
+
+    def test_same_content_wrong_order_replaces(self):
+        # Order is user-visible on the App Store, so a reorder is a change.
+        action, delete, uploads = al.plan_screenshot_sync(
+            [self.f1, self.f2],
+            [{"id": "A", "checksum": self.m2}, {"id": "B", "checksum": self.m1}])
+        self.assertEqual(action, "replace")
+        self.assertEqual(delete, ["A", "B"])
+        self.assertEqual([u.name for u in uploads], ["01-a.png", "02-b.png"])
+
+    def test_empty_live_set_uploads_everything(self):
+        action, delete, uploads = al.plan_screenshot_sync([self.f1, self.f2], [])
+        self.assertEqual(action, "replace")
+        self.assertEqual(delete, [])
+        self.assertEqual(len(uploads), 2)
+
+    def test_extra_live_screenshot_is_deleted(self):
+        action, delete, uploads = al.plan_screenshot_sync(
+            [self.f1],
+            [{"id": "A", "checksum": self.m1}, {"id": "STALE", "checksum": "f" * 32}])
+        self.assertEqual(action, "replace")
+        self.assertIn("STALE", delete)
+
+
+class UploadOperationsTest(unittest.TestCase):
+    """Chunk slicing is pure arithmetic — pin it offline, not against Apple."""
+
+    def test_chunks_reassemble_to_the_original_bytes(self):
+        blob = bytes(range(256))
+        ops = [{"method": "PUT", "url": "u1", "offset": 0, "length": 100,
+                "requestHeaders": [{"name": "Content-Type", "value": "image/png"}]},
+               {"method": "PUT", "url": "u2", "offset": 100, "length": 156,
+                "requestHeaders": []}]
+        reqs = al.upload_operations_to_requests(blob, ops)
+        self.assertEqual(b"".join(r["body"] for r in reqs), blob)
+        self.assertEqual(reqs[0]["headers"], {"Content-Type": "image/png"})
+        self.assertEqual(reqs[1]["url"], "u2")
+
+    def test_missing_offset_and_length_default_to_whole_file(self):
+        blob = b"abcdef"
+        reqs = al.upload_operations_to_requests(blob, [{"url": "u"}])
+        self.assertEqual(reqs[0]["body"], blob)
+        self.assertEqual(reqs[0]["method"], "PUT")
+
+    def test_no_operations_is_empty_not_a_crash(self):
+        self.assertEqual(al.upload_operations_to_requests(b"x", None), [])
+        self.assertEqual(al.upload_operations_to_requests(b"x", []), [])
+
+    def test_headers_without_a_name_are_dropped(self):
+        reqs = al.upload_operations_to_requests(
+            b"x", [{"url": "u", "requestHeaders": [{"value": "orphan"}]}])
+        self.assertEqual(reqs[0]["headers"], {})
+
+
+class WriteFlagSafetyTest(unittest.TestCase):
+    """A near-miss flag must never resolve to the App Store write path.
+
+    argparse expands unambiguous prefixes by default, so without
+    allow_abbrev=False `--apply` (the sibling play_listing.py's real flag)
+    would upload screenshots."""
+
+    def test_abbreviations_are_rejected(self):
+        for flag in ("--apply", "--appl", "--apply-screenshot"):
+            with self.subTest(flag=flag):
+                self.assertEqual(al.main([flag]), 2)
+
+    def test_read_and_write_modes_are_mutually_exclusive(self):
+        self.assertEqual(al.main(["--dry-run", "--apply-screenshots"]), 2)
+
+
 class ResolveAscCredentialsTest(unittest.TestCase):
     def test_content_env_with_canonical_names(self):
         creds = al.resolve_asc_credentials({
