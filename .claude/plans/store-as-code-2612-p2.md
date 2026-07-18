@@ -107,6 +107,27 @@ Deux scripts Python exécutables, un par store, code path UNIQUE local + CI :
   ⚠️ **2e hypothèse non validée, traitée comme la 1re** : « ordre du set = ordre de
   création » n'est promis nulle part → sonde après upload (et déclarée *inconclusive*
   si les checksums n'ont pas tous été confirmés) + doc qui ne l'affirme plus.
+
+### Journal de review de la Phase B (4 tours) — ce que ça dit du process
+
+4 tours de review-fanout : `DO_NOT_MERGE` ×2 (2 ERROR confirmés), puis
+`MERGE_AFTER_WARNINGS` ×2. **Aucun des 2 ERROR n'était détectable par la CI** —
+elle ne fait tourner que des scripts, jamais l'API Apple. Les deux étaient des
+« faux verts » :
+
+1. le job d'upload vivait dans `app-store.yml` → un dispatch « screenshots »
+   **uploadait un build TestFlight** ;
+2. `_await_delivery` renvoyait `"FAILED errors=[…]"` là où l'appelant testait
+   `== "FAILED"` → **un screenshot rejeté comptait comme uploadé**, exit 0,
+   ancien set déjà supprimé.
+
+Et 3 warnings distincts portaient sur des **affirmations fausses de ma part**,
+publiées : « la Phase B mesure l'hypothèse MD5 » (impossible — Apple fait écho),
+« `--apply` pouvait publier vers l'App Store » (le flag n'existait pas sur main),
+« l'ordre live suit l'ordre des fichiers » (promis nulle part). Motif constant :
+**durcir en prose ce qui n'a pas été mesuré**. La review l'a attrapé 3 fois ; moi
+zéro. À garder en tête pour les Phases C/D, où la tentation sera la même.
+
 - **C — drift visible** : job maintenance.yml + release-checklist §17 (advisory).
   ⚠️ Prérequis (warning fanout PR #2764, **reformulé après la review #2781**) :
   l'hypothèse `sourceFileChecksum == MD5(png)` se scinde en deux cas, et il ne
