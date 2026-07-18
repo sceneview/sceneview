@@ -480,7 +480,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### 3D Basics
 
 - `animation-physics` — Animation & Physics. Skeletal animation playback and rigid-body simulation.
-- `geometry` — Geometry Primitives. Cube, sphere, cylinder, cone, plane.
+- `geometry` — Geometry Primitives. Cube, sphere, cylinder, plane.
 - `model-viewer` — Models. Single model, multi-model scene, and gallery.
 
 ### Lighting & Environment
@@ -537,7 +537,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-record-playback` — AR Recording. Record an AR session and replay it without a phone.
 - `ar-rerun` — Rerun Debug. Stream camera pose and planes to the Rerun viewer.
 - `ar-rooftop` — Rooftop Anchors. Anchor models on geospatial rooftops.
-- `ar-scene-mesh` — Scene Mesh. Color-coded real-world geometry with ARKit ARMeshAnchor parity.
+- `ar-scene-mesh` — Scene Mesh. Color-coded real-world geometry via ARCore Streetscape (terrain + buildings).
 - `ar-scene-semantics` — Scene Semantics. 12-class outdoor scene labeling — HUD shows top-3 labels in view.
 - `ar-streetscape` — Streetscape Geometry. Geospatial building and terrain meshes.
 - `ar-terrain` — Terrain Anchors. Anchor models on geospatial terrain.

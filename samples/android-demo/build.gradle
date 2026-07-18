@@ -168,7 +168,9 @@ android {
         // them in the APK only wastes CPU. `.glb` and `.hdr` stay compressible:
         // the demo GLBs are Draco + WebP packed and the HDRs are RGBE, both of
         // which the APK zip stage still shrinks meaningfully.
-        noCompress 'filamat', 'ktx'
+        // `.task` is the MediaPipe bundle (a ZIP that MediaPipe memory-maps at
+        // runtime) — re-compressing it in the APK breaks `createFromOptions`.
+        noCompress 'filamat', 'ktx', 'task'
     }
     packaging {
         resources {

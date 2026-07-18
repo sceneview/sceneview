@@ -47,7 +47,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
@@ -450,7 +455,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             Spacer(Modifier.height(6.dp))
                             // "▌" = live-typing cursor while deltas keep arriving.
                             Text(
-                                text = if (ask.streaming) "${ask.text}▌" else ask.text,
+                                text = renderMarkdownLite(
+                                    if (ask.streaming) "${ask.text}▌" else ask.text
+                                ),
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                             Spacer(Modifier.height(8.dp))
@@ -476,6 +483,68 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Minimal, dependency-free Markdown renderer for the streamed answer text.
+ *
+ * Supports **bold** (`**..**`) and *italic* (`*..*` or `_.._`) only, in a single
+ * left-to-right pass. It is **streaming-safe**: a marker that has not been closed
+ * yet — the tail of a still-arriving delta, or the live-typing "▌" cursor — is
+ * rendered as a literal character instead of eating the rest of the line. No third
+ * -party dependency: `androidx.compose.ui.text` is already on the classpath.
+ */
+private fun renderMarkdownLite(text: String): AnnotatedString = buildAnnotatedString {
+    var i = 0
+    val n = text.length
+    while (i < n) {
+        when {
+            // Bold: **..** — checked before single '*' so '**' never parses as italic.
+            text.startsWith("**", i) -> {
+                val close = text.indexOf("**", i + 2)
+                if (close >= 0) {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                        append(text.substring(i + 2, close))
+                    }
+                    i = close + 2
+                } else {
+                    // Unclosed marker (still streaming) → render literally.
+                    append("**")
+                    i += 2
+                }
+            }
+            // Italic: *..*
+            text[i] == '*' -> {
+                val close = text.indexOf('*', i + 1)
+                if (close >= 0) {
+                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                        append(text.substring(i + 1, close))
+                    }
+                    i = close + 1
+                } else {
+                    append('*')
+                    i += 1
+                }
+            }
+            // Italic: _.._
+            text[i] == '_' -> {
+                val close = text.indexOf('_', i + 1)
+                if (close >= 0) {
+                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                        append(text.substring(i + 1, close))
+                    }
+                    i = close + 1
+                } else {
+                    append('_')
+                    i += 1
+                }
+            }
+            else -> {
+                append(text[i])
+                i += 1
             }
         }
     }
