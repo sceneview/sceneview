@@ -1,0 +1,76 @@
+name: Sync App Store screenshots
+
+# Uploads samples/ios-demo/appstore-screenshots/ to the EDITABLE App Store
+# version. No build, no signing, no Xcode — plain App Store Connect REST.
+#
+# Why this is its own workflow rather than a job inside app-store.yml
+# (#2612 P2 Phase B, review of PR #2781):
+#
+#   The first cut added a `sync_screenshots` input + job to app-store.yml.
+#   That workflow's `deploy-ios` / `deploy-macos` jobs are gated only on
+#   `needs.check.outputs.*_ready`, with no event or input guard — so a
+#   dispatch meant to refresh four PNGs ALSO ran two macos-15 archives and
+#   uploaded a new build to TestFlight / App Store Connect. An irreversible
+#   store side effect, on the flow that must stay boring.
+#
+#   Adding `&& inputs.sync_screenshots != 'true'` to both deploy jobs would
+#   fix that instance. A separate file fixes the class: a screenshot sync
+#   cannot start a build because there is no build here to start, and every
+#   future job added to app-store.yml is exempt by construction rather than
+#   by remembering a guard. It also leaves the `app-store-deploy` concurrency
+#   group untouched, so refreshing screenshots never queues behind — or
+#   ahead of — a release deploy.
+#
+# Screenshots persist from one App Store version to the next (a new version
+# inherits the previous set), so this is listing maintenance rather than a
+# per-release step. Hence dispatch-only: it is deliberately NOT wired to tags.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Upload appstore-screenshots/ to the editable App Store version"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  # Deliberately NOT the `app-store-deploy` group — this writes listing
+  # assets, never a build, and must not serialise against a release.
+  group: app-store-screenshots
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync-screenshots:
+    name: Upload App Store screenshots (en-US)
+    if: inputs.confirm == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (for appstore-screenshots/*)
+        uses: actions/checkout@v7
+
+      - name: Upload screenshots to App Store Connect
+        env:
+          # Same secrets as the deploy workflow — no new scope, no new secret.
+          # asc_listing.py reads the .p8 CONTENT straight from env, so there
+          # is no key file to stage (and none to clean up).
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          # $RUNNER_TEMP, not /tmp: the runner wipes it per job. On the
+          # self-hosted `sceneview-mac` runner /tmp survives between runs, so
+          # `python3 -m venv /tmp/...` would silently reuse a stale tree and
+          # void the pinned-version guarantee below.
+          python3 -m venv "$RUNNER_TEMP/asc-venv"
+          # Pinned exact versions — credential-bearing job (#1230), tracked by
+          # Dependabot (#1286). Same requirements file as the deploy workflow.
+          "$RUNNER_TEMP/asc-venv/bin/pip" install --quiet -r .github/workflows/requirements/app-store.txt
+          "$RUNNER_TEMP/asc-venv/bin/python3" .claude/scripts/store-sync/asc_listing.py --apply-screenshots

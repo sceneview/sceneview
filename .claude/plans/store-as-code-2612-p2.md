@@ -46,10 +46,18 @@ Deux scripts Python exécutables, un par store, code path UNIQUE local + CI :
 
 - **`play-store.yml`** (Phase A) : le job `sync-listing` appelle `play_listing.py --apply`
   au lieu du heredoc. Zéro changement de comportement, de gate ou de secret.
-- **`app-store.yml`** (Phase B — LIVRÉ, révisé à l'implémentation) : NOUVEAU **job**
-  `sync-screenshots` (`asc_listing.py --apply-screenshots`), **ubuntu-latest,
-  `workflow_dispatch`-only** — et non un step du job macOS gated minor-bump comme
-  prévu initialement. Les 3 raisons, découvertes en lisant le flux réel :
+- **`app-store-screenshots.yml`** (Phase B — LIVRÉ, révisé DEUX fois) : **workflow
+  DÉDIÉ** (`asc_listing.py --apply-screenshots`), **ubuntu-latest, `workflow_dispatch`-only**
+  — et non un step du job macOS gated minor-bump comme prévu initialement, ni même
+  un job dans `app-store.yml` comme dans la 1re implémentation. ⛔ **Pourquoi le job
+  dans `app-store.yml` était FAUX (attrapé par la review de PR #2781, 2 reviewers
+  indépendants)** : `deploy-ios`/`deploy-macos` n'y sont gatés que sur
+  `needs.check.outputs.*_ready`, sans garde d'événement ni d'input → un dispatch
+  « screenshots seulement » lançait AUSSI 2 archives macos-15 et **uploadait un
+  build TestFlight** (effet de bord irréversible). Une garde `&& inputs.sync_screenshots
+  != 'true'` réparait l'instance ; un fichier séparé répare la CLASSE (aucun build à
+  déclencher, tout futur job exempt par construction) et sort du concurrency group
+  `app-store-deploy`. Les 3 raisons initiales, découvertes en lisant le flux réel :
   (a) les screenshots **persistent d'une version ASC à l'autre** (une nouvelle
   version hérite du set) → c'est de la maintenance de listing, pas une étape
   par-release ; (b) le seul point d'insertion correct dans le flux tag serait
@@ -82,7 +90,13 @@ Deux scripts Python exécutables, un par store, code path UNIQUE local + CI :
   plutôt que laisser un asset réservé en AWAITING_UPLOAD.
   Durcissement attrapé en chemin : `allow_abbrev=False` sur les DEUX scripts — argparse
   résolvait `--apply`/`--appl` en `--apply-screenshots`, donc une faute de frappe
-  publiait vers un store.
+  publiait vers un store. Durcissements issus de la review #2781 : DELETE échoué =
+  fatal AVANT tout upload (sinon reliquats en tête de set + cap Apple de 10 → 409
+  à mi-parcours), échec d'upload → message nommant le display type laissé partiel,
+  `bundle_id` URL-encodé sur le chemin write, `$RUNNER_TEMP` (pas `/tmp` : le runner
+  self-hosted mac ne le nettoie pas → venv périmé, versions épinglées contournées).
+  ⚠️ **2e hypothèse non validée, traitée comme la 1re** : « ordre du set = ordre de
+  création » n'est promis nulle part → sonde après upload + doc qui ne l'affirme plus.
 - **C — drift visible** : job maintenance.yml + release-checklist §17 (advisory).
   ⚠️ Prérequis (warning fanout PR #2764) : valider l'hypothèse
   `sourceFileChecksum == MD5(png committé)` par un dry-run live sur un set

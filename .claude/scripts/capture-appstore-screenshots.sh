@@ -25,9 +25,11 @@
 #   .claude/scripts/store-sync/asc_listing.py --dry-run            # what differs
 #   .claude/scripts/store-sync/asc_listing.py --apply-screenshots  # push them
 #
-# or from CI: the `sync-screenshots` job in app-store.yml, which is
-# dispatch-gated (`sync_screenshots=true`) because screenshots persist across
-# App Store versions and so are not a per-release concern.
+# or from CI: the `app-store-screenshots.yml` workflow (dispatch-only,
+# `confirm=true`). It is a workflow of its OWN — not a job in app-store.yml,
+# where a dispatch would also archive and upload a TestFlight build — and it
+# is not wired to tags, because screenshots persist across App Store versions
+# and so are not a per-release concern.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

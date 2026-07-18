@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# test-store-sync.sh — self-test for .claude/scripts/store-sync/ (#2612 P2 Phase A).
+# test-store-sync.sh — self-test for .claude/scripts/store-sync/ (#2612 P2, Phases A+B).
 #
 # The store-sync scripts are the single code path for the Play listing sync
 # (play-store.yml calls play_listing.py --apply) and the ASC drift diff; a
@@ -14,10 +14,15 @@
 #     lazy third-party imports mean no google-auth/PyJWT/requests needed);
 #   - a credential-less run SKIPs honestly with exit 0 in every mode
 #     (advisory-first doctrine — never a fake green, never a spurious red);
-#   - asc_listing.py rejects unknown/apply-style flags with exit 2 (the write
-#     path is Phase B; a silent no-op would fake an upload);
-#   - play-store.yml still calls play_listing.py --apply (the workflow↔script
-#     seam can't drift apart unnoticed).
+#   - the WRITE path (`--apply-screenshots`) SKIPs honestly without creds too,
+#     so a run that uploaded nothing can never look like a successful upload;
+#   - near-miss flags are REJECTED with exit 2 rather than expanded: argparse
+#     resolves unambiguous prefixes, so without allow_abbrev=False `--apply`
+#     (play_listing.py's real flag) would publish to the App Store;
+#   - reading and writing are mutually exclusive (exit 2), never silently one;
+#   - play-store.yml still calls play_listing.py --apply, and the screenshot
+#     upload lives in its OWN workflow, so neither workflow↔script seam can
+#     drift apart unnoticed.
 #
 # The LIVE API path (network + real secrets) is intentionally NOT covered —
 # same stance as test-store-preflight.sh. Runs in ci.yml → repo-hygiene.
@@ -127,20 +132,39 @@ else
   bad "play-store.yml no longer references store-sync/play_listing.py --apply"
 fi
 
-# 5b. Same seam on the iOS side: app-store.yml's sync-screenshots job is the
-#     only CI caller of the upload path, and it must stay dispatch-gated (a
-#     screenshot upload silently joining the tag/release flow is exactly the
-#     coupling Phase B avoided).
-if grep -q 'store-sync/asc_listing\.py --apply-screenshots' "$ROOT/.github/workflows/app-store.yml"; then
-  ok "app-store.yml sync-screenshots calls asc_listing.py --apply-screenshots"
+# 5b. Same seam on the iOS side, plus the isolation that makes it safe.
+SHOTS_WF="$ROOT/.github/workflows/app-store-screenshots.yml"
+if grep -q 'store-sync/asc_listing\.py --apply-screenshots' "$SHOTS_WF"; then
+  ok "app-store-screenshots.yml calls asc_listing.py --apply-screenshots"
 else
-  bad "app-store.yml no longer references asc_listing.py --apply-screenshots"
+  bad "app-store-screenshots.yml no longer references asc_listing.py --apply-screenshots"
 fi
 
-if grep -q "inputs.sync_screenshots == 'true'" "$ROOT/.github/workflows/app-store.yml"; then
-  ok "sync-screenshots job is still dispatch-gated"
+# The upload must never be reachable from a tag push: screenshots are listing
+# maintenance, not part of a release.
+if grep -qE '^\s+tags:' "$SHOTS_WF"; then
+  bad "app-store-screenshots.yml gained a tag trigger — it must stay dispatch-only"
 else
-  bad "sync-screenshots job lost its workflow_dispatch gate"
+  ok "app-store-screenshots.yml is dispatch-only (no tag trigger)"
+fi
+
+# THE regression this file exists to prevent (PR #2781 review): the upload
+# used to be a job inside app-store.yml, whose deploy-ios/deploy-macos jobs
+# are gated only on *_ready. A screenshot-only dispatch therefore also built
+# and uploaded a TestFlight build. Keeping the upload out of that workflow is
+# what makes "no build" true, so assert it never moves back in.
+if grep -q 'asc_listing\.py --apply-screenshots' "$ROOT/.github/workflows/app-store.yml"; then
+  bad "the screenshot upload is back inside app-store.yml — a dispatch there also runs deploy-ios/deploy-macos (TestFlight upload)"
+else
+  ok "app-store.yml carries no screenshot upload (deploy jobs stay unreachable from a sync)"
+fi
+
+# And it must not share the deploy concurrency group, or a sync would queue
+# against a release.
+if grep -q 'group: app-store-deploy' "$SHOTS_WF"; then
+  bad "app-store-screenshots.yml joined the app-store-deploy concurrency group"
+else
+  ok "app-store-screenshots.yml has its own concurrency group"
 fi
 
 # 6. The extracted script must not have re-grown an inline-heredoc twin: the

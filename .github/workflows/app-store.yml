@@ -27,14 +27,6 @@ on:
         options:
           - "false"
           - "true"
-      sync_screenshots:
-        description: "Upload samples/ios-demo/appstore-screenshots/ to the editable App Store version (no build)"
-        required: false
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
 
 concurrency:
   group: app-store-deploy
@@ -85,48 +77,6 @@ jobs:
             echo "macos_ready=false" >> $GITHUB_OUTPUT
             echo "::notice::Skipping macOS deploy — signing secrets not configured (need IOS_BUILD_CERTIFICATE_BASE64, MACOS_INSTALLER_CERT_BASE64, MACOS_PROVISIONING_PROFILE_BASE64). See #2252."
           fi
-
-  sync-screenshots:
-    name: Sync App Store screenshots (en-US)
-    # Dispatch-only, and deliberately NOT part of the tag/release flow.
-    #
-    # Why it is its own job rather than a step in deploy-ios (#2612 P2 Phase B):
-    #
-    #  1. App Store screenshots PERSIST across versions — a new
-    #     appStoreVersion inherits the previous set — so uploading is listing
-    #     maintenance, not a per-release step. Wiring it to tags would give it
-    #     a cadence it does not need, on the one flow that must stay boring.
-    #  2. The submit step next door was just repaired (#2731/#2738) and the
-    #     4.22.0 submission is still pending. Uploading inside it would mean
-    #     either duplicating its find-or-create-version logic (which carries
-    #     #1831/#2731) or writing to a version already locked for review.
-    #  3. It is plain REST — no Xcode, no signing. ubuntu-latest instead of a
-    #     macos-15 runner (~10x per-minute), and no 40-minute rebuild just to
-    #     refresh four PNGs.
-    #
-    # The script never CREATES a version: it targets the editable one and
-    # SKIPs honestly when there is none.
-    if: github.event_name == 'workflow_dispatch' && inputs.sync_screenshots == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout (for appstore-screenshots/*)
-        uses: actions/checkout@v7
-
-      - name: Upload screenshots to App Store Connect
-        env:
-          # Same secrets as the deploy jobs — no new scope, no new secret.
-          # asc_listing.py reads the .p8 CONTENT straight from env, so there
-          # is no key file to stage (and none to clean up).
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
-        run: |
-          python3 -m venv /tmp/asc-venv
-          # Pinned exact versions — credential-bearing job (#1230), tracked by
-          # Dependabot (#1286). Same requirements file as the deploy job.
-          /tmp/asc-venv/bin/pip install --quiet -r .github/workflows/requirements/app-store.txt
-          /tmp/asc-venv/bin/python3 .claude/scripts/store-sync/asc_listing.py --apply-screenshots
 
   deploy-ios:
     name: Build & Upload iOS to TestFlight

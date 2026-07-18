@@ -39,8 +39,10 @@ the query and every downstream call targets the wrong listing (#2731).
 
 Screenshots persist from one App Store version to the next (a new version
 inherits the previous set), so uploading is listing MAINTENANCE, not a
-per-release step — which is why the workflow job that calls this is
-dispatch-gated rather than wired into the tag flow.
+per-release step — which is why its CI caller is a dispatch-only workflow of
+its own (`app-store-screenshots.yml`) rather than a job in app-store.yml:
+that workflow's deploy jobs are gated only on `*_ready`, so a screenshot
+dispatch there would also archive and upload a TestFlight build.
 
 Credentials — reuses app-store.yml / store-preflight.sh secrets, NO new scope,
 same alias set as store-preflight.sh:
@@ -62,6 +64,7 @@ import os
 import pathlib
 import sys
 import time
+from urllib.parse import quote
 
 DEFAULT_BUNDLE_ID = "io.github.sceneview.demo"
 DEFAULT_METADATA_DIR = "samples/ios-demo/distribution/app-store/en-US"
@@ -180,6 +183,14 @@ def plan_screenshot_sync(local_files, remote):
     displays screenshots in set order, so a partial update would still need a
     reorder call, and delete-then-upload is the same deterministic,
     idempotent shape the Play image sync already uses (#1710).
+
+    Note that "replace yields repo order" rests on Apple keeping a set in
+    creation order — plausible, and what the delete-then-upload shape is built
+    on, but NOT promised by the API contract and never yet observed live. The
+    apply path probes it after each upload and warns on mismatch rather than
+    asserting it here (same treatment as the sourceFileChecksum==MD5
+    assumption); if the probe ever fires, this strategy needs an explicit
+    reorder call.
     """
     local = [(f, md5_of(f)) for f in local_files]
     if [c for _, c in local] == [r.get("checksum") for r in remote]:
@@ -258,7 +269,7 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir):
     no live version) — an honest SKIP, never silent."""
     import requests
 
-    r = requests.get(f"{BASE}/apps?filter[bundleId]={bundle_id}", headers=headers)
+    r = requests.get(f"{BASE}/apps?filter[bundleId]={quote(bundle_id, safe='')}", headers=headers)
     r.raise_for_status()
     apps = r.json().get("data", [])
     if not apps:
@@ -474,7 +485,7 @@ def apply_screenshots(headers, bundle_id, shots_dir):
     """
     import requests
 
-    r = requests.get(f"{BASE}/apps?filter[bundleId]={bundle_id}", headers=headers)
+    r = requests.get(f"{BASE}/apps?filter[bundleId]={quote(bundle_id, safe='')}", headers=headers)
     r.raise_for_status()
     apps = r.json().get("data", [])
     if not apps:
@@ -531,27 +542,68 @@ def apply_screenshots(headers, bundle_id, shots_dir):
             set_id = r.json()["data"]["id"]
             print(f"[apply] {device_dir}: created {display_type} set {set_id}")
 
-        # Delete-then-upload, so set ORDER is exactly the repo's filename order.
+        # Delete-then-upload. Upload-then-delete is not an option: Apple caps
+        # a set at 10 screenshots, so 6 old + 6 new would be refused, and the
+        # new ones would land after the old ones anyway.
+        #
+        # A failed delete is FATAL for this display type rather than a
+        # warning: leftovers sit ahead of the new screenshots (breaking the
+        # very ordering this strategy exists to guarantee) and count against
+        # the cap, so the next reserve can 409 halfway through and leave a
+        # half-populated set. Stopping before the first upload leaves the
+        # live set untouched and re-runnable.
+        failed_deletes = []
         for shot_id in delete_ids:
             d = requests.delete(f"{BASE}/appScreenshots/{shot_id}", headers=headers)
             if d.status_code not in (200, 204):
-                print(f"::warning::could not delete live screenshot {shot_id}: {d.status_code}")
+                failed_deletes.append(f"{shot_id} ({d.status_code})")
+        if failed_deletes:
+            print(f"::error::{device_dir} ({display_type}): could not delete "
+                  f"{len(failed_deletes)} live screenshot(s): {', '.join(failed_deletes)}. "
+                  "Stopping before upload — the live set is unchanged; re-run once the "
+                  "cause is cleared.")
+            raise SystemExit(1)
 
-        for path in uploads:
-            shot_id, local_md5, live_checksum = _upload_one(requests, headers, set_id, path)
-            state = _await_delivery(requests, headers, shot_id, path.name)
-            if state == "FAILED":
-                print(f"::error::{path.name} failed Apple-side processing")
-                raise SystemExit(1)
-            # Measure the assumption the drift diff relies on, instead of
-            # trusting it (review-fanout warning, PR #2764).
-            if live_checksum and live_checksum != local_md5:
-                print(f"::warning::{path.name}: live sourceFileChecksum {live_checksum} "
-                      f"!= local MD5 {local_md5} — diff_screenshots() keys on MD5 equality; "
-                      "re-key it before Phase C treats screenshot drift as a signal")
-            else:
-                print(f"[apply] {path.name}: uploaded, {state}, checksum matches local MD5")
-            changed.append(f"{device_dir}/{path.name}")
+        # From here the set is empty: an exception would leave it that way, so
+        # say so explicitly rather than dying with a bare traceback. Scope is
+        # the EDITABLE draft only — never the live READY_FOR_SALE listing —
+        # and a re-run self-heals (plan_screenshot_sync re-uploads the lot).
+        uploaded_checksums = []
+        try:
+            for path in uploads:
+                shot_id, local_md5, live_checksum = _upload_one(requests, headers, set_id, path)
+                state = _await_delivery(requests, headers, shot_id, path.name)
+                if state == "FAILED":
+                    print(f"::error::{path.name} failed Apple-side processing")
+                    raise SystemExit(1)
+                # Measure the assumption the drift diff relies on, instead of
+                # trusting it (review-fanout warning, PR #2764).
+                if live_checksum and live_checksum != local_md5:
+                    print(f"::warning::{path.name}: live sourceFileChecksum {live_checksum} "
+                          f"!= local MD5 {local_md5} — diff_screenshots() keys on MD5 equality; "
+                          "re-key it before Phase C treats screenshot drift as a signal")
+                else:
+                    print(f"[apply] {path.name}: uploaded, {state}, checksum matches local MD5")
+                uploaded_checksums.append(local_md5)
+                changed.append(f"{device_dir}/{path.name}")
+        except BaseException:
+            print(f"::error::{device_dir} ({display_type}) left PARTIAL: "
+                  f"{len(uploaded_checksums)}/{len(uploads)} uploaded after the old set was "
+                  "deleted. Re-run --apply-screenshots to finish; this touched the editable "
+                  "draft only, not the live listing.")
+            raise
+
+        # Ordering probe. The delete-then-upload strategy assumes Apple keeps
+        # a set in creation order; nothing in the API contract promises it and
+        # this has never run live, so MEASURE it (same treatment as the MD5
+        # assumption) rather than asserting it in the docs.
+        _, live_after = _live_sets(requests, headers, loc_id).get(display_type, (None, []))
+        live_order = [s.get("checksum") for s in live_after]
+        if live_order and live_order != uploaded_checksums:
+            print(f"::warning::{device_dir} ({display_type}): live screenshot order does not "
+                  "match upload order — creation order is NOT set order; an explicit reorder "
+                  "(PATCH appScreenshotSets/{id}/relationships/appScreenshots) is required, "
+                  "and the docs claiming repo filename order need correcting")
 
     return changed, None
 
