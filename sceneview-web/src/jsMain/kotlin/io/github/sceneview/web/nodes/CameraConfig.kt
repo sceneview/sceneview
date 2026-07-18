@@ -30,12 +30,15 @@ class CameraConfig {
     var fovDegrees = 45.0; private set
     var nearPlane = 0.1; private set
     var farPlane = 1000.0; private set
-    // Exposure defaults — matching model-viewer's exposure=1.1
-    var aperture = 16.0; private set
-    var shutterSpeed = 1.0 / 125.0; private set
-    var sensitivity = 100.0; private set
-    var directExposure: Double? = 1.1; private set
-    var useDirectExposure = true; private set
+    // Exposure defaults — physically-based, mirroring Android's SceneFactories
+    // default camera (f/12, 1/200s, ISO 200; "neutral, less photographic").
+    // Filament's camera is PHOTOMETRIC: pairing a relative/direct exposure ≈ 1.0
+    // (model-viewer style) with lux light intensities over-exposes bright albedos
+    // to a clipped white blob — the shared /view Duck bug. A relative exposure is
+    // opt-in via exposure(value). See Android `utils/Camera.kt` for the same trap.
+    var aperture = 12.0; private set
+    var shutterSpeed = 1.0 / 200.0; private set
+    var sensitivity = 200.0; private set
 
     fun eye(x: Double, y: Double, z: Double) {
         eyeX = x; eyeY = y; eyeZ = z
@@ -53,17 +56,18 @@ class CameraConfig {
     fun near(value: Double) { nearPlane = value }
     fun far(value: Double) { farPlane = value }
 
+    /**
+     * Set a physically-based (photometric) exposure — aperture (f-stop),
+     * shutter speed (seconds) and ISO sensitivity, mirroring Android's
+     * `SceneView` camera. This is the ONLY exposure path: Filament.js'
+     * `Camera.setExposureDirect` (relative/model-viewer-style exposure) blows
+     * bright albedos out to a clipped white blob for any reasonable value, so
+     * the DSL exposes only the correct photometric form.
+     */
     fun exposure(aperture: Double, shutterSpeed: Double, sensitivity: Double) {
         this.aperture = aperture
         this.shutterSpeed = shutterSpeed
         this.sensitivity = sensitivity
-        this.useDirectExposure = false
-    }
-
-    /** Set exposure directly (model-viewer-style, default 1.1). Higher = brighter. */
-    fun exposure(value: Double) {
-        this.directExposure = value
-        this.useDirectExposure = true
     }
 
     /** Apply this config to a Filament.js Camera using float3 arrays for lookAt. */
@@ -73,10 +77,6 @@ class CameraConfig {
             float3(targetX, targetY, targetZ),
             float3(upX, upY, upZ)
         )
-        if (useDirectExposure && directExposure != null) {
-            camera.setExposureDirect(directExposure!!)
-        } else {
-            camera.setExposure(aperture, shutterSpeed, sensitivity)
-        }
+        camera.setExposure(aperture, shutterSpeed, sensitivity)
     }
 }
