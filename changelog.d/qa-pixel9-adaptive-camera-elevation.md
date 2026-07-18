@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- Explore gallery (Android): flat models (e.g. a Poly Haven grass/terrain slab) were orbited at the ~3° hero tilt and shown edge-on, "by the slice". The hero camera elevation is now adaptive to flatness — `he[1] / max(he[0], he[2])`: models below a `0.15` threshold ramp up toward a ~23° top-down view, while normal 3-D objects (characters, cars — Scifi Girl, Porsche) keep the exact calibrated tilt unchanged.

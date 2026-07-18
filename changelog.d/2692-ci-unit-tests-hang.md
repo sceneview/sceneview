@@ -1,2 +1,0 @@
-<!-- category: Tests -->
-- **CI unit-test hangs now name the culprit and fail fast instead of silently eating the 30-min job ([#2692](https://github.com/sceneview/sceneview/issues/2692)).** Every JVM `Test` task now emits a `started` event per test method (so an intermittent hang points at the exact running test instead of going dark) and self-cancels with a Gradle thread dump at a 15-min per-task timeout — well under the `Unit tests` job's 30-min ceiling. Converts an unattributable force-cancel into a named, stack-traced failure.

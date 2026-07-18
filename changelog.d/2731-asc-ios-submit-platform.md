@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- Fixed the iOS App Store review submission that had been silently failing since 4.19.0: the deploy's version lookup now filters `platform=IOS` (it used to hijack the macOS listing's permanently-editable draft, 409-ing every downstream call), build-attach / submission errors are now fatal instead of a swallowed warning, and `store-preflight.sh` gained an open-reviewSubmissions probe that WARNs on assembled-but-never-submitted releases (#2731).

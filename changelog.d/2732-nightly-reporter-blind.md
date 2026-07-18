@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- Fixed the nightly-CI failure reporter that was blind to `cancelled` runs and to the render-tests/device-qa legs (a week of silently-dying nightly runs produced zero reports): the reporter now grades the last two completed scheduled nights at the START of each run — immune to its own run being cancelled — and opens/updates a single deduplicated tracking issue only after 2 consecutive bad nights (#2732).

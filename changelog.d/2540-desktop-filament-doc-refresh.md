@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- Refreshed `docs/docs/desktop-filament.md` into the durable decision record for [#2540](https://github.com/sceneview/sceneview/issues/2540): corrected the stale claim that upstream Filament still ships a desktop Java build (`FilamentCanvas`/`FilamentPanel` were removed in 2021, google/filament#4263), documented the community `filament-kmp` FFM bindings as the S1 supply, and summarized the adopted offscreen architecture with its phased plan and integration notes.
