@@ -58,6 +58,11 @@ struct SceneGalleryDemo: View {
             }
             .cameraControls(.orbit)
             .autoRotate(speed: 0.25)
+            // Curated Sketchfab models are authored as PBR: their metallic and
+            // rough surfaces are defined by what they reflect. With no IBL they
+            // fall back to flat shading and the gallery undersells every model
+            // it exists to show off. Same preset as ModelViewerDemo (#2114).
+            .environment(.studio)
             .ignoresSafeArea()
             // Re-keys the SceneView when the selected slug changes so the
             // previous entity is fully torn down rather than overlaid.

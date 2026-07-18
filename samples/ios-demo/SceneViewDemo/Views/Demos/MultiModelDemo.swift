@@ -94,6 +94,12 @@ struct MultiModelDemo: View {
             }
             .cameraControls(.orbit)
             .autoRotate(speed: spinScene ? 0.2 : 0.0)
+            // The formation is built from curated PBR models; without an IBL
+            // their metallic/rough response has nothing to reflect and the whole
+            // scene reads as flat silhouettes. Same preset as ModelViewerDemo
+            // (#2114) so a model looks identical whether it is shown alone or
+            // as part of this multi-model scene.
+            .environment(.studio)
             .ignoresSafeArea()
             .id("multi-model-spin-\(spinScene)")
 
