@@ -25,7 +25,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -167,6 +166,63 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                 )
             }
         },
+        // Persistent hint pill — always visible in the viewport so the user knows what
+        // to do regardless of whether the controls panel is open. Hidden once the first
+        // body is tracked so it never fights the skeleton overlay (#2485).
+        //
+        // Lives in the scaffold's `bottomOverlay` slot, not in `scene`: this demo always
+        // passes `controls`, so the Settings FAB is always there and a plain
+        // `Alignment.BottomCenter` pill ran straight under it as soon as the hint got
+        // long enough to reach the end edge (#2779).
+        //
+        // Side effect of the move: the slot draws above the whole scene Box, so the hint
+        // is now visible over ARCameraInitScrim during the cold start instead of behind
+        // it. That matches ARStreetscapeDemo, where the status pill has always drawn on
+        // top of the same scrim (#2484) — status copy should not be hidden by it.
+        //
+        // State priority:
+        //   model missing  → "Pose model unavailable" (error, red)
+        //   tracking failed → ARCore's standard tracking-failure reason
+        //   body tracked    → hidden (skeleton overlay is the feedback)
+        //   else            → "Point the camera at a person — full body visible"
+        bottomOverlay = {
+            val trackingFailureHint = trackingFailureMessage(trackingFailureReason)
+            val (hintText, hintColor) = when {
+                landmarker == null ->
+                    stringResource(R.string.demo_ar_body_tracker_status_no_model) to
+                        MaterialTheme.colorScheme.error
+                trackingFailureHint != null ->
+                    trackingFailureHint to MaterialTheme.colorScheme.error
+                bodyPose.isTracked -> null to MaterialTheme.colorScheme.primary
+                else ->
+                    stringResource(R.string.demo_ar_body_tracker_hint_aim) to
+                        MaterialTheme.colorScheme.primary
+            }
+            AnimatedVisibility(
+                visible = hintText != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.padding(bottom = 32.dp),
+            ) {
+                if (hintText != null) {
+                    Text(
+                        text = hintText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier
+                            // Content-width pill: a symmetric inset keeps it centred
+                            // while its end edge stays clear of the Settings FAB. The
+                            // hint then wraps instead of disappearing under the FAB.
+                            .padding(horizontal = settingsFabReservedSpace)
+                            .background(
+                                color = hintColor.copy(alpha = 0.82f),
+                                shape = RoundedCornerShape(24.dp),
+                            )
+                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                    )
+                }
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -221,50 +277,6 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                 pose = bodyPose,
                 modifier = Modifier.fillMaxSize(),
             )
-
-            // Persistent hint pill — always visible in the viewport so the user knows what
-            // to do regardless of whether the controls panel is open. Hidden once the first
-            // body is tracked so it never fights the skeleton overlay (#2485).
-            //
-            // State priority:
-            //   model missing  → "Pose model unavailable" (error, red)
-            //   tracking failed → ARCore's standard tracking-failure reason
-            //   body tracked    → hidden (skeleton overlay is the feedback)
-            //   else            → "Point the camera at a person — full body visible"
-            val trackingFailureHint = trackingFailureMessage(trackingFailureReason)
-            val (hintText, hintColor) = when {
-                landmarker == null ->
-                    stringResource(R.string.demo_ar_body_tracker_status_no_model) to
-                        MaterialTheme.colorScheme.error
-                trackingFailureHint != null ->
-                    trackingFailureHint to MaterialTheme.colorScheme.error
-                bodyPose.isTracked -> null to MaterialTheme.colorScheme.primary
-                else ->
-                    stringResource(R.string.demo_ar_body_tracker_hint_aim) to
-                        MaterialTheme.colorScheme.primary
-            }
-            AnimatedVisibility(
-                visible = hintText != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 32.dp),
-            ) {
-                if (hintText != null) {
-                    Text(
-                        text = hintText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier
-                            .background(
-                                color = hintColor.copy(alpha = 0.82f),
-                                shape = RoundedCornerShape(24.dp),
-                            )
-                            .padding(horizontal = 24.dp, vertical = 12.dp),
-                    )
-                }
-            }
 
             // Cover the still-black ARSceneView surface until ARCore delivers its first
             // camera frame — on a cold start this can take several seconds and the
