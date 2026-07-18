@@ -171,7 +171,14 @@ external class Camera {
     /** @param eye float3 [x,y,z], @param center float3, @param up float3 */
     fun lookAt(eye: dynamic, center: dynamic, up: dynamic)
 
+    /** Physically-based (photometric) exposure. Use THIS — see [setExposureDirect]. */
     fun setExposure(aperture: Double, shutterSpeed: Double, sensitivity: Double)
+    /**
+     * Relative/model-viewer-style exposure. ⚠️ BROKEN in Filament.js: it
+     * over-exposes bright albedos to a clipped white blob for any reasonable
+     * value (verified: 1.1, 2.6e-5 and 5.79e-5 all blow the Khronos Duck out to
+     * white). Kept only to document the trap — do NOT call it; use [setExposure].
+     */
     fun setExposureDirect(exposure: Double)
     fun setModelMatrix(view: dynamic) // mat4
     fun getProjectionMatrix(): dynamic // mat4

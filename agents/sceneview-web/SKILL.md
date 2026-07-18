@@ -171,7 +171,8 @@ SceneView.create(
         }
         light {
             directional()
-            intensity(100_000.0)
+            intensity(10_000.0)   // lux — read under the photometric default
+                                  // exposure (f/12, 1/200s, ISO 200)
             direction(0.6f, -1.0f, -0.8f)
         }
         model("models/helmet.glb") { autoAnimate(true) }
