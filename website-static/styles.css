@@ -1,12 +1,12 @@
 /* ===================================================================
-   SceneView Website — Stitch M3 Design Faithful Conversion
-   Colors: M3 Expressive from Stitch Tailwind config
-   Layout: Faithful to Stitch screen 2 (primary) + screen 1 (gallery/platforms)
+   SceneView Website — M3 Expressive Design System (see DESIGN.md)
+   Colors: M3 Expressive from the SceneView design system
+   Layout: primary section + gallery/platforms sections
    =================================================================== */
 
 /* ===== DESIGN TOKENS ===== */
 :root {
-  /* M3 Stitch Colors */
+  /* M3 Expressive colors */
   --color-primary: #005bc1;
   --color-primary-dim: #0050aa;
   --color-secondary: #005eb8;
@@ -42,7 +42,7 @@
   /* Gradients */
   --gradient-hero: linear-gradient(135deg, #005bc1 0%, #6446cd 100%);
 
-  /* Shadows — from Stitch */
+  /* Shadows */
   --shadow-card: 0px 12px 32px rgba(30, 50, 86, 0.06);
   --shadow-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
 
@@ -587,7 +587,7 @@ ul { list-style: none; }
   font-size: 24px;
 }
 
-/* Varied icon backgrounds — faithful to Stitch */
+/* Varied icon backgrounds */
 .feature-card__icon--primary-container {
   background: var(--color-primary-container);
   color: var(--color-primary);

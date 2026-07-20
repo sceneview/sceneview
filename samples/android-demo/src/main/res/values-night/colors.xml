@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- SceneView M3 Expressive — Dark (GitHub-dark inspired, from Stitch design system) -->
+    <!-- SceneView M3 Expressive — Dark (GitHub-dark inspired — see DESIGN.md) -->
     <color name="md_theme_primary">#A4C1FF</color>
     <color name="md_theme_onPrimary">#002F64</color>
     <color name="md_theme_primaryContainer">#00448D</color>

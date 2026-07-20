@@ -8,7 +8,7 @@
     <!--
         SceneView logo — isometric 3D cube with viewport brackets
         Brand blue: #005bc1 (light), #a4c1ff (dark)
-        Design: Material Design 3 Expressive (Stitch)
+        Design: Material Design 3 Expressive (SceneView design system, see DESIGN.md)
         Safe zone: 66dp centered (21dp inset on each side)
     -->
 

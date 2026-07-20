@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// About tab — Liquid Glass card layout (iOS 26+ Stitch spec).
+/// About tab — Liquid Glass card layout (iOS 26+, per the SceneView design system — see DESIGN.md).
 ///
 /// Hero logo + version pill, then a series of `.regularMaterial` glass cards
 /// (Open Source, Docs, GitHub, 3D Playground, Credits), a tinted "Star on GitHub"
