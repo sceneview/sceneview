@@ -72,6 +72,8 @@ const SOURCES = [
 // the SDK surface wholesale. Wildcards keep this list short; a snippet's own
 // explicit imports are hoisted AFTER these and win any ambiguity.
 const PREAMBLE_IMPORTS = [
+  "android.view.MotionEvent",
+  "androidx.activity.ComponentActivity",
   "androidx.compose.foundation.layout.*",
   "androidx.compose.material3.Text",
   "androidx.compose.material3.Button",
@@ -79,16 +81,15 @@ const PREAMBLE_IMPORTS = [
   "androidx.compose.ui.Alignment",
   "androidx.compose.ui.Modifier",
   "androidx.compose.ui.graphics.Color",
+  "androidx.compose.ui.platform.LocalContext",
   "androidx.compose.ui.unit.dp",
-  "com.google.android.filament.Engine",
-  "com.google.ar.core.Anchor",
-  "com.google.ar.core.Config",
-  "com.google.ar.core.Frame",
-  "com.google.ar.core.HitResult",
-  "com.google.ar.core.Plane",
-  "com.google.ar.core.TrackingFailureReason",
-  "com.google.ar.core.TrackingState",
+  "androidx.lifecycle.Lifecycle",
+  "androidx.lifecycle.compose.LocalLifecycleOwner",
+  "com.google.android.filament.*",
+  "com.google.ar.core.*",
+  "java.io.File",
   "io.github.sceneview.*",
+  "io.github.sceneview.gesture.*",
   "io.github.sceneview.animation.*",
   "io.github.sceneview.ar.*",
   "io.github.sceneview.ar.arcore.*",
@@ -191,6 +192,69 @@ function classify(block) {
 
 // ─── Emission ───────────────────────────────────────────────────────────────
 
+// Signature-reference blocks reproduce API declarations without bodies
+// (```kotlin\n@Composable fun SceneView(\n  modifier: Modifier = Modifier,\n…\n)```).
+// Compiling them verifies every referenced TYPE and every documented DEFAULT
+// EXPRESSION still exists (that the signature itself matches the real one is
+// #2760's symbol-index job, not this harness's). A bodyless `fun` is not
+// valid Kotlin, so append a `= TODO()` stub where the parens balance and no
+// `{`/`=` body follows.
+function stubBodylessFuns(lines) {
+  const out = [...lines];
+  let i = 0;
+  while (i < out.length) {
+    if (/^\s*(@[\w.]+(\(.*\))?\s+)*((private|internal|public|protected|open|override|inline|suspend|operator|infix)\s+)*fun\s/.test(out[i])) {
+      let depth = 0;
+      let seenParen = false;
+      let j = i;
+      for (; j < out.length; j++) {
+        for (const ch of out[j]) {
+          if (ch === "(") { depth++; seenParen = true; }
+          else if (ch === ")") depth--;
+        }
+        if (seenParen && depth === 0) break;
+      }
+      if (j < out.length && seenParen) {
+        const tail = out[j].slice(out[j].lastIndexOf(")") + 1);
+        const next = out.slice(j + 1).find((l) => l.trim() !== "");
+        const hasBody =
+          /[{=]/.test(tail) || (next !== undefined && /^\s*[{=]/.test(next));
+        if (!hasBody) out[j] += " = TODO()";
+        i = j + 1;
+        continue;
+      }
+    }
+    i++;
+  }
+  return out;
+}
+
+// The canonical composition context llms.txt itself establishes everywhere
+// ("val engine = rememberEngine()" …). Fragments routinely reference these
+// four names without re-declaring them — inject the missing ones into the
+// wrapper, in dependency order, never shadowing a declaration the fragment
+// already makes. Anything beyond this quartet stays the doc's problem: the
+// fix is a clearer snippet (or a reasoned `notest`), not more harness magic.
+const CONTEXT_PRELUDE = [
+  ["engine", "val engine = rememberEngine()"],
+  ["modelLoader", "val modelLoader = rememberModelLoader(engine)"],
+  ["materialLoader", "val materialLoader = rememberMaterialLoader(engine)"],
+  ["environmentLoader", "val environmentLoader = rememberEnvironmentLoader(engine)"],
+];
+
+function contextPrelude(bodyText) {
+  const declares = (name) =>
+    new RegExp(`\\b(val|var)\\s+${name}\\b`).test(bodyText);
+  const uses = (name) => new RegExp(`\\b${name}\\b`).test(bodyText);
+  const picked = CONTEXT_PRELUDE.filter(
+    ([name]) => uses(name) && !declares(name)
+  );
+  if (picked.some(([name]) => name !== "engine") && !picked.some(([n]) => n === "engine") && !declares("engine")) {
+    picked.unshift(CONTEXT_PRELUDE[0]);
+  }
+  return picked.map(([, decl]) => decl);
+}
+
 function emit(block, slug, index) {
   const pkg = `docsnippets.${slug}.b${String(index).padStart(3, "0")}`;
   const codeLines = block.code.split("\n");
@@ -211,7 +275,8 @@ function emit(block, slug, index) {
     }
   }
 
-  const firstCode = body.find((l) => l.trim() !== "" && !/^\/\//.test(l.trim()));
+  const stubbed = stubBodylessFuns(body);
+  const firstCode = stubbed.find((l) => l.trim() !== "" && !/^\/\//.test(l.trim()));
   const topLevel = firstCode !== undefined && TOP_LEVEL_RE.test(firstCode.trim());
 
   const header = [
@@ -226,12 +291,14 @@ function emit(block, slug, index) {
     `// Source: ${block.sourcePath}:${block.line}`,
   ];
 
+  const prelude = topLevel ? [] : contextPrelude(stubbed.join("\n"));
   const content = topLevel
-    ? body.join("\n")
+    ? stubbed.join("\n")
     : [
         "@Composable",
         `private fun Snippet_${slug}_${index}() {`,
-        ...body.map((l) => (l === "" ? l : `    ${l}`)),
+        ...prelude.map((l) => `    ${l}`),
+        ...stubbed.map((l) => (l === "" ? l : `    ${l}`)),
         "}",
       ].join("\n");
 
