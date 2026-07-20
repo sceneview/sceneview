@@ -469,9 +469,18 @@ object DemoScaffoldTestTags {
  * scene area (#2779).
  *
  * [DemoScaffold] pins its `Tune` FAB `BottomEnd` inside a 16 dp gutter, and an
- * M3 `FloatingActionButton` body is ≈ 56 dp — so the FAB itself owns the 72 dp
- * closest to the end edge. This constant adds a further 16 dp of breathing room:
- * **56 dp FAB + 2 × 16 dp = 88 dp**, measured from the end edge of the scene area.
+ * M3 `FloatingActionButton` body is ≈ 56 dp — but the FAB is **not** the widest
+ * thing in that corner: the **"Settings" peek chip** rendered beside it is, at
+ * ≈ 79 dp. Sizing this band off the FAB alone (the original 88 dp = 56 + 2 × 16)
+ * left a bottom overlay ending 324 dp from the start edge while the chip begins
+ * at 317 dp — a 7 dp shortfall that put the two in visible contact (device-QA
+ * measured a 1 px gap on `ar-streetscape`'s four-line status pill, #2779).
+ *
+ * So the band is derived from the **chip**, matching how the sibling constant
+ * below is derived: **79 dp chip + 16 dp gutter + 8 dp breathing room = 104 dp**.
+ * The breathing room is half the FAB's 16 dp because the chip is transient — it
+ * peeks and retracts — so it only has to read as "not touching", not as a
+ * permanently balanced gutter.
  *
  * Do **not** hard-code it in a demo. Read
  * [DemoBottomOverlayScope.settingsFabReservedSpace] inside
@@ -481,7 +490,7 @@ object DemoScaffoldTestTags {
  * Sibling of `FEEDBACK_FAB_RESERVED_SPACE`, which does the same job for the
  * bottom-**start** feedback chip on the tab screens (#2194).
  */
-val SETTINGS_FAB_RESERVED_SPACE = 88.dp
+val SETTINGS_FAB_RESERVED_SPACE = 104.dp
 
 /**
  * Receiver of the [DemoScaffold] `bottomOverlay` slot.
