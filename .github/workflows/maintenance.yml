@@ -720,3 +720,63 @@ jobs:
             gh issue comment "$EXISTING" --body "$BODY" \
               || echo "::warning::Could not comment on existing MCP npm freshness issue #$EXISTING"
           fi
+
+  # ── 12. Play Store listing drift (read-only) ───────────────────────────────
+  # Sibling of § 10, on the Play side. play-store.yml only ever runs
+  # play_listing.py --apply, and only on a minor bump — so the listing is
+  # written blind: nobody sees how far the live store has drifted from the repo
+  # until after the write. That is how #2794 stayed invisible (a bad tablet
+  # imageType 400'd mid-edit, silently rolling back the icon and the copy for
+  # every release since #1710, while `continue-on-error` kept the run green).
+  # This job runs the READ-ONLY diff daily so the drift is visible in advance.
+  # Advisory: never fails, and SKIPs honestly when the secret is absent.
+  listing-drift:
+    name: Play listing drift (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Diff live Play listing against the repo
+        continue-on-error: true
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+          PACKAGE_NAME: io.github.sceneview.demo
+          LISTING_DIR: samples/android-demo/distribution/play-store
+        run: |
+          python3 -m venv /tmp/listing-venv
+          # Same pinned deps as the apply path — credential-bearing job (#1230).
+          /tmp/listing-venv/bin/pip install --quiet -r .github/workflows/requirements/play-store.txt
+          # --dry-run opens a throwaway edit, reads, and abandons it: nothing is
+          # ever committed to the store. No --fail-on-drift: advisory only.
+          /tmp/listing-venv/bin/python3 .claude/scripts/store-sync/play_listing.py \
+            --dry-run | tee listing-drift.log || true
+
+      - name: Append listing drift to step summary
+        if: always()
+        run: |
+          {
+            echo "### Play listing drift (read-only) — $(date -u +%Y-%m-%d)"
+            echo ""
+            if [ -f listing-drift.log ] && [ -s listing-drift.log ]; then
+              if grep -q '^\[skip\]' listing-drift.log; then
+                echo "⏭️ **Skipped** — no Play service-account credential available."
+              elif grep -q 'DRIFT' listing-drift.log; then
+                echo "⚠️ **Drift detected** — the live listing differs from the repo."
+                echo ""
+                echo '```'
+                grep 'DRIFT' listing-drift.log
+                echo '```'
+                echo ""
+                echo "_The next minor release will overwrite the live listing with the"
+                echo "repo's version (store-as-code: delete-then-upload per imageType)._"
+              else
+                echo "✅ **No drift** — the live listing matches the repo."
+              fi
+            else
+              echo "_No diff output produced this run — treated as advisory SKIP._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

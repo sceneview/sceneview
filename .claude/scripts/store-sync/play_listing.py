@@ -48,18 +48,36 @@ FILE_MAP = {
     "fullDescription": "full_description.txt",
 }
 
+# Google Play's `AppImageType` enum — the ONLY values `edits.images` accepts on
+# its `{imageType}` path segment. Anything else is a 400, and because the whole
+# listing is pushed inside ONE atomic edit, that 400 rolls back EVERY change in
+# the edit — text, icon and phone screenshots included. Pinning the enum here
+# lets `unknown_image_types()` catch a typo offline (self-test) instead of at
+# the next release, against the live store.
+# Ref: developers.google.com/android-publisher/api-ref/rest/v3/AppImageType
+VALID_IMAGE_TYPES = frozenset({
+    "featureGraphic", "icon", "phoneScreenshots", "promoGraphic",
+    "sevenInchScreenshots", "tenInchScreenshots",
+    "tvBanner", "tvScreenshots", "wearScreenshots",
+})
+
 # Listing graphics live in `<locale>/graphics/`. Each Play `imageType` maps to
 # one well-known filename (featureGraphic, icon) or a glob (phone / tablet
 # screenshots). The Play `edits.images` API is delete-then-upload PER
 # imageType: list+delete the existing images of a type, then upload the local
 # files. Screenshot ordering follows the sorted filename, so name them
 # `phone-screenshot-1.png` etc.
+#
+# The repo's `tablet7-` / `tablet10-` filenames describe the FORM FACTOR; the
+# Play enum names the same two slots `sevenInchScreenshots` / `tenInchScreenshots`
+# (#2794 — they were `tabletScreenshots` / `tabletScreenshots10`, which Play has
+# never accepted, silently voiding every listing sync since #1710).
 GRAPHICS = [
     ("featureGraphic", ["feature-graphic.png"]),
     ("icon", ["icon-512.png"]),
     ("phoneScreenshots", "phone-screenshot-*.png"),
-    ("tabletScreenshots", "tablet7-screenshot-*.png"),
-    ("tabletScreenshots10", "tablet10-screenshot-*.png"),
+    ("sevenInchScreenshots", "tablet7-screenshot-*.png"),
+    ("tenInchScreenshots", "tablet10-screenshot-*.png"),
 ]
 
 
@@ -93,6 +111,19 @@ def graphics_for(ldir, pattern):
     if isinstance(pattern, list):
         return [gdir / n for n in pattern if (gdir / n).exists()]
     return sorted(gdir.glob(pattern))
+
+
+def unknown_image_types(graphics=None):
+    """Return the configured imageTypes Play would reject, in declared order.
+
+    Offline guard for the single most expensive failure mode of this script: an
+    imageType typo is a 400 that aborts the *whole* atomic edit, so a broken
+    tablet slot silently voids the icon and the description too — and the
+    sync-listing job is `continue-on-error`, so the red never surfaces. Checked
+    by the self-test and again before any network call in `main`.
+    """
+    return [t for t, _ in (GRAPHICS if graphics is None else graphics)
+            if t not in VALID_IMAGE_TYPES]
 
 
 def sha256_of(path):
@@ -268,6 +299,17 @@ def apply_sync(sess, pkg, root):
                 "Console to enable listing sync (see #1386)."
             )
             return 0
+        # Any other HTTP error abandons the edit, so NOTHING was applied. The
+        # job is `continue-on-error: true` and lives in a matrix, so a bare red
+        # job goes unnoticed release after release — that is exactly how the
+        # #2794 tablet-imageType 400 rotted undetected. Emit an annotation that
+        # actually surfaces in the run summary before re-raising.
+        url = e.response.url if e.response is not None else "unknown URL"
+        print(
+            f"::warning::Play Store listing sync FAILED (HTTP {status} on {url}). "
+            "The edit was abandoned — listing text, icon and screenshots are ALL "
+            "unchanged on the store. The app rollout is unaffected."
+        )
         raise
     except Exception:
         try:
@@ -353,6 +395,17 @@ def main(argv=None):
     root = pathlib.Path(args.listing_dir)
     if not root.is_dir():
         print(f"::error::Listing dir not found: {root}")
+        return 2
+
+    # Fail before opening an edit: an imageType Play doesn't know would 400
+    # mid-flight and roll back everything already staged in that edit.
+    bad_types = unknown_image_types()
+    if bad_types:
+        print(
+            f"::error::GRAPHICS declares imageType(s) Play does not accept: "
+            f"{', '.join(bad_types)}. Valid values: "
+            f"{', '.join(sorted(VALID_IMAGE_TYPES))}."
+        )
         return 2
 
     creds_info = resolve_credentials()
