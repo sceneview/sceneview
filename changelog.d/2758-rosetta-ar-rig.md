@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- Device-QA: opt-in **Rosetta x86_64 AR rig** — `setup-ar-emulator.sh --rosetta` provisions a separate `Pixel_7a_x86` AVD (Intel emulator bundle + x86_64 system image + the `_x86_for_emulator` ARCore APK) on a reserved port outside the QA emulator pool, restoring **live-camera ARCore sessions** (tracking, hit-tests, anchors) on Apple Silicon hosts where the default arm64 AVD can never run them (#2754). Disk-gated, honest long-boot verdicts, and the run self-verifies with the camera-topology probe (camera HAL id `0`) (#2758)

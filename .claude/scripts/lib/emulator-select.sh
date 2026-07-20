@@ -83,6 +83,14 @@ EMU_LEASE_WAIT_TIMEOUT="${EMU_LEASE_WAIT_TIMEOUT:-300}"
 # 2 (5554, 5556, 5558, …) so multiple emulators coexist.
 EMU_BASE_PORT="${EMU_BASE_PORT:-5554}"
 
+# Ports AT OR ABOVE this are OUTSIDE the QA pool — reserved for special rigs
+# (e.g. the x86_64-under-Rosetta ARCore rig, #2758, which boots on port 5600).
+# Excluded serials are invisible to the pool: never leased as a "free running
+# emulator", never counted against the RAM-budgeted cap, never handed to a
+# standard QA run (a Maestro sweep on a ~10x-slower TCG guest would time out
+# everywhere and poison the QA verdict).
+EMU_POOL_PORT_EXCLUDE_FROM="${EMU_POOL_PORT_EXCLUDE_FROM:-5600}"
+
 _emu_log() { echo "[emu-select] $*" >&2; }
 
 # --- RAM monitoring ---------------------------------------------------------
@@ -181,12 +189,15 @@ emu_recommended_memory_mb() {
 }
 
 # --- Running-emulator detection ---------------------------------------------
-# emu_running_serials [adb_bin] — newline-separated list of every emulator-*
-# device currently in "device" state. Empty output means none is up.
+# emu_running_serials [adb_bin] — newline-separated list of every POOL
+# emulator-* device currently in "device" state. Empty output means none is up.
+# Serials on ports >= EMU_POOL_PORT_EXCLUDE_FROM (special rigs, e.g. the
+# Rosetta ARCore rig on 5600) are filtered out — they are not pool members.
 emu_running_serials() {
   local adb_bin="${1:-adb}"
   "$adb_bin" devices 2>/dev/null \
-    | awk '/^emulator-[0-9]+/ && $2=="device" { print $1 }'
+    | awk -v cutoff="$EMU_POOL_PORT_EXCLUDE_FROM" \
+        '/^emulator-[0-9]+/ && $2=="device" { if (substr($1,10)+0 < cutoff) print $1 }'
 }
 
 # emu_running_serial [adb_bin] — back-compat single-serial accessor: echoes the
@@ -346,6 +357,13 @@ emu_next_free_port() {
   port="$EMU_BASE_PORT"
   while echo "$used" | grep -qx "$port"; do
     port=$(( port + 2 ))
+    # Never allocate into the reserved special-rig range (>= cutoff). With
+    # EMU_POOL_MAX=3 this is unreachable in practice; the guard keeps the
+    # invariant explicit.
+    if [[ "$port" -ge "$EMU_POOL_PORT_EXCLUDE_FROM" ]]; then
+      _emu_log "no free pool port below the reserved rig range (>= $EMU_POOL_PORT_EXCLUDE_FROM)"
+      return 1
+    fi
   done
   echo "$port"
 }

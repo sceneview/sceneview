@@ -278,6 +278,31 @@ unaffected (the GitHub emulator action has its own snapshot caching). See
 [`.maestro/README.md`](.maestro/README.md) for the full rationale and the
 Android Studio Journeys assessment (not adopted — blocked on an AGP 9.0.0 bump).
 
+**Rosetta x86_64 AR rig — opt-in live-camera AR on Apple Silicon (#2758).**
+ARCore ships **no arm64 emulator build** (#2754): live-camera AR sessions can
+never start on the default arm64 AVD (the ARCore device APK requires the back
+camera at HAL id `0`, absent on arm64 AVDs), so AR demos there run in
+`qa_mode` fallback only. The escape hatch is a **separate** x86_64 AVD under
+Rosetta:
+
+```bash
+bash .claude/scripts/setup-ar-emulator.sh --rosetta            # provision + boot
+bash .claude/scripts/setup-ar-emulator.sh --check --rosetta    # read-only rig report
+```
+
+This installs the Intel (darwin_x64) emulator bundle outside the SDK tree,
+the `android-34;google_apis;x86_64` system image, creates AVD `Pixel_7a_x86`
+(virtualscene back camera), boots it on **reserved port 5600 — outside the QA
+pool** (see `EMU_POOL_PORT_EXCLUDE_FROM`), and side-loads the
+`_x86_for_emulator` ARCore APK. The run ends with the #2755 camera-topology
+probe: success = camera HAL id `0` present. ~9 GB one-time payload,
+disk-gated up front. The x86 guest runs under pure-software TCG (Apple
+Silicon cannot hardware-accelerate an x86 guest), so expect a **20-90 min
+first boot** and ~5-10x-slower interaction: built for unattended AR QA
+probes, not interactive use, and never leased to standard QA runs. `--clean
+--rosetta` recreates only the x86 AVD — the arm64 AVD and its `qa-clean`
+snapshot are never touched.
+
 **Visible (windowed) emulator — opt-in (#1660).** The emulator boots **headless
 by default** (`-no-window`), which is marginally lighter on the host (skips the
 skin-window draw + window-server compositing). To watch it locally, opt in:
@@ -708,7 +733,7 @@ Hooks trigger automatically on specific Claude Code actions:
 | `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.). Section 16 runs `store-preflight.sh` (advisory) |
 | `store-preflight.sh` | Read-only App Store Connect preflight (#2612 P1) — detects the human-only store blockers that silently 403 a deploy: an expired Apple agreement (`REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED` canary), an App Review rejection, cert/profile expiry (< `CERT_EXPIRY_WARN_DAYS`, default 30), and (since #2731) an open never-submitted reviewSubmission (`READY_FOR_REVIEW`/`UNRESOLVED_ISSUES`) — the silent-submission signature the IOS-scoped version-state probe alone can't see. Signs the ASC ES256 JWT with openssl only; reuses `app-store.yml`'s ASC secrets (no new scope); SKIPs honestly without creds. Advisory-first — a blocker hard-blocks only under `GATE_HARD=1`. Wired into `release-checklist.sh` §16, the `/store-status` command doc (probe-set wiring is a P1 follow-up), and a daily `maintenance.yml` job. Self-tested by `test-store-preflight.sh` (in `repo-hygiene`) |
 | `lib/android-cli.sh` | Shared helpers for Google's `android` CLI (screenshot, layout, install+launch) with `adb` fallback |
-| `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool + snapshot state + camera-id topology, #2754), `--clean` (wipe+recreate), `--seed-snapshot` (seed the golden `qa-clean` boot snapshot), `--no-snapshot` (force cold boot). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. Boot snapshots (#1672): once seeded, the base-port emulator cold-boots from the immutable `qa-clean` snapshot — faster and deterministic, and fixes the userdata storage-degradation bug. **Use this for routine QA — never QA on a personal device.** |
+| `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool + snapshot state + camera-id topology, #2754), `--clean` (wipe+recreate), `--seed-snapshot` (seed the golden `qa-clean` boot snapshot), `--no-snapshot` (force cold boot), `--rosetta` (provision/boot the separate x86_64-under-Rosetta AR rig on reserved port 5600 — the only live-camera ARCore path on Apple Silicon, #2758). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. Boot snapshots (#1672): once seeded, the base-port emulator cold-boots from the immutable `qa-clean` snapshot — faster and deterministic, and fixes the userdata storage-degradation bug. **Use this for routine QA — never QA on a personal device.** |
 | `lib/emulator-select.sh` | Sourced helper for `setup-ar-emulator.sh` / `device-qa.sh` / `qa-android-demos.sh` — RAM monitoring (`vm_stat`/`/proc/meminfo`), RAM-budgeted pool-cap computation, a per-emulator lease registry, RAM-scaled `-memory`, multi-port boot, and stale-lease reclaim. The adaptive pool runs as many emulators as live host RAM safely allows (floor 1, `EMU_POOL_MAX` ceiling), superseding #1647's strict-single design (#1654). |
 | `qa-android-demos.sh` | QA loop over every demo — uses `android layout`/`screen capture` for the UI dump and screenshots |
 | `capture-play-store-screenshots.sh` | Play Store screenshot capture — `android screen capture` (no LF/CRLF corruption) |

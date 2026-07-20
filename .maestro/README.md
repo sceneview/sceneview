@@ -188,6 +188,22 @@ optionally, so a checkout without the file builds keyless and silently.
 
 ## Known limitations
 
+- **Live-camera AR cannot run on arm64 emulators — use the Rosetta rig.**
+  ARCore ships no arm64 emulator build
+  ([#2754](https://github.com/sceneview/sceneview/issues/2754)): the device
+  APK hard-requires the back camera at HAL id `0`, which arm64 AVDs never
+  expose (back enumerates as `10`), and the `_x86_for_emulator` APK carries
+  x86/x86_64 native libs only. On the arm64 QA AVD every AR flow therefore
+  runs in `qa_mode` fallback (canned engines, synthetic frames) — that is a
+  UI/state check, not a live-camera check. For real ARCore sessions
+  (tracking, hit-tests, anchors) on an Apple Silicon host, boot the separate
+  x86_64-under-Rosetta rig
+  ([#2758](https://github.com/sceneview/sceneview/issues/2758)):
+  `bash .claude/scripts/setup-ar-emulator.sh --rosetta` (AVD `Pixel_7a_x86`
+  on reserved port 5600, outside the QA pool). It runs under pure-software
+  TCG — expect a 20-90 min first boot and ~5-10x-slower interaction; drive it
+  with targeted probes (`adb -s emulator-5600 …`), never with the full
+  Maestro catalog.
 - **No pinch gesture.** Maestro cannot pinch, so 3D camera zoom cannot be
   driven by touch. On **Android** this is solved by the `camera_distance`
   deep-link param ([#1571](https://github.com/sceneview/sceneview/issues/1571),

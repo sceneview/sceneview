@@ -81,6 +81,25 @@
 #                    Equivalent to EMU_VISIBLE=1. The guest VM cost is identical
 #                    either way — only the host window draw differs. CI never
 #                    sets this; the device-QA workflow stays headless.
+#   --rosetta        Provision/boot the SEPARATE x86_64-under-Rosetta AR rig
+#                    (#2758): AVD `Pixel_7a_x86` on reserved port 5600 — Intel
+#                    emulator bundle + x86_64 system image + the
+#                    `_x86_for_emulator` ARCore APK. This is the only path to
+#                    LIVE-CAMERA ARCore sessions on Apple Silicon (#2754:
+#                    ARCore ships no arm64 emulator build; arm64 AVDs never
+#                    expose camera HAL id 0). ~9 GB one-time payload,
+#                    disk-gated up front. The x86 guest runs under
+#                    pure-software TCG (Apple Silicon cannot hardware-
+#                    accelerate an x86 guest — HVF is arm64-only), so expect a
+#                    20-90 min first boot and ~5-10x-slower interaction: built
+#                    for unattended QA probes, not interactive use. The rig is
+#                    INVISIBLE to the QA emulator pool (reserved port range, see
+#                    lib/emulator-select.sh EMU_POOL_PORT_EXCLUDE_FROM) so a
+#                    standard QA run can never lease it by accident. Combines
+#                    with: --check (read-only rig report), --clean (recreate
+#                    the x86 AVD ONLY — never touches the arm64 AVD or its
+#                    snapshot), --no-boot (provision without booting),
+#                    --window. Incompatible with --seed-snapshot.
 #   -h|--help        Show this help.
 #
 # Idempotent: re-running with no flag will skip work that's already done. Leases a
@@ -182,6 +201,7 @@ NO_BOOT=false
 STOP_AFTER=false
 SEED_SNAPSHOT=false
 NO_SNAPSHOT=false
+ROSETTA=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -191,6 +211,7 @@ while [[ $# -gt 0 ]]; do
     --stop)           STOP_AFTER=true; shift ;;
     --seed-snapshot)  SEED_SNAPSHOT=true; shift ;;
     --no-snapshot)    NO_SNAPSHOT=true; shift ;;
+    --rosetta)        ROSETTA=true; shift ;;
     --window)         EMU_VISIBLE=1; shift ;;
     -h|--help)
       # Print the leading comment block (lines starting with #), stop at `set -`.
@@ -209,6 +230,11 @@ if $SEED_SNAPSHOT; then
   fi
   if $NO_BOOT; then
     echo "[setup-ar] --seed-snapshot needs a boot — incompatible with --no-boot" >&2; exit 2
+  fi
+  if $ROSETTA; then
+    # The Rosetta rig has no golden-snapshot support (phase 1: prove the rig
+    # works at all; snapshots can come later if TCG restore proves reliable).
+    echo "[setup-ar] --seed-snapshot is not supported with --rosetta" >&2; exit 2
   fi
 fi
 
@@ -264,8 +290,9 @@ save_golden_snapshot() {
 # ships — latest is fine.
 
 # --- step 2: verify system image is installed ---------------------------------
+# (arm64 flow only — the Rosetta rig manages its own x86_64 image below.)
 SYS_IMAGE_DIR="$SDK_ROOT/system-images/android-36/google_apis_playstore/$IMG_ARCH"
-if [[ ! -d "$SYS_IMAGE_DIR" ]]; then
+if ! $ROSETTA && [[ ! -d "$SYS_IMAGE_DIR" ]]; then
   if $CHECK_ONLY; then
     log "MISSING: $SYS_IMAGE_DIR (install with: sdkmanager '$SYSTEM_IMAGE')"
     exit 1
@@ -325,30 +352,35 @@ avd_is_stale() {
   return 0
 }
 
-if $CLEAN; then
-  if $CHECK_ONLY; then
-    log "--check and --clean are mutually exclusive"; exit 2
-  fi
-  log "removing existing AVD $AVD_NAME"
-  "$AVDMANAGER_BIN" delete avd --name "$AVD_NAME" 2>/dev/null || true
-  # `avdmanager delete` removes the .avd directory and its snapshots with it,
-  # but be explicit so a stale golden snapshot can never survive a --clean
-  # (#1672) — re-seed it afterwards with --seed-snapshot.
-  rm -rf "$SNAPSHOTS_DIR" 2>/dev/null || true
+if $CLEAN && $CHECK_ONLY; then
+  log "--check and --clean are mutually exclusive"; exit 2
 fi
 
-if $CHECK_ONLY; then
-  if [[ ! -f "$AVD_CONFIG" ]]; then
-    log "MISSING AVD $AVD_NAME (would create on full run)"
-    exit 1
-  fi
-  avd_is_stale && log "AVD $AVD_NAME is below the ANR-resistant spec (RAM/cores) — a full run would rebuild it"
-elif avd_is_stale; then
-  if [[ -f "$AVD_CONFIG" ]]; then
-    log "AVD $AVD_NAME is below the ANR-resistant spec — rebuilding"
+# arm64-AVD create/clean/stale-rebuild — SKIPPED entirely in --rosetta mode:
+# the rig must never touch the arm64 AVD or its golden snapshot (#2758).
+if ! $ROSETTA; then
+  if $CLEAN; then
+    log "removing existing AVD $AVD_NAME"
     "$AVDMANAGER_BIN" delete avd --name "$AVD_NAME" 2>/dev/null || true
+    # `avdmanager delete` removes the .avd directory and its snapshots with it,
+    # but be explicit so a stale golden snapshot can never survive a --clean
+    # (#1672) — re-seed it afterwards with --seed-snapshot.
+    rm -rf "$SNAPSHOTS_DIR" 2>/dev/null || true
   fi
-  recreate_avd
+
+  if $CHECK_ONLY; then
+    if [[ ! -f "$AVD_CONFIG" ]]; then
+      log "MISSING AVD $AVD_NAME (would create on full run)"
+      exit 1
+    fi
+    avd_is_stale && log "AVD $AVD_NAME is below the ANR-resistant spec (RAM/cores) — a full run would rebuild it"
+  elif avd_is_stale; then
+    if [[ -f "$AVD_CONFIG" ]]; then
+      log "AVD $AVD_NAME is below the ANR-resistant spec — rebuilding"
+      "$AVDMANAGER_BIN" delete avd --name "$AVD_NAME" 2>/dev/null || true
+    fi
+    recreate_avd
+  fi
 fi
 
 # --- step 4: patch config.ini for ARCore --------------------------------------
@@ -430,8 +462,12 @@ show_snapshot_status() {
 # live-camera AR sessions can NEVER start on an arm64 AVD. Surfacing the topology here
 # keeps that failure loud instead of masked behind a black viewport.
 show_camera_topology() {
-  local serial
-  serial="$("$ADB_BIN" devices 2>/dev/null | awk '/^emulator-[0-9]+/ && $2=="device" {print $1; exit}')"
+  # Optional $1: probe THIS serial (used by the Rosetta rig, which lives on a
+  # reserved port). Default: the first running emulator, as before.
+  local serial="${1:-}"
+  if [[ -z "$serial" ]]; then
+    serial="$("$ADB_BIN" devices 2>/dev/null | awk '/^emulator-[0-9]+/ && $2=="device" {print $1; exit}')"
+  fi
   if [[ -z "$serial" ]]; then
     log "camera topology: no running emulator to probe"
     return 0
@@ -454,11 +490,397 @@ show_camera_topology() {
   fi
 }
 
+# =============================================================================
+# --- Rosetta x86_64 AR rig (#2758) -------------------------------------------
+# =============================================================================
+# ARCore ships NO arm64 emulator build (#2754): the device APK hard-requires the
+# back camera at HAL id "0" (arm64 AVDs enumerate back="10"), and the
+# `_x86_for_emulator` APK carries x86/x86_64 native libs only. The ONLY path to
+# a live-camera ARCore session on an Apple Silicon host is therefore an x86_64
+# guest — which HVF cannot accelerate (it virtualizes same-arch only), so the
+# guest runs under QEMU's pure-software TCG, with the Intel darwin_x64 emulator
+# binary itself translated by Rosetta 2.
+#
+# Hard-won facts from the 2026-05 investigations (memory
+# feedback_arcore_emulator_mac_dead_end) baked in here:
+#   - The arm64 SDK emulator bundle ships NO qemu-system-x86_64 — a separate
+#     Intel (darwin_x64) bundle is required. Its binary runs fine via Rosetta.
+#   - `-sysdir` must be passed explicitly or the Intel binary can't locate the
+#     system image installed in the arm64 SDK tree.
+#   - TCG boot is SLOW (double emulation). The 2026-05 attempts never reached
+#     `sys.boot_completed=1` — but both ran on a nearly-full disk with a
+#     concurrent arm64 emulator competing for CPU. This path re-tries under
+#     controlled conditions, with an honest generous timeout and a loud failure
+#     verdict instead of a silent hang. Expect 20-90 min for a first boot.
+#   - The boot is detached as a SUBSHELL-ORPHAN `( nohup … & )` — a plain
+#     `nohup … &` child gets SIGTERM'd by agent-tool cleanup on some runners.
+#   - The rig lives on reserved port 5600, OUTSIDE the QA pool port range, so a
+#     pool session can never lease a ~10x-slower TCG guest for a standard QA
+#     run (see EMU_POOL_PORT_EXCLUDE_FROM in lib/emulator-select.sh).
+
+ROSETTA_AVD_NAME="Pixel_7a_x86"
+ROSETTA_AVD_CONFIG="$AVD_HOME/$ROSETTA_AVD_NAME.avd/config.ini"
+ROSETTA_PORT="${EMU_ROSETTA_PORT:-5600}"
+ROSETTA_SERIAL="emulator-${ROSETTA_PORT}"
+# google_apis (NOT google_apis_playstore): ARCore and the demo app are both
+# side-loaded, so the Play Store would add nothing but background services that
+# burn scarce TCG cycles. android-34 = mature x86_64 image; demo minSdk 28 OK.
+ROSETTA_IMAGE="${EMU_ROSETTA_IMAGE:-system-images;android-34;google_apis;x86_64}"
+ROSETTA_IMG_DIR="$SDK_ROOT/${ROSETTA_IMAGE//;//}"
+# Intel darwin_x64 emulator bundle — 36.6.11, the stable-channel build in
+# dl.google.com repository2-3.xml (channel-0) at the time of writing. Lives
+# OUTSIDE the SDK tree so `sdkmanager` updates can never clobber it with an
+# arm64 build.
+ROSETTA_EMU_BUILD="${EMU_ROSETTA_EMULATOR_BUILD:-15507667}"
+ROSETTA_EMU_ROOT="${EMU_ROSETTA_SDK_DIR:-$HOME/Library/Android/sdk-intel-emulator}"
+ROSETTA_EMU_BIN="$ROSETTA_EMU_ROOT/emulator/emulator"
+ROSETTA_BOOT_TIMEOUT_S="${EMU_ROSETTA_BOOT_TIMEOUT_S:-5400}"
+ROSETTA_RAM_MB="${EMU_ROSETTA_MEMORY_MB:-3072}"
+# 4 GB data partition: the rig runs ONE side-loaded demo + ARCore (~500 MB of
+# APKs) — it never absorbs the multi-run QA churn the arm64 AVD does, and every
+# GB here is a GB of first-boot headroom on a chronically-full host.
+ROSETTA_DATA_GB="${EMU_ROSETTA_DATA_GB:-4}"
+# Pinned ARCore emulator APK — the GitHub release tag carries NO leading "v".
+ROSETTA_ARCORE_APK_URL="${EMU_ROSETTA_ARCORE_APK_URL:-https://github.com/google-ar/arcore-android-sdk/releases/download/1.54.0/Google_Play_Services_for_AR_1.54.0_x86_for_emulator.apk}"
+ROSETTA_LOG="/tmp/sceneview-emulator-${ROSETTA_AVD_NAME}-${ROSETTA_PORT}.log"
+ROSETTA_PIDFILE="/tmp/sceneview-emulator-${ROSETTA_AVD_NAME}-${ROSETTA_PORT}.pid"
+
+rlog() { echo "[setup-ar:rosetta] $*"; }
+
+# adb state of the rig serial: "device", "offline", or "" (not registered).
+rosetta_serial_state() {
+  "$ADB_BIN" devices 2>/dev/null | awk -v s="$ROSETTA_SERIAL" '$1==s {print $2}'
+}
+
+# 0 if the qemu pid recorded at boot time is still alive. The `emulator`
+# launcher execs the engine, so the recorded pid stays valid. This is one
+# signal among several — failure verdicts always cross-check the adb state.
+rosetta_pid_alive() {
+  local pid
+  pid="$(cat "$ROSETTA_PIDFILE" 2>/dev/null || true)"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+rosetta_check_prereqs() {
+  if [[ "$(uname -s)" != "Darwin" || "$HOST_ARCH" != "arm64" ]]; then
+    rlog "--rosetta targets Apple Silicon Macs only (host: $(uname -s)/$HOST_ARCH)."
+    rlog "On an x86_64 host the STANDARD flow already boots an ARCore-capable x86_64 AVD."
+    exit 2
+  fi
+  if ! /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null; then
+    rlog "Rosetta 2 is not installed. Install it once with:"
+    rlog "  softwareupdate --install-rosetta --agree-to-license"
+    exit 1
+  fi
+}
+
+# Disk gate (#2758): the payload is ~9 GB on a chronically-full host. Charge
+# only what is actually missing; a fresh AVD additionally needs ~7.4 GB
+# AVAILABLE at first boot (the emulator refuses below that — 2026-05 evidence).
+rosetta_disk_gate() {
+  local free_gb need_gb=0 missing=()
+  free_gb="$(df -g "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"
+  [[ "$free_gb" =~ ^[0-9]+$ ]] || { rlog "WARNING: cannot read free disk — proceeding without the gate"; return 0; }
+  if [[ ! -x "$ROSETTA_EMU_BIN" ]]; then need_gb=$((need_gb+2)); missing+=("Intel emulator bundle ~1.5G"); fi
+  if [[ ! -d "$ROSETTA_IMG_DIR" ]]; then need_gb=$((need_gb+4)); missing+=("x86_64 system image ~3.5G"); fi
+  # First-boot headroom only counts when this run will actually BOOT: the
+  # emulator pre-allocates the data partition + working images and refuses to
+  # start without the headroom AVAILABLE (2026-05: "Available: 4100 MB, need
+  # 7372 MB"). `--no-boot` provisioning (downloads + AVD create) costs ~none
+  # beyond the payloads charged above.
+  if ! $NO_BOOT; then
+    if [[ ! -d "$AVD_HOME/$ROSETTA_AVD_NAME.avd/snapshots" && ! -f "$AVD_HOME/$ROSETTA_AVD_NAME.avd/userdata-qemu.img" ]]; then
+      need_gb=$((need_gb + ROSETTA_DATA_GB + 3)); missing+=("fresh-AVD first boot (~$((ROSETTA_DATA_GB + 3))G must be available)")
+    else
+      need_gb=$((need_gb+2))
+    fi
+  fi
+  if (( free_gb < need_gb )); then
+    rlog "DISK GATE: ${free_gb} GB free < ${need_gb} GB needed (${missing[*]:-boot headroom})"
+    rlog "Free disk first — safe purges (memory ar-model-viewer disk-cleanup-2026-07):"
+    rlog "  bash .claude/scripts/worktree-auto-prune.sh --yes    # merged worktrees"
+    rlog "  stale /tmp/sv-* review clones of already-MERGED PRs"
+    rlog "  xcrun simctl runtime delete <never-booted runtimes>"
+    exit 1
+  fi
+  rlog "disk gate OK: ${free_gb} GB free >= ${need_gb} GB needed"
+}
+
+rosetta_install_emulator() {
+  if [[ -x "$ROSETTA_EMU_BIN" ]]; then
+    rlog "Intel emulator bundle present (build $(cat "$ROSETTA_EMU_ROOT/.sceneview-build" 2>/dev/null || echo '?')) at $ROSETTA_EMU_ROOT"
+    return 0
+  fi
+  local zip_url="https://dl.google.com/android/repository/emulator-darwin_x64-${ROSETTA_EMU_BUILD}.zip"
+  local tmp_zip="${TMPDIR:-/tmp}/emulator-darwin_x64-${ROSETTA_EMU_BUILD}.zip"
+  rlog "downloading Intel emulator bundle: $zip_url"
+  curl -fSL --retry 3 -o "$tmp_zip" "$zip_url" || { rlog "download failed"; exit 1; }
+  mkdir -p "$ROSETTA_EMU_ROOT"
+  rlog "extracting to $ROSETTA_EMU_ROOT"
+  unzip -qo "$tmp_zip" -d "$ROSETTA_EMU_ROOT" || { rm -f "$tmp_zip"; rlog "unzip failed"; exit 1; }
+  rm -f "$tmp_zip"
+  echo "$ROSETTA_EMU_BUILD" > "$ROSETTA_EMU_ROOT/.sceneview-build"
+  [[ -x "$ROSETTA_EMU_BIN" ]] || { rlog "bundle extracted but $ROSETTA_EMU_BIN is missing"; exit 1; }
+  rlog "Intel emulator installed: $(/usr/bin/arch -x86_64 "$ROSETTA_EMU_BIN" -version 2>/dev/null | head -1 || echo 'version probe failed (non-fatal)')"
+}
+
+rosetta_install_image() {
+  if [[ -d "$ROSETTA_IMG_DIR" ]]; then
+    rlog "x86_64 system image present: $ROSETTA_IMAGE"
+    return 0
+  fi
+  rlog "installing system image: $ROSETTA_IMAGE"
+  if [[ -x "$ANDROID_CLI_BIN" ]] && "$ANDROID_CLI_BIN" "${ANDROID_CLI[@]}" sdk install "$ROSETTA_IMAGE"; then
+    rlog "system image installed via android CLI"
+  else
+    rlog "android CLI unavailable/failed — falling back to sdkmanager"
+    yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "$ROSETTA_IMAGE" || {
+      rlog "sdkmanager failed; check ANDROID_SDK_ROOT and licenses"; exit 1
+    }
+  fi
+  [[ -d "$ROSETTA_IMG_DIR" ]] || { rlog "install reported OK but $ROSETTA_IMG_DIR is missing"; exit 1; }
+}
+
+rosetta_create_avd() {
+  if $CLEAN; then
+    rlog "removing rig AVD $ROSETTA_AVD_NAME (--clean — the arm64 AVD is untouched)"
+    "$AVDMANAGER_BIN" delete avd --name "$ROSETTA_AVD_NAME" 2>/dev/null || true
+    rm -rf "$AVD_HOME/$ROSETTA_AVD_NAME.avd" "$AVD_HOME/$ROSETTA_AVD_NAME.ini" 2>/dev/null || true
+  fi
+  if [[ ! -f "$ROSETTA_AVD_CONFIG" ]]; then
+    rlog "creating rig AVD $ROSETTA_AVD_NAME (device=pixel_7a, image=$ROSETTA_IMAGE)"
+    echo "no" | "$AVDMANAGER_BIN" create avd \
+      --name "$ROSETTA_AVD_NAME" \
+      --package "$ROSETTA_IMAGE" \
+      --device pixel_7a \
+      --force >/dev/null
+  fi
+  rlog "patching $ROSETTA_AVD_CONFIG for the AR rig"
+  patch_kv "PlayStore.enabled" "no"             "$ROSETTA_AVD_CONFIG"
+  patch_kv "hw.camera.back"    "virtualscene"   "$ROSETTA_AVD_CONFIG"
+  patch_kv "hw.camera.front"   "emulated"       "$ROSETTA_AVD_CONFIG"
+  patch_kv "hw.gpu.enabled"    "yes"            "$ROSETTA_AVD_CONFIG"
+  patch_kv "hw.gpu.mode"       "host"           "$ROSETTA_AVD_CONFIG"
+  patch_kv "hw.ramSize"        "$ROSETTA_RAM_MB" "$ROSETTA_AVD_CONFIG"
+  patch_kv "vm.heapSize"       "512"            "$ROSETTA_AVD_CONFIG"
+  # 4 vCPUs: one MTTCG translation thread each — leaves host cores for the
+  # arm64 pool emulator + the agent. More vCPUs does NOT mean faster under TCG.
+  patch_kv "hw.cpu.ncore"      "4"              "$ROSETTA_AVD_CONFIG"
+  patch_kv "disk.dataPartition.size" "${ROSETTA_DATA_GB}G" "$ROSETTA_AVD_CONFIG"
+  patch_kv "hw.sensors.orientation" "yes"       "$ROSETTA_AVD_CONFIG"
+  patch_kv "hw.sensors.proximity"   "yes"       "$ROSETTA_AVD_CONFIG"
+  patch_kv "hw.gps"            "yes"            "$ROSETTA_AVD_CONFIG"
+  patch_kv "hw.keyboard"       "yes"            "$ROSETTA_AVD_CONFIG"
+}
+
+rosetta_boot() {
+  local state; state="$(rosetta_serial_state)"
+  if [[ "$state" == "device" ]]; then
+    rlog "rig already running on $ROSETTA_SERIAL — reusing it"
+    return 0
+  fi
+  if [[ -n "$state" ]] || rosetta_pid_alive; then
+    rlog "rig is mid-boot (adb: ${state:-not-registered}) — waiting for it below"
+    return 0
+  fi
+  # RAM gate: reuse the pool's hard safety threshold. The rig is outside the
+  # pool but the OOM cliff is host-wide.
+  if ! emu_ram_allows_boot; then
+    rlog "not enough free RAM to boot the rig (threshold ${EMU_MIN_FREE_RAM_MB} MB)"
+    rlog "free RAM (or stop an idle pool emulator) first — pool state: --check"
+    exit 1
+  fi
+  local window_arg="-no-window" window_desc="headless"
+  if [[ "${EMU_VISIBLE:-0}" == "1" || "${EMU_VISIBLE:-}" == "true" ]]; then
+    window_arg=""; window_desc="windowed (EMU_VISIBLE)"
+  fi
+  rlog "booting rig $ROSETTA_AVD_NAME on -port $ROSETTA_PORT (${window_desc}, TCG -no-accel, -memory ${ROSETTA_RAM_MB} MB)"
+  rlog "log: $ROSETTA_LOG — expect a LONG first boot (20-90 min under TCG)"
+  # Subshell-orphan detach (2026-05 lesson): a direct `nohup … &` child gets
+  # SIGTERM'd by agent-tool cleanup; the subshell orphan survives. The pid is
+  # captured from inside the subshell.
+  # shellcheck disable=SC2086 # window_arg is intentionally word-split (empty = visible)
+  ( ANDROID_SDK_ROOT="$SDK_ROOT" ANDROID_AVD_HOME="$AVD_HOME" \
+      nohup /usr/bin/arch -x86_64 "$ROSETTA_EMU_BIN" \
+        -avd "$ROSETTA_AVD_NAME" \
+        -port "$ROSETTA_PORT" \
+        -sysdir "$ROSETTA_IMG_DIR" \
+        -no-accel \
+        -gpu host \
+        -memory "$ROSETTA_RAM_MB" \
+        -no-snapshot \
+        $window_arg \
+        -no-audio \
+        -no-boot-anim \
+        -netdelay none -netspeed full \
+        >"$ROSETTA_LOG" 2>&1 &
+    echo $! > "$ROSETTA_PIDFILE" )
+  rlog "rig qemu pid=$(cat "$ROSETTA_PIDFILE" 2>/dev/null || echo '?') serial=$ROSETTA_SERIAL"
+}
+
+rosetta_wait_boot() {
+  local waited=0 interval=15 state boot anim rss
+  rlog "waiting for $ROSETTA_SERIAL to reach sys.boot_completed=1 (timeout ${ROSETTA_BOOT_TIMEOUT_S}s)"
+  while true; do
+    boot="$("$ADB_BIN" -s "$ROSETTA_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n' || true)"
+    if [[ "$boot" == "1" ]]; then
+      rlog "BOOT COMPLETE on $ROSETTA_SERIAL after ${waited}s"
+      return 0
+    fi
+    state="$(rosetta_serial_state)"
+    if ! rosetta_pid_alive && [[ "$state" != "device" && "$state" != "offline" ]]; then
+      rlog "FAIL: rig qemu died after ${waited}s and $ROSETTA_SERIAL is gone — last log lines:"
+      tail -n 30 "$ROSETTA_LOG" 2>/dev/null | sed 's/^/  | /' || true
+      return 1
+    fi
+    if (( waited >= ROSETTA_BOOT_TIMEOUT_S )); then
+      rlog "FAIL: sys.boot_completed never reached 1 within ${ROSETTA_BOOT_TIMEOUT_S}s (TCG too slow or wedged)"
+      rlog "qemu is LEFT RUNNING — re-run '--rosetta' to keep waiting, or kill it:"
+      rlog "  kill \$(cat $ROSETTA_PIDFILE)"
+      tail -n 15 "$ROSETTA_LOG" 2>/dev/null | sed 's/^/  | /' || true
+      return 1
+    fi
+    if (( waited > 0 && waited % 120 == 0 )); then
+      anim="$("$ADB_BIN" -s "$ROSETTA_SERIAL" shell getprop init.svc.bootanim 2>/dev/null | tr -d '\r\n' || true)"
+      rss="$(ps -o rss= -p "$(cat "$ROSETTA_PIDFILE" 2>/dev/null || echo 0)" 2>/dev/null | awk '{printf "%d MB", $1/1024}' || true)"
+      rlog "still booting… ${waited}s (adb: ${state:-none}, bootanim: ${anim:-n/a}, qemu rss: ${rss:-?})"
+    fi
+    sleep "$interval"
+    waited=$(( waited + interval ))
+  done
+}
+
+rosetta_install_arcore() {
+  if "$ADB_BIN" -s "$ROSETTA_SERIAL" shell pm list packages 2>/dev/null | grep -q "com.google.ar.core"; then
+    rlog "ARCore already installed on $ROSETTA_SERIAL"
+    return 0
+  fi
+  # Post-boot package-manager settling (same race as the arm64 flow) — inline
+  # poll because the shared wait_for_pm helper is defined later in this script.
+  local _i
+  for _i in $(seq 1 30); do
+    "$ADB_BIN" -s "$ROSETTA_SERIAL" shell pm path android >/dev/null 2>&1 && break
+    sleep 4
+  done
+  local tmp_apk="${TMPDIR:-/tmp}/sceneview-arcore-x86.apk"
+  if [[ ! -s "$tmp_apk" ]]; then
+    rlog "downloading ARCore x86 emulator APK: $ROSETTA_ARCORE_APK_URL"
+    curl -fSL --retry 3 -o "$tmp_apk" "$ROSETTA_ARCORE_APK_URL" || { rlog "ARCore APK download failed"; return 1; }
+  fi
+  local attempt err
+  for attempt in 1 2 3; do
+    err="$("$ADB_BIN" -s "$ROSETTA_SERIAL" install -r "$tmp_apk" 2>&1)" && { rlog "ARCore installed on $ROSETTA_SERIAL"; return 0; }
+    rlog "ARCore install attempt $attempt/3 failed${err:+: ${err##*$'\n'}} — retrying in 5s"
+    sleep 5
+  done
+  rlog "ARCore install failed after 3 attempts"
+  return 1
+}
+
+# Read-only rig report (`--check --rosetta`).
+rosetta_report() {
+  rlog "=== Rosetta x86_64 AR rig report (#2758) ==="
+  if [[ -x "$ROSETTA_EMU_BIN" ]]; then
+    rlog "Intel emulator bundle: present (build $(cat "$ROSETTA_EMU_ROOT/.sceneview-build" 2>/dev/null || echo '?')) at $ROSETTA_EMU_ROOT"
+  else
+    rlog "Intel emulator bundle: MISSING (a full run downloads build $ROSETTA_EMU_BUILD)"
+  fi
+  if [[ -d "$ROSETTA_IMG_DIR" ]]; then
+    rlog "x86_64 system image: present ($ROSETTA_IMAGE)"
+  else
+    rlog "x86_64 system image: MISSING ($ROSETTA_IMAGE)"
+  fi
+  if [[ -f "$ROSETTA_AVD_CONFIG" ]]; then
+    rlog "rig AVD $ROSETTA_AVD_NAME: present"
+    grep -E "^(abi\.type|hw\.camera|hw\.gpu\.mode|hw\.ramSize|hw\.cpu\.ncore|disk\.dataPartition\.size)" "$ROSETTA_AVD_CONFIG" 2>/dev/null | sed 's/^/  /' || true
+  else
+    rlog "rig AVD $ROSETTA_AVD_NAME: MISSING (a full --rosetta run creates it)"
+  fi
+  local state; state="$(rosetta_serial_state)"
+  if [[ "$state" == "device" ]]; then
+    rlog "rig emulator: RUNNING on $ROSETTA_SERIAL"
+    if "$ADB_BIN" -s "$ROSETTA_SERIAL" shell pm list packages 2>/dev/null | grep -q "com.google.ar.core"; then
+      rlog "ARCore (com.google.ar.core): installed"
+    else
+      rlog "ARCore (com.google.ar.core): NOT installed"
+    fi
+    show_camera_topology "$ROSETTA_SERIAL"
+  elif [[ -n "$state" ]]; then
+    rlog "rig emulator: adb state '$state' (mid-boot or wedged — log: $ROSETTA_LOG)"
+  elif rosetta_pid_alive; then
+    rlog "rig emulator: qemu alive (pid $(cat "$ROSETTA_PIDFILE" 2>/dev/null)) but not yet registered with adb (early TCG boot)"
+  else
+    rlog "rig emulator: not running"
+  fi
+}
+
+# One-liner rig visibility for the STANDARD --check (full report: --check --rosetta).
+rosetta_status_line() {
+  if [[ "$(rosetta_serial_state)" == "device" ]]; then
+    log "rosetta rig: RUNNING on $ROSETTA_SERIAL (full report: --check --rosetta)"
+  elif [[ -f "$ROSETTA_AVD_CONFIG" ]]; then
+    log "rosetta rig: provisioned, not running (boot: --rosetta ; report: --check --rosetta)"
+  else
+    log "rosetta rig: not provisioned (live-camera AR on Apple Silicon: --rosetta, #2758)"
+  fi
+}
+
+rosetta_main() {
+  if $CHECK_ONLY; then
+    rosetta_report
+    exit 0
+  fi
+  rosetta_check_prereqs
+  rosetta_disk_gate
+  rosetta_install_emulator
+  rosetta_install_image
+  rosetta_create_avd
+  if $NO_BOOT; then
+    rlog "rig provisioned (--no-boot). Boot it later with: bash $0 --rosetta"
+    exit 0
+  fi
+  rosetta_boot
+  if ! rosetta_wait_boot; then
+    rlog "RIG BOOT FAILED — see above. Before concluding the 2026-05 dead-end stands,"
+    rlog "check host contention (CPU/RAM/disk) and document the evidence on #2758."
+    exit 1
+  fi
+  if ! rosetta_install_arcore; then
+    rlog "rig booted but the ARCore install failed — fix and re-run (the boot is kept warm)"
+    exit 1
+  fi
+  show_camera_topology "$ROSETTA_SERIAL"
+  # Verdict: camera HAL id 0 is the whole point of the rig (#2754 probe, PR #2755).
+  local ids
+  ids="$("$ADB_BIN" -s "$ROSETTA_SERIAL" shell dumpsys media.camera 2>/dev/null \
+        | grep -oE 'Device [0-9]+ maps to "[0-9]+"' | grep -oE '"[0-9]+"' | tr -d '"' | tr '\n' ' ' || true)"
+  if $STOP_AFTER; then
+    rlog "stopping rig $ROSETTA_SERIAL (--stop)"
+    "$ADB_BIN" -s "$ROSETTA_SERIAL" emu kill >/dev/null 2>&1 || true
+  fi
+  if printf '%s' " $ids " | grep -q ' 0 '; then
+    rlog "SUCCESS: camera HAL id 0 present — ARCore live-camera sessions can start."
+    rlog "Complete the proof by running a live AR demo (NO qa_mode) and checking logcat:"
+    rlog "  adb -s $ROSETTA_SERIAL logcat -d | grep -Ei 'arcore|unknown device'"
+    rlog "  (expect: no 'unknown device 0', ARCore session created, tracking TRACKING)"
+    echo "EMU_SERIAL=${ROSETTA_SERIAL}"
+    exit 0
+  fi
+  rlog "FAIL: no camera HAL id 0 on the rig (HAL ids: ${ids:-none}) — ARCore cannot start (#2754)."
+  exit 1
+}
+
+if $ROSETTA; then
+  rosetta_main
+  exit 0   # unreachable — rosetta_main always exits — belt-and-braces
+fi
+
 if $CHECK_ONLY; then
   show_config
   show_snapshot_status
   show_ram_and_emulator_status
   show_camera_topology
+  rosetta_status_line
 else
   apply_ar_config
   show_config
