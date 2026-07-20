@@ -50,6 +50,8 @@ import io.github.sceneview.node.BillboardNode as BillboardNodeImpl
 import io.github.sceneview.node.CameraNode as CameraNodeImpl
 import io.github.sceneview.node.CapsuleNode as CapsuleNodeImpl
 import io.github.sceneview.node.ConeNode as ConeNodeImpl
+import io.github.sceneview.node.ContactShadowContext
+import io.github.sceneview.node.ContactShadowNode as ContactShadowNodeImpl
 import io.github.sceneview.node.CubeNode as CubeNodeImpl
 import io.github.sceneview.node.CylinderNode as CylinderNodeImpl
 import io.github.sceneview.node.ImageNode as ImageNodeImpl
@@ -935,6 +937,82 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.setMaterialInstanceAt(0, materialInstance)
                 prevPlaneMaterial.value = materialInstance
             }
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
+        }
+        NodeLifecycle(node, content)
+    }
+
+    // ── ContactShadow ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A procedural contact shadow — the soft dark pool that makes an object read as *touching* a
+     * surface instead of floating above it (#2740).
+     *
+     * The gradient is drawn by the shader, not by Filament's shadow map, so it works at any light
+     * angle and on any surface orientation. That matters most on a **wall**: indoor light comes
+     * from the ceiling, nearly parallel to the wall, so a real shadow map casts almost nothing
+     * onto it and a mounted TV reads as floating.
+     *
+     * Size the quad generously — the gradient fades out well before the edge — and match [normal]
+     * to how [size] is built: `Size(x, 0f, z)` is a floor quad (normal `+Y`), `Size(x, y, 0f)` is
+     * a wall quad (normal `+Z`).
+     *
+     * ```kotlin
+     * ContactShadow(
+     *     size = Size(1.6f, 1.0f, 0f),
+     *     context = ContactShadowContext.Wall,
+     *     normal = Direction(z = 1f),
+     * )
+     * ```
+     *
+     * @param size      Quad size in metres.
+     * @param context   Which surface this grounds against; sets the gradient shape.
+     * @param normal    Facing direction of the quad; also drives the surface lift.
+     * @param intensity Peak opacity. Defaults to the context's own value.
+     * @param position  World-space position.
+     * @param rotation  World-space rotation (Euler angles in degrees).
+     * @param scale     Uniform or non-uniform scale.
+     * @param apply     Additional configuration on the [ContactShadowNodeImpl].
+     * @param content   Optional child nodes.
+     *
+     * @see ContactShadowContext
+     */
+    @Composable
+    fun ContactShadow(
+        size: Size = ContactShadowNodeImpl.DEFAULT_SIZE,
+        context: ContactShadowContext = ContactShadowContext.Floor,
+        normal: Direction = Direction(y = 1.0f),
+        intensity: Float = context.intensity,
+        position: Position = Position(x = 0f),
+        rotation: Rotation = Rotation(x = 0f),
+        scale: Scale = Scale(1f),
+        apply: ContactShadowNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null
+    ) {
+        // Keyed on the geometry inputs: size/normal are baked into the vertex buffer at
+        // construction, so a change there needs a new node rather than a parameter push.
+        val node = remember(engine, materialLoader, size, normal) {
+            ContactShadowNodeImpl(
+                engine = engine,
+                materialLoader = materialLoader,
+                size = size,
+                context = context,
+                normal = normal,
+                intensity = intensity
+            ).apply(apply)
+        }
+        SideEffect {
+            node.context = context
+            node.intensity = intensity
         }
         // Component-keyed transform push — see SphereNode for rationale (#2653).
         DisposableEffect(node, position.x, position.y, position.z) {

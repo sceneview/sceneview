@@ -83,6 +83,11 @@ placement), or just use `PlacementScene`, which handles this for you.
 — wall-flush upright orientation + floor-relative height; exposes the floor↔wall seam for the
 "align to the edge" guide. Pure math helpers: `wallFacingRotation` / `roomFacingNormal` /
 `floorWallSeam` / `wallAnchorPose`.
+**Grounding (#2740):** `ContactShadow(size, context = ContactShadowContext.Wall|Floor|TableTop,
+normal)` — procedural gradient, no shadow map, so it works on a WALL where a real shadow can't
+(ceiling light grazes it). `size` decides the quad plane and must agree with `normal`:
+`Size(x, 0f, z)`+`Direction(y=1f)` floor, `Size(x, y, 0f)`+`Direction(z=1f)` wall. In `sceneview`,
+not `arsceneview`. Real floor shadows stay `ShadowReceiverPlane`.
 iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); reticle = `showPlacementReticle: true`, contact shadows = `groundingShadows` (default on) — #894 shipped.
 
 ## Remember helpers (always use these)
