@@ -752,8 +752,24 @@ jobs:
           /tmp/listing-venv/bin/pip install --quiet -r .github/workflows/requirements/play-store.txt
           # --dry-run opens a throwaway edit, reads, and abandons it: nothing is
           # ever committed to the store. No --fail-on-drift: advisory only.
+          #
+          # 2>&1 into the log, and capture the REAL exit code. A bare
+          # `| tee … || true` discards it and sends the traceback to stderr
+          # only — the log would still hold the "[dry-run] probe edit_id=…"
+          # line, so it is non-empty and matches neither [skip] nor DRIFT, and
+          # the summary below would report "✅ No drift" over a crashed run.
+          # That is the exact silent-green class this job exists to catch
+          # (#2794) — do not simplify this back into a bare pipe.
+          set +e
           /tmp/listing-venv/bin/python3 .claude/scripts/store-sync/play_listing.py \
-            --dry-run | tee listing-drift.log || true
+            --dry-run > listing-drift.log 2>&1
+          rc=$?
+          set -e
+          cat listing-drift.log
+          echo "DRIFT_RC=$rc" >> "$GITHUB_ENV"
+          # Advisory job: never fail the step on a red check, the summary carries
+          # the signal. Exit 0 explicitly rather than relying on continue-on-error.
+          exit 0
 
       - name: Append listing drift to step summary
         if: always()
@@ -762,7 +778,16 @@ jobs:
             echo "### Play listing drift (read-only) — $(date -u +%Y-%m-%d)"
             echo ""
             if [ -f listing-drift.log ] && [ -s listing-drift.log ]; then
-              if grep -q '^\[skip\]' listing-drift.log; then
+              if [ "${DRIFT_RC:-1}" != "0" ]; then
+                # Checked FIRST: a crashed run must never fall through to the
+                # "no drift" branch below just because its log is non-empty.
+                echo "❌ **The drift check itself failed** (exit \`${DRIFT_RC:-unknown}\`)."
+                echo "This is NOT a clean bill of health — the live listing was not compared."
+                echo ""
+                echo '```'
+                tail -30 listing-drift.log
+                echo '```'
+              elif grep -q '^\[skip\]' listing-drift.log; then
                 echo "⏭️ **Skipped** — no Play service-account credential available."
               elif grep -q 'DRIFT' listing-drift.log; then
                 echo "⚠️ **Drift detected** — the live listing differs from the repo."
