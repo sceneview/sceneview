@@ -103,7 +103,7 @@ Every developer tool is **free**: setup guides for every platform, code samples,
 |---|---|
 | `get_sample` | Returns a complete, compilable code sample for any of 33 scenarios (Kotlin or Swift) |
 | `list_samples` | Browse all samples, filter by tag (`ar`, `3d`, `ios`, `animation`, `geometry`, ...) |
-| `validate_code` | Checks generated code against 15+ rules before presenting it to the user |
+| `validate_code` | Checks generated code against 30+ rules — including symbol existence against the real public API, with did-you-mean suggestions — before presenting it to the user |
 | `migrate_code` | Automatically migrates SceneView 2.x / 3.x code with detailed changelog |
 | `get_migration_guide` | Every breaking change with before/after code |
 
@@ -223,7 +223,7 @@ The assistant calls `get_node_reference("LightNode")` and returns the exact func
 
 ### "Validate this code before I use it"
 
-The assistant calls `validate_code` with the generated snippet and checks it against 15+ rules: threading violations, null safety, API correctness, lifecycle issues, deprecated APIs. Problems are flagged with explanations before the code reaches the user.
+The assistant calls `validate_code` with the generated snippet and checks it against 30+ rules: symbol existence against the real public API (unknown imports, made-up node types, nonexistent loader methods — each with did-you-mean suggestions), threading violations, null safety, API correctness, lifecycle issues, deprecated APIs. Problems are flagged with explanations before the code reaches the user.
 
 ---
 

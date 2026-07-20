@@ -1,3 +1,13 @@
+import {
+  didYouMean,
+  isKnownTopLevelFunction,
+  isKnownTypeName,
+  knownTypeNames,
+  membersOfClass,
+  rememberHelperNames,
+  resolveImport,
+} from "./symbols.js";
+
 export interface ValidationIssue {
   severity: "error" | "warning" | "info";
   rule: string;
@@ -524,6 +534,163 @@ const RULES: Rule[] = [
           });
         }
       });
+      return issues;
+    },
+  },
+
+  // ─── Symbol existence (#2760) — backed by the generated .api index ────────
+  //
+  // These rules answer "does this API actually exist?", the #1 failure mode
+  // of AI-generated snippets. The index covers the Android/KMP surface
+  // (sceneview, arsceneview, sceneview-core) — see `symbols.ts`. Each rule is
+  // deliberately narrow so its false-positive space is ~zero.
+
+  {
+    // `import io.github.sceneview.…` that resolves to nothing. Our own
+    // namespace: nothing outside the index can legitimately live there.
+    id: "symbols/unknown-import",
+    severity: "error",
+    check(code, lines) {
+      const issues: ValidationIssue[] = [];
+      const importRe = /^\s*import\s+(io\.github\.sceneview(?:\.\w+)*)(\.\*)?\s*$/;
+      lines.forEach((content, i) => {
+        const m = importRe.exec(content);
+        if (!m) return;
+        const path = m[1];
+        const isWildcard = m[2] !== undefined;
+        const resolved = resolveImport(path);
+        const ok = isWildcard ? resolved === "package" : resolved !== null;
+        if (ok) return;
+        const leaf = path.slice(path.lastIndexOf(".") + 1);
+        const suggestion = didYouMean(leaf, knownTypeNames());
+        issues.push({
+          severity: "error",
+          rule: "symbols/unknown-import",
+          message: `\`import ${path}${isWildcard ? ".*" : ""}\` does not exist in the SceneView public API.${suggestion} Check the class name and package against \`llms.txt\`.`,
+          line: i + 1,
+        });
+      });
+      return issues;
+    },
+  },
+
+  {
+    // A made-up `…Node(` / `…Node {` / `…Scene(` type or declarative factory.
+    id: "symbols/unknown-type",
+    severity: "error",
+    check(code, lines) {
+      const issues: ValidationIssue[] = [];
+      // Names already handled (with a better, migration-specific message) by
+      // `migration/old-api` — don't double-report them here.
+      const migrationCovered = new Set([
+        "Scene",
+        "ARScene",
+        "ArSceneView",
+        "PlacementNode",
+        "TransformableNode",
+      ]);
+      const callRe = /\b([A-Z]\w*(?:Node|Scene))\s*[({]/g;
+      const seen = new Set<string>();
+      for (const match of code.matchAll(callRe)) {
+        const name = match[1];
+        if (seen.has(name)) continue;
+        seen.add(name);
+        if (migrationCovered.has(name)) continue;
+        if (isKnownTypeName(name)) continue;
+        const suggestion = didYouMean(name, knownTypeNames());
+        findLines(lines, new RegExp(`\\b${name}\\s*[({]`)).forEach((line) =>
+          issues.push({
+            severity: "error",
+            rule: "symbols/unknown-type",
+            message: `\`${name}\` does not exist in the SceneView public API.${suggestion} Node types and declarative factories are listed in \`llms.txt\`.`,
+            line,
+          })
+        );
+      }
+      return issues;
+    },
+  },
+
+  {
+    // A nonexistent member called on a canonically-named loader variable —
+    // e.g. `modelLoader.createModelInstanceAsync(...)` (the real API is
+    // `loadModelInstanceAsync`). Heuristic on the receiver NAME, which the
+    // docs and every sample use consistently.
+    id: "symbols/unknown-member",
+    severity: "error",
+    check(code, lines) {
+      const issues: ValidationIssue[] = [];
+      const receivers: Record<string, string> = {
+        modelLoader: "ModelLoader",
+        materialLoader: "MaterialLoader",
+        environmentLoader: "EnvironmentLoader",
+      };
+      // Kotlin stdlib scope/extension functions callable on any receiver.
+      const stdlib = new Set([
+        "apply",
+        "also",
+        "let",
+        "run",
+        "takeIf",
+        "takeUnless",
+        "to",
+        "use",
+        "toString",
+      ]);
+      const callRe = /\b(modelLoader|materialLoader|environmentLoader)\.(\w+)\s*\(/g;
+      const reported = new Set<string>();
+      for (const match of code.matchAll(callRe)) {
+        const [, receiver, member] = match;
+        const key = `${receiver}.${member}`;
+        if (reported.has(key)) continue;
+        reported.add(key);
+        if (stdlib.has(member)) continue;
+        const members = membersOfClass(receivers[receiver]);
+        if (!members || members.has(member)) continue;
+        const suggestion = didYouMean(member, members);
+        findLines(lines, new RegExp(`\\b${receiver}\\.${member}\\s*\\(`)).forEach(
+          (line) =>
+            issues.push({
+              severity: "error",
+              rule: "symbols/unknown-member",
+              message: `\`${receivers[receiver]}.${member}()\` does not exist.${suggestion} The full member list is in \`llms.txt\`.`,
+              line,
+            })
+        );
+      }
+      return issues;
+    },
+  },
+
+  {
+    // `remember<SceneView-ish>` helper that isn't a real top-level function —
+    // e.g. an invented `rememberModelInstanceAsync`. Warning, not error: a
+    // snippet may legitimately mix non-SceneView Compose libraries whose
+    // helpers match the keyword net (e.g. Maps `rememberCameraPositionState`).
+    id: "symbols/unknown-remember-helper",
+    severity: "warning",
+    check(code, lines) {
+      const issues: ValidationIssue[] = [];
+      const sceneViewish =
+        /^(Engine|Model|Material|Environment|Scene|Node|Collision|Render|Skybox|View|AR|Camera|Splat)/;
+      const callRe = /\bremember([A-Z]\w*)\s*\(/g;
+      const seen = new Set<string>();
+      for (const match of code.matchAll(callRe)) {
+        const fullName = `remember${match[1]}`;
+        if (seen.has(fullName)) continue;
+        seen.add(fullName);
+        if (!sceneViewish.test(match[1])) continue;
+        if (isKnownTopLevelFunction(fullName)) continue;
+        const suggestion = didYouMean(fullName, rememberHelperNames());
+        findLines(lines, new RegExp(`\\b${fullName}\\s*\\(`)).forEach((line) =>
+          issues.push({
+            severity: "warning",
+            rule: "symbols/unknown-remember-helper",
+            message: `\`${fullName}\` is not a SceneView composable helper.${suggestion} If it comes from another library, add its import; otherwise check \`llms.txt\`.`,
+            line,
+          })
+        );
+      }
       return issues;
     },
   },

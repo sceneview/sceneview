@@ -80,7 +80,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "validate_code",
     description:
-      "Checks a Kotlin or Swift SceneView snippet for common mistakes. For Kotlin: threading violations, wrong destroy order, missing null-checks, LightNode trailing-lambda bug, deprecated 2.x APIs. For Swift: missing @MainActor, async/await patterns, missing imports, RealityKit mistakes. Language is auto-detected. Always call this before presenting generated SceneView code to the user.",
+      "Checks a Kotlin or Swift SceneView snippet for common mistakes. For Kotlin: symbol existence against the real public API (unknown imports, made-up node types, nonexistent loader methods — with did-you-mean suggestions), threading violations, wrong destroy order, missing null-checks, LightNode trailing-lambda bug, deprecated 2.x APIs. For Swift: missing @MainActor, async/await patterns, missing imports, RealityKit mistakes. Language is auto-detected. Always call this before presenting generated SceneView code to the user.",
     inputSchema: {
       type: "object",
       properties: {
