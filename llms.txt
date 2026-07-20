@@ -624,6 +624,8 @@ SceneView(...) {
 
 ### PlaneNode — flat quad
 ```kotlin
+import io.github.sceneview.geometries.Plane // the geometry, not com.google.ar.core.Plane
+
 @Composable fun PlaneNode(
     size: Size = Plane.DEFAULT_SIZE,
     center: Position = Plane.DEFAULT_CENTER,
