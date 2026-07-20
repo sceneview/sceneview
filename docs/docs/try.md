@@ -27,7 +27,7 @@ That's it. The script builds the demo app and installs it on your connected Andr
 ### Try a specific platform demo
 
 ```bash
-./tools/try-demo.sh --sample android-demo       # Full showcase (51 demos: 18 non-AR + 33 AR)
+./tools/try-demo.sh --sample android-demo       # Full showcase (52 demos: 18 non-AR + 34 AR)
 ./tools/try-demo.sh --sample android-tv-demo    # D-pad controlled TV viewer
 ```
 

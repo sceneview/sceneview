@@ -1,6 +1,6 @@
 ---
 name: sceneview
-description: Build 3D and AR apps with the SceneView SDK in Jetpack Compose, SwiftUI (iOS/macOS/visionOS via SceneViewSwift), Web (Filament.js), Flutter and React Native. Use whenever the user asks for "3D in Compose", "AR with ARCore in Compose", a model viewer, or any cross-platform 3D/AR app where the dependency is `io.github.sceneview:sceneview` / `io.github.sceneview:arsceneview` / `SceneViewSwift` / `sceneview-web` / `sceneview_flutter` / `@sceneview-sdk/react-native`. Skip for plain ARCore-SDK / Sceneform / Unity / Unreal / RealityKit-without-SceneViewSwift work.
+description: Build 3D and AR apps with the SceneView SDK in Jetpack Compose, SwiftUI (iOS/macOS/visionOS via SceneViewSwift), Web (Filament.js), Flutter and React Native. Use whenever the user asks for "3D in Compose", "AR with ARCore in Compose", a model viewer, or any cross-platform 3D/AR app where the dependency is `io.github.sceneview:sceneview` / `io.github.sceneview:arsceneview` / `SceneViewSwift` / `sceneview-web` / `flutter_sceneview` / `@sceneview-sdk/react-native`. Skip for plain ARCore-SDK / Sceneform / Unity / Unreal / RealityKit-without-SceneViewSwift work.
 license: Apache-2.0
 metadata:
   author: SceneView
@@ -28,14 +28,14 @@ metadata:
 SceneView is a declarative 3D and AR SDK. One mental model across every platform:
 
 - **Android** — `SceneView { … }` (3D) and `ARSceneView { … }` (AR) composables.
-  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.23.0` and
-  `io.github.sceneview:arsceneview:4.23.0`.
+  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.24.0` and
+  `io.github.sceneview:arsceneview:4.24.0`.
 - **Apple (iOS / macOS / visionOS)** — `SceneView { }` and `ARSceneView { }` SwiftUI
   views from the [`sceneview`](https://github.com/sceneview/sceneview) monorepo
-  via Swift Package Manager (tag `4.23.0`). RealityKit renderer.
-- **Web** — `sceneview-web@4.23.0` on npm (Filament.js + WebXR).
-- **Flutter** — `sceneview_flutter` plugin (PlatformView bridge).
-- **React Native** — `@sceneview-sdk/react-native@4.23.0` (Fabric bridge).
+  via Swift Package Manager (tag `4.24.0`). RealityKit renderer.
+- **Web** — `sceneview-web@4.24.0` on npm (Filament.js + WebXR).
+- **Flutter** — `flutter_sceneview` plugin (PlatformView bridge; pub.dev name since #2735, directory `flutter/sceneview_flutter/`).
+- **React Native** — `@sceneview-sdk/react-native@4.24.0` (Fabric bridge).
 - **MCP** — `sceneview-mcp` on npm — gives AI agents direct API access from chat.
 
 Nodes are declared as composables / SwiftUI views inside the parent SceneView's

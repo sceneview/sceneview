@@ -1,5 +1,5 @@
-name: sceneview_flutter_example
-description: Example app for sceneview_flutter plugin.
+name: flutter_sceneview_example
+description: Example app for the flutter_sceneview plugin.
 version: 3.6.0
 publish_to: 'none'
 
@@ -10,7 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  sceneview_flutter:
+  flutter_sceneview:
     path: ../
 
 dev_dependencies:

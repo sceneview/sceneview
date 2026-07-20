@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+## v4.24.0 — 2026-07-20
+
+### Added
+
+- App Store screenshots can now be published from the repo instead of by hand:
+  `.claude/scripts/store-sync/asc_listing.py --apply-screenshots` uploads
+  `samples/ios-demo/appstore-screenshots/` to the editable App Store version
+  (reserve → chunked upload → commit). It skips display types whose live set
+  already matches, replaces the others, and skips honestly when no version is
+  editable — it never creates one. CI entry point is its own dispatch-only
+  workflow, `app-store-screenshots.yml`, which runs on ubuntu and starts no
+  build. Closes the loop left open by the capture script, whose output had
+  never actually reached the store (#2612, #2384).
+- `WallPlacementScene` — a one-call AR flow for placing products on a **vertical surface** (TV, framed art, mirror, shelf), the vertical-surface sibling of `PlacementScene`. Inspired by Amazon "AR View" / IKEA Place: orientation is taken from the wall (object flush + upright, no hit-pose tilt) and height from the floor (`floorY + mountHeight`), so a placement stays put while the vertical plane jitters. Tracks the live **floor↔wall seam** (`onSeamChanged`) and the onboarding phase (`onPhaseChanged`). The placement geometry is exposed as pure, unit-tested functions — `wallFacingRotation`, `roomFacingNormal` (flips an ARCore plane normal toward the camera; its sign is not guaranteed), `floorWallSeam`, `wallAnchorPose` — for custom flows.
+- New `wall-placement` demo in the Android demo app — mounts a procedural TV on a wall through `WallPlacementScene`: phase-driven onboarding banner, Amazon-style orange floor↔wall alignment guide line, and a D-pad fine-adjust (2 cm nudges + 2° yaw) after placement (#2740).
+- Demo catalog: new `In review` status chip (`DemoStatus.InReview`) marking freshly shipped demos awaiting on-device review sign-off (#2740). First increment of #2740; an in-scene 3D seam guide line and a gizmo/D-pad fine-adjust UI are tracked follow-ups.
+
+### Changed
+
+- Store publishing as code, Phase A (#2612 P2): the Play Store listing sync logic moved verbatim from `play-store.yml`'s inline heredoc into `.claude/scripts/store-sync/play_listing.py` — one code path for CI (`--apply`, unchanged behaviour: #1710 delete-then-upload, #1386 403-tolerance, caps + truncation) and local runs (`--dry-run` default: read-only live-vs-repo diff of listing text and per-image SHA-256s, probe edit abandoned). A new `asc_listing.py` diffs the live App Store listing (text fields + screenshot `sourceFileChecksum` MD5s) against `samples/ios-demo/distribution/app-store/` and `appstore-screenshots/`. Both scripts SKIP honestly without credentials and are pinned by `test-store-sync.sh`'s offline unit-test suite in `repo-hygiene`.
+
+### Fixed
+
+- `play_listing.py` accepted abbreviated flags: `--appl` expanded to `--apply`
+  via argparse prefix matching and reached the Play Console write path. Both
+  store-sync scripts now require exact flag names, which also keeps the new
+  `--apply-screenshots` upload unreachable by a near-miss (#2612).
+- **ios-demo**: the Materials, Scene Gallery and Multi-Model demos now render with an image-based light (`.environment(.studio)`), matching `ModelViewerDemo`'s #2114 IBL fix. All three display curated PBR models, and a PBR surface is defined by what it reflects — Materials in particular showcases `KHR_materials_transmission` / `_iridescence` / `_sheen`, which only exist through the light around the model (transmission refracts the environment, iridescence and sheen shift with the reflected view angle). With no IBL these demos fell back to flat shading and undersold the very models they exist to show; a model also looked different alone versus inside the multi-model scene. Verified on the simulator: specular highlights now appear on the iridescent-beetle model where the pre-fix capture had none. The demos that deliberately keep a neutral background (Light Types, Movable Light, Fog) are untouched — there the absence of an IBL is the point.
+- **Web: models with a bright albedo no longer render as a clipped white blob.** `sceneview-web` paired a *relative* camera exposure (`Camera.setExposureDirect(1.1)`, model-viewer style) with *photometric* light intensities in lux (a 50 000 lux directional key light + the neutral IBL). Filament's camera is physically based, so mixing the two unit systems blew every light albedo out to white with a bloom halo — the Khronos Duck rendered as a featureless white blob in the shared `/view` page. The default camera now uses the photometric `setExposure(f/12, 1/200 s, ISO 200)`, mirroring Android's `SceneFactories` default camera, and the default light intensities were rebalanced to match Android (`createViewer*` key light 50 000 → 15 000 lux; the no-`light{}` 3-point setup 50 000/25 000/30 000 → 10 000/3 000/3 000 lux; `LightConfig`/`LightNode` default 100 000 → 10 000 lux). Verified on the Khronos Duck against the published 4.21.0 bundle: mean model RGB goes from (245, 240, 218) — B/R 0.89, white — to (241, 229, 141) — B/R 0.58, yellow.
+- **Web: `Camera.setExposureDirect` is documented as a trap and is no longer called.** In Filament.js it over-exposes for *any* value tested (1.1, 2.6e-5 and 5.79e-5 all blow the Duck out to white), so the exposure — not the light intensity — was the dominant factor: lowering the key light to 15 000 lux under the old exposure produced a byte-identical white blob, while keeping 50 000 lux under the photometric exposure renders correctly.
+
+### Removed
+
+- **Web (breaking, Kotlin/JS DSL): `CameraConfig.exposure(value: Double)` — the relative / model-viewer-style exposure overload — is gone**, along with the `directExposure` / `useDirectExposure` properties. It mapped onto Filament.js' `Camera.setExposureDirect`, which over-exposes bright albedos to a clipped white blob for every value tested, so the overload could not be given correct semantics. `camera { }` now offers only the photometric form, `exposure(aperture, shutterSpeed, sensitivity)` (default f/12, 1/200 s, ISO 200). Callers passing a relative value — e.g. `exposure(1.1)` — should drop the call to take the default, or express the intent photometrically (open the aperture / slow the shutter / raise the ISO to brighten). The JS `sceneview` namespace and the `SceneViewer` npm surface are unchanged.
+
 ## v4.23.0 — Gaussian Splatting on Android & Web, on-device AI with Point & Ask (2026-07-18)
 
 ### Added

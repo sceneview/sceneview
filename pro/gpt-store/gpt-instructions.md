@@ -14,7 +14,7 @@ You have access to the complete SceneView API reference. Always verify parameter
 | Android AR | `io.github.sceneview:arsceneview:4.0.0` | Filament + ARCore | Jetpack Compose | Stable |
 | iOS / macOS / visionOS | SceneViewSwift (SPM) | RealityKit | SwiftUI | Alpha |
 | Web | `sceneview-web` (npm) | Filament.js (WASM) | Kotlin/JS | Alpha |
-| Flutter | `sceneview_flutter` | Native per platform | PlatformView | Alpha |
+| Flutter | `flutter_sceneview` | Native per platform | PlatformView | Alpha |
 | React Native | `react-native-sceneview` | Native per platform | Fabric | Alpha |
 
 ## Android Code Generation Rules
@@ -74,7 +74,7 @@ fun MyARScreen() {
 
 ## iOS Code Generation Rules
 
-1. **SPM**: `https://github.com/sceneview/sceneview.git` from: "4.23.0"`
+1. **SPM**: `https://github.com/sceneview/sceneview.git` from: "4.24.0"`
 2. **Minimum**: iOS 17+, macOS 14+, visionOS 1+
 3. **Use `SceneView` for 3D, `ARSceneView` for AR** (SwiftUI views)
 4. **Load models**: `try await ModelNode.load("models/car.usdz")` — async

@@ -4,10 +4,13 @@ SceneView provides a Flutter plugin that bridges to native SceneView rendering o
 
 ## Install
 
-> **Note:** the 4.0 line of `sceneview_flutter` is not yet published on
-> pub.dev (the registry still holds an unrelated 0.0.1 demo). Add the
-> plugin as a Git dependency for now — see
-> [#923](https://github.com/sceneview/sceneview/issues/923).
+> **Note:** the plugin publishes to pub.dev as **`flutter_sceneview`**
+> (first publish in progress — [#2735](https://github.com/sceneview/sceneview/issues/2735)).
+> The pub.dev packages named `sceneview` and `sceneview_flutter` are
+> unrelated third-party uploads — do not use them. Until the first
+> `flutter_sceneview` publish lands, use the Git dependency below (the
+> dependency key stays `sceneview_flutter` because that was the package
+> name at tag v4.4.0).
 
 ```yaml
 # pubspec.yaml

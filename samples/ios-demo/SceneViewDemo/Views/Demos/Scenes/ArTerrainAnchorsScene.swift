@@ -1,4 +1,4 @@
-// @sceneId     ar-terrain-anchors
+// @sceneId     ar-terrain
 // @title       Terrain Anchors
 // @subtitle    Anchor models on geospatial terrain
 // @category    ar

@@ -85,8 +85,8 @@ if [ -f "flutter/sceneview_flutter/android/build.gradle" ]; then
     [ "$FLA_V" = "$TARGET_VERSION" ] && check "flutter android build.gradle" "PASS" "$FLA_V" || check "flutter android build.gradle" "WARN" "Got $FLA_V"
 fi
 
-if [ -f "flutter/sceneview_flutter/ios/sceneview_flutter.podspec" ]; then
-    FLI_V=$(grep "s\.version" flutter/sceneview_flutter/ios/sceneview_flutter.podspec | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "?")
+if [ -f "flutter/sceneview_flutter/ios/flutter_sceneview.podspec" ]; then
+    FLI_V=$(grep "s\.version" flutter/sceneview_flutter/ios/flutter_sceneview.podspec | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "?")
     [ "$FLI_V" = "$TARGET_VERSION" ] && check "flutter podspec" "PASS" "$FLI_V" || check "flutter podspec" "WARN" "Got $FLI_V"
 fi
 echo ""
