@@ -1,3 +1,11 @@
+## 4.24.0
+
+- Version alignment with SceneView v4.24.0 (in-flight release — `VERSION_NAME` and this plugin's `pubspec.yaml` are already bumped on `main`). Native-side fixes landing in v4.24.0 include the web photometric camera exposure fix (#2784). No breaking Flutter API change. Entry added ahead of the tag so the PR-time `flutter pub publish --dry-run` preflight (#2735) validates — a bumped `pubspec.yaml` without a matching CHANGELOG entry turned the preflight red on every non-path-gated PR and nightly (#2775).
+
+## 4.23.0
+
+- Version alignment with SceneView v4.23.0 (2026-07-18). Native-side highlights per the [v4.23.0 release notes](https://github.com/sceneview/sceneview/releases/tag/v4.23.0): Gaussian Splatting (`SplatNode`) on Android & Web, on-device Point & Ask AR demo (Gemini Nano), Filament runtime 1.71.5 → 1.72.1, public-API surface tracking (`apiCheck`). No breaking Flutter API change.
+
 ## 4.22.0
 
 - Version alignment with SceneView v4.22.0 (2026-07-12). First version published to pub.dev via the automated OIDC `pub-publish` release job (#2735) — the registry previously served an unrelated 0.0.1 placeholder; entries 4.18.x–4.21.x were never published there. Native-side highlights per the [v4.22.0 release notes](https://github.com/sceneview/sceneview/releases/tag/v4.22.0): public `SurfaceMirrorer` in-app video recording (#2626), normalized-origin `centerOrigin` parity (#2632), store-preflight release tooling. No breaking Flutter API change.
