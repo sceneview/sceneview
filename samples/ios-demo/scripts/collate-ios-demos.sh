@@ -14,8 +14,19 @@
 #
 # The script emits `GeneratedScenes.swift` which:
 #   - Provides `GeneratedScenes.all() -> [DemoItem]`  — consumed by SamplesTab
+#   - Provides `GeneratedScenes.allowedIds: Set<String>` — every scene id, the
+#     generated half of `DemoDeepLinkRegistry.allowedIds` (the deep-link gate)
+#   - Provides `GeneratedScenes.destination(for:) -> AnyView?` — resolves a
+#     scene id to its view (`nil` for coming-soon / non-iOS AR → placeholder)
 #   - Is .gitignore'd and regenerated before every Xcode build via a
 #     "Collate iOS demos" Run Script phase in SceneViewDemo.xcodeproj
+#
+# Because `allowedIds` and the id→view map are generated from the SAME
+# `@sceneId` directives that drive the Samples tab, the three deep-link
+# surfaces (list, gate, resolver) can no longer drift apart — the root cause
+# that silently dropped 12 ids before #2800. Adding a demo = adding one Scene
+# file; `DemoDeepLinkRegistry` only keeps a small hand-maintained residual for
+# AR ids that have no Scene file yet, plus legacy aliases.
 #
 # Usage:
 #   bash samples/ios-demo/scripts/collate-ios-demos.sh           # write
@@ -164,7 +175,13 @@ cat <<'HEADER'
 import SwiftUI
 
 /// Generated aggregate of every `DemoScene` declared under
-/// `Views/Demos/Scenes/`. Consumed by `SamplesTab.allScenes()`.
+/// `Views/Demos/Scenes/`. Drives three surfaces from one source of truth —
+/// the `@sceneId` directives — so they can never drift apart:
+///   - `all()` — the Samples-tab demo grid (`SamplesTab.allScenes()`).
+///   - `allowedIds` — the generated half of `DemoDeepLinkRegistry.allowedIds`
+///     (which deep-link ids are accepted).
+///   - `destination(for:)` — the generated id→view resolver behind
+///     `DemoDeepLinkRegistry.destination(for:)`.
 /// Regenerate with `samples/ios-demo/scripts/collate-ios-demos.sh`.
 enum GeneratedScenes {
     /// All demo items, sorted by scene id.
@@ -208,8 +225,61 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
     fi
 done < "$TMP_FULL"
 
-cat <<'FOOTER'
+cat <<'ALL_END'
         return items
+    }
+
+    /// Every scene id declared under `Views/Demos/Scenes/`, regardless of
+    /// `@available`. This is the generated half of
+    /// `DemoDeepLinkRegistry.allowedIds`: a deep link to any of these ids is
+    /// accepted, and `destination(for:)` returns the scene's view when it is
+    /// `@available true`, or `nil` (→ caller shows a coming-soon placeholder)
+    /// when it is not. Adding a `*Scene.swift` file grows this set with no
+    /// hand edit — the root-cause fix for the registry drift behind #2769.
+    static let allowedIds: Set<String> = [
+ALL_END
+
+# `allowedIds`: every scene id (available true AND false), sorted by id so
+# the diff stays stable and two parallel PRs never collide.
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only type_name; do
+    printf '        "%s",\n' "$scene_id"
+done < "$TMP_FULL"
+
+cat <<'IDS_END'
+    ]
+
+    /// Resolve a scene id to its destination view, or `nil` when no
+    /// `@available true` scene backs the id on this platform — a coming-soon
+    /// scene, or an iOS-only AR scene on a non-iOS build. `nil` is the
+    /// caller's signal to present a placeholder; a deep-link id is never
+    /// silently dropped. The view mapping is generated from each scene's own
+    /// `destination`, so it can never disagree with the Samples tab.
+    @MainActor
+    static func destination(for id: String) -> AnyView? {
+        switch id {
+IDS_END
+
+# `destination(for:)`: one case per `@available true` scene. `@available false`
+# scenes fall through to `default: return nil` (→ placeholder), never their
+# own `EmptyView`. iOS-only scenes are guarded so a non-iOS build returns
+# `nil` (→ placeholder) rather than a blank view.
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only type_name; do
+    [ "$available" = "true" ] || continue
+    if [ "$ios_only" = "true" ]; then
+        printf '        case "%s":\n' "$scene_id"
+        printf '            #if os(iOS)\n'
+        printf '            return %s.destination\n' "$type_name"
+        printf '            #else\n'
+        printf '            return nil\n'
+        printf '            #endif\n'
+    else
+        printf '        case "%s": return %s.destination\n' "$scene_id" "$type_name"
+    fi
+done < "$TMP_FULL"
+
+cat <<'FOOTER'
+        default: return nil
+        }
     }
 }
 FOOTER
