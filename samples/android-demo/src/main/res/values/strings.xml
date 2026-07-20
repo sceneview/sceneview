@@ -147,6 +147,7 @@
     <string name="samples_back_about">About</string>
     <string name="samples_chip_preview">Preview</string>
     <string name="samples_chip_soon">Soon</string>
+    <string name="samples_chip_in_review">In review</string>
     <string name="samples_footer_version">SceneView v%s</string>
     <string name="samples_footer_repo">github.com/sceneview/sceneview</string>
 

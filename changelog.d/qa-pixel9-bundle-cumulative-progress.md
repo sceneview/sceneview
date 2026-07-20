@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- Explore gallery (Android): multi-file model downloads (Icosa, Poly Haven) reported progress for the root `.gltf` only, so the bar spun forever (Icosa) or froze at "0.0 MB" (Poly Haven) while the dominant `.bin`/texture payload streamed silently. Progress is now cumulative across every file in the bundle, and the viewer shows the downloaded size even when the server omits `Content-Length`, so the counter always advances. `downloadSingle` (GLB) is unchanged.

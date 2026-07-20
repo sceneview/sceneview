@@ -8,8 +8,8 @@ doubt **read the demo, do not improvise**.
 
 | Composable | Artifact | Demo |
 | --- | --- | --- |
-| `SceneView { … }` | `io.github.sceneview:sceneview:4.22.0` | `ModelViewerDemo.kt` |
-| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.22.0` | `ARPlacementDemo.kt` |
+| `SceneView { … }` | `io.github.sceneview:sceneview:4.23.0` | `ModelViewerDemo.kt` |
+| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.23.0` | `ARPlacementDemo.kt` |
 
 ## `SceneView` parameters (most common)
 
@@ -79,6 +79,10 @@ placement), or just use `PlacementScene`, which handles this for you.
 
 `PlaneDiscoveryGuide` = timed hand-hint/help onboarding (replaces static "Scanning…" banners).
 `snapToPlane=false` on the reticle = free placement (points accepted, planes in-polygon).
+**Vertical surfaces (#2740):** `WallPlacementScene(mountHeight = …, onSeamChanged = …, onPlaced = …)`
+— wall-flush upright orientation + floor-relative height; exposes the floor↔wall seam for the
+"align to the edge" guide. Pure math helpers: `wallFacingRotation` / `roomFacingNormal` /
+`floorWallSeam` / `wallAnchorPose`.
 iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); reticle = `showPlacementReticle: true`, contact shadows = `groundingShadows` (default on) — #894 shipped.
 
 ## Remember helpers (always use these)

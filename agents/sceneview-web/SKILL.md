@@ -38,7 +38,7 @@ SceneView for Web is the browser half of the SceneView SDK. It renders with
   registers itself on `window.sceneview`, exposing `createViewer`,
   `modelViewer`, etc. for use with no bundler and no Kotlin.
 
-- **npm package** — `sceneview-web` (currently `4.22.0`).
+- **npm package** — `sceneview-web` (currently `4.23.0`).
 - **Renderer** — Filament.js (WebGL2/WASM). Requires Chrome 79+, Edge 79+,
   Firefox 78+, Safari 15+.
 
@@ -77,7 +77,7 @@ filament.js MUST load before sceneview-web.js:
 ```html
 <canvas id="viewer" style="width:100%;height:100vh;display:block"></canvas>
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.22.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.23.0/sceneview-web.js"></script>
 <script>
   sceneview.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/DamagedHelmet.glb')
     .then(function (sv) { sv.setAutoRotate(true); });
@@ -171,7 +171,8 @@ SceneView.create(
         }
         light {
             directional()
-            intensity(100_000.0)
+            intensity(10_000.0)   // lux — read under the photometric default
+                                  // exposure (f/12, 1/200s, ISO 200)
             direction(0.6f, -1.0f, -0.8f)
         }
         model("models/helmet.glb") { autoAnimate(true) }

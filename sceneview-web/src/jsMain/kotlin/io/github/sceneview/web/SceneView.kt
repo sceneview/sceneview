@@ -33,7 +33,7 @@ import org.w3c.dom.HTMLCanvasElement
  *     }
  *     light {
  *         directional()
- *         intensity(100_000.0)
+ *         intensity(10_000.0)
  *     }
  *     model("models/damaged_helmet.glb")
  * }
@@ -380,9 +380,15 @@ class SceneView private constructor(
                         float3(0.0, 1.0, 0.0)    // up
                     )
 
-                    // Default exposure matching model-viewer's exposure=1.1
-                    // This makes IBL-lit models look bright and vibrant
-                    camera.setExposureDirect(1.1)
+                    // Default exposure: physically-based, mirroring Android's
+                    // SceneFactories default camera (f/12, 1/200s, ISO 200).
+                    // Filament's camera is PHOTOMETRIC. The previous
+                    // `setExposureDirect(1.1)` blew bright albedos out to a
+                    // clipped white blob (the shared /view Duck bug): in
+                    // Filament.js `setExposureDirect` over-exposes for any
+                    // reasonable value, so the physical `setExposure` is the
+                    // correct, tested path. See CameraConfig / Android Camera.kt.
+                    camera.setExposure(12.0, 1.0 / 200.0, 200.0)
 
                     // Set clear color to near-black (clean dark background)
                     renderer.setClearOptions(js("({clearColor: [0.05, 0.05, 0.07, 1.0], clear: true})"))
@@ -1517,10 +1523,13 @@ class SceneViewBuilder(private val sceneView: SceneView) {
             // stays flat — it is an implementation default, not user content.
             sceneView.addLightNode(lightConfig!!)
         } else {
+            // 3-point lighting, in lux — mirrors Android's SceneFactories
+            // (main 10_000, fill 3_000 ≈ 30 %). Read under the physically-based
+            // default camera exposure; the previous 50k/25k/30k over-exposed.
             // Key light — main directional, slightly warm
             val keyLight = LightConfig().apply {
                 directional()
-                intensity(50_000.0)
+                intensity(10_000.0)
                 direction(0.6f, -1.0f, -0.8f)
             }
             sceneView.addLight(keyLight)
@@ -1528,7 +1537,7 @@ class SceneViewBuilder(private val sceneView: SceneView) {
             // Fill light — softer, from the opposite side
             val fillLight = LightConfig().apply {
                 directional()
-                intensity(25_000.0)
+                intensity(3_000.0)
                 direction(-0.6f, -0.5f, 0.8f)
             }
             sceneView.addLight(fillLight)
@@ -1536,7 +1545,7 @@ class SceneViewBuilder(private val sceneView: SceneView) {
             // Rim/back light — highlights edges, cool tint
             val rimLight = LightConfig().apply {
                 directional()
-                intensity(30_000.0)
+                intensity(3_000.0)
                 color(0.85f, 0.9f, 1.0f) // slight cool tint
                 direction(0.0f, -0.3f, 1.0f)
             }

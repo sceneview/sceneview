@@ -136,3 +136,33 @@ the mutually-exclusive `shouldRenderPlaneGrid` / `shouldCatchGroundShadows` pred
 `TapToPlaceState.kt` (#2657) — copy that pattern whenever you hand-wire `ShadowReceiverPlane`s
 alongside a plane renderer.
 
+## Recipe: wall placement (TV, framed art, mirror) — #2740
+
+For **vertical surfaces**, do not hand-roll `ARSceneView` + raw vertical-plane hits — use
+`WallPlacementScene`, the vertical-surface sibling of `PlacementScene`. It decouples the two noisy
+axes the way Amazon "AR View" / IKEA Place do: **orientation from the wall** (object flush +
+upright, no hit-pose tilt) and **height from the floor** (`floorY + mountHeight`), so the placement
+stays put while ARCore refines the vertical plane:
+
+```kotlin
+WallPlacementScene(
+    mountHeight = 1.2f,                    // anchor height above the floor (TV centre height);
+                                           // base-on-floor: pass the object's half-height
+    onSeamChanged = { seam -> /* draw the "align to the floor↔wall edge" guide from it */ },
+    onPhaseChanged = { phase -> /* FINDING_FLOOR → FINDING_WALL → ALIGNING_EDGE → PLACED */ },
+    onPlaced = { anchor ->
+        AnchorNode(anchor = anchor) {
+            rememberModelInstance(modelLoader, "models/tv.glb")?.let {
+                ModelNode(modelInstance = it, scaleToUnits = 1.4f)
+            }
+        }
+    },
+)
+```
+
+The placement math is public for custom flows: `wallFacingRotation(wallNormal)`,
+`roomFacingNormal(wallNormal, towardViewer)` (ARCore does not guarantee a vertical plane's normal
+sign — always flip it toward the camera), `floorWallSeam(...)`, `wallAnchorPose(...)`. First
+increment of #2740: the seam/phase come back via callbacks so the app draws its own guide; an
+in-scene 3D seam line and a gizmo/D-pad fine-adjust UI are tracked follow-ups.
+

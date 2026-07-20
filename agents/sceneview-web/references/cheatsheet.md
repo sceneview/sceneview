@@ -16,7 +16,7 @@ Kotlin/JS source or `llms.txt` — do not improvise.
 ```html
 <canvas id="viewer" style="width:100%;height:100vh;display:block"></canvas>
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.22.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.23.0/sceneview-web.js"></script>
 ```
 
 filament.js MUST load first. npm: `npm install sceneview-web filament`.
@@ -111,11 +111,12 @@ SceneView.create(canvas, configure = {
         up(0.0, 1.0, 0.0)
         fov(45.0)               // degrees
         near(0.1); far(1000.0)
-        exposure(1.1)           // or exposure(aperture, shutterSpeed, sensitivity)
+        // Photometric only (f-stop, shutter s, ISO) — default f/12, 1/200s, ISO 200.
+        exposure(aperture = 12.0, shutterSpeed = 1.0 / 200.0, sensitivity = 200.0)
     }
     light {
         directional()           // or point() / spot()
-        intensity(100_000.0)
+        intensity(10_000.0)     // lux, read under the photometric exposure
         color(1.0f, 1.0f, 1.0f)
         direction(0.6f, -1.0f, -0.8f)
         // point/spot: position(x, y, z)

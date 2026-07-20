@@ -59,7 +59,8 @@ fun main() {
             }
             light {
                 directional()
-                intensity(100_000.0)
+                intensity(10_000.0)   // lux — read under the photometric
+                                      // default exposure (f/12, 1/200s, ISO 200)
             }
             model("models/DamagedHelmet.glb")
         },

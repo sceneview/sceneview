@@ -76,7 +76,7 @@ class LightConfigTest {
     fun defaultIsDirectional() {
         val config = LightConfig()
         assertEquals(LightType.DIRECTIONAL, config.type)
-        assertEquals(100_000.0, config.intensity)
+        assertEquals(10_000.0, config.intensity)
     }
 
     @Test

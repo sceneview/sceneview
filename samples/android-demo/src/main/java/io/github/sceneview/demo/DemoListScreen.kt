@@ -323,6 +323,7 @@ private fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
     val label = when (status) {
         DemoStatus.KnownIssue -> stringResource(R.string.samples_chip_preview)
         DemoStatus.ComingSoon -> stringResource(R.string.samples_chip_soon)
+        DemoStatus.InReview -> stringResource(R.string.samples_chip_in_review)
         DemoStatus.Working -> return // Caller already gates; defensive no-op.
     }
     Surface(

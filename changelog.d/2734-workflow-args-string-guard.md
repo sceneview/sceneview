@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Saved workflows: guard against JSON-stringified `args`.** All 8 remaining `.claude/workflows/*.js` scripts now parse a stringified `args` (or fail loudly on non-JSON) instead of silently ignoring it — a stringified `{"issues":[…]}` made `fix-issue-batch` fall back to auto-selecting issues, twice on 2026-07-16, picking maintainer-gated work. Same guard `review-fanout.js` and `parity-audit.js` already had.
