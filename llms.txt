@@ -5724,7 +5724,31 @@ sv.addCubeNode(size)               // → NodeHandle
 sv.addSphereNode(radius)           // → NodeHandle
 sv.addLightNode(type)              // type: "directional" | "point" | "spot" → NodeHandle
 sv.removeNode(handle)              // detach + free the node's entity
+sv.hitTest(x, y)                   // → NodeHandle[] nearest-first (#2024 P5c)
 ```
+
+Screen-point picking (`sv.hitTest(x, y)`, #2024 P5c): coordinates are canvas
+pixels ((0,0) = top-left). The point is unprojected through the live camera
+into a world ray and tested against every node's real bounds (models and
+geometry: their asset AABB; splats: the cloud bounds), transformed by each
+node's current world transform. Returns the **same** `NodeHandle` instances
+the `add*Node` factories returned (`===`-comparable), sorted nearest-first:
+
+```js
+const cube = sv.addCubeNode(0.5);
+canvas.addEventListener('click', (e) => {
+  const hits = sv.hitTest(e.offsetX, e.offsetY);
+  if (hits[0] === cube) cube.setScaleUniform(1.5);
+});
+```
+
+Model nodes become pickable once loaded (their AABB is only readable then);
+geometry and splat nodes are pickable immediately. Empty pivots, lights and
+cameras have no bounds and are never hit. Kotlin/JS additionally exposes
+`SceneView.hitTest(x, y): List<HitResult>` (node + distance + world point),
+a world-`Ray` overload for XR controller poses, and `Node.collisionShape`
+(the Android mirror) to override a node's local picking bounds or set
+`null` to make it un-pickable; `Node.isHittable = false` skips a node.
 
 NodeHandle methods (opaque handle to a retained node; address it after create()):
 ```js

@@ -1,5 +1,11 @@
 package io.github.sceneview.web
 
+import io.github.sceneview.collision.Ray
+import io.github.sceneview.collision.TransformProvider
+import io.github.sceneview.math.toMatrix
+import io.github.sceneview.math.toTransform
+import io.github.sceneview.rendering.SceneNode
+import io.github.sceneview.scene.HitResult
 import io.github.sceneview.scene.SceneGraph
 import io.github.sceneview.web.bindings.*
 import io.github.sceneview.web.nodes.CameraConfig
@@ -838,6 +844,72 @@ class SceneView private constructor(
         // not fire spurious renders nor pin this view through the closure.
         node.propagateInvalidate(null)
         requestRender()
+    }
+
+    /**
+     * Picks the retained nodes under a screen point (#2024 P5c) — the web
+     * mirror of Android's screen-point node picking.
+     *
+     * The point is unprojected through the live camera (its projection and
+     * model matrices — the engine reads proven by the `kotlin-bundle.spec.ts`
+     * P5c probe) into a world ray, each node's **local** [Node.collisionShape]
+     * (real per-node bounds: asset AABB for models/geometry, cloud bounds for
+     * splats) is transformed by its current `worldTransform`, and the ray is
+     * tested against all of them.
+     *
+     * @param x Horizontal coordinate in **canvas pixels** (0 = left). For a
+     *   pointer event on the canvas use `event.offsetX * (canvas.width /
+     *   canvas.clientWidth)` when the backing store is scaled
+     *   (devicePixelRatio canvases).
+     * @param y Vertical coordinate in canvas pixels (0 = top).
+     * @return Hits sorted nearest-first; empty when nothing is under the
+     *   point. Invisible ([Node.isVisible]), non-hittable ([Node.isHittable])
+     *   and shape-less nodes are skipped.
+     */
+    fun hitTest(x: Float, y: Float): List<HitResult> {
+        // The engine reads (proven by the kotlin-bundle.spec.ts P5c probe,
+        // #2611 probe-first) — column-major mat4s converted to core math.
+        val ray = screenPointToRay(
+            x = x,
+            y = y,
+            viewportWidth = canvas.width.toFloat(),
+            viewportHeight = canvas.height.toFloat(),
+            projection = readMat4(camera.getProjectionMatrix()).toTransform(),
+            cameraModel = readMat4(camera.getModelMatrix()).toTransform(),
+        )
+        return hitTest(ray)
+    }
+
+    /**
+     * Picks the retained nodes intersected by a world-space [ray] — the
+     * lower-level twin of the screen-point [hitTest] overload (use it with an
+     * externally sourced ray, e.g. an XR controller pose).
+     */
+    fun hitTest(ray: Ray): List<HitResult> {
+        refreshCollisionShapes()
+        return sceneGraph.hitTest(ray)
+    }
+
+    /**
+     * Re-derives every in-graph node's **world-space** collision shape from
+     * its local [Node.collisionShape] and current `worldTransform`. Runs per
+     * hit test (event-frequency, not per-frame) — the Sceneform
+     * shape-transform pattern, so bounds always follow the node with no
+     * manual upkeep.
+     */
+    private fun refreshCollisionShapes() {
+        fun visit(sceneNode: SceneNode) {
+            (sceneNode as? Node)?.let { node ->
+                node.collisionShape?.let { local ->
+                    sceneGraph.setCollisionShape(
+                        node,
+                        local.transform(TransformProvider { node.worldTransform.toMatrix() }),
+                    )
+                }
+            }
+            sceneNode.childNodes.forEach { visit(it) }
+        }
+        sceneGraph.rootNodes.forEach { visit(it) }
     }
 
     fun addLight(config: LightConfig) {

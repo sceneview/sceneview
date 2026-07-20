@@ -66,6 +66,8 @@ sv.addCubeNode(size)                    // → NodeHandle (content already in sc
 sv.addSphereNode(radius)                // → NodeHandle
 sv.addLightNode(type)                   // type: "directional" | "point" | "spot" — else throws
 sv.removeNode(handle)                   // detach + free the node's Filament entity
+sv.hitTest(x, y)                        // → NodeHandle[] nearest-first — canvas px, (0,0)=top-left;
+                                        //   SAME instances the factories returned (=== works)
 ```
 
 #### `NodeHandle` methods

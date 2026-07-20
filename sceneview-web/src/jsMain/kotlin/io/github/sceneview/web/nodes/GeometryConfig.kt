@@ -1,5 +1,10 @@
 package io.github.sceneview.web.nodes
 
+import io.github.sceneview.collision.Box
+import io.github.sceneview.collision.CollisionShape
+import io.github.sceneview.collision.Sphere
+import io.github.sceneview.collision.Vector3
+
 /**
  * Geometry configuration for SceneView web.
  *
@@ -113,4 +118,36 @@ enum class GeometryType {
     SPHERE,
     CYLINDER,
     PLANE
+}
+
+/** Picking thickness of a flat plane's collision box (a zero-height box cannot be hit edge-on). */
+private const val PLANE_PICK_THICKNESS = 0.01
+
+/**
+ * The **local-space** collision shape matching this config's generated
+ * geometry (#2024 P5c) — analytic (dimensions are known at build time), so
+ * picking works immediately, with no post-load AABB gate.
+ *
+ * A baked `rotation(...)` in the config is NOT folded into the box (the box
+ * stays axis-aligned in node space) — for the rare rotated-bake config the
+ * bounds are approximate; assign `Node.collisionShape` manually for a tight
+ * fit.
+ */
+internal fun GeometryConfig.localCollisionShape(): CollisionShape {
+    if (geometryType == GeometryType.SPHERE) {
+        return Sphere(
+            (radius * maxOf(scaleX, scaleY, scaleZ)).toFloat(),
+            Vector3(positionX.toFloat(), positionY.toFloat(), positionZ.toFloat()),
+        )
+    }
+    val (sx, sy, sz) = when (geometryType) {
+        GeometryType.CUBE -> Triple(sizeX, sizeY, sizeZ)
+        GeometryType.CYLINDER -> Triple(radius * 2, height, radius * 2)
+        GeometryType.PLANE -> Triple(sizeX, PLANE_PICK_THICKNESS, sizeZ)
+        GeometryType.SPHERE -> error("handled above")
+    }
+    return Box(
+        Vector3((sx * scaleX).toFloat(), (sy * scaleY).toFloat(), (sz * scaleZ).toFloat()),
+        Vector3(positionX.toFloat(), positionY.toFloat(), positionZ.toFloat()),
+    )
 }

@@ -39,9 +39,21 @@ class SceneViewJS {
         }
 
         override fun removeNodeInternal(node: io.github.sceneview.web.nodes.Node) {
+            nodeHandles.remove(node)
             _sceneView?.removeNode(node)
         }
     }
+
+    /**
+     * Node → handle registry so [hitTest] returns the **same** JS handle
+     * instances the `add*Node` factories handed out (`===`-comparable), and
+     * repeated hits on one node do not mint new wrappers (#2024 P5c).
+     * Entries are dropped when a node is removed/destroyed through its handle.
+     */
+    private val nodeHandles = mutableMapOf<io.github.sceneview.web.nodes.Node, NodeHandle>()
+
+    private fun handleFor(node: io.github.sceneview.web.nodes.Node): NodeHandle =
+        nodeHandles.getOrPut(node) { NodeHandle(node, nodeHost) }
 
     internal fun attach(sv: SceneView) {
         _sceneView = sv
@@ -219,7 +231,7 @@ class SceneViewJS {
         val sv = _sceneView ?: throw IllegalStateException("SceneViewer not initialized")
         val node = io.github.sceneview.web.nodes.Node(sv.engine, sv.newEntity())
         sv.addNode(node)
-        return NodeHandle(node, nodeHost)
+        return handleFor(node)
     }
 
     /**
@@ -247,7 +259,7 @@ class SceneViewJS {
                 // pivot; it is assigned synchronously (before any async load can
                 // complete), so `pivot` is always non-null when `onLoaded` runs.
                 var pivot: io.github.sceneview.web.nodes.ModelNode? = null
-                pivot = sv.addModelNode(url, onLoaded = { resolve(NodeHandle(pivot!!, nodeHost)) })
+                pivot = sv.addModelNode(url, onLoaded = { resolve(handleFor(pivot!!)) })
             } catch (e: Throwable) {
                 reject(e)
             }
@@ -268,7 +280,7 @@ class SceneViewJS {
             try {
                 sv.addSplatNode(
                     url,
-                    onLoaded = { splat -> resolve(NodeHandle(splat, nodeHost)) },
+                    onLoaded = { splat -> resolve(handleFor(splat)) },
                     onError = { reject(it) },
                 )
             } catch (e: Throwable) {
@@ -284,7 +296,7 @@ class SceneViewJS {
     @JsName("addCubeNode")
     fun addCubeNode(size: Double): NodeHandle {
         val sv = _sceneView ?: throw IllegalStateException("SceneViewer not initialized")
-        return NodeHandle(sv.addCubeNode(size), nodeHost)
+        return handleFor(sv.addCubeNode(size))
     }
 
     /**
@@ -294,7 +306,7 @@ class SceneViewJS {
     @JsName("addSphereNode")
     fun addSphereNode(radius: Double): NodeHandle {
         val sv = _sceneView ?: throw IllegalStateException("SceneViewer not initialized")
-        return NodeHandle(sv.addSphereNode(radius), nodeHost)
+        return handleFor(sv.addSphereNode(radius))
     }
 
     /**
@@ -315,7 +327,7 @@ class SceneViewJS {
                 )
             }
         }
-        return NodeHandle(sv.addLightNode(config), nodeHost)
+        return handleFor(sv.addLightNode(config))
     }
 
     /**
@@ -326,6 +338,43 @@ class SceneViewJS {
     @JsName("removeNode")
     fun removeNode(node: NodeHandle) {
         node.destroy()
+    }
+
+    /**
+     * Picks the retained nodes under a screen point (#2024 P5c) — the JS
+     * mirror of `SceneView.hitTest(x, y)`.
+     *
+     * Coordinates are **canvas pixels** ((0,0) = top-left). For a pointer
+     * event on the canvas: `sv.hitTest(event.offsetX * (canvas.width /
+     * canvas.clientWidth), event.offsetY * (canvas.height /
+     * canvas.clientHeight))` (the factor corrects devicePixelRatio-scaled
+     * backing stores).
+     *
+     * Returns the hit nodes' handles sorted nearest-first — the **same**
+     * handle instances the `add*Node` factories returned, so `===`
+     * comparison against your kept references works:
+     *
+     * ```js
+     * const cube = sv.addCubeNode(0.5);
+     * canvas.addEventListener('click', (e) => {
+     *   const hits = sv.hitTest(e.offsetX, e.offsetY);
+     *   if (hits[0] === cube) cube.setScaleUniform(1.5);
+     * });
+     * ```
+     *
+     * Nodes without bounds (empty pivots, lights, cameras), invisible nodes,
+     * and nodes with `isHittable == false` are skipped. Model nodes become
+     * pickable once loaded (their AABB is only readable then); geometry and
+     * splat nodes are pickable immediately.
+     */
+    @JsName("hitTest")
+    fun hitTest(x: Double, y: Double): Array<NodeHandle> {
+        val sv = _sceneView ?: return emptyArray()
+        return sv.hitTest(x.toFloat(), y.toFloat())
+            .mapNotNull { hit ->
+                (hit.node as? io.github.sceneview.web.nodes.Node)?.let { handleFor(it) }
+            }
+            .toTypedArray()
     }
 
     /**

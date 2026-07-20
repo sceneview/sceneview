@@ -1,5 +1,7 @@
 package io.github.sceneview.web.nodes
 
+import io.github.sceneview.collision.Box as CollisionBox
+import io.github.sceneview.collision.Vector3
 import io.github.sceneview.core.splat.SplatCloud
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.computeWorldToLocal
@@ -93,6 +95,15 @@ class SplatNode internal constructor(
 
     /** Rough cloud radius — scales the camera-motion threshold that gates a re-sort. */
     private val boundingRadius: Float = max(boundingBox[3], max(boundingBox[4], boundingBox[5]))
+
+    init {
+        // Real per-node picking bounds (#2024 P5c): the cloud's model-space
+        // AABB, known at construction — no post-load gate like glTF assets.
+        collisionShape = CollisionBox(
+            Vector3(boundingBox[3] * 2f, boundingBox[4] * 2f, boundingBox[5] * 2f),
+            Vector3(boundingBox[0], boundingBox[1], boundingBox[2]),
+        )
+    }
 
     private val material: Material = createSplatMaterial(filamentEngine)
     private val positionScaleTexture = buildDataTexture()

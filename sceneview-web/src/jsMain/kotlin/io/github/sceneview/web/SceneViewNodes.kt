@@ -1,5 +1,7 @@
 package io.github.sceneview.web
 
+import io.github.sceneview.collision.Box as CollisionBox
+import io.github.sceneview.collision.Vector3
 import io.github.sceneview.web.bindings.FilamentAsset
 import io.github.sceneview.web.nodes.CameraNode
 import io.github.sceneview.web.nodes.CubeNode
@@ -8,6 +10,7 @@ import io.github.sceneview.web.nodes.FilamentCameraController
 import io.github.sceneview.web.nodes.FilamentLightController
 import io.github.sceneview.web.nodes.GeometryConfig
 import io.github.sceneview.web.nodes.GeometryNode
+import io.github.sceneview.web.nodes.localCollisionShape
 import io.github.sceneview.web.nodes.LightConfig
 import io.github.sceneview.web.nodes.LightNode
 import io.github.sceneview.web.nodes.ModelNode
@@ -52,7 +55,16 @@ fun SceneView.addModelNode(
     addNode(node, parent)
     loadModelInternal(
         url,
-        onLoaded = onLoaded,
+        onLoaded = { asset ->
+            // Real per-node picking bounds (#2024 P5c): the asset AABB is
+            // readable only now (post-loadResources, #1597). It is
+            // asset-space, and the asset root was scaled by [scale] at load
+            // (#2432) — scale the box so it matches the rendered extent.
+            if (!node.isDestroyed) {
+                node.collisionShape = assetCollisionBox(asset, scale)
+            }
+            onLoaded?.invoke(asset)
+        },
         autoAnimate = autoAnimate,
         scale = scale,
         // Node-owned: this content is framed via its ModelNode pivot, so the
@@ -140,6 +152,9 @@ fun SceneView.addPlaneNode(
  */
 private fun SceneView.attachGeometry(node: GeometryNode, config: GeometryConfig, parent: Node?) {
     addNode(node, parent)
+    // Real per-node picking bounds (#2024 P5c) — analytic from the config,
+    // so hit-testing works immediately (no post-load AABB gate).
+    node.collisionShape = config.localCollisionShape()
     // Node-owned geometry: framed via this GeometryNode pivot, so it is excluded
     // from the flat-content auto-centre pass (#2024 P4).
     addGeometry(config, nodeOwned = true)?.let { asset ->
@@ -289,4 +304,29 @@ fun SceneView.applyNodeVisibility(node: Node) {
     val entities = asset.getEntities()
     if (node.isVisible) scene.addEntities(entities) else scene.removeEntities(entities)
     requestRender()
+}
+
+/**
+ * The local-space picking [CollisionBox] of a loaded asset (#2024 P5c):
+ * its asset-space `getBoundingBox()` (readable post-load only, #1597)
+ * scaled by the root [scale] baked at load time (#2432), so the box matches
+ * the rendered extent in the owning node's space.
+ */
+private fun assetCollisionBox(asset: FilamentAsset, scale: Float): CollisionBox {
+    val aabb = asset.getBoundingBox()
+    val mn: dynamic = aabb.min
+    val mx: dynamic = aabb.max
+    fun c(v: dynamic, i: Int) = (v[i] as Number).toFloat()
+    return CollisionBox(
+        Vector3(
+            (c(mx, 0) - c(mn, 0)) * scale,
+            (c(mx, 1) - c(mn, 1)) * scale,
+            (c(mx, 2) - c(mn, 2)) * scale,
+        ),
+        Vector3(
+            (c(mx, 0) + c(mn, 0)) / 2f * scale,
+            (c(mx, 1) + c(mn, 1)) / 2f * scale,
+            (c(mx, 2) + c(mn, 2)) / 2f * scale,
+        ),
+    )
 }
