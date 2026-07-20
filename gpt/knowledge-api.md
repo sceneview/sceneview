@@ -3706,13 +3706,14 @@ handle.destroy()                   // remove + free entity (idempotent)
 ```
 
 Kotlin/JS retained nodes additionally support smooth transform animation
-(#2024 P5b — mirrors Android `Node.smoothTransform`; not yet on the JS
-`NodeHandle` surface):
+(#2024 P5b — the Android `Node.smoothTransform` core semantics and the same
+`5f` default speed; web has no `isSmoothTransformEnabled` gate and no
+`onSmoothEnd` callback. Not yet on the JS `NodeHandle` surface):
 
 ```kotlin
 // Animate a node toward a target LOCAL transform — speed-scaled slerp/lerp
 // stepped on the scene's frame loop (zero per-tick matrix decompositions).
-node.smoothTransformSpeed = 5f     // higher = faster convergence (default 10f)
+node.smoothTransformSpeed = 10f    // higher = faster convergence (default 5f)
 node.smoothTransform = Transform(position = Position(0f, 1f, -2f))
 // On convergence the node snaps to the target and smoothTransform resets to
 // null. Setting null cancels in place (the node keeps its current transform).

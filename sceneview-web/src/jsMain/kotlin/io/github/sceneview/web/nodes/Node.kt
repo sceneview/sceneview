@@ -159,10 +159,11 @@ open class Node internal constructor(
 
     /**
      * The smooth position, rotation and scale interpolation speed used by
-     * [smoothTransform]. Higher converges faster. Mirrors Android
-     * `Node.smoothTransformSpeed`.
+     * [smoothTransform]. Higher converges faster. Same `5f` default as
+     * Android `Node.smoothTransformSpeed`, so a ported animation converges
+     * at the same rate.
      */
-    var smoothTransformSpeed: Float = 10f
+    var smoothTransformSpeed: Float = 5f
 
     /**
      * Target **local** transform to smoothly interpolate toward, or `null`
@@ -177,6 +178,10 @@ open class Node internal constructor(
      *
      * Runs on the scene's frame loop, so it only animates while the node is
      * attached to a `SceneView` (its graph dispatches `onFrame`).
+     *
+     * Web mirrors the Android *core* semantics only: there is no
+     * `isSmoothTransformEnabled` gate (setting a target always animates) and
+     * no `onSmoothEnd` callback.
      */
     var smoothTransform: Transform? = null
         set(value) {
@@ -383,14 +388,15 @@ open class Node internal constructor(
 
     /**
      * Repaint hook — wired by `SceneView.addNode` (and inherited from the
-     * parent on attach) so per-frame animation ([smoothTransform],
-     * `SplatNode` re-sorts) keeps the on-demand render gate (#2332) alive.
-     * `null` while the node is not part of a `SceneView`'s graph.
+     * parent on attach), cleared by `SceneView.removeNode`, so per-frame
+     * animation ([smoothTransform], `SplatNode` re-sorts) keeps the
+     * on-demand render gate (#2332) alive. `null` while the node is not part
+     * of a `SceneView`'s graph.
      */
     internal var onInvalidate: (() -> Unit)? = null
 
-    /** Wires [onInvalidate] on this node and its whole subtree. */
-    internal fun propagateInvalidate(hook: () -> Unit) {
+    /** Wires (or, with `null`, clears) [onInvalidate] on this whole subtree. */
+    internal fun propagateInvalidate(hook: (() -> Unit)?) {
         onInvalidate = hook
         _childNodes.forEach { (it as? Node)?.propagateInvalidate(hook) }
     }

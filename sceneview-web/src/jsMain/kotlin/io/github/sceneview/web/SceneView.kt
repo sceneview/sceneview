@@ -834,6 +834,9 @@ class SceneView private constructor(
      */
     fun removeNode(node: Node) {
         sceneGraph.removeNode(node)
+        // Release the repaint hook on the whole subtree — a detached node must
+        // not fire spurious renders nor pin this view through the closure.
+        node.propagateInvalidate(null)
         requestRender()
     }
 

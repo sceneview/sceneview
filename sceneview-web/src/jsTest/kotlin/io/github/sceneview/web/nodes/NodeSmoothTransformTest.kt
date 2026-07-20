@@ -113,6 +113,33 @@ class NodeSmoothTransformTest {
         assertClose(6f, child.worldPosition.x, "child world x = parent + local target")
     }
 
+    @Test
+    fun externalWritesMidAnimationAreAbsorbed() {
+        val node = node()
+        node.smoothTransform = Transform(position = Position(10f, 0f, 0f))
+        node.runFrames(3)
+        // An external jump mid-animation — the next step interpolates from
+        // HERE (the state is re-read each tick), not from the pre-jump path.
+        node.position = Position(9f, 0f, 0f)
+        node.onFrame(tick)
+        val x = node.position.x
+        assertTrue(x > 9f && x < 10f, "the step must depart from the external write (x=$x)")
+        node.runFrames(600)
+        assertClose(10f, node.position.x, "still converges to the target")
+    }
+
+    @Test
+    fun scaleInterpolatesTowardTheTarget() {
+        val node = node()
+        node.smoothTransform = Transform(position = Position(), scale = Scale(3f))
+        node.onFrame(tick)
+        val s = node.scale.x
+        assertTrue(s > 1f && s < 3f, "one tick must move the scale (s=$s)")
+        node.runFrames(600)
+        assertClose(3f, node.scale.x, "scale.x")
+        assertNull(node.smoothTransform)
+    }
+
     // --- Cancellation and lifecycle ----------------------------------------
 
     @Test
