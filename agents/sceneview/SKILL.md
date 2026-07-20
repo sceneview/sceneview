@@ -32,17 +32,10 @@ SceneView is a declarative 3D and AR SDK. One mental model across every platform
   `io.github.sceneview:arsceneview:4.23.0`.
 - **Apple (iOS / macOS / visionOS)** — `SceneView { }` and `ARSceneView { }` SwiftUI
   views from the [`sceneview`](https://github.com/sceneview/sceneview) monorepo
-<<<<<<< HEAD
-  via Swift Package Manager (tag `4.22.0`). RealityKit renderer.
-- **Web** — `sceneview-web@4.22.0` on npm (Filament.js + WebXR).
-- **Flutter** — `flutter_sceneview` plugin (PlatformView bridge; pub.dev name since #2735, directory `flutter/sceneview_flutter/`).
-- **React Native** — `@sceneview-sdk/react-native@4.22.0` (Fabric bridge).
-=======
   via Swift Package Manager (tag `4.23.0`). RealityKit renderer.
 - **Web** — `sceneview-web@4.23.0` on npm (Filament.js + WebXR).
-- **Flutter** — `sceneview_flutter` plugin (PlatformView bridge).
+- **Flutter** — `flutter_sceneview` plugin (PlatformView bridge; pub.dev name since #2735, directory `flutter/sceneview_flutter/`).
 - **React Native** — `@sceneview-sdk/react-native@4.23.0` (Fabric bridge).
->>>>>>> origin/main
 - **MCP** — `sceneview-mcp` on npm — gives AI agents direct API access from chat.
 
 Nodes are declared as composables / SwiftUI views inside the parent SceneView's
