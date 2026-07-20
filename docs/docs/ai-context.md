@@ -53,5 +53,5 @@ correct 3D/AR code generation.
 
 For AI system prompts, use:
 - **Compact**: `https://sceneview.github.io/llms-full.txt` (fits most context windows)
-- **Complete**: `https://sceneview.github.io/llms.txt` (3000+ lines, full API)
+- **Complete**: `https://sceneview.github.io/llms.txt` (full API reference)
 - **MCP resource**: `sceneview://api` (served by sceneview-mcp)

@@ -412,7 +412,7 @@ You get:
 
 ### ChatGPT / GitHub Copilot / Other AI
 
-- **llms.txt** — Machine-readable API reference at [`llms.txt`](./llms.txt) (111 KB, 3000+ lines)
+- **llms.txt** — Machine-readable API reference at [`llms.txt`](./llms.txt) (complete API: composables, nodes, threading rules, recipes — its Kotlin snippets are compile-checked in CI)
 - **GitHub Copilot** — Custom instructions in [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
 - **Cursor** — Rules file at [`.cursorrules`](.cursorrules)
 - **Windsurf** — Rules file at [`.windsurfrules`](.windsurfrules)

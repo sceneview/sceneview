@@ -1,0 +1,77 @@
+// :snippets-check — compile-only guard for the AI-first doc snippets (#2759).
+//
+// This module has NO hand-written sources. Its single source set is GENERATED
+// by `tools/extract-doc-snippets.js` from the ```kotlin blocks of `llms.txt`
+// and `agents/sceneview/references/*.md`. Compiling it proves the documented
+// snippets still match the real API: a rename that breaks documented code is
+// a deterministic CI red instead of a silently-lying doc.
+//
+// Never published, never shipped — deliberately excluded from apiCheck,
+// coverage, and the release artifacts. Run locally with:
+//
+//   ./gradlew :snippets-check:compileDebugKotlin
+//
+// (the generate task runs automatically first).
+plugins {
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.compose.compiler)
+}
+
+android {
+    namespace = 'io.github.sceneview.docsnippets'
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 24
+        targetSdk 36
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_21
+    }
+    buildFeatures {
+        compose = true
+    }
+
+    sourceSets {
+        main {
+            kotlin.srcDirs += "$buildDir/generated/snippets"
+        }
+    }
+}
+
+tasks.register('generateDocSnippets', Exec) {
+    description = 'Extract the ```kotlin blocks of llms.txt + agent references into compilable sources'
+    group = 'verification'
+    workingDir = rootDir
+    commandLine 'node', 'tools/extract-doc-snippets.js', '--out', "$buildDir/generated/snippets"
+    inputs.files(
+        "$rootDir/llms.txt",
+        "$rootDir/agents/sceneview/references/cheatsheet.md",
+        "$rootDir/agents/sceneview/references/migration.md",
+        "$rootDir/agents/sceneview/references/recipes.md",
+        "$rootDir/tools/extract-doc-snippets.js",
+    )
+    outputs.dir("$buildDir/generated/snippets")
+}
+preBuild.dependsOn generateDocSnippets
+
+dependencies {
+    api platform(libs.androidx.compose.bom)
+    api libs.androidx.compose.ui
+    api libs.androidx.compose.foundation
+    api libs.androidx.compose.material3
+    api libs.androidx.activity.compose
+    api libs.androidx.lifecycle.runtime.compose
+    api libs.kotlin.coroutines.core
+    api libs.kotlin.coroutines.android
+
+    api project(":sceneview")
+    api project(":arsceneview")
+    api libs.filament.android
+}
