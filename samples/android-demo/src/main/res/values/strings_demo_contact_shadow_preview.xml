@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="demo_contact_shadow_preview_title">Contact Shadow Preview</string>
+    <string name="demo_contact_shadow_preview_subtitle">Non-AR preview of the procedural contact shadow — a TV grounded on a wall and a box on the floor, with per-surface presets</string>
+    <string name="contact_shadow_toggle">Contact shadows</string>
+    <string name="contact_shadow_intensity">Intensity: %1$d%%</string>
+    <string name="contact_shadow_wall_preset">Wall shadow preset</string>
+</resources>

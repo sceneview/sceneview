@@ -40,9 +40,11 @@ import io.github.sceneview.ar.WallPlacementScene
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
+import io.github.sceneview.node.ContactShadowContext
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.rememberEngine
@@ -134,6 +136,16 @@ fun WallPlacementDemo(onBack: () -> Unit) {
                                 Color(0xFF06080C), metallic = 0f, roughness = 0.15f,
                             )
                         }
+                        // Contact shadow on the WALL, behind the TV (#2740 sub-task C). A real
+                        // shadow map would render nothing here — the estimated indoor light comes
+                        // from the ceiling and grazes the wall — so the panel would read as
+                        // floating. This procedural pool grounds it. XY quad (normal +Z) to match
+                        // the wall plane; sized larger than the TV so the gradient shows around it.
+                        ContactShadow(
+                            size = Size(1.9f, 1.3f, 0f),
+                            context = ContactShadowContext.Wall,
+                            normal = Direction(z = 1f),
+                        )
                         // 55" TV: body slightly proud of the wall, screen on its front face.
                         CubeNode(size = Size(1.26f, 0.74f, 0.04f), position = Position(z = 0.02f), materialInstance = body)
                         CubeNode(size = Size(1.20f, 0.68f, 0.01f), position = Position(z = 0.045f), materialInstance = screen)

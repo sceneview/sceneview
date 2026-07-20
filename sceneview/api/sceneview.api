@@ -332,6 +332,7 @@ public class io/github/sceneview/SceneScope {
 	public final fun CameraNode (Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun CapsuleNode (FFLdev/romainguy/kotlin/math/Float3;IILcom/google/android/filament/MaterialInstance;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun ConeNode (FFLdev/romainguy/kotlin/math/Float3;ILcom/google/android/filament/MaterialInstance;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
+	public final fun ContactShadow (Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/node/ContactShadowContext;Ldev/romainguy/kotlin/math/Float3;FLdev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun CubeNode (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lcom/google/android/filament/MaterialInstance;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun CylinderNode (FFLdev/romainguy/kotlin/math/Float3;ILcom/google/android/filament/MaterialInstance;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun ImageNode (ILdev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
@@ -2110,6 +2111,46 @@ public class io/github/sceneview/node/ConeNode : io/github/sceneview/node/Geomet
 	public synthetic fun getGeometry ()Lio/github/sceneview/geometries/Geometry;
 	public final fun updateGeometry (FFLdev/romainguy/kotlin/math/Float3;I)V
 	public static synthetic fun updateGeometry$default (Lio/github/sceneview/node/ConeNode;FFLdev/romainguy/kotlin/math/Float3;IILjava/lang/Object;)V
+}
+
+public final class io/github/sceneview/node/ContactShadowContext : java/lang/Enum {
+	public static final field Floor Lio/github/sceneview/node/ContactShadowContext;
+	public static final field TableTop Lio/github/sceneview/node/ContactShadowContext;
+	public static final field Wall Lio/github/sceneview/node/ContactShadowContext;
+	public final fun getCenterU ()F
+	public final fun getCenterV ()F
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getIntensity ()F
+	public final fun getRadiusU ()F
+	public final fun getRadiusV ()F
+	public final fun getSoftness ()F
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/node/ContactShadowContext;
+	public static fun values ()[Lio/github/sceneview/node/ContactShadowContext;
+}
+
+public class io/github/sceneview/node/ContactShadowNode : io/github/sceneview/node/PlaneNode {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/node/ContactShadowNode$Companion;
+	public static final field MATERIAL_CENTER Ljava/lang/String;
+	public static final field MATERIAL_FILE_LOCATION Ljava/lang/String;
+	public static final field MATERIAL_INTENSITY Ljava/lang/String;
+	public static final field MATERIAL_RADIUS Ljava/lang/String;
+	public static final field MATERIAL_SOFTNESS Ljava/lang/String;
+	public static final field MATERIAL_SURFACE_OFFSET Ljava/lang/String;
+	public static final field SURFACE_OFFSET_METERS F
+	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/MaterialLoader;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/node/ContactShadowContext;Ldev/romainguy/kotlin/math/Float3;F)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/MaterialLoader;Ldev/romainguy/kotlin/math/Float3;Lio/github/sceneview/node/ContactShadowContext;Ldev/romainguy/kotlin/math/Float3;FILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun destroy ()V
+	public final fun getContext ()Lio/github/sceneview/node/ContactShadowContext;
+	public final fun getIntensity ()F
+	public final fun setContext (Lio/github/sceneview/node/ContactShadowContext;)V
+	public final fun setIntensity (F)V
+}
+
+public final class io/github/sceneview/node/ContactShadowNode$Companion {
+	public final fun getDEFAULT_SIZE ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun surfaceOffsetFor (Ldev/romainguy/kotlin/math/Float3;F)Ldev/romainguy/kotlin/math/Float3;
+	public static synthetic fun surfaceOffsetFor$default (Lio/github/sceneview/node/ContactShadowNode$Companion;Ldev/romainguy/kotlin/math/Float3;FILjava/lang/Object;)Ldev/romainguy/kotlin/math/Float3;
 }
 
 public class io/github/sceneview/node/CubeNode : io/github/sceneview/node/GeometryNode {

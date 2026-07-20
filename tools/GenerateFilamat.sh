@@ -10,8 +10,8 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (27 mats → 27 filamats):
-#   sceneview/src/main/materials/         (14) → sceneview/src/main/assets/materials/
+# Inventory (28 mats → 28 filamats):
+#   sceneview/src/main/materials/         (15) → sceneview/src/main/assets/materials/
 #   arsceneview/src/main/materials/        (9) → arsceneview/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/
 #   sceneview-web/materials/               (1) → sceneview-web/materials/  [filamentWeb toolchain]
@@ -132,6 +132,7 @@ log "${CYAN}Filament version (pinned, web npm):${NC} $FILAMENT_WEB_VERSION"
 # Profile A so the lit/textured shaders keep every backend. The split is
 # intentional, not drift; left as-is. See the audit summary in the #1918 PR.
 MATS=(
+    "sceneview:contact_shadow:sceneview/src/main/materials/contact_shadow.mat:sceneview/src/main/assets/materials/contact_shadow.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "sceneview:image_texture:sceneview/src/main/materials/image_texture.mat:sceneview/src/main/assets/materials/image_texture.filamat:-p all -a all"
     "sceneview:occlusion:sceneview/src/main/materials/occlusion.mat:sceneview/src/main/assets/materials/occlusion.filamat:-a vulkan -a opengl -p mobile"
     "sceneview:opaque_colored:sceneview/src/main/materials/opaque_colored.mat:sceneview/src/main/assets/materials/opaque_colored.filamat:-p all -a all"

@@ -1358,6 +1358,55 @@ PlaneNode(
 
 Full recipe (Android + iOS): `samples/recipes/ground-shadow-catcher.md`.
 
+### ContactShadow — procedural grounding pool, works on walls (#2740)
+
+`ShadowReceiverPlane` catches a **real** shadow, so it needs a shadow-casting light pointing at
+the surface. Indoors that light comes from the ceiling: it faces the floor and merely *grazes* a
+wall, so a TV mounted flat against a wall casts essentially nothing onto it and reads as
+floating. `ContactShadow` instead draws its own elliptical gradient in the shader — no shadow
+map, no light dependency, deterministic at any angle, on any surface orientation. Same trade
+Amazon "AR View" makes with its baked per-context shadow textures, done procedurally so no
+texture ships.
+
+It lives in `sceneview` (not `arsceneview`) — nothing about it is AR-specific, and a plain 3D
+scene grounds a model exactly the same way.
+
+```kotlin
+ContactShadow(
+    size = Size(x = 2.4f, y = 1.6f, z = 0f),   // XY quad → a WALL
+    context = ContactShadowContext.Wall,
+    normal = Direction(z = 1f),
+    position = Position(x = 0f, y = 1.3f, z = -1.99f),
+)
+```
+
+**Pick the context, not the numbers.** `ContactShadowContext` carries the gradient shape for each
+situation: `Floor` (centred, dense — light faces the surface), `Wall` (fainter, wider than tall,
+pushed *below* the object — light grazes the surface), `TableTop` (tight and crisp — the object
+sits close). `intensity` overrides the peak opacity if you need to.
+
+**Match `size` to `normal`.** `Plane` does NOT rotate its geometry to match its `normal`
+parameter, so the quad's plane is decided by which `size` component is zero:
+
+| Surface | `size` | Plane | `normal` |
+|---|---|---|---|
+| Floor / tabletop | `Size(x, 0f, z)` | XZ | `Direction(y = 1f)` |
+| Wall | `Size(x, y, 0f)` | XY | `Direction(z = 1f)` |
+
+Getting this pair wrong is the one real footgun: the node lifts itself off the surface along
+`normal`, so a mismatched pair either z-fights with the wall or floats visibly off it. Size the
+quad generously — the gradient fades out well before the edge.
+
+Use `ShadowReceiverPlane` when you want a **real** shadow with correct light-driven shape on a
+floor; use `ContactShadow` when you need grounding that survives any light direction — always on
+a wall, and as a cheap deterministic fallback elsewhere. They compose: nothing stops a floor from
+catching a real shadow while a wall gets a procedural one.
+
+Platform matrix: **iOS** — has RealityKit's own `GroundingShadowComponent` (via
+`ARSceneView(groundingShadows:)`), a projected grounding shadow — but NOT this procedural,
+light-independent, per-context pool; not mirrored yet. **Web** — coming soon. Non-AR preview
+demo (runs on any emulator, no ARCore): `ContactShadowPreviewDemo`.
+
 ### Depth hit test — place on any real surface
 
 `HitResultNode` / `Frame.hitTest` resolve only against **detected planes / feature points**.
@@ -4596,6 +4645,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-streetscape` — Streetscape Geometry. Geospatial building and terrain meshes.
 - `ar-terrain` — Terrain Anchors. Anchor models on geospatial terrain.
 - `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
+- `contact-shadow-preview` — Contact Shadow Preview. Non-AR preview of the procedural contact shadow — a TV grounded on a wall and a box on the floor, with per-surface presets.
 - `placement-reticle-preview` — AR Placement Reticle Preview. Non-AR preview of AR placement — reticle (searching/ready, ring/disc) and a placed model with a contact shadow.
 - `placement-scene` — Placement Scene. One-line tap-to-place AR (Sceneform ArFragment parity).
 - `point-and-ask` — Point & Ask. Drop 3D props, tap the augmented scene — Gemini Nano explains what it sees, fully on-device.
