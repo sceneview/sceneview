@@ -536,6 +536,15 @@ ROSETTA_EMU_ROOT="${EMU_ROSETTA_SDK_DIR:-$HOME/Library/Android/sdk-intel-emulato
 ROSETTA_EMU_BIN="$ROSETTA_EMU_ROOT/emulator/emulator"
 ROSETTA_BOOT_TIMEOUT_S="${EMU_ROSETTA_BOOT_TIMEOUT_S:-5400}"
 ROSETTA_RAM_MB="${EMU_ROSETTA_MEMORY_MB:-3072}"
+# GPU backend. `-gpu host` (gfxstream) marshals guest GL to the host GPU — but
+# under TCG there is no working host-GL bridge, so the renderer crash-loops with
+# "Failed to find ColorBuffer" and SurfaceFlinger never composites, so
+# `sys.boot_completed` never fires (evidence: run 3 on this host, 2026-07-20 —
+# OS booted, adb connected, bootanim crash-looped for 66 min past first stop).
+# `swiftshader_indirect` renders GL in-guest with SwiftShader (pure software) and
+# hands the host only a finished framebuffer — no host-GL bridge to fail. Slower,
+# but the only mode with a chance of completing boot under double emulation.
+ROSETTA_GPU="${EMU_ROSETTA_GPU:-swiftshader_indirect}"
 # 4 GB data partition: the rig runs ONE side-loaded demo + ARCore (~500 MB of
 # APKs) — it never absorbs the multi-run QA churn the arm64 AVD does, and every
 # GB here is a GB of first-boot headroom on a chronically-full host.
@@ -660,7 +669,7 @@ rosetta_create_avd() {
   patch_kv "hw.camera.back"    "virtualscene"   "$ROSETTA_AVD_CONFIG"
   patch_kv "hw.camera.front"   "emulated"       "$ROSETTA_AVD_CONFIG"
   patch_kv "hw.gpu.enabled"    "yes"            "$ROSETTA_AVD_CONFIG"
-  patch_kv "hw.gpu.mode"       "host"           "$ROSETTA_AVD_CONFIG"
+  patch_kv "hw.gpu.mode"       "$ROSETTA_GPU"   "$ROSETTA_AVD_CONFIG"
   patch_kv "hw.ramSize"        "$ROSETTA_RAM_MB" "$ROSETTA_AVD_CONFIG"
   patch_kv "vm.heapSize"       "512"            "$ROSETTA_AVD_CONFIG"
   # 4 vCPUs: one MTTCG translation thread each — leaves host cores for the
@@ -694,7 +703,7 @@ rosetta_boot() {
   if [[ "${EMU_VISIBLE:-0}" == "1" || "${EMU_VISIBLE:-}" == "true" ]]; then
     window_arg=""; window_desc="windowed (EMU_VISIBLE)"
   fi
-  rlog "booting rig $ROSETTA_AVD_NAME on -port $ROSETTA_PORT (${window_desc}, TCG -no-accel, -memory ${ROSETTA_RAM_MB} MB)"
+  rlog "booting rig $ROSETTA_AVD_NAME on -port $ROSETTA_PORT (${window_desc}, TCG -no-accel, -gpu ${ROSETTA_GPU}, -memory ${ROSETTA_RAM_MB} MB)"
   rlog "log: $ROSETTA_LOG — expect a LONG first boot (20-90 min under TCG)"
   # Subshell-orphan detach (2026-05 lesson): a direct `nohup … &` child gets
   # SIGTERM'd by agent-tool cleanup; the subshell orphan survives. The pid is
@@ -706,7 +715,7 @@ rosetta_boot() {
         -port "$ROSETTA_PORT" \
         -sysdir "$ROSETTA_IMG_DIR" \
         -no-accel \
-        -gpu host \
+        -gpu "$ROSETTA_GPU" \
         -memory "$ROSETTA_RAM_MB" \
         -no-snapshot \
         $window_arg \
