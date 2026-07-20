@@ -105,6 +105,30 @@ generativeModel.generateContentStream(
 }
 ```
 
+### Composited capture — let the AI see your virtual objects
+
+`frame.cameraImage()` above captures the **camera image only** — placed 3D nodes are
+invisible to the model. To let the AI see the *augmented* scene (camera + virtual
+objects, exactly what the user sees), capture the composited window with
+[`PixelCopy`](https://developer.android.com/reference/android/view/PixelCopy) instead:
+
+```kotlin
+// Hide your Compose overlays first (a state flag + one-frame settle delay), or
+// they get baked into the AI's input image.
+val activity = context.findActivity() ?: return   // unwrap Activity from ContextWrapper
+val decor = activity.window.decorView
+val bitmap = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
+PixelCopy.request(activity.window, bitmap, { result ->
+    if (result == PixelCopy.SUCCESS) ask(bitmap) else bitmap.recycle()
+}, Handler(Looper.getMainLooper()))
+```
+
+Trade-offs: no YUV conversion or rotation mapping needed (the copy is already an
+upright ARGB screen frame), but every visible overlay ends up in the image — hide
+them for the capture. Use `cameraImage()` when you want the raw camera view only;
+use `PixelCopy` when the question is about the augmented scene ("Is there an
+animal in this room?" after placing a virtual dog).
+
 ## iOS (Swift + SwiftUI)
 
 Not available yet — SceneViewSwift has no on-device multimodal prompt API wired
@@ -117,7 +141,8 @@ feature). Tracked on [#2648](https://github.com/sceneview/sceneview/issues/2648)
 |---|---|
 | On-device model | Gemini Nano via AICore (`Generation.getClient()`) |
 | Availability gate | `checkStatus()` → `AVAILABLE` / `DOWNLOADABLE` / `UNAVAILABLE` |
-| Frame capture | `frame.cameraImage()` inside `onSessionUpdated` (current frame only) |
+| Frame capture (camera only) | `frame.cameraImage()` inside `onSessionUpdated` (current frame only) |
+| Frame capture (composited) | `PixelCopy.request(activity.window, …)` — camera + virtual objects, hide overlays first |
 | YUV → Bitmap | `Image.toArgbBitmap(rotationDegrees)` — off main thread, close the Image |
 | Multimodal ask | `generateContent(generateContentRequest(ImagePart, TextPart) {})` |
 | Streamed answers | `generateContentStream(request)` — a `Flow` of text deltas to concatenate |
@@ -126,6 +151,8 @@ feature). Tracked on [#2648](https://github.com/sceneview/sceneview/issues/2648)
 
 Reference demo: [`PointAndAskDemo.kt`](../android-demo/src/main/java/io/github/sceneview/demo/demos/PointAndAskDemo.kt)
 (demo id `point-and-ask`), with the production-grade extras: download CTA with
-progress, capture timeout, cancellation-safe Image close, deterministic QA engine,
-streamed answers with a live typing cursor, and a free-form question field
-(blank falls back to the default prompt).
+progress, **composited `PixelCopy` capture** (the model sees placed 3D props —
+long-press drops one), overlays hidden during capture, deterministic QA engine,
+streamed answers with a live typing cursor, a free-form question field (blank
+falls back to the default prompt), an offline badge (`ConnectivityManager`
+active-network check), and an auto-dismissing answer card.

@@ -315,7 +315,7 @@ A small set of domain-specific tools is gated behind an optional subscription. T
 
 Plus 3 generation helpers: `render_3d_preview`, `create_3d_artifact`, `generate_scene`.
 
-If you need any of these, see the [pricing page](https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing). The base SDK and every developer tool listed above stay free, always.
+The base SDK and every developer tool listed above stay free, always.
 
 ---
 

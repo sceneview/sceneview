@@ -36,10 +36,10 @@ In your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flutter_sceneview: ^4.22.0
+  flutter_sceneview: ^4.23.0
 ```
 
-Or as a Git dependency (note: at tags `v4.22.0` and earlier the package name
+Or as a Git dependency (note: at tags `v4.23.0` and earlier the package name
 was `sceneview_flutter` — the dependency key must match the name at the ref):
 
 ```yaml

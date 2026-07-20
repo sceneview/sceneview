@@ -126,23 +126,38 @@ test.describe('Web Demo — catalog coverage', () => {
     expectNoPageErrors(diag, 'Models tab');
   });
 
-  test('Models tab — Sketchfab source toggle renders its search UI', async ({ page }) => {
+  test('Models tab — source picker chips toggle browse vs search UI', async ({ page }) => {
+    // Multi-source Explore (#2722): the picker replaced the old CDN/Sketchfab
+    // toggle. Keyless build → bundled samples + Icosa + Poly Haven, no Sketchfab.
+    // Deep, mocked coverage of the picker lives in `model-sources.spec.ts`; this
+    // keeps a DOM-level smoke in the catalog suite. Switching to a network
+    // catalog only asserts the (synchronous) search-box toggle — the browse
+    // fetch may fail on a CI runner with no outbound network and must degrade,
+    // not blank the tab, so no successful feed is assumed here.
     const diag = captureDiagnostics(page);
     await page.goto('/');
     await waitForEngineReady(page);
     await switchTab(page, 'models');
 
-    // Toggle to Sketchfab — the search box must appear.
-    await page.locator('.source-btn[data-source="sketchfab"]').click();
+    // Default source = bundled SceneView samples: cards present, no search box.
+    await expect(page.locator('.source-chip[data-source="sceneview"]')).toHaveClass(/active/);
+    await expect(page.locator('#search-box')).toBeHidden();
+    expect(await page.locator('#model-results .result-card').count()).toBeGreaterThan(0);
+    // Sketchfab is hidden without an API key (parity with Android/iOS).
+    expect(await page.locator('.source-chip[data-source="sketchfab"]').count()).toBe(0);
+
+    // Switch to a searchable network catalog — the search box appears.
+    await page.locator('.source-chip[data-source="icosa"]').click();
     await expect(page.locator('#search-box')).toBeVisible();
     await expect(page.locator('#search-input')).toBeVisible();
 
-    // Toggle back to CDN — the gallery must repopulate.
-    await page.locator('.source-btn[data-source="cdn"]').click();
+    // Switch back to the bundled samples — the search box hides and the offline
+    // gallery repopulates.
+    await page.locator('.source-chip[data-source="sceneview"]').click();
     await expect(page.locator('#search-box')).toBeHidden();
     expect(await page.locator('#model-results .result-card').count()).toBeGreaterThan(0);
 
-    expectNoPageErrors(diag, 'Sketchfab source toggle');
+    expectNoPageErrors(diag, 'source picker toggle');
   });
 
   // One test per geometry primitive: each is a heavy WebGL-interaction pass

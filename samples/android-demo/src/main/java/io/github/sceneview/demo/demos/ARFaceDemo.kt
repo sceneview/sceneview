@@ -66,12 +66,20 @@ fun ARFaceDemo(onBack: () -> Unit) {
     var detectedFaces by remember { mutableStateOf<List<AugmentedFace>>(emptyList()) }
     var faceCount by remember { mutableStateOf(0) }
 
-    // Frame-received sentinel — set to true on the first onSessionUpdated call so
-    // the timeout diagnostic knows the camera feed is live. On devices where
-    // frontCameraConfig fails to open the selfie camera (e.g. Pixel 9, #1612),
-    // this stays false and the error pill appears after CAMERA_TIMEOUT_MS.
+    // Frame-received sentinel — flips true on the first onSessionUpdated call so the
+    // "slow front camera" hint knows the camera feed is live.
     var cameraActive by remember { mutableStateOf(false) }
-    var cameraUnavailable by remember { mutableStateOf(false) }
+    // Session resumed — set by onSessionResumed. The slow-camera hint is anchored on
+    // this (not the composition) so its grace window starts when ARCore actually
+    // resumes the session.
+    var sessionResumed by remember { mutableStateOf(false) }
+    // Advisory (non-latching): the front camera has not delivered a frame within the
+    // grace window. NOT a verdict — the front camera is simply slower to open than the
+    // back camera on some devices (e.g. Pixel 9, #1612). Cleared as soon as a frame arrives.
+    var slowCameraWarning by remember { mutableStateOf(false) }
+    // Genuine ARCore session failure (permission denied, ARCore unavailable) — wired to
+    // the real onSessionFailed callback so it gets a distinct, honest message.
+    var sessionFailed by remember { mutableStateOf(false) }
 
     // Unlit translucent overlay for the face mesh. ARCore disables `ENVIRONMENTAL_HDR`
     // light estimation when the front camera is in use, so any lit material falls
@@ -90,15 +98,18 @@ fun ARFaceDemo(onBack: () -> Unit) {
     // through the fitted topology — that's the entire point of a face-mesh demo.
     val faceMaterial = rememberUnlitMaterialInstance(materialLoader, SceneViewColors.PrimaryOverlay)
 
-    // Diagnostic timeout: if the camera feed does not start within 5 s the
-    // front camera is likely unavailable on this device (e.g. frontCameraConfig
-    // returned the BACK camera because no FRONT CameraConfig was found — #1612).
-    // Reset when cameraActive flips so a device that just takes a moment to open
-    // the front camera doesn't falsely report unavailability.
-    LaunchedEffect(cameraActive) {
-        if (!cameraActive) {
-            delay(5_000L)
-            if (!cameraActive) cameraUnavailable = true
+    // Slow-front-camera hint. Anchored on the session RESUME (not composition) and
+    // non-latching: it resets on every (re)launch and only trips if, a full
+    // SLOW_FRONT_CAMERA_HINT_MS after the session resumed, no camera frame has arrived.
+    // The window is deliberately longer than the shared 8 s ARCameraInitScrim timeout so
+    // the front camera — slower to open than the back camera — gets real grace before we
+    // hint. It never claims the camera is unavailable; a genuine failure is surfaced
+    // separately via onSessionFailed → sessionFailed.
+    LaunchedEffect(sessionResumed, cameraActive) {
+        slowCameraWarning = false
+        if (sessionResumed && !cameraActive) {
+            delay(SLOW_FRONT_CAMERA_HINT_MS)
+            if (!cameraActive) slowCameraWarning = true
         }
     }
 
@@ -150,9 +161,20 @@ fun ARFaceDemo(onBack: () -> Unit) {
                     config.augmentedFaceMode = Config.AugmentedFaceMode.MESH3D
                     config.planeFindingMode = Config.PlaneFindingMode.DISABLED
                 },
+                onSessionResumed = { _: Session ->
+                    // Anchor the slow-camera grace window on the real session resume,
+                    // not on the composition (which fires before ARCore is ready).
+                    sessionResumed = true
+                },
+                onSessionFailed = { error: Exception ->
+                    // A genuine session failure (permission denied, ARCore unavailable) —
+                    // distinct from a merely slow front-camera start.
+                    android.util.Log.e("ARFaceDemo", "AR session failed", error)
+                    sessionFailed = true
+                },
                 onSessionUpdated = { session: Session, _: Frame ->
-                    // Mark camera as active on the first frame so the timeout
-                    // diagnostic knows the front camera opened successfully.
+                    // Mark camera as active on the first frame so the slow-camera hint
+                    // knows the front camera opened successfully.
                     if (!cameraActive) cameraActive = true
                     detectedFaces = session.getAllTrackables(AugmentedFace::class.java)
                         .filter { it.trackingState == TrackingState.TRACKING }
@@ -178,9 +200,14 @@ fun ARFaceDemo(onBack: () -> Unit) {
             }
 
             // Cover the still-black AR viewport until the front camera delivers its first
-            // frame (reusing `cameraActive`); lifts if the camera proves unavailable so the
-            // error banner below is never hidden (#2484).
-            ARCameraInitScrim(initializing = !cameraActive && !cameraUnavailable)
+            // frame. The advisory slow-camera hint does NOT lift it — only a real frame or a
+            // genuine session failure does — so a slow start no longer flashes a black
+            // viewport. Its own defensive timeout is widened to the grace window so the
+            // spinner, not a black viewport, covers a slow front-camera start (#2484).
+            ARCameraInitScrim(
+                initializing = !cameraActive && !sessionFailed,
+                timeoutMillis = SLOW_FRONT_CAMERA_HINT_MS,
+            )
 
             // Status overlay — tracks face count and surfaces camera errors.
             AnimatedVisibility(
@@ -190,18 +217,30 @@ fun ARFaceDemo(onBack: () -> Unit) {
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 val (statusText, statusColor) = when {
-                    cameraUnavailable ->
-                        // Front camera failed to produce frames within the timeout.
-                        // Likely cause: frontCameraConfig returned the BACK camera
-                        // because no FRONT CameraConfig was found on this device (#1612).
+                    sessionFailed ->
+                        // Genuine ARCore session failure — a real, distinct error state
+                        // (permission denied, ARCore unavailable), not a slow start.
                         Pair(
-                            "Front camera unavailable on this device",
+                            stringResource(R.string.demo_ar_face_status_camera_failed),
                             MaterialTheme.colorScheme.error
                         )
                     faceCount > 0 ->
-                        Pair("Tracking $faceCount face(s)", MaterialTheme.colorScheme.primary)
+                        Pair(
+                            stringResource(R.string.demo_ar_face_status_tracking, faceCount),
+                            MaterialTheme.colorScheme.primary
+                        )
+                    slowCameraWarning ->
+                        // Advisory only: the front camera is slow to open on some devices.
+                        // Primary (not error) tone — this is not a verdict.
+                        Pair(
+                            stringResource(R.string.demo_ar_face_status_starting),
+                            MaterialTheme.colorScheme.primary
+                        )
                     else ->
-                        Pair("Point the front camera at a face", MaterialTheme.colorScheme.primary)
+                        Pair(
+                            stringResource(R.string.demo_ar_face_status_aim),
+                            MaterialTheme.colorScheme.primary
+                        )
                 }
                 Text(
                     text = statusText,
@@ -219,3 +258,13 @@ fun ARFaceDemo(onBack: () -> Unit) {
         }
     }
 }
+
+/**
+ * Grace window before the demo shows the advisory "still starting the front camera" hint.
+ *
+ * Deliberately longer than the shared 8 s [ARCameraInitScrim] defensive timeout
+ * (`AR_CAMERA_INIT_SCRIM_TIMEOUT_MS`): the front (selfie) camera is slower to open than the
+ * back camera on many devices (e.g. Pixel 9, #1612), so it is given extra grace before we
+ * hint — and even then the hint is advisory, never a verdict of "camera unavailable".
+ */
+private const val SLOW_FRONT_CAMERA_HINT_MS = 12_000L

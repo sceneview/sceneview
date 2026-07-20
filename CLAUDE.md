@@ -69,7 +69,7 @@ platform as a failure), `--out <dir>`.
 
 | Leg | Harness | Drives | Report |
 |---|---|---|---|
-| `android` | Maestro flows `.maestro/android/` via `qa-android-demos.sh` | All 50 demos on an emulator | `device-qa-report.json` |
+| `android` | Maestro flows `.maestro/android/` via `qa-android-demos.sh` | All 51 demos on an emulator | `device-qa-report.json` |
 | `ios` | Maestro flows `.maestro/ios/` via `ios-device-qa.sh` | 24 deep-linkable demos on a simulator (AR = launch-only smoke) | `device-qa-report.json` |
 | `web` | Playwright suite `samples/web-demo/tests/` | Browser 3D viewer + every catalog tab | `web-qa-summary.json` |
 | `ar` | `ar-replay-qa.sh` + `ARReplayHarnessTest` | Every Android AR demo replayed against recorded ARCore sessions — no physical device | `ar-qa-summary.json` |
@@ -169,8 +169,8 @@ To set up: `npm install @google/stitch-sdk`, then add the Stitch MCP server in C
 
 ## When writing any SceneView code
 
-- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.22.0`)
-- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.22.0`)
+- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.23.0`)
+- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.23.0`)
 - Declare nodes as composables inside the trailing content block — not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — returns `null`
   while loading, always handle the null case
@@ -478,7 +478,7 @@ One unified showcase app per platform — all features integrated into tabs.
 
 | Directory | Platform | Demonstrates |
 |---|---|---|
-| `samples/android-demo` | Android | Play Store app — 4-tab Material 3 (Explore, AR View, Samples, About), 50 demos (17 non-AR + 33 AR) |
+| `samples/android-demo` | Android | Play Store app — 4-tab Material 3 (Explore, AR View, Samples, About), 52 demos (18 non-AR + 34 AR) |
 | `samples/android-tv-demo` | Android TV | D-pad controls, model cycling, auto-rotation |
 | `samples/web-demo` | Web | Browser 3D viewer, Filament.js (WASM), WebXR AR/VR |
 | `samples/ios-demo` | iOS | App Store app — 4-tab SwiftUI (Explore multi-source, AR, Samples, About) |
@@ -707,6 +707,8 @@ Hooks trigger automatically on specific Claude Code actions:
 | `cross-platform-check.sh` | Compare Android vs iOS vs Web API surface, report gaps |
 | `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.). Section 16 runs `store-preflight.sh` (advisory) |
 | `store-preflight.sh` | Read-only App Store Connect preflight (#2612 P1) — detects the human-only store blockers that silently 403 a deploy: an expired Apple agreement (`REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED` canary), an App Review rejection, cert/profile expiry (< `CERT_EXPIRY_WARN_DAYS`, default 30), and (since #2731) an open never-submitted reviewSubmission (`READY_FOR_REVIEW`/`UNRESOLVED_ISSUES`) — the silent-submission signature the IOS-scoped version-state probe alone can't see. Signs the ASC ES256 JWT with openssl only; reuses `app-store.yml`'s ASC secrets (no new scope); SKIPs honestly without creds. Advisory-first — a blocker hard-blocks only under `GATE_HARD=1`. Wired into `release-checklist.sh` §16, the `/store-status` command doc (probe-set wiring is a P1 follow-up), and a daily `maintenance.yml` job. Self-tested by `test-store-preflight.sh` (in `repo-hygiene`) |
+| `store-sync/play_listing.py` | Play listing sync/diff as code (#2612 P2) — the single code path for `play-store.yml`'s `sync-listing` job (`--apply`) and local read-only drift diffs (`--dry-run` default: listing text + per-image SHA-256 vs the live store, probe edit abandoned). SKIPs honestly without creds. Self-tested by `test-store-sync.sh` (repo-hygiene) |
+| `store-sync/asc_listing.py` | App Store listing drift diff + screenshot upload (#2612 P2). `--dry-run` (default, read-only) diffs live ASC text fields + screenshot `sourceFileChecksum` (MD5) against `samples/ios-demo/distribution/app-store/` + `appstore-screenshots/`; `--apply-screenshots` uploads the repo screenshots (reserve → chunked PUT → commit `uploaded:true` + MD5) to the **editable** version, replacing each display-type set (delete-then-upload; a failed delete is fatal *before* any upload, so a half-replaced set can't happen). Live order is *expected* to follow repo filename order — Apple does not promise creation order, so the script PROBES it after upload and warns instead of asserting. Never creates a version — SKIPs honestly when none is editable, so `app-store.yml`'s repaired submit step (#2731) stays untouched. Listing TEXT stays owned by that step. CI caller = its OWN workflow `app-store-screenshots.yml` (ubuntu, dispatch-only, no Xcode) — deliberately NOT a job in `app-store.yml`, whose `deploy-ios`/`deploy-macos` are gated only on `*_ready`, so a screenshot dispatch there would also build and upload a TestFlight build (caught in PR #2781 review). Flag abbreviations are disabled on both store-sync scripts: `--apply` must not resolve into an upload. Same ASC env aliases as `store-preflight.sh` |
 | `lib/android-cli.sh` | Shared helpers for Google's `android` CLI (screenshot, layout, install+launch) with `adb` fallback |
 | `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool + snapshot state + camera-id topology, #2754), `--clean` (wipe+recreate), `--seed-snapshot` (seed the golden `qa-clean` boot snapshot), `--no-snapshot` (force cold boot). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. Boot snapshots (#1672): once seeded, the base-port emulator cold-boots from the immutable `qa-clean` snapshot — faster and deterministic, and fixes the userdata storage-degradation bug. **Use this for routine QA — never QA on a personal device.** |
 | `lib/emulator-select.sh` | Sourced helper for `setup-ar-emulator.sh` / `device-qa.sh` / `qa-android-demos.sh` — RAM monitoring (`vm_stat`/`/proc/meminfo`), RAM-budgeted pool-cap computation, a per-emulator lease registry, RAM-scaled `-memory`, multi-port boot, and stale-lease reclaim. The adaptive pool runs as many emulators as live host RAM safely allows (floor 1, `EMU_POOL_MAX` ceiling), superseding #1647's strict-single design (#1654). |

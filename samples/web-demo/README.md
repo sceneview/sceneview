@@ -6,11 +6,14 @@ Browser-based 3D viewer using SceneView.js (Filament.js WASM engine).
 
 The demo has eight tabs in the top tab bar:
 
-- **Models** — browse 12 curated, self-hosted models across 5 categories
-  (Showcase, Vehicles, Animated, Characters, Objects), or switch the source
-  toggle to **Sketchfab Search** to search downloadable 3D models from
-  Sketchfab. The curated GLBs are bundled in the demo distribution, not
-  loaded from a third-party CDN (issue #1573).
+- **Models** — a source-agnostic catalog picker (#2722, the web leg of the
+  Android #2685 / iOS #2721 `ModelSource` trio): **SceneView** (12 curated,
+  self-hosted models across 5 categories — bundled in the distribution, not a
+  third-party CDN, issue #1573), **Icosa Gallery** and **Poly Haven** (keyless
+  CC catalogs — browse, search, and render in-app), plus **Sketchfab** when an
+  API key is configured (hidden otherwise). Switching sources resets browse +
+  search state; the selection persists in `localStorage`; one degraded source
+  never blanks the tab.
 - **Geometry** — create cubes, spheres, cylinders, and planes with color
   pickers, size sliders, and a per-shape `KHR_materials_unlit` toggle.
 - **Lighting** — add and remove directional, point, and spot lights via
@@ -52,10 +55,13 @@ npx http-server site -p 8080
 
 ## Architecture
 
-- `site/index.html` — self-contained single-file app (HTML + CSS + inline JS).
-  This **is** the demo; it loads a self-hosted `sceneview.js`. There is one
-  source of truth for the runtime wiring: the inline `<script>` (issue #1946
-  removed the dead Kotlin/JS `Main.kt` that never executed in the browser).
+- `site/index.html` — the app shell (HTML + CSS + inline JS). It loads a
+  self-hosted `sceneview.js`. The runtime wiring lives in TWO source files:
+  the inline `<script>` (issue #1946 removed the dead Kotlin/JS `Main.kt`
+  that never executed in the browser) and `site/js/model-sources.js` — the
+  source-agnostic catalog layer (#2722). ⚠️ `model-sources.js` sits under the
+  broad `site/` gitignore rule, so `git status` never shows edits to it:
+  always `git add -f` after touching it (see the note in `.gitignore`).
 - Uses `SceneView.js` (`SceneView.modelViewer()`, `createBox()`,
   `setQuality()`, `setBloom()`, `setBackgroundColor()`, `addLight()`,
   `removeNode()`, `playAnimation()`, `stopAnimation()`, `createText()`,
@@ -63,7 +69,11 @@ npx http-server site -p 8080
 - Engine: `filament.js`, `filament.wasm`, and `sceneview.js` are self-hosted
   under `site/js/` and referenced by relative path, so the demo never depends
   on a third-party CDN for its engine (issue #1586).
-- Sketchfab API: `GET /v3/search?type=models&downloadable=true&q={query}`.
+- Catalog APIs: Sketchfab `GET /v3/search?type=models&downloadable=true&q={query}`
+  (key-gated) · Icosa Gallery `GET api.icosa.gallery/v1/assets` (keyless;
+  legacy Poly-era `web.archive.org` mirrors are deprioritized — they 404
+  without CORS) · Poly Haven `api.polyhaven.com` (keyless, single-flight
+  TTL index). All JSON reads are size-capped and streamed.
 - Curated models: self-hosted GLBs under `site/models/`, loaded from the
   relative `models/` path. The whole `site/` folder is copied verbatim to the
   deployed `/web-demo/` route by `docs.yml` and served by the Playwright dev

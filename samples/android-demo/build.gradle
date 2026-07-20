@@ -64,7 +64,7 @@ android {
         minSdk 28
         targetSdk 36
         versionCode project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 350
-        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.22.0"
+        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.23.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -168,7 +168,9 @@ android {
         // them in the APK only wastes CPU. `.glb` and `.hdr` stay compressible:
         // the demo GLBs are Draco + WebP packed and the HDRs are RGBE, both of
         // which the APK zip stage still shrinks meaningfully.
-        noCompress 'filamat', 'ktx'
+        // `.task` is the MediaPipe bundle (a ZIP that MediaPipe memory-maps at
+        // runtime) — re-compressing it in the APK breaks `createFromOptions`.
+        noCompress 'filamat', 'ktx', 'task'
     }
     packaging {
         resources {

@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- `EnvironmentLoader`: the three suspend loaders (`loadHDREnvironment`, both `loadKTX1Environment` overloads) now build the environment inside `withContext(Dispatchers.Main)` instead of on the loader's IO scope — Filament asserts (native abort) on JNI thread mismatch. Buffer loading (network/disk) stays off the main thread; only the `create*Environment` builder call moves, mirroring `MaterialLoader.loadMaterial` / `ModelLoader.loadModel` (#2669, #2670, #2671, part of #2668).

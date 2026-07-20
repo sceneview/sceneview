@@ -47,8 +47,8 @@ mirroring the same surface.
 ## 13. ViewNode (Compose UI inside 3D)
 [`PickingAndCollisionDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/PickingAndCollisionDemo.kt) — the unified Picking & Collision demo bundles two modes: **Ray Hit-Test** with `CollisionSystem` + per-node tap highlights, **View Node** with `ViewNode { Card { Text("…") } }` (requires `viewNodeWindowManager` on `SceneView`).
 
-## 14. Point & Ask (on-device AI explains the camera view)
-[`PointAndAskDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/PointAndAskDemo.kt) — tap → `frame.cameraImage()` (in `onSessionUpdated`, current frame only) → `Image.toArgbBitmap(rotationDegrees)` off the main thread → **Gemini Nano** via ML Kit GenAI Prompt API: `Generation.getClient()`, gate on `checkStatus()`, then either one-shot `generateContent(generateContentRequest(ImagePart(bitmap), TextPart(question)) {})` or, as the demo does, **streamed** `generateContentStream(request)` (a `Flow` of text deltas grown into the answer card — see `AskEngine.askStream`). The question is a free-form user field (blank → default prompt). Fully on-device (AICore, Pixel 8+); emulators are always `UNAVAILABLE` — swap in a canned engine under QA mode (see `AskEngine.kt`). Markdown recipe: `samples/recipes/point-and-ask.md`.
+## 14. Point & Ask (on-device AI explains the augmented scene)
+[`PointAndAskDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/PointAndAskDemo.kt) — tap → **composited window capture** (`PixelCopy.request(activity.window, …)` — camera + placed 3D nodes, so the model sees the *augmented* scene; hide overlays first) → **Gemini Nano** via ML Kit GenAI Prompt API: `Generation.getClient()`, gate on `checkStatus()`, then either one-shot `generateContent(generateContentRequest(ImagePart(bitmap), TextPart(question)) {})` or, as the demo does, **streamed** `generateContentStream(request)` (a `Flow` of text deltas grown into the answer card — see `AskEngine.askStream`). Camera-only variant: `frame.cameraImage()` (in `onSessionUpdated`, current frame only) → `Image.toArgbBitmap(rotationDegrees)` off the main thread. The question is a free-form user field (blank → default prompt); long-press drops a prop (`hitTest` → `AnchorNode` + `ModelNode`). Fully on-device (AICore, Pixel 8+); emulators are always `UNAVAILABLE` — swap in a canned engine under QA mode (see `AskEngine.kt`). Markdown recipe: `samples/recipes/point-and-ask.md`.
 
 ## AR recording / playback
 [`ARRecordPlaybackDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARRecordPlaybackDemo.kt) — `val recorder = rememberARRecorder(); recorder.start(file); recorder.stop()`. To replay, pass `playbackDataset = file` to `ARSceneView`.
@@ -135,4 +135,34 @@ The demo-app reference implementation is
 the mutually-exclusive `shouldRenderPlaneGrid` / `shouldCatchGroundShadows` predicates in
 `TapToPlaceState.kt` (#2657) — copy that pattern whenever you hand-wire `ShadowReceiverPlane`s
 alongside a plane renderer.
+
+## Recipe: wall placement (TV, framed art, mirror) — #2740
+
+For **vertical surfaces**, do not hand-roll `ARSceneView` + raw vertical-plane hits — use
+`WallPlacementScene`, the vertical-surface sibling of `PlacementScene`. It decouples the two noisy
+axes the way Amazon "AR View" / IKEA Place do: **orientation from the wall** (object flush +
+upright, no hit-pose tilt) and **height from the floor** (`floorY + mountHeight`), so the placement
+stays put while ARCore refines the vertical plane:
+
+```kotlin
+WallPlacementScene(
+    mountHeight = 1.2f,                    // anchor height above the floor (TV centre height);
+                                           // base-on-floor: pass the object's half-height
+    onSeamChanged = { seam -> /* draw the "align to the floor↔wall edge" guide from it */ },
+    onPhaseChanged = { phase -> /* FINDING_FLOOR → FINDING_WALL → ALIGNING_EDGE → PLACED */ },
+    onPlaced = { anchor ->
+        AnchorNode(anchor = anchor) {
+            rememberModelInstance(modelLoader, "models/tv.glb")?.let {
+                ModelNode(modelInstance = it, scaleToUnits = 1.4f)
+            }
+        }
+    },
+)
+```
+
+The placement math is public for custom flows: `wallFacingRotation(wallNormal)`,
+`roomFacingNormal(wallNormal, towardViewer)` (ARCore does not guarantee a vertical plane's normal
+sign — always flip it toward the camera), `floorWallSeam(...)`, `wallAnchorPose(...)`. First
+increment of #2740: the seam/phase come back via callbacks so the app draws its own guide; an
+in-scene 3D seam line and a gizmo/D-pad fine-adjust UI are tracked follow-ups.
 

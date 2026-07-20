@@ -56,6 +56,14 @@ struct MaterialsDemo: View {
             }
             .cameraControls(.orbit)
             .autoRotate(speed: 0.3)
+            // The whole point of this demo is KHR_materials_transmission /
+            // _iridescence / _sheen, and every one of them is defined by what it
+            // does to the light *around* the model: transmission refracts the
+            // environment, iridescence and sheen shift with the reflected view
+            // angle. With no IBL there is nothing to refract or reflect, so the
+            // curated models render as flat silhouettes — the demo hides its own
+            // subject. Same `.studio` preset ModelViewerDemo uses (#2114).
+            .environment(.studio)
             .ignoresSafeArea()
             .id("materials-\(selectedSlug?.uid ?? "none")")
         } else {

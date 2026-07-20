@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- Externalized the last hard-coded English strings in the unified tap-to-place engine (`TapToPlaceArSession.kt`) to string resources — the gesture pill labels ("Moving" / "Rotating" / "Scaling" → `ar_gesture_*`) and the "Aim at a surface…" aiming hint (`ar_aim_at_surface`), completing #2482 plan §3.5. Shared by both AR entries; no visual or behavioural change in the default locale.

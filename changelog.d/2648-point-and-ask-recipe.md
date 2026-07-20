@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- **AI-first docs**: new **Point & Ask** recipe — "build an AR app that explains what the camera sees" — across all three AI-facing surfaces: `samples/recipes/point-and-ask.md` (full pattern: AICore availability gating, current-frame CPU-image capture, off-main YUV→Bitmap, multimodal `generateContent`, emulator QA note), an `llms.txt` "Recipes" entry with the condensed working code and its gotchas, and agent-skill reference #14 pointing at the shipped `PointAndAskDemo.kt`. Completes item 3 of #2648 (P1 follow-up).

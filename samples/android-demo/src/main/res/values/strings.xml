@@ -70,6 +70,9 @@
          the origin catalog display name (Sketchfab / Icosa Gallery / Poly Haven). -->
     <string name="gallery_streaming_from">Streaming from %s · rendering in SceneView</string>
     <string name="sketchfab_rendered_by">Rendered by SceneView · %s polys</string>
+    <!-- Shown instead of the "· N polys" form when the source exposes no face count
+         (e.g. Poly Haven) — never show a misleading "0 polys". -->
+    <string name="sketchfab_rendered_by_base">Rendered by SceneView</string>
     <string name="sketchfab_could_not_open">Couldn\'t open this model</string>
     <string name="sketchfab_try_again">Try again</string>
     <string name="sketchfab_download_failed">Download failed</string>
@@ -144,6 +147,7 @@
     <string name="samples_back_about">About</string>
     <string name="samples_chip_preview">Preview</string>
     <string name="samples_chip_soon">Soon</string>
+    <string name="samples_chip_in_review">In review</string>
     <string name="samples_footer_version">SceneView v%s</string>
     <string name="samples_footer_repo">github.com/sceneview/sceneview</string>
 

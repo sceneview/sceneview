@@ -19,6 +19,13 @@ enum class DemoStatus {
 
     /** Compiles but not yet wired up to a real implementation. */
     ComingSoon,
+
+    /**
+     * Newly shipped feature awaiting on-device review sign-off — surfaced with an
+     * "In review" chip so testers know exactly which demos to exercise on the
+     * store build. Flip to [Working] once the review pass validates it.
+     */
+    InReview,
 }
 
 /**

@@ -11,8 +11,8 @@ Same concepts, same simplicity — Android, iOS, Web, Desktop, TV, Flutter, Reac
 [![iOS / macOS / visionOS](https://img.shields.io/github/v/release/sceneview/sceneview?label=Swift&logo=swift&color=f05138)](https://github.com/sceneview/sceneview)
 [![sceneview.js](https://img.shields.io/npm/v/sceneview-web?label=sceneview.js&logo=javascript&color=f7df1e)](https://www.npmjs.com/package/sceneview-web)
 [![MCP Server](https://img.shields.io/npm/v/sceneview-mcp?label=MCP&logo=anthropic&color=d97706)](https://www.npmjs.com/package/sceneview-mcp)
-[![Flutter](https://img.shields.io/badge/Flutter-v4.22.0-02569B?logo=flutter)](https://github.com/sceneview/sceneview/tree/main/flutter)
-[![React Native](https://img.shields.io/badge/React%20Native-v4.22.0-61DAFB?logo=react)](https://github.com/sceneview/sceneview/tree/main/react-native)
+[![Flutter](https://img.shields.io/badge/Flutter-v4.23.0-02569B?logo=flutter)](https://github.com/sceneview/sceneview/tree/main/flutter)
+[![React Native](https://img.shields.io/badge/React%20Native-v4.23.0-61DAFB?logo=react)](https://github.com/sceneview/sceneview/tree/main/react-native)
 
 <!-- Status -->
 [![CI](https://img.shields.io/github/actions/workflow/status/sceneview/sceneview/ci.yml?branch=main&label=CI&logo=github)](https://github.com/sceneview/sceneview/actions/workflows/ci.yml)
@@ -21,7 +21,6 @@ Same concepts, same simplicity — Android, iOS, Web, Desktop, TV, Flutter, Reac
 [![GitHub Release](https://img.shields.io/github/v/release/sceneview/sceneview?label=Release&color=1a73e8&logo=github)](https://github.com/sceneview/sceneview/releases/latest)
 [![Discord](https://img.shields.io/discord/893787194295222292?color=7389D8&label=Discord&logo=discord&logoColor=ffffff)](https://discord.gg/UbNDDBTNqb)
 [![Sponsors](https://img.shields.io/github/sponsors/sceneview?label=Sponsors&color=ea4aaa&logo=githubsponsors)](https://github.com/sponsors/sceneview)
-[![Open Collective](https://img.shields.io/opencollective/all/sceneview?label=Backers&color=7FADF2&logo=opencollective)](https://opencollective.com/sceneview)
 
 ## Try the demo apps
 
@@ -60,8 +59,8 @@ SceneView(environment: .studio) {
 
 ```html
 <!-- Web — friendly DSL (Filament.js engine + SceneView wrapper) -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.22.0/website-static/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.22.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.23.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.23.0/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("canvas", "model.glb") </script>
 ```
 
@@ -115,28 +114,28 @@ Coming from the archived Sceneform repo? See the
 **Android** (3D + AR):
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.22.0")     // 3D
-    implementation("io.github.sceneview:arsceneview:4.22.0")   // AR (includes 3D)
+    implementation("io.github.sceneview:sceneview:4.23.0")     // 3D
+    implementation("io.github.sceneview:arsceneview:4.23.0")   // AR (includes 3D)
 }
 ```
 
 **iOS / macOS / visionOS** (Swift Package Manager):
 ```
-https://github.com/sceneview/sceneview.git  (from: 4.22.0)
+https://github.com/sceneview/sceneview.git  (from: 4.23.0)
 ```
 
 **Web** (sceneview.js — friendly DSL, two `<script>` tags):
 ```html
 <!-- 1. Filament.js engine (WASM) -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.22.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.23.0/website-static/js/filament/filament.js"></script>
 <!-- 2. SceneView wrapper (exposes SceneView.modelViewer / .create / .startAR) -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.22.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.23.0/website-static/js/sceneview.js"></script>
 ```
 
 **Web** (Kotlin/JS):
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview-web:4.22.0")
+    implementation("io.github.sceneview:sceneview-web:4.23.0")
 }
 ```
 
@@ -315,7 +314,7 @@ ARSceneView(planeDetection: .horizontal) { position, arView in
 
 Plus the **iOS `RerunBridge`** with the same wire format as Android, and a `NodeBuilder` DSL for declarative composition outside SwiftUI.
 
-**Install:** `https://github.com/sceneview/sceneview.git` (SPM, from 4.22.0)
+**Install:** `https://github.com/sceneview/sceneview.git` (SPM, from 4.23.0)
 
 ---
 
@@ -326,9 +325,9 @@ Friendly DSL (~25 KB) powered by Filament.js WASM (~210 KB) — the same engine 
 
 ```html
 <!-- 1. Filament.js engine (WASM) -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.22.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.23.0/website-static/js/filament/filament.js"></script>
 <!-- 2. SceneView wrapper -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.22.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.23.0/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("canvas", "model.glb") </script>
 ```
 
@@ -362,7 +361,7 @@ const vr = await SceneView.startVR("canvas")                       // immersive-
 For Kotlin Multiplatform projects, the same engine is exposed as a Kotlin/JS class with an `OrbitCameraController`, a geometry DSL, and reactive node updates:
 
 ```kotlin
-implementation("io.github.sceneview:sceneview-web:4.22.0")
+implementation("io.github.sceneview:sceneview-web:4.23.0")
 ```
 
 **Install:** `npm install sceneview-web` or CDN — [Landing page](https://sceneview.github.io/) — [Playground](https://sceneview.github.io/playground.html) — [npm](https://www.npmjs.com/package/sceneview-web)
@@ -503,7 +502,5 @@ SceneView is free and open source. Sponsors help keep it maintained across 9 pla
 | | Platform | Link |
 |---|---|---|
 | :heart: | **GitHub Sponsors** (0% fees) | [Sponsor on GitHub](https://github.com/sponsors/sceneview) |
-| :blue_heart: | **Open Collective** (transparent) | [opencollective.com/sceneview](https://opencollective.com/sceneview) |
-| :star: | **MCP Pro** (unlock all tools) | [sceneview-mcp.mcp-tools-lab.workers.dev/pricing](https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing) |
 
 See [SPONSORS.md](.github/SPONSORS.md) for tiers and current sponsors.

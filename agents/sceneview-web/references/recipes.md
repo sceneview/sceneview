@@ -10,7 +10,7 @@ is in the "SceneView Web" section of
 ```html
 <canvas id="viewer" style="width:100%;height:100vh;display:block"></canvas>
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.22.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.23.0/sceneview-web.js"></script>
 <script>
   sceneview.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/DamagedHelmet.glb')
     .then(function (sv) {
@@ -139,6 +139,7 @@ concepts with platform-idiomatic shapes. **Don't copy-paste between platforms.**
 
 Web now exposes a minimal `NodeHandle` imperative surface since #2024 slice 3 —
 plain-JS callers create a node with `sv.addNode()` / `sv.addModelNode(url)` /
+`sv.addSplatNode(url)` (3D Gaussian Splatting, `.ply`/`.spz`, #2646 P2) /
 `sv.addCubeNode(size)` / `sv.addSphereNode(radius)` / `sv.addLightNode(type)`,
 keep the returned handle, and mutate it after build (`setPosition`,
 `setRotation` in Euler degrees, `setScale`, `setVisible`, `addChild`,

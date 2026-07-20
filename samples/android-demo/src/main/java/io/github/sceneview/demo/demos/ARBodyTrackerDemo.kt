@@ -117,6 +117,8 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                     .setNumPoses(1)
                     .build(),
             )
+        }.onFailure {
+            android.util.Log.e("ARBodyTracker", "PoseLandmarker init failed", it)
         }.getOrNull()
     }
     DisposableEffect(landmarker) {

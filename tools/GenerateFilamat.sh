@@ -10,14 +10,22 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (26 mats → 26 filamats):
+# Inventory (27 mats → 27 filamats):
 #   sceneview/src/main/materials/         (14) → sceneview/src/main/assets/materials/
 #   arsceneview/src/main/materials/        (9) → arsceneview/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/
+#   sceneview-web/materials/               (1) → sceneview-web/materials/  [filamentWeb toolchain]
+#
+# The sceneview-web entry compiles with a SECOND pinned matc — `filamentWeb` in
+# gradle/libs.versions.toml, tracking the npm `filament` runtime the Kotlin/JS
+# bundle actually loads (MATERIAL_VERSION 52 track), not the Android runtime
+# (v72 track). Its blob is additionally emitted as a generated base64 Kotlin
+# file (SplatMaterialBlob.kt) so the single-file npm bundle needs no runtime
+# fetch — both artifacts are committed and --check-diffed (#2646 P2).
 #
 # Usage:
-#   bash tools/GenerateFilamat.sh                 # regenerate all 26 filamats
-#   bash tools/GenerateFilamat.sh --check         # diff all 26 against committed blobs; exit 1 on drift
+#   bash tools/GenerateFilamat.sh                 # regenerate all 27 filamats
+#   bash tools/GenerateFilamat.sh --check         # diff all 27 against committed blobs; exit 1 on drift
 #   bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 #   bash tools/GenerateFilamat.sh --ci-tolerant   # treat matc download failure as WARN, not FAIL
 #   bash tools/GenerateFilamat.sh --help
@@ -80,7 +88,17 @@ if [ -z "$FILAMENT_VERSION" ]; then
     err "Failed to parse 'filament = ...' from $TOML"
     exit 2
 fi
-log "${CYAN}Filament version (pinned):${NC} $FILAMENT_VERSION"
+log "${CYAN}Filament version (pinned, Android):${NC} $FILAMENT_VERSION"
+FILAMENT_ANDROID_VERSION="$FILAMENT_VERSION"
+
+# The WEB runtime toolchain — a second pinned matc tracking the npm `filament`
+# runtime the Kotlin/JS bundle loads (see the `filamentWeb` comment in the toml).
+FILAMENT_WEB_VERSION=$(grep -E '^filamentWeb[[:space:]]*=' "$TOML" | head -1 | sed -E 's/^filamentWeb[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
+if [ -z "$FILAMENT_WEB_VERSION" ]; then
+    err "Failed to parse 'filamentWeb = ...' from $TOML"
+    exit 2
+fi
+log "${CYAN}Filament version (pinned, web npm):${NC} $FILAMENT_WEB_VERSION"
 
 # ─── Inventory ──────────────────────────────────────────────────────────
 # Format: "<module>:<name>:<src-path>:<out-path>:<matc-flags>"
@@ -142,10 +160,34 @@ MATS=(
     "website-static:unlit_colored:website-static/materials/unlit_colored.mat:website-static/materials/unlit_colored.filamat:-p mobile -a opengl"
 )
 
+# ─── Web-runtime inventory (compiled with the filamentWeb toolchain) ────
+#   Profile W — sceneview-web (npm filament runtime, WebGL2 only):
+#     "-p mobile -a opengl", matc pinned to `filamentWeb` (MATERIAL_VERSION 52
+#     track). See splat_web.mat's header for why it is a (float-params) fork of
+#     the Android splat.mat (#2646 P2).
+MATS_WEB=(
+    "sceneview-web:splat_web:sceneview-web/materials/splat_web.mat:sceneview-web/materials/splat_web.filamat:-p mobile -a opengl"
+)
+
+# The web blob is additionally embedded in the Kotlin/JS bundle as a generated
+# base64 constant (no runtime fetch, works through the single-file CDN
+# distribution). Generated + committed + --check-diffed like the blob itself.
+WEB_BLOB_FOR_KT="sceneview-web/materials/splat_web.filamat"
+WEB_BLOB_KT_OUT="sceneview-web/src/jsMain/kotlin/io/github/sceneview/web/splat/SplatMaterialBlob.kt"
+
 # ─── Resolve matc ───────────────────────────────────────────────────────
 CACHE_BASE="${XDG_CACHE_HOME:-$HOME/.cache}/sceneview"
-MATC_DIR="$CACHE_BASE/matc-$FILAMENT_VERSION"
-MATC_BIN="$MATC_DIR/bin/matc"
+
+# Point the download/verify/compile helpers at the matc for <version>.
+# The helpers all read these globals, so switching toolchains between the
+# Android and web inventory groups is one call.
+select_toolchain() {
+    FILAMENT_VERSION="$1"
+    MATC_DIR="$CACHE_BASE/matc-$FILAMENT_VERSION"
+    MATC_BIN="$MATC_DIR/bin/matc"
+}
+
+select_toolchain "$FILAMENT_VERSION"
 
 detect_os_tarball() {
     case "$(uname -s)" in
@@ -272,22 +314,28 @@ compile_mat() {
 }
 
 # ─── Bootstrap matc (with --ci-tolerant fallback) ───────────────────────
-if ! ensure_matc; then
-    if [ "$CI_TOLERANT" = "1" ]; then
-        warn "matc unavailable; --ci-tolerant set, skipping filamat check."
-        exit 0
+# Downloads + version-verifies the CURRENTLY SELECTED toolchain (see
+# select_toolchain). Exits 0 under --ci-tolerant when the network is absent.
+bootstrap_toolchain() {
+    if ! ensure_matc; then
+        if [ "$CI_TOLERANT" = "1" ]; then
+            warn "matc $FILAMENT_VERSION unavailable; --ci-tolerant set, skipping filamat check."
+            exit 0
+        fi
+        err "matc $FILAMENT_VERSION unavailable — re-run with network access, or pass --ci-tolerant to skip."
+        exit 2
     fi
-    err "matc unavailable — re-run with network access, or pass --ci-tolerant to skip."
-    exit 2
-fi
 
-if ! verify_matc_version; then
-    if [ "$CI_TOLERANT" = "1" ]; then
-        warn "matc version verification failed; --ci-tolerant set, skipping."
-        exit 0
+    if ! verify_matc_version; then
+        if [ "$CI_TOLERANT" = "1" ]; then
+            warn "matc version verification failed; --ci-tolerant set, skipping."
+            exit 0
+        fi
+        exit 2
     fi
-    exit 2
-fi
+}
+
+bootstrap_toolchain
 
 # ─── Iterate inventory ──────────────────────────────────────────────────
 log ""
@@ -307,25 +355,28 @@ SKIPPED=0
 DRIFTED_MATS=()
 MISSING_SRC=()
 
-for entry in "${MATS[@]}"; do
+# Process one inventory entry with the CURRENTLY SELECTED toolchain.
+process_entry() {
+    local entry="$1"
+    local module name src out extra
     IFS=':' read -r module name src out extra <<< "$entry"
 
     if [ -n "$ONLY_MAT" ] && [ "$name" != "$ONLY_MAT" ]; then
         SKIPPED=$((SKIPPED + 1))
-        continue
+        return 0
     fi
 
-    full_src="$ROOT/$src"
-    full_out="$ROOT/$out"
+    local full_src="$ROOT/$src"
+    local full_out="$ROOT/$out"
 
     if [ ! -f "$full_src" ]; then
         err "[$module:$name] source missing: $src"
         MISSING_SRC+=("$module:$name")
         DRIFT=$((DRIFT + 1))
-        continue
+        return 0
     fi
 
-    tmp_out="$TMP_ROOT/${module}_${name}.filamat"
+    local tmp_out="$TMP_ROOT/${module}_${name}.filamat"
 
     if ! compile_mat "$full_src" "$tmp_out" "$extra" >/dev/null 2>&1; then
         err "[$module:$name] matc compilation failed for $src"
@@ -333,7 +384,7 @@ for entry in "${MATS[@]}"; do
         compile_mat "$full_src" "$tmp_out" "$extra" || true
         DRIFTED_MATS+=("$module:$name")
         DRIFT=$((DRIFT + 1))
-        continue
+        return 0
     fi
 
     if [ "$MODE" = "check" ]; then
@@ -341,12 +392,13 @@ for entry in "${MATS[@]}"; do
             err "[$module:$name] committed .filamat missing: $out"
             DRIFTED_MATS+=("$module:$name (missing committed blob)")
             DRIFT=$((DRIFT + 1))
-            continue
+            return 0
         fi
         if cmp -s "$full_out" "$tmp_out"; then
             ok "[$module:$name] in sync ($(wc -c < "$tmp_out" | tr -d ' ') bytes)"
             COMPILED=$((COMPILED + 1))
         else
+            local committed_size fresh_size
             committed_size=$(wc -c < "$full_out" | tr -d ' ')
             fresh_size=$(wc -c < "$tmp_out" | tr -d ' ')
             err "[$module:$name] DRIFTED — committed=$committed_size bytes, fresh=$fresh_size bytes"
@@ -364,14 +416,97 @@ for entry in "${MATS[@]}"; do
         fi
         COMPILED=$((COMPILED + 1))
     fi
+}
+
+for entry in "${MATS[@]}"; do
+    process_entry "$entry"
 done
+
+# ─── Web-runtime group (filamentWeb toolchain) ──────────────────────────
+# Same processing, different pinned matc: these blobs must match the npm
+# `filament` runtime the Kotlin/JS bundle loads, not the Android runtime.
+log ""
+log "${CYAN}Web-runtime materials (matc $FILAMENT_WEB_VERSION):${NC}"
+select_toolchain "$FILAMENT_WEB_VERSION"
+bootstrap_toolchain
+for entry in "${MATS_WEB[@]}"; do
+    process_entry "$entry"
+done
+
+# ─── Generated Kotlin embed of the web blob ─────────────────────────────
+# Deterministic emission (no timestamps): base64 of the blob, folded to
+# 96-char literal chunks. --check regenerates from the FRESH blob and diffs
+# against the committed .kt, so blob and embed can never drift apart.
+emit_web_blob_kt() {
+    local blob="$1" out_kt="$2"
+    local bytes minor
+    bytes=$(wc -c < "$blob" | tr -d ' ')
+    minor=$(printf '%s' "$FILAMENT_WEB_VERSION" | awk -F. '{print $2}')
+    {
+        printf '@file:Suppress("MaxLineLength")\n\n'
+        printf 'package io.github.sceneview.web.splat\n\n'
+        printf '// GENERATED FILE — DO NOT EDIT BY HAND (tools/GenerateFilamat.sh).\n'
+        printf '// Base64 of sceneview-web/materials/splat_web.filamat (%s bytes), compiled with\n' "$bytes"
+        printf '// matc %s (MATERIAL_VERSION %s) — the npm `filament` runtime pin (`filamentWeb`\n' "$FILAMENT_WEB_VERSION" "$minor"
+        printf '// in gradle/libs.versions.toml). Regenerate: bash tools/GenerateFilamat.sh\n'
+        printf '// (drift is caught by --check in the quality gate). See #2646 P2.\n\n'
+        printf '/** The splat_web.filamat material package, embedded so the bundle needs no fetch. */\n'
+        printf 'internal const val SPLAT_WEB_MATERIAL_BASE64: String =\n'
+        base64 < "$blob" | tr -d '\n' | fold -w 96 | sed -e 's/^/    "/' -e 's/$/" +/' -e '$ s/ +$//'
+        printf '\n'
+    } > "$out_kt"
+}
+
+process_web_blob_kt() {
+    # Under --mat filtering, only run when the web blob's own entry ran.
+    if [ -n "$ONLY_MAT" ] && [ "$ONLY_MAT" != "splat_web" ]; then
+        return 0
+    fi
+    local fresh_blob="$TMP_ROOT/sceneview-web_splat_web.filamat"
+    local committed_blob="$ROOT/$WEB_BLOB_FOR_KT"
+    local full_kt="$ROOT/$WEB_BLOB_KT_OUT"
+    # In generate mode the tmp blob was moved into place; use the committed one.
+    local blob="$fresh_blob"
+    [ -f "$blob" ] || blob="$committed_blob"
+    if [ ! -f "$blob" ]; then
+        err "[sceneview-web:splat_web.kt] no blob to embed (compile failed above?)"
+        DRIFT=$((DRIFT + 1))
+        return 0
+    fi
+    local tmp_kt="$TMP_ROOT/SplatMaterialBlob.kt"
+    emit_web_blob_kt "$blob" "$tmp_kt"
+    if [ "$MODE" = "check" ]; then
+        if [ ! -f "$full_kt" ]; then
+            err "[sceneview-web:splat_web.kt] committed embed missing: $WEB_BLOB_KT_OUT"
+            DRIFTED_MATS+=("sceneview-web:splat_web.kt (missing committed embed)")
+            DRIFT=$((DRIFT + 1))
+            return 0
+        fi
+        if cmp -s "$full_kt" "$tmp_kt"; then
+            ok "[sceneview-web:splat_web.kt] embed in sync"
+        else
+            err "[sceneview-web:splat_web.kt] embed DRIFTED from the blob"
+            DRIFTED_MATS+=("sceneview-web:splat_web.kt")
+            DRIFT=$((DRIFT + 1))
+        fi
+    else
+        mkdir -p "$(dirname "$full_kt")"
+        if [ -f "$full_kt" ] && cmp -s "$full_kt" "$tmp_kt"; then
+            ok "[sceneview-web:splat_web.kt] embed unchanged"
+        else
+            mv "$tmp_kt" "$full_kt"
+            ok "[sceneview-web:splat_web.kt] embed regenerated → $WEB_BLOB_KT_OUT"
+        fi
+    fi
+}
+process_web_blob_kt
 
 log ""
 
 # ─── Final report ───────────────────────────────────────────────────────
 if [ "$MODE" = "check" ]; then
     if [ "$DRIFT" -eq 0 ]; then
-        log "${GREEN}All $COMPILED filamat blob(s) are in sync with their .mat sources (matc $FILAMENT_VERSION).${NC}"
+        log "${GREEN}All $COMPILED filamat blob(s) are in sync with their .mat sources (matc android=$FILAMENT_ANDROID_VERSION, web=$FILAMENT_WEB_VERSION).${NC}"
         exit 0
     else
         err "${DRIFT} filamat blob(s) drifted from their .mat sources:"
@@ -397,7 +532,7 @@ else
     if [ -n "$ONLY_MAT" ]; then
         log "${GREEN}Regenerated $COMPILED filamat blob(s) (filter: --mat $ONLY_MAT).${NC}"
     else
-        log "${GREEN}Regenerated $COMPILED filamat blob(s) with matc $FILAMENT_VERSION.${NC}"
+        log "${GREEN}Regenerated $COMPILED filamat blob(s) (matc android=$FILAMENT_ANDROID_VERSION, web=$FILAMENT_WEB_VERSION).${NC}"
     fi
     exit 0
 fi

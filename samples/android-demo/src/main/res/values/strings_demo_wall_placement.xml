@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `wall-placement` demo (registered by
+     `ArWallPlacementFragment.kt`, #2740). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_wall_placement_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_wall_placement_title">Wall Placement</string>
+    <string name="demo_wall_placement_subtitle">Mount a TV on a wall — floor↔wall edge alignment, Amazon AR-View style</string>
+
+    <!-- Onboarding phases, mirroring WallPlacementPhase. -->
+    <string name="wall_phase_finding_floor">Point at the floor and move slowly to scan it</string>
+    <string name="wall_phase_finding_wall">Floor locked — now aim at the wall</string>
+    <string name="wall_phase_aligning_edge">Align the orange line with the floor↔wall edge, then tap the wall</string>
+    <string name="wall_phase_placed">Placed — fine-tune with the D-pad, or tap the wall again</string>
+
+    <!-- D-pad fine-adjust content descriptions. -->
+    <string name="wall_dpad_left">Nudge left</string>
+    <string name="wall_dpad_right">Nudge right</string>
+    <string name="wall_dpad_up">Nudge up</string>
+    <string name="wall_dpad_down">Nudge down</string>
+    <string name="wall_dpad_rotate_left">Rotate left</string>
+    <string name="wall_dpad_rotate_right">Rotate right</string>
+</resources>

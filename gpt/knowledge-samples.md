@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.22.0)
+  Source of truth: /llms.txt  (SceneView 4.23.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Recipes & Sample Index
 
 > Copy-paste recipes and the full demo/sample catalog.
-> Auto-generated from `llms.txt` (SceneView 4.22.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.23.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Recipes — "I want to..."
 
@@ -90,10 +90,13 @@ fun ARTapToPlace() {
 }
 ```
 
-### Point & Ask — AI explains what the camera sees (on-device, offline)
+### Point & Ask — AI explains the AR scene (on-device, offline)
 
-Tap → capture the AR camera frame → **Gemini Nano on-device** (ML Kit GenAI
+Tap → capture the AR frame → **Gemini Nano on-device** (ML Kit GenAI
 Prompt API, `com.google.mlkit:genai-prompt:1.0.0-beta3`, minSdk 26) → answer.
+Camera-only capture below is the simpler baseline; the reference demo defaults
+to the composited capture (camera + placed virtual objects — see the
+"Composited variant" paragraph).
 No cloud; frames never leave the device. AICore devices only (Pixel 8+,
 recent flagships) — gate with `checkStatus()` and degrade honestly.
 
@@ -138,12 +141,22 @@ Gotchas: a leaked CPU `Image` stalls ARCore within a few frames (`use { }` close
 it); `toArgbBitmap` is main-thread-hostile; 90° is the portrait `ROTATION_0`
 rotation; emulators never have AICore — inject a canned engine under QA mode.
 
+Composited variant: `frame.cameraImage()` sees the **camera only** — placed 3D
+nodes are invisible to the model. To let the AI see the *augmented* scene
+(camera + virtual objects), capture the composited window instead:
+`PixelCopy.request(activity.window, bitmap, callback, mainHandler)` — already
+an upright ARGB frame (no YUV/rotation), but hide your Compose overlays first
+or they get baked into the AI's input. The reference demo uses this: long-press
+places a prop, then "Is there an animal in this room?" is answered about a dog
+that only exists in AR.
+
 Streamed variant: `generateContentStream(request)` returns a `Flow` of
 `GenerateContentResponse` **deltas** — concatenate `candidates.first().text`
 per emission for a live "typing" card. The reference demo streams, and its
 question is a free-form user field (blank falls back to the default prompt).
 Working demo: `point-and-ask` (`PointAndAskDemo.kt` + `AskEngine.kt`). Full
-recipe (one-shot + streamed variants): `samples/recipes/point-and-ask.md`.
+recipe (one-shot + composited + streamed variants):
+`samples/recipes/point-and-ask.md`.
 
 ### Procedural geometry (no model files)
 
@@ -467,7 +480,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### 3D Basics
 
 - `animation-physics` — Animation & Physics. Skeletal animation playback and rigid-body simulation.
-- `geometry` — Geometry Primitives. Cube, sphere, cylinder, cone, plane.
+- `geometry` — Geometry Primitives. Cube, sphere, cylinder, plane.
 - `model-viewer` — Models. Single model, multi-model scene, and gallery.
 
 ### Lighting & Environment
@@ -524,14 +537,15 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-record-playback` — AR Recording. Record an AR session and replay it without a phone.
 - `ar-rerun` — Rerun Debug. Stream camera pose and planes to the Rerun viewer.
 - `ar-rooftop` — Rooftop Anchors. Anchor models on geospatial rooftops.
-- `ar-scene-mesh` — Scene Mesh. Color-coded real-world geometry with ARKit ARMeshAnchor parity.
+- `ar-scene-mesh` — Scene Mesh. Color-coded real-world geometry via ARCore Streetscape (terrain + buildings).
 - `ar-scene-semantics` — Scene Semantics. 12-class outdoor scene labeling — HUD shows top-3 labels in view.
 - `ar-streetscape` — Streetscape Geometry. Geospatial building and terrain meshes.
 - `ar-terrain` — Terrain Anchors. Anchor models on geospatial terrain.
 - `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
 - `placement-reticle-preview` — AR Placement Reticle Preview. Non-AR preview of AR placement — reticle (searching/ready, ring/disc) and a placed model with a contact shadow.
 - `placement-scene` — Placement Scene. One-line tap-to-place AR (Sceneform ArFragment parity).
-- `point-and-ask` — Point & Ask. Tap what the camera sees — Gemini Nano explains it, fully on-device.
+- `point-and-ask` — Point & Ask. Drop 3D props, tap the augmented scene — Gemini Nano explains what it sees, fully on-device.
+- `wall-placement` — Wall Placement. Mount a TV on a wall — floor↔wall edge alignment, Amazon AR-View style.
 
 <!-- END GENERATED DEMOS -->
 

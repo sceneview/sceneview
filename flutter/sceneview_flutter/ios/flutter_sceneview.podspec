@@ -1,6 +1,11 @@
 Pod::Spec.new do |s|
+<<<<<<< HEAD:flutter/sceneview_flutter/ios/flutter_sceneview.podspec
   s.name             = 'flutter_sceneview'
   s.version          = '4.22.0'
+=======
+  s.name             = 'sceneview_flutter'
+  s.version          = '4.23.0'
+>>>>>>> origin/main:flutter/sceneview_flutter/ios/sceneview_flutter.podspec
   s.summary          = 'Flutter plugin for SceneView 3D and AR.'
   s.description      = <<-DESC
   Flutter plugin bridging to SceneViewSwift (RealityKit) for 3D and AR scenes on iOS.

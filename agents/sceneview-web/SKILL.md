@@ -38,7 +38,7 @@ SceneView for Web is the browser half of the SceneView SDK. It renders with
   registers itself on `window.sceneview`, exposing `createViewer`,
   `modelViewer`, etc. for use with no bundler and no Kotlin.
 
-- **npm package** — `sceneview-web` (currently `4.22.0`).
+- **npm package** — `sceneview-web` (currently `4.23.0`).
 - **Renderer** — Filament.js (WebGL2/WASM). Requires Chrome 79+, Edge 79+,
   Firefox 78+, Safari 15+.
 
@@ -77,7 +77,7 @@ filament.js MUST load before sceneview-web.js:
 ```html
 <canvas id="viewer" style="width:100%;height:100vh;display:block"></canvas>
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.22.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.23.0/sceneview-web.js"></script>
 <script>
   sceneview.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/DamagedHelmet.glb')
     .then(function (sv) { sv.setAutoRotate(true); });
@@ -122,6 +122,7 @@ sceneview.createViewer('viewer').then(function (sv) {
 
 Since #2024 slice 3 the viewer also exposes a minimal **imperative node
 surface**: `addNode()`, `addModelNode(url)` (→ `Promise<NodeHandle>`),
+`addSplatNode(url)` (→ `Promise<NodeHandle>`, 3D Gaussian Splatting, `.ply`/`.spz`, #2646 P2),
 `addCubeNode(size)`, `addSphereNode(radius)`, `addLightNode("directional" |
 "point" | "spot")` each return an opaque `NodeHandle` you keep to mutate content
 after build (`setPosition`, `setRotation` in Euler degrees, `setScale`,
@@ -134,6 +135,26 @@ full signatures. `CameraNode` and `addGeometryNode` remain Kotlin-only.
 const cube = sv.addCubeNode(0.2);
 cube.setPosition(0, 1, 0);
 ```
+
+Since #2646 P2 the viewer also renders **3D Gaussian Splatting** (radiance-field
+captures — Scaniverse / Polycam / Luma / INRIA): `addSplatNode(url)` fetches a
+`.ply` (INRIA) or `.spz` (Niantic) file, parses it through the shared KMP
+`sceneview-core` parsers, and returns a `Promise<NodeHandle>` that resolves once
+the cloud is in the scene. Same Filament engine as Android, WebGL2 backend, same
+rendering: camera-facing gaussian discs (instanced quads, per-splat data in
+RGBA16F textures, premultiplied-alpha blending), with a back-to-front painter's
+sort that re-runs on camera motion. Kotlin/JS additionally exposes
+`SceneView.addSplatNode(splatCloud)` for an already-parsed
+`io.github.sceneview.core.splat.SplatCloud`.
+
+```js
+sv.addSplatNode('models/splats/capture.ply').then((splat) => {
+  splat.setPosition(0, 1, 0);   // it's a NodeHandle like any other
+});
+```
+
+Current scope (P2): isotropic billboards (max-axis scale — anisotropic
+screen-space ellipses are planned) and SH degree-0 colour, matching Android P1.
 
 ## The minimal correct example — Kotlin/JS DSL
 
@@ -150,7 +171,8 @@ SceneView.create(
         }
         light {
             directional()
-            intensity(100_000.0)
+            intensity(10_000.0)   // lux — read under the photometric default
+                                  // exposure (f/12, 1/200s, ISO 200)
             direction(0.6f, -1.0f, -0.8f)
         }
         model("models/helmet.glb") { autoAnimate(true) }

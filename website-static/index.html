@@ -55,7 +55,7 @@
   <meta name="twitter:image:alt" content="SceneView — 3D and AR SDK for every platform">
 
   <!-- Google Analytics 4 -->
-  <!-- GA4 Property: SceneView Website | Stream ID: 14.22.002837 -->
+  <!-- GA4 Property: SceneView Website | Stream ID: 14.23.002837 -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-HX1JWGSMTH"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
@@ -73,8 +73,8 @@
           gtag('event', 'tab_click', { tab_name: this.dataset.tab });
         });
       });
-      // Track CTA clicks (GitHub, pricing, Claude install, Discord)
-      document.querySelectorAll('a[href*="github.com/sceneview"], a[href*="pricing"], a[href*="claude://"], a[href*="discord"], a[href*="npmjs"]').forEach(function(link) {
+      // Track CTA clicks (GitHub, Claude install, Discord)
+      document.querySelectorAll('a[href*="github.com/sceneview"], a[href*="claude://"], a[href*="discord"], a[href*="npmjs"]').forEach(function(link) {
         link.addEventListener('click', function() {
           gtag('event', 'cta_click', { link_url: this.href, link_text: this.textContent.trim() });
         });
@@ -115,7 +115,7 @@
     "url": "https://sceneview.github.io/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Android, iOS, macOS, visionOS, Web, Windows, Linux",
-    "softwareVersion": "4.22.0",
+    "softwareVersion": "4.23.0",
     "license": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Organization", "name": "SceneView", "url": "https://github.com/sceneview" },
@@ -136,7 +136,7 @@
         "name": "How do I add 3D to my Android Jetpack Compose app?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Use SceneView SDK — the only Compose-native 3D library for Android. Add implementation(\"io.github.sceneview:sceneview:4.22.0\") to your build.gradle, then use SceneView { ModelNode(...) } composable. SceneView wraps Google Filament with a declarative API, supports 44+ node types, and adds only ~5MB to your APK."
+          "text": "Use SceneView SDK — the only Compose-native 3D library for Android. Add implementation(\"io.github.sceneview:sceneview:4.23.0\") to your build.gradle, then use SceneView { ModelNode(...) } composable. SceneView wraps Google Filament with a declarative API, supports 44+ node types, and adds only ~5MB to your APK."
         }
       },
       {
@@ -144,7 +144,7 @@
         "name": "What is the best AR SDK for Android with Jetpack Compose?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "SceneView's ARSceneView is the only Compose-native AR SDK for Android. It wraps ARCore with a declarative API: add implementation(\"io.github.sceneview:arsceneview:4.22.0\"), then use ARSceneView { AnchorNode(...) } composable. Supports plane detection, image tracking, cloud anchors, geospatial anchors, and depth."
+          "text": "SceneView's ARSceneView is the only Compose-native AR SDK for Android. It wraps ARCore with a declarative API: add implementation(\"io.github.sceneview:arsceneview:4.23.0\"), then use ARSceneView { AnchorNode(...) } composable. Supports plane detection, image tracking, cloud anchors, geospatial anchors, and depth."
         }
       },
       {
@@ -203,8 +203,8 @@
         <a href="#features" class="nav__link">Features</a>
         <a href="/showcase.html" class="nav__link">Showcase</a>
         <a href="/playground.html" class="nav__link">Playground</a>
+        <a href="/web-demo/" class="nav__link" target="_blank" rel="noopener">Web Demo</a>
         <a href="/docs.html" class="nav__link" target="_blank" rel="noopener">Docs</a>
-        <a href="https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing" class="nav__link" target="_blank" rel="noopener">Pricing</a>
         <button class="nav__theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
           <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
@@ -462,9 +462,9 @@
             <pre class="code-block"><code><span class="syn-green">// build.gradle.kts</span>
 <span class="syn-purple">dependencies</span> {
     <span class="syn-green">// 3D only</span>
-    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:sceneview:4.22.0"</span>)
+    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:sceneview:4.23.0"</span>)
     <span class="syn-green">// 3D + AR</span>
-    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:arsceneview:4.22.0"</span>)
+    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:arsceneview:4.23.0"</span>)
 }</code></pre>
           </div>
           <div class="tabs__panel" data-panel="ios">
@@ -472,13 +472,13 @@
 <span class="syn-green">// Add in Xcode: File &rarr; Add Package Dependencies</span>
 
 <span class="syn-green-light">"https://github.com/sceneview/sceneview"</span>
-<span class="syn-green">// Version: 4.22.0</span>
+<span class="syn-green">// Version: 4.23.0</span>
 
 <span class="syn-purple">import</span> SceneViewSwift</code></pre>
           </div>
           <div class="tabs__panel" data-panel="web">
             <pre class="code-block"><code><span class="syn-green">// One line in your HTML:</span>
-<span class="syn-purple">&lt;script</span> <span class="syn-blue">src</span>=<span class="syn-green-light">"https://cdn.jsdelivr.net/npm/sceneview-web@4.22.0/sceneview-web.js"</span><span class="syn-purple">&gt;&lt;/script&gt;</span>
+<span class="syn-purple">&lt;script</span> <span class="syn-blue">src</span>=<span class="syn-green-light">"https://cdn.jsdelivr.net/npm/sceneview-web@4.23.0/sceneview-web.js"</span><span class="syn-purple">&gt;&lt;/script&gt;</span>
 
 <span class="syn-green">// Then use the API:</span>
 <span class="syn-blue">SceneView</span>.<span class="syn-blue">modelViewer</span>(<span class="syn-green-light">"canvas"</span>, <span class="syn-green-light">"model.glb"</span>)</code></pre>
@@ -1175,7 +1175,7 @@
           <div class="try-card__body">
             <span class="try-card__badge try-card__badge--android">Android</span>
             <h3 class="try-card__title">Android Demo</h3>
-            <p class="try-card__text">Material 3 Expressive, 49 demos (17 non-AR + 32 AR)</p>
+            <p class="try-card__text">Material 3 Expressive, 51 demos (18 non-AR + 33 AR)</p>
           </div>
           <span class="material-symbols-outlined try-card__arrow">arrow_forward</span>
         </a>
@@ -1194,7 +1194,7 @@
         </a>
 
         <!-- Web Demo -->
-        <a href="/playground.html" class="try-card reveal">
+        <a href="/web-demo/" class="try-card reveal" target="_blank" rel="noopener">
           <div class="try-card__visual">
             <img src="assets/demos/web-demo.jpg" alt="SceneView Web demo rendering in browser" class="try-card__img" loading="lazy">
           </div>
@@ -1244,7 +1244,7 @@
         <a href="https://github.com/sponsors/sceneview" class="involved-card reveal" target="_blank" rel="noopener">
           <span class="material-symbols-outlined involved-card__icon">favorite</span>
           <h3 class="involved-card__name">Sponsor</h3>
-          <p class="involved-card__text">Support development on GitHub Sponsors, Open Collective, or Polar.</p>
+          <p class="involved-card__text">Support development on GitHub Sponsors.</p>
         </a>
 
         <a href="https://github.com/sceneview/sceneview/blob/main/CONTRIBUTING.md" class="involved-card reveal" target="_blank" rel="noopener">

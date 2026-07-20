@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="demo_point_and_ask_title">Point &amp; Ask</string>
-    <string name="demo_point_and_ask_subtitle">Tap what the camera sees — Gemini Nano explains it, fully on-device</string>
+    <string name="demo_point_and_ask_subtitle">Drop 3D props, tap the augmented scene — Gemini Nano explains what it sees, fully on-device</string>
 
     <!-- Top status pill -->
     <string name="demo_point_and_ask_status_checking">Checking Gemini Nano availability…</string>
-    <string name="demo_point_and_ask_status_ready">Point at something and tap to ask</string>
+    <string name="demo_point_and_ask_status_ready">Long-press: drop a 3D prop · Tap: ask the on-device AI</string>
     <string name="demo_point_and_ask_status_limited">Gemini Nano isn\'t ready — see below</string>
-    <string name="demo_point_and_ask_status_thinking">Gemini Nano is thinking…</string>
+    <string name="demo_point_and_ask_status_thinking">✦ Gemini Nano is thinking…</string>
 
     <!-- Bottom cards -->
     <string name="demo_point_and_ask_unavailable_title">Gemini Nano isn\'t available on this device</string>
@@ -16,7 +16,10 @@
     <string name="demo_point_and_ask_download_cta">Download model</string>
     <string name="demo_point_and_ask_downloading">Downloading Gemini Nano…</string>
     <string name="demo_point_and_ask_downloading_progress">Downloading Gemini Nano… %1$d MB</string>
-    <string name="demo_point_and_ask_answer_source">Gemini Nano · on-device</string>
+    <string name="demo_point_and_ask_answer_source">✦ Gemini Nano · on-device</string>
+    <!-- Shown instead of answer_source when ConnectivityManager reports no active network —
+         proof the answer was produced with zero connectivity. -->
+    <string name="demo_point_and_ask_answer_source_offline">✦ Gemini Nano · on-device · no network</string>
     <string name="demo_point_and_ask_error">Gemini Nano couldn\'t answer — tap to try again</string>
 
     <!-- Free-form question input (P3) -->
@@ -24,4 +27,8 @@
 
     <!-- The default prompt sent to the model — English on purpose (best on-device answer quality). -->
     <string name="demo_point_and_ask_question" translatable="false">What am I looking at? Answer in one short sentence.</string>
+
+    <!-- Film-mode prefill — the "AI sees the augmented room" reveal question. Sent to the
+         model as-is, so English on purpose like demo_point_and_ask_question. -->
+    <string name="demo_point_and_ask_prefill_question" translatable="false">Is there an animal in this room?</string>
 </resources>

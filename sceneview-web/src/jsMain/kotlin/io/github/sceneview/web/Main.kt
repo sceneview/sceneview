@@ -87,7 +87,11 @@ internal fun createViewerImpl(
     cameraY: Double = 1.5,
     cameraZ: Double = 5.0,
     fov: Double = 45.0,
-    lightIntensity: Double = 50_000.0
+    // Directional key-light intensity, in lux — read under the physically-based
+    // default exposure (see CameraConfig). Lowered from 50_000: the previous
+    // value paired with the broken `setExposureDirect(1.1)` blew models out to a
+    // white blob (the /view Duck bug). Calibrated on the Khronos Duck.
+    lightIntensity: Double = 15_000.0
 ): Promise<SceneViewJS> {
     val canvas = document.getElementById(canvasId) as? HTMLCanvasElement
         ?: return Promise.reject(Throwable("Canvas element '$canvasId' not found"))

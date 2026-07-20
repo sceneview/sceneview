@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- Patched the `ws` memory-exhaustion DoS (GHSA-96hv-2xvq-fx4p / CVE-2026-48779) across all 4 open Dependabot HIGH alerts via version-scoped npm `overrides` — `mcp-gateway` and `telemetry-worker` lockfiles move to ws 8.21.1, `react-native-sceneview` pins its transitive 7.x line to 7.5.12 and 6.x line to 6.2.5 (no major bumps, metro/devtools untouched). Test suites green with the patched resolutions (gateway 187, telemetry 58).

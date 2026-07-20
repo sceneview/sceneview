@@ -19,8 +19,17 @@
 # Usage:
 #   bash .claude/scripts/capture-appstore-screenshots.sh
 #
-# The CI auto-upload (fastlane deliver in app-store.yml) is a deliberate
-# follow-up and is NOT part of this script.
+# This script only CAPTURES. Uploading the result is a separate, explicit
+# step (#2612 P2 Phase B) — no fastlane involved:
+#
+#   .claude/scripts/store-sync/asc_listing.py --dry-run            # what differs
+#   .claude/scripts/store-sync/asc_listing.py --apply-screenshots  # push them
+#
+# or from CI: the `app-store-screenshots.yml` workflow (dispatch-only,
+# `confirm=true`). It is a workflow of its OWN — not a job in app-store.yml,
+# where a dispatch would also archive and upload a TestFlight build — and it
+# is not wired to tags, because screenshots persist across App Store versions
+# and so are not a per-release concern.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

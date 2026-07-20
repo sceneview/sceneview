@@ -66,7 +66,7 @@ class LightNode internal constructor(
             }
         }
 
-    private var _intensity: Double = 100_000.0
+    private var _intensity: Double = 10_000.0
     private var _colorR: Double = 1.0
     private var _colorG: Double = 1.0
     private var _colorB: Double = 1.0
@@ -111,7 +111,7 @@ class LightNode internal constructor(
      *
      * Without this seed the controller flush would clobber the values
      * `buildLightEntity(config)` just applied, rendering a custom
-     * `light { intensity(…); color(…) }` as the default 100k white (#2024
+     * `light { intensity(…); color(…) }` as the default 10k white (#2024
      * slice-2b review). Directional lights carry a direction; point/spot carry
      * a position — matching the flush-on-wire's own type split.
      */

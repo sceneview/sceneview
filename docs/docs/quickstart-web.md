@@ -59,7 +59,8 @@ fun main() {
             }
             light {
                 directional()
-                intensity(100_000.0)
+                intensity(10_000.0)   // lux — read under the photometric
+                                      // default exposure (f/12, 1/200s, ISO 200)
             }
             model("models/DamagedHelmet.glb")
         },
@@ -109,12 +110,39 @@ sceneview.createViewer("scene-canvas").then(function (sv) {
 
 Factories: `addNode()` (empty pivot), `addModelNode(url)` (→ `Promise<NodeHandle>`),
 `addCubeNode(size)`, `addSphereNode(radius)`,
-`addLightNode("directional" | "point" | "spot")`, and `removeNode(handle)`.
+`addLightNode("directional" | "point" | "spot")`, `addSplatNode(url)`
+(→ `Promise<NodeHandle>`, see below), and `removeNode(handle)`.
 `NodeHandle` methods: `setPosition` / `setRotation` (Euler degrees) / `setScale`
 / `setScaleUniform` / `setVisible` / `visible` / `addChild` / `removeChild` /
 `getWorldPosition` / `destroy`. This is a first, minimal slice — no gestures or
 collision yet, and `CameraNode` / `addGeometryNode` stay Kotlin-only. Full
 Android/iOS node parity continues under #2024.
+
+## Gaussian Splatting
+
+Since [#2646](https://github.com/sceneview/sceneview/issues/2646) P2 the web
+viewer renders **3D Gaussian Splatting** captures (Scaniverse, Polycam, Luma,
+INRIA trainers) with the same Filament engine and the same rendering design as
+Android — camera-facing gaussian discs, per-splat data in `RGBA16F` textures,
+premultiplied-alpha blending, and a back-to-front painter's sort that re-runs as
+the camera moves.
+
+```js
+sceneview.createViewer("scene-canvas").then(function (sv) {
+  sv.addSplatNode("models/splats/capture.ply").then(function (splat) {
+    splat.setPosition(0, 1, 0);   // a NodeHandle like any other
+  });
+});
+```
+
+`.ply` (INRIA binary little-endian) and `.spz` (Niantic) are auto-detected and
+parsed by the shared KMP `sceneview-core` parsers — the same code path Android
+uses. Kotlin/JS additionally exposes `SceneView.addSplatNode(splatCloud)` for an
+already-parsed `io.github.sceneview.core.splat.SplatCloud`.
+
+Current scope matches Android P1: **isotropic** billboards (each gaussian renders
+as the circumscribed disc of its largest axis) and SH degree-0 colour.
+Anisotropic screen-space ellipses are planned under the same epic.
 
 ## Environment Lighting
 
@@ -129,5 +157,6 @@ environment(
 
 - **No AR** — requires native sensors (camera, compass, accelerometer)
 - **WebGL2 required** — ~95% of browsers support it
-- **glTF 2.0 / GLB only** — same format as Android
+- **glTF 2.0 / GLB for models** — same format as Android (plus `.ply` / `.spz`
+  Gaussian-Splatting captures, see above)
 - **Cross-origin** — assets need CORS headers if hosted on a different domain

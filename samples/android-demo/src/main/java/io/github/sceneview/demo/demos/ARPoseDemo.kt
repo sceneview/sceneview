@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,7 +17,9 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
@@ -30,7 +34,6 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.common.Axes3DNode
-import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -185,15 +188,6 @@ fun ARPoseDemo(onBack: () -> Unit) {
                             floatArrayOf(0f, 0f, 0f, 1f),
                         )
                     }
-                    // Pose for the in-scene coordinate label: same XYZ as the object but
-                    // lifted 0.35 m so the text floats clearly above the lantern.
-                    val labelPose = remember(base, x, y, z) {
-                        val t = base.translation
-                        Pose(
-                            floatArrayOf(t[0] + x, t[1] + y + 0.35f, t[2] + z),
-                            floatArrayOf(0f, 0f, 0f, 1f),
-                        )
-                    }
                     // Blender-style XYZ axes anchored at the base pose so the user
                     // always sees where the pose's origin sits in the world. Sliders
                     // nudge the lantern relative to this anchor — the gizmo makes that
@@ -222,22 +216,30 @@ fun ARPoseDemo(onBack: () -> Unit) {
                             )
                         }
                     }
-                    // In-scene coordinate text (#1618): the live X/Y/Z offsets rendered
-                    // as a camera-facing TextNode floating above the lantern, so the
-                    // numbers are visible in AR space — not only in the Settings sheet.
-                    TextNode(
+                }
+            }
+
+            // Live X/Y/Z coordinate readout (#1618) — rendered as a screen-anchored
+            // Compose overlay rather than a world-space TextNode floating above the
+            // lantern. The world-space label followed the lantern off the right screen
+            // edge as soon as the X slider offset the pose sideways, clipping the numbers
+            // (#2727). A screen-space pill keeps the readout fully on-screen and readable
+            // for any slider value, matching the sibling AR demos' status-pill idiom
+            // (e.g. ARDepthVisualizationDemo). Shown only once the pose is placed so the
+            // numbers appear alongside the lantern they describe.
+            if (isTracking && basePose != null) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp),
+                    color = Color(0xCC161B22),  // SceneView SurfaceDim
+                    contentColor = Color.White,
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Text(
                         text = "X %.2f   Y %.2f   Z %.2f".format(x, y, z),
-                        fontSize = 40f,
-                        textColor = android.graphics.Color.WHITE,
-                        backgroundColor = 0xCC161B22.toInt(),  // SceneView SurfaceDim
-                        widthMeters = 0.5f,
-                        heightMeters = 0.12f,
-                        position = Position(
-                            x = labelPose.tx(),
-                            y = labelPose.ty(),
-                            z = labelPose.tz(),
-                        ),
-                        cameraPositionProvider = { cameraNode.worldPosition },
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                 }
             }
