@@ -767,4 +767,61 @@ fun WallDemo() {
     );
     expect(symbolIssues).toEqual([]);
   });
+
+  it("a snippet's own *Scene wrapper and *Node subclass are not flagged", () => {
+    // The SDK's naming idiom (WallPlacementScene, PhysicsNode) makes these suffixes
+    // natural for user code — a declaration site must never be treated as a call into
+    // an unknown SceneView symbol.
+    const code = `
+import io.github.sceneview.SceneView
+import io.github.sceneview.node.ModelNode
+import io.github.sceneview.node.Node
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+
+class CustomShelfNode(engine: Engine) : Node(engine) {
+}
+
+@Composable
+fun FurnitureShowcaseScene(modelPath: String) {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val modelInstance = rememberModelInstance(modelLoader, modelPath)
+    SceneView(engine = engine, modelLoader = modelLoader) {
+        modelInstance?.let { ModelNode(modelInstance = it) }
+    }
+}
+
+@Composable
+fun App() {
+    FurnitureShowcaseScene(modelPath = "models/shelf.glb")
+}
+`;
+    const symbolIssues = validateCode(code).filter((i) =>
+      i.rule.startsWith("symbols/"),
+    );
+    expect(symbolIssues).toEqual([]);
+  });
+
+  it("a locally-declared remember* helper is not flagged", () => {
+    const code = `
+import io.github.sceneview.rememberEngine
+
+@Composable
+fun rememberModelPool(engine: Engine): ModelPool {
+    return remember(engine) { ModelPool(engine) }
+}
+
+@Composable
+fun Viewer() {
+    val engine = rememberEngine()
+    val pool = rememberModelPool(engine)
+}
+`;
+    const helperIssues = validateCode(code).filter(
+      (i) => i.rule === "symbols/unknown-remember-helper",
+    );
+    expect(helperIssues).toEqual([]);
+  });
 });

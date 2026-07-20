@@ -27,6 +27,20 @@ function findLines(lines: string[], pattern: RegExp): number[] {
     .filter((n) => n !== -1);
 }
 
+// Symbols the snippet declares itself (`fun MyShowcaseScene(…)`, `class ShelfNode(…) :
+// Node(engine)`) exist by definition — they are the caller's own wrappers, not calls into
+// SceneView, and the SDK's naming idiom (`WallPlacementScene`, `PhysicsNode`) makes such
+// suffixes natural. The optional `<…>` skips a generic parameter list before the name.
+function locallyDeclaredNames(code: string): Set<string> {
+  const names = new Set<string>();
+  for (const m of code.matchAll(
+    /\b(?:fun|class|interface|object)\s+(?:<[^>]*>\s+)?(\w+)/g,
+  )) {
+    names.add(m[1]);
+  }
+  return names;
+}
+
 const RULES: Rule[] = [
   // ─── Threading ────────────────────────────────────────────────────────────
   {
@@ -590,12 +604,14 @@ const RULES: Rule[] = [
         "TransformableNode",
       ]);
       const callRe = /\b([A-Z]\w*(?:Node|Scene))\s*[({]/g;
+      const localNames = locallyDeclaredNames(code);
       const seen = new Set<string>();
       for (const match of code.matchAll(callRe)) {
         const name = match[1];
         if (seen.has(name)) continue;
         seen.add(name);
         if (migrationCovered.has(name)) continue;
+        if (localNames.has(name)) continue;
         if (isKnownTypeName(name)) continue;
         const suggestion = didYouMean(name, knownTypeNames());
         findLines(lines, new RegExp(`\\b${name}\\s*[({]`)).forEach((line) =>
@@ -674,12 +690,14 @@ const RULES: Rule[] = [
       const sceneViewish =
         /^(Engine|Model|Material|Environment|Scene|Node|Collision|Render|Skybox|View|AR|Camera|Splat)/;
       const callRe = /\bremember([A-Z]\w*)\s*\(/g;
+      const localNames = locallyDeclaredNames(code);
       const seen = new Set<string>();
       for (const match of code.matchAll(callRe)) {
         const fullName = `remember${match[1]}`;
         if (seen.has(fullName)) continue;
         seen.add(fullName);
         if (!sceneViewish.test(match[1])) continue;
+        if (localNames.has(fullName)) continue;
         if (isKnownTopLevelFunction(fullName)) continue;
         const suggestion = didYouMean(fullName, rememberHelperNames());
         findLines(lines, new RegExp(`\\b${fullName}\\s*\\(`)).forEach((line) =>
