@@ -488,11 +488,11 @@ jobs:
   # and pub.dev has "Automated publishing" enabled for this repo + tag
   # pattern). #2735 replaced the old "not yet automated" note (#962 follow-up).
   #
-  # DELIBERATELY NOT in `create-release`'s needs-gate yet: until the pub.dev
-  # side is configured (package admin action, ~10 min), this job fails on
-  # auth — an HONEST red (never a swallowed error: that's the #2731 failure
-  # mode), but it must not block the user-visible GitHub Release. Promote it
-  # into the create-release gate after the first successful publish.
+  # In `create-release`'s needs-gate since the first publish landed
+  # (flutter_sceneview 4.24.0, manual debut — a brand-new package cannot
+  # debut via OIDC) and Automated publishing was enabled on the package
+  # (#2735). A red here now blocks the GitHub Release, same contract as the
+  # other user-installable artifacts.
   pub-publish:
     name: Publish flutter_sceneview to pub.dev
     runs-on: ubuntu-latest
@@ -566,7 +566,7 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [publish-library, publish-mcp, publish-web, publish-rn, validate-spm, publish-api-docs]
+    needs: [publish-library, publish-mcp, publish-web, publish-rn, pub-publish, validate-spm, publish-api-docs]
     # User-visible artifacts (Maven Central + the 3 npm packages + SPM tag)
     # must NOT have failed before we cut the GitHub Release — those are what
     # users actually install. `publish-api-docs` (Dokka HTML) is secondary:

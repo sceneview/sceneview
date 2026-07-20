@@ -4,22 +4,15 @@ SceneView provides a Flutter plugin that bridges to native SceneView rendering o
 
 ## Install
 
-> **Note:** the plugin publishes to pub.dev as **`flutter_sceneview`**
-> (first publish in progress — [#2735](https://github.com/sceneview/sceneview/issues/2735)).
+> **Note:** the plugin is published on pub.dev as
+> [**`flutter_sceneview`**](https://pub.dev/packages/flutter_sceneview).
 > The pub.dev packages named `sceneview` and `sceneview_flutter` are
-> unrelated third-party uploads — do not use them. Until the first
-> `flutter_sceneview` publish lands, use the Git dependency below (the
-> dependency key stays `sceneview_flutter` because that was the package
-> name at tag v4.4.0).
+> unrelated third-party uploads — do not use them.
 
 ```yaml
 # pubspec.yaml
 dependencies:
-  sceneview_flutter:
-    git:
-      url: https://github.com/sceneview/sceneview
-      path: flutter/sceneview_flutter
-      ref: v4.4.0
+  flutter_sceneview: ^4.24.0
 ```
 
 ## Usage
@@ -27,7 +20,7 @@ dependencies:
 ### 3D Scene
 
 ```dart
-import 'package:sceneview_flutter/sceneview_flutter.dart';
+import 'package:flutter_sceneview/flutter_sceneview.dart';
 
 class MyModelViewer extends StatelessWidget {
   @override

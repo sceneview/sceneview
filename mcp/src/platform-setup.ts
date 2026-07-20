@@ -433,20 +433,14 @@ SceneView Flutter uses **PlatformView** to embed native SceneView (Android: Fila
 
 ### 1. Dependencies
 
-> **Note:** the plugin publishes to pub.dev as \`flutter_sceneview\`
-> (first publish pending — see #2735; the pub.dev names \`sceneview\` and
-> \`sceneview_flutter\` are unrelated third-party uploads). Until then use
-> the git snippet below — its dependency key stays \`sceneview_flutter\`
-> because that was the package name at the pinned tag.
+> **Note:** the plugin is published on pub.dev as \`flutter_sceneview\`
+> (the pub.dev names \`sceneview\` and \`sceneview_flutter\` are unrelated
+> third-party uploads — do not use them).
 
 \`\`\`yaml
 # pubspec.yaml
 dependencies:
-  sceneview_flutter:
-    git:
-      url: https://github.com/sceneview/sceneview
-      path: flutter/sceneview_flutter
-      ref: v${LATEST_SCENEVIEW_RELEASE}
+  flutter_sceneview: ^${LATEST_SCENEVIEW_RELEASE}
 \`\`\`
 
 ### 2. Android Setup
@@ -505,13 +499,9 @@ const FLUTTER_AR = `## SceneView Flutter — AR Setup
 ### 1. Dependencies
 
 \`\`\`yaml
-# pub.dev publish (as flutter_sceneview) pending — see #2735. Git ref keeps the at-tag name:
+# pubspec.yaml — published on pub.dev (the names sceneview / sceneview_flutter are unrelated third-party uploads)
 dependencies:
-  sceneview_flutter:
-    git:
-      url: https://github.com/sceneview/sceneview
-      path: flutter/sceneview_flutter
-      ref: v${LATEST_SCENEVIEW_RELEASE}
+  flutter_sceneview: ^${LATEST_SCENEVIEW_RELEASE}
 \`\`\`
 
 ### 2. Android Manifest

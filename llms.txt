@@ -6605,18 +6605,18 @@ Backpressure is absorbed by `rateHz`. Wire format: JSON-lines consumed by
 | React Native | Filament/RealityKit | Fabric | `samples/react-native-demo` | Alpha |
 
 ### Flutter Bridge API
-Package: `flutter_sceneview` (pub.dev) — Alpha, Android + iOS only. First pub.dev
-publish pending (#2735); the pub.dev packages named `sceneview` and
-`sceneview_flutter` are unrelated third-party uploads — do not use them.
+Package: `flutter_sceneview` (pub.dev) — Alpha, Android + iOS only. Published at
+https://pub.dev/packages/flutter_sceneview; the pub.dev packages named `sceneview`
+and `sceneview_flutter` are unrelated third-party uploads — do not use them.
 
-Install (once published):
+Install:
 ```yaml
 # pubspec.yaml
 dependencies:
   flutter_sceneview: ^4.24.0
 ```
 
-Until then, use the git dependency (package name at tag v4.24.0 and earlier
+Alternative — pin the repo via git (package name at tag v4.24.0 and earlier
 is the pre-rename `sceneview_flutter`):
 ```yaml
 dependencies:
