@@ -69,6 +69,8 @@ const SOURCES = [
 // explicit imports are hoisted AFTER these and win any ambiguity.
 const PREAMBLE_IMPORTS = [
   "androidx.compose.foundation.layout.*",
+  "androidx.compose.material3.Text",
+  "androidx.compose.material3.Button",
   "androidx.compose.runtime.*",
   "androidx.compose.ui.Alignment",
   "androidx.compose.ui.Modifier",

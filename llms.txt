@@ -216,16 +216,25 @@ fun MyARScreen() {
 
 ### Tracking-failure messages (user-facing strings)
 
-`TrackingFailureReason` carries the *why* of a tracking loss — surface it to the user with an actionable hint, not a silent black screen. The `android-demo` sample ships a copy-paste helper that maps every reason to a localised string:
+`TrackingFailureReason` carries the *why* of a tracking loss — surface it to the user with an actionable hint, not a silent black screen. This snippet is self-contained (the `android-demo` sample ships the same mapping, localised, as `demo/common/TrackingFailureMessages.kt` — copy that file if you want string resources):
 
 ```kotlin
-import io.github.sceneview.demo.common.trackingFailureMessage
-
 var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }
-onTrackingFailureChanged = { failure = it }
 
-// In a status banner:
-val hint = trackingFailureMessage(failure) // null when there is no failure
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    onTrackingFailureChanged = { failure = it },
+)
+
+// In a status banner — map every reason to an actionable hint:
+val hint = when (failure) {
+    TrackingFailureReason.BAD_STATE -> "AR session error — try restarting"
+    TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light — try a brighter area"
+    TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast — slow down"
+    TrackingFailureReason.INSUFFICIENT_FEATURES -> "Not enough detail — point at a more textured surface"
+    TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable — close other camera apps"
+    TrackingFailureReason.NONE, null -> null
+}
 Text(hint ?: "Point your camera at a flat surface")
 ```
 
