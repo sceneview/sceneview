@@ -538,20 +538,33 @@ ferrari_f40.glb
 | React Native | Filament/RealityKit | Fabric | `samples/react-native-demo` | Alpha |
 
 ### Flutter Bridge API
-Package: `sceneview_flutter` (pub.dev) — Alpha, Android + iOS only.
+Package: `flutter_sceneview` (pub.dev) — Alpha, Android + iOS only. First pub.dev
+publish pending (#2735); the pub.dev packages named `sceneview` and
+`sceneview_flutter` are unrelated third-party uploads — do not use them.
 
-Install:
+Install (once published):
 ```yaml
 # pubspec.yaml
 dependencies:
-  sceneview_flutter: ^4.22.0
+  flutter_sceneview: ^4.22.0
+```
+
+Until then, use the git dependency (package name at tag v4.22.0 and earlier
+is the pre-rename `sceneview_flutter`):
+```yaml
+dependencies:
+  sceneview_flutter:
+    git:
+      url: https://github.com/sceneview/sceneview
+      path: flutter/sceneview_flutter
+      ref: v4.22.0
 ```
 
 Widgets: `SceneView` (3D), `ARSceneView` (AR).
 Controller: `SceneViewController` — attach via `onViewCreated`, then call imperative methods.
 
 ```dart
-import 'package:sceneview_flutter/sceneview_flutter.dart';
+import 'package:flutter_sceneview/flutter_sceneview.dart'; // git-pin ≤ v4.22.0: package:sceneview_flutter/sceneview_flutter.dart
 
 // 3D scene — declarative initial models
 SceneView(
