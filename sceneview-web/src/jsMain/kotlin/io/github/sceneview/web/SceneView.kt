@@ -817,6 +817,10 @@ class SceneView private constructor(
      */
     fun addNode(node: Node, parent: Node? = null) {
         sceneGraph.addNode(node, parent)
+        // Wire the repaint hook on the whole subtree so per-frame animation
+        // (Node.smoothTransform, SplatNode re-sorts) keeps the on-demand
+        // render gate alive (#2024 P5b).
+        node.propagateInvalidate { requestRender() }
         requestRender()
     }
 

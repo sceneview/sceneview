@@ -76,8 +76,8 @@ class SplatNode internal constructor(
      */
     var cameraPositionProvider: (() -> Position)? = null
 
-    /** Repaint hook (the render gate cannot infer a texture re-upload) — set by the factory. */
-    internal var onInvalidate: (() -> Unit)? = null
+    // Repaint hook: inherits Node.onInvalidate (#2024 P5b) — the render gate
+    // cannot infer a texture re-upload, so re-sorts invoke it explicitly.
 
     /** Scene-detach hook run first on [destroy] — set by the factory. */
     internal var onDetach: ((Array<Entity>) -> Unit)? = null
@@ -241,6 +241,7 @@ class SplatNode internal constructor(
      * synchronously on the frame tick (single-threaded JS).
      */
     override fun onFrame(deltaTime: Float) {
+        super.onFrame(deltaTime)
         val provider = cameraPositionProvider ?: return
         if (isDestroyed) return
         // Map the camera world position into this node's model space so
