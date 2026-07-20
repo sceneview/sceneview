@@ -1587,6 +1587,36 @@ if changed:
     echo -e "${GREEN}Fixes applied. Re-run without --fix to verify.${NC}"
 fi
 
+# ─── Flutter CHANGELOG stub (--fix; deliberately OUTSIDE the ERRORS gate) ──
+# The pub.dev publish preflight (`flutter pub publish --dry-run`, #2735 —
+# ci.yml → "Build flutter-demo APK") requires the plugin CHANGELOG to mention
+# the current pubspec version. A bump that updates the pubspec without adding
+# the entry therefore turns that job red on EVERY non-path-gated PR and
+# nightly until someone backfills it by hand — this bit twice, for 4.23.0 AND
+# 4.24.0 (#2775; backfilled by #2766). The CHANGELOG top-entry check above is
+# WARN-only (prose content can't be verified mechanically), so a lagging
+# CHANGELOG never raises ERRORS — which is exactly why this handler must NOT
+# live inside the `$ERRORS -gt 0` fix block: with every numeric version
+# already aligned, that block never runs. Prepends a stub in the file's
+# established "version alignment" style; enrich the bullet by hand when the
+# release notes are written. Idempotent: skips when `## $SOURCE_VERSION`
+# already exists anywhere in the file.
+if [ "$FIX_MODE" = "--fix" ]; then
+    FLUTTER_CL="$REPO_ROOT/flutter/sceneview_flutter/CHANGELOG.md"
+    if [ -f "$FLUTTER_CL" ] && ! grep -qE "^## ${SOURCE_VERSION}($| )" "$FLUTTER_CL"; then
+        TMP_CL=$(mktemp)
+        {
+            printf '## %s\n\n' "$SOURCE_VERSION"
+            printf -- '- Version alignment with SceneView v%s; see the [v%s release notes](https://github.com/sceneview/sceneview/releases/tag/v%s). No breaking Flutter API change.\n\n' \
+                "$SOURCE_VERSION" "$SOURCE_VERSION" "$SOURCE_VERSION"
+            cat "$FLUTTER_CL"
+        } > "$TMP_CL"
+        mv "$TMP_CL" "$FLUTTER_CL"
+        echo -e "  Fixed: flutter/.../CHANGELOG.md — prepended '## $SOURCE_VERSION' stub (pub.dev preflight requires it, #2775)"
+        echo ""
+    fi
+fi
+
 # ─── Summary ───────────────────────────────────────────────────────────
 echo -e "${CYAN}=== Summary ===${NC}"
 echo "  Checks: ${#LOCATIONS[@]}"
