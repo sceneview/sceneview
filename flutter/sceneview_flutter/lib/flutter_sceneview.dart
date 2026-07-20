@@ -3,7 +3,7 @@
 /// Uses native platform views:
 /// - Android: SceneView (Filament renderer via Jetpack Compose)
 /// - iOS: SceneViewSwift (RealityKit renderer via SwiftUI)
-library sceneview_flutter;
+library flutter_sceneview;
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';

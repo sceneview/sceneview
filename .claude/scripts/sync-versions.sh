@@ -175,10 +175,10 @@ check_plugin_sdk_dep "flutter/.../android/build.gradle" \
     "$REPO_ROOT/flutter/sceneview_flutter/android/build.gradle"
 
 # Flutter iOS podspec
-PODSPEC="$REPO_ROOT/flutter/sceneview_flutter/ios/sceneview_flutter.podspec"
+PODSPEC="$REPO_ROOT/flutter/sceneview_flutter/ios/flutter_sceneview.podspec"
 if [ -f "$PODSPEC" ]; then
     V=$(grep "s\.version" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    add_check "flutter/.../ios/sceneview_flutter.podspec" "$V"
+    add_check "flutter/.../ios/flutter_sceneview.podspec" "$V"
 fi
 
 # Flutter example pubspec
@@ -347,10 +347,14 @@ for codelab in docs/docs/codelabs/codelab-3d-swiftui.md docs/docs/codelabs/codel
     fi
 done
 
-# Flutter snippet inside llms.txt (`sceneview_flutter: ^X.Y.Z`) — separate
+# Flutter snippet inside llms.txt (`flutter_sceneview: ^X.Y.Z`) — separate
 # from the maven `sceneview:` line, so the existing -m1 check misses it.
+# NOTE (#2735 rename): must grep the pub-form `flutter_sceneview:` line —
+# the legacy `sceneview_flutter:` string still appears in llms.txt as the
+# git-pin dependency key (versionless line), which would silently skip
+# this check.
 if [ -f "$LLMS" ]; then
-    V=$(grep -m1 'sceneview_flutter:' "$LLMS" | grep -oE '\^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | sed 's/^\^//' | head -1 || echo "NOT FOUND")
+    V=$(grep -m1 'flutter_sceneview:' "$LLMS" | grep -oE '\^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | sed 's/^\^//' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
         add_check "llms.txt (flutter snippet)" "$V"
     fi
@@ -1032,7 +1036,7 @@ if changed:
         CURRENT=$(grep "s\.version" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1)
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
             _sed_inplace "s/s\.version *= *'$CURRENT'/s.version          = '$SOURCE_VERSION'/" "$PODSPEC"
-            echo -e "  Fixed: flutter/.../ios/sceneview_flutter.podspec ($CURRENT -> $SOURCE_VERSION)"
+            echo -e "  Fixed: flutter/.../ios/flutter_sceneview.podspec ($CURRENT -> $SOURCE_VERSION)"
         fi
     fi
 
@@ -1527,8 +1531,8 @@ if changed:
             _sed_inplace "s|sceneview-web@$SEMVER|sceneview-web@$SOURCE_VERSION|g" "$LLMS"
             echo -e "  Fixed: llms.txt (sceneview-web@ CDN snippet -> $SOURCE_VERSION)"
         fi
-        if grep -q "sceneview_flutter: ^" "$LLMS" && ! grep -q "sceneview_flutter: ^$SOURCE_VERSION" "$LLMS"; then
-            _sed_inplace "s/sceneview_flutter: ^$SEMVER/sceneview_flutter: ^$SOURCE_VERSION/" "$LLMS"
+        if grep -q "flutter_sceneview: ^" "$LLMS" && ! grep -q "flutter_sceneview: ^$SOURCE_VERSION" "$LLMS"; then
+            _sed_inplace "s/flutter_sceneview: ^$SEMVER/flutter_sceneview: ^$SOURCE_VERSION/" "$LLMS"
             echo -e "  Fixed: llms.txt (flutter snippet -> $SOURCE_VERSION)"
         fi
     fi

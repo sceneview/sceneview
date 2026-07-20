@@ -2097,7 +2097,7 @@
         },
         flutter: {
           file: 'model_viewer.dart', lang: 'Dart',
-          code: 'import \'package:flutter/material.dart\';\nimport \'package:sceneview_flutter/sceneview_flutter.dart\';\n\nclass ModelViewerPage extends StatelessWidget {\n  const ModelViewerPage({super.key});\n\n  @override\n  Widget build(BuildContext context) {\n    return Scaffold(\n      body: SceneView(\n        model: \"models/helmet.glb\",\n        environment: \"envs/sky.hdr\",\n        cameraOrbit: const CameraOrbit(\n          distance: 4.0,\n        ),\n        autoRotate: true,\n      ),\n    );\n  }\n}'
+          code: 'import \'package:flutter/material.dart\';\nimport \'package:flutter_sceneview/flutter_sceneview.dart\';\n\nclass ModelViewerPage extends StatelessWidget {\n  const ModelViewerPage({super.key});\n\n  @override\n  Widget build(BuildContext context) {\n    return Scaffold(\n      body: SceneView(\n        model: \"models/helmet.glb\",\n        environment: \"envs/sky.hdr\",\n        cameraOrbit: const CameraOrbit(\n          distance: 4.0,\n        ),\n        autoRotate: true,\n      ),\n    );\n  }\n}'
         },
         reactnative: {
           file: 'ModelViewer.tsx', lang: 'TypeScript',
@@ -2670,7 +2670,7 @@
       if (platform === 'flutter') {
         return {
           file: title.replace(/\s+/g, '') + '.dart', lang: 'Dart',
-          code: '// Flutter — ' + title + '\n//\n// SceneView Flutter uses PlatformView to bridge\n// to native SceneView (Android) and\n// SceneViewSwift (iOS) renderers.\n//\nimport \'package:flutter/material.dart\';\nimport \'package:sceneview_flutter/sceneview_flutter.dart\';\n\nclass ' + title.replace(/\s+/g, '') + 'Page extends StatelessWidget {\n  const ' + title.replace(/\s+/g, '') + 'Page({super.key});\n\n  @override\n  Widget build(BuildContext context) {\n    return const Scaffold(\n      body: SceneView(\n        // Configure scene properties here\n        model: \"models/helmet.glb\",\n        autoRotate: true,\n      ),\n    );\n  }\n}'
+          code: '// Flutter — ' + title + '\n//\n// SceneView Flutter uses PlatformView to bridge\n// to native SceneView (Android) and\n// SceneViewSwift (iOS) renderers.\n//\nimport \'package:flutter/material.dart\';\nimport \'package:flutter_sceneview/flutter_sceneview.dart\';\n\nclass ' + title.replace(/\s+/g, '') + 'Page extends StatelessWidget {\n  const ' + title.replace(/\s+/g, '') + 'Page({super.key});\n\n  @override\n  Widget build(BuildContext context) {\n    return const Scaffold(\n      body: SceneView(\n        // Configure scene properties here\n        model: \"models/helmet.glb\",\n        autoRotate: true,\n      ),\n    );\n  }\n}'
         };
       }
       if (platform === 'reactnative') {

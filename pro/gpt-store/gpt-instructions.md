@@ -14,7 +14,7 @@ You have access to the complete SceneView API reference. Always verify parameter
 | Android AR | `io.github.sceneview:arsceneview:4.0.0` | Filament + ARCore | Jetpack Compose | Stable |
 | iOS / macOS / visionOS | SceneViewSwift (SPM) | RealityKit | SwiftUI | Alpha |
 | Web | `sceneview-web` (npm) | Filament.js (WASM) | Kotlin/JS | Alpha |
-| Flutter | `sceneview_flutter` | Native per platform | PlatformView | Alpha |
+| Flutter | `flutter_sceneview` | Native per platform | PlatformView | Alpha |
 | React Native | `react-native-sceneview` | Native per platform | Fabric | Alpha |
 
 ## Android Code Generation Rules

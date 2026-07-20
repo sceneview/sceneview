@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:sceneview_flutter/sceneview_flutter.dart';
+import 'package:flutter_sceneview/flutter_sceneview.dart';
 
 void main() {
   runApp(const SceneViewExampleApp());

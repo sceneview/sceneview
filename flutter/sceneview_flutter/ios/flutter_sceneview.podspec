@@ -1,5 +1,5 @@
 Pod::Spec.new do |s|
-  s.name             = 'sceneview_flutter'
+  s.name             = 'flutter_sceneview'
   s.version          = '4.24.0'
   s.summary          = 'Flutter plugin for SceneView 3D and AR.'
   s.description      = <<-DESC

@@ -6,7 +6,7 @@ import 'package:flutter/scheduler.dart';
 /// Physics tab — the cross-platform **Double Pendulum** demo (issue #1332).
 ///
 /// #1221 shipped this chaotic two-link pendulum on Android, iOS and Web. The
-/// Flutter sample app is a *bridge-feature showcase* — the `sceneview_flutter`
+/// Flutter sample app is a *bridge-feature showcase* — the `flutter_sceneview`
 /// PlatformView has no per-frame transform-mutation API, so rather than adding
 /// substantial new bridge surface (tracked as a follow-up), this page renders
 /// the pendulum with a Flutter [CustomPainter].

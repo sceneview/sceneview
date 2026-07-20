@@ -482,7 +482,7 @@ jobs:
           done
           echo "::notice::Both SPM manifests present and well-formed at tag ${GITHUB_REF_NAME}"
 
-  # ── 4d. Publish sceneview_flutter to pub.dev (OIDC) ───────────────────────
+  # ── 4d. Publish flutter_sceneview to pub.dev (OIDC) ───────────────────────
   # Automated pub.dev publishing via GitHub OIDC (no long-lived token — the
   # pub client exchanges the Actions id-token when `id-token: write` is set
   # and pub.dev has "Automated publishing" enabled for this repo + tag
@@ -494,7 +494,7 @@ jobs:
   # mode), but it must not block the user-visible GitHub Release. Promote it
   # into the create-release gate after the first successful publish.
   pub-publish:
-    name: Publish sceneview_flutter to pub.dev
+    name: Publish flutter_sceneview to pub.dev
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -515,14 +515,14 @@ jobs:
           # pub.dev versions are immutable — mirror the npm publishers'
           # skip-if-published so a workflow_dispatch retry after a partial
           # failure stays idempotent.
-          PUBLISHED=$(curl -sf "https://pub.dev/api/packages/sceneview_flutter" \
+          PUBLISHED=$(curl -sf "https://pub.dev/api/packages/flutter_sceneview" \
             | python3 -c "import json,sys; print(any(v['version'] == '$VERSION' for v in json.load(sys.stdin)['versions']))" \
             2>/dev/null || echo "False")
           if [ "$PUBLISHED" = "True" ]; then
-            echo "::notice::sceneview_flutter $VERSION already on pub.dev — skipping"
+            echo "::notice::flutter_sceneview $VERSION already on pub.dev — skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Publishing sceneview_flutter $VERSION (not yet on pub.dev)"
+            echo "Publishing flutter_sceneview $VERSION (not yet on pub.dev)"
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -557,7 +557,7 @@ jobs:
         working-directory: flutter/sceneview_flutter
         run: |
           if ! flutter pub publish --force; then
-            echo "::warning::pub.dev publish failed. If this is an auth error, enable 'Automated publishing' (GitHub Actions, repo sceneview/sceneview, tag pattern v{{version}}) on pub.dev — see #2735. Failing honestly rather than masking (#2731 lesson)."
+            echo "::warning::pub.dev publish failed. If this is an auth error, enable 'Automated publishing' (GitHub Actions, repo sceneview/sceneview, tag pattern v{{version}}) on pub.dev for flutter_sceneview (the sceneview/sceneview_flutter names are third-party, see #2735). A brand-new package's FIRST version must be published manually once before OIDC applies. Failing honestly rather than masking (#2731 lesson)."
             exit 1
           fi
 

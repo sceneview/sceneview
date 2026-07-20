@@ -1,4 +1,4 @@
-name: sceneview_flutter
+name: flutter_sceneview
 description: Flutter plugin for SceneView — 3D and AR scenes using native renderers (Filament on Android, RealityKit on iOS).
 version: 4.24.0
 homepage: https://sceneview.github.io
