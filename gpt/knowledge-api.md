@@ -3702,7 +3702,9 @@ the `add*Node` factories returned (`===`-comparable), sorted nearest-first:
 ```js
 const cube = sv.addCubeNode(0.5);
 canvas.addEventListener('click', (e) => {
-  const hits = sv.hitTest(e.offsetX, e.offsetY);
+  // Scale CSS event coords to backing-store pixels (devicePixelRatio canvases).
+  const px = canvas.width / canvas.clientWidth;
+  const hits = sv.hitTest(e.offsetX * px, e.offsetY * px);
   if (hits[0] === cube) cube.setScaleUniform(1.5);
 });
 ```

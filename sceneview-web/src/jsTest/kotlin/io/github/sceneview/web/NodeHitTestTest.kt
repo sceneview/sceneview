@@ -35,11 +35,14 @@ class NodeHitTestTest {
 
     /** The refreshCollisionShapes derivation, applied to one node. */
     private fun SceneGraph.refreshShape(node: Node) {
-        node.collisionShape?.let { local ->
+        val local = node.collisionShape
+        if (local != null) {
             setCollisionShape(
                 node,
                 local.transform(TransformProvider { node.worldTransform.toMatrix() }),
             )
+        } else {
+            removeCollisionShape(node)
         }
     }
 
@@ -110,6 +113,24 @@ class NodeHitTestTest {
         graph.refreshShape(shapeless)
 
         assertEquals(0, graph.hitTest(rayAlongX).size)
+    }
+
+    @Test
+    fun nullingTheShapeAfterAHitDropsTheStaleWorldShape() {
+        // The documented opt-out (#2024 P5c review): collisionShape = null
+        // AFTER a hit test must not leave the last derived world shape
+        // lingering in the graph.
+        val graph = SceneGraph()
+        val node = node("target")
+        node.collisionShape = unitBox
+        node.position = Position(5f, 0f, 0f)
+        graph.addNode(node)
+        graph.refreshShape(node)
+        assertEquals(1, graph.hitTest(rayAlongX).size, "shape set — hit expected")
+
+        node.collisionShape = null
+        graph.refreshShape(node)
+        assertEquals(0, graph.hitTest(rayAlongX).size, "nulled — the node must be un-pickable")
     }
 
     @Test

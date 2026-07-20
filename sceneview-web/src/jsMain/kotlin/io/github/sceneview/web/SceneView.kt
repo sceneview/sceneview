@@ -900,11 +900,17 @@ class SceneView private constructor(
     private fun refreshCollisionShapes() {
         fun visit(sceneNode: SceneNode) {
             (sceneNode as? Node)?.let { node ->
-                node.collisionShape?.let { local ->
+                val local = node.collisionShape
+                if (local != null) {
                     sceneGraph.setCollisionShape(
                         node,
                         local.transform(TransformProvider { node.worldTransform.toMatrix() }),
                     )
+                } else {
+                    // Honors the documented opt-out: a nulled collisionShape
+                    // must also drop the previously derived world shape, or
+                    // the node would keep getting hit at its stale bounds.
+                    sceneGraph.removeCollisionShape(node)
                 }
             }
             sceneNode.childNodes.forEach { visit(it) }

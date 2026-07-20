@@ -38,9 +38,13 @@ internal fun screenPointToRay(
     val invProjection = inverse(projection)
     val near = unprojectNdc(invProjection, cameraModel, ndcX, ndcY, ndcZ = -1f)
     // The second point sits MID-volume (NDC z = 0), not on the far plane:
-    // Filament renders with an infinite-far projection, where NDC z = +1 maps
-    // to w = 0 — a point at infinity whose perspective divide is NaN. Any
-    // second finite depth on the same pixel yields the same ray direction.
+    // Filament's getProjectionMatrix() returns the RENDERING projection,
+    // which uses an INFINITE far plane regardless of the finite `far` passed
+    // to setProjectionFov (that value only feeds the culling matrix) — the
+    // kotlin-bundle.spec.ts P5c probe asserts proj[10] == -1 exactly. Under
+    // it, NDC z = +1 maps to w = 0 — a point at infinity whose perspective
+    // divide is NaN. Any second finite depth on the same pixel yields the
+    // same ray direction (and NDC z = 0 stays finite for an ortho too).
     val mid = unprojectNdc(invProjection, cameraModel, ndcX, ndcY, ndcZ = 0f)
     // Ray's constructor normalizes the direction.
     return Ray(

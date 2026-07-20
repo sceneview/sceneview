@@ -391,7 +391,7 @@ test.describe('SceneView Kotlin/JS bundle — browser init', () => {
         const model = camera.getModelMatrix();
         return {
           projLen: proj?.length ?? -1,
-          p0: Number(proj[0]), p5: Number(proj[5]),
+          p0: Number(proj[0]), p5: Number(proj[5]), p10: Number(proj[10]),
           modelLen: model?.length ?? -1,
           m12: Number(model[12]), m13: Number(model[13]), m14: Number(model[14]),
         };
@@ -404,6 +404,13 @@ test.describe('SceneView Kotlin/JS bundle — browser init', () => {
     expect((result as any).projLen).toBe(16);
     expect((result as any).p0).toBeCloseTo(1, 3);
     expect((result as any).p5).toBeCloseTo(1, 3);
+    // getProjectionMatrix() returns the RENDERING projection, which uses an
+    // INFINITE far plane regardless of the finite far passed to
+    // setProjectionFov (the finite far only feeds the culling matrix):
+    // [2][2] is exactly -1 (infinite far), not -(f+n)/(f-n) = -1.002 for the
+    // finite far=100/near=0.1 set above. This is the premise ScreenRay.kt's
+    // mid-volume sampling relies on — NDC z = +1 is a point at infinity.
+    expect(Math.abs((result as any).p10 + 1)).toBeLessThan(1e-4);
     expect((result as any).modelLen).toBe(16);
     expect((result as any).m12).toBeCloseTo(2, 3);
     expect((result as any).m13).toBeCloseTo(3, 3);

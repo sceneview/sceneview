@@ -145,7 +145,9 @@ against your kept references works:
 
 ```js
 canvas.addEventListener('click', (e) => {
-  const hits = sv.hitTest(e.offsetX, e.offsetY);
+  // Scale CSS event coords to backing-store pixels (devicePixelRatio canvases).
+  const px = canvas.width / canvas.clientWidth;
+  const hits = sv.hitTest(e.offsetX * px, e.offsetY * px);
   if (hits[0] === cube) cube.setScaleUniform(1.5);
 });
 ```

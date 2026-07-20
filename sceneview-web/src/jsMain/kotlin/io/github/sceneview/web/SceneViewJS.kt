@@ -39,8 +39,19 @@ class SceneViewJS {
         }
 
         override fun removeNodeInternal(node: io.github.sceneview.web.nodes.Node) {
-            nodeHandles.remove(node)
+            // Purge the WHOLE subtree from the handle registry — removal
+            // cascades to descendants, and factory-created children
+            // (addCubeNode(parent = …)) hold entries too. Walk before the
+            // graph detach mutates the child sets.
+            dropHandlesRecursive(node)
             _sceneView?.removeNode(node)
+        }
+    }
+
+    private fun dropHandlesRecursive(node: io.github.sceneview.web.nodes.Node) {
+        nodeHandles.remove(node)
+        node.childNodes.forEach { child ->
+            (child as? io.github.sceneview.web.nodes.Node)?.let { dropHandlesRecursive(it) }
         }
     }
 
