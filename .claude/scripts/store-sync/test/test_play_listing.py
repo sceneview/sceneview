@@ -70,6 +70,63 @@ class GraphicsForTest(unittest.TestCase):
         self.assertEqual(pl.graphics_for(pathlib.Path(self.tmp.name), "*.png"), [])
 
 
+class ImageTypeTest(unittest.TestCase):
+    """#2794 — an imageType Play doesn't know 400s mid-edit and rolls back the
+    WHOLE atomic listing edit (text + icon + phone screenshots), while the
+    sync-listing job's `continue-on-error` hides the red. `tabletScreenshots`
+    /`tabletScreenshots10` did exactly that from #1710 until #2794. Pin it."""
+
+    def test_shipped_graphics_use_only_valid_play_types(self):
+        self.assertEqual(pl.unknown_image_types(), [])
+
+    def test_allowlist_mirrors_the_v3_enum_exactly(self):
+        """Transcribed from the v3 API discovery document. A guard that exists to
+        be exhaustive is worthless if it allows a value Play rejects: an extra
+        entry here lets a future GRAPHICS row 400 mid-edit and roll the whole
+        listing back. `appImageTypeUnspecified` is excluded on purpose (proto-zero
+        sentinel, never a real slot); `promoGraphic` is v2-only and must stay out."""
+        self.assertEqual(pl.VALID_IMAGE_TYPES, frozenset({
+            "phoneScreenshots", "sevenInchScreenshots", "tenInchScreenshots",
+            "tvScreenshots", "wearScreenshots",
+            "icon", "featureGraphic", "tvBanner",
+        }))
+
+    def test_apply_sync_refuses_a_bad_type_at_the_write_boundary(self):
+        """main() guards the CLI; this guards a direct importer, before any edit
+        is opened. Patch GRAPHICS so no network object is ever needed."""
+        original = pl.GRAPHICS
+        pl.GRAPHICS = [("tabletScreenshots", "tablet7-*.png")]
+        try:
+            with self.assertRaises(ValueError) as ctx:
+                pl.apply_sync(sess=None, pkg="x", root=pathlib.Path("."))
+            self.assertIn("tabletScreenshots", str(ctx.exception))
+        finally:
+            pl.GRAPHICS = original
+
+    def test_tablet_slots_use_the_play_enum_names(self):
+        declared = [t for t, _ in pl.GRAPHICS]
+        self.assertIn("sevenInchScreenshots", declared)
+        self.assertIn("tenInchScreenshots", declared)
+
+    def test_detects_an_unknown_type(self):
+        bogus = [("icon", ["icon-512.png"]), ("tabletScreenshots", "t-*.png")]
+        self.assertEqual(pl.unknown_image_types(bogus), ["tabletScreenshots"])
+
+    def test_every_committed_graphic_is_mapped(self):
+        """An asset no GRAPHICS pattern matches is dead weight — committed but
+        never uploaded, and invisible until someone diffs the live listing."""
+        root = pathlib.Path(__file__).resolve().parents[4]
+        gdir = root / "samples/android-demo/distribution/play-store/en-GB/graphics"
+        if not gdir.is_dir():
+            self.skipTest(f"{gdir} not present in this checkout")
+        ldir = gdir.parent
+        mapped = {f.name for _, pat in pl.GRAPHICS for f in pl.graphics_for(ldir, pat)}
+        on_disk = {f.name for f in gdir.iterdir() if f.is_file()
+                   and f.suffix.lower() in {".png", ".jpg", ".jpeg"}}
+        self.assertEqual(on_disk - mapped, set(),
+                         "graphics files matched by no GRAPHICS pattern")
+
+
 class DiffTextTest(unittest.TestCase):
     def test_no_drift(self):
         self.assertEqual(pl.diff_text("en-GB", {"title": "A"}, {"title": "A"}), [])

@@ -148,7 +148,7 @@ zéro. À garder en tête pour les Phases C/D, où la tentation sera la même.
   → La validation à faire avant de traiter le diff comme signal porte donc sur un
   set **console-uploadé**, pas sur un set produit par notre propre upload.
 
-  - **C.0 — sonde de provenance des checksums (LIVRÉ, cette PR)** : le prérequis
+  - **C.0 — sonde de provenance des checksums (LIVRÉ, PR #2811)** : le prérequis
     ci-dessus était traité comme « une action console manuelle vague à faire un
     jour ». Il devient un **rail CI read-only mesurable**. `asc_listing.py`
     gagne `classify_live_checksums()` + `checksum_provenance_report()` (helpers
@@ -168,8 +168,6 @@ zéro. À garder en tête pour les Phases C/D, où la tentation sera la même.
     SKIP honnête sans créds, jamais bloquant. **C'est le premier appelant CI de
     `asc_listing.py --dry-run` : jusqu'ici le chemin read-only ASC n'avait JAMAIS
     touché l'API live** (grep vérifié — seul `--apply-screenshots` était câblé).
-    ⚠️ **Séquencement** : touche `maintenance.yml`, comme #2795 (Play §12) →
-    rebase mécanique attendu si #2795 merge en premier (deux jobs append-only).
     §17 release-checklist + issue-dédup de drift = **reste de la Phase C**, à
     écrire une fois le verdict `confirmed` obtenu (sinon le gate mentirait).
 - **D — Data safety as code** : `data-safety.csv` généré depuis DATA_SAFETY.md +

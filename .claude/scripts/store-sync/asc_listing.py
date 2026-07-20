@@ -109,6 +109,15 @@ FIELDS = [
 # run still reports success. test_asc_listing.py's
 # `test_committed_dirs_are_all_mapped` fails when a committed dir has no row
 # here (run by test-store-sync.sh via unittest discover, in repo-hygiene).
+#
+# The numbers deliberately DON'T match, and that is not a typo: Apple never
+# added a 6.9" or a 13" display type. `APP_IPHONE_67` is the largest iPhone
+# slot and takes both 1290x2796 (6.7") and 1320x2868 (6.9"); likewise the
+# 13" iPad ships in `APP_IPAD_PRO_3GEN_129`. Verified against the enum
+# (spaceship's AppScreenshotSet::DisplayType) — there is no APP_IPHONE_69 and
+# no APP_IPAD_13. Do NOT "fix" these to match the dir names: an imageType /
+# displayType the store doesn't know is exactly the failure that voided every
+# Play listing sync for months (#2794).
 DISPLAY_TYPE_MAP = {
     "iphone-6.9": "APP_IPHONE_67",
     "ipad-13": "APP_IPAD_PRO_3GEN_129",
