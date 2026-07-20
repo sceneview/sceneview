@@ -2,7 +2,6 @@ package io.github.sceneview.node
 
 import com.google.android.filament.Engine
 import com.google.android.filament.Material
-import com.google.android.filament.RenderableManager
 import dev.romainguy.kotlin.math.length
 import io.github.sceneview.geometries.Plane
 import io.github.sceneview.loaders.MaterialLoader
