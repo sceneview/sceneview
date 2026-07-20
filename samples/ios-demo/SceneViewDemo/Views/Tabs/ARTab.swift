@@ -7,7 +7,7 @@ import SceneViewSwift
 
 /// AR tab — place 3D models in your real-world space.
 ///
-/// Liquid Glass overlay design (iOS 26+ Stitch spec):
+/// Liquid Glass overlay design (iOS 26+, per the SceneView design system — see DESIGN.md):
 /// - Full-bleed AR camera underneath
 /// - Top-center: floating glass status pill ("Tap to place" / "N placed")
 /// - Top-right: glass exit button to dismiss the tab
