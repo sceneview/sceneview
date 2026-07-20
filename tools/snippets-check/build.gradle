@@ -74,4 +74,9 @@ dependencies {
     api project(":sceneview")
     api project(":arsceneview")
     api libs.filament.android
+
+    // Mirrors arsceneview's own compileOnly: the Android XR snippets document
+    // exactly the "add androidx.xr yourself" integration, so the guard needs
+    // the same compile classpath the documented user has.
+    compileOnly libs.androidx.xr.arcore
 }
