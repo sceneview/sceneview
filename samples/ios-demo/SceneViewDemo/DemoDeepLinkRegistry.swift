@@ -60,6 +60,12 @@ enum DemoDeepLinkRegistry {
         "ar-plane-node", "ar-scene-mesh", "ar-scene-semantics", "ar-ml-object-label",
         "placement-scene", "ar-collaborative", "ar-body-tracker",
         "ar-hand-tracking", "ar-xr-face",
+        // Legacy aliases (#2799) — pre-canonicalization ids kept only so
+        // existing QR codes / bookmarks keep resolving. Canonical
+        // replacements ("ar-cloud-anchor", "ar-rooftop", "ar-terrain") are
+        // listed above; both old and new ids route to the same destination
+        // (today, the same coming-soon placeholder — see `destination(for:)`).
+        "ar-cloud-anchors", "ar-rooftop-anchors", "ar-terrain-anchors",
     ]
 
     /// Resolve a demo id to its presented `View`. Returns a fallback

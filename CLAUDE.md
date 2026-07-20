@@ -69,13 +69,22 @@ platform as a failure), `--out <dir>`.
 
 | Leg | Harness | Drives | Report |
 |---|---|---|---|
-| `android` | Maestro flows `.maestro/android/` via `qa-android-demos.sh` | All 51 demos on an emulator | `device-qa-report.json` |
-| `ios` | Maestro flows `.maestro/ios/` via `ios-device-qa.sh` | 24 deep-linkable demos on a simulator (AR = launch-only smoke) | `device-qa-report.json` |
+| `android` | Maestro flows `.maestro/android/` via `qa-android-demos.sh` | All 52 demos on an emulator | `device-qa-report.json` |
+| `ios` | Maestro flows `.maestro/ios/` via `ios-device-qa.sh` | 63 deep-linkable demos on a simulator (AR = launch-only smoke) | `device-qa-report.json` |
 | `web` | Playwright suite `samples/web-demo/tests/` | Browser 3D viewer + every catalog tab | `web-qa-summary.json` |
 | `ar` | `ar-replay-qa.sh` + `ARReplayHarnessTest` | Every Android AR demo replayed against recorded ARCore sessions — no physical device | `ar-qa-summary.json` |
 
 See [`.maestro/README.md`](.maestro/README.md) for the Maestro flow layout and
 known limitations (no pinch gesture → 3D zoom is driven via deep-link param).
+
+**iOS leg status — local-only, 0 CI runs today.** Unlike `android`/`web`/`ar`,
+the `ios` leg above has never actually executed in CI: `device-qa.yml` defines
+no `ios` job, so it only runs locally (`bash .claude/scripts/device-qa.sh
+--platform=ios` / `ios-device-qa.sh`). Separately, `render-tests.yml`'s "iOS
+screenshot tests" job runs the existing logic-only `SceneViewDemoTests` target
+and captures no screenshots — there is no UI-testing target and no
+`XCTAttachment` anywhere in the iOS demo. Wiring both up is tracked in #2803;
+until it lands, don't read either as an automated release gate.
 
 ### Release-checkpoint mandate
 
@@ -169,8 +178,8 @@ To set up: `npm install @google/stitch-sdk`, then add the Stitch MCP server in C
 
 ## When writing any SceneView code
 
-- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.23.0`)
-- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.23.0`)
+- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.24.0`)
+- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.24.0`)
 - Declare nodes as composables inside the trailing content block — not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — returns `null`
   while loading, always handle the null case
@@ -328,10 +337,11 @@ RAM-constrained Mac no longer contend for emulator resources.
 
 GitHub-hosted `macos-15` runners cost ~10x ubuntu per-minute and have no KVM.
 SceneView ships **6 jobs on `macos-15`** (`ios.yml`, `bridge-ios-compile.yml`,
-`rn-ios-compile.yml`, `app-store.yml` × 2, `render-tests.yml`) plus a
-NIGHTLY-ONLY iOS device-QA leg (#1601) deliberately skipped on per-push runs
-because of the macOS cost. A self-hosted runner on a Mac removes that
-multiplier and unblocks per-push iOS device-QA.
+`rn-ios-compile.yml`, `app-store.yml` × 2, `render-tests.yml`). The iOS Maestro
+device-QA leg (#1601) has **no CI wiring at all yet** — not nightly, not
+per-push; see the "iOS leg status" note under "Device QA" above (#2803 tracks
+adding it). A self-hosted runner on a Mac is what would make a per-push iOS
+leg affordable once it exists.
 
 Inspired by [Zach Rattner's M4 Mac cluster
 playbook](https://zachrattner.com/projects/m4-mac-cluster) (8 Mac minis, $35k/yr

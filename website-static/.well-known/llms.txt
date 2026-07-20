@@ -2,12 +2,12 @@
 
 SceneView is a declarative 3D and AR SDK for Android (Jetpack Compose, Filament, ARCore) and Apple platforms — iOS, macOS, visionOS (SwiftUI, RealityKit, ARKit) — with shared core logic via Kotlin Multiplatform. Each platform uses its native renderer: Filament on Android, RealityKit on Apple.
 
-**Android — Maven artifacts (version 4.23.0):**
-- 3D only: `io.github.sceneview:sceneview:4.23.0`
-- AR + 3D: `io.github.sceneview:arsceneview:4.23.0`
+**Android — Maven artifacts (version 4.24.0):**
+- 3D only: `io.github.sceneview:sceneview:4.24.0`
+- AR + 3D: `io.github.sceneview:arsceneview:4.24.0`
 
 **Apple (iOS 17+ / macOS 14+ / visionOS 1+) — Swift Package:**
-- `https://github.com/sceneview/sceneview.git` (from: "4.23.0"))
+- `https://github.com/sceneview/sceneview.git` (from: "4.24.0"))
 
 **Min SDK:** 24 | **Target SDK:** 36 | **Kotlin:** 2.3.20 | **Compose BOM compatible**
 
@@ -18,8 +18,8 @@ SceneView is a declarative 3D and AR SDK for Android (Jetpack Compose, Filament,
 ### build.gradle (app module)
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.23.0")   // 3D only
-    implementation("io.github.sceneview:arsceneview:4.23.0") // AR (includes sceneview)
+    implementation("io.github.sceneview:sceneview:4.24.0")   // 3D only
+    implementation("io.github.sceneview:arsceneview:4.24.0") // AR (includes sceneview)
 }
 ```
 
@@ -2070,7 +2070,7 @@ React Native (Turbo Module / Fabric), KMP Compose iOS (UIKitView).
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.23.0")
+    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.24.0")
 ]
 ```
 
@@ -2443,7 +2443,7 @@ ferrari_f40.glb
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.23.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.24.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -2754,7 +2754,7 @@ Renderer: **RealityKit**. Requires iOS 17+ / macOS 14+ / visionOS 1+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.23.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.24.0")
 ```
 
 Import: `import SceneViewSwift`
@@ -3250,7 +3250,7 @@ Backpressure is absorbed by `rateHz`. Wire format: JSON-lines consumed by
 | visionOS | RealityKit | SwiftUI | via SceneViewSwift | Alpha |
 | Web | Filament.js + WebXR | Kotlin/JS | `samples/web-demo` | Alpha |
 
-SceneView Web (sceneview-web v4.23.0) — see "## SceneView Web (Kotlin/JS + Filament.js)" section above for the full API reference.
+SceneView Web (sceneview-web v4.24.0) — see "## SceneView Web (Kotlin/JS + Filament.js)" section above for the full API reference.
 | Desktop | Software renderer | Compose Desktop | `samples/desktop-demo` | Alpha |
 | Flutter | Filament/RealityKit | PlatformView | `samples/flutter-demo` | Alpha |
 | React Native | Filament/RealityKit | Fabric | `samples/react-native-demo` | Alpha |
@@ -3264,10 +3264,10 @@ Install (once published):
 ```yaml
 # pubspec.yaml
 dependencies:
-  flutter_sceneview: ^4.23.0
+  flutter_sceneview: ^4.24.0
 ```
 
-Until then, use the git dependency (package name at tag v4.23.0 and earlier
+Until then, use the git dependency (package name at tag v4.24.0 and earlier
 is the pre-rename `sceneview_flutter`):
 ```yaml
 dependencies:
@@ -3275,14 +3275,14 @@ dependencies:
     git:
       url: https://github.com/sceneview/sceneview
       path: flutter/sceneview_flutter
-      ref: v4.23.0
+      ref: v4.24.0
 ```
 
 Widgets: `SceneView` (3D), `ARSceneView` (AR).
 Controller: `SceneViewController` — attach via `onViewCreated`, then call imperative methods.
 
 ```dart
-import 'package:flutter_sceneview/flutter_sceneview.dart'; // git-pin ≤ v4.23.0: package:sceneview_flutter/sceneview_flutter.dart
+import 'package:flutter_sceneview/flutter_sceneview.dart'; // git-pin ≤ v4.24.0: package:sceneview_flutter/sceneview_flutter.dart
 
 // 3D scene — declarative initial models
 SceneView(

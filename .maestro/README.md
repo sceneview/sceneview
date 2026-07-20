@@ -16,7 +16,7 @@ harness (umbrella [#1560](https://github.com/sceneview/sceneview/issues/1560)).
 ```
 .maestro/
   android/
-    catalog.yaml      master flow — all 42 demos
+    catalog.yaml      master flow — all 52 demos
     3d-basics.yaml    per-category subsets (run a fast slice)
     lighting.yaml
     content.yaml
@@ -26,7 +26,7 @@ harness (umbrella [#1560](https://github.com/sceneview/sceneview/issues/1560)).
     flows/
       demo.yaml       reusable parameterised subflow (one demo)
   ios/
-    catalog.yaml      master flow — all 24 deep-linkable demos
+    catalog.yaml      master flow — all 63 deep-linkable demos
     3d-basics.yaml    per-category subsets (run a fast slice)
     lighting.yaml
     content.yaml
@@ -52,7 +52,7 @@ bash .claude/scripts/setup-ar-emulator.sh
 ./gradlew :samples:android-demo:assembleDebug
 adb install -r samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk
 
-# Full catalog (42 demos) …
+# Full catalog (52 demos) …
 maestro test .maestro/android/catalog.yaml
 # … or a fast subset.
 maestro test .maestro/android/lighting.yaml
@@ -117,11 +117,18 @@ optionally, so a checkout without the file builds keyless and silently.
 
 ### iOS coverage and known gaps
 
-- **Deep-link subset, not the full catalog.** iOS flows reach demos via the
-  public `sceneview://demo/<id>` custom scheme. The reachable set is
-  `DemoDeepLinkRegistry.allowedIds` (24 ids at the time slice
-  [#1563](https://github.com/sceneview/sceneview/issues/1563) landed), a subset
-  of Android's 42-demo catalog. The iOS Samples-tab presents demos in a
+- **No CI wiring — 0 iOS Maestro runs have ever executed in CI.** `device-qa.yml`
+  defines no `ios` job (only `web`, `android`, `ar`); this leg is local-only
+  today (`bash .claude/scripts/device-qa.sh --platform=ios` / `ios-device-qa.sh`
+  on a dev machine). Tracked in [#2803](https://github.com/sceneview/sceneview/issues/2803).
+- **Deep-link reachable set, not a strict subset.** iOS flows reach demos via
+  the public `sceneview://demo/<id>` custom scheme. The reachable set is
+  `DemoDeepLinkRegistry.allowedIds` (63 ids, up from 24 when
+  [#1563](https://github.com/sceneview/sceneview/issues/1563) landed) — mostly
+  Android's 52 registered demo ids plus several retired-alias / coming-soon
+  ids, though 2 entries (`ar-lighting`, `ar-recording`) don't match any current
+  Android id and 12 current Android ids aren't in the set yet, so it isn't a
+  clean subset either way. The iOS Samples-tab presents demos in a
   `.fullScreenCover` with **no Close affordance**, so a UI-navigation walk of
   the catalog cannot advance past the first demo — deep-link launch +
   `stopApp: true` cold-restart per demo is the only viable ingress. Widening
@@ -135,6 +142,10 @@ optionally, so a checkout without the file builds keyless and silently.
 - **`text` / `model-viewer`** render no overlaid SwiftUI chrome on a key-less
   simulator, so they use the assertion-free `flows/demo-noassert.yaml`; their
   crash detection falls to the log sweep below.
+- **This is not the same thing as `render-tests.yml`'s "iOS screenshot tests"
+  job** — that job runs the existing logic-only `SceneViewDemoTests` target and
+  captures no PNGs today (no UI-testing target, no `XCTAttachment` anywhere in
+  the iOS demo). Also tracked in #2803.
 
 ## How a demo is exercised
 
