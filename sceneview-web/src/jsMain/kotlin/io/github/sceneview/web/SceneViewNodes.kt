@@ -163,7 +163,7 @@ fun SceneView.addSplatNode(
     parent: Node? = null,
 ): SplatNode {
     val node = SplatNode(engine, newEntity(), splatCloud)
-    node.onInvalidate = { requestRender() }
+    // Repaint is wired by addNode below (Node.propagateInvalidate, #2024 P5b).
     node.onDetach = { entities -> scene.removeEntities(entities) }
     node.cameraPositionProvider = {
         // Camera world position straight from Filament (a JS number[] float3).
