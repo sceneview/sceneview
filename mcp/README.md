@@ -242,7 +242,7 @@ The assistant calls `validate_code` with the generated snippet and checks it aga
 - Generate correct **Compose-native** 3D/AR code for Android
 - Generate correct **SwiftUI-native** code for iOS/macOS/visionOS
 - Know about all 44+ node types and their exact parameters
-- Validate code against 15+ rules before presenting it
+- Validate code against 30+ rules before presenting it
 - Provide working, tested sample code for 33 scenarios
 
 ---
@@ -350,7 +350,7 @@ mcp/
     tools/handler.ts     # Tool dispatcher (free + pro)
     tiers.ts             # Free vs Pro tier mapping
     samples.ts           # 33 compilable code samples (Kotlin + Swift)
-    validator.ts         # Code validator (15+ rules)
+    validator.ts         # Code validator (30+ rules)
     node-reference.ts    # Node type parser
     guides.ts            # Best practices, AR setup, roadmap, troubleshooting
     migration.ts         # v2 -> v3 -> v4 migration guide
