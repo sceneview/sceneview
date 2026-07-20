@@ -12,6 +12,7 @@
 #     [--out samples/android-demo/distribution/play-store/en-GB/graphics] \
 #     [--status-bar-px N | auto] \
 #     [--variance-threshold N] \
+#     [--settle SECONDS]   # per-demo wait before capture (default 15) \
 #     [--no-build]
 #
 # Requirements:
@@ -58,7 +59,12 @@ APK_PATH="samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk"
 STATUS_BAR_PX_DEFAULT=96
 # Pixel_7a AVD natural resolution = 1080×2400. Crop 96 px → 1080×2304 = 9:19.2.
 TARGET_HEIGHT=2304
-SETTLE_SECONDS=8
+# Model-heavy demos (model-viewer, lighting, materials) load their GLB
+# asynchronously — `rememberModelInstance` returns null until the load lands,
+# so the viewport is a flat dark surface for the first several seconds. 8s was
+# too short on an emulator and the variance guard (correctly) rejected the blank
+# frame; 15s clears the async load. Tune with `--settle` on a slower/faster host.
+SETTLE_SECONDS_DEFAULT=15
 # Default 100 keeps small-footprint hero shots (model fills only the centre
 # 1/9 of the frame, variance ~60-80) from being false-rejected. The
 # `--variance-threshold N` flag exists as an escape hatch for known-noisy
@@ -70,6 +76,7 @@ DEMOS=""
 OUT_DIR=""
 STATUS_BAR_PX=""
 VARIANCE_THRESHOLD=""
+SETTLE_SECONDS=""
 SKIP_BUILD=0
 require_value() {
   # Guard against `--flag` with no following value under `set -u`.
@@ -81,6 +88,7 @@ while [[ $# -gt 0 ]]; do
     --out)   require_value "$@"; OUT_DIR="$2"; shift 2 ;;
     --status-bar-px) require_value "$@"; STATUS_BAR_PX="$2"; shift 2 ;;
     --variance-threshold) require_value "$@"; VARIANCE_THRESHOLD="$2"; shift 2 ;;
+    --settle) require_value "$@"; SETTLE_SECONDS="$2"; shift 2 ;;
     --no-build) SKIP_BUILD=1; shift ;;
     -h|--help)
       sed -n '2,32p' "$0"; exit 0 ;;
@@ -91,6 +99,7 @@ DEMOS="${DEMOS:-$DEMOS_DEFAULT}"
 OUT_DIR="${OUT_DIR:-$OUT_DIR_DEFAULT}"
 STATUS_BAR_PX="${STATUS_BAR_PX:-$STATUS_BAR_PX_DEFAULT}"
 VARIANCE_THRESHOLD="${VARIANCE_THRESHOLD:-$VARIANCE_THRESHOLD_DEFAULT}"
+SETTLE_SECONDS="${SETTLE_SECONDS:-$SETTLE_SECONDS_DEFAULT}"
 
 # ── 1. Recover an offline AVD if needed ──────────────────────────────────────
 if ! adb devices | grep -qE "^emulator-|^[0-9A-F]{8}.*device$"; then
