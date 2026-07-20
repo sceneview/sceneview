@@ -1369,6 +1369,7 @@ public final class io/github/sceneview/scene/SceneGraph {
 	public final fun findNode (Lkotlin/jvm/functions/Function1;)Lio/github/sceneview/rendering/SceneNode;
 	public final fun getRootNodes ()Ljava/util/List;
 	public final fun hitTest (Lio/github/sceneview/collision/Ray;)Ljava/util/List;
+	public final fun removeCollisionShape (Lio/github/sceneview/rendering/SceneNode;)V
 	public final fun removeNode (Lio/github/sceneview/rendering/SceneNode;)V
 	public final fun setCollisionShape (Lio/github/sceneview/rendering/SceneNode;Lio/github/sceneview/collision/CollisionShape;)V
 }

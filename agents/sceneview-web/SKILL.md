@@ -136,6 +136,25 @@ const cube = sv.addCubeNode(0.2);
 cube.setPosition(0, 1, 0);
 ```
 
+Since #2024 P5c the viewer also picks nodes under a screen point:
+`sv.hitTest(x, y)` (canvas pixels, (0,0) = top-left) unprojects through the
+live camera and tests every node's real bounds (model/geometry: asset AABB;
+splat: cloud bounds) at their current world transform. It returns the **same**
+`NodeHandle` instances the factories returned, nearest-first — so `===`
+against your kept references works:
+
+```js
+canvas.addEventListener('click', (e) => {
+  // Scale CSS event coords to backing-store pixels (devicePixelRatio canvases).
+  const px = canvas.width / canvas.clientWidth;
+  const hits = sv.hitTest(e.offsetX * px, e.offsetY * px);
+  if (hits[0] === cube) cube.setScaleUniform(1.5);
+});
+```
+
+Model nodes become pickable once loaded; geometry and splat nodes
+immediately; empty pivots, lights and cameras are never hit.
+
 Since #2646 P2 the viewer also renders **3D Gaussian Splatting** (radiance-field
 captures — Scaniverse / Polycam / Luma / INRIA): `addSplatNode(url)` fetches a
 `.ply` (INRIA) or `.spz` (Niantic) file, parses it through the shared KMP

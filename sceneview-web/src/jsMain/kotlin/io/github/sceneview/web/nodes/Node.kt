@@ -6,6 +6,7 @@ import dev.romainguy.kotlin.math.lookTowards
 import io.github.sceneview.animation.SmoothTransformTRSState
 import io.github.sceneview.animation.SmoothTransformTRSTarget
 import io.github.sceneview.animation.updateSmoothTransform
+import io.github.sceneview.collision.CollisionShape
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -76,6 +77,19 @@ open class Node internal constructor(
     override var isVisible: Boolean = true
 
     override var isHittable: Boolean = true
+
+    /**
+     * **Local-space** collision shape used by `SceneView.hitTest` picking
+     * (#2024 P5c) — the Android `Node.collisionShape` mirror. Transformed
+     * into world space through this node's [worldTransform] at hit-test time,
+     * so it follows the node (and any animation) with no manual upkeep.
+     *
+     * Wired automatically with real per-node bounds: model/geometry nodes get
+     * their asset AABB once loaded, splat nodes their cloud bounds. Assign to
+     * override (e.g. a tighter core `Box`/`Sphere`), or `null` to make the
+     * node un-pickable (a node with no shape is skipped by hit tests).
+     */
+    var collisionShape: CollisionShape? = null
 
     /** `true` once [destroy] has run; every later [destroy] call is a no-op. */
     var isDestroyed: Boolean = false

@@ -351,4 +351,105 @@ test.describe('SceneView Kotlin/JS bundle — browser init', () => {
     expect((result as any).py).toBeCloseTo(3, 3);
     expect((result as any).pz).toBeCloseTo(4, 3);
   });
+
+  test('Camera projection & model matrices are READABLE as mat4 (#2024 P5c probe)', async ({ page }) => {
+    // Screen-ray picking (sv.hitTest) unprojects through the INVERSE of
+    // getProjectionMatrix() and re-bases through getModelMatrix(). Both
+    // bindings exist in Filament.kt but had zero call sites before P5c —
+    // per the embind probe-first rule (#2611), prove them in-browser BEFORE
+    // node code depends on them.
+    await page.goto('/kotlin-bundle/index.html');
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__smoke?.status), { timeout: 30_000 })
+      .toBe('resolved');
+
+    const result = await page.evaluate(() => {
+      const F = (window as any).Filament;
+      if (!F?.Engine?.create) return { error: 'Filament global not initialised' };
+
+      const probeCanvas = document.createElement('canvas');
+      probeCanvas.width = 8;
+      probeCanvas.height = 8;
+      document.body.appendChild(probeCanvas);
+      let step = 'Engine.create';
+      try {
+        const engine = F.Engine.create(probeCanvas);
+        step = 'createCamera';
+        const cameraEntity = F.EntityManager.get().create();
+        const camera = engine.createCamera(cameraEntity);
+        if (typeof camera.getProjectionMatrix !== 'function') return { error: 'getProjectionMatrix missing' };
+        if (typeof camera.getModelMatrix !== 'function') return { error: 'getModelMatrix missing' };
+
+        // fov 90° vertical + aspect 1 → projection [0][0] = [1][1] = 1/tan(45°) = 1.
+        step = 'setProjectionFov';
+        camera.setProjectionFov(90.0, 1.0, 0.1, 100.0, F.Camera$Fov.VERTICAL);
+        step = 'getProjectionMatrix';
+        const proj = camera.getProjectionMatrix();
+        step = 'setModelMatrix';
+        camera.setModelMatrix([1,0,0,0, 0,1,0,0, 0,0,1,0, 2,3,4,1]);
+        step = 'getModelMatrix';
+        const model = camera.getModelMatrix();
+        return {
+          projLen: proj?.length ?? -1,
+          p0: Number(proj[0]), p5: Number(proj[5]), p10: Number(proj[10]),
+          modelLen: model?.length ?? -1,
+          m12: Number(model[12]), m13: Number(model[13]), m14: Number(model[14]),
+        };
+      } catch (e: any) {
+        return { error: `${step}: ${e?.name ?? ''} ${e?.message ?? String(e)}` };
+      }
+    });
+
+    expect((result as any).error, `matrix-read probe failed: ${(result as any).error}`).toBeUndefined();
+    expect((result as any).projLen).toBe(16);
+    expect((result as any).p0).toBeCloseTo(1, 3);
+    expect((result as any).p5).toBeCloseTo(1, 3);
+    // getProjectionMatrix() returns the RENDERING projection, which uses an
+    // INFINITE far plane regardless of the finite far passed to
+    // setProjectionFov (the finite far only feeds the culling matrix):
+    // [2][2] is exactly -1 (infinite far), not -(f+n)/(f-n) = -1.002 for the
+    // finite far=100/near=0.1 set above. This is the premise ScreenRay.kt's
+    // mid-volume sampling relies on — NDC z = +1 is a point at infinity.
+    expect(Math.abs((result as any).p10 + 1)).toBeLessThan(1e-4);
+    expect((result as any).modelLen).toBe(16);
+    expect((result as any).m12).toBeCloseTo(2, 3);
+    expect((result as any).m13).toBeCloseTo(3, 3);
+    expect((result as any).m14).toBeCloseTo(4, 3);
+  });
+
+  test('sv.hitTest picks the cube under the screen centre (#2024 P5c)', async ({ page }) => {
+    // End-to-end screen-point picking through the REAL camera: unproject via
+    // getProjectionMatrix()/getModelMatrix() (probed above), analytic cube
+    // bounds (pickable immediately — no post-load gate), handle identity via
+    // the Node → NodeHandle registry.
+    await page.goto('/kotlin-bundle/index.html');
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__smoke?.status), { timeout: 30_000 })
+      .toBe('resolved');
+
+    const result = await page.evaluate(() => {
+      const sv = (window as any).__sv;
+      if (!sv) return { error: 'viewer not exposed on window.__sv' };
+      if (typeof sv.hitTest !== 'function') return { error: 'hitTest missing on the exported viewer' };
+      try {
+        // The default orbit camera targets the world origin — a cube at the
+        // default (0,0,0) sits dead under the canvas centre. The helmet the
+        // page loads has no collision shape (surface-A loadModel), so the
+        // cube is the only pickable node.
+        const cube = sv.addCubeNode(0.5);
+        const hits = sv.hitTest(320, 240);   // canvas centre (640x480 backing store)
+        const miss = sv.hitTest(2, 2);       // top-left corner — nothing there
+        const sameInstance = hits.length > 0 && hits[0] === cube;
+        sv.removeNode(cube);
+        return { hitCount: hits.length, missCount: miss.length, sameInstance };
+      } catch (e: any) {
+        return { error: `${e?.name ?? ''} ${e?.message ?? String(e)}` };
+      }
+    });
+
+    expect((result as any).error, `hitTest e2e failed: ${(result as any).error}`).toBeUndefined();
+    expect((result as any).hitCount).toBe(1);
+    expect((result as any).sameInstance, 'hitTest must return the SAME handle instance addCubeNode returned').toBe(true);
+    expect((result as any).missCount).toBe(0);
+  });
 });

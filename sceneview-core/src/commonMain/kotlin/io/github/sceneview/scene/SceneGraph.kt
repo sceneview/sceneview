@@ -93,6 +93,17 @@ class SceneGraph {
     }
 
     /**
+     * Removes [node]'s collision shape, making it invisible to [hitTest]
+     * until a new shape is set. A no-op when the node has no shape. The
+     * clearing counterpart of [setCollisionShape] — without it a caller that
+     * nulls a node's shape after a hit test would leave the last world-space
+     * shape lingering in the graph (#2024 P5c review).
+     */
+    fun removeCollisionShape(node: SceneNode) {
+        collisionShapes.remove(node)
+    }
+
+    /**
      * Returns the first node matching [predicate], searched depth-first from roots.
      */
     fun findNode(predicate: (SceneNode) -> Boolean): SceneNode? {
