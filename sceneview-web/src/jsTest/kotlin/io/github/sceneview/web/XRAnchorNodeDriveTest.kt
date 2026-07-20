@@ -2,6 +2,7 @@ package io.github.sceneview.web
 
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Transform
+import io.github.sceneview.math.copyColumnsInto
 import io.github.sceneview.web.nodes.Node
 import io.github.sceneview.web.nodes.NodeBackend
 import io.github.sceneview.web.xr.XRAnchor
@@ -30,10 +31,10 @@ import kotlin.test.assertTrue
 class XRAnchorNodeDriveTest {
 
     private class FakeBackend : NodeBackend {
-        override fun setLocalTransform(transform: Transform) {}
-        override fun setParent(parent: NodeBackend?) {}
-        override fun adoptChildEntity(child: io.github.sceneview.web.bindings.Entity) {}
-        override fun destroy() {}
+        override fun setLocalTransform(transform: Transform) = Unit
+        override fun setParent(parent: NodeBackend?) = Unit
+        override fun adoptChildEntity(child: io.github.sceneview.web.bindings.Entity) = Unit
+        override fun destroy() = Unit
     }
 
     private fun node(name: String? = null) = Node(FakeBackend()).also { it.name = name }
@@ -108,11 +109,19 @@ class XRAnchorNodeDriveTest {
     }
 
     @Test
-    fun poseMatrixRotationLandsInWorldRotation() {
+    fun poseMatrixRotationRoundTripsIntoWorldTransform() {
         val root = node("anchored")
-        applyXRPoseMatrix(root, yaw30Matrix(2f, 3f, 4f))
+        val pose = yaw30Matrix(2f, 3f, 4f)
+        applyXRPoseMatrix(root, pose)
         assertPosition(root, 2f, 3f, 4f)
-        assertClose(30f, root.worldRotation.y, "worldRotation.y")
+        // The node's world matrix must BE the pose matrix, element for element
+        // (column-major on both sides). The renderer consumes the matrix, so
+        // matrix equality — not any particular Euler-angle convention — is
+        // the bridge's contract.
+        val actual = root.worldTransform.copyColumnsInto(FloatArray(16))
+        for (i in 0 until 16) {
+            assertClose(pose[i].unsafeCast<Double>().toFloat(), actual[i], "worldTransform[$i]")
+        }
         // Scale must stay identity — pose matrices are rigid transforms.
         assertClose(1f, root.worldScale.x, "worldScale.x")
     }
@@ -171,6 +180,17 @@ class XRAnchorNodeDriveTest {
         parent.addChildNode(child)
         val anchorNode = XRAnchorNode(fakeAnchor())
         assertFails("world-space poses must not double-compose") { anchorNode.drive(child) }
+        assertNull(anchorNode.drivenNode)
+    }
+
+    @Test
+    fun driveRejectsADetachedAnchorNode() {
+        val root = node("anchored")
+        val anchorNode = XRAnchorNode(fakeAnchor())
+        anchorNode.detach()
+        assertFails("a detached anchor is inert and must not bind a node") {
+            anchorNode.drive(root)
+        }
         assertNull(anchorNode.drivenNode)
     }
 

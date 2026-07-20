@@ -94,9 +94,11 @@ class XRAnchorNode(
      * `kotlin-bundle.spec.ts` #2024-P1 probe; no new embind binding.
      *
      * Replaces any previously driven node. Call [stopDriving] to release
-     * the node while keeping the anchor alive.
+     * the node while keeping the anchor alive. Throws if this anchor node is
+     * already [detached][isDetached] — an inert anchor never drives anything.
      */
     fun drive(node: Node) {
+        require(!detached) { "Cannot drive from a detached XRAnchorNode" }
         require(!node.isDestroyed) { "Cannot drive a destroyed Node" }
         require(node.parent == null) {
             "XRAnchorNode can only drive a root node (anchor poses are " +

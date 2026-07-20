@@ -213,6 +213,32 @@ ARSceneView.checkSupport { supported ->
 WebXR VR uses the same shape via `VRSceneView`; `WebXRSession` is the
 lower-level unified AR+VR API. See `llms.txt § WebXR`.
 
+### Anchoring content to the real world (`XRAnchorNode`)
+
+Verified against `xr/XRAnchorNode.kt`. For AR content that must stay pinned to
+a real-world spot across frames, create an anchor from a hit-test result and
+`drive(...)` a **root** scene-graph node with it — the node's `worldTransform`
+then follows the anchor's per-frame pose, and children parented under it
+compose for free (requires the `XRFeature.ANCHORS` session feature):
+
+```kotlin
+hit.createAnchor().then { anchor: XRAnchor ->
+    val anchorNode = XRAnchorNode(anchor)
+    anchorNode.drive(sceneView.addModelNode("models/chair.glb"))
+    anchors += anchorNode
+}
+// Per-frame — update() returns false once the anchor is lost:
+webXrSession.onFrame = { frame, _ ->
+    anchors.removeAll { !it.update(frame, webXrSession.referenceSpace) }
+}
+```
+
+Contract: `drive` throws on a parented or destroyed node (anchor poses are
+world-space — they must not compose through a parent) and on a detached
+anchor; a node re-parented later is skipped with a one-time console warning;
+a destroyed node is auto-released. `stopDriving()` releases the node and keeps
+its last pose; `detach()` releases the underlying anchor.
+
 ## Critical rules (verified — do not break)
 
 1. **Load filament.js BEFORE sceneview-web.js.** The library needs the WASM
