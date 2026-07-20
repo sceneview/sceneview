@@ -49,6 +49,12 @@ struct GeometryDemo: View {
                 }
             }
             .cameraControls(.orbit)
+            // The cube and sphere use `.pbr(metallic:roughness:)` — this
+            // demo's own caption below claims "PBR materials," but with no
+            // IBL those metallic/rough surfaces have nothing to reflect and
+            // render flat, undercutting the claim. Same `.studio` preset as
+            // ModelViewerDemo (#2114).
+            .environment(.studio)
             .ignoresSafeArea()
 
             VStack {
