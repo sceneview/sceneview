@@ -243,10 +243,12 @@ private fun ViewNodeSection(
     )
 
     val gestureListener = rememberOnGestureListener(
-        onSingleTapUp = { _, _ ->
-            tapCount++
-            onHeroGesture()
-        },
+        // A tap anywhere in the scene must NOT bump the counter — only the "Tap me"
+        // button inside the ViewNode card does, via its own onTap (see EmbeddedCard).
+        // Otherwise tapping empty space (or the back of the card) increments too, which
+        // defeats the whole point of the picking demo. The scene tap only nudges the
+        // idle hero-orbit so a drag pauses the auto-rotation.
+        onSingleTapUp = { _, _ -> onHeroGesture() },
         onDoubleTap = { _, _ -> onHeroGesture() },
         onScroll = { _, _, _, _ -> onHeroGesture() },
     )
