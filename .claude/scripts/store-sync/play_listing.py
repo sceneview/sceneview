@@ -54,11 +54,19 @@ FILE_MAP = {
 # the edit — text, icon and phone screenshots included. Pinning the enum here
 # lets `unknown_image_types()` catch a typo offline (self-test) instead of at
 # the next release, against the live store.
-# Ref: developers.google.com/android-publisher/api-ref/rest/v3/AppImageType
+# Transcribed from the v3 API discovery document (the machine-readable source
+# Google generates its own clients from), NOT from prose docs — an allowlist
+# whose whole job is to be exhaustive has to mirror the enum exactly:
+#   googleapis/google-api-go-client → androidpublisher/v3/androidpublisher-api.json
+# `appImageTypeUnspecified` is deliberately excluded: it is the proto-zero
+# sentinel, never a usable slot. `promoGraphic` is deliberately ABSENT — it is
+# a v2-era value that v3 dropped, and leaving it in would let a future
+# ("promoGraphic", "promo-*.png") row sail past the guard and reproduce #2794
+# verbatim.
 VALID_IMAGE_TYPES = frozenset({
-    "featureGraphic", "icon", "phoneScreenshots", "promoGraphic",
-    "sevenInchScreenshots", "tenInchScreenshots",
-    "tvBanner", "tvScreenshots", "wearScreenshots",
+    "phoneScreenshots", "sevenInchScreenshots", "tenInchScreenshots",
+    "tvScreenshots", "wearScreenshots",
+    "icon", "featureGraphic", "tvBanner",
 })
 
 # Listing graphics live in `<locale>/graphics/`. Each Play `imageType` maps to
@@ -206,6 +214,18 @@ def _session(creds_info):
 def apply_sync(sess, pkg, root):
     """Push text + graphics for every locale. Faithful extraction of the former
     play-store.yml heredoc — same flow, same prints, same error handling."""
+    # Re-assert at the WRITE boundary, not just the CLI one: main() checks this
+    # too, but a caller importing apply_sync() directly would otherwise open an
+    # edit and 400 halfway through it, rolling back everything staged (#2794).
+    # Deliberately BEFORE `import requests` so the invariant holds even where
+    # the lazy third-party deps are absent (and so it stays unit-testable).
+    bad_types = unknown_image_types()
+    if bad_types:
+        raise ValueError(
+            f"GRAPHICS declares imageType(s) Play does not accept: {bad_types}. "
+            f"Valid values: {sorted(VALID_IMAGE_TYPES)}"
+        )
+
     import requests
 
     base = f"https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{pkg}"
