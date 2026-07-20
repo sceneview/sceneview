@@ -17,7 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 /**
  * SceneView Demo Theme — Material 3 Expressive
  *
- * Color system from Stitch design system (source: #005bc1).
+ * Color system from the SceneView design system (source: #005bc1).
  * Typography: M3 Expressive scale with Inter-weight equivalents.
  * Shapes: M3 Expressive with DESIGN.md radius tokens (8/12/16/28/32dp).
  * Motion: Expressive spring animations.

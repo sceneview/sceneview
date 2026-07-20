@@ -1,4 +1,4 @@
-// @sceneId     ar-rooftop-anchors
+// @sceneId     ar-rooftop
 // @title       Rooftop Anchors
 // @subtitle    Anchor models on geospatial rooftops
 // @category    ar

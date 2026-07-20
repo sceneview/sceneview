@@ -353,5 +353,7 @@ This file is optimized for consumption by AI coding agents (Claude Code, Cursor,
 4. Follow the component patterns above
 5. Use responsive typography with `clamp()`
 
-**With Google Stitch MCP:**
-Import this file into a Stitch project to enforce consistent branding across all generated screens.
+**For marketing surfaces only** (store screenshots, website hero shots): you may import
+this file into a design tool (Stitch, Figma, …) to keep branding consistent. Do **not**
+generate the demo app's own Compose/SwiftUI screens this way — that chrome is
+reference-driven native, per the "Design System" rule in `CLAUDE.md`.

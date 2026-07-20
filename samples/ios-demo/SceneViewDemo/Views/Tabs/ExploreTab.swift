@@ -201,7 +201,7 @@ final class RecentSearches {
 
 /// The main Explore tab — Liquid Glass discovery hub for 3D models.
 ///
-/// Layout follows the Stitch mockup (iOS Liquid Glass design system):
+/// Layout follows the SceneView design system (iOS Liquid Glass — see DESIGN.md):
 /// - Featured carousel of curated models (currently from the bundled `ModelItem.all` set;
 ///   V1.1 will pull from `SketchfabService.featured()` when an API key is configured).
 /// - Categories chips that filter / search by topic.

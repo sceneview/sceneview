@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.23.0)
+  Source of truth: /llms.txt  (SceneView 4.24.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.23.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.24.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Core Composables
 
@@ -3460,7 +3460,7 @@ hitResult.nodeOrNull: Node? // safe alternative — returns null instead of thro
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.23.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.24.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -3472,7 +3472,7 @@ npm install sceneview-web filament
 Script-tag usage (no bundler):
 ```html
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.23.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.24.0/sceneview-web.js"></script>
 ```
 
 After loading, the library registers itself on `window.sceneview`.
@@ -3754,6 +3754,22 @@ handle.getWorldPosition()          // → [x, y, z] composed through the parent 
 handle.destroy()                   // remove + free entity (idempotent)
 ```
 
+Kotlin/JS retained nodes additionally support smooth transform animation
+(#2024 P5b — the Android `Node.smoothTransform` core semantics and the same
+`5f` default speed; web has no `isSmoothTransformEnabled` gate and no
+`onSmoothEnd` callback. Not yet on the JS `NodeHandle` surface):
+
+```kotlin
+// Animate a node toward a target LOCAL transform — speed-scaled slerp/lerp
+// stepped on the scene's frame loop (zero per-tick matrix decompositions).
+node.smoothTransformSpeed = 10f    // higher = faster convergence (default 5f)
+node.smoothTransform = Transform(position = Position(0f, 1f, -2f))
+// On convergence the node snaps to the target and smoothTransform resets to
+// null. Setting null cancels in place (the node keeps its current transform).
+// Only animates while the node is attached to a SceneView — the scene's
+// frame dispatch drives it, and it keeps the on-demand render gate awake.
+```
+
 ---
 
 ### WebXR — ARSceneView (browser AR)
@@ -3948,8 +3964,12 @@ Chrome on Android (ARCore) + Quest 3. Mirrors Android `arsceneview` `AnchorNode`
 val anchorPromise = session.xrSession.asDynamic().createAnchor(transform, session.referenceSpace)
 anchorPromise.then { anchor: XRAnchor ->
     val node = XRAnchorNode(anchor) { pose ->
-        // Apply pose.transform.matrix to a Filament entity each frame
+        // Optional per-frame pose callback (pose.transform.matrix, column-major)
     }
+    // Scene-graph bridge (#2024 P5a): bind a ROOT-level Node so its
+    // worldTransform follows the anchor pose each update() — children
+    // parented under it compose for free. stopDriving() releases it.
+    node.drive(sceneView.addModelNode("models/chair.glb"))
     node.onAttached = { firstPose -> }
     node.onLost     = { }
     anchors += node
@@ -3968,6 +3988,8 @@ session.onSessionEnd = { anchors.forEach { it.detach() }; anchors.clear() }
 ```
 
 `update(frame, referenceSpace)` returns `false` when the anchor is no longer in `frame.trackedAnchors` — drop the node from your list. `detach()` calls `XRAnchor.delete()` and is idempotent.
+
+`drive(node)` requires a parentless (root) `Node` — anchor poses are world-space, so a parented node would double-compose (the call throws; a node re-parented *after* `drive` is skipped with a one-time console warning). A destroyed node is auto-released. `drivenNode` exposes the currently bound node.
 
 XRFrame additions: `trackedAnchors` (anchor set), extension `frame.getDepthInformation(view)`, extension `frame.getImageTrackingResults()`.
 
@@ -4004,7 +4026,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.23.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.24.0")
 ```
 
 Import: `import SceneViewSwift`

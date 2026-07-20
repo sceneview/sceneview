@@ -3,6 +3,9 @@ package io.github.sceneview.web.nodes
 import dev.romainguy.kotlin.math.Quaternion
 import dev.romainguy.kotlin.math.lookAt
 import dev.romainguy.kotlin.math.lookTowards
+import io.github.sceneview.animation.SmoothTransformTRSState
+import io.github.sceneview.animation.SmoothTransformTRSTarget
+import io.github.sceneview.animation.updateSmoothTransform
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -145,6 +148,52 @@ open class Node internal constructor(
             applyLocalTransform()
         }
 
+    // --- Smooth transform (#2024 P5b) ---------------------------------------
+
+    /**
+     * Pre-decomposed [smoothTransform] target — decomposed ONCE at set so the
+     * per-frame step pays zero `Mat4` decompositions (the #2187 hot-path
+     * pattern; see [SmoothTransformTRSState]).
+     */
+    private var smoothTarget: SmoothTransformTRSTarget? = null
+
+    /**
+     * The smooth position, rotation and scale interpolation speed used by
+     * [smoothTransform]. Higher converges faster. Same `5f` default as
+     * Android `Node.smoothTransformSpeed`, so a ported animation converges
+     * at the same rate.
+     */
+    var smoothTransformSpeed: Float = 5f
+
+    /**
+     * Target **local** transform to smoothly interpolate toward, or `null`
+     * when idle — the Android `Node.smoothTransform` semantics: setting a
+     * value starts a per-frame speed-scaled slerp/lerp from the node's
+     * current TRS state toward the target; on convergence the node snaps to
+     * the target and this resets to `null`. Setting `null` cancels the
+     * animation in place (the node keeps its current, possibly intermediate,
+     * transform). Direct writes to [position]/[quaternion]/[scale] during an
+     * animation are picked up — each frame interpolates from the node's
+     * *current* state.
+     *
+     * Runs on the scene's frame loop, so it only animates while the node is
+     * attached to a `SceneView` (its graph dispatches `onFrame`).
+     *
+     * Web mirrors the Android *core* semantics only: there is no
+     * `isSmoothTransformEnabled` gate (setting a target always animates) and
+     * no `onSmoothEnd` callback.
+     */
+    var smoothTransform: Transform? = null
+        set(value) {
+            field = value
+            smoothTarget = value?.let {
+                SmoothTransformTRSTarget(it.position, it.quaternion, it.scale)
+            }
+            // Wake the on-demand render gate (#2332) so the animation's first
+            // step lands on the very next frame even from an idle scene.
+            onInvalidate?.invoke()
+        }
+
     // --- World transforms -------------------------------------------------
     //
     // Composed through the Kotlin parent chain with the shared core math —
@@ -230,6 +279,10 @@ open class Node internal constructor(
             field = value
             oldParent?.let { it._childNodes = it._childNodes - this }
             (value as Node?)?.let { it._childNodes = it._childNodes + this }
+            // Inherit the new parent's repaint hook so a node attached to an
+            // in-scene subtree animates ([smoothTransform]) without a manual
+            // re-wire; addNode covers roots and pre-attached descendants.
+            (value as Node?)?.onInvalidate?.let { propagateInvalidate(it) }
             // Guard ONLY the engine write — never a top-level `return`. destroy()
             // runs its internal `parent = null` detach AFTER [isDestroyed] is set
             // and still needs the Kotlin-side child-list cleanup above; a naive
@@ -283,6 +336,38 @@ open class Node internal constructor(
     // --- Lifecycle -------------------------------------------------------------
 
     /**
+     * Per-frame hook dispatched by the scene graph. Advances any active
+     * [smoothTransform] interpolation (#2024 P5b). Subclasses overriding this
+     * MUST call `super.onFrame(deltaTime)` to keep smooth transforms working.
+     */
+    override fun onFrame(deltaTime: Float) {
+        val target = smoothTarget ?: return
+        if (isDestroyed) {
+            smoothTransform = null
+            return
+        }
+        val result = updateSmoothTransform(
+            SmoothTransformTRSState(
+                position = _position,
+                quaternion = _quaternion,
+                scale = _scale,
+                target = target,
+                speed = smoothTransformSpeed
+            ),
+            deltaSeconds = deltaTime.toDouble()
+        )
+        _position = result.state.position
+        _quaternion = result.state.quaternion
+        _scale = result.state.scale
+        applyLocalTransform()
+        // Keep the on-demand render gate (#2332) alive for the whole
+        // animation — without this an idle scene would render one frame and
+        // freeze mid-interpolation.
+        onInvalidate?.invoke()
+        if (result.arrived) smoothTransform = null
+    }
+
+    /**
      * Destroys this node and its whole subtree, freeing each node's Filament
      * transform component + entity exactly once (idempotent via [isDestroyed]).
      *
@@ -300,6 +385,21 @@ open class Node internal constructor(
     }
 
     // --- Internals --------------------------------------------------------------
+
+    /**
+     * Repaint hook — wired by `SceneView.addNode` (and inherited from the
+     * parent on attach), cleared by `SceneView.removeNode`, so per-frame
+     * animation ([smoothTransform], `SplatNode` re-sorts) keeps the
+     * on-demand render gate (#2332) alive. `null` while the node is not part
+     * of a `SceneView`'s graph.
+     */
+    internal var onInvalidate: (() -> Unit)? = null
+
+    /** Wires (or, with `null`, clears) [onInvalidate] on this whole subtree. */
+    internal fun propagateInvalidate(hook: (() -> Unit)?) {
+        onInvalidate = hook
+        _childNodes.forEach { (it as? Node)?.propagateInvalidate(hook) }
+    }
 
     private val parentNode: Node? get() = parent as Node?
 

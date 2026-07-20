@@ -1,4 +1,4 @@
-// @sceneId     ar-cloud-anchors
+// @sceneId     ar-cloud-anchor
 // @title       Cloud Anchors
 // @subtitle    Persistent multi-user anchors
 // @category    ar

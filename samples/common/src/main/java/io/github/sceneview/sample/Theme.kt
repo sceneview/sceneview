@@ -14,7 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 object Colors {
-    // SceneView Stitch brand — seed #005BC1
+    // SceneView brand — seed #005BC1
     val Seed = Color(0xFF005BC1)
 
     // Light scheme
@@ -151,7 +151,7 @@ val Typography = Typography()
  * Material 3 theme shared by all SceneView sample apps.
  *
  * Uses dynamic colour (Material You) on Android 12+ and falls back to the
- * SceneView Stitch brand colour scheme (seed #005BC1) on older devices.
+ * SceneView brand colour scheme (seed #005BC1) on older devices.
  *
  * @param darkTheme Whether to use the dark colour scheme. Defaults to the system setting.
  * @param dynamicColor Whether to use Material You dynamic colours on Android 12+.

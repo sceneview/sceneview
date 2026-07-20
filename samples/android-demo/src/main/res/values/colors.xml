@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- SceneView M3 Expressive — Light (from Stitch design system, source #005bc1) -->
+    <!-- SceneView M3 Expressive — Light (source #005bc1 — see DESIGN.md) -->
     <color name="md_theme_primary">#005BC1</color>
     <color name="md_theme_onPrimary">#FFFFFF</color>
     <color name="md_theme_primaryContainer">#D6E3FF</color>

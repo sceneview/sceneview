@@ -59,12 +59,12 @@
   <!-- Preconnect -->
   <!-- Preload -->
   <link rel="preload" href="js/filament/filament.js" as="script">
-  <link rel="preload" href="js/sceneview.js?v=4.23.0" as="script">
+  <link rel="preload" href="js/sceneview.js?v=4.24.0" as="script">
 
   <!-- Fonts -->
   <!-- SceneView engine -->
   <script src="js/filament/filament.js"></script>
-  <script src="js/sceneview.js?v=4.23.0"></script>
+  <script src="js/sceneview.js?v=4.24.0"></script>
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -73,7 +73,7 @@
 
   <style>
     /* ===================================================================
-       PLAYGROUND — Stitch "Architectural Blueprint" Design System
+       PLAYGROUND — "Architectural Blueprint" Design System
        Tonal layering, no hard borders, ambient depth, editorial quality
        =================================================================== */
 
@@ -2097,7 +2097,7 @@
         },
         flutter: {
           file: 'model_viewer.dart', lang: 'Dart',
-          code: 'import \'package:flutter/material.dart\';\nimport \'package:sceneview_flutter/sceneview_flutter.dart\';\n\nclass ModelViewerPage extends StatelessWidget {\n  const ModelViewerPage({super.key});\n\n  @override\n  Widget build(BuildContext context) {\n    return Scaffold(\n      body: SceneView(\n        model: \"models/helmet.glb\",\n        environment: \"envs/sky.hdr\",\n        cameraOrbit: const CameraOrbit(\n          distance: 4.0,\n        ),\n        autoRotate: true,\n      ),\n    );\n  }\n}'
+          code: 'import \'package:flutter/material.dart\';\nimport \'package:flutter_sceneview/flutter_sceneview.dart\';\n\nclass ModelViewerPage extends StatelessWidget {\n  const ModelViewerPage({super.key});\n\n  @override\n  Widget build(BuildContext context) {\n    return Scaffold(\n      body: SceneView(\n        model: \"models/helmet.glb\",\n        environment: \"envs/sky.hdr\",\n        cameraOrbit: const CameraOrbit(\n          distance: 4.0,\n        ),\n        autoRotate: true,\n      ),\n    );\n  }\n}'
         },
         reactnative: {
           file: 'ModelViewer.tsx', lang: 'TypeScript',
@@ -2670,7 +2670,7 @@
       if (platform === 'flutter') {
         return {
           file: title.replace(/\s+/g, '') + '.dart', lang: 'Dart',
-          code: '// Flutter — ' + title + '\n//\n// SceneView Flutter uses PlatformView to bridge\n// to native SceneView (Android) and\n// SceneViewSwift (iOS) renderers.\n//\nimport \'package:flutter/material.dart\';\nimport \'package:sceneview_flutter/sceneview_flutter.dart\';\n\nclass ' + title.replace(/\s+/g, '') + 'Page extends StatelessWidget {\n  const ' + title.replace(/\s+/g, '') + 'Page({super.key});\n\n  @override\n  Widget build(BuildContext context) {\n    return const Scaffold(\n      body: SceneView(\n        // Configure scene properties here\n        model: \"models/helmet.glb\",\n        autoRotate: true,\n      ),\n    );\n  }\n}'
+          code: '// Flutter — ' + title + '\n//\n// SceneView Flutter uses PlatformView to bridge\n// to native SceneView (Android) and\n// SceneViewSwift (iOS) renderers.\n//\nimport \'package:flutter/material.dart\';\nimport \'package:flutter_sceneview/flutter_sceneview.dart\';\n\nclass ' + title.replace(/\s+/g, '') + 'Page extends StatelessWidget {\n  const ' + title.replace(/\s+/g, '') + 'Page({super.key});\n\n  @override\n  Widget build(BuildContext context) {\n    return const Scaffold(\n      body: SceneView(\n        // Configure scene properties here\n        model: \"models/helmet.glb\",\n        autoRotate: true,\n      ),\n    );\n  }\n}'
         };
       }
       if (platform === 'reactnative') {
@@ -3495,9 +3495,9 @@
 
         var prompt = 'Build me a SceneView ' + platLabel + ' app:\n\n' + userDesc + '\n\n';
         prompt += '--- SceneView Quick Reference ---\n';
-        prompt += 'SDK: io.github.sceneview:sceneview:4.23.0 (3D) / arsceneview:4.23.0 (AR)\n';
-        prompt += 'iOS: SPM https://github.com/sceneview/sceneview.git (from: "4.23.0")\n';
-        prompt += 'Web: npm install sceneview-web@4.23.0\n\n';
+        prompt += 'SDK: io.github.sceneview:sceneview:4.24.0 (3D) / arsceneview:4.24.0 (AR)\n';
+        prompt += 'iOS: SPM https://github.com/sceneview/sceneview.git (from: "4.24.0")\n';
+        prompt += 'Web: npm install sceneview-web@4.24.0\n\n';
 
         if (plat === 'android' || plat === 'flutter' || plat === 'reactnative' || plat === 'desktop') {
           prompt += 'Key composables: SceneView { }, ARSceneView { }\n';

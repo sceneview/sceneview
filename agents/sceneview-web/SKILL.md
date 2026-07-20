@@ -38,7 +38,7 @@ SceneView for Web is the browser half of the SceneView SDK. It renders with
   registers itself on `window.sceneview`, exposing `createViewer`,
   `modelViewer`, etc. for use with no bundler and no Kotlin.
 
-- **npm package** — `sceneview-web` (currently `4.23.0`).
+- **npm package** — `sceneview-web` (currently `4.24.0`).
 - **Renderer** — Filament.js (WebGL2/WASM). Requires Chrome 79+, Edge 79+,
   Firefox 78+, Safari 15+.
 
@@ -77,7 +77,7 @@ filament.js MUST load before sceneview-web.js:
 ```html
 <canvas id="viewer" style="width:100%;height:100vh;display:block"></canvas>
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.23.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.24.0/sceneview-web.js"></script>
 <script>
   sceneview.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/DamagedHelmet.glb')
     .then(function (sv) { sv.setAutoRotate(true); });
@@ -212,6 +212,32 @@ ARSceneView.checkSupport { supported ->
 
 WebXR VR uses the same shape via `VRSceneView`; `WebXRSession` is the
 lower-level unified AR+VR API. See `llms.txt § WebXR`.
+
+### Anchoring content to the real world (`XRAnchorNode`)
+
+Verified against `xr/XRAnchorNode.kt`. For AR content that must stay pinned to
+a real-world spot across frames, create an anchor from a hit-test result and
+`drive(...)` a **root** scene-graph node with it — the node's `worldTransform`
+then follows the anchor's per-frame pose, and children parented under it
+compose for free (requires the `XRFeature.ANCHORS` session feature):
+
+```kotlin
+hit.createAnchor().then { anchor: XRAnchor ->
+    val anchorNode = XRAnchorNode(anchor)
+    anchorNode.drive(sceneView.addModelNode("models/chair.glb"))
+    anchors += anchorNode
+}
+// Per-frame — update() returns false once the anchor is lost:
+webXrSession.onFrame = { frame, _ ->
+    anchors.removeAll { !it.update(frame, webXrSession.referenceSpace) }
+}
+```
+
+Contract: `drive` throws on a parented or destroyed node (anchor poses are
+world-space — they must not compose through a parent) and on a detached
+anchor; a node re-parented later is skipped with a one-time console warning;
+a destroyed node is auto-released. `stopDriving()` releases the node and keeps
+its last pose; `detach()` releases the underlying anchor.
 
 ## Critical rules (verified — do not break)
 

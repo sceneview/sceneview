@@ -10,7 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  sceneview_flutter:
+  flutter_sceneview:
     path: ../../flutter/sceneview_flutter
   http: ^1.2.0
   # Auto-update — checked on every AppLifecycleState.resumed via

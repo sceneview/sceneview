@@ -7,8 +7,10 @@ import SwiftUI
 ///    conforming to `DemoScene`.
 /// 2. Run `bash samples/ios-demo/scripts/collate-ios-demos.sh` to regenerate
 ///    `GeneratedScenes.swift`.
-/// 3. The demo appears in `SamplesTab` automatically — **no other file
-///    needs to be edited**.
+/// 3. The demo appears in `SamplesTab` **and** becomes deep-linkable via
+///    `sceneview://demo/<sceneId>` automatically — the collator generates
+///    the Samples list, the `allowedIds` gate, and the id→view resolver from
+///    the same `@sceneId`, so **no other file needs to be edited**.
 ///
 /// # Rules
 ///

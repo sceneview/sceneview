@@ -1,6 +1,14 @@
+## 4.24.0
+
+- Version alignment with SceneView v4.24.0 (2026-07-20); see the [v4.24.0 release notes](https://github.com/sceneview/sceneview/releases/tag/v4.24.0). **pub.dev debut under the name `flutter_sceneview`** (#2735): the package was renamed from `sceneview_flutter` because the pub.dev names `sceneview` and `sceneview_flutter` are unrelated third-party uploads. Entries up to 4.23.0 were never published to pub.dev. No breaking Flutter API change.
+
+## 4.23.0
+
+- Version alignment with SceneView v4.23.0 (2026-07-18) — Gaussian Splatting (`SplatNode`), Point & Ask on-device AI; see the [v4.23.0 release notes](https://github.com/sceneview/sceneview/releases/tag/v4.23.0). No breaking Flutter API change.
+
 ## 4.22.0
 
-- Version alignment with SceneView v4.22.0 (2026-07-12). First version published to pub.dev via the automated OIDC `pub-publish` release job (#2735) — the registry previously served an unrelated 0.0.1 placeholder; entries 4.18.x–4.21.x were never published there. Native-side highlights per the [v4.22.0 release notes](https://github.com/sceneview/sceneview/releases/tag/v4.22.0): public `SurfaceMirrorer` in-app video recording (#2626), normalized-origin `centerOrigin` parity (#2632), store-preflight release tooling. No breaking Flutter API change.
+- Version alignment with SceneView v4.22.0 (2026-07-12). Native-side highlights per the [v4.22.0 release notes](https://github.com/sceneview/sceneview/releases/tag/v4.22.0): public `SurfaceMirrorer` in-app video recording (#2626), normalized-origin `centerOrigin` parity (#2632), store-preflight release tooling. No breaking Flutter API change.
 
 ## 4.17.0
 
