@@ -1674,19 +1674,25 @@ renders them as a screen-space cloud over the live camera feed using a Compose `
 time.
 
 ```kotlin
-onSessionUpdated = { _, frame ->
-    val depthImage = runCatching { frame.acquireRawDepthImage16Bits() }.getOrNull()
-    val confidenceImage = runCatching { frame.acquireRawDepthConfidenceImage() }.getOrNull()
-    if (depthImage != null && confidenceImage != null) {
-        try {
-            // depthImage.planes[0] is Y_16 (LE); confidenceImage.planes[0] is 1-byte/pixel.
-            // Filter, colorize, and feed to a Compose Canvas overlay or a Filament POINTS mesh.
-        } finally {
-            depthImage.close()
-            confidenceImage.close()
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    sessionConfiguration = { _, config ->
+        config.depthMode = Config.DepthMode.RAW_DEPTH_ONLY
+    },
+    onSessionUpdated = { _, frame ->
+        val depthImage = runCatching { frame.acquireRawDepthImage16Bits() }.getOrNull()
+        val confidenceImage = runCatching { frame.acquireRawDepthConfidenceImage() }.getOrNull()
+        if (depthImage != null && confidenceImage != null) {
+            try {
+                // depthImage.planes[0] is Y_16 (LE); confidenceImage.planes[0] is 1-byte/pixel.
+                // Filter, colorize, and feed to a Compose Canvas overlay or a Filament POINTS mesh.
+            } finally {
+                depthImage.close()
+                confidenceImage.close()
+            }
         }
-    }
-}
+    },
+)
 ```
 
 Notes: `acquireRawDepthImage16Bits()` may return `null` for the first few frames after a
