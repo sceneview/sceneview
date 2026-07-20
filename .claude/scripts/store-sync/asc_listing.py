@@ -122,6 +122,48 @@ DISPLAY_TYPE_MAP = {
     "ipad-13": "APP_IPAD_PRO_3GEN_129",
 }
 
+# Apple's `ScreenshotDisplayType` enum — the ONLY values ASC accepts for an
+# `appScreenshotSet`'s `screenshotDisplayType`. A value outside this set is not
+# caught until the first REAL ASC call: on the write path (--apply-screenshots)
+# the POST that creates the set 400s, and if an earlier display type was already
+# replaced in the same run it leaves the listing partially applied; on the read
+# path it silently reports permanent, unresolvable "never uploaded" drift for a
+# slot that cannot exist. Pinning the enum lets `unknown_display_types()` reject
+# a DISPLAY_TYPE_MAP typo OFFLINE (self-test + pre-flight) instead — symmetric
+# with play_listing.py's VALID_IMAGE_TYPES, which closed exactly this hole for
+# the Play `AppImageType` enum (#2794).
+#
+# Transcribed VERBATIM from the machine-readable source Apple publishes, NOT a
+# prose summary — an allowlist whose whole job is to be exhaustive has to mirror
+# the enum exactly (a web-search summary wrongly added `promoGraphic` on the Play
+# side, caught only in review):
+#   App Store Connect API OpenAPI spec v4.3 → components.schemas.ScreenshotDisplayType
+# Cross-checked against fastlane spaceship's AppScreenshotSet::DisplayType — both
+# agree on all 33 values. This enum has NO proto-zero sentinel to exclude (unlike
+# AppImageType's appImageTypeUnspecified), so every documented value is kept —
+# the iMessage / Watch / TV / Desktop / Vision types SceneView's demo does not
+# use today included, so a future DISPLAY_TYPE_MAP row for one validates instead
+# of being rejected as a false positive.
+VALID_DISPLAY_TYPES = frozenset({
+    # iPhone
+    "APP_IPHONE_67", "APP_IPHONE_65", "APP_IPHONE_61", "APP_IPHONE_58",
+    "APP_IPHONE_55", "APP_IPHONE_47", "APP_IPHONE_40", "APP_IPHONE_35",
+    # iPad
+    "APP_IPAD_PRO_3GEN_129", "APP_IPAD_PRO_3GEN_11", "APP_IPAD_PRO_129",
+    "APP_IPAD_105", "APP_IPAD_97",
+    # Mac / TV / Vision
+    "APP_DESKTOP", "APP_APPLE_TV", "APP_APPLE_VISION_PRO",
+    # Watch
+    "APP_WATCH_ULTRA", "APP_WATCH_SERIES_10", "APP_WATCH_SERIES_7",
+    "APP_WATCH_SERIES_4", "APP_WATCH_SERIES_3",
+    # iMessage extension
+    "IMESSAGE_APP_IPHONE_67", "IMESSAGE_APP_IPHONE_65", "IMESSAGE_APP_IPHONE_61",
+    "IMESSAGE_APP_IPHONE_58", "IMESSAGE_APP_IPHONE_55", "IMESSAGE_APP_IPHONE_47",
+    "IMESSAGE_APP_IPHONE_40",
+    "IMESSAGE_APP_IPAD_PRO_3GEN_129", "IMESSAGE_APP_IPAD_PRO_3GEN_11",
+    "IMESSAGE_APP_IPAD_PRO_129", "IMESSAGE_APP_IPAD_105", "IMESSAGE_APP_IPAD_97",
+})
+
 
 # ── Pure helpers (no third-party imports — unit-tested offline) ──────────────
 
@@ -150,6 +192,20 @@ def md5_of(path):
         for chunk in iter(lambda: f.read(1 << 16), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def unknown_display_types(display_map=None):
+    """Return the configured screenshotDisplayType(s) Apple would reject.
+
+    Offline guard mirroring play_listing.py's unknown_image_types(): a display
+    type outside VALID_DISPLAY_TYPES is not rejected until the first live ASC
+    call — on the write path, after an earlier display type's live set may
+    already have been replaced. Checked by the self-test and again before any
+    network call (main() for the CLI, apply_screenshots() for a direct
+    importer). Returns the bad values in sorted-dir order, deterministic.
+    """
+    m = DISPLAY_TYPE_MAP if display_map is None else display_map
+    return [dt for _, dt in sorted(m.items()) if dt not in VALID_DISPLAY_TYPES]
 
 
 def diff_fields(local_fields, remote_attrs):
@@ -573,6 +629,20 @@ def apply_screenshots(headers, bundle_id, shots_dir):
     `skipped` is a human-readable reason when nothing could be done — an
     honest SKIP, never a silent green.
     """
+    # Re-assert at the WRITE boundary, not just the CLI one (main() guards
+    # that): a caller importing apply_screenshots() directly would otherwise
+    # reach the live API and 400 at set-creation for a bogus display type —
+    # possibly after an earlier display type's live set was already replaced,
+    # leaving a partially-applied listing (#2794's failure mode, minus Play's
+    # atomic rollback). Before `import requests` so the invariant holds — and
+    # stays unit-testable — without the lazy third-party deps.
+    bad_types = unknown_display_types()
+    if bad_types:
+        raise ValueError(
+            f"DISPLAY_TYPE_MAP declares screenshotDisplayType(s) Apple does not "
+            f"accept: {bad_types}. Valid values: {sorted(VALID_DISPLAY_TYPES)}"
+        )
+
     import requests
 
     r = requests.get(f"{BASE}/apps?filter[bundleId]={quote(bundle_id, safe='')}", headers=headers, timeout=HTTP_TIMEOUT_S)
@@ -825,6 +895,18 @@ def main(argv=None):
             return 2
     elif not meta_dir.is_dir():
         print(f"::error::Metadata dir not found: {meta_dir}")
+        return 2
+
+    # Fail before any network call: a display type Apple doesn't know 400s on
+    # the first real ASC request (set-creation on the write path), so catch a
+    # DISPLAY_TYPE_MAP typo here — covering both modes at the CLI boundary.
+    bad_types = unknown_display_types()
+    if bad_types:
+        print(
+            f"::error::DISPLAY_TYPE_MAP declares screenshotDisplayType(s) Apple "
+            f"does not accept: {', '.join(bad_types)}. Valid values: "
+            f"{', '.join(sorted(VALID_DISPLAY_TYPES))}."
+        )
         return 2
 
     creds = resolve_asc_credentials()
