@@ -96,7 +96,25 @@ The extension `View.applyRenderQuality(RenderQuality)` configures `shadowOptions
 Use an **exhaustive `when` with NO `else` branch** — that is the whole point of the sealed hierarchy. The compiler then forces you to revisit this site the day SceneView adds a new subtype (#1759). An `else ->` fallback silently defeats that contract.
 
 ```kotlin
-ARSceneView(
+// App-side handlers referenced below — swap in your own UX / reporting:
+private fun showInstallArCoreCta() = Unit
+private fun showRetryCta() = Unit
+private fun showUpdateArCoreCta() = Unit
+private fun disableArEntryPoints() = Unit
+private fun requestLocationPermission() = Unit
+private fun showCameraBusyCta() = Unit
+private fun showCloudQuotaErrorCta() = Unit
+private fun recreateSession() = Unit
+private fun showCloudKeySetupHelp() = Unit
+private fun showMoveDeviceCta() = Unit
+private fun showBetterReferenceImageCta() = Unit
+private fun showRecordingErrorCta() = Unit
+private fun showPlaybackErrorCta() = Unit
+private fun retryNextFrame() = Unit
+private fun reportToCrashlytics(cause: Exception) = Unit
+
+@Composable
+fun ArScreenWithFailureHandling() = ARSceneView(
     onSessionFailure = { failure ->
         when (failure) {
             // Install / availability
