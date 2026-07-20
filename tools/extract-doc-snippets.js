@@ -31,6 +31,10 @@
  *                  docs keep the freedom to elide.
  *   - `nonkotlin`— Gradle/Groovy blocks mistagged as kotlin (heuristic:
  *                  dependency/plugins DSL in the first lines).
+ *   - `otherplatform` — blocks under the "SceneView Web" / "SceneViewSwift"
+ *                  sections of llms.txt: Kotlin/JS (@JsExport) or Swift-bridge
+ *                  API that can never compile on this Android classpath. A
+ *                  JS-side guard is an honest follow-up (see #2759).
  *
  * A JSON manifest with per-category counts and per-block provenance
  * (source file + line) is written next to the generated sources, so a
@@ -123,7 +127,17 @@ const GRADLE_RE =
 
 // ─── Fence parsing ──────────────────────────────────────────────────────────
 
-/** @returns {{info:string, line:number, code:string}[]} */
+// llms.txt is multi-platform: its "SceneView Web" section documents the
+// Kotlin/JS API (@JsExport surface of sceneview-web) — those blocks can never
+// compile on this module's Android classpath. They are classified out with
+// their own manifest category so the gap stays visible (a JS-side compile
+// guard is an honest follow-up, tracked on #2759).
+const NON_ANDROID_SECTIONS = [
+  { prefix: "## SceneView Web", platform: "web" },
+  { prefix: "## SceneViewSwift", platform: "swift" },
+];
+
+/** @returns {{info:string, line:number, code:string, platform:string}[]} */
 function parseKotlinBlocks(text) {
   const lines = text.split("\n");
   const blocks = [];
@@ -131,8 +145,13 @@ function parseKotlinBlocks(text) {
   let info = "";
   let start = 0;
   let buf = [];
+  let platform = "android";
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (!inBlock && line.startsWith("## ")) {
+      const hit = NON_ANDROID_SECTIONS.find((s) => line.startsWith(s.prefix));
+      platform = hit ? hit.platform : "android";
+    }
     if (!inBlock) {
       const m = line.match(/^```kotlin\b(.*)$/);
       if (m) {
@@ -143,7 +162,7 @@ function parseKotlinBlocks(text) {
       }
     } else if (line.startsWith("```")) {
       inBlock = false;
-      blocks.push({ info, line: start, code: buf.join("\n") });
+      blocks.push({ info, line: start, code: buf.join("\n"), platform });
     } else {
       buf.push(line);
     }
@@ -154,6 +173,9 @@ function parseKotlinBlocks(text) {
 // ─── Classification ─────────────────────────────────────────────────────────
 
 function classify(block) {
+  if (block.platform !== "android") {
+    return { category: "otherplatform", reason: `${block.platform} API section` };
+  }
   if (/^notest\b/.test(block.info)) {
     const reason = block.info.replace(/^notest\s*/, "").trim();
     return { category: "notest", reason: reason || "(MISSING REASON)" };
@@ -238,7 +260,7 @@ function main() {
   for (const src of SOURCES) {
     const text = readFileSync(join(repoRoot, src.path), "utf8");
     const blocks = parseKotlinBlocks(text);
-    const perSource = { total: blocks.length, compile: 0, notest: 0, ellipsis: 0, nonkotlin: 0, blocks: [] };
+    const perSource = { total: blocks.length, compile: 0, notest: 0, ellipsis: 0, nonkotlin: 0, otherplatform: 0, blocks: [] };
 
     blocks.forEach((block, i) => {
       block.sourcePath = src.path;
@@ -262,7 +284,7 @@ function main() {
     manifest.sources[src.path] = perSource;
   }
 
-  for (const cat of ["compile", "notest", "ellipsis", "nonkotlin"]) {
+  for (const cat of ["compile", "notest", "ellipsis", "nonkotlin", "otherplatform"]) {
     manifest.counts[cat] = Object.values(manifest.sources).reduce((a, s) => a + s[cat], 0);
   }
 
@@ -287,7 +309,8 @@ function main() {
   console.log(
     `Extracted ${manifest.counts.compile} compilable snippets ` +
       `(${manifest.counts.ellipsis} ellipsis, ${manifest.counts.notest} notest, ` +
-      `${manifest.counts.nonkotlin} non-kotlin) → ${outDir}`
+      `${manifest.counts.nonkotlin} non-kotlin, ` +
+      `${manifest.counts.otherplatform} other-platform) → ${outDir}`
   );
 }
 
