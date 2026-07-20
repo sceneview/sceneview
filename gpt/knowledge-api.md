@@ -3899,8 +3899,12 @@ Chrome on Android (ARCore) + Quest 3. Mirrors Android `arsceneview` `AnchorNode`
 val anchorPromise = session.xrSession.asDynamic().createAnchor(transform, session.referenceSpace)
 anchorPromise.then { anchor: XRAnchor ->
     val node = XRAnchorNode(anchor) { pose ->
-        // Apply pose.transform.matrix to a Filament entity each frame
+        // Optional per-frame pose callback (pose.transform.matrix, column-major)
     }
+    // Scene-graph bridge (#2024 P5a): bind a ROOT-level Node so its
+    // worldTransform follows the anchor pose each update() — children
+    // parented under it compose for free. stopDriving() releases it.
+    node.drive(sceneView.addModelNode("models/chair.glb"))
     node.onAttached = { firstPose -> }
     node.onLost     = { }
     anchors += node
@@ -3919,6 +3923,8 @@ session.onSessionEnd = { anchors.forEach { it.detach() }; anchors.clear() }
 ```
 
 `update(frame, referenceSpace)` returns `false` when the anchor is no longer in `frame.trackedAnchors` — drop the node from your list. `detach()` calls `XRAnchor.delete()` and is idempotent.
+
+`drive(node)` requires a parentless (root) `Node` — anchor poses are world-space, so a parented node would double-compose (the call throws; a node re-parented *after* `drive` is skipped with a one-time console warning). A destroyed node is auto-released. `drivenNode` exposes the currently bound node.
 
 XRFrame additions: `trackedAnchors` (anchor set), extension `frame.getDepthInformation(view)`, extension `frame.getImageTrackingResults()`.
 
