@@ -162,7 +162,7 @@ with shared logic in Kotlin Multiplatform.
 See [`llms.txt`](./llms.txt) at the repo root for the complete, machine-readable API reference:
 composable signatures, node types, resource loading, threading rules, and common patterns.
 
-## Design System (Google Stitch)
+## Design System
 
 See [`DESIGN.md`](./DESIGN.md) for the complete design system: colors, typography, spacing,
 radius, shadows, motion, breakpoints, and component patterns.
@@ -173,8 +173,16 @@ radius, shadows, motion, breakpoints, and component patterns.
 - Support both light and dark modes
 - Follow Material 3 Expressive patterns
 
-**Google Stitch MCP:** when configured, enables direct UI generation from Stitch projects.
-To set up: `npm install @google/stitch-sdk`, then add the Stitch MCP server in Claude Code settings.
+**The demo-app UI is reference-driven, not tool-generated.** Do NOT use Stitch, v0, or
+Figma to author the demo app's Compose/SwiftUI chrome — that path shipped a poor UI in
+v4.1.0 (generic cards, flat hierarchy) because a web-oriented design tool does not know
+it is framing a 3D Filament viewport. Instead, design natively against `DESIGN.md` tokens,
+anchored on real reference apps (Sketchfab mobile, Polycam, Reality Composer, Apple Quick
+Look, Google Scene Viewer), then verify visually on device/emulator before every push.
+The "Spatial Studio"-style redesign that this method produced is the bar to clear.
+
+Design tools stay fine for **marketing** surfaces (store screenshots, website hero shots),
+where pixel precision has real ROI — never for the app chrome itself.
 
 ## When writing any SceneView code
 
