@@ -559,7 +559,10 @@ struct FeaturedARDemo: Identifiable {
             destination: AnyView(ARLightingDemo())
         ),
         FeaturedARDemo(
-            id: "ar-recording",
+            // Canonicalized to match Android's DemoRegistry id (#2799); the
+            // deep-link registry still accepts the old "ar-recording" id as
+            // a legacy alias (see `DemoDeepLinkRegistry.allowedIds`).
+            id: "ar-record-playback",
             title: "AR Recording",
             subtitle: "Capture the AR session as a screen video",
             icon: "record.circle",

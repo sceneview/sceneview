@@ -1,4 +1,4 @@
-// @sceneId     ar-recording
+// @sceneId     ar-record-playback
 // @title       AR Recording
 // @subtitle    Capture the AR session as a screen video (record-only on iOS)
 // @category    ar
