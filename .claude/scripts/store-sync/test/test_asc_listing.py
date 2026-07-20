@@ -400,5 +400,122 @@ class DisplayTypeMapTest(unittest.TestCase):
         self.assertTrue((repo_root / al.DEFAULT_METADATA_DIR).is_dir())
 
 
+class ClassifyChecksumTest(unittest.TestCase):
+    """Shape classifier for one live `sourceFileChecksum` (#2612 Phase C step 0)."""
+
+    def test_md5_shaped_is_32_lowercase_hex(self):
+        self.assertEqual(al.classify_checksum("d41d8cd98f00b204e9800998ecf8427e"),
+                         "md5-shaped")
+
+    def test_none_and_empty_are_absent(self):
+        self.assertEqual(al.classify_checksum(None), "absent")
+        self.assertEqual(al.classify_checksum(""), "absent")
+
+    def test_uppercase_hex_is_not_md5_shaped(self):
+        # Apple's field is lowercase; an uppercase digest is a different shape,
+        # and mislabelling it "md5" would hide that the convention changed.
+        self.assertEqual(al.classify_checksum("D41D8CD98F00B204E9800998ECF8427E"),
+                         "other")
+
+    def test_sha256_length_is_other(self):
+        self.assertEqual(al.classify_checksum("a" * 64), "other")
+
+    def test_wrong_length_hex_is_other(self):
+        self.assertEqual(al.classify_checksum("abc123"), "other")
+
+    def test_base64ish_is_other(self):
+        self.assertEqual(al.classify_checksum("Zm9vYmFyYmF6cXV4=="), "other")
+
+
+class ClassifyLiveChecksumsTest(unittest.TestCase):
+    """The measurement Phase C is blocked on: what does Apple actually store?"""
+
+    def test_no_live_assets(self):
+        v = al.classify_live_checksums({})
+        self.assertEqual(v["overall"], "no-live-assets")
+
+    def test_empty_sets_still_no_live_assets(self):
+        # A display type present with an empty list is still nothing to measure.
+        v = al.classify_live_checksums({"APP_IPHONE_67": []})
+        self.assertEqual(v["overall"], "no-live-assets")
+
+    def test_all_md5_shaped_is_not_confirmed(self):
+        # The crux: 32-hex is CONSISTENT with MD5 but is not proof. It must not
+        # silently become a green light for the checksum diff.
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e",
+                               "0cc175b9c0f1b6a831c399e269772661"]})
+        self.assertEqual(v["overall"], "md5-shaped")
+        self.assertEqual(v["matched_local"], [])
+
+    def test_match_against_local_md5_confirms(self):
+        # A live checksum equal to a repo file's MD5 settles it outright.
+        digest = "900150983cd24fb0d6963f7d28e17f72"  # md5("abc")
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": [digest]}, local_md5s=[digest])
+        self.assertEqual(v["overall"], "confirmed")
+        self.assertEqual(v["matched_local"], [digest])
+
+    def test_absent_checksums_refute(self):
+        v = al.classify_live_checksums({"APP_IPHONE_67": [None, None]})
+        self.assertEqual(v["overall"], "absent")
+
+    def test_non_md5_shape_refutes_and_reports_length(self):
+        v = al.classify_live_checksums({"APP_IPHONE_67": ["a" * 64]})
+        self.assertEqual(v["overall"], "other")
+        self.assertIn("len=64", v["unknown_shapes"])
+
+    def test_mixed_buckets_are_not_averaged(self):
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"],
+             "APP_IPAD_PRO_3GEN_129": [None]})
+        self.assertEqual(v["overall"], "mixed")
+
+    def test_confirmed_wins_over_shape_when_a_match_exists(self):
+        # One matching MD5 confirms even if other assets are only md5-shaped.
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": [digest, "0cc175b9c0f1b6a831c399e269772661"]},
+            local_md5s=[digest])
+        self.assertEqual(v["overall"], "confirmed")
+
+
+class ChecksumProvenanceReportTest(unittest.TestCase):
+    """The verdict must SAY what it licenses, not just what it observed."""
+
+    def _report(self, live, local=()):
+        return "\n".join(al.checksum_provenance_report(
+            al.classify_live_checksums(live, local)))
+
+    def test_md5_shaped_report_says_not_proof_and_how_to_close(self):
+        text = self._report({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]})
+        self.assertIn("MD5-SHAPED", text.upper())
+        self.assertIn("console", text)  # names the action that would confirm it
+
+    def test_confirmed_report_unblocks_phase_c(self):
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        text = self._report({"APP_IPHONE_67": [digest]}, local=[digest])
+        self.assertIn("CONFIRMED", text.upper())
+        self.assertIn("Phase C", text)
+
+    def test_absent_report_says_rekey(self):
+        text = self._report({"APP_IPHONE_67": [None]})
+        self.assertIn("re-key", text.lower())
+
+    def test_every_verdict_produces_lines(self):
+        # No verdict may silently emit nothing — that would read as "no drift".
+        for live, local in [
+            ({}, ()),
+            ({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]}, ()),
+            ({"APP_IPHONE_67": [None]}, ()),
+            ({"APP_IPHONE_67": ["a" * 64]}, ()),
+            ({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"],
+              "APP_IPAD_PRO_3GEN_129": [None]}, ()),
+        ]:
+            lines = al.checksum_provenance_report(
+                al.classify_live_checksums(live, local))
+            self.assertTrue(lines and all(l.startswith("[probe]") for l in lines))
+
+
 if __name__ == "__main__":
     unittest.main()

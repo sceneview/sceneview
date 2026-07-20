@@ -62,6 +62,7 @@ import argparse
 import hashlib
 import os
 import pathlib
+import re
 import sys
 import time
 from urllib.parse import quote
@@ -180,10 +181,10 @@ def diff_screenshots(device_dir, display_type, local_files, remote_checksums):
 
     Since the repo's screenshots have never been uploaded, every live set out
     there today is in the second category. So before Phase C wires this diff
-    into maintenance.yml / release-checklist.sh as a drift SIGNAL, check one
-    real set: if console-uploaded assets do not key on MD5, this diff must be
-    re-keyed on whatever Apple actually stores. Until then a checksum mismatch
-    is a candidate, not a verdict."""
+    into a drift SIGNAL, the shape of the live checksums has to be measured:
+    that is what classify_live_checksums() / checksum_provenance_report() do,
+    and dry_run() prints their verdict before running this diff. Until that
+    verdict is CONFIRMED, a checksum mismatch is a candidate, not a verdict."""
     local = [(f.name, md5_of(f)) for f in local_files]
     local_sums = [s for _, s in local]
     if local_sums == list(remote_checksums):
@@ -201,6 +202,144 @@ def diff_screenshots(device_dir, display_type, local_files, remote_checksums):
     if extra:
         parts.append(f"{extra} live screenshot(s) not in the repo")
     return [f"{device_dir} ({display_type}): differs ({'; '.join(parts) or 'content mismatch'})"]
+
+
+# An App Store Connect `sourceFileChecksum` we believe to be MD5 — 32 lowercase
+# hex. Shape alone never proves the convention (any 128-bit digest looks like
+# this), which is exactly why classify_live_checksums() reports the shape as a
+# CANDIDATE and only calls it confirmed on a byte-level match.
+MD5_HEX_RE = re.compile(r"[0-9a-f]{32}")
+
+
+def classify_checksum(value):
+    """Bucket one live `sourceFileChecksum` by SHAPE. Pure, offline."""
+    if value is None or value == "":
+        return "absent"
+    if MD5_HEX_RE.fullmatch(value):
+        return "md5-shaped"
+    return "other"
+
+
+def classify_live_checksums(live_sets, local_md5s=()):
+    """Measure what Apple actually stores for CONSOLE-uploaded screenshots.
+
+    This is the probe #2612 Phase C is blocked on, and it exists because the
+    checksum diff in diff_screenshots() rests on an assumption nobody has ever
+    measured: that `sourceFileChecksum` is the MD5 of the SOURCE bytes.
+
+    That assumption is true by construction for assets this script uploaded
+    (we compute the MD5 and declare it; Apple echoes it back), so the apply
+    path can never test it — an echo is not a measurement. Every screenshot
+    live today predates this script and came from the web console, which makes
+    the live set the only honest sample available.
+
+    `live_sets` maps display type -> ordered list of live checksums (None when
+    Apple returned no value). `local_md5s` is the MD5 of every committed repo
+    screenshot; a live value that EQUALS one of them settles the question
+    outright, since a 128-bit collision is not a thing that happens.
+
+    Returns a verdict dict; verdict["overall"] is one of:
+
+      no-live-assets  nothing uploaded to compare against — cannot measure
+      confirmed       a live checksum equals a repo file's MD5 → the
+                      convention holds for console uploads. Phase C unblocked.
+      md5-shaped      all 32-hex → CONSISTENT with MD5, not proof. Closing it
+                      needs one console upload of a file whose MD5 we know.
+      absent          Apple stores no checksum → a checksum diff can never be
+                      a drift signal for console assets; Phase C must re-key.
+      other           present but not MD5-shaped → assumption refuted; re-key
+                      on whatever Apple actually stores (shape reported).
+      mixed           buckets disagree — report rather than average them.
+    """
+    local_md5s = set(local_md5s)
+    per_type, buckets, matched = {}, {}, []
+    for dtype, checksums in sorted(live_sets.items()):
+        kinds = [classify_checksum(c) for c in checksums]
+        per_type[dtype] = kinds
+        for kind in kinds:
+            buckets[kind] = buckets.get(kind, 0) + 1
+        matched += [c for c in checksums if c and c in local_md5s]
+
+    # Shapes we could not name, verbatim-ish, so a re-key has something to go
+    # on instead of "not MD5". Length is the discriminating detail (a SHA-256
+    # is 64 hex, a base64 digest is 24/44 chars with padding).
+    unknown_shapes = sorted({
+        f"len={len(c)}" for checksums in live_sets.values() for c in checksums
+        if classify_checksum(c) == "other"
+    })
+
+    if matched:
+        overall = "confirmed"
+    elif not buckets:
+        overall = "no-live-assets"
+    elif len(buckets) > 1:
+        overall = "mixed"
+    else:
+        overall = next(iter(buckets))
+
+    return {
+        "overall": overall,
+        "buckets": buckets,
+        "per_display_type": per_type,
+        "matched_local": sorted(set(matched)),
+        "unknown_shapes": unknown_shapes,
+    }
+
+
+def checksum_provenance_report(verdict):
+    """Turn a classify_live_checksums() verdict into what it LICENSES.
+
+    Deliberately states the consequence for Phase C rather than just the
+    observation: the failure mode this whole probe exists to prevent is
+    someone reading "4 screenshots differ" and wiring it into a release gate
+    without noticing the diff was keyed on an unmeasured assumption."""
+    overall = verdict["overall"]
+    lines = [f"[probe] sourceFileChecksum provenance: {overall.upper()}"]
+    for dtype, kinds in verdict["per_display_type"].items():
+        lines.append(f"[probe]   {dtype}: {len(kinds)} live — "
+                     + (", ".join(sorted(set(kinds))) or "none"))
+
+    if overall == "confirmed":
+        lines += [
+            "[probe] A live checksum equals a repo file's MD5: Apple stores the MD5 of",
+            "[probe] the SOURCE bytes for console uploads too. The screenshot diff is a",
+            "[probe] real drift signal — #2612 Phase C can wire it into a gate.",
+            "[probe] matched: " + ", ".join(verdict["matched_local"]),
+        ]
+    elif overall == "md5-shaped":
+        lines += [
+            "[probe] Every live checksum is 32-hex — CONSISTENT with MD5, but any",
+            "[probe] 128-bit digest is. Not proof, and not enough for a gate.",
+            "[probe] To close it: upload ONE repo screenshot via the App Store Connect",
+            "[probe] console, re-run this probe, and look for CONFIRMED (the file's MD5",
+            "[probe] then has to appear live). Until then, treat a checksum mismatch as",
+            "[probe] a candidate, never a verdict.",
+        ]
+    elif overall == "absent":
+        lines += [
+            "[probe] Apple stores NO checksum for these assets. The MD5 assumption is",
+            "[probe] refuted for console uploads: a checksum diff can never detect drift",
+            "[probe] on them. Phase C must re-key the screenshot diff (count / order /",
+            "[probe] dimensions) or drop screenshot drift and keep the text diff.",
+        ]
+    elif overall == "other":
+        lines += [
+            "[probe] Live checksums exist but are NOT MD5-shaped — assumption refuted.",
+            "[probe] observed shapes: " + (", ".join(verdict["unknown_shapes"]) or "?"),
+            "[probe] Phase C must re-key on whatever Apple actually stores.",
+        ]
+    elif overall == "mixed":
+        lines += [
+            "[probe] Buckets disagree, so the live set has assets from more than one",
+            "[probe] upload path. Do NOT average this into a single rule — re-run after",
+            "[probe] the next console upload and classify that asset specifically.",
+        ]
+    else:  # no-live-assets
+        lines += [
+            "[probe] No live screenshots to measure. Nothing is refuted and nothing is",
+            "[probe] confirmed — Phase C stays blocked until a set exists to sample.",
+        ]
+    return lines
 
 
 def plan_screenshot_sync(local_files, remote):
@@ -368,6 +507,18 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir):
             shot = shots_by_id.get(ref["id"], {})
             checksums.append(shot.get("attributes", {}).get("sourceFileChecksum"))
         live_sets[dtype] = checksums
+
+    # Probe FIRST, diff second (#2612 Phase C step 0): the screenshot diff below
+    # is keyed on `sourceFileChecksum == MD5(source bytes)`, which is true by
+    # construction only for assets THIS script uploaded — and it has uploaded
+    # none. Printing what Apple actually stores, before the diff it justifies,
+    # is what stops a mismatch from being read as measured drift.
+    local_md5s = [md5_of(p) for device_dir in DISPLAY_TYPE_MAP
+                  for p in sorted((shots_dir / device_dir).glob("*.png"))
+                  if (shots_dir / device_dir).is_dir()]
+    for line in checksum_provenance_report(
+            classify_live_checksums(live_sets, local_md5s)):
+        print(line)
 
     for device_dir, display_type in sorted(DISPLAY_TYPE_MAP.items()):
         ddir = shots_dir / device_dir

@@ -215,6 +215,33 @@ else
   ok "sync-listing job has no inline python heredoc left"
 fi
 
+# 7. #2612 Phase C step 0 — the ASC read-only rail must exist and stay read-only.
+#    Until this job runs, asc_listing.py --dry-run has NEVER touched the live API,
+#    so the checksum-provenance verdict the diff depends on is unmeasured. The job
+#    exists to produce it; assert it is wired and that it cannot write to a store.
+MAINT_WF="$ROOT/.github/workflows/maintenance.yml"
+if grep -q 'store-sync/asc_listing\.py --dry-run' "$MAINT_WF"; then
+  ok "maintenance.yml runs asc_listing.py --dry-run (Phase C read-only rail)"
+else
+  bad "maintenance.yml no longer runs asc_listing.py --dry-run — the ASC drift/probe signal is never produced"
+fi
+# The read-only rail must never gain a write flag by a careless edit: --apply*
+# in a scheduled, credential-bearing job would push to the App Store unattended.
+if python3 - "$MAINT_WF" <<'PYEOF'
+import sys, yaml
+job = yaml.safe_load(open(sys.argv[1]))["jobs"].get("asc-listing-drift")
+if not job:
+    sys.exit(1)
+runs = " ".join(str(s.get("run", "")) for s in job.get("steps", []))
+sys.exit(0 if ("asc_listing.py --dry-run" in runs
+               and "--apply" not in runs) else 1)
+PYEOF
+then
+  ok "asc-listing-drift job is read-only (--dry-run, no --apply*)"
+else
+  bad "asc-listing-drift job missing or carries a write flag — a scheduled job must never push to the store"
+fi
+
 echo
 echo "test-store-sync.sh: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -147,6 +147,31 @@ zéro. À garder en tête pour les Phases C/D, où la tentation sera la même.
     screenshot du repo n'ayant jamais été uploadé) : inconnu, possiblement absent.
   → La validation à faire avant de traiter le diff comme signal porte donc sur un
   set **console-uploadé**, pas sur un set produit par notre propre upload.
+
+  - **C.0 — sonde de provenance des checksums (LIVRÉ, cette PR)** : le prérequis
+    ci-dessus était traité comme « une action console manuelle vague à faire un
+    jour ». Il devient un **rail CI read-only mesurable**. `asc_listing.py`
+    gagne `classify_live_checksums()` + `checksum_provenance_report()` (helpers
+    purs, 20 tests unitaires) : `dry_run()` imprime la SHAPE des checksums live
+    (`[probe] sourceFileChecksum provenance: …`) AVANT le diff qu'elle justifie,
+    et un verdict :
+    - `confirmed` — un checksum live == le MD5 d'un fichier du repo → convention
+      vraie pour les uploads console, Phase C débloquée ;
+    - `md5-shaped` — tous 32-hex → COHÉRENT avec MD5, **pas une preuve** (tout
+      digest 128-bit ressemble à ça) → reste 1 action Thomas : uploader **1**
+      screenshot du repo via la console ASC, relancer, viser `confirmed` ;
+    - `absent` / `other` — hypothèse RÉFUTÉE → re-clé le diff screenshots ;
+    - `no-live-assets` / `mixed` — rien à conclure encore.
+    Le rail = nouveau job `asc-listing-drift` dans `maintenance.yml` (sibling de
+    `store-preflight` §10 et du `listing-drift` Play §12 de #2795), quotidien +
+    dispatch, `--dry-run` **strictement read-only** (self-test interdit `--apply*`),
+    SKIP honnête sans créds, jamais bloquant. **C'est le premier appelant CI de
+    `asc_listing.py --dry-run` : jusqu'ici le chemin read-only ASC n'avait JAMAIS
+    touché l'API live** (grep vérifié — seul `--apply-screenshots` était câblé).
+    ⚠️ **Séquencement** : touche `maintenance.yml`, comme #2795 (Play §12) →
+    rebase mécanique attendu si #2795 merge en premier (deux jobs append-only).
+    §17 release-checklist + issue-dédup de drift = **reste de la Phase C**, à
+    écrire une fois le verdict `confirmed` obtenu (sinon le gate mentirait).
 - **D — Data safety as code** : `data-safety.csv` généré depuis DATA_SAFETY.md +
   push `applications.dataSafety` dans `--apply`. ⚠️ endpoint write-only (pas de GET) →
   premier push réel = gated Thomas avec vérif console après coup ; d'ici là le CSV
