@@ -155,6 +155,10 @@
 		D1000000000000000000001A /* mercedes_a45_amg.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000001A /* mercedes_a45_amg.usdz */; };
 		D1000000000000000000001B /* nintendo_switch.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000001B /* nintendo_switch.usdz */; };
 		D1000000000000000000001C /* bmw_m3_e30.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000001C /* bmw_m3_e30.usdz */; };
+		67036B2BB7EE12BD596AB1F7 /* khronos_lantern.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 19DE0B3B22A2344F009F5343 /* khronos_lantern.usdz */; };
+		EE5AC4C13BBB781FED30597B /* khronos_toy_car.usdz in Resources */ = {isa = PBXBuildFile; fileRef = E14ED838EC53743E24BE22B8 /* khronos_toy_car.usdz */; };
+		66ED22160BBB08C5B508AF55 /* khronos_fox.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 18D000109AEAF964E5DDC143 /* khronos_fox.usdz */; };
+		9B8C930A67638FE6BD6833AD /* khronos_damaged_helmet.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 2C26CC8CC5834E15CDD1F062 /* khronos_damaged_helmet.usdz */; };
 		F50000000000000000000001 /* bell.wav in Resources */ = {isa = PBXBuildFile; fileRef = F60000000000000000000001 /* bell.wav */; };
 		E10000000000000000000001 /* studio.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000001 /* studio.hdr */; };
 		E10000000000000000000002 /* outdoor_cloudy.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000002 /* outdoor_cloudy.hdr */; };
@@ -283,6 +287,10 @@
 		D2000000000000000000001A /* mercedes_a45_amg.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = mercedes_a45_amg.usdz; sourceTree = "<group>"; };
 		D2000000000000000000001B /* nintendo_switch.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = nintendo_switch.usdz; sourceTree = "<group>"; };
 		D2000000000000000000001C /* bmw_m3_e30.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = bmw_m3_e30.usdz; sourceTree = "<group>"; };
+		19DE0B3B22A2344F009F5343 /* khronos_lantern.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_lantern.usdz; sourceTree = "<group>"; };
+		E14ED838EC53743E24BE22B8 /* khronos_toy_car.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_toy_car.usdz; sourceTree = "<group>"; };
+		18D000109AEAF964E5DDC143 /* khronos_fox.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_fox.usdz; sourceTree = "<group>"; };
+		2C26CC8CC5834E15CDD1F062 /* khronos_damaged_helmet.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_damaged_helmet.usdz; sourceTree = "<group>"; };
 		D77142EC848C995EDE06546D /* SketchfabConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabConfig.swift; path = SceneViewDemo/Services/SketchfabConfig.swift; sourceTree = SOURCE_ROOT; };
 		E20000000000000000000001 /* studio.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = studio.hdr; sourceTree = "<group>"; };
 		E20000000000000000000002 /* outdoor_cloudy.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = outdoor_cloudy.hdr; sourceTree = "<group>"; };
@@ -544,6 +552,10 @@
 				D2000000000000000000001A /* mercedes_a45_amg.usdz */,
 				D2000000000000000000001B /* nintendo_switch.usdz */,
 				D2000000000000000000001C /* bmw_m3_e30.usdz */,
+				19DE0B3B22A2344F009F5343 /* khronos_lantern.usdz */,
+				E14ED838EC53743E24BE22B8 /* khronos_toy_car.usdz */,
+				18D000109AEAF964E5DDC143 /* khronos_fox.usdz */,
+				2C26CC8CC5834E15CDD1F062 /* khronos_damaged_helmet.usdz */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -707,6 +719,10 @@
 				D1000000000000000000001A /* mercedes_a45_amg.usdz in Resources */,
 				D1000000000000000000001B /* nintendo_switch.usdz in Resources */,
 				D1000000000000000000001C /* bmw_m3_e30.usdz in Resources */,
+				67036B2BB7EE12BD596AB1F7 /* khronos_lantern.usdz in Resources */,
+				EE5AC4C13BBB781FED30597B /* khronos_toy_car.usdz in Resources */,
+				66ED22160BBB08C5B508AF55 /* khronos_fox.usdz in Resources */,
+				9B8C930A67638FE6BD6833AD /* khronos_damaged_helmet.usdz in Resources */,
 				E10000000000000000000001 /* studio.hdr in Resources */,
 				E10000000000000000000002 /* outdoor_cloudy.hdr in Resources */,
 				E10000000000000000000003 /* sunset.hdr in Resources */,
