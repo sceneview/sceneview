@@ -36,6 +36,9 @@ android {
     }
     buildFeatures {
         compose = true
+        // llms.txt's Rerun-bridge snippet gates on BuildConfig.DEBUG — give the
+        // generated sources a real BuildConfig to resolve (preamble-imported).
+        buildConfig = true
     }
 
     sourceSets {

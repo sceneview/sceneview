@@ -74,11 +74,20 @@ const SOURCES = [
 const PREAMBLE_IMPORTS = [
   "android.content.Context",
   "android.graphics.Bitmap",
+  "android.media.Image",
+  "android.media.MediaPlayer",
+  "android.media.MediaRecorder",
+  "android.net.Uri",
+  "android.view.Display",
+  "androidx.annotation.DrawableRes",
+  "androidx.annotation.RawRes",
   "android.view.MotionEvent",
+  "android.view.SurfaceView",
+  "android.view.TextureView",
   "androidx.activity.ComponentActivity",
+  "androidx.compose.foundation.*",
   "androidx.compose.foundation.layout.*",
-  "androidx.compose.material3.Text",
-  "androidx.compose.material3.Button",
+  "androidx.compose.material3.*",
   "androidx.compose.runtime.*",
   "androidx.compose.ui.Alignment",
   "androidx.compose.ui.Modifier",
@@ -88,25 +97,69 @@ const PREAMBLE_IMPORTS = [
   "androidx.lifecycle.Lifecycle",
   "androidx.lifecycle.compose.LocalLifecycleOwner",
   "com.google.android.filament.*",
+  // llms.txt's ground-shadow snippets use the doc-established `FilamentBox`
+  // alias to disambiguate from io.github.sceneview.collision.Box.
+  "com.google.android.filament.Box as FilamentBox",
+  // Same repo-established alias SceneScope.kt itself uses for ReflectionProbeNode.
+  "com.google.android.filament.Scene as FilamentScene",
+  // Aliasing a FQN hides its original simple name from the wildcard — re-import
+  // the bare names the signature listings still use (MeshNode's boundingBox: Box,
+  // SceneView's scene: Scene).
+  "com.google.android.filament.Box",
+  "com.google.android.filament.Scene",
   "com.google.ar.core.*",
   // Explicit: `Plane` alone is ambiguous (ar.core.* vs geometries.*) and the
   // AR usage dominates the doc. The one geometry block that means
   // io.github.sceneview.geometries.Plane hoists its own explicit import,
   // which evicts this one (same-simple-name rule in emit()).
   "com.google.ar.core.Plane",
+  // Explicit: `Camera` is ambiguous (ar.core.* vs filament.*); the AR blocks
+  // that spell the type out (ReticleNode's minCameraDistanceFromPlane) mean
+  // ar.core — same import ARSceneScope.kt itself makes.
+  "com.google.ar.core.Camera",
+  // Nested enums spelled bare in the AR snippets.
+  "com.google.ar.core.AugmentedImage.TrackingMethod",
+  "com.google.ar.core.Anchor.TerrainAnchorState",
+  "com.google.ar.core.Anchor.RooftopAnchorState",
+  "dev.romainguy.kotlin.math.Float2",
+  "dev.romainguy.kotlin.math.Float3",
+  "dev.romainguy.kotlin.math.Float4",
+  // CollisionSystem.hitTest(ray:) takes the kotlin-math Ray (the legacy
+  // collision.Ray is a different, non-wildcarded type).
+  "dev.romainguy.kotlin.math.Ray",
+  // Explicit: bare `Quaternion` must resolve to kotlin-math (the SDK's math
+  // type) — com.google.ar.core.* also ships a (package-private) Quaternion.
+  "dev.romainguy.kotlin.math.Quaternion",
   "dev.romainguy.kotlin.math.RotationsOrder",
   "java.io.File",
+  "java.nio.Buffer",
+  "java.nio.ByteBuffer",
+  "java.nio.FloatBuffer",
+  "java.util.UUID",
+  // The module's own BuildConfig — llms.txt debug-gating snippets read .DEBUG.
+  "io.github.sceneview.docsnippets.BuildConfig",
   "io.github.sceneview.*",
   "io.github.sceneview.gesture.*",
   "io.github.sceneview.animation.*",
   "io.github.sceneview.ar.*",
   "io.github.sceneview.ar.arcore.*",
+  "io.github.sceneview.ar.collaborative.*",
+  "io.github.sceneview.ar.camera.*",
   "io.github.sceneview.ar.node.*",
+  "io.github.sceneview.ar.physics.*",
+  "io.github.sceneview.ar.postprocessing.*",
+  "io.github.sceneview.ar.recording.*",
+  "io.github.sceneview.ar.rerun.*",
   "io.github.sceneview.ar.scene.*",
+  "io.github.sceneview.audio.*",
+  "io.github.sceneview.core.splat.*",
   // NOTE: io.github.sceneview.collision.* is deliberately NOT wildcarded —
   // collision.Sphere/Box/Plane/HitResult collide with geometries.* and
   // com.google.ar.core.*. Collision-system snippets carry their own explicit
   // imports in the doc (which also teaches the reader which type is meant).
+  // CollisionSystem itself has a unique simple name — safe to import.
+  "io.github.sceneview.collision.CollisionSystem",
+  "io.github.sceneview.components.*",
   "io.github.sceneview.environment.*",
   "io.github.sceneview.geometries.*",
   "io.github.sceneview.loaders.*",
@@ -115,7 +168,9 @@ const PREAMBLE_IMPORTS = [
   "io.github.sceneview.model.*",
   "io.github.sceneview.node.*",
   "io.github.sceneview.texture.*",
+  "io.github.sceneview.utils.*",
   "kotlinx.coroutines.*",
+  "kotlinx.coroutines.flow.*",
 ];
 
 // Suppressed diagnostics: snippets illustrate one API each — unused locals,
@@ -123,7 +178,10 @@ const PREAMBLE_IMPORTS = [
 const FILE_SUPPRESS =
   '@file:Suppress("unused", "UNUSED_VARIABLE", "UNUSED_PARAMETER", ' +
   '"UNUSED_ANONYMOUS_PARAMETER", "UNUSED_EXPRESSION", "RedundantSuppression", ' +
-  '"LocalVariableName", "FunctionName", "SpellCheckingInspection")';
+  // UNREACHABLE_CODE: the context prelude pins types with `TODO()` placeholders
+  // (never executed — this module is compile-only), which marks the rest of the
+  // wrapper body unreachable.
+  '"LocalVariableName", "FunctionName", "SpellCheckingInspection", "UNREACHABLE_CODE")';
 
 // A block whose first meaningful line starts a top-level declaration is
 // emitted verbatim; anything else is a fragment and gets wrapped in a
@@ -157,12 +215,18 @@ function parseKotlinBlocks(text) {
   let info = "";
   let start = 0;
   let buf = [];
-  let platform = "android";
+  let sectionPlatform = "android"; // platform of the enclosing ## section
+  let platform = "android"; // effective platform (a ### sub-heading can override)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (!inBlock && line.startsWith("## ")) {
+    if (!inBlock && line.startsWith("## ") && !line.startsWith("### ")) {
       const hit = NON_ANDROID_SECTIONS.find((s) => line.startsWith(s.prefix));
-      platform = hit ? hit.platform : "android";
+      sectionPlatform = hit ? hit.platform : "android";
+      platform = sectionPlatform;
+    } else if (!inBlock && line.startsWith("### ")) {
+      // Cross-platform sections carry per-platform ### sub-headings; a
+      // "### Web (...)" block is Kotlin/JS and can't compile on this classpath.
+      platform = /^###\s+Web\b/.test(line) ? "web" : sectionPlatform;
     }
     if (!inBlock) {
       const m = line.match(/^```kotlin\b(.*)$/);
@@ -192,8 +256,14 @@ function classify(block) {
     const reason = block.info.replace(/^notest\s*/, "").trim();
     return { category: "notest", reason: reason || "(MISSING REASON)" };
   }
-  if (block.code.includes("...")) {
-    return { category: "ellipsis", reason: "contains ... placeholder" };
+  // Placeholder test ignores `//` comments: an ellipsis in prose commentary
+  // doesn't make the code un-compilable. Both ASCII `...` and U+2026 `…` count.
+  const codeOnly = block.code
+    .split("\n")
+    .map((l) => l.replace(/\/\/.*$/, ""))
+    .join("\n");
+  if (codeOnly.includes("...") || codeOnly.includes("…")) {
+    return { category: "ellipsis", reason: "contains ellipsis placeholder" };
   }
   if (GRADLE_RE.test(block.code)) {
     return { category: "nonkotlin", reason: "Gradle DSL mistagged as kotlin" };
@@ -210,6 +280,14 @@ function classify(block) {
 // #2760's symbol-index job, not this harness's). A bodyless `fun` is not
 // valid Kotlin, so append a `= TODO()` stub where the parens balance and no
 // `{`/`=` body follows.
+// Trailing `// …` prose must not count parens or swallow the appended stub.
+function splitComment(line) {
+  const at = line.indexOf("//");
+  return at === -1
+    ? { code: line, comment: "" }
+    : { code: line.slice(0, at).replace(/\s+$/, ""), comment: " " + line.slice(at) };
+}
+
 function stubBodylessFuns(lines) {
   const out = [...lines];
   let i = 0;
@@ -218,22 +296,32 @@ function stubBodylessFuns(lines) {
       let depth = 0;
       let seenParen = false;
       let j = i;
+      let closePos = -1; // index (in the closing line) of the paren that ends the PARAMETER LIST
       for (; j < out.length; j++) {
-        for (const ch of out[j]) {
+        const lineCode = splitComment(out[j]).code;
+        for (let k = 0; k < lineCode.length; k++) {
+          const ch = lineCode[k];
           if (ch === "(") { depth++; seenParen = true; }
-          else if (ch === ")") depth--;
+          else if (ch === ")") {
+            depth--;
+            if (seenParen && depth === 0) { closePos = k; break; }
+          }
         }
-        if (seenParen && depth === 0) break;
+        if (closePos !== -1) break;
       }
-      if (j < out.length && seenParen) {
-        const tail = out[j].slice(out[j].lastIndexOf(")") + 1);
+      if (j < out.length && closePos !== -1) {
+        const { code, comment } = splitComment(out[j]);
+        // Everything after the param-list close is the return type — which may
+        // itself contain parens (`: (Session) -> CameraConfig`), so never use
+        // lastIndexOf(")") here.
+        const tail = code.slice(closePos + 1);
         const next = out.slice(j + 1).find((l) => l.trim() !== "");
         const hasBody =
           /[{=]/.test(tail) || (next !== undefined && /^\s*[{=]/.test(next));
         // No declared return type → the stub must pin Unit explicitly,
         // otherwise `= TODO()` infers Nothing (a compile error top-level).
         const hasReturnType = /:\s*\S/.test(tail);
-        if (!hasBody) out[j] += hasReturnType ? " = TODO()" : ": Unit = TODO()";
+        if (!hasBody) out[j] = code + (hasReturnType ? " = TODO()" : ": Unit = TODO()") + comment;
         i = j + 1;
         continue;
       }
@@ -241,6 +329,32 @@ function stubBodylessFuns(lines) {
     i++;
   }
   return out;
+}
+
+// Reference listings also show `val isAttached: Boolean` / `var onSurfaceReady:
+// ((…) -> Unit)?` without initializers — legal in an interface, a compile error
+// in a class or statement context. `= TODO()` is valid in all stub positions
+// (member, local, even a data-class parameter default), so append it wherever a
+// typed property has no initializer, no accessor, and no trailing comma.
+// Interface listings are left alone (bodyless members are their legal form).
+function stubUninitializedProps(lines) {
+  if (lines.some((l) => /^\s*(public\s+|private\s+|internal\s+)?interface\s/.test(l))) return lines;
+  return lines.map((line) => {
+    const { code, comment } = splitComment(line);
+    const isExtension =
+      /^\s*((override|open|public|internal|protected|private|lateinit)\s+)*(val|var)\s+[\w`]+(<[^>]*>)?\.[\w`]+\s*:/.test(code);
+    const isPlain =
+      /^\s*((override|open|public|internal|protected|private|lateinit)\s+)*(val|var)\s+[\w`]+\s*:/.test(code);
+    if (!isExtension && !isPlain) return line;
+    if (/[=,{(]\s*$/.test(code) || /\bget\(|\bset\(/.test(code) || /=/.test(code)) return line;
+    // A type annotation that hasn't closed its generics/parens yet continues on
+    // the next line — don't stub mid-declaration.
+    const opens = (code.match(/[<(]/g) || []).length;
+    const closes = (code.match(/[>)]/g) || []).length;
+    if (opens > closes) return line;
+    // Extension properties cannot have initializers — stub the getter instead.
+    return code + (isExtension ? " get() = TODO()" : " = TODO()") + comment;
+  });
 }
 
 // The canonical composition context llms.txt itself establishes everywhere
@@ -254,6 +368,45 @@ const CONTEXT_PRELUDE = [
   ["modelLoader", "val modelLoader = rememberModelLoader(engine)"],
   ["materialLoader", "val materialLoader = rememberMaterialLoader(engine)"],
   ["environmentLoader", "val environmentLoader = rememberEnvironmentLoader(engine)"],
+  ["node", "val node = Node(engine)"],
+  // Screen-space dimensions the AR hit-test snippets take as given.
+  ["viewWidth", "val viewWidth = 1080f"],
+  ["viewHeight", "val viewHeight = 1920f"],
+  ["xPx", "val xPx = 540f"],
+  ["yPx", "val yPx = 960f"],
+  ["deltaSeconds", "val deltaSeconds = 0.016f"],
+  // Type-pinned placeholders (TODO() is never executed — compile-only module).
+  // These are the names llms.txt's surrounding prose establishes before the
+  // fragment: the camera/model handles, a touch event, the collision system.
+  ["motionEvent", "val motionEvent: MotionEvent = TODO()"],
+  ["cameraNode", "val cameraNode: CameraNode = TODO()"],
+  ["modelNode", "val modelNode: ModelNode = TODO()"],
+  ["modelInstance", "val modelInstance: ModelInstance = TODO()"],
+  ["instance", "val instance: ModelInstance = TODO()"],
+  ["shadowMaterial", "val shadowMaterial: MaterialInstance = TODO()"],
+  ["collisionSystem", "val collisionSystem: io.github.sceneview.collision.CollisionSystem = TODO()"],
+  ["arSession", "var arSession: com.google.ar.core.Session? = null"],
+  ["session", "val session: com.google.ar.core.Session = TODO()"],
+  ["camera", "val camera: com.google.ar.core.Camera = TODO()"],
+  ["hitResult", "val hitResult: com.google.ar.core.HitResult = TODO()"],
+  ["scope", "val scope = rememberCoroutineScope()"],
+  ["frame", "val frame: com.google.ar.core.Frame = TODO()"],
+  ["view", "val view = rememberView(engine)"],
+  ["renderer", "val renderer = rememberRenderer(engine)"],
+  ["bridge", "val bridge = rememberRerunBridge()"],
+  ["trailFloats", "val trailFloats = floatArrayOf()"],
+  ["trackingQuality", "val trackingQuality = 1f"],
+  ["cameraStream", "val cameraStream: ARCameraStream = TODO()"],
+  ["cloud", "val cloud: SplatCloud = TODO()"],
+  ["depthCollider", "val depthCollider: DepthCollider = TODO()"],
+  ["file", 'val file = File("session-recording.mp4")'],
+  ["semanticTexture", "val semanticTexture: Texture = TODO()"],
+  ["blendSlider", "val blendSlider = 0.5f"],
+  ["targetTransform", "val targetTransform = Transform(position = Position(x = 1f))"],
+  ["recorder", "val recorder = rememberARRecorder()"],
+  ["occlusionAvailable", "var occlusionAvailable = true"],
+  ["context", "val context = LocalContext.current"],
+  ["contentRoot", "val contentRoot = Node(engine)"],
 ];
 
 function contextPrelude(bodyText) {
@@ -289,7 +442,7 @@ function emit(block, slug, index) {
     }
   }
 
-  const stubbed = stubBodylessFuns(body);
+  const stubbed = stubUninitializedProps(stubBodylessFuns(body));
   const firstCode = stubbed.find((l) => l.trim() !== "" && !/^\/\//.test(l.trim()));
   const topLevel = firstCode !== undefined && TOP_LEVEL_RE.test(firstCode.trim());
 
@@ -318,13 +471,22 @@ function emit(block, slug, index) {
   ];
 
   const prelude = topLevel ? [] : contextPrelude(stubbed.join("\n"));
+  // Node composables (ModelNode, CubeNode, HitResultNode, …) are MEMBERS of
+  // SceneScope/ARSceneScope — llms.txt shows them as the caller writes them
+  // inside a SceneView/ARSceneView trailing lambda. Wrapping every fragment in
+  // `with(arSceneScope)` reproduces that documented context (ARSceneScope
+  // extends SceneScope, so both families resolve). TODO() placeholder — this
+  // module is compile-only, nothing ever runs.
   const content = topLevel
     ? stubbed.join("\n")
     : [
         "@Composable",
         `private fun Snippet_${slug}_${index}() {`,
+        "    val arSceneScope: ARSceneScope = TODO()",
         ...prelude.map((l) => `    ${l}`),
-        ...stubbed.map((l) => (l === "" ? l : `    ${l}`)),
+        "    with(arSceneScope) {",
+        ...stubbed.map((l) => (l === "" ? l : `        ${l}`)),
+        "    }",
         "}",
       ].join("\n");
 
