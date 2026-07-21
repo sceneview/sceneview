@@ -129,6 +129,76 @@ them for the capture. Use `cameraImage()` when you want the raw camera view only
 use `PixelCopy` when the question is about the augmented scene ("Is there an
 animal in this room?" after placing a virtual dog).
 
+### World-anchored answers — pin each answer where the user tapped
+
+Instead of stacking answers in a screen-space overlay, pin each one **in the room**
+at the tapped surface: hit-test the tap, anchor the hit, and render the card on a
+`ViewNode` under an `AnchorNode`. It holds its place while the camera moves — orbit
+around it and the answer stays on the object it describes.
+
+```kotlin
+class AnswerPanel(val id: Int, val anchor: Anchor, val facingYawDegrees: Float) {
+    var text by mutableStateOf("")           // grows with the stream deltas
+}
+val panels = remember { mutableStateListOf<AnswerPanel>() }
+val viewNodeManager = rememberViewNodeManager()
+// ARCore anchors cost per frame while attached — always detach on dispose.
+DisposableEffect(Unit) { onDispose { panels.forEach { it.anchor.detach() } } }
+
+ARSceneView(
+    planeRenderer = true,                    // show planes: where a tap will pin
+    viewNodeWindowManager = viewNodeManager, // required by ViewNode
+    onSessionUpdated = { _, frame -> latestFrame = frame },
+    onGestureListener = rememberOnGestureListener(
+        onSingleTapConfirmed = { e, _ ->
+            // Tracked planes (tap inside the polygon) and feature points both accept.
+            val hit = latestFrame?.hitTest(e)?.firstOrNull { result ->
+                val t = result.trackable
+                t.trackingState == TrackingState.TRACKING &&
+                    (t is Point || (t is Plane && t.isPoseInPolygon(result.hitPose)))
+            }
+            val panel = hit?.let { h ->
+                val cam = latestFrame!!.camera.pose
+                AnswerPanel(
+                    id = nextId++,
+                    anchor = h.createAnchor(),
+                    // face where the user stood at tap time (yaw around +Y)
+                    facingYawDegrees = Math.toDegrees(
+                        atan2((cam.tx() - h.hitPose.tx()).toDouble(),
+                              (cam.tz() - h.hitPose.tz()).toDouble())).toFloat(),
+                ).also { panels += it }
+            }
+            // Stream the answer into `panel` when non-null, into the screen-space
+            // card when the tap hit nothing trackable.
+        }
+    ),
+) {
+    panels.forEach { panel ->
+        key(panel.id) {
+            AnchorNode(anchor = panel.anchor) {          // follows ARCore's refined pose
+                ViewNode(
+                    windowManager = viewNodeManager,
+                    unlit = true,                        // UI card: ignore scene lighting
+                    position = Position(y = 0.12f),      // float above the surface
+                    rotation = Rotation(y = panel.facingYawDegrees),
+                    scale = Scale(0.15f),                // ViewNode renders at 250 px/m
+                ) {
+                    // A ViewNode has no parent to measure against — give the content
+                    // an explicit width.
+                    Card(Modifier.width(320.dp)) { Text(panel.text) }
+                }
+            }
+        }
+    }
+}
+```
+
+Combining this with the composited capture above: the anchored cards are UI, not
+scenery, so hide them for the capture (`isVisible = false` on the `ViewNode`, same
+flag as your 2D overlays) — otherwise the model reads its own earlier answers back
+as part of the next question. Placed props stay visible on purpose: they are what
+you want the model to see.
+
 ## iOS (Swift + SwiftUI)
 
 Not available yet — SceneViewSwift has no on-device multimodal prompt API wired
@@ -146,6 +216,7 @@ feature). Tracked on [#2648](https://github.com/sceneview/sceneview/issues/2648)
 | YUV → Bitmap | `Image.toArgbBitmap(rotationDegrees)` — off main thread, close the Image |
 | Multimodal ask | `generateContent(generateContentRequest(ImagePart, TextPart) {})` |
 | Streamed answers | `generateContentStream(request)` — a `Flow` of text deltas to concatenate |
+| World-anchored answers | `frame.hitTest(e)` → `hit.createAnchor()` → `AnchorNode { ViewNode { … } }` — detach anchors on dispose |
 | Rotation | 90° at portrait `ROTATION_0` (map from display rotation for other orientations) |
 | Emulator QA | AICore is never available on emulators — inject a canned engine under QA mode (see `PointAndAskDemo.kt` / `AskEngine.kt`) |
 
@@ -155,4 +226,6 @@ progress, **composited `PixelCopy` capture** (the model sees placed 3D props —
 long-press drops one), overlays hidden during capture, deterministic QA engine,
 streamed answers with a live typing cursor, a free-form question field (blank
 falls back to the default prompt), an offline badge (`ConnectivityManager`
-active-network check), and an auto-dismissing answer card.
+active-network check), an auto-dismissing answer card, and **world-anchored answer
+panels** (one `AnchorNode` + `ViewNode` per tap that lands on a tracked surface,
+hidden during the capture, with the screen-space card as the fallback).
