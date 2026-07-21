@@ -811,6 +811,16 @@ SceneView(viewNodeWindowManager = windowManager) {
 }
 ```
 
+Two gotchas that bite every `ViewNode`:
+
+- **`viewContent` composes in its own off-screen window, so it inherits NONE of
+  your `CompositionLocal`s** — `MaterialTheme`, `LocalContentColor`, your own
+  locals. Without re-applying them inside, a themed card silently falls back to
+  Material 3 defaults and stops matching the rest of your UI. Wrap the content:
+  `ViewNode(windowManager) { MyAppTheme { Card { … } } }`.
+- **There is no parent to measure against**, so `fillMaxWidth()` and friends have
+  nothing to fill. Give the content an explicit size (`Modifier.width(320.dp)`).
+
 ### LineNode — single line segment
 ```kotlin
 @Composable fun LineNode(

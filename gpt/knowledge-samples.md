@@ -171,7 +171,8 @@ ARSceneView(
     onSessionUpdated = { _, frame -> latestFrame = frame },
     onGestureListener = rememberOnGestureListener(
         onSingleTapConfirmed = { e, _ ->
-            val hit = latestFrame?.hitTest(e)?.firstOrNull { result ->
+            // Gate on camera tracking, not just the trackable's own state.
+            val hit = latestFrame?.takeIf { isTracking }?.hitTest(e)?.firstOrNull { result ->
                 val t = result.trackable
                 t.trackingState == TrackingState.TRACKING &&
                     (t is Point || (t is Plane && t.isPoseInPolygon(result.hitPose)))

@@ -152,7 +152,9 @@ ARSceneView(
     onGestureListener = rememberOnGestureListener(
         onSingleTapConfirmed = { e, _ ->
             // Tracked planes (tap inside the polygon) and feature points both accept.
-            val hit = latestFrame?.hitTest(e)?.firstOrNull { result ->
+            // Gate on camera tracking: hit results are unreliable while the session
+            // itself is not tracking, even when a trackable reports TRACKING.
+            val hit = latestFrame?.takeIf { isTracking }?.hitTest(e)?.firstOrNull { result ->
                 val t = result.trackable
                 t.trackingState == TrackingState.TRACKING &&
                     (t is Point || (t is Plane && t.isPoseInPolygon(result.hitPose)))

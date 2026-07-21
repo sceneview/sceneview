@@ -1426,6 +1426,14 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * }
      * ```
      *
+     * Two consequences of [viewContent] living in its own off-screen window:
+     * - **It inherits none of the caller's `CompositionLocal`s** — `MaterialTheme`,
+     *   `LocalContentColor`, your own locals. A themed card therefore falls back to Material 3
+     *   defaults unless the theme is re-applied inside: `ViewNode(windowManager) { MyAppTheme
+     *   { Card { … } } }`.
+     * - **It has no parent to measure against**, so `fillMaxWidth()` and friends have nothing to
+     *   fill — give the content an explicit size (`Modifier.width(320.dp)`).
+     *
      * @param windowManager         The [ViewNodeImpl.WindowManager] to attach the view to.
      * @param unlit                 If `true`, ignores scene lighting (always fully bright).
      * @param invertFrontFaceWinding Inverts face winding — useful for front-facing AR cameras.
