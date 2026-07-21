@@ -1,6 +1,6 @@
 {
   "name": "sceneview-mcp",
-  "version": "4.0.14",
+  "version": "4.0.15",
   "mcpName": "io.github.sceneview/mcp",
   "description": "MCP server for SceneView — cross-platform 3D & AR SDK for Android and iOS. Give Claude the full SceneView SDK so it writes correct, compilable code.",
   "keywords": [
@@ -59,12 +59,12 @@
     "node": ">=18"
   },
   "scripts": {
-    "prebuild": "node scripts/generate-llms-txt.js && node scripts/generate-version.js",
+    "prebuild": "node scripts/generate-llms-txt.js && node scripts/generate-version.js && node scripts/generate-symbols.js",
     "build": "tsc",
-    "prepare": "node scripts/generate-llms-txt.js && node scripts/generate-version.js && tsc",
+    "prepare": "node scripts/generate-llms-txt.js && node scripts/generate-version.js && node scripts/generate-symbols.js && tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "test": "node scripts/generate-llms-txt.js && node scripts/generate-version.js && vitest run",
+    "test": "node scripts/generate-llms-txt.js && node scripts/generate-version.js && node scripts/generate-symbols.js && vitest run",
     "biome": "cd .. && mcp/node_modules/.bin/biome check",
     "biome:fix": "cd .. && mcp/node_modules/.bin/biome check --write"
   },

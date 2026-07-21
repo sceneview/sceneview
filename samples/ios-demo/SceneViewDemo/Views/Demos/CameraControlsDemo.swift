@@ -69,6 +69,11 @@ struct CameraControlsDemo: View {
             }
             .cameraControls(mode)
             .recentersTargetOnOrbit(recenterOnOrbit)
+            // The central object is an explicit "orange PBR cube" (metallic
+            // 0.7, roughness 0.2) — without an IBL it has nothing to reflect
+            // and renders flat regardless of which camera mode is active.
+            // Same `.studio` preset as ModelViewerDemo (#2114).
+            .environment(.studio)
             .ignoresSafeArea()
         }
         .background(Color.black)

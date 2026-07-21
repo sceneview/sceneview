@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:sceneview_flutter/sceneview_flutter.dart';
+import 'package:flutter_sceneview/flutter_sceneview.dart';
 
 /// Features tab — interactive showcase of all Flutter bridge capabilities.
 ///
@@ -46,7 +46,7 @@ class _FeaturesPageState extends State<FeaturesPage> {
                   const SizedBox(height: 8),
                   Text(
                     'This page demonstrates every feature exposed by the '
-                    'sceneview_flutter plugin. Each section below maps to a '
+                    'flutter_sceneview plugin. Each section below maps to a '
                     'specific bridge API.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onPrimaryContainer,

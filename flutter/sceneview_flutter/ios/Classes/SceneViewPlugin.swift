@@ -91,7 +91,7 @@ final class FlutterContentRoot {
                 entity.addChild(node.entity)
             } catch {
                 NSLog(
-                    "[sceneview_flutter] Failed to load model '%@': %@",
+                    "[flutter_sceneview] Failed to load model '%@': %@",
                     data.path,
                     error.localizedDescription
                 )
@@ -594,7 +594,7 @@ final class ARPlacementController: ObservableObject {
                 templates.append((data, node.entity))
             } catch {
                 NSLog(
-                    "[sceneview_flutter] Failed to load AR model '%@': %@",
+                    "[flutter_sceneview] Failed to load AR model '%@': %@",
                     data.path,
                     error.localizedDescription
                 )

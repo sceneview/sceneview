@@ -1,15 +1,33 @@
 import SwiftUI
 
-/// Placeholder shown when the user taps a demo that is not yet ported to iOS.
+/// Placeholder shown when the user taps a demo that has no destination on iOS.
 ///
-/// Mirrors an Android-only feature with a friendly "Coming soon" message and
-/// links to track progress or try the equivalent on the Android demo app.
+/// Two distinct honest treatments (#2804 Job C — never conflate the two):
+/// - **Coming soon** (`androidOnlyReason == nil`, the common case): not yet
+///   ported, but expected to land eventually. Friendly message, links to
+///   track progress or try the equivalent on the Android demo app.
+/// - **Android-only** (`androidOnlyReason` set): a capability with no
+///   ARKit/RealityKit equivalent — e.g. ARCore Geospatial/VPS. Never implies
+///   a future port; the pill, nav title, and footer all say "Android-only"
+///   and state the one-line reason instead of "will be ported to iOS soon".
 struct ComingSoonScreen: View {
     let title: String
     let subtitle: String
     let icon: String
 
+    /// One-line, user-defensible reason this is **permanently** Android-only
+    /// — set only for a platform-locked capability, never for the ordinary
+    /// "not ported yet" case. See ``DemoItem/androidOnlyReason``.
+    var androidOnlyReason: String? = nil
+
     @Environment(\.dismiss) private var dismiss
+
+    private var isAndroidOnly: Bool { androidOnlyReason != nil }
+    private var pillText: String { isAndroidOnly ? "Android-only" : "Coming soon" }
+    private var footerText: String {
+        androidOnlyReason ??
+            "This sample is already available in the Android demo app and will be ported to iOS soon. SceneView aims for full Android↔iOS parity."
+    }
 
     private var androidPlayStoreURL: URL { URL(string: "https://play.google.com/store/apps/details?id=io.github.sceneview.demo")! }
     private var githubIssuesURL: URL { URL(string: "https://github.com/sceneview/sceneview/issues")! }
@@ -41,7 +59,7 @@ struct ComingSoonScreen: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
 
-                    Text("Coming soon")
+                    Text(pillText)
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
@@ -67,7 +85,7 @@ struct ComingSoonScreen: View {
                 }
                 .padding(.horizontal, 20)
 
-                Text("This sample is already available in the Android demo app and will be ported to iOS soon. SceneView aims for full Android↔iOS parity.")
+                Text(footerText)
                     .font(.footnote)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
@@ -78,7 +96,7 @@ struct ComingSoonScreen: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .navigationTitle("Coming soon")
+        .navigationTitle(pillText)
         .navigationBarTitleInline()
     }
 }
@@ -89,6 +107,17 @@ struct ComingSoonScreen: View {
             title: "Gesture Editing",
             subtitle: "Move, scale, and rotate models with one-finger drag, pinch, and rotate gestures.",
             icon: "hand.pinch.fill"
+        )
+    }
+}
+
+#Preview("Android-only") {
+    NavigationStack {
+        ComingSoonScreen(
+            title: "Streetscape Geometry",
+            subtitle: "Geospatial building and terrain meshes",
+            icon: "map.fill",
+            androidOnlyReason: "ARCore Streetscape Geometry (Geospatial/VPS) is a Google-backend service with no ARKit equivalent — not planned for iOS."
         )
     }
 }

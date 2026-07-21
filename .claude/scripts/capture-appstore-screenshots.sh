@@ -44,8 +44,14 @@ BUNDLE_ID="io.github.sceneview.demo"
 IPHONE_NAME="${IPHONE_SIM:-iPhone 16 Pro Max}"
 IPAD_NAME="${IPAD_SIM:-iPad Pro 13-inch (M4)}"
 
-# Four demos that render rich, full 3D content — never empty/loading AR scenes.
-DEMOS=(model-viewer dynamic-sky multi-model lighting)
+# The COMMON showcase set (#2773) — the same five demos captured on Android's
+# `capture-play-store-screenshots.sh`, in the same order, so the two stores
+# show identical screens. Every id here is a standalone (non-consolidated)
+# demo on BOTH platforms — verified against Android's DeepLinkRouter aliases
+# (dynamic-sky/multi-model/reflection-probes/environment all collapse to an
+# umbrella demo on Android, so the old iOS set could never match). All five
+# render rich 3D content, never an empty/loading AR scene.
+DEMOS=(model-viewer lighting materials geometry double-pendulum)
 # Per-demo render settle time (model load + camera orbit), seconds.
 WAIT_SECONDS="${WAIT_SECONDS:-24}"
 
@@ -95,6 +101,15 @@ capture_class() {
   xcrun simctl erase "$udid"
   xcrun simctl boot "$udid"
   sleep 6
+  # Uniform look with the Android capture (#2773): force DARK appearance so
+  # the 3D content renders on a dark surface both stores, and clean the status
+  # bar (fixed 9:41, full wifi/cellular/battery) so no live clock/signal noise
+  # inflates the diff — the iOS equivalent of Android's status-bar crop.
+  xcrun simctl ui "$udid" appearance dark 2>/dev/null || true
+  xcrun simctl status_bar "$udid" override \
+    --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
+    --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 \
+    2>/dev/null || true
   xcrun simctl install "$udid" "$APP_PATH"
   local i=1
   for demo in "${DEMOS[@]}"; do

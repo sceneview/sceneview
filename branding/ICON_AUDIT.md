@@ -1,6 +1,6 @@
 # SceneView Icon & Branding Audit
 
-Audited: 2026-03-26
+Audited: 2026-03-26 · **Refreshed: 2026-07-18 (#2773)**
 
 ## Brand Assets (Source of Truth)
 
@@ -8,13 +8,22 @@ Audited: 2026-03-26
 |---|---|
 | `branding/logo.svg` | Light mode logo — 512x512, blue cube + viewport brackets |
 | `branding/logo-dark.svg` | Dark mode logo — brighter blues for dark backgrounds |
+| `branding/app-icon-1024.svg` | **Store app icon** — cube on a blue→violet diagonal gradient |
 | `website-static/favicon.svg` | Favicon — 32x32, compact isometric cube + brackets |
 
-### Brand Colors
-- Primary: `#1A73E8`
-- Light: `#8AB4F8`
+### Brand Colors (current — Stitch palette)
+
+> **2026-07-18:** the palette below supersedes the pre-Stitch values this doc
+> originally listed (`#1A73E8` primary etc.). The whole codebase now uses
+> `#005BC1` — see `samples/android-demo/src/main/res/values/colors.xml`
+> (`md_theme_primary #005BC1`) and `samples/ios-demo/.../Theme.swift`.
+
+- Primary: `#005BC1`
+- Tertiary (accent 2): `#6446CD`
+- Light (dark-mode primary): `#A4C1FF`
+- Dark-mode tertiary: `#D2A8FF`
 - Dark background: `#0D2137`
-- Cube faces: `#1558B0` (left/shadow), `#4A90D9` (right/lit), `#8AB4F8` (top/light)
+- Cube faces: `#005BC1` (left/shadow), `#3D7FD9` (right/lit), `#A4C1FF` (top/light)
 
 ---
 
@@ -36,10 +45,12 @@ Audited: 2026-03-26
 - Note: no bitmap fallback PNGs (OK for TV, adaptive icon covers modern devices)
 
 ### iOS Demo (`samples/ios-demo/`)
-- **Status: NEEDS MANUAL WORK**
-- `AppIcon.appiconset/Contents.json` exists but has NO image file
-- AccentColor: set to `#1A73E8` (light) / `#8AB4F8` (dark) — fixed in this audit
-- **ACTION REQUIRED**: Generate a 1024x1024 PNG from `branding/logo.svg` with `#0D2137` background and add it as `AppIcon.appiconset/AppIcon.png`, then update Contents.json to reference it
+- **Status: COMPLETE** (resolved since the 2026-03-26 audit)
+- `AppIcon.appiconset/AppIcon.png` (1024×1024) is present and committed; it is
+  pixel-identical to `branding/app-icon-1024.svg` (blue→violet gradient, cube,
+  viewport brackets). `AppIcon_512x512.png` matches the Play Store `icon-512.png`.
+- AccentColor: `#005BC1` (light) / `#A4C1FF` (dark) — matches the Stitch palette.
+- **Store icons are consistent iOS ↔ Android** (both the gradient icon).
 
 ### Website (`website-static/`)
 - **Status: COMPLETE**
@@ -66,8 +77,18 @@ Audited: 2026-03-26
 
 ---
 
+## Store-icon vs on-device-icon note (#2773)
+
+The **store** icons (iOS `AppIcon_1024`, Play `icon-512`) both use the
+blue→violet gradient from `branding/app-icon-1024.svg` and are consistent.
+The **on-device Android** adaptive icon deliberately uses a *flat* background
+(`#0D2137` navy on API 26, `#005BC1` on API 33 — `ic_launcher_background.xml`)
+rather than the gradient, because adaptive-icon backgrounds are masked/animated
+by the launcher and a flat fill survives that cleanly. The glyph (iso cube + 4
+viewport brackets) is identical everywhere. **Open decision:** whether to bring
+the gradient into the adaptive icon or keep the flat on-device fill.
+
 ## Manual Actions Required
 
-1. **iOS AppIcon**: Render `branding/logo.svg` at 1024x1024 with `#0D2137` background, save as PNG, add to `samples/ios-demo/SceneViewDemo/Assets.xcassets/AppIcon.appiconset/`
-2. **GitHub Social Preview**: Open `branding/social-preview.html` in browser, screenshot at 1280x640, upload to GitHub repo settings
-3. **Chrome Extension Icons** (if needed): Generate 16x16, 48x48, 128x128 PNGs from logo.svg
+1. **GitHub Social Preview**: Open `branding/social-preview.html` in browser, screenshot at 1280x640, upload to GitHub repo settings
+2. **Chrome Extension Icons** (if needed): Generate 16x16, 48x48, 128x128 PNGs from logo.svg

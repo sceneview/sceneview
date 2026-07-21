@@ -5,6 +5,7 @@
 // @available   false
 // @icon        map.fill
 // @iosOnly     true
+// @androidOnlyReason  ARCore Streetscape Geometry (Geospatial/VPS) is a Google-backend service with no ARKit equivalent — not planned for iOS.
 import SwiftUI
 
 enum ArStreetscapeScene: DemoScene {

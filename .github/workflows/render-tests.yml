@@ -361,10 +361,22 @@ jobs:
           if-no-files-found: ignore
 
   # ── iOS render tests ──────────────────────────────────────────────────────
+  # Runs the `SceneViewDemoUITests` UI-testing target (#2803) — an XCUITest
+  # smoke that launches the demo in a simulator and captures an XCTAttachment
+  # screenshot of the launch screen, every tab, and a representative subset of
+  # working 3D demos (reached via the app's `-demo <id>` launch arg). Before
+  # #2803 this job ran the logic-only `SceneViewDemoTests` unit target via
+  # `-scheme SceneViewDemo`, which emits ZERO screenshots — so the job's name
+  # was a lie and it produced no PNG artifact.
+  #
+  # It uses its OWN dedicated scheme (`SceneViewDemoUITests`), NOT `SceneViewDemo`
+  # — so the per-PR iOS unit-test check in ios.yml (`-scheme SceneViewDemo test`)
+  # stays fast and simulator-free; the heavy UI/screenshot pass lives only here
+  # (main-push + nightly, non-blocking).
   ios-render:
     name: iOS screenshot tests (Simulator)
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v7
@@ -377,34 +389,55 @@ jobs:
         run: |
           xcodebuild -resolvePackageDependencies \
             -project SceneViewDemo.xcodeproj \
-            -scheme SceneViewDemo \
+            -scheme SceneViewDemoUITests \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             CODE_SIGNING_ALLOWED=NO || true
 
-      - name: Run screenshot tests
+      - name: Run UI screenshot tests
         working-directory: samples/ios-demo
         run: |
+          # UI tests build the host app + the UI test runner and launch on the
+          # simulator. CODE_SIGNING_ALLOWED=NO: a simulator build needs no
+          # signing. `|| true` keeps this leg non-blocking (render-tests is a
+          # post-merge signal, not a required check) — the screenshots are still
+          # captured into the xcresult even if an assertion trips, and the
+          # extract step below surfaces the real count.
           xcodebuild test \
             -project SceneViewDemo.xcodeproj \
-            -scheme SceneViewDemo \
+            -scheme SceneViewDemoUITests \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tail -200 || true
+            2>&1 | tail -300 || true
 
-      - name: Extract screenshots from xcresult
+      - name: Extract screenshot PNGs from xcresult
         if: always()
         working-directory: samples/ios-demo
         run: |
+          set -uo pipefail
           mkdir -p ios-render-screenshots
-          # Export attachments from xcresult bundle
-          if [ -d TestResults.xcresult ]; then
-            xcresulttool get --format json --path TestResults.xcresult > ios-render-screenshots/results.json 2>/dev/null || true
-            # Copy the entire xcresult for artifact upload
-            cp -R TestResults.xcresult ios-render-screenshots/ 2>/dev/null || true
+          if [ ! -d TestResults.xcresult ]; then
+            echo "::warning::no TestResults.xcresult produced — the UI test bundle did not run"
+            exit 0
+          fi
+          # Xcode 16: `xcresulttool export attachments` writes every XCTAttachment
+          # (our XCUIScreenshot PNGs) to disk as real image files, plus a
+          # manifest.json mapping each to its human-readable attachment name.
+          # THIS is what makes the job a genuine PNG producer (#2803): the old
+          # `xcresulttool get --format json` emitted JSON only, never an image.
+          xcrun xcresulttool export attachments \
+            --path TestResults.xcresult \
+            --output-path ios-render-screenshots \
+            || echo "::warning::xcresulttool export attachments failed — inspect the xcresult artifact"
+          COUNT=$(find ios-render-screenshots -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.heic' \) | wc -l | tr -d ' ')
+          echo "iOS screenshot images extracted: $COUNT"
+          if [ "$COUNT" -lt 4 ]; then
+            echo "::warning::fewer than 4 iOS screenshots extracted ($COUNT) — inspect the UI test run / xcresult"
+          else
+            echo "iOS screenshot job produced $COUNT real image(s)."
           fi
 
-      - name: Upload iOS test results
+      - name: Upload iOS screenshots
         if: always()
         uses: actions/upload-artifact@v7
         with:

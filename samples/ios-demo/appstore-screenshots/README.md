@@ -31,15 +31,27 @@ class** (identical 1320×2868 screenshot spec); likewise the iPad Pro 13-inch
 M4 and M5. Either generation produces an App Store Connect-compliant image
 for its class.
 
-## Demos captured
+## Demos captured — the common Android↔iOS showcase set (#2773)
 
-Four demos that render rich, full 3D content — deliberately *not* empty or
-loading AR scenes:
+The **same five demos, in the same order**, as Android's
+`capture-play-store-screenshots.sh`, so both stores show identical screens.
+Every id is a standalone (non-consolidated) demo on both platforms and renders
+rich 3D content — deliberately *not* empty or loading AR scenes:
 
 1. `01-model-viewer` — bundled hero model (cyberpunk hovercar), orbit camera
-2. `02-dynamic-sky` — dynamic sky / geometry scene
-3. `03-multi-model` — multiple models loaded into one scene
-4. `04-lighting` — PBR-lit spheres with the light-type switcher
+2. `02-lighting` — PBR-lit spheres with the light-type switcher
+3. `03-materials` — metallic/roughness material showcase
+4. `04-geometry` — generated geometry primitives
+5. `05-double-pendulum` — animated physics (motion)
+
+Captured in **dark appearance** with a cleaned status bar (fixed 9:41, full
+signal/battery), mirroring the Android capture's dark-mode + status-bar crop
+so the two stores match visually.
+
+> **Note:** the previously-committed PNGs in this directory
+> (`reflection-probes / occlusion-material / geometry-primitives /
+> samples-catalog`, plus only 2 iPad shots) predate this set and are stale —
+> regenerate with the command below once an iOS simulator build is feasible.
 
 ## How to regenerate
 

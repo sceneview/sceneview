@@ -94,6 +94,12 @@ mcp/.mcpregistry_*
 # `npm publish` all run `scripts/generate-llms-txt.js` via the
 # `prepare` / `prebuild` / `test` lifecycle scripts.
 mcp/src/generated/llms-txt.ts
+# `mcp/src/generated/symbols.ts` is the public-API symbol index parsed from
+# the committed `.api` dumps by `scripts/generate-symbols.js` (#2760). Same
+# no-committed-generated-artefact decision as above: any PR that changes the
+# public API would conflict on it, and the dumps it derives from are already
+# committed and CI-gated (`apiCheck`).
+mcp/src/generated/symbols.ts
 
 # ── Swift / Xcode ─────────────────────────────────────────
 SceneViewSwift/.build/

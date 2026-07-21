@@ -792,7 +792,7 @@ export async function dispatchTool(
         { platform: "visionOS", renderer: "RealityKit", framework: "SwiftUI", status: "Alpha", version: LATEST_SCENEVIEW_RELEASE, dependency: "SceneViewSwift (SPM)", features: ["3D", "Immersive spaces", "Hand tracking (planned)"] },
         { platform: "Web", renderer: "Filament.js (WASM)", framework: "Kotlin/JS", status: "Alpha", version: LATEST_SCENEVIEW_RELEASE, dependency: "sceneview-web (npm)", features: ["3D", "WebXR AR/VR", "GLB models", "WebGL2"] },
         { platform: "Desktop", renderer: "Software / Filament JNI", framework: "Compose Desktop", status: "Alpha", version: LATEST_SCENEVIEW_RELEASE, dependency: "sceneview-desktop (local)", features: ["3D", "Software renderer", "Wireframe"] },
-        { platform: "Flutter", renderer: "Filament / RealityKit", framework: "PlatformView", status: "Alpha", version: LATEST_SCENEVIEW_RELEASE, dependency: "flutter pub: sceneview_flutter (git ref)", features: ["3D", "AR", "Android + iOS bridge"] },
+        { platform: "Flutter", renderer: "Filament / RealityKit", framework: "PlatformView", status: "Alpha", version: LATEST_SCENEVIEW_RELEASE, dependency: "flutter pub: flutter_sceneview (git ref until first publish, #2735)", features: ["3D", "AR", "Android + iOS bridge"] },
       ];
 
       const lines = [
