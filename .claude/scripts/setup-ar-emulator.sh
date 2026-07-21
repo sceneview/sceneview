@@ -560,6 +560,11 @@ ROSETTA_ARCORE_APK_URL="${EMU_ROSETTA_ARCORE_APK_URL:-https://github.com/google-
 # How long `adb shell` may stay unresponsive before the guest is declared wedged.
 # See rosetta_probe / rosetta_wait_boot.
 ROSETTA_WEDGE_TIMEOUT_S="${EMU_ROSETTA_WEDGE_TIMEOUT_S:-420}"
+# Cap for the ARCore `pm install`. The APK is ~86 MB and dex2oat runs IN the
+# guest, so a native x86 emulator takes ~30-60s and this rig should be scaled by
+# the 5-10x TCG slowdown its own docs quote. 900s is that estimate, NOT a
+# measurement — no install has completed on this rig yet.
+ROSETTA_INSTALL_CAP_S="${EMU_ROSETTA_INSTALL_CAP_S:-900}"
 # Boot can take over an hour, and macOS clears /tmp on reboot — point this at a
 # durable directory when the log has to survive a host restart to be useful.
 ROSETTA_LOG="${EMU_ROSETTA_LOG:-/tmp/sceneview-emulator-${ROSETTA_AVD_NAME}-${ROSETTA_PORT}.log}"
@@ -743,16 +748,20 @@ rosetta_create_avd() {
   patch_kv "hw.keyboard"       "yes"            "$ROSETTA_AVD_CONFIG"
 }
 
-rosetta_boot() {
-  # The pool-invisibility guarantee is the whole reason a standard QA run can
-  # never lease this ~10x-slower guest. It holds only while the rig's port sits
-  # at or above the pool's exclusion threshold — two knobs that must move
-  # together. Refuse loudly rather than silently becoming leasable.
+# The pool-invisibility guarantee is the whole reason a standard QA run can never
+# lease this ~10x-slower guest. It holds only while the rig's port sits at or above
+# the pool's exclusion threshold — two independent knobs that must move together.
+# Checked on EVERY rosetta path (including --check and --no-boot, which name the
+# rig serial too), not just before a boot.
+rosetta_assert_port_reserved() {
   if (( ROSETTA_PORT < EMU_POOL_PORT_EXCLUDE_FROM )); then
     rlog "FAIL: EMU_ROSETTA_PORT=$ROSETTA_PORT is below EMU_POOL_PORT_EXCLUDE_FROM=$EMU_POOL_PORT_EXCLUDE_FROM"
     rlog "the rig would become leasable by a standard QA run — raise the port, or lower the threshold"
-    return 1
+    exit 1
   fi
+}
+
+rosetta_boot() {
   local state; state="$(rosetta_serial_state)"
   if [[ "$state" == "device" ]]; then
     rlog "rig already running on $ROSETTA_SERIAL — reusing it"
@@ -766,8 +775,11 @@ rosetta_boot() {
     # A serial with no live qemu behind it is a stale adb transport, not a boot
     # in progress. Treating it as "mid-boot" returned without starting anything
     # and cost a full boot timeout on a verdict that named the wrong cause.
-    rlog "stale adb transport for $ROSETTA_SERIAL (state: $state) with no live qemu — reconnecting adb"
-    "$ADB_BIN" disconnect "$ROSETTA_SERIAL" >/dev/null 2>&1 || true
+    # `adb disconnect` only applies to TCP/IP devices; an emulator serial comes from
+    # adb's console-port scanner, so there is nothing to disconnect. Say what is
+    # actually done — boot anyway — rather than claiming a repair that never runs.
+    rlog "stale adb transport for $ROSETTA_SERIAL (state: $state) with no live qemu — ignoring it and booting"
+    "$ADB_BIN" -s "$ROSETTA_SERIAL" reconnect >/dev/null 2>&1 || true
   fi
   # RAM gate: reuse the pool's hard safety threshold. The rig is outside the
   # pool but the OOM cliff is host-wide.
@@ -810,18 +822,21 @@ rosetta_wait_boot() {
   # ~40% behind reality and every verdict would quote a number that is not the
   # elapsed time — in a code path whose entire purpose is an honest verdict.
   local start=$SECONDS waited=0 interval=15 state boot anim rss rc
-  local hung_since=0 hung=0 dead_seen=0 last_report=0
+  local probe_cap=10 hung_since=-1 hung=0 dead_seen=0 last_report=0
   rlog "waiting for $ROSETTA_SERIAL to reach sys.boot_completed=1 (timeout ${ROSETTA_BOOT_TIMEOUT_S}s)"
   while true; do
     rc=0
-    boot="$(rosetta_probe sys.boot_completed)" || rc=$?
+    boot="$(rosetta_probe sys.boot_completed "$probe_cap")" || rc=$?
     waited=$(( SECONDS - start ))
     if (( rc == 124 )); then
-      if (( hung_since == 0 )); then hung_since=$waited; fi
+      # Stamp the START of the hang, not its detection: the probe had already
+      # burned its full cap by the time it returned, so anchoring at `waited`
+      # under-reports the unresponsive window by one cap every time.
+      if (( hung_since < 0 )); then hung_since=$(( waited - probe_cap )); fi
       hung=$(( waited - hung_since ))
       boot="<probe hung>"
     else
-      hung_since=0
+      hung_since=-1
       hung=0
     fi
     if [[ "$boot" == "1" ]]; then
@@ -844,7 +859,11 @@ rosetta_wait_boot() {
     # serial to also vanish from `adb devices` was wrong: adb routinely leaves a
     # dead emulator's transport `offline`, so the death went unnoticed and the
     # loop burned the full 90-minute timeout before blaming "TCG too slow".
-    if ! rosetta_pid_alive; then
+    # A pidfile that names no live process is only decisive when the guest is not
+    # answering either. adb still saying `device` (or a probe that just answered)
+    # means the rig is alive and the pidfile was lost — declaring "qemu died" then
+    # would be self-contradictory AND would orphan a running emulator.
+    if ! rosetta_pid_alive && [[ "$state" != "device" ]] && (( rc == 124 || rc == 0 )); then
       if (( dead_seen )); then
         rlog "FAIL: rig qemu died after ${waited}s (adb state: ${state:-gone}) — last log lines:"
         tail -n 30 "$ROSETTA_LOG" 2>/dev/null | sed 's/^/  | /' || true
@@ -892,7 +911,7 @@ rosetta_install_arcore() {
   fi
   local attempt err
   for attempt in 1 2 3; do
-    err="$(rosetta_adb 300 install -r "$tmp_apk" 2>&1)" && { rlog "ARCore installed on $ROSETTA_SERIAL"; return 0; }
+    err="$(rosetta_adb "$ROSETTA_INSTALL_CAP_S" install -r "$tmp_apk" 2>&1)" && { rlog "ARCore installed on $ROSETTA_SERIAL"; return 0; }
     rlog "ARCore install attempt $attempt/3 failed${err:+: ${err##*$'\n'}} — retrying in 5s"
     sleep 5
   done
@@ -949,6 +968,7 @@ rosetta_status_line() {
 }
 
 rosetta_main() {
+  rosetta_assert_port_reserved
   if $CHECK_ONLY; then
     rosetta_report
     exit 0
@@ -974,9 +994,9 @@ rosetta_main() {
   fi
   show_camera_topology "$ROSETTA_SERIAL"
   # Verdict: camera HAL id 0 is the whole point of the rig (#2754 probe, PR #2755).
-  local ids
-  ids="$(rosetta_adb 30 shell dumpsys media.camera 2>/dev/null \
-        | grep -oE 'Device [0-9]+ maps to "[0-9]+"' | grep -oE '"[0-9]+"' | tr -d '"' | tr '\n' ' ' || true)"
+  local ids dump probe_rc=0
+  dump="$(rosetta_adb 30 shell dumpsys media.camera 2>/dev/null)" || probe_rc=$?
+  ids="$(printf '%s' "$dump" | grep -oE 'Device [0-9]+ maps to "[0-9]+"' | grep -oE '"[0-9]+"' | tr -d '"' | tr '\n' ' ' || true)"
   if $STOP_AFTER; then
     rlog "stopping rig $ROSETTA_SERIAL (--stop)"
     rosetta_adb 20 emu kill >/dev/null 2>&1 || true
@@ -988,6 +1008,14 @@ rosetta_main() {
     rlog "  (expect: no 'unknown device 0', ARCore session created, tracking TRACKING)"
     echo "EMU_SERIAL=${ROSETTA_SERIAL}"
     exit 0
+  fi
+  # An empty probe is NOT a measurement. Reporting it as "no camera id 0" would
+  # silently confirm #2754 on no evidence — the same inversion the --check path
+  # was blocked on. Say inconclusive and exit distinctly.
+  if (( probe_rc != 0 )) || [[ -z "$dump" ]]; then
+    rlog "INCONCLUSIVE: the camera probe did not answer (dumpsys hung or empty) — verdict NOT established."
+    rlog "  re-run '--check --rosetta' once the guest settles."
+    exit 2
   fi
   rlog "FAIL: no camera HAL id 0 on the rig (HAL ids: ${ids:-none}) — ARCore cannot start (#2754)."
   exit 1
