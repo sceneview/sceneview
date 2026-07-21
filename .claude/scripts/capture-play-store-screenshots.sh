@@ -43,14 +43,28 @@ source "$SCRIPT_DIR/lib/android-cli.sh"
 android_cli_ensure || true
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
-# The COMMON showcase set (#2773) — the same five demos, same order, as iOS's
+# The COMMON showcase set — the same five demos, same order, as iOS's
 # `capture-appstore-screenshots.sh`, so both stores show identical screens.
-# The previous default (ar-pose,reflection-probes,environment) had rotted:
-# post-consolidation `reflection-probes` AND `environment` both alias
-# `lighting-lab` (DeepLinkRouter.kt), so screenshots 3 & 4 captured the SAME
-# demo, and `ar-pose` is a placeholder on the iOS simulator. Every id below is
-# a standalone demo on BOTH platforms.
-DEMOS_DEFAULT="model-viewer,lighting,materials,geometry,double-pendulum"
+# Every id here is a standalone demo on BOTH platforms: an Android
+# DEMO_ID_ALIASES entry (DeepLinkRouter.kt) resolves to an umbrella tab, so two
+# slots can silently collapse onto the same demo — the #2773 defect, and the
+# reason `dynamic-sky` / `multi-model` / `animation` are NOT eligible here
+# despite producing richer frames.
+#
+# Order and membership are deliberate (#2854):
+#   1 materials       only frame with a visible HDRI environment — the best-lit
+#                     shot leads, because a renderer's store page is an implicit
+#                     claim about its rendering.
+#   2 model-viewer    the core load-any-GLB promise; the set's ONLY intentional
+#                     helmet-on-black, clearly distinct from slot 1 in thumbnail.
+#   3 double-pendulum promoted so the search-visible top-3 reads as three
+#                     capabilities (render / model / physics), not three helmets.
+#   4 fog             replaces `lighting`, which was a near-duplicate of
+#                     model-viewer; fog launches ON on both platforms and fills
+#                     the black void with atmosphere.
+#   5 geometry        the honest procedural-geometry story, and the designated
+#                     slot to surrender to an AR shot once #2844 unblocks it.
+DEMOS_DEFAULT="materials,model-viewer,double-pendulum,fog,geometry"
 # Canonical Play Store listing directory — the same `graphics/` subdir the
 # `play-store.yml` listing-sync job uploads to the store (#1710).
 OUT_DIR_DEFAULT="samples/android-demo/distribution/play-store/en-GB/graphics"

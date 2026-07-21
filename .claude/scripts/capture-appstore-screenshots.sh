@@ -44,14 +44,21 @@ BUNDLE_ID="io.github.sceneview.demo"
 IPHONE_NAME="${IPHONE_SIM:-iPhone 16 Pro Max}"
 IPAD_NAME="${IPAD_SIM:-iPad Pro 13-inch (M4)}"
 
-# The COMMON showcase set (#2773) — the same five demos captured on Android's
+# The COMMON showcase set — the same five demos captured on Android's
 # `capture-play-store-screenshots.sh`, in the same order, so the two stores
 # show identical screens. Every id here is a standalone (non-consolidated)
 # demo on BOTH platforms — verified against Android's DeepLinkRouter aliases
-# (dynamic-sky/multi-model/reflection-probes/environment all collapse to an
-# umbrella demo on Android, so the old iOS set could never match). All five
-# render rich 3D content, never an empty/loading AR scene.
-DEMOS=(model-viewer lighting materials geometry double-pendulum)
+# (dynamic-sky/multi-model/animation/reflection-probes/environment all collapse
+# to an umbrella demo on Android, so they cannot be used here even though they
+# render richer frames). All five render rich 3D content, never an empty AR scene.
+#
+# ⚠️ This array and `DEMOS_DEFAULT` in the Android script are the SAME decision
+# stored twice — a known drift hazard. Change them in one commit, or the two
+# stores silently diverge again (#2773). Order rationale lives in the Android
+# script's header; the short version: best-lit frame first, three distinct
+# capabilities in the search-visible top-3, geometry last as the slot to
+# surrender to an AR shot once #2844 unblocks it (#2854).
+DEMOS=(materials model-viewer double-pendulum fog geometry)
 # Per-demo render settle time (model load + camera orbit), seconds.
 WAIT_SECONDS="${WAIT_SECONDS:-24}"
 
