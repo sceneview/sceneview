@@ -97,6 +97,11 @@ struct WallPlacementDemoView: View {
     /// Amazon-style orange for the alignment guide (Android: `0xFFFF8A00`).
     private static let guideColor = Color(red: 1.0, green: 0.541, blue: 0.0)
 
+    /// How long a placement-error capsule stays on screen, seconds. Long
+    /// enough to read a sentence, short enough that it never becomes furniture
+    /// over the camera feed.
+    private static let errorBannerDuration: Double = 3
+
     /// Maximum camera-to-hit distance accepted for a wall placement, metres.
     /// Mirrors Android's `MAX_WALL_PLACEMENT_DISTANCE` — wall planes converge
     /// noisily, so the reach is deliberately shorter than for floor placement.
@@ -251,7 +256,16 @@ struct WallPlacementDemoView: View {
         var placedAnchors: [(arAnchor: ARAnchor, entity: AnchorEntity)] = []
         /// Retains the tap handler: `UIGestureRecognizer` holds its target
         /// weakly, so without this the handler would be collected at once.
+        ///
+        /// This strong reference closes a **retain cycle** — the handler's
+        /// closure captures the view, whose `@State` storage owns this box —
+        /// so it is not self-breaking. ``WallPlacementDemoView/teardown()``
+        /// cuts it on `onDisappear`; without that, every placed TV's anchors,
+        /// meshes and materials would be leaked once per visit to the demo.
         var tapHandler: AnyObject?
+        /// The recogniser this demo installed, so teardown can detach it from
+        /// the `ARView` instead of leaving a dead-target recogniser behind.
+        var tapRecognizer: UIGestureRecognizer?
     }
 
     // MARK: - State
@@ -290,6 +304,40 @@ struct WallPlacementDemoView: View {
             }
         }
         .demoSettingsSheet { controlsSheet }
+        // The error capsule is this port's own addition (Android shows no such
+        // banner), so it also owns dismissing itself: a user who taps a
+        // non-wall once and then walks away must not be left with a red
+        // capsule pinned over the camera feed forever. `.task(id:)` cancels
+        // and restarts on every change, so a new message always gets a full
+        // window rather than inheriting the previous one's remaining time.
+        .task(id: lastError) {
+            guard lastError != nil else { return }
+            try? await Task.sleep(for: .seconds(Self.errorBannerDuration))
+            guard !Task.isCancelled else { return }
+            lastError = nil
+        }
+        .onDisappear { teardown() }
+    }
+
+    /// Breaks the tap-handler retain cycle and drops every placed TV.
+    ///
+    /// `tracking.tapHandler` is held strongly (the recogniser's target is
+    /// weak) and its closure captures this view, whose `@State` storage owns
+    /// `tracking` — a cycle that nothing else collects. Leaving it in place
+    /// would strand the box, and with it `placedAnchors`' `ARAnchor`s,
+    /// `AnchorEntity`s, meshes and materials, once per visit to the demo.
+    ///
+    /// The recogniser is detached too: `ARView` retains its recognisers, so
+    /// one left installed with a nil target would linger as a dead no-op.
+    private func teardown() {
+        if let recognizer = tracking.tapRecognizer {
+            tracking.arView?.removeGestureRecognizer(recognizer)
+        }
+        tracking.tapRecognizer = nil
+        tracking.tapHandler = nil
+        tracking.latestAdjustRoot = nil
+        tracking.placedAnchors.removeAll()
+        tracking.arView = nil
     }
 
     // MARK: - AR scene
@@ -360,11 +408,13 @@ struct WallPlacementDemoView: View {
             guard let view = recognizer.view as? ARView else { return }
             placeTV(at: recognizer.location(in: view), in: view)
         }
-        arView.addGestureRecognizer(
-            UITapGestureRecognizer(target: handler, action: #selector(TapHandler.handleTap(_:)))
-        )
-        // `UIGestureRecognizer` holds its target weakly — keep the handler alive.
+        let recognizer = UITapGestureRecognizer(target: handler, action: #selector(TapHandler.handleTap(_:)))
+        arView.addGestureRecognizer(recognizer)
+        // `UIGestureRecognizer` holds its target weakly — keep the handler
+        // alive. That strong reference is a retain cycle; ``teardown()``
+        // breaks it on `onDisappear`.
         tracking.tapHandler = handler
+        tracking.tapRecognizer = recognizer
     }
 
     /// Closure-carrying `@objc` target for the tap recogniser. UIKit always

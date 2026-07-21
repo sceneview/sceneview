@@ -33,6 +33,7 @@
 # (Working/KnownIssue/ComingSoon/InReview) for context — the #2798 audit
 # found a strict correlation: every Android demo that is not itself `Working`
 # lands in iOS's `stub` or `android-only` bucket, with zero exceptions.
+# That correlation BROKE on 2026-07-21 — see the `wall-placement` note below.
 #
 # Verified against source 2026-07-21 (post L0.1 #2799 + L0.2 #2800, and
 # after #2817 added `contact-shadow-preview` — rebased onto that commit
@@ -64,6 +65,21 @@
 #     10 legacy/umbrella aliases ∪ 0 residual ids). Of the 53 Android ids:
 #     28 working, 25 stub, 0 android-only.
 #
+# Updated 2026-07-21 by the iOS-port wave (#2798): two `stub` rows became
+# `working` — `wall-placement` (#2840, this PR) and #2860's row — so the
+# tallies below read 30 working / 23 stub / 0 android-only. That count is the
+# POST-WAVE truth and assumes BOTH PRs land; whichever merges second must
+# re-check it, because `check-demo-id-parity.sh` validates rows against the
+# live registry and never reads these comments, so a wrong tally here passes
+# the gate silently.
+#
+# `wall-placement` is the FIRST deliberate exception to the "strict
+# correlation" claimed above: its `androidStatus` is `InReview`, yet its
+# `iosStatus` is `working`. The iOS port (#2840) is real and reachable and
+# carries the matching `@status inReview` badge, so `stub` would be a lie. The
+# correlation is therefore a historical observation from the #2798 audit, not
+# an invariant — do not enforce it.
+#
 # Checked by `.claude/scripts/check-demo-id-parity.sh` (`ci.yml` ->
 # `repo-hygiene`, ubuntu, blocking): fails if a Android id has neither an iOS
 # registry entry nor a row here, if a row's `iosStatus` disagrees with the
@@ -72,7 +88,7 @@
 # platform's registry — that's what keeps it honest.
 
 demos:
-  # ─── working (28) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (30) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -157,8 +173,11 @@ demos:
   - id: two-d-in-three-d
     androidStatus: Working
     iosStatus: working
+  - id: wall-placement
+    androidStatus: InReview
+    iosStatus: working
 
-  # ─── stub (25) — iOS registry has the id, but it falls to the placeholder ──
+  # ─── stub (23) — iOS registry has the id, but it falls to the placeholder ──
   - id: ar-cloud-anchor
     androidStatus: KnownIssue
     iosStatus: stub
@@ -324,9 +343,6 @@ demos:
     reason: >-
       Scene file exists (L0.6, #2804 Job B) but @available false — added to
       Android after iOS stopped tracking the catalog.
-  - id: wall-placement
-    androidStatus: InReview
-    iosStatus: working
 
   # ─── android-only (0) — every id now has at least an honest stub ────────
   # L0.6 (#2804) closed this section: the 6 #2239-umbrella ids became
