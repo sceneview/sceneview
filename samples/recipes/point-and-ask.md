@@ -105,6 +105,66 @@ generativeModel.generateContentStream(
 }
 ```
 
+### World-anchored answer (pin the card where the user tapped)
+
+Instead of a screen-space overlay, pin the answer **in the world** at the tapped
+surface: hit-test the tap on the SAME frame the pixels come from, create an ARCore
+anchor, and render the card on a `ViewNode` under an `AnchorNode` — it stays put
+while the camera moves (multiple taps = multiple pinned answers):
+
+```kotlin
+class AnswerPanel(val id: Int, val anchor: Anchor, val facingYawDegrees: Float) {
+    var text by mutableStateOf("")           // grows with the stream deltas
+}
+val panels = remember { mutableStateListOf<AnswerPanel>() }
+val viewNodeManager = rememberViewNodeManager()
+// ARCore anchors accrue per-frame cost while attached — always detach on dispose.
+DisposableEffect(Unit) { onDispose { panels.forEach { it.anchor.detach() } } }
+
+ARSceneView(
+    planeRenderer = true,                    // show planes: where a tap will pin
+    viewNodeWindowManager = viewNodeManager, // required by ViewNode
+    onSessionUpdated = { _, frame ->
+        // inside the capture block, before sending the bitmap to the model:
+        val hit = frame.hitTest(tapX, tapY).firstOrNull { result ->
+            val t = result.trackable
+            t.trackingState == TrackingState.TRACKING &&
+                (t is Point || (t is Plane && t.isPoseInPolygon(result.hitPose)))
+        }
+        hit?.let { h ->
+            val cam = frame.camera.pose
+            panels += AnswerPanel(
+                id = nextId++,
+                anchor = h.createAnchor(),
+                // face where the user stood at tap time (yaw around +Y)
+                facingYawDegrees = Math.toDegrees(
+                    atan2((cam.tx() - h.hitPose.tx()).toDouble(),
+                          (cam.tz() - h.hitPose.tz()).toDouble())).toFloat(),
+            )
+        }
+        // stream deltas into panel.text exactly like the screen-space card
+    },
+) {
+    panels.forEach { panel ->
+        key(panel.id) {
+            AnchorNode(anchor = panel.anchor) {          // follows ARCore's refined pose
+                ViewNode(
+                    windowManager = viewNodeManager,
+                    unlit = true,                        // UI card: ignore scene lighting
+                    position = Position(y = 0.12f),      // float above the surface
+                    rotation = Rotation(y = panel.facingYawDegrees),
+                    scale = Scale(0.15f),                // ViewNode renders at 250 px/m
+                ) {
+                    Card { Text(panel.text) }            // any Compose UI, updates live
+                }
+            }
+        }
+    }
+}
+```
+
+No hit (tap on sky, untracked area)? Fall back to the screen-space card above.
+
 ## iOS (Swift + SwiftUI)
 
 Not available yet — SceneViewSwift has no on-device multimodal prompt API wired
@@ -121,11 +181,14 @@ feature). Tracked on [#2648](https://github.com/sceneview/sceneview/issues/2648)
 | YUV → Bitmap | `Image.toArgbBitmap(rotationDegrees)` — off main thread, close the Image |
 | Multimodal ask | `generateContent(generateContentRequest(ImagePart, TextPart) {})` |
 | Streamed answers | `generateContentStream(request)` — a `Flow` of text deltas to concatenate |
+| World anchoring | `frame.hitTest(x, y)` → `hit.createAnchor()` → `AnchorNode { ViewNode { … } }` (detach anchors on dispose) |
 | Rotation | 90° at portrait `ROTATION_0` (map from display rotation for other orientations) |
 | Emulator QA | AICore is never available on emulators — inject a canned engine under QA mode (see `PointAndAskDemo.kt` / `AskEngine.kt`) |
 
 Reference demo: [`PointAndAskDemo.kt`](../android-demo/src/main/java/io/github/sceneview/demo/demos/PointAndAskDemo.kt)
 (demo id `point-and-ask`), with the production-grade extras: download CTA with
 progress, capture timeout, cancellation-safe Image close, deterministic QA engine,
-streamed answers with a live typing cursor, and a free-form question field
-(blank falls back to the default prompt).
+streamed answers with a live typing cursor, a free-form question field
+(blank falls back to the default prompt), and world-anchored answer panels
+(hit-test on the capture frame, one `AnchorNode` + `ViewNode` per tap,
+screen-space fallback when the tap hits no tracked surface).

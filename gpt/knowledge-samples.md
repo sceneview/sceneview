@@ -142,8 +142,22 @@ Streamed variant: `generateContentStream(request)` returns a `Flow` of
 `GenerateContentResponse` **deltas** — concatenate `candidates.first().text`
 per emission for a live "typing" card. The reference demo streams, and its
 question is a free-form user field (blank falls back to the default prompt).
+
+World-anchored variant: pin the answer where the user tapped instead of a
+screen overlay. Hit-test the tap **on the capture frame** —
+`frame.hitTest(x, y).firstOrNull { it.trackable.trackingState == TRACKING &&
+(it.trackable is Point || (it.trackable is Plane &&
+it.trackable.isPoseInPolygon(it.hitPose))) }` — then `hit.createAnchor()` and
+render `AnchorNode(anchor) { ViewNode(windowManager, unlit = true,
+scale = Scale(0.15f)) { Card { Text(answer) } } }` inside the `ARSceneView`
+content block (`viewNodeWindowManager = rememberViewNodeManager()` on the
+composable, `planeRenderer = true` so taps have visible targets). One anchor
+per tap = multiple pinned answers; **always `anchor.detach()` on dispose**;
+no hit → fall back to the screen-space card.
+
 Working demo: `point-and-ask` (`PointAndAskDemo.kt` + `AskEngine.kt`). Full
-recipe (one-shot + streamed variants): `samples/recipes/point-and-ask.md`.
+recipe (one-shot + streamed + world-anchored variants):
+`samples/recipes/point-and-ask.md`.
 
 ### Procedural geometry (no model files)
 

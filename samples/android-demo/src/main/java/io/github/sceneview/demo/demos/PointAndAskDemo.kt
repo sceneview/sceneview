@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -22,8 +23,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface as M3Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -36,6 +41,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
+import com.google.ar.core.Plane
+import com.google.ar.core.Point
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.cameraImage
@@ -48,10 +56,15 @@ import io.github.sceneview.demo.ai.AskEngineStatus
 import io.github.sceneview.demo.ai.rememberAskEngine
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Scale
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
+import io.github.sceneview.rememberViewNodeManager
+import kotlin.math.atan2
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -71,21 +84,68 @@ private sealed interface AskState {
     /** Nothing in flight — tap to ask. */
     data object Idle : AskState
 
-    /** Tap registered, waiting for the next camera frame with a CPU image. */
-    data object Capturing : AskState
+    /**
+     * Tap registered at view coordinates ([tapX], [tapY]), waiting for the next camera
+     * frame with a CPU image. The coordinates feed the P2 hit-test so the answer is
+     * pinned where the user pointed, on the SAME frame the pixels come from.
+     */
+    data class Capturing(val tapX: Float, val tapY: Float) : AskState
 
-    /** Frame captured, Gemini Nano inference in flight. */
+    /** Frame captured but the tap hit no tracked surface — screen-space fallback round. */
     data object Thinking : AskState
 
     /**
-     * Answer text so far. While [streaming] the model is still appending deltas (P3
-     * progressive display); once `false` the answer is complete and stays until the
-     * next tap or reset.
+     * Screen-space fallback answer (the tap hit no tracked surface, or the qa_mode
+     * synthetic-frame timeout fired). While [streaming] the model is still appending
+     * deltas (P3); once `false` the answer is complete and stays until the next tap
+     * or reset. World-anchored answers live in [AnswerPanel], not here.
      */
     data class Answered(val text: String, val streaming: Boolean = false) : AskState
 
     /** Inference or capture failed — transient, retry on next tap. */
     data object Failed : AskState
+}
+
+/**
+ * One world-anchored answer panel (P2): the tap's ARCore [Anchor] plus the streamed
+ * answer text rendered on a `ViewNode` at that anchor. Multiple panels can coexist —
+ * every successful tap pins a new one until Reset.
+ *
+ * [text]/[streaming] are snapshot state so the in-scene card grows live with the
+ * stream deltas exactly like the P3 screen-space card does.
+ */
+private class AnswerPanel(
+    val id: Int,
+    val anchor: Anchor,
+    /**
+     * World-space yaw (degrees) turning the card toward where the user stood at tap
+     * time. Frozen on purpose: orbiting AROUND a fixed card is what proves the answer
+     * is anchored in the world, not billboarded to the screen.
+     */
+    val facingYawDegrees: Float,
+) {
+    var text by mutableStateOf("")
+    var streaming by mutableStateOf(true)
+
+    /**
+     * Adapts the shared ask-stream state machine to this panel's card. A failure before
+     * any delta shows [failedText] on the card rather than removing it — the anchor
+     * placement already succeeded, and keeping the panel makes the failure visible in
+     * place instead of silently un-pinning.
+     */
+    fun resultRouter(failedText: String): (AskState) -> Unit = { state ->
+        when (state) {
+            is AskState.Answered -> {
+                text = state.text
+                streaming = state.streaming
+            }
+            AskState.Failed -> {
+                if (text.isBlank()) text = failedText
+                streaming = false
+            }
+            else -> Unit
+        }
+    }
 }
 
 /**
@@ -105,10 +165,14 @@ private sealed interface AskState {
  *    helpers; acquisition happens in `onSessionUpdated` (the only place the latest frame's CPU
  *    image is reliably available) and the YUV → ARGB conversion runs off the main thread.
  *
- * P1+P3 of [#2648](https://github.com/sceneview/sceneview/issues/2648): P3 adds the
+ * P1+P2+P3 of [#2648](https://github.com/sceneview/sceneview/issues/2648): P3 adds the
  * free-form question field (controls sheet; blank = default prompt) and **streamed**
- * answers — `askStream` deltas grow the card live with a typing cursor. The answer card
- * is still screen-space; world-space anchoring at the tapped pose is P2.
+ * answers — `askStream` deltas grow the card live with a typing cursor. P2 anchors the
+ * answer **in world space**: the tap is hit-tested against the SAME frame the pixels come
+ * from; a hit on a tracked surface pins an [AnswerPanel] (`AnchorNode` + `ViewNode`) at
+ * that pose, facing where the user stood, and stays put while the camera orbits. Multiple
+ * panels accumulate (one per successful tap) until Reset; a tap that hits no tracked
+ * surface falls back to the P1 screen-space bottom card.
  */
 @Composable
 fun PointAndAskDemo(onBack: () -> Unit) {
@@ -129,9 +193,23 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     var askState by remember { mutableStateOf<AskState>(AskState.Idle) }
     var isTracking by remember { mutableStateOf(false) }
 
+    // World-anchored answer panels (P2) — one per successful tap, until Reset.
+    val panels = remember { mutableStateListOf<AnswerPanel>() }
+    var nextPanelId by remember { mutableIntStateOf(0) }
+    val viewNodeManager = rememberViewNodeManager()
+
+    // ARCore anchors accrue per-frame tracking cost while attached (#2043) — release
+    // every panel's anchor when the demo leaves composition. `detach()` is idempotent,
+    // so a Reset-then-dispose sequence double-detaching is harmless.
+    DisposableEffect(Unit) {
+        onDispose { panels.forEach { it.anchor.detach() } }
+    }
+
     // Free-form question (P3): blank = the default English prompt (best Nano quality).
     // Saveable so a rotation mid-session keeps the user's custom question.
     val defaultQuestion = stringResource(R.string.demo_point_and_ask_question)
+    // Resolved at composition — panel result routing runs in non-composable callbacks.
+    val failedText = stringResource(R.string.demo_point_and_ask_error)
     var questionText by rememberSaveable { mutableStateOf("") }
     val question = questionText.trim().ifBlank { defaultQuestion }
 
@@ -142,7 +220,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     // for the device-QA harness; otherwise it surfaces the transient Failed card instead of
     // spinning forever.
     LaunchedEffect(askState) {
-        if (askState != AskState.Capturing) return@LaunchedEffect
+        if (askState !is AskState.Capturing) return@LaunchedEffect
         delay(if (DemoSettings.qaMode) QA_CAPTURE_TIMEOUT_MS else CAPTURE_TIMEOUT_MS)
         // Still Capturing after the delay (any state change restarts this effect).
         if (DemoSettings.qaMode) {
@@ -157,7 +235,11 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_point_and_ask_title),
         onBack = onBack,
-        onReset = { askState = AskState.Idle },
+        onReset = {
+            askState = AskState.Idle
+            panels.forEach { it.anchor.detach() }
+            panels.clear()
+        },
         onResetSettings = { questionText = "" },
         controls = {
             // Free-form question (P3) — blank falls back to the default prompt, which the
@@ -184,39 +266,88 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 playbackDataset = arPlaybackDataset,
-                // P1 asks about the whole frame — no plane visuals needed; the viewfinder
-                // stays clean. P2 (world-space anchoring) will re-enable planes for hit-tests.
-                planeRenderer = false,
+                // P2: planes are visible so the user can see where a tap will pin the answer.
+                planeRenderer = true,
+                viewNodeWindowManager = viewNodeManager,
                 onSessionUpdated = { _, frame ->
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     // Serve a pending tap with THIS frame's CPU image — acquiring from a stored
                     // older frame throws once the session has advanced, so capture must happen
                     // here, not in the tap callback. A `null` image is normal during warm-up:
                     // stay in Capturing and retry on the next frame.
-                    if (askState == AskState.Capturing && isTracking) {
+                    val capturing = askState as? AskState.Capturing
+                    if (capturing != null && isTracking) {
                         frame.cameraImage()?.let { image ->
-                            askState = AskState.Thinking
+                            // P2: hit-test the tap against the SAME frame the pixels come
+                            // from, so the pinned pose matches what the model is looking at.
+                            // Tracked planes (tap inside the polygon) and feature points both
+                            // accept; no hit falls back to the P1 screen-space card.
+                            val hit = frame.hitTest(capturing.tapX, capturing.tapY)
+                                .firstOrNull { result ->
+                                    val trackable = result.trackable
+                                    trackable.trackingState == TrackingState.TRACKING &&
+                                        (trackable is Point ||
+                                            (trackable is Plane &&
+                                                trackable.isPoseInPolygon(result.hitPose)))
+                                }
+                            val panel = hit?.let { h ->
+                                val camera = frame.camera.pose
+                                AnswerPanel(
+                                    id = nextPanelId++,
+                                    anchor = h.createAnchor(),
+                                    facingYawDegrees = facingYawDegrees(
+                                        fromX = h.hitPose.tx(), fromZ = h.hitPose.tz(),
+                                        toX = camera.tx(), toZ = camera.tz(),
+                                    ),
+                                ).also { panels.add(it) }
+                            }
+                            askState = if (panel != null) AskState.Idle else AskState.Thinking
                             scope.askAboutImage(
                                 image = image,
                                 rotationDegrees = cameraRotationDegrees(context),
                                 askEngine = askEngine,
                                 question = question,
-                                onResult = { askState = it },
+                                onResult = panel?.resultRouter(failedText = failedText)
+                                    ?: { askState = it },
                             )
                         }
                     }
                 },
                 onGestureListener = rememberOnGestureListener(
-                    onSingleTapConfirmed = { _, _ ->
-                        val busy = askState == AskState.Capturing ||
+                    onSingleTapConfirmed = { event, _ ->
+                        val busy = askState is AskState.Capturing ||
                             askState == AskState.Thinking ||
-                            (askState as? AskState.Answered)?.streaming == true
+                            (askState as? AskState.Answered)?.streaming == true ||
+                            panels.any { it.streaming }
                         if (engineStatus == AskEngineStatus.Ready && !busy) {
-                            askState = AskState.Capturing
+                            askState = AskState.Capturing(event.x, event.y)
                         }
                     },
                 ),
-            )
+            ) {
+                // P2: one world-anchored answer card per successful tap. The AnchorNode
+                // follows ARCore's refined pose; the ViewNode renders the same streamed
+                // card UI, standing upright ~12 cm above the hit, turned toward where the
+                // user stood at tap time (orbiting around it proves world anchoring).
+                panels.forEach { panel ->
+                    key(panel.id) {
+                        AnchorNode(anchor = panel.anchor) {
+                            ViewNode(
+                                windowManager = viewNodeManager,
+                                unlit = true,
+                                position = Position(y = PANEL_LIFT_METERS),
+                                rotation = Rotation(y = panel.facingYawDegrees),
+                                scale = Scale(PANEL_SCALE),
+                            ) {
+                                AnchoredAnswerCard(
+                                    text = panel.text,
+                                    streaming = panel.streaming,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             // Top-center status pill — what to do next, or why nothing happens.
             M3Surface(
@@ -302,7 +433,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                     AskEngineStatus.Ready -> when (val ask = askState) {
                         AskState.Idle -> Unit
 
-                        AskState.Capturing, AskState.Thinking -> BottomCard {
+                        is AskState.Capturing, AskState.Thinking -> BottomCard {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 CircularProgressIndicator(modifier = Modifier.size(20.dp))
                                 Text(
@@ -343,6 +474,24 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         }
     }
 }
+
+/** The anchored answer card floats this high above the hit pose (meters). */
+private const val PANEL_LIFT_METERS = 0.12f
+
+/**
+ * World scale of the anchored card's `ViewNode`. The node renders at
+ * `ViewNode.pxPerUnits` (250 px/m): a ~650 px card would be ~2.6 m wide at scale 1;
+ * 0.15 brings it to ~0.4 m — readable at arm's length without walling off the scene.
+ */
+private const val PANEL_SCALE = 0.15f
+
+/**
+ * World-space yaw (degrees) turning a card at (`fromX`, `fromZ`) toward a viewer at
+ * (`toX`, `toZ`) — the rotation around +Y that points the card's front (+Z) at the
+ * viewer's ground-plane position.
+ */
+private fun facingYawDegrees(fromX: Float, fromZ: Float, toX: Float, toZ: Float): Float =
+    Math.toDegrees(atan2((toX - fromX).toDouble(), (toZ - fromZ).toDouble())).toFloat()
 
 /** Capture must complete within this window on a normal device before failing the round. */
 private const val CAPTURE_TIMEOUT_MS = 12_000L
@@ -406,6 +555,48 @@ private fun CoroutineScope.askAboutBitmap(
         onResult(if (text.isBlank()) AskState.Failed else AskState.Answered(text))
     } finally {
         bitmap.recycle()
+    }
+}
+
+/**
+ * In-scene answer card rendered by the anchored `ViewNode` (P2). Mirrors the P3
+ * screen-space card states: spinner while waiting for the first delta, live text with a
+ * typing cursor while streaming, text + source label when complete.
+ */
+@Composable
+private fun AnchoredAnswerCard(text: String, streaming: Boolean) {
+    M3Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        tonalElevation = 6.dp,
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 260.dp)
+                .padding(16.dp),
+        ) {
+            if (text.isEmpty() && streaming) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                    Text(
+                        text = stringResource(R.string.demo_point_and_ask_status_thinking),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(start = 12.dp),
+                    )
+                }
+            } else {
+                Text(
+                    text = if (streaming) "${text}▌" else text,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.demo_point_and_ask_answer_source),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
     }
 }
 
