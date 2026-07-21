@@ -308,7 +308,7 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
         //
         // This demo is exactly why the inset is resolved scaffold-side: `controls` above
         // is gated on `DemoSettings.qaMode`, so the FAB only exists in QA mode — and
-        // `settingsFabReservedSpace` follows that automatically (88 dp in QA, 0 dp for
+        // `settingsFabReservedSpace` follows that automatically (104 dp in QA, 0 dp for
         // end users, who then get the full width back for these long messages).
         bottomOverlay = {
             // ForcedTrackingFailure.override shadows the real ARCore-reported reason
