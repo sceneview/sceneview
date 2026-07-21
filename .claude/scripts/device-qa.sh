@@ -453,8 +453,15 @@ run_ios() {
     fi
   fi
 
-  if [[ $rc -eq 0 ]]; then
+  # rc=0 alone is NOT proof of a pass: on macOS bash 3.2, an abort (e.g. a
+  # `set -u` expansion error) inside a `||`-guarded call exits the child with
+  # status 0 when its EXIT trap is set — measured on the 2026-07-21 nightly,
+  # where the ios leg graded PASSED with zero Maestro steps run. Require the
+  # positive `[ios-qa] PASS` marker, which only the genuine success path prints.
+  if [[ $rc -eq 0 ]] && grep -q '^\[ios-qa\] PASS — ' "$ARTIFACTS/ios-output.txt" 2>/dev/null; then
     record ios passed "flow=$flow" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
+  elif [[ $rc -eq 0 ]]; then
+    record ios failed "ios-device-qa.sh exited 0 without its PASS marker — harness aborted mid-run (flow=$flow)" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
   elif [[ $rc -eq 1 && ! $CI_MODE ]] && grep -q 'no available simulator' "$ARTIFACTS/ios-output.txt" 2>/dev/null; then
     record ios skipped "no iOS simulator available" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
   else
@@ -670,7 +677,11 @@ if $DISK_GATE_SKIP; then
   LEGS=()
 fi
 
-for leg in "${LEGS[@]}"; do
+# ${LEGS[@]+…}: macOS ships bash 3.2, where expanding an EMPTY array under
+# `set -u` is an "unbound variable" error (bash ≥4.4 allows it) — the
+# self-hosted-Mac ios leg crashed here whenever the disk gate emptied LEGS,
+# turning the honest-skip design above into a bogus exit 1.
+for leg in ${LEGS[@]+"${LEGS[@]}"}; do
   case "$leg" in
     web)     run_web ;;
     android)

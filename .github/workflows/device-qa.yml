@@ -135,7 +135,11 @@ jobs:
   web:
     name: Device QA — web (Playwright)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 35 min: green push runs measure 18–24 min wall-clock — 25 min left
+    # ~1 min of headroom and the nightly timed out (#2775, night of
+    # 2026-07-21). Playwright's per-test timeout still bounds real hangs;
+    # this job-level value is a backstop, not the hang detector.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
 

@@ -77,14 +77,15 @@ platform as a failure), `--out <dir>`.
 See [`.maestro/README.md`](.maestro/README.md) for the Maestro flow layout and
 known limitations (no pinch gesture → 3D zoom is driven via deep-link param).
 
-**iOS leg status — local-only, 0 CI runs today.** Unlike `android`/`web`/`ar`,
-the `ios` leg above has never actually executed in CI: `device-qa.yml` defines
-no `ios` job, so it only runs locally (`bash .claude/scripts/device-qa.sh
---platform=ios` / `ios-device-qa.sh`). Separately, `render-tests.yml`'s "iOS
-screenshot tests" job runs the existing logic-only `SceneViewDemoTests` target
-and captures no screenshots — there is no UI-testing target and no
-`XCTAttachment` anywhere in the iOS demo. Wiring both up is tracked in #2803;
-until it lands, don't read either as an automated release gate.
+**iOS leg status — CI-wired since #2833 (2026-07-20), advisory.** `device-qa.yml`
+now defines an `ios` job (Maestro / Simulator; routed to the self-hosted
+`sceneview-mac` runner when its heartbeat is fresh, `macos-15` otherwise), the
+nightly runs it via `device-qa.sh --platform=ios --fast --ci`, and
+`render-tests.yml`'s iOS job drives the `SceneViewDemoUITests` UI-testing
+target with real `XCTAttachment` screenshots. The leg is in the default
+ADVISORY set — a red ios leg is a `WARN`, not a release block. Caveat: on the
+self-hosted Mac the leg is disk-gated (< 10 GB free → honest advisory skip),
+so keep the host's disk above the gate for real coverage.
 
 ### Release-checkpoint mandate
 
@@ -108,7 +109,8 @@ The legs are **graded**, because they are not equally reliable:
 | `android`, `ar` | `continue-on-error: true` (flaky SwiftShader emulator, #1643) | **ADVISORY** — a red leg is a `WARN`, never a silent pass, never a hard block |
 
 `device-qa.sh` tags each leg `advisory: true|false` (default advisory set:
-`android,ar`, override with `--advisory=<csv>`) and pre-computes
+`android,ar,ios,web-perf,sketchfab,arcore-cloud`, override with
+`--advisory=<csv>`) and pre-computes
 `releaseGate.verdict` in `device-qa-report.json`:
 
 - `clear` — every leg passed → checklist `PASS`.
@@ -346,10 +348,10 @@ RAM-constrained Mac no longer contend for emulator resources.
 GitHub-hosted `macos-15` runners cost ~10x ubuntu per-minute and have no KVM.
 SceneView ships **6 jobs on `macos-15`** (`ios.yml`, `bridge-ios-compile.yml`,
 `rn-ios-compile.yml`, `app-store.yml` × 2, `render-tests.yml`). The iOS Maestro
-device-QA leg (#1601) has **no CI wiring at all yet** — not nightly, not
-per-push; see the "iOS leg status" note under "Device QA" above (#2803 tracks
-adding it). A self-hosted runner on a Mac is what would make a per-push iOS
-leg affordable once it exists.
+device-QA leg (#1601) is CI-wired since #2833 — nightly via `device-qa.yml`,
+routed to the self-hosted `sceneview-mac` runner when its heartbeat is fresh
+(see the "iOS leg status" note under "Device QA" above). The self-hosted
+runner is what makes that leg affordable per-run.
 
 Inspired by [Zach Rattner's M4 Mac cluster
 playbook](https://zachrattner.com/projects/m4-mac-cluster) (8 Mac minis, $35k/yr

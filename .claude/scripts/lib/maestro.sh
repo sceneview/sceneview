@@ -138,11 +138,18 @@ maestro_run() {
   # (#1560). `timeout` exit 124 propagates as a normal non-zero failure.
   # On macOS, `timeout` is not available by default — use `gtimeout` (from
   # homebrew coreutils) if present, otherwise run unbounded (#2184).
+  # ${device_args[@]+…}: macOS bash 3.2 + `set -u` rejects expanding an EMPTY
+  # array — on the iOS path ANDROID_SERIAL is unset, device_args stays empty,
+  # and the bare expansion aborted the whole harness here. Worse, measured on
+  # bash 3.2: when the aborting call sits in a `||`-guarded list AND an EXIT
+  # trap is set, the script dies with exit 0 (the `||` already reset `$?`), so
+  # the ios leg graded PASSED without running a single Maestro step — which is
+  # why run_ios in device-qa.sh also requires the positive PASS marker.
   if command -v timeout >/dev/null 2>&1; then
-    timeout "${MAESTRO_TEST_TIMEOUT:-900}" "$MAESTRO_BIN" "${device_args[@]}" test "$flow" "$@"
+    timeout "${MAESTRO_TEST_TIMEOUT:-900}" "$MAESTRO_BIN" ${device_args[@]+"${device_args[@]}"} test "$flow" "$@"
   elif command -v gtimeout >/dev/null 2>&1; then
-    gtimeout "${MAESTRO_TEST_TIMEOUT:-900}" "$MAESTRO_BIN" "${device_args[@]}" test "$flow" "$@"
+    gtimeout "${MAESTRO_TEST_TIMEOUT:-900}" "$MAESTRO_BIN" ${device_args[@]+"${device_args[@]}"} test "$flow" "$@"
   else
-    "$MAESTRO_BIN" "${device_args[@]}" test "$flow" "$@"
+    "$MAESTRO_BIN" ${device_args[@]+"${device_args[@]}"} test "$flow" "$@"
   fi
 }
