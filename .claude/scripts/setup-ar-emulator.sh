@@ -551,10 +551,40 @@ ROSETTA_GPU="${EMU_ROSETTA_GPU:-swiftshader_indirect}"
 ROSETTA_DATA_GB="${EMU_ROSETTA_DATA_GB:-4}"
 # Pinned ARCore emulator APK — the GitHub release tag carries NO leading "v".
 ROSETTA_ARCORE_APK_URL="${EMU_ROSETTA_ARCORE_APK_URL:-https://github.com/google-ar/arcore-android-sdk/releases/download/1.54.0/Google_Play_Services_for_AR_1.54.0_x86_for_emulator.apk}"
-ROSETTA_LOG="/tmp/sceneview-emulator-${ROSETTA_AVD_NAME}-${ROSETTA_PORT}.log"
+# How long `adb shell` may stay unresponsive before the guest is declared wedged.
+# See rosetta_probe / rosetta_wait_boot.
+ROSETTA_WEDGE_TIMEOUT_S="${EMU_ROSETTA_WEDGE_TIMEOUT_S:-420}"
+# Boot can take over an hour, and macOS clears /tmp on reboot — point this at a
+# durable directory when the log has to survive a host restart to be useful.
+ROSETTA_LOG="${EMU_ROSETTA_LOG:-/tmp/sceneview-emulator-${ROSETTA_AVD_NAME}-${ROSETTA_PORT}.log}"
 ROSETTA_PIDFILE="/tmp/sceneview-emulator-${ROSETTA_AVD_NAME}-${ROSETTA_PORT}.pid"
 
 rlog() { echo "[setup-ar:rosetta] $*"; }
+
+# adb getprop, bounded. `adb shell` can block FOREVER against a guest whose
+# framework is wedged while `adb devices` still reports `device` — observed on
+# this rig, where it froze the wait loop so far past its own timeout that only a
+# host reboot ended the run. Every guest probe therefore runs under a hard cap.
+# Echoes the property value; returns 124 when the probe itself hung.
+# Prefers coreutils `timeout`/`gtimeout`, falls back to the portable perl alarm
+# idiom (alarm survives exec), and runs unbounded only if neither exists.
+ROSETTA_TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
+rosetta_probe() {
+  local prop="$1" cap="${2:-10}" out rc
+  if [[ -n "$ROSETTA_TIMEOUT_BIN" ]]; then
+    out="$("$ROSETTA_TIMEOUT_BIN" "$cap" "$ADB_BIN" -s "$ROSETTA_SERIAL" shell getprop "$prop" 2>/dev/null)" || rc=$?
+  elif command -v perl >/dev/null 2>&1; then
+    out="$(perl -e 'alarm shift; exec @ARGV' "$cap" \
+      "$ADB_BIN" -s "$ROSETTA_SERIAL" shell getprop "$prop" 2>/dev/null)" || rc=$?
+  else
+    out="$("$ADB_BIN" -s "$ROSETTA_SERIAL" shell getprop "$prop" 2>/dev/null)" || rc=$?
+  fi
+  # 124 = coreutils timeout; 142 = killed by SIGALRM (the perl idiom).
+  case "${rc:-0}" in
+    124|142) return 124 ;;
+  esac
+  echo "${out//[$'\r\n']/}"
+}
 
 # adb state of the rig serial: "device", "offline", or "" (not registered).
 rosetta_serial_state() {
@@ -728,13 +758,30 @@ rosetta_boot() {
 }
 
 rosetta_wait_boot() {
-  local waited=0 interval=15 state boot anim rss
+  local waited=0 interval=15 state boot anim rss rc hung=0
   rlog "waiting for $ROSETTA_SERIAL to reach sys.boot_completed=1 (timeout ${ROSETTA_BOOT_TIMEOUT_S}s)"
   while true; do
-    boot="$("$ADB_BIN" -s "$ROSETTA_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n' || true)"
+    rc=0
+    boot="$(rosetta_probe sys.boot_completed)" || rc=$?
+    if (( rc == 124 )); then
+      hung=$(( hung + interval ))
+      boot="<probe hung>"
+    else
+      hung=0
+    fi
     if [[ "$boot" == "1" ]]; then
       rlog "BOOT COMPLETE on $ROSETTA_SERIAL after ${waited}s"
       return 0
+    fi
+    # A guest that answers nothing for minutes on end is wedged, not slow: adbd
+    # is still connected (adb devices says `device`) but every shell blocks.
+    # Fail fast with a verdict instead of burning the full boot timeout.
+    if (( hung >= ROSETTA_WEDGE_TIMEOUT_S )); then
+      rlog "FAIL: guest wedged — 'adb shell' unresponsive for ${hung}s while adb still reports the device"
+      rlog "'adb reboot' does NOT resurrect a wedged qemu HAL — kill qemu and re-run:"
+      rlog "  kill \$(cat $ROSETTA_PIDFILE) && bash .claude/scripts/setup-ar-emulator.sh --rosetta"
+      tail -n 20 "$ROSETTA_LOG" 2>/dev/null | sed 's/^/  | /' || true
+      return 1
     fi
     state="$(rosetta_serial_state)"
     if ! rosetta_pid_alive && [[ "$state" != "device" && "$state" != "offline" ]]; then
@@ -750,7 +797,7 @@ rosetta_wait_boot() {
       return 1
     fi
     if (( waited > 0 && waited % 120 == 0 )); then
-      anim="$("$ADB_BIN" -s "$ROSETTA_SERIAL" shell getprop init.svc.bootanim 2>/dev/null | tr -d '\r\n' || true)"
+      anim="$(rosetta_probe init.svc.bootanim)" || anim="<hung ${hung}s>"
       rss="$(ps -o rss= -p "$(cat "$ROSETTA_PIDFILE" 2>/dev/null || echo 0)" 2>/dev/null | awk '{printf "%d MB", $1/1024}' || true)"
       rlog "still booting… ${waited}s (adb: ${state:-none}, bootanim: ${anim:-n/a}, qemu rss: ${rss:-?})"
     fi
