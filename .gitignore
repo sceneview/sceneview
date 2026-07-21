@@ -270,3 +270,6 @@ tools/qa-screenshots/android/*
 # Python bytecode caches (store-sync self-test runs py_compile)
 __pycache__/
 *.pyc
+
+# Generated preview mosaic from capture-play-store-screenshots.sh (local visual check only).
+samples/android-demo/distribution/play-store/**/.mosaic.png

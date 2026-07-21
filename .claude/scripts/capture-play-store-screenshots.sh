@@ -189,16 +189,34 @@ fi
 # after so the `--es demo` deep-link launch on each iteration starts cold.
 # Falls back to `adb install` when the android CLI is missing or on multi-device
 # hosts (the `run` subcommand has no `--device` flag in v0.7).
+# ⚠️ Never trust `android run`'s exit code here. On this host it printed
+# `No matching components found for type ACTIVITY with name …/.MainActivity`
+# and STILL exited 0, so the `||` fallback below never fired and the capture
+# silently shot a 16-hour-old build (device 4.23.0 vs freshly-built 4.24.0).
+# Every screenshot looked plausible, so nothing downstream caught it — the
+# stale-install class of #2305/#2411. The install is therefore VERIFIED against
+# the device rather than assumed: if the package's lastUpdateTime did not move,
+# fall back to `adb install -r`, which reports Success/Failure honestly.
+installed_stamp() {
+  adb ${ANDROID_SERIAL:+-s "$ANDROID_SERIAL"} shell dumpsys package "$PKG" 2>/dev/null \
+    | awk -F= '/lastUpdateTime=/ {print $2; exit}'
+}
+STAMP_BEFORE="$(installed_stamp)"
+
 if android_cli_locate && [[ "$DEVICE_LINES" -eq 1 ]]; then
   echo "[capture] android run --apks=$APK_PATH (install+launch)" >&2
-  android_cli_install_and_launch "$APK_PATH" "$PKG/.MainActivity" >/dev/null || {
-    echo "[capture] android run failed, falling back to adb install" >&2
-    adb install -r "$APK_PATH" >/dev/null
-  }
+  android_cli_install_and_launch "$APK_PATH" "$PKG/.MainActivity" >/dev/null || true
 else
   echo "[capture] adb install -r $APK_PATH" >&2
   adb install -r "$APK_PATH" >/dev/null
 fi
+
+if [[ -n "$STAMP_BEFORE" && "$(installed_stamp)" == "$STAMP_BEFORE" ]]; then
+  echo "[capture] install did NOT land (lastUpdateTime unchanged) — adb install -r" >&2
+  adb install -r "$APK_PATH" >/dev/null
+fi
+[[ -n "$(installed_stamp)" ]] || { echo "[capture] $PKG is not installed after install step" >&2; exit 1; }
+echo "[capture] on-device build: $(adb ${ANDROID_SERIAL:+-s "$ANDROID_SERIAL"} shell dumpsys package "$PKG" | awk -F= '/versionName=/ {print $2; exit}')" >&2
 
 # ── 3b. Force DARK mode (#2773) ──────────────────────────────────────────────
 # Uniform look with the iOS capture: render the 3D content on a dark surface
@@ -207,6 +225,41 @@ fi
 adb ${ANDROID_SERIAL:+-s "$ANDROID_SERIAL"} shell "cmd uimode night yes" >/dev/null 2>&1 || true
 
 # ── 4. Capture loop ──────────────────────────────────────────────────────────
+# Per-demo store framing, in metres, via the `camera_distance` intent extra
+# (#2652). A demo's DEFAULT framing is tuned for interactive use — you orbit and
+# pinch — not for a still that must read at Play Store thumbnail size. Left
+# alone, `model-viewer` renders the helmet small on black: measured centre-patch
+# variance 98.3, i.e. the frame is ~98% empty, which is both a weak screenshot
+# and close enough to the blank-capture guard (threshold 100) that the run
+# passes or fails on where the auto-orbit happens to be. At 4.5 m the whole
+# helmet fills the frame (variance ~1979) and the result is deterministic.
+#
+# Values were chosen by LOOKING at each capture, never by maximising variance:
+# 2.0 m and 3.0 m score far higher (2042 / 2747) because the camera is *inside*
+# the helmet, which is a high-variance, unusable frame. Variance detects blank,
+# it does not detect good — see #2796 and the `--variance-threshold` note above.
+#
+# Echoes empty for demos that frame well by default. bash 3.2 on macOS has no
+# associative arrays, hence the case statement (see project memory on 3.2).
+camera_distance_for() {
+  case "$1" in
+    model-viewer)    echo "4.5" ;;
+    double-pendulum) echo "3.0" ;;
+    *)               echo "" ;;
+  esac
+}
+# Deliberately NOT framed, and why — so nobody re-adds them by guesswork:
+#   fog       default already frames the frosted helmet well; pulling in only
+#             shrinks it (the extra takes the camera FURTHER for this demo).
+#   geometry  the primitives are laid out along a line wider than a phone
+#             portrait frame; every distance tried (default, 8, 12, 14) clips
+#             a primitive at one edge. Needs a demo-side layout fix, not a
+#             capture-side one.
+#   materials the model stays small at every distance (default, 2.0, 2.8, 4.5,
+#             8.0) — the extra moves the camera without enlarging the subject,
+#             and the demo picks a different HDRI each launch, so the frame is
+#             not even reproducible. See the note filed on #2854.
+
 mkdir -p "$OUT_DIR"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -215,14 +268,20 @@ IFS=',' read -ra DEMO_ARR <<< "$DEMOS"
 INDEX=1
 for DEMO in "${DEMO_ARR[@]}"; do
   DEMO="${DEMO// /}"  # trim whitespace
-  echo "[capture] [$INDEX] $DEMO" >&2
+  CAM_DISTANCE="$(camera_distance_for "$DEMO")"
+  echo "[capture] [$INDEX] $DEMO${CAM_DISTANCE:+ (camera_distance=$CAM_DISTANCE)}" >&2
 
   # `am force-stop` + `--es demo <id>` stay on adb: `android run` in v0.7 has no
   # equivalent for either (no `--force-stop` flag, no intent-extras forwarding).
   # Re-evaluate when CLI v0.8+ ships those flags. Same allow-listed ingress
   # channel as the QA flow + #958.
   adb shell am force-stop "$PKG"
-  adb shell am start -n "$PKG/.MainActivity" --es demo "$DEMO" >/dev/null
+  if [[ -n "$CAM_DISTANCE" ]]; then
+    adb shell am start -n "$PKG/.MainActivity" --es demo "$DEMO" \
+      --ef camera_distance "$CAM_DISTANCE" >/dev/null
+  else
+    adb shell am start -n "$PKG/.MainActivity" --es demo "$DEMO" >/dev/null
+  fi
   sleep "$SETTLE_SECONDS"
 
   RAW="$TMP_DIR/raw-$INDEX.png"
