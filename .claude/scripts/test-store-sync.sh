@@ -241,6 +241,26 @@ then
 else
   bad "asc-listing-drift job missing or carries a write flag — a scheduled job must never push to the store"
 fi
+# A crash mid-read must not render as a clean read (security review, PR #2811).
+# `| tee … || true` throws the script's status away twice, so a 5xx or a token
+# expiry after the first line of output leaves a partial log with no drift lines
+# and no [probe] verdict — which the summary would print as if nothing were
+# wrong. The job must capture PIPESTATUS[0] (the SCRIPT's code, not tee's) and
+# the summary must branch on it. Assert both halves: dropping either one
+# silently restores the false-clean.
+if python3 - "$MAINT_WF" <<'PYEOF'
+import sys, yaml
+job = yaml.safe_load(open(sys.argv[1]))["jobs"].get("asc-listing-drift")
+if not job:
+    sys.exit(1)
+runs = " ".join(str(s.get("run", "")) for s in job.get("steps", []))
+sys.exit(0 if ("PIPESTATUS[0]" in runs and "asc_rc" in runs) else 1)
+PYEOF
+then
+  ok "asc-listing-drift reports a partial read instead of a silent clean one"
+else
+  bad "asc-listing-drift lost its PIPESTATUS/asc_rc guard — a crashed run would render as a finding-free read"
+fi
 
 echo
 echo "test-store-sync.sh: $PASS passed, $FAIL failed"

@@ -448,13 +448,40 @@ class ClassifyLiveChecksumsTest(unittest.TestCase):
         self.assertEqual(v["overall"], "md5-shaped")
         self.assertEqual(v["matched_local"], [])
 
-    def test_match_against_local_md5_confirms(self):
-        # A live checksum equal to a repo file's MD5 settles it outright.
+    def test_match_alone_is_only_md5_matched_not_confirmed(self):
+        # THE defect this guard exists for (correctness review, PR #2811):
+        # once --apply-screenshots has run, the live set holds the very MD5s we
+        # declared, so a repo match is our own echo. Unattested, it must never
+        # read CONFIRMED — that would be a permanently-green Phase C unblocker
+        # built on the one thing the write path structurally cannot test.
         digest = "900150983cd24fb0d6963f7d28e17f72"  # md5("abc")
         v = al.classify_live_checksums(
             {"APP_IPHONE_67": [digest]}, local_md5s=[digest])
-        self.assertEqual(v["overall"], "confirmed")
+        self.assertEqual(v["overall"], "md5-matched")
         self.assertEqual(v["matched_local"], [digest])
+
+    def test_match_confirms_only_when_provenance_is_attested(self):
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": [digest]}, local_md5s=[digest],
+            console_sourced=True)
+        self.assertEqual(v["overall"], "confirmed")
+
+    def test_attestation_alone_confirms_nothing_without_a_match(self):
+        # Attesting provenance must not manufacture a verdict out of thin air.
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]},
+            local_md5s=[], console_sourced=True)
+        self.assertEqual(v["overall"], "md5-shaped")
+
+    def test_none_display_type_does_not_crash_the_sort(self):
+        # A live set missing `screenshotDisplayType` keys this dict on None;
+        # sorting None against str is a TypeError that would take the whole
+        # read-only run down and surface as an empty, clean-looking read.
+        v = al.classify_live_checksums(
+            {None: ["d41d8cd98f00b204e9800998ecf8427e"],
+             "APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]})
+        self.assertEqual(v["overall"], "md5-shaped")
 
     def test_absent_checksums_refute(self):
         v = al.classify_live_checksums({"APP_IPHONE_67": [None, None]})
@@ -471,32 +498,54 @@ class ClassifyLiveChecksumsTest(unittest.TestCase):
              "APP_IPAD_PRO_3GEN_129": [None]})
         self.assertEqual(v["overall"], "mixed")
 
-    def test_confirmed_wins_over_shape_when_a_match_exists(self):
-        # One matching MD5 confirms even if other assets are only md5-shaped.
+    def test_a_match_wins_over_shape_when_a_match_exists(self):
+        # One matching MD5 outranks the shape bucket even if other assets are
+        # only md5-shaped — still gated on the provenance attestation.
         digest = "900150983cd24fb0d6963f7d28e17f72"
-        v = al.classify_live_checksums(
-            {"APP_IPHONE_67": [digest, "0cc175b9c0f1b6a831c399e269772661"]},
-            local_md5s=[digest])
-        self.assertEqual(v["overall"], "confirmed")
+        live = {"APP_IPHONE_67": [digest, "0cc175b9c0f1b6a831c399e269772661"]}
+        self.assertEqual(
+            al.classify_live_checksums(live, local_md5s=[digest])["overall"],
+            "md5-matched")
+        self.assertEqual(
+            al.classify_live_checksums(live, local_md5s=[digest],
+                                       console_sourced=True)["overall"],
+            "confirmed")
 
 
 class ChecksumProvenanceReportTest(unittest.TestCase):
     """The verdict must SAY what it licenses, not just what it observed."""
 
-    def _report(self, live, local=()):
+    def _report(self, live, local=(), console_sourced=False):
         return "\n".join(al.checksum_provenance_report(
-            al.classify_live_checksums(live, local)))
+            al.classify_live_checksums(live, local, console_sourced)))
 
     def test_md5_shaped_report_says_not_proof_and_how_to_close(self):
         text = self._report({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]})
         self.assertIn("MD5-SHAPED", text.upper())
         self.assertIn("console", text)  # names the action that would confirm it
 
+    def test_md5_shaped_report_warns_the_upload_lands_on_the_draft(self):
+        # The prescribed action must be actionable: console uploads go to the
+        # EDITABLE draft, so an operator told to "upload and re-run" would
+        # otherwise watch the verdict never move and conclude the probe is broken.
+        text = self._report({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]})
+        self.assertIn("draft", text.lower())
+
     def test_confirmed_report_unblocks_phase_c(self):
         digest = "900150983cd24fb0d6963f7d28e17f72"
-        text = self._report({"APP_IPHONE_67": [digest]}, local=[digest])
+        text = self._report({"APP_IPHONE_67": [digest]}, local=[digest],
+                            console_sourced=True)
         self.assertIn("CONFIRMED", text.upper())
         self.assertIn("Phase C", text)
+
+    def test_md5_matched_report_refuses_to_unblock_and_says_why(self):
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        text = self._report({"APP_IPHONE_67": [digest]}, local=[digest])
+        self.assertIn("MD5-MATCHED", text.upper())
+        self.assertIn("echo", text.lower())          # names the failure mode
+        self.assertIn("NOT a Phase C unblocker", text)
+        # Must not read as a confirmation to a skimming eye.
+        self.assertNotIn("CONFIRMED\n", text.upper().replace("[PROBE] ", ""))
 
     def test_absent_report_says_rekey(self):
         text = self._report({"APP_IPHONE_67": [None]})
@@ -504,17 +553,20 @@ class ChecksumProvenanceReportTest(unittest.TestCase):
 
     def test_every_verdict_produces_lines(self):
         # No verdict may silently emit nothing — that would read as "no drift".
+        digest = "900150983cd24fb0d6963f7d28e17f72"
         for live, local in [
             ({}, ()),
             ({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]}, ()),
             ({"APP_IPHONE_67": [None]}, ()),
             ({"APP_IPHONE_67": ["a" * 64]}, ()),
+            ({"APP_IPHONE_67": [digest]}, [digest]),          # md5-matched
             ({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"],
               "APP_IPAD_PRO_3GEN_129": [None]}, ()),
         ]:
-            lines = al.checksum_provenance_report(
-                al.classify_live_checksums(live, local))
-            self.assertTrue(lines and all(l.startswith("[probe]") for l in lines))
+            for attested in (False, True):
+                lines = al.checksum_provenance_report(
+                    al.classify_live_checksums(live, local, attested))
+                self.assertTrue(lines and all(l.startswith("[probe]") for l in lines))
 
 
 class DisplayTypeEnumTest(unittest.TestCase):

@@ -152,14 +152,24 @@ zéro. À garder en tête pour les Phases C/D, où la tentation sera la même.
     ci-dessus était traité comme « une action console manuelle vague à faire un
     jour ». Il devient un **rail CI read-only mesurable**. `asc_listing.py`
     gagne `classify_live_checksums()` + `checksum_provenance_report()` (helpers
-    purs, 20 tests unitaires) : `dry_run()` imprime la SHAPE des checksums live
+    purs, 23 tests unitaires) : `dry_run()` imprime la SHAPE des checksums live
     (`[probe] sourceFileChecksum provenance: …`) AVANT le diff qu'elle justifie,
     et un verdict :
-    - `confirmed` — un checksum live == le MD5 d'un fichier du repo → convention
-      vraie pour les uploads console, Phase C débloquée ;
+    - `confirmed` — un checksum live == le MD5 d'un fichier du repo **ET**
+      provenance console attestée (`--live-set-is-console-sourced`) → convention
+      vraie pour les uploads console, Phase C débloquée. **Seul déblocage
+      valide** ;
+    - `md5-matched` — le même match **sans** attestation → peut être notre
+      propre écho si `--apply-screenshots` a écrit ce set. Pas un déblocage.
+      ⚠️ Sans cette distinction (review correctness PR #2811), un simple
+      dispatch de `app-store-screenshots.yml` rendait le verdict `confirmed`
+      **définitivement vert sur une tautologie** ;
     - `md5-shaped` — tous 32-hex → COHÉRENT avec MD5, **pas une preuve** (tout
       digest 128-bit ressemble à ça) → reste 1 action Thomas : uploader **1**
       screenshot du repo via la console ASC, relancer, viser `confirmed` ;
+      ⚠️ l'upload console atterrit sur la version **éditable**, pas sur la
+      version live — c'est pourquoi la sonde échantillonne aussi le brouillon
+      (`… (draft)`), sans quoi l'action prescrite n'aurait jamais été visible ;
     - `absent` / `other` — hypothèse RÉFUTÉE → re-clé le diff screenshots ;
     - `no-live-assets` / `mixed` — rien à conclure encore.
     Le rail = nouveau job `asc-listing-drift` dans `maintenance.yml` (sibling de
