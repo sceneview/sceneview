@@ -13,7 +13,7 @@
 #     [--out samples/android-demo/distribution/play-store/en-GB/graphics] \
 #     [--status-bar-px N | auto] \
 #     [--variance-threshold N] \
-#     [--settle SECONDS]   # per-demo wait before capture (default 15) \
+#     [--settle SECONDS]   # per-demo wait; default 15 (phone) / 50 (tablets) \
 #     [--no-build]
 #
 # Requirements:
@@ -30,8 +30,10 @@
 #   `<out>/<prefix>-screenshot-{1..N}.png`, where `<prefix>` is the form factor
 #   (`phone`, `tablet7`, `tablet10`) — the exact filenames `play_listing.py`
 #   maps onto the Play `imageType`s. Plus a mosaic thumbnail at
-#   `<out>/.mosaic-<prefix>.png` for visual confirmation, kept well under the
-#   1800 px session-image limit.
+#   `$TMPDIR/sceneview-store-capture/mosaic-<prefix>.png` for visual confirmation,
+#   kept well under the 1800 px session-image limit. The mosaic lands OUTSIDE
+#   `<out>` on purpose: that directory mirrors the Play listing byte-for-byte and
+#   `play_listing.py`'s tests reject any file there that no imageType claims.
 #
 # Why crop the status bar: it shows battery / wifi / clock, which change every
 # screenshot session and inflate the diff. Cropping gives a clean device-frame
@@ -237,6 +239,21 @@ else
   adb install -r "$APK_PATH" >/dev/null
 fi
 
+# Verify the install actually landed (#2796). `android run` can NO-OP the
+# install and still exit 0 — the `|| fallback` above never fires, and the run
+# then dies on the first `am start` with no output at all, because `set -e`
+# kills it silently. Observed live on a freshly booted tablet AVD: `pm path`
+# empty, `pm clear` printing "Failed" (while still exiting 0, so it cannot be
+# relied on either). This is the same silent-no-op trap documented for asset QA.
+if ! adb shell pm path "$PKG" 2>/dev/null | tr -d '\r' | grep -q "^package:"; then
+  echo "[capture] install did NOT land ('pm path $PKG' is empty) — retrying with adb install" >&2
+  adb install -r "$APK_PATH" >/dev/null
+  if ! adb shell pm path "$PKG" 2>/dev/null | tr -d '\r' | grep -q "^package:"; then
+    echo "[capture] '$PKG' is still not installed after 'adb install -r $APK_PATH'." >&2
+    exit 1
+  fi
+fi
+
 # ── 3b. Force DARK mode (#2773) ──────────────────────────────────────────────
 # Uniform look with the iOS capture: render the 3D content on a dark surface
 # both stores. `cmd uimode night yes` flips the system dark theme; the demo
@@ -412,10 +429,16 @@ done
 TOTAL=$((INDEX - 1))
 
 # ── 5. Mosaic thumbnail (visual sanity, well under the 1800 px session limit) ─
-python3 - "$OUT_DIR" "$TOTAL" "$PREFIX" <<'PY'
+# Written OUTSIDE $OUT_DIR on purpose: that directory is a byte-for-byte mirror
+# of the Play listing, and `play_listing.py`'s test suite fails on any file there
+# that no `imageType` pattern claims (it caught this exact mosaic). Keep review
+# artefacts out of the mirror.
+MOSAIC_DIR="${TMPDIR:-/tmp}/sceneview-store-capture"
+mkdir -p "$MOSAIC_DIR"
+python3 - "$OUT_DIR" "$TOTAL" "$PREFIX" "$MOSAIC_DIR" <<'PY'
 import sys, os
 from PIL import Image
-out_dir, total, prefix = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+out_dir, total, prefix, mosaic_dir = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
 images = []
 for i in range(1, total + 1):
     p = os.path.join(out_dir, f"{prefix}-screenshot-{i}.png")
@@ -438,10 +461,10 @@ for i, img in enumerate(images):
     scale = min(cell_w / img.width, cell_h / img.height)
     t = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), Image.LANCZOS)
     mosaic.paste(t, (i * cell_w + (cell_w - t.width) // 2, (cell_h - t.height) // 2))
-mosaic_path = os.path.join(out_dir, f".mosaic-{prefix}.png")
+mosaic_path = os.path.join(mosaic_dir, f"mosaic-{prefix}.png")
 mosaic.save(mosaic_path, optimize=True)
 print(f"[capture]   mosaic → {mosaic_path}")
 PY
 
 echo "[capture] DONE — $TOTAL $PREFIX screenshots in $OUT_DIR/" >&2
-echo "[capture] Inspect $OUT_DIR/.mosaic-$PREFIX.png before pushing to the Play Store." >&2
+echo "[capture] Inspect $MOSAIC_DIR/mosaic-$PREFIX.png before pushing to the Play Store." >&2
