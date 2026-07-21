@@ -1,21 +1,70 @@
 import SwiftUI
 
-/// Availability status for a demo on iOS.
+/// Maturity status for a demo on iOS — mirrors Android's `DemoStatus`
+/// (`samples/android-demo/.../DemoRegistry.kt:13-29`) so both platforms can
+/// express the same four states about a demo's audit status:
 ///
-/// Demos that are present on Android but not yet ported to iOS appear in the list with a
-/// "Coming soon" badge and route to ``ComingSoonScreen`` instead of crashing or hiding.
+/// | iOS case      | Android case | Badge (`badgeLabel`) | Has a real destination? |
+/// |---------------|--------------|-----------------------|--------------------------|
+/// | `.working`    | `Working`    | none                  | yes                      |
+/// | `.knownIssue` | `KnownIssue` | "Preview"             | yes                      |
+/// | `.inReview`   | `InReview`   | "In review"           | yes                      |
+/// | `.comingSoon` | `ComingSoon` | "Soon"                | no                       |
+///
+/// **Documented asymmetry with Android:** Android's `ComingSoon` fragments
+/// still ship a real (if partial) `Screen()` — e.g. `ArHandTrackingFragment`
+/// renders a static reference skeleton because live hand tracking needs
+/// hardware the audit matrix doesn't have. iOS's `DemoScene` contract is
+/// binary instead (`@available true|false` gates whether a Scene provides a
+/// real `destination` at all — see `DemoScene.swift`), so on iOS
+/// `.comingSoon` always means "no destination yet", never "a partial one". A
+/// demo that IS implemented on iOS but has a known rendering/interaction bug
+/// is `.knownIssue`, not `.comingSoon` — see `collate-ios-demos.sh`'s
+/// `@status`/`@available` cross-validation.
+///
+/// Demos present on Android but not yet ported to iOS appear in the list with a
+/// "Soon" badge and route to ``ComingSoonScreen`` instead of crashing or hiding.
 enum DemoStatus: Equatable {
-    case available
+    /// Verified working — no badge (the common case shouldn't be visually flagged).
+    case working
+
+    /// Has a real destination but a known visual/interaction regression on the
+    /// audited device matrix — surfaced with a "Preview" badge so users have
+    /// honest expectations without the card reading as broken. Mirrors
+    /// Android's `KnownIssue`.
+    case knownIssue
+
+    /// Newly shipped, awaiting on-device review sign-off — surfaced with an
+    /// "In review" badge so testers know exactly which demos to exercise on
+    /// the next store build. Flip to `.working` once the review pass
+    /// validates it. Mirrors Android's `InReview`.
+    case inReview
+
+    /// Not yet implemented on iOS — no real destination; routes to
+    /// ``ComingSoonScreen`` instead. Mirrors Android's `ComingSoon` in
+    /// spirit (see the documented asymmetry above).
     case comingSoon
 
-    var isAvailable: Bool {
-        if case .available = self { return true }
-        return false
-    }
+    /// `true` for any status with a real, tappable destination
+    /// (`.working`, `.knownIssue`, `.inReview`) — only `.comingSoon` has none.
+    var isAvailable: Bool { self != .comingSoon }
 
-    var isComingSoon: Bool {
-        if case .comingSoon = self { return true }
-        return false
+    /// `true` only for `.comingSoon`. Kept as a named accessor (existing call
+    /// sites already read naturally as `scene.status.isComingSoon`).
+    var isComingSoon: Bool { self == .comingSoon }
+
+    /// Badge text shown on the demo card in `SamplesTab`, or `nil` for
+    /// `.working` (no badge rendered). Mirrors Android's `StatusChip` label
+    /// strings (`DemoListScreen.kt:322-328` / `strings.xml`'s
+    /// `samples_chip_*` entries) so the same four states read the same way
+    /// on both platforms.
+    var badgeLabel: String? {
+        switch self {
+        case .working: return nil
+        case .knownIssue: return "Preview"
+        case .inReview: return "In review"
+        case .comingSoon: return "Soon"
+        }
     }
 }
 
@@ -29,26 +78,37 @@ struct DemoItem: Identifiable {
     let status: DemoStatus
     let destination: AnyView
 
-    /// Available demo with a real destination view.
+    /// Demo with a real destination view. `status` must be one of the three
+    /// "available" cases (`.working`, `.knownIssue`, `.inReview`) — enforced
+    /// with a precondition since `.comingSoon` has no destination by
+    /// definition and must go through the `comingSoonTitle:` initializer
+    /// below instead.
     init<V: View>(
         title: String,
         icon: String,
         subtitle: String,
         category: DemoCategory,
+        status: DemoStatus = .working,
         @ViewBuilder destination: () -> V
     ) {
+        precondition(
+            status.isAvailable,
+            "DemoItem(title:...) requires an available status (.working/.knownIssue/.inReview) " +
+            "— use the comingSoonTitle: initializer for .comingSoon"
+        )
         self.title = title
         self.icon = icon
         self.subtitle = subtitle
         self.category = category
-        self.status = .available
+        self.status = status
         self.destination = AnyView(destination())
     }
 
     /// Coming-soon demo — tap routes to ``ComingSoonScreen`` instead of a real destination.
     ///
     /// Mirrors an Android demo that is not yet ported to iOS. The item stays visible in the list
-    /// (with a "Coming soon" badge) so users see the roadmap rather than discovering gaps.
+    /// (with a "Soon" badge) so users see the roadmap rather than discovering gaps. Status is
+    /// always `.comingSoon` — there is no destination to attach any other status to.
     init(
         comingSoonTitle title: String,
         icon: String,

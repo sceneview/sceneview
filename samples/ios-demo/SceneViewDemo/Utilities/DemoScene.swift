@@ -24,16 +24,17 @@ import SwiftUI
 ///
 /// `samples/ios-demo/scripts/collate-ios-demos.sh` discovers every
 /// `*Scene.swift` file, reads the `// @sceneId`, `// @title`,
-/// `// @subtitle`, `// @category`, and `// @available` directives from
-/// each file's header comments, and regenerates `GeneratedScenes.swift`.
-/// That generated file is `.gitignore`d (like Android's `GeneratedDemos.kt`)
-/// and re-created before each Xcode build by a Run Script phase.
+/// `// @subtitle`, `// @category`, `// @available`, and `// @status`
+/// directives from each file's header comments, and regenerates
+/// `GeneratedScenes.swift`. That generated file is `.gitignore`d (like
+/// Android's `GeneratedDemos.kt`) and re-created before each Xcode build by a
+/// Run Script phase.
 ///
 /// Using structured header comments (instead of parsing Swift syntax)
 /// keeps the collator a simple line-grepping shell script that works
 /// without a Swift parser or SPM plugins.
 ///
-/// # Directives (all required in each `*Scene.swift` file)
+/// # Directives
 ///
 /// ```
 /// // @sceneId     model-viewer
@@ -41,7 +42,25 @@ import SwiftUI
 /// // @subtitle    Load and display 3D models
 /// // @category    basics3D          (one of: basics3D|lighting|content|interaction|advanced|ar)
 /// // @available   true              (true = shows destination view; false = "Coming soon")
+/// // @status      working           (optional — see below)
 /// ```
+///
+/// `@sceneId`, `@title`, `@subtitle`, `@category`, and `@available` are
+/// required. `@status` is **optional** and mirrors Android's `DemoStatus`
+/// (`Working`/`KnownIssue`/`ComingSoon`/`InReview`, see `DemoItem.swift`):
+///
+/// - One of `working` | `knownIssue` | `inReview` | `comingSoon`.
+/// - **Default when omitted** (so no pre-existing `*Scene.swift` file needs
+///   editing): `working` when `@available true`, `comingSoon` when
+///   `@available false`.
+/// - **Cross-validated against `@available`** — the collator errors out on a
+///   contradictory pair: `working`/`knownIssue`/`inReview` all require
+///   `@available true` (they claim a real destination exists); `comingSoon`
+///   requires `@available false` (it claims none does).
+/// - Drives the badge rendered on the Samples-tab card
+///   (`SamplesTab.swift`'s `StatusBadge` — "Preview" / "In review" / "Soon",
+///   `.working` renders no badge) — the iOS mirror of Android's
+///   `DemoListScreen.kt` `StatusChip`.
 ///
 /// The conforming type must also provide:
 /// - `static var destination: AnyView { get }` — SwiftUI view (ignored when
