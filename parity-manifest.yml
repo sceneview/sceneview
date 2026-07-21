@@ -326,11 +326,7 @@ demos:
       Android after iOS stopped tracking the catalog.
   - id: wall-placement
     androidStatus: InReview
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job B) but @available false — added to
-      Android after iOS stopped tracking the catalog (Android itself is
-      InReview, #2740); card subtitle notes "(Android: in review)".
+    iosStatus: working
 
   # ─── android-only (0) — every id now has at least an honest stub ────────
   # L0.6 (#2804) closed this section: the 6 #2239-umbrella ids became
