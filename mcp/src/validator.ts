@@ -562,6 +562,9 @@ const RULES: Rule[] = [
   {
     // `import io.github.sceneview.…` that resolves to nothing. Our own
     // namespace: nothing outside the index can legitimately live there.
+    // Known tolerated false NEGATIVE: aliased imports (`import … as MN`)
+    // don't match the end-of-line anchor and are silently skipped — an
+    // unchecked alias can never become a false positive.
     id: "symbols/unknown-import",
     severity: "error",
     check(code, lines) {
@@ -653,6 +656,28 @@ const RULES: Rule[] = [
         "use",
         "toString",
       ]);
+      // A snippet may rebind a canonical name to its own type
+      // (`val modelLoader = MyRepository()`) — member-checking that variable
+      // against the SceneView loader would be a false positive
+      // (adversarial-review finding #3 on PR #2814). Keep checking only when
+      // the declaration is recognizably the real loader: a `remember<Class>`
+      // call, a direct constructor, a `: <Class>` type annotation, or a
+      // `.<receiver>` property access — or when there is no local
+      // declaration at all (the scope provides it, the canonical case).
+      const rebound = new Set<string>();
+      for (const [receiver, className] of Object.entries(receivers)) {
+        const decl = new RegExp(
+          `\\b(?:val|var)\\s+${receiver}\\s*(?::\\s*([^=\\n]+?))?\\s*=\\s*(.+)`
+        ).exec(code);
+        if (!decl) continue;
+        const [, typeAnnotation, rhs] = decl;
+        const looksReal =
+          (typeAnnotation?.includes(className) ?? false) ||
+          rhs.includes(`remember${className}`) ||
+          rhs.includes(`${className}(`) ||
+          rhs.trimEnd().endsWith(`.${receiver}`);
+        if (!looksReal) rebound.add(receiver);
+      }
       const callRe = /\b(modelLoader|materialLoader|environmentLoader)\.(\w+)\s*\(/g;
       const reported = new Set<string>();
       for (const match of code.matchAll(callRe)) {
@@ -660,6 +685,7 @@ const RULES: Rule[] = [
         const key = `${receiver}.${member}`;
         if (reported.has(key)) continue;
         reported.add(key);
+        if (rebound.has(receiver)) continue;
         if (stdlib.has(member)) continue;
         const members = membersOfClass(receivers[receiver]);
         if (!members || members.has(member)) continue;
