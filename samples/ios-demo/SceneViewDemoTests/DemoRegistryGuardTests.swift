@@ -182,7 +182,7 @@ final class DemoRegistryGuardTests: XCTestCase {
     /// id is Android-sourced) also being updated intentionally.
     func testKnownComingSoonAndResidualIdsStillFallThroughToThePlaceholder() {
         let mustBePlaceholder = [
-            "ar-cloud-anchor", "ar-rooftop", "ar-terrain",   // #2799 canonicalized ids, still @available false
+            "ar-rooftop", "ar-terrain",                      // #2799 canonicalized ids, still @available false
             "post-processing", "secondary-camera",           // long-standing coming-soon cards
             "ar-collaborative", "placement-scene",           // L0.6 (#2804) gave these a stub Scene file, still @available false
         ]
