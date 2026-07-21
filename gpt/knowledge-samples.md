@@ -193,7 +193,8 @@ ARSceneView(
                     position = Position(y = 0.12f),      // float above the surface
                     // No rotation: the hit pose already faces the device.
                     scale = Scale(0.15f),                // ViewNode renders at 250 px/m
-                ) { Card { Text(panel.text) } }          // any Compose UI, updates live
+                    // No parent to measure against — size the content explicitly.
+                ) { Card(Modifier.width(320.dp)) { Text(panel.text) } }
             }
         }
     }
