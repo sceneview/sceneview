@@ -53,6 +53,27 @@ import io.github.sceneview.node.ViewNode.WindowManager
  * Additionally, this manages the lifecycle of the window to help ensure that the window is
  * added/removed from the WindowManager at the appropriate times.
  *
+ * ## The rendered view is NOT interactive (yet)
+ *
+ * A [ViewNode] renders its [View] into a texture; it does not put that view on screen. The hosting
+ * window is attached with `FLAG_NOT_TOUCHABLE`, and nothing currently dispatches a
+ * [MotionEvent] back into the view hierarchy, so **an embedded `Button.onClick`, ripple, press
+ * state or inner scroll never fires**. Treat the content as a live-rendering, read-only surface.
+ *
+ * To react to a tap on a [ViewNode], pick it from the scene instead and handle the hit yourself:
+ *
+ * ```kotlin
+ * SceneView(
+ *     onGestureListener = rememberOnGestureListener(
+ *         onSingleTapUp = { _, node -> if (node is ViewNode) doSomething() }
+ *     ),
+ *     // …
+ * )
+ * ```
+ *
+ * Forwarding real touch events into the embedded view is tracked by
+ * [#2845](https://github.com/sceneview/sceneview/issues/2845).
+ *
  * @param view The 2D Android [View] that is rendered by this [ViewNode]
  * @param unlit True to disable all lights influences on the rendered view
  * @param invertFrontFaceWinding Inverts the winding order of front faces.
