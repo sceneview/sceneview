@@ -472,6 +472,27 @@ class ClassifyLiveChecksumsTest(unittest.TestCase):
         self.assertIn("attests nothing, at any date", text)
         self.assertIn("KEEPS its screenshots when it goes live", text)
 
+    def test_report_labels_match_what_probe_key_actually_produces(self):
+        # W9 slipped through because every fixture hand-wrote "… (draft)" while
+        # _probe_key() had started emitting "… @draft X" — so the instruction
+        # told the operator to look for a label the code no longer prints.
+        # Build the keys through _probe_key() and assert the report's own
+        # wording points at that format, so a future rename cannot desync them.
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        live_key = al._probe_key("APP_IPHONE_67", "4.23.0")
+        draft_key = al._probe_key("APP_IPHONE_67", "draft 4.24.0")
+        self.assertNotEqual(live_key, draft_key)
+        text = "\n".join(al.checksum_provenance_report(
+            al.classify_live_checksums({live_key: ["a" * 32], draft_key: [digest]},
+                                       local_md5s=[digest])))
+        self.assertIn(f"matched in {draft_key}", text)
+        # The md5-shaped branch names a label; it must be the emitted one.
+        shaped = "\n".join(al.checksum_provenance_report(
+            al.classify_live_checksums({live_key: ["a" * 32]})))
+        marker = draft_key.split("@")[1].split()[0]      # "draft"
+        self.assertIn(f"'@{marker}", shaped)
+        self.assertNotIn("'(draft)'", shaped)
+
     def test_probe_key_stamps_the_version_so_provenance_is_checkable(self):
         # E4: a set being live proves nothing about who uploaded it, because
         # the editable version carries its screenshots into READY_FOR_SALE.

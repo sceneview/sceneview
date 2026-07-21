@@ -429,9 +429,11 @@ def checksum_provenance_report(verdict):
             "[probe] that version KEEPS its screenshots when it goes live: a set being",
             "[probe] live today is no evidence about who uploaded it. So 'the script",
             "[probe] never touched the live version' attests nothing, at any date.",
-            "[probe] Check the app-store-screenshots.yml run history against EVERY",
-            "[probe] version listed above — including versions already shipped; only if",
-            "[probe] it wrote none of them, re-run with --screenshots-are-console-sourced.",
+            "[probe] Check EVERY --apply-screenshots run — the app-store-screenshots.yml",
+            "[probe] history AND any local invocation, which leaves no CI trace —",
+            "[probe] against every version listed above, including already-shipped",
+            "[probe] ones; only if none of them wrote these sets, re-run with",
+            "[probe] --screenshots-are-console-sourced.",
         ]
     elif overall == "md5-shaped":
         lines += [
@@ -441,7 +443,7 @@ def checksum_provenance_report(verdict):
             "[probe] console, then re-run. NOTE: console uploads land on the EDITABLE",
             "[probe] draft, so the probe only sees them once that version is live, or",
             "[probe] via the draft set this probe reads separately (look for the",
-            "[probe] '(draft)' display types above). Promoting the resulting match to",
+            "[probe] '@draft …' display types above). Promoting the resulting match to",
             "[probe] CONFIRMED still needs --screenshots-are-console-sourced.",
         ]
     elif overall == "absent":
@@ -704,8 +706,10 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir, console_sourced=False,
     # construction for any asset THIS script uploaded. Printing what Apple
     # actually stores, before the diff it justifies, is what stops a mismatch
     # from being read as measured drift. The draft sets are folded in because a
-    # console upload — the only thing that can settle the question — lands
-    # there, never on the live version.
+    # console upload — the only thing that can settle the question — lands on
+    # the editable version. Note it does not STAY there: that version keeps its
+    # screenshots when it ships, which is why every set is stamped with the
+    # version it came from rather than merely marked draft-or-not.
     local_md5s = [md5_of(p)
                   for device_dir in DISPLAY_TYPE_MAP
                   if (shots_dir / device_dir).is_dir()
@@ -713,7 +717,13 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir, console_sourced=False,
     # Version-stamped keys for the probe; the diff below keeps the raw display
     # types it needs to look sets up by.
     probe_sets = {_probe_key(k, version_string): v for k, v in live_sets.items()}
-    probe_sets.update(draft_sets)
+    for key, value in draft_sets.items():
+        # Unreachable while versionStrings differ, but a silent overwrite here
+        # would drop a live set out of the sample without a word.
+        if key in probe_sets:
+            print(f"::warning::probe key collision on {key} — draft and live sets "
+                  "share a label; reporting the draft one")
+        probe_sets[key] = value
     if console_sourced:
         # Announced HERE, on the decision path, not in main(): a direct
         # importer calling dry_run(console_sourced=True) would otherwise get a
