@@ -466,14 +466,15 @@ show_camera_topology() {
   # reserved port). Default: the first running emulator, as before.
   local serial="${1:-}"
   if [[ -z "$serial" ]]; then
-    serial="$("$ADB_BIN" devices 2>/dev/null | awk '/^emulator-[0-9]+/ && $2=="device" {print $1; exit}')"
+    # Pool members only — never the reserved rig serial (see EMU_POOL_PORT_EXCLUDE_FROM).
+    serial="$(emu_running_serials "$ADB_BIN" | head -n1)"
   fi
   if [[ -z "$serial" ]]; then
     log "camera topology: no running emulator to probe"
     return 0
   fi
   local dump ids
-  dump="$("$ADB_BIN" -s "$serial" shell dumpsys media.camera 2>/dev/null)" || true
+  dump="$(bounded_adb 30 "$serial" shell dumpsys media.camera 2>/dev/null)" || true
   ids="$(printf '%s\n' "$dump" | grep -oE 'Device [0-9]+ maps to "[0-9]+"' | grep -oE '"[0-9]+"' | tr -d '"' | tr '\n' ' ' || true)"
   if [[ -z "$ids" ]]; then
     log "camera topology: probe failed on $serial (dumpsys media.camera empty)"
@@ -566,28 +567,48 @@ ROSETTA_PIDFILE="/tmp/sceneview-emulator-${ROSETTA_AVD_NAME}-${ROSETTA_PORT}.pid
 
 rlog() { echo "[setup-ar:rosetta] $*"; }
 
-# adb getprop, bounded. `adb shell` can block FOREVER against a guest whose
-# framework is wedged while `adb devices` still reports `device` — observed on
-# this rig, where it froze the wait loop so far past its own timeout that only a
-# host reboot ended the run. Every guest probe therefore runs under a hard cap.
-# Echoes the property value; returns 124 when the probe itself hung.
+# `adb shell` can block FOREVER against a guest whose framework is wedged, while
+# `adb devices` still reports `device` — observed on this rig, where it froze the
+# wait loop so far past its own timeout that only a host reboot ended the run.
+# EVERY guest call therefore goes through bounded_adb: not just the boot poll,
+# but the diagnostics too. Those are the ones an operator reaches for AFTER the
+# guest wedges, so an unbounded `--check` would hang exactly when it is needed.
 # Prefers coreutils `timeout`/`gtimeout`, falls back to the portable perl alarm
 # idiom (alarm survives exec), and runs unbounded only if neither exists.
 ROSETTA_TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
-rosetta_probe() {
-  local prop="$1" cap="${2:-10}" out rc
+
+# bounded_adb <cap_seconds> <serial> <adb args…> — returns 124 when it hung.
+bounded_adb() {
+  local cap="$1" serial="$2"
+  shift 2
+  local rc=0
   if [[ -n "$ROSETTA_TIMEOUT_BIN" ]]; then
-    out="$("$ROSETTA_TIMEOUT_BIN" "$cap" "$ADB_BIN" -s "$ROSETTA_SERIAL" shell getprop "$prop" 2>/dev/null)" || rc=$?
+    "$ROSETTA_TIMEOUT_BIN" "$cap" "$ADB_BIN" -s "$serial" "$@" || rc=$?
   elif command -v perl >/dev/null 2>&1; then
-    out="$(perl -e 'alarm shift; exec @ARGV' "$cap" \
-      "$ADB_BIN" -s "$ROSETTA_SERIAL" shell getprop "$prop" 2>/dev/null)" || rc=$?
+    perl -e 'alarm shift; exec @ARGV' "$cap" "$ADB_BIN" -s "$serial" "$@" || rc=$?
   else
-    out="$("$ADB_BIN" -s "$ROSETTA_SERIAL" shell getprop "$prop" 2>/dev/null)" || rc=$?
+    "$ADB_BIN" -s "$serial" "$@" || rc=$?
   fi
   # 124 = coreutils timeout; 142 = killed by SIGALRM (the perl idiom).
-  case "${rc:-0}" in
+  case "$rc" in
     124|142) return 124 ;;
   esac
+  return "$rc"
+}
+
+# Same, aimed at the rig serial.
+rosetta_adb() {
+  local cap="$1"
+  shift
+  bounded_adb "$cap" "$ROSETTA_SERIAL" "$@"
+}
+
+# One bounded getprop. Echoes the value; returns 124 when the probe itself hung,
+# which is never confusable with a legitimately empty property.
+rosetta_probe() {
+  local prop="$1" cap="${2:-10}" out rc=0
+  out="$(rosetta_adb "$cap" shell getprop "$prop" 2>/dev/null)" || rc=$?
+  (( rc == 124 )) && return 124
   echo "${out//[$'\r\n']/}"
 }
 
@@ -623,7 +644,8 @@ rosetta_check_prereqs() {
 # AVAILABLE at first boot (the emulator refuses below that — 2026-05 evidence).
 rosetta_disk_gate() {
   local free_gb need_gb=0 missing=()
-  free_gb="$(df -g "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"
+  # $AVD_HOME, not $HOME: ANDROID_AVD_HOME may point at another volume.
+  free_gb="$(df -g "$AVD_HOME" 2>/dev/null | awk 'NR==2{print $4}')"
   [[ "$free_gb" =~ ^[0-9]+$ ]] || { rlog "WARNING: cannot read free disk — proceeding without the gate"; return 0; }
   if [[ ! -x "$ROSETTA_EMU_BIN" ]]; then need_gb=$((need_gb+2)); missing+=("Intel emulator bundle ~1.5G"); fi
   if [[ ! -d "$ROSETTA_IMG_DIR" ]]; then need_gb=$((need_gb+4)); missing+=("x86_64 system image ~3.5G"); fi
@@ -633,7 +655,11 @@ rosetta_disk_gate() {
   # 7372 MB"). `--no-boot` provisioning (downloads + AVD create) costs ~none
   # beyond the payloads charged above.
   if ! $NO_BOOT; then
-    if [[ ! -d "$AVD_HOME/$ROSETTA_AVD_NAME.avd/snapshots" && ! -f "$AVD_HOME/$ROSETTA_AVD_NAME.avd/userdata-qemu.img" ]]; then
+    # `--clean` deletes the AVD later, inside rosetta_create_avd — so an existing
+    # userdata image is about to disappear and must NOT discount this run, or the
+    # gate passes on 5 GB and the emulator then refuses with "Not enough space to
+    # create userdata partition" a minute later, AVD already destroyed.
+    if $CLEAN || [[ ! -d "$AVD_HOME/$ROSETTA_AVD_NAME.avd/snapshots" && ! -f "$AVD_HOME/$ROSETTA_AVD_NAME.avd/userdata-qemu.img" ]]; then
       need_gb=$((need_gb + ROSETTA_DATA_GB + 3)); missing+=("fresh-AVD first boot (~$((ROSETTA_DATA_GB + 3))G must be available)")
     else
       need_gb=$((need_gb+2))
@@ -718,14 +744,30 @@ rosetta_create_avd() {
 }
 
 rosetta_boot() {
+  # The pool-invisibility guarantee is the whole reason a standard QA run can
+  # never lease this ~10x-slower guest. It holds only while the rig's port sits
+  # at or above the pool's exclusion threshold — two knobs that must move
+  # together. Refuse loudly rather than silently becoming leasable.
+  if (( ROSETTA_PORT < EMU_POOL_PORT_EXCLUDE_FROM )); then
+    rlog "FAIL: EMU_ROSETTA_PORT=$ROSETTA_PORT is below EMU_POOL_PORT_EXCLUDE_FROM=$EMU_POOL_PORT_EXCLUDE_FROM"
+    rlog "the rig would become leasable by a standard QA run — raise the port, or lower the threshold"
+    return 1
+  fi
   local state; state="$(rosetta_serial_state)"
   if [[ "$state" == "device" ]]; then
     rlog "rig already running on $ROSETTA_SERIAL — reusing it"
     return 0
   fi
-  if [[ -n "$state" ]] || rosetta_pid_alive; then
+  if rosetta_pid_alive; then
     rlog "rig is mid-boot (adb: ${state:-not-registered}) — waiting for it below"
     return 0
+  fi
+  if [[ -n "$state" ]]; then
+    # A serial with no live qemu behind it is a stale adb transport, not a boot
+    # in progress. Treating it as "mid-boot" returned without starting anything
+    # and cost a full boot timeout on a verdict that named the wrong cause.
+    rlog "stale adb transport for $ROSETTA_SERIAL (state: $state) with no live qemu — reconnecting adb"
+    "$ADB_BIN" disconnect "$ROSETTA_SERIAL" >/dev/null 2>&1 || true
   fi
   # RAM gate: reuse the pool's hard safety threshold. The rig is outside the
   # pool but the OOM cliff is host-wide.
@@ -763,36 +805,54 @@ rosetta_boot() {
 }
 
 rosetta_wait_boot() {
-  local waited=0 interval=15 state boot anim rss rc hung=0
+  # Elapsed time comes from SECONDS, never from counting `sleep` intervals: a hung
+  # probe costs its own cap ON TOP of the interval, so an interval-counter drifts
+  # ~40% behind reality and every verdict would quote a number that is not the
+  # elapsed time — in a code path whose entire purpose is an honest verdict.
+  local start=$SECONDS waited=0 interval=15 state boot anim rss rc
+  local hung_since=0 hung=0 dead_seen=0 last_report=0
   rlog "waiting for $ROSETTA_SERIAL to reach sys.boot_completed=1 (timeout ${ROSETTA_BOOT_TIMEOUT_S}s)"
   while true; do
     rc=0
     boot="$(rosetta_probe sys.boot_completed)" || rc=$?
+    waited=$(( SECONDS - start ))
     if (( rc == 124 )); then
-      hung=$(( hung + interval ))
+      if (( hung_since == 0 )); then hung_since=$waited; fi
+      hung=$(( waited - hung_since ))
       boot="<probe hung>"
     else
+      hung_since=0
       hung=0
     fi
     if [[ "$boot" == "1" ]]; then
       rlog "BOOT COMPLETE on $ROSETTA_SERIAL after ${waited}s"
       return 0
     fi
+    state="$(rosetta_serial_state)"
     # A guest that answers nothing for minutes on end is wedged, not slow: adbd
-    # is still connected (adb devices says `device`) but every shell blocks.
-    # Fail fast with a verdict instead of burning the full boot timeout.
+    # is still connected (adb devices says `device`) but every shell blocks. The
+    # adb state is read BEFORE the verdict so the message reports what was
+    # actually observed rather than asserting it.
     if (( hung >= ROSETTA_WEDGE_TIMEOUT_S )); then
-      rlog "FAIL: guest wedged — 'adb shell' unresponsive for ${hung}s while adb still reports the device"
+      rlog "FAIL: guest wedged — 'adb shell' unresponsive for ${hung}s (adb state: ${state:-none})"
       rlog "'adb reboot' does NOT resurrect a wedged qemu HAL — kill qemu and re-run:"
       rlog "  kill \$(cat $ROSETTA_PIDFILE) && bash .claude/scripts/setup-ar-emulator.sh --rosetta"
       tail -n 20 "$ROSETTA_LOG" 2>/dev/null | sed 's/^/  | /' || true
       return 1
     fi
-    state="$(rosetta_serial_state)"
-    if ! rosetta_pid_alive && [[ "$state" != "device" && "$state" != "offline" ]]; then
-      rlog "FAIL: rig qemu died after ${waited}s and $ROSETTA_SERIAL is gone — last log lines:"
-      tail -n 30 "$ROSETTA_LOG" 2>/dev/null | sed 's/^/  | /' || true
-      return 1
+    # A dead qemu is decisive on the second consecutive sample. Requiring the
+    # serial to also vanish from `adb devices` was wrong: adb routinely leaves a
+    # dead emulator's transport `offline`, so the death went unnoticed and the
+    # loop burned the full 90-minute timeout before blaming "TCG too slow".
+    if ! rosetta_pid_alive; then
+      if (( dead_seen )); then
+        rlog "FAIL: rig qemu died after ${waited}s (adb state: ${state:-gone}) — last log lines:"
+        tail -n 30 "$ROSETTA_LOG" 2>/dev/null | sed 's/^/  | /' || true
+        return 1
+      fi
+      dead_seen=1
+    else
+      dead_seen=0
     fi
     if (( waited >= ROSETTA_BOOT_TIMEOUT_S )); then
       rlog "FAIL: sys.boot_completed never reached 1 within ${ROSETTA_BOOT_TIMEOUT_S}s (TCG too slow or wedged)"
@@ -801,18 +861,20 @@ rosetta_wait_boot() {
       tail -n 15 "$ROSETTA_LOG" 2>/dev/null | sed 's/^/  | /' || true
       return 1
     fi
-    if (( waited > 0 && waited % 120 == 0 )); then
-      anim="$(rosetta_probe init.svc.bootanim)" || anim="<hung ${hung}s>"
+    if (( waited - last_report >= 120 )); then
+      last_report=$waited
+      anim="$(rosetta_probe init.svc.bootanim)" || anim="<probe hung>"
       rss="$(ps -o rss= -p "$(cat "$ROSETTA_PIDFILE" 2>/dev/null || echo 0)" 2>/dev/null | awk '{printf "%d MB", $1/1024}' || true)"
+      # Falling RSS on a still-"booting" guest means the host is swapping it out —
+      # the documented signal to stop and retry on a quiet host (CLAUDE.md).
       rlog "still booting… ${waited}s (adb: ${state:-none}, bootanim: ${anim:-n/a}, qemu rss: ${rss:-?})"
     fi
     sleep "$interval"
-    waited=$(( waited + interval ))
   done
 }
 
 rosetta_install_arcore() {
-  if "$ADB_BIN" -s "$ROSETTA_SERIAL" shell pm list packages 2>/dev/null | grep -q "com.google.ar.core"; then
+  if rosetta_adb 20 shell pm list packages 2>/dev/null | grep -q "com.google.ar.core"; then
     rlog "ARCore already installed on $ROSETTA_SERIAL"
     return 0
   fi
@@ -820,7 +882,7 @@ rosetta_install_arcore() {
   # poll because the shared wait_for_pm helper is defined later in this script.
   local _i
   for _i in $(seq 1 30); do
-    "$ADB_BIN" -s "$ROSETTA_SERIAL" shell pm path android >/dev/null 2>&1 && break
+    rosetta_adb 20 shell pm path android >/dev/null 2>&1 && break
     sleep 4
   done
   local tmp_apk="${TMPDIR:-/tmp}/sceneview-arcore-x86.apk"
@@ -830,7 +892,7 @@ rosetta_install_arcore() {
   fi
   local attempt err
   for attempt in 1 2 3; do
-    err="$("$ADB_BIN" -s "$ROSETTA_SERIAL" install -r "$tmp_apk" 2>&1)" && { rlog "ARCore installed on $ROSETTA_SERIAL"; return 0; }
+    err="$(rosetta_adb 300 install -r "$tmp_apk" 2>&1)" && { rlog "ARCore installed on $ROSETTA_SERIAL"; return 0; }
     rlog "ARCore install attempt $attempt/3 failed${err:+: ${err##*$'\n'}} — retrying in 5s"
     sleep 5
   done
@@ -860,7 +922,7 @@ rosetta_report() {
   local state; state="$(rosetta_serial_state)"
   if [[ "$state" == "device" ]]; then
     rlog "rig emulator: RUNNING on $ROSETTA_SERIAL"
-    if "$ADB_BIN" -s "$ROSETTA_SERIAL" shell pm list packages 2>/dev/null | grep -q "com.google.ar.core"; then
+    if rosetta_adb 20 shell pm list packages 2>/dev/null | grep -q "com.google.ar.core"; then
       rlog "ARCore (com.google.ar.core): installed"
     else
       rlog "ARCore (com.google.ar.core): NOT installed"
@@ -913,11 +975,11 @@ rosetta_main() {
   show_camera_topology "$ROSETTA_SERIAL"
   # Verdict: camera HAL id 0 is the whole point of the rig (#2754 probe, PR #2755).
   local ids
-  ids="$("$ADB_BIN" -s "$ROSETTA_SERIAL" shell dumpsys media.camera 2>/dev/null \
+  ids="$(rosetta_adb 30 shell dumpsys media.camera 2>/dev/null \
         | grep -oE 'Device [0-9]+ maps to "[0-9]+"' | grep -oE '"[0-9]+"' | tr -d '"' | tr '\n' ' ' || true)"
   if $STOP_AFTER; then
     rlog "stopping rig $ROSETTA_SERIAL (--stop)"
-    "$ADB_BIN" -s "$ROSETTA_SERIAL" emu kill >/dev/null 2>&1 || true
+    rosetta_adb 20 emu kill >/dev/null 2>&1 || true
   fi
   if printf '%s' " $ids " | grep -q ' 0 '; then
     rlog "SUCCESS: camera HAL id 0 present — ARCore live-camera sessions can start."
@@ -1052,7 +1114,14 @@ select_or_boot_emulator() {
     # The cap is an estimate; this live check is the invariant that keeps the
     # host off the OOM cliff. Refuse the boot if RAM is below the threshold.
     if emu_ram_allows_boot; then
-      local port; port="$(emu_next_free_port "$ADB_BIN")"
+      # A failed allocation must not degrade into `-port ""` (which boots a junk
+      # serial and leaves an `emulator-.lease` in the shared registry). errexit is
+      # suppressed here — this function runs inside an `if` — so guard explicitly.
+      local port
+      if ! port="$(emu_next_free_port "$ADB_BIN")" || [[ -z "$port" ]]; then
+        log "no free console port below the reserved range — not booting"
+        return 1
+      fi
       local serial="emulator-${port}"
       boot_new_emulator "$port"
       # Lease the slot immediately so a racing peer counts us against the cap.
@@ -1211,7 +1280,11 @@ wait_for_pm() {
 
 # Target the leased serial (EMU_SERIAL) — never a hardcoded one. With an
 # adaptive pool several emulators may be up; we must verify ARCore on ours.
-serial="${EMU_SERIAL:-$("$ADB_BIN" devices | awk '/^emulator-[0-9]+/ && $2=="device" {print $1; exit}')}"
+# emu_running_serials (NOT a raw `adb devices`) so the reserved rig serial is
+# filtered out: it is not a pool member, and reporting on it here would print an
+# arm64 verdict about an x86 guest — inverting the #2754 finding this very probe
+# exists to keep loud.
+serial="${EMU_SERIAL:-$(emu_running_serials "$ADB_BIN" | head -n1)}"
 if [[ -n "$serial" ]] && ! $CHECK_ONLY && ! $NO_BOOT; then
   wait_for_pm "$serial" || true
 fi
