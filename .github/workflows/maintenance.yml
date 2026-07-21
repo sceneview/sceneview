@@ -805,3 +805,112 @@ jobs:
               echo "_No diff output produced this run — treated as advisory SKIP._"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 13. App Store listing drift + checksum-provenance probe (read-only) ─────
+  # ASC sibling of § 10 (store-preflight) and § 12 (Play listing-drift). Runs
+  # asc_listing.py --dry-run: a read-only live-vs-repo diff of the App Store
+  # listing text and screenshots. Advisory, and SKIPs honestly with no secret.
+  #
+  # Its FIRST job is not the drift — it is the `[probe] sourceFileChecksum
+  # provenance:` verdict this run prints. #2612 Phase C's screenshot drift diff
+  # keys on `sourceFileChecksum == MD5(source bytes)`, an assumption that holds
+  # by construction ONLY for assets this script uploaded — and it has uploaded
+  # none. Every live screenshot came from the web console, so the live set is
+  # the only honest sample of what Apple actually stores. Until this probe
+  # reports CONFIRMED, the checksum diff is a candidate, not a drift signal,
+  # and Phase C must not wire it into a release gate.
+  #
+  #   Read the verdict:  gh run view <id> --log | grep '\[probe\]'
+  #   Trigger on demand: gh workflow run maintenance.yml -R sceneview/sceneview
+  asc-listing-drift:
+    name: App Store listing drift + checksum probe (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Run ASC listing dry-run (read-only diff + checksum probe)
+        continue-on-error: true
+        env:
+          # Same three secrets as § 10 store-preflight and app-store.yml — no
+          # new scope, no new secret. asc_listing.py reads the .p8 content from
+          # APP_STORE_CONNECT_API_KEY directly; a missing secret degrades to a
+          # SKIP inside the script (exit 0, not a green lie).
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          # $RUNNER_TEMP, not /tmp: the self-hosted mac runner does not wipe
+          # /tmp between jobs, so a venv there would silently reuse a stale tree
+          # and void the pinned versions. (Same reason as app-store-screenshots.yml.)
+          python3 -m venv "$RUNNER_TEMP/asc-venv"
+          # Pinned, Dependabot-tracked, shared with the deploy workflow (#1230).
+          "$RUNNER_TEMP/asc-venv/bin/pip" install --quiet -r .github/workflows/requirements/app-store.txt
+          # No --fail-on-drift: advisory-first. Drift and the probe verdict are
+          # the signal; the job never fails on them.
+          #
+          # But advisory must not mean unreadable. `| tee … || true` discards the
+          # script's status twice over (the pipeline reports tee's, then `|| true`
+          # swallows it), so a crash AFTER the first line of output — transient
+          # 5xx, token expiry mid-run — would leave a partial log with no drift
+          # lines and no [probe] verdict, and the summary would render that as a
+          # clean read. That is the repo's own `continue-on-error` hazard turned
+          # inward, on the one job whose entire purpose is to not overstate what
+          # it measured. Capture the SCRIPT's exit code (PIPESTATUS[0], not tee's)
+          # and hand it to the summary step, which labels a non-zero run instead
+          # of printing a truncated log as if it were a finding-free one.
+          set +e
+          "$RUNNER_TEMP/asc-venv/bin/python3" .claude/scripts/store-sync/asc_listing.py --dry-run \
+            | tee asc-listing-drift.log
+          echo "asc_rc=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Append ASC listing drift to step summary
+        if: always()
+        run: |
+          {
+            echo "### App Store listing drift + checksum probe — $(date -u +%Y-%m-%d)"
+            echo ""
+            # An empty asc_rc means the previous step died before it could record
+            # one (venv/pip failure). Anything non-zero and non-empty means the
+            # script itself exited badly, so whatever is in the log below is a
+            # PARTIAL read — say so, loudly, above the output. Silence here is
+            # what would let a truncated run pass for a clean one.
+            if [ -n "${asc_rc:-}" ] && [ "${asc_rc}" != "0" ]; then
+              echo "> ⚠️ **Incomplete read — \`asc_listing.py\` exited ${asc_rc}.**"
+              echo "> Any output below is partial. An absent drift list or missing"
+              echo "> \`[probe]\` verdict here means *not measured*, NOT *no drift*."
+              echo ""
+            elif [ -z "${asc_rc:-}" ]; then
+              echo "> ⚠️ **Setup failed before the probe ran** (venv or pip step)."
+              echo "> Nothing was measured."
+              echo ""
+            fi
+            if [ -f asc-listing-drift.log ] && [ -s asc-listing-drift.log ]; then
+              # The provenance verdict is the point of this job — surface it first.
+              PROBE=$(grep '^\[probe\]' asc-listing-drift.log || true)
+              if [ -n "$PROBE" ]; then
+                echo "**Checksum provenance (blocks #2612 Phase C until CONFIRMED)**"
+                echo '```'
+                printf '%s\n' "$PROBE"
+                echo '```'
+                echo ""
+              fi
+              echo "**Full read-only diff**"
+              echo '```'
+              cat asc-listing-drift.log
+              echo '```'
+            else
+              echo "_No output produced (tooling or secret unavailable) — advisory SKIP._"
+            fi
+            echo ""
+            echo "_Read-only (#2612 P2 Phase C step 0). Writes nothing to the store; "
+            echo "the apply path is the dispatch-only \`app-store-screenshots.yml\`._"
+          } >> "$GITHUB_STEP_SUMMARY"
