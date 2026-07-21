@@ -43,9 +43,12 @@ import SceneViewSwift
 ///   - **Real device, no LiDAR** (or LiDAR present but somehow pre-iOS 17 — moot at this
 ///     target's iOS 18.0 deployment floor, kept as an honest defensive check anyway since
 ///     `SceneReconstructionNode.enablePhysics` itself is iOS 17+ only):
-///     ``addFallbackFloor(in:)`` adds one static, collidable plane 1 m below the AR
-///     session origin (mirrors Android's `floorY = -1f` exactly) so the ball still
-///     visibly bounces on the live camera feed.
+///     ``addFallbackFloor(in:)`` adds one static, collidable, 20 x 20 m plane 1 m below
+///     the AR session origin (mirrors Android's `floorY = -1f` exactly) so the ball still
+///     visibly bounces on the live camera feed. Critically, this plane and every dropped
+///     ball are parented under the SAME shared ``simRoot`` anchor — RealityKit gives each
+///     `AnchorEntity` hierarchy its own physics simulation, so entities under two
+///     different anchors can never collide no matter how their world positions overlap.
 ///   - **Simulator**: a different situation IN KIND, not degree — `ARWorldTrackingConfiguration`
 ///     cannot run at all (no camera), so there is no AR session to fall back within. Per
 ///     the issue's correction, the fix is still "show a bounce, not nothing":
@@ -106,7 +109,20 @@ struct ARDepthColliderDemo: View {
     @State private var isDepthPhysicsActive = false
     @State private var fallbackFloorAdded = false
     @State private var showDepthMesh = false
-    @State private var ballAnchors: [AnchorEntity] = []
+    /// The SINGLE shared RealityKit physics-simulation root every dropped ball AND the
+    /// fallback floor are parented under. Created once in `onSessionStarted`. This is not
+    /// an optional nicety — RealityKit treats each `AnchorEntity` hierarchy as its own
+    /// physics simulation island, so two entities under two DIFFERENT anchors can never
+    /// collide with each other no matter how their world positions overlap. An earlier
+    /// revision of this file gave the fallback floor and each ball their own
+    /// `AnchorEntity(world:)`, which meant a dropped ball fell straight through the
+    /// "floor" on any non-LiDAR device — caught in review before merge. Mirrors
+    /// `PhysicsDemo.swift`'s single `root` parameter, which does the same thing for its
+    /// non-AR scene.
+    @State private var simRoot: AnchorEntity?
+    /// Dropped-ball entities, so `resetBalls()` can detach exactly the balls it added
+    /// (not the floor) via `removeFromParent()`.
+    @State private var ballEntities: [Entity] = []
     #endif
 
     #if targetEnvironment(simulator)
@@ -148,6 +164,13 @@ struct ARDepthColliderDemo: View {
         )
         .onSessionStarted { arView in
             capturedARView = arView
+
+            // The one shared simulation root — see the `simRoot` doc comment above for
+            // why every ball and the fallback floor MUST share this single anchor.
+            let root = AnchorEntity(world: .zero)
+            arView.scene.addAnchor(root)
+            simRoot = root
+
             isLiDARSupported = SceneReconstructionNode.isSupported
             if isLiDARSupported {
                 if #available(iOS 17.0, *) {
@@ -156,13 +179,14 @@ struct ARDepthColliderDemo: View {
                 }
             }
             if !isDepthPhysicsActive {
-                addFallbackFloor(in: arView)
+                addFallbackFloor(in: root)
             }
         }
     }
 
     private func dropBalls(_ count: Int) {
         guard let arView = capturedARView,
+              let root = simRoot,
               let cameraTransform = arView.session.currentFrame?.camera.transform else { return }
         for _ in 0..<count {
             let i = droppedCount
@@ -184,22 +208,24 @@ struct ARDepthColliderDemo: View {
                 radius: Self.ballRadius,
                 material: .pbr(color: Self.ballColor, metallic: 0.3, roughness: 0.35)
             )
+            // `root` is anchored at world `.zero` with identity rotation, so a LOCAL
+            // position under it is numerically identical to the WORLD position computed
+            // above — no transform correction needed. Parenting under the SAME `root` the
+            // fallback floor uses (see `addFallbackFloor`) is what puts them in one shared
+            // physics simulation instead of two islands that can never collide.
+            ball.entity.position = position
             PhysicsNode.dynamic(ball.entity, restitution: Self.restitution)
 
-            let anchor = AnchorEntity(world: position)
-            anchor.addChild(ball.entity)
-            arView.scene.addAnchor(anchor)
-            ballAnchors.append(anchor)
+            root.addChild(ball.entity)
+            ballEntities.append(ball.entity)
         }
     }
 
     private func resetBalls() {
-        if let arView = capturedARView {
-            for anchor in ballAnchors {
-                arView.scene.removeAnchor(anchor)
-            }
+        for entity in ballEntities {
+            entity.removeFromParent()
         }
-        ballAnchors.removeAll()
+        ballEntities.removeAll()
         droppedCount = 0
     }
 
@@ -212,22 +238,32 @@ struct ARDepthColliderDemo: View {
 
     /// Android `floorY = -1f` fallback, mirrored (#2838 correction) — see the struct-level
     /// doc comment for the full rationale. Adds ONE static, collidable, faintly-tinted
-    /// plane 1 m below the AR session origin so dropped balls still visibly bounce when the
-    /// depth subsystem can't run, instead of falling forever into the void.
-    private func addFallbackFloor(in arView: ARView) {
+    /// plane 1 m below the AR session origin, parented under the SAME shared `simRoot`
+    /// anchor `dropBalls` attaches balls to — required so they land in one RealityKit
+    /// physics simulation instead of two separate ones that can never collide (see the
+    /// `simRoot` doc comment).
+    ///
+    /// Sized 20 x 20 m — not Android's zero-extent analytic half-space, and much larger
+    /// than "just cover the spawn point" would need. A user who walks several metres from
+    /// the AR session's origin before tapping Drop still lands on this floor. Re-centring
+    /// a small plane under the live drop point on every tap was rejected instead: moving a
+    /// `static` physics body while other bodies may already be resting or colliding on it
+    /// risks a visible pop in RealityKit's physics engine, and a flat plane's render +
+    /// collision cost is the same 2 triangles regardless of its width/depth — so "just
+    /// make it big" has no real downside here.
+    private func addFallbackFloor(in root: AnchorEntity) {
         guard !fallbackFloorAdded else { return }
         fallbackFloorAdded = true
 
-        let mesh = MeshResource.generatePlane(width: 4, depth: 4)
+        let mesh = MeshResource.generatePlane(width: 20, depth: 20)
         var material = UnlitMaterial(color: .init(white: 1.0, alpha: 0.12))
         material.blending = .transparent(opacity: .init(floatLiteral: 0.12))
         let floorEntity = ModelEntity(mesh: mesh, materials: [material])
         floorEntity.generateCollisionShapes(recursive: false)
+        floorEntity.position = SIMD3<Float>(0, Self.fallbackFloorY, 0)
         PhysicsNode.static(floorEntity, restitution: Self.restitution)
 
-        let anchor = AnchorEntity(world: SIMD3<Float>(0, Self.fallbackFloorY, 0))
-        anchor.addChild(floorEntity)
-        arView.scene.addAnchor(anchor)
+        root.addChild(floorEntity)
     }
     #endif
 

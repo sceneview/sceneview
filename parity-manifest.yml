@@ -65,9 +65,13 @@
 #     28 working, 25 stub, 0 android-only.
 #   - #2838 ported `ar-depth-collider` (SceneReconstructionNode.enablePhysics,
 #     gated on LiDAR with a static-floor fallback — Android itself is
-#     KnownIssue for this id, so this is the first `androidStatus: KnownIssue`
-#     row promoted to `iosStatus: working`, both landing on `@status
-#     knownIssue`): 29 working, 24 stub, 0 android-only.
+#     KnownIssue for this id, landing on iOS `@status knownIssue` too): 29
+#     working, 24 stub, 0 android-only. This breaks the #2798 audit's
+#     "zero exceptions" correlation above going forward — a non-`Working`
+#     Android id can land in iOS's `working` bucket once it is genuinely
+#     ported, same as any `Working` id. Not a one-off: `wall-placement`
+#     (`androidStatus: InReview`) is a second instance of the same break
+#     once its own iOS port lands, not a special case of this one.
 #
 # Checked by `.claude/scripts/check-demo-id-parity.sh` (`ci.yml` ->
 # `repo-hygiene`, ubuntu, blocking): fails if a Android id has neither an iOS
