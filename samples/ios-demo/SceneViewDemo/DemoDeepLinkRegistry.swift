@@ -26,14 +26,31 @@ import SwiftUI
 ///
 /// # What stays hand-maintained (the residual)
 ///
-/// Only ids that have **no** `*Scene.swift` file yet:
-///   - `legacyAliases` — pre-canonicalization ids (#2799) kept so existing QR
-///     codes keep resolving. Each maps to a canonical id a Scene declares, so
-///     the alias inherits that scene's destination.
+/// Only ids that have **no** `*Scene.swift` file of their own:
+///   - `legacyAliases` — an id with no Scene file that should route to a
+///     DIFFERENT id's Scene, in two flavors:
+///     1. **Rename aliases** — pre-canonicalization ids (#2799) kept so
+///        existing QR codes keep resolving (e.g. `ar-cloud-anchors` →
+///        `ar-cloud-anchor`).
+///     2. **Umbrella aliases** (L0.6, #2804/#2769) — a live Android id from
+///        the #2239 catalog regroup (e.g. `custom-geometry`) whose iOS
+///        constituent screens already exist under their pre-regroup granular
+///        ids (e.g. `custom-mesh`). Routing the umbrella id straight to the
+///        single most-representative granular scene resolves the deep link
+///        to REAL, already-shipped content — not a coming-soon card, which
+///        would dishonestly imply the capability doesn't exist on iOS yet.
+///        A full "regrouped umbrella UI" mirroring Android's exact
+///        combined-tab layout is a separate, larger, explicitly-deferred
+///        piece of work (#2804) — this only fixes deep-link resolution.
+///     Either way, the alias inherits its target scene's destination (or its
+///     placeholder, if the target is itself `@available false`).
 ///   - `residualIds` — AR demos present in Android's catalog whose iOS card is
-///     still to be ported (L0.6, #2804). They resolve to a placeholder until a
-///     Scene file lands; when one does, delete the id here and the generated
-///     union covers it automatically.
+///     still to be ported. They resolve to a placeholder until a Scene file
+///     lands; when one does, delete the id here and the generated union
+///     covers it automatically. Emptied by L0.6 (#2804) — every id that was
+///     here now has a Scene file — kept as an empty `Set` (rather than
+///     deleted) since it is still the documented landing spot for the NEXT
+///     not-yet-ported AR id.
 ///
 /// # Deep-link guarantee
 ///
@@ -43,11 +60,10 @@ import SwiftUI
 /// caller (`SceneViewDemoApp.onOpenURL`), never dropped into a silent no-op.
 enum DemoDeepLinkRegistry {
 
-    /// Legacy deep-link aliases → canonical scene id. Pre-canonicalization
-    /// ids (#2799) kept only so existing QR codes / bookmarks keep resolving.
-    /// The canonical target is declared by a `*Scene.swift` file, so the alias
-    /// resolves to exactly that scene's destination (or its placeholder, when
-    /// the canonical scene is `@available false`).
+    /// Legacy / umbrella deep-link aliases → canonical scene id (see the two
+    /// flavors documented above). Every value is declared by a `*Scene.swift`
+    /// file, so the alias resolves to exactly that scene's destination (or
+    /// its placeholder, when the canonical scene is `@available false`).
     ///
     /// Internal (not `private`) so `DemoRegistryGuardTests` (#2801) can assert
     /// the registry-integrity invariants directly against this table — e.g.
@@ -55,34 +71,56 @@ enum DemoDeepLinkRegistry {
     /// may also be a live scene id — mirroring how Android's
     /// `DeepLinkRouterTest` asserts directly against `DEMO_ID_ALIASES`.
     static let legacyAliases: [String: String] = [
+        // Rename aliases (#2799) — pre-canonicalization ids.
         "ar-recording": "ar-record-playback",
         "ar-cloud-anchors": "ar-cloud-anchor",
         "ar-rooftop-anchors": "ar-rooftop",
         "ar-terrain-anchors": "ar-terrain",
+
+        // Umbrella aliases (L0.6, #2804 Job A / #2769) — a live Android
+        // #2239-regrouped id routed to the single most-representative
+        // pre-regroup granular iOS scene. The target is Android's own
+        // default/first tab for that umbrella (`initialDemoMode`'s `default`
+        // parameter in `DemoSettings.kt`), not an arbitrary pick:
+        //   - custom-geometry   → custom-mesh   (default tab: CustomMesh)
+        //   - camera-gestures   → camera-controls (default tab: CameraModes)
+        //   - picking-collision → collision     (default tab: RayHitTest)
+        //   - animation-physics → animation     (default tab: Animation)
+        //   - two-d-in-three-d  → text          (default tab: Text)
+        //   - lighting-lab      → dynamic-sky   (default tab: Sky — NOT
+        //     `environment`; #2769's own suggestion predates checking
+        //     Android's actual default, which is Sky)
+        // A full "regrouped umbrella UI" (Android's exact combined-tab
+        // layout) is explicitly out of scope for this lot — see the doc
+        // comment above.
+        "custom-geometry": "custom-mesh",
+        "camera-gestures": "camera-controls",
+        "picking-collision": "collision",
+        "animation-physics": "animation",
+        "two-d-in-three-d": "text",
+        "lighting-lab": "dynamic-sky",
     ]
 
     /// Deep-linkable ids with no `*Scene.swift` file yet — AR demos present in
-    /// Android's catalog whose iOS card is still to be ported (L0.6, #2804).
-    /// They pass `allowedIds` so the URL is accepted, and resolve to the
-    /// coming-soon placeholder. Remove an id from here the moment a matching
-    /// Scene file is added; the generated union then covers it with no hand edit.
+    /// Android's catalog whose iOS card is still to be ported. They pass
+    /// `allowedIds` so the URL is accepted, and resolve to the coming-soon
+    /// placeholder. Remove an id from here the moment a matching Scene file is
+    /// added; the generated union then covers it with no hand edit.
+    ///
+    /// Empty as of L0.6 (#2804) — every AR id that was here (`ar-collaborative`,
+    /// `ar-depth-collider`, `ar-depth-of-field`, `ar-depth-visualization`,
+    /// `ar-fog`, `ar-hand-tracking`, `ar-ml-object-label`,
+    /// `ar-raw-depth-point-cloud`, `ar-scene-semantics`, `ar-xr-face`,
+    /// `placement-scene`) now has its own `*Scene.swift` stub with an honest
+    /// `comingSoonTitle`. Kept as an empty `Set` (not deleted) — it is still
+    /// the documented landing spot for the next not-yet-ported AR id, and
+    /// `check-demo-id-parity.sh` (#2801) is specifically tested against this
+    /// `[]` case.
     ///
     /// Internal (not `private`) for the same reason as `legacyAliases` above —
     /// `DemoRegistryGuardTests` (#2801) asserts this list never collides with a
     /// live generated scene id (a stale entry that should have been deleted).
-    static let residualIds: Set<String> = [
-        "ar-collaborative",
-        "ar-depth-collider",
-        "ar-depth-of-field",
-        "ar-depth-visualization",
-        "ar-fog",
-        "ar-hand-tracking",
-        "ar-ml-object-label",
-        "ar-raw-depth-point-cloud",
-        "ar-scene-semantics",
-        "ar-xr-face",
-        "placement-scene",
-    ]
+    static let residualIds: Set<String> = []
 
     /// Full set of accepted deep-link ids: the generated scene ids
     /// (`GeneratedScenes.allowedIds`) ∪ legacy aliases ∪ not-yet-ported

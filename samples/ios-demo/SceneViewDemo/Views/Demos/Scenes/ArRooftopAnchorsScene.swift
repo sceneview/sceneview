@@ -5,6 +5,7 @@
 // @available   false
 // @icon        house.fill
 // @iosOnly     true
+// @androidOnlyReason  ARCore Geospatial rooftop anchors are a Google-backend service with no ARKit equivalent — not planned for iOS.
 import SwiftUI
 
 enum ArRooftopAnchorsScene: DemoScene {

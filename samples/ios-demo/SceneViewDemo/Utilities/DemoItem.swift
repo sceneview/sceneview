@@ -78,6 +78,18 @@ struct DemoItem: Identifiable {
     let status: DemoStatus
     let destination: AnyView
 
+    /// One-line, user-defensible reason this demo is **permanently**
+    /// Android-only (no ARKit/RealityKit equivalent exists — e.g. ARCore
+    /// Geospatial/VPS, a Google-backend service), as opposed to merely not
+    /// ported yet. `nil` for the common "coming soon, might land later" case.
+    ///
+    /// Always `nil` for an available item (`status.isAvailable`) — only a
+    /// `.comingSoon` item can be platform-locked. When non-nil,
+    /// ``ComingSoonScreen`` swaps its "Coming soon" pill and footer for an
+    /// honest "Android-only" treatment instead of implying a port is coming
+    /// (#2804 Job C — "not planned for iOS" must never read as "coming soon").
+    let androidOnlyReason: String?
+
     /// Demo with a real destination view. `status` must be one of the three
     /// "available" cases (`.working`, `.knownIssue`, `.inReview`) — enforced
     /// with a precondition since `.comingSoon` has no destination by
@@ -102,6 +114,7 @@ struct DemoItem: Identifiable {
         self.category = category
         self.status = status
         self.destination = AnyView(destination())
+        self.androidOnlyReason = nil
     }
 
     /// Coming-soon demo — tap routes to ``ComingSoonScreen`` instead of a real destination.
@@ -109,11 +122,16 @@ struct DemoItem: Identifiable {
     /// Mirrors an Android demo that is not yet ported to iOS. The item stays visible in the list
     /// (with a "Soon" badge) so users see the roadmap rather than discovering gaps. Status is
     /// always `.comingSoon` — there is no destination to attach any other status to.
+    ///
+    /// - Parameter androidOnlyReason: set only for a **permanently** Android-only capability
+    ///   (no ARKit/RealityKit equivalent) — see the field doc above. `nil` (default) for the
+    ///   ordinary "not ported yet" case.
     init(
         comingSoonTitle title: String,
         icon: String,
         subtitle: String,
-        category: DemoCategory
+        category: DemoCategory,
+        androidOnlyReason: String? = nil
     ) {
         self.title = title
         self.icon = icon
@@ -121,6 +139,7 @@ struct DemoItem: Identifiable {
         self.category = category
         self.status = .comingSoon
         self.destination = AnyView(EmptyView())
+        self.androidOnlyReason = androidOnlyReason
     }
 }
 
