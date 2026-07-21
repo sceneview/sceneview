@@ -64,6 +64,7 @@ samples/*/build/
 sceneview-core/build/
 sceneview-web/build/
 sceneview-desktop/build/
+tools/snippets-check/build/
 
 # ── Kotlin/JS ─────────────────────────────────────────────
 kotlin-js-store/

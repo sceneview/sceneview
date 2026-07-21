@@ -100,7 +100,7 @@ to the composited capture (camera + placed virtual objects — see the
 No cloud; frames never leave the device. AICore devices only (Pixel 8+,
 recent flagships) — gate with `checkStatus()` and degrade honestly.
 
-```kotlin
+```kotlin notest external AICore / Gemini Nano dependency (Generation, FeatureStatus, ImagePart) — not on the SDK classpath
 val generativeModel = remember { Generation.getClient() }   // Gemini Nano via AICore
 var ready by remember { mutableStateOf(false) }
 LaunchedEffect(Unit) { ready = generativeModel.checkStatus() == FeatureStatus.AVAILABLE }
@@ -560,7 +560,7 @@ SceneView's sample app (`samples/android-demo`) streams CC-BY licensed glTF mode
 
 **Curated registry:** `SampleAssets.byCategory["<category>"]` — categories are `solar`, `gallery`, `animation`, `park`, `ar_placement`, `physics`, `materials`. Each entry is CC-BY 4.0, validated at construction time. Every entry has a `fallbackBundledPath` (a small bundled GLB / USDZ) that the resolver serves when the network or key is unavailable.
 
-```kotlin
+```kotlin notest demo-app pattern — SketchfabAssetResolver/SampleAssets live in the demo app (samples/android-demo, sketchfab package), not the SDK
 @Composable
 fun MyDemo() {
     val context = LocalContext.current
@@ -650,7 +650,7 @@ DemoScaffold(
 
 **Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
 
-```kotlin
+```kotlin notest demo-app pattern — SampleAssets/selectedSlug live in the demo app (samples/android-demo), not the SDK
 controls = {
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),

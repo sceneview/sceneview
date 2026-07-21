@@ -43,12 +43,12 @@ ARSceneView(
     planeRenderer = true,
     cameraExposure = null,                              // null = default (recommended). ABSOLUTE exposure scale (1.0 ≈ ISO 100), NOT EV stops — negative clamps to a black frame (#1179)
     sessionFeatures = setOf(/* Session.Feature.* */),
-    sessionCameraConfig = { cameraConfigFilter -> /* … */ },
+    sessionCameraConfig = ::frontCameraConfig,          // (Session) -> CameraConfig; default = ::highestResolutionCameraConfig
     sessionConfiguration = { session, config ->
         config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
         config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
     },
-    playbackDataset = file,                              // ARRecorder replay
+    playbackDataset = File("arcore-session.mp4"),        // ARRecorder replay
     onSessionUpdated = { session, frame -> /* hit-test, etc. */ },
     onTrackingFailureChanged = { reason -> /* … */ },
 )
