@@ -614,6 +614,44 @@ describe("symbols/unknown-member", () => {
     const code = `modelLoader.engine.createScene()`;
     expect(hasRule(code, RULE)).toBe(false);
   });
+
+  it("does not flag a receiver rebound to a non-loader type (PR #2814 finding #3)", () => {
+    // The snippet redefines `modelLoader` as its own repository — checking
+    // its members against the SceneView ModelLoader would be a false
+    // positive. Exact reviewer snippet.
+    const code = `
+      class MyRepository { fun fetchAll(): List<String> = emptyList() }
+
+      fun load() {
+          val modelLoader = MyRepository()
+          modelLoader.fetchAll()
+      }
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("keeps checking when the rebinding IS the real loader", () => {
+    // `val modelLoader = rememberModelLoader(engine)` is the canonical
+    // pattern — the bogus-member check must survive it.
+    const code = `
+      val modelLoader = rememberModelLoader(engine)
+      val i = modelLoader.createModelInstanceAsync("m.glb")
+    `;
+    expect(hasRule(code, RULE)).toBe(true);
+  });
+
+  it("keeps checking a loader obtained as a property or with a type annotation", () => {
+    const viaProperty = `
+      val modelLoader = sceneView.modelLoader
+      modelLoader.createModelInstanceAsync("m.glb")
+    `;
+    expect(hasRule(viaProperty, RULE)).toBe(true);
+    const viaAnnotation = `
+      val modelLoader: ModelLoader = provide()
+      modelLoader.createModelInstanceAsync("m.glb")
+    `;
+    expect(hasRule(viaAnnotation, RULE)).toBe(true);
+  });
 });
 
 describe("symbols/unknown-type", () => {
@@ -644,6 +682,18 @@ describe("symbols/unknown-type", () => {
     const code = `PlacementNode(engine)`;
     expect(hasRule(code, RULE)).toBe(false);
     expect(hasRule(code, "migration/old-api")).toBe(true);
+  });
+
+  it("still flags a made-up type next to a declared one", () => {
+    // The locally-declared exemption must not blanket the whole snippet.
+    const code = `
+      class CursorNode(engine: Engine) : Node(engine)
+      val a = CursorNode(engine)
+      val b = HologramNode(engine)
+    `;
+    const issues = validateCode(code).filter((i) => i.rule === RULE);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("`HologramNode`");
   });
 });
 
@@ -678,6 +728,33 @@ import com.google.android.filament.Engine
     // but detectLanguage routes such snippets to WEB_RULES before the
     // symbol rules run. Guard the routing so this stays true.
     const code = `import io.github.sceneview.web.SceneView`;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("accepts typealias imports — Position, Rotation, … (PR #2814 finding #1)", () => {
+    // Typealiases are erased from the .api dumps but recovered from the
+    // Kotlin sources at generation time. llms.txt imports them everywhere.
+    const code = `
+import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Color
+import io.github.sceneview.model.ModelInstance
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("accepts a Companion import of a real class (PR #2814 finding #4)", () => {
+    const code = `import io.github.sceneview.node.ModelNode.Companion`;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("skips aliased imports — tolerated false negative, never a false positive", () => {
+    // `import … as MN` doesn't match the end-of-line anchor: even a bogus
+    // aliased import goes unchecked rather than risking a wrong flag.
+    const code = `
+import io.github.sceneview.node.ModelNode as MN
+import io.github.sceneview.node.ShadowNode as SN
+    `;
     expect(hasRule(code, RULE)).toBe(false);
   });
 });

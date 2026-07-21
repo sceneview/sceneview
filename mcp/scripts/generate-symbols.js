@@ -29,7 +29,7 @@
  * published tarball ships only the compiled `dist/generated/symbols.js`.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -64,6 +64,50 @@ function isNoiseClass(binaryName) {
     // Anonymous / local classes: a `$` segment starting with a digit.
     /\$\d/.test(binaryName)
   );
+}
+
+/** Recursively collect `.kt` files under `dir` (returns [] when absent). */
+function ktFilesUnder(dir) {
+  if (!existsSync(dir)) return [];
+  const out = [];
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const full = resolve(current, entry.name);
+      if (entry.isDirectory()) stack.push(full);
+      else if (entry.name.endsWith(".kt")) out.push(full);
+    }
+  }
+  return out;
+}
+
+/**
+ * Public typealiases (`typealias Position = Float3`, `Rotation`, `Color`, …)
+ * are a first-class part of the import surface — `llms.txt` and every sample
+ * import them — but they are ABSENT from the `.api` dumps: the
+ * binary-compatibility validator erases aliases to their expansion, so an
+ * index built from the dumps alone flags `import io.github.sceneview.math.Position`
+ * as unknown (adversarial-review finding #1 on PR #2814). Recover them from
+ * the Kotlin sources: a top-level `[public ][actual|expect ]typealias Name`
+ * plus the file's `package` line. `internal`/`private` aliases don't match
+ * (the line must start at the visibility-or-keyword boundary). Only the
+ * monorepo layout carries sources; a standalone api-dumps build degrades to
+ * an index without typealiases, warned on stderr.
+ */
+function collectTypealiases(module) {
+  const srcRoot = resolve(mcpRoot, "..", module, "src");
+  const aliases = new Map(); // dotted FQCN -> { module, members: Set }
+  for (const file of ktFilesUnder(srcRoot)) {
+    const text = readFileSync(file, "utf-8");
+    const pkgMatch = /^package\s+([\w.]+)/m.exec(text);
+    if (!pkgMatch) continue;
+    const aliasRe = /^(?:public\s+)?(?:actual\s+|expect\s+)?typealias\s+(\w+)\b/gm;
+    for (const m of text.matchAll(aliasRe)) {
+      aliases.set(`${pkgMatch[1]}.${m[1]}`, { module, members: new Set() });
+    }
+  }
+  return aliases;
 }
 
 /** `getFoo`/`setFoo`/`isFoo` (JVM accessors) → the Kotlin property name. */
@@ -226,6 +270,29 @@ for (const [fqcn, entry] of [...allClasses]) {
   }
 }
 
+// Merge source-level typealiases (absent from the dumps by construction).
+// A real class always wins over an alias on FQCN collision (impossible in
+// valid Kotlin, but cheap to guarantee).
+let typealiasCount = 0;
+let typealiasSourcesFound = false;
+for (const module of MODULES) {
+  const aliases = collectTypealiases(module);
+  if (aliases.size > 0) typealiasSourcesFound = true;
+  for (const [fqcn, entry] of aliases) {
+    if (!allClasses.has(fqcn)) {
+      allClasses.set(fqcn, entry);
+      typealiasCount++;
+    }
+  }
+}
+if (!typealiasSourcesFound) {
+  console.error(
+    "[generate-symbols] WARNING: no Kotlin sources found next to the dumps — " +
+      "typealiases (Position, Rotation, Color, …) are not indexed, so " +
+      "legitimate typealias imports may be flagged as unknown."
+  );
+}
+
 // ─── Emit ─────────────────────────────────────────────────────────────────────
 
 const classesOut = {};
@@ -285,6 +352,7 @@ writeFileSync(outFile, `${header}\n${body}`);
 
 // stderr only — a stdout banner interleaves with `npm pack --json` (#1113).
 console.error(
-  `[generate-symbols] wrote ${outFile} (${Object.keys(classesOut).length} classes, ` +
-    `${Object.keys(topLevelOut).length} top-level functions from ${sources.join(", ")})`
+  `[generate-symbols] wrote ${outFile} (${Object.keys(classesOut).length} classes ` +
+    `incl. ${typealiasCount} typealiases, ${Object.keys(topLevelOut).length} top-level ` +
+    `functions from ${sources.join(", ")})`
 );
