@@ -81,6 +81,33 @@ xcodebuild archive ... SV_ALLOW_MISSING_SECRETS=1
 ./gradlew :sceneview-core:allTests
 ```
 
+### Reading a leak-churn failure
+
+`LeakChurnTest` (`sceneview/src/androidTest/.../leak/`, issue #2762) builds and
+tears down node trees 40 times per test and asserts engine state returns to
+baseline. It runs headless — no SwapChain, no `readPixels` — so unlike the
+`render` package it really executes on the CI emulator instead of skipping.
+
+```bash
+ANDROID_SERIAL=<your-emulator> ./gradlew :sceneview:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.leak.LeakChurnTest
+```
+
+What a red run means, by probe:
+
+| Failing assert | What leaked | Where to look |
+|---|---|---|
+| `LightManager component count did not return to baseline` | one light component per cycle | the `destroy()` override of the node type you touched — `LightNode.destroy()` must call `lightManager.destroy(entity)` *before* `super.destroy()` |
+| `still has a TransformManager component` | the node's transform was never released | `Node.destroy()` path — a `return` before `safeDestroyTransformable`, or an exception swallowed by `runCatching` |
+| `still has a RenderableManager component` | geometry/renderable never released | the renderable owner's `destroy()`; check an early-return added to a subclass |
+| `EngineDestroyQueue still holds pending resources` | textures/streams queued on an engine whose render loop will never drain them (#1630 shape) | whoever enqueued without a live render loop, or a missing `drainAll()` at teardown |
+| `canary_injectedLeakIsDetected` fails | **the instrument is broken**, not your code | a Filament upgrade changed `hasComponent`/`getComponentCount` semantics — fix the probe before trusting any other result in the class |
+| `entityIdRecycling_isTheKnownPreExistingGap` fails | someone **fixed** entity-id recycling (#2859) | invert that test and tighten `assertComponentsReleased` to also require `EntityManager.isAlive(entity) == false` |
+
+To bisect: the failure message names the exact entity id and the cycle index
+that created it, so re-run with a smaller `CYCLES` and log around that cycle.
+Never widen an assertion to silence a red you cannot explain.
+
 ### Set up an emulator
 
 Google's `android` CLI creates and boots emulators with one command — no
