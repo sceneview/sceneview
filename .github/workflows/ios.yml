@@ -163,3 +163,39 @@ jobs:
             -skipMacroValidation \
             SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY" \
             | xcpretty --color 2>/dev/null || cat
+
+      # #2852 — the step above CANNOT see the AR code. Every AR demo wraps its
+      # real ARKit/RealityKit logic in `#if !targetEnvironment(simulator)`
+      # (14 files under `Views/Demos/` at the time of writing), because ARKit
+      # world tracking does not run on a Simulator. A Simulator destination
+      # therefore strips that branch before the compiler ever sees it: a type
+      # error, a renamed API or a bad call inside those blocks passes CI green
+      # and lands on main. Until this step existed, the FIRST compile of that
+      # code happened in `app-store.yml`'s `xcodebuild archive` — i.e. during a
+      # release, behind signing secrets. The worst possible moment to find out.
+      #
+      # `CODE_SIGNING_ALLOWED=NO` is what lets a device destination build with
+      # no certificates, so this runs on forks and on stock runners. Build-only
+      # on purpose: compiling AR code is not running it, and this step makes no
+      # claim about runtime behaviour — that still needs a physical device.
+      # NOTE: the name is quoted on purpose — an unquoted ` #2852` would start a
+      # YAML comment and the issue reference would vanish from the step name.
+      - name: "Compile the device code path (no signing) — #2852"
+        if: always()
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        working-directory: samples/ios-demo
+        run: |
+          # `pipefail` so a failing xcodebuild is not masked by xcpretty — #1515.
+          set -o pipefail
+          xcodebuild build \
+            -project SceneViewDemo.xcodeproj \
+            -scheme SceneViewDemo \
+            -destination 'generic/platform=iOS' \
+            -clonedSourcePackagesDirPath SourcePackages \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY" \
+            | xcpretty --color 2>/dev/null || cat
