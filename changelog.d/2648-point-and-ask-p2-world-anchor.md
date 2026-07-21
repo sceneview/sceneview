@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- Demo: **Point & Ask P2 — world-anchored answers**. The tap is hit-tested against the same ARCore frame the pixels are captured from; a hit on a tracked surface pins the streamed answer card in world space (`AnchorNode` + `ViewNode`, one panel per tap, facing where the user stood) and it stays put while the camera orbits. Plane rendering is on so taps have visible targets; a tap that hits no tracked surface falls back to the screen-space card; Reset detaches every anchor. Recipe + llms.txt + agent skill teach the world-anchored variant (#2648)
