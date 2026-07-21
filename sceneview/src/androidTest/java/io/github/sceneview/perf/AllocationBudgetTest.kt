@@ -41,9 +41,9 @@ import org.junit.runner.RunWith
  *
  * | Path | Budget | Provenance |
  * |---|---|---|
- * | `slerp` pre-decomposed TRS (#2289) | ≤ 7 | 72 → 7.0 measured in #2317 |
- * | `Mat4.copyColumnsInto` (#2282) | 0 | 1 → 0.0 measured in #2317 |
- * | Ray↔mesh per-triangle (#2286) | ≤ 3/triangle | 2 defensive `Vector3` copies eliminated; the parallel-miss path allocates exactly edge1 + edge2 + h |
+ * | `slerp` pre-decomposed TRS (#2289) | ≤ 8 | 72 → 7.0 measured in #2317 on an arm64 emulator; the **byte-identical** code measures a deterministic 8.0 on the CI x86_64 API 30 emulator (run 29839958908) — ART escape analysis is arch-dependent, and the analytical count is 8 (2 `lerp` × 3 `mix` temporaries + 1 `Quaternion` + 1 `Triple`). The ceiling is pinned to the CI instrument, where this gate runs. |
+ * | `Mat4.copyColumnsInto` (#2282) | 0 | 1 → 0.0 measured in #2317; 0.0 confirmed on the CI instrument |
+ * | Ray↔mesh per-triangle (#2286) | ≤ 3/triangle | 2 defensive `Vector3` copies eliminated; the parallel-miss path allocates exactly edge1 + edge2 + h; confirmed on the CI instrument |
  *
  * ## Legitimate-refactor path
  *
@@ -64,7 +64,9 @@ class AllocationBudgetTest {
         /** Tight enough that a +1 alloc/call regression (canary-proven measurable) is red. */
         const val BUDGET_EPSILON = 0.01
 
-        const val SLERP_TRS_BUDGET = 7.0
+        // #2317 measured 7.0 on arm64; the CI x86_64 instrument deterministically measures
+        // 8.0 for byte-identical code (arch-dependent ART escape analysis — see class KDoc).
+        const val SLERP_TRS_BUDGET = 8.0
         const val COPY_COLUMNS_BUDGET = 0.0
         const val RAY_TRIANGLE_MISS_BUDGET = 3.0
     }
