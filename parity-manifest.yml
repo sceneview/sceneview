@@ -41,7 +41,8 @@
 #   - Android: 53 fragments, 44 Working / 5 KnownIssue / 2 ComingSoon / 2 InReview.
 #   - iOS: `DemoDeepLinkRegistry.allowedIds` = 66 (51 generated ∪ 4 legacy
 #     aliases ∪ 11 residual ids). Of the 53 Android ids: 22 working, 18 stub,
-#     13 android-only.
+#     13 android-only. (`placement-scene` promoted stub → working in #2839,
+#     after this snapshot was written: 23 working, 17 stub as of that PR.)
 #
 # Updated by L0.6 (#2804, closes #2769) — every Android id now resolves to
 # SOMETHING honest on iOS (a real screen, an alias to an existing equivalent
@@ -290,10 +291,7 @@ demos:
     iosStatus: working
   - id: placement-scene
     androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false — this
-      placement scene is not yet ported (Phase 2 Wave A, #2798).
+    iosStatus: working
   - id: point-and-ask
     androidStatus: Working
     iosStatus: stub
