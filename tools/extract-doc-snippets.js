@@ -21,20 +21,34 @@
  *
  *   - `compile`  — emitted as its own .kt file (own package, so blocks can
  *                  never collide). Fragments that are not top-level
- *                  declarations are wrapped in a `@Composable private fun`;
- *                  leading `import` lines are hoisted above the wrapper.
+ *                  declarations are wrapped in a `@Composable private fun`
+ *                  whose body runs inside `with(arSceneScope)` — node
+ *                  composables (ModelNode, HitResultNode, …) are
+ *                  SceneScope/ARSceneScope members, so the wrapper reproduces
+ *                  the documented trailing-lambda context. A CONTEXT_PRELUDE
+ *                  injects the canonical names the doc's prose establishes
+ *                  (engine, modelLoader, arSession, camera, frame, …) when a
+ *                  fragment uses them without declaring them. Signature
+ *                  listings are made compilable by stubbing: bodyless `fun`
+ *                  gets ` = TODO()` (`: Unit = TODO()` when no return type),
+ *                  uninitialized `val/var` gets ` = TODO()` (extension
+ *                  properties get ` get() = TODO()`); interface blocks are
+ *                  left alone (bodyless members are their legal form).
+ *                  Leading `import` lines are hoisted above the wrapper and
+ *                  evict a same-simple-name explicit preamble import.
  *   - `notest`   — explicitly opted out in the doc with ```kotlin notest
  *                  (for intentionally non-standalone fragments). Every
  *                  `notest` MUST carry a reason: ```kotlin notest <reason>.
- *   - `ellipsis` — contains a `...` placeholder: structural pseudo-code by
- *                  convention, never compilable. Skipped automatically so
- *                  docs keep the freedom to elide.
+ *   - `ellipsis` — contains a `...` or `…` placeholder outside `//` comments:
+ *                  structural pseudo-code by convention, never compilable.
+ *                  Skipped automatically so docs keep the freedom to elide.
  *   - `nonkotlin`— Gradle/Groovy blocks mistagged as kotlin (heuristic:
  *                  dependency/plugins DSL in the first lines).
  *   - `otherplatform` — blocks under the "SceneView Web" / "SceneViewSwift"
- *                  sections of llms.txt: Kotlin/JS (@JsExport) or Swift-bridge
- *                  API that can never compile on this Android classpath. A
- *                  JS-side guard is an honest follow-up (see #2759).
+ *                  sections of llms.txt (or a `### Web (...)` sub-heading of a
+ *                  cross-platform section): Kotlin/JS (@JsExport) or
+ *                  Swift-bridge API that can never compile on this Android
+ *                  classpath. A JS-side guard is an honest follow-up (#2759).
  *
  * A JSON manifest with per-category counts and per-block provenance
  * (source file + line) is written next to the generated sources, so a
