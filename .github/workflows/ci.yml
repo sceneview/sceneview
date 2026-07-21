@@ -827,7 +827,7 @@ jobs:
 
       # Android <-> iOS demo-catalog parity gate (BLOCKING, #2801, tracker
       # #2798). Self-test first, same discipline as the pairs above. Diffs
-      # Android's 52 canonical ids (read from *Fragment.kt, the same field
+      # Android's canonical demo ids (read from *Fragment.kt, the same field
       # collate-demos.sh itself parses) against iOS's live registry
       # (GeneratedScenes.allowedIds + DemoDeepLinkRegistry's legacyAliases /
       # residualIds) and the committed parity-manifest.yml. Unlike the

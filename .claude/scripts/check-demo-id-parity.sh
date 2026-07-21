@@ -95,9 +95,26 @@ if [ "${PARITY_SKIP_IOS_COLLATE:-0}" != "1" ] && [ -z "${PARITY_IOS_GENERATED:-}
 fi
 [ -f "$IOS_GENERATED" ] || { echo "Error: iOS generated registry not found: $IOS_GENERATED (build the iOS collator first)" >&2; exit 1; }
 
+# Single-line-array guard on the block extractors below (reviewer catch on
+# PR #2830). Each `awk '/…= \[/{f=1;next} f && /^[[:space:]]*\]/{f=0} f'`
+# state machine has a latent bug: if the source array is written on ONE line
+# (`… = []` for a Set, `… = [:]` for a dictionary), the opening rule sets
+# `f=1; next` and skips the line, but the closing `]` was ON that skipped
+# line — so `f` never resets and the extractor slurps quoted ids from
+# UNRELATED arrays further down the file into this id set (a false positive
+# on this BLOCKING gate). It is harmless today only by luck; `residualIds`
+# shrinks toward `[]` as L0.6 (#2804) ports each residual id to a real
+# screen, which would trip it. The fix: in the opening rule, strip the line
+# up to and including the assignment `= [`, then if the remainder still holds
+# a `]` the whole literal is single-line → `print` it (so a non-empty
+# single-line array still yields its ids) and `next` WITHOUT entering
+# multi-line mode. Stripping up to `= [` first is what makes this correct for
+# `legacyAliases`, whose `[String: String]` TYPE annotation also contains a
+# `]` that a naive whole-line `~ /\]/` test would misread as a closing.
+
 # ─── 4. iOS generated ids + "real" (non-placeholder) ids ──────────────────
 IOS_GENERATED_IDS_FILE="$(mktemp)"
-awk '/static let allowedIds: Set<String> = \[/{f=1;next} f && /^[[:space:]]*\]/{f=0} f' "$IOS_GENERATED" \
+awk '/static let allowedIds: Set<String> = \[/{ rest=$0; sub(/^.*= \[/,"",rest); if (rest ~ /\]/) { print; next } f=1; next } f && /^[[:space:]]*\]/{f=0} f' "$IOS_GENERATED" \
     | { grep -oE '"[a-z0-9-]+"' || true; } | tr -d '"' | sort -u > "$IOS_GENERATED_IDS_FILE"
 
 IOS_REAL_IDS_FILE="$(mktemp)"
@@ -111,7 +128,7 @@ awk '/static func destination\(for id: String\) -> AnyView\? \{/{f=1} f && /defa
 # is EXPECTED to shrink toward empty over time as L0.6 ports each id — so it
 # especially must not crash the script when it eventually reaches zero.)
 IOS_ALIASES_FILE="$(mktemp)"
-awk '/static let legacyAliases: \[String: String\] = \[/{f=1;next} f && /^[[:space:]]*\]/{f=0} f' "$IOS_REGISTRY" \
+awk '/static let legacyAliases: \[String: String\] = \[/{ rest=$0; sub(/^.*= \[/,"",rest); if (rest ~ /\]/) { print; next } f=1; next } f && /^[[:space:]]*\]/{f=0} f' "$IOS_REGISTRY" \
     > "$IOS_ALIASES_FILE.raw"
 : > "$IOS_ALIASES_FILE"
 while IFS= read -r line; do
@@ -122,7 +139,7 @@ done < "$IOS_ALIASES_FILE.raw"
 rm -f "$IOS_ALIASES_FILE.raw"
 
 IOS_RESIDUAL_FILE="$(mktemp)"
-awk '/static let residualIds: Set<String> = \[/{f=1;next} f && /^[[:space:]]*\]/{f=0} f' "$IOS_REGISTRY" \
+awk '/static let residualIds: Set<String> = \[/{ rest=$0; sub(/^.*= \[/,"",rest); if (rest ~ /\]/) { print; next } f=1; next } f && /^[[:space:]]*\]/{f=0} f' "$IOS_REGISTRY" \
     | { grep -oE '"[a-z0-9-]+"' || true; } | tr -d '"' | sort -u > "$IOS_RESIDUAL_FILE"
 
 # ─── 6. Hand everything to Python for the structured comparison + YAML ────

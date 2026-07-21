@@ -226,7 +226,7 @@ demos:
       Scene file exists but @available false — picture-in-picture camera
       view not yet implemented.
 
-  # ─── android-only (12) — no iOS registry entry at all yet ───────────────
+  # ─── android-only (13) — no iOS registry entry at all yet ───────────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: android-only

@@ -251,6 +251,87 @@ run
     && ok "id resolved as working (alias-target realness path exercised) → PASS" \
     || bad "alias-target realness path should still PASS (rc=$RC): $OUT"
 
+# ─── 10. Collapsed single-line residualIds (`= []`) must not leak ─────────
+# Regression for the awk block-extractor leak (reviewer catch on PR #2830):
+# a `residualIds` written on ONE line as `= []` used to leave the awk state
+# machine "open", slurping quoted ids from an UNRELATED array further down
+# the registry into the residual set — inflating allowedIds and
+# false-failing the BLOCKING gate. L0.6 (#2804) shrinks residualIds toward
+# [] as it ports each id, so this MUST be correct before then. The
+# write_ios_registry helper only ever emits multi-line arrays (the gap that
+# let the bug through), so this case writes the registry by hand: a collapsed
+# residualIds followed by a decoy array whose id (`future-demo`) leaks into
+# allowedIds WITHOUT the fix and there collides with its `android-only`
+# manifest row. Asserts PASS; without the fix this fixture FAILS.
+rm -f "$FRAG_DIR"/*.kt
+write_fragment "model-viewer" "ModelViewer"
+write_fragment "future-demo" "Future"
+write_ios_generated "model-viewer" ""
+cat > "$SCRATCH/DemoDeepLinkRegistry.swift" <<'EOF'
+enum DemoDeepLinkRegistry {
+    static let legacyAliases: [String: String] = [
+    ]
+    static let residualIds: Set<String> = []
+    static let unrelatedIds: Set<String> = [
+        "future-demo",
+    ]
+}
+EOF
+write_manifest <<'EOF'
+demos:
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+  - id: future-demo
+    androidStatus: Working
+    iosStatus: android-only
+    reason: "not yet ported"
+EOF
+run
+{ [[ $RC -eq 0 ]] && grep -q "check-demo-id-parity.sh: OK" <<<"$OUT"; } \
+    && ok "collapsed single-line residualIds (= []) does not leak an unrelated id → PASS" \
+    || bad "collapsed single-line residualIds must not leak (rc=$RC): $OUT"
+
+# ─── 11. Collapsed single-line legacyAliases (`= [:]`) must not leak ──────
+# Same class as case 10, but for the DICTIONARY extractor — and it also pins
+# the trickiest part of the fix: `legacyAliases`'s `[String: String]` TYPE
+# annotation itself contains a `]`, so a naive "does the opening line contain
+# a `]`" guard would misclassify the NORMAL multi-line opening as single-line
+# and break every multi-line alias table (see case 9). The fix strips the
+# line up to the assignment `= [` first, so only a `]` AFTER the opener counts.
+# Here legacyAliases is collapsed to `= [:]`, followed by a decoy DICTIONARY
+# whose two-quotes-on-a-line entry would be slurped as a spurious alias key
+# (`spoof-key`) WITHOUT the fix, leaking it into allowedIds and colliding with
+# its `android-only` manifest row. Asserts PASS; without the fix this FAILS.
+rm -f "$FRAG_DIR"/*.kt
+write_fragment "model-viewer" "ModelViewer"
+write_fragment "spoof-key" "Spoof"
+write_ios_generated "model-viewer" ""
+cat > "$SCRATCH/DemoDeepLinkRegistry.swift" <<'EOF'
+enum DemoDeepLinkRegistry {
+    static let legacyAliases: [String: String] = [:]
+    static let someOtherMap: [String: String] = [
+        "spoof-key": "spoof-target",
+    ]
+    static let residualIds: Set<String> = [
+    ]
+}
+EOF
+write_manifest <<'EOF'
+demos:
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+  - id: spoof-key
+    androidStatus: Working
+    iosStatus: android-only
+    reason: "not yet ported"
+EOF
+run
+{ [[ $RC -eq 0 ]] && grep -q "check-demo-id-parity.sh: OK" <<<"$OUT"; } \
+    && ok "collapsed single-line legacyAliases (= [:]) does not leak, multi-line still works → PASS" \
+    || bad "collapsed single-line legacyAliases must not leak (rc=$RC): $OUT"
+
 # ─── Summary ───────────────────────────────────────────────────────────────
 echo ""
 echo "test-check-demo-id-parity.sh: $PASS passed, $FAIL failed"
