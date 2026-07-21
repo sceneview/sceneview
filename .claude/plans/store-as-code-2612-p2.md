@@ -164,10 +164,13 @@ zéro. À garder en tête pour les Phases C/D, où la tentation sera la même.
       ⚠️ Sans cette distinction (review correctness PR #2811), un simple
       dispatch de `app-store-screenshots.yml` rendait le verdict `confirmed`
       **définitivement vert sur une tautologie**. Le verdict imprime aussi
-      **où** chaque match a été trouvé (`matched in … (draft)`) : le brouillon
-      échantillonné est *exactement* la version où `apply_screenshots()` écrit,
-      donc « le script n'a jamais touché le live » est vrai par construction et
-      n'atteste rien (2e passe de review) ;
+      **où** chaque match a été trouvé, **estampillé de sa version**
+      (`matched in APP_IPHONE_67 @4.23.0` / `@draft 4.24.0`) : le brouillon
+      échantillonné est *exactement* la version où `apply_screenshots()` écrit
+      (2e passe), **et cette version garde ses screenshots en devenant live**
+      (3e passe) — donc « le script n'a jamais touché le live » n'atteste rien,
+      à aucune date. L'estampille rend l'attestation *vérifiable* contre
+      l'historique des runs de `app-store-screenshots.yml` ;
     - `md5-shaped` — tous 32-hex → COHÉRENT avec MD5, **pas une preuve** (tout
       digest 128-bit ressemble à ça) → reste 1 action Thomas : uploader **1**
       screenshot du repo via la console ASC, relancer, viser `confirmed` ;

@@ -401,9 +401,13 @@ def checksum_provenance_report(verdict):
 
     # Where each match sits decides whether it can mean anything at all, so it
     # is printed for every match-bearing verdict, attested or not.
+    # Direct subscript, not .get(): these lines ARE the disclosure that makes
+    # the attestation an informed one. A verdict built elsewhere without them
+    # would print four affirmative CONFIRMED lines and no evidence at all —
+    # a KeyError is strictly better than evidence that is silently absent.
     where = [f"[probe] matched in {dtype}: " + ", ".join(digests)
              for dtype, digests in sorted(
-                 verdict.get("matched_by_display_type", {}).items(),
+                 verdict["matched_by_display_type"].items(),
                  key=lambda kv: kv[0] or "")]
 
     if overall == "confirmed":
@@ -420,11 +424,13 @@ def checksum_provenance_report(verdict):
             "[probe] the match is our own declared value echoed back: it proves nothing.",
             "[probe] This is NOT a Phase C unblocker.",
         ] + where + [
-            "[probe] READ THE SET NAMES ABOVE FIRST. apply_screenshots() writes to the",
-            "[probe] EDITABLE version — the '(draft)' sets — never to the live one, so",
-            "[probe] 'the script never touched the live version' is true by construction",
-            "[probe] and attests nothing. Check the run history of",
-            "[probe] app-store-screenshots.yml against EVERY set listed above; only if",
+            "[probe] READ THE SET NAMES ABOVE FIRST — each carries the VERSION it was",
+            "[probe] read from. apply_screenshots() writes to the editable version, and",
+            "[probe] that version KEEPS its screenshots when it goes live: a set being",
+            "[probe] live today is no evidence about who uploaded it. So 'the script",
+            "[probe] never touched the live version' attests nothing, at any date.",
+            "[probe] Check the app-store-screenshots.yml run history against EVERY",
+            "[probe] version listed above — including versions already shipped; only if",
             "[probe] it wrote none of them, re-run with --screenshots-are-console-sourced.",
         ]
     elif overall == "md5-shaped":
@@ -555,6 +561,32 @@ def _headers(key_id, issuer_id, pem):
     return {"Authorization": f"Bearer {token}"}
 
 
+def _attestation_source(argv=None):
+    """Name where a provenance attestation came from, for the log."""
+    passed = argv if argv is not None else sys.argv[1:]
+    return ("--screenshots-are-console-sourced"
+            if "--screenshots-are-console-sourced" in passed
+            else "ASC_PROBE_CONSOLE_SOURCED=1")
+
+
+def _probe_key(display_type, version_label):
+    """Label a sampled set with the VERSION it was read from.
+
+    Not cosmetic. An editable draft keeps its id, its localization and its
+    screenshot sets when it transitions to READY_FOR_SALE — so screenshots that
+    --apply-screenshots wrote into a draft become, one release later, ordinary
+    live screenshots. Any wording resting on "the script never writes the live
+    version" is therefore true only until the next release ships, and an
+    operator reading an unlabelled `matched in APP_IPHONE_67` months later has
+    no way to tell our own echo from a console upload.
+
+    With the version stamped in, the attestation becomes checkable: compare the
+    app-store-screenshots.yml run history against the version that set belongs
+    to, instead of believing a claim about where writes can land.
+    """
+    return f"{display_type or '<unknown display type>'} @{version_label}"
+
+
 def _probe_screenshot_sets(requests, headers, version_id):
     """Read-only: display type -> ordered live `sourceFileChecksum` list.
 
@@ -597,7 +629,8 @@ def _probe_screenshot_sets(requests, headers, version_id):
     return sets, en_us
 
 
-def dry_run(headers, bundle_id, meta_dir, shots_dir, console_sourced=False):
+def dry_run(headers, bundle_id, meta_dir, shots_dir, console_sourced=False,
+            attested_via=None):
     """Diff the live App Store listing against the repo. Returns (drift, skipped).
 
     `skipped` is a human-readable reason when the diff could not run (no app,
@@ -632,7 +665,7 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir, console_sourced=False):
     r = requests.get(
         f"{BASE}/apps/{app_id}/appStoreVersions"
         "?filter[platform]=IOS&filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW&limit=1",
-        headers=headers,
+        headers=headers, timeout=HTTP_TIMEOUT_S,
     )
     if r.status_code == 200 and r.json().get("data"):
         draft = r.json()["data"][0]
@@ -642,11 +675,11 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir, console_sourced=False):
             raw, draft_en_us = _probe_screenshot_sets(requests, headers, draft["id"])
             if draft_en_us is None:
                 # Distinguish "no en-US localization" from "no screenshots":
-                # the report tells the operator to look for '(draft)' sets, so
+                # the report tells the operator to look for draft sets, so
                 # their absence must have a stated reason.
                 print(f"[dry-run] note: draft {draft_vs} has no en-US localization "
                       "— no draft sets to sample")
-            draft_sets = {f"{k} (draft)": v for k, v in raw.items()}
+            draft_sets = {_probe_key(k, f"draft {draft_vs}"): v for k, v in raw.items()}
         except Exception as exc:  # noqa: BLE001 — the draft is a bonus sample
             # Never let the optional sample take down the diff the job exists
             # for. Say it out loud rather than silently reporting a smaller set.
@@ -677,9 +710,19 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir, console_sourced=False):
                   for device_dir in DISPLAY_TYPE_MAP
                   if (shots_dir / device_dir).is_dir()
                   for p in sorted((shots_dir / device_dir).glob("*.png"))]
+    # Version-stamped keys for the probe; the diff below keeps the raw display
+    # types it needs to look sets up by.
+    probe_sets = {_probe_key(k, version_string): v for k, v in live_sets.items()}
+    probe_sets.update(draft_sets)
+    if console_sourced:
+        # Announced HERE, on the decision path, not in main(): a direct
+        # importer calling dry_run(console_sourced=True) would otherwise get a
+        # CONFIRMED with no trace of the attestation that licensed it.
+        print(f"[probe] console provenance ATTESTED via "
+              f"{attested_via or _attestation_source()} — CONFIRMED is reachable "
+              "this run; a repo-MD5 match will be read as proof.")
     for line in checksum_provenance_report(
-            classify_live_checksums({**live_sets, **draft_sets},
-                                    local_md5s, console_sourced)):
+            classify_live_checksums(probe_sets, local_md5s, console_sourced)):
         print(line)
 
     for device_dir, display_type in sorted(DISPLAY_TYPE_MAP.items()):
@@ -1212,17 +1255,9 @@ def main(argv=None):
             print(f"  UPLOADED {item}")
         return 0
 
-    if args.screenshots_are_console_sourced:
-        # An attestation strong enough to unblock a release gate must never be
-        # invisible in the log. Inherited from the environment it would appear
-        # in no command line anyone re-reads, so name its source out loud.
-        via = ("ASC_PROBE_CONSOLE_SOURCED=1"
-               if "--screenshots-are-console-sourced" not in (argv or sys.argv[1:])
-               else "--screenshots-are-console-sourced")
-        print(f"[probe] console provenance ATTESTED via {via} — CONFIRMED is reachable "
-              "this run; a repo-MD5 match will be read as proof.")
     drift, skipped = dry_run(headers, args.bundle_id, meta_dir, shots_dir,
-                             args.screenshots_are_console_sourced)
+                             args.screenshots_are_console_sourced,
+                             attested_via=_attestation_source(argv))
     if skipped:
         print(f"[skip] {skipped}")
         return 0

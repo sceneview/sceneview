@@ -463,8 +463,38 @@ class ClassifyLiveChecksumsTest(unittest.TestCase):
                          {"APP_IPHONE_67 (draft)": [digest]})
         text = "\n".join(al.checksum_provenance_report(v))
         self.assertIn("matched in APP_IPHONE_67 (draft)", text)
-        # And the report must kill the "live set was untouched" reasoning.
-        self.assertIn("true by construction", text)
+        # And the report must kill the "live set was untouched" reasoning —
+        # without leaning on a claim that expires. E4 (third review pass): the
+        # editable version KEEPS its screenshots when it ships, so today's
+        # draft echo is tomorrow's ordinary live set. Saying "the script never
+        # writes live" would be false the day after any release, right above
+        # the one human decision that guards the gate.
+        self.assertIn("attests nothing, at any date", text)
+        self.assertIn("KEEPS its screenshots when it goes live", text)
+
+    def test_probe_key_stamps_the_version_so_provenance_is_checkable(self):
+        # E4: a set being live proves nothing about who uploaded it, because
+        # the editable version carries its screenshots into READY_FOR_SALE.
+        # Stamping the version is what turns the attestation from a belief
+        # into something checkable against the workflow's run history.
+        self.assertEqual(al._probe_key("APP_IPHONE_67", "4.23.0"),
+                         "APP_IPHONE_67 @4.23.0")
+        self.assertEqual(al._probe_key("APP_IPHONE_67", "draft 4.24.0"),
+                         "APP_IPHONE_67 @draft 4.24.0")
+        # A set with no screenshotDisplayType must stay readable, not "None".
+        self.assertEqual(al._probe_key(None, "4.23.0"),
+                         "<unknown display type> @4.23.0")
+
+    def test_evidence_lines_are_mandatory_not_optional(self):
+        # W7: the "matched in …" lines ARE the disclosure that makes an
+        # attestation informed. A verdict lacking them must raise, never print
+        # four affirmative CONFIRMED lines with no evidence under them.
+        with self.assertRaises(KeyError):
+            al.checksum_provenance_report({
+                "overall": "confirmed", "buckets": {"md5-shaped": 1},
+                "per_display_type": {}, "matched_local": ["x" * 32],
+                "unknown_shapes": [],
+            })
 
     def test_non_str_checksum_does_not_crash_the_entry_point(self):
         # classify_checksum() is advertised as total; the caller must be too.
