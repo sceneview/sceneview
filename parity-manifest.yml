@@ -64,6 +64,15 @@
 #   - Post-L0.6: iOS: `DemoDeepLinkRegistry.allowedIds` = 79 (69 generated ∪
 #     10 legacy/umbrella aliases ∪ 0 residual ids). Of the 53 Android ids:
 #     28 working, 25 stub, 0 android-only.
+#   - #2838 ported `ar-depth-collider` (SceneReconstructionNode.enablePhysics,
+#     gated on LiDAR with a static-floor fallback — Android itself is
+#     KnownIssue for this id, landing on iOS `@status knownIssue` too): 29
+#     working, 24 stub, 0 android-only. This breaks the #2798 audit's
+#     "zero exceptions" correlation above going forward — a non-`Working`
+#     Android id can land in iOS's `working` bucket once it is genuinely
+#     ported, same as any `Working` id. Not a one-off: `wall-placement`
+#     (`androidStatus: InReview`) is a second instance of the same break
+#     once its own iOS port lands, not a special case of this one.
 #
 # Checked by `.claude/scripts/check-demo-id-parity.sh` (`ci.yml` ->
 # `repo-hygiene`, ubuntu, blocking): fails if a Android id has neither an iOS
@@ -73,12 +82,15 @@
 # platform's registry — that's what keeps it honest.
 
 demos:
-  # ─── working (28) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (29) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
   - id: ar-body-tracker
     androidStatus: Working
+    iosStatus: working
+  - id: ar-depth-collider
+    androidStatus: KnownIssue
     iosStatus: working
   - id: ar-depth-occlusion
     androidStatus: Working
@@ -159,7 +171,7 @@ demos:
     androidStatus: Working
     iosStatus: working
 
-  # ─── stub (25) — iOS registry has the id, but it falls to the placeholder ──
+  # ─── stub (24) — iOS registry has the id, but it falls to the placeholder ──
   - id: ar-cloud-anchor
     androidStatus: KnownIssue
     iosStatus: stub
@@ -173,12 +185,6 @@ demos:
     reason: >-
       Scene file exists (L0.6, #2804 Job C) but @available false — a
       CollaborativeSession SDK + demo is not yet ported (Phase 2 Wave B, #2798).
-  - id: ar-depth-collider
-    androidStatus: KnownIssue
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false —
-      depth-based collision not yet ported. Android itself is KnownIssue too.
   - id: ar-depth-of-field
     androidStatus: Working
     iosStatus: stub
