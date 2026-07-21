@@ -137,7 +137,7 @@ fun ARSceneView(
     surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording of the composited AR scene — see "Record the scene to MP4"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
-    permissionHandler: ARPermissionHandler? = null,   // null = auto from ComponentActivity
+    permissionHandler: ARPermissionHandler? = null,   // omit for auto-detect from ComponentActivity; passing null explicitly SKIPS permission checks
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     content: (@Composable ARSceneScope.() -> Unit)? = null
 )
