@@ -200,10 +200,12 @@ optionally, so a checkout without the file builds keyless and silently.
   x86_64-under-Rosetta rig
   ([#2758](https://github.com/sceneview/sceneview/issues/2758)):
   `bash .claude/scripts/setup-ar-emulator.sh --rosetta` (AVD `Pixel_7a_x86`
-  on reserved port 5600, outside the QA pool). It runs under pure-software
-  TCG — expect a 20-90 min first boot and ~5-10x-slower interaction; drive it
-  with targeted probes (`adb -s emulator-5600 …`), never with the full
-  Maestro catalog.
+  on reserved port 5584, outside the QA pool's allocation range and inside
+  adb's supported `[5555,5586]` window). It runs under pure-software TCG —
+  expect a 20-90 min first boot and ~5-10x-slower interaction; drive it with
+  targeted probes (`adb -s emulator-5584 …`), never with the full Maestro
+  catalog. Give it the host to itself: an unaccelerated 3 GB guest stops
+  making progress once a second emulator pushes the host into swap.
 - **No pinch gesture.** Maestro cannot pinch, so 3D camera zoom cannot be
   driven by touch. On **Android** this is solved by the `camera_distance`
   deep-link param ([#1571](https://github.com/sceneview/sceneview/issues/1571),

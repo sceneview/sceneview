@@ -82,7 +82,7 @@
 #                    either way — only the host window draw differs. CI never
 #                    sets this; the device-QA workflow stays headless.
 #   --rosetta        Provision/boot the SEPARATE x86_64-under-Rosetta AR rig
-#                    (#2758): AVD `Pixel_7a_x86` on reserved port 5600 — Intel
+#                    (#2758): AVD `Pixel_7a_x86` on reserved port 5584 — Intel
 #                    emulator bundle + x86_64 system image + the
 #                    `_x86_for_emulator` ARCore APK. This is the only path to
 #                    LIVE-CAMERA ARCore sessions on Apple Silicon (#2754:
@@ -514,13 +514,18 @@ show_camera_topology() {
 #     verdict instead of a silent hang. Expect 20-90 min for a first boot.
 #   - The boot is detached as a SUBSHELL-ORPHAN `( nohup … & )` — a plain
 #     `nohup … &` child gets SIGTERM'd by agent-tool cleanup on some runners.
-#   - The rig lives on reserved port 5600, OUTSIDE the QA pool port range, so a
-#     pool session can never lease a ~10x-slower TCG guest for a standard QA
-#     run (see EMU_POOL_PORT_EXCLUDE_FROM in lib/emulator-select.sh).
+#   - The rig lives on reserved port 5584, OUTSIDE the QA pool's allocation range
+#     (the pool allocates upward from 5554), so a pool session can never lease a
+#     ~10x-slower TCG guest for a standard QA run (see
+#     EMU_POOL_PORT_EXCLUDE_FROM in lib/emulator-select.sh). 5584 is the LAST
+#     console port inside adb's supported range: the emulator warns
+#     "Requested adb port (N+1) is outside the recommended range [5555,5586].
+#     ADB may not function properly" for anything higher, and the first rig
+#     attempts on 5600 did see `adb shell` wedge mid-boot.
 
 ROSETTA_AVD_NAME="Pixel_7a_x86"
 ROSETTA_AVD_CONFIG="$AVD_HOME/$ROSETTA_AVD_NAME.avd/config.ini"
-ROSETTA_PORT="${EMU_ROSETTA_PORT:-5600}"
+ROSETTA_PORT="${EMU_ROSETTA_PORT:-5584}"
 ROSETTA_SERIAL="emulator-${ROSETTA_PORT}"
 # google_apis (NOT google_apis_playstore): ARCore and the demo app are both
 # side-loaded, so the Play Store would add nothing but background services that
