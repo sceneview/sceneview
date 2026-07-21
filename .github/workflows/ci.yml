@@ -825,6 +825,27 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-impact-check.sh
 
+      # Android <-> iOS demo-catalog parity gate (BLOCKING, #2801, tracker
+      # #2798). Self-test first, same discipline as the pairs above. Diffs
+      # Android's 52 canonical ids (read from *Fragment.kt, the same field
+      # collate-demos.sh itself parses) against iOS's live registry
+      # (GeneratedScenes.allowedIds + DemoDeepLinkRegistry's legacyAliases /
+      # residualIds) and the committed parity-manifest.yml. Unlike the
+      # advisory doc-drift checks above, this is BLOCKING: it fails the
+      # moment a new Android demo ships without a matching iOS registry
+      # entry or manifest row — the exact silent-drift class behind #2769
+      # (12 ids that diverged unnoticed for months). Pure bash/awk/python
+      # against source text — no Xcode, no Gradle, zero macOS cost.
+      - name: Self-test check-demo-id-parity.sh
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-demo-id-parity.sh
+
+      - name: Check Android <-> iOS demo id parity
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/check-demo-id-parity.sh
+
   # ── Full quality gate ────────────────────────────────────────────────────
   # Runs the same .claude/scripts/quality-gate.sh that contributors run
   # locally before pushing. Includes:
