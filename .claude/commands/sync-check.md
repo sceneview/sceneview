@@ -80,7 +80,7 @@ This checks ALL 30+ version locations:
 - `react-native/react-native-sceneview/package.json`
 - `flutter/sceneview_flutter/pubspec.yaml`
 - `flutter/sceneview_flutter/android/build.gradle`
-- `flutter/sceneview_flutter/ios/sceneview_flutter.podspec`
+- `flutter/sceneview_flutter/ios/flutter_sceneview.podspec`
 - `llms.txt`
 - `CLAUDE.md` code examples
 - `README.md` install snippets

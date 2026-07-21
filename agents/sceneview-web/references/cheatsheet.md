@@ -16,7 +16,7 @@ Kotlin/JS source or `llms.txt` — do not improvise.
 ```html
 <canvas id="viewer" style="width:100%;height:100vh;display:block"></canvas>
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.23.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.24.0/sceneview-web.js"></script>
 ```
 
 filament.js MUST load first. npm: `npm install sceneview-web filament`.
@@ -66,6 +66,8 @@ sv.addCubeNode(size)                    // → NodeHandle (content already in sc
 sv.addSphereNode(radius)                // → NodeHandle
 sv.addLightNode(type)                   // type: "directional" | "point" | "spot" — else throws
 sv.removeNode(handle)                   // detach + free the node's Filament entity
+sv.hitTest(x, y)                        // → NodeHandle[] nearest-first — canvas px, (0,0)=top-left;
+                                        //   SAME instances the factories returned (=== works)
 ```
 
 #### `NodeHandle` methods

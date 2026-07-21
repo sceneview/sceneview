@@ -120,6 +120,13 @@ struct AnimationDemo: View {
                 }
                 .cameraControls(.orbit)
                 .autoRotate(speed: 0.3)
+                // Every subject here is a curated PBR model — the bundled
+                // cyberpunk_character.usdz or a streamed Sketchfab character —
+                // and a PBR surface is defined by what it reflects. With no
+                // IBL there is nothing to reflect and the carousel undersells
+                // its own subjects. Same `.studio` preset as ModelViewerDemo
+                // (#2114).
+                .environment(.studio)
                 .ignoresSafeArea()
                 .id("animation-\(selectedSubject.streamedSlug?.uid ?? selectedSubject.bundledAsset ?? "none")")
             } else {

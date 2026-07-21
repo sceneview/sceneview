@@ -358,7 +358,7 @@ private fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
 
 /**
  * Per-category accent color. The light-mode palette mirrors the v4.1.0
- * Stitch design system; the dark-mode palette desaturates each hue and
+ * SceneView design system (see DESIGN.md); the dark-mode palette desaturates each hue and
  * lifts the lightness so the tinted gradients and icon tints don't
  * burn at >9:1 contrast against an M3 dark `surfaceContainer`.
  */

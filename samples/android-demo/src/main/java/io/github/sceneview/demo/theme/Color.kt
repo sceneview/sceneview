@@ -5,7 +5,7 @@ import androidx.compose.ui.graphics.Color
 /**
  * SceneView M3 Expressive Color System
  *
- * Generated from Stitch design system with source color #005bc1.
+ * Generated from the SceneView design system (see DESIGN.md) with source color #005bc1.
  * Aligned with website tokens (styles.css) for brand consistency.
  *
  * Light: primary #005bc1, tertiary #6446cd

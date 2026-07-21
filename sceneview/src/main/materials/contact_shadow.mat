@@ -1,0 +1,134 @@
+// contact_shadow.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    A *procedural* contact shadow — the soft dark pool that sells an object as
+//             touching a real surface (#2740 sub-task C). Unlike `shadow_receiver.mat`,
+//             this material does NOT depend on Filament's shadow map: it draws its own
+//             elliptical gradient from the quad's UVs. That independence is the whole
+//             point.
+//
+//             Why not just cast a real shadow onto a wall? A shadow map needs a
+//             shadow-casting directional light pointing the right way. Indoors, ARCore's
+//             ENVIRONMENTAL_HDR estimate resolves to a light coming from the CEILING —
+//             which is close to parallel to a wall, so a TV mounted flat against that wall
+//             casts essentially nothing onto it and reads as floating. The floor case
+//             works (light points at it), the wall case does not. A procedural pool is
+//             deterministic on any surface, at any light angle, for a fixed cost.
+//
+//             This is the same trade Amazon "AR View" makes: its APK bakes per-context
+//             shadow textures (`tvWallSpotlightTexture.ktx`, `furnitureSpotlightTexture`,
+//             `tableTopSpotlightTexture`) rather than relying on a runtime shadow map (see
+//             the teardown in #2740). We generate the equivalent gradient in the shader
+//             instead of shipping .ktx blobs — no bundled binaries, and the shape is
+//             tunable at runtime per context.
+//
+// Used by:    ContactShadowNode / the SceneScope `ContactShadow` composable. Lives in
+//             `sceneview` (not `arsceneview`) because nothing about it is AR-specific —
+//             a 3D scene grounds its models exactly the same way, which also makes it
+//             verifiable without ARCore.
+//
+// Parameters:
+//   intensity — float [0..1], peak opacity at the centre of the pool. 0 = invisible.
+//   center    — float2, offset of the pool centre in UV space, in [-0.5..0.5]. The wall
+//               context pushes it DOWN so the darkest band sits under the object, the way
+//               ceiling-lit rooms actually shade a wall-mounted panel.
+//   radius    — float2, half-axes of the fully-dark ellipse in UV space (0.5 = touches the
+//               quad edge). Two axes, so a wide TV gets a wide pool without stretching the
+//               quad itself.
+//   softness  — float, width of the fade beyond `radius`, in the same normalised units.
+//               Small = a hard contact patch (object touching), large = a diffuse
+//               ambient-occlusion haze (object standing off the surface).
+//   surfaceOffset — float3, model-space lift applied in the vertex stage to keep the pool
+//               off the surface it sits on. It is a VECTOR, not a scalar, because
+//               `Plane` does not rotate its geometry to match its `normal` parameter: a
+//               floor quad is built in the XZ plane (normal +Y) but a wall quad is built
+//               in the XY plane (normal +Z). `shadow_receiver.mat`'s hardcoded
+//               `pos.y += 0.005` is correct only for the first — on a wall-plane quad it
+//               slides the mesh UP ITS OWN FACE instead of off the wall, and z-fights.
+//               The node computes `normal * offset` and passes it, so one material serves
+//               every orientation. See ContactShadowNode.surfaceOffsetFor.
+//
+// matc profile: C (ARCore — "--optimize-size -p mobile -a opengl -a vulkan"). Matches the
+// AR material set: this ships inside AR scenes, so it must cover the same backends as
+// them, and `sceneview:semantics_overlay` already sets the precedent for a Profile-C
+// material living in the `sceneview` module.
+material {
+    name : "Contact Shadow Material",
+
+    "parameters": [
+        {
+            "type": "float",
+            "name": "intensity"
+        },
+        {
+            "type": "float2",
+            "name": "center"
+        },
+        {
+            "type": "float2",
+            "name": "radius"
+        },
+        {
+            "type": "float",
+            "name": "softness"
+        },
+        {
+            "type": "float3",
+            "name": "surfaceOffset"
+        }
+    ],
+
+    // The gradient is driven entirely by the quad's UVs; `requires` makes the fragment
+    // stage's getUV0() legal (same declaration as face_mesh.mat / camera_stream_flat.mat).
+    "requires" : [
+        "uv0"
+    ],
+
+    shadingModel : unlit,
+    blending : transparent
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        float3 pos = getPosition().xyz;
+
+        // Lift off the host surface, in MODEL space so the offset is carried through
+        // whatever rotation the node has. The direction comes from the node (normal *
+        // distance) rather than being hardcoded to +Y, because the quad's own normal
+        // depends on how it was built — see the `surfaceOffset` note in the header.
+        pos += materialParams.surfaceOffset;
+        material.worldPosition = mulMat4x4Float3(getWorldFromModelMatrix(), pos);
+    }
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        // UVs run 0..1 across the quad — recentre to -0.5..0.5, then apply the context
+        // offset (wall pushes the pool below the object's midline).
+        float2 p = getUV0() - 0.5 - materialParams.center;
+
+        // Dividing by the per-axis radii maps the ellipse onto a unit circle, so a single
+        // length() gives the normalised distance. The clamp keeps a zero/negative radius
+        // from producing a division by zero (it degenerates to "no shadow", not NaN).
+        float2 q = p / max(materialParams.radius, float2(1e-4));
+        float d = length(q);
+
+        // 1 inside the ellipse, fading to 0 across `softness`.
+        float a = 1.0 - smoothstep(1.0, 1.0 + max(materialParams.softness, 1e-4), d);
+
+        // Edge feather. The gradient lives in UV space, so if it has NOT reached zero by the
+        // quad's border it gets CUT OFF there, leaving a visible rectangular seam around the
+        // pool — a hard-edged box instead of a shadow. The Wall preset really does reach the
+        // horizontal border at ~0.43 alpha (0.5/0.34 = 1.47, well short of the 1.85 where the
+        // falloff ends), so this is not a theoretical guard. Fading the outermost band
+        // guarantees the pool always ends in nothing, whatever radius/softness a caller picks.
+        float2 e = min(getUV0(), float2(1.0) - getUV0());
+        a *= smoothstep(0.0, 0.08, min(e.x, e.y));
+
+        // Black at the computed alpha. rgb is 0, so the straight-vs-premultiplied alpha
+        // pitfall documented in plane_renderer.mat (#2224) cannot bite here (0 * a == 0
+        // either way) — the same reasoning as shadow_receiver.mat.
+        material.baseColor = float4(0.0, 0.0, 0.0, a * materialParams.intensity);
+    }
+}

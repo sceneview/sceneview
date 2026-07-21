@@ -65,6 +65,15 @@ struct SceneViewDemoApp: App {
                 .onOpenURL { url in
                     if let id = DeepLinkRouter.parse(url, allowedDemos: DemoDeepLinkRegistry.allowedIds) {
                         pendingDeepLinkDemo = id
+                    } else if let candidate = DeepLinkRouter.extractCandidate(url) {
+                        // A well-formed `sceneview://demo/<id>` (or the
+                        // Universal Link) whose id is not in the registry.
+                        // Surface it so `DemoDeepLinkRegistry.destination(for:)`
+                        // shows the "not available" placeholder — never a
+                        // silent no-op (the registry doc-comment's guarantee).
+                        // Malformed URLs (wrong scheme/host) yield `nil` here
+                        // and are correctly ignored.
+                        pendingDeepLinkDemo = candidate
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in

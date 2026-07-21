@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.23.0)
+  Source of truth: /llms.txt  (SceneView 4.24.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.23.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.24.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Core Composables
 
@@ -1327,6 +1327,55 @@ PlaneNode(
 ```
 
 Full recipe (Android + iOS): `samples/recipes/ground-shadow-catcher.md`.
+
+### ContactShadow — procedural grounding pool, works on walls (#2740)
+
+`ShadowReceiverPlane` catches a **real** shadow, so it needs a shadow-casting light pointing at
+the surface. Indoors that light comes from the ceiling: it faces the floor and merely *grazes* a
+wall, so a TV mounted flat against a wall casts essentially nothing onto it and reads as
+floating. `ContactShadow` instead draws its own elliptical gradient in the shader — no shadow
+map, no light dependency, deterministic at any angle, on any surface orientation. Same trade
+Amazon "AR View" makes with its baked per-context shadow textures, done procedurally so no
+texture ships.
+
+It lives in `sceneview` (not `arsceneview`) — nothing about it is AR-specific, and a plain 3D
+scene grounds a model exactly the same way.
+
+```kotlin
+ContactShadow(
+    size = Size(x = 2.4f, y = 1.6f, z = 0f),   // XY quad → a WALL
+    context = ContactShadowContext.Wall,
+    normal = Direction(z = 1f),
+    position = Position(x = 0f, y = 1.3f, z = -1.99f),
+)
+```
+
+**Pick the context, not the numbers.** `ContactShadowContext` carries the gradient shape for each
+situation: `Floor` (centred, dense — light faces the surface), `Wall` (fainter, wider than tall,
+pushed *below* the object — light grazes the surface), `TableTop` (tight and crisp — the object
+sits close). `intensity` overrides the peak opacity if you need to.
+
+**Match `size` to `normal`.** `Plane` does NOT rotate its geometry to match its `normal`
+parameter, so the quad's plane is decided by which `size` component is zero:
+
+| Surface | `size` | Plane | `normal` |
+|---|---|---|---|
+| Floor / tabletop | `Size(x, 0f, z)` | XZ | `Direction(y = 1f)` |
+| Wall | `Size(x, y, 0f)` | XY | `Direction(z = 1f)` |
+
+Getting this pair wrong is the one real footgun: the node lifts itself off the surface along
+`normal`, so a mismatched pair either z-fights with the wall or floats visibly off it. Size the
+quad generously — the gradient fades out well before the edge.
+
+Use `ShadowReceiverPlane` when you want a **real** shadow with correct light-driven shape on a
+floor; use `ContactShadow` when you need grounding that survives any light direction — always on
+a wall, and as a cheap deterministic fallback elsewhere. They compose: nothing stops a floor from
+catching a real shadow while a wall gets a procedural one.
+
+Platform matrix: **iOS** — has RealityKit's own `GroundingShadowComponent` (via
+`ARSceneView(groundingShadows:)`), a projected grounding shadow — but NOT this procedural,
+light-independent, per-context pool; not mirrored yet. **Web** — coming soon. Non-AR preview
+demo (runs on any emulator, no ARCore): `ContactShadowPreviewDemo`.
 
 ### Depth hit test — place on any real surface
 
@@ -3411,7 +3460,7 @@ hitResult.nodeOrNull: Node? // safe alternative — returns null instead of thro
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.23.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.24.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -3423,7 +3472,7 @@ npm install sceneview-web filament
 Script-tag usage (no bundler):
 ```html
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.23.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.24.0/sceneview-web.js"></script>
 ```
 
 After loading, the library registers itself on `window.sceneview`.
@@ -3689,7 +3738,33 @@ sv.addCubeNode(size)               // → NodeHandle
 sv.addSphereNode(radius)           // → NodeHandle
 sv.addLightNode(type)              // type: "directional" | "point" | "spot" → NodeHandle
 sv.removeNode(handle)              // detach + free the node's entity
+sv.hitTest(x, y)                   // → NodeHandle[] nearest-first (#2024 P5c)
 ```
+
+Screen-point picking (`sv.hitTest(x, y)`, #2024 P5c): coordinates are canvas
+pixels ((0,0) = top-left). The point is unprojected through the live camera
+into a world ray and tested against every node's real bounds (models and
+geometry: their asset AABB; splats: the cloud bounds), transformed by each
+node's current world transform. Returns the **same** `NodeHandle` instances
+the `add*Node` factories returned (`===`-comparable), sorted nearest-first:
+
+```js
+const cube = sv.addCubeNode(0.5);
+canvas.addEventListener('click', (e) => {
+  // Scale CSS event coords to backing-store pixels (devicePixelRatio canvases).
+  const px = canvas.width / canvas.clientWidth;
+  const hits = sv.hitTest(e.offsetX * px, e.offsetY * px);
+  if (hits[0] === cube) cube.setScaleUniform(1.5);
+});
+```
+
+Model nodes become pickable once loaded (their AABB is only readable then);
+geometry and splat nodes are pickable immediately. Empty pivots, lights and
+cameras have no bounds and are never hit. Kotlin/JS additionally exposes
+`SceneView.hitTest(x, y): List<HitResult>` (node + distance + world point),
+a world-`Ray` overload for XR controller poses, and `Node.collisionShape`
+(the Android mirror) to override a node's local picking bounds or set
+`null` to make it un-pickable; `Node.isHittable = false` skips a node.
 
 NodeHandle methods (opaque handle to a retained node; address it after create()):
 ```js
@@ -3703,6 +3778,22 @@ handle.addChild(childHandle)       // re-parent (child keeps its local transform
 handle.removeChild(childHandle)
 handle.getWorldPosition()          // → [x, y, z] composed through the parent chain
 handle.destroy()                   // remove + free entity (idempotent)
+```
+
+Kotlin/JS retained nodes additionally support smooth transform animation
+(#2024 P5b — the Android `Node.smoothTransform` core semantics and the same
+`5f` default speed; web has no `isSmoothTransformEnabled` gate and no
+`onSmoothEnd` callback. Not yet on the JS `NodeHandle` surface):
+
+```kotlin
+// Animate a node toward a target LOCAL transform — speed-scaled slerp/lerp
+// stepped on the scene's frame loop (zero per-tick matrix decompositions).
+node.smoothTransformSpeed = 10f    // higher = faster convergence (default 5f)
+node.smoothTransform = Transform(position = Position(0f, 1f, -2f))
+// On convergence the node snaps to the target and smoothTransform resets to
+// null. Setting null cancels in place (the node keeps its current transform).
+// Only animates while the node is attached to a SceneView — the scene's
+// frame dispatch drives it, and it keeps the on-demand render gate awake.
 ```
 
 ---
@@ -3899,8 +3990,12 @@ Chrome on Android (ARCore) + Quest 3. Mirrors Android `arsceneview` `AnchorNode`
 val anchorPromise = session.xrSession.asDynamic().createAnchor(transform, session.referenceSpace)
 anchorPromise.then { anchor: XRAnchor ->
     val node = XRAnchorNode(anchor) { pose ->
-        // Apply pose.transform.matrix to a Filament entity each frame
+        // Optional per-frame pose callback (pose.transform.matrix, column-major)
     }
+    // Scene-graph bridge (#2024 P5a): bind a ROOT-level Node so its
+    // worldTransform follows the anchor pose each update() — children
+    // parented under it compose for free. stopDriving() releases it.
+    node.drive(sceneView.addModelNode("models/chair.glb"))
     node.onAttached = { firstPose -> }
     node.onLost     = { }
     anchors += node
@@ -3919,6 +4014,8 @@ session.onSessionEnd = { anchors.forEach { it.detach() }; anchors.clear() }
 ```
 
 `update(frame, referenceSpace)` returns `false` when the anchor is no longer in `frame.trackedAnchors` — drop the node from your list. `detach()` calls `XRAnchor.delete()` and is idempotent.
+
+`drive(node)` requires a parentless (root) `Node` — anchor poses are world-space, so a parented node would double-compose (the call throws; a node re-parented *after* `drive` is skipped with a one-time console warning). A destroyed node is auto-released. `drivenNode` exposes the currently bound node.
 
 XRFrame additions: `trackedAnchors` (anchor set), extension `frame.getDepthInformation(view)`, extension `frame.getImageTrackingResults()`.
 
@@ -3955,7 +4052,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.23.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.24.0")
 ```
 
 Import: `import SceneViewSwift`

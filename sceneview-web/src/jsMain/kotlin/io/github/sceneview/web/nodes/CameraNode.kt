@@ -55,14 +55,14 @@ class CameraNode internal constructor(
     private val matrixScratch = FloatArray(16)
 
     /**
-     * Pushes the current [worldTransform] to the camera. A no-op after
-     * [destroy] (the guard mirrors [Node.applyLocalTransform]) and when no
-     * controller is wired.
-     *
-     * @param deltaSeconds Unused — the camera follows the node's transform, not
-     *   a time-based animation; kept to satisfy the `SceneNode.onFrame` contract.
+     * Advances any active [smoothTransform] (the `super` call — #2024 P5b),
+     * then pushes the current [worldTransform] to the camera, so a smooth
+     * camera move lands the same frame it steps. A no-op after [destroy]
+     * (the guard mirrors [Node.applyLocalTransform]) and when no controller
+     * is wired.
      */
     override fun onFrame(deltaSeconds: Float) {
+        super.onFrame(deltaSeconds)
         if (isDestroyed) return
         val controller = controller ?: return
         writeModelMatrix(worldTransform)

@@ -5,6 +5,7 @@
 // @available   false
 // @icon        camera.metering.matrix
 // @iosOnly     true
+// @androidOnlyReason  ARCore's Electronic Image Stabilization toggle has no public ARKit equivalent — not planned for iOS.
 import SwiftUI
 
 enum ArImageStabilizationScene: DemoScene {

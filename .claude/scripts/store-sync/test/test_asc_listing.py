@@ -517,5 +517,90 @@ class ChecksumProvenanceReportTest(unittest.TestCase):
             self.assertTrue(lines and all(l.startswith("[probe]") for l in lines))
 
 
+class DisplayTypeEnumTest(unittest.TestCase):
+    """#2794 follow-up (impact-review asymmetry): the ASC display-type VALUES
+    had no enum guard, only a dir↔map coverage test. A DISPLAY_TYPE_MAP row
+    with a bogus screenshotDisplayType would pass every offline check and fail
+    only on the first live ASC call — on the write path, possibly after an
+    earlier display type's live set was already replaced. Symmetric with
+    play_listing.py's ImageTypeTest, which pinned the Play `AppImageType` enum."""
+
+    def test_shipped_display_types_are_all_valid(self):
+        self.assertEqual(al.unknown_display_types(), [])
+
+    def test_allowlist_mirrors_apples_enum_exactly(self):
+        """Transcribed verbatim from the App Store Connect API OpenAPI spec v4.3
+        (components.schemas.ScreenshotDisplayType), cross-checked against
+        fastlane spaceship's AppScreenshotSet::DisplayType — 33 values, no
+        omissions or extras. A guard that exists to be exhaustive is worthless
+        if it ALLOWS a value Apple rejects (an extra entry lets a future map row
+        400 against the live store) or REJECTS one Apple accepts (a false
+        positive blocking a legitimate device class). Unlike Play's AppImageType
+        this enum has no proto-zero sentinel to exclude, so every value is kept.
+        Regenerate from the spec — never a web summary — if Apple grows it."""
+        self.assertEqual(al.VALID_DISPLAY_TYPES, frozenset({
+            "APP_IPHONE_67", "APP_IPHONE_65", "APP_IPHONE_61", "APP_IPHONE_58",
+            "APP_IPHONE_55", "APP_IPHONE_47", "APP_IPHONE_40", "APP_IPHONE_35",
+            "APP_IPAD_PRO_3GEN_129", "APP_IPAD_PRO_3GEN_11", "APP_IPAD_PRO_129",
+            "APP_IPAD_105", "APP_IPAD_97",
+            "APP_DESKTOP", "APP_APPLE_TV", "APP_APPLE_VISION_PRO",
+            "APP_WATCH_ULTRA", "APP_WATCH_SERIES_10", "APP_WATCH_SERIES_7",
+            "APP_WATCH_SERIES_4", "APP_WATCH_SERIES_3",
+            "IMESSAGE_APP_IPHONE_67", "IMESSAGE_APP_IPHONE_65",
+            "IMESSAGE_APP_IPHONE_61", "IMESSAGE_APP_IPHONE_58",
+            "IMESSAGE_APP_IPHONE_55", "IMESSAGE_APP_IPHONE_47",
+            "IMESSAGE_APP_IPHONE_40",
+            "IMESSAGE_APP_IPAD_PRO_3GEN_129", "IMESSAGE_APP_IPAD_PRO_3GEN_11",
+            "IMESSAGE_APP_IPAD_PRO_129", "IMESSAGE_APP_IPAD_105",
+            "IMESSAGE_APP_IPAD_97",
+        }))
+
+    def test_detects_an_unknown_type(self):
+        # APP_IPHONE_69 / APP_IPAD_13 are the plausible typos — Apple never
+        # created them, so a naming-by-form-factor mistake lands here.
+        self.assertEqual(
+            al.unknown_display_types({"iphone-6.9": "APP_IPHONE_69"}),
+            ["APP_IPHONE_69"])
+        self.assertEqual(al.unknown_display_types({"ipad-13": "APP_IPAD_13"}),
+                         ["APP_IPAD_13"])
+
+    def test_shipped_map_routes_to_the_67_and_129_slots(self):
+        # Pins the deliberate routing the guard protects: no APP_IPHONE_69 or
+        # APP_IPAD_13 exists, so 6.9" iPhone captures use the 6.7" slot and 13"
+        # iPad captures the 12.9" slot — both real enum members.
+        self.assertEqual(al.DISPLAY_TYPE_MAP["iphone-6.9"], "APP_IPHONE_67")
+        self.assertEqual(al.DISPLAY_TYPE_MAP["ipad-13"], "APP_IPAD_PRO_3GEN_129")
+        self.assertIn("APP_IPHONE_67", al.VALID_DISPLAY_TYPES)
+        self.assertIn("APP_IPAD_PRO_3GEN_129", al.VALID_DISPLAY_TYPES)
+        self.assertNotIn("APP_IPHONE_69", al.VALID_DISPLAY_TYPES)
+        self.assertNotIn("APP_IPAD_13", al.VALID_DISPLAY_TYPES)
+
+    def test_apply_screenshots_refuses_a_bad_type_at_the_write_boundary(self):
+        """main() guards the CLI; this guards a direct importer, before any
+        network object is built or any live set deleted. Patch DISPLAY_TYPE_MAP
+        so nothing ever touches Apple."""
+        original = al.DISPLAY_TYPE_MAP
+        al.DISPLAY_TYPE_MAP = {"iphone-6.9": "APP_IPHONE_69"}
+        try:
+            with self.assertRaises(ValueError) as ctx:
+                al.apply_screenshots(headers={}, bundle_id="x",
+                                     shots_dir=pathlib.Path("."))
+            self.assertIn("APP_IPHONE_69", str(ctx.exception))
+        finally:
+            al.DISPLAY_TYPE_MAP = original
+
+    def test_main_rejects_a_bad_display_type_before_network(self):
+        """CLI-level guard: a bogus map value returns 2 before any creds are
+        resolved or any request is made. Explicit --metadata-dir keeps it
+        cwd-independent (the guard runs after the dir check)."""
+        original = al.DISPLAY_TYPE_MAP
+        al.DISPLAY_TYPE_MAP = {"iphone-6.9": "APP_IPHONE_69"}
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                self.assertEqual(al.main(["--dry-run", "--metadata-dir", d]), 2)
+        finally:
+            al.DISPLAY_TYPE_MAP = original
+
+
 if __name__ == "__main__":
     unittest.main()

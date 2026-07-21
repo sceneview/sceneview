@@ -181,4 +181,12 @@ describe("npm tarball includes every runtime module imported by src/index.ts", (
     // so the transitive walk should pick it up.
     expect(tarballSet.has("dist/generated/llms-txt.js")).toBe(true);
   });
+
+  it("ships the generated symbols index used by the validator (#2760)", () => {
+    // `validator.ts` imports `symbols.ts`, which imports the generated
+    // index — the published package must carry both compiled modules or
+    // `validate_code` crashes at require time.
+    expect(tarballSet.has("dist/symbols.js")).toBe(true);
+    expect(tarballSet.has("dist/generated/symbols.js")).toBe(true);
+  });
 });
