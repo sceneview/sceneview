@@ -46,6 +46,7 @@ import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.rememberMaterialInstance
+import java.util.Locale
 import kotlin.math.atan2
 
 /**
@@ -153,19 +154,19 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
         firstFrameRendered = firstFrame.rendered,
         controls = {
             Text(
-                "Lead arm: ${"%.2f".format(length1)} m",
+                "Lead arm: ${"%.2f".format(Locale.US, length1)} m",
                 style = MaterialTheme.typography.labelLarge,
             )
             Slider(value = length1, onValueChange = { length1 = it }, valueRange = 0.3f..0.65f)
 
             Text(
-                "Trailing arm: ${"%.2f".format(length2)} m",
+                "Trailing arm: ${"%.2f".format(Locale.US, length2)} m",
                 style = MaterialTheme.typography.labelLarge,
             )
             Slider(value = length2, onValueChange = { length2 = it }, valueRange = 0.2f..0.5f)
 
             Text(
-                "Gravity: ${"%.1f".format(gravity)} m/s²",
+                "Gravity: ${"%.1f".format(Locale.US, gravity)} m/s²",
                 style = MaterialTheme.typography.labelLarge,
             )
             Slider(value = gravity, onValueChange = { gravity = it }, valueRange = 1.6f..20f)

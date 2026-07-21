@@ -77,6 +77,7 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.LifecyclePausingLaunchedEffect
 import io.github.sceneview.sample.rememberMaterialInstance
 import java.io.File
+import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlinx.coroutines.Dispatchers
@@ -796,7 +797,7 @@ private fun AnimationSection(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                "Speed: ${"%.1f".format(speed)}x",
+                "Speed: ${"%.1f".format(Locale.US, speed)}x",
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(
