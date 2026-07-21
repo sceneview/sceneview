@@ -87,6 +87,8 @@ xcodebuild archive ... SV_ALLOW_MISSING_SECRETS=1
 tears down node trees 40 times per test and asserts engine state returns to
 baseline. It runs headless — no SwapChain, no `readPixels` — so unlike the
 `render` package it really executes on the CI emulator instead of skipping.
+It lands in `render-tests.yml`'s `continue-on-error` job, so a red run is an
+advisory signal in the Actions tab, not a merge block.
 
 ```bash
 ANDROID_SERIAL=<your-emulator> ./gradlew :sceneview:connectedDebugAndroidTest \
@@ -100,7 +102,8 @@ What a red run means, by probe:
 | `LightManager component count did not return to baseline` | one light component per cycle | the `destroy()` override of the node type you touched — `LightNode.destroy()` must call `lightManager.destroy(entity)` *before* `super.destroy()` |
 | `still has a TransformManager component` | the node's transform was never released | `Node.destroy()` path — a `return` before `safeDestroyTransformable`, or an exception swallowed by `runCatching` |
 | `still has a RenderableManager component` | geometry/renderable never released | the renderable owner's `destroy()`; check an early-return added to a subclass |
-| `EngineDestroyQueue still holds pending resources` | textures/streams queued on an engine whose render loop will never drain them (#1630 shape) | whoever enqueued without a live render loop, or a missing `drainAll()` at teardown |
+| `the queue still holds resources after N drained frames` | textures/streams enqueued but never released (#1630 shape) | `DeferredDestroyQueue.drain()` frame accounting, or a `GRACE_FRAMES` change that outlives the drain loop |
+| `enqueued textures must be held for the grace period` | a resource was destroyed **eagerly** instead of deferred — the #874 `SIGABRT` shape | whoever called `engine.destroyTexture` directly instead of `EngineDestroyQueue.enqueueTexture` |
 | `canary_injectedLeakIsDetected` fails | **the instrument is broken**, not your code | a Filament upgrade changed `hasComponent`/`getComponentCount` semantics — fix the probe before trusting any other result in the class |
 | `entityIdRecycling_isTheKnownPreExistingGap` fails | someone **fixed** entity-id recycling (#2859) | invert that test and tighten `assertComponentsReleased` to also require `EntityManager.isAlive(entity) == false` |
 

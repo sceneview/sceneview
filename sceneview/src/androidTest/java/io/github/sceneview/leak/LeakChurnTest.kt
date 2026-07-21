@@ -6,12 +6,14 @@ import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
 import com.google.android.filament.Filament
 import com.google.android.filament.LightManager
+import com.google.android.filament.Texture
 import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.utils.Utils
 import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.createEglContext
 import io.github.sceneview.createEngine
 import io.github.sceneview.math.Position
+import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.safeDestroy
@@ -61,7 +63,8 @@ import org.junit.runner.RunWith
  * on the main thread via `runOnMainSync`, per the SDK's JNI threading rule.
  *
  * [canary_injectedLeakIsDetected] is a **permanent mutation test**: it deliberately skips
- * one `destroy()` and asserts the probes tell it apart from a properly destroyed control.
+ * one `destroy()` and asserts the probes tell it apart from a properly destroyed control,
+ * for **both** live probes (`LightManager` and `TransformManager`).
  * If a future Filament release turns `hasComponent`/`getComponentCount` into no-ops, the
  * canary fails loudly instead of letting every other test pass vacuously on a dead
  * instrument.
@@ -105,6 +108,10 @@ class LeakChurnTest {
 
     @After
     fun teardown() {
+        // `createEglContext()` hard-errors on a host without a usable EGL config, which
+        // would leave `engine` uninitialized; dereferencing it here would bury the real
+        // setup failure under a second, meaningless one.
+        if (!::engine.isInitialized) return
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             engine.safeDestroy()
         }
@@ -229,11 +236,19 @@ class LeakChurnTest {
 
             repeat(CYCLES) { cycle ->
                 val target = if (cycle % 2 == 0) parentA else parentB
+                val other = if (cycle % 2 == 0) parentB else parentA
                 target.addChildNode(child)
-                assertEquals(
-                    "cycle $cycle: child should be attached to exactly one parent",
-                    target,
-                    child.parent,
+                // The real guard is EVICTION from the previous parent (Node.kt:525) — the
+                // stale-reference leak of #2458/#2459. Reading back `child.parent` alone
+                // would only echo the field `addChildNode` just wrote.
+                assertTrue(
+                    "cycle $cycle: the new parent should hold the child",
+                    child in target.childNodes,
+                )
+                assertFalse(
+                    "cycle $cycle: the previous parent still references the child — a " +
+                        "stale childNodes entry leaks the whole subtree (#2458/#2459)",
+                    child in other.childNodes,
                 )
             }
 
@@ -252,21 +267,79 @@ class LeakChurnTest {
     }
 
     /**
-     * The deferred-destroy queue must be empty once the churn is over. A non-zero size
-     * means resources were enqueued on a queue no render loop will ever [
-     * EngineDestroyQueue.drain] — the #1630 shape.
+     * Geometry churn — the only path that creates a **renderable** component.
+     *
+     * Without this, `assertComponentsReleased`'s `RenderableManager` probe would never be
+     * fed anything and would read `false` vacuously in every test. `CubeNode` also
+     * exercises `GeometryNode.destroy()` → `safeDestroyGeometry`, i.e. the vertex/index
+     * buffer release path.
      */
     @Test
-    fun churn_leavesDeferredDestroyQueueEmpty() {
+    fun geometryChurn_releasesRenderableComponent() {
+        val created = mutableListOf<Int>()
+
         onMain {
             repeat(CYCLES) {
-                Node(engine).destroy()
+                val cube = CubeNode(engine = engine, materialInstances = listOf(null))
+                // Guard against a vacuous pass: the renderable must actually exist while
+                // the node is alive, otherwise the post-destroy assert proves nothing.
+                assertTrue(
+                    "CubeNode did not create a RenderableManager component — the " +
+                        "renderable probe below would pass vacuously",
+                    engine.renderableManager.hasComponent(cube.entity),
+                )
+                created += cube.entity
+                cube.destroy()
+            }
+        }
+
+        onMain {
+            created.forEachIndexed { index, entity ->
+                assertComponentsReleased("cube #$index", entity)
+            }
+        }
+    }
+
+    /**
+     * The deferred-destroy queue's Filament binding: enqueued resources must **wait**
+     * [EngineDestroyQueue.GRACE_FRAMES] frames and then be released — a resource destroyed
+     * eagerly is the `SIGABRT` of #874, one never released is the leak of #1630.
+     *
+     * Textures are built and enqueued directly rather than via a node, on purpose: the
+     * only three enqueue sites in the SDK (`SplatNode`, `ViewNode`, `ImageNode`) all need
+     * an asset or a bitmap, which would add I/O flakiness to a probe that must be
+     * deterministic. Note that a churn of plain `Node`s can never populate this queue —
+     * asserting `size == 0` after one would be a tautology, not a test.
+     */
+    @Test
+    fun deferredDestroyQueue_holdsThenReleasesEnqueuedResources() {
+        onMain {
+            val queue = EngineDestroyQueue.of(engine)
+            assertEquals("baseline: a fresh engine's queue is empty", 0, queue.size)
+
+            repeat(CYCLES) {
+                val texture = Texture.Builder()
+                    .width(1)
+                    .height(1)
+                    .levels(1)
+                    .format(Texture.InternalFormat.RGBA8)
+                    .build(engine)
+                queue.enqueueTexture(texture)
             }
             assertEquals(
-                "EngineDestroyQueue still holds pending resources after $CYCLES cycles — " +
-                    "they were queued onto an engine whose render loop will never drain them",
+                "enqueued textures must be held for the grace period, not destroyed " +
+                    "eagerly — destroying one before Filament reclaims its MaterialInstance " +
+                    "is the #874 SIGABRT",
+                CYCLES,
+                queue.size,
+            )
+
+            repeat(EngineDestroyQueue.GRACE_FRAMES) { queue.drain() }
+            assertEquals(
+                "the queue still holds resources after ${EngineDestroyQueue.GRACE_FRAMES} " +
+                    "drained frames — they would never be released (#1630 shape)",
                 0,
-                EngineDestroyQueue.of(engine).size,
+                queue.size,
             )
         }
     }
@@ -286,6 +359,8 @@ class LeakChurnTest {
         var baseline = 0
         var leakedEntity = 0
         var destroyedEntity = 0
+        var liveNodeEntity = 0
+        var destroyedNodeEntity = 0
 
         onMain {
             baseline = engine.lightManager.componentCount
@@ -299,6 +374,12 @@ class LeakChurnTest {
             destroyedEntity = LightNode(engine, type = LightManager.Type.POINT) {
                 intensity(1_000f)
             }.also { it.destroy() }.entity
+
+            // Same differential pair for TransformManager — the probe that carries
+            // nodeTreeChurn, reparentingChurn and the id-recycling pin. Without this the
+            // canary would only ever vouch for LightManager.
+            liveNodeEntity = Node(engine).entity
+            destroyedNodeEntity = Node(engine).also { it.destroy() }.entity
         }
 
         onMain {
@@ -321,10 +402,22 @@ class LeakChurnTest {
                 baseline + 1,
                 engine.lightManager.componentCount,
             )
+            assertTrue(
+                "Leak detection is broken: a live Node has no TransformManager component — " +
+                    "the transform probe is dead, so nodeTreeChurn/reparentingChurn would " +
+                    "pass vacuously",
+                engine.transformManager.hasComponent(liveNodeEntity),
+            )
+            assertFalse(
+                "Leak detection is broken: TransformManager still reports a component for " +
+                    "a destroyed Node, so it cannot discriminate leaked from freed",
+                engine.transformManager.hasComponent(destroyedNodeEntity),
+            )
 
             // Clean up so the canary itself does not leak into engine teardown.
             engine.lightManager.destroy(leakedEntity)
             engine.destroyEntity(leakedEntity)
+            engine.destroyEntity(liveNodeEntity)
         }
     }
 
