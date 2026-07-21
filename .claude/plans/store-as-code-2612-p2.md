@@ -159,11 +159,15 @@ zéro. À garder en tête pour les Phases C/D, où la tentation sera la même.
       provenance console attestée (`--live-set-is-console-sourced`) → convention
       vraie pour les uploads console, Phase C débloquée. **Seul déblocage
       valide** ;
-    - `md5-matched` — le même match **sans** attestation → peut être notre
+    - `unattested-match` — le même match **sans** attestation → peut être notre
       propre écho si `--apply-screenshots` a écrit ce set. Pas un déblocage.
       ⚠️ Sans cette distinction (review correctness PR #2811), un simple
       dispatch de `app-store-screenshots.yml` rendait le verdict `confirmed`
-      **définitivement vert sur une tautologie** ;
+      **définitivement vert sur une tautologie**. Le verdict imprime aussi
+      **où** chaque match a été trouvé (`matched in … (draft)`) : le brouillon
+      échantillonné est *exactement* la version où `apply_screenshots()` écrit,
+      donc « le script n'a jamais touché le live » est vrai par construction et
+      n'atteste rien (2e passe de review) ;
     - `md5-shaped` — tous 32-hex → COHÉRENT avec MD5, **pas une preuve** (tout
       digest 128-bit ressemble à ça) → reste 1 action Thomas : uploader **1**
       screenshot du repo via la console ASC, relancer, viser `confirmed` ;

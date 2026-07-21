@@ -448,7 +448,32 @@ class ClassifyLiveChecksumsTest(unittest.TestCase):
         self.assertEqual(v["overall"], "md5-shaped")
         self.assertEqual(v["matched_local"], [])
 
-    def test_match_alone_is_only_md5_matched_not_confirmed(self):
+    def test_draft_match_is_attributed_to_the_draft_set(self):
+        # E3 (correctness re-review, PR #2811): the probe samples the EDITABLE
+        # draft so a console upload is visible — but that draft is the exact
+        # version apply_screenshots() writes to. If a match were reported
+        # without saying WHERE, an operator could truthfully verify "the script
+        # never wrote the live set" (true by construction) and attest, turning
+        # our own echo in the draft into CONFIRMED.
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": ["a" * 32],
+             "APP_IPHONE_67 (draft)": [digest]}, local_md5s=[digest])
+        self.assertEqual(v["matched_by_display_type"],
+                         {"APP_IPHONE_67 (draft)": [digest]})
+        text = "\n".join(al.checksum_provenance_report(v))
+        self.assertIn("matched in APP_IPHONE_67 (draft)", text)
+        # And the report must kill the "live set was untouched" reasoning.
+        self.assertIn("true by construction", text)
+
+    def test_non_str_checksum_does_not_crash_the_entry_point(self):
+        # classify_checksum() is advertised as total; the caller must be too.
+        # `len()` on a non-str bucketed as "other" used to raise TypeError.
+        v = al.classify_live_checksums({"APP_IPHONE_67": [12345]})
+        self.assertEqual(v["overall"], "other")
+        self.assertIn("len=5", v["unknown_shapes"])
+
+    def test_match_alone_is_only_unattested_not_confirmed(self):
         # THE defect this guard exists for (correctness review, PR #2811):
         # once --apply-screenshots has run, the live set holds the very MD5s we
         # declared, so a repo match is our own echo. Unattested, it must never
@@ -457,7 +482,7 @@ class ClassifyLiveChecksumsTest(unittest.TestCase):
         digest = "900150983cd24fb0d6963f7d28e17f72"  # md5("abc")
         v = al.classify_live_checksums(
             {"APP_IPHONE_67": [digest]}, local_md5s=[digest])
-        self.assertEqual(v["overall"], "md5-matched")
+        self.assertEqual(v["overall"], "unattested-match")
         self.assertEqual(v["matched_local"], [digest])
 
     def test_match_confirms_only_when_provenance_is_attested(self):
@@ -505,7 +530,7 @@ class ClassifyLiveChecksumsTest(unittest.TestCase):
         live = {"APP_IPHONE_67": [digest, "0cc175b9c0f1b6a831c399e269772661"]}
         self.assertEqual(
             al.classify_live_checksums(live, local_md5s=[digest])["overall"],
-            "md5-matched")
+            "unattested-match")
         self.assertEqual(
             al.classify_live_checksums(live, local_md5s=[digest],
                                        console_sourced=True)["overall"],
@@ -538,10 +563,10 @@ class ChecksumProvenanceReportTest(unittest.TestCase):
         self.assertIn("CONFIRMED", text.upper())
         self.assertIn("Phase C", text)
 
-    def test_md5_matched_report_refuses_to_unblock_and_says_why(self):
+    def test_unattested_match_report_refuses_to_unblock_and_says_why(self):
         digest = "900150983cd24fb0d6963f7d28e17f72"
         text = self._report({"APP_IPHONE_67": [digest]}, local=[digest])
-        self.assertIn("MD5-MATCHED", text.upper())
+        self.assertIn("UNATTESTED-MATCH", text.upper())
         self.assertIn("echo", text.lower())          # names the failure mode
         self.assertIn("NOT a Phase C unblocker", text)
         # Must not read as a confirmation to a skimming eye.
@@ -559,7 +584,7 @@ class ChecksumProvenanceReportTest(unittest.TestCase):
             ({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]}, ()),
             ({"APP_IPHONE_67": [None]}, ()),
             ({"APP_IPHONE_67": ["a" * 64]}, ()),
-            ({"APP_IPHONE_67": [digest]}, [digest]),          # md5-matched
+            ({"APP_IPHONE_67": [digest]}, [digest]),          # unattested-match
             ({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"],
               "APP_IPAD_PRO_3GEN_129": [None]}, ()),
         ]:
