@@ -287,10 +287,7 @@ demos:
       "(Android: in review)".
   - id: placement-reticle-preview
     androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job B) but @available false — added to
-      Android after iOS stopped tracking the catalog.
+    iosStatus: working
   - id: placement-scene
     androidStatus: Working
     iosStatus: stub
