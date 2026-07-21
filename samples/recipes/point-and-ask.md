@@ -137,7 +137,7 @@ at the tapped surface: hit-test the tap, anchor the hit, and render the card on 
 around it and the answer stays on the object it describes.
 
 ```kotlin
-class AnswerPanel(val id: Int, val anchor: Anchor, val facingYawDegrees: Float) {
+class AnswerPanel(val id: Int, val anchor: Anchor) {
     var text by mutableStateOf("")           // grows with the stream deltas
 }
 val panels = remember { mutableStateListOf<AnswerPanel>() }
@@ -157,17 +157,9 @@ ARSceneView(
                 t.trackingState == TrackingState.TRACKING &&
                     (t is Point || (t is Plane && t.isPoseInPolygon(result.hitPose)))
             }
-            val panel = hit?.let { h ->
-                val cam = latestFrame!!.camera.pose
-                AnswerPanel(
-                    id = nextId++,
-                    anchor = h.createAnchor(),
-                    // face where the user stood at tap time (yaw around +Y)
-                    facingYawDegrees = Math.toDegrees(
-                        atan2((cam.tx() - h.hitPose.tx()).toDouble(),
-                              (cam.tz() - h.hitPose.tz()).toDouble())).toFloat(),
-                ).also { panels += it }
-            }
+            // createAnchor() throws once too many anchors exist — degrade, don't crash.
+            val anchor = hit?.let { runCatching { it.createAnchor() }.getOrNull() }
+            val panel = anchor?.let { AnswerPanel(nextId++, it).also { p -> panels += p } }
             // Stream the answer into `panel` when non-null, into the screen-space
             // card when the tap hit nothing trackable.
         }
@@ -180,7 +172,10 @@ ARSceneView(
                     windowManager = viewNodeManager,
                     unlit = true,                        // UI card: ignore scene lighting
                     position = Position(y = 0.12f),      // float above the surface
-                    rotation = Rotation(y = panel.facingYawDegrees),
+                    // No rotation: an ARCore hit pose is already oriented "Z+ roughly
+                    // toward the user's device", and a ViewNode's quad faces its own +Z,
+                    // so identity already faces where the user stood at tap time. Adding
+                    // a world-space yaw here double-counts it and turns the card away.
                     scale = Scale(0.15f),                // ViewNode renders at 250 px/m
                 ) {
                     // A ViewNode has no parent to measure against — give the content

@@ -73,8 +73,8 @@ import io.github.sceneview.demo.demos.internal.ArPlacement
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.rememberTexturesSettled
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -82,9 +82,9 @@ import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberViewNodeManager
-import kotlin.math.atan2
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -127,17 +127,17 @@ private data class PlacedProp(val id: Int, val anchor: Anchor)
  * [text]/[streaming] are snapshot state, so the in-scene card grows delta by delta exactly
  * like the screen-space card does. [question] is frozen at tap time: a later edit of the
  * question field must not rewrite the label of an answer already pinned.
+ *
+ * The card needs no facing rotation of its own: an ARCore hit pose is already oriented
+ * "Z+ … roughly toward the user's device" (see `PoseNode`), and a `ViewNode`'s quad faces
+ * its own +Z, so an identity rotation under the `AnchorNode` faces where the user stood at
+ * tap time. That facing is then frozen with the anchor — orbiting AROUND a fixed card is
+ * what proves the answer is anchored in the world rather than billboarded to the screen.
  */
 private class AnswerPanel(
     val id: Int,
     val anchor: Anchor,
     val question: String,
-    /**
-     * World-space yaw (degrees) turning the card toward where the user stood at tap time.
-     * Frozen on purpose: orbiting AROUND a fixed card is what proves the answer is anchored
-     * in the world rather than billboarded to the screen.
-     */
-    val facingYawDegrees: Float,
 ) {
     var text by mutableStateOf("")
     var streaming by mutableStateOf(true)
@@ -221,9 +221,17 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     var pendingPanel by remember { mutableStateOf<AnswerPanel?>(null) }
     val viewNodeManager = rememberViewNodeManager()
 
-    // ARCore anchors accrue per-frame tracking cost while attached (#2043) — release every
-    // anchor when the demo leaves composition. `detach()` is idempotent, so a Reset then a
-    // dispose double-detaching is harmless.
+    // The in-flight ask. It runs on `scope`, NOT on the capture effect, so nothing else
+    // stops it: a Reset that only cleared the panels would leave a round streaming into an
+    // orphaned panel, and — because an anchored round writes `askState` — that zombie would
+    // knock the NEXT round out of its capture and wedge the demo (every later tap swallowed
+    // by the busy-guard). Reset cancels it instead.
+    var askJob by remember { mutableStateOf<Job?>(null) }
+
+    // Belt and braces on the #2043 anchor contract. `AnchorNode.destroy()` already detaches
+    // on dispose, so this only covers the window where a panel/prop is in the list but its
+    // node has not composed yet (tap, then dispose in the same frame). `detach()` is
+    // idempotent, so overlapping with the node's own detach is harmless.
     DisposableEffect(Unit) {
         onDispose {
             panels.forEach { runCatching { it.anchor.detach() } }
@@ -269,7 +277,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
             if (askState != AskState.Capturing) return@LaunchedEffect
             askState = AskState.Thinking
             val synthetic = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888)
-            scope.askAboutBitmap(synthetic, askEngine, question, onResult)
+            askJob = scope.askAboutBitmap(synthetic, askEngine, question, onResult)
             return@LaunchedEffect
         }
         val activity = context.findActivity()
@@ -288,7 +296,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 hideOverlaysForCapture = false
                 if (result == PixelCopy.SUCCESS) {
                     askState = AskState.Thinking
-                    scope.askAboutBitmap(bitmap, askEngine, question, onResult)
+                    askJob = scope.askAboutBitmap(bitmap, askEngine, question, onResult)
                 } else {
                     bitmap.recycle()
                     onResult(AskState.Failed)
@@ -310,6 +318,8 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_point_and_ask_title),
         onBack = onBack,
         onReset = {
+            askJob?.cancel()
+            askJob = null
             askState = AskState.Idle
             placedProps.forEach { runCatching { it.anchor.detach() } }
             placedProps.clear()
@@ -370,24 +380,33 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             // Planes accept only inside their polygon; feature points cover
                             // the surfaces ARCore has not meshed into a plane yet. No hit
                             // (sky, untracked wall) → screen-space card, unchanged.
-                            pendingPanel = latestFrame?.hitTest(e)?.firstOrNull { result ->
-                                val trackable = result.trackable
-                                trackable.trackingState == TrackingState.TRACKING &&
-                                    (trackable is Point ||
-                                        (trackable is Plane &&
-                                            trackable.isPoseInPolygon(result.hitPose)))
-                            }?.let { hit ->
-                                val camera = latestFrame?.camera?.pose
-                                AnswerPanel(
-                                    id = nextPanelId++,
-                                    anchor = hit.createAnchor(),
-                                    question = question,
-                                    facingYawDegrees = facingYawDegrees(
-                                        fromX = hit.hitPose.tx(), fromZ = hit.hitPose.tz(),
-                                        toX = camera?.tx() ?: hit.hitPose.tx(),
-                                        toZ = camera?.tz() ?: hit.hitPose.tz(),
-                                    ),
-                                ).also { panels.add(it) }
+                            pendingPanel = latestFrame
+                                ?.takeIf { isTracking }
+                                ?.hitTest(e)
+                                ?.firstOrNull { result ->
+                                    val trackable = result.trackable
+                                    trackable.trackingState == TrackingState.TRACKING &&
+                                        (trackable is Point ||
+                                            (trackable is Plane &&
+                                                trackable.isPoseInPolygon(result.hitPose)))
+                                }
+                                // ARCore throws ResourceExhaustedException once too many
+                                // anchors exist — a pinned answer is a nice-to-have, so
+                                // degrade to the screen-space card instead of crashing.
+                                ?.let { hit -> runCatching { hit.createAnchor() }.getOrNull() }
+                                ?.let { anchor ->
+                                    AnswerPanel(
+                                        id = nextPanelId++,
+                                        anchor = anchor,
+                                        question = question,
+                                    ).also { panels.add(it) }
+                                }
+                            // Each panel costs an ARCore anchor plus a ViewNode (Filament
+                            // stream + texture + an off-screen ComposeView), and both grow
+                            // per-frame cost — retire the oldest past the cap rather than
+                            // letting a long session accumulate without bound.
+                            while (panels.size > MAX_PANELS) {
+                                panels.removeAt(0).also { runCatching { it.anchor.detach() } }
                             }
                             askState = AskState.Capturing
                         }
@@ -446,7 +465,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                                 windowManager = viewNodeManager,
                                 unlit = true,
                                 position = Position(y = PANEL_LIFT_METERS),
-                                rotation = Rotation(y = panel.facingYawDegrees),
+                                // No rotation: the anchor's own frame already faces the
+                                // device (ARCore hit pose, Z+ toward the user) and a
+                                // ViewNode's quad faces its +Z.
                                 scale = Scale(PANEL_SCALE),
                                 // Unlike the props, the cards are UI, not scenery: keeping
                                 // them out of the capture stops the model from reading its
@@ -728,6 +749,9 @@ private const val PANEL_LIFT_METERS = 0.12f
  */
 private const val PANEL_SCALE = 0.15f
 
+/** How many answers stay pinned before the oldest is retired. */
+private const val MAX_PANELS = 8
+
 /**
  * Routes one ask round's results: into [panel] when the tap pinned one (P2), otherwise to
  * [fallback], the screen-space card. With a panel, [fallback] is also driven back to
@@ -746,14 +770,6 @@ private fun answerSink(
         fallback(AskState.Idle)
     }
 }
-
-/**
- * World-space yaw (degrees) turning a card at (`fromX`, `fromZ`) toward a viewer at
- * (`toX`, `toZ`) — the rotation about +Y that points the card's front (+Z) at the viewer's
- * ground-plane position.
- */
-private fun facingYawDegrees(fromX: Float, fromZ: Float, toX: Float, toZ: Float): Float =
-    Math.toDegrees(atan2((toX - fromX).toDouble(), (toZ - fromZ).toDouble())).toFloat()
 
 /** Unwraps the [Activity] hosting this composition (needed for window PixelCopy). */
 private tailrec fun Context.findActivity(): Activity? = when (this) {
@@ -804,34 +820,39 @@ private fun CoroutineScope.askAboutBitmap(
  */
 @Composable
 private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolean) {
-    M3Surface(
-        modifier = Modifier.width(ANCHORED_CARD_WIDTH),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        tonalElevation = 6.dp,
-        shape = MaterialTheme.shapes.large,
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            if (text.isEmpty() && streaming) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                    Text(
-                        text = stringResource(R.string.demo_point_and_ask_status_thinking),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(start = 12.dp),
-                    )
+    // A ViewNode composes in its own off-screen ComposeView, which inherits none of this
+    // demo's CompositionLocals — without re-applying the theme here, `MaterialTheme` would
+    // resolve to M3 defaults and the in-scene card would not match the card it mirrors.
+    SceneViewDemoTheme {
+        M3Surface(
+            modifier = Modifier.width(ANCHORED_CARD_WIDTH),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            tonalElevation = 6.dp,
+            shape = MaterialTheme.shapes.large,
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                if (text.isEmpty() && streaming) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                        Text(
+                            text = stringResource(R.string.demo_point_and_ask_status_thinking),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
+                    return@Column
                 }
-                return@Column
+                Text(
+                    text = question,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = renderMarkdownLite(if (streaming) "$text▌" else text),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
             }
-            Text(
-                text = question,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = renderMarkdownLite(if (streaming) "$text▌" else text),
-                style = MaterialTheme.typography.bodyLarge,
-            )
         }
     }
 }

@@ -4293,6 +4293,7 @@ ARSceneView(
                     windowManager = viewNodeManager,
                     unlit = true,                        // UI card: ignore scene lighting
                     position = Position(y = 0.12f),      // float above the surface
+                    // No rotation: the hit pose already faces the device.
                     scale = Scale(0.15f),                // ViewNode renders at 250 px/m
                 ) { Card { Text(panel.text) } }          // any Compose UI, updates live
             }
@@ -4302,10 +4303,14 @@ ARSceneView(
 ```
 
 Gotchas: give the `ViewNode`'s content an explicit width (it has no parent to
-measure against); a tap that hits nothing trackable must fall back to the
-screen-space card; and with the composited capture above, hide the anchored
-cards during the capture (`isVisible = false`) or the model reads its own
-earlier answers back as part of the next question.
+measure against); **do not add a facing rotation** — an ARCore hit pose is
+already oriented "Z+ … roughly toward the user's device" and a `ViewNode`'s
+quad faces its own +Z, so identity already faces the user and any extra yaw
+turns the card away; `createAnchor()` throws once too many anchors exist, so
+cap the panels and wrap it; a tap that hits nothing trackable must fall back
+to the screen-space card; and with the composited capture above, hide the
+anchored cards during the capture (`isVisible = false`) or the model reads
+its own earlier answers back as part of the next question.
 
 Working demo: `point-and-ask` (`PointAndAskDemo.kt` + `AskEngine.kt`). Full
 recipe (one-shot + composited + streamed + world-anchored variants):
