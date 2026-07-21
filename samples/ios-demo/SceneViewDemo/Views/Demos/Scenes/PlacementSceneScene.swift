@@ -87,10 +87,20 @@ import RealityKit
 import ARKit
 import SceneViewSwift
 
-/// The demo view itself. Kept in this one file — rather than split into a
-/// sibling `Views/Demos/PlacementSceneDemo.swift`, the convention
-/// `ARPlacementDemo` / `ARInstantPlacementDemo` follow — because this port's
-/// task scope (#2839) is a single Scene file.
+/// The demo view itself. Kept in this one file rather than split into a
+/// sibling `Views/Demos/PlacementSceneDemo.swift` (the convention
+/// `ARPlacementDemo` / `ARInstantPlacementDemo` follow) — deliberately, not
+/// merely per this port's task scope. `SceneViewDemo.xcodeproj/project.pbxproj`
+/// has zero `PBXFileSystemSynchronizedRootGroup` entries, so this project
+/// does not auto-pick-up new files from a folder — every new `.swift` file
+/// needs a manual, UUID-keyed registration in that same pbxproj. Several
+/// concurrent Wave A ports (#2798) each adding their own sibling
+/// `*Demo.swift` file would all touch that one UUID-keyed file at once — a
+/// near-certain pile of merge conflicts. This Scene file needs no pbxproj
+/// change at all (it already exists and is already registered), so staying
+/// single-file avoids that entirely. Splitting Wave A's scenes into sibling
+/// `*Demo.swift` files + their pbxproj registrations is a deliberate,
+/// serialized follow-up once the wave lands, not an oversight here.
 private struct PlacementSceneDemoView: View {
     /// The one model every tap places. Android's `PlacementSceneDemo` places
     /// exactly one model type (`models/khronos_damaged_helmet.glb`) — no
