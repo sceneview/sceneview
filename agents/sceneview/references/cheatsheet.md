@@ -8,8 +8,8 @@ doubt **read the demo, do not improvise**.
 
 | Composable | Artifact | Demo |
 | --- | --- | --- |
-| `SceneView { … }` | `io.github.sceneview:sceneview:4.24.0` | `ModelViewerDemo.kt` |
-| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.24.0` | `ARPlacementDemo.kt` |
+| `SceneView { … }` | `io.github.sceneview:sceneview:4.25.0` | `ModelViewerDemo.kt` |
+| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.25.0` | `ARPlacementDemo.kt` |
 
 ## `SceneView` parameters (most common)
 
