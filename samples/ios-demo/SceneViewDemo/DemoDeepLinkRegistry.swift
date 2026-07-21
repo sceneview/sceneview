@@ -48,7 +48,13 @@ enum DemoDeepLinkRegistry {
     /// The canonical target is declared by a `*Scene.swift` file, so the alias
     /// resolves to exactly that scene's destination (or its placeholder, when
     /// the canonical scene is `@available false`).
-    private static let legacyAliases: [String: String] = [
+    ///
+    /// Internal (not `private`) so `DemoRegistryGuardTests` (#2801) can assert
+    /// the registry-integrity invariants directly against this table — e.g.
+    /// every value must be a live `GeneratedScenes.allowedIds` member, no key
+    /// may also be a live scene id — mirroring how Android's
+    /// `DeepLinkRouterTest` asserts directly against `DEMO_ID_ALIASES`.
+    static let legacyAliases: [String: String] = [
         "ar-recording": "ar-record-playback",
         "ar-cloud-anchors": "ar-cloud-anchor",
         "ar-rooftop-anchors": "ar-rooftop",
@@ -60,7 +66,11 @@ enum DemoDeepLinkRegistry {
     /// They pass `allowedIds` so the URL is accepted, and resolve to the
     /// coming-soon placeholder. Remove an id from here the moment a matching
     /// Scene file is added; the generated union then covers it with no hand edit.
-    private static let residualIds: Set<String> = [
+    ///
+    /// Internal (not `private`) for the same reason as `legacyAliases` above —
+    /// `DemoRegistryGuardTests` (#2801) asserts this list never collides with a
+    /// live generated scene id (a stale entry that should have been deleted).
+    static let residualIds: Set<String> = [
         "ar-collaborative",
         "ar-depth-collider",
         "ar-depth-of-field",

@@ -1,0 +1,301 @@
+# parity-manifest.yml
+#
+# Android <-> iOS demo-catalog parity ledger (#2801, part of the iOS-parity
+# tracker #2798). One row per Android canonical demo id — the 52 ids in
+# `GeneratedDemos.all` (collated by `samples/android-demo/scripts/collate-demos.sh`
+# from `samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/*Fragment.kt`,
+# NOT `DemoRegistry.kt`, which only declares the schema).
+#
+# Location: repo root (not `samples/ios-demo/`) because this ledger compares
+# TWO platforms — Android's canonical id set against iOS's registry — so it
+# is not an iOS-only artifact. It sits alongside other cross-cutting,
+# machine-readable root files (`llms.txt`, `smithery.yaml`).
+#
+# `iosStatus` is a mechanically-checked CURRENT-STATE fact, not an aspiration:
+#   - working:      the id is a member of iOS's `DemoDeepLinkRegistry.allowedIds`
+#                    AND resolves to a real (non-placeholder) destination.
+#   - stub:         the id is a member of `allowedIds` but currently falls
+#                    through to the honest placeholder (a `*Scene.swift` file
+#                    exists but is `@available false`, or the id is only a
+#                    residual entry with no Scene file yet).
+#   - android-only: the id is NOT a member of `allowedIds` at all today —
+#                    either a genuinely platform-exclusive capability (no
+#                    ARKit equivalent, never planned) or a demo iOS simply
+#                    hasn't reserved an id for yet.
+# `reason` is required for every non-`working` row (one line, honest, cites
+# the tracking issue). `androidStatus` mirrors Android's own `DemoStatus`
+# (Working/KnownIssue/ComingSoon/InReview) for context — the #2798 audit
+# found a strict correlation: every Android demo that is not itself `Working`
+# lands in iOS's `stub` or `android-only` bucket, with zero exceptions.
+#
+# Verified against source 2026-07-21 (post L0.1 #2799 + L0.2 #2800):
+#   - Android: 52 fragments, 44 Working / 5 KnownIssue / 2 ComingSoon / 1 InReview.
+#   - iOS: `DemoDeepLinkRegistry.allowedIds` = 66 (51 generated ∪ 4 legacy
+#     aliases ∪ 11 residual ids). Of the 52 Android ids: 22 working, 18 stub,
+#     12 android-only.
+#
+# Checked by `.claude/scripts/check-demo-id-parity.sh` (`ci.yml` ->
+# `repo-hygiene`, ubuntu, blocking): fails if a Android id has neither an iOS
+# registry entry nor a row here, if a row's `iosStatus` disagrees with the
+# live registry, or if a row here no longer corresponds to a live Android id.
+# Update this file (status + reason) in the SAME PR that changes either
+# platform's registry — that's what keeps it honest.
+
+demos:
+  # ─── working (22) — iOS has a real, non-placeholder destination ─────────
+  - id: ar-body-tracker
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-depth-occlusion
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-face
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-image
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-instant-placement
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-orbital
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-people-occlusion
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-placement
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-plane-node
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-point-cloud
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-record-playback
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-rerun
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-scene-mesh
+    androidStatus: Working
+    iosStatus: working
+  - id: debug-overlay
+    androidStatus: Working
+    iosStatus: working
+  - id: double-pendulum
+    androidStatus: Working
+    iosStatus: working
+  - id: fog
+    androidStatus: Working
+    iosStatus: working
+  - id: geometry
+    androidStatus: Working
+    iosStatus: working
+  - id: lighting
+    androidStatus: Working
+    iosStatus: working
+  - id: lines-paths
+    androidStatus: Working
+    iosStatus: working
+  - id: materials
+    androidStatus: Working
+    iosStatus: working
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+  - id: spatial-audio
+    androidStatus: Working
+    iosStatus: working
+
+  # ─── stub (18) — iOS registry has the id, but it falls to the placeholder ──
+  - id: ar-cloud-anchor
+    androidStatus: KnownIssue
+    iosStatus: stub
+    reason: >-
+      Scene file exists (ArCloudAnchorScene, canonicalized from
+      ArCloudAnchorsScene in #2799) but @available false — Cloud Anchor
+      persistence not yet implemented on iOS. Android itself is KnownIssue too.
+  - id: ar-collaborative
+    androidStatus: Working
+    iosStatus: stub
+    reason: >-
+      Residual id, no Scene file yet — a CollaborativeSession SDK + demo is
+      not yet ported (Phase 2 Wave B, #2798).
+  - id: ar-depth-collider
+    androidStatus: KnownIssue
+    iosStatus: stub
+    reason: >-
+      Residual id, no Scene file yet — depth-based collision not yet ported.
+      Android itself is KnownIssue too.
+  - id: ar-depth-of-field
+    androidStatus: Working
+    iosStatus: stub
+    reason: >-
+      Residual id, no Scene file yet — depth-of-field post-process not yet
+      ported (Phase 2 Wave B, #2798).
+  - id: ar-depth-visualization
+    androidStatus: Working
+    iosStatus: stub
+    reason: >-
+      Residual id, no Scene file yet — depth visualization + the SDK depth
+      API it needs are not yet ported (Phase 2 Wave B, #2798).
+  - id: ar-fog
+    androidStatus: Working
+    iosStatus: stub
+    reason: "Residual id, no Scene file yet — the AR-specific fog demo is not yet ported."
+  - id: ar-hand-tracking
+    androidStatus: ComingSoon
+    iosStatus: stub
+    reason: >-
+      Residual id, no Scene file yet — Android itself is ComingSoon
+      (visionOS hand-tracking SDK work).
+  - id: ar-image-stabilization
+    androidStatus: Working
+    iosStatus: stub
+    reason: >-
+      Platform-locked: ARCore's Electronic Image Stabilization (EIS) toggle
+      has no public ARKit equivalent. Scene file exists but @available
+      false — a permanent honest placeholder, not a port target (#2798).
+  - id: ar-ml-object-label
+    androidStatus: Working
+    iosStatus: stub
+    reason: >-
+      Residual id, no Scene file yet — Vision/CoreML object labeling not yet
+      ported (Phase 3, #2798).
+  - id: ar-pose
+    androidStatus: Working
+    iosStatus: stub
+    reason: "Scene file exists but @available false — free pose placement not yet implemented."
+  - id: ar-raw-depth-point-cloud
+    androidStatus: Working
+    iosStatus: stub
+    reason: >-
+      Residual id, no Scene file yet — raw depth point cloud not yet ported
+      (Phase 2 Wave B, #2798).
+  - id: ar-rooftop
+    androidStatus: KnownIssue
+    iosStatus: stub
+    reason: >-
+      Platform-locked: ARCore Geospatial rooftop anchors are a Google-backend
+      service with no ARKit equivalent. Scene file exists (canonicalized from
+      ArRooftopAnchorsScene in #2799) but @available false — a permanent
+      honest placeholder, not a port target. Android itself is KnownIssue too.
+  - id: ar-scene-semantics
+    androidStatus: Working
+    iosStatus: stub
+    reason: >-
+      Residual id, no Scene file yet — scene semantics not yet ported (Phase
+      3, honest-card candidate, #2798).
+  - id: ar-streetscape
+    androidStatus: KnownIssue
+    iosStatus: stub
+    reason: >-
+      Platform-locked: ARCore Streetscape Geometry (Geospatial/VPS) is a
+      Google-backend service with no ARKit equivalent. Scene file exists but
+      @available false — a permanent honest placeholder, not a port target.
+      Android itself is KnownIssue too.
+  - id: ar-terrain
+    androidStatus: KnownIssue
+    iosStatus: stub
+    reason: >-
+      Scene file exists (canonicalized from ArTerrainAnchorsScene in #2799)
+      but @available false — Geospatial terrain anchors not yet implemented.
+      Android itself is KnownIssue too.
+  - id: ar-xr-face
+    androidStatus: ComingSoon
+    iosStatus: stub
+    reason: >-
+      Residual id, no Scene file yet — Android itself is ComingSoon
+      (visionOS face-tracking SDK work).
+  - id: placement-scene
+    androidStatus: Working
+    iosStatus: stub
+    reason: >-
+      Residual id, no Scene file yet — this placement scene is not yet
+      ported (Phase 2 Wave A, #2798).
+  - id: secondary-camera
+    androidStatus: Working
+    iosStatus: stub
+    reason: >-
+      Scene file exists but @available false — picture-in-picture camera
+      view not yet implemented.
+
+  # ─── android-only (12) — no iOS registry entry at all yet ───────────────
+  - id: animation-physics
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Android umbrella id from the #2239 catalog regroup — iOS still only
+      carries its pre-regroup sub-ids (animation, physics), not the umbrella
+      id itself. Tracked for L0.6 (#2804).
+  - id: ar-plane-renderer-v2
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Added to Android after iOS stopped tracking the catalog — no iOS id
+      reserved yet; needs LiDAR-backed plane rendering. Tracked for L0.6 (#2804).
+  - id: camera-gestures
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Android umbrella id from #2239 — iOS still only carries pre-regroup
+      sub-ids (camera-controls, gesture-editing). Tracked for L0.6 (#2804).
+  - id: custom-geometry
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Android umbrella id from #2239 — iOS still only carries pre-regroup
+      sub-ids (custom-mesh, shape). Tracked for L0.6 (#2804).
+  - id: lighting-lab
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Android umbrella id from #2239 — iOS still only carries pre-regroup
+      sub-ids (dynamic-sky, environment, reflection-probes, post-processing).
+      Tracked for L0.6 (#2804).
+  - id: picking-collision
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Android umbrella id from #2239 — iOS still only carries pre-regroup
+      sub-ids (collision, view-node). Tracked for L0.6 (#2804).
+  - id: placement-reticle-preview
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Added to Android after iOS stopped tracking the catalog — no iOS id
+      reserved yet. Tracked for L0.6 (#2804).
+  - id: point-and-ask
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Added to Android after iOS stopped tracking the catalog — no iOS id
+      reserved yet; a port would use Apple's Foundation Models (#2648).
+      Tracked for L0.6 (#2804).
+  - id: splat-preview
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Added to Android after iOS stopped tracking the catalog — no iOS id
+      reserved yet; blocked on an iOS SplatNode renderer (#2768).
+  - id: two-d-in-three-d
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Android umbrella id from #2239 — iOS still only carries pre-regroup
+      sub-ids (text, image, video, billboard). Tracked for L0.6 (#2804).
+  - id: video-recording
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      Added to Android after iOS stopped tracking the catalog — no iOS id
+      reserved yet. Tracked for L0.6 (#2804).
+  - id: wall-placement
+    androidStatus: InReview
+    iosStatus: android-only
+    reason: >-
+      Added to Android after iOS stopped tracking the catalog (Android itself
+      is InReview, #2740) — no iOS id reserved yet. Tracked for L0.6 (#2804).
