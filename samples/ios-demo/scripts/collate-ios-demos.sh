@@ -12,6 +12,11 @@
 #   // @available   <true|false>   false → "Coming soon" card in SamplesTab
 #   // @iosOnly     <true|false>   (optional, default false) wraps item in #if os(iOS)
 #   // @status      <value>        (optional) one of: working|knownIssue|comingSoon|inReview
+#   // @androidOnlyReason <text>   (optional, #2804) one-line reason this is PERMANENTLY
+#                                  Android-only (no ARKit/RealityKit equivalent) — only valid
+#                                  with @available false. Swaps the card's "Coming soon" for an
+#                                  honest "Android-only" treatment instead of implying a future
+#                                  port. Omit for the ordinary "not ported yet" case.
 #
 # `@status` (optional — mirrors Android's 4-state `DemoStatus`, #2802):
 #   - Default when omitted: `working` if @available true, `comingSoon` if @available false.
@@ -84,6 +89,7 @@ for f in "$SCENES_DIR"/*Scene.swift; do
     available=$(grep -m1 '// @available' "$f" | sed -E 's|.*// @available[[:space:]]+||; s/[[:space:]]+$//')
     ios_only=$(grep -m1 '// @iosOnly' "$f" 2>/dev/null | sed -E 's|.*// @iosOnly[[:space:]]+||; s/[[:space:]]+$//' || echo "false")
     status=$(grep -m1 '// @status' "$f" 2>/dev/null | sed -E 's|.*// @status[[:space:]]+||; s/[[:space:]]+$//' || echo "")
+    android_only_reason=$(grep -m1 '// @androidOnlyReason' "$f" 2>/dev/null | sed -E 's|.*// @androidOnlyReason[[:space:]]+||; s/[[:space:]]+$//' || echo "")
 
     for field in scene_id title subtitle icon category available; do
         if [ -z "${!field}" ]; then
@@ -148,9 +154,28 @@ for f in "$SCENES_DIR"/*Scene.swift; do
             ;;
     esac
 
-    # TAB-separated: sceneId title subtitle icon category available iosOnly status
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" >> "$TMP_META"
+    # @androidOnlyReason only makes sense for a scene with no destination — a
+    # permanently platform-locked capability can't also be "available" (#2804).
+    if [ -n "$android_only_reason" ] && [ "$available" != "false" ]; then
+        echo "Error: $base has @androidOnlyReason set but @available true — " \
+             "an Android-only reason only makes sense for a scene with no " \
+             "destination (@available false)." >&2
+        exit 1
+    fi
+
+    # TAB-separated: sceneId title subtitle icon category available iosOnly status androidOnlyReason
+    #
+    # `android_only_reason` is the only field that is legitimately empty most
+    # of the time — and bash's `read` (even with `IFS=$'\t'`) still treats tab
+    # as an IFS-*whitespace* character, so a genuinely empty field between two
+    # tabs gets silently squeezed away instead of preserved, shifting every
+    # later column left by one. Encode "absent" as a `-` sentinel (never a
+    # legitimate reason string) so the field always round-trips non-empty;
+    # decoded back to "" at the one place that reads it (step 4 below).
+    android_only_reason_field="$android_only_reason"
+    [ -z "$android_only_reason_field" ] && android_only_reason_field="-"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason_field" >> "$TMP_META"
     scene_count=$((scene_count + 1))
 done
 
@@ -202,7 +227,7 @@ status_enum() {
 TMP_FULL="$(mktemp)"
 trap 'rm -f "$TMP_META" "$SORTED_META" "$TMP_FULL"' EXIT
 
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason; do
     # Find the *Scene.swift file whose @sceneId matches.
     type_name=""
     for f in "$SCENES_DIR"/*Scene.swift; do
@@ -216,9 +241,9 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
         echo "Error: no 'enum <Name>Scene: DemoScene' declaration found for sceneId='$scene_id'." >&2
         exit 1
     fi
-    # 9 columns: sceneId title subtitle icon category available iosOnly status typeName
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$type_name" >> "$TMP_FULL"
+    # 10 columns: sceneId title subtitle icon category available iosOnly status androidOnlyReason typeName
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason" "$type_name" >> "$TMP_FULL"
 done < "$SORTED_META"
 
 # ─── 4. Emit GeneratedScenes.swift ───────────────────────────────────────
@@ -257,7 +282,11 @@ enum GeneratedScenes {
         var items: [DemoItem] = []
 HEADER
 
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status type_name; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason type_name; do
+    # Decode the `-` "absent" sentinel back to a real empty string (see the
+    # TMP_META write in step 1 for why this round-trip is necessary).
+    [ "$android_only_reason" = "-" ] && android_only_reason=""
+
     cat_enum=$(category_enum "$category")
 
     # Escape title / subtitle for Swift string literals.
@@ -282,7 +311,13 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
         printf '            comingSoonTitle: "%s",\n' "$swift_title"
         printf '            icon: "%s",\n' "$icon"
         printf '            subtitle: "%s",\n' "$swift_subtitle"
-        printf '            category: %s\n' "$cat_enum"
+        if [ -n "$android_only_reason" ]; then
+            swift_android_only_reason=$(printf '%s' "$android_only_reason" | sed 's/"/\\"/g')
+            printf '            category: %s,\n' "$cat_enum"
+            printf '            androidOnlyReason: "%s"\n' "$swift_android_only_reason"
+        else
+            printf '            category: %s\n' "$cat_enum"
+        fi
         printf '        ))\n'
     fi
 
@@ -307,7 +342,7 @@ ALL_END
 
 # `allowedIds`: every scene id (available true AND false), sorted by id so
 # the diff stays stable and two parallel PRs never collide.
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status type_name; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason type_name; do
     printf '        "%s",\n' "$scene_id"
 done < "$TMP_FULL"
 
@@ -329,7 +364,7 @@ IDS_END
 # scenes fall through to `default: return nil` (→ placeholder), never their
 # own `EmptyView`. iOS-only scenes are guarded so a non-iOS build returns
 # `nil` (→ placeholder) rather than a blank view.
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status type_name; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason type_name; do
     [ "$available" = "true" ] || continue
     if [ "$ios_only" = "true" ]; then
         printf '        case "%s":\n' "$scene_id"

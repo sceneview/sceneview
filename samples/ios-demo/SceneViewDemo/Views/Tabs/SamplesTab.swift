@@ -201,7 +201,8 @@ struct SamplesTab: View {
             ComingSoonScreen(
                 title: scene.title,
                 subtitle: scene.subtitle,
-                icon: scene.icon
+                icon: scene.icon,
+                androidOnlyReason: scene.androidOnlyReason
             )
         }
     }

@@ -184,7 +184,7 @@ final class DemoRegistryGuardTests: XCTestCase {
         let mustBePlaceholder = [
             "ar-cloud-anchor", "ar-rooftop", "ar-terrain",   // #2799 canonicalized ids, still @available false
             "post-processing", "secondary-camera",           // long-standing coming-soon cards
-            "ar-collaborative", "placement-scene",           // residual — no Scene file yet (L0.6, #2804)
+            "ar-collaborative", "placement-scene",           // L0.6 (#2804) gave these a stub Scene file, still @available false
         ]
         for id in mustBePlaceholder {
             XCTAssertNil(GeneratedScenes.destination(for: id),
@@ -195,12 +195,15 @@ final class DemoRegistryGuardTests: XCTestCase {
     }
 
     /// The #2769 regression, pinned directly. Before #2800, `custom-geometry`
-    /// et al. (a different bug, still open — tracked by `parity-manifest.yml`
-    /// as `android-only`) and these 4 pre-#2799 ids silently 404'd because
-    /// `allowedIds` was a hand-copied literal that never got updated. Each of
-    /// these 4 must keep resolving — through its canonical target — to
-    /// exactly that target's current realness, whichever way the canonical
-    /// scene's own `@available` flag goes.
+    /// et al. silently 404'd because `allowedIds` was a hand-copied literal
+    /// that never got updated; L0.6 (#2804) then closed the REST of #2769's
+    /// real scope by adding umbrella aliases for the 6 #2239-regrouped ids
+    /// (`custom-geometry`, `camera-gestures`, `picking-collision`,
+    /// `animation-physics`, `two-d-in-three-d`, `lighting-lab`) alongside the
+    /// 4 pre-#2799 rename aliases. Each of these 10 must keep resolving —
+    /// through its canonical target — to exactly that target's current
+    /// realness, whichever way the canonical scene's own `@available` flag
+    /// goes.
     func testLegacyAliasesArePinnedAndInheritTheirCanonicalTargetsRealness() {
         let aliases = DemoDeepLinkRegistry.legacyAliases
         XCTAssertEqual(aliases, [
@@ -208,6 +211,12 @@ final class DemoRegistryGuardTests: XCTestCase {
             "ar-cloud-anchors": "ar-cloud-anchor",
             "ar-rooftop-anchors": "ar-rooftop",
             "ar-terrain-anchors": "ar-terrain",
+            "custom-geometry": "custom-mesh",
+            "camera-gestures": "camera-controls",
+            "picking-collision": "collision",
+            "animation-physics": "animation",
+            "two-d-in-three-d": "text",
+            "lighting-lab": "dynamic-sky",
         ], "legacyAliases changed — update this pin (and re-verify the new/changed alias " +
            "resolves sanely through DemoDeepLinkRegistry.destination(for:))")
 

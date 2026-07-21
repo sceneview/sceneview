@@ -43,6 +43,7 @@ import SwiftUI
 /// // @category    basics3D          (one of: basics3D|lighting|content|interaction|advanced|ar)
 /// // @available   true              (true = shows destination view; false = "Coming soon")
 /// // @status      working           (optional — see below)
+/// // @androidOnlyReason  <reason>   (optional — see below)
 /// ```
 ///
 /// `@sceneId`, `@title`, `@subtitle`, `@category`, and `@available` are
@@ -61,6 +62,15 @@ import SwiftUI
 ///   (`SamplesTab.swift`'s `StatusBadge` — "Preview" / "In review" / "Soon",
 ///   `.working` renders no badge) — the iOS mirror of Android's
 ///   `DemoListScreen.kt` `StatusChip`.
+///
+/// `@androidOnlyReason` is **optional** (#2804 Job C) and only valid on a
+/// `@available false` scene — the collator errors out if set alongside
+/// `@available true`. When present, the one-line text replaces "Coming soon"
+/// with an honest "Android-only" treatment on both the Samples-tab card and
+/// ``ComingSoonScreen`` (pill text, footer paragraph, nav title) — for a
+/// capability that is **permanently** platform-locked (no ARKit/RealityKit
+/// equivalent, e.g. ARCore Geospatial/VPS) rather than merely not ported yet.
+/// Omit it for the ordinary "not ported yet, might land later" case.
 ///
 /// The conforming type must also provide:
 /// - `static var destination: AnyView { get }` — SwiftUI view (ignored when
