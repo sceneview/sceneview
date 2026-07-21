@@ -14,8 +14,8 @@
 # `iosStatus` is a mechanically-checked CURRENT-STATE fact, not an aspiration:
 #   - working:      the id is a member of iOS's `DemoDeepLinkRegistry.allowedIds`
 #                    AND resolves to a real (non-placeholder) destination —
-#                    either its own Scene, or (L0.6, #2804) an alias to
-#                    another id's Scene (an umbrella id routed to the most
+#                    either its own scene, or (L0.6, #2804) an alias to
+#                    another id's scene (an umbrella id routed to the most
 #                    representative pre-regroup granular scene).
 #   - stub:         the id is a member of `allowedIds` but currently falls
 #                    through to the honest placeholder (a `*Scene.swift` file

@@ -14,7 +14,7 @@
   `contact-shadow-preview`, `placement-reticle-preview`, `point-and-ask`,
   `splat-preview`, `video-recording`, `wall-placement`) and the 11 ids
   previously hand-listed in `DemoDeepLinkRegistry.residualIds` with no
-  backing Scene (`ar-collaborative`, `ar-depth-collider`,
+  backing scene file (`ar-collaborative`, `ar-depth-collider`,
   `ar-depth-of-field`, `ar-depth-visualization`, `ar-fog`,
   `ar-hand-tracking`, `ar-ml-object-label`, `ar-raw-depth-point-cloud`,
   `ar-scene-semantics`, `ar-xr-face`, `placement-scene`) each get a
