@@ -46,11 +46,14 @@
 #   --advisory=<csv> Comma-separated platforms whose result is ADVISORY for the
 #                    release gate — a failure on an advisory leg surfaces as a
 #                    WARN (not a hard block) in release-checklist.sh section 14
-#                    (#1651). Default: `android,ar,web-perf,sketchfab,arcore-cloud`.
+#                    (#1651). Default: `android,ar,ios,web-perf,sketchfab,arcore-cloud`.
 #                    `android,ar` run on the chronically flaky SwiftShader
 #                    emulator (#1643) and are `continue-on-error: true` in
 #                    device-qa.yml, so the release gate must not be hard-blocked
-#                    by them. `web-perf` is the Lighthouse perf sub-leg of `web`
+#                    by them. `ios` (#2803) is the nightly-only Maestro-on-
+#                    simulator leg on a costly macOS runner — advisory until the
+#                    simulator boot/timing is proven reliably green. `web-perf`
+#                    is the Lighthouse perf sub-leg of `web`
 #                    (#1879/#1898) — advisory until its budgets are proven against
 #                    real baseline data. `sketchfab` + `arcore-cloud` (#2343) are
 #                    the key-gated sub-legs — `skipped` (advisory) when their API
@@ -121,13 +124,18 @@ OUT_DIR="$REPO_ROOT"
 # Advisory legs (#1651): a failure here is a release-gate WARN, not a block.
 # `android,ar` ride the flaky SwiftShader emulator and are continue-on-error
 # in device-qa.yml; `web` is reliable and stays BLOCKING.
+# `ios` (#2803) is advisory for the same reason android/ar are: the iOS leg
+# runs Maestro on a CI simulator (flaky boot/timing) on a costly macOS runner
+# (nightly-only in device-qa.yml, `continue-on-error: true`) — a red iOS leg
+# surfaces as a release WARN, never a hard block, until the simulator leg is
+# proven reliably green. Promote it out of this CSV to make it blocking.
 # `web-perf` (#1898) is the Lighthouse perf sub-leg — advisory at first, until
 # its budgets are proven stable against real baseline data. Promote it out of
 # this CSV to make a budget breach a hard release block.
 # `sketchfab` + `arcore-cloud` (#2343) are the key-gated sub-legs: when their
 # API key is absent the path is reported `skipped` (advisory) — a missing LOCAL
 # key must surface as a WARN, never hard-block a dev's run.
-ADVISORY="android,ar,web-perf,sketchfab,arcore-cloud"
+ADVISORY="android,ar,ios,web-perf,sketchfab,arcore-cloud"
 ADVISORY_SET=false
 
 while [[ $# -gt 0 ]]; do
@@ -189,10 +197,17 @@ warn() { echo "[device-qa] WARNING: $*" >&2; }
 #                    ~300 MB ARCore APK. Well under a full pass — a 15 GB gate
 #                    false-aborted the advisory `ar` leg (#2640) exactly as it
 #                    once did the web leg.
+#   • ios            ~10 GB — a single `xcodebuild` sim build (SPM RealityKit +
+#                    the demo app) into a mktemp DerivedData plus a booted
+#                    simulator; heavier than android (which reuses a prebuilt
+#                    APK), lighter than a full pass. On a disk-tight self-hosted
+#                    Mac this trips → the advisory ios leg skips honestly (WARN),
+#                    never cratering the host (#2803).
 DISK_MIN_GB=15
 case "$PLATFORM" in
   web)        DISK_MIN_GB=5 ;;
   android|ar) DISK_MIN_GB=8 ;;
+  ios)        DISK_MIN_GB=10 ;;
 esac
 DISK_GATE_SKIP=false   # set below when an advisory-only --ci run trips the gate
 if ! bash "$SCRIPT_DIR/disk-gated-spawn-check.sh" --quiet --min-gb="$DISK_MIN_GB" >/dev/null 2>&1; then
