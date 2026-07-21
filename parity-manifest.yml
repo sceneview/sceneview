@@ -174,11 +174,7 @@ demos:
   # ─── stub (24) — iOS registry has the id, but it falls to the placeholder ──
   - id: ar-cloud-anchor
     androidStatus: KnownIssue
-    iosStatus: stub
-    reason: >-
-      Scene file exists (ArCloudAnchorScene, canonicalized from
-      ArCloudAnchorsScene in #2799) but @available false — Cloud Anchor
-      persistence not yet implemented on iOS. Android itself is KnownIssue too.
+    iosStatus: working
   - id: ar-collaborative
     androidStatus: Working
     iosStatus: stub
