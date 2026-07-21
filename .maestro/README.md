@@ -117,10 +117,18 @@ optionally, so a checkout without the file builds keyless and silently.
 
 ### iOS coverage and known gaps
 
-- **No CI wiring — 0 iOS Maestro runs have ever executed in CI.** `device-qa.yml`
-  defines no `ios` job (only `web`, `android`, `ar`); this leg is local-only
-  today (`bash .claude/scripts/device-qa.sh --platform=ios` / `ios-device-qa.sh`
-  on a dev machine). Tracked in [#2803](https://github.com/sceneview/sceneview/issues/2803).
+- **CI wiring — nightly + release-checkpoint, advisory
+  ([#2803](https://github.com/sceneview/sceneview/issues/2803)).** `device-qa.yml`
+  now defines an `ios` job that runs `device-qa.sh --platform=ios --fast --ci`
+  on a `macos-15` runner (routing to the self-hosted Mac when its heartbeat
+  reports it online). It is gated `if: github.event_name != 'push'`, so it runs
+  on the nightly `workflow_call` (nightly-ci.yml) and on manual
+  `workflow_dispatch` — NEVER on a per-push build (a macOS runner is ~10x the
+  ubuntu per-minute cost). The leg is **advisory** (`continue-on-error` + tagged
+  advisory in `device-qa.sh`): a red iOS leg is a release WARN, never a hard
+  block, until the CI simulator leg is proven reliably green. You can still run
+  it locally any time (`bash .claude/scripts/device-qa.sh --platform=ios` /
+  `ios-device-qa.sh`).
 - **Deep-link reachable set, not a strict subset.** iOS flows reach demos via
   the public `sceneview://demo/<id>` custom scheme. The reachable set is
   `DemoDeepLinkRegistry.allowedIds` (63 ids, up from 24 when
@@ -142,10 +150,15 @@ optionally, so a checkout without the file builds keyless and silently.
 - **`text` / `model-viewer`** render no overlaid SwiftUI chrome on a key-less
   simulator, so they use the assertion-free `flows/demo-noassert.yaml`; their
   crash detection falls to the log sweep below.
-- **This is not the same thing as `render-tests.yml`'s "iOS screenshot tests"
-  job** — that job runs the existing logic-only `SceneViewDemoTests` target and
-  captures no PNGs today (no UI-testing target, no `XCTAttachment` anywhere in
-  the iOS demo). Also tracked in #2803.
+- **Distinct from `render-tests.yml`'s "iOS screenshot tests" job — now REAL
+  (#2803).** That job runs the dedicated `SceneViewDemoUITests` UI-testing
+  target (an XCUITest that launches the app and captures an `XCTAttachment`
+  screenshot of the launch screen, every tab, and a representative subset of
+  working 3D demos reached via the `-demo <id>` launch arg), then exports the
+  attachments as real PNG artifacts. It uses its own `SceneViewDemoUITests`
+  scheme, so the per-PR unit-test check (`ios.yml`, `-scheme SceneViewDemo`)
+  stays fast and simulator-free. The Maestro leg here and that XCUITest leg are
+  complementary screenshot paths.
 
 ## How a demo is exercised
 

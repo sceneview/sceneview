@@ -190,10 +190,18 @@
 		5B14D9F3C8BA306921899FF2 /* ArSceneSemanticsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F9269F3DA3F899CAA453A79 /* ArSceneSemanticsScene.swift */; };
 		AF836789D014E4A5E9CD707B /* ArXrFaceScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 941B602283557AB26CD0CF0C /* ArXrFaceScene.swift */; };
 		6A052B88F0FEA671530C17BC /* PlacementSceneScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F43BF6C7AE57D84A840CE79 /* PlacementSceneScene.swift */; };
+		F10000000000000000000003 /* SceneViewDemoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* SceneViewDemoUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		F00000000000000000000031 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000010000000000000001;
+			remoteInfo = SceneViewDemo;
+		};
+		F10000000000000000000031 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A90000010000000000000001 /* Project object */;
 			proxyType = 1;
@@ -219,6 +227,8 @@
 		A20000010000000000000005 /* Secrets.xcconfig.template */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig.template; sourceTree = "<group>"; };
 		A20000010000000000000010 /* SceneViewDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SceneViewDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F00000000000000000000001 /* SceneViewDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SceneViewDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F10000000000000000000001 /* SceneViewDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SceneViewDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F10000000000000000000002 /* SceneViewDemoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SceneViewDemoUITests.swift; path = SceneViewDemoUITests/SceneViewDemoUITests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000002 /* AppStoreUpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdaterTests.swift; path = SceneViewDemoTests/AppStoreUpdaterTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000060 /* SketchfabService+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabService+Tests.swift"; path = "SceneViewDemo/Services/SketchfabService+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabAssetResolver+Tests.swift"; path = "SceneViewDemo/Services/SketchfabAssetResolver+Tests.swift"; sourceTree = SOURCE_ROOT; };
@@ -409,6 +419,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F10000000000000000000022 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -417,6 +434,7 @@
 			children = (
 				A40000010000000000000002 /* SceneViewDemo */,
 				F00000000000000000000010 /* SceneViewDemoTests */,
+				F10000000000000000000010 /* SceneViewDemoUITests */,
 				A40000010000000000000003 /* Products */,
 				5FA64989921B8BD7A9F30B31 /* ComingSoonScreen.swift */,
 				D77142EC848C995EDE06546D /* SketchfabConfig.swift */,
@@ -442,6 +460,14 @@
 				F00000000000000000000072 /* DemoRegistryGuardTests.swift */,
 			);
 			path = SceneViewDemoTests;
+			sourceTree = "<group>";
+		};
+		F10000000000000000000010 /* SceneViewDemoUITests */ = {
+			isa = PBXGroup;
+			children = (
+				F10000000000000000000002 /* SceneViewDemoUITests.swift */,
+			);
+			path = SceneViewDemoUITests;
 			sourceTree = "<group>";
 		};
 		A40000010000000000000002 /* SceneViewDemo */ = {
@@ -471,6 +497,7 @@
 			children = (
 				A20000010000000000000010 /* SceneViewDemo.app */,
 				F00000000000000000000001 /* SceneViewDemoTests.xctest */,
+				F10000000000000000000001 /* SceneViewDemoUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -684,6 +711,23 @@
 			productReference = F00000000000000000000001 /* SceneViewDemoTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		F10000000000000000000020 /* SceneViewDemoUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F10000000000000000000042 /* Build configuration list for PBXNativeTarget "SceneViewDemoUITests" */;
+			buildPhases = (
+				F10000000000000000000021 /* Sources */,
+				F10000000000000000000022 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F10000000000000000000030 /* PBXTargetDependency */,
+			);
+			name = SceneViewDemoUITests;
+			productName = SceneViewDemoUITests;
+			productReference = F10000000000000000000001 /* SceneViewDemoUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -698,6 +742,10 @@
 						CreatedOnToolsVersion = 16.0;
 					};
 					F00000000000000000000020 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = A50000010000000000000001;
+					};
+					F10000000000000000000020 = {
 						CreatedOnToolsVersion = 16.0;
 						TestTargetID = A50000010000000000000001;
 					};
@@ -721,6 +769,7 @@
 			targets = (
 				A50000010000000000000001 /* SceneViewDemo */,
 				F00000000000000000000020 /* SceneViewDemoTests */,
+				F10000000000000000000020 /* SceneViewDemoUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -983,6 +1032,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F10000000000000000000021 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F10000000000000000000003 /* SceneViewDemoUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -990,6 +1047,11 @@
 			isa = PBXTargetDependency;
 			target = A50000010000000000000001 /* SceneViewDemo */;
 			targetProxy = F00000000000000000000031 /* PBXContainerItemProxy */;
+		};
+		F10000000000000000000030 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000010000000000000001 /* SceneViewDemo */;
+			targetProxy = F10000000000000000000031 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1218,6 +1280,48 @@
 			};
 			name = Release;
 		};
+		F10000000000000000000040 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5G3DZ3TH45;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = SceneViewDemo;
+			};
+			name = Debug;
+		};
+		F10000000000000000000041 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5G3DZ3TH45;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = SceneViewDemo;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1244,6 +1348,15 @@
 			buildConfigurations = (
 				F00000000000000000000040 /* Debug */,
 				F00000000000000000000041 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F10000000000000000000042 /* Build configuration list for PBXNativeTarget "SceneViewDemoUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F10000000000000000000040 /* Debug */,
+				F10000000000000000000041 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
