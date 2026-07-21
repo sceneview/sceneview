@@ -1,7 +1,7 @@
 # parity-manifest.yml
 #
 # Android <-> iOS demo-catalog parity ledger (#2801, part of the iOS-parity
-# tracker #2798). One row per Android canonical demo id — the 52 ids in
+# tracker #2798). One row per Android canonical demo id — the ids in
 # `GeneratedDemos.all` (collated by `samples/android-demo/scripts/collate-demos.sh`
 # from `samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/*Fragment.kt`,
 # NOT `DemoRegistry.kt`, which only declares the schema).
@@ -28,11 +28,14 @@
 # found a strict correlation: every Android demo that is not itself `Working`
 # lands in iOS's `stub` or `android-only` bucket, with zero exceptions.
 #
-# Verified against source 2026-07-21 (post L0.1 #2799 + L0.2 #2800):
-#   - Android: 52 fragments, 44 Working / 5 KnownIssue / 2 ComingSoon / 1 InReview.
+# Verified against source 2026-07-21 (post L0.1 #2799 + L0.2 #2800, and
+# after #2817 added `contact-shadow-preview` — rebased onto that commit
+# during this PR's own preparation, a live demonstration of exactly the
+# drift class this manifest + check-demo-id-parity.sh now catch):
+#   - Android: 53 fragments, 44 Working / 5 KnownIssue / 2 ComingSoon / 2 InReview.
 #   - iOS: `DemoDeepLinkRegistry.allowedIds` = 66 (51 generated ∪ 4 legacy
-#     aliases ∪ 11 residual ids). Of the 52 Android ids: 22 working, 18 stub,
-#     12 android-only.
+#     aliases ∪ 11 residual ids). Of the 53 Android ids: 22 working, 18 stub,
+#     13 android-only.
 #
 # Checked by `.claude/scripts/check-demo-id-parity.sh` (`ci.yml` ->
 # `repo-hygiene`, ubuntu, blocking): fails if a Android id has neither an iOS
@@ -243,6 +246,15 @@ demos:
     reason: >-
       Android umbrella id from #2239 — iOS still only carries pre-regroup
       sub-ids (camera-controls, gesture-editing). Tracked for L0.6 (#2804).
+  - id: contact-shadow-preview
+    androidStatus: InReview
+    iosStatus: android-only
+    reason: >-
+      Added to Android after iOS stopped tracking the catalog (#2817,
+      contact-shadow sub-task C of #2740; Android itself is InReview) — no
+      iOS id reserved yet. Tracked for L0.6 (#2804). Landed on main mid-PR;
+      this row is a live example of the drift class check-demo-id-parity.sh
+      now catches.
   - id: custom-geometry
     androidStatus: Working
     iosStatus: android-only

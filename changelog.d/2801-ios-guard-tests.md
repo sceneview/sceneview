@@ -9,7 +9,7 @@
   compiled) in the `SceneViewDemoTests` target. iOS test count: 20 -> 56
   (#2801, part of #2798).
 - Added `parity-manifest.yml` (repo root) — one row per Android canonical
-  demo id (52) declaring its current iOS status (working / stub /
+  demo id (53) declaring its current iOS status (working / stub /
   android-only) with a reason for every non-working entry — plus
   `.claude/scripts/check-demo-id-parity.sh`, wired into `ci.yml` ->
   `repo-hygiene` (ubuntu, blocking, zero macOS cost). Fails the moment a new
