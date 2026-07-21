@@ -230,8 +230,7 @@ demos:
       plane rendering.
   - id: ar-pose
     androidStatus: Working
-    iosStatus: stub
-    reason: "Scene file exists but @available false — free pose placement not yet implemented."
+    iosStatus: working
   - id: ar-raw-depth-point-cloud
     androidStatus: Working
     iosStatus: stub
