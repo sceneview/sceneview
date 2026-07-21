@@ -1,6 +1,8 @@
 package io.github.sceneview.demo.demos.internal
 
 import io.github.sceneview.math.Rotation
+import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -166,6 +168,102 @@ internal object DemoMath {
 
     /** Inclusive IBL-intensity range (lux) of the AnimationDemo IBL slider. */
     val IBL_INTENSITY_RANGE: ClosedFloatingPointRange<Float> = 0f..10_000f
+
+    // ── ContactShadowPreviewDemo bounce choreography ─────────────────────────
+
+    /**
+     * One full ground-to-ground hop of the contact-shadow preview's comparison boxes,
+     * in nanoseconds (2.6 s). Slow enough to read the shadow's response at the landing,
+     * fast enough that the loop never feels idle.
+     */
+    const val CONTACT_BOUNCE_PERIOD_NANOS = 2_600_000_000L
+
+    /** Peak height (metres) reached at the middle of each hop. */
+    const val CONTACT_BOUNCE_MAX_HEIGHT_METERS = 0.34f
+
+    /**
+     * Height above the floor of the contact-shadow preview's bouncing boxes at
+     * [elapsedNanos] into the loop: `maxHeight * |sin(π · t / period)|`.
+     *
+     * The rectified sine is deliberate — unlike a smooth hover (`(1-cos)/2`), `|sin|`
+     * has a **non-zero slope at the zero crossings**, so the box visibly *strikes* the
+     * floor once per period instead of easing into it. The landing instant is the
+     * event the contact shadow exists to sell (the pool snaps dark and tight exactly
+     * when the box touches), so the motion is shaped to emphasise it.
+     *
+     * The phase is reduced with integer math (`elapsedNanos % periodNanos`) **before**
+     * the float conversion, so precision never degrades no matter how long the demo
+     * runs. `t = 0` starts at ground contact — which is also the deterministic pose QA
+     * mode freezes at (a zeroed clock).
+     *
+     * @param elapsedNanos Accumulated animation time. Values `<= 0` return `0` (contact).
+     * @param periodNanos  Loop period. Values `<= 0` return `0` rather than dividing by zero.
+     * @param maxHeight    Peak hop height in metres.
+     * @return Height in `[0, maxHeight]`.
+     */
+    fun bounceHeight(
+        elapsedNanos: Long,
+        periodNanos: Long = CONTACT_BOUNCE_PERIOD_NANOS,
+        maxHeight: Float = CONTACT_BOUNCE_MAX_HEIGHT_METERS,
+    ): Float {
+        if (elapsedNanos <= 0L || periodNanos <= 0L || maxHeight <= 0f) return 0f
+        val phase = (elapsedNanos % periodNanos).toFloat() / periodNanos.toFloat()
+        return maxHeight * abs(sin(PI.toFloat() * phase))
+    }
+
+    /**
+     * How much of its base opacity a contact shadow keeps when its object hovers
+     * [height] above the surface: `1` at contact, fading linearly to [liftedFactor]
+     * at [maxHeight].
+     *
+     * This is the perceptual core of the preview. A contact shadow is an
+     * ambient-occlusion pool: the closer the object, the more sky it blocks from the
+     * patch beneath it, so the pool is densest at contact and washes out as the object
+     * lifts. Coupling the pool's opacity to the hop height is what makes the grounded
+     * box read as *landing on* the floor while its shadowless twin reads as floating —
+     * the object/shadow motion-coupling cue (the classic "ball-in-a-box" illusion).
+     *
+     * Never returns less than [liftedFactor]: the pool must stay faintly visible at
+     * the top of the hop so the eye keeps attributing it to the box.
+     *
+     * @param height       Current hover height, metres. Coerced into `[0, maxHeight]`.
+     * @param maxHeight    Height at which the factor bottoms out. `<= 0` returns `1`.
+     * @param liftedFactor Factor kept at [maxHeight], in `0..1`.
+     * @return Multiplier in `[liftedFactor, 1]`.
+     */
+    fun groundingIntensityFactor(
+        height: Float,
+        maxHeight: Float = CONTACT_BOUNCE_MAX_HEIGHT_METERS,
+        liftedFactor: Float = 0.28f,
+    ): Float {
+        if (maxHeight <= 0f) return 1f
+        val lift = (height / maxHeight).coerceIn(0f, 1f)
+        return 1f - (1f - liftedFactor) * lift
+    }
+
+    /**
+     * Uniform scale of the contact-shadow quad when its object hovers [height] above
+     * the surface: `1` at contact, growing linearly to [liftedSpread] at [maxHeight].
+     *
+     * Physically, lifting an occluder widens its penumbra: the pool spreads and
+     * softens as the object rises, then snaps back tight at the landing. Paired with
+     * [groundingIntensityFactor] (dimming), this scale (spreading) completes the
+     * ambient-occlusion response — dark-and-tight on contact, faint-and-wide in the air.
+     *
+     * @param height       Current hover height, metres. Coerced into `[0, maxHeight]`.
+     * @param maxHeight    Height at which the spread tops out. `<= 0` returns `1`.
+     * @param liftedSpread Scale reached at [maxHeight]. `>= 1`.
+     * @return Scale in `[1, liftedSpread]`.
+     */
+    fun groundingSpread(
+        height: Float,
+        maxHeight: Float = CONTACT_BOUNCE_MAX_HEIGHT_METERS,
+        liftedSpread: Float = 1.5f,
+    ): Float {
+        if (maxHeight <= 0f) return 1f
+        val lift = (height / maxHeight).coerceIn(0f, 1f)
+        return 1f + (liftedSpread - 1f) * lift
+    }
 
     /**
      * The keyframe choreography for one cinematic [shot] of
