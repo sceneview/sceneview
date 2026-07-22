@@ -84,7 +84,7 @@
 #   --rosetta        Provision/boot the SEPARATE x86_64-under-Rosetta AR rig
 #                    (#2758): AVD `Pixel_7a_x86` on reserved port 5584 — Intel
 #                    emulator bundle + x86_64 system image + the
-#                    `_x86_for_emulator` ARCore APK. This is the only path to
+#                    `_x86_for_emulator` ARCore APK. Was believed to be the only path to
 #                    LIVE-CAMERA ARCore sessions on Apple Silicon (#2754:
 #                    ARCore ships no arm64 emulator build; arm64 AVDs never
 #                    expose camera HAL id 0). ~9 GB one-time payload,
