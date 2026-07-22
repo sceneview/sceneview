@@ -87,7 +87,11 @@
 #                    `_x86_for_emulator` ARCore APK. Was believed to be the only path to
 #                    LIVE-CAMERA ARCore sessions on Apple Silicon (#2754:
 #                    ARCore ships no arm64 emulator build; arm64 AVDs never
-#                    expose camera HAL id 0). ~9 GB one-time payload,
+#                    expose camera HAL id 0). MEASURED verdict (#2758): the rig
+#                    does NOT deliver live-camera AR either — it exposes the same
+#                    camera topology (no HAL id 0), the ARCore install kills
+#                    system_server, and nothing renders. Kept as a reproducible
+#                    probe, not a QA path. ~9 GB one-time payload,
 #                    disk-gated up front. The x86 guest runs under
 #                    pure-software TCG (Apple Silicon cannot hardware-
 #                    accelerate an x86 guest — HVF is arm64-only), so expect a
@@ -474,7 +478,7 @@ show_camera_topology() {
     return 0
   fi
   local dump ids
-  dump="$(bounded_adb 30 "$serial" shell dumpsys media.camera 2>/dev/null)" || true
+  dump="$(bounded_adb 320 "$serial" shell dumpsys -t 300 media.camera 2>/dev/null)" || true
   ids="$(printf '%s\n' "$dump" | grep -oE 'Device [0-9]+ maps to "[0-9]+"' | grep -oE '"[0-9]+"' | tr -d '"' | tr '\n' ' ' || true)"
   if [[ -z "$ids" ]]; then
     log "camera topology: probe failed on $serial (dumpsys media.camera empty)"
@@ -496,11 +500,14 @@ show_camera_topology() {
 # =============================================================================
 # ARCore ships NO arm64 emulator build (#2754): the device APK hard-requires the
 # back camera at HAL id "0" (arm64 AVDs enumerate back="10"), and the
-# `_x86_for_emulator` APK carries x86/x86_64 native libs only. The ONLY path to
-# a live-camera ARCore session on an Apple Silicon host is therefore an x86_64
-# guest — which HVF cannot accelerate (it virtualizes same-arch only), so the
-# guest runs under QEMU's pure-software TCG, with the Intel darwin_x64 emulator
-# binary itself translated by Rosetta 2.
+# `_x86_for_emulator` APK carries x86/x86_64 native libs only. An x86_64 guest
+# was the only remaining candidate for a live-camera ARCore session on an Apple
+# Silicon host — which HVF cannot accelerate (it virtualizes same-arch only), so
+# the guest runs under QEMU's pure-software TCG, with the Intel darwin_x64
+# emulator binary itself translated by Rosetta 2. MEASURED verdict (#2758): it
+# does not deliver one either — same camera topology (no HAL id 0), the ARCore
+# install kills system_server, nothing renders. This code stays as a
+# reproducible probe of that dead end, not a working QA path.
 #
 # Hard-won facts from the 2026-05 investigations (memory
 # feedback_arcore_emulator_mac_dead_end) baked in here:
@@ -983,7 +990,7 @@ rosetta_status_line() {
   elif [[ -f "$ROSETTA_AVD_CONFIG" ]]; then
     log "rosetta rig: provisioned, not running (boot: --rosetta ; report: --check --rosetta)"
   else
-    log "rosetta rig: not provisioned (live-camera AR on Apple Silicon: --rosetta, #2758)"
+    log "rosetta rig: not provisioned (probe only — measured NOT to deliver live-camera AR, #2758)"
   fi
 }
 
@@ -1015,7 +1022,7 @@ rosetta_main() {
   show_camera_topology "$ROSETTA_SERIAL"
   # Verdict: camera HAL id 0 is the whole point of the rig (#2754 probe, PR #2755).
   local ids dump probe_rc=0
-  dump="$(rosetta_adb 30 shell dumpsys media.camera 2>/dev/null)" || probe_rc=$?
+  dump="$(rosetta_adb 320 shell dumpsys -t 300 media.camera 2>/dev/null)" || probe_rc=$?
   ids="$(printf '%s' "$dump" | grep -oE 'Device [0-9]+ maps to "[0-9]+"' | grep -oE '"[0-9]+"' | tr -d '"' | tr '\n' ' ' || true)"
   if $STOP_AFTER; then
     rlog "stopping rig $ROSETTA_SERIAL (--stop)"
@@ -1390,7 +1397,7 @@ fi
 # Passing it against an already-running rig re-enters the boot wait first and can
 # sit there for the full ROSETTA_BOOT_TIMEOUT_S before anything is stopped (hit
 # while closing out #2758). To just kill a running rig:
-#     kill "$(cat "${TMPDIR:-/tmp}/sceneview-rosetta-rig.pid")"
+#     kill "$(cat /tmp/sceneview-emulator-Pixel_7a_x86-5584.pid)"
 # or `kill $(pgrep -f "qemu-system-x86_64.*Pixel_7a_x86")` if the pidfile is gone.
 if $STOP_AFTER && ! $CHECK_ONLY && [[ -n "$serial" ]]; then
   log "stopping emulator $serial (--stop)"
