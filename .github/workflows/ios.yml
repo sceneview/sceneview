@@ -198,4 +198,4 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY" \
-            | xcpretty --color 2>/dev/null || cat
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
