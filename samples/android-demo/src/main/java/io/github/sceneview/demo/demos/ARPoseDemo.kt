@@ -38,6 +38,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import java.util.Locale
 
 /**
  * AR pose placement demo.
@@ -102,7 +103,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = "%.2f".format(x),
+                        text = "%.2f".format(Locale.US, x),
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.alignByBaseline()
                     )
@@ -121,7 +122,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = "%.2f".format(y),
+                        text = "%.2f".format(Locale.US, y),
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.alignByBaseline()
                     )
@@ -140,7 +141,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = "%.2f".format(z),
+                        text = "%.2f".format(Locale.US, z),
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.alignByBaseline()
                     )
@@ -237,7 +238,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
                     shape = MaterialTheme.shapes.large,
                 ) {
                     Text(
-                        text = "X %.2f   Y %.2f   Z %.2f".format(x, y, z),
+                        text = "X %.2f   Y %.2f   Z %.2f".format(Locale.US, x, y, z),
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )

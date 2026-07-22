@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -354,7 +355,7 @@ private fun StreamStatsCard(
             StatRow(label = "Events sent", value = eventCount.toString())
             StatRow(
                 label = "Rate",
-                value = if (eventsPerSec > 0f) "%.0f events/s".format(eventsPerSec) else "—"
+                value = if (eventsPerSec > 0f) "%.0f events/s".format(Locale.US, eventsPerSec) else "—"
             )
             StatRow(label = "AR frames", value = frameCount.toString())
 
@@ -366,14 +367,14 @@ private fun StreamStatsCard(
             )
             if (lastPose != null) {
                 Text(
-                    text = "pos  x=%+.2f  y=%+.2f  z=%+.2f".format(
+                    text = "pos  x=%+.2f  y=%+.2f  z=%+.2f".format(Locale.US,
                         lastPose.tx(), lastPose.ty(), lastPose.tz()
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "quat x=%+.2f y=%+.2f z=%+.2f w=%+.2f".format(
+                    text = "quat x=%+.2f y=%+.2f z=%+.2f w=%+.2f".format(Locale.US,
                         lastPose.qx(), lastPose.qy(), lastPose.qz(), lastPose.qw()
                     ),
                     style = MaterialTheme.typography.bodySmall,

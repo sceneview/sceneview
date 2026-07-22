@@ -47,6 +47,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.rememberMaterialInstance
+import java.util.Locale
 
 /**
  * Shows the four built-in geometry primitives: Cube, Sphere, Cylinder, Plane.
@@ -275,13 +276,13 @@ internal fun GeometryDemoControls(
     Spacer(modifier = Modifier.height(12.dp))
 
     Text(
-        "Metallic: ${"%.2f".format(metallic)}",
+        "Metallic: ${"%.2f".format(Locale.US, metallic)}",
         style = MaterialTheme.typography.labelLarge,
     )
     Slider(value = metallic, onValueChange = onMetallicChange, valueRange = 0f..1f)
 
     Text(
-        "Roughness: ${"%.2f".format(roughness)}",
+        "Roughness: ${"%.2f".format(Locale.US, roughness)}",
         style = MaterialTheme.typography.labelLarge,
     )
     Slider(value = roughness, onValueChange = onRoughnessChange, valueRange = 0f..1f)

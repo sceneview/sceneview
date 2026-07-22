@@ -497,7 +497,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Interaction
 
 - `camera-gestures` — Camera & Gestures. Manipulator modes and per-node edit gestures.
-- `picking-collision` — Picking & Collision. Ray hit-test and interactive ViewNode overlays.
+- `picking-collision` — Picking & Collision. Ray hit-test and ray-picked ViewNode overlays.
 
 ### Advanced
 
