@@ -45,26 +45,39 @@ android_cli_ensure || true
 # ── Defaults ─────────────────────────────────────────────────────────────────
 # The COMMON showcase set — the same five demos, same order, as iOS's
 # `capture-appstore-screenshots.sh`, so both stores show identical screens.
-# Every id here is a standalone demo on BOTH platforms: an Android
-# DEMO_ID_ALIASES entry (DeepLinkRouter.kt) resolves to an umbrella tab, so two
-# slots can silently collapse onto the same demo — the #2773 defect, and the
-# reason `dynamic-sky` / `multi-model` / `animation` are NOT eligible here
-# despite producing richer frames.
+# Each slot must resolve to a DISTINCT on-screen demo on both stores — the
+# #2773 defect was two slots collapsing onto the same screen. That does NOT
+# require a standalone demo, only a distinct one, and both cases below were
+# re-verified in source (#2854):
+#   - dynamic-sky  → Android `lighting-lab`, Sky tab (ALIAS_INITIAL_TAB has no
+#                    entry, so it lands on tab 0 = Sky, its default); iOS
+#                    `DynamicSkyScene`. A distinct sky/sun theme.
+#   - multi-model  → Android `model-viewer`, Multi-Model tab (ALIAS_INITIAL_TAB
+#                    = 1, applied by MainActivity.resolveInitialTab on the
+#                    `--es demo` ingress — NOT the Single Model tab that would
+#                    duplicate slot 1); iOS `MultiModelScene`. A 4-asset park.
 #
 # Order and membership are deliberate (#2854):
-#   1 materials       only frame with a visible HDRI environment — the best-lit
-#                     shot leads, because a renderer's store page is an implicit
-#                     claim about its rendering.
-#   2 model-viewer    the core load-any-GLB promise; the set's ONLY intentional
-#                     helmet-on-black, clearly distinct from slot 1 in thumbnail.
-#   3 double-pendulum promoted so the search-visible top-3 reads as three
-#                     capabilities (render / model / physics), not three helmets.
-#   4 fog             replaces `lighting`, which was a near-duplicate of
-#                     model-viewer; fog launches ON on both platforms and fills
-#                     the black void with atmosphere.
-#   5 geometry        the honest procedural-geometry story, and the designated
-#                     slot to surrender to an AR shot once #2844 unblocks it.
-DEMOS_DEFAULT="materials,model-viewer,double-pendulum,fog,geometry"
+#   1 model-viewer    the core load-any-GLB promise; the flagship hero model,
+#                     framed full-frame at 4.5 m (see camera_distance_for).
+#   2 double-pendulum a distinct physics apparatus, so the search-visible top-3
+#                     reads as three capabilities (render / model / physics).
+#   3 fog             launches ON on both platforms and fills the black void the
+#                     interactive default would otherwise leave, with atmosphere.
+#   4 dynamic-sky     a sky/sun/environment-lighting theme no other slot carries;
+#                     deterministic noon default (no random HDRI, unlike the
+#                     dropped `materials`).
+#   5 multi-model     the "compose whole scenes" story (a park of 4 assets) the
+#                     single-subject slots 1-4 do not tell.
+#
+# Dropped from the previous set, and why — so nobody re-adds them by guesswork:
+#   materials  picked a different HDRI each launch (not reproducible) and the
+#              subject stayed small at every distance (#2874).
+#   geometry   primitives are laid out wider than a phone-portrait frame; every
+#              distance clipped one at an edge (#2873). Needs a demo-side fix.
+#   animation  a static screenshot of a skeletal-animation demo is just a posed
+#              model — a visual duplicate of slot 1 on both stores.
+DEMOS_DEFAULT="model-viewer,double-pendulum,fog,dynamic-sky,multi-model"
 # Canonical Play Store listing directory — the same `graphics/` subdir the
 # `play-store.yml` listing-sync job uploads to the store (#1710).
 OUT_DIR_DEFAULT="samples/android-demo/distribution/play-store/en-GB/graphics"
@@ -73,11 +86,13 @@ APK_PATH="samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk"
 STATUS_BAR_PX_DEFAULT=96
 # Pixel_7a AVD natural resolution = 1080×2400. Crop 96 px → 1080×2304 = 9:19.2.
 TARGET_HEIGHT=2304
-# Model-heavy demos (model-viewer, lighting, materials) load their GLB
-# asynchronously — `rememberModelInstance` returns null until the load lands,
-# so the viewport is a flat dark surface for the first several seconds. 8s was
-# too short on an emulator and the variance guard (correctly) rejected the blank
-# frame; 15s clears the async load. Tune with `--settle` on a slower/faster host.
+# Model-heavy demos (model-viewer, and multi-model which loads four GLBs) fetch
+# their assets asynchronously — `rememberModelInstance` returns null until the
+# load lands, so the viewport is a flat dark surface for the first several
+# seconds. 8s was too short on an emulator and the variance guard (correctly)
+# rejected the blank frame; 15s clears the async load. multi-model's four-asset
+# park is the slowest — verify all four props are present, not a partial load.
+# Tune with `--settle` on a slower/faster host.
 SETTLE_SECONDS_DEFAULT=15
 # Default 100 keeps small-footprint hero shots (model fills only the centre
 # 1/9 of the frame, variance ~60-80) from being false-rejected. The
@@ -244,21 +259,21 @@ adb ${ANDROID_SERIAL:+-s "$ANDROID_SERIAL"} shell "cmd uimode night yes" >/dev/n
 camera_distance_for() {
   case "$1" in
     model-viewer)    echo "4.5" ;;
-    double-pendulum) echo "3.0" ;;
     *)               echo "" ;;
   esac
 }
-# Deliberately NOT framed, and why — so nobody re-adds them by guesswork:
-#   fog       default already frames the frosted helmet well; pulling in only
-#             shrinks it (the extra takes the camera FURTHER for this demo).
-#   geometry  the primitives are laid out along a line wider than a phone
-#             portrait frame; every distance tried (default, 8, 12, 14) clips
-#             a primitive at one edge. Needs a demo-side layout fix, not a
-#             capture-side one.
-#   materials the model stays small at every distance (default, 2.0, 2.8, 4.5,
-#             8.0) — the extra moves the camera without enlarging the subject,
-#             and the demo picks a different HDRI each launch, so the frame is
-#             not even reproducible. See the note filed on #2854.
+# Deliberately NOT framed (echo empty), and why — so nobody re-adds an extra by
+# guesswork. Only demos built on `rememberHeroOrbitCameraManipulator` honor the
+# `camera_distance` extra at all (DemoHelpers.kt); the others below ignore it:
+#   double-pendulum  computes its own deterministic auto-fit that frames the
+#                    whole apparatus (DoublePendulumDemo.kt) and never reads the
+#                    extra — passing one is a silent no-op.
+#   fog              the environment IS the subject; the wide interactive default
+#                    is correct. (Retry once at 3.5 only if the frame reads empty.)
+#   dynamic-sky      the deterministic noon sky fills the frame at its default.
+#                    (Retry once at 3.0 only if the helmet subject reads small.)
+#   multi-model      a 4-asset park diorama needs MORE distance if anything, never
+#                    less. (Retry once at 6.0 only if a prop clips an edge.)
 
 mkdir -p "$OUT_DIR"
 TMP_DIR="$(mktemp -d)"

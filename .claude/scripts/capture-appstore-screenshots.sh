@@ -46,19 +46,22 @@ IPAD_NAME="${IPAD_SIM:-iPad Pro 13-inch (M4)}"
 
 # The COMMON showcase set — the same five demos captured on Android's
 # `capture-play-store-screenshots.sh`, in the same order, so the two stores
-# show identical screens. Every id here is a standalone (non-consolidated)
-# demo on BOTH platforms — verified against Android's DeepLinkRouter aliases
-# (dynamic-sky/multi-model/animation/reflection-probes/environment all collapse
-# to an umbrella demo on Android, so they cannot be used here even though they
-# render richer frames). All five render rich 3D content, never an empty AR scene.
+# show identical screens. Each id resolves to a DISTINCT on-screen demo on both
+# stores (the #2773 requirement): on iOS every id below is a standalone
+# generated scene (GeneratedScenes.swift — `dynamic-sky` → `DynamicSkyScene`,
+# `multi-model` → `MultiModelScene`); on Android those two resolve through
+# DeepLinkRouter to a distinct umbrella TAB (`multi-model` → the Multi-Model tab
+# via ALIAS_INITIAL_TAB, not the Single Model tab that would duplicate slot 1).
+# Both sides were re-verified in source (#2854). All five render rich 3D
+# content, never an empty AR scene.
 #
 # ⚠️ This array and `DEMOS_DEFAULT` in the Android script are the SAME decision
 # stored twice — a known drift hazard. Change them in one commit, or the two
-# stores silently diverge again (#2773). Order rationale lives in the Android
-# script's header; the short version: best-lit frame first, three distinct
-# capabilities in the search-visible top-3, geometry last as the slot to
-# surrender to an AR shot once #2844 unblocks it (#2854).
-DEMOS=(materials model-viewer double-pendulum fog geometry)
+# stores silently diverge again (#2773). Full order rationale lives in the
+# Android script's header; the short version: flagship hero first, three
+# distinct capabilities (render / model / physics) in the search-visible top-3,
+# then a distinct sky theme and the compose-whole-scenes diorama (#2854).
+DEMOS=(model-viewer double-pendulum fog dynamic-sky multi-model)
 # Per-demo render settle time (model load + camera orbit), seconds.
 WAIT_SECONDS="${WAIT_SECONDS:-24}"
 
