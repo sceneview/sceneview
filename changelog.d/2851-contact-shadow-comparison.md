@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- The `contact-shadow-preview` demo (Android) is now a **grounded-vs-floating comparison** rather than a single on/off toggle: two identical boxes hop side by side — one anchored by a height-responsive contact pool, one shadowless — so the object/shadow motion coupling reads as the strongest contact cue there is, plus a wall-mounted TV with switchable per-surface presets and labelled overlay chips. Still non-AR, so the shader stays reviewable on any emulator with no ARCore session and no physical AR device (#2740, #2754).
