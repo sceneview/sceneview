@@ -48,6 +48,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import java.util.Locale
 
 private const val TAG = "ARTerrainAnchorDemo"
 
@@ -262,10 +263,10 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
                     !isTracking -> "Waiting for camera tracking…"
                     !earthTracking -> "Waiting for VPS lock (go outside, look around)…"
                     cameraLat != null && cameraLng != null -> {
-                        val lat = "%.6f".format(cameraLat)
-                        val lng = "%.6f".format(cameraLng)
-                        val alt = cameraAlt?.let { "%.1f m".format(it) } ?: "?"
-                        val acc = horizontalAccuracy?.let { "%.1f m".format(it) } ?: "?"
+                        val lat = "%.6f".format(Locale.US, cameraLat)
+                        val lng = "%.6f".format(Locale.US, cameraLng)
+                        val alt = cameraAlt?.let { "%.1f m".format(Locale.US, it) } ?: "?"
+                        val acc = horizontalAccuracy?.let { "%.1f m".format(Locale.US, it) } ?: "?"
                         "Camera: $lat, $lng • alt $alt • ±$acc"
                     }
                     else -> "Resolving Geospatial pose…"
@@ -295,8 +296,8 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(top = 4.dp)) {
                     placedAnchors.forEach { placed ->
                         Text(
-                            text = "#${placed.id}: ${"%.5f".format(placed.latitude)}, " +
-                                "${"%.5f".format(placed.longitude)} — ${placed.state.label()}",
+                            text = "#${placed.id}: ${"%.5f".format(Locale.US, placed.latitude)}, " +
+                                "${"%.5f".format(Locale.US, placed.longitude)} — ${placed.state.label()}",
                             style = MaterialTheme.typography.bodySmall,
                             color = placed.state.color()
                         )

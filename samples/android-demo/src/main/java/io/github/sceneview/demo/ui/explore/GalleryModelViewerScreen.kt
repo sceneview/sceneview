@@ -102,6 +102,7 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
@@ -545,15 +546,15 @@ private fun DownloadingContent(
                     val progressText = progress?.let { (read, total) ->
                         when {
                             total > 0L -> {
-                                val readMb = "%.1f".format(read / 1_000_000.0)
-                                val totalMb = "%.1f".format(total / 1_000_000.0)
+                                val readMb = "%.1f".format(Locale.US, read / 1_000_000.0)
+                                val totalMb = "%.1f".format(Locale.US, total / 1_000_000.0)
                                 "$readMb / $totalMb MB"
                             }
                             // No reliable Content-Length: still surface the cumulative
                             // bytes downloaded so the counter animates instead of freezing
                             // on a static label next to the spinner.
                             read > 0L -> {
-                                val readMb = "%.1f".format(read / 1_000_000.0)
+                                val readMb = "%.1f".format(Locale.US, read / 1_000_000.0)
                                 "$readMb MB · $streamingFrom"
                             }
                             else -> streamingFrom

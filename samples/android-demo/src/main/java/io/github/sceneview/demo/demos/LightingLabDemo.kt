@@ -60,6 +60,7 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberScene
 import io.github.sceneview.rememberView
 import com.google.android.filament.Scene as FilamentScene
+import java.util.Locale
 
 /**
  * Unified "Lighting Lab" demo — consolidates the retired `dynamic-sky`,
@@ -188,7 +189,7 @@ private fun SkySection(
         controls = {
             ModeSelector(mode, onModeChange)
             Text(
-                "Time of Day: %.1f h  ·  $periodLabel".format(timeOfDay),
+                "Time of Day: %.1f h  ·  $periodLabel".format(Locale.US, timeOfDay),
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(
@@ -198,7 +199,7 @@ private fun SkySection(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "Turbidity: %.1f".format(turbidity),
+                "Turbidity: %.1f".format(Locale.US, turbidity),
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(
@@ -449,7 +450,7 @@ private fun ReflectionsSection(
         controls = {
             ModeSelector(mode, onModeChange)
             Text(
-                "Probe Radius: %.1f m".format(probeRadius),
+                "Probe Radius: %.1f m".format(Locale.US, probeRadius),
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(
@@ -459,7 +460,7 @@ private fun ReflectionsSection(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "Probe Y Position: %.1f".format(probeY),
+                "Probe Y Position: %.1f".format(Locale.US, probeY),
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(

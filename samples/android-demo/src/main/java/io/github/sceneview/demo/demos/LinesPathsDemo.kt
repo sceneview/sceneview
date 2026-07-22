@@ -30,6 +30,7 @@ import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
+import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -94,7 +95,7 @@ fun LinesPathsDemo(onBack: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "Stroke Width: ${"%.0f".format(lineWidth * 100)}%",
+                "Stroke Width: ${"%.0f".format(Locale.US, lineWidth * 100)}%",
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(

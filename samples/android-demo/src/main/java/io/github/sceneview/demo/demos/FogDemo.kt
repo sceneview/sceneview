@@ -41,6 +41,7 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberView
+import java.util.Locale
 
 /**
  * Demonstrates atmospheric fog applied to a 3D scene.
@@ -122,7 +123,7 @@ fun FogDemo(onBack: () -> Unit) {
 
             // Density slider
             Text(
-                text = "Density: ${"%.2f".format(fogDensity)}",
+                text = "Density: ${"%.2f".format(Locale.US, fogDensity)}",
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(

@@ -825,6 +825,29 @@ SceneView(viewNodeWindowManager = windowManager) {
 }
 ```
 
+**The rendered UI is NOT interactive.** A `ViewNode` draws its Compose content into a texture;
+the hosting window is `FLAG_NOT_TOUCHABLE` and touch events are never dispatched into it, so a
+`Button` placed inside **will render but its `onClick` will never fire** (no ripple, no press
+state, no inner scrolling either). Do not generate clickable controls inside a `ViewNode`.
+
+To react to a tap, pick the node from the scene instead:
+```kotlin
+val windowManager = rememberViewNodeManager()
+var tapCount by remember { mutableStateOf(0) }
+SceneView(
+    viewNodeWindowManager = windowManager,
+    onGestureListener = rememberOnGestureListener(
+        // `node` is the ray-cast hit — null when the tap missed every node.
+        onSingleTapUp = { _, node -> if (node is ViewNode) tapCount++ }
+    )
+) {
+    ViewNode(windowManager = windowManager) {
+        Card { Text("Tapped $tapCount times") }
+    }
+}
+```
+Real touch forwarding is tracked by [#2845](https://github.com/sceneview/sceneview/issues/2845).
+
 ### LineNode — single line segment
 ```kotlin
 @Composable fun LineNode(
