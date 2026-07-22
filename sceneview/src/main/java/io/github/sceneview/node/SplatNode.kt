@@ -19,6 +19,7 @@ import io.github.sceneview.safeDestroyEntity
 import io.github.sceneview.safeDestroyIndexBuffer
 import io.github.sceneview.safeDestroyRenderable
 import io.github.sceneview.safeDestroyVertexBuffer
+import io.github.sceneview.safeRecycleEntity
 import io.github.sceneview.splat.SplatBuffers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -367,6 +368,12 @@ open class SplatNode(
         batchEntities.forEach { engine.safeDestroyRenderable(it) }
         batchEntities.forEach { engine.safeDestroyEntity(it) }
         super.destroy()
+        // Ids last, and only AFTER super.destroy(): the batch entities are part of
+        // [sceneEntities], which Node.destroy() removes from the scene. Recycling them any
+        // earlier could let Filament reissue an id that this very teardown then removes from
+        // the scene on the new owner's behalf. They are allocated here and referenced nowhere
+        // else, so this node is unambiguously their owner (#2859).
+        batchEntities.forEach { engine.safeRecycleEntity(it) }
         materialInstances.forEach { materialLoader.destroyMaterialInstance(it) }
         engine.safeDestroyVertexBuffer(quadVertexBuffer)
         engine.safeDestroyIndexBuffer(quadIndexBuffer)
