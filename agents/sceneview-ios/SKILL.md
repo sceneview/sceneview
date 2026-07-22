@@ -191,6 +191,18 @@ ARSceneView(
 7. **`SceneView` is cross-platform (iOS/macOS/visionOS); `ARSceneView` is iOS
    only.** macOS and visionOS get 3D but not the ARKit camera view.
 
+8. **Cloud Anchors on iOS are a wrapper you complete — not a missing feature.**
+   `CloudAnchorNode.host(ttlDays:completion:operation:)` /
+   `.resolve(cloudAnchorId:completion:operation:)` and the cancellable
+   `CloudAnchorFuture` are REAL SceneViewSwift API. By design the core library
+   stays dependency-free: the billed `GARSession` round-trip is supplied by the
+   **app**, which adds Google's `arcore-ios-sdk` (SPM `google-ar/arcore-ios-sdk`,
+   product `ARCoreCloudAnchors`) and plugs it into the `operation:` closure.
+   Generate that app-side wiring — never tell a developer Cloud Anchors are
+   impossible on iOS. Caveat: the `ios-demo` app itself does NOT link
+   arcore-ios-sdk, so its `ar-cloud-anchor` screen shows a "Preview" badge with
+   Host / Resolve disabled (plane detection + tap-to-place stay live). See #2864.
+
 ## Performance / hot paths
 
 **Don't drive SwiftUI `@State` from a per-frame loop** (an `onFrame` / RealityKit

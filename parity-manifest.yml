@@ -29,7 +29,13 @@
 #                    ARKit equivalent, never planned) or a demo iOS simply
 #                    hasn't reserved an id for yet.
 # `reason` is required for every non-`working` row (one line, honest, cites
-# the tracking issue). `androidStatus` mirrors Android's own `DemoStatus`
+# the tracking issue). It is also ALLOWED (optional) on a `working` row as a
+# CAPABILITY CAVEAT: the id resolves to a real screen (so it is honestly
+# `working`), yet a runtime capability behind that screen cannot execute in
+# the demo build — e.g. `ar-cloud-anchor` (#2864), a real scene whose Host /
+# Resolve need an SDK the demo target does not link. Do NOT delete a `reason`
+# from a `working` row assuming it is stale metadata — read the issue it cites
+# first. `androidStatus` mirrors Android's own `DemoStatus`
 # (Working/KnownIssue/ComingSoon/InReview) for context — the #2798 audit
 # found a strict correlation: every Android demo that is not itself `Working`
 # lands in iOS's `stub` or `android-only` bucket, with zero exceptions.
@@ -82,13 +88,25 @@
 # platform's registry — that's what keeps it honest.
 
 demos:
-  # ─── working (29) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (33) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
   - id: ar-body-tracker
     androidStatus: Working
     iosStatus: working
+  - id: ar-cloud-anchor
+    androidStatus: KnownIssue
+    iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row (#2864): iOS resolves this id to a
+      REAL scene — plane detection, tap-to-place and the anchor lifecycle are
+      live — but the demo target does NOT link Google's `arcore-ios-sdk`, so
+      Host / Resolve stay disabled behind a "Preview" badge and the billed
+      GARSession round-trip cannot run. A missing DEPENDENCY, not a missing key
+      (Android ships it; ARCORE_API_KEY is set). Vendoring arcore-ios-sdk is
+      NOT planned — see #2864 for the reopen conditions. First row where "an
+      iOS screen exists" (working) and "the capability can run" diverge.
   - id: ar-depth-collider
     androidStatus: KnownIssue
     iosStatus: working
@@ -171,10 +189,7 @@ demos:
     androidStatus: Working
     iosStatus: working
 
-  # ─── stub (24) — iOS registry has the id, but it falls to the placeholder ──
-  - id: ar-cloud-anchor
-    androidStatus: KnownIssue
-    iosStatus: working
+  # ─── stub (20) — iOS registry has the id, but it falls to the placeholder ──
   - id: ar-collaborative
     androidStatus: Working
     iosStatus: stub
