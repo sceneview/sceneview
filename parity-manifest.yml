@@ -30,20 +30,31 @@
 #                    hasn't reserved an id for yet.
 # `reason` is required for every non-`working` row (one line, honest, cites
 # the tracking issue). `androidStatus` mirrors Android's own `DemoStatus`
-# (Working/KnownIssue/ComingSoon/InReview) for context — the #2798 audit
-# found a strict correlation: every Android demo that is not itself `Working`
-# lands in iOS's `stub` or `android-only` bucket, with zero exceptions.
-# That correlation BROKE on 2026-07-21 — see the `wall-placement` note below.
+# (Working/KnownIssue/ComingSoon/InReview) for context. The #2798 audit once
+# observed a strict correlation here — every Android demo that was not itself
+# `Working` sat in iOS's `stub` or `android-only` bucket. That was a SNAPSHOT,
+# never an invariant, and the Wave-A port run (2026-07-21/22) broke it three
+# times over: `ar-depth-collider` (#2860) and `ar-cloud-anchor` (#2863), both
+# Android `KnownIssue`, and `wall-placement` (#2857), Android `InReview`, are
+# all genuinely ported and therefore honestly `working` on iOS. A non-`Working`
+# Android id belongs in iOS's `working` bucket as soon as its port is real —
+# `stub` would be a lie. Do not enforce the correlation, and do not describe
+# any single one of these as "the first exception": there are three.
 #
-# Verified against source 2026-07-21 (post L0.1 #2799 + L0.2 #2800, and
-# after #2817 added `contact-shadow-preview` — rebased onto that commit
-# during this PR's own preparation, a live demonstration of exactly the
-# drift class this manifest + check-demo-id-parity.sh now catch):
-#   - Android: 53 fragments, 44 Working / 5 KnownIssue / 2 ComingSoon / 2 InReview.
-#   - iOS: `DemoDeepLinkRegistry.allowedIds` = 66 (51 generated ∪ 4 legacy
-#     aliases ∪ 11 residual ids). Of the 53 Android ids: 22 working, 18 stub,
-#     13 android-only. (`placement-scene` promoted stub → working in #2839,
-#     after this snapshot was written: 23 working, 17 stub as of that PR.)
+# ⚠️  NUMBERS LIVE IN EXACTLY ONE PLACE: the `# ─── <status> (N) ───` section
+# banners below, which `check-demo-id-parity.sh` now verifies against the
+# parsed rows. Everything else in this header is PROSE — deliberately free of
+# tallies. Four separate Wave-A PRs each wrote their own count into this
+# header, and all four went stale, because `yaml.safe_load` cannot see a
+# comment and so nothing ever checked them. Never add a tally to the prose.
+#
+# First verified against source 2026-07-21 (post L0.1 #2799 + L0.2 #2800, and
+# after #2817 added `contact-shadow-preview` — rebased onto that commit during
+# that PR's own preparation, a live demonstration of exactly the drift class
+# this manifest + check-demo-id-parity.sh catch). The per-status counts that
+# used to live in this paragraph have been removed rather than refreshed: they
+# were three waves stale by the time anyone read them. Run the gate for the
+# current numbers — it prints them, and it fails if the banners disagree.
 #
 # Updated by L0.6 (#2804, closes #2769) — every Android id now resolves to
 # SOMETHING honest on iOS (a real screen, an alias to an existing equivalent
@@ -62,43 +73,32 @@
 #     got `@androidOnlyReason` so their card reads "Android-only: <reason>"
 #     instead of "Coming soon" (their status stays `stub` — they ARE in
 #     `allowedIds` — only the CARD TREATMENT changed).
-#   - Post-L0.6: iOS: `DemoDeepLinkRegistry.allowedIds` = 79 (69 generated ∪
-#     10 legacy/umbrella aliases ∪ 0 residual ids). Of the 53 Android ids:
-#     28 working, 25 stub, 0 android-only.
-#   - #2838 ported `ar-depth-collider` (SceneReconstructionNode.enablePhysics,
-#     gated on LiDAR with a static-floor fallback — Android itself is
-#     KnownIssue for this id, landing on iOS `@status knownIssue` too): 29
-#     working, 24 stub, 0 android-only. This breaks the #2798 audit's
-#     "zero exceptions" correlation above going forward — a non-`Working`
-#     Android id can land in iOS's `working` bucket once it is genuinely
-#     ported, same as any `Working` id. Not a one-off: `wall-placement`
-#     (`androidStatus: InReview`) is a second instance of the same break
-#     once its own iOS port lands, not a special case of this one.
+#   - Post-L0.6, `DemoDeepLinkRegistry.residualIds` is `[]`: every id has a
+#     real Scene file, so nothing is hand-listed as "known but unmodelled".
 #
-# Updated 2026-07-21 by the iOS-port wave (#2798): two `stub` rows became
-# `working` — `wall-placement` (#2840, this PR) and #2860's row — so the
-# tallies below read 30 working / 23 stub / 0 android-only. That count is the
-# POST-WAVE truth and assumes BOTH PRs land; whichever merges second must
-# re-check it, because `check-demo-id-parity.sh` validates rows against the
-# live registry and never reads these comments, so a wrong tally here passes
-# the gate silently.
+# Wave A of the iOS-port run (#2798) closed 2026-07-22: six Android demos got
+# a real iOS port and moved `stub` → `working` — `ar-pose` (#2849),
+# `placement-scene` (#2847), `placement-reticle-preview` (#2856),
+# `ar-depth-collider` (#2860), `ar-cloud-anchor` (#2863) and `wall-placement`
+# (#2857). Waves B+ (the remaining ports) are NOT authorised yet; do not open
+# them off the back of this file.
 #
-# `wall-placement` is the FIRST deliberate exception to the "strict
-# correlation" claimed above: its `androidStatus` is `InReview`, yet its
-# `iosStatus` is `working`. The iOS port (#2840) is real and reachable and
-# carries the matching `@status inReview` badge, so `stub` would be a lie. The
-# correlation is therefore a historical observation from the #2798 audit, not
-# an invariant — do not enforce it.
+# Each of those six PRs updated its own row correctly — the ROWS were never
+# the problem. What drifted, four times, was the tally each PR wrote into this
+# header from a base that a sibling PR had already moved underneath it. The
+# section banners are now machine-checked, which is why the prose no longer
+# carries counts at all.
 #
 # Checked by `.claude/scripts/check-demo-id-parity.sh` (`ci.yml` ->
 # `repo-hygiene`, ubuntu, blocking): fails if a Android id has neither an iOS
 # registry entry nor a row here, if a row's `iosStatus` disagrees with the
-# live registry, or if a row here no longer corresponds to a live Android id.
+# live registry, if a row here no longer corresponds to a live Android id, or
+# if a section banner's count disagrees with the rows it introduces.
 # Update this file (status + reason) in the SAME PR that changes either
 # platform's registry — that's what keeps it honest.
 
 demos:
-  # ─── working (30) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (34) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -190,7 +190,7 @@ demos:
     androidStatus: InReview
     iosStatus: working
 
-  # ─── stub (23) — iOS registry has the id, but it falls to the placeholder ──
+  # ─── stub (19) — iOS registry has the id, but it falls to the placeholder ──
   - id: ar-cloud-anchor
     androidStatus: KnownIssue
     iosStatus: working

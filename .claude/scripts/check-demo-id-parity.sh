@@ -146,6 +146,8 @@ awk '/static let residualIds: Set<String> = \[/{ rest=$0; sub(/^.*= \[/,"",rest)
 # (PyYAML is already asserted present in the repo-hygiene job before this
 # step runs — see ci.yml's "Install dash + shellcheck" step.)
 PYTHONPATH="" python3 - "$ANDROID_IDS_FILE" "$IOS_GENERATED_IDS_FILE" "$IOS_REAL_IDS_FILE" "$IOS_ALIASES_FILE" "$IOS_RESIDUAL_FILE" "$MANIFEST" <<'PYEOF'
+import collections
+import re
 import sys
 import yaml
 
@@ -207,6 +209,62 @@ for row_id, row in manifest_by_id.items():
                        f"(must be one of {sorted(VALID_STATUSES)})")
     if status and status != "working" and not str(row.get("reason", "")).strip():
         errors.append(f"manifest row '{row_id}' has iosStatus '{status}' but no 'reason'")
+
+# ─── Section-banner tallies must match the parsed reality (#2801) ─────────
+# The `# ─── working (N) ───` banners are COMMENTS, and everything above reads
+# the manifest through yaml.safe_load — which never sees a comment. So a stale
+# N used to sail through every other check in this file, and did: the tally
+# drifted four separate times during the Wave-A iOS-port run (#2798) alone,
+# ending 4 rows off reality with CI green throughout.
+#
+# This is the one part of the manifest safe to gate HARD rather than WARN:
+# it is exact counting, not a heuristic, so it cannot false-positive. A banner
+# is only checked when it is present — the self-test fixtures carry no banners,
+# and a manifest is not required to have them. But once ANY banner exists, every
+# non-empty status must carry one, so the gate cannot be dodged by deleting the
+# banner that has gone stale.
+status_counts = collections.Counter(
+    row.get("iosStatus") for row in manifest_by_id.values()
+)
+banner_re = re.compile(
+    r"^\s*#\s*─+\s*(working|stub|android-only)\s*\((\d+)\)"
+)
+banners = []
+with open(manifest_file) as f:
+    for lineno, line in enumerate(f, 1):
+        m = banner_re.match(line)
+        if m:
+            banners.append((lineno, m.group(1), int(m.group(2))))
+
+seen_banner_cats = set()
+for lineno, cat, declared in banners:
+    if cat in seen_banner_cats:
+        errors.append(
+            f"parity-manifest.yml line {lineno}: a second section banner for "
+            f"'{cat}' — there must be exactly one banner per iosStatus, "
+            f"otherwise 'the' count is ambiguous."
+        )
+        continue
+    seen_banner_cats.add(cat)
+    actual = status_counts.get(cat, 0)
+    if declared != actual:
+        errors.append(
+            f"parity-manifest.yml line {lineno}: the '{cat}' section banner "
+            f"says ({declared}) but {actual} row(s) actually carry "
+            f"iosStatus: {cat}. Banners are comments — yaml.safe_load never "
+            f"reads them, so a stale count passes every other check in this "
+            f"script silently. Recount at the parser, never by hand."
+        )
+
+if banners:
+    for cat in sorted(VALID_STATUSES):
+        if status_counts.get(cat, 0) > 0 and cat not in seen_banner_cats:
+            errors.append(
+                f"parity-manifest.yml has section banners but none for "
+                f"'{cat}', which holds {status_counts[cat]} row(s). Add a "
+                f"'# ─── {cat} ({status_counts[cat]}) ───' banner — a missing "
+                f"banner is how a stale one gets 'fixed' by deletion."
+            )
 
 # ─── The core gate: every Android id is accounted for ─────────────────────
 for demo_id in sorted(android_ids):

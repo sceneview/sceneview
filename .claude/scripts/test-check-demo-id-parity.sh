@@ -332,6 +332,80 @@ run
     && ok "collapsed single-line legacyAliases (= [:]) does not leak, multi-line still works → PASS" \
     || bad "collapsed single-line legacyAliases must not leak (rc=$RC): $OUT"
 
+# ─── 12. A section banner whose count disagrees with the rows → FAIL ──────
+# The Wave-A drift class (#2798): the `# ─── working (N) ───` banners are
+# COMMENTS, so yaml.safe_load never sees them and a stale N used to pass every
+# other check in the script. Two rows are `working`, the banner claims one.
+rm -f "$FRAG_DIR"/*.kt
+write_fragment "model-viewer" "ModelViewer"
+write_fragment "animation-physics" "AnimationPhysics"
+write_ios_generated "model-viewer animation-physics" ""
+write_ios_registry "" ""
+write_manifest <<'EOF'
+demos:
+  # ─── working (1) — iOS has a real, non-placeholder destination ─────────
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+  - id: animation-physics
+    androidStatus: Working
+    iosStatus: working
+EOF
+run
+{ [[ $RC -ne 0 ]] && grep -q "section banner" <<<"$OUT" \
+    && grep -q "says (1) but 2 row(s)" <<<"$OUT"; } \
+    && ok "stale section-banner tally → FAIL (the Wave-A drift class)" \
+    || bad "stale section-banner tally should FAIL (rc=$RC): $OUT"
+
+# ─── 13. Correct banners → PASS (the gate does not fire on an honest file) ──
+rm -f "$FRAG_DIR"/*.kt
+write_fragment "model-viewer" "ModelViewer"
+write_fragment "animation-physics" "AnimationPhysics"
+write_ios_generated "model-viewer" "animation-physics"
+write_ios_registry "" ""
+write_manifest <<'EOF'
+demos:
+  # ─── working (1) — iOS has a real, non-placeholder destination ─────────
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+
+  # ─── stub (1) — iOS registry has the id, but it falls to the placeholder ──
+  - id: animation-physics
+    androidStatus: Working
+    iosStatus: stub
+    reason: "Scene file exists but @available false"
+EOF
+run
+{ [[ $RC -eq 0 ]] && grep -q "check-demo-id-parity.sh: OK" <<<"$OUT"; } \
+    && ok "accurate section banners → PASS" \
+    || bad "accurate section banners should PASS (rc=$RC): $OUT"
+
+# ─── 14. Deleting a stale banner must not dodge the gate → FAIL ───────────
+# Once ANY banner exists, every non-empty status needs one — otherwise the
+# cheapest way to "fix" a failing tally is to delete the banner, which throws
+# the information away instead of correcting it.
+rm -f "$FRAG_DIR"/*.kt
+write_fragment "model-viewer" "ModelViewer"
+write_fragment "animation-physics" "AnimationPhysics"
+write_ios_generated "model-viewer" "animation-physics"
+write_ios_registry "" ""
+write_manifest <<'EOF'
+demos:
+  # ─── working (1) — iOS has a real, non-placeholder destination ─────────
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+  - id: animation-physics
+    androidStatus: Working
+    iosStatus: stub
+    reason: "Scene file exists but @available false"
+EOF
+run
+{ [[ $RC -ne 0 ]] && grep -q "banners but none for 'stub'" <<<"$OUT"; } \
+    && ok "deleting a banner to dodge the tally gate → FAIL" \
+    || bad "missing banner for a non-empty status should FAIL (rc=$RC): $OUT"
+
 # ─── Summary ───────────────────────────────────────────────────────────────
 echo ""
 echo "test-check-demo-id-parity.sh: $PASS passed, $FAIL failed"
