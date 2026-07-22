@@ -4804,7 +4804,7 @@ Full recipe + add-a-slug checklist: `docs/docs/recipes/sketchfab-streaming.md`. 
 
 `DemoScaffold` is the shared scaffold every sample-app demo uses. v2 ([PR #1169](https://github.com/sceneview/sceneview/pull/1169)) renders the 3D / AR scene **full-screen** under the top app bar, with a `Tune` FAB pinned bottom-right that opens a `ModalBottomSheet` containing the demo's controls.
 
-```kotlin
+```kotlin notest DemoScaffold and DemoBottomOverlayScope live in samples/android-demo, which is deliberately not on :snippets-check's classpath (it depends on the libraries, not the sample app)
 @Composable
 fun DemoScaffold(
     title: String,
