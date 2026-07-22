@@ -821,9 +821,10 @@ rosetta_wait_boot() {
   # probe costs its own cap ON TOP of the interval, so an interval-counter drifts
   # ~40% behind reality and every verdict would quote a number that is not the
   # elapsed time — in a code path whose entire purpose is an honest verdict.
-  local start=$SECONDS waited=0 interval=15 state boot anim rss rc
+  local start=$SECONDS waited=0 interval=15 state boot am ss rss rc
   local probe_cap=10 hung_since=-1 hung=0 dead_seen=0 last_report=0
-  rlog "waiting for $ROSETTA_SERIAL to reach sys.boot_completed=1 (timeout ${ROSETTA_BOOT_TIMEOUT_S}s)"
+  rlog "waiting for $ROSETTA_SERIAL: sys.boot_completed=1, or a registered ActivityManager"
+  rlog "  (timeout ${ROSETTA_BOOT_TIMEOUT_S}s)"
   while true; do
     rc=0
     boot="$(rosetta_probe sys.boot_completed "$probe_cap")" || rc=$?
@@ -882,11 +883,30 @@ rosetta_wait_boot() {
     fi
     if (( waited - last_report >= 120 )); then
       last_report=$waited
-      anim="$(rosetta_probe init.svc.bootanim)" || anim="<probe hung>"
+      # Deliberately NOT `init.svc.bootanim`: rosetta_boot passes `-no-boot-anim`,
+      # which sets debug.sf.nobootanimation=1, so the animation never runs and the
+      # property reads `stopped` for the whole boot. Printing it as progress is
+      # self-contradicting — this harness disables the thing it then reports on —
+      # and reading `bootanim: stopped` as "booted to ~90%" is exactly what sent
+      # the 2026-05 investigation to a dead-end verdict. system_server's pid and
+      # the ActivityManager registration are signals that actually move.
+      ss="$(rosetta_adb 20 shell 'pidof system_server || echo -' 2>/dev/null | tr -d '\r\n')" || ss='<hung>'
+      am="$(rosetta_adb 30 shell 'service check activity' 2>/dev/null | tr -d '\r\n')" || am='<hung>'
       rss="$(ps -o rss= -p "$(cat "$ROSETTA_PIDFILE" 2>/dev/null || echo 0)" 2>/dev/null | awk '{printf "%d MB", $1/1024}' || true)"
       # Falling RSS on a still-"booting" guest means the host is swapping it out —
       # the documented signal to stop and retry on a quiet host (CLAUDE.md).
-      rlog "still booting… ${waited}s (adb: ${state:-none}, bootanim: ${anim:-n/a}, qemu rss: ${rss:-?})"
+      rlog "still booting… ${waited}s (adb: ${state:-none}, system_server: ${ss:-?}, ${am:-?}, qemu rss: ${rss:-?})"
+      # `sys.boot_completed` can stay unset long after the guest is usable — measured
+      # on the rig: ActivityManager registered at ~42 min with the property still
+      # empty. A registered ActivityManager is what the caller actually needs (it is
+      # what makes `pm install` and `am start` work), so accept it as success too and
+      # say which signal fired. Match "not found" FIRST — it contains "found".
+      case "$am" in
+        *"not found"*) : ;;
+        *found*)
+          rlog "SYSTEM USABLE on $ROSETTA_SERIAL after ${waited}s (ActivityManager registered; sys.boot_completed=${boot:-unset})"
+          return 0 ;;
+      esac
     fi
     sleep "$interval"
   done
