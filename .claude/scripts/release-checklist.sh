@@ -451,6 +451,56 @@ else
 fi
 echo ""
 
+# ─── 17. Store listing drift (Play + App Store, read-only) ──────────────────
+# Phase C of #2612 (store-as-code). maintenance.yml already runs this read-only
+# diff daily, but into a step summary nobody reads at release time; §17 brings
+# the same live-vs-repo check into the release gate, so a store that has
+# silently drifted from the repo is surfaced BEFORE the tag rather than after
+# the next blind sync overwrites it (the #2794 failure mode).
+#
+# ADVISORY-FIRST, exactly like §16: drift is a WARN, never a hard block. An
+# advisory WARN is NOT the blocking "release gate" the daily job's own comment
+# reserves for a CONFIRMED checksum verdict — promoting §17 to blocking is a
+# deliberate later step, once the screenshot-checksum convention is hardened
+# past the n=1 console sample #2612 Phase C validated. `--dry-run
+# --fail-on-drift` opens a throwaway read, writes NOTHING, and exits 3 only on
+# drift; no store creds locally (the usual case) → the script SKIPs (exit 0 +
+# [skip]) and this reads WARN "not measured", never a fake PASS. Reuses the
+# maintenance.yml secrets — no new scope.
+echo -e "${CYAN}--- Store listing drift (Play + App Store, read-only) ---${NC}"
+
+listing_drift_check() {
+    # $1 = check label · $2 = script basename under store-sync/. A credential-
+    # less run SKIPs before the lazy third-party imports, so a plain python3
+    # call (no venv, no deps) is enough for the usual local path.
+    local label="$1" script="$REPO_ROOT/.claude/scripts/store-sync/$2" log rc
+    if [ ! -f "$script" ]; then
+        check "$label" "WARN" "$2 missing — listing drift not checked"
+        return
+    fi
+    log="$(mktemp 2>/dev/null || echo "/tmp/listing-drift-$$-$2.log")"
+    set +e
+    python3 "$script" --dry-run --fail-on-drift > "$log" 2>&1
+    rc=$?
+    set -e
+    if [ "$rc" -eq 3 ]; then
+        check "$label" "WARN" "drift vs live store — reconcile before tagging ($2 --dry-run)"
+    elif [ "$rc" -eq 0 ] && grep -q '^\[skip\]' "$log"; then
+        check "$label" "WARN" "skipped — no store creds, drift not measured"
+    elif [ "$rc" -eq 0 ]; then
+        check "$label" "PASS" "live listing matches the repo"
+    else
+        # Exit is neither 0 (clean/skip) nor 3 (drift): the diff itself broke.
+        # Advisory — a broken check is "unchecked", never a silent PASS.
+        check "$label" "WARN" "drift check errored (exit $rc) — listing unchecked (advisory)"
+    fi
+    rm -f "$log"
+}
+
+listing_drift_check "Play listing drift"      "play_listing.py"
+listing_drift_check "App Store listing drift" "asc_listing.py"
+echo ""
+
 # ─── Summary ───────────────────────────────────────────────────────────
 echo -e "${CYAN}=== Release Readiness Summary ===${NC}"
 echo ""
