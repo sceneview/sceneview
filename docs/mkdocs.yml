@@ -94,7 +94,7 @@ nav:
   - API:
     - API (3D — sceneview): https://github.com/sceneview/sceneview/tree/main/sceneview
     - API (AR — arsceneview): https://github.com/sceneview/sceneview/tree/main/arsceneview
-    - llms.txt (AI-first reference): https://github.com/sceneview/sceneview/blob/main/llms.txt
+    - llms.txt (AI-first reference): https://sceneview.github.io/llms.txt
   - Samples: samples.md
   - Samples (Apple): samples-ios.md
   - Community: community.md

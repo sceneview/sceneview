@@ -42,7 +42,8 @@
 #   - Android: 53 fragments, 44 Working / 5 KnownIssue / 2 ComingSoon / 2 InReview.
 #   - iOS: `DemoDeepLinkRegistry.allowedIds` = 66 (51 generated ∪ 4 legacy
 #     aliases ∪ 11 residual ids). Of the 53 Android ids: 22 working, 18 stub,
-#     13 android-only.
+#     13 android-only. (`placement-scene` promoted stub → working in #2839,
+#     after this snapshot was written: 23 working, 17 stub as of that PR.)
 #
 # Updated by L0.6 (#2804, closes #2769) — every Android id now resolves to
 # SOMETHING honest on iOS (a real screen, an alias to an existing equivalent
@@ -64,6 +65,15 @@
 #   - Post-L0.6: iOS: `DemoDeepLinkRegistry.allowedIds` = 79 (69 generated ∪
 #     10 legacy/umbrella aliases ∪ 0 residual ids). Of the 53 Android ids:
 #     28 working, 25 stub, 0 android-only.
+#   - #2838 ported `ar-depth-collider` (SceneReconstructionNode.enablePhysics,
+#     gated on LiDAR with a static-floor fallback — Android itself is
+#     KnownIssue for this id, landing on iOS `@status knownIssue` too): 29
+#     working, 24 stub, 0 android-only. This breaks the #2798 audit's
+#     "zero exceptions" correlation above going forward — a non-`Working`
+#     Android id can land in iOS's `working` bucket once it is genuinely
+#     ported, same as any `Working` id. Not a one-off: `wall-placement`
+#     (`androidStatus: InReview`) is a second instance of the same break
+#     once its own iOS port lands, not a special case of this one.
 #
 # Updated 2026-07-21 by the iOS-port wave (#2798): two `stub` rows became
 # `working` — `wall-placement` (#2840, this PR) and #2860's row — so the
@@ -94,6 +104,9 @@ demos:
     iosStatus: working
   - id: ar-body-tracker
     androidStatus: Working
+    iosStatus: working
+  - id: ar-depth-collider
+    androidStatus: KnownIssue
     iosStatus: working
   - id: ar-depth-occlusion
     androidStatus: Working
@@ -180,23 +193,13 @@ demos:
   # ─── stub (23) — iOS registry has the id, but it falls to the placeholder ──
   - id: ar-cloud-anchor
     androidStatus: KnownIssue
-    iosStatus: stub
-    reason: >-
-      Scene file exists (ArCloudAnchorScene, canonicalized from
-      ArCloudAnchorsScene in #2799) but @available false — Cloud Anchor
-      persistence not yet implemented on iOS. Android itself is KnownIssue too.
+    iosStatus: working
   - id: ar-collaborative
     androidStatus: Working
     iosStatus: stub
     reason: >-
       Scene file exists (L0.6, #2804 Job C) but @available false — a
       CollaborativeSession SDK + demo is not yet ported (Phase 2 Wave B, #2798).
-  - id: ar-depth-collider
-    androidStatus: KnownIssue
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false —
-      depth-based collision not yet ported. Android itself is KnownIssue too.
   - id: ar-depth-of-field
     androidStatus: Working
     iosStatus: stub
@@ -249,8 +252,7 @@ demos:
       plane rendering.
   - id: ar-pose
     androidStatus: Working
-    iosStatus: stub
-    reason: "Scene file exists but @available false — free pose placement not yet implemented."
+    iosStatus: working
   - id: ar-raw-depth-point-cloud
     androidStatus: Working
     iosStatus: stub
@@ -307,16 +309,10 @@ demos:
       "(Android: in review)".
   - id: placement-reticle-preview
     androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job B) but @available false — added to
-      Android after iOS stopped tracking the catalog.
+    iosStatus: working
   - id: placement-scene
     androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false — this
-      placement scene is not yet ported (Phase 2 Wave A, #2798).
+    iosStatus: working
   - id: point-and-ask
     androidStatus: Working
     iosStatus: stub

@@ -457,7 +457,12 @@ jobs:
   web-render:
     name: Web Playwright screenshot tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 30 min: the suite (53 tests, 1 worker) measures 13–17 min green on push
+    # runs — 20 min left no headroom and the slower nightly runners timed the
+    # job out (#2775, nights of 2026-07-19→21). Per-test hangs are still
+    # bounded by Playwright's own 60 s test timeout, so this job-level value
+    # is a backstop, not the hang detector.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7

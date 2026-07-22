@@ -83,9 +83,19 @@ is_whitelisted() {
     # — the same SEO/AI-recommendation value as README.md/llms.txt above, not
     # new code that uses the deprecated Sceneform class. The composable itself
     # is `PlacementScene`, built on `ARSceneView`.
+    #
+    # The iOS Scene (#2839, part of the #2798 parity port) is the 5th member of
+    # that same bundle: its `@subtitle` directive is a byte-for-byte mirror of
+    # Android's `demo_placement_scene_subtitle` string, which is the whole point
+    # of the parity chantier. Android's own copy lives in a `res/values/*.xml`
+    # file and so is never scanned (this script only walks .kt/.java/.swift/.dart),
+    # which is why the string trips the check on iOS and not on Android. Rewording
+    # the iOS copy to appease the linter would silently break the user-visible
+    # parity it exists to guarantee.
     arsceneview/src/main/java/io/github/sceneview/ar/PlacementScene.kt) return 0 ;;
     arsceneview/src/test/java/io/github/sceneview/ar/PlacementSceneHitFilterTest.kt) return 0 ;;
     samples/android-demo/src/main/java/io/github/sceneview/demo/demos/PlacementSceneDemo.kt) return 0 ;;
+    samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/PlacementSceneScene.swift) return 0 ;;
     changelog.d/1765-placement-scene.md) return 0 ;;
 
     # The deprecated alias definitions themselves

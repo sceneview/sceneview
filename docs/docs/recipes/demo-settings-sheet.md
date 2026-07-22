@@ -19,6 +19,7 @@ fun DemoScaffold(
     title: String,
     onBack: () -> Unit,
     controls: (@Composable ColumnScope.() -> Unit)? = null,
+    bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)? = null,
     scene: @Composable BoxScope.() -> Unit,
 )
 ```
@@ -26,7 +27,58 @@ fun DemoScaffold(
 - **`title`** — shown in the top app bar.
 - **`onBack`** — back navigation. The top app bar surfaces a back arrow.
 - **`controls`** — *optional* slot for the demo's controls. Rendered inside a vertically-scrolling `Column` so existing v1 side-panel `controls = { ... }` blocks port unchanged. `null` ⇒ no FAB, scene fills the whole viewport.
+- **`bottomOverlay`** — *optional* slot for a floating bottom banner / status pill / answer card. See [Bottom overlays](#bottom-overlays) — put them here, never at a bare `Alignment.BottomCenter` inside `scene`.
 - **`scene`** — the trailing-lambda slot for the 3D / AR scene. Receives a `BoxScope`.
+
+## Bottom overlays
+
+The `Tune` FAB is **scaffold chrome pinned bottom-end**, and whether it exists at
+all depends on `controls`. An overlay the demo places itself at
+`Alignment.BottomCenter` therefore has no way to know whether — or by how much —
+it must get out of the way, and a long enough status string simply disappears
+under the FAB. Pixel 9 device QA found exactly that, on several demos at once
+([#2779](https://github.com/sceneview/sceneview/issues/2779)).
+
+Put the overlay in the `bottomOverlay` slot instead. Its receiver,
+`DemoBottomOverlayScope`, carries the one number needed:
+
+```kotlin
+DemoScaffold(
+    title = stringResource(R.string.demo_my_title),
+    onBack = onBack,
+    controls = { /* … */ },              // ← decides whether a FAB exists at all
+    bottomOverlay = {
+        // Full-width card / banner: only its end edge can reach the FAB, so
+        // only the end edge is inset.
+        Surface(modifier = Modifier.fillMaxWidth().padding(end = settingsFabReservedSpace)) {
+            Text(answer)
+        }
+    },
+) { /* scene */ }
+```
+
+For a **centred, content-width pill**, inset *both* sides — a centred element
+grows outwards from the middle, so reserving only the end side would shift it
+off-centre without actually keeping its end edge out of the FAB's band:
+
+```kotlin
+bottomOverlay = {
+    Text(
+        text = status,
+        modifier = Modifier
+            .padding(horizontal = settingsFabReservedSpace)   // symmetric ⇒ stays centred
+            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp))
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+    )
+}
+```
+
+`settingsFabReservedSpace` is `SETTINGS_FAB_RESERVED_SPACE` (88 dp = the 56 dp
+FAB plus its 2 × 16 dp gutter) when the demo passes `controls`, and `0.dp` when
+it does not. It is resolved **once, scaffold-side**, from the same condition that
+composes the FAB — so a demo whose controls are themselves conditional
+(`controls = if (DemoSettings.qaMode) { … } else null`) gets the right inset for
+free, with no duplicated condition to drift out of sync.
 
 ## Use in your own demo
 

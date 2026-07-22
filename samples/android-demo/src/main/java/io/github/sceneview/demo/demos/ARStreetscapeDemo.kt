@@ -302,7 +302,60 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
             }
         } else {
             null
-        }
+        },
+        // VPS / tracking status pill. Hosted by the scaffold's `bottomOverlay` slot so
+        // it is laid out against the Settings FAB instead of blindly under it (#2779).
+        //
+        // This demo is exactly why the inset is resolved scaffold-side: `controls` above
+        // is gated on `DemoSettings.qaMode`, so the FAB only exists in QA mode — and
+        // `settingsFabReservedSpace` follows that automatically (104 dp in QA, 0 dp for
+        // end users, who then get the full width back for these long messages).
+        bottomOverlay = {
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                val statusText = when {
+                    // friendlyArSessionError already yields a complete, honest sentence (#2349).
+                    sessionError != null -> sessionError!!
+                    !hasArcoreApiKey ->
+                        "ARCore Cloud API key not configured \u2014 see samples/android-demo/ARCORE_CLOUD_SETUP.md"
+                    geospatialUnavailable != null ->
+                        "${geospatialUnavailable!!} \u2014 needs outdoor area with Street View coverage + Cloud API key"
+                    ForcedTrackingFailure.override != null ->
+                        trackingFailureMessage(effectiveReason) ?: "Scanning environment\u2026"
+                    geometryCount > 0 -> "Rendering $geometryCount structure(s)"
+                    !isTracking -> trackingFailureMessage(effectiveReason)
+                        ?: "Scanning environment\u2026"
+                    // Supported device, no VPS coverage / indoors (#1615): after a
+                    // timeout the perpetual spinner is replaced with explicit
+                    // guidance to step outside and point at buildings.
+                    noGeometryGuidance ->
+                        stringResource(R.string.demo_ar_streetscape_no_geometry_hint)
+                    else -> "Looking for streetscape geometry\u2026"
+                }
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier
+                        .padding(bottom = 32.dp)
+                        // Content-width pill: symmetric inset, so it stays centred and
+                        // its end edge never reaches the FAB band.
+                        .padding(horizontal = settingsFabReservedSpace)
+                        .background(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                            shape = RoundedCornerShape(24.dp)
+                        )
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
+                )
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -388,50 +441,6 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
             // Cover the still-black AR viewport until the first camera frame; lifts on a
             // session error so the error banner below is never hidden (#2484).
             ARCameraInitScrim(initializing = !cameraReady && sessionError == null)
-
-            // Status overlay
-            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
-            // when a developer has picked one in the debug menu (#1881). Read it here
-            // so flipping the override re-renders the overlay immediately.
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter)
-            ) {
-                val statusText = when {
-                    // friendlyArSessionError already yields a complete, honest sentence (#2349).
-                    sessionError != null -> sessionError!!
-                    !hasArcoreApiKey ->
-                        "ARCore Cloud API key not configured \u2014 see samples/android-demo/ARCORE_CLOUD_SETUP.md"
-                    geospatialUnavailable != null ->
-                        "${geospatialUnavailable!!} \u2014 needs outdoor area with Street View coverage + Cloud API key"
-                    ForcedTrackingFailure.override != null ->
-                        trackingFailureMessage(effectiveReason) ?: "Scanning environment\u2026"
-                    geometryCount > 0 -> "Rendering $geometryCount structure(s)"
-                    !isTracking -> trackingFailureMessage(effectiveReason)
-                        ?: "Scanning environment\u2026"
-                    // Supported device, no VPS coverage / indoors (#1615): after a
-                    // timeout the perpetual spinner is replaced with explicit
-                    // guidance to step outside and point at buildings.
-                    noGeometryGuidance ->
-                        stringResource(R.string.demo_ar_streetscape_no_geometry_hint)
-                    else -> "Looking for streetscape geometry\u2026"
-                }
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier
-                        .padding(bottom = 32.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                            shape = RoundedCornerShape(24.dp)
-                        )
-                        .padding(horizontal = 24.dp, vertical = 12.dp)
-                )
-            }
         }
     }
 }

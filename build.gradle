@@ -39,6 +39,9 @@ apiValidation {
         // hand-written sceneview-web.d.ts — no automated JS ABI gate exists
         // yet (shortlist #2642 item 12), so web API drift is NOT caught here.
         "sceneview-web",
+        // Doc-snippet compile guard (#2759) — generated sources, never
+        // published, no API contract of its own.
+        "snippets-check",
     ]
 
     // Klib (Kotlin/Native + JS) ABI validation stays DISABLED (the default).
