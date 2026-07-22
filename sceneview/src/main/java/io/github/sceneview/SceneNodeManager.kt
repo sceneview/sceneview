@@ -26,6 +26,10 @@ class SceneNodeManager(
         if (node.sceneEntities.isNotEmpty()) {
             scene.addEntities(node.sceneEntities.toIntArray())
         }
+        // Lets Node.destroy() un-register itself if it is destroyed without being removed
+        // first — an id recycled while still listed in the scene would resurface as a
+        // ghost renderable (#2859).
+        node.attachedScene = scene
         node.onChildAdded += ::addNode
         node.onChildRemoved += ::removeNode
         node.onAddedToScene(scene)
@@ -38,6 +42,7 @@ class SceneNodeManager(
         if (node.sceneEntities.isNotEmpty()) {
             scene.removeEntities(node.sceneEntities.toIntArray())
         }
+        node.attachedScene = null
         node.onChildAdded -= ::addNode
         node.onChildRemoved -= ::removeNode
         node.onRemovedFromScene(scene)
