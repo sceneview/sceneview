@@ -57,7 +57,10 @@ case "$ROUTE" in
     [ -n "$CMD" ] || exit 0
 
     case "$CMD" in
-      *"git commit"*)
+      # A real `git commit` has end-of-string or a non-hyphen after "commit" —
+      # this excludes `git commit-tree` (the no-force-push reconcile playbook,
+      # which never reads the working tree) and `git commit-graph`.
+      *"git commit"|*"git commit"[!-]*)
         # --- Guard 1 (BLOCKING): VERSION_NAME mismatch across gradle.properties
         ROOT="$(repo_root)"
         if [ -n "$ROOT" ] && [ -f "$ROOT/gradle.properties" ]; then
