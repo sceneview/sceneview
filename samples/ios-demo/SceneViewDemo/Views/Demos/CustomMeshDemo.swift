@@ -88,6 +88,11 @@ struct CustomMeshDemo: View {
                 root.addChild(diamondLabel.entity)
             }
             .cameraControls(.orbit)
+            // Both the pyramid and the diamond use a metallic/rough `.pbr()`
+            // material — with no IBL they have nothing to reflect and render
+            // as flat silhouettes despite being built from raw PBR vertex
+            // data. Same `.studio` preset as ModelViewerDemo (#2114).
+            .environment(.studio)
             .ignoresSafeArea()
 
             VStack {

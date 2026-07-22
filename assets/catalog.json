@@ -90,6 +90,11 @@
         "glb": {
           "file": "models/glb/khronos_toy_car.glb",
           "size": "1.2MB"
+        },
+        "usdz": {
+          "file": "models/usdz/khronos_toy_car.usdz",
+          "size": "8.8MB",
+          "note": "GLB uses KHR_draco_mesh_compression (~109k tris); USD has no equivalent mesh compression, so decoded geometry grows on conversion — see tools/convert-usdz.sh"
         }
       },
       "tags": [
@@ -100,7 +105,8 @@
         "reference"
       ],
       "usedIn": [
-        "android-demo"
+        "android-demo",
+        "ios-demo"
       ],
       "defaultScale": 0.8,
       "cameraDistance": 3.0
@@ -1015,6 +1021,10 @@
         "glb": {
           "file": "models/glb/khronos_damaged_helmet.glb",
           "size": "3.6MB"
+        },
+        "usdz": {
+          "file": "models/usdz/khronos_damaged_helmet.usdz",
+          "size": "4.0MB"
         }
       },
       "tags": [
@@ -1025,7 +1035,8 @@
         "battle-damaged"
       ],
       "usedIn": [
-        "android-demo"
+        "android-demo",
+        "ios-demo"
       ],
       "defaultScale": 0.8,
       "cameraDistance": 2.5
@@ -1667,6 +1678,10 @@
         "glb": {
           "file": "models/glb/khronos_fox.glb",
           "size": "159KB"
+        },
+        "usdz": {
+          "file": "models/usdz/khronos_fox.usdz",
+          "size": "140KB"
         }
       },
       "tags": [
@@ -1677,7 +1692,8 @@
         "khronos"
       ],
       "usedIn": [
-        "android-demo"
+        "android-demo",
+        "ios-demo"
       ],
       "defaultScale": 0.5,
       "cameraDistance": 2.5
@@ -1931,6 +1947,10 @@
         "glb": {
           "file": "models/glb/khronos_lantern.glb",
           "size": "9.1MB"
+        },
+        "usdz": {
+          "file": "models/usdz/khronos_lantern.usdz",
+          "size": "8.9MB"
         }
       },
       "tags": [

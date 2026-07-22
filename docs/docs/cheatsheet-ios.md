@@ -16,7 +16,7 @@ A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it
 
 ```swift
 // Package.swift or Xcode SPM
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.23.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.25.0")
 ```
 
 ```swift
@@ -480,7 +480,10 @@ silent stub.
 | `SurfaceType.texture` | RealityKit always renders to `MTKView` | N/A — no port needed |
 | `StreetscapeGeometry` | ARGeoTrackingConfiguration exists but no mesh equivalent | iOS-skip with doc warning |
 | `TerrainAnchor / RooftopAnchor` (geo-anchored to terrain or rooftop) | `ARGeoAnchor` only does ground; rooftop has no ARKit equivalent | iOS-skip with doc warning |
-| `Config.SemanticMode.ENABLED` + `Frame.semanticImage()` / `.semanticConfidenceImage()` / `.semanticLabelFraction(label)` (#1730) | ARKit has no equivalent per-pixel outdoor classifier — the closest primitive is `ARFrame.detectedBody.skeleton` (single-person joints, not pixel labels) | iOS-skip with doc warning. Apps that need semantic-aware placement on iOS must ship their own Vision/Core ML segmentation model; AR-engine integration is not on the SceneViewSwift roadmap. |
+| `Config.SemanticMode.ENABLED` + `Frame.semanticImage()` / `.semanticConfidenceImage()` / `.semanticLabelFraction(label)` (#1730, `ar-scene-semantics` demo) | ARKit has no equivalent per-pixel outdoor classifier — the closest primitive is `ARFrame.detectedBody.skeleton` (single-person joints, not pixel labels) | iOS-skip with doc warning. Apps that need semantic-aware placement on iOS must ship their own Vision/Core ML segmentation model; AR-engine integration is not on the SceneViewSwift roadmap. |
+| `SplatNode` / `SplatCloud` / `rememberSplatCloud` — 3D Gaussian Splatting (`splat-preview` demo, #2646) | No first-party RealityKit Gaussian-splat primitive; would need a custom Metal render path or a mesh-impostor approximation | iOS-skip — Android-only today, silently missing from every SceneViewSwift surface (#2768). Needs-decision on a future custom-Metal or impostor-mesh port. |
+| `CollaborativeTransport` / `CollaborativeSession` / `NearbyCollaborativeTransport` (`io.github.sceneview.ar.collaborative`, `ar-collaborative` demo) | ARCore has no native shared-AR session API (no `collaborationData`), so SceneView built a bespoke pluggable-transport + Cloud Anchor layer on top of Nearby Connections | **Not yet built on iOS.** ARKit's native `ARSession.collaborationData` (or RealityKit's `MultipeerConnectivityService`) would give iOS a *more* native path than Android's bespoke wire protocol — no custom transport abstraction needed. Tracked under the iOS-parity tracker (#2798, "Wave B"). |
+| `ar-ml-object-label` demo — ML Kit Object Detection over `Frame.cameraImage()` (see `ARMLObjectLabelDemo.kt`) | Apple ships no built-in generic object-detection model (unlike ML Kit's default on-device model) | iOS-skip — no demo port yet. The raw camera-image access this would need is already available (`ARFrame.capturedImage` — see the `Frame.cameraImage()` row above); a port would pair it with Vision + a bundled Core ML detector model. |
 
 ### AR Depth & Cloud Anchors — May 2026 sprint (#1813)
 
@@ -518,6 +521,25 @@ Use as you would on Android; expect minor visual differences.
 code, treat the Deprecated row as no-ops to avoid; Android-only entries
 as iOS-not-implemented; Approximated entries are fine to use as-is and
 will compile + render with visual fidelity differences only.
+
+### Render quality knobs — SSAO / Bloom / MSAA
+
+`.renderQuality(_:)` (`.cinematic` | `.default` | `.performance`) still picks
+the *best available* RealityKit defaults for each tier, but RealityKit's
+public render-options API is narrower than Filament's — some knobs Android
+exposes have no iOS equivalent at all. Ported from the source of truth,
+`SceneViewSwift/Sources/SceneViewSwift/RenderQuality.swift`:
+
+| Knob | Android (Filament) | iOS (RealityKit) |
+|---|---|---|
+| Shadows on/off | via `View.setShadowingEnabled` | per-light via `DirectionalLightComponent.Shadow` |
+| SSAO on/off | via `View.ambientOcclusionOptions` | no public toggle — RealityKit auto-applies AO approximations |
+| Bloom on/off | via `View.bloomOptions` | no public toggle |
+| MSAA | via `View.multiSampleAntiAliasingOptions` | not user-controllable |
+| HDR color buffer | `QualityLevel.HIGH/MEDIUM/LOW` | not exposed |
+| Dynamic resolution | via `View.dynamicResolutionOptions` | not exposed |
+| Environmental IBL intensity | via `EnvironmentLoader` HDR | via `ImageBasedLightComponent.intensityExponent` |
+| Person occlusion (AR) | (n/a) | via `ARView.renderOptions` (AR only, not on `RealityView`) |
 
 ---
 

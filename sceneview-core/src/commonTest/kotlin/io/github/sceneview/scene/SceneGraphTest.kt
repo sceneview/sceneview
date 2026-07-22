@@ -217,6 +217,25 @@ class SceneGraphTest {
     }
 
     @Test
+    fun removeCollisionShapeMakesTheNodeInvisibleToHitTest() {
+        val graph = SceneGraph()
+        val node = TestNode("target")
+        graph.addNode(node)
+        graph.setCollisionShape(node, Sphere(1f, Vector3(0f, 0f, -2f)))
+
+        val ray = Ray(Vector3(0f, 0f, 0f), Vector3(0f, 0f, -1f))
+        assertEquals(1, graph.hitTest(ray).size, "Shape set — the node must be hit")
+
+        graph.removeCollisionShape(node)
+        assertTrue(
+            graph.hitTest(ray).isEmpty(),
+            "Shape removed — the node must no longer be hit"
+        )
+        // Idempotent on a node with no shape.
+        graph.removeCollisionShape(node)
+    }
+
+    @Test
     fun hitTestSkipsNonHittableNodes() {
         val graph = SceneGraph()
         val node = TestNode("hidden")

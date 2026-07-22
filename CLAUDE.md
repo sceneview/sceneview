@@ -69,13 +69,23 @@ platform as a failure), `--out <dir>`.
 
 | Leg | Harness | Drives | Report |
 |---|---|---|---|
-| `android` | Maestro flows `.maestro/android/` via `qa-android-demos.sh` | All 51 demos on an emulator | `device-qa-report.json` |
-| `ios` | Maestro flows `.maestro/ios/` via `ios-device-qa.sh` | 24 deep-linkable demos on a simulator (AR = launch-only smoke) | `device-qa-report.json` |
+| `android` | Maestro flows `.maestro/android/` via `qa-android-demos.sh` | All 53 demos on an emulator | `device-qa-report.json` |
+| `ios` | Maestro flows `.maestro/ios/` via `ios-device-qa.sh` | 63 deep-linkable demos on a simulator (AR = launch-only smoke) | `device-qa-report.json` |
 | `web` | Playwright suite `samples/web-demo/tests/` | Browser 3D viewer + every catalog tab | `web-qa-summary.json` |
 | `ar` | `ar-replay-qa.sh` + `ARReplayHarnessTest` | Every Android AR demo replayed against recorded ARCore sessions — no physical device | `ar-qa-summary.json` |
 
 See [`.maestro/README.md`](.maestro/README.md) for the Maestro flow layout and
 known limitations (no pinch gesture → 3D zoom is driven via deep-link param).
+
+**iOS leg status — CI-wired since #2833 (2026-07-20), advisory.** `device-qa.yml`
+now defines an `ios` job (Maestro / Simulator; routed to the self-hosted
+`sceneview-mac` runner when its heartbeat is fresh, `macos-15` otherwise), the
+nightly runs it via `device-qa.sh --platform=ios --fast --ci`, and
+`render-tests.yml`'s iOS job drives the `SceneViewDemoUITests` UI-testing
+target with real `XCTAttachment` screenshots. The leg is in the default
+ADVISORY set — a red ios leg is a `WARN`, not a release block. Caveat: on the
+self-hosted Mac the leg is disk-gated (< 10 GB free → honest advisory skip),
+so keep the host's disk above the gate for real coverage.
 
 ### Release-checkpoint mandate
 
@@ -99,7 +109,8 @@ The legs are **graded**, because they are not equally reliable:
 | `android`, `ar` | `continue-on-error: true` (flaky SwiftShader emulator, #1643) | **ADVISORY** — a red leg is a `WARN`, never a silent pass, never a hard block |
 
 `device-qa.sh` tags each leg `advisory: true|false` (default advisory set:
-`android,ar`, override with `--advisory=<csv>`) and pre-computes
+`android,ar,ios,web-perf,sketchfab,arcore-cloud`, override with
+`--advisory=<csv>`) and pre-computes
 `releaseGate.verdict` in `device-qa-report.json`:
 
 - `clear` — every leg passed → checklist `PASS`.
@@ -153,7 +164,7 @@ with shared logic in Kotlin Multiplatform.
 See [`llms.txt`](./llms.txt) at the repo root for the complete, machine-readable API reference:
 composable signatures, node types, resource loading, threading rules, and common patterns.
 
-## Design System (Google Stitch)
+## Design System
 
 See [`DESIGN.md`](./DESIGN.md) for the complete design system: colors, typography, spacing,
 radius, shadows, motion, breakpoints, and component patterns.
@@ -164,13 +175,21 @@ radius, shadows, motion, breakpoints, and component patterns.
 - Support both light and dark modes
 - Follow Material 3 Expressive patterns
 
-**Google Stitch MCP:** when configured, enables direct UI generation from Stitch projects.
-To set up: `npm install @google/stitch-sdk`, then add the Stitch MCP server in Claude Code settings.
+**The demo-app UI is reference-driven, not tool-generated.** Do NOT use Stitch, v0, or
+Figma to author the demo app's Compose/SwiftUI chrome — that path shipped a poor UI in
+v4.1.0 (generic cards, flat hierarchy) because a web-oriented design tool does not know
+it is framing a 3D Filament viewport. Instead, design natively against `DESIGN.md` tokens,
+anchored on real reference apps (Sketchfab mobile, Polycam, Reality Composer, Apple Quick
+Look, Google Scene Viewer), then verify visually on device/emulator before every push.
+The "Spatial Studio"-style redesign that this method produced is the bar to clear.
+
+Design tools stay fine for **marketing** surfaces (store screenshots, website hero shots),
+where pixel precision has real ROI — never for the app chrome itself.
 
 ## When writing any SceneView code
 
-- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.23.0`)
-- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.23.0`)
+- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.25.0`)
+- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.25.0`)
 - Declare nodes as composables inside the trailing content block — not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — returns `null`
   while loading, always handle the null case
@@ -328,10 +347,11 @@ RAM-constrained Mac no longer contend for emulator resources.
 
 GitHub-hosted `macos-15` runners cost ~10x ubuntu per-minute and have no KVM.
 SceneView ships **6 jobs on `macos-15`** (`ios.yml`, `bridge-ios-compile.yml`,
-`rn-ios-compile.yml`, `app-store.yml` × 2, `render-tests.yml`) plus a
-NIGHTLY-ONLY iOS device-QA leg (#1601) deliberately skipped on per-push runs
-because of the macOS cost. A self-hosted runner on a Mac removes that
-multiplier and unblocks per-push iOS device-QA.
+`rn-ios-compile.yml`, `app-store.yml` × 2, `render-tests.yml`). The iOS Maestro
+device-QA leg (#1601) is CI-wired since #2833 — nightly via `device-qa.yml`,
+routed to the self-hosted `sceneview-mac` runner when its heartbeat is fresh
+(see the "iOS leg status" note under "Device QA" above). The self-hosted
+runner is what makes that leg affordable per-run.
 
 Inspired by [Zach Rattner's M4 Mac cluster
 playbook](https://zachrattner.com/projects/m4-mac-cluster) (8 Mac minis, $35k/yr
@@ -478,7 +498,7 @@ One unified showcase app per platform — all features integrated into tabs.
 
 | Directory | Platform | Demonstrates |
 |---|---|---|
-| `samples/android-demo` | Android | Play Store app — 4-tab Material 3 (Explore, AR View, Samples, About), 52 demos (18 non-AR + 34 AR) |
+| `samples/android-demo` | Android | Play Store app — 4-tab Material 3 (Explore, AR View, Samples, About), 53 demos (19 non-AR + 34 AR) |
 | `samples/android-tv-demo` | Android TV | D-pad controls, model cycling, auto-rotation |
 | `samples/web-demo` | Web | Browser 3D viewer, Filament.js (WASM), WebXR AR/VR |
 | `samples/ios-demo` | iOS | App Store app — 4-tab SwiftUI (Explore multi-source, AR, Samples, About) |
@@ -536,7 +556,7 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 | | `react-native/react-native-sceneview/package.json` | `"version": "X.Y.Z"` |
 | **Flutter** | `flutter/sceneview_flutter/pubspec.yaml` | `version: X.Y.Z` |
 | | `flutter/.../android/build.gradle` | `version 'X.Y.Z'` |
-| | `flutter/.../ios/sceneview_flutter.podspec` | `s.version = 'X.Y.Z'` |
+| | `flutter/.../ios/flutter_sceneview.podspec` | `s.version = 'X.Y.Z'` |
 | **Docs** | `llms.txt` | `io.github.sceneview:sceneview:X.Y.Z` |
 | | `README.md` | install snippets |
 | | `CLAUDE.md` | code examples section |
@@ -708,7 +728,7 @@ Hooks trigger automatically on specific Claude Code actions:
 | `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.). Section 16 runs `store-preflight.sh` (advisory) |
 | `store-preflight.sh` | Read-only App Store Connect preflight (#2612 P1) — detects the human-only store blockers that silently 403 a deploy: an expired Apple agreement (`REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED` canary), an App Review rejection, cert/profile expiry (< `CERT_EXPIRY_WARN_DAYS`, default 30), and (since #2731) an open never-submitted reviewSubmission (`READY_FOR_REVIEW`/`UNRESOLVED_ISSUES`) — the silent-submission signature the IOS-scoped version-state probe alone can't see. Signs the ASC ES256 JWT with openssl only; reuses `app-store.yml`'s ASC secrets (no new scope); SKIPs honestly without creds. Advisory-first — a blocker hard-blocks only under `GATE_HARD=1`. Wired into `release-checklist.sh` §16, the `/store-status` command doc (probe-set wiring is a P1 follow-up), and a daily `maintenance.yml` job. Self-tested by `test-store-preflight.sh` (in `repo-hygiene`) |
 | `store-sync/play_listing.py` | Play listing sync/diff as code (#2612 P2) — the single code path for `play-store.yml`'s `sync-listing` job (`--apply`) and local read-only drift diffs (`--dry-run` default: listing text + per-image SHA-256 vs the live store, probe edit abandoned). SKIPs honestly without creds. Self-tested by `test-store-sync.sh` (repo-hygiene) |
-| `store-sync/asc_listing.py` | App Store listing drift diff + screenshot upload (#2612 P2). `--dry-run` (default, read-only) diffs live ASC text fields + screenshot `sourceFileChecksum` (MD5) against `samples/ios-demo/distribution/app-store/` + `appstore-screenshots/`; `--apply-screenshots` uploads the repo screenshots (reserve → chunked PUT → commit `uploaded:true` + MD5) to the **editable** version, replacing each display-type set (delete-then-upload; a failed delete is fatal *before* any upload, so a half-replaced set can't happen). Live order is *expected* to follow repo filename order — Apple does not promise creation order, so the script PROBES it after upload and warns instead of asserting. Never creates a version — SKIPs honestly when none is editable, so `app-store.yml`'s repaired submit step (#2731) stays untouched. Listing TEXT stays owned by that step. CI caller = its OWN workflow `app-store-screenshots.yml` (ubuntu, dispatch-only, no Xcode) — deliberately NOT a job in `app-store.yml`, whose `deploy-ios`/`deploy-macos` are gated only on `*_ready`, so a screenshot dispatch there would also build and upload a TestFlight build (caught in PR #2781 review). Flag abbreviations are disabled on both store-sync scripts: `--apply` must not resolve into an upload. Same ASC env aliases as `store-preflight.sh` |
+| `store-sync/asc_listing.py` | App Store listing drift diff + screenshot upload (#2612 P2). `--dry-run` (default, read-only) diffs live ASC text fields + screenshot `sourceFileChecksum` against `samples/ios-demo/distribution/app-store/` + `appstore-screenshots/`; `--apply-screenshots` uploads the repo screenshots (reserve → chunked PUT → commit `uploaded:true` + MD5) to the **editable** version, replacing each display-type set (delete-then-upload; a failed delete is fatal *before* any upload, so a half-replaced set can't happen). Live order is *expected* to follow repo filename order — Apple does not promise creation order, so the script PROBES it after upload and warns instead of asserting. Never creates a version — SKIPs honestly when none is editable, so `app-store.yml`'s repaired submit step (#2731) stays untouched. Listing TEXT stays owned by that step. CI caller = its OWN workflow `app-store-screenshots.yml` (ubuntu, dispatch-only, no Xcode) — deliberately NOT a job in `app-store.yml`, whose `deploy-ios`/`deploy-macos` are gated only on `*_ready`, so a screenshot dispatch there would also build and upload a TestFlight build (caught in PR #2781 review). Flag abbreviations are disabled on both store-sync scripts: `--apply` must not resolve into an upload. Same ASC env aliases as `store-preflight.sh`. **`--dry-run` is also the daily read-only `maintenance.yml` `asc-listing-drift` job** (#2612 P2 Phase C step 0, sibling of `store-preflight`) — the first CI caller of the ASC read-only path. It prints a `sourceFileChecksum` **provenance verdict** (`confirmed`/`unattested-match`/`md5-shaped`/`absent`/`other`/…): the MD5 keying the screenshot diff rests on is *measured, not assumed* (true by construction for anything this script uploaded — Apple echoes what we declare — so only console-sourced live sets are an honest sample). A repo-MD5 match therefore reports `unattested-match`, **not** `confirmed`, unless the operator attests provenance with `--screenshots-are-console-sourced` (which covers the draft too, and names its own source in the log so an inherited env var can't attest invisibly); without that gate a single `app-store-screenshots.yml` dispatch would have made the verdict permanently green on a tautology (caught in PR #2811 review). The probe also samples the **editable draft**'s screenshot sets and stamps every set with the version it was read from (`APP_IPHONE_67 @4.23.0`, `… @draft 4.24.0`), because a console upload lands on the draft — and that draft keeps its screenshots when it ships, so a set being live proves nothing about who uploaded it. Phase C's drift gate (release-checklist §17 + drift-dedup issue) stays **unwired** until the verdict reads `confirmed` |
 | `lib/android-cli.sh` | Shared helpers for Google's `android` CLI (screenshot, layout, install+launch) with `adb` fallback |
 | `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool + snapshot state + camera-id topology, #2754), `--clean` (wipe+recreate), `--seed-snapshot` (seed the golden `qa-clean` boot snapshot), `--no-snapshot` (force cold boot). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. Boot snapshots (#1672): once seeded, the base-port emulator cold-boots from the immutable `qa-clean` snapshot — faster and deterministic, and fixes the userdata storage-degradation bug. **Use this for routine QA — never QA on a personal device.** |
 | `lib/emulator-select.sh` | Sourced helper for `setup-ar-emulator.sh` / `device-qa.sh` / `qa-android-demos.sh` — RAM monitoring (`vm_stat`/`/proc/meminfo`), RAM-budgeted pool-cap computation, a per-emulator lease registry, RAM-scaled `-memory`, multi-port boot, and stale-lease reclaim. The adaptive pool runs as many emulators as live host RAM safely allows (floor 1, `EMU_POOL_MAX` ceiling), superseding #1647's strict-single design (#1654). |

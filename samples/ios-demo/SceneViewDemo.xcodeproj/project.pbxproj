@@ -155,6 +155,10 @@
 		D1000000000000000000001A /* mercedes_a45_amg.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000001A /* mercedes_a45_amg.usdz */; };
 		D1000000000000000000001B /* nintendo_switch.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000001B /* nintendo_switch.usdz */; };
 		D1000000000000000000001C /* bmw_m3_e30.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000001C /* bmw_m3_e30.usdz */; };
+		67036B2BB7EE12BD596AB1F7 /* khronos_lantern.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 19DE0B3B22A2344F009F5343 /* khronos_lantern.usdz */; };
+		EE5AC4C13BBB781FED30597B /* khronos_toy_car.usdz in Resources */ = {isa = PBXBuildFile; fileRef = E14ED838EC53743E24BE22B8 /* khronos_toy_car.usdz */; };
+		66ED22160BBB08C5B508AF55 /* khronos_fox.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 18D000109AEAF964E5DDC143 /* khronos_fox.usdz */; };
+		9B8C930A67638FE6BD6833AD /* khronos_damaged_helmet.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 2C26CC8CC5834E15CDD1F062 /* khronos_damaged_helmet.usdz */; };
 		F50000000000000000000001 /* bell.wav in Resources */ = {isa = PBXBuildFile; fileRef = F60000000000000000000001 /* bell.wav */; };
 		E10000000000000000000001 /* studio.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000001 /* studio.hdr */; };
 		E10000000000000000000002 /* outdoor_cloudy.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000002 /* outdoor_cloudy.hdr */; };
@@ -166,10 +170,38 @@
 		ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E3457CB732DF2AE71757CC /* MovableLightDemo.swift */; };
 		F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000002 /* AppStoreUpdaterTests.swift */; };
 		F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000060 /* SketchfabService+Tests.swift */; };
+		F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */; };
+		F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000072 /* DemoRegistryGuardTests.swift */; };
+		819AD79B996B8EE240D31FF6 /* ArPlaneRendererV2Scene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40DD4C3271CBFADB68D71777 /* ArPlaneRendererV2Scene.swift */; };
+		62EE9526D5ED0D7FE4053FAD /* ContactShadowPreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16294DC5A7D862C38FE2FF4 /* ContactShadowPreviewScene.swift */; };
+		491E5281694990528BA8402A /* PlacementReticlePreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 082ADF6A2C2D1C4D7C316F93 /* PlacementReticlePreviewScene.swift */; };
+		9ED12B03B2BF3B253EC7D0A9 /* PointAndAskScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0863A011777F13DFB915D831 /* PointAndAskScene.swift */; };
+		A27232F7D9C6DE6491CB73D3 /* SplatPreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C97E9F24DB261FABCB4838 /* SplatPreviewScene.swift */; };
+		D5217012AE3BFD3D86EE49E0 /* VideoRecordingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61AE6F3C701D206B3B919BCC /* VideoRecordingScene.swift */; };
+		FF2214F77B752E9AB93A66B1 /* WallPlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1767394F8DE920AA4961C04 /* WallPlacementScene.swift */; };
+		B676907D738F7541D5167DC7 /* ArCollaborativeScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10C3EA23146458101F73D2BA /* ArCollaborativeScene.swift */; };
+		1D4CD777A44CFD49CE0F02B3 /* ArDepthColliderScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F0C93174B1ABCF292626F4 /* ArDepthColliderScene.swift */; };
+		35B5934608FF05846E560048 /* ArDepthOfFieldScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC80E5393165708EE8840070 /* ArDepthOfFieldScene.swift */; };
+		2984E30408C3AB78802EF242 /* ArDepthVisualizationScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE1EB4C3164FD50C6E810EB7 /* ArDepthVisualizationScene.swift */; };
+		1BBF2B6B04EFAB92D6E63F42 /* ArFogScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD495F1FF4C557321778236 /* ArFogScene.swift */; };
+		0C746850F68994C5A373E0FB /* ArHandTrackingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C41AF0B8726F5ECA161AD0E /* ArHandTrackingScene.swift */; };
+		7BDA3390D3CB5A407703BDEA /* ArMlObjectLabelScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11C40298E02898E297E687F /* ArMlObjectLabelScene.swift */; };
+		4E37F77D3CCD4DF63BA465E0 /* ArRawDepthPointCloudScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89F4FDFC2AEE02B40DAAA3D5 /* ArRawDepthPointCloudScene.swift */; };
+		5B14D9F3C8BA306921899FF2 /* ArSceneSemanticsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F9269F3DA3F899CAA453A79 /* ArSceneSemanticsScene.swift */; };
+		AF836789D014E4A5E9CD707B /* ArXrFaceScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 941B602283557AB26CD0CF0C /* ArXrFaceScene.swift */; };
+		6A052B88F0FEA671530C17BC /* PlacementSceneScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F43BF6C7AE57D84A840CE79 /* PlacementSceneScene.swift */; };
+		F10000000000000000000003 /* SceneViewDemoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* SceneViewDemoUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		F00000000000000000000031 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000010000000000000001;
+			remoteInfo = SceneViewDemo;
+		};
+		F10000000000000000000031 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A90000010000000000000001 /* Project object */;
 			proxyType = 1;
@@ -195,8 +227,12 @@
 		A20000010000000000000005 /* Secrets.xcconfig.template */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig.template; sourceTree = "<group>"; };
 		A20000010000000000000010 /* SceneViewDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SceneViewDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F00000000000000000000001 /* SceneViewDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SceneViewDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F10000000000000000000001 /* SceneViewDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SceneViewDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F10000000000000000000002 /* SceneViewDemoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SceneViewDemoUITests.swift; path = SceneViewDemoUITests/SceneViewDemoUITests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000002 /* AppStoreUpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdaterTests.swift; path = SceneViewDemoTests/AppStoreUpdaterTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000060 /* SketchfabService+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabService+Tests.swift"; path = "SceneViewDemo/Services/SketchfabService+Tests.swift"; sourceTree = SOURCE_ROOT; };
+		F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabAssetResolver+Tests.swift"; path = "SceneViewDemo/Services/SketchfabAssetResolver+Tests.swift"; sourceTree = SOURCE_ROOT; };
+		F00000000000000000000072 /* DemoRegistryGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoRegistryGuardTests.swift; path = SceneViewDemoTests/DemoRegistryGuardTests.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000002 /* DemoItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoItem.swift; sourceTree = "<group>"; };
 		C20000000000000000000003 /* ExploreTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreTab.swift; sourceTree = "<group>"; };
 		C20000000000000000000004 /* ARTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARTab.swift; sourceTree = "<group>"; };
@@ -283,6 +319,10 @@
 		D2000000000000000000001A /* mercedes_a45_amg.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = mercedes_a45_amg.usdz; sourceTree = "<group>"; };
 		D2000000000000000000001B /* nintendo_switch.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = nintendo_switch.usdz; sourceTree = "<group>"; };
 		D2000000000000000000001C /* bmw_m3_e30.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = bmw_m3_e30.usdz; sourceTree = "<group>"; };
+		19DE0B3B22A2344F009F5343 /* khronos_lantern.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_lantern.usdz; sourceTree = "<group>"; };
+		E14ED838EC53743E24BE22B8 /* khronos_toy_car.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_toy_car.usdz; sourceTree = "<group>"; };
+		18D000109AEAF964E5DDC143 /* khronos_fox.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_fox.usdz; sourceTree = "<group>"; };
+		2C26CC8CC5834E15CDD1F062 /* khronos_damaged_helmet.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = khronos_damaged_helmet.usdz; sourceTree = "<group>"; };
 		D77142EC848C995EDE06546D /* SketchfabConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabConfig.swift; path = SceneViewDemo/Services/SketchfabConfig.swift; sourceTree = SOURCE_ROOT; };
 		E20000000000000000000001 /* studio.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = studio.hdr; sourceTree = "<group>"; };
 		E20000000000000000000002 /* outdoor_cloudy.hdr */ = {isa = PBXFileReference; lastKnownFileType = file; path = outdoor_cloudy.hdr; sourceTree = "<group>"; };
@@ -344,6 +384,24 @@
 		1600DF1563900D4EB6820A33 /* TextScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TextScene.swift; path = SceneViewDemo/Views/Demos/Scenes/TextScene.swift; sourceTree = SOURCE_ROOT; };
 		27FB250D0AE339DB0EB9C6C7 /* VideoTextureScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VideoTextureScene.swift; path = SceneViewDemo/Views/Demos/Scenes/VideoTextureScene.swift; sourceTree = SOURCE_ROOT; };
 		1EC5EFF554D692141E61884F /* ViewNodeScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewNodeScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ViewNodeScene.swift; sourceTree = SOURCE_ROOT; };
+		40DD4C3271CBFADB68D71777 /* ArPlaneRendererV2Scene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArPlaneRendererV2Scene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArPlaneRendererV2Scene.swift; sourceTree = SOURCE_ROOT; };
+		D16294DC5A7D862C38FE2FF4 /* ContactShadowPreviewScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContactShadowPreviewScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ContactShadowPreviewScene.swift; sourceTree = SOURCE_ROOT; };
+		082ADF6A2C2D1C4D7C316F93 /* PlacementReticlePreviewScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlacementReticlePreviewScene.swift; path = SceneViewDemo/Views/Demos/Scenes/PlacementReticlePreviewScene.swift; sourceTree = SOURCE_ROOT; };
+		0863A011777F13DFB915D831 /* PointAndAskScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PointAndAskScene.swift; path = SceneViewDemo/Views/Demos/Scenes/PointAndAskScene.swift; sourceTree = SOURCE_ROOT; };
+		E1C97E9F24DB261FABCB4838 /* SplatPreviewScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SplatPreviewScene.swift; path = SceneViewDemo/Views/Demos/Scenes/SplatPreviewScene.swift; sourceTree = SOURCE_ROOT; };
+		61AE6F3C701D206B3B919BCC /* VideoRecordingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VideoRecordingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/VideoRecordingScene.swift; sourceTree = SOURCE_ROOT; };
+		E1767394F8DE920AA4961C04 /* WallPlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WallPlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/WallPlacementScene.swift; sourceTree = SOURCE_ROOT; };
+		10C3EA23146458101F73D2BA /* ArCollaborativeScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArCollaborativeScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArCollaborativeScene.swift; sourceTree = SOURCE_ROOT; };
+		06F0C93174B1ABCF292626F4 /* ArDepthColliderScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthColliderScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthColliderScene.swift; sourceTree = SOURCE_ROOT; };
+		AC80E5393165708EE8840070 /* ArDepthOfFieldScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthOfFieldScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthOfFieldScene.swift; sourceTree = SOURCE_ROOT; };
+		EE1EB4C3164FD50C6E810EB7 /* ArDepthVisualizationScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthVisualizationScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthVisualizationScene.swift; sourceTree = SOURCE_ROOT; };
+		FFD495F1FF4C557321778236 /* ArFogScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArFogScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArFogScene.swift; sourceTree = SOURCE_ROOT; };
+		4C41AF0B8726F5ECA161AD0E /* ArHandTrackingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArHandTrackingScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArHandTrackingScene.swift; sourceTree = SOURCE_ROOT; };
+		F11C40298E02898E297E687F /* ArMlObjectLabelScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArMlObjectLabelScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArMlObjectLabelScene.swift; sourceTree = SOURCE_ROOT; };
+		89F4FDFC2AEE02B40DAAA3D5 /* ArRawDepthPointCloudScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArRawDepthPointCloudScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArRawDepthPointCloudScene.swift; sourceTree = SOURCE_ROOT; };
+		0F9269F3DA3F899CAA453A79 /* ArSceneSemanticsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArSceneSemanticsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArSceneSemanticsScene.swift; sourceTree = SOURCE_ROOT; };
+		941B602283557AB26CD0CF0C /* ArXrFaceScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArXrFaceScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArXrFaceScene.swift; sourceTree = SOURCE_ROOT; };
+		7F43BF6C7AE57D84A840CE79 /* PlacementSceneScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlacementSceneScene.swift; path = SceneViewDemo/Views/Demos/Scenes/PlacementSceneScene.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -361,6 +419,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F10000000000000000000022 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -369,6 +434,7 @@
 			children = (
 				A40000010000000000000002 /* SceneViewDemo */,
 				F00000000000000000000010 /* SceneViewDemoTests */,
+				F10000000000000000000010 /* SceneViewDemoUITests */,
 				A40000010000000000000003 /* Products */,
 				5FA64989921B8BD7A9F30B31 /* ComingSoonScreen.swift */,
 				D77142EC848C995EDE06546D /* SketchfabConfig.swift */,
@@ -390,8 +456,18 @@
 			children = (
 				F00000000000000000000002 /* AppStoreUpdaterTests.swift */,
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
+				F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */,
+				F00000000000000000000072 /* DemoRegistryGuardTests.swift */,
 			);
 			path = SceneViewDemoTests;
+			sourceTree = "<group>";
+		};
+		F10000000000000000000010 /* SceneViewDemoUITests */ = {
+			isa = PBXGroup;
+			children = (
+				F10000000000000000000002 /* SceneViewDemoUITests.swift */,
+			);
+			path = SceneViewDemoUITests;
 			sourceTree = "<group>";
 		};
 		A40000010000000000000002 /* SceneViewDemo */ = {
@@ -421,6 +497,7 @@
 			children = (
 				A20000010000000000000010 /* SceneViewDemo.app */,
 				F00000000000000000000001 /* SceneViewDemoTests.xctest */,
+				F10000000000000000000001 /* SceneViewDemoUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -544,6 +621,10 @@
 				D2000000000000000000001A /* mercedes_a45_amg.usdz */,
 				D2000000000000000000001B /* nintendo_switch.usdz */,
 				D2000000000000000000001C /* bmw_m3_e30.usdz */,
+				19DE0B3B22A2344F009F5343 /* khronos_lantern.usdz */,
+				E14ED838EC53743E24BE22B8 /* khronos_toy_car.usdz */,
+				18D000109AEAF964E5DDC143 /* khronos_fox.usdz */,
+				2C26CC8CC5834E15CDD1F062 /* khronos_damaged_helmet.usdz */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -630,6 +711,23 @@
 			productReference = F00000000000000000000001 /* SceneViewDemoTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		F10000000000000000000020 /* SceneViewDemoUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F10000000000000000000042 /* Build configuration list for PBXNativeTarget "SceneViewDemoUITests" */;
+			buildPhases = (
+				F10000000000000000000021 /* Sources */,
+				F10000000000000000000022 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F10000000000000000000030 /* PBXTargetDependency */,
+			);
+			name = SceneViewDemoUITests;
+			productName = SceneViewDemoUITests;
+			productReference = F10000000000000000000001 /* SceneViewDemoUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -644,6 +742,10 @@
 						CreatedOnToolsVersion = 16.0;
 					};
 					F00000000000000000000020 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = A50000010000000000000001;
+					};
+					F10000000000000000000020 = {
 						CreatedOnToolsVersion = 16.0;
 						TestTargetID = A50000010000000000000001;
 					};
@@ -667,6 +769,7 @@
 			targets = (
 				A50000010000000000000001 /* SceneViewDemo */,
 				F00000000000000000000020 /* SceneViewDemoTests */,
+				F10000000000000000000020 /* SceneViewDemoUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -707,6 +810,10 @@
 				D1000000000000000000001A /* mercedes_a45_amg.usdz in Resources */,
 				D1000000000000000000001B /* nintendo_switch.usdz in Resources */,
 				D1000000000000000000001C /* bmw_m3_e30.usdz in Resources */,
+				67036B2BB7EE12BD596AB1F7 /* khronos_lantern.usdz in Resources */,
+				EE5AC4C13BBB781FED30597B /* khronos_toy_car.usdz in Resources */,
+				66ED22160BBB08C5B508AF55 /* khronos_fox.usdz in Resources */,
+				9B8C930A67638FE6BD6833AD /* khronos_damaged_helmet.usdz in Resources */,
 				E10000000000000000000001 /* studio.hdr in Resources */,
 				E10000000000000000000002 /* outdoor_cloudy.hdr in Resources */,
 				E10000000000000000000003 /* sunset.hdr in Resources */,
@@ -893,6 +1000,24 @@
 				A928A0266FD0B8196F11DF4A /* VideoTextureScene.swift in Sources */,
 				C100000000000000000000E1 /* TextureStreamingScene.swift in Sources */,
 				9D72C9CAE331B90315010DC3 /* ViewNodeScene.swift in Sources */,
+				819AD79B996B8EE240D31FF6 /* ArPlaneRendererV2Scene.swift in Sources */,
+				62EE9526D5ED0D7FE4053FAD /* ContactShadowPreviewScene.swift in Sources */,
+				491E5281694990528BA8402A /* PlacementReticlePreviewScene.swift in Sources */,
+				9ED12B03B2BF3B253EC7D0A9 /* PointAndAskScene.swift in Sources */,
+				A27232F7D9C6DE6491CB73D3 /* SplatPreviewScene.swift in Sources */,
+				D5217012AE3BFD3D86EE49E0 /* VideoRecordingScene.swift in Sources */,
+				FF2214F77B752E9AB93A66B1 /* WallPlacementScene.swift in Sources */,
+				B676907D738F7541D5167DC7 /* ArCollaborativeScene.swift in Sources */,
+				1D4CD777A44CFD49CE0F02B3 /* ArDepthColliderScene.swift in Sources */,
+				35B5934608FF05846E560048 /* ArDepthOfFieldScene.swift in Sources */,
+				2984E30408C3AB78802EF242 /* ArDepthVisualizationScene.swift in Sources */,
+				1BBF2B6B04EFAB92D6E63F42 /* ArFogScene.swift in Sources */,
+				0C746850F68994C5A373E0FB /* ArHandTrackingScene.swift in Sources */,
+				7BDA3390D3CB5A407703BDEA /* ArMlObjectLabelScene.swift in Sources */,
+				4E37F77D3CCD4DF63BA465E0 /* ArRawDepthPointCloudScene.swift in Sources */,
+				5B14D9F3C8BA306921899FF2 /* ArSceneSemanticsScene.swift in Sources */,
+				AF836789D014E4A5E9CD707B /* ArXrFaceScene.swift in Sources */,
+				6A052B88F0FEA671530C17BC /* PlacementSceneScene.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -902,6 +1027,16 @@
 			files = (
 				F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */,
 				F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */,
+				F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */,
+				F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F10000000000000000000021 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F10000000000000000000003 /* SceneViewDemoUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -912,6 +1047,11 @@
 			isa = PBXTargetDependency;
 			target = A50000010000000000000001 /* SceneViewDemo */;
 			targetProxy = F00000000000000000000031 /* PBXContainerItemProxy */;
+		};
+		F10000000000000000000030 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000010000000000000001 /* SceneViewDemo */;
+			targetProxy = F10000000000000000000031 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1046,7 +1186,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 4.23.0;
+				MARKETING_VERSION = 4.25.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo;
 				PRODUCT_NAME = SceneView;
 				PRODUCT_MODULE_NAME = SceneViewDemo;
@@ -1081,7 +1221,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 4.23.0;
+				MARKETING_VERSION = 4.25.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo;
 				PRODUCT_NAME = SceneView;
 				PRODUCT_MODULE_NAME = SceneViewDemo;
@@ -1140,6 +1280,48 @@
 			};
 			name = Release;
 		};
+		F10000000000000000000040 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5G3DZ3TH45;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = SceneViewDemo;
+			};
+			name = Debug;
+		};
+		F10000000000000000000041 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5G3DZ3TH45;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = SceneViewDemo;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1166,6 +1348,15 @@
 			buildConfigurations = (
 				F00000000000000000000040 /* Debug */,
 				F00000000000000000000041 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F10000000000000000000042 /* Build configuration list for PBXNativeTarget "SceneViewDemoUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F10000000000000000000040 /* Debug */,
+				F10000000000000000000041 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

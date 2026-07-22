@@ -11,6 +11,10 @@ import SceneViewSwift
 /// (a plain scrollable info screen, no 3D surface) uses the `.sheet`.
 ///
 /// A `3D / AR` filter chip at the top filters the visible categories.
+///
+/// Cards with a non-``DemoStatus/working`` status surface a small
+/// ``StatusBadge`` ("Preview" / "In review" / "Soon") next to the title —
+/// the iOS mirror of Android's `DemoListScreen.kt` status chip (#2802).
 struct SamplesTab: View {
     // Lazy initialization on first access so the @MainActor constraint of
     // GeneratedScenes.all() is satisfied — View init runs on the main actor
@@ -189,7 +193,7 @@ struct SamplesTab: View {
     @ViewBuilder
     private func sheetDestination(for scene: DemoItem) -> some View {
         switch scene.status {
-        case .available:
+        case .working, .knownIssue, .inReview:
             scene.destination
                 .navigationTitle(scene.title)
                 .navigationBarTitleInline()
@@ -197,15 +201,20 @@ struct SamplesTab: View {
             ComingSoonScreen(
                 title: scene.title,
                 subtitle: scene.subtitle,
-                icon: scene.icon
+                icon: scene.icon,
+                androidOnlyReason: scene.androidOnlyReason
             )
         }
     }
 
     private func accessibilityLabel(for scene: DemoItem) -> String {
         switch scene.status {
-        case .available:
+        case .working:
             return "\(scene.title): \(scene.subtitle)"
+        case .knownIssue:
+            return "\(scene.title): \(scene.subtitle). Known issue."
+        case .inReview:
+            return "\(scene.title): \(scene.subtitle). In review."
         case .comingSoon:
             return "\(scene.title): \(scene.subtitle). Coming soon."
         }
@@ -258,14 +267,7 @@ private struct SceneRow: View {
                         .foregroundStyle(scene.status.isAvailable ? Color.primary : Color.secondary)
                         .lineLimit(1)
 
-                    if scene.status.isComingSoon {
-                        Text("Soon")
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.orange.opacity(0.18), in: Capsule())
-                            .foregroundStyle(.orange)
-                    }
+                    StatusBadge(status: scene.status)
                 }
 
                 Text(scene.subtitle)
@@ -288,5 +290,44 @@ private struct SceneRow: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
         )
+    }
+}
+
+// MARK: - Status badge
+
+/// Small capsule badge communicating a demo's ``DemoStatus`` — the iOS
+/// mirror of Android's `StatusChip` (`DemoListScreen.kt:321-357`): an honest
+/// signal ("Preview" / "In review" / "Soon") rather than a red alarm, so
+/// users have accurate expectations without the card reading as broken.
+/// Renders nothing for `.working` (the common case shouldn't be flagged),
+/// matching Android's `StatusChip` early-return for `DemoStatus.Working`.
+///
+/// Unlike Android's single neutral chip style (same colors for all three
+/// non-Working statuses, varying only the label), each iOS badge keeps its
+/// own restrained tint — idiomatic for SwiftUI capsule badges and already
+/// the established pattern here pre-#2802 (`.comingSoon`'s "Soon" badge was
+/// already orange). None uses an alarm color (red); "Preview" reuses the
+/// yellow Android's own `DemoStatus.KnownIssue` doc-comment calls for.
+private struct StatusBadge: View {
+    let status: DemoStatus
+
+    private var tint: Color {
+        switch status {
+        case .working: return .clear // never rendered — see `body`
+        case .knownIssue: return .yellow
+        case .inReview: return .blue
+        case .comingSoon: return .orange
+        }
+    }
+
+    var body: some View {
+        if let label = status.badgeLabel {
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(tint.opacity(0.18), in: Capsule())
+                .foregroundStyle(tint)
+        }
     }
 }

@@ -27,6 +27,10 @@ include ":sceneview"
 include ":arsceneview"
 include ":sceneview-web"
 
+// Doc-snippet compile guard (#2759) — generated sources only, never published.
+include ":snippets-check"
+project(":snippets-check").projectDir = file("tools/snippets-check")
+
 // Samples — one unified showcase per platform ({platform}-demo)
 include ":samples:common"
 include ":samples:android-demo"         // Android (Play Store)

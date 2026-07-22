@@ -1,222 +1,169 @@
 import SwiftUI
 
-/// Maps a stable demo id (`ar-rerun`, `model-viewer`, …) to the
-/// corresponding SwiftUI destination, for the deep-link path.
+/// Maps a stable demo id (`ar-rerun`, `model-viewer`, …) to the corresponding
+/// SwiftUI destination for the deep-link path (`sceneview://demo/<id>`).
 ///
-/// Why this exists separately from `SamplesTab.allScenes()` and
-/// friends: the iOS demo's catalogue uses human titles (`"AR Debug
-/// (Rerun)"`) while the deep-link contract requires a stable, slug-style
-/// id matched **byte-for-byte** with the Android `DemoRegistry.kt` —
-/// otherwise the same `sceneview://demo/<id>` URL would route to
-/// different things on Android and iOS, defeating the cross-platform
-/// guarantee of the QR codes generated on the website.
+/// # Why the id set is (mostly) generated
 ///
-/// **Coverage policy** — we only need to map the ids that QR codes
-/// actually point at today. The set grows as we add QR codes on
-/// website / README / docs. Unknown ids fall through to a fallback
-/// "Open in app" placeholder (the parent `DeepLinkRouter` already
-/// validates ids against `allowedIds` so the placeholder is only ever
-/// reached for ids registered here without a destination).
+/// The deep-link contract requires a stable, slug-style id matched
+/// **byte-for-byte** with Android's `DemoRegistry` — otherwise the same
+/// `sceneview://demo/<id>` URL would route to different things on Android and
+/// iOS, defeating the cross-platform guarantee of the QR codes on the website.
+///
+/// Historically this file hand-maintained *two* copies of that id set — a
+/// `allowedIds` literal and a parallel `switch` — alongside the Samples tab's
+/// own generated list. Three surfaces, three hand edits, and they drifted:
+/// 12 ids silently diverged (#2769). They are now driven from **one** source
+/// of truth — the `@sceneId` header directives that the collator
+/// (`samples/ios-demo/scripts/collate-ios-demos.sh`) already parses:
+///
+///   - `GeneratedScenes.allowedIds` — every id that has a `*Scene.swift` file.
+///   - `GeneratedScenes.destination(for:)` — that id's view (or `nil` for a
+///     coming-soon / non-iOS AR scene).
+///
+/// Adding a demo = adding one Scene file; all three surfaces update on the
+/// next build with no edit here.
+///
+/// # What stays hand-maintained (the residual)
+///
+/// Only ids that have **no** `*Scene.swift` file of their own:
+///   - `legacyAliases` — an id with no Scene file that should route to a
+///     DIFFERENT id's Scene, in two flavors:
+///     1. **Rename aliases** — pre-canonicalization ids (#2799) kept so
+///        existing QR codes keep resolving (e.g. `ar-cloud-anchors` →
+///        `ar-cloud-anchor`).
+///     2. **Umbrella aliases** (L0.6, #2804/#2769) — a live Android id from
+///        the #2239 catalog regroup (e.g. `custom-geometry`) whose iOS
+///        constituent screens already exist under their pre-regroup granular
+///        ids (e.g. `custom-mesh`). Routing the umbrella id straight to the
+///        single most-representative granular scene resolves the deep link
+///        to REAL, already-shipped content — not a coming-soon card, which
+///        would dishonestly imply the capability doesn't exist on iOS yet.
+///        A full "regrouped umbrella UI" mirroring Android's exact
+///        combined-tab layout is a separate, larger, explicitly-deferred
+///        piece of work (#2804) — this only fixes deep-link resolution.
+///     Either way, the alias inherits its target scene's destination (or its
+///     placeholder, if the target is itself `@available false`).
+///   - `residualIds` — AR demos present in Android's catalog whose iOS card is
+///     still to be ported. They resolve to a placeholder until a Scene file
+///     lands; when one does, delete the id here and the generated union
+///     covers it automatically. Emptied by L0.6 (#2804) — every id that was
+///     here now has a Scene file — kept as an empty `Set` (rather than
+///     deleted) since it is still the documented landing spot for the NEXT
+///     not-yet-ported AR id.
+///
+/// # Deep-link guarantee
+///
+/// An id is **never silently ignored**. Ids in `allowedIds` resolve to a real
+/// view or an honest placeholder; a well-formed `sceneview://demo/<id>` URL
+/// whose id is *not* in `allowedIds` is still surfaced as a placeholder by the
+/// caller (`SceneViewDemoApp.onOpenURL`), never dropped into a silent no-op.
 enum DemoDeepLinkRegistry {
 
-    /// Subset of `DemoRegistry.kt` ids that should be reachable via
-    /// `sceneview://demo/<id>` on iOS. Add ids here as new QR codes are
-    /// published; new ids should always be a *subset* of the canonical
-    /// list (see `DeepLinkRouter` Kotlin).
-    /// Full demo catalog — mirrors Android's `DemoRegistry.kt` id set so
-    /// every `sceneview://demo/<id>` QR code resolves on iOS.  Coming-soon
-    /// demos are included and route to a placeholder so the deep-link URL
-    /// is never silently ignored (closed-registry + placeholder  > silent
-    /// 404). Add new ids here whenever a new demo is published on any platform.
-    static let allowedIds: Set<String> = [
-        // ── 3D Basics ───────────────────────────────────────────────────
-        "model-viewer", "geometry", "animation", "multi-model", "scene-gallery",
-        // ── Lighting ────────────────────────────────────────────────────
-        "lighting", "movable-light", "fog", "dynamic-sky", "environment",
-        // ── Content ─────────────────────────────────────────────────────
-        "text", "lines-paths", "image", "billboard",
-        // Coming-soon Content (routed to placeholder)
-        "video", "texture-streaming",
-        // ── Interaction ─────────────────────────────────────────────────
-        "camera-controls", "collision",
-        // Coming-soon Interaction (routed to placeholder)
-        "gesture-editing", "view-node",
-        // ── Advanced ────────────────────────────────────────────────────
-        "physics", "double-pendulum", "custom-mesh", "materials", "spatial-audio",
-        "post-processing", "reflection-probes", "secondary-camera", "shape",
-        "occlusion-material", "debug-overlay",
-        // Coming-soon Advanced (routed to placeholder)
-        // ── AR (iOS-only on device) ──────────────────────────────────────
-        "ar-placement", "ar-instant-placement", "ar-orbital", "ar-lighting",
-        "ar-recording", "ar-rerun",
-        // Coming-soon AR (routed to placeholder)
-        "ar-image", "ar-face", "ar-cloud-anchor", "ar-depth-occlusion",
-        "ar-rooftop", "ar-streetscape",
-        "ar-terrain",
-        // Newer AR demos (Android-side additions, routed to placeholder on iOS)
-        "ar-pose", "ar-record-playback", "ar-image-stabilization",
-        "ar-depth-of-field", "ar-fog", "ar-depth-collider", "ar-depth-visualization",
-        "ar-people-occlusion", "ar-point-cloud", "ar-raw-depth-point-cloud",
-        "ar-plane-node", "ar-scene-mesh", "ar-scene-semantics", "ar-ml-object-label",
-        "placement-scene", "ar-collaborative", "ar-body-tracker",
-        "ar-hand-tracking", "ar-xr-face",
+    /// Legacy / umbrella deep-link aliases → canonical scene id (see the two
+    /// flavors documented above). Every value is declared by a `*Scene.swift`
+    /// file, so the alias resolves to exactly that scene's destination (or
+    /// its placeholder, when the canonical scene is `@available false`).
+    ///
+    /// Internal (not `private`) so `DemoRegistryGuardTests` (#2801) can assert
+    /// the registry-integrity invariants directly against this table — e.g.
+    /// every value must be a live `GeneratedScenes.allowedIds` member, no key
+    /// may also be a live scene id — mirroring how Android's
+    /// `DeepLinkRouterTest` asserts directly against `DEMO_ID_ALIASES`.
+    static let legacyAliases: [String: String] = [
+        // Rename aliases (#2799) — pre-canonicalization ids.
+        "ar-recording": "ar-record-playback",
+        "ar-cloud-anchors": "ar-cloud-anchor",
+        "ar-rooftop-anchors": "ar-rooftop",
+        "ar-terrain-anchors": "ar-terrain",
+
+        // Umbrella aliases (L0.6, #2804 Job A / #2769) — a live Android
+        // #2239-regrouped id routed to the single most-representative
+        // pre-regroup granular iOS scene. The target is Android's own
+        // default/first tab for that umbrella (`initialDemoMode`'s `default`
+        // parameter in `DemoSettings.kt`), not an arbitrary pick:
+        //   - custom-geometry   → custom-mesh   (default tab: CustomMesh)
+        //   - camera-gestures   → camera-controls (default tab: CameraModes)
+        //   - picking-collision → collision     (default tab: RayHitTest)
+        //   - animation-physics → animation     (default tab: Animation)
+        //   - two-d-in-three-d  → text          (default tab: Text)
+        //   - lighting-lab      → dynamic-sky   (default tab: Sky — NOT
+        //     `environment`; #2769's own suggestion predates checking
+        //     Android's actual default, which is Sky)
+        // A full "regrouped umbrella UI" (Android's exact combined-tab
+        // layout) is explicitly out of scope for this lot — see the doc
+        // comment above.
+        "custom-geometry": "custom-mesh",
+        "camera-gestures": "camera-controls",
+        "picking-collision": "collision",
+        "animation-physics": "animation",
+        "two-d-in-three-d": "text",
+        "lighting-lab": "dynamic-sky",
     ]
 
-    /// Resolve a demo id to its presented `View`. Returns a fallback
-    /// "Coming soon" view for ids that pass `allowedIds` but don't yet
-    /// have an iOS destination wired up — this keeps the QR / deep-link
-    /// path working as soon as a new id is published, even if the iOS
-    /// catalogue lags behind.
+    /// Deep-linkable ids with no `*Scene.swift` file yet — AR demos present in
+    /// Android's catalog whose iOS card is still to be ported. They pass
+    /// `allowedIds` so the URL is accepted, and resolve to the coming-soon
+    /// placeholder. Remove an id from here the moment a matching Scene file is
+    /// added; the generated union then covers it with no hand edit.
     ///
-    /// `@MainActor`-isolated because it constructs SwiftUI `View` values,
-    /// which are themselves main-actor-isolated; the only call site
-    /// (`ContentView`'s `.fullScreenCover` / `.sheet`) already runs on the
-    /// main actor.
+    /// Empty as of L0.6 (#2804) — every AR id that was here (`ar-collaborative`,
+    /// `ar-depth-collider`, `ar-depth-of-field`, `ar-depth-visualization`,
+    /// `ar-fog`, `ar-hand-tracking`, `ar-ml-object-label`,
+    /// `ar-raw-depth-point-cloud`, `ar-scene-semantics`, `ar-xr-face`,
+    /// `placement-scene`) now has its own `*Scene.swift` stub with an honest
+    /// `comingSoonTitle`. Kept as an empty `Set` (not deleted) — it is still
+    /// the documented landing spot for the next not-yet-ported AR id, and
+    /// `check-demo-id-parity.sh` (#2801) is specifically tested against this
+    /// `[]` case.
+    ///
+    /// Internal (not `private`) for the same reason as `legacyAliases` above —
+    /// `DemoRegistryGuardTests` (#2801) asserts this list never collides with a
+    /// live generated scene id (a stale entry that should have been deleted).
+    static let residualIds: Set<String> = []
+
+    /// Full set of accepted deep-link ids: the generated scene ids
+    /// (`GeneratedScenes.allowedIds`) ∪ legacy aliases ∪ not-yet-ported
+    /// residual ids. Every `sceneview://demo/<id>` QR code for a real Android
+    /// demo resolves on iOS through this set — coming-soon ids included, routed
+    /// to a placeholder so the URL is never a silent 404.
+    static let allowedIds: Set<String> =
+        GeneratedScenes.allowedIds
+            .union(legacyAliases.keys)
+            .union(residualIds)
+
+    /// Resolve a demo id to its presented `View`.
+    ///
+    /// Resolution order: the generated id→view map, then the legacy-alias
+    /// indirection, then a coming-soon placeholder. The placeholder is returned
+    /// for any id without a live destination — a coming-soon scene, a residual
+    /// not-yet-ported AR id, an iOS-only AR scene on a non-iOS build, or an id
+    /// that isn't in `allowedIds` at all — so a deep link always lands on a
+    /// screen and is never silently dropped.
+    ///
+    /// `@MainActor`-isolated because it constructs SwiftUI `View` values, which
+    /// are main-actor-isolated; the only call site (`ContentView`'s
+    /// `.fullScreenCover` / `.sheet`) already runs on the main actor.
     @MainActor
-    @ViewBuilder
-    static func destination(for id: String) -> some View {
-        switch id {
-        // ── AR Rerun debug ───────────────────────────────────────────
-        case "ar-rerun":
-            #if os(iOS)
-            RerunDebugDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR Rerun is iOS-only on this build.")
-            #endif
-
-        // ── 3D Basics ────────────────────────────────────────────────
-        case "animation":     AnimationDemo()
-        case "geometry":      GeometryDemo()
-        case "model-viewer":  ModelViewerDemo()
-        case "multi-model":   MultiModelDemo()
-        case "scene-gallery": SceneGalleryDemo()
-
-        // ── Lighting ─────────────────────────────────────────────────
-        case "lighting":      LightingDemo()
-        case "movable-light": MovableLightDemo()
-        case "dynamic-sky":   DynamicSkyDemo()
-        case "environment":   EnvironmentDemo()
-        case "fog":           FogDemo()
-
-        // ── Content ──────────────────────────────────────────────────
-        case "billboard":         BillboardDemo()
-        case "image":             ImageDemo()
-        case "lines-paths":       LinesPathsDemo()
-        case "text":              TextDemo()
-        case "texture-streaming": TextureStreamingDemo()
-        case "video":             VideoTextureDemo()
-
-        // ── Interaction ──────────────────────────────────────────────
-        case "camera-controls":  CameraControlsDemo()
-        case "collision":        CollisionHitTestDemo()
-        case "gesture-editing":  GestureEditingDemo()
-
-        // ── Advanced ─────────────────────────────────────────────────
-        case "custom-mesh":     CustomMeshDemo()
-        case "double-pendulum": DoublePendulumDemo()
-        case "materials":       MaterialsDemo()
-        case "physics":         PhysicsDemo()
-        case "debug-overlay":     DebugOverlayDemo()
-        case "occlusion-material": OcclusionMaterialDemo()
-        case "shape":           ShapeExtrudeDemo()
-        case "reflection-probes": ReflectionProbesDemo()
-        case "spatial-audio":   SpatialAudioDemo()
-
-        // ── AR (iOS device-only) ──────────────────────────────────────
-        case "ar-instant-placement":
-            #if os(iOS)
-            ARInstantPlacementDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-        case "ar-lighting":
-            #if os(iOS)
-            ARLightingDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-        case "ar-orbital":
-            #if os(iOS)
-            OrbitalARDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-        case "ar-placement":
-            #if os(iOS)
-            ARPlacementDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-        // `ar-record-playback` is the canonical, published deep-link id
-        // (website-static/open/index.html + llms.txt + Android catalog);
-        // `ar-recording` is kept as a legacy alias so older QR codes still
-        // resolve. Both route to the recorder demo.
-        case "ar-record-playback", "ar-recording":
-            #if os(iOS)
-            ARRecorderDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-        case "ar-image":
-            #if os(iOS)
-            ARImageTrackingDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-        case "ar-face":
-            #if os(iOS)
-            ARAugmentedFacesDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-        case "ar-depth-occlusion":
-            #if os(iOS)
-            ARDepthOcclusionDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-        case "ar-people-occlusion":
-            #if os(iOS)
-            ARPeopleOcclusionDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-        case "ar-body-tracker":
-            #if os(iOS)
-            ARBodyTrackerDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-        case "ar-scene-mesh":
-            #if os(iOS)
-            ARSceneMeshDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-        case "ar-plane-node":
-            #if os(iOS)
-            ARPlaneNodeDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-        case "ar-point-cloud":
-            #if os(iOS)
-            ARPointCloudDemo()
-            #else
-            DeepLinkPlaceholder(id: id, reason: "AR demos are iOS-only on this build.")
-            #endif
-
-        // ── Coming-soon — placeholder keeps URL live ──────────────────
-        default:
-            DeepLinkPlaceholder(id: id, reason: "This demo isn't available in the iOS app yet — open it on Android, or browse the Samples tab for the full iOS catalog.")
+    static func destination(for id: String) -> AnyView {
+        if let view = GeneratedScenes.destination(for: id) {
+            return view
         }
+        if let canonical = legacyAliases[id],
+           let view = GeneratedScenes.destination(for: canonical) {
+            return view
+        }
+        return AnyView(DeepLinkPlaceholder(
+            id: id,
+            reason: "This demo isn't available in the iOS app yet — open it on Android, or browse the Samples tab for the full iOS catalog."
+        ))
     }
 }
 
-/// Tiny placeholder shown when a deep-link id is recognised by the
-/// router but doesn't yet have a destination wired in
-/// `DemoDeepLinkRegistry`. Communicates the gap clearly and offers a
-/// way out (close + browse the Scenes tab).
+/// Tiny placeholder shown when a deep-link id resolves to no live iOS
+/// destination — a coming-soon scene, a not-yet-ported AR id, or an id that
+/// isn't registered at all. Communicates the gap clearly and offers a way out
+/// (close + browse the Samples tab).
 private struct DeepLinkPlaceholder: View {
     let id: String
     let reason: String

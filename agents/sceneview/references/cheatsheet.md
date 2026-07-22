@@ -8,8 +8,8 @@ doubt **read the demo, do not improvise**.
 
 | Composable | Artifact | Demo |
 | --- | --- | --- |
-| `SceneView { … }` | `io.github.sceneview:sceneview:4.23.0` | `ModelViewerDemo.kt` |
-| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.23.0` | `ARPlacementDemo.kt` |
+| `SceneView { … }` | `io.github.sceneview:sceneview:4.25.0` | `ModelViewerDemo.kt` |
+| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.25.0` | `ARPlacementDemo.kt` |
 
 ## `SceneView` parameters (most common)
 
@@ -43,12 +43,12 @@ ARSceneView(
     planeRenderer = true,
     cameraExposure = null,                              // null = default (recommended). ABSOLUTE exposure scale (1.0 ≈ ISO 100), NOT EV stops — negative clamps to a black frame (#1179)
     sessionFeatures = setOf(/* Session.Feature.* */),
-    sessionCameraConfig = { cameraConfigFilter -> /* … */ },
+    sessionCameraConfig = ::frontCameraConfig,          // (Session) -> CameraConfig; default = ::highestResolutionCameraConfig
     sessionConfiguration = { session, config ->
         config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
         config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
     },
-    playbackDataset = file,                              // ARRecorder replay
+    playbackDataset = File("arcore-session.mp4"),        // ARRecorder replay
     onSessionUpdated = { session, frame -> /* hit-test, etc. */ },
     onTrackingFailureChanged = { reason -> /* … */ },
 )
@@ -83,6 +83,11 @@ placement), or just use `PlacementScene`, which handles this for you.
 — wall-flush upright orientation + floor-relative height; exposes the floor↔wall seam for the
 "align to the edge" guide. Pure math helpers: `wallFacingRotation` / `roomFacingNormal` /
 `floorWallSeam` / `wallAnchorPose`.
+**Grounding (#2740):** `ContactShadow(size, context = ContactShadowContext.Wall|Floor|TableTop,
+normal)` — procedural gradient, no shadow map, so it works on a WALL where a real shadow can't
+(ceiling light grazes it). `size` decides the quad plane and must agree with `normal`:
+`Size(x, 0f, z)`+`Direction(y=1f)` floor, `Size(x, y, 0f)`+`Direction(z=1f)` wall. In `sceneview`,
+not `arsceneview`. Real floor shadows stay `ShadowReceiverPlane`.
 iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); reticle = `showPlacementReticle: true`, contact shadows = `groundingShadows` (default on) — #894 shipped.
 
 ## Remember helpers (always use these)

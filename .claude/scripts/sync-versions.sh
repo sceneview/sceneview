@@ -175,10 +175,10 @@ check_plugin_sdk_dep "flutter/.../android/build.gradle" \
     "$REPO_ROOT/flutter/sceneview_flutter/android/build.gradle"
 
 # Flutter iOS podspec
-PODSPEC="$REPO_ROOT/flutter/sceneview_flutter/ios/sceneview_flutter.podspec"
+PODSPEC="$REPO_ROOT/flutter/sceneview_flutter/ios/flutter_sceneview.podspec"
 if [ -f "$PODSPEC" ]; then
     V=$(grep "s\.version" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    add_check "flutter/.../ios/sceneview_flutter.podspec" "$V"
+    add_check "flutter/.../ios/flutter_sceneview.podspec" "$V"
 fi
 
 # Flutter example pubspec
@@ -347,10 +347,14 @@ for codelab in docs/docs/codelabs/codelab-3d-swiftui.md docs/docs/codelabs/codel
     fi
 done
 
-# Flutter snippet inside llms.txt (`sceneview_flutter: ^X.Y.Z`) — separate
+# Flutter snippet inside llms.txt (`flutter_sceneview: ^X.Y.Z`) — separate
 # from the maven `sceneview:` line, so the existing -m1 check misses it.
+# NOTE (#2735 rename): must grep the pub-form `flutter_sceneview:` line —
+# the legacy `sceneview_flutter:` string still appears in llms.txt as the
+# git-pin dependency key (versionless line), which would silently skip
+# this check.
 if [ -f "$LLMS" ]; then
-    V=$(grep -m1 'sceneview_flutter:' "$LLMS" | grep -oE '\^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | sed 's/^\^//' | head -1 || echo "NOT FOUND")
+    V=$(grep -m1 'flutter_sceneview:' "$LLMS" | grep -oE '\^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | sed 's/^\^//' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
         add_check "llms.txt (flutter snippet)" "$V"
     fi
@@ -1032,7 +1036,7 @@ if changed:
         CURRENT=$(grep "s\.version" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1)
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
             _sed_inplace "s/s\.version *= *'$CURRENT'/s.version          = '$SOURCE_VERSION'/" "$PODSPEC"
-            echo -e "  Fixed: flutter/.../ios/sceneview_flutter.podspec ($CURRENT -> $SOURCE_VERSION)"
+            echo -e "  Fixed: flutter/.../ios/flutter_sceneview.podspec ($CURRENT -> $SOURCE_VERSION)"
         fi
     fi
 
@@ -1527,8 +1531,8 @@ if changed:
             _sed_inplace "s|sceneview-web@$SEMVER|sceneview-web@$SOURCE_VERSION|g" "$LLMS"
             echo -e "  Fixed: llms.txt (sceneview-web@ CDN snippet -> $SOURCE_VERSION)"
         fi
-        if grep -q "sceneview_flutter: ^" "$LLMS" && ! grep -q "sceneview_flutter: ^$SOURCE_VERSION" "$LLMS"; then
-            _sed_inplace "s/sceneview_flutter: ^$SEMVER/sceneview_flutter: ^$SOURCE_VERSION/" "$LLMS"
+        if grep -q "flutter_sceneview: ^" "$LLMS" && ! grep -q "flutter_sceneview: ^$SOURCE_VERSION" "$LLMS"; then
+            _sed_inplace "s/flutter_sceneview: ^$SEMVER/flutter_sceneview: ^$SOURCE_VERSION/" "$LLMS"
             echo -e "  Fixed: llms.txt (flutter snippet -> $SOURCE_VERSION)"
         fi
     fi
@@ -1581,6 +1585,36 @@ if changed:
 
     echo ""
     echo -e "${GREEN}Fixes applied. Re-run without --fix to verify.${NC}"
+fi
+
+# ─── Flutter CHANGELOG stub (--fix; deliberately OUTSIDE the ERRORS gate) ──
+# The pub.dev publish preflight (`flutter pub publish --dry-run`, #2735 —
+# ci.yml → "Build flutter-demo APK") requires the plugin CHANGELOG to mention
+# the current pubspec version. A bump that updates the pubspec without adding
+# the entry therefore turns that job red on EVERY non-path-gated PR and
+# nightly until someone backfills it by hand — this bit twice, for 4.23.0 AND
+# 4.24.0 (#2775; backfilled by #2766). The CHANGELOG top-entry check above is
+# WARN-only (prose content can't be verified mechanically), so a lagging
+# CHANGELOG never raises ERRORS — which is exactly why this handler must NOT
+# live inside the `$ERRORS -gt 0` fix block: with every numeric version
+# already aligned, that block never runs. Prepends a stub in the file's
+# established "version alignment" style; enrich the bullet by hand when the
+# release notes are written. Idempotent: skips when `## $SOURCE_VERSION`
+# already exists anywhere in the file.
+if [ "$FIX_MODE" = "--fix" ]; then
+    FLUTTER_CL="$REPO_ROOT/flutter/sceneview_flutter/CHANGELOG.md"
+    if [ -f "$FLUTTER_CL" ] && ! grep -qE "^## ${SOURCE_VERSION}($| )" "$FLUTTER_CL"; then
+        TMP_CL=$(mktemp)
+        {
+            printf '## %s\n\n' "$SOURCE_VERSION"
+            printf -- '- Version alignment with SceneView v%s; see the [v%s release notes](https://github.com/sceneview/sceneview/releases/tag/v%s). No breaking Flutter API change.\n\n' \
+                "$SOURCE_VERSION" "$SOURCE_VERSION" "$SOURCE_VERSION"
+            cat "$FLUTTER_CL"
+        } > "$TMP_CL"
+        mv "$TMP_CL" "$FLUTTER_CL"
+        echo -e "  Fixed: flutter/.../CHANGELOG.md — prepended '## $SOURCE_VERSION' stub (pub.dev preflight requires it, #2775)"
+        echo ""
+    fi
 fi
 
 # ─── Summary ───────────────────────────────────────────────────────────

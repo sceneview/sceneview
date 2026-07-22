@@ -20,7 +20,7 @@ git clone https://github.com/sceneview/sceneview.git
 **`samples/android-demo/`** — Play Store ready, Material 3 Expressive
 
 4-tab showcase (**Explore / AR View / Samples / About**) backed by an
-append-only demo registry of **51 demos** (18 non-AR + 33 AR):
+append-only demo registry of **53 demos** (19 non-AR + 34 AR):
 
 - **Explore tab**: Featured 3D & AR demos and multi-source model streaming (Sketchfab / Icosa Gallery / Poly Haven)
 - **AR View tab**: Live `ARSceneView` camera with plane detection and tap-to-place
@@ -148,6 +148,7 @@ Markdown recipes with side-by-side Kotlin and Swift code:
 |---|---|---|
 | Model Viewer | `samples/recipes/model-viewer.md` | Load glTF, HDR environment, orbit camera |
 | Ground Shadow Catcher | `samples/recipes/ground-shadow-catcher.md` | Invisible contact-shadow floor, FL2+ flat-quad hardening |
+| Contact Shadow | `samples/recipes/contact-shadow.md` | Procedural grounding pool — works on walls (Floor / Wall / TableTop) |
 | AR Tap-to-Place | `samples/recipes/ar-tap-to-place.md` | Plane detection, anchor placement |
 | Point & Ask | `samples/recipes/point-and-ask.md` | AR frame capture, Gemini Nano on-device (ML Kit GenAI Prompt API), availability gating |
 | Physics | `samples/recipes/physics.md` | Rigid body, gravity, collision, bounce |

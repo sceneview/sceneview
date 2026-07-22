@@ -38,7 +38,7 @@ SceneView for Web is the browser half of the SceneView SDK. It renders with
   registers itself on `window.sceneview`, exposing `createViewer`,
   `modelViewer`, etc. for use with no bundler and no Kotlin.
 
-- **npm package** — `sceneview-web` (currently `4.23.0`).
+- **npm package** — `sceneview-web` (currently `4.25.0`).
 - **Renderer** — Filament.js (WebGL2/WASM). Requires Chrome 79+, Edge 79+,
   Firefox 78+, Safari 15+.
 
@@ -77,7 +77,7 @@ filament.js MUST load before sceneview-web.js:
 ```html
 <canvas id="viewer" style="width:100%;height:100vh;display:block"></canvas>
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.23.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.25.0/sceneview-web.js"></script>
 <script>
   sceneview.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/DamagedHelmet.glb')
     .then(function (sv) { sv.setAutoRotate(true); });
@@ -135,6 +135,25 @@ full signatures. `CameraNode` and `addGeometryNode` remain Kotlin-only.
 const cube = sv.addCubeNode(0.2);
 cube.setPosition(0, 1, 0);
 ```
+
+Since #2024 P5c the viewer also picks nodes under a screen point:
+`sv.hitTest(x, y)` (canvas pixels, (0,0) = top-left) unprojects through the
+live camera and tests every node's real bounds (model/geometry: asset AABB;
+splat: cloud bounds) at their current world transform. It returns the **same**
+`NodeHandle` instances the factories returned, nearest-first — so `===`
+against your kept references works:
+
+```js
+canvas.addEventListener('click', (e) => {
+  // Scale CSS event coords to backing-store pixels (devicePixelRatio canvases).
+  const px = canvas.width / canvas.clientWidth;
+  const hits = sv.hitTest(e.offsetX * px, e.offsetY * px);
+  if (hits[0] === cube) cube.setScaleUniform(1.5);
+});
+```
+
+Model nodes become pickable once loaded; geometry and splat nodes
+immediately; empty pivots, lights and cameras are never hit.
 
 Since #2646 P2 the viewer also renders **3D Gaussian Splatting** (radiance-field
 captures — Scaniverse / Polycam / Luma / INRIA): `addSplatNode(url)` fetches a
@@ -212,6 +231,32 @@ ARSceneView.checkSupport { supported ->
 
 WebXR VR uses the same shape via `VRSceneView`; `WebXRSession` is the
 lower-level unified AR+VR API. See `llms.txt § WebXR`.
+
+### Anchoring content to the real world (`XRAnchorNode`)
+
+Verified against `xr/XRAnchorNode.kt`. For AR content that must stay pinned to
+a real-world spot across frames, create an anchor from a hit-test result and
+`drive(...)` a **root** scene-graph node with it — the node's `worldTransform`
+then follows the anchor's per-frame pose, and children parented under it
+compose for free (requires the `XRFeature.ANCHORS` session feature):
+
+```kotlin
+hit.createAnchor().then { anchor: XRAnchor ->
+    val anchorNode = XRAnchorNode(anchor)
+    anchorNode.drive(sceneView.addModelNode("models/chair.glb"))
+    anchors += anchorNode
+}
+// Per-frame — update() returns false once the anchor is lost:
+webXrSession.onFrame = { frame, _ ->
+    anchors.removeAll { !it.update(frame, webXrSession.referenceSpace) }
+}
+```
+
+Contract: `drive` throws on a parented or destroyed node (anchor poses are
+world-space — they must not compose through a parent) and on a detached
+anchor; a node re-parented later is skipped with a one-time console warning;
+a destroyed node is auto-released. `stopDriving()` releases the node and keeps
+its last pose; `detach()` releases the underlying anchor.
 
 ## Critical rules (verified — do not break)
 

@@ -577,3 +577,328 @@ SceneView.create(canvas = canvas, configure = {}, onReady = { it.startRendering(
     expect(hasRule(code, "web/missing-canvas-resize")).toBe(true);
   });
 });
+
+// ─── symbols/* — existence checks against the generated .api index (#2760) ───
+
+describe("symbols/unknown-member", () => {
+  const RULE = "symbols/unknown-member";
+
+  it("rejects the canonical hallucination with the right suggestion", () => {
+    // The exact failure mode from the issue: a method that does not exist,
+    // structurally close to the real `loadModelInstanceAsync`.
+    const code = `modelLoader.createModelInstanceAsync("models/chair.glb")`;
+    const issues = validateCode(code).filter((i) => i.rule === RULE);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe("error");
+    expect(issues[0].message).toContain("`loadModelInstanceAsync`");
+  });
+
+  it("accepts every real loader call", () => {
+    const code = `
+      val instances = modelLoader.createInstancedModel("models/chair.glb", 4)
+      val model = modelLoader.loadModelInstanceAsync("https://example.com/x.glb")
+      val mat = materialLoader.createColorInstance(color)
+      modelLoader.clear()
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("does not flag Kotlin stdlib scope functions on a loader", () => {
+    const code = `modelLoader.apply { clear() }`;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("does not flag chained calls through a loader property", () => {
+    // The receiver of `createScene()` is `engine`, not the loader — the
+    // member check must only look at direct `loader.member(` calls.
+    const code = `modelLoader.engine.createScene()`;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("does not flag a receiver rebound to a non-loader type (PR #2814 finding #3)", () => {
+    // The snippet redefines `modelLoader` as its own repository — checking
+    // its members against the SceneView ModelLoader would be a false
+    // positive. Exact reviewer snippet.
+    const code = `
+      class MyRepository { fun fetchAll(): List<String> = emptyList() }
+
+      fun load() {
+          val modelLoader = MyRepository()
+          modelLoader.fetchAll()
+      }
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("keeps checking when the rebinding IS the real loader", () => {
+    // `val modelLoader = rememberModelLoader(engine)` is the canonical
+    // pattern — the bogus-member check must survive it.
+    const code = `
+      val modelLoader = rememberModelLoader(engine)
+      val i = modelLoader.createModelInstanceAsync("m.glb")
+    `;
+    expect(hasRule(code, RULE)).toBe(true);
+  });
+
+  it("keeps checking a loader obtained as a property or with a type annotation", () => {
+    const viaProperty = `
+      val modelLoader = sceneView.modelLoader
+      modelLoader.createModelInstanceAsync("m.glb")
+    `;
+    expect(hasRule(viaProperty, RULE)).toBe(true);
+    const viaAnnotation = `
+      val modelLoader: ModelLoader = provide()
+      modelLoader.createModelInstanceAsync("m.glb")
+    `;
+    expect(hasRule(viaAnnotation, RULE)).toBe(true);
+  });
+});
+
+describe("symbols/unknown-type", () => {
+  const RULE = "symbols/unknown-type";
+
+  it("rejects a close-typo node type with a suggestion", () => {
+    const code = `ModellNode(modelInstance = instance)`;
+    const issues = validateCode(code).filter((i) => i.rule === RULE);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("`ModelNode`");
+  });
+
+  it("rejects a made-up node type even with no close suggestion", () => {
+    const code = `HologramNode(size = Size(1f))`;
+    expect(hasRule(code, RULE)).toBe(true);
+  });
+
+  it("accepts real node classes, factories and Scene composables", () => {
+    const code = `
+      ModelNode(modelInstance = instance)
+      SplatNode(splat = splat)
+      WallPlacementScene(engine = engine)
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("leaves migration-covered legacy names to migration/old-api", () => {
+    const code = `PlacementNode(engine)`;
+    expect(hasRule(code, RULE)).toBe(false);
+    expect(hasRule(code, "migration/old-api")).toBe(true);
+  });
+
+  it("still flags a made-up type next to a declared one", () => {
+    // The locally-declared exemption must not blanket the whole snippet.
+    const code = `
+      class CursorNode(engine: Engine) : Node(engine)
+      val a = CursorNode(engine)
+      val b = HologramNode(engine)
+    `;
+    const issues = validateCode(code).filter((i) => i.rule === RULE);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("`HologramNode`");
+  });
+});
+
+describe("symbols/unknown-import", () => {
+  const RULE = "symbols/unknown-import";
+
+  it("rejects an import of a nonexistent SceneView class", () => {
+    const code = `import io.github.sceneview.node.ShadowNode`;
+    expect(hasRule(code, RULE)).toBe(true);
+  });
+
+  it("accepts class, composable-member and wildcard imports", () => {
+    const code = `
+import io.github.sceneview.SceneView
+import io.github.sceneview.node.ModelNode
+import io.github.sceneview.node.*
+import io.github.sceneview.rememberEngine
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("ignores non-SceneView imports entirely", () => {
+    const code = `
+import androidx.compose.ui.Modifier
+import com.google.android.filament.Engine
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("never sees web imports — they route to the kotlin-js rule set", () => {
+    // `io.github.sceneview.web.*` is not in the index (no committed dump),
+    // but detectLanguage routes such snippets to WEB_RULES before the
+    // symbol rules run. Guard the routing so this stays true.
+    const code = `import io.github.sceneview.web.SceneView`;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("accepts typealias imports — Position, Rotation, … (PR #2814 finding #1)", () => {
+    // Typealiases are erased from the .api dumps but recovered from the
+    // Kotlin sources at generation time. llms.txt imports them everywhere.
+    const code = `
+import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Color
+import io.github.sceneview.model.ModelInstance
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("accepts a Companion import of a real class (PR #2814 finding #4)", () => {
+    const code = `import io.github.sceneview.node.ModelNode.Companion`;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("skips aliased imports — tolerated false negative, never a false positive", () => {
+    // `import … as MN` doesn't match the end-of-line anchor: even a bogus
+    // aliased import goes unchecked rather than risking a wrong flag.
+    const code = `
+import io.github.sceneview.node.ModelNode as MN
+import io.github.sceneview.node.ShadowNode as SN
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+});
+
+describe("symbols/unknown-remember-helper", () => {
+  const RULE = "symbols/unknown-remember-helper";
+
+  it("warns on an invented SceneView-ish remember helper, with suggestion", () => {
+    const code = `val instance = rememberModelInstanceAsync(modelLoader, "models/x.glb")`;
+    const issues = validateCode(code).filter((i) => i.rule === RULE);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe("warning");
+    expect(issues[0].message).toContain("`rememberModelInstance`");
+  });
+
+  it("accepts every real remember helper", () => {
+    const code = `
+      val engine = rememberEngine()
+      val modelLoader = rememberModelLoader(engine)
+      val view = rememberView(engine)
+      val instance = rememberModelInstance(modelLoader, "models/x.glb")
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+
+  it("does not flag non-SceneView Compose helpers", () => {
+    const code = `
+      val scope = rememberCoroutineScope()
+      val state = rememberSaveable { mutableStateOf(0) }
+      val nav = rememberNavController()
+    `;
+    expect(hasRule(code, RULE)).toBe(false);
+  });
+});
+
+describe("symbols/* — false-positive guard on real canonical snippets", () => {
+  it("the llms.txt hello-world passes with zero symbols/* issues", () => {
+    const code = `
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import io.github.sceneview.SceneView
+import io.github.sceneview.node.ModelNode
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+
+@Composable
+fun ModelViewer() {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val modelInstance = rememberModelInstance(modelLoader, "models/damaged_helmet.glb")
+    SceneView(
+        modifier = Modifier.fillMaxSize(),
+        engine = engine,
+        modelLoader = modelLoader,
+    ) {
+        modelInstance?.let {
+            ModelNode(modelInstance = it, scaleToUnits = 1.0f)
+        }
+    }
+}
+`;
+    const symbolIssues = validateCode(code).filter((i) =>
+      i.rule.startsWith("symbols/"),
+    );
+    expect(symbolIssues).toEqual([]);
+  });
+
+  it("a real AR wall-placement snippet passes with zero symbols/* issues", () => {
+    const code = `
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.WallPlacementScene
+import io.github.sceneview.ar.rememberARCameraStream
+
+@Composable
+fun WallDemo() {
+    val engine = rememberEngine()
+    WallPlacementScene(
+        engine = engine,
+        onSeamChanged = { seam -> },
+    )
+}
+`;
+    const symbolIssues = validateCode(code).filter((i) =>
+      i.rule.startsWith("symbols/"),
+    );
+    expect(symbolIssues).toEqual([]);
+  });
+
+  it("a snippet's own *Scene wrapper and *Node subclass are not flagged", () => {
+    // The SDK's naming idiom (WallPlacementScene, PhysicsNode) makes these suffixes
+    // natural for user code — a declaration site must never be treated as a call into
+    // an unknown SceneView symbol.
+    const code = `
+import io.github.sceneview.SceneView
+import io.github.sceneview.node.ModelNode
+import io.github.sceneview.node.Node
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+
+class CustomShelfNode(engine: Engine) : Node(engine) {
+}
+
+@Composable
+fun FurnitureShowcaseScene(modelPath: String) {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val modelInstance = rememberModelInstance(modelLoader, modelPath)
+    SceneView(engine = engine, modelLoader = modelLoader) {
+        modelInstance?.let { ModelNode(modelInstance = it) }
+    }
+}
+
+@Composable
+fun App() {
+    FurnitureShowcaseScene(modelPath = "models/shelf.glb")
+}
+`;
+    const symbolIssues = validateCode(code).filter((i) =>
+      i.rule.startsWith("symbols/"),
+    );
+    expect(symbolIssues).toEqual([]);
+  });
+
+  it("a locally-declared remember* helper is not flagged", () => {
+    const code = `
+import io.github.sceneview.rememberEngine
+
+@Composable
+fun rememberModelPool(engine: Engine): ModelPool {
+    return remember(engine) { ModelPool(engine) }
+}
+
+@Composable
+fun Viewer() {
+    val engine = rememberEngine()
+    val pool = rememberModelPool(engine)
+}
+`;
+    const helperIssues = validateCode(code).filter(
+      (i) => i.rule === "symbols/unknown-remember-helper",
+    );
+    expect(helperIssues).toEqual([]);
+  });
+});

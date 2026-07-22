@@ -86,6 +86,11 @@ struct GestureEditingDemo: View {
         }
         // .cameraControls must precede .id — .id wraps to some View which loses the modifier.
         .cameraControls(isEditable ? .none : .orbit)
+        // The loaded subject is the bundled Ferrari F40 — a PBR USDZ with
+        // metallic paint — and with no IBL it has nothing to reflect while
+        // the user drags/pinches/rotates it. Same `.studio` preset as
+        // ModelViewerDemo (#2114); must also precede .id (see above).
+        .environment(.studio)
         // Don't include isEditable in the id — camera mode changes without scene rebuild.
         .id("gesture-\(loadedModel != nil)")
         .ignoresSafeArea()

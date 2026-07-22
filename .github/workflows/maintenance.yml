@@ -456,7 +456,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.x'
 
@@ -678,7 +678,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
 
@@ -720,3 +720,197 @@ jobs:
             gh issue comment "$EXISTING" --body "$BODY" \
               || echo "::warning::Could not comment on existing MCP npm freshness issue #$EXISTING"
           fi
+
+  # ── 12. Play Store listing drift (read-only) ───────────────────────────────
+  # Sibling of § 10, on the Play side. play-store.yml only ever runs
+  # play_listing.py --apply, and only on a minor bump — so the listing is
+  # written blind: nobody sees how far the live store has drifted from the repo
+  # until after the write. That is how #2794 stayed invisible (a bad tablet
+  # imageType 400'd mid-edit, silently rolling back the icon and the copy for
+  # every release since #1710, while `continue-on-error` kept the run green).
+  # This job runs the READ-ONLY diff daily so the drift is visible in advance.
+  # Advisory: never fails, and SKIPs honestly when the secret is absent.
+  listing-drift:
+    name: Play listing drift (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Diff live Play listing against the repo
+        continue-on-error: true
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+          PACKAGE_NAME: io.github.sceneview.demo
+          LISTING_DIR: samples/android-demo/distribution/play-store
+        run: |
+          python3 -m venv /tmp/listing-venv
+          # Same pinned deps as the apply path — credential-bearing job (#1230).
+          /tmp/listing-venv/bin/pip install --quiet -r .github/workflows/requirements/play-store.txt
+          # --dry-run opens a throwaway edit, reads, and abandons it: nothing is
+          # ever committed to the store. No --fail-on-drift: advisory only.
+          #
+          # 2>&1 into the log, and capture the REAL exit code. A bare
+          # `| tee … || true` discards it and sends the traceback to stderr
+          # only — the log would still hold the "[dry-run] probe edit_id=…"
+          # line, so it is non-empty and matches neither [skip] nor DRIFT, and
+          # the summary below would report "✅ No drift" over a crashed run.
+          # That is the exact silent-green class this job exists to catch
+          # (#2794) — do not simplify this back into a bare pipe.
+          set +e
+          /tmp/listing-venv/bin/python3 .claude/scripts/store-sync/play_listing.py \
+            --dry-run > listing-drift.log 2>&1
+          rc=$?
+          set -e
+          cat listing-drift.log
+          echo "DRIFT_RC=$rc" >> "$GITHUB_ENV"
+          # Advisory job: never fail the step on a red check, the summary carries
+          # the signal. Exit 0 explicitly rather than relying on continue-on-error.
+          exit 0
+
+      - name: Append listing drift to step summary
+        if: always()
+        run: |
+          {
+            echo "### Play listing drift (read-only) — $(date -u +%Y-%m-%d)"
+            echo ""
+            if [ -f listing-drift.log ] && [ -s listing-drift.log ]; then
+              if [ "${DRIFT_RC:-1}" != "0" ]; then
+                # Checked FIRST: a crashed run must never fall through to the
+                # "no drift" branch below just because its log is non-empty.
+                echo "❌ **The drift check itself failed** (exit \`${DRIFT_RC:-unknown}\`)."
+                echo "This is NOT a clean bill of health — the live listing was not compared."
+                echo ""
+                echo '```'
+                tail -30 listing-drift.log
+                echo '```'
+              elif grep -q '^\[skip\]' listing-drift.log; then
+                echo "⏭️ **Skipped** — no Play service-account credential available."
+              elif grep -q 'DRIFT' listing-drift.log; then
+                echo "⚠️ **Drift detected** — the live listing differs from the repo."
+                echo ""
+                echo '```'
+                grep 'DRIFT' listing-drift.log
+                echo '```'
+                echo ""
+                echo "_The next minor release will overwrite the live listing with the"
+                echo "repo's version (store-as-code: delete-then-upload per imageType)._"
+              else
+                echo "✅ **No drift** — the live listing matches the repo."
+              fi
+            else
+              echo "_No diff output produced this run — treated as advisory SKIP._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 13. App Store listing drift + checksum-provenance probe (read-only) ─────
+  # ASC sibling of § 10 (store-preflight) and § 12 (Play listing-drift). Runs
+  # asc_listing.py --dry-run: a read-only live-vs-repo diff of the App Store
+  # listing text and screenshots. Advisory, and SKIPs honestly with no secret.
+  #
+  # Its FIRST job is not the drift — it is the `[probe] sourceFileChecksum
+  # provenance:` verdict this run prints. #2612 Phase C's screenshot drift diff
+  # keys on `sourceFileChecksum == MD5(source bytes)`, an assumption that holds
+  # by construction ONLY for assets this script uploaded — and it has uploaded
+  # none. Every live screenshot came from the web console, so the live set is
+  # the only honest sample of what Apple actually stores. Until this probe
+  # reports CONFIRMED, the checksum diff is a candidate, not a drift signal,
+  # and Phase C must not wire it into a release gate.
+  #
+  #   Read the verdict:  gh run view <id> --log | grep '\[probe\]'
+  #   Trigger on demand: gh workflow run maintenance.yml -R sceneview/sceneview
+  asc-listing-drift:
+    name: App Store listing drift + checksum probe (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Run ASC listing dry-run (read-only diff + checksum probe)
+        continue-on-error: true
+        env:
+          # Same three secrets as § 10 store-preflight and app-store.yml — no
+          # new scope, no new secret. asc_listing.py reads the .p8 content from
+          # APP_STORE_CONNECT_API_KEY directly; a missing secret degrades to a
+          # SKIP inside the script (exit 0, not a green lie).
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          # $RUNNER_TEMP, not /tmp: the self-hosted mac runner does not wipe
+          # /tmp between jobs, so a venv there would silently reuse a stale tree
+          # and void the pinned versions. (Same reason as app-store-screenshots.yml.)
+          python3 -m venv "$RUNNER_TEMP/asc-venv"
+          # Pinned, Dependabot-tracked, shared with the deploy workflow (#1230).
+          "$RUNNER_TEMP/asc-venv/bin/pip" install --quiet -r .github/workflows/requirements/app-store.txt
+          # No --fail-on-drift: advisory-first. Drift and the probe verdict are
+          # the signal; the job never fails on them.
+          #
+          # But advisory must not mean unreadable. `| tee … || true` discards the
+          # script's status twice over (the pipeline reports tee's, then `|| true`
+          # swallows it), so a crash AFTER the first line of output — transient
+          # 5xx, token expiry mid-run — would leave a partial log with no drift
+          # lines and no [probe] verdict, and the summary would render that as a
+          # clean read. That is the repo's own `continue-on-error` hazard turned
+          # inward, on the one job whose entire purpose is to not overstate what
+          # it measured. Capture the SCRIPT's exit code (PIPESTATUS[0], not tee's)
+          # and hand it to the summary step, which labels a non-zero run instead
+          # of printing a truncated log as if it were a finding-free one.
+          set +e
+          "$RUNNER_TEMP/asc-venv/bin/python3" .claude/scripts/store-sync/asc_listing.py --dry-run \
+            | tee asc-listing-drift.log
+          echo "asc_rc=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Append ASC listing drift to step summary
+        if: always()
+        run: |
+          {
+            echo "### App Store listing drift + checksum probe — $(date -u +%Y-%m-%d)"
+            echo ""
+            # An empty asc_rc means the previous step died before it could record
+            # one (venv/pip failure). Anything non-zero and non-empty means the
+            # script itself exited badly, so whatever is in the log below is a
+            # PARTIAL read — say so, loudly, above the output. Silence here is
+            # what would let a truncated run pass for a clean one.
+            if [ -n "${asc_rc:-}" ] && [ "${asc_rc}" != "0" ]; then
+              echo "> ⚠️ **Incomplete read — \`asc_listing.py\` exited ${asc_rc}.**"
+              echo "> Any output below is partial. An absent drift list or missing"
+              echo "> \`[probe]\` verdict here means *not measured*, NOT *no drift*."
+              echo ""
+            elif [ -z "${asc_rc:-}" ]; then
+              echo "> ⚠️ **Setup failed before the probe ran** (venv or pip step)."
+              echo "> Nothing was measured."
+              echo ""
+            fi
+            if [ -f asc-listing-drift.log ] && [ -s asc-listing-drift.log ]; then
+              # The provenance verdict is the point of this job — surface it first.
+              PROBE=$(grep '^\[probe\]' asc-listing-drift.log || true)
+              if [ -n "$PROBE" ]; then
+                echo "**Checksum provenance (blocks #2612 Phase C until CONFIRMED)**"
+                echo '```'
+                printf '%s\n' "$PROBE"
+                echo '```'
+                echo ""
+              fi
+              echo "**Full read-only diff**"
+              echo '```'
+              cat asc-listing-drift.log
+              echo '```'
+            else
+              echo "_No output produced (tooling or secret unavailable) — advisory SKIP._"
+            fi
+            echo ""
+            echo "_Read-only (#2612 P2 Phase C step 0). Writes nothing to the store; "
+            echo "the apply path is the dispatch-only \`app-store-screenshots.yml\`._"
+          } >> "$GITHUB_STEP_SUMMARY"

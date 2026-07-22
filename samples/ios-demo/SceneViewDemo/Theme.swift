@@ -2,7 +2,7 @@ import SwiftUI
 
 /// SceneView iOS Theme — Apple HIG + Liquid Glass
 ///
-/// Brand colors aligned with Stitch M3 design system (source: #005bc1).
+/// Brand colors from the SceneView M3 design system (see DESIGN.md, source: #005bc1).
 /// Uses SwiftUI native patterns — no Material Design concepts.
 /// Liquid Glass effects for floating surfaces (iOS 26+).
 enum SceneViewTheme {

@@ -7,7 +7,7 @@ import SceneViewSwift
 
 /// AR tab — place 3D models in your real-world space.
 ///
-/// Liquid Glass overlay design (iOS 26+ Stitch spec):
+/// Liquid Glass overlay design (iOS 26+, per the SceneView design system — see DESIGN.md):
 /// - Full-bleed AR camera underneath
 /// - Top-center: floating glass status pill ("Tap to place" / "N placed")
 /// - Top-right: glass exit button to dismiss the tab
@@ -559,7 +559,10 @@ struct FeaturedARDemo: Identifiable {
             destination: AnyView(ARLightingDemo())
         ),
         FeaturedARDemo(
-            id: "ar-recording",
+            // Canonicalized to match Android's DemoRegistry id (#2799); the
+            // deep-link registry still accepts the old "ar-recording" id as
+            // a legacy alias (see `DemoDeepLinkRegistry.allowedIds`).
+            id: "ar-record-playback",
             title: "AR Recording",
             subtitle: "Capture the AR session as a screen video",
             icon: "record.circle",

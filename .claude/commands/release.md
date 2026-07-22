@@ -37,7 +37,7 @@ in-flight one (#1494). Reference list:
 ### Flutter
 8. `flutter/sceneview_flutter/pubspec.yaml` — `version: X.Y.Z`
 9. `flutter/sceneview_flutter/android/build.gradle` — `version 'X.Y.Z'`
-10. `flutter/sceneview_flutter/ios/sceneview_flutter.podspec` — `s.version = 'X.Y.Z'`
+10. `flutter/sceneview_flutter/ios/flutter_sceneview.podspec` — `s.version = 'X.Y.Z'`
 
 ### Documentation
 11. `llms.txt` — all `io.github.sceneview:*:X.Y.Z` artifact references

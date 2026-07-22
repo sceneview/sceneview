@@ -33,6 +33,11 @@ struct BillboardDemo: View {
                 root.addChild(title.entity)
             }
             .cameraControls(.orbit)
+            // The "Treasure" sphere uses a metallic/rough `.pbr()` material —
+            // meant to read as shiny and valuable — but with no IBL it has
+            // nothing to reflect and renders flat. Same `.studio` preset as
+            // ModelViewerDemo (#2114).
+            .environment(.studio)
             .ignoresSafeArea()
 
             VStack {

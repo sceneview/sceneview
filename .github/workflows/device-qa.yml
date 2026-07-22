@@ -63,31 +63,36 @@ name: Device QA
 # record with `advisory: true|false` so the gate's behaviour is intentional,
 # not accidental — see `device-qa.sh` and `release-checklist.sh` section 14.
 #
-# FOUR-LEG SPLIT — PER-PUSH vs NIGHTLY-ONLY (#1601)
-# -------------------------------------------------
+# FOUR-LEG SPLIT — PER-PUSH vs NIGHTLY-ONLY (#1601, ios wired #2803)
+# -----------------------------------------------------------------
 # `device-qa.sh` orchestrates FOUR platform legs: web / android / ios / ar.
-# This workflow deliberately defines only the `web` and `android` jobs:
+# This workflow now defines all four, split by cost:
 #
 #   web      — Playwright on ubuntu-latest. Cheap, always feasible. Per-push.
+#              BLOCKING (not continue-on-error).
 #   android  — Maestro on a KVM-accelerated emulator (ubuntu-latest). Heavy
-#              but feasible on GitHub-hosted runners. Per-push.
-#   ios      — Maestro on an iOS Simulator. NIGHTLY-ONLY: needs a `macos-*`
-#              runner, which is ~10x the per-minute cost and has no KVM —
-#              not worth spending on every demo-source push.
-#   ar       — ARCore replay harness. NIGHTLY-ONLY: needs an ARCore-capable
-#              emulator plus committed AR recordings; setup is too slow and
-#              flaky to gate routine pushes on.
+#              but feasible on GitHub-hosted runners. Per-push. ADVISORY.
+#   ar       — ARCore replay harness on the KVM emulator (ubuntu-latest).
+#              Per-push. ADVISORY.
+#   ios      — Maestro on an iOS Simulator (#2803). NIGHTLY + release-checkpoint
+#              ONLY, NOT per-push: it needs a `macos-*` runner, which is ~10x
+#              the ubuntu per-minute cost and has no KVM — not worth spending on
+#              every demo-source push. The job is gated `if: github.event_name
+#              != 'push'`, so it runs on the nightly `workflow_call`
+#              (nightly-ci.yml) and on manual `workflow_dispatch` (a pre-tag
+#              release checkpoint), never on a push. It routes to the
+#              self-hosted Mac when the heartbeat reports it online and falls
+#              back to `macos-15` otherwise (same opt-in pattern as ios.yml /
+#              bridge-ios-compile.yml). ADVISORY: `continue-on-error: true` here
+#              and `ios` is in device-qa.sh's default advisory CSV, so a red iOS
+#              leg is a release WARN, never a hard block, until the CI simulator
+#              leg is proven reliably green.
 #
-# The `ios` and `ar` legs therefore run ONLY via the nightly `workflow_call`
-# (nightly-ci.yml), which executes `device-qa.sh --platform=all` on the
-# appropriate runners. A broken / always-skipped iOS or AR job in THIS
-# workflow would be worse than documenting the split, so they are omitted
-# here by design rather than stubbed.
-#
-# Path trigger consequence: `samples/ios-demo/**` is intentionally absent
-# from the `paths:` filter below — adding it would spin up the web+android
-# jobs for an iOS-only change while no iOS job exists to actually exercise
-# it. iOS demo changes are covered by the nightly run instead.
+# Path trigger consequence: `samples/ios-demo/**` is intentionally absent from
+# the `paths:` filter below — the iOS leg is nightly-only, so a push touching
+# only the iOS demo must not spin up the ubuntu web/android/ar jobs for a change
+# no per-push leg exercises. iOS demo changes are covered by the nightly run
+# (and by render-tests.yml's iOS screenshot job, #2803).
 
 on:
   push:
@@ -130,11 +135,15 @@ jobs:
   web:
     name: Device QA — web (Playwright)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 35 min: green push runs measure 18–24 min wall-clock — 25 min left
+    # ~1 min of headroom and the nightly timed out (#2775, night of
+    # 2026-07-21). Playwright's per-test timeout still bounds real hangs;
+    # this job-level value is a backstop, not the hang detector.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -204,7 +213,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -372,6 +381,90 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: device-qa-report-ar
+          path: |
+            device-qa-report.json
+            device-qa-artifacts/
+          if-no-files-found: ignore
+
+  # ── iOS leg — Maestro on an iOS Simulator (#2803) ─────────────────────────
+  # NIGHTLY + release-checkpoint ONLY (see the FOUR-LEG SPLIT header block):
+  # gated `if: github.event_name != 'push'` so it NEVER runs on a per-push
+  # build — a macOS runner is ~10x the ubuntu per-minute cost and has no KVM.
+  # It runs on the nightly `workflow_call` (nightly-ci.yml, event=schedule) and
+  # on manual `workflow_dispatch` (a pre-tag release checkpoint), never on push.
+  #
+  # Routes to the self-hosted Mac (label `sceneview-mac`) when its heartbeat
+  # reports it online, falling back to `macos-15` otherwise — the same opt-in
+  # pattern ios.yml / bridge-ios-compile.yml already use.
+  #
+  # ADVISORY: `continue-on-error: true` here, and `ios` is in device-qa.sh's
+  # default advisory CSV (#2803), so a red iOS leg is a release WARN, never a
+  # hard block — matching the android/ar posture on the flaky CI emulator. The
+  # simulator leg must prove reliably green before it is promoted to blocking.
+  ios:
+    name: Device QA — ios (Maestro / Simulator)
+    if: github.event_name != 'push'
+    runs-on: ${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && 'sceneview-mac' || 'macos-15' }}
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        # DEVELOPER_DIR (Apple-canonical), NOT `sudo xcode-select -s`: the sudo
+        # form needs NOPASSWD in /etc/sudoers, which GitHub-hosted runners have
+        # but the self-hosted Mac (launchd, no TTY) does not — sudo would fail
+        # with `a password is required` (see bridge-ios-compile.yml). Works on
+        # both hosted and self-hosted, no sudo needed.
+        run: |
+          for cand in \
+            /Applications/Xcode_26.3.app \
+            /Applications/Xcode_26.2.app \
+            /Applications/Xcode_26.1.1.app \
+            /Applications/Xcode_26.0.1.app \
+            /Applications/Xcode.app; do
+            if [ -d "$cand" ]; then
+              echo "DEVELOPER_DIR=$cand/Contents/Developer" >> "$GITHUB_ENV"
+              echo "Using Xcode: $cand"
+              "$cand/Contents/Developer/usr/bin/xcodebuild" -version
+              exit 0
+            fi
+          done
+          echo "::error::No Xcode installation found in /Applications/"
+          exit 1
+
+      - name: Install Maestro
+        # device-qa.sh → ios-device-qa.sh → lib/maestro.sh does NOT auto-install
+        # under CI=1 — it expects the workflow to provide the binary (same as
+        # the android job). MAESTRO_VERSION KEPT IN SYNC with lib/maestro.sh.
+        # `set -o pipefail` so a network failure aborts HERE (obvious) rather
+        # than later as an opaque "maestro: not found". Canonical installer host
+        # is get.maestro.mobile.dev (get.maestro.dev does not resolve).
+        run: |
+          set -euo pipefail
+          MAESTRO_VERSION="2.6.1" curl -fsSL "https://get.maestro.mobile.dev" | bash
+          test -x "$HOME/.maestro/bin/maestro"
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Run device-qa.sh (ios leg)
+        # --fast runs the representative `3d-basics` iOS category flow instead of
+        # the full catalog, keeping costly macOS minutes down (matches the
+        # android leg). --ci makes a required-leg skip a failure — but `ios` is
+        # ADVISORY in device-qa.sh, so an honest simulator skip is a WARN,
+        # exit 0, and continue-on-error absorbs a hard failure. SKETCHFAB_API_KEY
+        # is injected so the keyed Explore / streamed-USDZ path is exercised
+        # (#2356); read into env only, never referenced from an `if:`.
+        env:
+          SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+        run: |
+          export PATH="$HOME/.maestro/bin:$PATH"
+          bash .claude/scripts/device-qa.sh --platform=ios --fast --ci
+
+      - name: Upload ios device-QA report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: device-qa-report-ios
           path: |
             device-qa-report.json
             device-qa-artifacts/

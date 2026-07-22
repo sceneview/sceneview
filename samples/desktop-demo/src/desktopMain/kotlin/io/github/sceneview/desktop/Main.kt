@@ -41,7 +41,7 @@ import kotlin.math.sin
  * To run: ./gradlew :samples:desktop-demo:run
  */
 
-// SceneView brand colors (Stitch M3 design system)
+// SceneView brand colors (M3 design system — see DESIGN.md)
 private val SceneViewBlue = Color(0xFFA4C1FF)       // dark mode primary
 private val SceneViewDarkBlue = Color(0xFF005BC1)    // brand blue
 private val SceneViewSurface = Color(0xFF0D1117)

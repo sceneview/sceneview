@@ -34,7 +34,7 @@ Bump the SceneView version across ALL locations in a single, atomic operation.
 ### Flutter (3 files!)
 - `flutter/sceneview_flutter/pubspec.yaml` -> `version: X.Y.Z`
 - `flutter/sceneview_flutter/android/build.gradle` -> `version 'X.Y.Z'`
-- `flutter/sceneview_flutter/ios/sceneview_flutter.podspec` -> `s.version = 'X.Y.Z'`
+- `flutter/sceneview_flutter/ios/flutter_sceneview.podspec` -> `s.version = 'X.Y.Z'`
 
 ### Swift Package (uses git tags, not file version)
 - `SceneViewSwift/` — version is the git tag `vX.Y.Z`

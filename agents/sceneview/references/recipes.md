@@ -166,3 +166,28 @@ sign — always flip it toward the camera), `floorWallSeam(...)`, `wallAnchorPos
 increment of #2740: the seam/phase come back via callbacks so the app draws its own guide; an
 in-scene 3D seam line and a gizmo/D-pad fine-adjust UI are tracked follow-ups.
 
+## Recipe: grounding an object with a contact shadow — #2740
+
+A model without a shadow reads as *floating*. On a floor, catch a real one with
+`ShadowReceiverPlane`. On a **wall**, you cannot: indoor light comes from the ceiling, so it
+grazes the wall and a flat-mounted TV casts nothing onto it. Use `ContactShadow`, which draws its
+own gradient in the shader — no shadow map, no light dependency:
+
+```kotlin
+ContactShadow(
+    size = Size(x = 2.4f, y = 1.6f, z = 0f),   // XY quad → a WALL
+    context = ContactShadowContext.Wall,        // Floor / Wall / TableTop
+    normal = Direction(z = 1f),
+    position = Position(x = 0f, y = 1.3f, z = -1.99f),
+)
+```
+
+**The one footgun:** `Plane` does not rotate its geometry to match `normal`, so `size` decides the
+quad's plane and the two must agree — `Size(x, 0f, z)` + `Direction(y = 1f)` for a floor,
+`Size(x, y, 0f)` + `Direction(z = 1f)` for a wall. Mismatch them and the shadow either z-fights
+with the surface or floats off it.
+
+Pick the `ContactShadowContext` rather than tuning numbers: `Floor` is centred and dense, `Wall`
+is fainter, wider than tall and pushed below the object, `TableTop` is tight and crisp. It lives
+in `sceneview`, not `arsceneview` — plain 3D scenes ground models the same way. Non-AR preview
+demo: [`ContactShadowPreviewDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ContactShadowPreviewDemo.kt).

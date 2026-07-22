@@ -186,6 +186,17 @@ export interface SceneViewer {
    *  equivalent to `handle.destroy()`. */
   removeNode(node: NodeHandle): void;
 
+  /**
+   * Screen-point picking on the retained node tree. Coordinates are canvas
+   * pixels ((0,0) = top-left; scale `event.offsetX/Y` by
+   * `canvas.width / canvas.clientWidth` on devicePixelRatio-scaled backing
+   * stores). Returns the hit nodes' handles nearest-first — the SAME
+   * instances the `add*Node` factories returned, so `===` works. Model
+   * nodes are pickable once loaded; geometry/splat nodes immediately;
+   * empty pivots, lights and cameras are never hit.
+   */
+  hitTest(x: number, y: number): NodeHandle[];
+
   /** Release Filament resources. The viewer is unusable after this. */
   dispose(): void;
 }
