@@ -848,6 +848,8 @@ state, no inner scrolling either). Do not generate clickable controls inside a `
 
 To react to a tap, pick the node from the scene instead:
 ```kotlin
+val windowManager = rememberViewNodeManager()
+var tapCount by remember { mutableStateOf(0) }
 SceneView(
     viewNodeWindowManager = windowManager,
     onGestureListener = rememberOnGestureListener(
@@ -4572,7 +4574,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Interaction
 
 - `camera-gestures` — Camera & Gestures. Manipulator modes and per-node edit gestures.
-- `picking-collision` — Picking & Collision. Ray hit-test and interactive ViewNode overlays.
+- `picking-collision` — Picking & Collision. Ray hit-test and ray-picked ViewNode overlays.
 
 ### Advanced
 

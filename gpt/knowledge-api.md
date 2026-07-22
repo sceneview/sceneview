@@ -818,6 +818,8 @@ state, no inner scrolling either). Do not generate clickable controls inside a `
 
 To react to a tap, pick the node from the scene instead:
 ```kotlin
+val windowManager = rememberViewNodeManager()
+var tapCount by remember { mutableStateOf(0) }
 SceneView(
     viewNodeWindowManager = windowManager,
     onGestureListener = rememberOnGestureListener(

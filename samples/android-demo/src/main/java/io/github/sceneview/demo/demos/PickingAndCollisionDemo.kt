@@ -250,7 +250,7 @@ private fun ViewNodeSection(
         // picking demo.
         //
         // The embedded Compose Button can not do this itself: a ViewNode renders its
-        // View through a FLAG_NOT_TOUCHABLE window (ViewNode:390) and the SDK never
+        // View through a FLAG_NOT_TOUCHABLE window (see ViewNode.tryAttachingView) and the SDK never
         // dispatches MotionEvents into that view tree, so `Button.onClick` can not fire
         // today — see #2845. Picking the card is therefore the honest tap source, and
         // it is exactly what this demo is meant to show.
