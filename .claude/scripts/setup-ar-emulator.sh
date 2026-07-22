@@ -1385,6 +1385,13 @@ fi
 # --- step 7: optionally stop the emulator -------------------------------------
 # By default we leave the emulator warm so a QA script can run immediately after.
 # --stop kills it for hygiene-conscious callers (CI, one-shot config runs).
+#
+# ⚠️ `--stop` means "run the whole flow, THEN stop" — it is not a kill switch.
+# Passing it against an already-running rig re-enters the boot wait first and can
+# sit there for the full ROSETTA_BOOT_TIMEOUT_S before anything is stopped (hit
+# while closing out #2758). To just kill a running rig:
+#     kill "$(cat "${TMPDIR:-/tmp}/sceneview-rosetta-rig.pid")"
+# or `kill $(pgrep -f "qemu-system-x86_64.*Pixel_7a_x86")` if the pidfile is gone.
 if $STOP_AFTER && ! $CHECK_ONLY && [[ -n "$serial" ]]; then
   log "stopping emulator $serial (--stop)"
   if [[ -x "$ANDROID_CLI_BIN" ]]; then
