@@ -117,6 +117,22 @@ the injection finding gone and the ARG_MAX one downgraded to an accepted byte-ca
 > for reviews anyway, and codex reads the filesystem natively, so the cap is a safe
 > resolution, not a limitation of the review path.
 
+**Trial on 3 real open PRs (2026-07-23) — signal vs noise, measured.** Ran the review on
+existing SceneView PRs authored by other sessions, then manually verified each finding
+against source:
+
+| PR | Codex | Gemini | Verified? |
+|---|---|---|---|
+| #2882 (docs: entity-id recycling + KDoc) | KDoc on `GeometryNode`/`MeshNode` describes a `borrow a manually-created entity` capability **no public constructor exposes** → AI would emit non-compiling code | LGTM (missed it) | ✅ REAL — confirmed no `entity` param on either ctor; only the parent `RenderableNode` has one, unreachable here |
+| #2868 (iOS PBR demos → IBL path) | LGTM | LGTM | — clean, no false alarms |
+| #2846 (Point & Ask P2, 44 KB) | `PixelCopy` callback can resurrect `askState`→Thinking + launch inference **after** a reset (the job is created inside the callback, so `askJob?.cancel()` on reset is a no-op for the in-flight request) | SKIPPED (>40 KB cap) | ✅ REAL — confirmed the reset guard only covers the settle-delay window, not request→callback |
+
+Result: **2 real, confirmed, merge-relevant defects on 3 PRs, zero Codex false positives.**
+Both are exactly what the authoring session missed (a truthfulness bug in AI-facing KDoc; an
+async-lifecycle race). Codex ≫ Gemini for this job (native fs read, no size cap, caught both;
+Gemini missed one and skips large diffs). Findings flagged for the PR authors — advisory,
+never auto-merged. This is the value case: an outside family catches the author's blind spots.
+
 ## 6. Next steps
 
 1. Thomas authenticates whatever he wants to enable (at minimum `agy`, free).
