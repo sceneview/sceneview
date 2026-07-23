@@ -1,74 +1,75 @@
-# Délégation multi-LLM — Codex · Gemini/Antigravity · Kimi (exploration 2026-07-23)
+# Multi-LLM delegation — Codex · Gemini/Antigravity · Kimi (exploration 2026-07-23)
 
-> Session d'exploration : comment déléguer certaines tâches SceneView à des LLMs
-> non-Claude, avec Claude Code comme **orchestrateur unique**. État : CLIs installés
-> et sondés sur le Mac ; **aucun authentifié** (étape Thomas, §Auth).
-> Entrée unique : [`llm-delegate.sh`](../scripts/llm-delegate.sh).
+> Exploration session: how to delegate SceneView tasks to non-Claude LLMs, with
+> Claude Code as the **single orchestrator**. Status: CLIs installed and probed on
+> the Mac; **none authenticated** (Thomas's step, §Auth).
+> Single entry point: [`llm-delegate.sh`](../scripts/llm-delegate.sh).
 
-## 1. État des lieux (mesuré sur cette machine, 2026-07-23)
+## 1. Current state (measured on this machine, 2026-07-23)
 
-| Provider | CLI | Version | Headless | Sandbox | Auth | Piège mesuré |
+| Provider | CLI | Version | Headless | Sandbox | Auth | Measured trap |
 |---|---|---|---|---|---|---|
-| OpenAI Codex | `codex` (npm `@openai/codex`) | 0.145.0 | `codex exec "…"` + `codex exec review` | `--sandbox read-only\|workspace-write` | `codex login` (ChatGPT Plus/Pro) ou clé API ; `codex login status` rc=1 si déloggé | — |
-| Google Gemini | `agy` (Antigravity CLI) | 1.1.5 | `agy -p "…"` (`--print-timeout` 5m def.) | `--sandbox` (restrictions terminal) | Sign-in Google interactif (TTY requis) | ⛔ rc=0 même déloggé — détecter « sign in » dans la sortie |
-| Moonshot Kimi | `kimi` (uv `kimi-cli`) | 1.49.0 | `kimi --print --final-message-only -p "…"` | pas de sandbox ; `--yolo` = auto-approve | Setup interactif ou `MOONSHOT_API_KEY` | ⛔ rc=0 même déloggé — signature « LLM not set » |
+| OpenAI Codex | `codex` (npm `@openai/codex`) | 0.145.0 | `codex exec "…"` + `codex exec review` | `--sandbox read-only\|workspace-write` | `codex login` (ChatGPT Plus/Pro) or API key; `codex login status` rc=1 when signed out | — |
+| Google Gemini | `agy` (Antigravity CLI) | 1.1.5 | `agy -p "…"` (`--print-timeout` 5m default) | `--sandbox` (terminal restrictions) | Interactive Google sign-in (TTY required) | ⛔ rc=0 even signed out — detect "sign in" in output |
+| Moonshot Kimi | `kimi` (uv `kimi-cli`) | 1.49.0 | `kimi --print --final-message-only -p "…"` | no sandbox; `--yolo` = auto-approve | Interactive setup or `MOONSHOT_API_KEY` | ⛔ rc=0 even signed out — "LLM not set" signature |
 
-⚠️ **`gemini` CLI n'existe plus** : Google l'a coupé le 18/06/2026 (comptes individuels),
-remplacé par Antigravity CLI (`agy`, binaire Go, installeur curl officiel). Le free tier
-personnel Google passe par Antigravity.
+⚠️ **The `gemini` CLI no longer exists**: Google shut it down on 2026-06-18 (individual
+accounts), replaced by Antigravity CLI (`agy`, Go binary, official curl installer). The
+personal Google free tier goes through Antigravity.
 
-## 2. Pourquoi déléguer (par ordre de valeur)
+## 2. Why delegate (by order of value)
 
-1. **Second avis cross-vendor** — une review par un modèle d'une autre famille n'a pas
-   les mêmes angles morts que 4 reviewers Claude. `codex exec review` est même un
-   sous-commande dédiée. Toujours **ADVISORY** : jamais un gate de merge.
-2. **Pools de quota indépendants** — le quota Claude Max est par modèle ; Codex
-   (abonnement ChatGPT), Antigravity (free tier Google) et Kimi (API ~0,60 $/M in)
-   sont des réservoirs séparés. Décharger le mécanique y préserve fable/opus pour le
-   raisonnement dur (règle mémoire « routage modèle »).
-3. **Contexte 1M de Gemini** — audits/synthèses sur très gros volumes (llms-full,
-   sweeps doc) sans découpage.
-4. **Coût marginal quasi nul pour le mécanique en masse** — Kimi K2.x est ~10-20×
-   moins cher que les tiers premium.
+1. **Cross-vendor second opinion** — a review by a model from another family does not
+   share the blind spots of 4 Claude reviewers. `codex exec review` is even a dedicated
+   subcommand. Always **ADVISORY**: never a merge gate.
+2. **Independent quota pools** — the Claude Max quota is per model; Codex (ChatGPT
+   subscription), Antigravity (Google free tier) and Kimi (API ~$0.60/M in) are
+   separate reservoirs. Offloading mechanical work preserves fable/opus for hard
+   reasoning (memory rule "model routing").
+3. **Gemini's 1M context** — audits/syntheses over very large volumes (llms-full,
+   doc sweeps) without chunking.
+4. **Near-zero marginal cost for bulk mechanical work** — Kimi K2.x is ~10-20×
+   cheaper than premium tiers.
 
-## 3. Matrice de routage (extension de la règle mémoire existante)
+## 3. Routing matrix (extends the existing memory rule)
 
-| Tâche | Moteur | Mode |
+| Task | Engine | Mode |
 |---|---|---|
-| Orchestration, archi, debug retors, décisions, tout ce qui committe | **Claude (fable/opus)** — jamais délégué | — |
-| Review adversariale 2e avis sur une PR | `codex exec review` + `agy -p` | read-only, ADVISORY dans le triptyque/review-fanout |
-| Audit/synthèse gros contexte (doc-drift, llms-full) | `agy -p` (Gemini, 1M ctx) | read-only |
-| Scaffolds, boilerplate de tests, flows Maestro, conversions mécaniques | `kimi` (ou codex) | `--write` dans un worktree/clone jeté uniquement |
-| Recherche ponctuelle, question factuelle croisée | n'importe lequel (le moins cher dispo) | read-only |
+| Orchestration, architecture, hard debugging, decisions, anything that commits | **Claude (fable/opus)** — never delegated | — |
+| Adversarial second-opinion review on a PR | `codex exec review` + `agy -p` | read-only, ADVISORY in triptych/review-fanout |
+| Large-context audit/synthesis (doc-drift, llms-full) | `agy -p` (Gemini, 1M ctx) | read-only |
+| Scaffolds, test boilerplate, Maestro flows, mechanical conversions | `kimi` (or codex) | `--write` in a throwaway worktree/clone only |
+| One-off research, cross-checked factual question | any (cheapest available) | read-only |
 
-## 4. Règles de sécurité (non négociables)
+## 4. Safety rules (non-negotiable)
 
-- Les LLMs externes ne **committent jamais, ne pushent jamais, ne touchent jamais `gh`**.
-  Ils rendent du texte (réponse, diff, rapport) ; Claude review et applique.
-- **Read-only par défaut** ; `--write` refusé hors worktree jeté/clone `/tmp` (garde
-  codée dans le wrapper). Jamais `danger-full-access` / bypass d'approbations.
-- **SKIP honnête** (#2343) : CLI absent ou déloggé → exit 3 + `SKIP:`, jamais un vert
-  silencieux. `agy` et `kimi` rendent rc=0 déloggés → détection par signature de sortie.
-- Étanchéité pro/perso et zéro secret dans les prompts délégués — mêmes règles que
-  pour tout contenu sortant.
+- External LLMs **never commit, never push, never touch `gh`**. They return text
+  (answer, diff, report); Claude reviews and applies.
+- **Read-only by default**; `--write` refused outside a throwaway worktree / `/tmp`
+  clone (guard coded in the wrapper). Never `danger-full-access` / approval bypass.
+- **Honest SKIP** (#2343): missing or signed-out CLI → exit 3 + `SKIP:`, never a
+  silent green. `agy` and `kimi` return rc=0 when signed out → output-signature
+  detection.
+- Pro/perso separation and zero secrets in delegated prompts — same rules as any
+  outbound content.
 
-## 5. Auth — étape Thomas (une fois par CLI)
+## 5. Auth — Thomas's step (once per CLI)
 
 ```bash
-codex login          # OAuth ChatGPT (Plus/Pro requis) — ou codex login --api-key
-agy                  # lancement nu → sign-in Google (free tier perso OK)
-kimi                 # setup interactif — ou export MOONSHOT_API_KEY (clé → profile-private)
+codex login          # ChatGPT OAuth (Plus/Pro required) — or codex login --api-key
+agy                  # bare launch → Google sign-in (personal free tier OK)
+kimi                 # interactive setup — or export MOONSHOT_API_KEY (key → profile-private)
 ```
 
-Coûts : Codex inclus dans ChatGPT Plus (20 $/m) ; Antigravity free tier compte Google
-perso ; Kimi membership ~19 $/m ou API pay-as-you-go. **Aucun abonnement requis pour
-commencer : Antigravity seul suffit à valider le pattern.**
+Costs: Codex included in ChatGPT Plus ($20/mo); Antigravity free tier with a personal
+Google account; Kimi membership ~$19/mo or pay-as-you-go API. **No subscription needed
+to start: Antigravity alone is enough to validate the pattern.**
 
-## 6. Prochaines étapes
+## 6. Next steps
 
-1. Thomas authentifie ce qu'il veut activer (au minimum `agy`, gratuit).
-2. Smoke test : `bash .claude/scripts/llm-delegate.sh gemini "Résume llms.txt en 5 points"`.
-3. Premier usage réel : brancher un avis externe ADVISORY dans `review-fanout`
-   (une voix `codex exec review` + une voix `agy`), comparer la valeur sur 2-3 PRs.
-4. Si la valeur est là : promouvoir en étape optionnelle du triptyque + documenter
-   dans `.claude/workflows/README.md`.
+1. Thomas authenticates whatever he wants to enable (at minimum `agy`, free).
+2. Smoke test: `bash .claude/scripts/llm-delegate.sh gemini "Summarize llms.txt in 5 points"`.
+3. First real use: plug an external ADVISORY opinion into `review-fanout`
+   (one `codex exec review` voice + one `agy` voice), compare value over 2-3 PRs.
+4. If the value is there: promote to an optional triptych step + document it in
+   `.claude/workflows/README.md`.
