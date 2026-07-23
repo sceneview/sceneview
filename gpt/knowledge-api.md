@@ -4670,10 +4670,10 @@ public enum CameraControlMode: Sendable {
 public struct CameraControls: Sendable {
     public var mode: CameraControlMode
     public var target: SIMD3<Float> = .zero
-    public var orbitRadius: Float = 5.0
+    public var orbitRadius: Float = 2.0     // v4.4.0: was 5.0
     public var azimuth: Float = 0.0
     public var elevation: Float = .pi / 6   // 30 degrees
-    public var minRadius: Float = 0.5
+    public var minRadius: Float = 1.0       // v4.4.0: was 0.5
     public var maxRadius: Float = 50.0
     public var sensitivity: Float = 0.005
     public var isAutoRotating: Bool = false

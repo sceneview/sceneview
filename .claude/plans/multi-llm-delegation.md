@@ -2,7 +2,7 @@
 
 > Exploration session: how to delegate SceneView tasks to non-Claude LLMs, with
 > Claude Code as the **single orchestrator**. Status: CLIs installed and probed on
-> the Mac; **none authenticated** (Thomas's step, §Auth).
+> the Mac; **`agy` + `codex` authenticated**, `kimi` auth pending (§Auth).
 > Single entry point: [`llm-delegate.sh`](../scripts/llm-delegate.sh).
 
 ## 1. Current state (measured on this machine, 2026-07-23)

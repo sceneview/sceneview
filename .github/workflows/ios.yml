@@ -58,14 +58,18 @@ jobs:
       - name: Build Swift Package (iOS)
         working-directory: SceneViewSwift
         run: |
-          # `pipefail` so a failing xcodebuild is not masked by xcpretty's
-          # exit 0 (the `|| cat` fallback also exits 0) — see #1515.
+          # `set -o pipefail` + `|| exit ${PIPESTATUS[0]}` propagate a failing
+          # xcodebuild's exit code. The old `|| cat` tail DEFEATED pipefail:
+          # `cat` reads CI's empty stdin and exits 0, so the step stayed green
+          # through real build/test failures (#2878, #2865). `PIPESTATUS[0]` is
+          # xcodebuild's code — not xcpretty's — so a missing xcpretty is still
+          # tolerated (xcodebuild OK → 0 → step green). See #1515.
           set -o pipefail
           xcodebuild build \
             -scheme SceneViewSwift \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
             -skipMacroValidation \
-            | xcpretty --color 2>/dev/null || cat
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
 
       # Build the visionOS target so a visionOS-only API breakage can't slip
       # into main silently (#1366 — the xrOS target was broken on main for
@@ -96,7 +100,7 @@ jobs:
             -scheme SceneViewSwift \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
             -skipMacroValidation \
-            | xcpretty --color 2>/dev/null || cat
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
 
       # Build the iOS sample demo so a missing pbxproj registration on a new
       # demo file fails the PR instead of slipping into main. Caught by
@@ -162,7 +166,7 @@ jobs:
             -skipPackagePluginValidation \
             -skipMacroValidation \
             SKETCHFAB_API_KEY="$SKETCHFAB_API_KEY" \
-            | xcpretty --color 2>/dev/null || cat
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
 
       # #2852 — the step above CANNOT see the AR code. Every AR demo wraps its
       # real ARKit/RealityKit logic in `#if !targetEnvironment(simulator)`

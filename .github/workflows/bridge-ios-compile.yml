@@ -101,8 +101,11 @@ jobs:
             bridge-ios-spm-${{ runner.os }}-
 
       # Build SceneViewSwift for the iOS Simulator so the bridge type-check has
-      # a real `.swiftmodule` to import. `pipefail` so a failing build is not
-      # masked by the xcpretty fallback (#1515).
+      # a real `.swiftmodule` to import. `set -o pipefail` + `|| exit
+      # ${PIPESTATUS[0]}` so a failing build propagates its exit code instead
+      # of being swallowed by a `|| cat` that reads CI's empty stdin and exits
+      # 0 (#2878). PIPESTATUS[0] is xcodebuild's code, so a missing xcpretty is
+      # still tolerated (#1515).
       - name: Build SceneViewSwift (iOS Simulator)
         working-directory: SceneViewSwift
         run: |
@@ -119,7 +122,7 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/sv-dd" \
             ONLY_ACTIVE_ARCH=NO \
             ARCHS="arm64 x86_64" \
-            | xcpretty --color 2>/dev/null || cat
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
 
       # Type-check the Flutter plugin's iOS Swift against the built
       # SceneViewSwift module + the Flutter.framework that ships with the SDK.
