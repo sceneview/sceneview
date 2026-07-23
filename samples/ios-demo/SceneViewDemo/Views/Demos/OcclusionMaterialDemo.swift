@@ -20,6 +20,12 @@ struct OcclusionMaterialDemo: View {
 
     @State private var showOccluder: Bool = false
 
+    /// The live occluder plane. The `SceneView` content closure runs once (it
+    /// is RealityView's `make:`), so the toggle hot-swaps the material on this
+    /// reference instead of rebuilding the scene — same pattern as
+    /// `MultiModelDemo`.
+    @State private var occluderEntity: ModelEntity?
+
     var body: some View {
         ZStack {
             sceneView
@@ -30,6 +36,7 @@ struct OcclusionMaterialDemo: View {
                     .padding()
             }
         }
+        .onChange(of: showOccluder) { _, _ in applyOccluderMaterial() }
         .navigationTitle("Occlusion Material")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -40,14 +47,10 @@ struct OcclusionMaterialDemo: View {
 
     @ViewBuilder
     private var sceneView: some View {
-        RealityView { content in
+        SceneView { root in
             // ── Reference model (sphere) ──────────────────────────────────
-            var helmetMaterial = PhysicallyBasedMaterial()
-            helmetMaterial.baseColor = .init(tint: .init(red: 0.2, green: 0.6, blue: 0.9, alpha: 1))
-            helmetMaterial.roughness = .init(floatLiteral: 0.3)
-            helmetMaterial.metallic  = .init(floatLiteral: 0.8)
             let sphereMesh   = MeshResource.generateSphere(radius: 0.25)
-            let sphereEntity = ModelEntity(mesh: sphereMesh, materials: [helmetMaterial])
+            let sphereEntity = ModelEntity(mesh: sphereMesh, materials: [Self.referenceMaterial()])
             sphereEntity.name = "sphere"
             sphereEntity.position = [0, 0, -0.7]
 
@@ -56,28 +59,61 @@ struct OcclusionMaterialDemo: View {
             // Default material = OcclusionMaterial (invisible, depth-writing).
             let planeSize: Float = 0.5
             let planeMesh   = MeshResource.generatePlane(width: planeSize, height: planeSize / 2)
-            let occluderMat: any RealityKit.Material = showOccluder
-                ? SimpleMaterial(color: .init(red: 0.4, green: 0.4, blue: 0.45, alpha: 0.6), isMetallic: false)
-                : OcclusionMaterial()
-            let planeEntity = ModelEntity(mesh: planeMesh, materials: [occluderMat])
+            let planeEntity = ModelEntity(
+                mesh: planeMesh,
+                materials: [Self.occluderMaterial(revealed: showOccluder)]
+            )
             planeEntity.name = "occluder"
             // Position the occluder plane in front of the sphere's lower half.
             planeEntity.position = [0, -0.05, -0.58]
 
-            content.add(sphereEntity)
-            content.add(planeEntity)
-        } update: { content in
-            // Hot-swap the occluder material when the toggle changes.
-            guard let occluder = content.entities.first(where: { $0.name == "occluder" }),
-                  var model = occluder.components[ModelComponent.self] else { return }
-            let newMat: any RealityKit.Material = showOccluder
-                ? SimpleMaterial(color: .init(red: 0.4, green: 0.4, blue: 0.45, alpha: 0.6), isMetallic: false)
-                : OcclusionMaterial()
-            model.materials = [newMat]
-            occluder.components.set(model)
+            root.addChild(sphereEntity)
+            root.addChild(planeEntity)
+            // Re-apply once the reference is published: a toggle that fired
+            // between scene setup and this hop would otherwise be dropped by
+            // `applyOccluderMaterial()`'s nil guard. Mirrors `MultiModelDemo`,
+            // which calls `syncVisibility()` from the same hop.
+            Task { @MainActor in
+                self.occluderEntity = planeEntity
+                self.applyOccluderMaterial()
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Route through the wrapper's IBL path for iOS-catalog consistency and
+        // Android parity — NOT to fix an unlit render. The old raw `RealityView`
+        // already lit the metallic reference sphere via RealityKit's default
+        // environment lighting (it did NOT render near-black — verified on the
+        // simulator 2026-07-23). But `.environment()` is defined on `SceneView`,
+        // so the raw path could never adopt the catalog's studio HDRI. Android
+        // hosts this in `MaterialsDemo` with `studio_2k.hdr` + skybox; `.studio`
+        // is the same studio environment, aligning with the iOS catalog
+        // (ModelViewerDemo, #2114) and with Android. Follow-up to #2805.
+        .environment(.studio)
         .ignoresSafeArea()
+    }
+
+    // MARK: — Materials
+
+    private static func referenceMaterial() -> PhysicallyBasedMaterial {
+        var material = PhysicallyBasedMaterial()
+        material.baseColor = .init(tint: .init(red: 0.2, green: 0.6, blue: 0.9, alpha: 1))
+        material.roughness = .init(floatLiteral: 0.3)
+        material.metallic  = .init(floatLiteral: 0.8)
+        return material
+    }
+
+    /// `revealed` swaps the invisible depth-writing material for a
+    /// semi-transparent slab — the ground-truth reveal behind the toggle.
+    private static func occluderMaterial(revealed: Bool) -> any RealityKit.Material {
+        revealed
+            ? SimpleMaterial(color: .init(red: 0.4, green: 0.4, blue: 0.45, alpha: 0.6), isMetallic: false)
+            : OcclusionMaterial()
+    }
+
+    private func applyOccluderMaterial() {
+        guard let occluderEntity,
+              var model = occluderEntity.components[ModelComponent.self] else { return }
+        model.materials = [Self.occluderMaterial(revealed: showOccluder)]
+        occluderEntity.components.set(model)
     }
 
     // MARK: — Controls
