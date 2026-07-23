@@ -251,6 +251,126 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 ForceTrackingFailureMenu()
             }
         },
+        // The answer card / banner / progress row. Hosted by the scaffold's
+        // `bottomOverlay` slot so it is laid out against the Settings FAB instead of
+        // under it: this card is `fillMaxWidth()`, so at plain `Alignment.BottomCenter`
+        // it ran into the bottom-end FAB by construction, in every state (#2779).
+        bottomOverlay = {
+            // Bottom overlay — exactly one of: unavailable banner, download CTA/progress,
+            // thinking indicator, answer card, transient failure.
+            if (!hideOverlaysForCapture) Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 24.dp)
+                    // Full-width card: only its end edge can reach the Settings
+                    // FAB, so only the end edge is inset (0.dp when there is no FAB).
+                    .padding(end = settingsFabReservedSpace),
+            ) {
+                when (val status = engineStatus) {
+                    null -> Unit
+
+                    AskEngineStatus.Unavailable -> BottomCard {
+                        Text(
+                            text = stringResource(R.string.demo_point_and_ask_unavailable_title),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.demo_point_and_ask_unavailable_body),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+
+                    AskEngineStatus.Downloadable -> BottomCard {
+                        Text(
+                            text = stringResource(R.string.demo_point_and_ask_download_title),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = {
+                            scope.launch {
+                                askEngine.download().collect { engineStatus = it }
+                            }
+                        }) {
+                            Text(stringResource(R.string.demo_point_and_ask_download_cta))
+                        }
+                    }
+
+                    is AskEngineStatus.Downloading -> BottomCard {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            Text(
+                                text = status.totalBytesDownloaded
+                                    ?.let { bytes ->
+                                        stringResource(
+                                            R.string.demo_point_and_ask_downloading_progress,
+                                            bytes / (1024 * 1024),
+                                        )
+                                    }
+                                    ?: stringResource(R.string.demo_point_and_ask_downloading),
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(start = 12.dp),
+                            )
+                        }
+                    }
+
+                    AskEngineStatus.Ready -> when (val ask = askState) {
+                        AskState.Idle -> Unit
+
+                        AskState.Capturing, AskState.Thinking -> BottomCard {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                                Text(
+                                    text = stringResource(
+                                    R.string.demo_point_and_ask_status_thinking
+                                ),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(start = 12.dp),
+                                )
+                            }
+                        }
+
+                        is AskState.Answered -> BottomCard(
+                            testTag = PointAndAskTestTags.ANSWER_CARD,
+                        ) {
+                            Text(
+                                text = question,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            // "▌" = live-typing cursor while deltas keep arriving.
+                            Text(
+                                text = renderMarkdownLite(
+                                    if (ask.streaming) "${ask.text}▌" else ask.text
+                                ),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(
+                                    if (context.isOffline()) {
+                                        R.string.demo_point_and_ask_answer_source_offline
+                                    } else {
+                                        R.string.demo_point_and_ask_answer_source
+                                    }
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+
+                        AskState.Failed -> BottomCard {
+                            Text(
+                                text = stringResource(R.string.demo_point_and_ask_error),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -370,118 +490,6 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                         style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     )
-                }
-            }
-
-            // Bottom overlay — exactly one of: unavailable banner, download CTA/progress,
-            // thinking indicator, answer card, transient failure.
-            if (!hideOverlaysForCapture) Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(horizontal = 16.dp, vertical = 24.dp),
-            ) {
-                when (val status = engineStatus) {
-                    null -> Unit
-
-                    AskEngineStatus.Unavailable -> BottomCard {
-                        Text(
-                            text = stringResource(R.string.demo_point_and_ask_unavailable_title),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(R.string.demo_point_and_ask_unavailable_body),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-
-                    AskEngineStatus.Downloadable -> BottomCard {
-                        Text(
-                            text = stringResource(R.string.demo_point_and_ask_download_title),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Button(onClick = {
-                            scope.launch {
-                                askEngine.download().collect { engineStatus = it }
-                            }
-                        }) {
-                            Text(stringResource(R.string.demo_point_and_ask_download_cta))
-                        }
-                    }
-
-                    is AskEngineStatus.Downloading -> BottomCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                            Text(
-                                text = status.totalBytesDownloaded
-                                    ?.let { bytes ->
-                                        stringResource(
-                                            R.string.demo_point_and_ask_downloading_progress,
-                                            bytes / (1024 * 1024),
-                                        )
-                                    }
-                                    ?: stringResource(R.string.demo_point_and_ask_downloading),
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(start = 12.dp),
-                            )
-                        }
-                    }
-
-                    AskEngineStatus.Ready -> when (val ask = askState) {
-                        AskState.Idle -> Unit
-
-                        AskState.Capturing, AskState.Thinking -> BottomCard {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                                Text(
-                                    text = stringResource(
-                                    R.string.demo_point_and_ask_status_thinking
-                                ),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(start = 12.dp),
-                                )
-                            }
-                        }
-
-                        is AskState.Answered -> BottomCard(
-                            testTag = PointAndAskTestTags.ANSWER_CARD,
-                        ) {
-                            Text(
-                                text = question,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            // "▌" = live-typing cursor while deltas keep arriving.
-                            Text(
-                                text = renderMarkdownLite(
-                                    if (ask.streaming) "${ask.text}▌" else ask.text
-                                ),
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = stringResource(
-                                    if (context.isOffline()) {
-                                        R.string.demo_point_and_ask_answer_source_offline
-                                    } else {
-                                        R.string.demo_point_and_ask_answer_source
-                                    }
-                                ),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-
-                        AskState.Failed -> BottomCard {
-                            Text(
-                                text = stringResource(R.string.demo_point_and_ask_error),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
                 }
             }
         }

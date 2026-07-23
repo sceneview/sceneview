@@ -331,20 +331,61 @@ jobs:
           # green having skipped submission entirely. Poll up to 10 more
           # minutes (well inside the 20-min JWT), then FAIL loudly — a tag
           # deploy whose build never turns VALID must be red, not green.
-          builds = []
+          #
+          # The build MUST be constrained to the iOS platform. The macOS
+          # deploy job runs in PARALLEL against the SAME app record (shared
+          # bundleId → shared app_id), so an unqualified `builds` query can
+          # return the macOS build; attaching it to the iOS version below 409s
+          # with "The specified build has a different platform than the
+          # version". This is the build-side twin of the #2731 version hijack —
+          # #2731 added filter[platform]=IOS to the *version* lookup but left
+          # this *build* lookup unfiltered, so iOS submission kept failing on
+          # 4.24.0 and 4.25.0. We resolve each build's platform via the
+          # included preReleaseVersion and select client-side (so the fix does
+          # not depend on filter[preReleaseVersion.platform] being honoured);
+          # if the include is unavailable for this key we fall back to the
+          # newest VALID build rather than regress into a 10-minute red poll.
+          build_id = None
+          build_version = None
           for attempt in range(1, 11):
-              r = requests.get(f"{BASE}/builds?filter[app]={app_id}&sort=-uploadedDate&limit=1&filter[processingState]=VALID", headers=headers)
-              builds = r.json().get("data", [])
-              if builds:
+              r = requests.get(
+                  f"{BASE}/builds?filter[app]={app_id}&filter[processingState]=VALID"
+                  f"&sort=-uploadedDate&limit=20&include=preReleaseVersion",
+                  headers=headers,
+              )
+              payload = r.json()
+              included = {(i["type"], i["id"]): i for i in payload.get("included", [])}
+              data = payload.get("data", [])
+              newest_valid = data[0] if data else None
+              platform_seen = False
+              for b in data:
+                  prv = b.get("relationships", {}).get("preReleaseVersion", {}).get("data")
+                  inc = included.get((prv["type"], prv["id"])) if prv else None
+                  platform = (inc or {}).get("attributes", {}).get("platform")
+                  if platform is not None:
+                      platform_seen = True
+                  if platform == "IOS":
+                      build_id = b["id"]
+                      build_version = b["attributes"]["version"]
+                      break
+              if build_id:
                   break
-              print(f"No VALID build yet (attempt {attempt}/10) — Apple still processing, retrying in 60s...")
+              # Apple returned VALID builds but NONE exposed a platform (the
+              # include failed for this service-account key) — don't spin for
+              # 10 min: fall back to the newest VALID build (pre-fix behaviour),
+              # loudly, so the platform filter never makes things worse.
+              if newest_valid is not None and not platform_seen:
+                  print("::warning::Could not resolve build platform via include=preReleaseVersion — "
+                        "falling back to newest VALID build (iOS platform filter inactive).")
+                  build_id = newest_valid["id"]
+                  build_version = newest_valid["attributes"]["version"]
+                  break
+              print(f"No VALID iOS build yet (attempt {attempt}/10) — Apple still processing, retrying in 60s...")
               time.sleep(60)
-          if not builds:
-              print("::error::No VALID build after ~12 minutes — Apple processing overran or the upload failed. The release was NOT submitted for review; re-run this job once the build shows as processed in App Store Connect.")
+          if not build_id:
+              print("::error::No VALID iOS build after ~12 minutes — Apple processing overran or the upload failed. The release was NOT submitted for review; re-run this job once the build shows as processed in App Store Connect.")
               raise SystemExit(1)
-          build_id = builds[0]["id"]
-          build_version = builds[0]["attributes"]["version"]
-          print(f"Latest build: {build_version} (ID: {build_id})")
+          print(f"Selected iOS build: {build_version} (ID: {build_id})")
 
           # Resolve the App Store version string. Tag pushes set
           # ASC_VERSION_STRING via env (e.g. "v4.2.0"). Drop the leading "v"

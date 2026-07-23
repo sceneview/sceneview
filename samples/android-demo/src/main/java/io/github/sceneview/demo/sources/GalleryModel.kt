@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.sources
 
+import java.util.Locale
+
 /**
  * The 3D-model catalogs the Explore tab can browse (#2645).
  *
@@ -108,8 +110,8 @@ fun GalleryModel.primaryTagDisplay(): String =
 
 /** Compact human-readable face count: `1.2k`, `3.4M`, or the raw number. */
 fun GalleryModel.formattedFaceCount(): String = when {
-    faceCount >= 1_000_000 -> String.format("%.1fM", faceCount / 1_000_000.0)
-    faceCount >= 1_000 -> String.format("%.1fk", faceCount / 1_000.0)
+    faceCount >= 1_000_000 -> String.format(Locale.US, "%.1fM", faceCount / 1_000_000.0)
+    faceCount >= 1_000 -> String.format(Locale.US, "%.1fk", faceCount / 1_000.0)
     else -> faceCount.toString()
 }
 

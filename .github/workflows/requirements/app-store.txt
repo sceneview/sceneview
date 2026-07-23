@@ -1,4 +1,6 @@
-# Python deps for .github/workflows/app-store.yml (App Store Connect upload/verify).
+# Python deps for the App Store Connect workflows: app-store.yml
+# (upload/verify), app-store-screenshots.yml (screenshot sync), and the
+# maintenance.yml `asc-listing-drift` read-only job. All import requests/PyJWT.
 # Pinned exact versions — this job runs with APP_STORE_CONNECT_API_KEY in env,
 # so a compromised PyPI release must not be pullable here (#1230).
 # Tracked by Dependabot via the `pip` entry in .github/dependabot.yml.

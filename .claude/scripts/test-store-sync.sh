@@ -115,6 +115,21 @@ else
   bad "asc_listing.py --apply-screenshots --fail-on-drift → rc=$RC (want 2)"
 fi
 
+# 4f. --dry-run --fail-on-drift WITHOUT creds must still SKIP (exit 0), never
+#     exit 3. The credential check precedes the drift logic, so "no creds" is
+#     "not measured", not "drift found". release-checklist.sh §17 grades exit 3
+#     as a drift WARN — if a credential-less run returned 3, every local release
+#     check would warn on drift it never actually measured (a fabricated signal,
+#     the exact class this suite guards against).
+for script in play_listing.py asc_listing.py; do
+  run_py "$SYNC_DIR/$script" --dry-run --fail-on-drift
+  if [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q '^\[skip\]'; then
+    ok "$script --dry-run --fail-on-drift without creds → honest SKIP, exit 0 (not 3)"
+  else
+    bad "$script --dry-run --fail-on-drift without creds → rc=$RC (want 0 + [skip])"
+  fi
+done
+
 # 4b. A near-miss flag must NOT reach the App Store write path. argparse
 #     expands unambiguous prefixes unless allow_abbrev=False, so `--apply`
 #     (play_listing.py's real flag — the obvious thing to type by habit)
@@ -214,6 +229,72 @@ if sed -n '/sync-listing:/,$p' "$ROOT/.github/workflows/play-store.yml" | grep -
 else
   ok "sync-listing job has no inline python heredoc left"
 fi
+
+# 7. #2612 Phase C step 0 — the ASC read-only rail must exist and stay read-only.
+#    Until this job runs, asc_listing.py --dry-run has NEVER touched the live API,
+#    so the checksum-provenance verdict the diff depends on is unmeasured. The job
+#    exists to produce it; assert it is wired and that it cannot write to a store.
+MAINT_WF="$ROOT/.github/workflows/maintenance.yml"
+if grep -q 'store-sync/asc_listing\.py --dry-run' "$MAINT_WF"; then
+  ok "maintenance.yml runs asc_listing.py --dry-run (Phase C read-only rail)"
+else
+  bad "maintenance.yml no longer runs asc_listing.py --dry-run — the ASC drift/probe signal is never produced"
+fi
+# The read-only rail must never gain a write flag by a careless edit: --apply*
+# in a scheduled, credential-bearing job would push to the App Store unattended.
+if python3 - "$MAINT_WF" <<'PYEOF'
+import sys, yaml
+job = yaml.safe_load(open(sys.argv[1]))["jobs"].get("asc-listing-drift")
+if not job:
+    sys.exit(1)
+runs = " ".join(str(s.get("run", "")) for s in job.get("steps", []))
+sys.exit(0 if ("asc_listing.py --dry-run" in runs
+               and "--apply" not in runs) else 1)
+PYEOF
+then
+  ok "asc-listing-drift job is read-only (--dry-run, no --apply*)"
+else
+  bad "asc-listing-drift job missing or carries a write flag — a scheduled job must never push to the store"
+fi
+# A crash mid-read must not render as a clean read (security review, PR #2811).
+# `| tee … || true` throws the script's status away twice, so a 5xx or a token
+# expiry after the first line of output leaves a partial log with no drift lines
+# and no [probe] verdict — which the summary would print as if nothing were
+# wrong. The job must capture PIPESTATUS[0] (the SCRIPT's code, not tee's) and
+# the summary must branch on it. Assert both halves: dropping either one
+# silently restores the false-clean.
+if python3 - "$MAINT_WF" <<'PYEOF'
+import sys, yaml
+job = yaml.safe_load(open(sys.argv[1]))["jobs"].get("asc-listing-drift")
+if not job:
+    sys.exit(1)
+runs = " ".join(str(s.get("run", "")) for s in job.get("steps", []))
+sys.exit(0 if ("PIPESTATUS[0]" in runs and "asc_rc" in runs) else 1)
+PYEOF
+then
+  ok "asc-listing-drift reports a partial read instead of a silent clean one"
+else
+  bad "asc-listing-drift lost its PIPESTATUS/asc_rc guard — a crashed run would render as a finding-free read"
+fi
+
+# 8. #2612 Phase C — the release gate (§17 of release-checklist.sh) must run
+#    the read-only drift diff for BOTH stores with --fail-on-drift. This is the
+#    seam that surfaces drift at tag time, not just in an unread daily step
+#    summary; if §17 stops calling a script (or drops --fail-on-drift, making
+#    exit 3 unreachable), a drifted store ships silent.
+CHECKLIST="$ROOT/.claude/scripts/release-checklist.sh"
+if grep -q -- '--dry-run --fail-on-drift' "$CHECKLIST"; then
+  ok "release-checklist.sh §17 uses --dry-run --fail-on-drift"
+else
+  bad "release-checklist.sh §17 no longer runs the drift diff with --fail-on-drift"
+fi
+for script in play_listing.py asc_listing.py; do
+  if grep -q "\"$script\"" "$CHECKLIST"; then
+    ok "release-checklist.sh §17 checks $script"
+  else
+    bad "release-checklist.sh §17 no longer checks $script"
+  fi
+done
 
 echo
 echo "test-store-sync.sh: $PASS passed, $FAIL failed"

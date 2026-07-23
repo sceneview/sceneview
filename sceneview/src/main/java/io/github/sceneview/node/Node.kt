@@ -42,8 +42,10 @@ import io.github.sceneview.math.times
 import io.github.sceneview.math.toMatrix
 import io.github.sceneview.math.toQuaternion
 import io.github.sceneview.math.worldToLocalQuaternion
+import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.safeDestroyEntity
 import io.github.sceneview.safeDestroyTransformable
+import io.github.sceneview.safeRecycleEntity
 
 /**
  * A Node represents a transformation within the scene graph's hierarchy.
@@ -71,9 +73,34 @@ import io.github.sceneview.safeDestroyTransformable
  *
  * +z ---- -y --------
  */
-open class Node(
+open class Node protected constructor(
     val engine: Engine,
-    @FilamentEntity val entity: Entity = EntityManager.get().create(),
+    /**
+     * The Filament entity this node drives — already resolved, never the [NULL_ENTITY]
+     * sentinel.
+     *
+     * Declared on the **primary** constructor on purpose: Kotlin resolves a bare `entity` in
+     * an `init` block or a property initializer to the constructor *parameter*, so a
+     * same-named property declared in the body would silently shadow it and every initializer
+     * below would read the sentinel instead of the real id (it did: `transformManager.create`
+     * ran on entity 0, and the #2762 canary caught it).
+     */
+    @FilamentEntity val entity: Entity,
+    /**
+     * Whether [destroy] returns [entity]'s id to the [EntityManager].
+     *
+     * `true` only when this node allocated the entity itself. An entity handed in by the
+     * caller is **borrowed**: [ModelNode] wraps `modelInstance.root` and its children wrap
+     * `gltfio` node entities, all owned by the `AssetLoader`, which destroys them with the
+     * asset. Recycling those ids here would let Filament reissue them while the asset is
+     * still alive — a use-after-free that surfaces as one node silently driving another's
+     * transform.
+     *
+     * Mirrors the ownership flags this codebase already uses for the same reason
+     * (`RenderableNode.destroyMaterialsOnDispose`, `MeshNode.destroyBuffersOnDispose`).
+     * Subclasses that allocate an entity through some other route can pass `true` here.
+     */
+    private val ownsEntity: Boolean,
 ) : GestureDetector.OnGestureListener,
     OnDoubleTapListener,
     OnContextClickListener,
@@ -81,6 +108,29 @@ open class Node(
     RotateGestureDetector.OnRotateListener,
     ScaleGestureDetector.OnScaleListener,
     TransformProvider {
+
+    /**
+     * @param entity the Filament entity to drive. Leave it out (the default) to have the node
+     * allocate — and, on [destroy], recycle — its own entity. Pass one to **borrow** an entity
+     * someone else owns: the node then drives its components but never returns the id to the
+     * [EntityManager] (#2859).
+     */
+    constructor(engine: Engine, @FilamentEntity entity: Entity = NULL_ENTITY) : this(
+        engine = engine,
+        entity = if (entity == NULL_ENTITY) EntityManager.get().create() else entity,
+        ownsEntity = entity == NULL_ENTITY,
+    )
+
+    /**
+     * The Filament scene this node's entities are currently registered in, or `null`.
+     *
+     * Tracked by [io.github.sceneview.SceneNodeManager] so [destroy] can un-register the
+     * entities before recycling their ids. The composable path already detaches before
+     * destroying (`SceneScope.detach` → `node.destroy()`), but an imperative caller may not:
+     * an id left in a `Scene` and then reissued would make the next renderable built on it
+     * appear in that scene without ever having been added to it.
+     */
+    internal var attachedScene: Scene? = null
 
     // ---- Delegates ----
 
@@ -1211,6 +1261,10 @@ open class Node(
      * imperatively-built node tree is released by a single call on the root.
      * Compose-declared children are disposed independently by `rememberNode`;
      * destroying them again here is a safe no-op.
+     *
+     * Releases the entity's components, then returns its id to the [EntityManager] — but only
+     * for a self-allocated entity, never a borrowed one (see the `ownsEntity` constructor
+     * parameter and #2859).
      */
     open fun destroy() {
         if (isDestroyed) return
@@ -1220,8 +1274,19 @@ open class Node(
         // ConcurrentModificationException.
         childNodes.toList().forEach { it.destroy() }
         runCatching { parent = null }
+        // Un-register before the id is recycled: a Scene holding a reissued id would render
+        // whatever renderable is built on it next (see [attachedScene]). No-op on the
+        // composable path, where SceneScope.detach() already removed the node.
+        attachedScene?.let { scene ->
+            runCatching { scene.removeEntities(sceneEntities.toIntArray()) }
+            attachedScene = null
+        }
         engine.safeDestroyTransformable(entity)
         engine.safeDestroyEntity(entity)
+        // Components are gone; the id itself is only ours to give back when we allocated it.
+        if (ownsEntity) {
+            engine.safeRecycleEntity(entity)
+        }
     }
 }
 

@@ -5,6 +5,7 @@ export const meta = {
   phases: [
     { title: 'Review' },
     { title: 'Verify' },
+    { title: 'External advisory' },
   ],
 }
 
@@ -162,6 +163,29 @@ if (reviewersRan < reviewersExpected) {
 }
 log(`Verdict: ${merge_recommendation}${breakingApi ? ' (BREAKING public-API — maintainer gate)' : ''} → ${autonomousAction}`)
 
+// External cross-vendor ADVISORY second opinion (codex + gemini via llm-external-review.sh).
+// ⛔ NON-GATING by contract: reported for the maintainer & as a signal for the Claude
+// reviewers above, but NEVER folded into merge_recommendation/autonomousAction. A missing
+// or unauthenticated provider degrades to an honest SKIP inside the script (exit 0), so this
+// step can never turn a DO_NOT_MERGE into a MERGE, nor block on its own.
+phase('External advisory')
+let externalAdvisory = null
+try {
+  // Validate before interpolating into a shell command the agent will run — no command
+  // injection via a crafted diffRef/pr (flagged by an external Codex review, 2026-07-23).
+  const prNum = A.pr != null ? String(A.pr).replace(/[^0-9]/g, '') : ''
+  const safeDiffRef = /^[\w./-]+(\.{2,3}[\w./-]+)?$/.test(diffRef) ? diffRef : ''
+  const scope = A.pr ? (prNum ? `--pr ${prNum}` : '') : (safeDiffRef ? `--diff ${safeDiffRef}` : '')
+  if (!scope) throw new Error(`unsafe/invalid review scope (pr=${A.pr}, diffRef=${diffRef})`)
+  externalAdvisory = await agent(
+    `Run exactly this one command and return its FULL stdout verbatim as your final message, with no added commentary:\n\n  bash .claude/scripts/llm-external-review.sh ${scope}\n\nThis is an ADVISORY cross-vendor review (OpenAI Codex + Google Gemini). It is read-only and non-gating. If the script prints SKIPPED for a provider, that is expected — just return what it prints.`,
+    { label: 'external-advisory', phase: 'External advisory', model: 'sonnet', effort: 'low' },
+  )
+  log('external advisory captured (non-gating)')
+} catch (e) {
+  log('external advisory step failed — advisory only, ignored')
+}
+
 return {
   diffRef,
   context: ctx,
@@ -174,4 +198,5 @@ return {
   warnings: allWarnings,
   propagation,
   perReviewer: results.map((r) => ({ reviewer: r.reviewer, verdict: r.verdict, errorCount: (r.findings || []).filter((f) => f.severity === 'error').length })),
+  externalAdvisory,   // ⛔ advisory only — not part of the merge decision
 }

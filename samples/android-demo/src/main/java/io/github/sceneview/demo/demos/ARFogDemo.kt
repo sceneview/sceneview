@@ -53,6 +53,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberView
+import java.util.Locale
 
 /**
  * Environment-aware AR fog demo (issue #1717).
@@ -186,7 +187,7 @@ fun ARFogDemo(onBack: () -> Unit) {
             Spacer(Modifier.height(12.dp))
 
             Text(
-                text = "Density: ${"%.2f".format(fogDensity)}",
+                text = "Density: ${"%.2f".format(Locale.US, fogDensity)}",
                 style = MaterialTheme.typography.labelLarge,
             )
             Slider(
@@ -199,7 +200,7 @@ fun ARFogDemo(onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
 
             Text(
-                text = "Start: ${"%.1f".format(fogStart)} m",
+                text = "Start: ${"%.1f".format(Locale.US, fogStart)} m",
                 style = MaterialTheme.typography.labelLarge,
             )
             Slider(
@@ -212,7 +213,7 @@ fun ARFogDemo(onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
 
             Text(
-                text = "End: ${"%.1f".format(fogEnd)} m",
+                text = "End: ${"%.1f".format(Locale.US, fogEnd)} m",
                 style = MaterialTheme.typography.labelLarge,
             )
             Slider(

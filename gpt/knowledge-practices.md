@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.24.0)
+  Source of truth: /llms.txt  (SceneView 4.25.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Best Practices & Troubleshooting
 
 > Threading, performance, error handling, debugging, recording, and media.
-> Auto-generated from `llms.txt` (SceneView 4.24.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.25.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Render Quality
 
@@ -96,7 +96,25 @@ The extension `View.applyRenderQuality(RenderQuality)` configures `shadowOptions
 Use an **exhaustive `when` with NO `else` branch** — that is the whole point of the sealed hierarchy. The compiler then forces you to revisit this site the day SceneView adds a new subtype (#1759). An `else ->` fallback silently defeats that contract.
 
 ```kotlin
-ARSceneView(
+// App-side handlers referenced below — swap in your own UX / reporting:
+private fun showInstallArCoreCta() = Unit
+private fun showRetryCta() = Unit
+private fun showUpdateArCoreCta() = Unit
+private fun disableArEntryPoints() = Unit
+private fun requestLocationPermission() = Unit
+private fun showCameraBusyCta() = Unit
+private fun showCloudQuotaErrorCta() = Unit
+private fun recreateSession() = Unit
+private fun showCloudKeySetupHelp() = Unit
+private fun showMoveDeviceCta() = Unit
+private fun showBetterReferenceImageCta() = Unit
+private fun showRecordingErrorCta() = Unit
+private fun showPlaybackErrorCta() = Unit
+private fun retryNextFrame() = Unit
+private fun reportToCrashlytics(cause: Exception) = Unit
+
+@Composable
+fun ArScreenWithFailureHandling() = ARSceneView(
     onSessionFailure = { failure ->
         when (failure) {
             // Install / availability

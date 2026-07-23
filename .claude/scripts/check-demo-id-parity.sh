@@ -31,6 +31,14 @@
 #     `working`)
 #   - a manifest row claims `iosStatus: stub` but the id isn't in iOS's
 #     `allowedIds` at all (demoted without updating the manifest)
+#   - a `# ─── <bucket> (N) ───` section banner's declared tally disagrees
+#     with the number of rows that actually carry that `iosStatus`, or a row
+#     is filed under a section that isn't its own status. Banners are
+#     COMMENTS — `yaml.safe_load` never sees them, so before this check they
+#     could drift indefinitely while the gate stayed green (they did: the
+#     Wave-A iOS ports left them reading 30/23 against a real 34/19).
+#     Deterministic and textual, hence blocking; files with no banners at all
+#     (the self-test fixtures) opt out.
 #
 # Usage:
 #   bash .claude/scripts/check-demo-id-parity.sh
@@ -146,6 +154,7 @@ awk '/static let residualIds: Set<String> = \[/{ rest=$0; sub(/^.*= \[/,"",rest)
 # (PyYAML is already asserted present in the repo-hygiene job before this
 # step runs — see ci.yml's "Install dash + shellcheck" step.)
 PYTHONPATH="" python3 - "$ANDROID_IDS_FILE" "$IOS_GENERATED_IDS_FILE" "$IOS_REAL_IDS_FILE" "$IOS_ALIASES_FILE" "$IOS_RESIDUAL_FILE" "$MANIFEST" <<'PYEOF'
+import re
 import sys
 import yaml
 
@@ -266,6 +275,138 @@ for row_id in stale_rows:
         f"parity-manifest.yml row '{row_id}' is not a current Android canonical "
         f"id (renamed, removed, or a typo) — remove or fix the row."
     )
+
+# ─── Section headers + tallies: the COMMENTS must not lie (#2857 follow-up) ──
+# `yaml.safe_load` drops comments, so everything above validates only the
+# DATA. The file's `# ─── working (30) ───` section banners and their tallies
+# are comments — invisible to the parser, and therefore free to drift while
+# this gate stays green. That is exactly what happened across the Wave-A iOS
+# port PRs: four rows were flipped to `iosStatus: working` in place, without
+# moving them into the `working` section or touching any banner, so the
+# banners advertised 30/23 while the real tallies were 34/19.
+#
+# This is a deterministic, purely textual check (no heuristic, no judgement),
+# so it is BLOCKING like the rest of the gate. It enforces two invariants:
+#   A. every row sits under the banner matching its own `iosStatus`
+#   B. every banner's declared count equals that bucket's real row count
+#
+# Files with no banners at all (the self-test fixtures) opt out entirely —
+# the convention is only enforced where it is actually used.
+section_re = re.compile(r'^\s*#\s*─+\s*([a-z][a-z-]*)\s*\((\d+)\)')
+row_re = re.compile(r'^\s*-\s+id:\s*(\S+)')
+
+declared_sections = []       # [(bucket, declared_count, line_no)]
+row_section = {}             # row id -> bucket banner it physically sits under
+current_section = None
+in_demos = False
+
+with open(manifest_file) as f:
+    for line_no, line in enumerate(f, 1):
+        if not in_demos:
+            # Only look for banners AFTER `demos:` — the file's prose preamble
+            # discusses these same bucket names and must not be parsed as one.
+            if re.match(r'^demos:\s*$', line):
+                in_demos = True
+            continue
+        m = section_re.match(line)
+        if m:
+            current_section = m.group(1)
+            declared_sections.append((current_section, int(m.group(2)), line_no))
+            continue
+        m = row_re.match(line)
+        if m:
+            row_section[m.group(1)] = current_section
+
+if declared_sections:
+    seen_buckets = set()
+    for bucket, declared_count, line_no in declared_sections:
+        if bucket not in VALID_STATUSES:
+            errors.append(
+                f"parity-manifest.yml line {line_no}: section banner '{bucket}' is "
+                f"not a valid iosStatus (must be one of {sorted(VALID_STATUSES)})."
+            )
+            continue
+        if bucket in seen_buckets:
+            errors.append(
+                f"parity-manifest.yml line {line_no}: duplicate section banner for "
+                f"'{bucket}' — each bucket must have exactly one section."
+            )
+            continue
+        seen_buckets.add(bucket)
+
+        # Invariant B — declared tally vs the bucket's real row count.
+        actual = sum(1 for r in manifest_by_id.values() if r.get("iosStatus") == bucket)
+        if declared_count != actual:
+            errors.append(
+                f"parity-manifest.yml line {line_no}: the '{bucket}' section banner "
+                f"declares ({declared_count}) but {actual} row(s) actually have "
+                f"iosStatus: {bucket}. Section tallies are COMMENTS — nothing else "
+                f"in this gate reads them, so they drift silently. Fix the number."
+            )
+
+    # A bucket that has rows but no banner at all is the same drift, inverted.
+    for bucket in sorted(VALID_STATUSES):
+        actual = sum(1 for r in manifest_by_id.values() if r.get("iosStatus") == bucket)
+        if actual and bucket not in seen_buckets:
+            errors.append(
+                f"parity-manifest.yml has {actual} row(s) with iosStatus: {bucket} "
+                f"but no '# ─── {bucket} (N) ───' section banner for them."
+            )
+
+    # Invariant A — each row must sit under its own status's banner.
+    for row_id, row in sorted(manifest_by_id.items()):
+        status = row.get("iosStatus")
+        if status not in VALID_STATUSES:
+            continue  # already reported above
+        physical = row_section.get(row_id)
+        if physical is None:
+            errors.append(
+                f"parity-manifest.yml row '{row_id}' sits above every section "
+                f"banner — move it under the '{status}' section."
+            )
+        elif physical in VALID_STATUSES and physical != status:
+            errors.append(
+                f"parity-manifest.yml row '{row_id}' has iosStatus: {status} but is "
+                f"filed under the '{physical}' section — move the row into the "
+                f"'{status}' section (a status flipped in place makes both "
+                f"sections' tallies wrong)."
+            )
+
+# ─── The header's own CURRENT STATE tally must not lie either ─────────────
+# The section banners are not the only counts written in prose: the preamble
+# carries a summary line of the same numbers. It drifted just as freely (this
+# header once held four mutually contradictory tallies at once), so it is
+# pinned to the same measured truth. Opt-in by construction — a manifest with
+# no such line is simply not checked.
+summary_re = re.compile(
+    r'Of the (\d+) Android ids?:\s*(\d+) working,\s*(\d+) stub,\s*(\d+) android-only'
+)
+with open(manifest_file) as f:
+    for line_no, line in enumerate(f, 1):
+        if re.match(r'^demos:\s*$', line):
+            break
+        m = summary_re.search(line)
+        if not m:
+            continue
+        claimed_total, claimed = int(m.group(1)), {
+            "working": int(m.group(2)),
+            "stub": int(m.group(3)),
+            "android-only": int(m.group(4)),
+        }
+        if claimed_total != len(manifest_rows):
+            errors.append(
+                f"parity-manifest.yml line {line_no}: the header summary says "
+                f"'Of the {claimed_total} Android ids' but the file has "
+                f"{len(manifest_rows)} rows."
+            )
+        for bucket, claimed_n in claimed.items():
+            actual = sum(1 for r in manifest_by_id.values() if r.get("iosStatus") == bucket)
+            if claimed_n != actual:
+                errors.append(
+                    f"parity-manifest.yml line {line_no}: the header summary claims "
+                    f"{claimed_n} '{bucket}' but {actual} row(s) actually have that "
+                    f"iosStatus. Recount — do not narrate."
+                )
 
 # ─── Report ────────────────────────────────────────────────────────────────
 print(f"Android canonical ids: {len(android_ids)}")

@@ -147,6 +147,48 @@ zéro. À garder en tête pour les Phases C/D, où la tentation sera la même.
     screenshot du repo n'ayant jamais été uploadé) : inconnu, possiblement absent.
   → La validation à faire avant de traiter le diff comme signal porte donc sur un
   set **console-uploadé**, pas sur un set produit par notre propre upload.
+
+  - **C.0 — sonde de provenance des checksums (LIVRÉ, PR #2811)** : le prérequis
+    ci-dessus était traité comme « une action console manuelle vague à faire un
+    jour ». Il devient un **rail CI read-only mesurable**. `asc_listing.py`
+    gagne `classify_live_checksums()` + `checksum_provenance_report()` (helpers
+    purs, 23 tests unitaires) : `dry_run()` imprime la SHAPE des checksums live
+    (`[probe] sourceFileChecksum provenance: …`) AVANT le diff qu'elle justifie,
+    et un verdict :
+    - `confirmed` — un checksum live == le MD5 d'un fichier du repo **ET**
+      provenance console attestée (`--live-set-is-console-sourced`) → convention
+      vraie pour les uploads console, Phase C débloquée. **Seul déblocage
+      valide** ;
+    - `unattested-match` — le même match **sans** attestation → peut être notre
+      propre écho si `--apply-screenshots` a écrit ce set. Pas un déblocage.
+      ⚠️ Sans cette distinction (review correctness PR #2811), un simple
+      dispatch de `app-store-screenshots.yml` rendait le verdict `confirmed`
+      **définitivement vert sur une tautologie**. Le verdict imprime aussi
+      **où** chaque match a été trouvé, **estampillé de sa version**
+      (`matched in APP_IPHONE_67 @4.23.0` / `@draft 4.24.0`) : le brouillon
+      échantillonné est *exactement* la version où `apply_screenshots()` écrit
+      (2e passe), **et cette version garde ses screenshots en devenant live**
+      (3e passe) — donc « le script n'a jamais touché le live » n'atteste rien,
+      à aucune date. L'estampille rend l'attestation *vérifiable* contre
+      l'historique des runs de `app-store-screenshots.yml` ;
+    - `md5-shaped` — tous 32-hex → COHÉRENT avec MD5, **pas une preuve** (tout
+      digest 128-bit ressemble à ça) → reste 1 action Thomas : uploader **1**
+      screenshot du repo via la console ASC, relancer, viser `confirmed` ;
+      ⚠️ l'upload console atterrit sur la version **éditable**, pas sur la
+      version live — c'est pourquoi la sonde échantillonne aussi le brouillon
+      (`… (draft)`), sans quoi l'action prescrite n'aurait jamais été visible ;
+    - `absent` / `other` — hypothèse RÉFUTÉE → re-clé le diff screenshots ;
+    - `no-live-assets` / `mixed` — rien à conclure encore.
+    Le rail = nouveau job `asc-listing-drift` dans `maintenance.yml` (sibling de
+    `store-preflight` §10 et du `listing-drift` Play §12 de #2795), quotidien +
+    dispatch, `--dry-run` **strictement read-only** (self-test interdit `--apply*`),
+    SKIP honnête sans créds, jamais bloquant. **C'est le premier appelant CI de
+    `asc_listing.py --dry-run` : jusqu'ici le chemin read-only ASC n'avait JAMAIS
+    touché l'API live** (grep vérifié — seul `--apply-screenshots` était câblé).
+    §17 release-checklist = **LIVRÉ** (PR #2880, advisory WARN ; n'attend PAS le
+    verdict `confirmed` — un WARN advisory n'est pas le gate bloquant que cette
+    barre réservait). Issue-dédup de drift (`maintenance.yml` → 1 issue par store)
+    = fast-follow restant de la Phase C.
 - **D — Data safety as code** : `data-safety.csv` généré depuis DATA_SAFETY.md +
   push `applications.dataSafety` dans `--apply`. ⚠️ endpoint write-only (pas de GET) →
   premier push réel = gated Thomas avec vérif console après coup ; d'ici là le CSV

@@ -191,6 +191,12 @@ jobs:
         env:
           # Optional. Unset on forks → demo gracefully disables Geospatial/Streetscape.
           ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
+        # Root `assembleDebug` also compiles :snippets-check (the doc-snippet
+        # guard, settings.gradle:31) — this is the ONLY per-PR compile of the
+        # snippets on a library-API change. The docs-input direction is guarded
+        # separately by snippets-check.yml (llms.txt is `paths-ignore`d here).
+        # If this step is ever narrowed to explicit tasks, add
+        # `:snippets-check:compileDebugKotlin` so that coverage is kept.
         run: |
           ./gradlew \
             assembleDebug \

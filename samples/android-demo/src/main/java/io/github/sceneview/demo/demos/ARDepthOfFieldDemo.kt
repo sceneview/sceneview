@@ -48,6 +48,7 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
+import java.util.Locale
 
 /**
  * AR depth-of-field demo — Filament's native DoF post-pass driven by ARCore environment depth.
@@ -181,7 +182,7 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "Focus depth: %.2f m".format(focusDepth),
+                    text = "Focus depth: %.2f m".format(Locale.US, focusDepth),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Slider(
@@ -195,7 +196,7 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
             Spacer(Modifier.height(4.dp))
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "Blur strength: %.2f×".format(blurStrength),
+                    text = "Blur strength: %.2f×".format(Locale.US, blurStrength),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Slider(
@@ -304,7 +305,7 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
                 shape = MaterialTheme.shapes.small
             ) {
                 Text(
-                    text = if (dofEnabled) "FOCUS %.2f m".format(focusDepth) else "DOF OFF",
+                    text = if (dofEnabled) "FOCUS %.2f m".format(Locale.US, focusDepth) else "DOF OFF",
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.labelLarge
                 )

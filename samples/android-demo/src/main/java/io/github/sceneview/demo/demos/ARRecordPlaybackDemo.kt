@@ -977,7 +977,7 @@ private fun AnalysisLiveOverlay(
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "Trajectory  ${"%.2f".format(interpretation.trajectoryLengthMeters)} m",
+                    text = "Trajectory  ${"%.2f".format(Locale.US, interpretation.trajectoryLengthMeters)} m",
                     style = MaterialTheme.typography.labelMedium,
                     fontFamily = FontFamily.Monospace
                 )
@@ -1032,7 +1032,7 @@ private fun AnalysisReportCard(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = "${interpretation.frameCount} frames • " +
-                        "${"%.1f".format(interpretation.durationSeconds)} s",
+                        "${"%.1f".format(Locale.US, interpretation.durationSeconds)} s",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1070,11 +1070,11 @@ private fun AnalysisReportCard(
 
                 ReportRow(
                     "Trajectory length",
-                    "${"%.2f".format(interpretation.trajectoryLengthMeters)} m"
+                    "${"%.2f".format(Locale.US, interpretation.trajectoryLengthMeters)} m"
                 )
                 ReportRow(
                     "Trajectory extent",
-                    "${"%.2f".format(interpretation.trajectoryExtentMeters)} m"
+                    "${"%.2f".format(Locale.US, interpretation.trajectoryExtentMeters)} m"
                 )
                 ReportRow(
                     "Planes found",
@@ -1083,7 +1083,7 @@ private fun AnalysisReportCard(
                 )
                 ReportRow(
                     "Plane area",
-                    "${"%.2f".format(interpretation.planeAreaMeters2)} m²"
+                    "${"%.2f".format(Locale.US, interpretation.planeAreaMeters2)} m²"
                 )
 
                 if (interpretation.failureReasonFrameCounts.isNotEmpty()) {
@@ -1610,13 +1610,13 @@ private val TIMESTAMP_FORMAT = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
 private fun formatElapsed(seconds: Long): String {
     val mm = seconds / 60
     val ss = seconds % 60
-    return "%02d:%02d".format(mm, ss)
+    return "%02d:%02d".format(Locale.US, mm, ss)
 }
 
 private fun formatBytes(bytes: Long): String = when {
-    bytes >= 1_000_000_000 -> "%.1f GB".format(bytes / 1_000_000_000.0)
-    bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
-    bytes >= 1_000 -> "%.1f kB".format(bytes / 1_000.0)
+    bytes >= 1_000_000_000 -> "%.1f GB".format(Locale.US, bytes / 1_000_000_000.0)
+    bytes >= 1_000_000 -> "%.1f MB".format(Locale.US, bytes / 1_000_000.0)
+    bytes >= 1_000 -> "%.1f kB".format(Locale.US, bytes / 1_000.0)
     else -> "$bytes B"
 }
 

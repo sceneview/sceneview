@@ -77,14 +77,15 @@ platform as a failure), `--out <dir>`.
 See [`.maestro/README.md`](.maestro/README.md) for the Maestro flow layout and
 known limitations (no pinch gesture → 3D zoom is driven via deep-link param).
 
-**iOS leg status — local-only, 0 CI runs today.** Unlike `android`/`web`/`ar`,
-the `ios` leg above has never actually executed in CI: `device-qa.yml` defines
-no `ios` job, so it only runs locally (`bash .claude/scripts/device-qa.sh
---platform=ios` / `ios-device-qa.sh`). Separately, `render-tests.yml`'s "iOS
-screenshot tests" job runs the existing logic-only `SceneViewDemoTests` target
-and captures no screenshots — there is no UI-testing target and no
-`XCTAttachment` anywhere in the iOS demo. Wiring both up is tracked in #2803;
-until it lands, don't read either as an automated release gate.
+**iOS leg status — CI-wired since #2833 (2026-07-20), advisory.** `device-qa.yml`
+now defines an `ios` job (Maestro / Simulator; routed to the self-hosted
+`sceneview-mac` runner when its heartbeat is fresh, `macos-15` otherwise), the
+nightly runs it via `device-qa.sh --platform=ios --fast --ci`, and
+`render-tests.yml`'s iOS job drives the `SceneViewDemoUITests` UI-testing
+target with real `XCTAttachment` screenshots. The leg is in the default
+ADVISORY set — a red ios leg is a `WARN`, not a release block. Caveat: on the
+self-hosted Mac the leg is disk-gated (< 10 GB free → honest advisory skip),
+so keep the host's disk above the gate for real coverage.
 
 ### Release-checkpoint mandate
 
@@ -108,7 +109,8 @@ The legs are **graded**, because they are not equally reliable:
 | `android`, `ar` | `continue-on-error: true` (flaky SwiftShader emulator, #1643) | **ADVISORY** — a red leg is a `WARN`, never a silent pass, never a hard block |
 
 `device-qa.sh` tags each leg `advisory: true|false` (default advisory set:
-`android,ar`, override with `--advisory=<csv>`) and pre-computes
+`android,ar,ios,web-perf,sketchfab,arcore-cloud`, override with
+`--advisory=<csv>`) and pre-computes
 `releaseGate.verdict` in `device-qa-report.json`:
 
 - `clear` — every leg passed → checklist `PASS`.
@@ -186,8 +188,8 @@ where pixel precision has real ROI — never for the app chrome itself.
 
 ## When writing any SceneView code
 
-- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.24.0`)
-- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.24.0`)
+- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.25.0`)
+- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.25.0`)
 - Declare nodes as composables inside the trailing content block — not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — returns `null`
   while loading, always handle the null case
@@ -295,6 +297,68 @@ unaffected (the GitHub emulator action has its own snapshot caching). See
 [`.maestro/README.md`](.maestro/README.md) for the full rationale and the
 Android Studio Journeys assessment (not adopted — blocked on an AGP 9.0.0 bump).
 
+**Rosetta x86_64 AR rig — a probe that answered NO, kept as evidence (#2758).**
+
+> ⛔ **Do not reach for this expecting live-camera AR QA — it was measured and it
+> does not work.** The rig was built to test whether an x86_64 guest escapes the
+> arm64 AR dead end. On a quiet host it *does* boot (ActivityManager registered at
+> ~42 min), and three independent walls still stop it:
+>
+> 1. **Same camera topology as arm64.** `dumpsys -t 300 media.camera` →
+>    `Device 0 maps to "1"`, `Device 1 maps to "10"` — **no HAL id `0`**. That
+>    numbering comes from the *emulator's camera HAL*, not the guest ABI, so
+>    #2754's stated cause is attributed to the wrong thing and x86_64 changes
+>    nothing.
+> 2. **ARCore cannot be installed.** The 82 MB APK transfers fine (13 MB/s) but the
+>    install kills `system_server` (`Broken pipe`) — reproduced with both streamed
+>    and `--no-streaming` installs. No ARCore, no session, ever.
+> 3. **Nothing renders** under software GL (black framebuffer, no focused window).
+>
+> Real AR tracking QA needs a physical device. Keep the flag for reproducibility if
+> Google ever ships a workable emulator ARCore build — not as a QA path.
+>
+> ⚠️ Two diagnostic traps this cost us, both of which manufactured false verdicts:
+> the harness passed `-no-boot-anim` and then read `init.svc.bootanim` as progress
+> (it can never move), and `dumpsys` has an **internal** 10 s timeout that TCG blows
+> through, so a silent probe looks like a measured absence. Use `dumpsys -t <n>` on a
+> slow guest, and never grade a mute probe as a measurement.
+
+ARCore ships **no arm64 emulator build** (#2754): live-camera AR sessions can
+never start on the default arm64 AVD, so AR demos there run in `qa_mode`
+fallback only. The x86_64-under-Rosetta rig was the candidate escape hatch:
+
+```bash
+bash .claude/scripts/setup-ar-emulator.sh --rosetta            # provision + boot
+bash .claude/scripts/setup-ar-emulator.sh --check --rosetta    # read-only rig report
+```
+
+This installs the Intel (darwin_x64) emulator bundle outside the SDK tree,
+the `android-34;google_apis;x86_64` system image, creates AVD `Pixel_7a_x86`
+(virtualscene back camera), boots it on **reserved port 5584 — outside the QA
+pool's allocation range** (see `EMU_POOL_PORT_EXCLUDE_FROM`; 5584 is the last
+console port inside adb's supported `[5555,5586]` window — higher ports make
+the emulator warn that "ADB may not function properly", and the first rig
+attempts on 5600 did see `adb shell` wedge mid-boot), and side-loads the
+`_x86_for_emulator` ARCore APK — an install that, measured, kills `system_server`
+on this guest. The run ends with the #2755 camera-topology probe, whose measured
+answer here is ids `"1"`/`"10"` and no `0`. ~9 GB one-time payload,
+disk-gated up front. The x86 guest runs under pure-software TCG (Apple
+Silicon cannot hardware-accelerate an x86 guest), so expect a **~45 min
+first boot** (measured) and ~5-10x-slower interaction, and never leased to
+standard QA runs. `--clean
+--rosetta` recreates only the x86 AVD — the arm64 AVD and its `qa-clean`
+snapshot are never touched.
+
+⚠️ **The rig needs the host to itself.** Its 3 GB guest gets no hardware
+acceleration, so once the host starts swapping, the guest's pages go out and
+boot progress collapses — the wait loop keeps reporting `adb: offline` while
+qemu RSS *falls*. Observed on a 16 GB M3: a second, unrelated emulator
+(2 GB, another session) booting five seconds after the rig pushed the host to
+~5 GB of swap and neither guest made progress. The RAM gate cannot prevent
+this on its own — two sessions measuring free RAM at the same instant both
+pass it. Before a rig run: check `adb devices` for other emulators, and treat
+falling qemu RSS as the signal to stop and retry on a quiet host.
+
 **Visible (windowed) emulator — opt-in (#1660).** The emulator boots **headless
 by default** (`-no-window`), which is marginally lighter on the host (skips the
 skin-window draw + window-server compositing). To watch it locally, opt in:
@@ -346,10 +410,10 @@ RAM-constrained Mac no longer contend for emulator resources.
 GitHub-hosted `macos-15` runners cost ~10x ubuntu per-minute and have no KVM.
 SceneView ships **6 jobs on `macos-15`** (`ios.yml`, `bridge-ios-compile.yml`,
 `rn-ios-compile.yml`, `app-store.yml` × 2, `render-tests.yml`). The iOS Maestro
-device-QA leg (#1601) has **no CI wiring at all yet** — not nightly, not
-per-push; see the "iOS leg status" note under "Device QA" above (#2803 tracks
-adding it). A self-hosted runner on a Mac is what would make a per-push iOS
-leg affordable once it exists.
+device-QA leg (#1601) is CI-wired since #2833 — nightly via `device-qa.yml`,
+routed to the self-hosted `sceneview-mac` runner when its heartbeat is fresh
+(see the "iOS leg status" note under "Device QA" above). The self-hosted
+runner is what makes that leg affordable per-run.
 
 Inspired by [Zach Rattner's M4 Mac cluster
 playbook](https://zachrattner.com/projects/m4-mac-cluster) (8 Mac minis, $35k/yr
@@ -723,12 +787,12 @@ Hooks trigger automatically on specific Claude Code actions:
 | `claim.sh` | Atomic issue-claim registry that kills the #2300 dup-implementation race. Primary lock = GitHub `in-progress` label (cross-host); local mirror = the `STATE.md` IN-FLIGHT ledger. `<issue#>` / `--check` / `--release` / `--list` / `--force`. macOS-safe (sleepless `mkdir` lock, no `flock`) |
 | `check-saved-workflows.sh` | Static validator for the `.claude/workflows/*.js` saved workflows (async-wrapped `node --check` + meta block + resume-safety). Distinct from `check-workflow-scripts.sh`, which validates the CI YAML |
 | `cross-platform-check.sh` | Compare Android vs iOS vs Web API surface, report gaps |
-| `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.). Section 16 runs `store-preflight.sh` (advisory) |
+| `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.). Section 16 runs `store-preflight.sh` (advisory); section 17 runs the store-sync listing-drift diff (`play_listing.py` / `asc_listing.py --dry-run --fail-on-drift`, advisory WARN — never a blocker, #2612 Phase C) |
 | `store-preflight.sh` | Read-only App Store Connect preflight (#2612 P1) — detects the human-only store blockers that silently 403 a deploy: an expired Apple agreement (`REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED` canary), an App Review rejection, cert/profile expiry (< `CERT_EXPIRY_WARN_DAYS`, default 30), and (since #2731) an open never-submitted reviewSubmission (`READY_FOR_REVIEW`/`UNRESOLVED_ISSUES`) — the silent-submission signature the IOS-scoped version-state probe alone can't see. Signs the ASC ES256 JWT with openssl only; reuses `app-store.yml`'s ASC secrets (no new scope); SKIPs honestly without creds. Advisory-first — a blocker hard-blocks only under `GATE_HARD=1`. Wired into `release-checklist.sh` §16, the `/store-status` command doc (probe-set wiring is a P1 follow-up), and a daily `maintenance.yml` job. Self-tested by `test-store-preflight.sh` (in `repo-hygiene`) |
 | `store-sync/play_listing.py` | Play listing sync/diff as code (#2612 P2) — the single code path for `play-store.yml`'s `sync-listing` job (`--apply`) and local read-only drift diffs (`--dry-run` default: listing text + per-image SHA-256 vs the live store, probe edit abandoned). SKIPs honestly without creds. Self-tested by `test-store-sync.sh` (repo-hygiene) |
-| `store-sync/asc_listing.py` | App Store listing drift diff + screenshot upload (#2612 P2). `--dry-run` (default, read-only) diffs live ASC text fields + screenshot `sourceFileChecksum` (MD5) against `samples/ios-demo/distribution/app-store/` + `appstore-screenshots/`; `--apply-screenshots` uploads the repo screenshots (reserve → chunked PUT → commit `uploaded:true` + MD5) to the **editable** version, replacing each display-type set (delete-then-upload; a failed delete is fatal *before* any upload, so a half-replaced set can't happen). Live order is *expected* to follow repo filename order — Apple does not promise creation order, so the script PROBES it after upload and warns instead of asserting. Never creates a version — SKIPs honestly when none is editable, so `app-store.yml`'s repaired submit step (#2731) stays untouched. Listing TEXT stays owned by that step. CI caller = its OWN workflow `app-store-screenshots.yml` (ubuntu, dispatch-only, no Xcode) — deliberately NOT a job in `app-store.yml`, whose `deploy-ios`/`deploy-macos` are gated only on `*_ready`, so a screenshot dispatch there would also build and upload a TestFlight build (caught in PR #2781 review). Flag abbreviations are disabled on both store-sync scripts: `--apply` must not resolve into an upload. Same ASC env aliases as `store-preflight.sh` |
+| `store-sync/asc_listing.py` | App Store listing drift diff + screenshot upload (#2612 P2). `--dry-run` (default, read-only) diffs live ASC text fields + screenshot `sourceFileChecksum` against `samples/ios-demo/distribution/app-store/` + `appstore-screenshots/`; `--apply-screenshots` uploads the repo screenshots (reserve → chunked PUT → commit `uploaded:true` + MD5) to the **editable** version, replacing each display-type set (delete-then-upload; a failed delete is fatal *before* any upload, so a half-replaced set can't happen). Live order is *expected* to follow repo filename order — Apple does not promise creation order, so the script PROBES it after upload and warns instead of asserting. Never creates a version — SKIPs honestly when none is editable, so `app-store.yml`'s repaired submit step (#2731) stays untouched. Listing TEXT stays owned by that step. CI caller = its OWN workflow `app-store-screenshots.yml` (ubuntu, dispatch-only, no Xcode) — deliberately NOT a job in `app-store.yml`, whose `deploy-ios`/`deploy-macos` are gated only on `*_ready`, so a screenshot dispatch there would also build and upload a TestFlight build (caught in PR #2781 review). Flag abbreviations are disabled on both store-sync scripts: `--apply` must not resolve into an upload. Same ASC env aliases as `store-preflight.sh`. **`--dry-run` is also the daily read-only `maintenance.yml` `asc-listing-drift` job** (#2612 P2 Phase C step 0, sibling of `store-preflight`) — the first CI caller of the ASC read-only path. It prints a `sourceFileChecksum` **provenance verdict** (`confirmed`/`unattested-match`/`md5-shaped`/`absent`/`other`/…): the MD5 keying the screenshot diff rests on is *measured, not assumed* (true by construction for anything this script uploaded — Apple echoes what we declare — so only console-sourced live sets are an honest sample). A repo-MD5 match therefore reports `unattested-match`, **not** `confirmed`, unless the operator attests provenance with `--screenshots-are-console-sourced` (which covers the draft too, and names its own source in the log so an inherited env var can't attest invisibly); without that gate a single `app-store-screenshots.yml` dispatch would have made the verdict permanently green on a tautology (caught in PR #2811 review). The probe also samples the **editable draft**'s screenshot sets and stamps every set with the version it was read from (`APP_IPHONE_67 @4.23.0`, `… @draft 4.24.0`), because a console upload lands on the draft — and that draft keeps its screenshots when it ships, so a set being live proves nothing about who uploaded it. Phase C's drift gate is now **half-wired**: §17 of `release-checklist.sh` runs this diff at release time (advisory WARN — NOT gated on a `confirmed` verdict; an advisory WARN is not the blocking gate that bar was reserved for, PR #2880), while the de-duplicated drift-issue rail in `maintenance.yml` remains the outstanding Phase C fast-follow |
 | `lib/android-cli.sh` | Shared helpers for Google's `android` CLI (screenshot, layout, install+launch) with `adb` fallback |
-| `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool + snapshot state + camera-id topology, #2754), `--clean` (wipe+recreate), `--seed-snapshot` (seed the golden `qa-clean` boot snapshot), `--no-snapshot` (force cold boot). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. Boot snapshots (#1672): once seeded, the base-port emulator cold-boots from the immutable `qa-clean` snapshot — faster and deterministic, and fixes the userdata storage-degradation bug. **Use this for routine QA — never QA on a personal device.** |
+| `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool + snapshot state + camera-id topology, #2754), `--clean` (wipe+recreate), `--seed-snapshot` (seed the golden `qa-clean` boot snapshot), `--no-snapshot` (force cold boot), `--rosetta` (provision/boot the separate x86_64-under-Rosetta AR rig on reserved port 5584 — ⛔ **measured NOT to deliver live-camera AR**: no camera HAL id `0`, ARCore install kills `system_server`, nothing renders; kept as a reproducible probe, #2758). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. Boot snapshots (#1672): once seeded, the base-port emulator cold-boots from the immutable `qa-clean` snapshot — faster and deterministic, and fixes the userdata storage-degradation bug. **Use this for routine QA — never QA on a personal device.** |
 | `lib/emulator-select.sh` | Sourced helper for `setup-ar-emulator.sh` / `device-qa.sh` / `qa-android-demos.sh` — RAM monitoring (`vm_stat`/`/proc/meminfo`), RAM-budgeted pool-cap computation, a per-emulator lease registry, RAM-scaled `-memory`, multi-port boot, and stale-lease reclaim. The adaptive pool runs as many emulators as live host RAM safely allows (floor 1, `EMU_POOL_MAX` ceiling), superseding #1647's strict-single design (#1654). |
 | `qa-android-demos.sh` | QA loop over every demo — uses `android layout`/`screen capture` for the UI dump and screenshots |
 | `capture-play-store-screenshots.sh` | Play Store screenshot capture — `android screen capture` (no LF/CRLF corruption) |

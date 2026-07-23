@@ -2,6 +2,212 @@
 
 ## Unreleased
 
+## v4.25.0 — 2026-07-21
+
+### Added
+
+- Web XR: `XRAnchorNode.drive(node)` bridges a tracked anchor to the retained
+  scene graph — the bound root `Node`'s `worldTransform` follows the anchor's
+  per-frame pose, so AR-placed content is real graph content with children
+  composing beneath it. `stopDriving()` releases the node; a destroyed node is
+  auto-released; parented nodes are rejected (world-space poses must not
+  double-compose). Proven with synthetic poses in `jsTest` — no new embind
+  binding (the write path is the #2024-P1-probed `TransformManager.setTransform`)
+  (#2024 P5a).
+- Web: `Node.smoothTransform` / `Node.smoothTransformSpeed` — smooth
+  transform animation on the retained web node tree, with the Android core
+  semantics and the same `5f` default speed (no `isSmoothTransformEnabled`
+  gate, no `onSmoothEnd` on web). Setting a target local `Transform` starts a
+  per-frame speed-scaled slerp/lerp on the scene's frame loop (the
+  pre-decomposed TRS core path — zero matrix decompositions per tick); on
+  convergence the node snaps and the property resets to `null`; setting
+  `null` cancels in place. The repaint hook (`onInvalidate`) moved up from
+  `SplatNode` to `Node`, is wired subtree-wide by `addNode` (and inherited on
+  attach) and released by `removeNode`, so animations keep the on-demand
+  render gate awake from idle scenes. `CameraNode`/`SplatNode` `onFrame`
+  overrides call `super`, so camera and splat nodes smooth-animate too
+  (#2024 P5b).
+- Web: `sv.hitTest(x, y)` — screen-point picking on the retained node tree
+  (#2024 P5c). The point is unprojected through the live camera (projection +
+  model matrix reads proven by a new in-browser embind probe) into a world
+  ray and tested against **real per-node bounds**: model/geometry nodes get
+  their asset AABB (analytic for primitives — pickable immediately), splat
+  nodes their cloud bounds, each transformed by the node's current world
+  transform at hit time. Returns the same `NodeHandle` instances the
+  `add*Node` factories handed out (`===`-comparable), nearest-first.
+  Kotlin/JS gains `SceneView.hitTest(x, y)` / `hitTest(ray)` (→
+  `List<HitResult>`) and the Android-mirror `Node.collisionShape` override.
+  The unprojection samples its second point mid-volume because Filament
+  renders with an infinite-far projection (NDC z = +1 is a point at
+  infinity).
+- Automated pub.dev publishing for the Flutter plugin: OIDC `pub-publish` job in the release workflow (idempotent, honest-red until pub.dev-side activation) + PR-time `flutter pub publish --dry-run` preflight in CI (#2735)
+- `ContactShadow` / `ContactShadowNode` — a **procedural** contact shadow that grounds an object on any surface, at any light angle (#2740). Unlike `ShadowReceiverPlane`, it does not depend on Filament's shadow map: it draws its own elliptical gradient in the shader. That is what makes **wall** placement read as mounted rather than floating — indoor light comes from the ceiling, so it merely grazes a wall and a real shadow map casts almost nothing onto it. Same trade Amazon "AR View" makes with its baked per-context shadow textures, done procedurally so no texture ships.
+- `ContactShadowContext` — `Floor` / `Wall` / `TableTop` presets carrying the gradient shape each situation calls for (a wall pool is fainter, wider than tall, and pushed below the object). The lift off the host surface is a **vector** (`ContactShadowNode.surfaceOffsetFor`), not a hardcoded `+Y`: `Plane` does not rotate its geometry to match its `normal`, so a wall quad is built in the XY plane and a `pos.y +=` offset would slide it up its own face instead of off the wall.
+- New `contact-shadow-preview` demo — a **non-AR** scene grounding a wall-mounted TV and a floor box, with an on/off toggle for the A/B. Like the plane-grid and reticle previews, it makes a shader effect reviewable on any emulator, with no ARCore session and no physical AR device (#2754).
+- The `wall-placement` AR demo now grounds its mounted TV with a `ContactShadowContext.Wall` pool, so the panel reads as mounted rather than floating on-device.
+- MCP `validate_code` v2 — symbol-existence checking against the real public API (#2760). A `symbols.json`-style index is generated at build time from the committed binary-compatibility `.api` dumps (`sceneview`, `arsceneview`, `sceneview-core` — zero Gradle in the chain, kept honest by the blocking `apiCheck` CI gate) and embedded in `sceneview-mcp`. Four new rules reject the #1 AI failure mode — APIs that do not exist: unknown `io.github.sceneview.*` imports, made-up `*Node`/`*Scene` types, nonexistent loader members (`modelLoader.createModelInstanceAsync` → *did you mean `loadModelInstanceAsync`?*), and invented `remember*` helpers. Suggestions use a hybrid edit-distance + camelCase-token metric so structural hallucinations get corrected, not just typos. Android/KMP surface only — Swift and Web have no committed dump and are stated as unchecked.
+- **`maintenance.yml`: daily read-only Play listing drift check** — `play_listing.py --dry-run` diffs the live listing (text + per-image SHA-256) against the repo and reports in the step summary. The apply path only runs on a minor bump and writes blind, which is how #2794 stayed hidden; the drift is now visible *before* a release overwrites the store. Advisory-only, SKIPs honestly without a service-account credential, and reports a failed check as a failure rather than letting an empty log read as "no drift". (#2794)
+- iOS demo: `DemoStatus` grows from 2 states to 4 — `.working` / `.knownIssue`
+  / `.inReview` / `.comingSoon` — mirroring Android's `DemoStatus`
+  (`Working`/`KnownIssue`/`ComingSoon`/`InReview`). Before this, iOS could not
+  express a known bug on an already-implemented demo or a newly-shipped demo
+  awaiting review sign-off, even though Android uses both states today (5
+  `KnownIssue` + 2 `InReview` demos, verified by grep). The collator
+  (`collate-ios-demos.sh`) gains an optional `@status` directive alongside
+  `@sceneId`/`@available`, defaulting sensibly when omitted (`working` for an
+  `@available true` scene, `comingSoon` for one that isn't) so none of the 51
+  existing `*Scene.swift` files needed an edit, and cross-validates `@status`
+  against `@available` so the two can't contradict each other. `SamplesTab`
+  renders a small `StatusBadge` capsule per status ("Preview" / "In review" /
+  "Soon"; `.working` shows no badge) — the iOS mirror of Android's
+  `DemoListScreen.kt` status chip. L0.4 of the iOS/Android catalog-ISO effort
+  (#2798); depends on the generated registry (#2800).
+- **GLB→USDZ conversion pipeline + 4 bundled Khronos reference models for iOS ([#2806](https://github.com/sceneview/sceneview/issues/2806)).** New `tools/convert-usdz.sh` wraps headless Blender (already installed, ships a glTF 2.0 importer and a native USD/USDZ exporter — zero extra install versus Apple's `usdzconvert`, which needs a multi-hundred-MB download) into an idempotent GLB→USDZ pipeline: every conversion runs under `/tmp` and the script never writes into the repo working tree, so a failed run can't leave anything dirty. Used it to convert the four well-known `KhronosGroup/glTF-Sample-Assets` reference models already bundled on Android (Lantern, Toy Car, Fox, Damaged Helmet) and bundled the results into the iOS demo (`samples/ios-demo/SceneViewDemo/Models/`, registered in `project.pbxproj`, declared in `assets/catalog.json`). Feeds the Phase 2/3 AR demo ports that need bundled non-Sketchfab reference models. Note: Toy Car's USDZ is ~4× its GLB size (8.8 MB vs 2.1 MB) because the source GLB uses `KHR_draco_mesh_compression` on ~109k triangles and USD/USDZ has no equivalent mesh-compression scheme, so the geometry inherently grows once decompressed — not a pipeline defect, and still within the size range of models already bundled in the same folder.
+
+### Changed
+
+- The Flutter plugin's package name is now **`flutter_sceneview`** (was `sceneview_flutter`) for its pub.dev debut — both natural names on pub.dev turned out to be unrelated third-party uploads (#2735). Git-pin consumers at tags ≤ v4.22.0 keep the old dependency key; the repo directory `flutter/sceneview_flutter/` is unchanged
+- Unified the store-screenshot capture across Android and iOS: both `capture-play-store-screenshots.sh` and `capture-appstore-screenshots.sh` now shoot the **same five showcase demos** in the same order (`model-viewer, lighting, materials, geometry, double-pendulum` — all standalone on both platforms) in **dark appearance** with a cleaned status bar, so the Play Store and App Store listings show identical screens. Refreshed `branding/ICON_AUDIT.md` (stale iOS status + pre-Stitch `#1A73E8` palette → current `#005BC1`) and documented the store-icon vs on-device-adaptive-icon gradient decision (#2773).
+- Documented the Play Store listing artwork in a new `graphics/README.md`, mirroring the iOS `appstore-screenshots/README.md`: the unified demo set, which files the capture script can and cannot regenerate, and the pinned-`ANDROID_SERIAL` rule. Auditing it surfaced that the 12 committed tablet PNGs are byte-identical duplicates across the 7"/10" slots, light-mode, advertise a stale `v4.14.0`, and two of six show no 3D at all — filed as #2796 rather than papered over (#2773).
+- Re-captured the five Play Store **phone** screenshots on the unified showcase set (`model-viewer, lighting, materials, geometry, double-pendulum`) in dark appearance, replacing a stale four-shot light-mode set, so the Play and App Store phone listings finally show the same demos in the same order. Fixed the capture script's per-demo settle: model-heavy demos load their GLB asynchronously and 8s let the variance guard (correctly) reject a not-yet-loaded blank frame — the default is now 15s with a new `--settle SECONDS` override (#2773).
+- **App Store listing tooling: symmetric offline guard for `screenshotDisplayType`** (#2794 follow-up) — the Play-side fix pinned Google Play's `AppImageType` enum so a bogus `imageType` is caught offline instead of 400-ing against the live store; `asc_listing.py` had the identical exposure with no equivalent guard — its `DISPLAY_TYPE_MAP` values were correct, but only a dir→row coverage test protected them, so a future row with an invented `screenshotDisplayType` would have surfaced only on the first real App Store Connect call (set-creation on the `--apply-screenshots` write path, after an earlier display type's live set may already have been replaced). Added `VALID_DISPLAY_TYPES`, transcribed verbatim from Apple's App Store Connect API OpenAPI spec (v4.3 `ScreenshotDisplayType`, cross-checked against fastlane spaceship's `AppScreenshotSet::DisplayType` — 33 values), plus `unknown_display_types()` enforced before any network call in `main()` and again at the write boundary in `apply_screenshots()`, and unit tests pinning the set (`test-store-sync.sh`, `repo-hygiene`). No behaviour change on the shipped map — 6.9" iPhone captures still route to `APP_IPHONE_67` and 13" iPad captures to `APP_IPAD_PRO_3GEN_129` (Apple never minted `APP_IPHONE_69`/`APP_IPAD_13`). (#2794)
+- iOS demo: the deep-link registry is now generated. `collate-ios-demos.sh`
+  emits `GeneratedScenes.allowedIds` and `GeneratedScenes.destination(for:)`
+  from the same `@sceneId` directives that already drive the Samples tab, so
+  the three deep-link surfaces (list, `allowedIds` gate, id→view resolver) can
+  no longer drift apart — the root cause that silently dropped 12 ids (#2769).
+  `DemoDeepLinkRegistry` shrinks from a hand-maintained 66-id `allowedIds` +
+  43-case `switch` to a generated union plus a ~15-id residual (AR ids without
+  a Scene file yet, and legacy aliases). Adding a demo is now one Scene file.
+  All 66 pre-existing deep-link ids still resolve identically. A well-formed
+  `sceneview://demo/<id>` whose id is unknown now surfaces a placeholder
+  instead of being silently dropped (#2800).
+
+### Fixed
+
+- CI now actually verifies the committed Roborazzi golden screenshots for
+  `samples:android-demo` — the `Unit tests` job swaps
+  `:samples:android-demo:testDebugUnitTest` for
+  `:samples:android-demo:verifyRoborazziDebug`, so a layout regression in a
+  covered composable fails the PR instead of silently passing (the goldens
+  were previously only checked locally via `pre-push-check.sh`). A failed
+  verify now also uploads a `roborazzi-diff-report` artifact with the
+  actual/diff PNGs.
+- `sync-versions.sh --fix` now auto-prepends the missing `## X.Y.Z` stub entry to the Flutter plugin's `CHANGELOG.md` when it lags `VERSION_NAME` — a bumped pubspec without a matching CHANGELOG entry made the pub.dev publish preflight (#2735) fail the `Build flutter-demo APK` job on every non-path-gated PR and nightly (bit twice, for 4.23.0 and 4.24.0 — #2775). The handler runs outside the MISMATCH-gated fix block on purpose: the CHANGELOG check is WARN-only, so it must fire even when every numeric version is already aligned.
+- **Play Store listing sync has never applied anything** — the Play listing kept an old violet app icon while the repo, the App Store listing and the in-app icon all carried the current blue one. The committed `icon-512.png` was assumed to need a manual Play Console upload; in fact the automated sync ran on every release and failed. `play_listing.py` declared two `imageType` values Google Play's `AppImageType` enum does not contain (`tabletScreenshots` / `tabletScreenshots10` instead of `sevenInchScreenshots` / `tenInchScreenshots`), so the tablet upload 400'd — and because the whole listing is pushed inside one atomic edit, that 400 abandoned the edit and rolled back *everything* already staged in it, icon and store copy included. Two things kept it invisible: `sync-listing` is `continue-on-error`, so the job's red never marked the run red, and only a minor bump triggers it. Wrong since the graphics sync landed (#1710); load-bearing once the tablet PNGs did. Fixed, plus `unknown_image_types()` — an offline guard transcribed from the v3 API discovery document and enforced both before any network call and again at the write boundary, so an imageType typo can no longer wait for a release to surface against the live store — and a `::warning::` annotation on non-403 failures so an aborted sync is visible despite `continue-on-error`. (#2794)
+- iOS demo ids that diverged from Android's canonical `DemoRegistry` slugs are
+  now aligned: `ar-cloud-anchors` → `ar-cloud-anchor`, `ar-rooftop-anchors` →
+  `ar-rooftop`, `ar-terrain-anchors` → `ar-terrain`, `ar-recording` →
+  `ar-record-playback`. The 4 old ids are kept as documented deep-link
+  aliases in `DemoDeepLinkRegistry.allowedIds` so existing QR codes and
+  bookmarks keep resolving. First lot (#2799) of the iOS/Android catalog-ISO
+  effort (#2798) — required before the generated-registry union (#2800) can
+  land without silently duplicating ids.
+- iOS demo: every one of Android's 53 canonical demo ids now resolves to
+  something honest — a real screen, an alias to an existing equivalent
+  screen, or a clearly-labeled coming-soon/Android-only card — never a
+  silent no-op. Closes the real 12-id scope of #2769 (not just the 6 in its
+  title): the 6 ids Android consolidated via the #2239 catalog regroup
+  (`custom-geometry`, `camera-gestures`, `picking-collision`,
+  `animation-physics`, `lighting-lab`, `two-d-in-three-d`) now route via a
+  `DemoDeepLinkRegistry.legacyAliases` entry straight to the single
+  most-representative pre-regroup granular scene — real, already-shipped
+  content, not a new coming-soon card — chosen from Android's own default
+  segmented-button tab for each umbrella (`DemoSettings.initialDemoMode`).
+  7 ids with no iOS equivalent at all (`ar-plane-renderer-v2`,
+  `contact-shadow-preview`, `placement-reticle-preview`, `point-and-ask`,
+  `splat-preview`, `video-recording`, `wall-placement`) and the 11 ids
+  previously hand-listed in `DemoDeepLinkRegistry.residualIds` with no
+  backing scene file (`ar-collaborative`, `ar-depth-collider`,
+  `ar-depth-of-field`, `ar-depth-visualization`, `ar-fog`,
+  `ar-hand-tracking`, `ar-ml-object-label`, `ar-raw-depth-point-cloud`,
+  `ar-scene-semantics`, `ar-xr-face`, `placement-scene`) each get a
+  dedicated stub `*Scene.swift` with an honest `comingSoonTitle` —
+  `residualIds` is now `[]`. The 3 permanently platform-locked ids
+  (`ar-rooftop`, `ar-streetscape`, `ar-image-stabilization` — ARCore
+  Geospatial/VPS and EIS, no ARKit equivalent) get a new optional
+  `@androidOnlyReason` Scene directive so their card reads "Android-only:
+  <reason>" instead of "Coming soon", which would dishonestly imply a
+  future port (`ComingSoonScreen` + `DemoItem` gain the matching optional
+  field, `nil` by default — zero behavior change for every other demo).
+  `parity-manifest.yml` moves from 22 working / 18 stub / 13 android-only to
+  28 / 25 / 0 — `check-demo-id-parity.sh` (#2801) is green. Part of the iOS
+  catalog-parity effort (#2798, L0.6).
+- **ios-demo**: 6 more demo views now render with an image-based light
+  (`.environment(.studio)`), same preset and pattern as the `ModelViewerDemo`
+  (#2114), `MaterialsDemo` and Scene Gallery/Multi-Model (#2805 predecessors):
+  `AnimationDemo` (bundled `cyberpunk_character.usdz` + streamed Sketchfab
+  characters), `GestureEditingDemo` (Ferrari F40), `AllShapesDemo`/`GeometryDemo`
+  (PBR cube + sphere — its own on-screen caption already claimed "PBR
+  materials"), `BillboardDemo` (the metallic "Treasure" sphere), `CameraControlsDemo`
+  (the central PBR cube), and `CustomMeshDemo` (the PBR pyramid + diamond built
+  from raw vertex data). Every one of these renders a metallic/rough PBR
+  surface that had nothing to reflect without an IBL. Re-measured from scratch
+  against the current repo rather than reusing an older estimate — 42
+  non-registry views live under `Views/Demos/*.swift` (a 43rd file,
+  `GeneratedScenes.swift`, is an auto-generated registry, not a view): 12
+  already carried `.environment()` before this PR, 14 are AR views
+  (`ARSceneView` lights from the real camera feed, out of scope by design),
+  6 gain the fix here, 3 are confirmed carve-outs (`FogDemo`, `LightTypesDemo`,
+  `MovableLightDemo` — the neutral/single-light background is the demonstrated
+  effect itself), and 4 have no PBR material to reflect anything with
+  (`TextDemo`, `ImagePlaneDemo`/`ImageDemo`, `LinesPathsDemo`,
+  `VideoTextureDemo`) so are left deliberately untouched. The remaining 3 are
+  structural findings, not judgment calls: `.environment()` is only defined on
+  `SceneView`, so it cannot reach a raw `RealityView`. `TextureStreamingDemo`'s
+  visible PBR sphere (the demo's entire point — Gold/Silver/Copper/Ceramic/
+  Plastic/Rubber presets) lives in a `RealityView` overlay entirely separate
+  from its own (empty) `SceneView`; `OcclusionMaterialDemo`'s metallic
+  reference sphere is also built directly on `RealityView`; `DebugOverlayDemo`
+  has the same structural block but isn't a PBR showcase either way (its
+  spheres are non-metallic stress-test filler). Fixing the first two for real
+  needs more than this mechanical sweep, so all three are left for a
+  follow-up rather than shipping a `.environment()` call that would silently
+  do nothing. Part of the iOS/Android catalog-ISO effort (#2798).
+  Verified: `xcodebuild` compiles clean;
+  visual QA on the iOS Simulator confirms every changed view still renders
+  without crashing, though — per the 2026-07-18 finding that RealityKit
+  degrades IBL/skybox rendering on the Simulator — the before/after captures
+  read as visually close on this host, so final visual confirmation on a
+  physical device remains an open follow-up.
+
+### Tests
+
+- iOS: added a registry/deep-link guard suite (`DemoRegistryGuardTests`, 19
+  tests) asserting `GeneratedScenes`/`DemoDeepLinkRegistry` invariants — id
+  uniqueness across the three sources, kebab-case format, every legacy alias
+  resolving to a live scene id, and the central check a human used to verify
+  by hand: ids that should show a real demo do, everything else honestly
+  falls through to the placeholder. Also registered the orphaned
+  `SketchfabAssetResolver+Tests.swift` (17 tests, dead since May — never
+  compiled) in the `SceneViewDemoTests` target. iOS test count: 20 -> 56
+  (#2801, part of #2798).
+- Added `parity-manifest.yml` (repo root) — one row per Android canonical
+  demo id (53) declaring its current iOS status (working / stub /
+  android-only) with a reason for every non-working entry — plus
+  `.claude/scripts/check-demo-id-parity.sh`, wired into `ci.yml` ->
+  `repo-hygiene` (ubuntu, blocking, zero macOS cost). Fails the moment a new
+  Android demo ships without a matching iOS registry entry or manifest row —
+  the silent-drift class behind #2769 (#2801, part of #2798).
+- CI: the iOS device-QA leg is now real. `device-qa.yml` gained an `ios` job
+  (Maestro on an iOS Simulator via `ios-device-qa.sh`) that routes to the
+  self-hosted Mac when online and falls back to `macos-15`. It runs nightly and
+  on manual dispatch only — never per-push (a macOS runner is ~10x the ubuntu
+  cost) — and is **advisory** (a red iOS leg is a release WARN, never a hard
+  block), matching the android/ar posture. `device-qa.sh` tags `ios` advisory
+  in `device-qa-report.json` / `releaseGate` (#2803).
+- CI: `render-tests.yml`'s "iOS screenshot tests" job now produces real PNGs.
+  A dedicated `SceneViewDemoUITests` UI-testing target (XCUITest) launches the
+  demo in a simulator and captures an `XCTAttachment` screenshot of the launch
+  screen, every tab, and a representative subset of working 3D demos; the job
+  exports the attachments from the `.xcresult` as PNG artifacts. It uses its own
+  scheme so the per-PR iOS unit-test check stays fast and simulator-free (#2803).
+
+### Docs
+
+- Flutter: `flutter_sceneview` is now live on pub.dev — quickstart, `llms.txt`, platforms doc and MCP setup snippets flipped from the git-pin fallback to the pub.dev install form, and the `pub-publish` release job is promoted into `create-release`'s needs-gate (#2735).
+- **Doc truth pass — stale demo/deep-link counts and two flatly-false CI claims corrected ([#2807](https://github.com/sceneview/sceneview/issues/2807), part of [#2798](https://github.com/sceneview/sceneview/issues/2798)).** "51 demos" → **52** (recounted at the source: 53 `*Fragment.kt` files under `samples/android-demo/.../fragments/` minus the `DemoFragment.kt` base class; breakdown corrected to 18 non-AR + 34 AR) across `CLAUDE.md`, `.maestro/README.md`, `docs/docs/samples.md`, `docs/docs/llms-full.txt`, `docs/docs/try.md`, `samples/README.md`, and `website-static/index.html`. "24 deep-linkable" → **63** (`DemoDeepLinkRegistry.allowedIds` counted directly) in `CLAUDE.md` and `.maestro/README.md`; the "subset of Android's 42-demo catalog" framing is corrected too — cross-checked against source, the set isn't a clean subset either way (2 iOS ids match no current Android id; 12 Android ids aren't yet reachable on iOS). Two doc claims were outright false, not just stale, and are now corrected to describe today's real state rather than nuanced: **0 iOS Maestro runs have ever executed in CI** (`device-qa.yml` defines no `ios` job — the leg is local-only today) and `render-tests.yml`'s "iOS screenshot tests" job **captures no PNGs** (it runs the existing logic-only `SceneViewDemoTests` target; no UI-testing target, no `XCTAttachment` anywhere in the iOS demo). Both corrections cite [#2803](https://github.com/sceneview/sceneview/issues/2803), which tracks wiring them up for real. `docs/docs/cheatsheet-ios.md` gains the missing Android-only parity rows for `SplatNode` ([#2768](https://github.com/sceneview/sceneview/issues/2768)), Collaborative AR (`CollaborativeTransport`/`CollaborativeSession`, noting the ARKit-native `ARSession.collaborationData` advantage once a port lands), and the `ar-ml-object-label` demo, plus a demo-id cross-reference on the existing `ar-scene-semantics` row — and surfaces the honest SSAO/Bloom/MSAA render-quality gap table that was previously only in `RenderQuality.swift`'s KDoc. Docs-only — no library, test, or CI workflow code changed.
+
 ## v4.24.0 — 2026-07-20
 
 ### Added

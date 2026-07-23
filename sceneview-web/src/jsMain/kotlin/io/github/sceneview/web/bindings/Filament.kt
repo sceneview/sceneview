@@ -478,6 +478,13 @@ external class Animator {
 
 // --- EntityManager ---
 
+// filament.js 1.52.3 binds only get() and create() usably. There is NO working id-recycle in
+// this pinned runtime: a runtime EntityManager.destroy() is present but is a no-op on the id pool
+// (probed — 2000 create/destroy/create yields zero id reuse, ids climb unbounded), and isAlive()
+// is not bound at all. So a node entity's id cannot be returned to the pool on the web the way
+// Android's Node.destroy() does (#2859). Do NOT add a destroy()/isAlive() binding here expecting a
+// fix — it reclaims nothing until the filament.js pin is bumped (which drags the .filamat ABI
+// invariant). See SceneView.destroy() for the same note at the camera-entity call site.
 external class EntityManager {
     companion object {
         fun get(): EntityManager

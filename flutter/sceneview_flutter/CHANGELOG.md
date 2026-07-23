@@ -1,3 +1,7 @@
+## 4.25.0
+
+- Version alignment with SceneView v4.25.0; see the [v4.25.0 release notes](https://github.com/sceneview/sceneview/releases/tag/v4.25.0). No breaking Flutter API change.
+
 ## 4.24.0
 
 - Version alignment with SceneView v4.24.0 (2026-07-20); see the [v4.24.0 release notes](https://github.com/sceneview/sceneview/releases/tag/v4.24.0). **pub.dev debut under the name `flutter_sceneview`** (#2735): the package was renamed from `sceneview_flutter` because the pub.dev names `sceneview` and `sceneview_flutter` are unrelated third-party uploads. Entries up to 4.23.0 were never published to pub.dev. No breaking Flutter API change.

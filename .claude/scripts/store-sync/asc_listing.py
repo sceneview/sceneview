@@ -62,6 +62,7 @@ import argparse
 import hashlib
 import os
 import pathlib
+import re
 import sys
 import time
 from urllib.parse import quote
@@ -245,10 +246,10 @@ def diff_screenshots(device_dir, display_type, local_files, remote_checksums):
 
     Since the repo's screenshots have never been uploaded, every live set out
     there today is in the second category. So before Phase C wires this diff
-    into maintenance.yml / release-checklist.sh as a drift SIGNAL, check one
-    real set: if console-uploaded assets do not key on MD5, this diff must be
-    re-keyed on whatever Apple actually stores. Until then a checksum mismatch
-    is a candidate, not a verdict."""
+    into a drift SIGNAL, the shape of the live checksums has to be measured:
+    that is what classify_live_checksums() / checksum_provenance_report() do,
+    and dry_run() prints their verdict before running this diff. Until that
+    verdict is CONFIRMED, a checksum mismatch is a candidate, not a verdict."""
     local = [(f.name, md5_of(f)) for f in local_files]
     local_sums = [s for _, s in local]
     if local_sums == list(remote_checksums):
@@ -266,6 +267,210 @@ def diff_screenshots(device_dir, display_type, local_files, remote_checksums):
     if extra:
         parts.append(f"{extra} live screenshot(s) not in the repo")
     return [f"{device_dir} ({display_type}): differs ({'; '.join(parts) or 'content mismatch'})"]
+
+
+# An App Store Connect `sourceFileChecksum` we believe to be MD5 — 32 lowercase
+# hex. Shape alone never proves the convention (any 128-bit digest looks like
+# this), which is exactly why classify_live_checksums() reports the shape as a
+# CANDIDATE and only calls it confirmed on a byte-level match.
+MD5_HEX_RE = re.compile(r"[0-9a-f]{32}")
+
+
+def classify_checksum(value):
+    """Bucket one live `sourceFileChecksum` by SHAPE. Pure, offline, total."""
+    if value is None or value == "":
+        return "absent"
+    # Total on any input: a helper advertised as pure should not raise when
+    # Apple one day returns a number where a string was expected.
+    if not isinstance(value, str):
+        return "other"
+    if MD5_HEX_RE.fullmatch(value):
+        return "md5-shaped"
+    return "other"
+
+
+def classify_live_checksums(live_sets, local_md5s=(), console_sourced=False):
+    """Measure what Apple actually stores for CONSOLE-uploaded screenshots.
+
+    This is the probe #2612 Phase C is blocked on, and it exists because the
+    checksum diff in diff_screenshots() rests on an assumption nobody has ever
+    measured: that `sourceFileChecksum` is the MD5 of the SOURCE bytes.
+
+    That assumption is true by construction for assets this script uploaded
+    (we compute the MD5 and declare it; Apple echoes it back), so the apply
+    path can never test it — an echo is not a measurement.
+
+    Which is exactly why a repo-MD5 match is NOT self-validating, and why
+    `console_sourced` exists. Once apply_screenshots() has run, the sampled
+    sets hold the very checksums we declared, so a match would be the echo
+    wearing the mask of a measurement — a permanently-green CONFIRMED that
+    unblocks a gate nothing ever tested. The caller must attest that the
+    sampled screenshots did not come from our own write path; absent that
+    attestation a match reports `unattested-match`, a strictly weaker claim.
+
+    The attestation covers EVERY sampled set, live and draft alike, and the
+    verdict reports WHICH display type each match came from — because the
+    draft is precisely where apply_screenshots() writes. An attestation that
+    only ranged over the live version would be trivially true (the write path
+    never touches a READY_FOR_SALE version) while a draft match quietly
+    supplied the CONFIRMED. That is the same tautology one level down.
+
+    `live_sets` maps display type -> ordered list of live checksums (None when
+    Apple returned no value). `local_md5s` is the MD5 of every committed repo
+    screenshot; a live value that EQUALS one of them settles the question
+    outright *provided* it was not us who put it there — a 128-bit collision
+    is not a thing that happens, but an echo is.
+
+    Returns a verdict dict; verdict["overall"] is one of:
+
+      no-live-assets  nothing uploaded to compare against — cannot measure
+      confirmed         a sampled checksum equals a repo file's MD5 AND the
+                        caller attested console provenance → the convention
+                        holds. This is the ONLY Phase C unblocker.
+      unattested-match  the same match, provenance NOT attested → could be our
+                        own echo. Weaker than it looks; never a gate.
+      md5-shaped      all 32-hex → CONSISTENT with MD5, not proof. Closing it
+                      needs one console upload of a file whose MD5 we know.
+      absent          Apple stores no checksum → a checksum diff can never be
+                      a drift signal for console assets; Phase C must re-key.
+      other           present but not MD5-shaped → assumption refuted; re-key
+                      on whatever Apple actually stores (shape reported).
+      mixed           buckets disagree — report rather than average them.
+    """
+    local_md5s = set(local_md5s)
+    per_type, buckets, matched, matched_by_type = {}, {}, [], {}
+    # Sort defensively: a live set whose screenshotDisplayType is missing keys
+    # this dict on None, and None vs str is a TypeError that would take the
+    # whole read-only run down — reported, thanks to the partial-read guard in
+    # maintenance.yml, but still a probe that measures nothing.
+    for dtype, checksums in sorted(live_sets.items(),
+                                   key=lambda kv: (kv[0] is None, kv[0] or "")):
+        kinds = [classify_checksum(c) for c in checksums]
+        per_type[dtype] = kinds
+        for kind in kinds:
+            buckets[kind] = buckets.get(kind, 0) + 1
+        hits = [c for c in checksums if c and c in local_md5s]
+        matched += hits
+        # WHERE a match was found is load-bearing, not decoration: a hit in a
+        # "… (draft)" set is a hit in the exact version apply_screenshots()
+        # writes to. Whoever attests provenance has to see which set they are
+        # vouching for, or the attestation is uninformed.
+        if hits:
+            matched_by_type[dtype] = sorted(set(hits))
+
+    # Shapes we could not name, verbatim-ish, so a re-key has something to go
+    # on instead of "not MD5". Length is the discriminating detail (a SHA-256
+    # is 64 hex, a base64 digest is 24/44 chars with padding). str() because
+    # classify_checksum() is total and buckets non-str values here too.
+    unknown_shapes = sorted({
+        f"len={len(str(c))}" for checksums in live_sets.values() for c in checksums
+        if classify_checksum(c) == "other"
+    })
+
+    if matched:
+        overall = "confirmed" if console_sourced else "unattested-match"
+    elif not buckets:
+        overall = "no-live-assets"
+    elif len(buckets) > 1:
+        overall = "mixed"
+    else:
+        overall = next(iter(buckets))
+
+    return {
+        "overall": overall,
+        "buckets": buckets,
+        "per_display_type": per_type,
+        "matched_local": sorted(set(matched)),
+        "matched_by_display_type": matched_by_type,
+        "unknown_shapes": unknown_shapes,
+    }
+
+
+def checksum_provenance_report(verdict):
+    """Turn a classify_live_checksums() verdict into what it LICENSES.
+
+    Deliberately states the consequence for Phase C rather than just the
+    observation: the failure mode this whole probe exists to prevent is
+    someone reading "4 screenshots differ" and wiring it into a release gate
+    without noticing the diff was keyed on an unmeasured assumption."""
+    overall = verdict["overall"]
+    lines = [f"[probe] sourceFileChecksum provenance: {overall.upper()}"]
+    for dtype, kinds in verdict["per_display_type"].items():
+        lines.append(f"[probe]   {dtype}: {len(kinds)} live — "
+                     + (", ".join(sorted(set(kinds))) or "none"))
+
+    # Where each match sits decides whether it can mean anything at all, so it
+    # is printed for every match-bearing verdict, attested or not.
+    # Direct subscript, not .get(): these lines ARE the disclosure that makes
+    # the attestation an informed one. A verdict built elsewhere without them
+    # would print four affirmative CONFIRMED lines and no evidence at all —
+    # a KeyError is strictly better than evidence that is silently absent.
+    where = [f"[probe] matched in {dtype}: " + ", ".join(digests)
+             for dtype, digests in sorted(
+                 verdict["matched_by_display_type"].items(),
+                 key=lambda kv: kv[0] or "")]
+
+    if overall == "confirmed":
+        lines += [
+            "[probe] A sampled checksum equals a repo file's MD5, on sets attested as",
+            "[probe] console-sourced: Apple stores the MD5 of the SOURCE bytes for",
+            "[probe] console uploads too. The screenshot diff is a real drift signal",
+            "[probe] — #2612 Phase C can wire it into a gate.",
+        ] + where
+    elif overall == "unattested-match":
+        lines += [
+            "[probe] A sampled checksum equals a repo file's MD5 — but NOTHING here",
+            "[probe] says who uploaded it. If apply_screenshots() wrote those assets,",
+            "[probe] the match is our own declared value echoed back: it proves nothing.",
+            "[probe] This is NOT a Phase C unblocker.",
+        ] + where + [
+            "[probe] READ THE SET NAMES ABOVE FIRST — each carries the VERSION it was",
+            "[probe] read from. apply_screenshots() writes to the editable version, and",
+            "[probe] that version KEEPS its screenshots when it goes live: a set being",
+            "[probe] live today is no evidence about who uploaded it. So 'the script",
+            "[probe] never touched the live version' attests nothing, at any date.",
+            "[probe] Check EVERY --apply-screenshots run — the app-store-screenshots.yml",
+            "[probe] history AND any local invocation, which leaves no CI trace —",
+            "[probe] against every version listed above, including already-shipped",
+            "[probe] ones; only if none of them wrote these sets, re-run with",
+            "[probe] --screenshots-are-console-sourced.",
+        ]
+    elif overall == "md5-shaped":
+        lines += [
+            "[probe] Every live checksum is 32-hex — CONSISTENT with MD5, but any",
+            "[probe] 128-bit digest is. Not proof, and not enough for a gate.",
+            "[probe] To close it: upload ONE repo screenshot via the App Store Connect",
+            "[probe] console, then re-run. NOTE: console uploads land on the EDITABLE",
+            "[probe] draft, so the probe only sees them once that version is live, or",
+            "[probe] via the draft set this probe reads separately (look for the",
+            "[probe] '@draft …' display types above). Promoting the resulting match to",
+            "[probe] CONFIRMED still needs --screenshots-are-console-sourced.",
+        ]
+    elif overall == "absent":
+        lines += [
+            "[probe] Apple stores NO checksum for these assets. The MD5 assumption is",
+            "[probe] refuted for console uploads: a checksum diff can never detect drift",
+            "[probe] on them. Phase C must re-key the screenshot diff (count / order /",
+            "[probe] dimensions) or drop screenshot drift and keep the text diff.",
+        ]
+    elif overall == "other":
+        lines += [
+            "[probe] Live checksums exist but are NOT MD5-shaped — assumption refuted.",
+            "[probe] observed shapes: " + (", ".join(verdict["unknown_shapes"]) or "?"),
+            "[probe] Phase C must re-key on whatever Apple actually stores.",
+        ]
+    elif overall == "mixed":
+        lines += [
+            "[probe] Buckets disagree, so the live set has assets from more than one",
+            "[probe] upload path. Do NOT average this into a single rule — re-run after",
+            "[probe] the next console upload and classify that asset specifically.",
+        ]
+    else:  # no-live-assets
+        lines += [
+            "[probe] No live screenshots to measure. Nothing is refuted and nothing is",
+            "[probe] confirmed — Phase C stays blocked until a set exists to sample.",
+        ]
+    return lines
 
 
 def plan_screenshot_sync(local_files, remote):
@@ -358,7 +563,76 @@ def _headers(key_id, issuer_id, pem):
     return {"Authorization": f"Bearer {token}"}
 
 
-def dry_run(headers, bundle_id, meta_dir, shots_dir):
+def _attestation_source(argv=None):
+    """Name where a provenance attestation came from, for the log."""
+    passed = argv if argv is not None else sys.argv[1:]
+    return ("--screenshots-are-console-sourced"
+            if "--screenshots-are-console-sourced" in passed
+            else "ASC_PROBE_CONSOLE_SOURCED=1")
+
+
+def _probe_key(display_type, version_label):
+    """Label a sampled set with the VERSION it was read from.
+
+    Not cosmetic. An editable draft keeps its id, its localization and its
+    screenshot sets when it transitions to READY_FOR_SALE — so screenshots that
+    --apply-screenshots wrote into a draft become, one release later, ordinary
+    live screenshots. Any wording resting on "the script never writes the live
+    version" is therefore true only until the next release ships, and an
+    operator reading an unlabelled `matched in APP_IPHONE_67` months later has
+    no way to tell our own echo from a console upload.
+
+    With the version stamped in, the attestation becomes checkable: compare the
+    app-store-screenshots.yml run history against the version that set belongs
+    to, instead of believing a claim about where writes can land.
+    """
+    return f"{display_type or '<unknown display type>'} @{version_label}"
+
+
+def _probe_screenshot_sets(requests, headers, version_id):
+    """Read-only: display type -> ordered live `sourceFileChecksum` list.
+
+    Split out of dry_run() so the probe can sample the EDITABLE DRAFT as well
+    as the live version. That is not a nicety: screenshots on a READY_FOR_SALE
+    version are not editable in the App Store Connect console, so the one
+    action that can settle the MD5 question — a human dropping a repo file in
+    the console — lands on the draft. A probe that only read the live version
+    would tell the operator to do something, then never see them do it.
+
+    Deliberately does NOT reuse _live_sets(): that one belongs to the write
+    path and returns set ids for mutation. This returns checksums and nothing
+    that could be written back.
+    """
+    r = requests.get(
+        f"{BASE}/appStoreVersions/{version_id}/appStoreVersionLocalizations",
+        headers=headers, timeout=HTTP_TIMEOUT_S,
+    )
+    r.raise_for_status()
+    en_us = next((loc for loc in r.json().get("data", [])
+                  if loc.get("attributes", {}).get("locale") == "en-US"), None)
+    if en_us is None:
+        return {}, None
+    r = requests.get(
+        f"{BASE}/appStoreVersionLocalizations/{en_us['id']}/appScreenshotSets"
+        "?include=appScreenshots&limit=50",
+        headers=headers, timeout=HTTP_TIMEOUT_S,
+    )
+    r.raise_for_status()
+    payload = r.json()
+    shots_by_id = {inc["id"]: inc for inc in payload.get("included", [])
+                   if inc.get("type") == "appScreenshots"}
+    sets = {}
+    for s in payload.get("data", []):
+        dtype = s.get("attributes", {}).get("screenshotDisplayType")
+        refs = (s.get("relationships", {}).get("appScreenshots", {}).get("data") or [])
+        sets[dtype] = [shots_by_id.get(ref["id"], {})
+                       .get("attributes", {}).get("sourceFileChecksum")
+                       for ref in refs]
+    return sets, en_us
+
+
+def dry_run(headers, bundle_id, meta_dir, shots_dir, console_sourced=False,
+            attested_via=None):
     """Diff the live App Store listing against the repo. Returns (drift, skipped).
 
     `skipped` is a human-readable reason when the diff could not run (no app,
@@ -385,24 +659,39 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir):
     version_string = live[0].get("attributes", {}).get("versionString", "?")
     print(f"[dry-run] live iOS version: {version_string} ({version_id})")
 
-    # Informational only: an editable draft means a release is in flight — the
-    # live listing may lag the repo legitimately until it ships.
+    # An editable draft means a release is in flight — the live listing may lag
+    # the repo legitimately until it ships. It is also the ONLY place a console
+    # screenshot upload can land, so the probe samples it too (read-only); the
+    # text/screenshot diff below stays strictly on the live version.
+    draft_sets = {}
     r = requests.get(
         f"{BASE}/apps/{app_id}/appStoreVersions"
         "?filter[platform]=IOS&filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW&limit=1",
-        headers=headers,
+        headers=headers, timeout=HTTP_TIMEOUT_S,
     )
     if r.status_code == 200 and r.json().get("data"):
-        draft_vs = r.json()["data"][0].get("attributes", {}).get("versionString", "?")
+        draft = r.json()["data"][0]
+        draft_vs = draft.get("attributes", {}).get("versionString", "?")
         print(f"[dry-run] note: editable draft {draft_vs} exists — live may lag the repo legitimately")
+        try:
+            raw, draft_en_us = _probe_screenshot_sets(requests, headers, draft["id"])
+            if draft_en_us is None:
+                # Distinguish "no en-US localization" from "no screenshots":
+                # the report tells the operator to look for draft sets, so
+                # their absence must have a stated reason.
+                print(f"[dry-run] note: draft {draft_vs} has no en-US localization "
+                      "— no draft sets to sample")
+            draft_sets = {_probe_key(k, f"draft {draft_vs}"): v for k, v in raw.items()}
+        except Exception as exc:  # noqa: BLE001 — the draft is a bonus sample
+            # Never let the optional sample take down the diff the job exists
+            # for. Say it out loud rather than silently reporting a smaller set.
+            print(f"::warning::could not read draft screenshot sets: {exc}")
 
-    r = requests.get(
-        f"{BASE}/appStoreVersions/{version_id}/appStoreVersionLocalizations",
-        headers=headers,
-    )
-    r.raise_for_status()
-    locs = r.json().get("data", [])
-    en_us = next((loc for loc in locs if loc.get("attributes", {}).get("locale") == "en-US"), None)
+    # One reader for both versions. Keeping a second inline copy here would let
+    # the two drift apart — the `limit=50` cap fixed in one and not the other
+    # would have the probe and the diff describing the same version with
+    # different counts, each contradicting the other in the same log.
+    live_sets, en_us = _probe_screenshot_sets(requests, headers, version_id)
     if en_us is None:
         return [f"en-US: localization missing on the live version {version_string}"], None
 
@@ -412,27 +701,39 @@ def dry_run(headers, bundle_id, meta_dir, shots_dir):
         print(f"::warning::{note}")
     drift += diff_fields(local_fields, en_us.get("attributes", {}))
 
-    # Screenshots: live appScreenshotSets per display type vs the repo dirs.
-    r = requests.get(
-        f"{BASE}/appStoreVersionLocalizations/{en_us['id']}/appScreenshotSets"
-        "?include=appScreenshots&limit=50",
-        headers=headers, timeout=HTTP_TIMEOUT_S,
-    )
-    r.raise_for_status()
-    payload = r.json()
-    shots_by_id = {
-        inc["id"]: inc for inc in payload.get("included", [])
-        if inc.get("type") == "appScreenshots"
-    }
-    live_sets = {}
-    for s in payload.get("data", []):
-        dtype = s.get("attributes", {}).get("screenshotDisplayType")
-        refs = (s.get("relationships", {}).get("appScreenshots", {}).get("data") or [])
-        checksums = []
-        for ref in refs:
-            shot = shots_by_id.get(ref["id"], {})
-            checksums.append(shot.get("attributes", {}).get("sourceFileChecksum"))
-        live_sets[dtype] = checksums
+    # Probe FIRST, diff second (#2612 Phase C step 0): the screenshot diff below
+    # is keyed on `sourceFileChecksum == MD5(source bytes)`, which is true by
+    # construction for any asset THIS script uploaded. Printing what Apple
+    # actually stores, before the diff it justifies, is what stops a mismatch
+    # from being read as measured drift. The draft sets are folded in because a
+    # console upload — the only thing that can settle the question — lands on
+    # the editable version. Note it does not STAY there: that version keeps its
+    # screenshots when it ships, which is why every set is stamped with the
+    # version it came from rather than merely marked draft-or-not.
+    local_md5s = [md5_of(p)
+                  for device_dir in DISPLAY_TYPE_MAP
+                  if (shots_dir / device_dir).is_dir()
+                  for p in sorted((shots_dir / device_dir).glob("*.png"))]
+    # Version-stamped keys for the probe; the diff below keeps the raw display
+    # types it needs to look sets up by.
+    probe_sets = {_probe_key(k, version_string): v for k, v in live_sets.items()}
+    for key, value in draft_sets.items():
+        # Unreachable while versionStrings differ, but a silent overwrite here
+        # would drop a live set out of the sample without a word.
+        if key in probe_sets:
+            print(f"::warning::probe key collision on {key} — draft and live sets "
+                  "share a label; reporting the draft one")
+        probe_sets[key] = value
+    if console_sourced:
+        # Announced HERE, on the decision path, not in main(): a direct
+        # importer calling dry_run(console_sourced=True) would otherwise get a
+        # CONFIRMED with no trace of the attestation that licensed it.
+        print(f"[probe] console provenance ATTESTED via "
+              f"{attested_via or _attestation_source()} — CONFIRMED is reachable "
+              "this run; a repo-MD5 match will be read as proof.")
+    for line in checksum_provenance_report(
+            classify_live_checksums(probe_sets, local_md5s, console_sourced)):
+        print(line)
 
     for device_dir, display_type in sorted(DISPLAY_TYPE_MAP.items()):
         ddir = shots_dir / device_dir
@@ -862,6 +1163,22 @@ def main(argv=None):
                     help="upload the repo screenshots to the EDITABLE version (writes)")
     ap.add_argument("--fail-on-drift", action="store_true",
                     help="exit 3 when drift is found")
+    # The operator's attestation that the SAMPLED screenshots — live *and* the
+    # editable draft, which is where --apply-screenshots writes — were not put
+    # there by this script. Without it a repo-MD5 match can only report
+    # `unattested-match`, because our own upload declares that same MD5 and
+    # Apple echoes it back; a match would then be self-fulfilling. Deliberately
+    # a manual claim: the script cannot see its own deployment history, and
+    # inferring provenance wrongly is the exact failure this probe prevents.
+    # BooleanOptionalAction so an inherited ASC_PROBE_CONSOLE_SOURCED=1 can be
+    # switched off on the command line instead of silently attesting.
+    ap.add_argument("--screenshots-are-console-sourced",
+                    action=argparse.BooleanOptionalAction,
+                    default=os.environ.get("ASC_PROBE_CONSOLE_SOURCED") == "1",
+                    help="attest that every sampled screenshot set (live AND the "
+                         "editable draft) came from the App Store Connect console, "
+                         "not from --apply-screenshots; required for a CONFIRMED "
+                         "provenance verdict")
     ap.add_argument("--bundle-id", default=os.environ.get("ASC_BUNDLE_ID", DEFAULT_BUNDLE_ID))
     ap.add_argument("--metadata-dir", default=DEFAULT_METADATA_DIR)
     ap.add_argument("--screenshots-dir", default=DEFAULT_SCREENSHOTS_DIR)
@@ -885,6 +1202,14 @@ def main(argv=None):
         # will not happen. --fail-on-drift only means something while reading.
         print("::error::--fail-on-drift is a --dry-run flag; it has no meaning with "
               "--apply-screenshots (which fixes drift rather than reporting it).")
+        return 2
+
+    if args.apply_screenshots and args.screenshots_are_console_sourced:
+        # Refuse the self-contradiction outright. Attesting console provenance
+        # in the same breath as an upload is how a stale attestation survives
+        # into the next read and manufactures a CONFIRMED out of an echo.
+        print("::error::--screenshots-are-console-sourced attests that the sampled sets "
+              "did NOT come from this script; it cannot be combined with --apply-screenshots.")
         return 2
 
     meta_dir = pathlib.Path(args.metadata_dir)
@@ -940,7 +1265,9 @@ def main(argv=None):
             print(f"  UPLOADED {item}")
         return 0
 
-    drift, skipped = dry_run(headers, args.bundle_id, meta_dir, shots_dir)
+    drift, skipped = dry_run(headers, args.bundle_id, meta_dir, shots_dir,
+                             args.screenshots_are_console_sourced,
+                             attested_via=_attestation_source(argv))
     if skipped:
         print(f"[skip] {skipped}")
         return 0

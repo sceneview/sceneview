@@ -1186,7 +1186,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 4.24.0;
+				MARKETING_VERSION = 4.25.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo;
 				PRODUCT_NAME = SceneView;
 				PRODUCT_MODULE_NAME = SceneViewDemo;
@@ -1221,7 +1221,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 4.24.0;
+				MARKETING_VERSION = 4.25.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo;
 				PRODUCT_NAME = SceneView;
 				PRODUCT_MODULE_NAME = SceneViewDemo;

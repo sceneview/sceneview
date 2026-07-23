@@ -11,8 +11,8 @@ Same concepts, same simplicity — Android, iOS, Web, Desktop, TV, Flutter, Reac
 [![iOS / macOS / visionOS](https://img.shields.io/github/v/release/sceneview/sceneview?label=Swift&logo=swift&color=f05138)](https://github.com/sceneview/sceneview)
 [![sceneview.js](https://img.shields.io/npm/v/sceneview-web?label=sceneview.js&logo=javascript&color=f7df1e)](https://www.npmjs.com/package/sceneview-web)
 [![MCP Server](https://img.shields.io/npm/v/sceneview-mcp?label=MCP&logo=anthropic&color=d97706)](https://www.npmjs.com/package/sceneview-mcp)
-[![Flutter](https://img.shields.io/badge/Flutter-v4.24.0-02569B?logo=flutter)](https://github.com/sceneview/sceneview/tree/main/flutter)
-[![React Native](https://img.shields.io/badge/React%20Native-v4.24.0-61DAFB?logo=react)](https://github.com/sceneview/sceneview/tree/main/react-native)
+[![Flutter](https://img.shields.io/badge/Flutter-v4.25.0-02569B?logo=flutter)](https://github.com/sceneview/sceneview/tree/main/flutter)
+[![React Native](https://img.shields.io/badge/React%20Native-v4.25.0-61DAFB?logo=react)](https://github.com/sceneview/sceneview/tree/main/react-native)
 
 <!-- Status -->
 [![CI](https://img.shields.io/github/actions/workflow/status/sceneview/sceneview/ci.yml?branch=main&label=CI&logo=github)](https://github.com/sceneview/sceneview/actions/workflows/ci.yml)
@@ -59,8 +59,8 @@ SceneView(environment: .studio) {
 
 ```html
 <!-- Web — friendly DSL (Filament.js engine + SceneView wrapper) -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.24.0/website-static/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.24.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.25.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.25.0/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("canvas", "model.glb") </script>
 ```
 
@@ -114,28 +114,28 @@ Coming from the archived Sceneform repo? See the
 **Android** (3D + AR):
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.24.0")     // 3D
-    implementation("io.github.sceneview:arsceneview:4.24.0")   // AR (includes 3D)
+    implementation("io.github.sceneview:sceneview:4.25.0")     // 3D
+    implementation("io.github.sceneview:arsceneview:4.25.0")   // AR (includes 3D)
 }
 ```
 
 **iOS / macOS / visionOS** (Swift Package Manager):
 ```
-https://github.com/sceneview/sceneview.git  (from: 4.24.0)
+https://github.com/sceneview/sceneview.git  (from: 4.25.0)
 ```
 
 **Web** (sceneview.js — friendly DSL, two `<script>` tags):
 ```html
 <!-- 1. Filament.js engine (WASM) -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.24.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.25.0/website-static/js/filament/filament.js"></script>
 <!-- 2. SceneView wrapper (exposes SceneView.modelViewer / .create / .startAR) -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.24.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.25.0/website-static/js/sceneview.js"></script>
 ```
 
 **Web** (Kotlin/JS):
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview-web:4.24.0")
+    implementation("io.github.sceneview:sceneview-web:4.25.0")
 }
 ```
 
@@ -197,7 +197,7 @@ SceneView(
 | **Custom geometry** | `GeometryNode` · `MeshNode` | Direct Filament `IndexBuffer` / `VertexBuffer` |
 | **Surfaces** | `ImageNode` · `VideoNode` · `BillboardNode` | PNG/JPG plane, video plane (MediaPlayer), camera-facing sprite |
 | **3D text** | `TextNode` | World-space text label that always faces the camera |
-| **Compose-in-3D** | `ViewNode` | **Any Compose UI rendered as a 3D surface** — buttons, lists, animations |
+| **Compose-in-3D** | `ViewNode` | **Any Compose UI rendered as a 3D surface** — labels, cards, lists, animations (rendered, not touch-interactive) |
 | **Lighting** | `LightNode` · `ReflectionProbeNode` · `DynamicSkyNode` · `FogNode` | Sun/dir/point/spot lights, local IBL, time-of-day sky, atmospheric fog |
 | **Physics** | `PhysicsNode` | Simple rigid-body simulation (gravity, collisions) |
 | **Cameras** | `CameraNode` · `SecondaryCamera` | Main and picture-in-picture cameras |
@@ -282,7 +282,7 @@ What you can do across all 3D and AR scenes — beyond placing nodes.
 | **HDR environment** | IBL lighting + skybox from `.hdr` / `.ktx`. Async load + reactive swap. | `EnvironmentLoader`, `rememberEnvironment` |
 | **Custom materials** | Filament `.filamat` materials with parameters, plus built-in unlit / lit / overlay variants. | `MaterialLoader` |
 | **Post-processing** | Bloom, depth of field, SSAO, vignette, color grading, tone mapping. | `View.bloomOptions`, `dynamicResolutionOptions`, … |
-| **Compose UI in 3D** | Render any `@Composable` as a textured plane in world space — buttons, lists, animations, all interactive. | `ViewNode` + `ViewNode.WindowManager` |
+| **Compose UI in 3D** | Render any `@Composable` as a textured plane in world space — labels, cards, lists, animations. Rendered only: hit-test the node to react to taps ([#2845](https://github.com/sceneview/sceneview/issues/2845)). | `ViewNode` + `ViewNode.WindowManager` |
 | **Multiple cameras** | Picture-in-picture, mini-map, security-camera views. | `SecondaryCamera` |
 | **Reactive scene graph** | Compose-driven recomposition: change state → tree updates. No imperative `parent.addChild()`. | `SceneScope` / `ARSceneScope` DSL |
 
@@ -314,7 +314,7 @@ ARSceneView(planeDetection: .horizontal) { position, arView in
 
 Plus the **iOS `RerunBridge`** with the same wire format as Android, and a `NodeBuilder` DSL for declarative composition outside SwiftUI.
 
-**Install:** `https://github.com/sceneview/sceneview.git` (SPM, from 4.24.0)
+**Install:** `https://github.com/sceneview/sceneview.git` (SPM, from 4.25.0)
 
 ---
 
@@ -325,9 +325,9 @@ Friendly DSL (~25 KB) powered by Filament.js WASM (~210 KB) — the same engine 
 
 ```html
 <!-- 1. Filament.js engine (WASM) -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.24.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.25.0/website-static/js/filament/filament.js"></script>
 <!-- 2. SceneView wrapper -->
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.24.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.25.0/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("canvas", "model.glb") </script>
 ```
 
@@ -361,7 +361,7 @@ const vr = await SceneView.startVR("canvas")                       // immersive-
 For Kotlin Multiplatform projects, the same engine is exposed as a Kotlin/JS class with an `OrbitCameraController`, a geometry DSL, and reactive node updates:
 
 ```kotlin
-implementation("io.github.sceneview:sceneview-web:4.24.0")
+implementation("io.github.sceneview:sceneview-web:4.25.0")
 ```
 
 **Install:** `npm install sceneview-web` or CDN — [Landing page](https://sceneview.github.io/) — [Playground](https://sceneview.github.io/playground.html) — [npm](https://www.npmjs.com/package/sceneview-web)
@@ -412,7 +412,7 @@ You get:
 
 ### ChatGPT / GitHub Copilot / Other AI
 
-- **llms.txt** — Machine-readable API reference at [`llms.txt`](./llms.txt) (111 KB, 3000+ lines)
+- **llms.txt** — Machine-readable API reference at [`llms.txt`](./llms.txt) (complete API: composables, nodes, threading rules, recipes — its Kotlin snippets are compile-checked in CI)
 - **GitHub Copilot** — Custom instructions in [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
 - **Cursor** — Rules file at [`.cursorrules`](.cursorrules)
 - **Windsurf** — Rules file at [`.windsurfrules`](.windsurfrules)

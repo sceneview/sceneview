@@ -1,0 +1,8 @@
+# XcodeBuildMCP workflow configuration for the SceneView repo.
+# Default is ["simulator"] only; we also need UI automation (taps/swipes for
+# demo navigation) and device workflows (build/install/launch on a physical
+# iPhone for AR demo QA — AR cannot run on the simulator).
+enabledWorkflows:
+  - simulator
+  - ui-automation
+  - device

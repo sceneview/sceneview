@@ -41,6 +41,7 @@ import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.rememberMaterialInstance
+import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -136,7 +137,7 @@ private fun CustomMeshSection(
                 Switch(checked = rotating, onCheckedChange = null)
             }
             Spacer(modifier = Modifier.height(12.dp))
-            Text("Scale: ${"%.1f".format(scale)}x", style = MaterialTheme.typography.labelLarge)
+            Text("Scale: ${"%.1f".format(Locale.US, scale)}x", style = MaterialTheme.typography.labelLarge)
             Slider(
                 value = scale,
                 onValueChange = { scale = it },

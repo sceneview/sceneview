@@ -9,7 +9,7 @@ A scannable, AI-first reference for every node type exposed by `SceneView` and `
 
 All examples assume you are inside a `SceneView { … }` or `ARSceneView { … }` block (for AR nodes). Import the `io.github.sceneview.*` / `io.github.sceneview.ar.*` packages as needed.
 
-Artifact versions: `io.github.sceneview:sceneview:4.24.0` and `io.github.sceneview:arsceneview:4.24.0`.
+Artifact versions: `io.github.sceneview:sceneview:4.25.0` and `io.github.sceneview:arsceneview:4.25.0`.
 
 ---
 
@@ -397,7 +397,15 @@ CameraNode(
 
 ## ViewNode
 
-Renders a Jetpack Compose UI onto a flat plane in 3D space. Great for in-world labels, info cards, HUDs, and interactive panels.
+Renders a Jetpack Compose UI onto a flat plane in 3D space. Great for in-world labels, info cards, and HUDs.
+
+!!! warning "The rendered UI is not interactive"
+
+    A `ViewNode` draws its Compose content into a texture, and the hosting window is
+    `FLAG_NOT_TOUCHABLE` — a `Button` placed inside renders, but its `onClick` never
+    fires (no ripple, no press state, no inner scrolling). To react to a tap, hit-test
+    the node instead: `onSingleTapUp = { _, node -> if (node is ViewNode) … }`.
+    Real touch forwarding is tracked by [#2845](https://github.com/sceneview/sceneview/issues/2845).
 
 ### Signature
 
