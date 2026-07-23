@@ -37,25 +37,31 @@ distribution/play-store/
     ├── short_description.txt
     ├── full_description.txt
     └── graphics/
-        ├── feature-graphic.png       (1024×500)
-        ├── icon-512.png              (512×512)
-        ├── phone-screenshot-1.png    (1080×2304)
-        ├── phone-screenshot-2.png
-        ├── phone-screenshot-3.png
-        └── phone-screenshot-4.png
+        ├── feature-graphic.png            (1024×500)
+        ├── icon-512.png                   (512×512)
+        ├── phone-screenshot-{1..5}.png    (1080×2304)
+        ├── tablet7-screenshot-{1..5}.png  (1200×N, portrait)
+        └── tablet10-screenshot-{1..5}.png (1600×N, portrait)
 ```
+
+The five screenshots of each class are the same five demos, in the same order,
+as the iOS listing — the unified showcase set (#2773). Tablets keep their
+native post-crop height rather than being padded to the phone ratio.
 
 On every `vX.Y.0` tag release, the `sync-listing` job in
 `.github/workflows/play-store.yml` PATCHes the listing text and uploads the
 graphics above via the Play `edits.images` API — no manual Play Console
-upload is needed. Refresh the phone screenshots with
+upload is needed. Refresh the screenshots with
 `.claude/scripts/capture-play-store-screenshots.sh`, which writes into the
-same `graphics/` directory.
+same `graphics/` directory. Pass `--form-factor tablet7` / `tablet10` for the
+tablet slots (#2796); the default is `phone`.
+
+Tablet screenshots (`tablet7-screenshot-*.png` / `tablet10-screenshot-*.png`)
+**are** in the repo and the listing-sync job uploads them automatically —
+`play_listing.py` maps them onto Play's `sevenInchScreenshots` /
+`tenInchScreenshots` image types.
 
 Optional extras still not in the repo:
-- **Tablet screenshots:** 7" and 10" — add them under `graphics/` as
-  `tablet7-screenshot-*.png` / `tablet10-screenshot-*.png` and the
-  listing-sync job uploads them automatically.
 - **Promo video:** YouTube link — set manually in the Play Console.
 
 ### Content Rating
