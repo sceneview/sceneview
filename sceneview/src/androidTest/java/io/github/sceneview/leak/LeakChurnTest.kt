@@ -47,7 +47,7 @@ import org.junit.runner.RunWith
  * | `LightManager` component count | `getComponentCount()` ✅ | global baseline assert |
  * | `RenderableManager` component count | ❌ none (only `hasComponent(entity)`) | per-entity assert |
  * | `TransformManager` component count | ❌ none (only `hasComponent(entity)`) | per-entity assert |
- * | `EntityManager` alive count | ❌ none (only `isAlive(entity)`) | pinned, not asserted (see below) |
+ * | `EntityManager` alive count | ❌ none (only `isAlive(entity)`) | per-entity assert |
  * | `EngineDestroyQueue.size` | ✅ (`EngineDestroyQueue.kt:58`) | global assert |
  *
  * Per-entity probing is not a downgrade: a global counter tells you *that* something
@@ -69,10 +69,11 @@ import org.junit.runner.RunWith
  * canary fails loudly instead of letting every other test pass vacuously on a dead
  * instrument.
  *
- * One gap is **pinned rather than asserted**: `Node.destroy()` never returns the entity id
- * to `EntityManager` (see [entityIdRecycling_isTheKnownPreExistingGap]). That is a real,
- * pre-existing leak this suite measured on its first run; it is tracked in #2859 rather
- * than smuggled into a test PR as a runtime change.
+ * The id-recycling leak this suite measured on its first run — `Node.destroy()` never
+ * returned the entity id to `EntityManager` — was tracked as #2859 and fixed there rather
+ * than smuggled into the test PR as a runtime change. Both halves of that fix are asserted
+ * here: [ownedEntityId_isRecycledOnDestroy] (a self-allocated id comes back) and
+ * [borrowedEntityId_isLeftToItsOwner] (a caller-supplied one does not, the `gltfio` case).
  *
  * ## Scope, stated honestly
  *
@@ -122,16 +123,17 @@ class LeakChurnTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync(block)
 
     /**
-     * Asserts every **component** attached to [entity] was released. A leaked component
-     * keeps native memory alive even when the Kotlin `Node` is long gone — that is exactly
-     * the #2036/#2039 shape.
+     * Asserts every **component** attached to [entity] was released, **and** that its id went
+     * back to the [EntityManager]. A leaked component keeps native memory alive even when the
+     * Kotlin `Node` is long gone — that is exactly the #2036/#2039 shape; a leaked id keeps
+     * burning a slot in Filament's bounded id space — #2859.
      *
-     * Deliberately does NOT assert `EntityManager.isAlive(entity) == false`: the SDK's
-     * `Node.destroy()` calls `Engine.destroyEntity()`, which in Filament destroys the
-     * components but does **not** return the id to `EntityManager` (only
-     * `EntityManager.destroy()` does). That id-recycling gap is real, measured, and
-     * pre-existing — see [entityIdRecycling_isTheKnownPreExistingGap] and #2859. Asserting
-     * it here would just paint this suite red for a bug it did not introduce and cannot fix.
+     * The `isAlive` half was `false` for the whole life of this suite: `Node.destroy()` called
+     * `Engine.destroyEntity()`, which destroys the components but does **not** return the id
+     * (only `EntityManager.destroy()` does). #2859 fixed that, so the assert is live now.
+     *
+     * Every caller destroys **all** the entities it collected before asserting, so a recycled
+     * id being handed back out mid-churn cannot make this read `true` spuriously.
      */
     private fun assertComponentsReleased(label: String, entity: Int) {
         assertFalse(
@@ -145,6 +147,12 @@ class LeakChurnTest {
         assertFalse(
             "$label: entity $entity still has a LightManager component after destroy()",
             engine.lightManager.hasComponent(entity),
+        )
+        assertFalse(
+            "$label: entity $entity is still alive in the EntityManager after destroy() — " +
+                "its id was never returned, so it is burnt for the lifetime of the process " +
+                "(#2859)",
+            EntityManager.get().isAlive(entity),
         )
     }
 
@@ -422,32 +430,81 @@ class LeakChurnTest {
     }
 
     /**
-     * Characterization test for a **pre-existing, measured** gap — not a new regression.
+     * A node that allocated its own entity returns the id on [Node.destroy] (#2859).
      *
-     * `Node.destroy()` → `Engine.destroyEntity(entity)` destroys the entity's *components*
-     * but does not return the id to `EntityManager`; only `EntityManager.destroy(entity)`
-     * does, and the SDK calls it in exactly two places (`PlaneVisualizer`,
-     * `PlaneVisualizerV2`) out of 15 creation sites. So every `Node` ever created burns an
-     * entity id for the lifetime of the process.
+     * Was a characterization test pinning the opposite: `Node.destroy()` called only
+     * `Engine.destroyEntity()`, which frees the components but not the id. #2859 added the
+     * `EntityManager.destroy()` half, gated on ownership, and this assertion was inverted in
+     * the same PR — the sequence the previous version of this KDoc prescribed.
      *
-     * This test pins today's behaviour so the churn suite above is not red for a bug it did
-     * not introduce, and so the gap is impossible to forget: **when #2859 is fixed, this
-     * test goes red — invert it then, and tighten
-     * [assertComponentsReleased] to also require `isAlive == false`.**
+     * Probed immediately after the destroy, on a single node, so no second allocation can
+     * reissue the id and make the result ambiguous.
      */
     @Test
-    fun entityIdRecycling_isTheKnownPreExistingGap() {
+    fun ownedEntityId_isRecycledOnDestroy() {
         var entity = 0
         onMain { entity = Node(engine).also { it.destroy() }.entity }
 
         onMain {
-            assertTrue(
-                "Entity ids are now recycled by Node.destroy() — the known gap this test " +
-                    "pins is FIXED. Invert this assertion and tighten assertComponentsReleased " +
-                    "to require EntityManager.isAlive(entity) == false.",
+            assertFalse(
+                "Node.destroy() did not return entity $entity to the EntityManager — every " +
+                    "node created would burn an id for the lifetime of the process (#2859)",
                 EntityManager.get().isAlive(entity),
             )
-            assertComponentsReleased("id-recycling gap probe", entity)
+            assertComponentsReleased("owned-entity probe", entity)
+        }
+    }
+
+    /**
+     * The other half of #2859, and the reason the fix is gated on ownership rather than
+     * applied unconditionally: an entity **handed in by the caller** is borrowed, and
+     * `destroy()` must leave its id alone.
+     *
+     * This is the `ModelNode` shape — it wraps `modelInstance.root`, and its child nodes wrap
+     * `gltfio` node entities, all owned by the `AssetLoader` that destroys them with the
+     * asset. Recycling a borrowed id would let Filament reissue it while the asset is still
+     * live, so a later node would silently drive an entity the model still uses.
+     *
+     * The assertions are **differential** (borrowed vs owned in the same run) on purpose: an
+     * absolute `isAlive == true` would also pass on a build where the recycling call was a
+     * no-op for everyone — which is precisely the regression
+     * [ownedEntityId_isRecycledOnDestroy] exists to catch. Requiring the owned one to be dead
+     * in the same breath is what proves the ownership flag actually discriminates.
+     */
+    @Test
+    fun borrowedEntityId_isLeftToItsOwner() {
+        var borrowed = 0
+        var owned = 0
+
+        onMain {
+            // Stands in for the AssetLoader: an entity whose owner is NOT the node.
+            borrowed = EntityManager.get().create()
+            Node(engine, entity = borrowed).destroy()
+
+            owned = Node(engine).also { it.destroy() }.entity
+        }
+
+        onMain {
+            assertTrue(
+                "Node.destroy() recycled entity $borrowed, which the caller passed in and " +
+                    "still owns. For a ModelNode that entity belongs to a live gltfio asset: " +
+                    "Filament may now reissue the id while the asset still uses it (#2859)",
+                EntityManager.get().isAlive(borrowed),
+            )
+            assertFalse(
+                "Ownership tracking is broken: the self-allocated entity $owned was not " +
+                    "recycled either, so the borrowed-entity assert above passes vacuously",
+                EntityManager.get().isAlive(owned),
+            )
+            // The node released the components either way — only the id is owner-gated.
+            assertFalse(
+                "borrowed entity $borrowed still has a TransformManager component after " +
+                    "destroy() — borrowing the id must not mean skipping component teardown",
+                engine.transformManager.hasComponent(borrowed),
+            )
+
+            // The test owns this one, so it cleans it up.
+            EntityManager.get().destroy(borrowed)
         }
     }
 }

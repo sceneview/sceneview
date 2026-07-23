@@ -332,6 +332,164 @@ run
     && ok "collapsed single-line legacyAliases (= [:]) does not leak, multi-line still works → PASS" \
     || bad "collapsed single-line legacyAliases must not leak (rc=$RC): $OUT"
 
+# ─── 12-16. Section banners + tallies (the comment-drift class) ───────────
+# `yaml.safe_load` cannot see comments, so before this gate the `# ─── working
+# (N) ───` banners could drift indefinitely while the check stayed green —
+# and across the Wave-A iOS ports they did, advertising 30/23 against a real
+# 34/19. These cases pin that the banners are now enforced.
+
+# Shared fixture for 12-15: one real id + one placeholder id.
+setup_banner_fixture() {
+    rm -f "$FRAG_DIR"/*.kt
+    write_fragment "model-viewer" "ModelViewer"
+    write_fragment "ar-face" "ArFace"
+    write_ios_generated "model-viewer" "ar-face"
+    write_ios_registry "" ""
+}
+
+# ─── 12. Banners that match reality → PASS ────────────────────────────────
+setup_banner_fixture
+write_manifest <<'EOF'
+demos:
+  # ─── working (1) — iOS has a real destination ───
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+
+  # ─── stub (1) — falls through to the placeholder ───
+  - id: ar-face
+    androidStatus: Working
+    iosStatus: stub
+    reason: "not yet ported"
+EOF
+run
+{ [[ $RC -eq 0 ]] && grep -q "check-demo-id-parity.sh: OK" <<<"$OUT"; } \
+    && ok "section banners matching the real tallies → PASS" \
+    || bad "correct section banners should PASS (rc=$RC): $OUT"
+
+# ─── 13. A banner tally that lies → FAIL ──────────────────────────────────
+setup_banner_fixture
+write_manifest <<'EOF'
+demos:
+  # ─── working (5) — iOS has a real destination ───
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+
+  # ─── stub (1) — falls through to the placeholder ───
+  - id: ar-face
+    androidStatus: Working
+    iosStatus: stub
+    reason: "not yet ported"
+EOF
+run
+{ [[ $RC -ne 0 ]] && grep -q "declares (5) but 1 row(s) actually have iosStatus: working" <<<"$OUT"; } \
+    && ok "banner tally disagreeing with the real row count → FAIL" \
+    || bad "a lying banner tally must FAIL (rc=$RC): $OUT"
+
+# ─── 14. A row flipped in place, left in the wrong section → FAIL ─────────
+# The exact Wave-A regression: `iosStatus` promoted to `working` without
+# moving the row out of the `stub` section, so BOTH tallies silently rot.
+setup_banner_fixture
+write_manifest <<'EOF'
+demos:
+  # ─── working (0) — iOS has a real destination ───
+
+  # ─── stub (1) — falls through to the placeholder ───
+  - id: ar-face
+    androidStatus: Working
+    iosStatus: stub
+    reason: "not yet ported"
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+EOF
+run
+{ [[ $RC -ne 0 ]] && grep -q "row 'model-viewer' has iosStatus: working but is filed under the 'stub' section" <<<"$OUT"; } \
+    && ok "row flipped in place but left in the wrong section → FAIL" \
+    || bad "a misfiled row must FAIL (rc=$RC): $OUT"
+
+# ─── 15. Rows whose bucket has no banner at all → FAIL ───────────────────
+setup_banner_fixture
+write_manifest <<'EOF'
+demos:
+  # ─── working (1) — iOS has a real destination ───
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-face
+    androidStatus: Working
+    iosStatus: stub
+    reason: "not yet ported"
+EOF
+run
+{ [[ $RC -ne 0 ]] && grep -q "1 row(s) with iosStatus: stub but no" <<<"$OUT"; } \
+    && ok "a bucket with rows but no section banner → FAIL" \
+    || bad "a bannerless non-empty bucket must FAIL (rc=$RC): $OUT"
+
+# ─── 16. No banners anywhere → the convention is not enforced (opt-out) ───
+# Keeps the check strictly additive: a manifest that never adopted section
+# banners (every fixture above) is not retroactively invalid.
+setup_banner_fixture
+write_manifest <<'EOF'
+demos:
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-face
+    androidStatus: Working
+    iosStatus: stub
+    reason: "not yet ported"
+EOF
+run
+{ [[ $RC -eq 0 ]] && grep -q "check-demo-id-parity.sh: OK" <<<"$OUT"; } \
+    && ok "a manifest with no section banners at all → PASS (opt-out)" \
+    || bad "bannerless manifests must stay valid (rc=$RC): $OUT"
+
+# ─── 17-18. The header's own CURRENT STATE summary line ───────────────────
+# The banners are not the only prose counts: the preamble repeats them in a
+# summary line, which drifted just as freely (the real header once carried
+# four contradictory tallies at once). Same measured truth, same gate.
+setup_banner_fixture
+write_manifest <<'EOF'
+# Of the 2 Android ids: 1 working, 1 stub, 0 android-only.
+demos:
+  # ─── working (1) — iOS has a real destination ───
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+
+  # ─── stub (1) — falls through to the placeholder ───
+  - id: ar-face
+    androidStatus: Working
+    iosStatus: stub
+    reason: "not yet ported"
+EOF
+run
+{ [[ $RC -eq 0 ]] && grep -q "check-demo-id-parity.sh: OK" <<<"$OUT"; } \
+    && ok "header summary matching the real tallies → PASS" \
+    || bad "a correct header summary should PASS (rc=$RC): $OUT"
+
+setup_banner_fixture
+write_manifest <<'EOF'
+# Of the 2 Android ids: 7 working, 1 stub, 0 android-only.
+demos:
+  # ─── working (1) — iOS has a real destination ───
+  - id: model-viewer
+    androidStatus: Working
+    iosStatus: working
+
+  # ─── stub (1) — falls through to the placeholder ───
+  - id: ar-face
+    androidStatus: Working
+    iosStatus: stub
+    reason: "not yet ported"
+EOF
+run
+{ [[ $RC -ne 0 ]] && grep -q "header summary claims 7 'working' but 1 row(s)" <<<"$OUT"; } \
+    && ok "header summary disagreeing with the real tallies → FAIL" \
+    || bad "a lying header summary must FAIL (rc=$RC): $OUT"
+
 # ─── Summary ───────────────────────────────────────────────────────────────
 echo ""
 echo "test-check-demo-id-parity.sh: $PASS passed, $FAIL failed"

@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.google.android.filament.Camera
 import com.google.android.filament.Engine
+import com.google.android.filament.EntityManager
 import com.google.android.filament.Fence
 import com.google.android.filament.IndexBuffer
 import com.google.android.filament.IndirectLight
@@ -28,6 +29,17 @@ typealias Entity = Int
 typealias EntityInstance = Int
 typealias FilamentEntity = com.google.android.filament.Entity
 typealias FilamentEntityInstance = com.google.android.filament.EntityInstance
+
+/**
+ * The null [Entity] — Filament's "no entity" value, which [EntityManager.create] never returns.
+ *
+ * Used as the default of every SDK constructor that takes an optional `entity`, so a node can
+ * tell "the caller handed me an entity to borrow" from "no entity was given, allocate my own".
+ * That distinction is what makes it safe for [io.github.sceneview.node.Node.destroy] to return
+ * the id to the [EntityManager]: only self-allocated ids are recycled, never a borrowed one
+ * (a `gltfio` asset entity, say, whose real owner is the `AssetLoader`). See #2859.
+ */
+const val NULL_ENTITY: Entity = 0
 
 fun Engine.createModelLoader(context: Context) = ModelLoader(this, context)
 fun Engine.createMaterialLoader(context: Context) = MaterialLoader(this, context)
@@ -61,6 +73,20 @@ fun Engine.safeDestroy() = runCatching {
 }
 
 fun Engine.safeDestroyEntity(entity: Entity) = runCatching { destroyEntity(entity) }
+
+/**
+ * Returns [entity]'s id to the [EntityManager] so Filament can hand it out again.
+ *
+ * [Engine.destroyEntity] destroys the entity's *components* but deliberately does **not**
+ * release the id — only [EntityManager.destroy] does. Skipping it means every entity ever
+ * created burns an id for the lifetime of the process (#2859).
+ *
+ * **Only call this on an entity you allocated yourself.** Recycling a borrowed id — one owned
+ * by `gltfio`, or handed in by a caller — lets Filament reissue it while the real owner is
+ * still using it. Destroy the components first: this call invalidates the id.
+ */
+fun Engine.safeRecycleEntity(@FilamentEntity entity: Entity) =
+    runCatching { EntityManager.get().destroy(entity) }
 
 fun Engine.destroyTransformable(@FilamentEntity entity: Entity) = transformManager.destroy(entity)
 fun Engine.safeDestroyTransformable(@FilamentEntity entity: Entity) =

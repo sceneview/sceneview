@@ -397,7 +397,15 @@ CameraNode(
 
 ## ViewNode
 
-Renders a Jetpack Compose UI onto a flat plane in 3D space. Great for in-world labels, info cards, HUDs, and interactive panels.
+Renders a Jetpack Compose UI onto a flat plane in 3D space. Great for in-world labels, info cards, and HUDs.
+
+!!! warning "The rendered UI is not interactive"
+
+    A `ViewNode` draws its Compose content into a texture, and the hosting window is
+    `FLAG_NOT_TOUCHABLE` — a `Button` placed inside renders, but its `onClick` never
+    fires (no ripple, no press state, no inner scrolling). To react to a tap, hit-test
+    the node instead: `onSingleTapUp = { _, node -> if (node is ViewNode) … }`.
+    Real touch forwarding is tracked by [#2845](https://github.com/sceneview/sceneview/issues/2845).
 
 ### Signature
 

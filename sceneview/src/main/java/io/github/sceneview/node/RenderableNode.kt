@@ -2,11 +2,11 @@ package io.github.sceneview.node
 
 import com.google.android.filament.Box
 import com.google.android.filament.Engine
-import com.google.android.filament.EntityManager
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
 import io.github.sceneview.Entity
 import io.github.sceneview.FilamentEntity
+import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.components.RenderableInstance
 import io.github.sceneview.math.toVector3Box
@@ -24,7 +24,7 @@ import io.github.sceneview.safeDestroyRenderable
  */
 open class RenderableNode(
     engine: Engine,
-    @FilamentEntity entity: Entity = EntityManager.get().create(),
+    @FilamentEntity entity: Entity = NULL_ENTITY,
 ) : Node(engine, entity), RenderableComponent {
 
     /**
@@ -60,7 +60,7 @@ open class RenderableNode(
 
     constructor(
         engine: Engine,
-        @FilamentEntity entity: Entity = EntityManager.get().create(),
+        @FilamentEntity entity: Entity = NULL_ENTITY,
         /**
          * Count the number of primitives that will be supplied to the builder
          */
@@ -104,7 +104,9 @@ open class RenderableNode(
                     materialInstance?.let { material(index, materialInstance) }
                 }
             }.apply(builder)
-            .build(engine, entity)
+            // `this.entity` — the parameter is the NULL_ENTITY sentinel when the caller let
+            // the node allocate its own entity; Node resolved it into the real id.
+            .build(engine, this.entity)
         updateCollisionShape()
     }
 

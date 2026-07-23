@@ -197,7 +197,7 @@ SceneView(
 | **Custom geometry** | `GeometryNode` · `MeshNode` | Direct Filament `IndexBuffer` / `VertexBuffer` |
 | **Surfaces** | `ImageNode` · `VideoNode` · `BillboardNode` | PNG/JPG plane, video plane (MediaPlayer), camera-facing sprite |
 | **3D text** | `TextNode` | World-space text label that always faces the camera |
-| **Compose-in-3D** | `ViewNode` | **Any Compose UI rendered as a 3D surface** — buttons, lists, animations |
+| **Compose-in-3D** | `ViewNode` | **Any Compose UI rendered as a 3D surface** — labels, cards, lists, animations (rendered, not touch-interactive) |
 | **Lighting** | `LightNode` · `ReflectionProbeNode` · `DynamicSkyNode` · `FogNode` | Sun/dir/point/spot lights, local IBL, time-of-day sky, atmospheric fog |
 | **Physics** | `PhysicsNode` | Simple rigid-body simulation (gravity, collisions) |
 | **Cameras** | `CameraNode` · `SecondaryCamera` | Main and picture-in-picture cameras |
@@ -282,7 +282,7 @@ What you can do across all 3D and AR scenes — beyond placing nodes.
 | **HDR environment** | IBL lighting + skybox from `.hdr` / `.ktx`. Async load + reactive swap. | `EnvironmentLoader`, `rememberEnvironment` |
 | **Custom materials** | Filament `.filamat` materials with parameters, plus built-in unlit / lit / overlay variants. | `MaterialLoader` |
 | **Post-processing** | Bloom, depth of field, SSAO, vignette, color grading, tone mapping. | `View.bloomOptions`, `dynamicResolutionOptions`, … |
-| **Compose UI in 3D** | Render any `@Composable` as a textured plane in world space — buttons, lists, animations, all interactive. | `ViewNode` + `ViewNode.WindowManager` |
+| **Compose UI in 3D** | Render any `@Composable` as a textured plane in world space — labels, cards, lists, animations. Rendered only: hit-test the node to react to taps ([#2845](https://github.com/sceneview/sceneview/issues/2845)). | `ViewNode` + `ViewNode.WindowManager` |
 | **Multiple cameras** | Picture-in-picture, mini-map, security-camera views. | `SecondaryCamera` |
 | **Reactive scene graph** | Compose-driven recomposition: change state → tree updates. No imperative `parent.addChild()`. | `SceneScope` / `ARSceneScope` DSL |
 

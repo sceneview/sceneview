@@ -855,6 +855,29 @@ SceneView(viewNodeWindowManager = windowManager) {
 }
 ```
 
+**The rendered UI is NOT interactive.** A `ViewNode` draws its Compose content into a texture;
+the hosting window is `FLAG_NOT_TOUCHABLE` and touch events are never dispatched into it, so a
+`Button` placed inside **will render but its `onClick` will never fire** (no ripple, no press
+state, no inner scrolling either). Do not generate clickable controls inside a `ViewNode`.
+
+To react to a tap, pick the node from the scene instead:
+```kotlin
+val windowManager = rememberViewNodeManager()
+var tapCount by remember { mutableStateOf(0) }
+SceneView(
+    viewNodeWindowManager = windowManager,
+    onGestureListener = rememberOnGestureListener(
+        // `node` is the ray-cast hit — null when the tap missed every node.
+        onSingleTapUp = { _, node -> if (node is ViewNode) tapCount++ }
+    )
+) {
+    ViewNode(windowManager = windowManager) {
+        Card { Text("Tapped $tapCount times") }
+    }
+}
+```
+Real touch forwarding is tracked by [#2845](https://github.com/sceneview/sceneview/issues/2845).
+
 ### LineNode — single line segment
 ```kotlin
 @Composable fun LineNode(
@@ -4691,7 +4714,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Interaction
 
 - `camera-gestures` — Camera & Gestures. Manipulator modes and per-node edit gestures.
-- `picking-collision` — Picking & Collision. Ray hit-test and interactive ViewNode overlays.
+- `picking-collision` — Picking & Collision. Ray hit-test and ray-picked ViewNode overlays.
 
 ### Advanced
 
@@ -4804,7 +4827,7 @@ Full recipe + add-a-slug checklist: `docs/docs/recipes/sketchfab-streaming.md`. 
 
 `DemoScaffold` is the shared scaffold every sample-app demo uses. v2 ([PR #1169](https://github.com/sceneview/sceneview/pull/1169)) renders the 3D / AR scene **full-screen** under the top app bar, with a `Tune` FAB pinned bottom-right that opens a `ModalBottomSheet` containing the demo's controls.
 
-```kotlin
+```kotlin notest DemoScaffold and DemoBottomOverlayScope live in samples/android-demo, which is deliberately not on :snippets-check's classpath (it depends on the libraries, not the sample app)
 @Composable
 fun DemoScaffold(
     title: String,

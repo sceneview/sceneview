@@ -139,6 +139,7 @@ public final class io/github/sceneview/EngineDestroyQueue$Companion {
 }
 
 public final class io/github/sceneview/EngineKt {
+	public static final field NULL_ENTITY I
 	public static final fun createCamera (Lcom/google/android/filament/Engine;)Lcom/google/android/filament/Camera;
 	public static final fun createEnvironmentLoader (Lcom/google/android/filament/Engine;Landroid/content/Context;)Lio/github/sceneview/loaders/EnvironmentLoader;
 	public static final fun createMaterialLoader (Lcom/google/android/filament/Engine;Landroid/content/Context;)Lio/github/sceneview/loaders/MaterialLoader;
@@ -168,6 +169,7 @@ public final class io/github/sceneview/EngineKt {
 	public static final fun safeDestroyTransformable (Lcom/google/android/filament/Engine;I)Ljava/lang/Object;
 	public static final fun safeDestroyVertexBuffer (Lcom/google/android/filament/Engine;Lcom/google/android/filament/VertexBuffer;)Ljava/lang/Object;
 	public static final fun safeDestroyView (Lcom/google/android/filament/Engine;Lcom/google/android/filament/View;)Ljava/lang/Object;
+	public static final fun safeRecycleEntity (Lcom/google/android/filament/Engine;I)Ljava/lang/Object;
 }
 
 public abstract interface annotation class io/github/sceneview/ExperimentalSceneViewApi : java/lang/annotation/Annotation {
@@ -2434,6 +2436,7 @@ public class io/github/sceneview/node/Node : android/view/GestureDetector$OnCont
 	public static final field $stable I
 	public fun <init> (Lcom/google/android/filament/Engine;I)V
 	public synthetic fun <init> (Lcom/google/android/filament/Engine;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	protected fun <init> (Lcom/google/android/filament/Engine;IZ)V
 	public final fun addChildNode (Lio/github/sceneview/node/Node;)Lio/github/sceneview/node/Node;
 	public final fun addChildNodes (Ljava/util/Set;)Lio/github/sceneview/node/Node;
 	public final fun animatePositions ([Ldev/romainguy/kotlin/math/Float3;)Landroid/animation/ObjectAnimator;
