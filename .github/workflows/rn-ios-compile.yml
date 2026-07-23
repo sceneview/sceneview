@@ -110,7 +110,7 @@ jobs:
             -skipMacroValidation \
             ONLY_ACTIVE_ARCH=NO \
             ARCHS="arm64 x86_64" \
-            | xcpretty --color 2>/dev/null || cat
+            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
           MODULE_DIR="$RUNNER_TEMP/sv-dd/Build/Products/Debug-iphonesimulator"
           if [ ! -e "$MODULE_DIR/SceneViewSwift.swiftmodule" ]; then
             echo "::error::SceneViewSwift.swiftmodule was not produced — build failed."

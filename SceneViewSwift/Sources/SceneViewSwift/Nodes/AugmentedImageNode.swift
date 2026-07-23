@@ -178,7 +178,10 @@ public struct AugmentedImageNode: Sendable {
 
     /// Removes all child content from the image anchor.
     public func removeAll() {
-        for child in anchorEntity.children {
+        // Snapshot into an `Array` first: `anchorEntity.children` is a live
+        // view, so removing while iterating it directly re-indexes the
+        // collection mid-loop and skips every other child. See #2878.
+        for child in Array(anchorEntity.children) {
             anchorEntity.removeChild(child)
         }
     }

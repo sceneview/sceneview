@@ -346,9 +346,9 @@ AnchorNode.plane(alignment: .horizontal)
 
 **SceneEnvironment** presets:
 ```swift
-.studio / .outdoor / .sunset / .night / .warm / .autumn
+.studio / .outdoor / .sunset / .night / .warm / .autumn / .nightSky
 .custom(name: "My Env", hdrFile: "custom.hdr", intensity: 1.0, showSkybox: true)
-SceneEnvironment.allPresets  // [SceneEnvironment] for UI pickers
+SceneEnvironment.allPresets  // [SceneEnvironment] (7 presets) for UI pickers
 ```
 
 **ViewNode** — embed SwiftUI in 3D:
