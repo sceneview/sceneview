@@ -94,6 +94,24 @@ JVM unit tests for math/transform/state; instrumented tests for anything touchin
 Filament/Compose/ARCore; threading tests assert on the main thread
 (`runOnUiThread` / `MainCoroutineRule`).
 
+## Cross-vendor advisory second opinion (automatic)
+
+Both `high` (triptych) and the issue-batch `review-fanout` workflow now run an
+**External advisory** phase: `.claude/scripts/llm-external-review.sh` asks OpenAI
+Codex + Google Gemini for an independent read-only review of the same diff. It is
+**⛔ ADVISORY ONLY** — surfaced as `externalAdvisory` in the workflow result, never
+folded into the merge verdict / blockers, and it degrades to an honest `SKIPPED` when
+a provider is unauthenticated (so it can never flip a `DO_NOT_MERGE` into a merge).
+
+For a standalone outside opinion on the working tree (or a PR), run it directly:
+
+```bash
+bash .claude/scripts/llm-external-review.sh --diff main...HEAD    # or --pr <n>
+```
+
+Treat its findings as leads to verify, not verdicts — a Claude reviewer must confirm
+anything before it blocks. See `.claude/plans/multi-llm-delegation.md` for the model.
+
 ---
 
 **Always:** skip checklist items not relevant to the diff; be concise; for `high`,

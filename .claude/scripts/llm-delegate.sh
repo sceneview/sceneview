@@ -75,6 +75,18 @@ skip()  { echo "SKIP: $1" >&2; exit 3; }
 [ -n "$CONTEXT" ] && PROMPT="$PROMPT
 $CONTEXT"
 
+# ARG_MAX guard: the prompt is passed as a single argv to the provider CLIs. A very
+# large inline context blows the OS argument-size limit and the process fails BEFORE
+# it starts — silently, from the caller's view. Fail honestly instead of truncating.
+# (Flagged by an external Codex review of this very wrapper, 2026-07-23.) codex reads
+# the workspace natively and needs no inline context, so this only bites gemini/kimi.
+MAX_PROMPT_BYTES="${LLM_DELEGATE_MAX_PROMPT_BYTES:-262144}"   # 256 KB, safely < 1 MB ARG_MAX
+PROMPT_BYTES=$(printf '%s' "$PROMPT" | wc -c | tr -d ' ')
+if [ "$PROMPT_BYTES" -gt "$MAX_PROMPT_BYTES" ]; then
+  echo "ERROR: prompt is ${PROMPT_BYTES} bytes > ${MAX_PROMPT_BYTES} cap — reduce --context (or review with codex, which reads files natively). Not truncating silently." >&2
+  exit 2
+fi
+
 export PATH="$HOME/.local/bin:$PATH"
 
 # timeout: coreutils `timeout` or `gtimeout`; degrade to no-timeout with a warning.

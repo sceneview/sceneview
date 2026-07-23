@@ -88,6 +88,35 @@ Costs: Codex included in ChatGPT Plus ($20/mo); Antigravity free tier with a per
 Google account; Kimi membership ~$19/mo or pay-as-you-go API. **No subscription needed
 to start: Antigravity alone is enough to validate the pattern.**
 
+## 5b. Daily-use wiring (live)
+
+The cross-vendor voice is now automatic in the review paths:
+
+- **`llm-external-review.sh`** — the reusable primitive. `--diff <ref>` | `--pr <n>`,
+  runs codex (native fs) + gemini (inline diff, capped at `GEMINI_MAX_DIFF_BYTES`=40 KB
+  because headless `agy` is unreliable on large inline diffs), prints one Markdown
+  ADVISORY report. Always exit 0; a missing/unauth provider → honest `SKIPPED`.
+- **`review-fanout.js`** — new non-gating `External advisory` phase; result carried as
+  `externalAdvisory`, never folded into `merge_recommendation`.
+- **`triptych.js`** — same advisory leg, never added to `blockers`.
+- **`/review`** — documents the standalone command.
+
+Both workflow call-sites validate `diffRef`/`pr`/`branch` against a safe pattern before
+shell interpolation (no command injection). `llm-delegate.sh` caps the assembled prompt
+at 256 KB and fails honestly rather than truncating (ARG_MAX).
+
+**Trial (2026-07-23) — the external voice earned its keep immediately.** Reviewing this
+very branch, Codex surfaced three real defects in the delegation code itself: (1) the
+review wrapper was still uncommitted, (2) `--context` passed inline content via argv →
+ARG_MAX blow-up on large diffs, (3) **command injection** via unvalidated `diffRef`/`pr`
+interpolated into the agent's shell command. All three fixed; the follow-up trial shows
+the injection finding gone and the ARG_MAX one downgraded to an accepted byte-cap.
+
+> **Known enhancement (not a bug):** for genuine 1M-context Gemini use, feed context via
+> stdin/temp-file instead of argv to lift the 256 KB cap. Today gemini is capped at 40 KB
+> for reviews anyway, and codex reads the filesystem natively, so the cap is a safe
+> resolution, not a limitation of the review path.
+
 ## 6. Next steps
 
 1. Thomas authenticates whatever he wants to enable (at minimum `agy`, free).

@@ -123,10 +123,32 @@ if (visual && visual.applicable && visual.pass === false) {
 const verdict = blockers.length === 0 ? 'CLEAR' : 'BLOCKED'
 log(`Triptych ${verdict} — ${blockers.length} blocker(s), ${reviews.length} review legs, visual ${visual ? (visual.applicable ? (visual.pass ? 'PASS' : 'FAIL') : 'N/A') : 'missing'}`)
 
+// External cross-vendor ADVISORY second opinion (codex + gemini). ⛔ NON-GATING: it is
+// NEVER added to `blockers` and never changes `verdict` — a signal for the maintainer only.
+let externalAdvisory = null
+try {
+  // Validate before interpolating into a shell command the agent will run — no command
+  // injection via a crafted pr/branch/base (flagged by an external Codex review, 2026-07-23).
+  const REF = /^[\w./-]+$/
+  const prNum = a.pr != null ? String(a.pr).replace(/[^0-9]/g, '') : ''
+  const safeBranch = REF.test(a.branch || 'HEAD') ? (a.branch || 'HEAD') : ''
+  const safeBase = REF.test(BASE) ? BASE : ''
+  const scope = a.pr
+    ? (prNum ? `--pr ${prNum}` : '')
+    : (safeBase && safeBranch ? `--diff ${safeBase}...${safeBranch}` : '')
+  if (!scope) throw new Error(`unsafe/invalid review scope (pr=${a.pr}, base=${BASE}, branch=${a.branch})`)
+  externalAdvisory = await agent(
+    `Run exactly this one command and return its FULL stdout verbatim as your final message, no added commentary:\n\n  bash .claude/scripts/llm-external-review.sh ${scope}\n\nADVISORY cross-vendor review (OpenAI Codex + Google Gemini), read-only and non-gating. SKIPPED providers are expected — return what it prints.`,
+    { label: 'external-advisory', phase: 'Gate', model: 'sonnet', effort: 'low' })
+} catch (e) {
+  log('external advisory step failed — advisory only, ignored')
+}
+
 return {
   verdict,
   blockers,
   reviews,
   visual,
-  note: 'Tier-2 holistic review for risky/merged subsystems = `/code-review ultra` (cloud, off-budget). Merge only on CLEAR + green CI.',
+  externalAdvisory,   // ⛔ advisory only — not part of the gate
+  note: 'Tier-2 holistic review for risky/merged subsystems = `/code-review ultra` (cloud, off-budget). Merge only on CLEAR + green CI. externalAdvisory is a cross-vendor second opinion — non-gating.',
 }
