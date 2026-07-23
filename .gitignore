@@ -278,3 +278,8 @@ tools/qa-screenshots/android/*
 # Python bytecode caches (store-sync self-test runs py_compile)
 __pycache__/
 *.pyc
+
+# Store-screenshot capture artefacts. `capture-play-store-screenshots.sh` writes
+# a mosaic next to the PNGs purely so a human can eyeball the run before pushing
+# — it is a review aid, not a listing asset (#2796).
+.mosaic*.png

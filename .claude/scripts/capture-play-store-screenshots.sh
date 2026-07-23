@@ -8,15 +8,18 @@
 #
 # Usage:
 #   bash .claude/scripts/capture-play-store-screenshots.sh \
-#     [--demos model-viewer,ar-pose,reflection-probes,environment] \
+#     [--form-factor phone|tablet7|tablet10]   # default phone \
+#     [--demos model-viewer,lighting,materials,geometry,double-pendulum] \
 #     [--out samples/android-demo/distribution/play-store/en-GB/graphics] \
 #     [--status-bar-px N | auto] \
 #     [--variance-threshold N] \
-#     [--settle SECONDS]   # per-demo wait before capture (default 15) \
+#     [--settle SECONDS]   # per-demo wait; default 15 (phone) / 50 (tablets) \
 #     [--no-build]
 #
 # Requirements:
-#   - A booted Pixel-class AVD (or physical phone) with ARCore-ish capabilities.
+#   - A booted AVD (or physical device) matching the requested form factor.
+#     Phone = Pixel-class; tablets = the `Tablet7_QA` / `Tablet10_QA` AVDs
+#     (see the "Tablet capture" note below).
 #   - `adb` on $PATH (Android SDK platform-tools).
 #   - Google's `android` CLI from developer.android.com/tools/agents/android-cli
 #     (auto-installed by the helper). It avoids `adb shell screencap`'s LF/CRLF
@@ -24,15 +27,27 @@
 #   - Python 3 with Pillow installed (`pip3 install pillow`).
 #
 # Output:
-#   `<out>/phone-screenshot-{1..N}.png` — 1080×2304 PNGs, Play Store 9:19.2,
-#   status bar trimmed. Plus a mosaic thumbnail at
-#   `<out>/.mosaic.png` for visual confirmation, kept well under the 1800 px
-#   session-image limit.
+#   `<out>/<prefix>-screenshot-{1..N}.png`, where `<prefix>` is the form factor
+#   (`phone`, `tablet7`, `tablet10`) — the exact filenames `play_listing.py`
+#   maps onto the Play `imageType`s. Plus a mosaic thumbnail at
+#   `$TMPDIR/sceneview-store-capture/mosaic-<prefix>.png` for visual confirmation,
+#   kept well under the 1800 px session-image limit. The mosaic lands OUTSIDE
+#   `<out>` on purpose: that directory mirrors the Play listing byte-for-byte and
+#   `play_listing.py`'s tests reject any file there that no imageType claims.
 #
-# Why crop 96 px off the top: the Android status bar at 480 dpi on the
-# stock Pixel_7a AVD is 96 px tall. Cropping it gives a clean device-frame
-# preview that survives Play Store's auto-resize without showing battery /
-# wifi / clock — those change every screenshot session and inflate the diff.
+# Why crop the status bar: it shows battery / wifi / clock, which change every
+# screenshot session and inflate the diff. Cropping gives a clean device-frame
+# preview that survives Play Store's auto-resize. The phone default (96 px) is
+# the Pixel_7a AVD's 480 dpi bar; tablets run at a different density, so they
+# default to `--status-bar-px auto` (read live from `dumpsys window`).
+#
+# Tablet capture (#2796): the two tablet classes MUST be captured on genuinely
+# different devices. The 12 PNGs this script replaced were byte-identical
+# across the 7"/10" slots — the 10" image had simply been re-uploaded into the
+# 7" slot. Phone output is normalised to a fixed 9:19.2 height; tablets keep
+# their NATIVE post-crop height instead, because padding a landscape tablet
+# frame to a portrait phone ratio would letterbox it with black bars — the
+# exact defect #917 filed against the iOS listing.
 
 set -euo pipefail
 
@@ -56,9 +71,9 @@ DEMOS_DEFAULT="model-viewer,lighting,materials,geometry,double-pendulum"
 OUT_DIR_DEFAULT="samples/android-demo/distribution/play-store/en-GB/graphics"
 PKG="io.github.sceneview.demo"
 APK_PATH="samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk"
-STATUS_BAR_PX_DEFAULT=96
-# Pixel_7a AVD natural resolution = 1080×2400. Crop 96 px → 1080×2304 = 9:19.2.
-TARGET_HEIGHT=2304
+# Form factor → output filename prefix + framing policy. `phone` is the historical
+# behaviour; the tablet classes were added in #2796.
+FORM_FACTOR_DEFAULT="phone"
 # Model-heavy demos (model-viewer, lighting, materials) load their GLB
 # asynchronously — `rememberModelInstance` returns null until the load lands,
 # so the viewport is a flat dark surface for the first several seconds. 8s was
@@ -77,6 +92,7 @@ OUT_DIR=""
 STATUS_BAR_PX=""
 VARIANCE_THRESHOLD=""
 SETTLE_SECONDS=""
+FORM_FACTOR=""
 SKIP_BUILD=0
 require_value() {
   # Guard against `--flag` with no following value under `set -u`.
@@ -85,20 +101,57 @@ require_value() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --demos) require_value "$@"; DEMOS="$2"; shift 2 ;;
+    --form-factor) require_value "$@"; FORM_FACTOR="$2"; shift 2 ;;
     --out)   require_value "$@"; OUT_DIR="$2"; shift 2 ;;
     --status-bar-px) require_value "$@"; STATUS_BAR_PX="$2"; shift 2 ;;
     --variance-threshold) require_value "$@"; VARIANCE_THRESHOLD="$2"; shift 2 ;;
     --settle) require_value "$@"; SETTLE_SECONDS="$2"; shift 2 ;;
     --no-build) SKIP_BUILD=1; shift ;;
     -h|--help)
-      sed -n '2,32p' "$0"; exit 0 ;;
+      sed -n '2,48p' "$0"; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 DEMOS="${DEMOS:-$DEMOS_DEFAULT}"
 OUT_DIR="${OUT_DIR:-$OUT_DIR_DEFAULT}"
-STATUS_BAR_PX="${STATUS_BAR_PX:-$STATUS_BAR_PX_DEFAULT}"
 VARIANCE_THRESHOLD="${VARIANCE_THRESHOLD:-$VARIANCE_THRESHOLD_DEFAULT}"
+FORM_FACTOR="${FORM_FACTOR:-$FORM_FACTOR_DEFAULT}"
+
+# ── Form-factor policy ───────────────────────────────────────────────────────
+# PREFIX  — output filename stem; must stay in lockstep with the names
+#           `store-sync/play_listing.py` maps onto the Play `imageType`s.
+# TARGET_HEIGHT — 0 means "keep the native post-crop height" (tablets). Only the
+#           phone class is normalised, to the 9:19.2 the Play listing expects.
+# STATUS_BAR_PX default — 96 px is the Pixel_7a's 480 dpi bar; the tablet AVDs
+#           run at 320 dpi with a different bar height, so they resolve it live.
+case "$FORM_FACTOR" in
+  phone)
+    PREFIX="phone"
+    # Pixel_7a AVD natural resolution = 1080×2400. Crop 96 px → 1080×2304 = 9:19.2.
+    TARGET_HEIGHT=2304
+    STATUS_BAR_PX_DEFAULT=96
+    STATUS_BAR_PX_FALLBACK=96
+    ;;
+  tablet7|tablet10)
+    PREFIX="$FORM_FACTOR"
+    TARGET_HEIGHT=0
+    STATUS_BAR_PX_DEFAULT="auto"
+    # MUST be numeric and MUST NOT be the "auto" default: when live detection
+    # fails, the resolver falls back to this, and falling back to the literal
+    # string "auto" reaches Python as int("auto") and aborts the run.
+    # 48 px is the measured bar height at the tablet AVDs' 320 dpi.
+    STATUS_BAR_PX_FALLBACK=48
+    # A tablet framebuffer is ~4 Mpx and the demo GLBs load markedly slower there
+    # than on the phone rig — measured live, the hero model was still loading at
+    # 25 s and the variance guard (correctly) rejected the black frame. Overridable
+    # with `--settle`.
+    SETTLE_SECONDS_DEFAULT=50
+    ;;
+  *)
+    echo "[capture] --form-factor must be phone|tablet7|tablet10 (got '$FORM_FACTOR')" >&2
+    exit 2 ;;
+esac
+STATUS_BAR_PX="${STATUS_BAR_PX:-$STATUS_BAR_PX_DEFAULT}"
 SETTLE_SECONDS="${SETTLE_SECONDS:-$SETTLE_SECONDS_DEFAULT}"
 
 # ── 1. Recover an offline AVD if needed ──────────────────────────────────────
@@ -158,8 +211,8 @@ if [[ "$STATUS_BAR_PX" = "auto" ]]; then
     STATUS_BAR_PX="$DETECTED"
     echo "[capture] --status-bar-px auto → $STATUS_BAR_PX" >&2
   else
-    STATUS_BAR_PX="$STATUS_BAR_PX_DEFAULT"
-    echo "[capture] --status-bar-px auto: detection failed, using default $STATUS_BAR_PX" >&2
+    STATUS_BAR_PX="$STATUS_BAR_PX_FALLBACK"
+    echo "[capture] --status-bar-px auto: detection failed, using fallback $STATUS_BAR_PX" >&2
   fi
 fi
 
@@ -186,11 +239,87 @@ else
   adb install -r "$APK_PATH" >/dev/null
 fi
 
+# Verify the install actually landed (#2796). `android run` can NO-OP the
+# install and still exit 0 — the `|| fallback` above never fires, and the run
+# then dies on the first `am start` with no output at all, because `set -e`
+# kills it silently. Observed live on a freshly booted tablet AVD: `pm path`
+# empty, `pm clear` printing "Failed" (while still exiting 0, so it cannot be
+# relied on either). This is the same silent-no-op trap documented for asset QA.
+if ! adb shell pm path "$PKG" 2>/dev/null | tr -d '\r' | grep -q "^package:"; then
+  echo "[capture] install did NOT land ('pm path $PKG' is empty) — retrying with adb install" >&2
+  adb install -r "$APK_PATH" >/dev/null
+  if ! adb shell pm path "$PKG" 2>/dev/null | tr -d '\r' | grep -q "^package:"; then
+    echo "[capture] '$PKG' is still not installed after 'adb install -r $APK_PATH'." >&2
+    exit 1
+  fi
+fi
+
 # ── 3b. Force DARK mode (#2773) ──────────────────────────────────────────────
 # Uniform look with the iOS capture: render the 3D content on a dark surface
 # both stores. `cmd uimode night yes` flips the system dark theme; the demo
 # app follows DayNight. Non-fatal on API levels/emulators that reject it.
 adb ${ANDROID_SERIAL:+-s "$ANDROID_SERIAL"} shell "cmd uimode night yes" >/dev/null 2>&1 || true
+
+# ── 3c. Portrait for the tablet classes (#2796) ──────────────────────────────
+# The demos frame their scene for a portrait viewport. Captured in a tablet's
+# natural LANDSCAPE orientation the subject collapses to ~5% of the frame width
+# — model-viewer, lighting and double-pendulum all came out as a speck floating
+# in black, and the double-pendulum frame was uniform enough (variance 0.1) that
+# the guard rejected it outright. Rotating to portrait restores the phone-like
+# framing the scenes are authored for.
+#
+# The rotation constant is DERIVED, never hardcoded: a 10" tablet's natural
+# orientation is landscape (portrait = user_rotation 1) while a 7" tablet's is
+# portrait (user_rotation 0). Reading `wm size` and rotating only when the frame
+# is wider than it is tall works for either, and for a phone too.
+#
+# Must run BEFORE the capture loop: a rotation recreates the activity, and the
+# re-created instance restores its own state instead of honouring the `--es demo`
+# extra (observed live — the same state-restoration bug the per-demo `pm clear`
+# guards against).
+if [[ "$FORM_FACTOR" != "phone" ]]; then
+  # Drop any leftover display override first. A stale `wm size` override (seen
+  # live as `Override size: 1080x2424` on a 2560x1600 tablet) silently shrinks
+  # every capture to a phone-shaped viewport, which would defeat the entire
+  # point of a tablet class. `reset` is a no-op when none is set.
+  adb shell wm size reset >/dev/null 2>&1 || true
+  adb shell wm density reset >/dev/null 2>&1 || true
+  # Read the PHYSICAL line specifically: with an override present `wm size`
+  # prints two lines, and the override is the one we just cleared.
+  WM_SIZE=$(adb shell wm size 2>/dev/null | tr -d '\r' | grep -i "physical" | sed -nE 's/.*: ([0-9]+)x([0-9]+).*/\1 \2/p' | head -1 || true)
+  if [[ -n "${WM_SIZE:-}" ]]; then
+    SCREEN_W=${WM_SIZE% *}
+    SCREEN_H=${WM_SIZE#* }
+    if [[ "$SCREEN_W" -gt "$SCREEN_H" ]]; then
+      echo "[capture] $FORM_FACTOR is landscape-native (${SCREEN_W}x${SCREEN_H}) → rotating to portrait" >&2
+      adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+      adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+    else
+      echo "[capture] $FORM_FACTOR is already portrait (${SCREEN_W}x${SCREEN_H})" >&2
+      adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+      adb shell settings put system user_rotation 0 >/dev/null 2>&1 || true
+    fi
+    sleep 3  # let the window manager settle before the first launch
+  else
+    echo "[capture] could not read 'wm size' — leaving orientation untouched" >&2
+  fi
+fi
+
+# ── 3d. One-shot deterministic reset + warm-up (#2796) ───────────────────────
+# Why `pm clear` at all: once the app has saved state it restores the
+# LAST-VIEWED demo and silently ignores the `--es demo` extra. Observed live —
+# `--es demo model-viewer` re-opened "Picking & Collision", so a whole capture
+# run can be of the wrong screens while every automated check passes.
+#
+# Why exactly ONCE, here, and not per demo: clearing app data also drops the
+# asset cache, and the first launch afterwards spends the settle window loading
+# the model instead of rendering it (captured as a black viewport). Doing it
+# once and then warming the cache up costs one extra launch for the whole run.
+echo "[capture] resetting app state (pm clear) + warming the asset cache" >&2
+adb shell pm clear "$PKG" >/dev/null
+adb shell am start -n "$PKG/.MainActivity" --es demo "${DEMOS%%,*}" >/dev/null
+sleep "$SETTLE_SECONDS"
+adb shell am force-stop "$PKG"
 
 # ── 4. Capture loop ──────────────────────────────────────────────────────────
 mkdir -p "$OUT_DIR"
@@ -207,9 +336,37 @@ for DEMO in "${DEMO_ARR[@]}"; do
   # equivalent for either (no `--force-stop` flag, no intent-extras forwarding).
   # Re-evaluate when CLI v0.8+ ships those flags. Same allow-listed ingress
   # channel as the QA flow + #958.
+  #
+  # A force-stop per demo, NOT a `pm clear` per demo (#2796): clearing app data
+  # every iteration also drops the asset cache, and the model then fails to load
+  # inside the settle window — model-viewer captured a black viewport with the
+  # "Surprise me" button and nothing else. The one-shot `pm clear` in §3d gives
+  # the determinism; a force-stop is enough to relaunch cold from there.
   adb shell am force-stop "$PKG"
   adb shell am start -n "$PKG/.MainActivity" --es demo "$DEMO" >/dev/null
   sleep "$SETTLE_SECONDS"
+
+  # Foreground guard (#2796). The variance check below only rejects a UNIFORM
+  # frame, so it happily accepted an Android LAUNCHER screenshot (variance 679)
+  # when the app had died mid-series — a home screen, complete with Play Store
+  # icons, came within one commit of the live listing. Assert the app actually
+  # owns the screen before capturing anything.
+  # `topResumedActivity=` is the authoritative "owns the screen" line; fall back
+  # to `ResumedActivity:` only when it is absent, rather than grepping both at
+  # once — on a multi-display dump the first match of a combined pattern can
+  # belong to another display and fail the guard for the wrong reason.
+  FOREGROUND=$(adb shell dumpsys activity activities 2>/dev/null \
+    | grep -E "topResumedActivity=" | head -1 || true)
+  if [[ -z "${FOREGROUND:-}" ]]; then
+    FOREGROUND=$(adb shell dumpsys activity activities 2>/dev/null \
+      | grep -E "ResumedActivity[:=]" | head -1 || true)
+  fi
+  if ! echo "$FOREGROUND" | grep -q "$PKG"; then
+    echo "[capture] $DEMO: '$PKG' is NOT in the foreground after ${SETTLE_SECONDS}s." >&2
+    echo "[capture] Resumed activity was: ${FOREGROUND:-<none>}" >&2
+    echo "[capture] Refusing to capture — the app likely crashed or never started." >&2
+    exit 1
+  fi
 
   RAW="$TMP_DIR/raw-$INDEX.png"
   # `android screen capture` writes the PNG directly without going through an
@@ -218,7 +375,7 @@ for DEMO in "${DEMO_ARR[@]}"; do
   # both paths produce clean PNG bytes.
   android_cli_screenshot "$RAW"
 
-  OUT="$OUT_DIR/phone-screenshot-$INDEX.png"
+  OUT="$OUT_DIR/$PREFIX-screenshot-$INDEX.png"
   python3 - "$RAW" "$OUT" "$STATUS_BAR_PX" "$TARGET_HEIGHT" "$VARIANCE_THRESHOLD" <<'PY'
 import sys
 from PIL import Image
@@ -233,9 +390,11 @@ img = Image.open(raw)
 w, h = img.size
 # Crop the status bar; preserve full width.
 crop = img.crop((0, status_px, w, h))
-# Pad / crop to the Play Store 9:19.2 target height if the source isn't 2400.
+# target_h == 0 → keep the native post-crop height (tablet classes). Padding a
+# landscape tablet frame up to a portrait phone height would letterbox it with
+# black bars, which is the #917 defect, so only the phone class is normalised.
 cw, ch = crop.size
-if ch != target_h:
+if target_h and ch != target_h:
     if ch > target_h:
         crop = crop.crop((0, 0, cw, target_h))
     else:
@@ -244,10 +403,13 @@ if ch != target_h:
         bg.paste(crop, (0, 0))
         crop = bg
 
-# Variance sanity check on a 3×3 grid of 32×32 centre patches.
+# Variance sanity check on a 3×3 grid of 32×32 centre patches. Sample against the
+# ACTUAL post-normalisation size — with target_h == 0 the old `target_h`-derived
+# rows would all collapse to y=0 and read the top edge instead of the centre.
+cw, ch = crop.size
 pixels = crop.convert("RGB").load()
 samples = []
-for cy in (target_h // 4, target_h // 2, 3 * target_h // 4):
+for cy in (ch // 4, ch // 2, 3 * ch // 4):
     for cx in (cw // 4, cw // 2, 3 * cw // 4):
         for dy in range(-16, 16, 8):
             for dx in range(-16, 16, 8):
@@ -267,27 +429,42 @@ done
 TOTAL=$((INDEX - 1))
 
 # ── 5. Mosaic thumbnail (visual sanity, well under the 1800 px session limit) ─
-python3 - "$OUT_DIR" "$TOTAL" <<'PY'
+# Written OUTSIDE $OUT_DIR on purpose: that directory is a byte-for-byte mirror
+# of the Play listing, and `play_listing.py`'s test suite fails on any file there
+# that no `imageType` pattern claims (it caught this exact mosaic). Keep review
+# artefacts out of the mirror.
+MOSAIC_DIR="${TMPDIR:-/tmp}/sceneview-store-capture"
+mkdir -p "$MOSAIC_DIR"
+python3 - "$OUT_DIR" "$TOTAL" "$PREFIX" "$MOSAIC_DIR" <<'PY'
 import sys, os
 from PIL import Image
-out_dir, total = sys.argv[1], int(sys.argv[2])
+out_dir, total, prefix, mosaic_dir = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
 images = []
 for i in range(1, total + 1):
-    p = os.path.join(out_dir, f"phone-screenshot-{i}.png")
+    p = os.path.join(out_dir, f"{prefix}-screenshot-{i}.png")
     if os.path.exists(p):
         images.append(Image.open(p))
 if not images:
     sys.exit(0)
-# 4-wide row of 360×768 thumbnails → 1440×768 total.
-thumb_w, thumb_h = 360, 768
-mosaic = Image.new("RGB", (thumb_w * len(images), thumb_h), (12, 14, 20))
+# Preserve each capture's aspect ratio — the old fixed 360×768 cell squashed a
+# landscape tablet frame into a portrait box, making the mosaic useless as a
+# sanity check for exactly the class this script now also captures.
+# Budget a total width of 1600 px so the mosaic stays under the 1800 px
+# session-image limit whatever the capture count.
+MOSAIC_MAX_W = 1600
+cell_w = max(1, MOSAIC_MAX_W // len(images))
+src_w, src_h = images[0].size
+cell_h = max(1, round(cell_w * src_h / src_w))
+mosaic = Image.new("RGB", (cell_w * len(images), cell_h), (12, 14, 20))
 for i, img in enumerate(images):
-    t = img.resize((thumb_w, thumb_h), Image.LANCZOS)
-    mosaic.paste(t, (i * thumb_w, 0))
-mosaic_path = os.path.join(out_dir, ".mosaic.png")
+    # Fit within the cell (a shot at a different size still lands centred).
+    scale = min(cell_w / img.width, cell_h / img.height)
+    t = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), Image.LANCZOS)
+    mosaic.paste(t, (i * cell_w + (cell_w - t.width) // 2, (cell_h - t.height) // 2))
+mosaic_path = os.path.join(mosaic_dir, f"mosaic-{prefix}.png")
 mosaic.save(mosaic_path, optimize=True)
 print(f"[capture]   mosaic → {mosaic_path}")
 PY
 
-echo "[capture] DONE — $TOTAL screenshots in $OUT_DIR/" >&2
-echo "[capture] Inspect $OUT_DIR/.mosaic.png before pushing to the Play Store." >&2
+echo "[capture] DONE — $TOTAL $PREFIX screenshots in $OUT_DIR/" >&2
+echo "[capture] Inspect $MOSAIC_DIR/mosaic-$PREFIX.png before pushing to the Play Store." >&2
