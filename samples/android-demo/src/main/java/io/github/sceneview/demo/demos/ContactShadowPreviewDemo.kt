@@ -83,13 +83,15 @@ import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
  * - **Two identical boxes, side by side** — same size, same material, same motion. The left
  *   one is grounded by a [ContactShadowContext.Floor] pool; the right one has none. The
  *   comparison is spatial, so it needs no memory and no interaction — one glance settles it.
- * - **Both boxes hop in sync**, and the left pool *responds to height* (dark and tight at
- *   contact, faint and wide at the top — see [DemoMath.groundingIntensityFactor] /
- *   [DemoMath.groundingSpread]). Object/shadow motion coupling is the strongest contact cue
- *   the visual system has (the classic "ball-in-a-box" illusion: the same trajectory reads
- *   as rolling or floating depending only on the shadow's path). The grounded box visibly
- *   *lands on* the floor every 2.6 s; its shadowless twin, animated identically, floats with
- *   no depth anchor at all.
+ * - **Both boxes hop in sync**, and the left pool *responds to height*: it slides out from
+ *   under the box along the key light as the box lifts, spreading and fading as it goes (dark,
+ *   tight and centred at contact; drifted, wide and faint at the top — see
+ *   [DemoMath.groundingShadowOffset] / [DemoMath.groundingSpread] /
+ *   [DemoMath.groundingIntensityFactor]). The shadow's **path** is the strongest contact cue
+ *   the visual system has (the classic "ball-in-a-box" illusion: the same vertical trajectory
+ *   reads as bouncing or floating depending only on where the shadow goes). The grounded box
+ *   visibly *lands on* the floor every 2.6 s; its shadowless twin, animated identically,
+ *   floats with no depth anchor at all.
  * - **Overlay chips name the two states** ("Contact shadow" / "No shadow"), so the one-line
  *   takeaway is on screen without opening anything.
  * - **The camera starts low** (about 22° above the floor, pulled in), so the pool subtends
@@ -253,7 +255,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             // shadow would muddy the with/without comparison.
             LightNode(
                 type = LightManager.Type.DIRECTIONAL,
-                direction = Direction(-0.35f, -1f, -0.4f),
+                direction = KEY_LIGHT_DIRECTION,
                 apply = {
                     intensity(60_000f)
                     castShadows(false)
@@ -281,13 +283,21 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             // dimmer and wider at the top (ambient-occlusion physics). That coupling is what
             // makes this box read as LANDING ON the floor.
             if (shadowsEnabled) {
+                // The pool follows the light's ground projection as the box lifts (ball-in-a-box):
+                // centred and tight at contact, drifted out from under the box at the top of the
+                // hop. This slide — not the dim/spread alone — is what sells "landing on" vs
+                // "floating"; the shadowless twin gives the eye nothing equivalent to track.
+                val (slideX, slideZ) = DemoMath.groundingShadowOffset(
+                    hopHeight,
+                    KEY_LIGHT_DIRECTION.x, KEY_LIGHT_DIRECTION.y, KEY_LIGHT_DIRECTION.z,
+                )
                 ContactShadow(
                     size = Size(x = SHADOW_QUAD_METERS, y = 0f, z = SHADOW_QUAD_METERS),
                     context = ContactShadowContext.Floor,
                     normal = Direction(y = 1f),
                     intensity = ContactShadowContext.Floor.intensity * intensityFactor *
                         DemoMath.groundingIntensityFactor(hopHeight),
-                    position = Position(x = -BOX_HALF_SPACING, y = 0f, z = BOXES_Z),
+                    position = Position(x = -BOX_HALF_SPACING + slideX, y = 0f, z = BOXES_Z + slideZ),
                     scale = Scale(DemoMath.groundingSpread(hopHeight)),
                 )
             }
@@ -488,6 +498,13 @@ private const val BOX_HALF_SPACING = 0.38f
 
 /** Z position of the comparison pair — pulled toward the camera, in front of the room. */
 private const val BOXES_Z = 0.35f
+
+/**
+ * Travel direction of the directional key light — also the axis the grounded pool projects
+ * along ([DemoMath.groundingShadowOffset]). The light and the shadow's slide are driven from
+ * this single value so they can never drift out of agreement.
+ */
+private val KEY_LIGHT_DIRECTION = Direction(-0.35f, -1f, -0.4f)
 
 /**
  * Side of the grounded box's square shadow quad, metres. Generously larger than the box

@@ -289,4 +289,45 @@ class DemoMathTest {
         assertEquals(1.5f, DemoMath.groundingSpread(bounceMax * 2f), eps)
         assertEquals(1f, DemoMath.groundingSpread(0.1f, maxHeight = 0f), eps)
     }
+
+    @Test
+    fun `groundingShadowOffset is zero at contact and projects along the light when lifted`() {
+        // Contact → the pool sits exactly under the object, no drift.
+        val atContact = DemoMath.groundingShadowOffset(0f, -0.35f, -1f, -0.4f)
+        assertEquals(0f, atContact.first, eps)
+        assertEquals(0f, atContact.second, eps)
+        // Lifted → geometric projection h * (dirX, dirZ) / |dirY|. With dirY = -1 the offset is
+        // just h * (dirX, dirZ), pointing along the light's horizontal travel (both negative
+        // here), so the pool slides out from under the box.
+        val (dx, dz) = DemoMath.groundingShadowOffset(bounceMax, -0.35f, -1f, -0.4f)
+        assertEquals(bounceMax * -0.35f, dx, eps)
+        assertEquals(bounceMax * -0.4f, dz, eps)
+    }
+
+    @Test
+    fun `groundingShadowOffset scales linearly with height`() {
+        val (dx1, dz1) = DemoMath.groundingShadowOffset(0.1f, -0.35f, -1f, -0.4f)
+        val (dx2, dz2) = DemoMath.groundingShadowOffset(0.2f, -0.35f, -1f, -0.4f)
+        assertEquals(2f * dx1, dx2, eps)
+        assertEquals(2f * dz1, dz2, eps)
+    }
+
+    @Test
+    fun `groundingShadowOffset divides by the vertical component`() {
+        // A steeper light (larger |dirY|) throws a shorter shadow for the same height.
+        val steep = DemoMath.groundingShadowOffset(bounceMax, -0.35f, -2f, -0.4f)
+        val shallow = DemoMath.groundingShadowOffset(bounceMax, -0.35f, -1f, -0.4f)
+        assertTrue(
+            "Steeper light must project a shorter offset",
+            kotlin.math.abs(steep.first) < kotlin.math.abs(shallow.first),
+        )
+    }
+
+    @Test
+    fun `groundingShadowOffset returns zero for a grazing light`() {
+        // |dirY| ~ 0 → projection to infinity; the demo must degrade to no slide, not NaN/∞.
+        val (dx, dz) = DemoMath.groundingShadowOffset(bounceMax, -0.35f, 0f, -0.4f)
+        assertEquals(0f, dx, eps)
+        assertEquals(0f, dz, eps)
+    }
 }

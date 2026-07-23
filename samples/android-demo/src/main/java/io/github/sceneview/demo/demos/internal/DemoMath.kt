@@ -266,6 +266,44 @@ internal object DemoMath {
     }
 
     /**
+     * Horizontal ground offset `(dx, dz)` of a contact shadow when its object hovers [height]
+     * above the floor: the pool *slides out from under* the object as it lifts and slides back
+     * beneath it on the way down.
+     *
+     * This is the perceptual payload the preview was missing. Dimming
+     * ([groundingIntensityFactor]) and spreading ([groundingSpread]) alone leave the pool pinned
+     * under the box — a lifted object still reads as merely "a fainter shadow", not as "higher".
+     * The shadow's **path** is the strongest grounding cue the visual system has (the classic
+     * "ball-in-a-box" illusion: the same vertical trajectory reads as bouncing or floating
+     * depending only on where the shadow goes). Moving the pool is what makes the grounded box
+     * read as *landing on* the floor while its shadowless twin, animated identically, floats.
+     *
+     * The offset is the exact geometric projection of the object's base along the key light: a
+     * directional light travelling `(lightDirX, lightDirY, lightDirZ)` throws a point at height
+     * `h` onto the ground `h / |lightDirY|` along the light's horizontal component. A light with
+     * no vertical component (`|lightDirY| ~ 0`) grazes the floor and would project to infinity,
+     * so it returns no offset rather than a `NaN`/∞ position.
+     *
+     * @param height    Current hover height, metres. Values `<= 0` (contact) return `(0, 0)`.
+     * @param lightDirX Key-light travel direction, X component.
+     * @param lightDirY Key-light travel direction, Y component (negative for a ceiling light).
+     * @param lightDirZ Key-light travel direction, Z component.
+     * @return The `(dx, dz)` in metres to add to the pool's ground position.
+     */
+    fun groundingShadowOffset(
+        height: Float,
+        lightDirX: Float,
+        lightDirY: Float,
+        lightDirZ: Float,
+    ): Pair<Float, Float> {
+        if (height <= 0f) return 0f to 0f
+        val vertical = abs(lightDirY)
+        if (vertical <= 1e-4f) return 0f to 0f
+        val k = height / vertical
+        return (lightDirX * k) to (lightDirZ * k)
+    }
+
+    /**
      * The keyframe choreography for one cinematic [shot] of
      * [io.github.sceneview.demo.demos.AnimationPhysicsDemo] (Animation tab).
      *
