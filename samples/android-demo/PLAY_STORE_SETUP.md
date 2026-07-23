@@ -41,7 +41,7 @@ distribution/play-store/
         ├── icon-512.png                   (512×512)
         ├── phone-screenshot-{1..5}.png    (1080×2304)
         ├── tablet7-screenshot-{1..5}.png  (1200×N, portrait)
-        └── tablet10-screenshot-{1..5}.png (2560×N, landscape)
+        └── tablet10-screenshot-{1..5}.png (1600×N, portrait)
 ```
 
 The five screenshots of each class are the same five demos, in the same order,
