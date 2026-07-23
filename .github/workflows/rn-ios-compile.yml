@@ -103,14 +103,40 @@ jobs:
           # the type-check works on both Apple Silicon and Intel macos-15 runners.
           # Without it, Intel runners produce only x86_64 and the arm64 type-check
           # fails. See the matching fix in bridge-ios-compile.yml (#2223).
-          xcodebuild build \
-            -scheme SceneViewSwift \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$RUNNER_TEMP/sv-dd" \
-            -skipMacroValidation \
-            ONLY_ACTIVE_ARCH=NO \
-            ARCHS="arm64 x86_64" \
-            | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
+          #
+          # xcpretty is optional pretty-printing, not a build tool. Piping into a
+          # MISSING xcpretty makes a verbose xcodebuild take SIGPIPE (exit 141),
+          # and — worse here — the old inline `|| exit ${PIPESTATUS[0]}` exited
+          # the whole step INSIDE the pipe, short-circuiting the `.swiftmodule`
+          # guard below (an xcpretty that exits non-zero after a green xcodebuild
+          # would make `exit ${PIPESTATUS[0]}` == `exit 0` and skip the guard).
+          # So: detect xcpretty, run xcodebuild raw when absent, capture the REAL
+          # exit code in a variable, test it AFTER — never `exit` inline — and
+          # only then run the module guard. (Advisory cross-vendor review.)
+          run_xcodebuild() {
+            xcodebuild build \
+              -scheme SceneViewSwift \
+              -destination 'generic/platform=iOS Simulator' \
+              -derivedDataPath "$RUNNER_TEMP/sv-dd" \
+              -skipMacroValidation \
+              ONLY_ACTIVE_ARCH=NO \
+              ARCHS="arm64 x86_64"
+          }
+          # The trailing `|| STATUS=...` keeps errexit (GitHub's default
+          # `bash -eo pipefail`) from bailing out of the pipe before we read the
+          # code, and captures xcodebuild's REAL exit (`PIPESTATUS[0]`, not
+          # xcpretty's). Only after testing it — never an `exit` inside the pipe —
+          # do we reach the `.swiftmodule` guard below.
+          STATUS=0
+          if command -v xcpretty >/dev/null 2>&1; then
+            run_xcodebuild | xcpretty --color 2>/dev/null || STATUS=${PIPESTATUS[0]}
+          else
+            run_xcodebuild || STATUS=$?
+          fi
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::SceneViewSwift build failed (xcodebuild exit $STATUS)."
+            exit "$STATUS"
+          fi
           MODULE_DIR="$RUNNER_TEMP/sv-dd/Build/Products/Debug-iphonesimulator"
           if [ ! -e "$MODULE_DIR/SceneViewSwift.swiftmodule" ]; then
             echo "::error::SceneViewSwift.swiftmodule was not produced — build failed."
