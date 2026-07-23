@@ -1,5 +1,4 @@
 <!-- category: Changed -->
-
 - The pre-release checklist (`release-checklist.sh`) now surfaces **Play Store and App Store
   listing drift** before tagging: section 17 runs the store-as-code read-only diff
   (`play_listing.py` / `asc_listing.py --dry-run --fail-on-drift`) and WARNs when the live

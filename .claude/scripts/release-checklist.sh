@@ -486,7 +486,7 @@ listing_drift_check() {
     if [ "$rc" -eq 3 ]; then
         check "$label" "WARN" "drift vs live store — reconcile before tagging ($2 --dry-run)"
     elif [ "$rc" -eq 0 ] && grep -q '^\[skip\]' "$log"; then
-        check "$label" "WARN" "skipped — no store creds, drift not measured"
+        check "$label" "WARN" "skipped — drift not measured (no creds, or nothing to diff)"
     elif [ "$rc" -eq 0 ]; then
         check "$label" "PASS" "live listing matches the repo"
     else
