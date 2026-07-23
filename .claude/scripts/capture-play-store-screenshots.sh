@@ -58,14 +58,53 @@ source "$SCRIPT_DIR/lib/android-cli.sh"
 android_cli_ensure || true
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
-# The COMMON showcase set (#2773) — the same five demos, same order, as iOS's
+# The COMMON showcase set — the same THREE demos, same order, as iOS's
 # `capture-appstore-screenshots.sh`, so both stores show identical screens.
-# The previous default (ar-pose,reflection-probes,environment) had rotted:
-# post-consolidation `reflection-probes` AND `environment` both alias
-# `lighting-lab` (DeepLinkRouter.kt), so screenshots 3 & 4 captured the SAME
-# demo, and `ar-pose` is a placeholder on the iOS simulator. Every id below is
-# a standalone demo on BOTH platforms.
-DEMOS_DEFAULT="model-viewer,lighting,materials,geometry,double-pendulum"
+# Each slot must resolve to a DISTINCT on-screen demo on both stores — the
+# #2773 defect was two slots collapsing onto the same screen. That does NOT
+# require a standalone demo, only a distinct one, and both cases below were
+# re-verified in source (#2854):
+#   - dynamic-sky  → Android `lighting-lab`, Sky tab (ALIAS_INITIAL_TAB has no
+#                    entry, so it lands on tab 0 = Sky, its default); iOS
+#                    `DynamicSkyScene`. A distinct sky/sun theme.
+#   - multi-model  → Android `model-viewer`, Multi-Model tab (ALIAS_INITIAL_TAB
+#                    = 1, applied by MainActivity.resolveInitialTab on the
+#                    `--es demo` ingress — NOT the Single Model tab that would
+#                    duplicate slot 1); iOS `MultiModelScene`.
+#
+# Order and membership are the Fable design verdict on the CAPTURED mosaic, not
+# a-priori guesses (#2854). Each frame was judged as a store listing a developer
+# scrolls past in two seconds; only frames that survive that bar ship:
+#   1 model-viewer   the core load-any-GLB promise; flagship hero model, framed
+#                    full-frame at 4.5 m (see camera_distance_for).
+#   2 dynamic-sky    the strongest frame — a lit drone against a vivid procedural
+#                    sky; a sky/sun/environment theme no other slot carries and
+#                    the shot most likely to sell the SDK. Deterministic noon
+#                    default (no random HDRI, unlike the dropped `materials`).
+#   3 multi-model    the only non-helmet, non-sky frame — a rich photoreal-foliage
+#                    fidelity shot; pulled BACK to 6.0 m for the fullest scene the
+#                    fixed default camera angle allows (distance can't change the
+#                    angle, so this is as composed as the diorama gets).
+#
+# Three strong frames, deliberately — Fable's verdict was that fewer strong shots
+# beat more mixed ones. Dropped from earlier sets, and why (so nobody re-adds them
+# by guesswork):
+#   fog              even pulled all the way in to 1.6 m the fogged helmet stayed a
+#                    low-contrast grey subject (centre-variance ~3.6k, under the 4k
+#                    ship bar) — a weak store frame, not a fog showcase (#2854).
+#   double-pendulum  ignores camera_distance (own auto-fit); its auto-fit frame is
+#                    a tiny linkage in a ~95%-black rectangle — un-reframable (#2854).
+#   materials        picked a different HDRI each launch (not reproducible) and the
+#                    subject stayed small at every distance (#2874).
+#   geometry         primitives are laid out wider than a phone-portrait frame;
+#                    every distance clipped one at an edge (#2873). Demo-side fix.
+#   animation        a static screenshot of a skeletal-animation demo is just a
+#                    posed model — a visual duplicate of slot 1 on both stores.
+#
+# NOTE: the SET and ORDER are shared with iOS; the per-slot `camera_distance`
+# framing below is Android-only (iOS has no equivalent extra, #2785), so on iOS
+# multi-model renders at its scene default.
+DEMOS_DEFAULT="model-viewer,dynamic-sky,multi-model"
 # Canonical Play Store listing directory — the same `graphics/` subdir the
 # `play-store.yml` listing-sync job uploads to the store (#1710).
 OUT_DIR_DEFAULT="samples/android-demo/distribution/play-store/en-GB/graphics"
@@ -74,11 +113,11 @@ APK_PATH="samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk"
 # Form factor → output filename prefix + framing policy. `phone` is the historical
 # behaviour; the tablet classes were added in #2796.
 FORM_FACTOR_DEFAULT="phone"
-# Model-heavy demos (model-viewer, lighting, materials) load their GLB
-# asynchronously — `rememberModelInstance` returns null until the load lands,
-# so the viewport is a flat dark surface for the first several seconds. 8s was
-# too short on an emulator and the variance guard (correctly) rejected the blank
-# frame; 15s clears the async load. Tune with `--settle` on a slower/faster host.
+# Model-heavy demos (model-viewer, and multi-model which loads four GLBs) load
+# their assets asynchronously — `rememberModelInstance` returns null until the
+# load lands, so the viewport is a flat dark surface for the first several
+# seconds. 8s was too short on an emulator and the variance guard (correctly)
+# rejected the blank frame; 15s clears the async load. Tune with `--settle`.
 SETTLE_SECONDS_DEFAULT=15
 # Default 100 keeps small-footprint hero shots (model fills only the centre
 # 1/9 of the frame, variance ~60-80) from being false-rejected. The
@@ -228,31 +267,39 @@ fi
 # after so the `--es demo` deep-link launch on each iteration starts cold.
 # Falls back to `adb install` when the android CLI is missing or on multi-device
 # hosts (the `run` subcommand has no `--device` flag in v0.7).
+# ⚠️ Never trust `android run`'s exit code here. On this host it printed
+# `No matching components found for type ACTIVITY with name …/.MainActivity`
+# and STILL exited 0, so the `||` fallback below never fired and the capture
+# silently shot a 16-hour-old build (device 4.23.0 vs freshly-built 4.24.0).
+# Every screenshot looked plausible, so nothing downstream caught it — the
+# stale-install class of #2305/#2411. The install is therefore VERIFIED against
+# the device rather than assumed: if the package's lastUpdateTime did not move,
+# fall back to `adb install -r`, which reports Success/Failure honestly.
+installed_stamp() {
+  adb ${ANDROID_SERIAL:+-s "$ANDROID_SERIAL"} shell dumpsys package "$PKG" 2>/dev/null \
+    | awk -F= '/lastUpdateTime=/ {print $2; exit}'
+}
+STAMP_BEFORE="$(installed_stamp)"
+
 if android_cli_locate && [[ "$DEVICE_LINES" -eq 1 ]]; then
   echo "[capture] android run --apks=$APK_PATH (install+launch)" >&2
-  android_cli_install_and_launch "$APK_PATH" "$PKG/.MainActivity" >/dev/null || {
-    echo "[capture] android run failed, falling back to adb install" >&2
-    adb install -r "$APK_PATH" >/dev/null
-  }
+  android_cli_install_and_launch "$APK_PATH" "$PKG/.MainActivity" >/dev/null || true
 else
   echo "[capture] adb install -r $APK_PATH" >&2
   adb install -r "$APK_PATH" >/dev/null
 fi
 
-# Verify the install actually landed (#2796). `android run` can NO-OP the
-# install and still exit 0 — the `|| fallback` above never fires, and the run
-# then dies on the first `am start` with no output at all, because `set -e`
-# kills it silently. Observed live on a freshly booted tablet AVD: `pm path`
-# empty, `pm clear` printing "Failed" (while still exiting 0, so it cannot be
-# relied on either). This is the same silent-no-op trap documented for asset QA.
-if ! adb shell pm path "$PKG" 2>/dev/null | tr -d '\r' | grep -q "^package:"; then
-  echo "[capture] install did NOT land ('pm path $PKG' is empty) — retrying with adb install" >&2
+# Verify the install actually LANDED against the device, not the exit code
+# (#2796 hit the same trap on tablet AVDs — `pm path` empty, `pm clear` printing
+# "Failed" while still exiting 0). The lastUpdateTime stamp is the stronger check:
+# it also catches the stale-build no-op where an OLD build stays installed (so
+# `pm path` is non-empty) but the fresh install silently did nothing.
+if [[ -n "$STAMP_BEFORE" && "$(installed_stamp)" == "$STAMP_BEFORE" ]]; then
+  echo "[capture] install did NOT land (lastUpdateTime unchanged) — adb install -r" >&2
   adb install -r "$APK_PATH" >/dev/null
-  if ! adb shell pm path "$PKG" 2>/dev/null | tr -d '\r' | grep -q "^package:"; then
-    echo "[capture] '$PKG' is still not installed after 'adb install -r $APK_PATH'." >&2
-    exit 1
-  fi
 fi
+[[ -n "$(installed_stamp)" ]] || { echo "[capture] $PKG is not installed after install step" >&2; exit 1; }
+echo "[capture] on-device build: $(adb ${ANDROID_SERIAL:+-s "$ANDROID_SERIAL"} shell dumpsys package "$PKG" | awk -F= '/versionName=/ {print $2; exit}')" >&2
 
 # ── 3b. Force DARK mode (#2773) ──────────────────────────────────────────────
 # Uniform look with the iOS capture: render the 3D content on a dark surface
@@ -322,6 +369,39 @@ sleep "$SETTLE_SECONDS"
 adb shell am force-stop "$PKG"
 
 # ── 4. Capture loop ──────────────────────────────────────────────────────────
+# Per-demo store framing, in metres, via the `camera_distance` intent extra
+# (#2652). A demo's DEFAULT framing is tuned for interactive use — you orbit and
+# pinch — not for a still that must read at Play Store thumbnail size. Left
+# alone, `model-viewer` renders the helmet small on black: measured centre-patch
+# variance 98.3, i.e. the frame is ~98% empty, which is both a weak screenshot
+# and close enough to the blank-capture guard (threshold 100) that the run
+# passes or fails on where the auto-orbit happens to be. At 4.5 m the whole
+# helmet fills the frame (variance ~1979) and the result is deterministic.
+#
+# Values were chosen by LOOKING at each capture, never by maximising variance:
+# 2.0 m and 3.0 m score far higher (2042 / 2747) because the camera is *inside*
+# the helmet, which is a high-variance, unusable frame. Variance detects blank,
+# it does not detect good — see #2796 and the `--variance-threshold` note above.
+#
+# Echoes empty for demos that frame well by default. bash 3.2 on macOS has no
+# associative arrays, hence the case statement (see project memory on 3.2).
+camera_distance_for() {
+  case "$1" in
+    model-viewer)    echo "4.5" ;;
+    multi-model)     echo "6.0" ;;
+    *)               echo "" ;;
+  esac
+}
+# Framing notes (#2854) — the `camera_distance` extra is honored ONLY by demos
+# built on `rememberHeroOrbitCameraManipulator` (DemoHelpers.kt); it is a silent
+# no-op on any other demo, so never add one for a non-hero-orbit demo (e.g.
+# double-pendulum computes its own auto-fit and never reads the extra).
+#   model-viewer / multi-model  → framed above (both hero-orbit). multi-model read
+#     as one cropped tree at its default, so it is pulled BACK to 6.0 m for the
+#     fullest scene its fixed camera angle allows (distance cannot change angle).
+#   dynamic-sky  → hero-orbit and honors the extra, but Fable's verdict was ACCEPT
+#     at its default noon framing, so it is left unframed (echo empty).
+
 mkdir -p "$OUT_DIR"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -330,7 +410,8 @@ IFS=',' read -ra DEMO_ARR <<< "$DEMOS"
 INDEX=1
 for DEMO in "${DEMO_ARR[@]}"; do
   DEMO="${DEMO// /}"  # trim whitespace
-  echo "[capture] [$INDEX] $DEMO" >&2
+  CAM_DISTANCE="$(camera_distance_for "$DEMO")"
+  echo "[capture] [$INDEX] $DEMO${CAM_DISTANCE:+ (camera_distance=$CAM_DISTANCE)}" >&2
 
   # `am force-stop` + `--es demo <id>` stay on adb: `android run` in v0.7 has no
   # equivalent for either (no `--force-stop` flag, no intent-extras forwarding).
@@ -343,7 +424,12 @@ for DEMO in "${DEMO_ARR[@]}"; do
   # "Surprise me" button and nothing else. The one-shot `pm clear` in §3d gives
   # the determinism; a force-stop is enough to relaunch cold from there.
   adb shell am force-stop "$PKG"
-  adb shell am start -n "$PKG/.MainActivity" --es demo "$DEMO" >/dev/null
+  if [[ -n "$CAM_DISTANCE" ]]; then
+    adb shell am start -n "$PKG/.MainActivity" --es demo "$DEMO" \
+      --ef camera_distance "$CAM_DISTANCE" >/dev/null
+  else
+    adb shell am start -n "$PKG/.MainActivity" --es demo "$DEMO" >/dev/null
+  fi
   sleep "$SETTLE_SECONDS"
 
   # Foreground guard (#2796). The variance check below only rejects a UNIFORM

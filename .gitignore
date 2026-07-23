@@ -280,6 +280,7 @@ __pycache__/
 *.pyc
 
 # Store-screenshot capture artefacts. `capture-play-store-screenshots.sh` writes
-# a mosaic next to the PNGs purely so a human can eyeball the run before pushing
-# — it is a review aid, not a listing asset (#2796).
+# a preview mosaic (outside the listing dir) purely so a human can eyeball the run
+# before pushing — it is a review aid, not a listing asset (#2796). The broad
+# pattern also covers any legacy `.mosaic.png` left inside the graphics dir.
 .mosaic*.png
