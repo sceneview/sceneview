@@ -64,14 +64,18 @@ struct TextureStreamingDemo: View {
                     self.applySelectedPreset()
                 }
             }
-            // Metallic and roughness are only legible through what the surface
-            // reflects, so with no image-based light all six presets resolve to
-            // the same dark sphere and the demo demonstrates nothing. The sphere
-            // used to live in a raw `RealityView` overlay stacked on top of an
-            // empty `SceneView`, and `.environment()` is defined on `SceneView`
-            // — it could not reach it. Building the sphere inside the wrapper's
-            // own content closure is what puts it on the IBL path (#2842).
-            // Same `.studio` preset as `ModelViewerDemo` / `MaterialsDemo` (#2114).
+            // Route through the wrapper's IBL path for iOS-catalog consistency
+            // and Android parity — NOT to fix an unlit render. The sphere used
+            // to live in a raw `RealityView` overlay stacked on an empty
+            // `SceneView`; that raw path already lit the presets via RealityKit's
+            // default environment lighting (verified on the simulator 2026-07-23
+            // — gold / silver / copper read as distinct metals). But
+            // `.environment()` is defined on `SceneView`, so the raw path could
+            // never adopt the catalog's studio HDRI. Android hosts these material
+            // variants in `MaterialsDemo` with `studio_2k.hdr` + skybox; `.studio`
+            // here is the same studio environment, aligning this demo with the
+            // rest of the iOS catalog (ModelViewerDemo / MaterialsDemo, #2114) and
+            // with Android. Follow-up to the L1.1 IBL sweep (#2805).
             .environment(.studio)
             .ignoresSafeArea()
 

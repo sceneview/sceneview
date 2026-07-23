@@ -78,13 +78,15 @@ struct OcclusionMaterialDemo: View {
                 self.applyOccluderMaterial()
             }
         }
-        // The reference sphere is `metallic 0.8`: the illusion only reads if it
-        // actually looks like metal, and a metallic surface with no image-based
-        // light has nothing to reflect and renders near-black. The scene used to
-        // be built on a raw `RealityView`, and `.environment()` is defined on
-        // `SceneView` — it could not reach it. Building the entities inside the
-        // wrapper's own content closure is what puts them on the IBL path
-        // (#2842). Same `.studio` preset as `ModelViewerDemo` (#2114).
+        // Route through the wrapper's IBL path for iOS-catalog consistency and
+        // Android parity — NOT to fix an unlit render. The old raw `RealityView`
+        // already lit the metallic reference sphere via RealityKit's default
+        // environment lighting (it did NOT render near-black — verified on the
+        // simulator 2026-07-23). But `.environment()` is defined on `SceneView`,
+        // so the raw path could never adopt the catalog's studio HDRI. Android
+        // hosts this in `MaterialsDemo` with `studio_2k.hdr` + skybox; `.studio`
+        // is the same studio environment, aligning with the iOS catalog
+        // (ModelViewerDemo, #2114) and with Android. Follow-up to #2805.
         .environment(.studio)
         .ignoresSafeArea()
     }
