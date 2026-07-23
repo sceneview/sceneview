@@ -44,7 +44,7 @@ BUNDLE_ID="io.github.sceneview.demo"
 IPHONE_NAME="${IPHONE_SIM:-iPhone 16 Pro Max}"
 IPAD_NAME="${IPAD_SIM:-iPad Pro 13-inch (M4)}"
 
-# The COMMON showcase set — the same five demos captured on Android's
+# The COMMON showcase set — the same THREE demos captured on Android's
 # `capture-play-store-screenshots.sh`, in the same order, so the two stores
 # show identical screens. Each id resolves to a DISTINCT on-screen demo on both
 # stores (the #2773 requirement): on iOS every id below is a standalone
@@ -52,16 +52,31 @@ IPAD_NAME="${IPAD_SIM:-iPad Pro 13-inch (M4)}"
 # `multi-model` → `MultiModelScene`); on Android those two resolve through
 # DeepLinkRouter to a distinct umbrella TAB (`multi-model` → the Multi-Model tab
 # via ALIAS_INITIAL_TAB, not the Single Model tab that would duplicate slot 1).
-# Both sides were re-verified in source (#2854). All five render rich 3D
+# Both sides were re-verified in source (#2854). All three render rich 3D
 # content, never an empty AR scene.
 #
 # ⚠️ This array and `DEMOS_DEFAULT` in the Android script are the SAME decision
 # stored twice — a known drift hazard. Change them in one commit, or the two
-# stores silently diverge again (#2773). Full order rationale lives in the
-# Android script's header; the short version: flagship hero first, three
-# distinct capabilities (render / model / physics) in the search-visible top-3,
-# then a distinct sky theme and the compose-whole-scenes diorama (#2854).
-DEMOS=(model-viewer double-pendulum fog dynamic-sky multi-model)
+# stores silently diverge again (#2773). Full order rationale (the Fable design
+# verdict on the captured mosaic) lives in the Android script's header; the short
+# version: model-viewer hero, then the sky-drone shot, then the multi-model
+# foliage-fidelity shot. Two demos were dropped: double-pendulum (auto-fit frame
+# is a tiny linkage in a near-black rectangle, un-reframable) and fog (even pulled
+# fully in, the fogged helmet stayed a weak low-contrast subject) (#2854).
+#
+# NOTE: the per-slot `camera_distance` framing the Android script applies to
+# model-viewer/multi-model has NO iOS equivalent (#2785) — iOS renders each scene
+# at its default framing. The shared decision is the SET and ORDER only.
+DEMOS=(model-viewer dynamic-sky multi-model)
+#
+# ⚠️ DEFERRED (#2896) — the committed screenshots under `appstore-screenshots/`
+# are intentionally NOT regenerated from this set yet; they still show the older
+# set. On iOS (RealityKit) these three scenes render too weak for the App Store —
+# dim lighting, a far default camera, and `dynamic-sky` shows no sky at all — and
+# iOS has no `camera_distance` framing lever to fix it from the capture side
+# (#2785). That needs iOS SCENE-side work (brighter lighting, closer framing, a
+# working procedural sky) tracked in #2896; re-run this script to refresh the App
+# Store set only once those land. The Android half of #2854 shipped without waiting.
 # Per-demo render settle time (model load + camera orbit), seconds.
 WAIT_SECONDS="${WAIT_SECONDS:-24}"
 

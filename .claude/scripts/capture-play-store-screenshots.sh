@@ -43,7 +43,7 @@ source "$SCRIPT_DIR/lib/android-cli.sh"
 android_cli_ensure || true
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
-# The COMMON showcase set — the same five demos, same order, as iOS's
+# The COMMON showcase set — the same FOUR demos, same order, as iOS's
 # `capture-appstore-screenshots.sh`, so both stores show identical screens.
 # Each slot must resolve to a DISTINCT on-screen demo on both stores — the
 # #2773 defect was two slots collapsing onto the same screen. That does NOT
@@ -55,29 +55,41 @@ android_cli_ensure || true
 #   - multi-model  → Android `model-viewer`, Multi-Model tab (ALIAS_INITIAL_TAB
 #                    = 1, applied by MainActivity.resolveInitialTab on the
 #                    `--es demo` ingress — NOT the Single Model tab that would
-#                    duplicate slot 1); iOS `MultiModelScene`. A 4-asset park.
+#                    duplicate slot 1); iOS `MultiModelScene`.
 #
-# Order and membership are deliberate (#2854):
-#   1 model-viewer    the core load-any-GLB promise; the flagship hero model,
-#                     framed full-frame at 4.5 m (see camera_distance_for).
-#   2 double-pendulum a distinct physics apparatus, so the search-visible top-3
-#                     reads as three capabilities (render / model / physics).
-#   3 fog             launches ON on both platforms and fills the black void the
-#                     interactive default would otherwise leave, with atmosphere.
-#   4 dynamic-sky     a sky/sun/environment-lighting theme no other slot carries;
-#                     deterministic noon default (no random HDRI, unlike the
-#                     dropped `materials`).
-#   5 multi-model     the "compose whole scenes" story (a park of 4 assets) the
-#                     single-subject slots 1-4 do not tell.
+# Order and membership are the Fable design verdict on the CAPTURED mosaic, not
+# a-priori guesses (#2854). Each frame was judged as a store listing a developer
+# scrolls past in two seconds; only frames that survive that bar ship:
+#   1 model-viewer   the core load-any-GLB promise; flagship hero model, framed
+#                    full-frame at 4.5 m (see camera_distance_for).
+#   2 dynamic-sky    the strongest frame — a lit drone against a vivid procedural
+#                    sky; a sky/sun/environment theme no other slot carries and
+#                    the shot most likely to sell the SDK. Deterministic noon
+#                    default (no random HDRI, unlike the dropped `materials`).
+#   3 multi-model    the only non-helmet, non-sky frame — a rich photoreal-foliage
+#                    fidelity shot; pulled BACK to 6.0 m for the fullest scene the
+#                    fixed default camera angle allows (distance can't change the
+#                    angle, so this is as composed as the diorama gets).
 #
-# Dropped from the previous set, and why — so nobody re-adds them by guesswork:
-#   materials  picked a different HDRI each launch (not reproducible) and the
-#              subject stayed small at every distance (#2874).
-#   geometry   primitives are laid out wider than a phone-portrait frame; every
-#              distance clipped one at an edge (#2873). Needs a demo-side fix.
-#   animation  a static screenshot of a skeletal-animation demo is just a posed
-#              model — a visual duplicate of slot 1 on both stores.
-DEMOS_DEFAULT="model-viewer,double-pendulum,fog,dynamic-sky,multi-model"
+# Three strong frames, deliberately — Fable's verdict was that fewer strong shots
+# beat more mixed ones. Dropped from earlier sets, and why (so nobody re-adds them
+# by guesswork):
+#   fog              even pulled all the way in to 1.6 m the fogged helmet stayed a
+#                    low-contrast grey subject (centre-variance ~3.6k, under the 4k
+#                    ship bar) — a weak store frame, not a fog showcase (#2854).
+#   double-pendulum  ignores camera_distance (own auto-fit); its auto-fit frame is
+#                    a tiny linkage in a ~95%-black rectangle — un-reframable (#2854).
+#   materials        picked a different HDRI each launch (not reproducible) and the
+#                    subject stayed small at every distance (#2874).
+#   geometry         primitives are laid out wider than a phone-portrait frame;
+#                    every distance clipped one at an edge (#2873). Demo-side fix.
+#   animation        a static screenshot of a skeletal-animation demo is just a
+#                    posed model — a visual duplicate of slot 1 on both stores.
+#
+# NOTE: the SET and ORDER are shared with iOS; the per-slot `camera_distance`
+# framing below is Android-only (iOS has no equivalent extra, #2785), so on iOS
+# multi-model renders at its scene default.
+DEMOS_DEFAULT="model-viewer,dynamic-sky,multi-model"
 # Canonical Play Store listing directory — the same `graphics/` subdir the
 # `play-store.yml` listing-sync job uploads to the store (#1710).
 OUT_DIR_DEFAULT="samples/android-demo/distribution/play-store/en-GB/graphics"
@@ -259,21 +271,19 @@ adb ${ANDROID_SERIAL:+-s "$ANDROID_SERIAL"} shell "cmd uimode night yes" >/dev/n
 camera_distance_for() {
   case "$1" in
     model-viewer)    echo "4.5" ;;
+    multi-model)     echo "6.0" ;;
     *)               echo "" ;;
   esac
 }
-# Deliberately NOT framed (echo empty), and why — so nobody re-adds an extra by
-# guesswork. Only demos built on `rememberHeroOrbitCameraManipulator` honor the
-# `camera_distance` extra at all (DemoHelpers.kt); the others below ignore it:
-#   double-pendulum  computes its own deterministic auto-fit that frames the
-#                    whole apparatus (DoublePendulumDemo.kt) and never reads the
-#                    extra — passing one is a silent no-op.
-#   fog              the environment IS the subject; the wide interactive default
-#                    is correct. (Retry once at 3.5 only if the frame reads empty.)
-#   dynamic-sky      the deterministic noon sky fills the frame at its default.
-#                    (Retry once at 3.0 only if the helmet subject reads small.)
-#   multi-model      a 4-asset park diorama needs MORE distance if anything, never
-#                    less. (Retry once at 6.0 only if a prop clips an edge.)
+# Framing notes (#2854) — the `camera_distance` extra is honored ONLY by demos
+# built on `rememberHeroOrbitCameraManipulator` (DemoHelpers.kt); it is a silent
+# no-op on any other demo, so never add one for a non-hero-orbit demo (e.g.
+# double-pendulum computes its own auto-fit and never reads the extra).
+#   model-viewer / multi-model  → framed above (both hero-orbit). multi-model read
+#     as one cropped tree at its default, so it is pulled BACK to 6.0 m for the
+#     fullest scene its fixed camera angle allows (distance cannot change angle).
+#   dynamic-sky  → hero-orbit and honors the extra, but Fable's verdict was ACCEPT
+#     at its default noon framing, so it is left unframed (echo empty).
 
 mkdir -p "$OUT_DIR"
 TMP_DIR="$(mktemp -d)"
