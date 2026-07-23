@@ -230,10 +230,10 @@ else
   ok "sync-listing job has no inline python heredoc left"
 fi
 
-# 7. #2612 Phase C step 0 — the ASC read-only rail must exist and stay read-only.
-#    Until this job runs, asc_listing.py --dry-run has NEVER touched the live API,
-#    so the checksum-provenance verdict the diff depends on is unmeasured. The job
-#    exists to produce it; assert it is wired and that it cannot write to a store.
+# 7. #2612 Phase C — the ASC read-only rail must exist and stay read-only: it runs
+#    asc_listing.py --dry-run (never a write flag), so a scheduled, credential-
+#    bearing job can never push to the App Store. The drift-issue rail layered on
+#    top of it is asserted in § 9.
 MAINT_WF="$ROOT/.github/workflows/maintenance.yml"
 if grep -q 'store-sync/asc_listing\.py --dry-run' "$MAINT_WF"; then
   ok "maintenance.yml runs asc_listing.py --dry-run (Phase C read-only rail)"
@@ -295,6 +295,42 @@ for script in play_listing.py asc_listing.py; do
     bad "release-checklist.sh §17 no longer checks $script"
   fi
 done
+
+# 9. #2612 Phase C fast-follow — the daily drift jobs must FILE a de-duplicated
+#    tracking issue when (and only when) drift is measured. For BOTH the Play and
+#    ASC read-only jobs assert: --fail-on-drift is passed, issues:write is granted,
+#    and the gh-issue step is gated on the measured-drift output (exit 3 → drift=1)
+#    — never unconditional, so a credential-less skip or a mid-read crash can never
+#    file a drift issue it did not actually find.
+if python3 - "$MAINT_WF" <<'PYEOF'
+import sys, yaml
+jobs = yaml.safe_load(open(sys.argv[1]))["jobs"]
+problems = []
+for name in ("listing-drift", "asc-listing-drift"):
+    job = jobs.get(name)
+    if not job:
+        problems.append(f"{name}: job missing"); continue
+    steps = job.get("steps", [])
+    runs = " ".join(str(s.get("run", "")) for s in steps)
+    if "--fail-on-drift" not in runs:
+        problems.append(f"{name}: --fail-on-drift not passed")
+    if job.get("permissions", {}).get("issues") != "write":
+        problems.append(f"{name}: issues:write not granted")
+    issue_steps = [s for s in steps if "gh issue" in str(s.get("run", ""))]
+    if not issue_steps:
+        problems.append(f"{name}: no gh-issue step")
+    for s in issue_steps:
+        if "steps.diff.outputs.drift" not in str(s.get("if", "")):
+            problems.append(f"{name}: issue step not gated on measured drift")
+for p in problems:
+    print(p)
+sys.exit(1 if problems else 0)
+PYEOF
+then
+  ok "Play + ASC drift jobs file a de-duplicated issue gated on measured drift (exit 3)"
+else
+  bad "drift-issue rail missing or mis-gated (see above)"
+fi
 
 echo
 echo "test-store-sync.sh: $PASS passed, $FAIL failed"

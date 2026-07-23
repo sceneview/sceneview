@@ -188,7 +188,11 @@ zéro. À garder en tête pour les Phases C/D, où la tentation sera la même.
     §17 release-checklist = **LIVRÉ** (PR #2880, advisory WARN ; n'attend PAS le
     verdict `confirmed` — un WARN advisory n'est pas le gate bloquant que cette
     barre réservait). Issue-dédup de drift (`maintenance.yml` → 1 issue par store)
-    = fast-follow restant de la Phase C.
+    = **LIVRÉ** (PR #2898 : `--fail-on-drift` + `issues: write` + issue gatée sur
+    drift mesuré exit 3, advisory). Reste Phase C : fermeture auto de l'issue à la
+    réconciliation (actuellement manuelle — piège : ne PAS fermer sur un run sans
+    creds `[skip]`, seulement sur un vrai no-drift rc=0) + geste B console n=5
+    avant toute promotion du gate en bloquant.
 - **D — Data safety as code** : `data-safety.csv` généré depuis DATA_SAFETY.md +
   push `applications.dataSafety` dans `--apply`. ⚠️ endpoint write-only (pas de GET) →
   premier push réel = gated Thomas avec vérif console après coup ; d'ici là le CSV
