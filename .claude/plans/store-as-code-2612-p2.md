@@ -185,8 +185,10 @@ zéro. À garder en tête pour les Phases C/D, où la tentation sera la même.
     SKIP honnête sans créds, jamais bloquant. **C'est le premier appelant CI de
     `asc_listing.py --dry-run` : jusqu'ici le chemin read-only ASC n'avait JAMAIS
     touché l'API live** (grep vérifié — seul `--apply-screenshots` était câblé).
-    §17 release-checklist + issue-dédup de drift = **reste de la Phase C**, à
-    écrire une fois le verdict `confirmed` obtenu (sinon le gate mentirait).
+    §17 release-checklist = **LIVRÉ** (PR #2880, advisory WARN ; n'attend PAS le
+    verdict `confirmed` — un WARN advisory n'est pas le gate bloquant que cette
+    barre réservait). Issue-dédup de drift (`maintenance.yml` → 1 issue par store)
+    = fast-follow restant de la Phase C.
 - **D — Data safety as code** : `data-safety.csv` généré depuis DATA_SAFETY.md +
   push `applications.dataSafety` dans `--apply`. ⚠️ endpoint write-only (pas de GET) →
   premier push réel = gated Thomas avec vérif console après coup ; d'ici là le CSV

@@ -12,13 +12,15 @@ final class SceneEnvironmentTests: XCTestCase {
     // MARK: - Presets
 
     func testAllPresetsCount() {
-        XCTAssertEqual(SceneEnvironment.allPresets.count, 6)
+        // 7 presets since the "Night Sky" starfield HDRI was added (#2878
+        // updated this from the stale 6; the count is the authoritative guard).
+        XCTAssertEqual(SceneEnvironment.allPresets.count, 7)
     }
 
     func testPresetNames() {
         let names = SceneEnvironment.allPresets.map { $0.name }
         XCTAssertEqual(names, [
-            "Studio", "Outdoor", "Sunset", "Night", "Warm", "Autumn"
+            "Studio", "Outdoor", "Sunset", "Night", "Warm", "Autumn", "Night Sky"
         ])
     }
 
@@ -29,6 +31,7 @@ final class SceneEnvironmentTests: XCTestCase {
         XCTAssertEqual(SceneEnvironment.night.hdrResource, "rooftop_night.hdr")
         XCTAssertEqual(SceneEnvironment.warm.hdrResource, "studio_warm.hdr")
         XCTAssertEqual(SceneEnvironment.autumn.hdrResource, "autumn_field.hdr")
+        XCTAssertEqual(SceneEnvironment.nightSky.hdrResource, "night_sky.hdr")
     }
 
     func testPresetIntensities() {
@@ -38,6 +41,7 @@ final class SceneEnvironmentTests: XCTestCase {
         XCTAssertEqual(SceneEnvironment.night.intensity, 0.4)
         XCTAssertEqual(SceneEnvironment.warm.intensity, 1.0)
         XCTAssertEqual(SceneEnvironment.autumn.intensity, 0.9)
+        XCTAssertEqual(SceneEnvironment.nightSky.intensity, 0.5)
     }
 
     func testPresetShowsSkyboxByDefault() {

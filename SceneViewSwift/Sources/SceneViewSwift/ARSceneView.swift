@@ -1099,7 +1099,11 @@ public struct AnchorNode: Sendable {
 
     /// Removes all child entities from this anchor.
     public func removeAll() {
-        for child in entity.children {
+        // Snapshot the children into an `Array` first: `entity.children` is a
+        // live view over the entity's child list, so calling `removeChild`
+        // while iterating it directly re-indexes the collection mid-loop and
+        // skips every other child (2 children → 1 left behind). See #2878.
+        for child in Array(entity.children) {
             entity.removeChild(child)
         }
     }

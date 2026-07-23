@@ -115,6 +115,21 @@ else
   bad "asc_listing.py --apply-screenshots --fail-on-drift → rc=$RC (want 2)"
 fi
 
+# 4f. --dry-run --fail-on-drift WITHOUT creds must still SKIP (exit 0), never
+#     exit 3. The credential check precedes the drift logic, so "no creds" is
+#     "not measured", not "drift found". release-checklist.sh §17 grades exit 3
+#     as a drift WARN — if a credential-less run returned 3, every local release
+#     check would warn on drift it never actually measured (a fabricated signal,
+#     the exact class this suite guards against).
+for script in play_listing.py asc_listing.py; do
+  run_py "$SYNC_DIR/$script" --dry-run --fail-on-drift
+  if [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q '^\[skip\]'; then
+    ok "$script --dry-run --fail-on-drift without creds → honest SKIP, exit 0 (not 3)"
+  else
+    bad "$script --dry-run --fail-on-drift without creds → rc=$RC (want 0 + [skip])"
+  fi
+done
+
 # 4b. A near-miss flag must NOT reach the App Store write path. argparse
 #     expands unambiguous prefixes unless allow_abbrev=False, so `--apply`
 #     (play_listing.py's real flag — the obvious thing to type by habit)
@@ -261,6 +276,25 @@ then
 else
   bad "asc-listing-drift lost its PIPESTATUS/asc_rc guard — a crashed run would render as a finding-free read"
 fi
+
+# 8. #2612 Phase C — the release gate (§17 of release-checklist.sh) must run
+#    the read-only drift diff for BOTH stores with --fail-on-drift. This is the
+#    seam that surfaces drift at tag time, not just in an unread daily step
+#    summary; if §17 stops calling a script (or drops --fail-on-drift, making
+#    exit 3 unreachable), a drifted store ships silent.
+CHECKLIST="$ROOT/.claude/scripts/release-checklist.sh"
+if grep -q -- '--dry-run --fail-on-drift' "$CHECKLIST"; then
+  ok "release-checklist.sh §17 uses --dry-run --fail-on-drift"
+else
+  bad "release-checklist.sh §17 no longer runs the drift diff with --fail-on-drift"
+fi
+for script in play_listing.py asc_listing.py; do
+  if grep -q "\"$script\"" "$CHECKLIST"; then
+    ok "release-checklist.sh §17 checks $script"
+  else
+    bad "release-checklist.sh §17 no longer checks $script"
+  fi
+done
 
 echo
 echo "test-store-sync.sh: $PASS passed, $FAIL failed"

@@ -64,21 +64,31 @@ else
 fi
 
 # 4. Screenshot tests iOS (Pillow pixel comparison against simulator goldens)
+# Precondition-aware: generate-ios-goldens.py is a MANUAL harness — it
+# screenshots whatever the sim currently shows (no install/launch/navigation).
+# Verifying is only meaningful when the demo app is RUNNING on the booted sim;
+# anything else (springboard, another app) false-reds against the golden — which
+# is exactly how the stale explore_current golden blocked every pre-push.
+# Golden target = a STATIC screen (About) — never a network-fed screen like
+# Explore, whose remote gallery re-drifts a 1%-threshold pixel golden.
+# NB: the golden is resolution-bound — capture and verify on the same sim model.
 echo -e "${YELLOW}[6/11] Verifying iOS screenshot goldens...${NC}"
 IOS_GOLDENS="samples/ios-demo/goldens"
-if xcrun simctl list devices | grep -q "Booted" 2>/dev/null; then
-    if [ -d "$IOS_GOLDENS" ] && [ "$(ls -A $IOS_GOLDENS/*.png 2>/dev/null)" ]; then
-        if python3 .claude/scripts/generate-ios-goldens.py verify explore_current 2>/dev/null; then
-            echo -e "${GREEN}  ✓ iOS screenshots match goldens${NC}"
-        else
-            echo -e "${RED}  ✗ iOS screenshot regression — run: python3 .claude/scripts/generate-ios-goldens.py capture explore_current${NC}"
-            ERRORS=$((ERRORS + 1))
-        fi
-    else
-        echo -e "${YELLOW}  ⚠ No iOS goldens yet — navigate to Explore tab and run: python3 .claude/scripts/generate-ios-goldens.py capture explore_current${NC}"
-    fi
-else
+IOS_GOLDEN_NAME="about_static"
+IOS_BUNDLE_ID="io.github.sceneview.demo"
+if ! xcrun simctl list devices 2>/dev/null | grep -q "Booted"; then
     echo -e "${YELLOW}  ⚠ No iOS simulator booted — skip${NC}"
+elif ! xcrun simctl get_app_container booted "$IOS_BUNDLE_ID" >/dev/null 2>&1; then
+    echo -e "${YELLOW}  ⚠ iOS demo app not installed on the booted sim — skip (install + launch it to arm this check)${NC}"
+elif ! xcrun simctl spawn booted launchctl list 2>/dev/null | grep -q "UIKitApplication:${IOS_BUNDLE_ID}"; then
+    echo -e "${YELLOW}  ⚠ iOS demo app not running on the booted sim — skip (launch it on the About tab to arm this check)${NC}"
+elif [ ! -f "$IOS_GOLDENS/${IOS_GOLDEN_NAME}.png" ]; then
+    echo -e "${YELLOW}  ⚠ No iOS golden yet — foreground the About tab, then: python3 .claude/scripts/generate-ios-goldens.py capture ${IOS_GOLDEN_NAME}${NC}"
+elif python3 .claude/scripts/generate-ios-goldens.py verify "$IOS_GOLDEN_NAME" 2>/dev/null; then
+    echo -e "${GREEN}  ✓ iOS screenshots match goldens${NC}"
+else
+    echo -e "${RED}  ✗ iOS screenshot regression — app foregrounded on About, same sim model as the golden? Intentional change: python3 .claude/scripts/generate-ios-goldens.py capture ${IOS_GOLDEN_NAME}${NC}"
+    ERRORS=$((ERRORS + 1))
 fi
 
 # 5. Version sync
