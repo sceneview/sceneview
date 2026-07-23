@@ -17,6 +17,24 @@
 accounts), replaced by Antigravity CLI (`agy`, Go binary, official curl installer). The
 personal Google free tier goes through Antigravity.
 
+### Smoke-test results (2026-07-23, `agy` + `codex` authenticated)
+
+- **codex** ✅ clean. `codex exec --sandbox read-only` reads workspace files natively
+  (no permission prompt) — read `llms.txt`, answered, `codex exec review` returns a
+  usable verdict. This is the least-friction provider for delegated review.
+- **gemini/agy** ✅ but with a caveat. Auth: thomas.gorisse@gmail.com, **Antigravity
+  Starter Quota, model Gemini 3.6 Flash**. In headless `-p` mode `agy` **cannot run
+  shell tools** (`pwd`/`cat`/`ls` are auto-denied — "a tool required the command
+  permission that headless mode cannot prompt for"), and `permissions.allow`
+  allow-rules in `~/.gemini/antigravity-cli/settings.json` are unreliable because the
+  model composes arbitrary compound commands. ⛔ **Do NOT let `agy` roam the
+  filesystem in headless mode.** The working model — and the RIGHT one for review — is
+  **inline context**: the orchestrator (Claude) reads the files / builds the diff and
+  embeds the text in the prompt; `agy` only reasons. Verified: an inline-diff ADVISORY
+  review returns a clean verdict. `--dangerously-skip-permissions` would enable
+  roaming but is refused by policy (read-only intent, throwaway-tree only at most).
+- **kimi** — not authenticated yet (Moonshot login / `MOONSHOT_API_KEY` pending).
+
 ## 2. Why delegate (by order of value)
 
 1. **Cross-vendor second opinion** — a review by a model from another family does not
@@ -36,10 +54,15 @@ personal Google free tier goes through Antigravity.
 | Task | Engine | Mode |
 |---|---|---|
 | Orchestration, architecture, hard debugging, decisions, anything that commits | **Claude (fable/opus)** — never delegated | — |
-| Adversarial second-opinion review on a PR | `codex exec review` + `agy -p` | read-only, ADVISORY in triptych/review-fanout |
-| Large-context audit/synthesis (doc-drift, llms-full) | `agy -p` (Gemini, 1M ctx) | read-only |
+| Adversarial second-opinion review on a PR | `codex exec review` (native fs) + `agy -p` (inline diff) | read-only, ADVISORY in triptych/review-fanout |
+| Large-context audit/synthesis (doc-drift, llms-full) | `codex exec` (native fs) or `agy -p` (**inline content**) | read-only |
 | Scaffolds, test boilerplate, Maestro flows, mechanical conversions | `kimi` (or codex) | `--write` in a throwaway worktree/clone only |
 | One-off research, cross-checked factual question | any (cheapest available) | read-only |
+
+> **Filesystem access differs by provider.** `codex exec --sandbox read-only` reads the
+> workspace natively — pass a task, it reads what it needs. `agy -p` **cannot** in
+> headless mode (see §1 smoke-test caveat) → the orchestrator embeds file/diff content
+> inline in the prompt. Plan the delegation accordingly.
 
 ## 4. Safety rules (non-negotiable)
 

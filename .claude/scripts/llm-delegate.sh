@@ -8,8 +8,17 @@
 #   kimi    — Moonshot Kimi Code (`kimi --print`, auth: interactive `kimi` / MOONSHOT_API_KEY)
 #
 # Usage:
-#   bash .claude/scripts/llm-delegate.sh <codex|gemini|kimi> [--write] [--model M] [--timeout SECS] "prompt"
+#   bash .claude/scripts/llm-delegate.sh <codex|gemini|kimi> [--write] [--model M] \
+#        [--context FILE]... [--timeout SECS] "prompt"
 #   echo "long prompt" | bash .claude/scripts/llm-delegate.sh codex -
+#   git diff | bash .claude/scripts/llm-delegate.sh gemini --context - "Review this diff, be terse."
+#
+# Filesystem access differs by provider (measured 2026-07-23):
+#   - codex  reads workspace files NATIVELY under --sandbox read-only. Just pass a task.
+#   - gemini (agy -p) CANNOT run shell tools in headless mode (auto-denied). Feed file
+#     content INLINE via --context FILE (repeatable; '-' = stdin). The orchestrator
+#     reads the bytes; agy only reasons. Never let agy roam the filesystem headless.
+#   - kimi   can read files but has no sandbox; keep it read-only by prompt discipline.
 #
 # Contract (designed for orchestration from Claude Code):
 #   - READ-ONLY by default. --write is only honored inside a throwaway checkout
@@ -28,22 +37,43 @@ WRITE=0
 MODEL=""
 TIMEOUT_SECS="${LLM_DELEGATE_TIMEOUT:-600}"
 PROMPT=""
+CONTEXT=""
+
+append_context() {
+  # $1 = file path, or '-' for stdin. Appends a fenced block to CONTEXT.
+  local src="$1" body
+  if [ "$src" = "-" ]; then body="$(cat)"; else
+    [ -f "$src" ] || { echo "ERROR: --context file not found: $src" >&2; exit 2; }
+    body="$(cat "$src")"
+  fi
+  CONTEXT="$CONTEXT
+
+--- context: $src ---
+$body
+--- end context ---"
+}
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --write) WRITE=1 ;;
     --model) MODEL="${2:-}"; shift ;;
     --timeout) TIMEOUT_SECS="${2:-600}"; shift ;;
+    --context) append_context "${2:-}"; shift ;;
     -) PROMPT="$(cat)" ;;
     *) PROMPT="$1" ;;
   esac
   shift
 done
 
-usage() { echo "usage: llm-delegate.sh <codex|gemini|kimi> [--write] [--model M] [--timeout SECS] \"prompt\" (or '-' for stdin)" >&2; exit 2; }
+usage() { echo "usage: llm-delegate.sh <codex|gemini|kimi> [--write] [--model M] [--context FILE].. [--timeout SECS] \"prompt\" (or '-' for stdin)" >&2; exit 2; }
 skip()  { echo "SKIP: $1" >&2; exit 3; }
 [ -n "$PROVIDER" ] || usage
 [ -n "$PROMPT" ] || usage
+
+# Inline context: appended to the prompt so filesystem-blind providers (agy -p)
+# can reason over file/diff content the orchestrator supplies.
+[ -n "$CONTEXT" ] && PROMPT="$PROMPT
+$CONTEXT"
 
 export PATH="$HOME/.local/bin:$PATH"
 
