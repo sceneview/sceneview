@@ -1,0 +1,2 @@
+<!-- category: Tests -->
+- **Realigned stale `SceneViewSwift` tests exposed by the iOS CI fix ([#2878](https://github.com/sceneview/sceneview/issues/2878)).** With failures no longer swallowed, `CameraControls` position tests were updated to the v4.4.0 `orbitRadius = 2.0` default (they still asserted the old radius-5 values), and the `SceneEnvironment` preset tests to the current 7-preset set including "Night Sky".
