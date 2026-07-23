@@ -774,6 +774,16 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-store-sync.sh
 
+      # sync-versions.sh Kotlin-toolchain `--fix` rewriter self-test. The
+      # rewriter only fires on a Kotlin bump (gradle/libs.versions.toml drifting
+      # from the `**Kotlin:** X.Y.Z` prose), which quality-gate's in-tree run
+      # almost never hits — #2790 bumped the toml with no handler and reddened
+      # pre-push-check leg 7 (relived #2876). Pins the handler hermetically.
+      - name: Self-test sync-versions.sh Kotlin rewriter
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-sync-versions-kotlin.sh
+
       # Doc↔API drift (ADVISORY, #docs). Warns when this PR changed a public
       # API surface without updating llms.txt / KDoc / docs/docs / recipes.
       # AI-first SDK: stale prose makes AI emit stale user code. Non-blocking
