@@ -1,5 +1,7 @@
 # SceneView
 
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Fsceneview.svg)](https://mcptoplist.com/server/glama%2Fsceneview)
+
 > **3D & AR for every platform.**
 
 Build 3D and AR experiences with the UI frameworks you already know.
