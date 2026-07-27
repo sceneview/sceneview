@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- Play Store listing: dropped the empty 10" tablet "Materials" screenshot that #2858 committed. Its 10" capture rendered the app bar and IBL skybox before the 3D model finished loading — re-introducing the exact "no 3D at all" defect #2796 set out to fix (the 7" counterpart caught the model). The 10" set is temporarily four demos, all showing a rendered model (Models, Lighting, Geometry, Double Pendulum), pending #2855's full re-shoot.

@@ -41,14 +41,12 @@ distribution/play-store/
         ├── icon-512.png                   (512×512)
         ├── phone-screenshot-{1..5}.png    (1080×2304)
         ├── tablet7-screenshot-{1..5}.png  (1200×N, portrait)
-        └── tablet10-screenshot-{1..4}.png (1600×N, portrait)
+        └── tablet10-screenshot-{1..5}.png (1600×N, portrait)
 ```
 
-The phone and 7-inch tablet classes carry the same five demos, in the same order,
-as the iOS listing — the unified showcase set (#2773). The 10-inch set is
-temporarily four: its Materials slot captured before the model finished loading
-and was dropped pending #2855's full re-shoot (#2796 follow-up). Tablets keep
-their native post-crop height rather than being padded to the phone ratio.
+All three classes carry the same five demos, in the same order, as the iOS
+listing — the unified showcase set (#2773). Tablets keep their native post-crop
+height rather than being padded to the phone ratio.
 
 On every `vX.Y.0` tag release, the `sync-listing` job in
 `.github/workflows/play-store.yml` PATCHes the listing text and uploads the
