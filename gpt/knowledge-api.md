@@ -825,6 +825,17 @@ SceneView(viewNodeWindowManager = windowManager) {
 }
 ```
 
+Three gotchas that bite every `ViewNode`:
+
+- **`viewContent` composes in its own off-screen window, so it inherits NONE of
+  your `CompositionLocal`s** — `MaterialTheme`, `LocalContentColor`, your own
+  locals. Without re-applying them inside, a themed card silently falls back to
+  Material 3 defaults and stops matching the rest of your UI. Wrap the content:
+  `ViewNode(windowManager) { MyAppTheme { Card { … } } }`.
+- **There is no parent to measure against**, so `fillMaxWidth()` and friends have
+  nothing to fill. Give the content an explicit size (`Modifier.width(320.dp)`).
+- **The rendered UI is NOT interactive** — see immediately below.
+
 **The rendered UI is NOT interactive.** A `ViewNode` draws its Compose content into a texture;
 the hosting window is `FLAG_NOT_TOUCHABLE` and touch events are never dispatched into it, so a
 `Button` placed inside **will render but its `onClick` will never fire** (no ripple, no press
