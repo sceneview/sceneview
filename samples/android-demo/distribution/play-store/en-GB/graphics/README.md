@@ -131,14 +131,28 @@ passes the variance check and is still unusable.
 
 ## Known follow-ups
 
-- **#2785** — framing. Two known imperfections remain in the tablet set, both
-  framing rather than capture defects:
-  - `geometry` in portrait crops the **cube** out of frame — the three
-    primitives are laid out horizontally and do not fit a portrait viewport.
-  - `model-viewer` and `double-pendulum` sit noticeably off-centre.
+- **#2785** — framing. `model-viewer` and `double-pendulum` sit noticeably
+  off-centre. The `camera_distance` lever (#2652, `--ef camera_distance <f>`)
+  is honoured only by demos built on `rememberHeroOrbitCameraManipulator`; on
+  any other demo it is a **silent no-op**, which is what makes a framing defect
+  look unfixable from the capture side. Wiring it per demo is #2785's scope.
 
-  The `camera_distance` lever (#2652, `--ef camera_distance <f>`) does **not**
-  fix this: measured on `geometry`, 6.0 and 9.0 produce an identical frame, so
-  the lever is not wired into every demo. A proper fix is per-demo framing,
-  which is #2785's scope. The set still improves substantially on what it
-  replaced, so it ships rather than blocking on that.
+- **#2873 — `geometry` framing: FIXED, but NOT re-added to the set.** The demo
+  laid its four primitives out on a row ~1.45 m wide and viewed it from a
+  camera that measured **1.22 m** away — not the 2.7 m its own comment claimed,
+  because `orbitHomePosition` resolves as an offset whose *length* is the orbit
+  distance, not as a world position differenced against the target. Both halves
+  are fixed: the primitives now sit in a 2 × 2 cluster, the distance means what
+  it says, and `camera_distance` is wired into this demo. Measured on the QA
+  emulator at the default framing, the cluster clears the frame with ≥ 184 px of
+  margin on each side (predicted left edge 187.2 px, measured 187 px), and
+  `GeometryLayoutTest` pins the fit arithmetic.
+
+  Re-adding `geometry` to a capture default is deliberately left out of that
+  change: it needs its own verified visual pass, and two things still argue
+  against the slot. The four-primitive cluster leaves the frame **centre**
+  empty, so the 3 × 3 centre-patch variance guard reads it as blank (measured
+  0.1, threshold 100) — a capture run on this id fails until either the layout
+  or the guard changes. And the shared Y-axis spin is free-running outside
+  `qa_mode`, so the flat plane is edge-on — invisible — at an unpredictable
+  fraction of capture instants. Judge a fresh mosaic before adding the id back.

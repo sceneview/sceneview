@@ -37,6 +37,7 @@ import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.demos.internal.GeometryLayout
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
@@ -57,6 +58,11 @@ import java.util.Locale
  * - Metallic / Roughness sliders applied to all visible primitives — lets users see
  *   the full PBR range from a chalky matte (M=0, R=1) to a polished mirror (M=1, R=0)
  * - Continuous Y-axis spin so each shape shows all sides instead of a single static face
+ *
+ * The four primitives sit in a **2 × 2 cluster**, not a row: a row of four is wider than a
+ * phone-portrait frame at any camera distance, so one primitive was always clipped at an
+ * edge (#2873). [GeometryLayout] owns every position, size and distance involved, and
+ * `GeometryLayoutTest` asserts the cluster still clears the frame with margin.
  */
 @Composable
 fun GeometryDemo(onBack: () -> Unit) {
@@ -163,12 +169,25 @@ fun GeometryDemo(onBack: () -> Unit) {
             engine = engine,
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
-            // Dolly the camera closer: primitives live at z = -1.5 m and span only
-            // 1.2 m horizontally, so the default camera at z = 4 framed them as tiny
-            // dots in a portrait viewport. z = 1.2 puts them at a comfortable 2.7 m.
+            // Framing lives in GeometryLayout so the cluster's fit in a portrait frame is
+            // arithmetic a unit test can check, not a number tuned by eye (#2873). Note that
+            // `orbitHomePosition` is an offset whose LENGTH is the orbit distance, not a
+            // world position — measured, see GeometryLayout's orbit-distance note. The
+            // framing comment this replaces claimed 2.7 m for a camera that was 1.22 m out,
+            // which is the other half of why the row never fit.
+            //
+            // `camera_distance` (#2652) is honoured here even though this demo does NOT use
+            // `rememberHeroOrbitCameraManipulator` — the shared manipulator that reads the
+            // extra for the hero demos. Without this the extra was a silent no-op on
+            // `geometry`, which is why #2873 reports the clipping as unfixable "at every
+            // camera distance": the distances tried never reached the camera. That silent
+            // no-op on non-hero-orbit demos is #2785's scope; wiring it here fixes it for
+            // this one demo and makes the framing verifiable from a capture run.
             cameraManipulator = rememberCameraManipulator(
-                orbitHomePosition = Position(0f, 0.2f, 1.2f),
-                targetPosition = Position(0f, 0f, -1.5f),
+                orbitHomePosition = GeometryLayout.orbitHomeOffset(
+                    DemoSettings.cameraDistance ?: GeometryLayout.CAMERA_DISTANCE
+                ),
+                targetPosition = Position(0f, 0f, GeometryLayout.TARGET_Z),
             ),
         ) {
             // Accent fill — a warm low-intensity rim that complements the v4.1.0
@@ -189,9 +208,11 @@ fun GeometryDemo(onBack: () -> Unit) {
                 },
             )
 
-            // Centered around x=0, equal spacing 0.4 m apart, lifted slightly so
-            // they sit in the centre of the portrait viewport instead of drifting
-            // to the right like with the previous tighter spacing.
+            // 2 × 2 cluster centred on x = 0, reading in the same order as the visibility
+            // chips (Cube, Sphere / Cylinder, Plane). Two columns instead of four halves
+            // the horizontal footprint, which is what makes the group fit a phone-portrait
+            // frame — the four-wide row it replaces was wider than the frame at every
+            // camera distance (#2873).
             // Each shape spins on its Y axis to expose all sides — particularly
             // important for the cylinder + plane which have visually distinct
             // front/side faces.
@@ -199,25 +220,41 @@ fun GeometryDemo(onBack: () -> Unit) {
             if (showCube) {
                 CubeNode(
                     materialInstance = cubeMaterial,
-                    size = Float3(0.18f, 0.18f, 0.18f),
-                    position = Position(x = -0.6f, y = 0f, z = -1.5f),
+                    size = Float3(
+                        GeometryLayout.CUBE_EDGE,
+                        GeometryLayout.CUBE_EDGE,
+                        GeometryLayout.CUBE_EDGE,
+                    ),
+                    position = Position(
+                        x = -GeometryLayout.COLUMN_X,
+                        y = GeometryLayout.ROW_Y,
+                        z = GeometryLayout.TARGET_Z,
+                    ),
                     rotation = spinRotation,
                 )
             }
             if (showSphere) {
                 SphereNode(
                     materialInstance = sphereMaterial,
-                    radius = 0.13f,
-                    position = Position(x = -0.2f, y = 0f, z = -1.5f),
+                    radius = GeometryLayout.SPHERE_RADIUS,
+                    position = Position(
+                        x = GeometryLayout.COLUMN_X,
+                        y = GeometryLayout.ROW_Y,
+                        z = GeometryLayout.TARGET_Z,
+                    ),
                     rotation = spinRotation,
                 )
             }
             if (showCylinder) {
                 CylinderNode(
                     materialInstance = cylinderMaterial,
-                    radius = 0.1f,
-                    height = 0.25f,
-                    position = Position(x = 0.2f, y = 0f, z = -1.5f),
+                    radius = GeometryLayout.CYLINDER_RADIUS,
+                    height = GeometryLayout.CYLINDER_HEIGHT,
+                    position = Position(
+                        x = -GeometryLayout.COLUMN_X,
+                        y = -GeometryLayout.ROW_Y,
+                        z = GeometryLayout.TARGET_Z,
+                    ),
                     rotation = spinRotation,
                 )
             }
@@ -230,9 +267,13 @@ fun GeometryDemo(onBack: () -> Unit) {
                 // the visible face.
                 PlaneNode(
                     materialInstance = planeMaterial,
-                    size = Float3(0.32f, 0.32f, 0f),
+                    size = Float3(GeometryLayout.PLANE_EDGE, GeometryLayout.PLANE_EDGE, 0f),
                     normal = Direction(z = 1f),
-                    position = Position(x = 0.6f, y = 0f, z = -1.5f),
+                    position = Position(
+                        x = GeometryLayout.COLUMN_X,
+                        y = -GeometryLayout.ROW_Y,
+                        z = GeometryLayout.TARGET_Z,
+                    ),
                     rotation = spinRotation,
                 )
             }
