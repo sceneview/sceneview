@@ -3,17 +3,13 @@ package io.github.sceneview.demo.demos
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -231,6 +227,18 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         ),
         onReset = resetAll,
         onResetSettings = resetAll,
+        bottomOverlay = {
+            // The scaffold owns the bottom band: it pins the row, applies the system-bar
+            // inset, and resolves the Settings-FAB reserve (#2779/#2780). The row keeps
+            // sitting just ABOVE that band rather than inside it — `settingsFabReservedSpace`
+            // is the band's own height, so this is the former hand-written `128.dp` with
+            // its magic number replaced by the constant it was silently duplicating, and
+            // it collapses to the plain gutter on any demo that ships no controls.
+            GroundingLegend(
+                shadowVisible = shadowVisible,
+                modifier = Modifier.padding(bottom = settingsFabReservedSpace + 24.dp),
+            )
+        },
         controls = {
             ContactShadowControls(
                 shadowsEnabled = shadowsEnabled,
@@ -363,8 +371,6 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             }
         }
 
-        // Tracks what is actually ON SCREEN, not just the toggle — see `shadowVisible`.
-        GroundingLegend(shadowVisible = shadowVisible)
     }
 }
 
@@ -383,16 +389,14 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
  * home framing.
  *
  * Style mirrors the scaffold's `AssetSourceChip` (dot + label on an 85 %-alpha surface) so
- * the demo chrome stays one family. Sits above the settings FAB / peek-chip band at the
- * bottom-end, in the vertical zone of the boxes it annotates.
+ * the demo chrome stays one family. Rendered through `DemoScaffold(bottomOverlay = …)`,
+ * which pins it to the bottom of the scene and applies the system-bar inset; the caller
+ * supplies only the gutter that lifts it clear of the settings FAB / peek-chip band.
  */
 @Composable
-private fun BoxScope.GroundingLegend(shadowVisible: Boolean) {
+private fun GroundingLegend(shadowVisible: Boolean, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .windowInsetsPadding(WindowInsets.systemBars)
-            .padding(bottom = 128.dp),
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -538,6 +542,8 @@ private val KEY_LIGHT_DIRECTION = Direction(-0.35f, -1f, -0.4f)
 /**
  * Side of the grounded box's square shadow quad, metres. Generously larger than the box
  * ([BOX_EDGE_METERS]) — the Floor gradient fades out well before the quad edge — while
- * keeping the two quads' footprints clear of each other at [BOX_HALF_SPACING].
+ * keeping the pool clear of the shadowless twin at [BOX_HALF_SPACING], including at the
+ * peak of the hop, where it has slid furthest out from under its own box. Only the
+ * grounded box has a quad; the comparison depends on the twin's floor staying bare.
  */
 private const val SHADOW_QUAD_METERS = 0.8f
