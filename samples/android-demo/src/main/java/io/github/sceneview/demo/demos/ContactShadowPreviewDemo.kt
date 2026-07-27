@@ -78,18 +78,22 @@ import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
  * The redesign makes the contrast **simultaneous and kinetic** instead of sequential and
  * static:
  *
- * - **Two identical boxes, side by side** — same size, same material, same motion. The left
- *   one is grounded by a [ContactShadowContext.Floor] pool; the right one has none. The
- *   comparison is spatial, so it needs no memory and no interaction — one glance settles it.
- * - **Both boxes hop in sync**, and the left pool *responds to height*: it slides out from
- *   under the box along the key light as the box lifts, spreading and fading as it goes (dark,
- *   tight and centred at contact; drifted, wide and faint at the top — see
- *   [DemoMath.groundingShadowOffset] / [DemoMath.groundingSpread] /
- *   [DemoMath.groundingIntensityFactor]). The shadow's **path** is the strongest contact cue
- *   the visual system has (the classic "ball-in-a-box" illusion: the same vertical trajectory
- *   reads as bouncing or floating depending only on where the shadow goes). The grounded box
- *   visibly *lands on* the floor every 2.6 s; its shadowless twin, animated identically,
- *   floats with no depth anchor at all.
+ * - **Two boxes, side by side — same size and material, deliberately DIFFERENT motion.** The
+ *   left one bounces and lands, grounded by a [ContactShadowContext.Floor] pool; the right one
+ *   hovers high and never touches down, with no shadow. The comparison is spatial, so it needs
+ *   no memory and no interaction — one glance settles it.
+ * - **The left box STRIKES the floor** ([DemoMath.bounceHeight], a rectified sine) every 2.6 s,
+ *   and its pool *responds to height*: it slides out from under the box along the key light as
+ *   the box lifts, spreading and fading as it goes, then snaps back dark, tight and centred on
+ *   landing (see [DemoMath.groundingShadowOffset] / [DemoMath.groundingSpread] /
+ *   [DemoMath.groundingIntensityFactor]). The shadow's **path** is the strongest contact cue the
+ *   visual system has — the classic "ball-in-a-box" illusion. **The right box does the opposite:**
+ *   it hovers high and bobs slowly ([DemoMath.floatHoverY], a plain sine well above the floor),
+ *   never landing, with no shadow. The floating is carried by the box's *own motion* — a box that
+ *   visibly stays aloft needs no shadow to read as airborne — so the missing shadow reads as
+ *   "it's in the air", not "the shadow is broken" (#2740). The earlier revision hopped BOTH boxes
+ *   identically, which failed exactly here: a shadowless box doing the same motion as its grounded
+ *   twin conveys "floating" only by the *absence* of a shadow, and an absence does not read.
  * - **Overlay chips name the two states** ("Contact shadow" / "No shadow"), so the one-line
  *   takeaway is on screen without opening anything.
  * - **The camera starts low** (about 22° above the floor, pulled in), so the pool subtends
@@ -123,8 +127,9 @@ import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
  * sit alongside the procedural pool and muddy the comparison. The only grounding cue on
  * screen is the contact shadow — which is the point.
  *
- * QA mode ([DemoSettings.qaMode]) freezes the hop at ground contact (a zeroed clock), the
- * pose where the pool is at full strength, so screenshot suites get a deterministic frame.
+ * QA mode ([DemoSettings.qaMode]) freezes the clock at t = 0: the grounded box sits at ground
+ * contact (pool at full strength) and the floating box at its hover rest height, so screenshot
+ * suites get a deterministic frame that already shows the full grounded-vs-floating contrast.
  */
 @Composable
 fun ContactShadowPreviewDemo(onBack: () -> Unit) {
@@ -141,7 +146,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     // every label that reports the shadow state (peek header + [GroundingLegend]): the first
     // fix of this contradiction updated the legend alone and left the peek header still
     // reading the raw toggle, so at intensity 0 the banner announced "Grounded vs floating"
-    // over two identically floating boxes. One value means a future label cannot diverge
+    // when no shadow was drawn at all. One value means a future label cannot diverge
     // again (#2740).
     //
     // `derivedStateOf`, not a plain expression: reading `intensityFactor` directly in the
@@ -308,10 +313,10 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 materialInstance = wallMaterial,
             )
 
-            // ── The hero comparison: two identical hopping boxes ──────────────────────────
-            // LEFT — grounded. The pool tracks the hop: full-strength and tight at contact,
-            // dimmer and wider at the top (ambient-occlusion physics). That coupling is what
-            // makes this box read as LANDING ON the floor.
+            // ── The hero comparison: a grounded bouncer vs a floating twin ────────────────
+            // LEFT — grounded, and it BOUNCES to strike the floor. The pool tracks the hop:
+            // full-strength and tight at contact, dimmer and wider at the top (ambient-occlusion
+            // physics). That coupling is what makes this box read as LANDING ON the floor.
             if (shadowsEnabled) {
                 // The pool follows the light's ground projection as the box lifts (ball-in-a-box):
                 // centred and tight at contact, drifted out from under the box at the top of the
@@ -340,13 +345,16 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 ),
                 materialInstance = boxMaterial,
             )
-            // RIGHT — identical box, identical motion, NO shadow. With no pool to anchor it,
-            // the eye cannot tell where (or whether) it meets the floor: it floats.
+            // RIGHT — the floating twin. It does NOT bounce to the floor: it hovers high and
+            // bobs slowly (DemoMath.floatHoverY), clearly aloft, with no contact shadow. The
+            // floating is carried by the box's own MOTION — hovering high, never landing — so the
+            // absent shadow reads as "it's in the air", not "the shadow is missing" (#2740). This
+            // is the positive, kinetic cue an identically-hopping shadowless box could never give.
             CubeNode(
                 size = Size(BOX_EDGE_METERS, BOX_EDGE_METERS, BOX_EDGE_METERS),
                 position = Position(
                     x = BOX_HALF_SPACING,
-                    y = BOX_EDGE_METERS / 2f + hopHeight,
+                    y = DemoMath.floatHoverY(bounceElapsedNanos),
                     z = BOXES_Z,
                 ),
                 materialInstance = boxMaterial,

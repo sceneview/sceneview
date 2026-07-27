@@ -567,7 +567,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Lighting & Environment
 
-- `contact-shadow-preview` — Contact Shadow Preview. Grounded vs floating, side by side — two identical bouncing boxes (one with the procedural contact shadow, one without) and a wall-mounted TV no shadow map can serve. Non-AR, runs on any emulator.
+- `contact-shadow-preview` — Contact Shadow Preview. Grounded vs floating, side by side — one box bounces and lands (anchored by a procedural contact shadow), its twin levitates high with none, plus a wall-mounted TV no shadow map can serve. Non-AR, runs on any emulator.
 - `fog` — Fog. Linear, exponential, and height fog.
 - `lighting` — Lighting. Light types, plus a movable orbiting light.
 - `lighting-lab` — Lighting Lab. Sky, environment, reflections, and post-FX.
