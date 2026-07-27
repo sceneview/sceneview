@@ -1571,6 +1571,32 @@ if changed:
         fi
     done
 
+    # Fix Kotlin toolchain version prose — gradle/libs.versions.toml
+    # `kotlin = "X.Y.Z"` is the source of truth (captured as $KOTLIN_TOML in the
+    # check block above, §12); llms.txt + docs/docs/llms-full.txt quote it as
+    # `**Kotlin:** X.Y.Z` prose and drift on a toolchain bump. This was
+    # CHECK-ONLY until now — a Kotlin-only bump (#2790: 2.4.0 -> 2.4.10) reddened
+    # pre-push-check leg 7 with no `--fix` handler, forcing a hand-edit of both
+    # files + a manual gpt/ regen (relived on #2876, 2026-07-23). The sed is
+    # anchored on the `Kotlin:** ` prefix and rewrites ONLY the number that
+    # follows, leaving the neighbouring `**Compose BOM compatible**` (llms.txt)
+    # and `with Compose X.Y.Z` (llms-full.txt) untouched. Same scoped-prefix
+    # style as the `**SceneView:**` prose fix above; the gpt/ regen below then
+    # picks up the llms.txt edit. Note the source of truth here is $KOTLIN_TOML,
+    # NOT $SOURCE_VERSION — the Kotlin toolchain has its own version track.
+    if [ -n "$KOTLIN_TOML" ]; then
+        for kfile in llms.txt docs/docs/llms-full.txt; do
+            F="$REPO_ROOT/$kfile"
+            [ -f "$F" ] || continue
+            CURRENT=$(grep -oE 'Kotlin:\*\* [0-9]+\.[0-9]+\.[0-9]+' "$F" \
+                | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
+            if [ -n "$CURRENT" ] && [ "$CURRENT" != "$KOTLIN_TOML" ]; then
+                _sed_inplace "s/\(Kotlin:\*\* \)$CURRENT/\1$KOTLIN_TOML/" "$F"
+                echo -e "  Fixed: $kfile (Kotlin toolchain $CURRENT -> $KOTLIN_TOML)"
+            fi
+        done
+    fi
+
     # gpt/knowledge-*.md are GENERATED from llms.txt (tools/generate-gpt-knowledge.js,
     # #2724) and embed VERSION_NAME in their banners — regenerate them after the
     # llms.txt/version fixes above, otherwise a version bump leaves them stale and
