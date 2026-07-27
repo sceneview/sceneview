@@ -16,7 +16,10 @@
 #   4. an expired sticky lease is reclaimed (no permanent pool deadlock);
 #   5. an emulator whose AVD is not the pool AVD is never leasable;
 #   6. a plain pid lease still behaves exactly as before (no regression);
-#   7. the handoff token is inherited AT MOST once.
+#   7. the handoff token is inherited AT MOST once;
+#   8. a LIVE plain-pid lease blocks a peer acquire, and is takeable again once
+#      its owner dies — the standalone qa-android-demos.sh / ar-replay-qa.sh
+#      hold-the-lease fix (#2862 follow-up).
 #
 # Hermetic: a stub `adb` and a scratch EMU_LEASE_DIR. No emulator, no SDK, no
 # host state touched — safe to run anywhere, including CI.
@@ -187,6 +190,33 @@ THIRD="$(EMU_LEASE_SESSION="" EMU_LEASE_HANDOFF_WINDOW=0 bash -c '
 [ -z "$THIRD" ] \
     && ok "handoff window of 0 disables inheritance" \
     || bad "token inherited with the window disabled (got '$THIRD')"
+
+# ── 8. A LIVE plain-pid lease on a nu emulator blocks a peer acquire. ───────
+# The standalone qa-android-demos.sh / ar-replay-qa.sh fix (#2862 follow-up)
+# rests on this: selecting a free serial is not enough — the run ACQUIRES it,
+# and a second standalone run racing for the same nu emulator must be refused.
+rm -f "$EMU_LEASE_DIR"/*.lease 2>/dev/null || true
+sleep 30 & HOLDER_PID=$!
+# A live pid owns a plain (non-sticky) lease on the nu emulator.
+printf '%s\nmode=pid\nsession=\navd=Pixel_7a\nsince=%s\nlabel=\n' \
+  "$HOLDER_PID" "$(date +%s)" > "$EMU_LEASE_DIR/emulator-5554.lease"
+if EMU_LEASE_SESSION="" bash -c '
+     export EMU_LEASE_DIR="'"$EMU_LEASE_DIR"'"; source "'"$LIB"'"
+     emu_lease_acquire emulator-5554 "'"$ADB"'"' >/dev/null 2>&1; then
+    bad "a peer acquired a nu emulator already held by a live pid lease (collision)"
+else
+    ok "a live plain-pid lease blocks a peer acquire (standalone qa hold-lease fix)"
+fi
+kill "$HOLDER_PID" 2>/dev/null || true
+wait "$HOLDER_PID" 2>/dev/null || true
+# Owner now dead → the ownerless lease is takeable again (no permanent wedge).
+if EMU_LEASE_SESSION="" bash -c '
+     export EMU_LEASE_DIR="'"$EMU_LEASE_DIR"'"; source "'"$LIB"'"
+     emu_lease_acquire emulator-5554 "'"$ADB"'"' >/dev/null 2>&1; then
+    ok "once the holder dies the ownerless pid lease is takeable again"
+else
+    bad "ownerless pid lease not reclaimable after the holder died"
+fi
 
 echo ""
 echo "  $PASS passed, $FAIL failed"

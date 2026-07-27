@@ -83,6 +83,11 @@ cd "$REPO_ROOT"
 
 # shellcheck source=lib/android-cli.sh
 source "$SCRIPT_DIR/lib/android-cli.sh"
+# RAM-budgeted adaptive emulator pool helpers (#1647 → #1654, #2862) — so a
+# standalone replay run HOLDS a lease on the pool emulator it drives instead of
+# injecting input into an AVD a peer session is already interpreting.
+# shellcheck source=lib/emulator-select.sh
+source "$SCRIPT_DIR/lib/emulator-select.sh"
 
 INSTALL=1
 OUT_DIR=""
@@ -100,6 +105,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Device check ───────────────────────────────────────────────────────────
+# Remember whether a parent (device-qa.sh) handed us the serial: it already
+# owns the pool lease under its own pid, so we must NOT lease/release around it.
+PARENT_PROVIDED_SERIAL="${ANDROID_SERIAL:-}"
 SERIAL="$(android_cli_pick_serial || true)"
 if [[ -z "$SERIAL" ]]; then
   echo "[ar-replay-qa] no single device/emulator connected." >&2
@@ -107,6 +115,33 @@ if [[ -z "$SERIAL" ]]; then
   exit 2
 fi
 echo "[ar-replay-qa] target device: $SERIAL"
+
+# ── Pool-lease bookkeeping (#2862) ─────────────────────────────────────────
+# Standalone, ar-replay-qa.sh used to drive whatever android_cli_pick_serial
+# returned with NO notion of a reservation, so two standalone runs (or one
+# racing a peer's provisioning) could inject input into the same pool emulator
+# at once. HOLD a lease for the run when (a) we are standalone — a parent that
+# exported ANDROID_SERIAL already holds it — and (b) the target is a pool
+# emulator (a physical device is not pool-managed). The EXIT trap releases it.
+if [[ -z "$PARENT_PROVIDED_SERIAL" ]]; then
+  if [[ -z "${EMU_REQUIRE_AVD:-}" && "${GITHUB_ACTIONS:-}" != "true" ]]; then
+    EMU_REQUIRE_AVD="$EMU_POOL_AVD"
+  fi
+  export EMU_REQUIRE_AVD
+  # Adopt a token a `setup-ar-emulator.sh` run just published for this session,
+  # so our OWN reservation is not mistaken for a peer's (no-op otherwise).
+  [[ -n "${EMU_LEASE_SESSION:-}" ]] || emu_lease_session_inherit >/dev/null 2>&1 || true
+  if emu_serial_alive "$SERIAL" adb && emu_serial_avd_matches "$SERIAL" adb; then
+    if ! emu_lease_acquire "$SERIAL" adb; then
+      echo "[ar-replay-qa] $SERIAL is a pool emulator reserved by another session —" >&2
+      echo "[ar-replay-qa] refusing to drive it. Provision your own, or inherit the" >&2
+      echo "[ar-replay-qa] reservation with: export EMU_LEASE_SESSION=<its token>" >&2
+      echo "[ar-replay-qa]   bash .claude/scripts/setup-ar-emulator.sh" >&2
+      exit 2
+    fi
+    echo "[ar-replay-qa] leased pool emulator $SERIAL for this run"
+  fi
+fi
 
 # ── Build + install ────────────────────────────────────────────────────────
 # The replay harness needs the *debug* APK: the bundled ARCore recording
@@ -153,7 +188,12 @@ adb -s "$SERIAL" logcat -c || true
 # on a chatty multi-minute Filament run, so stream live into the artifact dir.
 LOGCAT_PID=""
 stop_logcat() { [[ -n "$LOGCAT_PID" ]] && kill "$LOGCAT_PID" >/dev/null 2>&1 || true; }
-trap stop_logcat EXIT
+# Release the pool lease (if this standalone run took one) on EVERY exit path,
+# together with stopping the logcat stream (#2862). emu_lease_release_all is a
+# no-op when device-qa.sh owns the lease under its own pid, and it keeps a
+# sticky session reservation (it only drops the plain pid lease taken above).
+ar_cleanup() { stop_logcat; emu_lease_release_all 2>/dev/null || true; }
+trap ar_cleanup EXIT
 adb -s "$SERIAL" logcat -v threadtime > "$LOGCAT_FILE" 2>&1 &
 LOGCAT_PID=$!
 
@@ -221,7 +261,8 @@ done
 
 # Stop the logcat stream now every shard is done so the file is complete.
 stop_logcat
-trap - EXIT
+# Logcat is stopped; keep only the lease-release on the exit paths below (#2862).
+trap 'emu_lease_release_all 2>/dev/null || true' EXIT
 
 # ── No shard produced a summary ────────────────────────────────────────────
 # Either every shard assumeTrue-skipped (bundled recording absent — a sparse
