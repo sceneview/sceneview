@@ -37,6 +37,8 @@
 #     emu_running_serials [adb]          # newline list of booted emulator serials
 #     emu_count_running [adb]            # count of booted emulators
 #     emu_lease_acquire <serial>         # claim a lease for an already-up serial
+#     emu_lease_ensure <serial> [adb]    # assert we may drive it, WITHOUT taking
+#                                        # ownership when it is already ours
 #     emu_lease_release <serial>         # drop a lease this process owns
 #     emu_lease_free_serial [adb]        # echo a running, unleased serial (or "")
 #     emu_pool_reclaim_stale [adb]       # GC dead leases
@@ -551,6 +553,35 @@ emu_lease_acquire() {
     return 0
   fi
   return 1
+}
+
+# emu_lease_ensure <serial> [adb_bin] — assert we may drive <serial>, WITHOUT
+# taking ownership away from whoever already holds it for us.
+#
+# This is the guard for the "caller pre-set ANDROID_SERIAL" path, where
+# emu_lease_acquire is the WRONG call (#2921). Measured, with device-qa.sh as
+# the parent and qa-android-demos.sh as the child:
+#
+#   - shared session token → acquire ADOPTS the parent's lease and rewrites the
+#     owner to the child's pid; the child's EXIT trap then RELEASES it while the
+#     parent is still running its remaining legs. The emulator goes back to
+#     looking free to every peer — precisely the collision the lease exists to
+#     prevent, reintroduced on the nominal path.
+#   - no shared token → the parent's pid is a live peer, so acquire returns 1
+#     and the child refuses to run at all.
+#
+# So: if the lease is already ours (by pid or by session token) leave it exactly
+# as it is and succeed. Otherwise fall through to a real acquire — free emulator
+# → we take it (and emu_lease_release_all, which only releases leases owned by
+# OUR pid, correctly cleans it up); live peer's → refused, as it should be.
+emu_lease_ensure() {
+  local serial="$1" adb_bin="${2:-adb}"
+  [[ -n "$serial" ]] || { _emu_log "emu_lease_ensure: serial required"; return 1; }
+  _emu_lease_dir_init
+  if emu_lease_mine "$serial"; then
+    return 0
+  fi
+  emu_lease_acquire "$serial" "$adb_bin"
 }
 
 # emu_lease_release <serial> — release a lease IF this process owns it by pid.

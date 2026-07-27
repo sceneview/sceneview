@@ -124,11 +124,26 @@ export EMU_REQUIRE_AVD
 # marker this script prints on the genuine success path — device-qa.sh's
 # run_android now requires that marker, exactly as run_ios does. Do not grade
 # this script on its exit code alone.
-trap 'emu_lease_release_all 2>/dev/null || true' EXIT
+trap 'emu_lease_release_all || true' EXIT
 
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
   if ! emu_serial_alive "$ANDROID_SERIAL" adb; then
     echo "[qa] ERROR: ANDROID_SERIAL=$ANDROID_SERIAL is not a running emulator." >&2
+    exit 1
+  fi
+  # A pre-set ANDROID_SERIAL used to be trusted outright as "my caller holds the
+  # lease" — and setup-ar-emulator.sh's own printed next-steps tell a human to
+  # export exactly that, so the hold-the-lease fix never ran on the documented
+  # happy path (#2921). Verify instead of assuming. emu_lease_ensure is a strict
+  # no-op when the lease is already ours by pid or session token (device-qa.sh's
+  # child, or our own sticky reservation); it only acts when the emulator is
+  # unleased (take it) or held by a live peer (refuse). Calling emu_lease_acquire
+  # here instead would be a REGRESSION: it rewrites the owner to our pid and our
+  # EXIT trap would then release a lease our parent still depends on.
+  if ! emu_lease_ensure "$ANDROID_SERIAL" adb; then
+    echo "[qa] ERROR: ANDROID_SERIAL=$ANDROID_SERIAL is reserved by another session." >&2
+    echo "[qa]        Inherit it:  export EMU_LEASE_SESSION=<its token>" >&2
+    echo "[qa]        Or provision your own:  bash .claude/scripts/setup-ar-emulator.sh" >&2
     exit 1
   fi
   echo "[qa] targeting leased pool emulator: $ANDROID_SERIAL"

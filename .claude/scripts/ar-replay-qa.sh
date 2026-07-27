@@ -157,8 +157,29 @@ if [[ -z "$PARENT_PROVIDED_SERIAL" ]]; then
     # the Gradle build between here and there would otherwise leave the lease
     # file behind. (Harmless — a dead owner's lease is reclaimable — but a
     # peer would wait needlessly.) Superseded by ar_cleanup once logcat runs.
-    trap 'emu_lease_release_all 2>/dev/null || true' EXIT
+    trap 'emu_lease_release_all || true' EXIT
   fi
+elif emu_serial_alive "$SERIAL" adb; then
+  # A pre-set ANDROID_SERIAL was trusted outright as "my parent holds the
+  # lease". device-qa.sh does; a human following setup-ar-emulator.sh's own
+  # printed `export ANDROID_SERIAL=…` does not necessarily — and that is the
+  # documented happy path, so the guard never ran there (#2921). Verify.
+  # emu_lease_ensure is a strict no-op when the lease is already ours by pid or
+  # session token, so device-qa.sh's lease is left untouched under its own pid;
+  # emu_lease_acquire here would instead rewrite the owner to ours and this
+  # script's EXIT trap would release the parent's lease mid-run (measured).
+  if ! emu_lease_ensure "$SERIAL" adb; then
+    echo "[ar-replay-qa] $SERIAL is a pool emulator reserved by another session —" >&2
+    echo "[ar-replay-qa] refusing to drive it. Inherit the reservation with:" >&2
+    echo "[ar-replay-qa]   export EMU_LEASE_SESSION=<its token>" >&2
+    echo "[ar-replay-qa] or provision your own: bash .claude/scripts/setup-ar-emulator.sh" >&2
+    exit 2
+  fi
+  # Deliberately NO extra EXIT trap here. Arming one this early is what widens
+  # the bash 3.2 false-green window (a `||`-guarded abort under a trap exits 0),
+  # and this branch does not need it: a lease that was already ours is not ours
+  # to release, and one we just took is released by ar_cleanup below — an abort
+  # in between leaves a dead-owner lease, which the pool reclaims on its own.
 fi
 
 # ── Build + install ────────────────────────────────────────────────────────
@@ -210,7 +231,7 @@ stop_logcat() { [[ -n "$LOGCAT_PID" ]] && kill "$LOGCAT_PID" >/dev/null 2>&1 || 
 # together with stopping the logcat stream (#2862). emu_lease_release_all is a
 # no-op when device-qa.sh owns the lease under its own pid, and it keeps a
 # sticky session reservation (it only drops the plain pid lease taken above).
-ar_cleanup() { stop_logcat; emu_lease_release_all 2>/dev/null || true; }
+ar_cleanup() { stop_logcat; emu_lease_release_all || true; }
 trap ar_cleanup EXIT
 adb -s "$SERIAL" logcat -v threadtime > "$LOGCAT_FILE" 2>&1 &
 LOGCAT_PID=$!
@@ -280,7 +301,7 @@ done
 # Stop the logcat stream now every shard is done so the file is complete.
 stop_logcat
 # Logcat is stopped; keep only the lease-release on the exit paths below (#2862).
-trap 'emu_lease_release_all 2>/dev/null || true' EXIT
+trap 'emu_lease_release_all || true' EXIT
 
 # ── No shard produced a summary ────────────────────────────────────────────
 # Either every shard assumeTrue-skipped (bundled recording absent — a sparse
@@ -291,6 +312,12 @@ if [[ "$SHARDS_PULLED" -eq 0 ]]; then
     echo "[ar-replay-qa] no ar-qa-summary.json from any shard and every shard exited" >&2
     echo "[ar-replay-qa] cleanly — the harness assumeTrue-skipped before the sweep" >&2
     echo "[ar-replay-qa] (bundled recording absent). Nothing to replay; green (#1565)." >&2
+    # Positive marker on stdout, deliberately NOT the PASS one: this run is
+    # green because there was nothing to exercise, and device-qa.sh grades the
+    # two apart so the report never implies demos were replayed (#2921). It
+    # exists so that a green-no-op is distinguishable from a bash-3.2 exit-0
+    # abort, which prints no marker at all.
+    echo "[ar-replay-qa] GREEN-NO-OP — nothing to replay; no AR demo was exercised."
     exit 0
   fi
   echo "[ar-replay-qa] FAIL — no verdict from any shard and a shard exited non-zero." >&2
