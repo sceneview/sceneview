@@ -13,8 +13,8 @@ they are **not in sync today**. Read the next section before assuming parity.
 | Class | Files | Set |
 |---|---|---|
 | `phone-screenshot-*` | 3 | **v2** — `model-viewer · dynamic-sky · multi-model` (#2854/#2855) |
-| `tablet7-screenshot-*` | 5 | pre-v2 five — not re-shot in the v2 pass (#2907) |
-| `tablet10-screenshot-*` | 5 | pre-v2 five, `materials` slot re-captured in #2903 |
+| `tablet7-screenshot-*` | 2 | **v2** — `model-viewer · dynamic-sky` (#2907; `multi-model` deferred on #2913) |
+| `tablet10-screenshot-*` | 2 | **v2** — `model-viewer · dynamic-sky` (#2907; `multi-model` deferred on #2913) |
 | iOS (`appstore-screenshots/`) | 5 + 5 | pre-v2 five — refresh deferred on #2896 |
 
 **Set v2** is what the capture script produces today. It is three frames
@@ -65,12 +65,18 @@ The `imageType` column is the Play `AppImageType` enum value that
 guessable — an invalid one 400s and, because a Play edit is atomic, voids the
 **whole** listing sync including the text and the icon (#2794).
 
-All three classes are script-reproducible, but only phone is on the current set
-(see the table above). For the record, what the tablet PNGs replaced (#2796): 12
-files that were byte-identical across the 7"/10" slots, light-mode, advertised a
-stale `v4.14.0` in the About screen, and included two screens with no 3D at all.
-The committed tablet PNGs were shot from a **4.23.0** build, so they also predate
-the demo bottom-overlay fix (#2780) — another reason #2907 wants a re-capture.
+All three classes are script-reproducible and all three are now on set v2 — phone
+with three slots, the tablets with two (`multi-model` is deferred on #2913; Play
+accepts 2–8 per type). The set is what a run *writes*, and a run also **prunes**
+any higher-numbered slot left over from a larger set, because `play_listing.py`
+selects by glob rather than by count — an unpruned leftover would still be
+uploaded at the next tag, and the mosaic (which iterates 1..N) cannot show it.
+
+For the record, what the tablet PNGs replaced (#2796): 12 files that were
+byte-identical across the 7"/10" slots, light-mode, advertised a stale `v4.14.0`
+in the About screen, and included two screens with no 3D at all. The pre-v2
+tablet PNGs that #2907 has now retired were shot from a **4.23.0** build and
+predate the demo bottom-overlay fix (#2780).
 
 ## Regenerating the screenshots
 
@@ -170,11 +176,15 @@ passes the variance check and is still unusable.
 
 ## Known follow-ups
 
-- **#2907** — the tablet classes still carry the pre-v2 five, shot from a 4.23.0
-  build. A re-capture on set v2 needs both tablet AVDs and a fresh app build.
 - **#2913** — `multi-model` cannot ship on tablets until its scene takes the
   viewport aspect into account (demo-side). Until then a tablet run yields two
-  slots; Play accepts 2–8 per type.
+  slots; Play accepts 2–8 per type. Promoting the tablets back to three is the
+  only thing this blocks — both classes are otherwise on set v2 (#2907).
+- **Tablet `model-viewer` framing is not deterministic.** In the committed set
+  the helmet sits at a visibly different orientation on `tablet7-screenshot-1`
+  than on `tablet10-screenshot-1`, while `dynamic-sky` matches across both
+  classes. Two runs of the same demo should differ only by aspect, so this is a
+  demo-side non-determinism worth pinning before the next re-capture.
 - **#2874 / #2873** — `materials` (non-deterministic HDRI *and* model per
   launch) and `geometry` (clipped primitives) are what keep those ids out of
   set v2. Both are demo-side and still open.

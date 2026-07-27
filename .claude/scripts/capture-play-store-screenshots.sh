@@ -534,6 +534,21 @@ PY
 done
 TOTAL=$((INDEX - 1))
 
+# ── 4b. Prune stale trailing slots ──────────────────────────────────────────
+# $OUT_DIR is a byte-for-byte mirror of the Play listing and `play_listing.py`
+# selects by GLOB, not by count — so a slot this run did not write is still
+# uploaded at the next tag. When the set shrinks (5 → 3 on phone in #2855,
+# 5 → 2 on tablets in #2913) the leftovers are frames from an older app build
+# that nobody looks at again: the mosaic below iterates 1..TOTAL and cannot
+# render them. Drop them here, AFTER the capture loop completed, so an aborted
+# run (set -e, foreground guard, variance guard) can never empty the mirror.
+STALE=$((TOTAL + 1))
+while [[ -f "$OUT_DIR/$PREFIX-screenshot-$STALE.png" ]]; do
+  echo "[capture] pruning stale slot $PREFIX-screenshot-$STALE.png (set is now $TOTAL)" >&2
+  rm -f "$OUT_DIR/$PREFIX-screenshot-$STALE.png"
+  STALE=$((STALE + 1))
+done
+
 # ── 5. Mosaic thumbnail (visual sanity, well under the 1800 px session limit) ─
 # Written OUTSIDE $OUT_DIR on purpose: that directory is a byte-for-byte mirror
 # of the Play listing, and `play_listing.py`'s test suite fails on any file there
