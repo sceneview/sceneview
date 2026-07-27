@@ -16,7 +16,10 @@
 #   4. an expired sticky lease is reclaimed (no permanent pool deadlock);
 #   5. an emulator whose AVD is not the pool AVD is never leasable;
 #   6. a plain pid lease still behaves exactly as before (no regression);
-#   7. the handoff token is inherited AT MOST once.
+#   7. the handoff token is inherited AT MOST once;
+#   8. a LIVE plain-pid lease blocks a peer acquire, and is takeable again once
+#      its owner dies — the standalone qa-android-demos.sh / ar-replay-qa.sh
+#      hold-the-lease fix (#2862 follow-up).
 #
 # Hermetic: a stub `adb` and a scratch EMU_LEASE_DIR. No emulator, no SDK, no
 # host state touched — safe to run anywhere, including CI.
@@ -187,6 +190,92 @@ THIRD="$(EMU_LEASE_SESSION="" EMU_LEASE_HANDOFF_WINDOW=0 bash -c '
 [ -z "$THIRD" ] \
     && ok "handoff window of 0 disables inheritance" \
     || bad "token inherited with the window disabled (got '$THIRD')"
+
+# ── 8. A live pid lease on an un-leased emulator blocks a peer acquire. ───
+# The standalone qa-android-demos.sh / ar-replay-qa.sh fix (#2862 follow-up)
+# rests on this: selecting a free serial is not enough — the run ACQUIRES it,
+# and a second standalone run racing for the same un-leased emulator must be refused.
+rm -f "$EMU_LEASE_DIR"/*.lease 2>/dev/null || true
+sleep 30 & HOLDER_PID=$!
+# A live pid owns a plain (non-sticky) lease on the un-leased emulator.
+printf '%s\nmode=pid\nsession=\navd=Pixel_7a\nsince=%s\nlabel=\n' \
+  "$HOLDER_PID" "$(date +%s)" > "$EMU_LEASE_DIR/emulator-5554.lease"
+if EMU_LEASE_SESSION="" bash -c '
+     export EMU_LEASE_DIR="'"$EMU_LEASE_DIR"'"; source "'"$LIB"'"
+     emu_lease_acquire emulator-5554 "'"$ADB"'"' >/dev/null 2>&1; then
+    bad "a peer acquired an un-leased emulator already held by a live pid lease (collision)"
+else
+    ok "a live plain-pid lease blocks a peer acquire (standalone qa hold-lease fix)"
+fi
+kill "$HOLDER_PID" 2>/dev/null || true
+wait "$HOLDER_PID" 2>/dev/null || true
+# Owner now dead → the ownerless lease is takeable again (no permanent wedge).
+if EMU_LEASE_SESSION="" bash -c '
+     export EMU_LEASE_DIR="'"$EMU_LEASE_DIR"'"; source "'"$LIB"'"
+     emu_lease_acquire emulator-5554 "'"$ADB"'"' >/dev/null 2>&1; then
+    ok "once the holder dies the ownerless pid lease is takeable again"
+else
+    bad "ownerless pid lease not reclaimable after the holder died"
+fi
+
+# ── 9. emu_lease_ensure: the pre-set-ANDROID_SERIAL guard (#2921). ────────
+# device-qa.sh leases under its own pid, exports EMU_LEASE_SESSION + ANDROID_SERIAL,
+# then runs qa-android-demos.sh / ar-replay-qa.sh as CHILD processes. The guard on
+# that path must verify without taking ownership: emu_lease_acquire there ADOPTS the
+# parent's lease into the child's pid, and the child's EXIT trap then deletes it
+# while the parent is still running — the emulator goes back to looking free to
+# every peer. Measured before the fix; pinned here so it cannot come back.
+rm -f "$EMU_LEASE_DIR"/*.lease 2>/dev/null || true
+export EMU_LEASE_SESSION="sv-parent-session"
+emu_lease_acquire emulator-5554 "$ADB" >/dev/null 2>&1
+PARENT_OWNER="$(emu_lease_owner emulator-5554)"
+
+# A child sharing the session token runs the guard, then exits with the same EXIT
+# trap the real QA scripts install.
+CHILD_RC=0
+EMU_LEASE_SESSION="$EMU_LEASE_SESSION" bash -c '
+  export EMU_LEASE_DIR="'"$EMU_LEASE_DIR"'"; source "'"$LIB"'"
+  trap "emu_lease_release_all 2>/dev/null || true" EXIT
+  emu_lease_ensure emulator-5554 "'"$ADB"'"' >/dev/null 2>&1 || CHILD_RC=$?
+
+[ "$CHILD_RC" -eq 0 ] \
+    && ok "emu_lease_ensure lets a child of the lease holder proceed" \
+    || bad "emu_lease_ensure refused a child sharing the session token (rc=$CHILD_RC)"
+if [ -f "$EMU_LEASE_DIR/emulator-5554.lease" ]; then
+    ok "the parent's lease SURVIVES the child's exit (no mid-run release)"
+else
+    bad "child's EXIT trap released the parent's lease — emulator now looks free to peers"
+fi
+[ "$(emu_lease_owner emulator-5554)" = "$PARENT_OWNER" ] \
+    && ok "emu_lease_ensure did not steal ownership from the parent" \
+    || bad "ownership moved to the child (was $PARENT_OWNER, now $(emu_lease_owner emulator-5554))"
+
+# Un-leased emulator → the guard must really acquire it (a human who exported
+# ANDROID_SERIAL by hand holds nothing).
+rm -f "$EMU_LEASE_DIR"/*.lease 2>/dev/null || true
+if EMU_LEASE_SESSION="sv-lonely" bash -c '
+     export EMU_LEASE_DIR="'"$EMU_LEASE_DIR"'"; source "'"$LIB"'"
+     emu_lease_ensure emulator-5554 "'"$ADB"'"' >/dev/null 2>&1; then
+    ok "emu_lease_ensure acquires an un-leased emulator (bare exported serial)"
+else
+    bad "emu_lease_ensure refused an un-leased emulator — the guard over-blocks"
+fi
+
+# A live PEER's lease → refused, which is the whole point of the guard.
+rm -f "$EMU_LEASE_DIR"/*.lease 2>/dev/null || true
+sleep 30 & PEER_PID=$!
+printf '%s\nmode=pid\nsession=sv-peer-session\navd=Pixel_7a\nsince=%s\nlabel=\n' \
+  "$PEER_PID" "$(date +%s)" > "$EMU_LEASE_DIR/emulator-5554.lease"
+if EMU_LEASE_SESSION="sv-not-the-peer" bash -c '
+     export EMU_LEASE_DIR="'"$EMU_LEASE_DIR"'"; source "'"$LIB"'"
+     emu_lease_ensure emulator-5554 "'"$ADB"'"' >/dev/null 2>&1; then
+    bad "emu_lease_ensure let us drive an emulator a live peer holds (collision)"
+else
+    ok "emu_lease_ensure refuses an emulator held by a live peer session"
+fi
+kill "$PEER_PID" 2>/dev/null || true
+wait "$PEER_PID" 2>/dev/null || true
+unset EMU_LEASE_SESSION
 
 echo ""
 echo "  $PASS passed, $FAIL failed"

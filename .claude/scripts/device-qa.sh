@@ -445,9 +445,19 @@ run_android() {
       && log "android recording: $ARTIFACTS/$(basename "$android_rec")"
   fi
 
-  # Maestro has no flat summary JSON; the wrapper's exit code is the verdict.
-  if [[ $rc -eq 0 ]]; then
+  # Maestro has no flat summary JSON, so the wrapper's exit code carries the
+  # verdict — but rc=0 alone is NOT proof of a pass, exactly as on the iOS leg
+  # above. Measured on this host (bash 3.2.57): when a call that aborts sits in
+  # a `||`-guarded list AND an EXIT trap is installed, the script dies with
+  # exit 0 because the `||` already reset `$?` — and qa-android-demos.sh now
+  # installs an EXIT trap (it releases its pool lease, #2862) and runs Maestro
+  # as `maestro_run … || MAESTRO_RC=$?`. Preserving `$?` in the trap does NOT
+  # help (it preserves the 0). Require the positive `[qa] PASS` marker, which
+  # only the genuine success path prints.
+  if [[ $rc -eq 0 ]] && grep -q '^\[qa\] PASS — ' "$ARTIFACTS/android-output.txt" 2>/dev/null; then
     record android passed "flow=$flow" "" "$(( $(date +%s) - started ))"
+  elif [[ $rc -eq 0 ]]; then
+    record android failed "qa-android-demos.sh exited 0 without its PASS marker — harness aborted mid-run (flow=$flow)" "" "$(( $(date +%s) - started ))"
   else
     record android failed "qa-android-demos.sh rc=$rc (flow=$flow)" "" "$(( $(date +%s) - started ))"
   fi
@@ -672,7 +682,22 @@ run_ar() {
   [[ -f "$summary" ]] && kept="$summary"
 
   case $rc in
-    0) record ar passed "ar-replay-qa.sh" "$kept" "$(( $(date +%s) - started ))" ;;
+    # rc=0 alone is NOT proof of a pass, for the same measured reason the
+    # android and iOS legs above require a positive marker: on bash 3.2.57 a
+    # script that aborts inside a `||`-guarded list with an EXIT trap installed
+    # exits 0 — and ar-replay-qa.sh installs one to release its pool lease.
+    # Grading `ar` on rc alone graded an ABSENCE; require a marker only a real
+    # terminal path prints, and keep the two green paths distinguishable so the
+    # report never implies demos ran when none did (#2921).
+    0)
+      if grep -q '^\[ar-replay-qa\] PASS — ' "$ARTIFACTS/ar-output.txt" 2>/dev/null; then
+        record ar passed "ar-replay-qa.sh" "$kept" "$(( $(date +%s) - started ))"
+      elif grep -q '^\[ar-replay-qa\] GREEN-NO-OP — ' "$ARTIFACTS/ar-output.txt" 2>/dev/null; then
+        record ar passed "nothing to replay — bundled recording absent (#1565); no AR demo was exercised" "$kept" "$(( $(date +%s) - started ))"
+      else
+        record ar failed "ar-replay-qa.sh exited 0 without a positive marker — harness aborted mid-run" "$kept" "$(( $(date +%s) - started ))"
+      fi
+      ;;
     2) record ar skipped "no device for ar-replay-qa.sh" "$kept" "$(( $(date +%s) - started ))" ;;
     # rc=3: no demo crashed, but one or more demos were not validated —
     # `ar-record-playback` replayed 0 frames (ARCore dataset playback unsupported

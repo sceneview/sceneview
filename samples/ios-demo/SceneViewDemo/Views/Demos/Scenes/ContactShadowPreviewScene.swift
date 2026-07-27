@@ -1,7 +1,7 @@
 // @sceneId     contact-shadow-preview
 // @title       Contact Shadow Preview
-// @subtitle    Non-AR preview of the procedural contact shadow — a TV grounded on a wall and a box on the floor, with per-surface presets (Android: in review)
-// @category    ar
+// @subtitle    Grounded vs floating, side by side — two identical bouncing boxes (one with the procedural contact shadow, one without) and a wall-mounted TV no shadow map can serve. Non-AR (Android: in review)
+// @category    lighting
 // @available   false
 // @icon        circle.bottomhalf.filled
 // @iosOnly     true

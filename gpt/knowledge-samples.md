@@ -154,8 +154,90 @@ Streamed variant: `generateContentStream(request)` returns a `Flow` of
 `GenerateContentResponse` **deltas** — concatenate `candidates.first().text`
 per emission for a live "typing" card. The reference demo streams, and its
 question is a free-form user field (blank falls back to the default prompt).
+
+World-anchored variant: pin each answer where the user tapped instead of
+stacking them in a screen overlay. Hit-test the tap against the latest frame,
+anchor the hit, and render the card on a `ViewNode` under an `AnchorNode`:
+
+```kotlin
+val viewNodeManager = rememberViewNodeManager()
+
+// One card per tap: the anchor ARCore refines each frame, plus the streamed text.
+class AnswerPanel(val id: Int, val anchor: Anchor) { var text by mutableStateOf("") }
+
+val panels = remember { mutableStateListOf<AnswerPanel>() }
+var latestFrame by remember { mutableStateOf<Frame?>(null) }
+var isTracking by remember { mutableStateOf(false) }
+var nextId by remember { mutableIntStateOf(0) }
+// ARCore anchors cost per frame while attached — always detach them.
+DisposableEffect(Unit) { onDispose { panels.forEach { it.anchor.detach() } } }
+
+ARSceneView(
+    planeRenderer = true,                     // show where a tap will pin
+    viewNodeWindowManager = viewNodeManager,  // required by ViewNode
+    onSessionUpdated = { _, frame ->
+        latestFrame = frame
+        // Feed the gate below — without this, isTracking stays false and
+        // every tap silently hit-tests nothing.
+        isTracking = frame.camera.trackingState == TrackingState.TRACKING
+    },
+    onGestureListener = rememberOnGestureListener(
+        onSingleTapConfirmed = { e, _ ->
+            // Gate on camera tracking, not just the trackable's own state.
+            // HORIZONTAL_UPWARD_FACING only: on a horizontal plane (and on a
+            // Point) the hit pose's Z+ really does point back toward the
+            // device, which is what lets the card below skip any rotation. A
+            // VERTICAL plane's Z+ lies IN the wall, so the same code would pin
+            // the card edge-on — handle walls with `wallFacingRotation(...)`
+            // instead, or let them fall through to the screen-space card.
+            val hit = latestFrame?.takeIf { isTracking }?.hitTest(e)?.firstOrNull { result ->
+                val t = result.trackable
+                t.trackingState == TrackingState.TRACKING &&
+                    (t is Point || (t is Plane &&
+                        t.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                        t.isPoseInPolygon(result.hitPose)))
+            }
+            val panel = hit?.let { AnswerPanel(nextId++, it.createAnchor()) }
+            if (panel != null) panels += panel
+            // …then run the ask, streaming its deltas into `panel` when non-null,
+            // and into the screen-space card when the tap hit nothing trackable.
+        }
+    ),
+) {
+    panels.forEach { panel ->
+        key(panel.id) {
+            AnchorNode(anchor = panel.anchor) {          // follows ARCore's refined pose
+                ViewNode(
+                    windowManager = viewNodeManager,
+                    unlit = true,                        // UI card: ignore scene lighting
+                    position = Position(y = 0.12f),      // float above the surface
+                    // No rotation — valid because the hit is horizontal/Point.
+                    scale = Scale(0.15f),                // ViewNode renders at 250 px/m
+                    // No parent to measure against — size the content explicitly.
+                ) { Card(Modifier.width(320.dp)) { Text(panel.text) } }
+            }
+        }
+    }
+}
+```
+
+Gotchas: give the `ViewNode`'s content an explicit width (it has no parent to
+measure against); **do not add a facing rotation for horizontal-plane or Point
+hits** — there the ARCore hit pose is already oriented "Z+ … roughly toward the
+user's device" and a `ViewNode`'s quad faces its own +Z, so identity faces the
+user and any extra yaw turns the card away. **This does not hold on a VERTICAL
+plane**: its Y+ is the wall normal and its Z+ lies in the wall surface, so
+reusing the hit pose pins the card edge-on. Either filter the hit to
+`Plane.Type.HORIZONTAL_UPWARD_FACING` (above) and let wall taps fall through to
+the screen-space card, or orient walls explicitly with `wallFacingRotation()`
+from `arsceneview`. Also: `createAnchor()` throws once too many anchors exist,
+so cap the panels and wrap it; a tap that hits nothing trackable must fall back
+to the screen-space card; and with the composited capture above, hide the
+anchored cards during the capture (`isVisible = false`) or the model reads
+its own earlier answers back as part of the next question.
+
 Working demo: `point-and-ask` (`PointAndAskDemo.kt` + `AskEngine.kt`). Full
-recipe (one-shot + composited + streamed variants):
+recipe (one-shot + composited + streamed + world-anchored variants):
 `samples/recipes/point-and-ask.md`.
 
 ### Procedural geometry (no model files)
