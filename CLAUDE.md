@@ -662,7 +662,12 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 > tied to a `v*` tag, `mcp/` changes between releases leave npm stale (it once
 > rotted a month behind at 4.0.12). To ship the MCP on demand, bump
 > `mcp/package.json` + `mcp/package-lock.json` by a patch (the generated
-> `mcp/src/generated/version.ts` is refreshed automatically by `npm run prepare`),
+> `mcp/src/generated/version.ts` is refreshed by `npm run prepare` **only when the
+> MCP itself is (re)built** — a plain SDK-only release bumps `gradle.properties`
+> without touching `mcp/`, so it does NOT run that lifecycle and `version.ts` went
+> stale at v4.25.0; `sync-versions.sh` therefore independently checks its
+> `LATEST_SCENEVIEW_RELEASE` against `VERSION_NAME` (CRITICAL) and regenerates it in
+> `--fix` — that is the real backstop on the release path, #2906),
 > land it on `main`, then dispatch the **`mcp-publish.yml`** workflow
 > (`gh workflow run mcp-publish.yml -R sceneview/sceneview --ref main`). It
 > mirrors `release.yml`'s `publish-mcp` job (same `NPM_TOKEN`, build/test/publish)
