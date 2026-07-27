@@ -74,6 +74,12 @@
 #   --seed-snapshot  Boot, install ARCore, save the golden `qa-clean` snapshot,
 #                    then exit. Run once to seed/refresh the warm QA image.
 #   --no-snapshot    Cold-boot even if a golden snapshot exists (debug escape).
+#   --release        Hand this session's pool RESERVATION back and exit, leaving
+#                    the emulator running (#2862). Provisioning reserves the
+#                    emulator for the session that will drive it — this is how
+#                    you free it for a peer without killing the guest. Refuses
+#                    to release another session's reservation unless you pass
+#                    its EMU_LEASE_SESSION (or EMU_LEASE_TAKEOVER=1).
 #   --window         Boot the emulator VISIBLE (windowed) so a developer can
 #                    glance at it. OPT-IN, local only. Default is headless
 #                    (-no-window), which is marginally lighter on the host (skips
@@ -134,7 +140,25 @@ AVDMANAGER_BIN="$SDK_ROOT/cmdline-tools/latest/bin/avdmanager"
 # emulator/adb/sdkmanager binaries are the fallback when it is not installed.
 ANDROID_CLI_BIN="$(command -v android 2>/dev/null || echo "$HOME/.local/bin/android")"
 ANDROID_CLI=(--no-metrics)   # global flags: never phone home from this repo
-AVD_NAME="Pixel_7a"
+# The pool AVD name lives in lib/emulator-select.sh (EMU_POOL_AVD) so this
+# script and every QA consumer name the same device from one place.
+AVD_NAME="$EMU_POOL_AVD"
+# Pool identity guards (#2862). EMU_REQUIRE_AVD makes the lease helpers refuse
+# any emulator on a pool port that is NOT this AVD — a stray `Tablet10_QA` on
+# 5554 must never be leased and driven as if it were the ARCore-ready Pixel_7a.
+# EMU_LEASE_SESSION identifies the session that will USE the emulator after
+# this script exits; a fresh token is minted when the caller has none, so two
+# parallel provisioning runs can never resolve to the same owner.
+#
+# The AVD guard is LOCAL-POOL only: on CI the emulator is provided by
+# ReactiveCircus/android-emulator-runner under the AVD name `test`, and
+# refusing it would leave the runner with no leasable emulator at all. A CI
+# runner is single-session, which is precisely the collision this prevents.
+if [[ -z "${EMU_REQUIRE_AVD:-}" && "${GITHUB_ACTIONS:-}" != "true" ]]; then
+  EMU_REQUIRE_AVD="$AVD_NAME"
+fi
+[[ -n "${EMU_LEASE_SESSION:-}" ]] || EMU_LEASE_SESSION="$(emu_lease_session_new)"
+export EMU_REQUIRE_AVD EMU_LEASE_SESSION
 AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
 AVD_CONFIG="$AVD_HOME/$AVD_NAME.avd/config.ini"
 # Golden boot-snapshot name (#1672). A clean post-ARCore-install snapshot seeded
@@ -206,6 +230,7 @@ STOP_AFTER=false
 SEED_SNAPSHOT=false
 NO_SNAPSHOT=false
 ROSETTA=false
+RELEASE_LEASE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -216,6 +241,7 @@ while [[ $# -gt 0 ]]; do
     --seed-snapshot)  SEED_SNAPSHOT=true; shift ;;
     --no-snapshot)    NO_SNAPSHOT=true; shift ;;
     --rosetta)        ROSETTA=true; shift ;;
+    --release)        RELEASE_LEASE=true; shift ;;
     --window)         EMU_VISIBLE=1; shift ;;
     -h|--help)
       # Print the leading comment block (lines starting with #), stop at `set -`.
@@ -243,6 +269,36 @@ if $SEED_SNAPSHOT; then
 fi
 
 log() { echo "[setup-ar] $*"; }
+
+# --- --release: hand a sticky pool reservation back (#2862) -------------------
+# A sticky lease deliberately outlives this script (that is the whole fix), so
+# there has to be an explicit way to give it back without killing the emulator.
+# Runs before any SDK/AVD work: releasing a reservation must never depend on a
+# healthy SDK install.
+if $RELEASE_LEASE; then
+  emu_lease_session_inherit >/dev/null 2>&1 || true
+  released=0; refused=0
+  while IFS= read -r lease_serial; do
+    [[ -n "$lease_serial" ]] || continue
+    emu_lease_is_sticky "$lease_serial" || continue
+    if emu_lease_mine "$lease_serial" || [[ "${EMU_LEASE_TAKEOVER:-0}" == "1" ]]; then
+      rm -f "$EMU_LEASE_DIR/${lease_serial}.lease" 2>/dev/null || true
+      log "released sticky reservation on $lease_serial"
+      released=$(( released + 1 ))
+    else
+      log "$lease_serial is reserved by session '$(_emu_lease_field "$lease_serial" session)' — NOT released"
+      refused=$(( refused + 1 ))
+    fi
+  done < <(emu_lease_serials)
+  if [[ "$released" -eq 0 && "$refused" -eq 0 ]]; then
+    log "no sticky reservation to release."
+  elif [[ "$refused" -gt 0 ]]; then
+    log "to release another session's reservation, re-run with EMU_LEASE_SESSION=<its token>"
+    log "or force it with EMU_LEASE_TAKEOVER=1 (it may be driving a live QA sweep)."
+  fi
+  log "the emulator itself is untouched — stop it with: --stop"
+  exit 0
+fi
 
 # --- snapshot helpers (#1672) -------------------------------------------------
 # A "golden" boot snapshot is a clean post-ARCore-install image. Once seeded,
@@ -1152,7 +1208,7 @@ select_or_boot_emulator() {
   # Step 1: lease a free already-running emulator if one exists.
   local free_serial
   if free_serial="$(emu_lease_free_serial "$ADB_BIN")"; then
-    if emu_lease_acquire "$free_serial"; then
+    if emu_lease_acquire "$free_serial" "$ADB_BIN"; then
       log "leased already-running emulator $free_serial — no boot"
       EMU_SERIAL="$free_serial"
       return 0
@@ -1180,7 +1236,7 @@ select_or_boot_emulator() {
       local serial="emulator-${port}"
       boot_new_emulator "$port"
       # Lease the slot immediately so a racing peer counts us against the cap.
-      emu_lease_acquire "$serial" || true
+      emu_lease_acquire "$serial" "$ADB_BIN" || true
       EMU_SERIAL="$serial"
       return 0
     fi
@@ -1193,7 +1249,7 @@ select_or_boot_emulator() {
   # Step 3: pool full (by cap or by the live RAM gate). Wait for a lease to free.
   local waited_serial
   if waited_serial="$(emu_lease_wait_for_free "$ADB_BIN" "${EMU_LEASE_WAIT_TIMEOUT:-300}")"; then
-    if emu_lease_acquire "$waited_serial"; then
+    if emu_lease_acquire "$waited_serial" "$ADB_BIN"; then
       log "leased emulator $waited_serial after waiting for the pool"
       EMU_SERIAL="$waited_serial"
       return 0
@@ -1256,7 +1312,7 @@ if ! $CHECK_ONLY && ! $NO_BOOT && $SEED_SNAPSHOT; then
   fi
   boot_new_emulator "$EMU_BASE_PORT"
   EMU_SERIAL="emulator-$EMU_BASE_PORT"
-  emu_lease_acquire "$EMU_SERIAL" || true
+  emu_lease_acquire "$EMU_SERIAL" "$ADB_BIN" || true
   wait_for_boot || { log "--seed-snapshot: seed emulator failed to boot"; exit 1; }
 elif ! $CHECK_ONLY && ! $NO_BOOT; then
   # select_or_boot_emulator returns non-zero only when the pool is full AND no
@@ -1416,15 +1472,30 @@ fi
 if ! $CHECK_ONLY && [[ -n "${serial:-}" ]]; then
   echo "EMU_SERIAL=${serial}"
 fi
+# Hand the lease forward (#2862). This script's job is to provision and RETURN;
+# the emulator outlives it. A pid-scoped lease would be wiped by the EXIT trap
+# below, leaving a live emulator that every peer session sees as free — which is
+# exactly how two sessions ended up driving the same AVD. Converting to a sticky
+# lease keeps the reservation attached to the emulator, and publishing the token
+# lets the QA script this session runs next (a separate shell, no inherited env)
+# adopt it once.
+if ! $CHECK_ONLY && ! $STOP_AFTER && [[ -n "${serial:-}" ]]; then
+  if emu_lease_mark_sticky "$serial" "setup-ar-emulator"; then
+    emu_lease_session_publish "$EMU_LEASE_SESSION"
+  fi
+fi
+
 log "done."
 if $STOP_AFTER; then
   log "emulator stopped. Re-run without --stop to leave it warm for QA."
 else
   log "emulator left running for QA on serial ${serial:-emulator-5554}. next steps:"
   log "  export ANDROID_SERIAL=${serial:-emulator-5554}   # pin QA to the leased emulator"
+  log "  export EMU_LEASE_SESSION=${EMU_LEASE_SESSION}   # inherit this reservation (#2862)"
   log "  source .claude/scripts/lib/android-cli.sh && android_cli_ensure"
   log "  android run --apks <apk> --activity io.github.sceneview.demo/.MainActivity"
   log "  stop it with: android emulator stop $AVD_NAME"
+  log "  give the reservation back (emulator keeps running): --release"
 fi
 if ! $CHECK_ONLY && ! golden_snapshot_exists; then
   log "tip: seed a warm QA boot snapshot once with:"

@@ -91,17 +91,40 @@ fi
 #     ANDROID_SERIAL, so the QA run stays pinned to the leased emulator even
 #     when several emulators are up in the pool.
 #   - Otherwise pick a single running emulator (standalone invocation).
+#   - Either way, never drive an emulator this session is not entitled to
+#     (#2862): honour pool reservations and the pool AVD identity.
+#     Local pool only: on CI the emulator is the runner's own `test` AVD (see
+#     the same guard in device-qa.sh), so the check is skipped there.
+if [[ -z "${EMU_REQUIRE_AVD:-}" && "${GITHUB_ACTIONS:-}" != "true" ]]; then
+  EMU_REQUIRE_AVD="$EMU_POOL_AVD"
+fi
+export EMU_REQUIRE_AVD
+# Adopt the token published by a `setup-ar-emulator.sh` run that just
+# provisioned an emulator for this session (no-op when we already have one, or
+# when nothing was published) — otherwise our own provisioning would look like
+# a peer's reservation to us.
+[[ -n "${EMU_LEASE_SESSION:-}" ]] || emu_lease_session_inherit >/dev/null 2>&1 || true
+
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
   if ! emu_serial_alive "$ANDROID_SERIAL" adb; then
     echo "[qa] ERROR: ANDROID_SERIAL=$ANDROID_SERIAL is not a running emulator." >&2
     exit 1
   fi
   echo "[qa] targeting leased pool emulator: $ANDROID_SERIAL"
-elif reuse_serial="$(emu_running_serial adb)"; then
+elif reuse_serial="$(emu_lease_free_serial adb)"; then
+  # Standalone invocation. Take a LEASABLE emulator, not merely a running one
+  # (#2862): a peer session's reservation — or a stray non-pool AVD sitting on a
+  # pool port — must never be driven here.
   echo "[qa] using running emulator: $reuse_serial"
   # Pin downstream adb / android-CLI / Maestro to this serial so a peer pool
   # emulator booting mid-run can never steal the QA target.
   export ANDROID_SERIAL="$reuse_serial"
+elif busy_serial="$(emu_running_serial adb)"; then
+  echo "[qa] ERROR: $busy_serial is running but reserved by another session," >&2
+  echo "[qa]        or is not the pool AVD ($EMU_POOL_AVD). Refusing to drive it." >&2
+  echo "[qa]        Provision your own:  bash .claude/scripts/setup-ar-emulator.sh" >&2
+  echo "[qa]        Inherit that one:    export EMU_LEASE_SESSION=<its token>" >&2
+  exit 1
 elif ! adb get-state >/dev/null 2>&1; then
   echo "[qa] ERROR: no Android device. Boot one first (RAM-budgeted pool):" >&2
   echo "[qa]   bash .claude/scripts/setup-ar-emulator.sh" >&2
