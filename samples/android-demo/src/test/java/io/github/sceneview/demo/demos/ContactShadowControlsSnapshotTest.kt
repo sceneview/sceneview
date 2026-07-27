@@ -122,26 +122,34 @@ class ContactShadowControlsSnapshotTest {
 
     private companion object {
         /**
-         * Per-channel tolerance one notch above Roborazzi's default, because goldens recorded
-         * on macOS are verified on the CI's Linux runners and the two round some composited
+         * Colour-distance tolerance above Roborazzi's default, because goldens recorded on
+         * macOS are verified on the CI's Linux runners and the two round some composited
          * colours differently.
          *
          * The gap is *measured*, not assumed. Comparing each macOS golden against the runner's
-         * `_actual.png` from run 30284733229: the wall-beat pair differs on 66 % of pixels and
-         * the all-off panel on 0.18 %, but in every case **the largest per-channel difference
-         * is 2/255** — i.e. 0.0078 normalised, a hair over the 0.007 default, and invisible
-         * side by side (both renderings were inspected). A flat 2/255 offset across a
-         * background is rounding, not a regression.
+         * own `_actual.png` (runs 30284733229 / 30288149200): the wall-beat pair differs on
+         * 66 % of pixels and the all-off panel on 0.18 %, the largest single-channel delta is
+         * **2/255**, and — the number that actually governs the verdict, since
+         * `SimpleImageComparator` thresholds the *euclidean* RGBA distance rather than a
+         * per-channel one — the largest distance is **0.01176** normalised. That is why a
+         * first attempt at 0.01 still failed: it sat just under the real figure. 0.02 clears
+         * the measurement with room to spare while staying invisible side by side (both
+         * renderings were inspected). A ~2/255 offset spread over a background is rounding,
+         * not a regression.
          *
          * Raising `maxDistance` rather than a change-*percentage* threshold is the point: a
          * percentage large enough to absorb 66 % of the frame would wave through anything,
-         * whereas this keeps every pixel checked and only forgives sub-perceptual channel
-         * drift. A real regression here — a caption swapped, a chip unselected, a control gone
-         * — moves whole glyphs, which is orders of magnitude past 2/255.
+         * whereas this keeps every pixel compared and forgives only sub-perceptual drift. A
+         * real regression here — a caption swapped, a chip unselected, a control gone — moves
+         * whole glyphs, i.e. distances near 1.0, some fifty times this bound.
+         *
+         * Calibrated by reproducing the mismatch locally: the runner's `_actual.png` files were
+         * dropped in as goldens and `verifyRoborazziDebug` was run on macOS, which reproduces
+         * exactly the cross-OS delta CI sees, instead of guessing at 20 minutes per CI round.
          */
         private val CROSS_PLATFORM_TOLERANT = RoborazziOptions(
             compareOptions = RoborazziOptions.CompareOptions(
-                imageComparator = SimpleImageComparator(maxDistance = 0.01f),
+                imageComparator = SimpleImageComparator(maxDistance = 0.02f),
             ),
         )
     }
