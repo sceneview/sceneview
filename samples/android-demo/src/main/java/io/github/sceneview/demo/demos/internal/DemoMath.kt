@@ -224,7 +224,11 @@ internal object DemoMath {
      * the object/shadow motion-coupling cue (the classic "ball-in-a-box" illusion).
      *
      * Never returns less than [liftedFactor]: the pool must stay faintly visible at
-     * the top of the hop so the eye keeps attributing it to the box.
+     * the top of the hop so the eye keeps attributing it to the box. The default is
+     * 0.45, not the physically purer 0.28 it shipped with: device QA measured the
+     * 0.28 pool at ~0.15 alpha at the peak — near-invisible on the demo's light floor,
+     * so the grounded-vs-floating contrast blinked out at the top of every hop. 0.45
+     * keeps the pool legible at every phase while preserving a 2.2× contact/peak fade.
      *
      * @param height       Current hover height, metres. Coerced into `[0, maxHeight]`.
      * @param maxHeight    Height at which the factor bottoms out. `<= 0` returns `1`.
@@ -234,7 +238,7 @@ internal object DemoMath {
     fun groundingIntensityFactor(
         height: Float,
         maxHeight: Float = CONTACT_BOUNCE_MAX_HEIGHT_METERS,
-        liftedFactor: Float = 0.28f,
+        liftedFactor: Float = 0.45f,
     ): Float {
         if (maxHeight <= 0f) return 1f
         val lift = (height / maxHeight).coerceIn(0f, 1f)

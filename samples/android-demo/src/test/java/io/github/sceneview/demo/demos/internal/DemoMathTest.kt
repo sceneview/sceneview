@@ -270,12 +270,13 @@ class DemoMathTest {
         // Contact → the pool keeps its full context opacity.
         assertEquals(1f, DemoMath.groundingIntensityFactor(0f), eps)
         // Peak → dims to the lifted floor, but never to zero: the pool must stay
-        // attributable to the box even at the top of the hop.
-        assertEquals(0.28f, DemoMath.groundingIntensityFactor(bounceMax), eps)
-        // Halfway → linear midpoint: 1 - 0.72/2.
-        assertEquals(0.64f, DemoMath.groundingIntensityFactor(bounceMax / 2f), eps)
+        // attributable to the box even at the top of the hop. 0.45 (not 0.28) is a
+        // measured-visibility floor — see the KDoc on groundingIntensityFactor.
+        assertEquals(0.45f, DemoMath.groundingIntensityFactor(bounceMax), eps)
+        // Halfway → linear midpoint: 1 - 0.55/2.
+        assertEquals(0.725f, DemoMath.groundingIntensityFactor(bounceMax / 2f), eps)
         // Overshoot coerces to the floor value instead of going negative.
-        assertEquals(0.28f, DemoMath.groundingIntensityFactor(bounceMax * 3f), eps)
+        assertEquals(0.45f, DemoMath.groundingIntensityFactor(bounceMax * 3f), eps)
         // Degenerate maxHeight leaves the shadow untouched.
         assertEquals(1f, DemoMath.groundingIntensityFactor(0.1f, maxHeight = 0f), eps)
     }

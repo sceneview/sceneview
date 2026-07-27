@@ -15,7 +15,10 @@ object ContactShadowPreviewFragment : DemoFragment {
         id = "contact-shadow-preview",
         titleRes = R.string.demo_contact_shadow_preview_title,
         subtitleRes = R.string.demo_contact_shadow_preview_subtitle,
-        category = DemoCategory.AUGMENTED_REALITY,
+        // Deliberately NOT under AUGMENTED_REALITY: the feature lives in `sceneview` (not
+        // `arsceneview`) and the demo is a non-AR studio scene — filing it under AR made
+        // users expect a camera pass-through and read the screen as broken.
+        category = DemoCategory.LIGHTING_ENVIRONMENT,
         icon = Icons.Filled.Gradient,
         status = DemoStatus.InReview,
     )
