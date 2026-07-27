@@ -48,10 +48,27 @@ SceneView { root in
 .onEntityTapped { entity in }      // tap handler
 .autoRotate(speed: 0.3)            // turntable auto-rotation
 .autoCenterContent(true)           // v4.3.0+ — library translates content centroid to orbit pivot (default true; pass false to keep explicit placements)
+.framingMargin(0.95)               // v4.26.0+ — padding on the auto-fit distance (default 1.15; 1.0 = bounding sphere tangent; < 1 fills the frame)
+.cameraOrbit(azimuth: .pi / 5, elevation: .pi / 15)  // v4.26.0+ — seeds the INITIAL orbit pose in radians; elevation is positive ABOVE the target (defaults: 0, 30°)
 .mainLight(.systemDefault)         // v4.2.0+ — see LightSlot
 .fillLight(.systemDefault)         // v4.2.0+
 .renderQuality(.default)           // v4.2.0+ — .cinematic | .default | .performance
 ```
+
+!!! tip "Getting a scene to fill the frame — and to show its sky"
+    The auto-fit pass fits the content's **bounding sphere** to the narrower
+    frustum axis (so it never clips at any orbit angle), then scales that
+    distance by `framingMargin`. Lower it towards `1.0` — or just below — to
+    fill a tall portrait viewport; stay at or above ~`0.95` on an
+    `autoRotate` scene, where the visible angle is arbitrary and a long model
+    clips at its broadside azimuth.
+
+    `cameraOrbit` seeds only the starting pose; drag, `autoRotate` and the
+    auto-fit take over from there (the fit changes distance, never these
+    angles). Elevation is the one that surprises people: with the 60° vertical
+    FOV, the **30° default pitch puts the horizon exactly on the top edge of
+    the frame**, so a scene with a `showSkybox` environment shows none of its
+    sky no matter how it is framed. Lower the elevation to bring the sky in.
 
 ---
 

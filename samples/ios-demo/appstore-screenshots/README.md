@@ -31,27 +31,41 @@ class** (identical 1320×2868 screenshot spec); likewise the iPad Pro 13-inch
 M4 and M5. Either generation produces an App Store Connect-compliant image
 for its class.
 
-## Demos captured — the common Android↔iOS showcase set (#2773)
+## Demos captured — the common Android↔iOS showcase set (#2854)
 
-The **same five demos, in the same order**, as Android's
+The **same three demos, in the same order**, as Android's
 `capture-play-store-screenshots.sh`, so both stores show identical screens.
 Every id is a standalone (non-consolidated) demo on both platforms and renders
 rich 3D content — deliberately *not* empty or loading AR scenes:
 
-1. `01-model-viewer` — bundled hero model (cyberpunk hovercar), orbit camera
-2. `02-lighting` — PBR-lit spheres with the light-type switcher
-3. `03-materials` — metallic/roughness material showcase
-4. `04-geometry` — generated geometry primitives
-5. `05-double-pendulum` — animated physics (motion)
+1. `01-model-viewer` — bundled hero model (cyberpunk hovercar) on the `.warm`
+   photo-studio backdrop, frozen on a three-quarter hero pose
+2. `02-dynamic-sky` — procedural time-of-day skyline under a live HDRI sky
+3. `03-multi-model` — several streamed/bundled models composed into one scene
 
 Captured in **dark appearance** with a cleaned status bar (fixed 9:41, full
 signal/battery), mirroring the Android capture's dark-mode + status-bar crop
 so the two stores match visually.
 
-> **Note:** the previously-committed PNGs in this directory
-> (`reflection-probes / occlusion-material / geometry-primitives /
-> samples-catalog`, plus only 2 iPad shots) predate this set and are stale —
-> regenerate with the command below once an iOS simulator build is feasible.
+The set is captured under `-qa_mode 1`, which freezes each demo's orbit
+auto-rotation on its authored pose. That is what makes a re-capture comparable
+to the committed one: two independent runs of this script produce byte-identical
+frames (measured, 0 differing pixels). Without it the shot landed on whatever
+azimuth the sweep had reached, so both the subject's pose and the slice of HDRI
+behind it changed every run.
+
+> **Two things that had to be fixed in the app before this set could ship
+> (#2896)**, worth knowing if a future capture looks wrong again:
+>
+> - Every bundled HDR environment is a Radiance `.hdr`, which
+>   `EnvironmentResource(named:)` cannot load. The failure was swallowed, so
+>   scenes ran with **no IBL and no skybox** — dim subjects on black, and
+>   `dynamic-sky` with no sky at all. `SceneEnvironment.load()` now falls back to
+>   ImageIO. A `[SceneViewSwift] Failed to load environment '…'` line in the
+>   console means this regressed.
+> - iOS has no `camera_distance` launch argument (Android's framing lever,
+>   tracked for iOS in #2785). The three scenes instead carry their own framing
+>   via `.framingMargin(_:)` / `.cameraOrbit(azimuth:elevation:)`.
 
 ## How to regenerate
 
@@ -73,6 +87,25 @@ Override the simulators or settle time with env vars:
 IPHONE_SIM="iPhone 17 Pro Max" IPAD_SIM="iPad Pro 13-inch (M5)" \
   WAIT_SECONDS=28 bash .claude/scripts/capture-appstore-screenshots.sh
 ```
+
+### The system-banner guard
+
+`simctl` exposes no way to silence notifications, and waiting them out does not
+work either: a freshly-erased device posts "Ready for Apple Intelligence" about
+a minute into the session — i.e. *during* a capture, not before the first one —
+which is exactly how that card landed in an iPad frame.
+
+So the script detects it. Because `-qa_mode 1` freezes the scene, the top band
+of a frame is static; the script shoots each demo, waits
+`BANNER_RECHECK_SECONDS` (8 s), shoots again, and compares a hash of that band.
+Equal means nothing transient was drawn over it. Different means a banner was up
+in one of the two — the pair is discarded and retried, up to
+`BANNER_MAX_ATTEMPTS` (4), after which the run **fails** rather than committing
+a contaminated frame.
+
+It is a guard, not a substitute for looking. **Open all six PNGs before
+committing them.** #917 shipped a set that passed every mechanical check and was
+still wrong (Android captures letterboxed onto an iPad canvas, blank AR scenes).
 
 ## Publishing these to the App Store
 

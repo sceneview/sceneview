@@ -4188,7 +4188,36 @@ View modifiers (chainable):
 .fillLight(_ slot: LightSlot) -> SceneView                  // v4.2.0+ — Android-parity 2-light setup
 .renderQuality(_ preset: RenderQuality) -> SceneView        // v4.2.0+ — .cinematic / .default / .performance
 .autoCenterContent(_ enabled: Bool) -> SceneView            // v4.3.0+ — default true; translates content so its centroid lands at the orbit pivot
+.framingMargin(_ margin: Float) -> SceneView                // v4.26.0+ — padding on the auto-fit distance; 1.15 default, 1.0 = sphere tangent, < 1 = tighter
+.cameraOrbit(azimuth: Float? = nil, elevation: Float? = nil) -> SceneView  // v4.26.0+ — seeds the INITIAL orbit pose (radians); default elevation 30°
 ```
+
+**Framing the subject (`framingMargin` / `cameraOrbit`, v4.26.0+).** The auto-fit
+pass dollies the camera until the content's *bounding sphere* fits the narrower
+frustum axis — a sphere fit, so it never clips at any orbit angle — then scales
+that distance by `framingMargin`. `1.0` makes the sphere exactly tangent; below
+`1.0` only the sphere's empty corners leave frame, which is how a subject is made
+to fill a tall portrait viewport. Keep it at or above ~0.95 on an auto-rotating
+scene: the capture angle is arbitrary, and a long model clips at its broadside
+azimuth below that.
+
+`cameraOrbit` seeds the starting pose only — drag, `autoRotate`, and the auto-fit
+(which changes distance, never these angles) own the camera afterwards. Elevation
+matters more than it looks: with the 60° vertical FOV, the 30° default pitch puts
+the horizon exactly on the top edge, so a scene with a `showSkybox` environment
+shows none of its sky at the default pose regardless of framing. Lower the
+elevation to bring sky into frame.
+
+```swift
+SceneView { root in root.addChild(hero.entity) }
+    .environment(.warm)
+    .framingMargin(0.95)                                 // fill the frame
+    .cameraOrbit(azimuth: .pi / 5, elevation: .pi / 15)  // 36° around, camera 12° above the target
+```
+
+> Android has no view-modifier equivalent: it frames per-demo through the demo
+> host's `camera_distance` intent extra. The iOS launch-argument counterpart is
+> tracked in #2785; these modifiers are the in-scene lever (#2896).
 
 ### Render defaults (v4.2.0+)
 

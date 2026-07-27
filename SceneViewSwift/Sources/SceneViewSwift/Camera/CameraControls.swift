@@ -117,6 +117,12 @@ public struct CameraControls: Sendable {
     /// content.
     public var orbitRadius: Float = 2.0
 
+    /// Default padding factor applied by ``fitRadius(boundsExtents:fovYDegrees:aspect:margin:)``
+    /// — 15 % of breathing room around the content's bounding sphere. Exposed
+    /// so ``SceneView/framingMargin(_:)`` and the auto-framing pass share one
+    /// definition of "unchanged framing" (#2896).
+    public static let defaultFitMargin: Float = 1.15
+
     /// Horizontal orbit angle in radians.
     public var azimuth: Float = 0.0
 
@@ -249,15 +255,17 @@ public struct CameraControls: Sendable {
     ///     are `< 1`. Defaults to `0.46` — the iPhone 16e portrait ratio
     ///     (1206 × 2622 pt) — used when the live viewport size is unknown.
     ///   - margin: Extra padding factor applied to the fitted radius so the
-    ///     content does not touch the viewport edges. Default `1.15`
-    ///     (15 % breathing room).
+    ///     content does not touch the viewport edges. Default
+    ///     ``defaultFitMargin`` (15 % breathing room). Below `1.0` the camera
+    ///     dollies closer and the empty corners of the bounding sphere leave
+    ///     the frame — see ``SceneView/framingMargin(_:)``.
     /// - Returns: The orbit radius that frames the box, clamped to
     ///   `[minRadius, maxRadius]`.
     public func fitRadius(
         boundsExtents: SIMD3<Float>,
         fovYDegrees: Float,
         aspect: Float = 0.46,
-        margin: Float = 1.15
+        margin: Float = CameraControls.defaultFitMargin
     ) -> Float {
         // Bounding-sphere radius — half the box's space diagonal — so the
         // fit is orbit-angle invariant.

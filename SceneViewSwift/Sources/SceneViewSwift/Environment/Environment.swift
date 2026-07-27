@@ -1,6 +1,8 @@
 #if os(iOS) || os(macOS) || os(visionOS)
 import RealityKit
 import Foundation
+import CoreGraphics
+import ImageIO
 
 /// Image-based lighting and skybox configuration for a 3D scene.
 ///
@@ -46,6 +48,23 @@ public struct SceneEnvironment: Sendable {
     ///   `ImageBasedLightComponent`.
     /// - Throws: `SceneEnvironmentError.noResourceSpecified` if no HDR resource
     ///   name was provided, or a RealityKit error if the file cannot be loaded.
+    ///
+    /// ### Radiance `.hdr` support (#2896)
+    ///
+    /// `EnvironmentResource(named:)` only resolves the asset kinds Xcode
+    /// *compiles* into a RealityKit resource — `.exr`, asset-catalog textures,
+    /// Reality Composer Pro scenes. A plain Radiance `.hdr` copied into the
+    /// bundle as a resource file is **not** one of them: it fails with
+    /// `resourceLoadFailure`, and the caller silently falls back to no IBL and
+    /// no skybox. That is what left every iOS demo dim-on-black and made
+    /// `dynamic-sky` render no sky at all — all seven bundled presets
+    /// (`studio.hdr`, `outdoor_cloudy.hdr`, …) are Radiance files.
+    ///
+    /// ImageIO reads `public.radiance` natively, so a failed `named:` lookup
+    /// falls back to decoding the file into a half-float equirectangular
+    /// `CGImage` and building the resource from that. The `named:` path is
+    /// still tried first so `.exr` / asset-catalog / RCP resources keep
+    /// working unchanged.
     public func load() async throws -> EnvironmentResource {
         guard let hdrResource else {
             throw SceneEnvironmentError.noResourceSpecified
@@ -54,9 +73,53 @@ public struct SceneEnvironment: Sendable {
         if let cached = EnvironmentCache.shared.get(hdrResource) {
             return cached
         }
-        let resource = try await EnvironmentResource(named: hdrResource)
+        let resource: EnvironmentResource
+        do {
+            resource = try await EnvironmentResource(named: hdrResource)
+        } catch {
+            // Re-throw the ORIGINAL RealityKit error when the fallback can't
+            // apply — a genuinely missing resource must not be reported as a
+            // decode problem.
+            guard let image = Self.equirectangularImage(named: hdrResource) else {
+                throw error
+            }
+            resource = try await EnvironmentResource(
+                equirectangular: image,
+                withName: hdrResource
+            )
+        }
         EnvironmentCache.shared.set(hdrResource, resource: resource)
         return resource
+    }
+
+    /// Decodes a bundled equirectangular image (Radiance `.hdr`, and anything
+    /// else ImageIO reads) into a `CGImage` for
+    /// `EnvironmentResource(equirectangular:withName:)`.
+    ///
+    /// Looks the resource up in `Bundle.main` — the same bundle
+    /// `EnvironmentResource(named:)` defaults to — both as a full filename and
+    /// as a name/extension pair, so `"studio.hdr"` and `"studio"` both resolve.
+    ///
+    /// Returns `nil` when the file isn't in the bundle or ImageIO can't decode
+    /// it, which keeps the original load error as the reported failure.
+    private static func equirectangularImage(named resource: String) -> CGImage? {
+        let candidates: [URL?] = [
+            Bundle.main.url(forResource: resource, withExtension: nil),
+            Bundle.main.url(
+                forResource: (resource as NSString).deletingPathExtension,
+                withExtension: (resource as NSString).pathExtension.isEmpty
+                    ? "hdr"
+                    : (resource as NSString).pathExtension
+            )
+        ]
+        for case let url? in candidates {
+            guard
+                let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+            else { continue }
+            return image
+        }
+        return nil
     }
 
     /// Creates a custom environment from an HDR file in the bundle.

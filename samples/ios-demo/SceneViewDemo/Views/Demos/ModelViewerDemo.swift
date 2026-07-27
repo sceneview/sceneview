@@ -30,6 +30,18 @@ struct ModelViewerDemo: View {
     /// Bundled hero shown on first frame and as the offline default.
     private static let bundledHero = "cyberpunk_hovercar"
 
+    /// Photo-studio IBL — a lit backdrop, not a room.
+    ///
+    /// `.studio` (the preset Android's model viewer uses, #2114) is a
+    /// *photographed living room*: with the skybox finally rendering (#2896)
+    /// it framed the hero as an interior snapshot with a small car in it.
+    /// Hiding its skybox instead left a dark-grey car on black — the exact
+    /// "dim, dark-on-black" frame #2896 was filed about. `.warm` is an actual
+    /// photo studio (seamless cyclorama, softboxes), so it reads as a product
+    /// shot: bright backdrop, hard highlights down the bodywork, and the
+    /// silhouette separating from the background at every orbit angle.
+    private static let heroEnvironment: SceneEnvironment = .warm
+
     @State private var loadedNode: ModelNode?
     @State private var loadError: String?
     @State private var surpriseInFlight: Bool = false
@@ -42,6 +54,13 @@ struct ModelViewerDemo: View {
     @State private var streamedDisplayName: String?
 
     private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
+
+    /// `-qa_mode 1` / `?qa_mode=1` — freezes the orbit sweep so a capture lands
+    /// on the pose below every time. `DeepLinkRouter` has promised this since
+    /// it was added, but no demo actually read it, so every store capture shot
+    /// whatever azimuth the auto-rotation happened to be at: two runs of the
+    /// same demo produced different poses AND different HDRI backdrops (#2896).
+    @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
 
     var body: some View {
         ZStack {
@@ -76,8 +95,17 @@ struct ModelViewerDemo: View {
                 root.addChild(loadedNode.entity)
             }
             .cameraControls(.orbit)
-            .autoRotate(speed: 0.3)
-            .environment(.studio) // parity with android-demo IBL fix (#2114)
+            .autoRotate(speed: qaMode ? 0 : 0.3)
+            // Three-quarter hero pose. Auto-rotation sweeps away from it a
+            // moment later for a normal user; under `qa_mode` it is what the
+            // screenshot lands on.
+            .cameraOrbit(azimuth: .pi / 5)
+            .environment(Self.heroEnvironment)
+            // Fit the hero to the frame instead of leaving 15 % of air around
+            // its bounding sphere. Kept at 0.95 rather than lower because the
+            // scene auto-rotates: the capture lands on an arbitrary azimuth,
+            // and below ~0.95 the model clips at its broadside angle (#2896).
+            .framingMargin(0.95)
             .ignoresSafeArea()
             .id("model-viewer-\(streamedDisplayName ?? "bundled")")
         } else {

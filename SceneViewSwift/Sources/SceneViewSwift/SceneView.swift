@@ -100,6 +100,19 @@ public struct SceneView: View {
     // `.autoCenterContent(false)`. Closes #1026.
     var autoCenterContentEnabled: Bool = true
 
+    // Multiplier on the fit-to-bounds camera distance computed by
+    // `refreshContentCentering()`. `1.0` puts the content's bounding sphere
+    // exactly tangent to the frustum; the `1.15` default keeps the pre-#2896
+    // framing. Values below `1.0` dolly closer, cropping the empty corners of
+    // the bounding sphere for a tighter subject. Set via `.framingMargin(_:)`.
+    var framingMargin: Float = CameraControls.defaultFitMargin
+
+    // Initial orbit pose, seeded once during scene setup. `nil` keeps
+    // `CameraControls`' own defaults (azimuth 0, elevation 30°). Set via
+    // `.cameraOrbit(azimuth:elevation:)`.
+    var initialOrbitAzimuth: Float?
+    var initialOrbitElevation: Float?
+
     // visionOS only: set by `.immersiveSpace(true)` when the caller embeds
     // this `SceneView` inside an `ImmersiveSpace` with the `.full` style. In
     // that surface the HDR `showSkybox` environment is rendered via an
@@ -157,6 +170,9 @@ public struct SceneView: View {
             fillLightSlot: fillLightSlot,
             renderQualityPreset: renderQualityPreset,
             autoCenterContentEnabled: autoCenterContentEnabled,
+            framingMargin: framingMargin,
+            initialOrbitAzimuth: initialOrbitAzimuth,
+            initialOrbitElevation: initialOrbitElevation,
             immersiveSpace: immersiveSpace,
             recentersTargetOnOrbit: recentersTargetOnOrbit
         )
@@ -324,6 +340,80 @@ public struct SceneView: View {
         return copy
     }
 
+    /// Tightens or loosens the fit-to-bounds camera distance chosen by the
+    /// auto-framing pass (#1041).
+    ///
+    /// The pass dollies the orbit camera until the content's **bounding
+    /// sphere** fits the narrower frustum axis, then scales that distance by
+    /// this margin. Because a sphere fit is orbit-angle invariant, `1.0`
+    /// guarantees the content never clips at any azimuth — which is what makes
+    /// it safe for an auto-rotating scene.
+    ///
+    /// - `1.15` (default) — the pre-#2896 framing: the whole bounding sphere
+    ///   plus 15 % of air.
+    /// - `1.0` — bounding sphere exactly tangent to the frustum.
+    /// - `< 1.0` — dollies closer. Only the *empty corners* of the bounding
+    ///   sphere leave the frame for a typical mesh, so a subject fills far
+    ///   more of a tall portrait viewport. On an `autoRotate` scene stay at or
+    ///   above ~`0.95`: the visible azimuth is arbitrary, and a long model
+    ///   clips at its broadside angle below that. Used by the store-screenshot
+    ///   demos `model-viewer` and `multi-model` — on iOS this is the framing
+    ///   lever Android's demo host gets from its `camera_distance` launch
+    ///   extra (#2785 tracks the iOS launch-argument half).
+    ///
+    /// Values are clamped to a sane `0.2 ... 10` range; the fitted distance is
+    /// still clamped to the camera's `minRadius` / `maxRadius`.
+    ///
+    /// ```swift
+    /// SceneView { root in
+    ///     root.addChild(hero.entity)
+    /// }
+    /// .framingMargin(0.95)   // hero fills the frame, safe while auto-rotating
+    /// ```
+    ///
+    /// No effect when auto-framing is off (``autoCenterContent(_:)`` set to
+    /// `false`) — the camera then keeps whatever radius it already had.
+    public func framingMargin(_ margin: Float) -> SceneView {
+        var copy = self
+        copy.framingMargin = margin.clamped(to: 0.2...10)
+        return copy
+    }
+
+    /// Seeds the orbit camera's initial pose.
+    ///
+    /// The defaults (`azimuth: 0`, `elevation: 30°`) look *down* on the
+    /// content. With SceneView's 60° vertical FOV, a 30° downward pitch puts
+    /// the horizon exactly on the top edge of the frame — so a scene with a
+    /// ``SceneEnvironment/showSkybox`` environment shows essentially none of
+    /// its sky, however the content is framed. Lower the elevation to bring
+    /// the horizon (and the sky above it) into view; that is what makes the
+    /// `dynamic-sky` demo read as a sky rather than a lit floor (#2896).
+    ///
+    /// Only the *initial* pose: dragging, ``autoRotate(speed:)`` and the
+    /// fit-to-bounds pass all keep mutating the live camera afterwards, and
+    /// the fit changes only the distance, never these angles.
+    ///
+    /// - Parameters:
+    ///   - azimuth: Horizontal orbit angle in radians. `0` faces the content
+    ///     head-on. Largely cosmetic on an auto-rotating scene, which sweeps
+    ///     past every azimuth anyway.
+    ///   - elevation: Vertical orbit angle in radians, positive looking down.
+    ///     Clamped on apply to the camera's own
+    ///     ``CameraControls/minElevation`` / ``CameraControls/maxElevation``
+    ///     (±85° by default), so a seeded pose can never start in gimbal lock.
+    ///
+    /// ```swift
+    /// SceneView { root in /* skyline */ }
+    ///     .environment(.outdoor)              // showSkybox == true
+    ///     .cameraOrbit(elevation: .pi / 18)   // 10° — horizon in frame
+    /// ```
+    public func cameraOrbit(azimuth: Float? = nil, elevation: Float? = nil) -> SceneView {
+        var copy = self
+        if let azimuth { copy.initialOrbitAzimuth = azimuth }
+        if let elevation { copy.initialOrbitElevation = elevation }
+        return copy
+    }
+
     /// Declares that this `SceneView` is hosted inside a fully immersive
     /// visionOS `ImmersiveSpace` (the `.full` style).
     ///
@@ -435,6 +525,15 @@ private struct SceneViewRepresentation: View {
     /// `entities.contentRoot` so the scene's centroid lands at the orbit
     /// pivot. Closes #1026.
     let autoCenterContentEnabled: Bool
+    /// Padding factor the auto-framing pass applies to the fitted orbit
+    /// radius. Provided by ``SceneView/framingMargin(_:)``; defaults to
+    /// ``CameraControls/defaultFitMargin``. Closes #2896.
+    let framingMargin: Float
+    /// Initial orbit pose seeded once in `setupScene`, from
+    /// ``SceneView/cameraOrbit(azimuth:elevation:)``. `nil` keeps the
+    /// `CameraControls` defaults. Closes #2896.
+    let initialOrbitAzimuth: Float?
+    let initialOrbitElevation: Float?
     /// visionOS only: when true, the `showSkybox` HDR environment is
     /// rendered as an inverted-sphere skybox under a `WorldComponent` root
     /// for fully immersive (`ImmersiveSpace`) consumers. Closes #1235.
@@ -927,6 +1026,21 @@ private struct SceneViewRepresentation: View {
     /// `RealityViewCameraContent` on iOS / macOS and `RealityViewContent` on
     /// visionOS (see ``RealitySceneContent``).
     private func setupScene(_ realityContent: inout RealitySceneContent) {
+        // Seed the initial orbit pose before anything reads the camera. Done
+        // here (once, on RealityView `make:`) rather than in the `@State`
+        // initializer, which cannot see this view's stored properties. Drag,
+        // auto-rotate and the fit-to-bounds pass own the camera from here on —
+        // the fit only changes the distance, so these angles survive it.
+        // Closes #2896.
+        if let azimuth = initialOrbitAzimuth {
+            camera.azimuth = azimuth
+        }
+        if let elevation = initialOrbitElevation {
+            camera.elevation = elevation.clamped(
+                to: camera.minElevation...camera.maxElevation
+            )
+        }
+
         // Use virtual camera (fixed perspective) instead of AR spatial tracking.
         // Without this, RealityKit defaults to .spatialTracking which requires a
         // physical device camera — causing a black screen in the simulator.
@@ -1272,7 +1386,8 @@ private struct SceneViewRepresentation: View {
         camera.orbitRadius = camera.fitRadius(
             boundsExtents: extents,
             fovYDegrees: Self.baselineFov,
-            aspect: viewportAspect ?? 0.46
+            aspect: viewportAspect ?? 0.46,
+            margin: framingMargin
         )
         // Only latch once the union has held steady for the sustained hold
         // window (`FramingStabilityTracker`) — until then the driver task

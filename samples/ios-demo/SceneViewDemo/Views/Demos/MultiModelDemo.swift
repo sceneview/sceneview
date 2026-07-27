@@ -24,6 +24,13 @@ struct MultiModelDemo: View {
     @State private var showBird: Bool = true
     @State private var spinScene: Bool = true
 
+    /// `-qa_mode 1` / `?qa_mode=1` — freezes the orbit sweep so a capture lands
+    /// on the pose below every time. Without it the store capture shot an
+    /// arbitrary azimuth, which also decided which part of the `.studio` HDRI
+    /// sat behind the models — one run got the plants, the next a blown-out
+    /// softbox filling the top third of the frame (#2896).
+    @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
+
     /// Loaded entities keyed by slug uid. Adding / removing nodes from the
     /// scene happens reactively via the imperative `update` pass below — we
     /// re-evaluate visibility every recomposition.
@@ -50,16 +57,23 @@ struct MultiModelDemo: View {
         let dog = SampleAssets.byUID["4f6ab5594a8a415aba3f958682b9ced5"] ?? (park.indices.contains(2) ? park[2] : nil)
         let bird = SampleAssets.byUID["fd582b0d4a8c4af1a1b5c4f21a481c93"] ?? (park.indices.contains(3) ? park[3] : nil)
 
+        // The formation is deliberately COMPACT (#2896). Auto-framing fits the
+        // union bounding sphere, so lateral spread is what decides how large
+        // each model renders: the old ±0.55 m spread made the union roughly
+        // twice the largest model, and every slot came out small in a tall
+        // portrait frame with empty ground all around it.
         return [
             // Tree — back-centre, towering. Scale chosen so silhouette dominates
             // the backdrop without occluding the bench in front.
-            ParkSlot(slug: tree,  position: .init(x: 0.0,  y: 0.0, z: -1.7), scale: 1.8, displayName: "Tree"),
+            ParkSlot(slug: tree,  position: .init(x: 0.0,  y: 0.0, z: -1.55), scale: 1.8, displayName: "Tree"),
             // Bench — front-centre, the foreground prop.
-            ParkSlot(slug: bench, position: .init(x: 0.0,  y: 0.0, z: -1.3), scale: 0.65, displayName: "Bench"),
-            // Dog — front-left next to the bench's leg.
-            ParkSlot(slug: dog,   position: .init(x: -0.55, y: 0.0, z: -1.3), scale: 0.40, displayName: "Dog"),
-            // Bird — front-right perched on the bench.
-            ParkSlot(slug: bird,  position: .init(x: 0.55, y: 0.0, z: -1.3), scale: 0.15, displayName: "Bird"),
+            ParkSlot(slug: bench, position: .init(x: 0.0,  y: 0.0, z: -1.35), scale: 0.65, displayName: "Bench"),
+            // Dog — front-left, tucked against the bench rather than a third of
+            // a metre away from it.
+            ParkSlot(slug: dog,   position: .init(x: -0.34, y: 0.0, z: -1.35), scale: 0.40, displayName: "Dog"),
+            // Bird — front-right and raised, so the lightest slot reads as
+            // perched instead of getting lost against the ground.
+            ParkSlot(slug: bird,  position: .init(x: 0.34, y: 0.22, z: -1.35), scale: 0.15, displayName: "Bird"),
         ]
     }()
 
@@ -93,15 +107,27 @@ struct MultiModelDemo: View {
                 }
             }
             .cameraControls(.orbit)
-            .autoRotate(speed: spinScene ? 0.2 : 0.0)
+            .autoRotate(speed: (spinScene && !qaMode) ? 0.2 : 0.0)
             // The formation is built from curated PBR models; without an IBL
             // their metallic/rough response has nothing to reflect and the whole
-            // scene reads as flat silhouettes. Same preset as ModelViewerDemo
-            // (#2114) so a model looks identical whether it is shown alone or
-            // as part of this multi-model scene.
+            // scene reads as flat silhouettes (#2114). `.studio` stays here
+            // rather than following ModelViewerDemo to `.warm`: a composed scene
+            // wants a room around it, and this HDR is a plant-filled interior —
+            // whereas a single hero wants the seamless backdrop of a photo
+            // studio. The two demos deliberately diverge (#2896).
             .environment(.studio)
+            // The park formation spreads across ~1.2 m, so its bounding sphere
+            // is much larger than any single model — the default 15 % of air on
+            // top of that left every model tiny. Tighten to a near-exact sphere
+            // fit; the scene auto-rotates, so going below ~0.95 would clip the
+            // outermost slot at some azimuths (#2896).
+            .framingMargin(0.95)
+            // Shallower than the 30° default so the formation is seen from
+            // near its own eye level — a 30° top-down pitch spent the bottom
+            // half of a portrait frame on empty ground (#2896).
+            .cameraOrbit(azimuth: 0, elevation: .pi / 10)
             .ignoresSafeArea()
-            .id("multi-model-spin-\(spinScene)")
+            .id("multi-model-spin-\(spinScene)-\(qaMode)")
 
             if loadedEntities.isEmpty && loadError == nil {
                 VStack(spacing: 12) {
