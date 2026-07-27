@@ -705,13 +705,21 @@ if [ -n "$SCENEVIEWJS_VERSION_TEST" ] && [ -f "$SCENEVIEWJS_VERSION_TEST" ]; the
 fi
 
 # Kotlin toolchain version — gradle/libs.versions.toml `kotlin = "X.Y.Z"` is
-# the source of truth; llms.txt + llms-full.txt quote it in prose and drift.
+# the source of truth; llms.txt + llms-full.txt quote it in prose and drift —
+# and so do their two website-static siblings, which sat outside this list and
+# rotted to 2.3.20 while the covered pair was fixed to 2.4.10 (#2886 follow-up).
+# `website-static/llms-full.txt` is a real hand-maintained file with no
+# canonical root counterpart (docs.yml says so explicitly), and
+# `website-static/.well-known/llms.txt` is repo-internal (docs.yml drops it
+# from the deployed site, #1998) but still a versioned surface swept above for
+# its Maven prose — both must track the toml like the first pair.
 # Reported under a separate "Kotlin" banner since it's not VERSION_NAME.
 # `docs/docs/llms.txt` is omitted — it is build-generated from root `llms.txt`
 # (swept here) and `.gitignore`d (issue #899 hardening).
 KOTLIN_TOML=$(grep -m1 '^kotlin = ' "$REPO_ROOT/gradle/libs.versions.toml" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
+KOTLIN_PROSE_FILES="llms.txt docs/docs/llms-full.txt website-static/.well-known/llms.txt website-static/llms-full.txt"
 if [ -n "$KOTLIN_TOML" ]; then
-    for kfile in llms.txt docs/docs/llms-full.txt; do
+    for kfile in $KOTLIN_PROSE_FILES; do
         F="$REPO_ROOT/$kfile"
         [ -f "$F" ] || continue
         V=$(grep -oE 'Kotlin:\*\* [0-9]+\.[0-9]+\.[0-9]+' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
@@ -1573,19 +1581,23 @@ if changed:
 
     # Fix Kotlin toolchain version prose — gradle/libs.versions.toml
     # `kotlin = "X.Y.Z"` is the source of truth (captured as $KOTLIN_TOML in the
-    # check block above, §12); llms.txt + docs/docs/llms-full.txt quote it as
+    # check block above, §12); the $KOTLIN_PROSE_FILES surfaces quote it as
     # `**Kotlin:** X.Y.Z` prose and drift on a toolchain bump. This was
     # CHECK-ONLY until now — a Kotlin-only bump (#2790: 2.4.0 -> 2.4.10) reddened
     # pre-push-check leg 7 with no `--fix` handler, forcing a hand-edit of both
     # files + a manual gpt/ regen (relived on #2876, 2026-07-23). The sed is
     # anchored on the `Kotlin:** ` prefix and rewrites ONLY the number that
-    # follows, leaving the neighbouring `**Compose BOM compatible**` (llms.txt)
-    # and `with Compose X.Y.Z` (llms-full.txt) untouched. Same scoped-prefix
-    # style as the `**SceneView:**` prose fix above; the gpt/ regen below then
-    # picks up the llms.txt edit. Note the source of truth here is $KOTLIN_TOML,
-    # NOT $SOURCE_VERSION — the Kotlin toolchain has its own version track.
+    # follows, leaving the neighbouring `**Compose BOM compatible**` and
+    # `with Compose X.Y.Z` untouched. Same scoped-prefix style as the
+    # `**SceneView:**` prose fix above; the gpt/ regen below then picks up the
+    # llms.txt edit. The file list is the SAME $KOTLIN_PROSE_FILES variable the
+    # check block iterates — one list, so check and fix can never cover
+    # different surfaces again (the original gap: the two website-static
+    # siblings were in neither, and rotted to 2.3.20). Note the source of truth
+    # here is $KOTLIN_TOML, NOT $SOURCE_VERSION — the Kotlin toolchain has its
+    # own version track.
     if [ -n "$KOTLIN_TOML" ]; then
-        for kfile in llms.txt docs/docs/llms-full.txt; do
+        for kfile in $KOTLIN_PROSE_FILES; do
             F="$REPO_ROOT/$kfile"
             [ -f "$F" ] || continue
             CURRENT=$(grep -oE 'Kotlin:\*\* [0-9]+\.[0-9]+\.[0-9]+' "$F" \
