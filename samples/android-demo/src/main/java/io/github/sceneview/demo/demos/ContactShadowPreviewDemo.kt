@@ -346,21 +346,33 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             }
         }
 
-        GroundingLegend(shadowsEnabled = shadowsEnabled)
+        // The chip must track what is actually ON SCREEN, not just the toggle: the
+        // intensity slider reaches 0, which makes the pool fully transparent while
+        // `shadowsEnabled` is still true. Both boxes then float identically and a chip
+        // reading "Contact shadow" would be labelling a shadow nobody can see.
+        GroundingLegend(shadowVisible = shadowsEnabled && intensityFactor > 0f)
     }
 }
 
 /**
- * The two overlay chips naming the comparison columns — "Contact shadow" under the grounded
- * box, "No shadow" under its floating twin. When the global toggle is off the left chip
- * honestly reports "Shadows off" so the labels never contradict the scene.
+ * The two overlay chips naming the comparison columns — "Contact shadow" for the grounded
+ * box, "No shadow" for its floating twin. [shadowVisible] is whether a shadow is actually
+ * being drawn (toggle ON *and* intensity above zero), not merely whether the toggle is on:
+ * at intensity 0 the pool is fully transparent, so the left chip reports "Shadows off" and
+ * the labels never contradict the scene.
+ *
+ * The chips name the two columns; they are NOT positioned under their respective boxes.
+ * The camera is an interactive orbit manipulator, so any drag moves the boxes relative to
+ * this bottom-anchored row — a positional claim would invert as soon as the user orbits
+ * past 90°. Read them as a legend, in the same left-to-right order as the scene at the
+ * home framing.
  *
  * Style mirrors the scaffold's `AssetSourceChip` (dot + label on an 85 %-alpha surface) so
  * the demo chrome stays one family. Sits above the settings FAB / peek-chip band at the
  * bottom-end, in the vertical zone of the boxes it annotates.
  */
 @Composable
-private fun BoxScope.GroundingLegend(shadowsEnabled: Boolean) {
+private fun BoxScope.GroundingLegend(shadowVisible: Boolean) {
     Row(
         modifier = Modifier
             .align(Alignment.BottomCenter)
@@ -371,10 +383,10 @@ private fun BoxScope.GroundingLegend(shadowsEnabled: Boolean) {
     ) {
         LegendChip(
             label = stringResource(
-                if (shadowsEnabled) R.string.contact_shadow_label_grounded
+                if (shadowVisible) R.string.contact_shadow_label_grounded
                 else R.string.contact_shadow_label_off
             ),
-            dotColor = if (shadowsEnabled) MaterialTheme.colorScheme.primary
+            dotColor = if (shadowVisible) MaterialTheme.colorScheme.primary
             else MaterialTheme.colorScheme.outline,
         )
         LegendChip(
@@ -409,8 +421,10 @@ private fun LegendChip(label: String, dotColor: Color) {
 
 /**
  * Settings-sheet controls, extracted (and `internal`, like [GeometryDemoControls]) so the
- * panel layout can be snapshot-tested in pure JVM (no Filament, no SceneView) — the #880
- * pattern.
+ * panel layout CAN be snapshot-tested in pure JVM (no Filament, no SceneView) — the #880
+ * pattern. Unlike `GeometryDemoControls`, no such test exists for this panel yet: the
+ * extraction makes it possible, it does not deliver it. Adding the sibling
+ * `ContactShadowControlsSnapshotTest` is a follow-up.
  */
 @Composable
 internal fun ContactShadowControls(
