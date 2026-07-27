@@ -56,13 +56,14 @@ final class CameraControlsTests: XCTestCase {
         let controls = CameraControls()
         let pos = controls.cameraPosition()
 
-        // At azimuth=0, elevation=pi/6, radius=5:
-        // x = 5 * cos(pi/6) * sin(0) = 0
-        // y = 5 * sin(pi/6) = 2.5
-        // z = 5 * cos(pi/6) * cos(0) = 5 * 0.866 = 4.33
+        // At azimuth=0, elevation=pi/6, radius=2 (the v4.4.0 default — see
+        // `testDefaultInit`; the old radius=5 was removed in that breaking change):
+        // x = 2 * cos(pi/6) * sin(0) = 0
+        // y = 2 * sin(pi/6) = 1.0
+        // z = 2 * cos(pi/6) * cos(0) = 2 * 0.866 = 1.732
         XCTAssertEqual(pos.x, 0.0, accuracy: 0.01)
-        XCTAssertEqual(pos.y, 2.5, accuracy: 0.01)
-        XCTAssertEqual(pos.z, 4.33, accuracy: 0.01)
+        XCTAssertEqual(pos.y, 1.0, accuracy: 0.01)
+        XCTAssertEqual(pos.z, 1.732, accuracy: 0.01)
     }
 
     func testCameraPositionAtAzimuth90() {
@@ -71,10 +72,11 @@ final class CameraControlsTests: XCTestCase {
         controls.elevation = 0
 
         let pos = controls.cameraPosition()
-        // x = 5 * cos(0) * sin(pi/2) = 5
+        // radius=2 (v4.4.0 default):
+        // x = 2 * cos(0) * sin(pi/2) = 2
         // y = 0
-        // z = 5 * cos(0) * cos(pi/2) = 0
-        XCTAssertEqual(pos.x, 5.0, accuracy: 0.01)
+        // z = 2 * cos(0) * cos(pi/2) = 0
+        XCTAssertEqual(pos.x, 2.0, accuracy: 0.01)
         XCTAssertEqual(pos.y, 0.0, accuracy: 0.01)
         XCTAssertEqual(pos.z, 0.0, accuracy: 0.01)
     }
@@ -86,12 +88,13 @@ final class CameraControlsTests: XCTestCase {
         controls.elevation = 0
 
         let pos = controls.cameraPosition()
-        // x = 1 + 5 * 1 * 0 = 1
-        // y = 2 + 5 * 0 = 2
-        // z = 3 + 5 * 1 * 1 = 8
+        // radius=2 (v4.4.0 default):
+        // x = 1 + 2 * 1 * 0 = 1
+        // y = 2 + 2 * 0 = 2
+        // z = 3 + 2 * 1 * 1 = 5
         XCTAssertEqual(pos.x, 1.0, accuracy: 0.01)
         XCTAssertEqual(pos.y, 2.0, accuracy: 0.01)
-        XCTAssertEqual(pos.z, 8.0, accuracy: 0.01)
+        XCTAssertEqual(pos.z, 5.0, accuracy: 0.01)
     }
 
     // MARK: - Drag Handling

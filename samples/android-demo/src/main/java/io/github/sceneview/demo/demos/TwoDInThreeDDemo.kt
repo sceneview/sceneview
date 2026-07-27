@@ -73,6 +73,7 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.safeDestroySkybox
 import io.github.sceneview.sample.rememberMaterialInstance
+import java.util.Locale
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -246,7 +247,7 @@ private fun ImageSection(
         controls = {
             ModeSelector(mode, onModeChange)
             Text(
-                "Gallery scale: ${"%.1f".format(scaleFactor)}x",
+                "Gallery scale: ${"%.1f".format(Locale.US, scaleFactor)}x",
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(

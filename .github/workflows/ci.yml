@@ -191,6 +191,12 @@ jobs:
         env:
           # Optional. Unset on forks → demo gracefully disables Geospatial/Streetscape.
           ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
+        # Root `assembleDebug` also compiles :snippets-check (the doc-snippet
+        # guard, settings.gradle:31) — this is the ONLY per-PR compile of the
+        # snippets on a library-API change. The docs-input direction is guarded
+        # separately by snippets-check.yml (llms.txt is `paths-ignore`d here).
+        # If this step is ever narrowed to explicit tasks, add
+        # `:snippets-check:compileDebugKotlin` so that coverage is kept.
         run: |
           ./gradlew \
             assembleDebug \
@@ -519,7 +525,7 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -773,6 +779,26 @@ jobs:
         if: always()
         shell: bash
         run: bash .claude/scripts/test-store-sync.sh
+
+      # sync-versions.sh Kotlin-toolchain `--fix` rewriter self-test. The
+      # rewriter only fires on a Kotlin bump (gradle/libs.versions.toml drifting
+      # from the `**Kotlin:** X.Y.Z` prose), which quality-gate's in-tree run
+      # almost never hits — #2790 bumped the toml with no handler and reddened
+      # pre-push-check leg 7 (relived #2876). Pins the handler hermetically.
+      - name: Self-test sync-versions.sh Kotlin rewriter
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-sync-versions-kotlin.sh
+
+      # Emulator-pool lease contract self-test (#2862). The pool's mutual
+      # exclusion is what stops two sessions from driving one AVD, and it is
+      # invisible to every other check: no emulator runs in `repo-hygiene`, and
+      # a broken lease still "works" for a single session. Hermetic (stub adb +
+      # scratch lease dir), so it pins the contract anywhere.
+      - name: Self-test emulator pool leases
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-emulator-lease.sh
 
       # Doc↔API drift (ADVISORY, #docs). Warns when this PR changed a public
       # API surface without updating llms.txt / KDoc / docs/docs / recipes.

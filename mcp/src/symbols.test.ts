@@ -54,6 +54,17 @@ describe("generated symbols index", () => {
     expect(SYMBOLS.packages).toContain("io.github.sceneview");
     expect(SYMBOLS.packages).toContain("io.github.sceneview.node");
   });
+
+  it("indexes source-level typealiases absent from the .api dumps", () => {
+    // binary-compatibility-validator erases typealiases to their expansion,
+    // yet `llms.txt` imports them everywhere — the generator recovers them
+    // from the Kotlin sources (PR #2814 adversarial-review finding #1).
+    expect(SYMBOLS.classes).toHaveProperty(["io.github.sceneview.math.Position"]);
+    expect(SYMBOLS.classes).toHaveProperty(["io.github.sceneview.math.Rotation"]);
+    expect(SYMBOLS.classes).toHaveProperty(["io.github.sceneview.math.Color"]);
+    expect(SYMBOLS.classes).toHaveProperty(["io.github.sceneview.model.Model"]);
+    expect(SYMBOLS.classes).toHaveProperty(["io.github.sceneview.model.ModelInstance"]);
+  });
 });
 
 // ─── Lookups ─────────────────────────────────────────────────────────────────
@@ -72,6 +83,15 @@ describe("symbol lookups", () => {
     expect(resolveImport("io.github.sceneview.node")).toBe("package");
     expect(resolveImport("io.github.sceneview.SceneView")).toBe("member");
     expect(resolveImport("io.github.sceneview.node.ShadowNode")).toBeNull();
+  });
+
+  it("resolves typealias and Companion imports", () => {
+    expect(resolveImport("io.github.sceneview.math.Position")).toBe("class");
+    expect(resolveImport("io.github.sceneview.math.Rotation")).toBe("class");
+    // The generator folds `X.Companion` members into X and drops the entry —
+    // the companion itself must still resolve through its host class.
+    expect(resolveImport("io.github.sceneview.node.ModelNode.Companion")).toBe("member");
+    expect(resolveImport("io.github.sceneview.node.ShadowNode.Companion")).toBeNull();
   });
 
   it("exposes loader members including suspend/async variants", () => {

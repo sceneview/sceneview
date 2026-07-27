@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -128,11 +129,17 @@ private data class PlacedProp(val id: Int, val anchor: Anchor)
  * like the screen-space card does. [question] is frozen at tap time: a later edit of the
  * question field must not rewrite the label of an answer already pinned.
  *
- * The card needs no facing rotation of its own: an ARCore hit pose is already oriented
- * "Z+ … roughly toward the user's device" (see `PoseNode`), and a `ViewNode`'s quad faces
- * its own +Z, so an identity rotation under the `AnchorNode` faces where the user stood at
- * tap time. That facing is then frozen with the anchor — orbiting AROUND a fixed card is
- * what proves the answer is anchored in the world rather than billboarded to the screen.
+ * The card needs no facing rotation of its own — but only because the hit is filtered to
+ * `HORIZONTAL_UPWARD_FACING` planes and feature points. On those, the ARCore hit pose is
+ * oriented "Z+ … roughly toward the user's device" (see `PoseNode`), and a `ViewNode`'s
+ * quad faces its own +Z, so an identity rotation under the `AnchorNode` faces where the
+ * user stood at tap time. That facing is then frozen with the anchor — orbiting AROUND a
+ * fixed card is what proves the answer is anchored in the world rather than billboarded.
+ *
+ * The qualifier is load-bearing: on a VERTICAL plane, Y+ is the wall normal and Z+ lies IN
+ * the wall surface, so the same identity rotation would pin the card edge-on. Wall taps are
+ * therefore rejected by the hit filter and fall through to the screen-space card; pinning
+ * them properly needs `wallFacingRotation()` and a device to verify on (#2754).
  */
 private class AnswerPanel(
     val id: Int,
@@ -219,6 +226,20 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     val panels = remember { mutableStateListOf<AnswerPanel>() }
     var nextPanelId by remember { mutableStateOf(0) }
     var pendingPanel by remember { mutableStateOf<AnswerPanel?>(null) }
+
+    // A round is busy while the screen card is working OR any anchored panel is
+    // still streaming. An anchored round hands the screen card back to Idle on
+    // its first delta, so `askState` alone under-reports it. The tap guard and
+    // the status pill BOTH read this single value — otherwise the pill returns
+    // to "tap to ask" mid-stream while the guard silently drops every tap.
+    val busy by remember {
+        derivedStateOf {
+            askState == AskState.Capturing ||
+                askState == AskState.Thinking ||
+                (askState as? AskState.Answered)?.streaming == true ||
+                panels.any { it.streaming }
+        }
+    }
     val viewNodeManager = rememberViewNodeManager()
 
     // The in-flight ask. It runs on `scope`, NOT on the capture effect, so nothing else
@@ -345,6 +366,126 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 ForceTrackingFailureMenu()
             }
         },
+        // The answer card / banner / progress row. Hosted by the scaffold's
+        // `bottomOverlay` slot so it is laid out against the Settings FAB instead of
+        // under it: this card is `fillMaxWidth()`, so at plain `Alignment.BottomCenter`
+        // it ran into the bottom-end FAB by construction, in every state (#2779).
+        bottomOverlay = {
+            // Bottom overlay — exactly one of: unavailable banner, download CTA/progress,
+            // thinking indicator, answer card, transient failure.
+            if (!hideOverlaysForCapture) Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 24.dp)
+                    // Full-width card: only its end edge can reach the Settings
+                    // FAB, so only the end edge is inset (0.dp when there is no FAB).
+                    .padding(end = settingsFabReservedSpace),
+            ) {
+                when (val status = engineStatus) {
+                    null -> Unit
+
+                    AskEngineStatus.Unavailable -> BottomCard {
+                        Text(
+                            text = stringResource(R.string.demo_point_and_ask_unavailable_title),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.demo_point_and_ask_unavailable_body),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+
+                    AskEngineStatus.Downloadable -> BottomCard {
+                        Text(
+                            text = stringResource(R.string.demo_point_and_ask_download_title),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = {
+                            scope.launch {
+                                askEngine.download().collect { engineStatus = it }
+                            }
+                        }) {
+                            Text(stringResource(R.string.demo_point_and_ask_download_cta))
+                        }
+                    }
+
+                    is AskEngineStatus.Downloading -> BottomCard {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            Text(
+                                text = status.totalBytesDownloaded
+                                    ?.let { bytes ->
+                                        stringResource(
+                                            R.string.demo_point_and_ask_downloading_progress,
+                                            bytes / (1024 * 1024),
+                                        )
+                                    }
+                                    ?: stringResource(R.string.demo_point_and_ask_downloading),
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(start = 12.dp),
+                            )
+                        }
+                    }
+
+                    AskEngineStatus.Ready -> when (val ask = askState) {
+                        AskState.Idle -> Unit
+
+                        AskState.Capturing, AskState.Thinking -> BottomCard {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                                Text(
+                                    text = stringResource(
+                                    R.string.demo_point_and_ask_status_thinking
+                                ),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(start = 12.dp),
+                                )
+                            }
+                        }
+
+                        is AskState.Answered -> BottomCard(
+                            testTag = PointAndAskTestTags.ANSWER_CARD,
+                        ) {
+                            Text(
+                                text = question,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            // "▌" = live-typing cursor while deltas keep arriving.
+                            Text(
+                                text = renderMarkdownLite(
+                                    if (ask.streaming) "${ask.text}▌" else ask.text
+                                ),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(
+                                    if (context.isOffline()) {
+                                        R.string.demo_point_and_ask_answer_source_offline
+                                    } else {
+                                        R.string.demo_point_and_ask_answer_source
+                                    }
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+
+                        AskState.Failed -> BottomCard {
+                            Text(
+                                text = stringResource(R.string.demo_point_and_ask_error),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -365,13 +506,8 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 },
                 onGestureListener = rememberOnGestureListener(
                     onSingleTapConfirmed = { e, node ->
-                        // An anchored round hands the screen card back to Idle as soon as
-                        // its first delta lands, so `askState` alone would stop guarding it
-                        // — a still-streaming panel counts as busy in its own right.
-                        val busy = askState == AskState.Capturing ||
-                            askState == AskState.Thinking ||
-                            (askState as? AskState.Answered)?.streaming == true ||
-                            panels.any { it.streaming }
+                        // `busy` is hoisted to the demo scope so the status pill above
+                        // shares it — see its declaration for why askState is not enough.
                         if (node == null && engineStatus == AskEngineStatus.Ready && !busy) {
                             ping = Offset(e.x, e.y) to System.nanoTime()
                             // P2 — pin the answer where the user pointed. The hit-test runs
@@ -380,6 +516,16 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             // Planes accept only inside their polygon; feature points cover
                             // the surfaces ARCore has not meshed into a plane yet. No hit
                             // (sky, untracked wall) → screen-space card, unchanged.
+                            //
+                            // HORIZONTAL_UPWARD_FACING only, deliberately. The card below
+                            // adds no rotation because a horizontal hit pose's Z+ already
+                            // points back toward the device. A VERTICAL plane's Y+ is the
+                            // wall normal and its Z+ lies IN the wall, so reusing that pose
+                            // would pin the card edge-on — an unreadable sliver — while the
+                            // demo reported success. Wall taps therefore fall through to the
+                            // screen-space card, which is already the no-hit behaviour.
+                            // Orienting walls properly needs wallFacingRotation() and a
+                            // device to verify on (#2754 blocks that on the emulator).
                             pendingPanel = latestFrame
                                 ?.takeIf { isTracking }
                                 ?.hitTest(e)
@@ -388,6 +534,8 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                                     trackable.trackingState == TrackingState.TRACKING &&
                                         (trackable is Point ||
                                             (trackable is Plane &&
+                                                trackable.type ==
+                                                Plane.Type.HORIZONTAL_UPWARD_FACING &&
                                                 trackable.isPoseInPolygon(result.hitPose)))
                                 }
                                 // ARCore throws ResourceExhaustedException once too many
@@ -515,6 +663,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
             AnimatedVisibility(
                 visible = !hideOverlaysForCapture &&
                     askState == AskState.Idle &&
+                    !busy &&
                     engineStatus != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
@@ -539,118 +688,6 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                         style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     )
-                }
-            }
-
-            // Bottom overlay — exactly one of: unavailable banner, download CTA/progress,
-            // thinking indicator, answer card, transient failure.
-            if (!hideOverlaysForCapture) Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(horizontal = 16.dp, vertical = 24.dp),
-            ) {
-                when (val status = engineStatus) {
-                    null -> Unit
-
-                    AskEngineStatus.Unavailable -> BottomCard {
-                        Text(
-                            text = stringResource(R.string.demo_point_and_ask_unavailable_title),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(R.string.demo_point_and_ask_unavailable_body),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-
-                    AskEngineStatus.Downloadable -> BottomCard {
-                        Text(
-                            text = stringResource(R.string.demo_point_and_ask_download_title),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Button(onClick = {
-                            scope.launch {
-                                askEngine.download().collect { engineStatus = it }
-                            }
-                        }) {
-                            Text(stringResource(R.string.demo_point_and_ask_download_cta))
-                        }
-                    }
-
-                    is AskEngineStatus.Downloading -> BottomCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                            Text(
-                                text = status.totalBytesDownloaded
-                                    ?.let { bytes ->
-                                        stringResource(
-                                            R.string.demo_point_and_ask_downloading_progress,
-                                            bytes / (1024 * 1024),
-                                        )
-                                    }
-                                    ?: stringResource(R.string.demo_point_and_ask_downloading),
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(start = 12.dp),
-                            )
-                        }
-                    }
-
-                    AskEngineStatus.Ready -> when (val ask = askState) {
-                        AskState.Idle -> Unit
-
-                        AskState.Capturing, AskState.Thinking -> BottomCard {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                                Text(
-                                    text = stringResource(
-                                    R.string.demo_point_and_ask_status_thinking
-                                ),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(start = 12.dp),
-                                )
-                            }
-                        }
-
-                        is AskState.Answered -> BottomCard(
-                            testTag = PointAndAskTestTags.ANSWER_CARD,
-                        ) {
-                            Text(
-                                text = question,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            // "▌" = live-typing cursor while deltas keep arriving.
-                            Text(
-                                text = renderMarkdownLite(
-                                    if (ask.streaming) "${ask.text}▌" else ask.text
-                                ),
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = stringResource(
-                                    if (context.isOffline()) {
-                                        R.string.demo_point_and_ask_answer_source_offline
-                                    } else {
-                                        R.string.demo_point_and_ask_answer_source
-                                    }
-                                ),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-
-                        AskState.Failed -> BottomCard {
-                            Text(
-                                text = stringResource(R.string.demo_point_and_ask_error),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
                 }
             }
         }

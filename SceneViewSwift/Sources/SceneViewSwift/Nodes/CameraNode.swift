@@ -27,7 +27,15 @@ public struct CameraNode: Sendable {
         let cameraEntity = Entity()
         cameraEntity.name = "CameraNode"
         // Add a PerspectiveCamera component (available on iOS 15+, macOS 15+, visionOS 1+)
-        cameraEntity.components.set(PerspectiveCameraComponent())
+        // with deterministic clip planes matching the documented API defaults
+        // (near 0.01 m, far 1000 m). RealityKit's `PerspectiveCameraComponent()`
+        // ships with `far = .infinity`, so without setting it here the `farClip`
+        // getter's `?? 1000` fallback was unreachable and the default far plane
+        // was silently infinite instead of the advertised 1000 m. See #2878.
+        var camera = PerspectiveCameraComponent()
+        camera.near = 0.01
+        camera.far = 1000.0
+        cameraEntity.components.set(camera)
         self.entity = cameraEntity
     }
 

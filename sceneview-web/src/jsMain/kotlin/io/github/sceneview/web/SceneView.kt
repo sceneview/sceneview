@@ -1410,10 +1410,14 @@ class SceneView private constructor(
         engine.destroyView(view)
         engine.destroyScene(scene)
         engine.destroyCameraComponent(cameraEntity)
-        // Free the camera entity's EntityManager handle too — destroying only
-        // the camera component leaks the integer entity slot, the exact inverse
-        // of the #1700 light leak. Component first, then entity (parity with the
-        // light teardown above).
+        // Destroys the camera component. NOTE: the integer entity slot is NOT reclaimed here,
+        // and cannot be with the pinned filament.js 1.52.3 — its bound EntityManager.destroy()
+        // is a no-op on the id pool (probed: 2000 create→destroy→create yields zero id reuse,
+        // ids climb unbounded) and isAlive() is not bound at all. This is the web side of
+        // #2859: Android's EntityManager.destroy() (filament 1.72.1 JNI) reclaims the id, the
+        // JS binding does not. Web id-recycle parity needs a filament.js pin bump, which drags
+        // the .filamat ABI invariant — tracked separately, not a rider here. destroyEntity()
+        // frees engine-side component bookkeeping only.
         engine.destroyEntity(cameraEntity)
         engine.destroySwapChain(swapChain)
         val filament: dynamic = js("Filament")

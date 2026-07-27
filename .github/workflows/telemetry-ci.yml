@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           # Pinned to 20 to match every other Node-using workflow
           # (ci.yml, release.yml, device-qa.yml, render-tests.yml) — #1602.

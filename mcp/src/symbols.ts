@@ -100,10 +100,14 @@ export function resolveImport(path: string): "class" | "package" | "member" | nu
   if (SYMBOLS.packages.includes(parent) && leaf in SYMBOLS.topLevel) {
     return "member";
   }
-  // `import io.github.sceneview.node.ModelNode.Companion` or a nested
-  // class member — accept when the parent class exists and declares it.
+  // A nested class member — accept when the parent class exists and
+  // declares it.
   const parentClass = SYMBOLS.classes[parent];
   if (parentClass?.members.includes(leaf)) return "member";
+  // `import io.github.sceneview.node.ModelNode.Companion` — the generator
+  // folds companion members into the host class and drops the `.Companion`
+  // entry, so resolve the companion itself through its host.
+  if (leaf === "Companion" && parent in SYMBOLS.classes) return "member";
   return null;
 }
 

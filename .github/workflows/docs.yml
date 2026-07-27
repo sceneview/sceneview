@@ -108,7 +108,7 @@ jobs:
           touch site/.nojekyll
 
       # ── 2. Build MkDocs (technical docs — /docs/) ───────────────────────
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
 

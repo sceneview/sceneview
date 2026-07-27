@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.24.0)
+  Source of truth: /llms.txt  (SceneView 4.25.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Recipes & Sample Index
 
 > Copy-paste recipes and the full demo/sample catalog.
-> Auto-generated from `llms.txt` (SceneView 4.24.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.25.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Recipes — "I want to..."
 
@@ -100,7 +100,7 @@ to the composited capture (camera + placed virtual objects — see the
 No cloud; frames never leave the device. AICore devices only (Pixel 8+,
 recent flagships) — gate with `checkStatus()` and degrade honestly.
 
-```kotlin
+```kotlin notest external AICore / Gemini Nano dependency (Generation, FeatureStatus, ImagePart) — not on the SDK classpath
 val generativeModel = remember { Generation.getClient() }   // Gemini Nano via AICore
 var ready by remember { mutableStateOf(false) }
 LaunchedEffect(Unit) { ready = generativeModel.checkStatus() == FeatureStatus.AVAILABLE }
@@ -160,8 +160,15 @@ stacking them in a screen overlay. Hit-test the tap against the latest frame,
 anchor the hit, and render the card on a `ViewNode` under an `AnchorNode`:
 
 ```kotlin
-val panels = remember { mutableStateListOf<AnswerPanel>() }   // id + Anchor + answer state
 val viewNodeManager = rememberViewNodeManager()
+
+// One card per tap: the anchor ARCore refines each frame, plus the streamed text.
+class AnswerPanel(val id: Int, val anchor: Anchor) { var text by mutableStateOf("") }
+
+val panels = remember { mutableStateListOf<AnswerPanel>() }
+var latestFrame by remember { mutableStateOf<Frame?>(null) }
+var isTracking by remember { mutableStateOf(false) }
+var nextId by remember { mutableIntStateOf(0) }
 // ARCore anchors cost per frame while attached — always detach them.
 DisposableEffect(Unit) { onDispose { panels.forEach { it.anchor.detach() } } }
 
@@ -172,10 +179,18 @@ ARSceneView(
     onGestureListener = rememberOnGestureListener(
         onSingleTapConfirmed = { e, _ ->
             // Gate on camera tracking, not just the trackable's own state.
+            // HORIZONTAL_UPWARD_FACING only: on a horizontal plane (and on a
+            // Point) the hit pose's Z+ really does point back toward the
+            // device, which is what lets the card below skip any rotation. A
+            // VERTICAL plane's Z+ lies IN the wall, so the same code would pin
+            // the card edge-on — handle walls with `wallFacingRotation(...)`
+            // instead, or let them fall through to the screen-space card.
             val hit = latestFrame?.takeIf { isTracking }?.hitTest(e)?.firstOrNull { result ->
                 val t = result.trackable
                 t.trackingState == TrackingState.TRACKING &&
-                    (t is Point || (t is Plane && t.isPoseInPolygon(result.hitPose)))
+                    (t is Point || (t is Plane &&
+                        t.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                        t.isPoseInPolygon(result.hitPose)))
             }
             val panel = hit?.let { AnswerPanel(nextId++, it.createAnchor()) }
             if (panel != null) panels += panel
@@ -191,7 +206,7 @@ ARSceneView(
                     windowManager = viewNodeManager,
                     unlit = true,                        // UI card: ignore scene lighting
                     position = Position(y = 0.12f),      // float above the surface
-                    // No rotation: the hit pose already faces the device.
+                    // No rotation — valid because the hit is horizontal/Point.
                     scale = Scale(0.15f),                // ViewNode renders at 250 px/m
                     // No parent to measure against — size the content explicitly.
                 ) { Card(Modifier.width(320.dp)) { Text(panel.text) } }
@@ -202,11 +217,16 @@ ARSceneView(
 ```
 
 Gotchas: give the `ViewNode`'s content an explicit width (it has no parent to
-measure against); **do not add a facing rotation** — an ARCore hit pose is
-already oriented "Z+ … roughly toward the user's device" and a `ViewNode`'s
-quad faces its own +Z, so identity already faces the user and any extra yaw
-turns the card away; `createAnchor()` throws once too many anchors exist, so
-cap the panels and wrap it; a tap that hits nothing trackable must fall back
+measure against); **do not add a facing rotation for horizontal-plane or Point
+hits** — there the ARCore hit pose is already oriented "Z+ … roughly toward the
+user's device" and a `ViewNode`'s quad faces its own +Z, so identity faces the
+user and any extra yaw turns the card away. **This does not hold on a VERTICAL
+plane**: its Y+ is the wall normal and its Z+ lies in the wall surface, so
+reusing the hit pose pins the card edge-on. Either filter the hit to
+`Plane.Type.HORIZONTAL_UPWARD_FACING` (above) and let wall taps fall through to
+the screen-space card, or orient walls explicitly with `wallFacingRotation()`
+from `arsceneview`. Also: `createAnchor()` throws once too many anchors exist,
+so cap the panels and wrap it; a tap that hits nothing trackable must fall back
 to the screen-space card; and with the composited capture above, hide the
 anchored cards during the capture (`isVisible = false`) or the model reads
 its own earlier answers back as part of the next question.
@@ -554,7 +574,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Interaction
 
 - `camera-gestures` — Camera & Gestures. Manipulator modes and per-node edit gestures.
-- `picking-collision` — Picking & Collision. Ray hit-test and interactive ViewNode overlays.
+- `picking-collision` — Picking & Collision. Ray hit-test and ray-picked ViewNode overlays.
 
 ### Advanced
 
@@ -617,7 +637,7 @@ SceneView's sample app (`samples/android-demo`) streams CC-BY licensed glTF mode
 
 **Curated registry:** `SampleAssets.byCategory["<category>"]` — categories are `solar`, `gallery`, `animation`, `park`, `ar_placement`, `physics`, `materials`. Each entry is CC-BY 4.0, validated at construction time. Every entry has a `fallbackBundledPath` (a small bundled GLB / USDZ) that the resolver serves when the network or key is unavailable.
 
-```kotlin
+```kotlin notest demo-app pattern — SketchfabAssetResolver/SampleAssets live in the demo app (samples/android-demo, sketchfab package), not the SDK
 @Composable
 fun MyDemo() {
     val context = LocalContext.current
@@ -667,24 +687,47 @@ Full recipe + add-a-slug checklist: `docs/docs/recipes/sketchfab-streaming.md`. 
 
 `DemoScaffold` is the shared scaffold every sample-app demo uses. v2 ([PR #1169](https://github.com/sceneview/sceneview/pull/1169)) renders the 3D / AR scene **full-screen** under the top app bar, with a `Tune` FAB pinned bottom-right that opens a `ModalBottomSheet` containing the demo's controls.
 
-```kotlin
+```kotlin notest DemoScaffold and DemoBottomOverlayScope live in samples/android-demo, which is deliberately not on :snippets-check's classpath (it depends on the libraries, not the sample app)
 @Composable
 fun DemoScaffold(
     title: String,
     onBack: () -> Unit,
     controls: (@Composable ColumnScope.() -> Unit)? = null,
+    bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)? = null,
     scene: @Composable BoxScope.() -> Unit,
 )
 ```
 
 - `controls == null` → scene fills the whole viewport, no FAB.
 - `controls != null` → FAB + peek chip + sheet. Controls render inside a vertically-scrolling `Column` so v1 side-panel `controls = { ... }` blocks port unchanged.
+- `bottomOverlay != null` → a floating bottom banner / status pill / answer card, laid out **by the scaffold** so it can never be masked by the bottom-end Settings FAB.
 
 **Gestures:** tap FAB or peek chip → opens sheet; long-press peek chip → toggles `DemoSettings.qaMode` (deterministic screenshot mode); drag handle / outside tap / back → dismiss. AR sessions keep tracking underneath while the sheet is open.
 
-**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
+**Bottom overlays go in the slot, never in `scene` at a bare `Alignment.BottomCenter` ([#2779](https://github.com/sceneview/sceneview/issues/2779)).** The FAB is scaffold chrome and its very existence depends on `controls`, so a demo placing its own bottom-center overlay cannot know whether — or by how much — it must get out of the way. Pixel 9 device QA found demos rendering status text straight under the FAB, words masked. The slot's receiver carries the one number that fixes it:
 
 ```kotlin
+DemoScaffold(
+    title = stringResource(R.string.demo_my_title),
+    onBack = onBack,
+    controls = { /* … */ },              // ← decides whether a FAB exists at all
+    bottomOverlay = {
+        // Full-width card / banner: only its end edge can reach the FAB.
+        Surface(modifier = Modifier.fillMaxWidth().padding(end = settingsFabReservedSpace)) { /* … */ }
+
+        // Centred content-width pill: inset BOTH sides. A centred element grows
+        // outwards from the middle, so reserving only the end side would shift it
+        // off-centre without keeping its end edge out of the FAB band.
+        Text(text = status, modifier = Modifier.padding(horizontal = settingsFabReservedSpace))
+    },
+) { /* scene */ }
+```
+
+`settingsFabReservedSpace` resolves to `SETTINGS_FAB_RESERVED_SPACE` (88 dp = 56 dp FAB + 2 × 16 dp gutter) when the demo passes `controls`, and to `0.dp` when it does not — computed once, scaffold-side, from the same condition that composes the FAB. A demo whose `controls` is itself conditional (`controls = if (DemoSettings.qaMode) { … } else null`) therefore gets the correct inset with no duplicated condition to drift.
+
+**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
+
+```kotlin notest demo-app pattern — SampleAssets/selectedSlug live in the demo app (samples/android-demo), not the SDK
 controls = {
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),

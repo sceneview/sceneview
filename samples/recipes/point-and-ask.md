@@ -154,10 +154,16 @@ ARSceneView(
             // Tracked planes (tap inside the polygon) and feature points both accept.
             // Gate on camera tracking: hit results are unreliable while the session
             // itself is not tracking, even when a trackable reports TRACKING.
+            // HORIZONTAL_UPWARD_FACING only: that is what makes the "no rotation"
+            // rule below true. A VERTICAL plane's Z+ lies IN the wall, so reusing
+            // its hit pose pins the card edge-on. Wall taps fall through to the
+            // screen-space card; to pin them, use wallFacingRotation() instead.
             val hit = latestFrame?.takeIf { isTracking }?.hitTest(e)?.firstOrNull { result ->
                 val t = result.trackable
                 t.trackingState == TrackingState.TRACKING &&
-                    (t is Point || (t is Plane && t.isPoseInPolygon(result.hitPose)))
+                    (t is Point || (t is Plane &&
+                        t.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                        t.isPoseInPolygon(result.hitPose)))
             }
             // createAnchor() throws once too many anchors exist — degrade, don't crash.
             val anchor = hit?.let { runCatching { it.createAnchor() }.getOrNull() }
@@ -174,10 +180,13 @@ ARSceneView(
                     windowManager = viewNodeManager,
                     unlit = true,                        // UI card: ignore scene lighting
                     position = Position(y = 0.12f),      // float above the surface
-                    // No rotation: an ARCore hit pose is already oriented "Z+ roughly
-                    // toward the user's device", and a ViewNode's quad faces its own +Z,
-                    // so identity already faces where the user stood at tap time. Adding
-                    // a world-space yaw here double-counts it and turns the card away.
+                    // No rotation — valid because the hit filter accepts only
+                    // horizontal planes and Points. There the hit pose is oriented
+                    // "Z+ roughly toward the user's device", and a ViewNode's quad
+                    // faces its own +Z, so identity already faces where the user
+                    // stood at tap time; adding a world-space yaw double-counts it
+                    // and turns the card away. On a VERTICAL plane this is FALSE
+                    // (Z+ lies in the wall) — orient those with wallFacingRotation().
                     scale = Scale(0.15f),                // ViewNode renders at 250 px/m
                 ) {
                     // A ViewNode has no parent to measure against — give the content

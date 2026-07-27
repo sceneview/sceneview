@@ -400,6 +400,251 @@ class DisplayTypeMapTest(unittest.TestCase):
         self.assertTrue((repo_root / al.DEFAULT_METADATA_DIR).is_dir())
 
 
+class ClassifyChecksumTest(unittest.TestCase):
+    """Shape classifier for one live `sourceFileChecksum` (#2612 Phase C step 0)."""
+
+    def test_md5_shaped_is_32_lowercase_hex(self):
+        self.assertEqual(al.classify_checksum("d41d8cd98f00b204e9800998ecf8427e"),
+                         "md5-shaped")
+
+    def test_none_and_empty_are_absent(self):
+        self.assertEqual(al.classify_checksum(None), "absent")
+        self.assertEqual(al.classify_checksum(""), "absent")
+
+    def test_uppercase_hex_is_not_md5_shaped(self):
+        # Apple's field is lowercase; an uppercase digest is a different shape,
+        # and mislabelling it "md5" would hide that the convention changed.
+        self.assertEqual(al.classify_checksum("D41D8CD98F00B204E9800998ECF8427E"),
+                         "other")
+
+    def test_sha256_length_is_other(self):
+        self.assertEqual(al.classify_checksum("a" * 64), "other")
+
+    def test_wrong_length_hex_is_other(self):
+        self.assertEqual(al.classify_checksum("abc123"), "other")
+
+    def test_base64ish_is_other(self):
+        self.assertEqual(al.classify_checksum("Zm9vYmFyYmF6cXV4=="), "other")
+
+
+class ClassifyLiveChecksumsTest(unittest.TestCase):
+    """The measurement Phase C is blocked on: what does Apple actually store?"""
+
+    def test_no_live_assets(self):
+        v = al.classify_live_checksums({})
+        self.assertEqual(v["overall"], "no-live-assets")
+
+    def test_empty_sets_still_no_live_assets(self):
+        # A display type present with an empty list is still nothing to measure.
+        v = al.classify_live_checksums({"APP_IPHONE_67": []})
+        self.assertEqual(v["overall"], "no-live-assets")
+
+    def test_all_md5_shaped_is_not_confirmed(self):
+        # The crux: 32-hex is CONSISTENT with MD5 but is not proof. It must not
+        # silently become a green light for the checksum diff.
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e",
+                               "0cc175b9c0f1b6a831c399e269772661"]})
+        self.assertEqual(v["overall"], "md5-shaped")
+        self.assertEqual(v["matched_local"], [])
+
+    def test_draft_match_is_attributed_to_the_draft_set(self):
+        # E3 (correctness re-review, PR #2811): the probe samples the EDITABLE
+        # draft so a console upload is visible — but that draft is the exact
+        # version apply_screenshots() writes to. If a match were reported
+        # without saying WHERE, an operator could truthfully verify "the script
+        # never wrote the live set" (true by construction) and attest, turning
+        # our own echo in the draft into CONFIRMED.
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": ["a" * 32],
+             "APP_IPHONE_67 (draft)": [digest]}, local_md5s=[digest])
+        self.assertEqual(v["matched_by_display_type"],
+                         {"APP_IPHONE_67 (draft)": [digest]})
+        text = "\n".join(al.checksum_provenance_report(v))
+        self.assertIn("matched in APP_IPHONE_67 (draft)", text)
+        # And the report must kill the "live set was untouched" reasoning —
+        # without leaning on a claim that expires. E4 (third review pass): the
+        # editable version KEEPS its screenshots when it ships, so today's
+        # draft echo is tomorrow's ordinary live set. Saying "the script never
+        # writes live" would be false the day after any release, right above
+        # the one human decision that guards the gate.
+        self.assertIn("attests nothing, at any date", text)
+        self.assertIn("KEEPS its screenshots when it goes live", text)
+
+    def test_report_labels_match_what_probe_key_actually_produces(self):
+        # W9 slipped through because every fixture hand-wrote "… (draft)" while
+        # _probe_key() had started emitting "… @draft X" — so the instruction
+        # told the operator to look for a label the code no longer prints.
+        # Build the keys through _probe_key() and assert the report's own
+        # wording points at that format, so a future rename cannot desync them.
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        live_key = al._probe_key("APP_IPHONE_67", "4.23.0")
+        draft_key = al._probe_key("APP_IPHONE_67", "draft 4.24.0")
+        self.assertNotEqual(live_key, draft_key)
+        text = "\n".join(al.checksum_provenance_report(
+            al.classify_live_checksums({live_key: ["a" * 32], draft_key: [digest]},
+                                       local_md5s=[digest])))
+        self.assertIn(f"matched in {draft_key}", text)
+        # The md5-shaped branch names a label; it must be the emitted one.
+        shaped = "\n".join(al.checksum_provenance_report(
+            al.classify_live_checksums({live_key: ["a" * 32]})))
+        marker = draft_key.split("@")[1].split()[0]      # "draft"
+        self.assertIn(f"'@{marker}", shaped)
+        self.assertNotIn("'(draft)'", shaped)
+
+    def test_probe_key_stamps_the_version_so_provenance_is_checkable(self):
+        # E4: a set being live proves nothing about who uploaded it, because
+        # the editable version carries its screenshots into READY_FOR_SALE.
+        # Stamping the version is what turns the attestation from a belief
+        # into something checkable against the workflow's run history.
+        self.assertEqual(al._probe_key("APP_IPHONE_67", "4.23.0"),
+                         "APP_IPHONE_67 @4.23.0")
+        self.assertEqual(al._probe_key("APP_IPHONE_67", "draft 4.24.0"),
+                         "APP_IPHONE_67 @draft 4.24.0")
+        # A set with no screenshotDisplayType must stay readable, not "None".
+        self.assertEqual(al._probe_key(None, "4.23.0"),
+                         "<unknown display type> @4.23.0")
+
+    def test_evidence_lines_are_mandatory_not_optional(self):
+        # W7: the "matched in …" lines ARE the disclosure that makes an
+        # attestation informed. A verdict lacking them must raise, never print
+        # four affirmative CONFIRMED lines with no evidence under them.
+        with self.assertRaises(KeyError):
+            al.checksum_provenance_report({
+                "overall": "confirmed", "buckets": {"md5-shaped": 1},
+                "per_display_type": {}, "matched_local": ["x" * 32],
+                "unknown_shapes": [],
+            })
+
+    def test_non_str_checksum_does_not_crash_the_entry_point(self):
+        # classify_checksum() is advertised as total; the caller must be too.
+        # `len()` on a non-str bucketed as "other" used to raise TypeError.
+        v = al.classify_live_checksums({"APP_IPHONE_67": [12345]})
+        self.assertEqual(v["overall"], "other")
+        self.assertIn("len=5", v["unknown_shapes"])
+
+    def test_match_alone_is_only_unattested_not_confirmed(self):
+        # THE defect this guard exists for (correctness review, PR #2811):
+        # once --apply-screenshots has run, the live set holds the very MD5s we
+        # declared, so a repo match is our own echo. Unattested, it must never
+        # read CONFIRMED — that would be a permanently-green Phase C unblocker
+        # built on the one thing the write path structurally cannot test.
+        digest = "900150983cd24fb0d6963f7d28e17f72"  # md5("abc")
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": [digest]}, local_md5s=[digest])
+        self.assertEqual(v["overall"], "unattested-match")
+        self.assertEqual(v["matched_local"], [digest])
+
+    def test_match_confirms_only_when_provenance_is_attested(self):
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": [digest]}, local_md5s=[digest],
+            console_sourced=True)
+        self.assertEqual(v["overall"], "confirmed")
+
+    def test_attestation_alone_confirms_nothing_without_a_match(self):
+        # Attesting provenance must not manufacture a verdict out of thin air.
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]},
+            local_md5s=[], console_sourced=True)
+        self.assertEqual(v["overall"], "md5-shaped")
+
+    def test_none_display_type_does_not_crash_the_sort(self):
+        # A live set missing `screenshotDisplayType` keys this dict on None;
+        # sorting None against str is a TypeError that would take the whole
+        # read-only run down and surface as an empty, clean-looking read.
+        v = al.classify_live_checksums(
+            {None: ["d41d8cd98f00b204e9800998ecf8427e"],
+             "APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]})
+        self.assertEqual(v["overall"], "md5-shaped")
+
+    def test_absent_checksums_refute(self):
+        v = al.classify_live_checksums({"APP_IPHONE_67": [None, None]})
+        self.assertEqual(v["overall"], "absent")
+
+    def test_non_md5_shape_refutes_and_reports_length(self):
+        v = al.classify_live_checksums({"APP_IPHONE_67": ["a" * 64]})
+        self.assertEqual(v["overall"], "other")
+        self.assertIn("len=64", v["unknown_shapes"])
+
+    def test_mixed_buckets_are_not_averaged(self):
+        v = al.classify_live_checksums(
+            {"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"],
+             "APP_IPAD_PRO_3GEN_129": [None]})
+        self.assertEqual(v["overall"], "mixed")
+
+    def test_a_match_wins_over_shape_when_a_match_exists(self):
+        # One matching MD5 outranks the shape bucket even if other assets are
+        # only md5-shaped — still gated on the provenance attestation.
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        live = {"APP_IPHONE_67": [digest, "0cc175b9c0f1b6a831c399e269772661"]}
+        self.assertEqual(
+            al.classify_live_checksums(live, local_md5s=[digest])["overall"],
+            "unattested-match")
+        self.assertEqual(
+            al.classify_live_checksums(live, local_md5s=[digest],
+                                       console_sourced=True)["overall"],
+            "confirmed")
+
+
+class ChecksumProvenanceReportTest(unittest.TestCase):
+    """The verdict must SAY what it licenses, not just what it observed."""
+
+    def _report(self, live, local=(), console_sourced=False):
+        return "\n".join(al.checksum_provenance_report(
+            al.classify_live_checksums(live, local, console_sourced)))
+
+    def test_md5_shaped_report_says_not_proof_and_how_to_close(self):
+        text = self._report({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]})
+        self.assertIn("MD5-SHAPED", text.upper())
+        self.assertIn("console", text)  # names the action that would confirm it
+
+    def test_md5_shaped_report_warns_the_upload_lands_on_the_draft(self):
+        # The prescribed action must be actionable: console uploads go to the
+        # EDITABLE draft, so an operator told to "upload and re-run" would
+        # otherwise watch the verdict never move and conclude the probe is broken.
+        text = self._report({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]})
+        self.assertIn("draft", text.lower())
+
+    def test_confirmed_report_unblocks_phase_c(self):
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        text = self._report({"APP_IPHONE_67": [digest]}, local=[digest],
+                            console_sourced=True)
+        self.assertIn("CONFIRMED", text.upper())
+        self.assertIn("Phase C", text)
+
+    def test_unattested_match_report_refuses_to_unblock_and_says_why(self):
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        text = self._report({"APP_IPHONE_67": [digest]}, local=[digest])
+        self.assertIn("UNATTESTED-MATCH", text.upper())
+        self.assertIn("echo", text.lower())          # names the failure mode
+        self.assertIn("NOT a Phase C unblocker", text)
+        # Must not read as a confirmation to a skimming eye.
+        self.assertNotIn("CONFIRMED\n", text.upper().replace("[PROBE] ", ""))
+
+    def test_absent_report_says_rekey(self):
+        text = self._report({"APP_IPHONE_67": [None]})
+        self.assertIn("re-key", text.lower())
+
+    def test_every_verdict_produces_lines(self):
+        # No verdict may silently emit nothing — that would read as "no drift".
+        digest = "900150983cd24fb0d6963f7d28e17f72"
+        for live, local in [
+            ({}, ()),
+            ({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"]}, ()),
+            ({"APP_IPHONE_67": [None]}, ()),
+            ({"APP_IPHONE_67": ["a" * 64]}, ()),
+            ({"APP_IPHONE_67": [digest]}, [digest]),          # unattested-match
+            ({"APP_IPHONE_67": ["d41d8cd98f00b204e9800998ecf8427e"],
+              "APP_IPAD_PRO_3GEN_129": [None]}, ()),
+        ]:
+            for attested in (False, True):
+                lines = al.checksum_provenance_report(
+                    al.classify_live_checksums(live, local, attested))
+                self.assertTrue(lines and all(l.startswith("[probe]") for l in lines))
+
+
 class DisplayTypeEnumTest(unittest.TestCase):
     """#2794 follow-up (impact-review asymmetry): the ASC display-type VALUES
     had no enum guard, only a dir↔map coverage test. A DISPLAY_TYPE_MAP row

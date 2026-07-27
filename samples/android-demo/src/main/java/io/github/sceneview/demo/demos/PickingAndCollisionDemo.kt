@@ -243,8 +243,19 @@ private fun ViewNodeSection(
     )
 
     val gestureListener = rememberOnGestureListener(
-        onSingleTapUp = { _, _ ->
-            tapCount++
+        // Only a tap that actually PICKS the card counts. `node` is the ray-cast hit
+        // (ViewNode gets a collider from its bounding box, RenderableNode:118), so an
+        // empty-space tap arrives with `node == null` and leaves the counter alone —
+        // previously every scene tap incremented, which defeated the whole point of a
+        // picking demo.
+        //
+        // The embedded Compose Button can not do this itself: a ViewNode renders its
+        // View through a FLAG_NOT_TOUCHABLE window (see ViewNode.tryAttachingView) and the SDK never
+        // dispatches MotionEvents into that view tree, so `Button.onClick` can not fire
+        // today — see #2845. Picking the card is therefore the honest tap source, and
+        // it is exactly what this demo is meant to show.
+        onSingleTapUp = { _, node ->
+            if (node is ViewNode) tapCount++
             onHeroGesture()
         },
         onDoubleTap = { _, _ -> onHeroGesture() },
@@ -305,6 +316,10 @@ private fun ViewNodeSection(
                     scale = Float3(0.35f),
                     isVisible = isVisible
                 ) {
+                    // `onTap` can not fire today — nothing dispatches touch into a
+                    // ViewNode's view tree (#2845). It stays wired so the button works
+                    // the day it does; whoever lands #2845 must then drop the
+                    // ray-cast increment above, or a tap would count twice.
                     EmbeddedCard(tapCount = tapCount, onTap = { tapCount++ })
                 }
                 ViewNode(

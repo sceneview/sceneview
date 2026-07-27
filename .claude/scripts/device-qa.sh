@@ -113,8 +113,48 @@ source "$SCRIPT_DIR/lib/qa-keys.sh"
 # build can never be reused — see PR #2347 review.
 DEMO_DEBUG_APK="samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk"
 
-# Release every emulator lease this orchestrator owns when it exits.
-trap 'emu_lease_release_all' EXIT
+# Pool session identity (#2862). The pool reserves emulators per SESSION, not
+# per pid, so a provisioned emulator stops looking free the moment the script
+# that provisioned it exits. Resolution order:
+#   1. EMU_LEASE_SESSION already exported  -> the caller owns the reservation;
+#      we borrow it and must NOT release it on exit.
+#   2. A token published by a `setup-ar-emulator.sh` run in the last few minutes
+#      -> inherit it once (the documented provision-then-QA two-step).
+#   3. Otherwise mint our own -> nothing else will ever claim it, so we release
+#      it on exit rather than idling the pool until the sticky TTL.
+# The token is EXPORTED so the setup-ar-emulator.sh subprocess below runs under
+# the same identity and hands its emulator straight back to us.
+EMU_LEASE_SESSION_MINTED=false
+if [[ -z "${EMU_LEASE_SESSION:-}" ]]; then
+  if ! emu_lease_session_inherit >/dev/null 2>&1; then
+    EMU_LEASE_SESSION="$(emu_lease_session_new)"
+    EMU_LEASE_SESSION_MINTED=true
+  fi
+fi
+export EMU_LEASE_SESSION
+# Never lease a device that is not the pool AVD (#2862) — a stray emulator on a
+# pool port would otherwise be driven as if it were the ARCore-ready Pixel_7a.
+#
+# LOCAL POOL ONLY. On CI the emulator comes from
+# ReactiveCircus/android-emulator-runner, whose AVD is named `test` and is not
+# a pool member; requiring the pool AVD there would refuse the only emulator on
+# the runner and redden the android/ar legs. A runner is single-session anyway,
+# which is the collision this guard exists to prevent. An explicit
+# EMU_REQUIRE_AVD from the caller always wins.
+if [[ -z "${EMU_REQUIRE_AVD:-}" && "${GITHUB_ACTIONS:-}" != "true" ]]; then
+  EMU_REQUIRE_AVD="$EMU_POOL_AVD"
+fi
+export EMU_REQUIRE_AVD
+
+# Release every emulator lease this orchestrator owns when it exits — plus, when
+# we minted our own session token, the sticky reservations carrying it.
+qa_release_leases() {
+  emu_lease_release_all
+  if [[ "$EMU_LEASE_SESSION_MINTED" == "true" ]]; then
+    emu_lease_release_session
+  fi
+}
+trap 'qa_release_leases' EXIT
 
 # --- Flags -----------------------------------------------------------------
 PLATFORM="all"
@@ -316,7 +356,7 @@ acquire_pool_emulator() {
   emu_pool_reclaim_stale adb
   local serial
   # Step 1: lease a free running emulator outright.
-  if serial="$(emu_lease_free_serial adb)" && emu_lease_acquire "$serial"; then
+  if serial="$(emu_lease_free_serial adb)" && emu_lease_acquire "$serial" adb; then
     echo "$serial"
     return 0
   fi
@@ -339,10 +379,12 @@ acquire_pool_emulator() {
     serial="$(emu_running_serial adb || true)"
   fi
   [[ -n "${serial:-}" ]] || return 1
-  # Re-lease under this orchestrator's pid (setup-ar-emulator.sh dropped its own
-  # lease in its EXIT trap). Best-effort: even if a peer grabbed the lease, the
-  # emulator is up and we still target it via ANDROID_SERIAL.
-  emu_lease_acquire "$serial" || true
+  # Adopt the lease under this orchestrator's pid. setup-ar-emulator.sh ran with
+  # our exported EMU_LEASE_SESSION, so the sticky reservation it left behind is
+  # ours to take (#2862 — before that, it dropped the lease on exit and the live
+  # emulator looked free to every peer). Best-effort: even if a peer grabbed it,
+  # the emulator is up and we still target it via ANDROID_SERIAL.
+  emu_lease_acquire "$serial" adb || true
   echo "$serial"
   return 0
 }
@@ -453,8 +495,15 @@ run_ios() {
     fi
   fi
 
-  if [[ $rc -eq 0 ]]; then
+  # rc=0 alone is NOT proof of a pass: on macOS bash 3.2, an abort (e.g. a
+  # `set -u` expansion error) inside a `||`-guarded call exits the child with
+  # status 0 when its EXIT trap is set — measured on the 2026-07-21 nightly,
+  # where the ios leg graded PASSED with zero Maestro steps run. Require the
+  # positive `[ios-qa] PASS` marker, which only the genuine success path prints.
+  if [[ $rc -eq 0 ]] && grep -q '^\[ios-qa\] PASS — ' "$ARTIFACTS/ios-output.txt" 2>/dev/null; then
     record ios passed "flow=$flow" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
+  elif [[ $rc -eq 0 ]]; then
+    record ios failed "ios-device-qa.sh exited 0 without its PASS marker — harness aborted mid-run (flow=$flow)" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
   elif [[ $rc -eq 1 && ! $CI_MODE ]] && grep -q 'no available simulator' "$ARTIFACTS/ios-output.txt" 2>/dev/null; then
     record ios skipped "no iOS simulator available" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
   else
@@ -670,7 +719,11 @@ if $DISK_GATE_SKIP; then
   LEGS=()
 fi
 
-for leg in "${LEGS[@]}"; do
+# ${LEGS[@]+…}: macOS ships bash 3.2, where expanding an EMPTY array under
+# `set -u` is an "unbound variable" error (bash ≥4.4 allows it) — the
+# self-hosted-Mac ios leg crashed here whenever the disk gate emptied LEGS,
+# turning the honest-skip design above into a bogus exit 1.
+for leg in ${LEGS[@]+"${LEGS[@]}"}; do
   case "$leg" in
     web)     run_web ;;
     android)

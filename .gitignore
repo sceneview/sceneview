@@ -64,6 +64,7 @@ samples/*/build/
 sceneview-core/build/
 sceneview-web/build/
 sceneview-desktop/build/
+tools/snippets-check/build/
 
 # ── Kotlin/JS ─────────────────────────────────────────────
 kotlin-js-store/
@@ -114,6 +115,11 @@ samples/ios-demo/SourcePackages/
 # SwiftPM build dir at any depth (root `.build/` appears when `swift build` is
 # run from the worktree root).
 .build/
+# XcodeBuildMCP: config.yaml is tracked project config (it enables the
+# ui-automation + device workflows the iOS demo QA needs — AR cannot run on a
+# simulator). Anything else the tool drops in that directory is a local cache.
+.xcodebuildmcp/*
+!.xcodebuildmcp/config.yaml
 
 # ── Android artifacts ─────────────────────────────────────
 *.apk
@@ -202,10 +208,12 @@ docs/docs/*-contribution.md
 
 # ── Platform demo assets (copied via .claude/scripts/sync-assets.sh) ──
 # Note: android-demo-assets is NOT ignored (Play Asset Delivery, must be in git)
-# Note: samples/web-demo/src/jsMain/resources/{models,environments}/ are NOT
-# ignored — the web demo self-hosts its curated GLB catalog and IBL so it
-# never depends on a third-party CDN (#1573); they ride into the Kotlin/JS
-# jsBrowserDistribution output and the Playwright dev server serves them too.
+# Note: the web demo's self-hosted GLB catalog + IBL (#1573) now live under
+# samples/web-demo/site/, which is force-added (`git add -f`) like the rest of
+# site/ — see the kotlin-bundle note below. The old Kotlin/JS source set at
+# samples/web-demo/src/jsMain/resources/ was deleted with the dead source set
+# in #1946/#1950; anything reappearing there is a stale local copy of
+# assets/models/glb/, not source. Do not re-add a rule for it.
 samples/android-tv-demo/src/main/assets/
 samples/flutter-demo/models/
 samples/react-native-demo/assets/models/
@@ -270,3 +278,9 @@ tools/qa-screenshots/android/*
 # Python bytecode caches (store-sync self-test runs py_compile)
 __pycache__/
 *.pyc
+
+# Store-screenshot capture artefacts. `capture-play-store-screenshots.sh` writes
+# a preview mosaic (outside the listing dir) purely so a human can eyeball the run
+# before pushing — it is a review aid, not a listing asset (#2796). The broad
+# pattern also covers any legacy `.mosaic.png` left inside the graphics dir.
+.mosaic*.png

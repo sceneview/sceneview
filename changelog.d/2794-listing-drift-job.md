@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **`maintenance.yml`: daily read-only Play listing drift check** — `play_listing.py --dry-run` diffs the live listing (text + per-image SHA-256) against the repo and reports in the step summary. The apply path only runs on a minor bump and writes blind, which is how #2794 stayed hidden; the drift is now visible *before* a release overwrites the store. Advisory-only, SKIPs honestly without a service-account credential, and reports a failed check as a failure rather than letting an empty log read as "no drift". (#2794)

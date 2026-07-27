@@ -1,11 +1,11 @@
 package io.github.sceneview.node
 
 import com.google.android.filament.Engine
-import com.google.android.filament.EntityManager
 import com.google.android.filament.LightManager
 import com.google.android.filament.Material
 import io.github.sceneview.Entity
 import io.github.sceneview.EntityInstance
+import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.components.LightComponent
 import io.github.sceneview.math.Color
 import io.github.sceneview.math.toColor
@@ -73,16 +73,18 @@ open class LightNode(
 
     constructor(
         engine: Engine,
-        entity: Entity = EntityManager.get().create(),
+        entity: Entity = NULL_ENTITY,
         builder: LightManager.Builder
     ) : this(engine, entity) {
-        builder.build(engine, entity)
+        // `this.entity` — NOT the `entity` parameter, which is the NULL_ENTITY sentinel when
+        // the caller let the node allocate its own. Node resolved it; the parameter did not.
+        builder.build(engine, this.entity)
     }
 
     constructor(
         engine: Engine,
         type: LightManager.Type,
-        entity: Entity = EntityManager.get().create(),
+        entity: Entity = NULL_ENTITY,
         apply: LightManager.Builder.() -> Unit
     ) : this(engine, entity, LightManager.Builder(type).apply(apply))
 

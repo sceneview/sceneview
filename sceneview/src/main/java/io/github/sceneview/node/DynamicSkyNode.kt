@@ -4,8 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import com.google.android.filament.Engine
-import com.google.android.filament.EntityManager
 import com.google.android.filament.LightManager
+import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.SceneScope
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.colorOf
@@ -64,7 +64,7 @@ fun SceneScope.DynamicSkyNode(
  */
 internal class DynamicSkyNodeImpl(engine: Engine) : LightNode(
     engine = engine,
-    entity = EntityManager.get().create(),
+    entity = NULL_ENTITY,
     builder = LightManager.Builder(LightManager.Type.SUN).apply {
         intensity(110_000f)
         color(1f, 1f, 1f)

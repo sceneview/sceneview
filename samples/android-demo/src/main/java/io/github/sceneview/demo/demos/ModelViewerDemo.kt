@@ -70,6 +70,7 @@ import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import java.util.Locale
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -285,7 +286,7 @@ private fun SingleModelSection(
             // gesture (and Maestro-testable, see #1571). The displayed value is
             // the slider override when set, otherwise the live auto-fit radius.
             Text(
-                "Camera distance: %.1f m".format(sliderDistance ?: autoFitRadius),
+                "Camera distance: %.1f m".format(Locale.US, sliderDistance ?: autoFitRadius),
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(

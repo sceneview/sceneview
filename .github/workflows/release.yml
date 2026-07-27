@@ -301,7 +301,7 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
@@ -329,6 +329,18 @@ jobs:
 
       - name: Build sceneview-web JS library
         if: steps.check-web.outputs.skip != 'true'
+        # NODE_AUTH_TOKEN is needed by the BUILD step, not just the publish one.
+        # `setup-node` with `registry-url` writes an .npmrc containing
+        # `_authToken=${NODE_AUTH_TOKEN}`; the Kotlin/JS `:kotlinNpmInstall`
+        # task shells out to yarn, yarn expands that .npmrc, and when the var
+        # is unset it aborts with `Failed to replace env in config` instead of
+        # ignoring it. This is the only job that combines `registry-url` with
+        # a Gradle task, which is why the sibling npm jobs never hit it.
+        # Regression surfaced by the setup-node v6 -> v7 bump (#2787): it broke
+        # the v4.25.0 release *after* Maven Central had already published, and
+        # is invisible to PR CI because no PR job publishes. See #2787.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: ./gradlew :sceneview-web:jsBrowserProductionWebpack
 
       - name: Prepare and publish npm package
@@ -373,7 +385,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org

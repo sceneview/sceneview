@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- `sync-versions.sh --fix` now auto-prepends the missing `## X.Y.Z` stub entry to the Flutter plugin's `CHANGELOG.md` when it lags `VERSION_NAME` — a bumped pubspec without a matching CHANGELOG entry made the pub.dev publish preflight (#2735) fail the `Build flutter-demo APK` job on every non-path-gated PR and nightly (bit twice, for 4.23.0 and 4.24.0 — #2775). The handler runs outside the MISMATCH-gated fix block on purpose: the CHANGELOG check is WARN-only, so it must fire even when every numeric version is already aligned.

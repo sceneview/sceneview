@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.24.0)
+  Source of truth: /llms.txt  (SceneView 4.25.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.24.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.25.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Core Composables
 
@@ -137,7 +137,7 @@ fun ARSceneView(
     surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording of the composited AR scene — see "Record the scene to MP4"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
-    permissionHandler: ARPermissionHandler? = /* auto from ComponentActivity */,
+    permissionHandler: ARPermissionHandler? = null,   // omit for auto-detect from ComponentActivity; passing null explicitly SKIPS permission checks
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     content: (@Composable ARSceneScope.() -> Unit)? = null
 )
@@ -186,16 +186,25 @@ fun MyARScreen() {
 
 ### Tracking-failure messages (user-facing strings)
 
-`TrackingFailureReason` carries the *why* of a tracking loss — surface it to the user with an actionable hint, not a silent black screen. The `android-demo` sample ships a copy-paste helper that maps every reason to a localised string:
+`TrackingFailureReason` carries the *why* of a tracking loss — surface it to the user with an actionable hint, not a silent black screen. This snippet is self-contained (the `android-demo` sample ships the same mapping, localised, as `demo/common/TrackingFailureMessages.kt` — copy that file if you want string resources):
 
 ```kotlin
-import io.github.sceneview.demo.common.trackingFailureMessage
-
 var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }
-onTrackingFailureChanged = { failure = it }
 
-// In a status banner:
-val hint = trackingFailureMessage(failure) // null when there is no failure
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    onTrackingFailureChanged = { failure = it },
+)
+
+// In a status banner — map every reason to an actionable hint:
+val hint = when (failure) {
+    TrackingFailureReason.BAD_STATE -> "AR session error — try restarting"
+    TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light — try a brighter area"
+    TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast — slow down"
+    TrackingFailureReason.INSUFFICIENT_FEATURES -> "Not enough detail — point at a more textured surface"
+    TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable — close other camera apps"
+    TrackingFailureReason.NONE, null -> null
+}
 Text(hint ?: "Point your camera at a flat surface")
 ```
 
@@ -585,6 +594,9 @@ SceneView(...) {
 
 ### PlaneNode — flat quad
 ```kotlin
+import io.github.sceneview.geometries.Plane // the geometry, not com.google.ar.core.Plane
+import io.github.sceneview.node.PlaneNode   // the 3D quad node, not io.github.sceneview.ar.node.PlaneNode
+
 @Composable fun PlaneNode(
     size: Size = Plane.DEFAULT_SIZE,
     center: Position = Plane.DEFAULT_CENTER,
@@ -623,6 +635,8 @@ SceneView(...) {
 
 ### ImageNode — image on plane (3 overloads)
 ```kotlin
+import io.github.sceneview.geometries.Plane // the geometry defaults, not com.google.ar.core.Plane
+
 // From Bitmap
 @Composable fun ImageNode(
     bitmap: Bitmap,
@@ -811,7 +825,7 @@ SceneView(viewNodeWindowManager = windowManager) {
 }
 ```
 
-Two gotchas that bite every `ViewNode`:
+Three gotchas that bite every `ViewNode`:
 
 - **`viewContent` composes in its own off-screen window, so it inherits NONE of
   your `CompositionLocal`s** — `MaterialTheme`, `LocalContentColor`, your own
@@ -820,6 +834,30 @@ Two gotchas that bite every `ViewNode`:
   `ViewNode(windowManager) { MyAppTheme { Card { … } } }`.
 - **There is no parent to measure against**, so `fillMaxWidth()` and friends have
   nothing to fill. Give the content an explicit size (`Modifier.width(320.dp)`).
+- **The rendered UI is NOT interactive** — see immediately below.
+
+**The rendered UI is NOT interactive.** A `ViewNode` draws its Compose content into a texture;
+the hosting window is `FLAG_NOT_TOUCHABLE` and touch events are never dispatched into it, so a
+`Button` placed inside **will render but its `onClick` will never fire** (no ripple, no press
+state, no inner scrolling either). Do not generate clickable controls inside a `ViewNode`.
+
+To react to a tap, pick the node from the scene instead:
+```kotlin
+val windowManager = rememberViewNodeManager()
+var tapCount by remember { mutableStateOf(0) }
+SceneView(
+    viewNodeWindowManager = windowManager,
+    onGestureListener = rememberOnGestureListener(
+        // `node` is the ray-cast hit — null when the tap missed every node.
+        onSingleTapUp = { _, node -> if (node is ViewNode) tapCount++ }
+    )
+) {
+    ViewNode(windowManager = windowManager) {
+        Card { Text("Tapped $tapCount times") }
+    }
+}
+```
+Real touch forwarding is tracked by [#2845](https://github.com/sceneview/sceneview/issues/2845).
 
 ### LineNode — single line segment
 ```kotlin
@@ -972,14 +1010,17 @@ fun MyArScreen() {
         modifier = Modifier.fillMaxSize(),
         engine = engine,
         modelLoader = modelLoader,
-    ) { anchor ->                            // invoked once per tap-created Anchor
-        AnchorNode(anchor = anchor) {
-            val instance = rememberModelInstance(modelLoader, "models/helmet.glb")
-            instance?.let {
-                ModelNode(modelInstance = it, scaleToUnits = 0.3f)
+        // NAMED parameter — the trailing lambda position belongs to `content`,
+        // which receives a PlacementController, not the Anchor.
+        onPlaced = { anchor ->               // invoked once per tap-created Anchor
+            AnchorNode(anchor = anchor) {
+                val instance = rememberModelInstance(modelLoader, "models/helmet.glb")
+                instance?.let {
+                    ModelNode(modelInstance = it, scaleToUnits = 0.3f)
+                }
             }
-        }
-    }
+        },
+    )
 }
 ```
 
@@ -991,7 +1032,7 @@ Signature:
     modelLoader: ModelLoader = rememberModelLoader(engine),
     materialLoader: MaterialLoader = rememberMaterialLoader(engine),
     planeRenderer: Boolean = true,
-    planeFindingMode: Config.PlaneFindingMode = HORIZONTAL_AND_VERTICAL,
+    planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
     instantPlacement: Boolean = true,        // place before a plane converges (ArFragment parity)
     showReticle: Boolean = true,             // built-in centre-screen placement reticle
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
@@ -1038,12 +1079,15 @@ fun WallTvScreen() {
         engine = engine,
         modelLoader = modelLoader,
         mountHeight = 1.2f,                      // TV centre height above the floor, meters
-    ) { anchor ->                                // invoked once per tap-created wall Anchor
-        AnchorNode(anchor = anchor) {
-            val instance = rememberModelInstance(modelLoader, "models/tv.glb")
-            instance?.let { ModelNode(modelInstance = it, scaleToUnits = 1.4f) }
-        }
-    }
+        // NAMED parameter — the trailing lambda position belongs to `content`
+        // (PlacementController), same contract as PlacementScene.
+        onPlaced = { anchor ->                   // invoked once per tap-created wall Anchor
+            AnchorNode(anchor = anchor) {
+                val instance = rememberModelInstance(modelLoader, "models/tv.glb")
+                instance?.let { ModelNode(modelInstance = it, scaleToUnits = 1.4f) }
+            }
+        },
+    )
 }
 ```
 
@@ -1225,6 +1269,10 @@ tap-to-place); use `HitResultNode` directly otherwise. New in v4.x (#1882).
 Typical "what-you-see-is-what-you-get" placement:
 ```kotlin
 var reticleHit by remember { mutableStateOf<HitResult?>(null) }
+val placedAnchors = remember { mutableStateListOf<Anchor>() }
+val reticleMaterial = remember(materialLoader) {
+    materialLoader.createUnlitColorInstance(Color.Cyan)
+}
 ARSceneView(
     modifier = Modifier.fillMaxSize(),
     onGestureListener = rememberOnGestureListener(
@@ -1290,6 +1338,7 @@ ARSceneView(
     planeRenderer = false, // its own shadow receiver would stack with the catchers (#2657)
     onSessionCreated = { arSession = it },
 ) {
+    val detectedPlanes by rememberDetectedPlanes(session = arSession)
     detectedPlanes.forEach { plane ->
         key(plane) { ShadowReceiverPlane(plane = plane) }
     }
@@ -1321,6 +1370,10 @@ receiver otherwise crashes the FL2+ cascaded-shadow build on-device (the FL1 emu
 it, #2620/#2699):
 
 ```kotlin
+val planeSize = 2f            // quad side, ≈2× the model footprint
+val groundY = 0f              // world-space floor height
+val halfHeight = 0.5f         // half the model's height, for the AABB top
+
 PlaneNode(
     size = Size(x = planeSize, y = 0f, z = planeSize),   // XZ quad, never XY
     materialInstance = shadowMaterial,                   // materials/plane_renderer_shadow.filamat
@@ -1418,14 +1471,16 @@ fun Frame.hitTestDepth(xPx: Float, yPx: Float): DepthHitResult?
 ```
 
 ```kotlin
+var latestFrame: Frame? = null
 ARSceneView(
     modifier = Modifier.fillMaxSize(),
     sessionConfiguration = { session, config ->
         config.depthMode = Config.DepthMode.AUTOMATIC
     },
+    onSessionUpdated = { _, frame -> latestFrame = frame },
     onGestureListener = rememberOnGestureListener(
         onSingleTapConfirmed = { e, _ ->
-            arSceneView.frame?.hitTestDepth(e.x, e.y)?.let { hit ->
+            latestFrame?.hitTestDepth(e.x, e.y)?.let { hit ->
                 // hit.position / hit.normal — place & orient a node on the real surface
             }
         }
@@ -1470,7 +1525,7 @@ the 16-bit buffer into an ARGB bitmap with a 3-segment red→yellow→green→cy
 (near = warm, far = cool), draws it as an `Image` overlay above the `ARSceneView`, and uses
 a Compose `Slider` for `alpha` to blend camera ↔ depth from 0 to 1.
 
-```kotlin
+```kotlin notest app-side pattern — depthBufferToArgb is demo code (ar-depth-visualization), not SDK API
 // Acquire and colorize a depth frame; render via Image(alpha = blend).
 onSessionUpdated = { _, frame ->
     val depthImage = runCatching { frame.acquireDepthImage16Bits() }.getOrNull() ?: return@onSessionUpdated
@@ -1521,13 +1576,14 @@ custom occlusion / physics raycasts / ML pipelines / orientation-aware UI placem
 ```kotlin
 // HitResult — distance is already accessible as a Kotlin synthetic property from
 // HitResult.getDistance(). Documented here for parity with the rest of this section.
-val hit: HitResult
-hit.distance                              // Float — camera-to-hit distance, meters
+val hitDistance: Float = hitResult.distance   // camera-to-hit distance, meters
 
 // Camera — displayOrientedPose accounts for current device orientation (use for
 // rendering / billboard UI), whereas .pose is the raw sensor pose (use for IMU work).
-camera.displayOrientedPose                // Pose
+val pose: Pose = camera.displayOrientedPose
+```
 
+```kotlin
 // Camera intrinsics — focal length + principal point + image dimensions for either
 // the GPU texture stream (default) or the CPU image stream. Used by ML pipelines that
 // project 2D detections back into 3D world coords via the pinhole model.
@@ -1572,22 +1628,41 @@ suspend fun ArCoreApk.awaitAvailability(context: Context): ArCoreApk.Availabilit
 **Usage**:
 
 ```kotlin
-// Gate placement on distance
-arSceneView.frame?.hitTest(x, y)
-    ?.firstOrNull { it.distance < 2f }      // accept hits within 2 m only
-    ?.createAnchorOrNull()
-    ?.let { /* place node */ }
+// Gate placement on distance — the live Frame arrives via onSessionUpdated
+ARSceneView(
+    onSessionUpdated = { _, frame ->
+        frame.hitTest(xPx, yPx)
+            .firstOrNull { it.distance < 2f }   // accept hits within 2 m only
+            ?.createAnchorOrNull()
+            ?.let { /* place node */ }
+    }
+)
 
 // Project a 2D ML detection into 3D using a known depth
+val pxX = 320f; val pxY = 240f   // detection center, camera-image pixels
+val depthMeters = 1.5f           // known depth at that pixel
 val k = camera.intrinsics(useTexture = false)
-val xWorld = (pxX - k.principalPoint.x) * z / k.focalLength.x
-val yWorld = (pxY - k.principalPoint.y) * z / k.focalLength.y
+val xWorld = (pxX - k.principalPoint.x) * depthMeters / k.focalLength.x
+val yWorld = (pxY - k.principalPoint.y) * depthMeters / k.focalLength.y
 
 // Custom depth occlusion (caller-owned image, use { } closes it)
-arSceneView.frame?.depthImage()?.use { depth ->
-    // sample depth.planes[0].buffer (DEPTH16 16-bit per pixel)
-}
+ARSceneView(
+    onSessionUpdated = { _, frame ->
+        frame.depthImage()?.use { depth ->
+            // sample depth.planes[0].buffer (DEPTH16 16-bit per pixel)
+        }
+    }
+)
 
+// Non-blocking ARCore availability probe
+var showArEntryButton by remember { mutableStateOf(false) }
+LaunchedEffect(Unit) {
+    val availability = ArCoreApk.getInstance().awaitAvailability(context)
+    if (availability.isSupported) showArEntryButton = true
+}
+```
+
+```kotlin notest external ML Kit dependency (com.google.mlkit) — not on the SDK classpath
 // ML Kit object detection on the CPU image — see ARMLObjectLabelDemo
 // (samples/android-demo/.../demos/ARMLObjectLabelDemo.kt) for the full pattern:
 // throttled per-frame dispatch, anchor de-dup, label bitmap caching, anchor cleanup.
@@ -1598,12 +1673,6 @@ onSessionUpdated = { _, frame ->
     detector.process(input)
         .addOnSuccessListener { results -> /* spawn anchors; close image */ }
         .addOnFailureListener { /* close image */ }
-}
-
-// Non-blocking ARCore availability probe
-LaunchedEffect(Unit) {
-    val availability = ArCoreApk.getInstance().awaitAvailability(context)
-    if (availability.isSupported) showArEntryButton = true
 }
 ```
 
@@ -1724,19 +1793,25 @@ renders them as a screen-space cloud over the live camera feed using a Compose `
 time.
 
 ```kotlin
-onSessionUpdated = { _, frame ->
-    val depthImage = runCatching { frame.acquireRawDepthImage16Bits() }.getOrNull()
-    val confidenceImage = runCatching { frame.acquireRawDepthConfidenceImage() }.getOrNull()
-    if (depthImage != null && confidenceImage != null) {
-        try {
-            // depthImage.planes[0] is Y_16 (LE); confidenceImage.planes[0] is 1-byte/pixel.
-            // Filter, colorize, and feed to a Compose Canvas overlay or a Filament POINTS mesh.
-        } finally {
-            depthImage.close()
-            confidenceImage.close()
+ARSceneView(
+    modifier = Modifier.fillMaxSize(),
+    sessionConfiguration = { _, config ->
+        config.depthMode = Config.DepthMode.RAW_DEPTH_ONLY
+    },
+    onSessionUpdated = { _, frame ->
+        val depthImage = runCatching { frame.acquireRawDepthImage16Bits() }.getOrNull()
+        val confidenceImage = runCatching { frame.acquireRawDepthConfidenceImage() }.getOrNull()
+        if (depthImage != null && confidenceImage != null) {
+            try {
+                // depthImage.planes[0] is Y_16 (LE); confidenceImage.planes[0] is 1-byte/pixel.
+                // Filter, colorize, and feed to a Compose Canvas overlay or a Filament POINTS mesh.
+            } finally {
+                depthImage.close()
+                confidenceImage.close()
+            }
         }
-    }
-}
+    },
+)
 ```
 
 Notes: `acquireRawDepthImage16Bits()` may return `null` for the first few frames after a
@@ -1888,6 +1963,7 @@ ARSceneView(
     }
 ) {
     val depthCollider = rememberDepthCollider(refreshIntervalMs = 200L)
+    val ballMaterial = remember(materialLoader) { materialLoader.createColorInstance(Color.Red) }
     var ballNode by remember { mutableStateOf<SphereNode?>(null) }
     SphereNode(
         radius = 0.05f,
@@ -2145,7 +2221,7 @@ class RuntimeAugmentedImageDatabase {
 }
 // addImage runs ARCore feature extraction off the main thread, then re-applies the session
 // config ON the main thread itself. Returns a typed result:
-sealed class AddImageResult { object Added; object LowQuality; data class Error(cause: Throwable) }
+sealed class AddImageResult { object Added; object LowQuality; data class Error(val cause: Throwable) }
 
 // Grab the live AR camera frame as an upright ARGB_8888 bitmap (run OFF the main thread):
 fun Frame.captureCameraBitmap(jpegQuality: Int = 90): Bitmap?
@@ -2154,6 +2230,7 @@ fun Image.toArgbBitmap(rotationDegrees: Int = 0, jpegQuality: Int = 90): Bitmap?
 Usage — capture a photo on-device and start tracking it (closes #1553):
 ```kotlin
 val runtimeDb = rememberRuntimeAugmentedImageDatabase()
+var latestFrame: Frame? = null
 ARSceneView(
     sessionConfiguration = { session, config -> runtimeDb.applyTo(config, session) },
     onSessionCreated = { runtimeDb.bind(it) },
@@ -2164,8 +2241,8 @@ scope.launch {
     val photo = withContext(Dispatchers.Default) { latestFrame?.captureCameraBitmap() }
     when (runtimeDb.addImage("snapshot", photo!!)) {
         is AddImageResult.Added      -> { /* now tracked */ }
-        is AddImageResult.LowQuality -> showRetryHint()   // textured, high-contrast scene needed
-        is AddImageResult.Error      -> showError()
+        is AddImageResult.LowQuality -> { /* show retry hint — textured, high-contrast scene needed */ }
+        is AddImageResult.Error      -> { /* show error */ }
     }
 }
 ```
@@ -2189,7 +2266,7 @@ ARCore has **no native body-tracking API** (unlike ARKit's `ARBodyTrackingConfig
 image to Google's on-device **MediaPipe Pose Landmarker** and exposes the result through
 two renderer-agnostic value types in `io.github.sceneview.ar.body`:
 
-```kotlin
+```kotlin notest type-shape listing — mirrors the shipped io.github.sceneview.ar.body types (RawLandmark is nested in the real BodyPose)
 // 17 ARKit-parity joint names (ARSkeleton.JointName upper tier) — reads the same on
 // Android and SceneViewSwift. ROOT/SPINE/NECK are synthesised midpoints.
 enum class Joint { ROOT, SPINE, NECK, HEAD,
@@ -2278,7 +2355,9 @@ data class CloudAnchorEntry(
     fun isExpired(now: Long = System.currentTimeMillis()): Boolean
     val expiresAtEpochMs: Long
 }
+```
 
+```kotlin
 interface CloudAnchorRegistry {
     fun add(entry: CloudAnchorEntry)        // insert or replace by name
     fun remove(name: String): Boolean
@@ -2287,8 +2366,11 @@ interface CloudAnchorRegistry {
     fun clear()
     fun purgeExpired(now: Long = System.currentTimeMillis()): Int
 }
+```
 
-// Default implementation — SharedPreferences-backed, non-blocking writes (apply()):
+Default implementation — SharedPreferences-backed, non-blocking writes (`apply()`):
+
+```kotlin notest type-shape listing — the real class implements every CloudAnchorRegistry member and the secondary constructor delegates internally
 class SharedPreferencesCloudAnchorRegistry(
     prefs: SharedPreferences
 ) : CloudAnchorRegistry {
@@ -2321,7 +2403,9 @@ interface CollaborativeTransport {
     fun incoming(handler: (peerId: String, ByteArray) -> Unit): AutoCloseable
     fun close()
 }
+```
 
+```kotlin
 // In-process reference transport — always available, no networking, no permissions.
 // Perfect for unit tests + single-device demos. Swap for Nearby Connections /
 // Firebase / WebRTC in production.
@@ -2343,7 +2427,8 @@ class CollaborativeSession {
     val sharedAnchorNode: CloudAnchorNode?            // the shared coordinate frame
     val sharedCloudAnchorId: String?
 
-    fun start(); fun stop()
+    fun start()
+    fun stop()
     fun host(session: Session, anchor: Anchor, engine: Engine,
              ttlDays: Int = 1, name: String = "session",
              onHosted: ((cloudAnchorId: String?, success: Boolean) -> Unit)? = null)
@@ -2396,12 +2481,12 @@ session.start()
 
 ### TrackableNode — generic trackable
 ```kotlin
-@Composable fun TrackableNode(
-    trackable: Trackable,
+@Composable fun <T : Trackable> TrackableNode(
+    trackable: T,
     visibleTrackingStates: Set<TrackingState> = setOf(TrackingState.TRACKING),
     onTrackingStateChanged: ((TrackingState) -> Unit)? = null,
-    onUpdated: ((Trackable) -> Unit)? = null,
-    apply: TrackableNode.() -> Unit = {},
+    onUpdated: ((T) -> Unit)? = null,
+    apply: TrackableNode<T>.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
@@ -2411,6 +2496,8 @@ session.start()
 A node anchored to a detected ARCore `Plane`. It follows the plane's `centerPose` every frame so child content rides the plane as ARCore refines its extents. Pair it with `rememberDetectedPlanes` — the SceneView equivalent of AR Foundation's `ARPlaneManager.planesChanged` — to declare one node per detected plane reactively, with no `frame.getUpdatedTrackables(Plane::class.java)` loop.
 
 ```kotlin
+import io.github.sceneview.ar.node.PlaneNode  // the AR trackable node, not io.github.sceneview.node.PlaneNode
+
 @Composable fun ARSceneScope.PlaneNode(
     plane: Plane,
     visibleTrackingStates: Set<TrackingState> = setOf(TrackingState.TRACKING),
@@ -2432,6 +2519,8 @@ A node anchored to a detected ARCore `Plane`. It follows the plane's `centerPose
 `rememberDetectedPlanes` re-reads `session.getAllTrackables(Plane::class.java)` each Compose frame (`withFrameNanos`, main thread), filters to `TrackingState.TRACKING`, and fires the three callbacks on every change. A plane subsumed into a larger coplanar one (`Plane.subsumedBy`) naturally surfaces through `onRemoved`.
 
 ```kotlin
+var detectedCount by remember { mutableStateOf(0) }
+val markerMat = remember(materialLoader) { materialLoader.createColorInstance(Color.Cyan) }
 ARSceneView(onSessionCreated = { arSession = it }) {
     val planes by rememberDetectedPlanes(
         session = arSession,
@@ -2502,6 +2591,7 @@ Requires `Config.GeospatialMode.ENABLED`, the ARCore Cloud API key + `ACCESS_FIN
 ```kotlin
 import io.github.sceneview.ar.node.TerrainAnchorNode
 
+val anchorNodes = remember { mutableStateListOf<TerrainAnchorNode>() }
 // Inside `onSessionUpdated = { session, frame -> ... }` once Earth is TRACKING:
 if (session.earth?.trackingState == TrackingState.TRACKING) {
     val future: ResolveAnchorOnTerrainFuture? = TerrainAnchorNode.resolve(
@@ -2572,7 +2662,7 @@ Renders an ARCore Geospatial **Streetscape Geometry** mesh — full polygonal bu
 ```kotlin
 @Composable fun StreetscapeGeometryNode(
     streetscapeGeometry: StreetscapeGeometry,
-    types: Set<StreetscapeGeometry.Type> = setOf(BUILDING, TERRAIN),  // #1772
+    types: Set<StreetscapeGeometry.Type> = setOf(StreetscapeGeometry.Type.BUILDING, StreetscapeGeometry.Type.TERRAIN),  // #1772
     minQuality: StreetscapeGeometry.Quality = StreetscapeGeometry.Quality.NONE,  // NONE < BUILDING_LOD_1 < BUILDING_LOD_2 (#1772)
     meshMaterialInstance: MaterialInstance? = null,
     onTrackingStateChanged: ((TrackingState) -> Unit)? = null,
@@ -2612,7 +2702,7 @@ A `StreetscapeGeometryNode` subclass that exposes a unified `MeshClassification`
 ```kotlin
 @Composable fun SceneMeshNode(
     streetscapeGeometry: StreetscapeGeometry,
-    types: Set<StreetscapeGeometry.Type> = setOf(BUILDING, TERRAIN),
+    types: Set<StreetscapeGeometry.Type> = setOf(StreetscapeGeometry.Type.BUILDING, StreetscapeGeometry.Type.TERRAIN),
     minQuality: StreetscapeGeometry.Quality = StreetscapeGeometry.Quality.NONE,
     meshMaterialInstance: MaterialInstance? = null,
     onTrackingStateChanged: ((TrackingState) -> Unit)? = null,
@@ -3101,27 +3191,33 @@ fun fitDistanceForBounds(
     bounds: Aabb, verticalFovDegrees: Double, aspect: Double,
     padding: Float = DEFAULT_FRAMING_PADDING  // 0.15 = 15% breathing room
 ): Float
+```
 
-// Reposition the camera in one call (main thread — reads/writes Filament state):
-cameraNode.frameToContent(modelNode)            // measures the node subtree's bounds
-cameraNode.frameToBounds(aabb)                  // explicit bounds
-cameraNode.fitDistanceForContent(modelNode)     // just the distance, no reposition
+Usage:
 
+```kotlin
 // Helpers: Filament Box → Aabb, focal length → vertical FOV.
 val bounds = modelInstance.model.boundingBox.toAabb()
 val vfov = verticalFovDegreesForFocalLength(28.0)   // ≈ 46.4°
+
+// Reposition the camera in one call (main thread — reads/writes Filament state):
+cameraNode.frameToContent(modelNode)            // measures the node subtree's bounds
+cameraNode.frameToBounds(bounds)                // explicit bounds
+cameraNode.fitDistanceForContent(modelNode)     // just the distance, no reposition
 
 // Easiest path — let SceneView drive it. `autoFitContent` moves the camera so the
 // content fills the viewport; re-frames when an async model grows the union bounds
 // and latches once they settle. Applies only when there is no camera manipulator
 // (an active orbit manipulator owns the camera transform every frame).
 SceneView(autoFitContent = true, cameraManipulator = null) {
-    ModelNode(modelInstance = rememberModelInstance(modelLoader, "models/bee.glb"))
+    rememberModelInstance(modelLoader, "models/bee.glb")?.let {
+        ModelNode(modelInstance = it)   // null while loading — always handle it
+    }
 }
 
 // Manual guard for a custom frame loop (diagonal-stability gated — #1596):
 val fitState = remember { SceneAutoFitState() }
-SceneView(onFrame = { fitState.maybeFit(cameraNode, contentRoot) }) { … }
+SceneView(onFrame = { fitState.maybeFit(cameraNode, contentRoot) }) { }
 ```
 
 `autoFitContent` defaults to `false` (callers that position the camera explicitly keep
@@ -3144,15 +3240,16 @@ SceneView(
         onContextClick = { event, node -> },
         onScroll = { e1, e2, node, distance -> },
         onFling = { e1, e2, node, velocity -> },
-        onMove = { detector, node -> },
-        onMoveBegin = { detector, node -> },
-        onMoveEnd = { detector, node -> },
-        onRotate = { detector, node -> },
-        onRotateBegin = { detector, node -> },
-        onRotateEnd = { detector, node -> },
-        onScale = { detector, node -> },
-        onScaleBegin = { detector, node -> },
-        onScaleEnd = { detector, node -> }
+        // Move / rotate / scale callbacks take (detector, event, node) — three params.
+        onMove = { detector, e, node -> },
+        onMoveBegin = { detector, e, node -> },
+        onMoveEnd = { detector, e, node -> },
+        onRotate = { detector, e, node -> },
+        onRotateBegin = { detector, e, node -> },
+        onRotateEnd = { detector, e, node -> },
+        onScale = { detector, e, node -> },
+        onScaleBegin = { detector, e, node -> },
+        onScaleEnd = { detector, e, node -> }
     ),
     onTouchEvent = { event, hitResult -> false }
 )
@@ -3177,13 +3274,13 @@ Scale(1.5f)          // uniform
 Scale(x = 2f, y = 1f, z = 2f)
 
 // Constructors
-Transform(position, quaternion, scale)
-Transform(position, rotation, scale)
-colorOf(r, g, b, a)
+Transform(position = Position(0f), quaternion = Quaternion(), scale = Scale(1f))
+Transform(position = Position(0f), rotation = Rotation(y = 90f), scale = Scale(1f))
+colorOf(r = 1f, g = 0f, b = 0f, a = 1f)
 
-// Conversions
-Rotation.toQuaternion(order = RotationsOrder.ZYX): Quaternion
-Quaternion.toRotation(order = RotationsOrder.ZYX): Rotation
+// Conversions — Rotation (Euler degrees) ⇄ Quaternion
+val quaternion = Rotation(y = 90f).toQuaternion(order = RotationsOrder.ZYX)
+val rotation = quaternion.toRotation(order = RotationsOrder.ZYX)
 ```
 
 ---
@@ -3267,7 +3364,7 @@ The per-frame interpolation uses slerp. Once the transform reaches the target (w
 
 `NodeState` is an immutable snapshot of a `Node`'s observable state. Use it for ViewModel-driven UI or save/restore patterns:
 
-```kotlin
+```kotlin notest type-shape listing — mirrors the shipped io.github.sceneview.node.NodeState (re-declaring it here would shadow the real one)
 data class NodeState(
     val position: Position = Position(),
     val quaternion: Quaternion = Quaternion(),
@@ -3276,7 +3373,9 @@ data class NodeState(
     val isEditable: Boolean = false,
     val isTouchable: Boolean = true
 )
+```
 
+```kotlin
 // Capture current state
 val state: NodeState = node.toState()
 
@@ -3325,7 +3424,7 @@ All defined in `io.github.sceneview.math`:
 | `Transform` | `Mat4` | 4x4 transform matrix |
 | `Color` | `Float4` | RGBA color (r, g, b, a) |
 
-```kotlin
+```kotlin notest API-shape listing — `receiver.member(args): ReturnType` reference notation, not statements
 Transform(position, quaternion, scale)
 Transform(position, rotation, scale)
 colorOf(r, g, b, a)
@@ -3345,7 +3444,7 @@ Float3.equals(v: Float3, delta: Float): Boolean
 
 `io.github.sceneview.math.Color` extensions:
 
-```kotlin
+```kotlin notest API-shape listing — `receiver.member(args): ReturnType` reference notation, not statements
 Color.toLinearSpace(): Color
 Color.toSrgbSpace(): Color
 Color.luminance(): Float
@@ -3386,8 +3485,11 @@ val spring = SpringAnimator(config = SpringConfig.BOUNCY)
 val value = spring.update(deltaSeconds)
 spring.isSettled
 spring.reset()
+```
 
-// Time utilities
+Time utilities:
+
+```kotlin notest API-shape listing — function-signature reference notation, not statements
 frameToTime(frame: Int, frameRate: Int): Float
 timeToFrame(time: Float, frameRate: Int): Int
 fractionToTime(fraction: Float, duration: Float): Float
@@ -3444,19 +3546,20 @@ generatePerlinTerrain(...): GeometryData   // procedural Perlin-noise heightmap 
 
 The Android `CollisionSystem` (in `sceneview` module) exposes `hitTest()` for screen-space and ray-based queries:
 ```kotlin
-// Preferred API
-collisionSystem.hitTest(motionEvent): List<HitResult>   // from touch event
-collisionSystem.hitTest(xPx, yPx): List<HitResult>      // screen pixels
-collisionSystem.hitTest(viewPosition: Float2): List<HitResult>  // normalized [0..1]
-collisionSystem.hitTest(ray: Ray): List<HitResult>       // explicit ray
+// Preferred API — every overload returns List<HitResult>
+val fromTouch = collisionSystem.hitTest(motionEvent)              // from touch event
+val fromPixels = collisionSystem.hitTest(xPx, yPx)                // screen pixels
+val fromViewPos = collisionSystem.hitTest(viewPosition = Float2(0.5f, 0.5f))  // normalized [0..1]
+val fromRay = collisionSystem.hitTest(                            // explicit kotlin-math Ray
+    ray = Ray(origin = Position(0f), direction = Direction(z = -1f))
+)
 
-// @Deprecated — use hitTest() instead
-@Deprecated collisionSystem.raycast(ray): HitResult?         // → hitTest(ray).firstOrNull()
-@Deprecated collisionSystem.raycastAll(ray): List<HitResult> // → hitTest(ray)
+// Deprecated forerunners: `raycast(ray)` → `hitTest(ray).firstOrNull()`,
+// `raycastAll(ray)` → `hitTest(ray)`.
 
-// HitResult properties
-hitResult.node: Node        // throws IllegalStateException if reset — use nodeOrNull for safe access
-hitResult.nodeOrNull: Node? // safe alternative — returns null instead of throwing
+// HitResult properties: `node` throws IllegalStateException if the result was
+// reset — prefer `nodeOrNull`, which returns null instead of throwing.
+val hitNode: Node? = fromTouch.firstOrNull()?.nodeOrNull
 ```
 
 ### Triangulation
@@ -3470,7 +3573,7 @@ hitResult.nodeOrNull: Node? // safe alternative — returns null instead of thro
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.24.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.25.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -3482,7 +3585,7 @@ npm install sceneview-web filament
 Script-tag usage (no bundler):
 ```html
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.24.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.25.0/sceneview-web.js"></script>
 ```
 
 After loading, the library registers itself on `window.sceneview`.
@@ -4062,7 +4165,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.24.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.25.0")
 ```
 
 Import: `import SceneViewSwift`
@@ -4578,10 +4681,10 @@ public enum CameraControlMode: Sendable {
 public struct CameraControls: Sendable {
     public var mode: CameraControlMode
     public var target: SIMD3<Float> = .zero
-    public var orbitRadius: Float = 5.0
+    public var orbitRadius: Float = 2.0     // v4.4.0: was 5.0
     public var azimuth: Float = 0.0
     public var elevation: Float = .pi / 6   // 30 degrees
-    public var minRadius: Float = 0.5
+    public var minRadius: Float = 1.0       // v4.4.0: was 0.5
     public var maxRadius: Float = 50.0
     public var sensitivity: Float = 0.005
     public var isAutoRotating: Bool = false

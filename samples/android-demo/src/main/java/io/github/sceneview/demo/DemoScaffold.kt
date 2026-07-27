@@ -47,6 +47,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +64,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.haptic.SceneViewHaptic
 import io.github.sceneview.haptic.rememberHapticFeedback
@@ -161,6 +163,24 @@ enum class AssetSourceState { Streamed, Streaming, Bundled }
  *   can still use the bottom-start action bar, while `onReset` gives every demo
  *   one always-available, always-discoverable reset path in a fixed location —
  *   the predictable re-interaction path #1966 asks for.
+ *
+ * Collision-free bottom overlays (#2779):
+ * - `bottomOverlay != null` → the demo's floating bottom banner / status pill /
+ *   answer card is composed **by the scaffold**, in a container that already
+ *   knows where the Settings FAB is. Device QA on a Pixel 9 found demos placing
+ *   their own `Alignment.BottomCenter` overlay straight under the bottom-end
+ *   FAB — a class of defect no single demo can fix on its own, because the FAB
+ *   is scaffold chrome and its very presence depends on `controls`.
+ *
+ *   Put the overlay here instead of in `scene`, and lay it out against
+ *   [DemoBottomOverlayScope.settingsFabReservedSpace] — resolved once, here,
+ *   from the same `controls != null` condition that decides whether the FAB is
+ *   composed at all. A demo whose `controls` is itself conditional (e.g.
+ *   `if (DemoSettings.qaMode)`) therefore gets the right inset for free, with
+ *   no duplicated condition to drift out of sync.
+ *
+ *   The slot is drawn above `scene` and below the FAB, so the overlay floats
+ *   over the 3D/AR viewport while the FAB stays on top and tappable.
  */
 @Composable
 fun DemoScaffold(
@@ -172,6 +192,7 @@ fun DemoScaffold(
     peekHeader: String? = null,
     onResetSettings: (() -> Unit)? = null,
     onReset: (() -> Unit)? = null,
+    bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)? = null,
     scene: @Composable BoxScope.() -> Unit
 ) {
     val haptic = rememberHapticFeedback()
@@ -295,6 +316,20 @@ fun DemoScaffold(
 
             if (assetSource != null) {
                 AssetSourceChip(state = assetSource)
+            }
+
+            // Rendered before the FAB layer so the FAB always wins the z-order and
+            // stays tappable — the overlay never needs to fight it for either
+            // pixels (it reserves the FAB's band) or touches.
+            if (bottomOverlay != null) {
+                DemoBottomOverlay(
+                    // The FAB only exists when the demo declares `controls`; resolving
+                    // the reserve from the same condition is what keeps a demo like
+                    // `ARStreetscapeDemo` (controls gated on `DemoSettings.qaMode`)
+                    // correct without restating the condition in the demo (#2779).
+                    reservedSpace = if (controls != null) SETTINGS_FAB_RESERVED_SPACE else 0.dp,
+                    content = bottomOverlay,
+                )
             }
 
             if (controls != null) {
@@ -426,6 +461,94 @@ object DemoScaffoldTestTags {
     const val QA_PILL = "demo-qa-pill"
     const val ASSET_SOURCE_CHIP = "demo-asset-source-chip"
     const val FIRST_FRAME_SCRIM = "demo-first-frame-scrim"
+    const val BOTTOM_OVERLAY = "demo-bottom-overlay"
+}
+
+/**
+ * Width of the band the Settings FAB reserves at the **bottom-end** of a demo's
+ * scene area (#2779).
+ *
+ * [DemoScaffold] pins its `Tune` FAB `BottomEnd` inside a 16 dp gutter, and an
+ * M3 `FloatingActionButton` body is ≈ 56 dp — but the FAB is **not** the widest
+ * thing in that corner: the **"Settings" peek chip** rendered beside it is, at
+ * ≈ 79 dp. Sizing this band off the FAB alone (the original 88 dp = 56 + 2 × 16)
+ * left a bottom overlay ending 324 dp from the start edge while the chip begins
+ * at 317 dp — a 7 dp shortfall that put the two in visible contact (device-QA
+ * measured a 1 px gap on `ar-streetscape`'s four-line status pill, #2779).
+ *
+ * So the band is derived from the **chip**, matching how the sibling constant
+ * below is derived: **79 dp chip + 16 dp gutter + 8 dp breathing room = 104 dp**.
+ * The breathing room is half the FAB's 16 dp because the chip is transient — it
+ * peeks and retracts — so it only has to read as "not touching", not as a
+ * permanently balanced gutter.
+ *
+ * Do **not** hard-code it in a demo. Read
+ * [DemoBottomOverlayScope.settingsFabReservedSpace] inside
+ * `DemoScaffold(bottomOverlay = …)` instead: it resolves to this value only when
+ * the demo actually renders a FAB, and to `0.dp` when it does not.
+ *
+ * Sibling of `FEEDBACK_FAB_RESERVED_SPACE`, which does the same job for the
+ * bottom-**start** feedback chip on the tab screens (#2194).
+ */
+val SETTINGS_FAB_RESERVED_SPACE = 104.dp
+
+/**
+ * Receiver of the [DemoScaffold] `bottomOverlay` slot.
+ *
+ * Carries the one piece of geometry a floating bottom overlay cannot know on its
+ * own: how much room the shared Settings FAB is taking at the bottom-end of
+ * *this* demo. Two idioms cover every overlay shape:
+ *
+ * - **Full-width card / banner** →
+ *   `Modifier.fillMaxWidth().padding(end = settingsFabReservedSpace)`.
+ *   Only the end edge can ever reach the FAB, so only the end edge is inset.
+ * - **Centred, content-width pill** →
+ *   `Modifier.padding(horizontal = settingsFabReservedSpace)`.
+ *   The inset is deliberately **symmetric**: insetting the end side alone would
+ *   shift the pill off-centre, and a *centred* element only keeps its end edge
+ *   out of the band when the band is reserved on both sides (it grows outwards
+ *   from the middle). Equivalent to `widthIn(max = width - 2 × reserve)`, minus
+ *   the need to measure the container.
+ *
+ * Both idioms collapse to a no-op when [settingsFabReservedSpace] is `0.dp`.
+ */
+@Stable
+class DemoBottomOverlayScope internal constructor(
+    /**
+     * Width of the bottom-end band occupied by the Settings FAB:
+     * [SETTINGS_FAB_RESERVED_SPACE] when this demo passes `controls` to
+     * [DemoScaffold], `0.dp` when it does not (no `controls` → no FAB → the whole
+     * bottom edge is free, and the overlay should use all of it).
+     */
+    val settingsFabReservedSpace: Dp,
+)
+
+/**
+ * Renders the `bottomOverlay` slot: full scene width, pinned to the bottom of the
+ * scene area and clear of the system bars — the one place a demo should put a
+ * floating bottom banner, status pill or answer card.
+ *
+ * The container deliberately applies **no horizontal or bottom padding of its
+ * own**, so a demo migrating an existing `Alignment.BottomCenter` overlay keeps
+ * its own gutter verbatim and only adds the FAB inset. It does apply the same
+ * `systemBars` inset the FAB layer uses, so both sit in one coherent frame.
+ */
+@Composable
+private fun BoxScope.DemoBottomOverlay(
+    reservedSpace: Dp,
+    content: @Composable DemoBottomOverlayScope.() -> Unit,
+) {
+    val scope = remember(reservedSpace) { DemoBottomOverlayScope(reservedSpace) }
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.systemBars)
+            .testTag(DemoScaffoldTestTags.BOTTOM_OVERLAY),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        scope.content()
+    }
 }
 
 /**
