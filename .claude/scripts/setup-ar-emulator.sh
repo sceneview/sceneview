@@ -157,7 +157,17 @@ AVD_NAME="$EMU_POOL_AVD"
 if [[ -z "${EMU_REQUIRE_AVD:-}" && "${GITHUB_ACTIONS:-}" != "true" ]]; then
   EMU_REQUIRE_AVD="$AVD_NAME"
 fi
-[[ -n "${EMU_LEASE_SESSION:-}" ]] || EMU_LEASE_SESSION="$(emu_lease_session_new)"
+# Track whether WE minted the token (the caller passed none). Only a minted
+# token is published to the handoff file at the end (#2862): a caller that
+# exported its own token — device-qa.sh — already holds the reservation via that
+# shared export and needs no handoff, and re-publishing it would widen the
+# documented handoff-window leak (a concurrent session inheriting the token and
+# taking the emulator) to that caller too.
+EMU_LEASE_SESSION_MINTED=false
+if [[ -z "${EMU_LEASE_SESSION:-}" ]]; then
+  EMU_LEASE_SESSION="$(emu_lease_session_new)"
+  EMU_LEASE_SESSION_MINTED=true
+fi
 export EMU_REQUIRE_AVD EMU_LEASE_SESSION
 AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
 AVD_CONFIG="$AVD_HOME/$AVD_NAME.avd/config.ini"
@@ -1481,7 +1491,15 @@ fi
 # adopt it once.
 if ! $CHECK_ONLY && ! $STOP_AFTER && [[ -n "${serial:-}" ]]; then
   if emu_lease_mark_sticky "$serial" "setup-ar-emulator"; then
-    emu_lease_session_publish "$EMU_LEASE_SESSION"
+    # Publish the token for a QA script this session runs next in a SEPARATE
+    # shell to inherit — ONLY when we minted it. If the caller exported its own
+    # token it already shares the reservation, and publishing would let a
+    # concurrent peer inherit the token first and steal the emulator (the
+    # documented handoff-window leak). The sticky lease itself still reserves the
+    # emulator against every peer regardless; the handoff is only the token relay.
+    if [[ "$EMU_LEASE_SESSION_MINTED" == "true" ]]; then
+      emu_lease_session_publish "$EMU_LEASE_SESSION"
+    fi
   fi
 fi
 
@@ -1490,8 +1508,13 @@ if $STOP_AFTER; then
   log "emulator stopped. Re-run without --stop to leave it warm for QA."
 else
   log "emulator left running for QA on serial ${serial:-emulator-5554}. next steps:"
-  log "  export ANDROID_SERIAL=${serial:-emulator-5554}   # pin QA to the leased emulator"
-  log "  export EMU_LEASE_SESSION=${EMU_LEASE_SESSION}   # inherit this reservation (#2862)"
+  log "  # Export the token FIRST, in the shell that will drive QA — it makes THIS"
+  log "  # session the owner. The sticky reservation already guards the emulator"
+  log "  # against peers, but a token left only in the handoff file can be adopted"
+  log "  # by the first QA script to start within ${EMU_LEASE_HANDOFF_WINDOW}s — including a"
+  log "  # CONCURRENT session — which then drives the same emulator (#2862)."
+  log "  export EMU_LEASE_SESSION=${EMU_LEASE_SESSION}"
+  log "  export ANDROID_SERIAL=${serial:-emulator-5554}   # pin QA to this emulator"
   log "  source .claude/scripts/lib/android-cli.sh && android_cli_ensure"
   log "  android run --apks <apk> --activity io.github.sceneview.demo/.MainActivity"
   log "  stop it with: android emulator stop $AVD_NAME"
