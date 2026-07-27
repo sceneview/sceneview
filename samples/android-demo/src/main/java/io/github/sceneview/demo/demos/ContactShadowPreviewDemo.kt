@@ -1,9 +1,11 @@
 package io.github.sceneview.demo.demos
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -17,9 +19,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -99,14 +100,20 @@ import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
  *   real screen area instead of degenerating into a sliver — at the original high-and-far
  *   framing the shadow was too small to ever be the subject.
  *
- * ### The wall TV stays — it is the decisive argument
+ * ### The wall TV gets its own beat — it is the decisive argument
  *
  * Behind the comparison, a TV is mounted on the back wall, grounded by a
  * [ContactShadowContext.Wall] pool. This is the case a *real* shadow map cannot serve:
  * indoor light comes from the ceiling, nearly parallel to the wall, so a flat-mounted panel
- * casts essentially nothing onto it. The settings sheet lets you switch that pool's preset —
- * putting `Floor` on the wall makes it too dark and too round (a sticker, not a shadow),
- * which is exactly why the per-surface contexts exist.
+ * casts essentially nothing onto it.
+ *
+ * That argument used to be made in a whisper. The TV was scenery, and its preset picker was a
+ * settings-sheet row — which failed it twice over: the sheet's scrim dims the scene, so you
+ * could never watch the wall pool change *while* changing it, and a control sitting among the
+ * global ones read as global while it only ever drove this one pool. [WallShadowBeat] fixes
+ * both by anchoring the picker on screen, in the TV's half of the frame, with a one-line
+ * verdict per preset — so the A/B is live, and the control's scope is self-evident instead of
+ * being patched over by its label.
  *
  * ### Why this exists as a non-AR preview
  *
@@ -239,8 +246,6 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 onMotionEnabledChange = { motionEnabled = it },
                 intensityFactor = intensityFactor,
                 onIntensityFactorChange = { intensityFactor = it },
-                wallContext = wallContext,
-                onWallContextChange = { wallContext = it },
             )
         }
     ) {
@@ -363,9 +368,96 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             }
         }
 
+        // The wall TV's live A/B, in the TV's half of the frame — see [WallShadowBeat] for why
+        // this is an on-screen control and not a settings-sheet row.
+        WallShadowBeat(
+            wallContext = wallContext,
+            onWallContextChange = { wallContext = it },
+            // No `windowInsetsPadding` here: `DemoScaffold`'s Scaffold already offsets this
+            // content box below the top bar and past the status bar, so adding the system-bar
+            // inset again would push the beat a bar-height too low, into the TV itself.
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 12.dp),
+        )
+
         // Tracks what is actually ON SCREEN, not just the toggle — see `shadowVisible`.
         GroundingLegend(shadowVisible = shadowVisible)
     }
+}
+
+/**
+ * The wall TV's own beat: the preset picker for its pool, anchored on screen next to the thing
+ * it controls, with a one-line verdict for the preset in force.
+ *
+ * **Why this is not a settings-sheet row (#2740 follow-up).** The picker used to live in the
+ * sheet, which failed the TV twice. The sheet's scrim dims the scene, so the wall pool could
+ * never be watched *while* being changed — a sequential, half-blind comparison, the very flaw
+ * the box pair was redesigned to escape. And sitting among the global controls it read as
+ * global, while it only ever drove [wallContext] — the TV's pool, never the two boxes a viewer
+ * takes to be the subject. The previous mitigation was to rename it "TV wall preset": a label
+ * patch over a scope mismatch. Anchoring the control in the TV's half of the frame makes the
+ * scope self-evident and the A/B live, and it takes the settings sheet from four controls down
+ * to three.
+ *
+ * **Why every preset gets a verdict, not just the wrong ones.** A caption that appeared only
+ * for a mis-set preset would communicate by *absence* — and an absence reads as nothing at
+ * all. Each preset states what it costs on a wall, so switching to `Floor` teaches ("too dark,
+ * too round — a sticker") rather than merely looking different.
+ *
+ * Like [GroundingLegend], this is anchored to the *frame*, not to the TV's projected position:
+ * the camera is an orbit manipulator, so any drag moves the TV under a fixed overlay. It sits
+ * in the upper half because the home framing puts the TV there.
+ */
+@Composable
+internal fun WallShadowBeat(
+    wallContext: ContactShadowContext,
+    onWallContextChange: (ContactShadowContext) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = stringResource(R.string.contact_shadow_wall_beat_title),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ContactShadowContext.values().forEach { context ->
+                FilterChip(
+                    selected = context == wallContext,
+                    onClick = { onWallContextChange(context) },
+                    label = { Text(context.name) },
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = stringResource(wallContext.wallVerdictRes()),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * The one-line verdict shown under the picker for each preset, phrased as what that preset
+ * costs *on a wall* — see [WallShadowBeat] for why all three are covered.
+ *
+ * Exhaustive `when` on purpose: a new [ContactShadowContext] must fail this compile rather
+ * than ship a chip with no verdict under it.
+ */
+@StringRes
+private fun ContactShadowContext.wallVerdictRes(): Int = when (this) {
+    ContactShadowContext.Floor -> R.string.contact_shadow_wall_verdict_floor
+    ContactShadowContext.Wall -> R.string.contact_shadow_wall_verdict_wall
+    ContactShadowContext.TableTop -> R.string.contact_shadow_wall_verdict_tabletop
 }
 
 /**
@@ -436,10 +528,12 @@ private fun LegendChip(label: String, dotColor: Color) {
 
 /**
  * Settings-sheet controls, extracted (and `internal`, like [GeometryDemoControls]) so the
- * panel layout CAN be snapshot-tested in pure JVM (no Filament, no SceneView) — the #880
- * pattern. Unlike `GeometryDemoControls`, no such test exists for this panel yet: the
- * extraction makes it possible, it does not deliver it. Adding the sibling
- * `ContactShadowControlsSnapshotTest` is a follow-up.
+ * panel layout is snapshot-tested in pure JVM (no Filament, no SceneView) — the #880 pattern.
+ * The sibling `ContactShadowControlsSnapshotTest` covers it.
+ *
+ * Three controls, all genuinely global to the scene. The TV's preset picker used to be a
+ * fourth row here and has moved on screen to [WallShadowBeat]: it drove one pool, not the
+ * scene, so it did not belong among these.
  */
 @Composable
 internal fun ContactShadowControls(
@@ -449,8 +543,6 @@ internal fun ContactShadowControls(
     onMotionEnabledChange: (Boolean) -> Unit,
     intensityFactor: Float,
     onIntensityFactorChange: (Float) -> Unit,
-    wallContext: ContactShadowContext,
-    onWallContextChange: (ContactShadowContext) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -494,26 +586,6 @@ internal fun ContactShadowControls(
         value = intensityFactor,
         onValueChange = onIntensityFactorChange,
         valueRange = 0f..1.5f
-    )
-    Spacer(modifier = Modifier.height(8.dp))
-    Text(
-        stringResource(R.string.contact_shadow_wall_preset),
-        style = MaterialTheme.typography.labelLarge
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ContactShadowContext.values().forEach { context ->
-            if (context == wallContext) {
-                Button(onClick = { onWallContextChange(context) }) { Text(context.name) }
-            } else {
-                OutlinedButton(onClick = { onWallContextChange(context) }) { Text(context.name) }
-            }
-        }
-    }
-    Spacer(modifier = Modifier.height(4.dp))
-    Text(
-        stringResource(R.string.contact_shadow_wall_preset_hint),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
