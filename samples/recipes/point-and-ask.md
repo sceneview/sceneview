@@ -142,13 +142,21 @@ class AnswerPanel(val id: Int, val anchor: Anchor) {
 }
 val panels = remember { mutableStateListOf<AnswerPanel>() }
 val viewNodeManager = rememberViewNodeManager()
+var latestFrame by remember { mutableStateOf<Frame?>(null) }
+var isTracking by remember { mutableStateOf(false) }
+var nextId by remember { mutableIntStateOf(0) }
 // ARCore anchors cost per frame while attached — always detach on dispose.
 DisposableEffect(Unit) { onDispose { panels.forEach { it.anchor.detach() } } }
 
 ARSceneView(
     planeRenderer = true,                    // show planes: where a tap will pin
     viewNodeWindowManager = viewNodeManager, // required by ViewNode
-    onSessionUpdated = { _, frame -> latestFrame = frame },
+    onSessionUpdated = { _, frame ->
+        latestFrame = frame
+        // Feed the gate below — without this, isTracking stays false and
+        // every tap silently hit-tests nothing.
+        isTracking = frame.camera.trackingState == TrackingState.TRACKING
+    },
     onGestureListener = rememberOnGestureListener(
         onSingleTapConfirmed = { e, _ ->
             // Tracked planes (tap inside the polygon) and feature points both accept.
