@@ -549,46 +549,65 @@ jobs:
               attrs = {}
 
               # ── whatsNew (every tag) ──────────────────────────────────
-              # `gsub(/\./, "\\.", ver)` escapes the dots in `4.3.1` so the
-              # regex doesn't also match `4-3-1` etc. Same hygiene as
-              # play-store.yml's awk extractor.
-              awk_out = subprocess.run(
-                  ["awk", "-v", f"ver=## v{version_string}",
-                   r'BEGIN { gsub(/\./, "\\.", ver) } '
-                   r'$0 ~ "^"ver"( |$)" { found=1; next } '
-                   r'found && /^## v[0-9]/ { exit } '
-                   r'found { print }',
-                   "../../CHANGELOG.md"],
-                  capture_output=True, text=True, check=False,
-              )
-              raw = awk_out.stdout
-              if raw.strip():
-                  text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", raw)
-                  text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
-                  text = re.sub(r"`([^`]+)`", r"\1", text)
-                  text = re.sub(r"^#{1,6}\s*", "", text, flags=re.M)
-                  # Apple Guideline 2.3.10 (Accurate Metadata): App Store
-                  # reviewers reject "What's New" notes that reference other
-                  # platforms (Android/Google Play/etc.) — irrelevant to App
-                  # Store users. The CHANGELOG is cross-platform, so drop any
-                  # bullet line that mentions a non-Apple ecosystem before it
-                  # reaches the iOS/macOS whatsNew. #2252 follow-up.
-                  _other_platform = re.compile(
-                      r"\b(android|google play|play store|maven|gradle|"
-                      r"jetpack|kotlin|flutter|react[ -]native|web|webgl|"
-                      r"webxr|wasm|\.aar|desktop)\b",
-                      re.I,
+              # Preferred source: a hand-maintained, user-facing
+              # release_notes.txt. Apple's "What's New" must describe the
+              # DEMO app for its App Store users, NOT the SDK's technical,
+              # cross-platform CHANGELOG (Apple Guideline 2.3.10 rejects
+              # notes referencing other ecosystems). Deriving whatsNew from
+              # the CHANGELOG left the field near-empty for Web/Flutter-heavy
+              # releases (e.g. 4.25.0), and an empty *required* whatsNew makes
+              # the review submission 409 with ENTITY_STATE_INVALID far
+              # downstream (#2893).
+              whats_new = None
+              notes_file = pathlib.Path("distribution/app-store/en-US/release_notes.txt")
+              if notes_file.exists():
+                  whats_new = notes_file.read_text().strip() or None
+                  if whats_new:
+                      print(f"whatsNew sourced from release_notes.txt ({len(whats_new)}c)")
+              if not whats_new:
+                  # Fallback (file absent): extract the `## vX.Y.Z` CHANGELOG
+                  # section as before, so existing tags keep working.
+                  # `gsub(/\./, "\\.", ver)` escapes the dots in `4.3.1` so the
+                  # regex doesn't also match `4-3-1` etc. Same hygiene as
+                  # play-store.yml's awk extractor.
+                  awk_out = subprocess.run(
+                      ["awk", "-v", f"ver=## v{version_string}",
+                       r'BEGIN { gsub(/\./, "\\.", ver) } '
+                       r'$0 ~ "^"ver"( |$)" { found=1; next } '
+                       r'found && /^## v[0-9]/ { exit } '
+                       r'found { print }',
+                       "../../CHANGELOG.md"],
+                      capture_output=True, text=True, check=False,
                   )
-                  text = "\n".join(
-                      ln for ln in text.splitlines()
-                      if not (ln.lstrip()[:1] in "-*•" and _other_platform.search(ln))
-                  )
-                  text = re.sub(r"\n{3,}", "\n\n", text).strip()
-                  if len(text) > 4000:
-                      text = text[:3997].rstrip() + "…"
-                  attrs["whatsNew"] = text
-              else:
-                  print(f"::warning::No '## v{version_string}' section in CHANGELOG.md — whatsNew left untouched")
+                  raw = awk_out.stdout
+                  if raw.strip():
+                      text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", raw)
+                      text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+                      text = re.sub(r"`([^`]+)`", r"\1", text)
+                      text = re.sub(r"^#{1,6}\s*", "", text, flags=re.M)
+                      # Apple Guideline 2.3.10 (Accurate Metadata): App Store
+                      # reviewers reject "What's New" notes that reference other
+                      # platforms (Android/Google Play/etc.) — irrelevant to App
+                      # Store users. The CHANGELOG is cross-platform, so drop any
+                      # bullet line that mentions a non-Apple ecosystem before it
+                      # reaches the iOS/macOS whatsNew. #2252 follow-up.
+                      _other_platform = re.compile(
+                          r"\b(android|google play|play store|maven|gradle|"
+                          r"jetpack|kotlin|flutter|react[ -]native|web|webgl|"
+                          r"webxr|wasm|\.aar|desktop)\b",
+                          re.I,
+                      )
+                      text = "\n".join(
+                          ln for ln in text.splitlines()
+                          if not (ln.lstrip()[:1] in "-*•" and _other_platform.search(ln))
+                      )
+                      whats_new = re.sub(r"\n{3,}", "\n\n", text).strip() or None
+                  if not whats_new:
+                      print(f"::warning::No release_notes.txt and no usable '## v{version_string}' CHANGELOG section — whatsNew left empty; the review submission will 409 (ENTITY_STATE_INVALID) if the field is blank on App Store Connect")
+              if whats_new:
+                  if len(whats_new) > 4000:
+                      whats_new = whats_new[:3997].rstrip() + "…"
+                  attrs["whatsNew"] = whats_new
 
               # ── Read file-backed metadata ─────────────────────────────
               meta_dir = pathlib.Path("distribution/app-store/en-US")
