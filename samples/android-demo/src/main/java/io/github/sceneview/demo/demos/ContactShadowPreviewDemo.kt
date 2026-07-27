@@ -24,6 +24,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -132,6 +133,22 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     var intensityFactor by remember { mutableFloatStateOf(1f) }
     var wallContext by remember { mutableStateOf(ContactShadowContext.Wall) }
 
+    // Whether a shadow is actually DRAWN — the toggle being on is not enough, because the
+    // intensity slider reaches 0 and makes the pool fully transparent. THE single source for
+    // every label that reports the shadow state (peek header + [GroundingLegend]): the first
+    // fix of this contradiction updated the legend alone and left the peek header still
+    // reading the raw toggle, so at intensity 0 the banner announced "Grounded vs floating"
+    // over two identically floating boxes. One value means a future label cannot diverge
+    // again (#2740).
+    //
+    // `derivedStateOf`, not a plain expression: reading `intensityFactor` directly in the
+    // demo body would drag the scaffold, top bar and settings sheet into every tick of a
+    // slider drag. The derived boolean only invalidates when it actually flips — same
+    // recomposition-scope discipline as the hop clock read inside the scene lambda below.
+    val shadowVisible by remember {
+        derivedStateOf { shadowsEnabled && intensityFactor > 0f }
+    }
+
     // Accumulated hop-loop time. Written only from the frame loop / reset callbacks —
     // never during composition.
     var bounceElapsedNanos by remember { mutableLongStateOf(0L) }
@@ -209,7 +226,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         peekHeader = stringResource(
-            if (shadowsEnabled) R.string.contact_shadow_peek_on
+            if (shadowVisible) R.string.contact_shadow_peek_on
             else R.string.contact_shadow_peek_off
         ),
         onReset = resetAll,
@@ -346,11 +363,8 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             }
         }
 
-        // The chip must track what is actually ON SCREEN, not just the toggle: the
-        // intensity slider reaches 0, which makes the pool fully transparent while
-        // `shadowsEnabled` is still true. Both boxes then float identically and a chip
-        // reading "Contact shadow" would be labelling a shadow nobody can see.
-        GroundingLegend(shadowVisible = shadowsEnabled && intensityFactor > 0f)
+        // Tracks what is actually ON SCREEN, not just the toggle — see `shadowVisible`.
+        GroundingLegend(shadowVisible = shadowVisible)
     }
 }
 
@@ -359,7 +373,8 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
  * box, "No shadow" for its floating twin. [shadowVisible] is whether a shadow is actually
  * being drawn (toggle ON *and* intensity above zero), not merely whether the toggle is on:
  * at intensity 0 the pool is fully transparent, so the left chip reports "Shadows off" and
- * the labels never contradict the scene.
+ * the labels never contradict the scene. The caller passes the same value it gives the peek
+ * header, so the two labels cannot disagree with each other either.
  *
  * The chips name the two columns; they are NOT positioned under their respective boxes.
  * The camera is an interactive orbit manipulator, so any drag moves the boxes relative to
