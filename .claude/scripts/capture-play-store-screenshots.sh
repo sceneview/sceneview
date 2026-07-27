@@ -9,7 +9,7 @@
 # Usage:
 #   bash .claude/scripts/capture-play-store-screenshots.sh \
 #     [--form-factor phone|tablet7|tablet10]   # default phone \
-#     [--demos model-viewer,lighting,materials,geometry,double-pendulum] \
+#     [--demos model-viewer,dynamic-sky,multi-model]   # default = set v2 \
 #     [--out samples/android-demo/distribution/play-store/en-GB/graphics] \
 #     [--status-bar-px N | auto] \
 #     [--variance-threshold N] \
@@ -105,6 +105,18 @@ android_cli_ensure || true
 # framing below is Android-only (iOS has no equivalent extra, #2785), so on iOS
 # multi-model renders at its scene default.
 DEMOS_DEFAULT="model-viewer,dynamic-sky,multi-model"
+# TABLETS SHOOT TWO, NOT THREE — `multi-model` is phone-only (#2907). Measured on
+# both tablet AVDs at build 4.25.0: a tablet portrait frame is ~0.63 w/h against
+# the phone's ~0.47, and at that aspect the scene's FIXED camera angle lands on a
+# wooden support post against the backdrop wall — no foliage, no diorama. It is
+# NOT a settle or load problem (the frame is fully rendered) and NOT fixable with
+# the framing lever: probed at 2.5 / 3.5 / 4.5 m the frame is essentially
+# identical, because `camera_distance` moves the camera along an angle it cannot
+# change. Same failure mode as the dropped `geometry` (#2873) — a demo-side fix.
+# The variance guard passes it (2227 on 10", 2827 on 7"), so only the mosaic
+# eyeball catches it: do not re-add `multi-model` here on the strength of a green
+# capture run.
+DEMOS_DEFAULT_TABLET="model-viewer,dynamic-sky"
 # Canonical Play Store listing directory — the same `graphics/` subdir the
 # `play-store.yml` listing-sync job uploads to the store (#1710).
 OUT_DIR_DEFAULT="samples/android-demo/distribution/play-store/en-GB/graphics"
@@ -151,7 +163,9 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown arg: $1" >&2; exit 2 ;;
   esac
 done
-DEMOS="${DEMOS:-$DEMOS_DEFAULT}"
+# NB: DEMOS stays unresolved here on purpose — its default is form-factor
+# specific (tablets drop `multi-model`, see above) and FORM_FACTOR is only
+# validated in the case block below. Resolved right after `esac`.
 OUT_DIR="${OUT_DIR:-$OUT_DIR_DEFAULT}"
 VARIANCE_THRESHOLD="${VARIANCE_THRESHOLD:-$VARIANCE_THRESHOLD_DEFAULT}"
 FORM_FACTOR="${FORM_FACTOR:-$FORM_FACTOR_DEFAULT}"
@@ -166,6 +180,7 @@ FORM_FACTOR="${FORM_FACTOR:-$FORM_FACTOR_DEFAULT}"
 case "$FORM_FACTOR" in
   phone)
     PREFIX="phone"
+    DEMOS_DEFAULT_FF="$DEMOS_DEFAULT"
     # Pixel_7a AVD natural resolution = 1080×2400. Crop 96 px → 1080×2304 = 9:19.2.
     TARGET_HEIGHT=2304
     STATUS_BAR_PX_DEFAULT=96
@@ -173,6 +188,7 @@ case "$FORM_FACTOR" in
     ;;
   tablet7|tablet10)
     PREFIX="$FORM_FACTOR"
+    DEMOS_DEFAULT_FF="$DEMOS_DEFAULT_TABLET"
     TARGET_HEIGHT=0
     STATUS_BAR_PX_DEFAULT="auto"
     # MUST be numeric and MUST NOT be the "auto" default: when live detection
@@ -192,6 +208,8 @@ case "$FORM_FACTOR" in
 esac
 STATUS_BAR_PX="${STATUS_BAR_PX:-$STATUS_BAR_PX_DEFAULT}"
 SETTLE_SECONDS="${SETTLE_SECONDS:-$SETTLE_SECONDS_DEFAULT}"
+# Form-factor default (see DEMOS_DEFAULT_TABLET); an explicit --demos still wins.
+DEMOS="${DEMOS:-$DEMOS_DEFAULT_FF}"
 
 # ── 1. Recover an offline AVD if needed ──────────────────────────────────────
 if ! adb devices | grep -qE "^emulator-|^[0-9A-F]{8}.*device$"; then

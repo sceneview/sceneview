@@ -31,18 +31,29 @@ class** (identical 1320×2868 screenshot spec); likewise the iPad Pro 13-inch
 M4 and M5. Either generation produces an App Store Connect-compliant image
 for its class.
 
-## Demos captured — the common Android↔iOS showcase set (#2773)
+## Demos captured — pre-v2 set, refresh deferred (#2896)
 
-The **same five demos, in the same order**, as Android's
-`capture-play-store-screenshots.sh`, so both stores show identical screens.
-Every id is a standalone (non-consolidated) demo on both platforms and renders
-rich 3D content — deliberately *not* empty or loading AR scenes:
+⚠️ **The committed PNGs below are one set behind.** `capture-appstore-screenshots.sh`
+already shoots **set v2** — `model-viewer · dynamic-sky · multi-model`, the three
+strong frames Android moved to in #2854/#2855 — but the iOS images have not been
+re-captured, because doing so is blocked on scene-side RealityKit fixes: dim
+lighting, far default framing, and `dynamic-sky` rendering no sky at all
+(#2896, with no capture-side lever — see #2785). So the two stores are
+deliberately **not** in sync right now; do not describe them as identical.
+
+What is committed today (the pre-v2 five, in this order):
 
 1. `01-model-viewer` — bundled hero model (cyberpunk hovercar), orbit camera
 2. `02-lighting` — PBR-lit spheres with the light-type switcher
 3. `03-materials` — metallic/roughness material showcase
 4. `04-geometry` — generated geometry primitives
 5. `05-double-pendulum` — animated physics (motion)
+
+Three of those ids were retired from the Android set for defects that are
+platform-independent and worth knowing before re-capturing here: `materials`
+picks a different HDRI *and* model per launch (#2874), `geometry` clips its
+primitives in a portrait frame (#2873), and `double-pendulum` renders as a tiny
+linkage in a mostly-black frame.
 
 Captured in **dark appearance** with a cleaned status bar (fixed 9:41, full
 signal/battery), mirroring the Android capture's dark-mode + status-bar crop

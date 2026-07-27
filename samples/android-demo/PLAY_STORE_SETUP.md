@@ -39,15 +39,25 @@ distribution/play-store/
     └── graphics/
         ├── feature-graphic.png            (1024×500)
         ├── icon-512.png                   (512×512)
-        ├── phone-screenshot-{1..5}.png    (1080×2304)
-        ├── tablet7-screenshot-{1..5}.png  (1200×N, portrait)
-        └── tablet10-screenshot-{1..4}.png (1600×N, portrait)
+        ├── phone-screenshot-{1..3}.png    (1080×2304)
+        ├── tablet7-screenshot-{1..2}.png  (1200×1872, portrait)
+        └── tablet10-screenshot-{1..2}.png (1600×2512, portrait)
 ```
 
-The phone and 7-inch tablet classes carry the same five demos, in the same order,
-as the iOS listing — the unified showcase set (#2773). The 10-inch set is
-temporarily four: its Materials slot captured before the model finished loading
-and was dropped pending #2855's full re-shoot (#2796 follow-up). Tablets keep
+All Android classes carry **set v2** — `model-viewer · dynamic-sky ·
+multi-model`, three strong frames chosen by judging the captured mosaic (#2854).
+**Tablets ship the first two only:** `multi-model`'s fixed camera angle lands on
+a support post at a tablet's wider aspect, and the framing lever cannot correct
+it (measured at 2.5/3.5/4.5 m — identical frame). The capture script drops it
+from tablet runs automatically; the gap is tracked in #2913.
+The five-demo set that preceded it was retired: `materials` picks a different
+HDRI each launch (#2874), `geometry` clips its primitives in portrait (#2873),
+and `double-pendulum` renders as a tiny linkage in a mostly-black frame. Do not
+re-add them without closing those issues first — the capture script carries the
+same warning next to `DEMOS_DEFAULT`.
+
+The **iOS** listing is NOT on set v2: it still holds the stale pre-v2 five, and
+its refresh is blocked on scene-side RealityKit fixes (#2896). Tablets keep
 their native post-crop height rather than being padded to the phone ratio.
 
 On every `vX.Y.0` tag release, the `sync-listing` job in
