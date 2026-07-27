@@ -111,11 +111,25 @@ case "$ROUTE" in
         # Only commands typed BY a session reach this hook — the adb calls inside
         # qa-android-demos.sh / device-qa.sh are invisible here, so the legitimate
         # script path is never obstructed.
-        case "$CMD" in
-          *install*|*uninstall*|*"pm clear"*|*"am force-stop"*|*"am start"*|*"emu kill"*|*reboot*|*"shell input"*|*"android run"*)
+        # Substring matching is NOT enough, and shipping it produced a false block
+        # within minutes: a `gh issue comment --body "…<a device command>…"` quotes
+        # the command in prose and drives nothing, yet contains every substring.
+        # lib/hook-adb-target.py tokenises with shlex and requires the driver in
+        # COMMAND position (line start or after a separator, env assignments
+        # allowed) — text inside a quoted string collapses to one token and can
+        # never look like an invocation. It prints the targeted serial (empty =
+        # default device) and exits 0 only for a genuinely mutating invocation.
+        # No python3, or unparseable quoting => fail OPEN, per this hook's doctrine.
+        HELPER="$(dirname "$0")/lib/hook-adb-target.py"
+        if [ -f "$HELPER" ] && command -v python3 >/dev/null 2>&1; then
+          TGT="$(printf '%s' "$CMD" | python3 "$HELPER" 2>/dev/null)"
+          DRIVES=$?
+        else
+          DRIVES=1
+        fi
+        if [ "$DRIVES" = 0 ]; then
             LEASE_DIR="${EMU_LEASE_DIR:-${TMPDIR:-/tmp}/sceneview-device-qa-emu}"
             [ -d "$LEASE_DIR" ] || exit 0
-            TGT="$(printf '%s' "$CMD" | grep -oE 'emulator-[0-9]+' | head -1)"
             NOW="$(date +%s 2>/dev/null)"
             [ -n "$NOW" ] || exit 0
             for lf in "$LEASE_DIR"/*.lease; do
@@ -148,8 +162,7 @@ case "$ROUTE" in
               echo "EMULATOR LEASE GUARD: $SERIAL carries a LIVE lease (mode=${MODE:-pid}, session=${SESS:-none}) held by another session. Driving it raw corrupts that session's QA run (incident 2026-07-27). If the lease is yours: EMU_LEASE_SESSION=$SESS <your command>. To take over deliberately: EMU_LEASE_TAKEOVER=1 <your command>. To get your own device: bash .claude/scripts/setup-ar-emulator.sh" >&2
               exit 2
             done
-            ;;
-        esac
+        fi
         ;;
     esac
     exit 0

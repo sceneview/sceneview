@@ -107,6 +107,28 @@ expect "lease dir absent -> allowed" 0 \
   "$(run_hook 'adb -s emulator-5554 shell pm clear io.github.sceneview.demo')"
 LEASE_DIR="$LEASE_DIR_BACKUP"
 
+echo "== a command that MENTIONS a device command must not be blocked =="
+# Regression: the first version of this guard matched substrings and blocked a
+# `gh issue comment` whose body merely quoted the incident command. A mention is
+# not an invocation — lib/hook-adb-target.py requires COMMAND position.
+write_lease "emulator-5554" "sticky" "$FOREIGN_SESSION" "$NOW" "999999"
+expect "gh issue comment quoting the command -> allowed" 0 \
+  "$(run_hook 'gh issue comment 2924 --body "the incident command was: adb -s emulator-5554 shell pm clear io.github.sceneview.demo"')"
+expect "git commit message quoting the command -> allowed" 0 \
+  "$(run_hook 'git commit -m "guard: refuse adb -s emulator-5554 shell pm clear when foreign-leased"')"
+expect "echo of a device command -> allowed" 0 \
+  "$(run_hook 'echo "adb -s emulator-5554 install -r app.apk"')"
+expect "grep for the pattern in sources -> allowed" 0 \
+  "$(run_hook 'grep -rn "adb .* pm clear" .claude/scripts/')"
+
+echo "== invocation shapes the guard must still catch =="
+expect "leading env assignment + real invocation -> BLOCKED" 2 \
+  "$(run_hook 'ANDROID_SERIAL=emulator-5554 adb shell pm clear io.github.sceneview.demo')"
+expect "invocation after a separator -> BLOCKED" 2 \
+  "$(run_hook 'cd /tmp && adb -s emulator-5554 install -r app.apk')"
+expect "absolute path to the driver -> BLOCKED" 2 \
+  "$(run_hook '/usr/local/bin/adb -s emulator-5554 shell am force-stop io.github.sceneview.demo')"
+
 echo "== unrelated commands stay untouched =="
 write_lease "emulator-5554" "sticky" "$FOREIGN_SESSION" "$NOW" "999999"
 expect "git status -> allowed" 0 "$(run_hook 'git status --porcelain')"
