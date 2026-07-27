@@ -131,7 +131,20 @@ if [[ -z "$PARENT_PROVIDED_SERIAL" ]]; then
   # Adopt a token a `setup-ar-emulator.sh` run just published for this session,
   # so our OWN reservation is not mistaken for a peer's (no-op otherwise).
   [[ -n "${EMU_LEASE_SESSION:-}" ]] || emu_lease_session_inherit >/dev/null 2>&1 || true
-  if emu_serial_alive "$SERIAL" adb && emu_serial_avd_matches "$SERIAL" adb; then
+  if emu_serial_alive "$SERIAL" adb; then
+    # It sits on a pool console port, so it is pool-managed: it must be
+    # IDENTIFIABLE as the pool AVD and leasable, or we refuse outright. Falling
+    # through to "drive it unleased" would be worst-case wrong — the console
+    # goes mute mainly when the emulator is already busy, i.e. exactly when a
+    # peer is driving it (lib/emulator-select.sh: leasing an unidentified
+    # device is the failure the guard exists for).
+    if ! emu_serial_avd_matches "$SERIAL" adb; then
+      echo "[ar-replay-qa] $SERIAL is on a pool port but did not identify as" >&2
+      echo "[ar-replay-qa] ${EMU_REQUIRE_AVD:-$EMU_POOL_AVD} (wrong AVD, or its console did not answer)." >&2
+      echo "[ar-replay-qa] Refusing to drive an emulator this run cannot identify." >&2
+      echo "[ar-replay-qa]   bash .claude/scripts/setup-ar-emulator.sh" >&2
+      exit 2
+    fi
     if ! emu_lease_acquire "$SERIAL" adb; then
       echo "[ar-replay-qa] $SERIAL is a pool emulator reserved by another session —" >&2
       echo "[ar-replay-qa] refusing to drive it. Provision your own, or inherit the" >&2
@@ -140,6 +153,11 @@ if [[ -z "$PARENT_PROVIDED_SERIAL" ]]; then
       exit 2
     fi
     echo "[ar-replay-qa] leased pool emulator $SERIAL for this run"
+    # Arm the release NOW, not at the logcat block below: a `set -e` abort in
+    # the Gradle build between here and there would otherwise leave the lease
+    # file behind. (Harmless — a dead owner's lease is reclaimable — but a
+    # peer would wait needlessly.) Superseded by ar_cleanup once logcat runs.
+    trap 'emu_lease_release_all 2>/dev/null || true' EXIT
   fi
 fi
 
