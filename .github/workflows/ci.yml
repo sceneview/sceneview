@@ -800,6 +800,17 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-emulator-lease.sh
 
+      # Sibling of the check above, one layer out: the pool honours leases, but
+      # raw `adb` typed by a session bypassed the pool entirely and wiped another
+      # session's QA run (2026-07-27). hook-dispatch.sh now refuses that command;
+      # this pins the refusal, including the escape hatches and the cases that
+      # must stay frictionless (read-only adb, another serial, expired lease).
+      # A guard that silently stops firing is worse than no guard at all.
+      - name: Self-test hook emulator-lease guard
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-hook-lease-guard.sh
+
       # Doc↔API drift (ADVISORY, #docs). Warns when this PR changed a public
       # API surface without updating llms.txt / KDoc / docs/docs / recipes.
       # AI-first SDK: stale prose makes AI emit stale user code. Non-blocking

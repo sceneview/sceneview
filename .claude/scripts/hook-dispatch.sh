@@ -16,8 +16,15 @@
 # tool_input.command / tool_input.file_path via jq.
 #
 # SAFETY RULES (this settings.json is shared by several live sessions):
-#   - exit 2 (blocking) ONLY for the gradle.properties VERSION MISMATCH
-#     guard before `git commit` — reliable condition, clearly a guard.
+#   - exit 2 (blocking) ONLY for the two guards below — both are
+#     deterministic, local, sub-second checks, never heuristics:
+#       (a) gradle.properties VERSION MISMATCH before `git commit`;
+#       (b) a mutating adb/android command aimed at an emulator carrying a
+#           LIVE lease owned by another session (#2862). Added after a real
+#           incident on 2026-07-27: a session wiped a sibling's QA run with
+#           `install -r` + `pm clear` because it probed `emu avd name` (AVD
+#           identity) but never read the lease (availability). The scripts
+#           honour leases; raw adb from a session bypassed all of it.
 #   - Everything else: exit 0 with a reminder on stderr (non-blocking).
 #   - Any internal failure (jq missing, git missing, empty/malformed
 #     stdin, missing files) => exit 0 silently. NEVER block on a hook bug.
@@ -88,6 +95,61 @@ case "$ROUTE" in
         ;;
       *"git push"*)
         remind 'PRE-PUSH QUALITY GATE: Before pushing, ensure you have verified: 1) Android compiles (sceneview + arsceneview), 2) Unit tests pass, 3) Bundle builds if store-affecting, 4) Website JS valid if website changed. Run: bash .claude/scripts/pre-push-check.sh'
+        ;;
+      *"git worktree add"*)
+        # Non-blocking: creating a worktree is the one deterministic signal that a
+        # session is starting parallel work. Three unclaimed worktrees plus an open
+        # PR collided on issue #2740 on 2026-07-27; claim.sh would have caught it.
+        remind 'PARALLEL WORKTREE — claim the issue before writing code: bash .claude/scripts/claim.sh --check <issue#> then bash .claude/scripts/claim.sh <issue#>. Sibling worktrees right now:'
+        ROOT="$(repo_root)"
+        [ -n "$ROOT" ] && git -C "$ROOT" worktree list 2>/dev/null | sed 's/^/  /' >&2
+        ;;
+      *adb*|*"android run"*)
+        # --- Guard 2 (BLOCKING): mutating adb/android vs a foreign-leased emulator.
+        # Lease format is owned by lib/emulator-select.sh (#2862): line 1 = owner pid,
+        # then key=value lines (mode, session, avd, since, label).
+        # Only commands typed BY a session reach this hook — the adb calls inside
+        # qa-android-demos.sh / device-qa.sh are invisible here, so the legitimate
+        # script path is never obstructed.
+        case "$CMD" in
+          *install*|*uninstall*|*"pm clear"*|*"am force-stop"*|*"am start"*|*"emu kill"*|*reboot*|*"shell input"*|*"android run"*)
+            LEASE_DIR="${EMU_LEASE_DIR:-${TMPDIR:-/tmp}/sceneview-device-qa-emu}"
+            [ -d "$LEASE_DIR" ] || exit 0
+            TGT="$(printf '%s' "$CMD" | grep -oE 'emulator-[0-9]+' | head -1)"
+            NOW="$(date +%s 2>/dev/null)"
+            [ -n "$NOW" ] || exit 0
+            for lf in "$LEASE_DIR"/*.lease; do
+              [ -f "$lf" ] || continue
+              SERIAL="$(basename "$lf" .lease)"
+              # A command naming a serial only conflicts with that serial's lease.
+              if [ -n "$TGT" ] && [ "$TGT" != "$SERIAL" ]; then continue; fi
+              MODE="$(sed -n 's/^mode=//p' "$lf" 2>/dev/null | head -1)"
+              SESS="$(sed -n 's/^session=//p' "$lf" 2>/dev/null | head -1)"
+              SINCE="$(sed -n 's/^since=//p' "$lf" 2>/dev/null | head -1)"
+              OWNER="$(head -n1 "$lf" 2>/dev/null | tr -d '[:space:]')"
+              LIVE=0
+              TTL="${EMU_LEASE_STICKY_TTL:-14400}"
+              if [ "$MODE" = "sticky" ]; then
+                case "$SINCE" in
+                  ''|*[!0-9]*) LIVE=1 ;;
+                  *) [ "$((NOW - SINCE))" -lt "$TTL" ] && LIVE=1 ;;
+                esac
+              else
+                case "$OWNER" in
+                  ''|*[!0-9]*) LIVE=0 ;;
+                  *) kill -0 "$OWNER" 2>/dev/null && LIVE=1 ;;
+                esac
+              fi
+              [ "$LIVE" = 1 ] || continue
+              # The lease is mine, or I am taking over deliberately -> allowed.
+              case "$CMD" in
+                *"EMU_LEASE_SESSION=$SESS"*|*"EMU_LEASE_TAKEOVER=1"*) continue ;;
+              esac
+              echo "EMULATOR LEASE GUARD: $SERIAL carries a LIVE lease (mode=${MODE:-pid}, session=${SESS:-none}) held by another session. Driving it raw corrupts that session's QA run (incident 2026-07-27). If the lease is yours: EMU_LEASE_SESSION=$SESS <your command>. To take over deliberately: EMU_LEASE_TAKEOVER=1 <your command>. To get your own device: bash .claude/scripts/setup-ar-emulator.sh" >&2
+              exit 2
+            done
+            ;;
+        esac
         ;;
     esac
     exit 0
@@ -166,6 +228,14 @@ case "$ROUTE" in
       */website-static/*|website-static/*)
         remind 'WEBSITE MODIFIÉ — OBLIGATION: ouvrir website-static/index.html dans le navigateur et vérifier visuellement desktop + mobile. Vérifier: layout, couleurs, dark mode, responsive.' ;;
     esac
+    exit 0
+    ;;
+
+  # ================================================ PostToolUse EnterWorktree
+  post-worktree)
+    remind 'PARALLEL WORKTREE — claim the issue before writing code: bash .claude/scripts/claim.sh --check <issue#> then bash .claude/scripts/claim.sh <issue#>. Sibling worktrees right now:'
+    ROOT="$(repo_root)"
+    [ -n "$ROOT" ] && git -C "$ROOT" worktree list 2>/dev/null | sed 's/^/  /' >&2
     exit 0
     ;;
 
