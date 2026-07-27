@@ -2,4 +2,4 @@
 # social card previews (needs Cairo at runtime). Installed best-effort; the docs
 # build does not fail if this install fails.
 # Tracked by Dependabot via the `pip` entry in .github/dependabot.yml.
-mkdocs-material[imaging]==9.7.6
+mkdocs-material[imaging]==9.7.7
