@@ -14,6 +14,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -862,23 +865,35 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
     // resolve to M3 defaults and the in-scene card would not match the card it mirrors.
     SceneViewDemoTheme {
         M3Surface(
-            modifier = Modifier.width(ANCHORED_CARD_WIDTH),
+            // Fixed height as well as width, and NOT for looks: every panel shares one
+            // ViewNode WindowManager, whose single wrap-content FrameLayout sizes itself
+            // to its LARGEST child and then re-measures every match-parent sibling at
+            // that size. A taller card therefore resizes every other card's quad, and
+            // because Plane.DEFAULT_CENTER centres the quad on the node origin while the
+            // content draws top-left, the shorter cards visibly drift and keep moving
+            // while a sibling streams. Identical measurements keep the shared window
+            // constant, so each card stays where it was pinned (#2918).
+            modifier = Modifier.width(ANCHORED_CARD_WIDTH).height(ANCHORED_CARD_HEIGHT),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
             tonalElevation = 6.dp,
             shape = MaterialTheme.shapes.large,
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                if (text.isEmpty() && streaming) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                        Text(
-                            text = stringResource(R.string.demo_point_and_ask_status_thinking),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(start = 12.dp),
-                        )
-                    }
-                    return@Column
+            if (text.isEmpty() && streaming) {
+                Row(
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                    Text(
+                        text = stringResource(R.string.demo_point_and_ask_status_thinking),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(start = 12.dp),
+                    )
                 }
+                return@M3Surface
+            }
+            Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = question,
                     style = MaterialTheme.typography.labelMedium,
@@ -886,8 +901,12 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
+                    // A long answer scrolls inside the fixed box instead of growing it.
+                    // Nothing drives this scroll by touch — the rendered UI is a texture,
+                    // not an interactive view — so it also clips gracefully.
                     text = renderMarkdownLite(if (streaming) "$text▌" else text),
                     style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
                 )
             }
         }
@@ -895,10 +914,17 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
 }
 
 /**
- * Layout width of an anchored card. A `ViewNode` has no parent to measure against, so the
- * card needs an explicit width: 320 dp at [PANEL_SCALE] lands around 0.4 m wide in the room.
+ * Layout size of an anchored card. A `ViewNode`'s window is `WRAP_CONTENT`, so its content is
+ * measured `AT_MOST(display)` — `fillMaxWidth()` would resolve to the full display width and
+ * put a metres-wide card in the room. Hence an explicit width: 320 dp at [PANEL_SCALE] lands
+ * around 0.4 m.
+ *
+ * The height is explicit for a second, sharper reason: all panels share one window, which
+ * sizes to its largest child. Without a fixed height the tallest answer would resize every
+ * other card. See the comment in `AnchoredAnswerCard` (#2918).
  */
 private val ANCHORED_CARD_WIDTH = 320.dp
+private val ANCHORED_CARD_HEIGHT = 200.dp
 
 /** Shared bottom-overlay card chrome for every Point & Ask state. */
 @Composable

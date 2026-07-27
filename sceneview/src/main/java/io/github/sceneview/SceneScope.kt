@@ -1431,8 +1431,14 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      *   `LocalContentColor`, your own locals. A themed card therefore falls back to Material 3
      *   defaults unless the theme is re-applied inside: `ViewNode(windowManager) { MyAppTheme
      *   { Card { … } } }`.
-     * - **It has no parent to measure against**, so `fillMaxWidth()` and friends have nothing to
-     *   fill — give the content an explicit size (`Modifier.width(320.dp)`).
+     * - **Its window is `WRAP_CONTENT`**, so the content is measured `AT_MOST(display)` and
+     *   `fillMaxWidth()` resolves to the whole display width — a metres-wide quad in the
+     *   scene, not a zero-width one. Give the content an explicit size
+     *   (`Modifier.width(320.dp)`).
+     * - **One `WindowManager` sizes itself to its largest child.** When several `ViewNode`s
+     *   share one, every node's quad is re-measured to the biggest content, so a node whose
+     *   content grows silently resizes and shifts all the others. Give every node that shares
+     *   a manager the same explicit size, or give each its own manager.
      *
      * @param windowManager         The [ViewNodeImpl.WindowManager] to attach the view to.
      * @param unlit                 If `true`, ignores scene lighting (always fully bright).
