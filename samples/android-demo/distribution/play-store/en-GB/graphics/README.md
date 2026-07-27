@@ -67,6 +67,33 @@ bash .claude/scripts/capture-play-store-screenshots.sh \
   --status-bar-px auto
 ```
 
+### `multi-model` shoots a different scene without a Sketchfab key (#2913)
+
+That demo renders whatever the Sketchfab resolver hands back. **With** a key
+(`SKETCHFAB_API_KEY`, or `sketchfab.api.key` in `local.properties`) it streams the
+`park` category — the photoreal scanned oaks the slot exists for. **Without** one it
+substitutes each slug's bundled fallback: a lantern, a lantern, a shiba, a soldier.
+Same demo id, same layout, an entirely different picture — and nothing in the
+capture path can tell the two apart, because the frame renders fully, the foreground
+guard passes, and centre-variance is high either way. The script now WARNs when the
+key is missing and `multi-model` is in the set; it does not fail, because a keyless
+capture of the other slots is perfectly valid.
+
+This is worth knowing before reading a capture of that demo as evidence. The
+"wooden support post" in #2913's tablet frames is the bundled lantern's post —
+identical to what a keyless capture produces here — while the committed
+`phone-screenshot-3.png` it was compared against is a streamed oak. Two different
+scenes, on top of the (real, separate) framing defect that fix addresses.
+
+### Per-viewport framing (#2913)
+
+`multi-model` computes its camera distance from its own formation size and the
+**live viewport aspect**, so it frames itself on a phone and on a tablet without a
+per-class value here — the `camera_distance` extra is deliberately not set for it in
+`camera_distance_for()`. Passing one would override the per-viewport framing with a
+single number tuned on one screen shape. Other demos still take the extra; see the
+framing notes next to `camera_distance_for()` for which ones actually read it.
+
 ### Tablet AVDs
 
 `setup-ar-emulator.sh` builds the phone QA rig only. Create the tablet AVDs once:

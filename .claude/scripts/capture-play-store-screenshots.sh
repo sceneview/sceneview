@@ -255,6 +255,32 @@ if [[ "$STATUS_BAR_PX" = "auto" ]]; then
   fi
 fi
 
+# ── 1b. Streamed-asset key guard (#2913) ─────────────────────────────────────
+# `multi-model` renders whatever the Sketchfab resolver hands back. WITH a key it
+# streams the `park` category — the photoreal oaks the slot exists for. WITHOUT
+# one the resolver falls back to per-slug BUNDLED models (a lantern, a lantern, a
+# shiba, a soldier), so the same demo id captures an entirely different scene and
+# nothing downstream can tell: the frame renders fully, the foreground guard
+# passes, and centre-variance is high either way. The "wooden support post" in
+# #2913's tablet frames is the bundled lantern's post, while the committed
+# phone-screenshot-3.png it was compared against is a streamed oak — two different
+# scenes, on top of the (real, separate) framing defect that issue fixed.
+#
+# Same sources gradle reads (samples/android-demo/build.gradle): the
+# SKETCHFAB_API_KEY env var, else `sketchfab.api.key` in local.properties. WARN
+# only — a keyless capture of the other slots is perfectly valid, and this script
+# must stay usable without secrets (#2343).
+if echo ",$DEMOS," | grep -q ",multi-model,"; then
+  if [[ -z "${SKETCHFAB_API_KEY:-}" ]] &&
+     ! grep -qE '^[[:space:]]*sketchfab\.api\.key[[:space:]]*=[[:space:]]*[^[:space:]]' \
+       local.properties 2>/dev/null; then
+    echo "[capture] WARNING: no Sketchfab API key (SKETCHFAB_API_KEY / local.properties)." >&2
+    echo "[capture] 'multi-model' will render its BUNDLED fallbacks, not the streamed park" >&2
+    echo "[capture] scene — a different picture that no guard here can detect. Do not ship" >&2
+    echo "[capture] the result as a store slot without judging the mosaic (#2913)." >&2
+  fi
+fi
+
 # ── 2. Build a fresh debug APK ───────────────────────────────────────────────
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
   echo "[capture] Building :samples:android-demo:assembleDebug" >&2
@@ -388,17 +414,25 @@ adb shell am force-stop "$PKG"
 camera_distance_for() {
   case "$1" in
     model-viewer)    echo "4.5" ;;
-    multi-model)     echo "6.0" ;;
     *)               echo "" ;;
   esac
 }
-# Framing notes (#2854) — the `camera_distance` extra is honored ONLY by demos
-# built on `rememberHeroOrbitCameraManipulator` (DemoHelpers.kt); it is a silent
-# no-op on any other demo, so never add one for a non-hero-orbit demo (e.g.
-# double-pendulum computes its own auto-fit and never reads the extra).
-#   model-viewer / multi-model  → framed above (both hero-orbit). multi-model read
-#     as one cropped tree at its default, so it is pulled BACK to 6.0 m for the
-#     fullest scene its fixed camera angle allows (distance cannot change angle).
+# Framing notes (#2854) — the `camera_distance` extra is honored only by demos
+# that actually read `DemoSettings.cameraDistance`: everything built on
+# `rememberHeroOrbitCameraManipulator` (DemoHelpers.kt), plus the Multi-Model
+# section since #2913. It is a silent no-op anywhere else, so never add one for a
+# demo that computes its own framing (e.g. double-pendulum has its own auto-fit
+# and never reads the extra).
+#   model-viewer → framed above (hero-orbit).
+#   multi-model  → deliberately UNFRAMED, and the 6.0 m that used to sit here is
+#     gone (#2913). That value was written when the section built a stock
+#     `rememberCameraManipulator`, which reads no DemoSettings at all — the extra
+#     never reached the scene, which is why probing 2.5 / 3.5 / 4.5 m produced
+#     three identical frames and looked like "distance cannot change the angle".
+#     The section now computes its distance from its own formation size and the
+#     LIVE viewport aspect, so it frames itself correctly on phone and tablet;
+#     passing a fixed metre value here would override that per-viewport framing
+#     with a single number tuned on one screen shape.
 #   dynamic-sky  → hero-orbit and honors the extra, but Fable's verdict was ACCEPT
 #     at its default noon framing, so it is left unframed (echo empty).
 

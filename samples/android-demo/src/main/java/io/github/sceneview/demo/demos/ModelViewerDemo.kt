@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -40,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
+import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.fitDistanceForBounds
 import io.github.sceneview.model.model
 import io.github.sceneview.toAabb
@@ -64,13 +66,13 @@ import io.github.sceneview.demo.sketchfab.SketchfabSlug
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
-import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import java.util.Locale
+import kotlin.math.hypot
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -464,13 +466,28 @@ private suspend fun pickRandomDownloadableModel(
 // ─── Multi-Model section ──────────────────────────────────────────────────────
 // Formerly MultiModelDemo (id `multi-model`).
 //
-// Composes a themed "Park" scene from 4 streamed glTF assets — an oak tree
-// (the backdrop), a park bench (the foreground prop), a sleeping dog (the
-// animated occupant), and a perched songbird (the second animated occupant).
+// Composes a themed "Park" scene from the 4 glTF assets in [SampleAssets]' `park`
+// category: one hero at the back of the formation and three smaller ones in a
+// front row. (The variable names and the visibility chips below still say tree /
+// bench / dog / bird, from an earlier composition; only the registry decides what
+// actually loads.)
 //
-// Lighting comes from `studio_warm_2k.hdr` — a soft golden-hour wash that
-// unifies the four very different materials (bark, weathered wood, fur,
-// feathers) into one cohesive open-air display.
+// ⚠️ WHAT loads depends on the build. With a Sketchfab API key the resolver streams
+// the `park` category — four photoreal scanned oaks. Without one it substitutes each
+// slug's BUNDLED fallback: a lantern, a lantern, a shiba, a soldier. Same demo id,
+// same layout, completely different picture — worth knowing before reading a
+// screenshot of this section as evidence of anything (#2913).
+//
+// Lighting comes from `studio_warm_2k.hdr` — a soft golden-hour wash that unifies
+// the four assets into one cohesive open-air display.
+//
+// Framing is aspect-aware (#2913): the camera distance is computed per viewport
+// from the formation's own dimensions — see [parkCameraDistance]. Before that the
+// section aimed a fixed camera at `(0, 0, -1.5)` while the library's
+// `autoCenterContent` had already moved the models onto the world origin, which
+// left the lens ~0.6 m from the content centroid — inside the subject. Whichever
+// model sat on the pivot filled the frame as one featureless slab of its own
+// material, with the rest of the viewport falling on the HDRI backdrop.
 //
 // Controls:
 // - Visibility chips per model (toggle individual nodes off / on)
@@ -611,7 +628,26 @@ private fun MultiModelSection(
             }
         },
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        // BoxWithConstraints, not Box: the camera distance below is computed from the LIVE
+        // viewport aspect (#2913). See PARK_SLOTS / [parkCameraDistance] for the framing rules.
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val viewportAspect = (maxWidth / maxHeight)
+                .takeIf { it.isFinite() && it > 0f } ?: PARK_FALLBACK_ASPECT
+            // `camera_distance` / `?cameraDistance=` still wins when a QA flow or a store
+            // capture sets it — the same override every hero-orbit demo honours. Before #2913
+            // this section ignored it entirely (it built a stock `rememberCameraManipulator`,
+            // which knows nothing about DemoSettings), so the store script's `--ef
+            // camera_distance 6.0` was a silent no-op and probing 2.5 / 3.5 / 4.5 m produced
+            // three identical frames. That is why the extra "could not fix the framing".
+            val orbitDistance = DemoSettings.cameraDistance ?: parkCameraDistance(viewportAspect)
+            val cameraManipulator = remember(orbitDistance) {
+                createDefaultCameraManipulator(
+                    // Straight-on, at the mid-height of the tallest model, looking at the
+                    // formation centre — which IS the world origin, see `autoCenterContent`.
+                    orbitHomePosition = Position(0f, PARK_EYE_HEIGHT, orbitDistance),
+                    targetPosition = Position(0f, 0f, 0f),
+                )
+            }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
                 onFrame = firstFrame.onFrame,
@@ -619,50 +655,52 @@ private fun MultiModelSection(
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
                 environment = activeEnvironment,
-                cameraManipulator = rememberCameraManipulator(
-                    orbitHomePosition = Position(0f, 0.4f, 0.5f),
-                    targetPosition = Position(0f, 0f, -1.5f),
-                ),
+                // OFF on purpose (#2913). The library's auto-centre pass translates the content
+                // root so the union centroid lands on the orbit pivot, using whatever bounds have
+                // materialised on the first non-empty frame — with four models streaming in
+                // independently, WHICH bounds those are is a race. This scene places its own
+                // models around the origin below, so the composition no longer depends on that
+                // race, and the camera can be aimed at a centre that is known before load.
+                autoCenterContent = false,
+                cameraManipulator = cameraManipulator,
             ) {
-                // Park scene arrangement: tree as the towering backdrop (back-
-                // centre, scale 1.8 m to read as a real-world tree on the
-                // tabletop), bench in front-centre as the foreground prop, the
-                // sleeping dog at front-left next to the bench's leg, the
-                // songbird perched front-right.
+                // Grove arrangement, centred on the world origin: the hero model at the back of
+                // the formation, the three smaller ones in a front row, every one of them
+                // bottom-aligned onto a shared ground plane at y = -PARK_HEIGHT / 2.
                 //
-                // Front row z=-1.3, back row z=-1.7 so the depth difference reads
-                // even on a portrait phone viewport. sceneYaw rotates each model
-                // AROUND the formation centre by treating its (x, z) as polar
-                // coords offset from (0, -1.5). Per-model rotation cancels the
-                // yaw on its own Y so each piece stays facing the camera as the
-                // formation sweeps — gives a "turntable display" feel.
-                val centerZ = -1.5f
+                // sceneYaw rotates each model AROUND that centre by treating its (x, z) as polar
+                // coords, so the formation turns like a turntable while the hero model stays on
+                // the pivot the camera is aimed at — the shot reads the same at every phase of
+                // the spin instead of swinging the subject out of frame. Per-model rotation
+                // cancels the yaw on its own Y so each piece keeps facing the camera.
                 val displays = listOf(
-                    Display(showTree, treeInstance, x = 0.0f, z = -1.7f, scale = 1.80f),
-                    Display(showBench, benchInstance, x = 0.0f, z = -1.3f, scale = 0.65f),
-                    Display(showDog, dogInstance, x = -0.55f, z = -1.3f, scale = 0.40f),
-                    Display(showBird, birdInstance, x = 0.55f, z = -1.3f, scale = 0.15f),
+                    Display(showTree, treeInstance, PARK_SLOTS[0]),
+                    Display(showBench, benchInstance, PARK_SLOTS[1]),
+                    Display(showDog, dogInstance, PARK_SLOTS[2]),
+                    Display(showBird, birdInstance, PARK_SLOTS[3]),
                 )
                 for (d in displays) {
                     if (!d.show || d.instance == null) continue
                     // Rotation math lives in DemoMath.rotateAroundCentre so it can be
                     // JVM-unit-tested without firing up Filament / Compose.
-                    val (rx, rz) = DemoMath.rotateAroundCentre(d.x, d.z - centerZ, sceneYaw)
+                    val (rx, rz) = DemoMath.rotateAroundCentre(d.slot.x, d.slot.z, sceneYaw)
                     ModelNode(
                         modelInstance = d.instance,
-                        // The animated dog + bird auto-play their skeletal animation
-                        // for "alive" scene reads; in qaMode we need the bind pose
-                        // to render every frame so golden screenshots stay
-                        // deterministic.
+                        // Models with a skeletal animation auto-play it for "alive" scene reads;
+                        // in qaMode we need the bind pose to render every frame so golden
+                        // screenshots stay deterministic.
                         autoAnimate = !DemoSettings.qaMode,
-                        scaleToUnits = d.scale,
-                        // Models are placed by `position`; their formation is centred on the
-                        // bounding box, not ground-anchored. A previous `centerOrigin =
-                        // Position(0, 0.5, 0)` here was a silent no-op (the composable discarded
-                        // it — fixed library-side) and was removed to keep this scene's framing
-                        // byte-for-byte identical. (Adopting the now-working centerOrigin to sit
-                        // each model on a ground plane is a separate, visually-QA'd enhancement.)
-                        position = Position(x = rx, y = 0f, z = rz + centerZ),
+                        scaleToUnits = d.slot.scale,
+                        // Bottom-aligned (#2913): `Position(0, -1, 0)` puts each model's
+                        // bounding-box FLOOR on its node origin, so `position.y` below stands
+                        // them all on one ground plane. Without it a node keeps the asset's
+                        // authored pivot, which differs per GLB — the formation's vertical
+                        // placement was a property of whichever models the registry happened to
+                        // point at, and the pulled-back framing this fix needs would have shown
+                        // the smaller ones floating. (This parameter used to be a silent no-op;
+                        // it was fixed library-side and is now honoured.)
+                        centerOrigin = Position(0f, -1f, 0f),
+                        position = Position(x = rx, y = -PARK_HEIGHT / 2f, z = rz),
                         rotation = Rotation(y = -sceneYaw),
                     )
                 }
@@ -672,12 +710,86 @@ private fun MultiModelSection(
     }
 }
 
+/**
+ * One model's fixed place in the Multi-Model "park" formation, in metres.
+ *
+ * [x] / [z] are offsets from the formation centre — which is the world origin, since the section
+ * renders with `autoCenterContent = false` — and [scale] is the `scaleToUnits` cube the model is
+ * normalised into. Declared as data so [PARK_SPAN] / [PARK_HEIGHT] are DERIVED from the layout
+ * rather than restated next to it: the camera framing cannot silently drift out of sync with the
+ * arrangement it is supposed to frame (#2913).
+ */
+private data class ParkSlot(val x: Float, val z: Float, val scale: Float)
+
 private data class Display(
     val show: Boolean,
     val instance: io.github.sceneview.model.ModelInstance?,
-    val x: Float,
-    val z: Float,
-    val scale: Float,
+    val slot: ParkSlot,
+)
+
+/** The four `park` slots, back row first. Order matches the visibility chips. */
+private val PARK_SLOTS = listOf(
+    ParkSlot(x = 0.0f, z = -0.2f, scale = 1.80f),
+    ParkSlot(x = 0.0f, z = 0.2f, scale = 0.65f),
+    ParkSlot(x = -0.55f, z = 0.2f, scale = 0.40f),
+    ParkSlot(x = 0.55f, z = 0.2f, scale = 0.15f),
+)
+
+/**
+ * Height of the formation: every slot is bottom-aligned on a shared ground plane, so the union is
+ * exactly as tall as the tallest model.
+ */
+private val PARK_HEIGHT: Float = PARK_SLOTS.maxOf { it.scale }
+
+/**
+ * Width the formation sweeps out. Each slot orbits the centre at radius `hypot(x, z)` and is
+ * normalised into a cube of side `scale`, so the farthest any part of it ever reaches from the
+ * centre is `radius + scale / 2` — whatever the spin phase. Twice that is the width the camera
+ * has to cover for the frame to stay full of models as the formation turns.
+ */
+private val PARK_SPAN: Float = 2f * PARK_SLOTS.maxOf { hypot(it.x, it.z) + it.scale / 2f }
+
+/** SceneView's default lens. `CameraNode._focalLength` = 28 mm ⇒ ≈46.4° vertical FOV. */
+private const val PARK_FOCAL_LENGTH_MM = 28.0
+
+/**
+ * Fraction of the frame height the formation spans. `1f` = the hero model runs edge to edge —
+ * the subject reads at Play Store thumbnail size instead of sitting on a shelf in the middle.
+ */
+private const val PARK_FRAME_FILL = 1.0f
+
+/** Camera height, level with the mid-height of the tallest model (the ground plane is below). */
+private const val PARK_EYE_HEIGHT = 0.0f
+
+/**
+ * Aspect used when the viewport has not been measured yet (a zero / infinite constraint on the
+ * very first composition). A portrait phone — the most common case, and the shape the demo was
+ * originally framed for.
+ */
+private const val PARK_FALLBACK_ASPECT = 0.47f
+
+/**
+ * Camera distance for the park formation at a given viewport [aspect] (`width / height`).
+ *
+ * **Cover, not fit.** The formation is much wider than it is tall ([PARK_SPAN] ≈ 2.2 m against
+ * [PARK_HEIGHT] = 1.8 m), so fitting all of it inside a portrait frame would park the camera ~5.5 m
+ * back and shrink the models to a strip across the middle. [DemoMath.coverDistance] instead fills
+ * the frame on both axes and lets the neighbouring models be cropped by the edges.
+ *
+ * **Why the aspect matters at all (#2913).** Filament derives the vertical FOV from the focal
+ * length against a fixed 24 mm sensor height, so the vertical framing is aspect-invariant and a
+ * wider viewport simply reveals more world to the left and right at the same distance. On a phone
+ * (~0.47 w/h) and a tablet (~0.64) the vertical term wins and this returns the same distance —
+ * both frame the formation full height, and the tablet's extra width lands on the neighbouring
+ * models. On a landscape / foldable viewport the horizontal term takes over and pulls the camera
+ * in so the formation still spans the width rather than trailing off into the backdrop.
+ */
+private fun parkCameraDistance(aspect: Float): Float = DemoMath.coverDistance(
+    contentWidth = PARK_SPAN,
+    contentHeight = PARK_HEIGHT,
+    verticalFovDegrees = verticalFovDegreesForFocalLength(PARK_FOCAL_LENGTH_MM),
+    aspect = aspect,
+    fill = PARK_FRAME_FILL,
 )
 
 /**

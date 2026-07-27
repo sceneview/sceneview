@@ -61,6 +61,15 @@ Tablet screenshots (`tablet7-screenshot-*.png` / `tablet10-screenshot-*.png`)
 `play_listing.py` maps them onto Play's `sevenInchScreenshots` /
 `tenInchScreenshots` image types.
 
+⚠️ Export a **Sketchfab API key** before capturing a set that contains
+`multi-model` (`SKETCHFAB_API_KEY`, or `sketchfab.api.key` in `local.properties`).
+Without one that demo silently renders bundled fallback models instead of the
+streamed `park` scene — a different picture that every automated guard in the
+capture path accepts. The script warns; it cannot detect the swap in the frame.
+That demo also frames itself from the live viewport aspect, so it needs no
+per-class `camera_distance` value (#2913). See the
+[graphics README](distribution/play-store/en-GB/graphics/README.md) for both.
+
 Optional extras still not in the repo:
 - **Promo video:** YouTube link — set manually in the Play Console.
 
