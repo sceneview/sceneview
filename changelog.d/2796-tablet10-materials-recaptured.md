@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- Play Store 10" tablet "Materials" screenshot (slot 3): the run committed by #2858 captured the app bar and IBL skybox before the 3D model finished loading — the "no 3D at all" defect #2796 set out to fix (the 7" counterpart caught the model). Re-captured on a 10" AVD with a longer settle so the PBR model renders, restoring the 10" set to the full five unified-showcase demos (Models, Lighting, Materials, Geometry, Double Pendulum) in canonical order, matching phone/7"/iOS (#2796).
