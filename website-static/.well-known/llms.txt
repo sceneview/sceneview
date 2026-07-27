@@ -1020,7 +1020,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberEnvironment(environmentLoader) { ... }` | `Environment` | Custom environment from lambda |
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light with apply block |
-| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `|orbitHomePosition|` — see "Camera" |
+| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera" |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberView(engine)` | `View` | Filament view (one per viewport) |
@@ -1073,10 +1073,14 @@ SceneView(mainLightNode = rememberMainLightNode(engine) { intensity = 100_000f }
 ### How far `orbitHomePosition` actually puts the camera
 
 - `orbitHomePosition` is the eye's **absolute world position**. Filament's `OrbitManipulator`
-  assigns it verbatim (`mEye = mProps.orbitHomePosition`, default `(0, 0, 1)`) — it is never
-  re-based on `targetPosition`.
+  assigns it verbatim (`mEye = mProps.orbitHomePosition`) — it is never re-based on
+  `targetPosition`.
 - `targetPosition` is the orbit pivot and the initial look-at point (default: the origin). It
   does **not** set the distance.
+- **Omitting `orbitHomePosition` does not give you Filament's `(0, 0, 1)` default.** `SceneView`'s
+  own default manipulator is `rememberCameraManipulator(cameraNode.worldPosition)`, so the
+  effective default is the camera node's position — `(0, 0.4, 2.75)`, i.e. ≈ 2.78 m, for the
+  default `CameraNode`.
 - Under `SceneView`'s default `autoCenterContent = true`, the DSL content is translated so its
   bounding-box centre lands on the **world origin**, so the subject is framed from
   **`|orbitHomePosition|`** — the coordinates you gave your nodes do not survive, and

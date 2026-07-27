@@ -3162,7 +3162,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light (key) with apply block — shadows ON by default; apply block is reactive (re-runs on recomposition, so Compose-state-driven intensity/direction/color update live) |
 | `rememberFillLightNode(engine) { ... }` | `LightNode` | Soft fill light opposite the main light — lifts shadows so models don't look flat; apply block is reactive (same as `rememberMainLightNode`) |
-| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller. `orbitHomePosition` is the camera's **absolute** eye position (Filament default `(0,0,1)`), never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `|orbitHomePosition|` — see "Camera" |
+| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera" |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | In-app video recording — mirror frames to a `MediaRecorder` surface, no MediaProjection (see "Record the scene to MP4") |
@@ -3226,10 +3226,14 @@ Getting this wrong is a factor-of-2 framing bug, and every example above hides i
 they all target the origin (#2873).
 
 - `orbitHomePosition` is the eye's **absolute world position**. Filament's `OrbitManipulator`
-  assigns it verbatim (`mEye = mProps.orbitHomePosition`, default `(0, 0, 1)`) — it is never
-  re-based on `targetPosition`.
+  assigns it verbatim (`mEye = mProps.orbitHomePosition`) — it is never re-based on
+  `targetPosition`.
 - `targetPosition` is the orbit pivot and the initial look-at point (default: the origin). It
   does **not** set the distance.
+- **Omitting `orbitHomePosition` does not give you Filament's `(0, 0, 1)` default.** `SceneView`'s
+  own default manipulator is `rememberCameraManipulator(cameraNode.worldPosition)`, so the
+  effective default is the camera node's position — `(0, 0.4, 2.75)`, i.e. ≈ 2.78 m, for the
+  default `CameraNode`.
 - Under `SceneView`'s default `autoCenterContent = true`, the DSL content is translated so its
   bounding-box centre lands on the **world origin**. So the distance the subject is framed from
   is **`|orbitHomePosition|`** — the coordinates you gave your nodes do not survive, and

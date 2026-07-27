@@ -1518,11 +1518,14 @@ fun rememberOnGestureListener(
  * to `SceneView` when authored world positions should survive; the framing distance is then
  * `|orbitHomePosition − contentCentre|`.
  *
- * @param orbitHomePosition Camera's initial eye position in **world space** (optional; Filament
- *                          defaults to `(0, 0, 1)`). Its *length* is the framing distance under
- *                          the default `autoCenterContent = true` — see above. No built-in
- *                          gesture returns the camera to it; `onDoubleTap` is a plain callback
- *                          that `SceneView` forwards to your code and never wires to the camera.
+ * @param orbitHomePosition Camera's initial eye position in **world space** (optional). Its
+ *                          *length* is the framing distance under the default
+ *                          `autoCenterContent = true` — see above. Omitting it does **not** give
+ *                          you Filament's `(0, 0, 1)`: `SceneView`'s own default manipulator
+ *                          passes `cameraNode.worldPosition`, i.e. `(0, 0.4, 2.75)` ≈ 2.78 m for
+ *                          the default [CameraNode]. No built-in gesture returns the camera to
+ *                          this position either; `onDoubleTap` is a plain callback that
+ *                          `SceneView` forwards to your code and never wires to the camera.
  * @param targetPosition    Point in world space the camera orbits around and initially looks at
  *                          (optional; defaults to the origin). Does not affect the distance.
  * @param creator           Factory for the manipulator. Override to set a custom orbit speed, etc.
