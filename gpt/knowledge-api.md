@@ -3132,7 +3132,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light (key) with apply block — shadows ON by default; apply block is reactive (re-runs on recomposition, so Compose-state-driven intensity/direction/color update live) |
 | `rememberFillLightNode(engine) { ... }` | `LightNode` | Soft fill light opposite the main light — lifts shadows so models don't look flat; apply block is reactive (same as `rememberMainLightNode`) |
-| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller |
+| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller. `orbitHomePosition` is the camera's **absolute** eye position (Filament default `(0,0,1)`), never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `|orbitHomePosition|` — see "Camera" |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | In-app video recording — mirror frames to a `MediaRecorder` surface, no MediaProjection (see "Record the scene to MP4") |
@@ -3165,6 +3165,9 @@ val mat = remember(materialLoader) {
 
 ```kotlin
 // Orbit / pan / zoom (default)
+// `orbitHomePosition` is the camera's ABSOLUTE eye position, not an offset from
+// `targetPosition`. This example targets the origin, where the two readings coincide —
+// which is exactly why the trap below goes unnoticed. Framed from |(0,2,4)| ≈ 4.47 m.
 SceneView(cameraManipulator = rememberCameraManipulator(
     orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
     targetPosition = Position(x = 0f, y = 0f, z = 0f)
@@ -3186,6 +3189,44 @@ SceneView(
     // fillLightNode = null,  // disable fill light entirely
 )
 ```
+
+### How far `orbitHomePosition` actually puts the camera
+
+Getting this wrong is a factor-of-2 framing bug, and every example above hides it because
+they all target the origin (#2873).
+
+- `orbitHomePosition` is the eye's **absolute world position**. Filament's `OrbitManipulator`
+  assigns it verbatim (`mEye = mProps.orbitHomePosition`, default `(0, 0, 1)`) — it is never
+  re-based on `targetPosition`.
+- `targetPosition` is the orbit pivot and the initial look-at point (default: the origin). It
+  does **not** set the distance.
+- Under `SceneView`'s default `autoCenterContent = true`, the DSL content is translated so its
+  bounding-box centre lands on the **world origin**. So the distance the subject is framed from
+  is **`|orbitHomePosition|`** — the coordinates you gave your nodes do not survive, and
+  `targetPosition` does not enter into it.
+
+```kotlin
+// WRONG reading: "the camera sits 2.7 m from the row at z = -1.5".
+// The nodes are auto-centred onto the origin first, so this frames from
+// |(0, 0.2, 1.2)| ≈ 1.22 m — half the intended distance.
+rememberCameraManipulator(
+    orbitHomePosition = Position(0f, 0.2f, 1.2f),
+    targetPosition = Position(0f, 0f, -1.5f)
+)
+
+// RIGHT: pick the distance you want and give a vector of that LENGTH.
+rememberCameraManipulator(orbitHomePosition = Position(0f, 0.2f, 2.7f))  // ≈ 2.71 m
+
+// Or opt out of auto-centring, and authored world positions survive: the framing
+// distance becomes |orbitHomePosition − contentCentre|.
+SceneView(autoCenterContent = false, cameraManipulator = rememberCameraManipulator(
+    orbitHomePosition = Position(0f, 0.2f, 1.2f),
+    targetPosition = Position(0f, 0f, -1.5f)
+))
+```
+
+There is no built-in gesture that returns the camera to `orbitHomePosition`: `onDoubleTap` is a
+plain callback `SceneView` forwards to your code, never wired to the camera.
 
 ### Auto-fit camera framing
 

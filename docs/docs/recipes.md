@@ -312,7 +312,7 @@ fun BouncingModelScreen() {
 ### Orbit camera with custom home position
 
 Use `rememberCameraManipulator` with `orbitHomePosition` and `targetPosition`.
-The user can orbit, pan, and zoom. Double-tap resets to the home position.
+The user can orbit, pan, and zoom.
 
 ```kotlin
 SceneView(
@@ -320,6 +320,8 @@ SceneView(
     engine = engine,
     modelLoader = modelLoader,
     cameraManipulator = rememberCameraManipulator(
+        // Absolute eye position. Targets the origin here, so |orbitHomePosition| ≈ 4.47 m
+        // is the distance the subject is framed from.
         orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
         targetPosition = Position(x = 0f, y = 0f, z = 0f)
     )
@@ -327,6 +329,36 @@ SceneView(
     // nodes here
 }
 ```
+
+!!! warning "`orbitHomePosition` is an absolute eye position, and its **length** is your framing distance"
+
+    Filament's `OrbitManipulator` uses `orbitHomePosition` verbatim as the eye
+    (`mEye = mProps.orbitHomePosition`, default `(0, 0, 1)`); it is never re-based on
+    `targetPosition`, which only sets the orbit pivot and the initial look direction.
+
+    On top of that, `SceneView`'s default `autoCenterContent = true` translates the DSL
+    content so its bounding-box centre lands on the **world origin**. The distance your
+    subject is framed from is therefore `|orbitHomePosition|` — the coordinates you gave
+    your nodes do not survive, and `targetPosition` does not enter into it:
+
+    ```kotlin
+    // Frames from |(0, 0.2, 1.2)| ≈ 1.22 m — NOT the 2.7 m that
+    // |orbitHomePosition − targetPosition| suggests.
+    rememberCameraManipulator(
+        orbitHomePosition = Position(0f, 0.2f, 1.2f),
+        targetPosition = Position(0f, 0f, -1.5f)
+    )
+    ```
+
+    Pick the distance you want and pass a vector of that **length**, or set
+    `autoCenterContent = false` so authored world positions survive (the framing distance
+    then becomes `|orbitHomePosition − contentCentre|`). Both readings coincide when the
+    target is the origin — which is why every example on this page looks fine and why the
+    discrepancy went unnoticed until [#2873](https://github.com/sceneview/sceneview/issues/2873).
+
+    There is no built-in gesture that returns the camera to `orbitHomePosition`:
+    `onDoubleTap` is a plain callback `SceneView` forwards to your code, never wired to
+    the camera.
 
 ### Fixed camera looking at a point
 
