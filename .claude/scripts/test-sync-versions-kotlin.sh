@@ -31,17 +31,25 @@ trap 'rm -rf "$WORK"' EXIT
 # Build a minimal fixture repo under $1 with a given (toml, prose) Kotlin pair.
 # Only the files the Kotlin check+fix path reads are created; every other version
 # surface is absent and thus SKIPped, so the sole possible mismatch is Kotlin.
-# website-static/ is created empty because the fix block's cache-buster `find`
-# (unrelated, pre-existing) is not guarded against a missing dir.
+# All four $KOTLIN_PROSE_FILES surfaces are present: the root pair plus the two
+# website-static siblings that sat outside the original list and rotted to
+# 2.3.20 (#2886 follow-up). website-static/ also satisfies the fix block's
+# cache-buster `find` (unrelated, pre-existing), which is not guarded against
+# a missing dir.
 make_fixture() { # dir toml_kotlin prose_kotlin
     local dir="$1" toml="$2" prose="$3"
-    mkdir -p "$dir/.claude/scripts" "$dir/gradle" "$dir/docs/docs" "$dir/website-static"
+    mkdir -p "$dir/.claude/scripts" "$dir/gradle" "$dir/docs/docs" "$dir/website-static/.well-known"
     cp "$SRC" "$dir/.claude/scripts/"
     printf 'VERSION_NAME=1.2.3\n' > "$dir/gradle.properties"
     printf 'kotlin = "%s"\n' "$toml" > "$dir/gradle/libs.versions.toml"
     printf '**Min SDK:** 24 | **Target SDK:** 36 | **Kotlin:** %s | **Compose BOM compatible**\n' \
         "$prose" > "$dir/llms.txt"
     printf -- '- **Kotlin:** %s with Compose 1.10.5\n' "$prose" > "$dir/docs/docs/llms-full.txt"
+    # Same shapes as the real website-static files: .well-known mirrors the
+    # root llms.txt pipe line; llms-full mirrors the docs/docs bullet line.
+    printf '**Min SDK:** 24 | **Target SDK:** 36 | **Kotlin:** %s | **Compose BOM compatible**\n' \
+        "$prose" > "$dir/website-static/.well-known/llms.txt"
+    printf -- '- **Kotlin:** %s with Compose 1.10.5\n' "$prose" > "$dir/website-static/llms-full.txt"
 }
 
 # ── 1. Drifted Kotlin prose is rewritten to the toml value in BOTH files, and
@@ -58,10 +66,19 @@ grep -q '\*\*Kotlin:\*\* 9.9.9 with Compose 1.10.5' "$D/docs/docs/llms-full.txt"
     && ok "llms-full.txt: Kotlin -> 9.9.9, neighbouring 'Compose 1.10.5' untouched" \
     || bad "llms-full.txt: Kotlin not rewritten or Compose version clobbered"
 
-if grep -q '8.8.7' "$D/llms.txt" "$D/docs/docs/llms-full.txt"; then
+grep -q '\*\*Kotlin:\*\* 9.9.9 | \*\*Compose BOM compatible\*\*' "$D/website-static/.well-known/llms.txt" \
+    && ok "website-static/.well-known/llms.txt: Kotlin -> 9.9.9, Compose label intact" \
+    || bad "website-static/.well-known/llms.txt: Kotlin not rewritten (the pre-#2886-follow-up gap)"
+
+grep -q '\*\*Kotlin:\*\* 9.9.9 with Compose 1.10.5' "$D/website-static/llms-full.txt" \
+    && ok "website-static/llms-full.txt: Kotlin -> 9.9.9, 'Compose 1.10.5' untouched" \
+    || bad "website-static/llms-full.txt: Kotlin not rewritten (the pre-#2886-follow-up gap)"
+
+if grep -q '8.8.7' "$D/llms.txt" "$D/docs/docs/llms-full.txt" \
+        "$D/website-static/.well-known/llms.txt" "$D/website-static/llms-full.txt"; then
     bad "stale Kotlin 8.8.7 still present after --fix"
 else
-    ok "old Kotlin version 8.8.7 fully gone from both files"
+    ok "old Kotlin version 8.8.7 fully gone from all four files"
 fi
 
 # ── 2. A re-run in check-only mode is clean (Kotlin mismatch resolved). ─────
@@ -87,6 +104,9 @@ fi
 grep -q '\*\*Kotlin:\*\* 7.7.7 ' "$A/llms.txt" \
     && ok "aligned llms.txt left byte-for-byte unchanged" \
     || bad "aligned llms.txt was mutated"
+grep -q '\*\*Kotlin:\*\* 7.7.7 ' "$A/website-static/.well-known/llms.txt" \
+    && ok "aligned website-static/.well-known/llms.txt left unchanged" \
+    || bad "aligned website-static/.well-known/llms.txt was mutated"
 
 echo ""
 echo "  $PASS passed, $FAIL failed"
