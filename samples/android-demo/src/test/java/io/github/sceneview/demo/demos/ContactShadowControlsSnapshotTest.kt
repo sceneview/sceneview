@@ -6,6 +6,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.dropbox.differ.SimpleImageComparator
+import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.node.ContactShadowContext
@@ -109,12 +111,38 @@ class ContactShadowControlsSnapshotTest {
         darkTheme: Boolean = false,
         content: @Composable () -> Unit,
     ) {
-        captureRoboImage(path) {
+        captureRoboImage(path, roborazziOptions = CROSS_PLATFORM_TOLERANT) {
             SceneViewDemoTheme(darkTheme = darkTheme) {
                 Surface {
                     Column(modifier = Modifier.padding(16.dp)) { content() }
                 }
             }
         }
+    }
+
+    private companion object {
+        /**
+         * Per-channel tolerance one notch above Roborazzi's default, because goldens recorded
+         * on macOS are verified on the CI's Linux runners and the two round some composited
+         * colours differently.
+         *
+         * The gap is *measured*, not assumed. Comparing each macOS golden against the runner's
+         * `_actual.png` from run 30284733229: the wall-beat pair differs on 66 % of pixels and
+         * the all-off panel on 0.18 %, but in every case **the largest per-channel difference
+         * is 2/255** — i.e. 0.0078 normalised, a hair over the 0.007 default, and invisible
+         * side by side (both renderings were inspected). A flat 2/255 offset across a
+         * background is rounding, not a regression.
+         *
+         * Raising `maxDistance` rather than a change-*percentage* threshold is the point: a
+         * percentage large enough to absorb 66 % of the frame would wave through anything,
+         * whereas this keeps every pixel checked and only forgives sub-perceptual channel
+         * drift. A real regression here — a caption swapped, a chip unselected, a control gone
+         * — moves whole glyphs, which is orders of magnitude past 2/255.
+         */
+        private val CROSS_PLATFORM_TOLERANT = RoborazziOptions(
+            compareOptions = RoborazziOptions.CompareOptions(
+                imageComparator = SimpleImageComparator(maxDistance = 0.01f),
+            ),
+        )
     }
 }
