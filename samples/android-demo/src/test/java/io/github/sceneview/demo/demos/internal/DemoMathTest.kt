@@ -207,4 +207,128 @@ class DemoMathTest {
         assertEquals(0f, rotation.y, eps)
         assertEquals(0f, rotation.z, eps)
     }
+
+    // ── ContactShadowPreviewDemo bounce choreography ────────────────────────
+
+    private val bouncePeriod = DemoMath.CONTACT_BOUNCE_PERIOD_NANOS
+    private val bounceMax = DemoMath.CONTACT_BOUNCE_MAX_HEIGHT_METERS
+
+    @Test
+    fun `bounceHeight starts and lands at ground contact`() {
+        // t = 0 is the deterministic QA-mode pose: box on the floor, pool at full strength.
+        assertEquals(0f, DemoMath.bounceHeight(0L), eps)
+        // sin(π) = 0 — one full period later the box is exactly back on the floor.
+        assertEquals(0f, DemoMath.bounceHeight(bouncePeriod), eps)
+        // Negative elapsed (pre-first-frame) clamps to contact rather than extrapolating.
+        assertEquals(0f, DemoMath.bounceHeight(-1L), eps)
+    }
+
+    @Test
+    fun `bounceHeight peaks at mid-period`() {
+        assertEquals(bounceMax, DemoMath.bounceHeight(bouncePeriod / 2), eps)
+        // sin(π/4) = √2/2 at the quarter-period.
+        assertEquals(
+            bounceMax * 0.70710677f,
+            DemoMath.bounceHeight(bouncePeriod / 4),
+            eps,
+        )
+    }
+
+    @Test
+    fun `bounceHeight reduces phase over many periods without drifting`() {
+        // Integer modulo before the float conversion: 1000 periods in, the same phase
+        // must yield the same height — the loop can run for hours without degrading.
+        assertEquals(
+            DemoMath.bounceHeight(bouncePeriod / 3),
+            DemoMath.bounceHeight(bouncePeriod * 1000 + bouncePeriod / 3),
+            eps,
+        )
+    }
+
+    @Test
+    fun `bounceHeight rises monotonically toward the peak`() {
+        // The rectified sine climbs all the way from contact to the mid-period peak —
+        // no dip that would read as a double-bounce.
+        var previous = 0f
+        for (i in 1..10) {
+            val h = DemoMath.bounceHeight(bouncePeriod / 2 * i / 10)
+            assertTrue("height at step $i should rise ($previous -> $h)", h >= previous)
+            previous = h
+        }
+        assertEquals(bounceMax, previous, eps)
+    }
+
+    @Test
+    fun `bounceHeight degenerate inputs return contact`() {
+        assertEquals(0f, DemoMath.bounceHeight(123L, periodNanos = 0L), eps)
+        assertEquals(0f, DemoMath.bounceHeight(123L, periodNanos = -5L), eps)
+        assertEquals(0f, DemoMath.bounceHeight(123L, maxHeight = 0f), eps)
+    }
+
+    @Test
+    fun `groundingIntensityFactor is full at contact and dimmest at the peak`() {
+        // Contact → the pool keeps its full context opacity.
+        assertEquals(1f, DemoMath.groundingIntensityFactor(0f), eps)
+        // Peak → dims to the lifted floor, but never to zero: the pool must stay
+        // attributable to the box even at the top of the hop. 0.45 (not 0.28) is a
+        // measured-visibility floor — see the KDoc on groundingIntensityFactor.
+        assertEquals(0.45f, DemoMath.groundingIntensityFactor(bounceMax), eps)
+        // Halfway → linear midpoint: 1 - 0.55/2.
+        assertEquals(0.725f, DemoMath.groundingIntensityFactor(bounceMax / 2f), eps)
+        // Overshoot coerces to the floor value instead of going negative.
+        assertEquals(0.45f, DemoMath.groundingIntensityFactor(bounceMax * 3f), eps)
+        // Degenerate maxHeight leaves the shadow untouched.
+        assertEquals(1f, DemoMath.groundingIntensityFactor(0.1f, maxHeight = 0f), eps)
+    }
+
+    @Test
+    fun `groundingSpread is tight at contact and widest at the peak`() {
+        assertEquals(1f, DemoMath.groundingSpread(0f), eps)
+        assertEquals(1.5f, DemoMath.groundingSpread(bounceMax), eps)
+        assertEquals(1.25f, DemoMath.groundingSpread(bounceMax / 2f), eps)
+        // Overshoot coerces to the max spread.
+        assertEquals(1.5f, DemoMath.groundingSpread(bounceMax * 2f), eps)
+        assertEquals(1f, DemoMath.groundingSpread(0.1f, maxHeight = 0f), eps)
+    }
+
+    @Test
+    fun `groundingShadowOffset is zero at contact and projects along the light when lifted`() {
+        // Contact → the pool sits exactly under the object, no drift.
+        val atContact = DemoMath.groundingShadowOffset(0f, -0.35f, -1f, -0.4f)
+        assertEquals(0f, atContact.first, eps)
+        assertEquals(0f, atContact.second, eps)
+        // Lifted → geometric projection h * (dirX, dirZ) / |dirY|. With dirY = -1 the offset is
+        // just h * (dirX, dirZ), pointing along the light's horizontal travel (both negative
+        // here), so the pool slides out from under the box.
+        val (dx, dz) = DemoMath.groundingShadowOffset(bounceMax, -0.35f, -1f, -0.4f)
+        assertEquals(bounceMax * -0.35f, dx, eps)
+        assertEquals(bounceMax * -0.4f, dz, eps)
+    }
+
+    @Test
+    fun `groundingShadowOffset scales linearly with height`() {
+        val (dx1, dz1) = DemoMath.groundingShadowOffset(0.1f, -0.35f, -1f, -0.4f)
+        val (dx2, dz2) = DemoMath.groundingShadowOffset(0.2f, -0.35f, -1f, -0.4f)
+        assertEquals(2f * dx1, dx2, eps)
+        assertEquals(2f * dz1, dz2, eps)
+    }
+
+    @Test
+    fun `groundingShadowOffset divides by the vertical component`() {
+        // A steeper light (larger |dirY|) throws a shorter shadow for the same height.
+        val steep = DemoMath.groundingShadowOffset(bounceMax, -0.35f, -2f, -0.4f)
+        val shallow = DemoMath.groundingShadowOffset(bounceMax, -0.35f, -1f, -0.4f)
+        assertTrue(
+            "Steeper light must project a shorter offset",
+            kotlin.math.abs(steep.first) < kotlin.math.abs(shallow.first),
+        )
+    }
+
+    @Test
+    fun `groundingShadowOffset returns zero for a grazing light`() {
+        // |dirY| ~ 0 → projection to infinity; the demo must degrade to no slide, not NaN/∞.
+        val (dx, dz) = DemoMath.groundingShadowOffset(bounceMax, -0.35f, 0f, -0.4f)
+        assertEquals(0f, dx, eps)
+        assertEquals(0f, dz, eps)
+    }
 }

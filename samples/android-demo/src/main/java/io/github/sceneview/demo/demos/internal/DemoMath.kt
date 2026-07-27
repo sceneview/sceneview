@@ -1,6 +1,8 @@
 package io.github.sceneview.demo.demos.internal
 
 import io.github.sceneview.math.Rotation
+import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -166,6 +168,144 @@ internal object DemoMath {
 
     /** Inclusive IBL-intensity range (lux) of the AnimationDemo IBL slider. */
     val IBL_INTENSITY_RANGE: ClosedFloatingPointRange<Float> = 0f..10_000f
+
+    // ── ContactShadowPreviewDemo bounce choreography ─────────────────────────
+
+    /**
+     * One full ground-to-ground hop of the contact-shadow preview's comparison boxes,
+     * in nanoseconds (2.6 s). Slow enough to read the shadow's response at the landing,
+     * fast enough that the loop never feels idle.
+     */
+    const val CONTACT_BOUNCE_PERIOD_NANOS = 2_600_000_000L
+
+    /** Peak height (metres) reached at the middle of each hop. */
+    const val CONTACT_BOUNCE_MAX_HEIGHT_METERS = 0.34f
+
+    /**
+     * Height above the floor of the contact-shadow preview's bouncing boxes at
+     * [elapsedNanos] into the loop: `maxHeight * |sin(π · t / period)|`.
+     *
+     * The rectified sine is deliberate — unlike a smooth hover (`(1-cos)/2`), `|sin|`
+     * has a **non-zero slope at the zero crossings**, so the box visibly *strikes* the
+     * floor once per period instead of easing into it. The landing instant is the
+     * event the contact shadow exists to sell (the pool snaps dark and tight exactly
+     * when the box touches), so the motion is shaped to emphasise it.
+     *
+     * The phase is reduced with integer math (`elapsedNanos % periodNanos`) **before**
+     * the float conversion, so precision never degrades no matter how long the demo
+     * runs. `t = 0` starts at ground contact — which is also the deterministic pose QA
+     * mode freezes at (a zeroed clock).
+     *
+     * @param elapsedNanos Accumulated animation time. Values `<= 0` return `0` (contact).
+     * @param periodNanos  Loop period. Values `<= 0` return `0` rather than dividing by zero.
+     * @param maxHeight    Peak hop height in metres.
+     * @return Height in `[0, maxHeight]`.
+     */
+    fun bounceHeight(
+        elapsedNanos: Long,
+        periodNanos: Long = CONTACT_BOUNCE_PERIOD_NANOS,
+        maxHeight: Float = CONTACT_BOUNCE_MAX_HEIGHT_METERS,
+    ): Float {
+        if (elapsedNanos <= 0L || periodNanos <= 0L || maxHeight <= 0f) return 0f
+        val phase = (elapsedNanos % periodNanos).toFloat() / periodNanos.toFloat()
+        return maxHeight * abs(sin(PI.toFloat() * phase))
+    }
+
+    /**
+     * How much of its base opacity a contact shadow keeps when its object hovers
+     * [height] above the surface: `1` at contact, fading linearly to [liftedFactor]
+     * at [maxHeight].
+     *
+     * This is the perceptual core of the preview. A contact shadow is an
+     * ambient-occlusion pool: the closer the object, the more sky it blocks from the
+     * patch beneath it, so the pool is densest at contact and washes out as the object
+     * lifts. Coupling the pool's opacity to the hop height is what makes the grounded
+     * box read as *landing on* the floor while its shadowless twin reads as floating —
+     * the object/shadow motion-coupling cue (the classic "ball-in-a-box" illusion).
+     *
+     * Never returns less than [liftedFactor]: the pool must stay faintly visible at
+     * the top of the hop so the eye keeps attributing it to the box. The default is
+     * 0.45, not the physically purer 0.28 it shipped with: device QA measured the
+     * 0.28 pool at ~0.15 alpha at the peak — near-invisible on the demo's light floor,
+     * so the grounded-vs-floating contrast blinked out at the top of every hop. 0.45
+     * keeps the pool legible at every phase while preserving a 2.2× contact/peak fade.
+     *
+     * @param height       Current hover height, metres. Coerced into `[0, maxHeight]`.
+     * @param maxHeight    Height at which the factor bottoms out. `<= 0` returns `1`.
+     * @param liftedFactor Factor kept at [maxHeight], in `0..1`.
+     * @return Multiplier in `[liftedFactor, 1]`.
+     */
+    fun groundingIntensityFactor(
+        height: Float,
+        maxHeight: Float = CONTACT_BOUNCE_MAX_HEIGHT_METERS,
+        liftedFactor: Float = 0.45f,
+    ): Float {
+        if (maxHeight <= 0f) return 1f
+        val lift = (height / maxHeight).coerceIn(0f, 1f)
+        return 1f - (1f - liftedFactor) * lift
+    }
+
+    /**
+     * Uniform scale of the contact-shadow quad when its object hovers [height] above
+     * the surface: `1` at contact, growing linearly to [liftedSpread] at [maxHeight].
+     *
+     * Physically, lifting an occluder widens its penumbra: the pool spreads and
+     * softens as the object rises, then snaps back tight at the landing. Paired with
+     * [groundingIntensityFactor] (dimming), this scale (spreading) completes the
+     * ambient-occlusion response — dark-and-tight on contact, faint-and-wide in the air.
+     *
+     * @param height       Current hover height, metres. Coerced into `[0, maxHeight]`.
+     * @param maxHeight    Height at which the spread tops out. `<= 0` returns `1`.
+     * @param liftedSpread Scale reached at [maxHeight]. `>= 1`.
+     * @return Scale in `[1, liftedSpread]`.
+     */
+    fun groundingSpread(
+        height: Float,
+        maxHeight: Float = CONTACT_BOUNCE_MAX_HEIGHT_METERS,
+        liftedSpread: Float = 1.5f,
+    ): Float {
+        if (maxHeight <= 0f) return 1f
+        val lift = (height / maxHeight).coerceIn(0f, 1f)
+        return 1f + (liftedSpread - 1f) * lift
+    }
+
+    /**
+     * Horizontal ground offset `(dx, dz)` of a contact shadow when its object hovers [height]
+     * above the floor: the pool *slides out from under* the object as it lifts and slides back
+     * beneath it on the way down.
+     *
+     * This is the perceptual payload the preview was missing. Dimming
+     * ([groundingIntensityFactor]) and spreading ([groundingSpread]) alone leave the pool pinned
+     * under the box — a lifted object still reads as merely "a fainter shadow", not as "higher".
+     * The shadow's **path** is the strongest grounding cue the visual system has (the classic
+     * "ball-in-a-box" illusion: the same vertical trajectory reads as bouncing or floating
+     * depending only on where the shadow goes). Moving the pool is what makes the grounded box
+     * read as *landing on* the floor while its shadowless twin, animated identically, floats.
+     *
+     * The offset is the exact geometric projection of the object's base along the key light: a
+     * directional light travelling `(lightDirX, lightDirY, lightDirZ)` throws a point at height
+     * `h` onto the ground `h / |lightDirY|` along the light's horizontal component. A light with
+     * no vertical component (`|lightDirY| ~ 0`) grazes the floor and would project to infinity,
+     * so it returns no offset rather than a `NaN`/∞ position.
+     *
+     * @param height    Current hover height, metres. Values `<= 0` (contact) return `(0, 0)`.
+     * @param lightDirX Key-light travel direction, X component.
+     * @param lightDirY Key-light travel direction, Y component (negative for a ceiling light).
+     * @param lightDirZ Key-light travel direction, Z component.
+     * @return The `(dx, dz)` in metres to add to the pool's ground position.
+     */
+    fun groundingShadowOffset(
+        height: Float,
+        lightDirX: Float,
+        lightDirY: Float,
+        lightDirZ: Float,
+    ): Pair<Float, Float> {
+        if (height <= 0f) return 0f to 0f
+        val vertical = abs(lightDirY)
+        if (vertical <= 1e-4f) return 0f to 0f
+        val k = height / vertical
+        return (lightDirX * k) to (lightDirZ * k)
+    }
 
     /**
      * The keyframe choreography for one cinematic [shot] of

@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="demo_contact_shadow_preview_title">Contact Shadow Preview</string>
-    <string name="demo_contact_shadow_preview_subtitle">Non-AR preview of the procedural contact shadow — a TV grounded on a wall and a box on the floor, with per-surface presets</string>
+    <string name="demo_contact_shadow_preview_subtitle">Grounded vs floating, side by side — two identical bouncing boxes (one with the procedural contact shadow, one without) and a wall-mounted TV no shadow map can serve. Non-AR, runs on any emulator</string>
     <string name="contact_shadow_toggle">Contact shadows</string>
-    <string name="contact_shadow_intensity">Intensity: %1$d%%</string>
-    <string name="contact_shadow_wall_preset">Wall shadow preset</string>
+    <string name="contact_shadow_motion_toggle">Bounce motion</string>
+    <string name="contact_shadow_intensity">Shadow intensity: %1$d%%</string>
+    <string name="contact_shadow_wall_preset">TV wall preset</string>
+    <string name="contact_shadow_wall_preset_hint">Wall is the case a real shadow map cannot serve — ceiling light grazes a wall, so a mounted TV casts nothing onto it. Try Floor here: too dark, too round, a sticker.</string>
+    <string name="contact_shadow_label_grounded">Contact shadow</string>
+    <string name="contact_shadow_label_floating">No shadow</string>
+    <string name="contact_shadow_label_off">Shadows off</string>
+    <string name="contact_shadow_peek_on">Grounded vs floating</string>
+    <string name="contact_shadow_peek_off">Shadows off — all floating</string>
 </resources>
