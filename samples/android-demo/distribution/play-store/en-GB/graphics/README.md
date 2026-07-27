@@ -53,8 +53,8 @@ ANDROID_SERIAL=emulator-5554 bash .claude/scripts/capture-play-store-screenshots
 # These default to a 50 s settle (vs 15 s on phone): a tablet framebuffer is
 # ~4 Mpx and the GLBs load far slower there, so at 15 s the hero model is still
 # loading when the shutter fires and the variance guard rejects a black frame.
-ANDROID_SERIAL=emulator-5554 bash .claude/scripts/capture-play-store-screenshots.sh --form-factor tablet10
-ANDROID_SERIAL=emulator-5554 bash .claude/scripts/capture-play-store-screenshots.sh --form-factor tablet7
+ANDROID_SERIAL=emulator-5556 bash .claude/scripts/capture-play-store-screenshots.sh --form-factor tablet10   # a 10" pixel_tablet AVD — NOT the phone's 5554
+ANDROID_SERIAL=emulator-5558 bash .claude/scripts/capture-play-store-screenshots.sh --form-factor tablet7    # a 7" Nexus 7 AVD — a third, distinct device
 ```
 
 Pin `ANDROID_SERIAL` explicitly — the script refuses to run against an ambiguous

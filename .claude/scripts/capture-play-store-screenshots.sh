@@ -220,7 +220,7 @@ fi
 # `adb install` / `screencap` later fail with cryptic errors after the gradle
 # build has already burned ~90 s.
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
-  if ! echo "$ALL_DEVICES_OUT" | awk '$2 == "device" {print $1}' | grep -qx "$ANDROID_SERIAL"; then
+  if ! echo "$ALL_DEVICES_OUT" | awk '$2 == "device" {print $1}' | grep -qFx "$ANDROID_SERIAL"; then
     echo "[capture] ANDROID_SERIAL='$ANDROID_SERIAL' is not in 'device' state. adb sees:" >&2
     echo "$ALL_DEVICES_OUT" >&2
     exit 1
@@ -447,7 +447,7 @@ for DEMO in "${DEMO_ARR[@]}"; do
     FOREGROUND=$(adb shell dumpsys activity activities 2>/dev/null \
       | grep -E "ResumedActivity[:=]" | head -1 || true)
   fi
-  if ! echo "$FOREGROUND" | grep -q "$PKG"; then
+  if ! echo "$FOREGROUND" | grep -qF "$PKG"; then
     echo "[capture] $DEMO: '$PKG' is NOT in the foreground after ${SETTLE_SECONDS}s." >&2
     echo "[capture] Resumed activity was: ${FOREGROUND:-<none>}" >&2
     echo "[capture] Refusing to capture — the app likely crashed or never started." >&2
