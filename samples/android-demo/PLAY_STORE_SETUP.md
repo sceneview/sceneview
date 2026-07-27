@@ -39,13 +39,26 @@ distribution/play-store/
     └── graphics/
         ├── feature-graphic.png            (1024×500)
         ├── icon-512.png                   (512×512)
-        ├── phone-screenshot-{1..5}.png    (1080×2304)
+        ├── phone-screenshot-{1..3}.png    (1080×2304)
         ├── tablet7-screenshot-{1..5}.png  (1200×N, portrait)
         └── tablet10-screenshot-{1..5}.png (1600×N, portrait)
 ```
 
-All three classes carry the same five demos, in the same order, as the iOS
-listing — the unified showcase set (#2773). Tablets keep their native post-crop
+**The classes are not on the same set today — do not assume parity.** Phone was
+moved to **set v2** (`model-viewer · dynamic-sky · multi-model`, three strong
+frames judged on the captured mosaic, #2854/#2855); the tablet classes were not
+re-shot in that pass and still carry the earlier five-demo set. Three of those
+ids are retired for defects that are still open: `materials` picks a different
+HDRI *and* model per launch, so the slot is not reproducible (#2874); `geometry`
+clips its primitives in a portrait frame (#2873); `double-pendulum` renders as a
+tiny linkage in a mostly-black frame. The tablet PNGs also predate the demo
+bottom-overlay fix (#2780). Re-capturing the tablets is tracked in #2907.
+
+Note that a tablet re-capture cannot simply mirror phone: `multi-model`'s fixed
+camera angle lands on a support post at a tablet's wider aspect (~0.64 w/h vs
+the phone's ~0.47), and the framing lever cannot correct it — measured at
+2.5/3.5/4.5 m, the frame is unchanged (#2913). The capture script therefore
+drops it from tablet runs automatically. Tablets keep their native post-crop
 height rather than being padded to the phone ratio.
 
 On every `vX.Y.0` tag release, the `sync-listing` job in
