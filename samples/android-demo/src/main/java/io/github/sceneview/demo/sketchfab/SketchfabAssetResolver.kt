@@ -85,9 +85,10 @@ class SketchfabAssetResolver private constructor(
          * not the configuration: "an API key is configured" does not mean the download
          * succeeded. Every failure mode in [resolve] — no network, 401 on a stale key, a
          * bounds-drifted asset, exhausted retries — ends at [fallbackBundle], so a keyed
-         * build can quietly render the offline stand-in. Inferring the source from
-         * `SketchfabConfig.apiKey` instead put a "Streamed (cached)" pill over four bundled
-         * models on the QA emulator (#2933).
+         * build can quietly render the offline stand-in. That is measured, not theoretical:
+         * on the QA emulator (2026-07-28) a build WITH a key staged all four Multi-Model
+         * slots out of the fallback directory, the download endpoint answering 429 (#2933).
+         * The config-based inference used elsewhere in the demo calls that case "streamed".
          */
         fun isBundledFallback(file: File): Boolean = file.parentFile?.name == FALLBACK_DIR_NAME
 
