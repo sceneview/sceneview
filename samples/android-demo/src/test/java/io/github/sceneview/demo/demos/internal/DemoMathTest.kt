@@ -1,10 +1,12 @@
 package io.github.sceneview.demo.demos.internal
 
+import io.github.sceneview.demo.sketchfab.SampleAssets
 import kotlin.math.atan
 import kotlin.math.hypot
 import kotlin.math.sqrt
 import kotlin.math.tan
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -163,12 +165,24 @@ class DemoMathTest {
         // One test owns the layout literals, so changing PARK_SLOTS fails HERE — loudly and in one
         // place — instead of leaving the framing assertions describing a formation that no longer
         // exists. Before #2913 the bounds were restated next to the layout and could drift.
+        // MultiModelSection unrolls one `rememberSlugFile` / `rememberFileModelInstance` pair
+        // per slot (fixed composition slots, #1464) while everything else is sized from
+        // PARK_SLOTS. Growing the layout without adding that pair would compile and then throw
+        // IndexOutOfBounds on the first composition — a runtime crash on screen. Pin the count
+        // so it fails here, at build time, with an instruction instead.
+        assertEquals(
+            "PARK_SLOTS grew — unroll a matching rememberSlugFile / rememberFileModelInstance " +
+                "pair in MultiModelSection before changing this",
+            4,
+            PARK_SLOTS.size,
+        )
+
         assertEquals(
             listOf(
-                ParkSlot(x = 0.0f, z = -0.2f, scale = 1.80f),
-                ParkSlot(x = 0.0f, z = 0.2f, scale = 0.65f),
-                ParkSlot(x = -0.55f, z = 0.2f, scale = 0.40f),
-                ParkSlot(x = 0.55f, z = 0.2f, scale = 0.15f),
+                ParkSlot(uid = "d841c3bcc5324daebee50f45619e05fc", x = 0.0f, z = -0.2f, scale = 1.80f),
+                ParkSlot(uid = "6d1aeea748f147789004bc03e1930d32", x = 0.0f, z = 0.2f, scale = 0.65f),
+                ParkSlot(uid = "4f6ab5594a8a415aba3f958682b9ced5", x = -0.55f, z = 0.2f, scale = 0.40f),
+                ParkSlot(uid = "fd582b0d4a8c4af1a1b5c4f21a481c93", x = 0.55f, z = 0.2f, scale = 0.15f),
             ),
             PARK_SLOTS,
         )
@@ -188,6 +202,25 @@ class DemoMathTest {
             "the formation must be wider than it is tall, or cover framing has nothing to crop",
             PARK_SPAN > PARK_HEIGHT,
         )
+    }
+
+    @Test
+    fun `every park slot uid resolves to a registry entry with a chip label`() {
+        // The visibility chips read their label off the resolved slug's `displayName` (#2933). A
+        // uid that no longer exists in the registry does not crash — the slot degrades to the
+        // positional "Model N" label and, worse, loads whatever sits at the same INDEX in the
+        // `park` category. That is silent on a device and invisible in a screenshot, so it is
+        // pinned here: a registry edit that drops or re-keys a park asset fails the build.
+        // `displayName` is not asserted non-blank here: SketchfabSlug's own `init` already
+        // requires it, so a blank one cannot exist in the registry to be caught.
+        val park = SampleAssets.byCategory["park"].orEmpty()
+        for ((index, slot) in PARK_SLOTS.withIndex()) {
+            assertNotNull("slot $index uid ${slot.uid} is not in SampleAssets", SampleAssets.byUid[slot.uid])
+            assertTrue(
+                "slot $index uid ${slot.uid} resolves outside the `park` category",
+                park.any { it.uid == slot.uid },
+            )
+        }
     }
 
     @Test

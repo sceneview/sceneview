@@ -22,15 +22,26 @@ import kotlin.math.sqrt
  * [x] / [z] are offsets from the formation centre — which is the world origin, since the section
  * renders with `autoCenterContent = false` — and [scale] is the `scaleToUnits` cube the model is
  * normalised into.
+ *
+ * [uid] is the `SampleAssets` entry that occupies the slot. It rides on the slot rather than in a
+ * parallel list so the layout, the loader and the chip label are all indexed by one thing — a slot
+ * can never end up labelled with another slot's model (#2933). The framing below reads only
+ * [x] / [z] / [scale]: which model stands in a slot has no bearing on where the camera goes.
  */
-internal data class ParkSlot(val x: Float, val z: Float, val scale: Float)
+internal data class ParkSlot(val uid: String, val x: Float, val z: Float, val scale: Float)
 
-/** The four `park` slots, back row first. Order matches the visibility chips. */
+/**
+ * The four `park` slots, back row first. Order matches the visibility chips.
+ *
+ * The uids are looked up in `SampleAssets` by identity, so re-ordering the registry moves nothing
+ * here. What the registry DOES decide is which model — and therefore which chip label — each slot
+ * gets; the slots themselves only say where a model stands and how big it is drawn.
+ */
 internal val PARK_SLOTS = listOf(
-    ParkSlot(x = 0.0f, z = -0.2f, scale = 1.80f),
-    ParkSlot(x = 0.0f, z = 0.2f, scale = 0.65f),
-    ParkSlot(x = -0.55f, z = 0.2f, scale = 0.40f),
-    ParkSlot(x = 0.55f, z = 0.2f, scale = 0.15f),
+    ParkSlot(uid = "d841c3bcc5324daebee50f45619e05fc", x = 0.0f, z = -0.2f, scale = 1.80f),
+    ParkSlot(uid = "6d1aeea748f147789004bc03e1930d32", x = 0.0f, z = 0.2f, scale = 0.65f),
+    ParkSlot(uid = "4f6ab5594a8a415aba3f958682b9ced5", x = -0.55f, z = 0.2f, scale = 0.40f),
+    ParkSlot(uid = "fd582b0d4a8c4af1a1b5c4f21a481c93", x = 0.55f, z = 0.2f, scale = 0.15f),
 )
 
 /**
