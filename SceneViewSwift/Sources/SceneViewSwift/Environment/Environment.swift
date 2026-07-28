@@ -55,8 +55,11 @@ public struct SceneEnvironment: Sendable {
     /// *compiles* into a RealityKit resource — `.exr`, asset-catalog textures,
     /// Reality Composer Pro scenes. A plain Radiance `.hdr` copied into the
     /// bundle as a resource file is **not** one of them: it fails with
-    /// `resourceLoadFailure`, and the caller silently falls back to no IBL and
-    /// no skybox. That is what left every iOS demo dim-on-black and made
+    /// `resourceLoadFailure`, and the caller silently falls back to **no custom
+    /// IBL** — the `ImageBasedLightComponent` is never set, so the scene keeps
+    /// RealityView's own default environment lighting (#2842/#2868); it is not
+    /// unlit — and to **no skybox at all**. That is what left every iOS demo
+    /// dim-on-black and made
     /// `dynamic-sky` render no sky at all — all seven bundled presets
     /// (`studio.hdr`, `outdoor_cloudy.hdr`, …) are Radiance files.
     ///

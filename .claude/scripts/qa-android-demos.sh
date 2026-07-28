@@ -105,9 +105,45 @@ export EMU_REQUIRE_AVD
 # a peer's reservation to us.
 [[ -n "${EMU_LEASE_SESSION:-}" ]] || emu_lease_session_inherit >/dev/null 2>&1 || true
 
+# Release any lease THIS run takes below, on exit, however it ends (#2862
+# follow-up). Selecting a free serial is NOT enough: without holding it, a
+# second standalone run would pick the same un-leased emulator and both would drive it
+# — the exact concurrent-input collision #2862 set out to kill. The trap is a
+# no-op when device-qa.sh owns the lease under its own pid (it exported
+# ANDROID_SERIAL and we take the branch just below, acquiring nothing), and it
+# KEEPS a sticky session reservation (emu_lease_release_all skips sticky) — it
+# only drops the plain pid lease a standalone run takes on an un-leased pool
+# emulator.
+#
+# ⚠️ Installing an EXIT trap here has a cost, measured on this host (bash
+# 3.2.57): once a trap is set, a script that aborts inside a `||`-guarded list
+# dies with status 0 (the `||` already reset `$?`) — the false-green documented
+# in lib/maestro.sh. This script had NO EXIT trap before, and it runs Maestro as
+# `maestro_run … || MAESTRO_RC=$?` below. Preserving `$?` in the trap does not
+# fix it (it preserves the 0), so the defence is the positive `[qa] PASS`
+# marker this script prints on the genuine success path — device-qa.sh's
+# run_android now requires that marker, exactly as run_ios does. Do not grade
+# this script on its exit code alone.
+trap 'emu_lease_release_all || true' EXIT
+
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
   if ! emu_serial_alive "$ANDROID_SERIAL" adb; then
     echo "[qa] ERROR: ANDROID_SERIAL=$ANDROID_SERIAL is not a running emulator." >&2
+    exit 1
+  fi
+  # A pre-set ANDROID_SERIAL used to be trusted outright as "my caller holds the
+  # lease" — and setup-ar-emulator.sh's own printed next-steps tell a human to
+  # export exactly that, so the hold-the-lease fix never ran on the documented
+  # happy path (#2921). Verify instead of assuming. emu_lease_ensure is a strict
+  # no-op when the lease is already ours by pid or session token (device-qa.sh's
+  # child, or our own sticky reservation); it only acts when the emulator is
+  # unleased (take it) or held by a live peer (refuse). Calling emu_lease_acquire
+  # here instead would be a REGRESSION: it rewrites the owner to our pid and our
+  # EXIT trap would then release a lease our parent still depends on.
+  if ! emu_lease_ensure "$ANDROID_SERIAL" adb; then
+    echo "[qa] ERROR: ANDROID_SERIAL=$ANDROID_SERIAL is reserved by another session." >&2
+    echo "[qa]        Inherit it:  export EMU_LEASE_SESSION=<its token>" >&2
+    echo "[qa]        Or provision your own:  bash .claude/scripts/setup-ar-emulator.sh" >&2
     exit 1
   fi
   echo "[qa] targeting leased pool emulator: $ANDROID_SERIAL"
@@ -115,7 +151,17 @@ elif reuse_serial="$(emu_lease_free_serial adb)"; then
   # Standalone invocation. Take a LEASABLE emulator, not merely a running one
   # (#2862): a peer session's reservation — or a stray non-pool AVD sitting on a
   # pool port — must never be driven here.
-  echo "[qa] using running emulator: $reuse_serial"
+  # HOLD it for the whole run: emu_lease_free_serial only reports that the serial
+  # is takeable right now; a racing peer can lease it in the same instant. Acquire
+  # it (pins an un-leased emulator under our pid, or adopts our session's sticky
+  # reservation), and refuse to drive it if we lost that race — piloting an
+  # emulator we could not reserve is precisely the collision this fixes.
+  if ! emu_lease_acquire "$reuse_serial" adb; then
+    echo "[qa] ERROR: lost the race to lease $reuse_serial — a peer session took it first." >&2
+    echo "[qa]        Provision your own:  bash .claude/scripts/setup-ar-emulator.sh" >&2
+    exit 1
+  fi
+  echo "[qa] using running emulator: $reuse_serial (leased)"
   # Pin downstream adb / android-CLI / Maestro to this serial so a peer pool
   # emulator booting mid-run can never steal the QA target.
   export ANDROID_SERIAL="$reuse_serial"

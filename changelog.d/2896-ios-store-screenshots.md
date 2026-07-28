@@ -4,8 +4,13 @@
   one — it threw `resourceLoadFailure` on `studio.hdr` / `outdoor_cloudy.hdr` /
   every other preset, and `SceneEnvironment.load()` swallowed that into "scene
   continues with default lighting". So every iOS scene carrying
-  `.environment(…)` ran with **no IBL and no skybox**: subjects rendered dim,
-  and `showSkybox` had no visible effect at all. `load()` now falls back to
+  `.environment(…)` ran with **no custom IBL and no skybox**: the
+  `ImageBasedLightComponent` was never set, so the scene fell back to
+  RealityView's own default environment lighting (dim, not unlit — see
+  #2842/#2868), and `showSkybox` had no visible effect at all. **Visual change
+  on upgrade:** an app already on 4.25.0 that tuned its look around the broken
+  state will render differently once the IBL and the skybox appear. `load()` now
+  falls back to
   decoding the file through ImageIO (which reads `public.radiance` natively)
   and building the resource from the equirectangular `CGImage`. The
   `named:` path is still tried first, so `.exr`, asset-catalog and Reality
@@ -47,3 +52,12 @@
   and compares a hash of the frame's top band; a band that changed means
   something transient was drawn over it, so the pair is discarded and retried,
   and exhausting the retries fails the run (#2896, #917).
+- **Known consequence — #2897 becomes live.** `SceneEnvironment.intensity` is
+  applied as a `2^x` exponent (`intensityExponent:`), while the presets are
+  authored as linear multipliers (`.night` 0.4, `.nightSky` 0.5, `.sunset` 0.8,
+  `.outdoor` 1.2) and Android's `Environment` intensity is linear. That defect
+  pre-exists this change, but it was latent while the IBL never loaded at all;
+  now that it does, `.night` *brightens* ×1.32 instead of dimming ×0.4 — a ~3.3×
+  divergence from Android under the same preset name. Tracked in #2897; land it
+  in the same release, or the two platforms ship different lighting for
+  identical code.

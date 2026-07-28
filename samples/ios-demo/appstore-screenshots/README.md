@@ -31,17 +31,32 @@ class** (identical 1320×2868 screenshot spec); likewise the iPad Pro 13-inch
 M4 and M5. Either generation produces an App Store Connect-compliant image
 for its class.
 
-## Demos captured — the common Android↔iOS showcase set (#2854)
+## Demos captured — pre-v2 set, capture still owed (#2896)
 
-The **same three demos, in the same order**, as Android's
-`capture-play-store-screenshots.sh`, so both stores show identical screens.
-Every id is a standalone (non-consolidated) demo on both platforms and renders
-rich 3D content — deliberately *not* empty or loading AR scenes:
+⚠️ **The committed PNGs are one set behind, and the two stores are not in sync.**
+`capture-appstore-screenshots.sh` already shoots **set v2** — `model-viewer ·
+dynamic-sky · multi-model`, the three frames Android moved to in #2854/#2855 —
+but the iOS images have not been re-captured. Do not describe the listings as
+identical until they have been.
+
+The scene-side RealityKit blockers that deferred the refresh — dim lighting, far
+default framing, and `dynamic-sky` rendering no sky at all — are **fixed** by
+#2896 (the custom IBL and the skybox now load; `framingMargin` and `cameraOrbit`
+give the capture the two levers #2785 said did not exist). What remains is
+running the capture and committing the frames.
+
+What is committed today (the pre-v2 five, in this order):
 
 1. `01-model-viewer` — bundled hero model (cyberpunk hovercar) on the `.warm`
    photo-studio backdrop, frozen on a three-quarter hero pose
 2. `02-dynamic-sky` — procedural time-of-day skyline under a live HDRI sky
 3. `03-multi-model` — several streamed/bundled models composed into one scene
+
+Three of those ids were retired from the Android set for defects that are
+platform-independent, and worth knowing before re-capturing here: `materials`
+picks a different HDRI *and* model per launch, so the frame is not reproducible
+(#2874); `geometry` clips its primitives in a portrait frame (#2873); and
+`double-pendulum` renders as a tiny linkage in a mostly-black frame.
 
 Captured in **dark appearance** with a cleaned status bar (fixed 9:41, full
 signal/battery), mirroring the Android capture's dark-mode + status-bar crop

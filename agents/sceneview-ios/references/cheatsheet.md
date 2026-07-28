@@ -48,7 +48,10 @@ SceneView { … }
 The auto-fit fits the content's **bounding sphere** to the narrower frustum
 axis, then scales that distance by `framingMargin` — lower it to fill a tall
 portrait frame, but stay at or above ~`0.95` on an `autoRotate` scene or a long
-model clips at its broadside azimuth. `cameraOrbit` seeds only the starting
+model clips at its broadside azimuth. `framingMargin` runs *inside* the auto-fit,
+so it is a **silent no-op under `.autoCenterContent(false)`**. Android's
+equivalent is `frameToContent(padding =)`, a fraction rather than a multiplier:
+`margin == 1 + padding` (iOS `1.15` = Android `0.15`). `cameraOrbit` seeds only the starting
 pose. Watch elevation: at the 60° vertical FOV the **30° default pitch puts the
 horizon on the top edge**, so a `showSkybox` environment shows no sky until you
 lower it.

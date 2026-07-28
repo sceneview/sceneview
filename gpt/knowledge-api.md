@@ -51,7 +51,7 @@ fun SceneView(
 
 **Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
 
-**`autoCenterContent` (default `true`):** all DSL `content` nodes are parented to an intermediate content-root node which the library translates once — on the first frame their union bounding box is non-empty — so the content centroid lands at the orbit pivot and renders centred without per-node `ModelNode(centerOrigin = …)`. Lights / camera are `SceneView` parameters (never DSL children) so they stay put. Pass `autoCenterContent = false` for scenes with intentional off-centre placement. Mirrors the iOS `autoCenterContent` modifier.
+**`autoCenterContent` (default `true`):** all DSL `content` nodes are parented to an intermediate content-root node which the library translates once — on the first frame their union bounding box is non-empty — so the content centroid lands on the **world origin** and renders centred without per-node `ModelNode(centerOrigin = …)`. It lands on the origin, **not** on the camera manipulator's `targetPosition` — the two coincide only for the default target, which is why the camera-to-subject distance is `\|orbitHomePosition\|` (see "Camera"). Lights / camera are `SceneView` parameters (never DSL children) so they stay put. Pass `autoCenterContent = false` for scenes with intentional off-centre placement — authored world positions then survive. Mirrors the iOS `autoCenterContent` modifier.
 
 Minimal usage:
 ```kotlin
@@ -824,6 +824,25 @@ SceneView(viewNodeWindowManager = windowManager) {
     }
 }
 ```
+
+Three gotchas that bite every `ViewNode`:
+
+- **`viewContent` composes in its own off-screen window, so it inherits NONE of
+  your `CompositionLocal`s** — `MaterialTheme`, `LocalContentColor`, your own
+  locals. Without re-applying them inside, a themed card silently falls back to
+  Material 3 defaults and stops matching the rest of your UI. Wrap the content:
+  `ViewNode(windowManager) { MyAppTheme { Card { … } } }`.
+- **The window is `WRAP_CONTENT`**, so the content is measured `AT_MOST(display)`:
+  `fillMaxWidth()` resolves to the whole display width and puts a metres-wide quad
+  in the scene — it does not collapse to zero. Give the content an explicit size
+  (`Modifier.width(320.dp)`).
+- **One `WindowManager` sizes itself to its LARGEST child.** When several
+  `ViewNode`s share one manager, every quad is re-measured to the biggest content,
+  so a node whose content grows silently resizes and shifts all the others (a
+  streaming text panel drags its neighbours around while it types). Give every node
+  sharing a manager the same explicit size — width *and* height — or give each node
+  its own manager, at the cost of one system window per node.
+- **The rendered UI is NOT interactive** — see immediately below.
 
 **The rendered UI is NOT interactive.** A `ViewNode` draws its Compose content into a texture;
 the hosting window is `FLAG_NOT_TOUCHABLE` and touch events are never dispatched into it, so a
@@ -3113,7 +3132,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light (key) with apply block — shadows ON by default; apply block is reactive (re-runs on recomposition, so Compose-state-driven intensity/direction/color update live) |
 | `rememberFillLightNode(engine) { ... }` | `LightNode` | Soft fill light opposite the main light — lifts shadows so models don't look flat; apply block is reactive (same as `rememberMainLightNode`) |
-| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller |
+| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera" |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | In-app video recording — mirror frames to a `MediaRecorder` surface, no MediaProjection (see "Record the scene to MP4") |
@@ -3146,6 +3165,9 @@ val mat = remember(materialLoader) {
 
 ```kotlin
 // Orbit / pan / zoom (default)
+// `orbitHomePosition` is the camera's ABSOLUTE eye position, not an offset from
+// `targetPosition`. This example targets the origin, where the two readings coincide —
+// which is exactly why the trap below goes unnoticed. Framed from |(0,2,4)| ≈ 4.47 m.
 SceneView(cameraManipulator = rememberCameraManipulator(
     orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
     targetPosition = Position(x = 0f, y = 0f, z = 0f)
@@ -3167,6 +3189,48 @@ SceneView(
     // fillLightNode = null,  // disable fill light entirely
 )
 ```
+
+### How far `orbitHomePosition` actually puts the camera
+
+Getting this wrong is a factor-of-2 framing bug, and every example above hides it because
+they all target the origin (#2873).
+
+- `orbitHomePosition` is the eye's **absolute world position**. Filament's `OrbitManipulator`
+  assigns it verbatim (`mEye = mProps.orbitHomePosition`) — it is never re-based on
+  `targetPosition`.
+- `targetPosition` is the orbit pivot and the initial look-at point (default: the origin). It
+  does **not** set the distance.
+- **Omitting `orbitHomePosition` does not give you Filament's `(0, 0, 1)` default.** `SceneView`'s
+  own default manipulator is `rememberCameraManipulator(cameraNode.worldPosition)`, so the
+  effective default is the camera node's position — `(0, 0.4, 2.75)`, i.e. ≈ 2.78 m, for the
+  default `CameraNode`.
+- Under `SceneView`'s default `autoCenterContent = true`, the DSL content is translated so its
+  bounding-box centre lands on the **world origin**. So the distance the subject is framed from
+  is **`|orbitHomePosition|`** — the coordinates you gave your nodes do not survive, and
+  `targetPosition` does not enter into it.
+
+```kotlin
+// WRONG reading: "the camera sits 2.7 m from the row at z = -1.5".
+// The nodes are auto-centred onto the origin first, so this frames from
+// |(0, 0.2, 1.2)| ≈ 1.22 m — half the intended distance.
+rememberCameraManipulator(
+    orbitHomePosition = Position(0f, 0.2f, 1.2f),
+    targetPosition = Position(0f, 0f, -1.5f)
+)
+
+// RIGHT: pick the distance you want and give a vector of that LENGTH.
+rememberCameraManipulator(orbitHomePosition = Position(0f, 0.2f, 2.7f))  // ≈ 2.71 m
+
+// Or opt out of auto-centring, and authored world positions survive: the framing
+// distance becomes |orbitHomePosition − contentCentre|.
+SceneView(autoCenterContent = false, cameraManipulator = rememberCameraManipulator(
+    orbitHomePosition = Position(0f, 0.2f, 1.2f),
+    targetPosition = Position(0f, 0f, -1.5f)
+))
+```
+
+There is no built-in gesture that returns the camera to `orbitHomePosition`: `onDoubleTap` is a
+plain callback `SceneView` forwards to your code, never wired to the camera.
 
 ### Auto-fit camera framing
 
@@ -4187,8 +4251,8 @@ View modifiers (chainable):
 .mainLight(_ slot: LightSlot) -> SceneView                  // v4.2.0+ — see LightSlot below
 .fillLight(_ slot: LightSlot) -> SceneView                  // v4.2.0+ — Android-parity 2-light setup
 .renderQuality(_ preset: RenderQuality) -> SceneView        // v4.2.0+ — .cinematic / .default / .performance
-.autoCenterContent(_ enabled: Bool) -> SceneView            // v4.3.0+ — default true; translates content so its centroid lands at the orbit pivot
-.framingMargin(_ margin: Float) -> SceneView                // v4.26.0+ — padding on the auto-fit distance; 1.15 default, 1.0 = sphere tangent, < 1 = tighter
+.autoCenterContent(_ enabled: Bool) -> SceneView            // v4.3.0+ — default true; translates content so its centroid lands on the world origin
+.framingMargin(_ margin: Float) -> SceneView                // v4.26.0+ — padding on the auto-fit distance; 1.15 default, 1.0 = sphere tangent, < 1 = tighter. NO EFFECT when autoCenterContent(false)
 .cameraOrbit(azimuth: Float? = nil, elevation: Float? = nil) -> SceneView  // v4.26.0+ — seeds the INITIAL orbit pose (radians); default elevation 30°
 ```
 
@@ -4215,9 +4279,17 @@ SceneView { root in root.addChild(hero.entity) }
     .cameraOrbit(azimuth: .pi / 5, elevation: .pi / 15)  // 36° around, camera 12° above the target
 ```
 
-> Android has no view-modifier equivalent: it frames per-demo through the demo
-> host's `camera_distance` intent extra. The iOS launch-argument counterpart is
-> tracked in #2785; these modifiers are the in-scene lever (#2896).
+> **Android equivalent — `padding`, and the unit is inverted.** Android's lever is
+> `CameraNode.frameToContent(padding = …)` / `frameToBounds(…)` /
+> `fitDistanceForBounds(…)`, with `DEFAULT_FRAMING_PADDING = 0.15f` (documented
+> above under Camera framing). It is a *fraction* where iOS's `framingMargin` is a
+> *multiplier*: `margin == 1 + padding`, so iOS `1.15` is Android `0.15`, and
+> tangent is iOS `1.0` / Android `0.0`. Android's demo host additionally accepts a
+> `camera_distance` intent extra, but that is a sample-app knob, not the library
+> API. **Web has neither**: `sceneview-web`'s `SceneView` exposes
+> `autoCenterContent` but no framing-padding or initial-orbit lever. The iOS
+> launch-argument counterpart to the intent extra is tracked in #2785; these
+> modifiers are the in-scene lever (#2896).
 
 ### Render defaults (v4.2.0+)
 

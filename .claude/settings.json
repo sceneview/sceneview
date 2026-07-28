@@ -37,6 +37,15 @@
             "command": "H=\"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/hook-dispatch.sh\"; if [ -f \"$H\" ]; then bash \"$H\" post-bash; else exit 0; fi"
           }
         ]
+      },
+      {
+        "matcher": "EnterWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "H=\"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/hook-dispatch.sh\"; if [ -f \"$H\" ]; then bash \"$H\" post-worktree; else exit 0; fi"
+          }
+        ]
       }
     ]
   }
