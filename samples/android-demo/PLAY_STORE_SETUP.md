@@ -40,20 +40,25 @@ distribution/play-store/
         ├── feature-graphic.png            (1024×500)
         ├── icon-512.png                   (512×512)
         ├── phone-screenshot-{1..3}.png    (1080×2304)
-        ├── tablet7-screenshot-{1..5}.png  (1200×N, portrait)
-        └── tablet10-screenshot-{1..5}.png (1600×N, portrait)
+        ├── tablet7-screenshot-{1..2}.png  (1200×N, portrait)
+        └── tablet10-screenshot-{1..2}.png (1600×N, portrait)
 ```
 
-**The classes are not on the same set today — do not assume parity.** Phone was
-moved to **set v2** (`model-viewer · dynamic-sky · multi-model`, three strong
-frames judged on the captured mosaic, #2854/#2855); the tablet classes were not
-re-shot in that pass and still carry the earlier five-demo set. Three of those
-ids are retired: `materials` picks a different HDRI *and* model per launch, so
-the slot is not reproducible (#2874); `geometry` no longer clips (fixed in
-#2873) but its 2 × 2 cluster leaves the frame centre empty, which the capture
-script's centre-patch variance guard reads as blank; `double-pendulum` renders
-as a tiny linkage in a mostly-black frame. The tablet PNGs also predate the demo
-bottom-overlay fix (#2780). Re-capturing the tablets is tracked in #2907.
+**All three classes are on set v2, but not with the same number of slots.**
+Phone ships three (`model-viewer · dynamic-sky · multi-model`, judged on the
+captured mosaic, #2854/#2855); both tablet classes were re-shot onto v2 in
+#2907 and ship two (`model-viewer · dynamic-sky`), because `multi-model`'s
+fixed camera angle does not survive a tablet aspect — see #2913 and the note
+below. Play accepts 2–8 per type, so two is a valid set, not a gap.
+
+Several ids stay retired from every class: `materials` picks a different HDRI
+*and* model per launch, so the slot is not reproducible (#2874); `geometry` no
+longer clips (fixed in #2873) but its 2 × 2 cluster leaves the frame centre
+empty, which the capture script's centre-patch variance guard reads as blank;
+`double-pendulum` renders as a tiny linkage in a mostly-black frame. The
+canonical list — and the reason behind each id — lives next to `DEMOS_DEFAULT`
+in `.claude/scripts/capture-play-store-screenshots.sh` and is mirrored in
+[`distribution/play-store/en-GB/graphics/README.md`](distribution/play-store/en-GB/graphics/README.md).
 
 Note that a tablet re-capture cannot simply mirror phone: `multi-model`'s fixed
 camera angle lands on a support post at a tablet's wider aspect (~0.64 w/h vs
