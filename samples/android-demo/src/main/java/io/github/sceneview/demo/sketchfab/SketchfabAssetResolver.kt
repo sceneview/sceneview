@@ -71,6 +71,26 @@ class SketchfabAssetResolver private constructor(
         const val MIN_BOUNDS_RADIUS_M: Float = 0.05f
         const val MAX_BOUNDS_RADIUS_M: Float = 5.0f
 
+        /**
+         * Cache subdirectory the bundled fallbacks are staged into, directly under the
+         * streamed-download root. Both paths hand back a [File], so this directory name is
+         * the only thing that distinguishes them — see [isBundledFallback].
+         */
+        const val FALLBACK_DIR_NAME: String = "fallback"
+
+        /**
+         * True when [file] is a staged bundled fallback rather than a streamed download.
+         *
+         * A demo that wants to tell the user which one it is rendering has to ask the FILE,
+         * not the configuration: "an API key is configured" does not mean the download
+         * succeeded. Every failure mode in [resolve] — no network, 401 on a stale key, a
+         * bounds-drifted asset, exhausted retries — ends at [fallbackBundle], so a keyed
+         * build can quietly render the offline stand-in. Inferring the source from
+         * `SketchfabConfig.apiKey` instead put a "Streamed (cached)" pill over four bundled
+         * models on the QA emulator (#2933).
+         */
+        fun isBundledFallback(file: File): Boolean = file.parentFile?.name == FALLBACK_DIR_NAME
+
         /** Max retries for a transient network failure (429 / 5xx). */
         const val MAX_RETRIES: Int = 3
 
@@ -209,7 +229,7 @@ class SketchfabAssetResolver private constructor(
     @VisibleForTesting
     internal fun fallbackBundle(slug: SketchfabSlug): File {
         val cacheRoot = service.cacheRoot()
-        val fallbackDir = File(cacheRoot, "fallback").also { it.mkdirs() }
+        val fallbackDir = File(cacheRoot, FALLBACK_DIR_NAME).also { it.mkdirs() }
         val target = File(fallbackDir, "${slug.uid}.glb")
         // Trust the cached copy only if it is a *complete* GLB. A truncated
         // file left behind by an older racy write (pre-#1423 fix) would

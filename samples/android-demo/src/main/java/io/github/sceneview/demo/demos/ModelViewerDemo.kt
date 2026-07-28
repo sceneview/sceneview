@@ -35,6 +35,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -468,15 +469,27 @@ private suspend fun pickRandomDownloadableModel(
 //
 // Composes a themed "Park" scene from the 4 glTF assets in [SampleAssets]' `park`
 // category: one hero at the back of the formation and three smaller ones in a
-// front row. (The variable names and the visibility chips below still say tree /
-// bench / dog / bird, from an earlier composition; only the registry decides what
-// actually loads.)
+// front row.
+//
+// The layout is positional and fixed ([PARK_SLOTS]); WHICH model stands in each slot
+// is the registry's call ([ParkSlot.uid]). Nothing here names a species: the
+// visibility chips read their label off the resolved [SketchfabSlug.displayName], the
+// same curated-English source the Gallery section's chips use, so a registry edit
+// renames the chip with the model. Until a slug resolves the chip falls back to a
+// positional "Model N". They used to be hardcoded "Tree" / "Bench" / "Dog" / "Bird"
+// from a composition the registry stopped holding — four oaks named after a bench and
+// a dog, with no bench and no dog on screen (#2933).
 //
 // ⚠️ WHAT loads depends on the build. With a Sketchfab API key the resolver streams
 // the `park` category — four photoreal scanned oaks. Without one it substitutes each
 // slug's BUNDLED fallback: a lantern, a lantern, a shiba, a soldier. Same demo id,
 // same layout, completely different picture — worth knowing before reading a
-// screenshot of this section as evidence of anything (#2913).
+// screenshot of this section as evidence of anything (#2913). The chip label names
+// the CATALOGUE ENTRY, not the geometry, so on a fallback build it still reads
+// "Oak Trees" over a lantern; the scaffold's asset-source pill is what tells the two
+// apart, and it is wired here for exactly that reason — off the RESOLVED FILE, not
+// off whether a key is configured, because a keyed build whose download fails lands
+// on the same stand-ins.
 //
 // Lighting comes from `studio_warm_2k.hdr` — a soft golden-hour wash that unifies
 // the four assets into one cohesive open-air display.
@@ -512,10 +525,11 @@ private fun MultiModelSection(
     mode: ModelViewerMode,
     onModeChange: (ModelViewerMode) -> Unit,
 ) {
-    var showTree by remember { mutableStateOf(true) }
-    var showBench by remember { mutableStateOf(true) }
-    var showDog by remember { mutableStateOf(true) }
-    var showBird by remember { mutableStateOf(true) }
+    // One flag per SLOT, not per species — index i pairs with PARK_SLOTS[i] and
+    // slugs[i]. A SnapshotStateList keeps the four flags in one stable `remember`
+    // slot while each element stays individually observable, so toggling a chip
+    // recomposes the scene content without re-running the loaders.
+    val visible = remember { List(PARK_SLOTS.size) { true }.toMutableStateList() }
     var spinScene by remember { mutableStateOf(true) }
 
     val engine = rememberEngine()
@@ -523,14 +537,17 @@ private fun MultiModelSection(
     val environmentLoader = rememberEnvironmentLoader(engine)
     val context = LocalContext.current
 
-    // Look up the 4 `park` slugs by uid (stable across registry re-ordering).
-    // Falling back to the first slug-by-category if an explicit uid is somehow
-    // missing keeps the demo running at degraded fidelity rather than crashing.
+    // Resolve each slot's slug by uid (stable across registry re-ordering). Falling
+    // back to the slug at the same index in the category if an explicit uid is
+    // somehow missing keeps the demo running at degraded fidelity rather than
+    // crashing. Always exactly PARK_SLOTS.size entries, so every `slugs[i]` below is
+    // a fixed composition slot even when an entry resolves to null.
     val parkSlugs = SampleAssets.byCategory["park"].orEmpty()
-    val tree = SampleAssets.byUid["d841c3bcc5324daebee50f45619e05fc"] ?: parkSlugs.getOrNull(0)
-    val bench = SampleAssets.byUid["6d1aeea748f147789004bc03e1930d32"] ?: parkSlugs.getOrNull(1)
-    val dog = SampleAssets.byUid["4f6ab5594a8a415aba3f958682b9ced5"] ?: parkSlugs.getOrNull(2)
-    val bird = SampleAssets.byUid["fd582b0d4a8c4af1a1b5c4f21a481c93"] ?: parkSlugs.getOrNull(3)
+    val slugs = remember(parkSlugs) {
+        PARK_SLOTS.mapIndexed { index, slot ->
+            SampleAssets.byUid[slot.uid] ?: parkSlugs.getOrNull(index)
+        }
+    }
 
     // Warm-up the park category in parallel on first composition. The resolver
     // dedupes concurrent calls for the same slug so the per-node `resolve`
@@ -546,15 +563,24 @@ private fun MultiModelSection(
     // creation happens only after the file is on disk — `rememberFileModelInstance`
     // loads the `file://` URI via `ModelLoader.loadModelInstance`, which is
     // async-safe and keeps the Filament JNI work on the Main thread.
-    val treeFile = rememberSlugFile(tree)
-    val benchFile = rememberSlugFile(bench)
-    val dogFile = rememberSlugFile(dog)
-    val birdFile = rememberSlugFile(bird)
-
-    val treeInstance = rememberFileModelInstance(modelLoader, treeFile)
-    val benchInstance = rememberFileModelInstance(modelLoader, benchFile)
-    val dogInstance = rememberFileModelInstance(modelLoader, dogFile)
-    val birdInstance = rememberFileModelInstance(modelLoader, birdFile)
+    //
+    // Deliberately unrolled rather than looped: each pair of calls has to sit in a
+    // fixed composition slot so the `produceState` inside them keeps invalidating
+    // this caller when the load lands (#1464). One call per slot, in slot order —
+    // growing PARK_SLOTS means adding a line here, and forgetting to fails loudly
+    // (`instances[index]` below throws) rather than silently dropping a model.
+    val files = listOf(
+        rememberSlugFile(slugs[0]),
+        rememberSlugFile(slugs[1]),
+        rememberSlugFile(slugs[2]),
+        rememberSlugFile(slugs[3]),
+    )
+    val instances = listOf(
+        rememberFileModelInstance(modelLoader, files[0]),
+        rememberFileModelInstance(modelLoader, files[1]),
+        rememberFileModelInstance(modelLoader, files[2]),
+        rememberFileModelInstance(modelLoader, files[3]),
+    )
 
     // Warm dusk HDR — `studio_warm_2k.hdr` gives a golden-hour wash that
     // unifies the four very different materials. Skybox enabled so the warm tint
@@ -569,47 +595,70 @@ private fun MultiModelSection(
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
     val activeEnvironment = hdrEnvironment ?: fallbackEnvironment
 
-    val allLoaded = treeInstance != null && benchInstance != null &&
-        dogInstance != null && birdInstance != null
+    val allLoaded = instances.all { it != null }
     // Yaw drives the parent-scene rotation when "Spin scene" is on. Slow 30 s sweep
     // so the viewer can take in each face of the display before it cycles round.
     val sceneYaw = rememberHeroYaw(
         trigger = allLoaded && spinScene, durationMillis = 30_000, staticYaw = 0f,
     )
 
+    // Same asset-source vocabulary as the Gallery section, and what keeps the chip
+    // labels honest: they name the catalogue entry, and an "Offline model" pill says
+    // the geometry under them is the bundled stand-in rather than the oak the label
+    // names (#2933).
+    //
+    // MEASURED from the resolved files, not inferred from the config. The Gallery
+    // section reads `SketchfabConfig.apiKey == null` for this, and that is only a
+    // guess: every failure path in `resolve` — no network, a stale key, a
+    // bounds-drifted asset, exhausted retries — ends at the bundled fallback, so a
+    // KEYED build can render four stand-ins. It does: on the QA emulator
+    // (2026-07-28, key configured) all four slots staged out of
+    // `cache/sketchfab/fallback/` while an inferred pill read "Streamed (cached)".
+    // Asking the File instead cannot be wrong that way.
+    val assetSource = when {
+        slugs.all { it == null } -> null
+        files.any { it != null && SketchfabAssetResolver.isBundledFallback(it) } ->
+            AssetSourceState.Bundled
+        // Nothing has resolved yet: with no key we already know where this ends;
+        // with one, the download is genuinely still in flight.
+        !allLoaded ->
+            if (SketchfabConfig.apiKey == null) AssetSourceState.Bundled
+            else AssetSourceState.Streaming
+        else -> AssetSourceState.Streamed
+    }
+
     val firstFrame = rememberFirstFrameState()
 
     DemoScaffold(
         title = stringResource(R.string.demo_multi_model_title),
         onBack = onBack,
+        assetSource = assetSource,
         firstFrameRendered = firstFrame.rendered,
         controls = {
             ModeSelector(mode, onModeChange)
             Text("Visibility", style = MaterialTheme.typography.labelLarge)
+            // Labels come from the resolved slug's curated-English `displayName`
+            // (same source as the Gallery chips), never from a hardcoded noun — the
+            // registry decides what stands in each slot, so it decides the label
+            // too. Horizontally scrolling for the same reason Gallery's row is:
+            // catalogue names run long ("Skovfogedegen Oak") and four of them do not
+            // fit a portrait phone width without clipping.
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FilterChip(
-                    selected = showTree,
-                    onClick = { showTree = !showTree },
-                    label = { Text("Tree") },
-                )
-                FilterChip(
-                    selected = showBench,
-                    onClick = { showBench = !showBench },
-                    label = { Text("Bench") },
-                )
-                FilterChip(
-                    selected = showDog,
-                    onClick = { showDog = !showDog },
-                    label = { Text("Dog") },
-                )
-                FilterChip(
-                    selected = showBird,
-                    onClick = { showBird = !showBird },
-                    label = { Text("Bird") },
-                )
+                slugs.forEachIndexed { index, slug ->
+                    FilterChip(
+                        selected = visible[index],
+                        onClick = { visible[index] = !visible[index] },
+                        // Positional fallback only while the registry has no slug for
+                        // this slot — a chip with no model behind it still needs a
+                        // stable, non-lying handle.
+                        label = { Text(slug?.displayName ?: "Model ${index + 1}") },
+                    )
+                }
             }
 
             // Spin toggle — wrap the row in toggleable so taps anywhere flip the state
@@ -673,12 +722,9 @@ private fun MultiModelSection(
                 // the pivot the camera is aimed at — the shot reads the same at every phase of
                 // the spin instead of swinging the subject out of frame. Per-model rotation
                 // cancels the yaw on its own Y so each piece keeps facing the camera.
-                val displays = listOf(
-                    Display(showTree, treeInstance, PARK_SLOTS[0]),
-                    Display(showBench, benchInstance, PARK_SLOTS[1]),
-                    Display(showDog, dogInstance, PARK_SLOTS[2]),
-                    Display(showBird, birdInstance, PARK_SLOTS[3]),
-                )
+                val displays = PARK_SLOTS.mapIndexed { index, slot ->
+                    Display(visible[index], instances[index], slot)
+                }
                 for (d in displays) {
                     if (!d.show || d.instance == null) continue
                     // Rotation math lives in DemoMath.rotateAroundCentre so it can be
@@ -705,7 +751,7 @@ private fun MultiModelSection(
                     )
                 }
             }
-            LoadingScrim(loading = !allLoaded, label = "Loading 4 models…")
+            LoadingScrim(loading = !allLoaded, label = "Loading ${PARK_SLOTS.size} models…")
         }
     }
 }
@@ -718,8 +764,13 @@ private fun MultiModelSection(
  * normalised into. Declared as data so [PARK_SPAN] / [PARK_HEIGHT] are DERIVED from the layout
  * rather than restated next to it: the camera framing cannot silently drift out of sync with the
  * arrangement it is supposed to frame (#2913).
+ *
+ * [uid] is the [SampleAssets] entry that occupies the slot. It rides on the slot rather than in a
+ * parallel list so the layout, the loader and the chip label are all indexed by one thing — the
+ * section reads the chip's text off `byUid[uid]`, so a slot can never end up labelled with another
+ * slot's model.
  */
-private data class ParkSlot(val x: Float, val z: Float, val scale: Float)
+private data class ParkSlot(val uid: String, val x: Float, val z: Float, val scale: Float)
 
 private data class Display(
     val show: Boolean,
@@ -727,12 +778,18 @@ private data class Display(
     val slot: ParkSlot,
 )
 
-/** The four `park` slots, back row first. Order matches the visibility chips. */
+/**
+ * The four `park` slots, back row first. Order matches the visibility chips.
+ *
+ * The uids are looked up in [SampleAssets] by identity, so re-ordering the registry moves nothing
+ * here. What the registry DOES decide is which model — and therefore which chip label — each slot
+ * gets; the slots themselves only describe where a model stands and how big it is drawn.
+ */
 private val PARK_SLOTS = listOf(
-    ParkSlot(x = 0.0f, z = -0.2f, scale = 1.80f),
-    ParkSlot(x = 0.0f, z = 0.2f, scale = 0.65f),
-    ParkSlot(x = -0.55f, z = 0.2f, scale = 0.40f),
-    ParkSlot(x = 0.55f, z = 0.2f, scale = 0.15f),
+    ParkSlot(uid = "d841c3bcc5324daebee50f45619e05fc", x = 0.0f, z = -0.2f, scale = 1.80f),
+    ParkSlot(uid = "6d1aeea748f147789004bc03e1930d32", x = 0.0f, z = 0.2f, scale = 0.65f),
+    ParkSlot(uid = "4f6ab5594a8a415aba3f958682b9ced5", x = -0.55f, z = 0.2f, scale = 0.40f),
+    ParkSlot(uid = "fd582b0d4a8c4af1a1b5c4f21a481c93", x = 0.55f, z = 0.2f, scale = 0.15f),
 )
 
 /**
