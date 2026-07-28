@@ -339,4 +339,75 @@ class DemoMathTest {
         assertEquals(0f, dx, eps)
         assertEquals(0f, dz, eps)
     }
+
+    // ── floatHoverY — the floating twin (#2740 differentiated-motion redesign) ───
+
+    private val floatPeriod = DemoMath.CONTACT_FLOAT_PERIOD_NANOS
+    private val floatCenter = DemoMath.CONTACT_FLOAT_CENTER_Y_METERS
+    private val floatBob = DemoMath.CONTACT_FLOAT_BOB_METERS
+
+    @Test
+    fun `floatHoverY rests at centre height at t=0 and every full period`() {
+        // t = 0 is the deterministic QA-mode pose: the floating box sits at its rest height,
+        // high above the floor (sin 0 = 0) — the same zeroed clock that lands bounceHeight.
+        assertEquals(floatCenter, DemoMath.floatHoverY(0L), eps)
+        // One full period later, back to the rest height (sin 2π = 0).
+        assertEquals(floatCenter, DemoMath.floatHoverY(floatPeriod), eps)
+        // Negative elapsed (pre-first-frame) clamps to rest rather than extrapolating.
+        assertEquals(floatCenter, DemoMath.floatHoverY(-1L), eps)
+    }
+
+    @Test
+    fun `floatHoverY bobs a smooth sine above and below the rest height`() {
+        // Quarter period → top of the bob (sin π/2 = 1).
+        assertEquals(floatCenter + floatBob, DemoMath.floatHoverY(floatPeriod / 4), eps)
+        // Half period → back through centre (sin π = 0).
+        assertEquals(floatCenter, DemoMath.floatHoverY(floatPeriod / 2), eps)
+        // Three-quarter period → bottom of the bob (sin 3π/2 = -1).
+        assertEquals(floatCenter - floatBob, DemoMath.floatHoverY(floatPeriod * 3 / 4), eps)
+    }
+
+    @Test
+    fun `floatHoverY never leaves the bob envelope`() {
+        // Sample a whole period densely: the hover must stay within ±bob of the rest height,
+        // so the floating box can never drift into the floor or the wall TV.
+        for (i in 0..200) {
+            val t = floatPeriod * i / 200
+            val y = DemoMath.floatHoverY(t)
+            assertTrue(
+                "y=$y out of envelope at step $i",
+                y in (floatCenter - floatBob - eps)..(floatCenter + floatBob + eps),
+            )
+        }
+    }
+
+    @Test
+    fun `floatHoverY degenerate period returns the rest height`() {
+        assertEquals(floatCenter, DemoMath.floatHoverY(123L, periodNanos = 0L), eps)
+        assertEquals(floatCenter, DemoMath.floatHoverY(123L, periodNanos = -5L), eps)
+    }
+
+    @Test
+    fun `floatHoverY keeps the floating box clear of the floor and the grounded box`() {
+        // The whole redesign rests on the floating box reading as unmistakably ALOFT at every
+        // phase: its lowest point must clear the grounded box's highest point, and its highest
+        // point must stay below the wall TV. Box edge is 0.38 m (BOX_EDGE_METERS in the demo),
+        // so the half-edge is 0.19 m.
+        val boxHalfEdge = 0.38f / 2f
+        // Grounded box centre peaks at (rest half-edge + bounce max); floating centre dips to
+        // (rest centre − bob). The floating box must never come down to the grounded box.
+        val groundedHighestCentre = boxHalfEdge + DemoMath.CONTACT_BOUNCE_MAX_HEIGHT_METERS
+        val floatingLowestCentre = floatCenter - floatBob
+        assertTrue(
+            "floating lowest centre ($floatingLowestCentre) must exceed grounded highest centre ($groundedHighestCentre)",
+            floatingLowestCentre > groundedHighestCentre,
+        )
+        // Floating box top (centre + bob + half-edge) must stay below the wall TV's bottom edge
+        // (TV centre y = 1.3 m, height 0.74 m → bottom 0.93 m) so they never visually overlap.
+        val floatingHighestTop = floatCenter + floatBob + boxHalfEdge
+        assertTrue(
+            "floating box top ($floatingHighestTop) must stay below the TV bottom (0.93)",
+            floatingHighestTop < 0.93f,
+        )
+    }
 }
