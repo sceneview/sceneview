@@ -40,6 +40,71 @@ errors=0
 synced=0
 missing=0
 
+# verify_divergences() tallies inside a `while` fed by a pipe, i.e. a subshell,
+# so it cannot increment `errors` directly — it appends a line here instead.
+DIVERGENCE_LOG="$(mktemp)"
+trap 'rm -f "$DIVERGENCE_LOG"' EXIT
+
+# --- Intentional divergences (a platform copy that must NOT be overwritten) ---
+#
+# assets/ is the source of truth for every platform copy, with a short list of
+# exceptions: assets re-authored for one runtime's importer. Copying the shared
+# original back over them re-introduces the very bug the re-authoring fixed, so
+# the sync skips them — and pins the expected checksum of the derived copy, so
+# "skipped" can never quietly decay into "unchecked".
+#
+# Format, one per line: <path relative to repo root>|<sha256 of the copy>|<why>
+DIVERGENT_COPIES="samples/ios-demo/SceneViewDemo/Models/tree_scene.usdz|e6a359d561073052668c2bae9fdbf607fa60ac0f2d676a56b52e98edb8ad2352|#2928 — 2665 sub-pixel grass prims stripped; the shared original needs 91.7 s to import in RealityKit, so the demo slot renders as absent"
+
+sha256_of() {
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        sha256sum "$1" | awk '{print $1}'
+    fi
+}
+
+# Echoes "<sha>|<why>" when $1 (a repo-relative path) is a pinned divergence.
+divergence_for() {
+    local rel="$1"
+    printf '%s\n' "$DIVERGENT_COPIES" | while IFS='|' read -r path sha why; do
+        [ -n "$path" ] && [ "$path" = "$rel" ] && printf '%s|%s\n' "$sha" "$why"
+    done
+    return 0
+}
+
+# Verify every pinned divergence. Runs unconditionally — a fresh clone has no
+# assets/models/ at all, and that is precisely when a silent revert would go
+# unnoticed the longest.
+verify_divergences() {
+    echo -e "${BLUE}[Divergences] platform copies deliberately not synced${NC}"
+    printf '%s\n' "$DIVERGENT_COPIES" | while IFS='|' read -r rel want why; do
+        [ -n "$rel" ] || continue
+        local dst="$REPO_ROOT/$rel"
+        if [ ! -f "$dst" ]; then
+            echo -e "  ${RED}ABSENT${NC} $rel — pinned divergence is missing; restore it from git"
+            echo "DIVERGENCE_ERROR" >> "$DIVERGENCE_LOG"
+            continue
+        fi
+        local got
+        got="$(sha256_of "$dst")"
+        if [ "$got" = "$want" ]; then
+            echo -e "  ${GREEN}PINNED${NC} $rel ($why)"
+        else
+            echo -e "  ${RED}DRIFT${NC} $rel no longer matches its pinned checksum"
+            echo -e "         expected $want"
+            echo -e "         actual   $got"
+            echo -e "         reason for divergence: $why"
+            echo -e "         If the change is deliberate, update DIVERGENT_COPIES in this script."
+            echo "DIVERGENCE_ERROR" >> "$DIVERGENCE_LOG"
+        fi
+    done
+    if [ -s "$DIVERGENCE_LOG" ]; then
+        errors=$((errors + $(wc -l < "$DIVERGENCE_LOG" | tr -d ' ')))
+    fi
+    echo ""
+}
+
 check_or_fix() {
     local src="$1"
     local dst="$2"
@@ -47,6 +112,12 @@ check_or_fix() {
 
     if [ ! -f "$src" ]; then
         return 0  # Source doesn't exist, skip
+    fi
+
+    # Never let the shared original overwrite a deliberately re-authored copy.
+    # verify_divergences() is what keeps this skip honest.
+    if [ -n "$(divergence_for "${dst#"$REPO_ROOT"/}")" ]; then
+        return 0
     fi
 
     if [ ! -f "$dst" ]; then
@@ -133,6 +204,8 @@ except:
     echo ""
     exit 0
 fi
+
+verify_divergences
 
 # --- Sync GLB models to Android ---
 echo -e "${BLUE}[Android] GLB models → $( echo "$ANDROID_MODELS" | sed "s|$REPO_ROOT/||" )${NC}"
@@ -221,4 +294,13 @@ envs = len(cat.get('environments', []))
 pending = len(cat.get('pendingReview', []))
 print(f'Catalog: {models} models, {envs} environments, {pending} pending review')
 " 2>/dev/null
+fi
+
+# A pinned divergence that drifted is a real failure — a platform copy was
+# overwritten or re-authored without updating DIVERGENT_COPIES. Ordinary
+# out-of-sync assets are not a failure: that is what --fix is for.
+if [ "$errors" -gt 0 ]; then
+    echo ""
+    echo -e "${RED}$errors pinned divergence(s) failed verification.${NC}"
+    exit 1
 fi

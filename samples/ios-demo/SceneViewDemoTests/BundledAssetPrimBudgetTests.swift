@@ -29,8 +29,11 @@ import RealityKit
 @MainActor
 final class BundledAssetPrimBudgetTests: XCTestCase {
 
-    /// Comfortably above the current 47, far below the 2 712 that broke it.
-    private static let meshPrimBudget = 200
+    /// Above the current 47 with room to grow, and low enough to still mean
+    /// something: at the ~34 ms/prim measured here, 100 prims is ~3.4 s — the
+    /// budget has to stay inside the settle window it exists to protect, so a
+    /// larger ceiling would pass while the demo was already stalling.
+    private static let meshPrimBudget = 100
 
     private func meshPrimCount(of entity: Entity) -> Int {
         var count = 0
