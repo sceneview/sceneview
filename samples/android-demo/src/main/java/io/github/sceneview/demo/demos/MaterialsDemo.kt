@@ -35,18 +35,18 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.ErrorScrim
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.rememberMaterialsShowcaseEnvironment
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
+import io.github.sceneview.demo.demos.internal.MaterialsSubject
+import io.github.sceneview.demo.demos.internal.MaterialsSubjects
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
-import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
-import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
-import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -126,19 +126,28 @@ private fun ModeSelector(
 // extension-bearing models so the demo answers "what do KHR_materials_sheen
 // / _transmission / _iridescence look like in SceneView?" at a glance.
 //
-// Lighting uses the studio HDR so reflections + IBL hit the streamed
-// extension materials cleanly — sheen, transmission, and iridescence all
-// rely heavily on environment lighting to read.
+// Lighting uses the studio HDR as IBL (no skybox) so reflections hit the
+// extension materials cleanly — sheen, transmission, clearcoat and iridescence
+// all rely heavily on environment lighting to read — while the backdrop stays
+// the demo's own flat surface at every orbit angle. One shared constant:
+// [io.github.sceneview.demo.common.MATERIALS_SHOWCASE_HDR].
+//
+// **The first frame is deterministic (#2874).** The section opens on the
+// bundled [MaterialsSubjects.BUNDLED_DEFAULT] — Khronos' ToyCar, whose GLB
+// carries clearcoat + sheen + transmission — so what it renders on a cold
+// launch does not depend on an API key, the network or the disk cache.
+// Selecting a streamed chip is an explicit user action. Before this, the
+// section opened on streamed slug 0 and rendered either the Sketchfab model
+// or its bundled fallback depending on connectivity, which made the demo
+// unusable as a store frame or a screenshot-diff subject.
 //
 // Honours the umbrella's hard rules:
 //   - **No Sketchfab WebView / external link.** Local file URLs only.
-//   - **No network required to render something useful.** Empty key / cold
-//     cache → resolver stages the bundled fallback for each slug. The
-//     demo's fallback assets do not carry the actual extension materials
-//     (those are author-controlled) but they keep the viewport non-empty
-//     so the comparison UX stays understandable.
+//   - **No network required to render something useful.** The default subject
+//     is bundled outright, and a streamed chip whose resolve fails still
+//     stages its bundled fallback through the resolver.
 //
-// @see SampleAssets for the curated `materials` category.
+// @see MaterialsSubjects for the subject list + framing / determinism contract.
 // @see SketchfabAssetResolver for the resolve / fallback contract.
 
 @Composable
@@ -150,13 +159,25 @@ private fun PbrSection(
     val context = LocalContext.current
     val resolver = remember(context) { SketchfabAssetResolver.getInstance(context) }
 
-    // Three curated `materials` slugs — sheen, transmission, iridescence.
-    // Stage 2 keeps the count low so the offline-fallback footprint stays
-    // bounded; Stage 3 will expand once a CI maintenance cron validates each
-    // slug weekly.
-    val slugs = remember { SampleAssets.byCategory["materials"].orEmpty() }
-    var selectedIndex by remember { mutableStateOf(0) }
-    val selectedSlug = slugs.getOrNull(selectedIndex)
+    // The chips: the bundled default first, then the three curated `materials`
+    // slugs — sheen, transmission, iridescence. Stage 2 keeps the streamed count
+    // low so the offline-fallback footprint stays bounded; Stage 3 will expand
+    // once a CI maintenance cron validates each slug weekly.
+    //
+    // Cold launch lands on the BUNDLED subject, never a streamed one (#2874):
+    // what a streamed slug resolves to depends on the API key, the network and
+    // the cache, so the demo used to render a different subject run to run —
+    // measured as an insect on one device and the helmet fallback on another,
+    // from the same build. The determinism contract lives in [MaterialsSubjects]
+    // and is asserted by `MaterialsSubjectsTest`; the streamed catalogue is
+    // untouched and stays one tap away.
+    val subjects = remember { MaterialsSubjects.all() }
+    var selectedIndex by remember { mutableIntStateOf(MaterialsSubjects.DEFAULT_INDEX) }
+    val selectedSubject = subjects.getOrNull(selectedIndex)
+    // Non-null only while a STREAMED chip is selected — the resolve pipeline
+    // below keys off it, and a null value means "the bundled subject is on
+    // screen, nothing to resolve".
+    val selectedSlug = (selectedSubject as? MaterialsSubject.Streamed)?.slug
 
     // Bumped by the error scrim's Retry button. It is a `produceState` key so a
     // tap re-runs the resolve coroutine for the same slug instead of leaving the
@@ -171,23 +192,19 @@ private fun PbrSection(
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
-    // Studio HDR — extension materials (sheen / transmission / iridescence)
-    // are heavily IBL-dependent and read flatly under default ambient light.
-    // Skybox enabled so the user can see the same environment the materials
-    // are reflecting / refracting.
-    val hdrEnvironment = rememberHDREnvironment(
-        environmentLoader,
-        "environments/studio_2k.hdr",
-        createSkybox = true,
-    )
-    val fallbackEnvironment = rememberEnvironment(environmentLoader)
-    val activeEnvironment = hdrEnvironment ?: fallbackEnvironment
+    // The one showcase IBL, shared with the Streaming section (#2874). Extension
+    // materials (sheen / transmission / iridescence / clearcoat) are heavily
+    // IBL-dependent and read flatly under default ambient light. No skybox: the
+    // camera orbits, so a drawn environment put a different backdrop behind the
+    // subject on every capture — see the helper's KDoc for the measurement.
+    val activeEnvironment = rememberMaterialsShowcaseEnvironment(environmentLoader)
 
     // A failed resolve is surfaced as [MaterialResolveState.Error] instead of
     // being swallowed into a `null` path that hangs the loading scrim forever
     // (#2088). `retryTick` re-runs the resolve when the user taps Retry.
-    // A null slug (empty registry category) exits to [MaterialResolveState.Empty]
-    // so the loading scrim is not shown forever (#2122).
+    // A null slug — the bundled chip is selected (#2874), or the registry
+    // category is empty (#2122) — exits to [MaterialResolveState.Empty] and
+    // leaves the bundled instance driving the viewport.
     val resolveState: MaterialResolveState by produceState<MaterialResolveState>(
         initialValue = MaterialResolveState.Loading,
         key1 = resolver,
@@ -207,7 +224,13 @@ private fun PbrSection(
     }
     val resolvedFile = (resolveState as? MaterialResolveState.Resolved)?.file
     val resolveError = (resolveState as? MaterialResolveState.Error)?.message
-    val isEmpty = resolveState is MaterialResolveState.Empty
+
+    // The bundled default subject, loaded from `assets/` — no network, no cache,
+    // no API key, the same bytes on every launch. Loaded unconditionally (and
+    // kept loaded while a streamed chip is on screen) so its slot stays stable
+    // and so switching back to it is instant.
+    val bundledInstance =
+        rememberModelInstance(modelLoader, MaterialsSubjects.BUNDLED_DEFAULT.assetPath)
 
     // Load the resolved file (streamed GLB or bundled fallback) through
     // [rememberFileModelInstance] → `ModelLoader.loadModelInstance("file://…")`,
@@ -219,7 +242,13 @@ private fun PbrSection(
     // resolved instantly offline (#2302 — same root cause as #1422 / the
     // Multi-Model section of ModelViewerDemo). Called unconditionally so its
     // `produceState` slot stays stable (#1464).
-    val modelInstance = rememberFileModelInstance(modelLoader, resolvedFile)
+    val streamedInstance = rememberFileModelInstance(modelLoader, resolvedFile)
+
+    // What is actually on screen: the bundled subject unless a streamed chip is
+    // selected. Never a silent fallback between the two — a streamed chip that
+    // fails shows its error scrim rather than quietly swapping the subject,
+    // which is the ambiguity #2874 was about.
+    val modelInstance = if (selectedSlug == null) bundledInstance else streamedInstance
 
     val firstFrame = rememberFirstFrameState()
 
@@ -235,41 +264,43 @@ private fun PbrSection(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                slugs.forEachIndexed { index, slug ->
+                subjects.forEachIndexed { index, subject ->
                     FilterChip(
                         selected = index == selectedIndex,
                         onClick = { selectedIndex = index },
                         // displayName + the KHR_* tag give the user a clear
                         // read of "which extension am I looking at" without
-                        // needing a second line of copy. tags is a
-                        // List<String> from the registry — we surface the
-                        // first one (`KHR_materials_*`).
-                        label = { Text(slug.displayName) },
+                        // needing a second line of copy. The tag comes from the
+                        // registry's `tags[0]` for a streamed slug, and from the
+                        // GLB's own `extensionsUsed` for the bundled default.
+                        label = { Text(subject.displayName) },
                     )
                 }
             }
-            // Extension tag — the registry's `tags[0]` is the
-            // `KHR_materials_*` extension name. Displayed below the chips so
-            // the user can map the chip choice to the glTF extension being
-            // demonstrated.
-            selectedSlug?.let { slug ->
-                val extension = slug.tags.firstOrNull().orEmpty()
-                if (extension.isNotBlank()) {
+            // Extension tag — the `KHR_materials_*` family this subject
+            // demonstrates. Displayed below the chips so the user can map the
+            // chip choice to the glTF extension being demonstrated.
+            selectedSubject?.let { subject ->
+                if (subject.extensionTag.isNotBlank()) {
                     Text(
-                        text = extension,
+                        text = subject.extensionTag,
                         style = MaterialTheme.typography.labelMedium,
                     )
                 }
                 Text(
-                    text = stringResource(R.string.demo_materials_credit, slug.author),
+                    text = stringResource(R.string.demo_materials_credit, subject.author),
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
         },
     ) {
+        // One orbit radius for every chip (#2874). The subject is normalised to
+        // [MaterialsSubjects.FRAMING_UNITS] below, so the camera does not have to
+        // move when the chip changes — and no subject reads as a speck because it
+        // happens to be a 15 cm beetle next to a 90 cm sofa.
         val cameraManipulator = rememberHeroOrbitCameraManipulator(
             trigger = modelInstance != null,
-            radius = 1.2f,
+            radius = MaterialsSubjects.ORBIT_RADIUS_METERS,
             yHeight = 0f,
             durationMillis = 18_000,
         )
@@ -284,29 +315,45 @@ private fun PbrSection(
                 cameraManipulator = cameraManipulator,
             ) {
                 val instance = modelInstance
-                val slug = selectedSlug
-                if (instance != null && slug != null) {
+                if (instance != null) {
+                    // Every subject is normalised to the SAME size rather than to
+                    // its own `scaleToUnits` (#2874) — the camera is fixed, so a
+                    // per-model scale is what made one chip fill the viewport and
+                    // the next one read as a speck.
                     ModelNode(
                         modelInstance = instance,
-                        scaleToUnits = slug.scaleToUnits,
+                        scaleToUnits = MaterialsSubjects.FRAMING_UNITS,
                     )
                 }
             }
             // Mutually exclusive with LoadingScrim: a resolve failure shows the
             // error scrim (with Retry) instead of hanging on "Streaming…" (#2088).
-            // An empty registry category (no slugs) shows nothing — the viewport
-            // is already blank; do not show "Loading…" forever (#2122).
-            if (resolveError != null) {
+            // Only a STREAMED chip can fail to resolve; the bundled default has
+            // nothing to resolve, so it never reaches the error branch.
+            if (resolveError != null && selectedSlug != null) {
                 ErrorScrim(
                     message = resolveError,
                     onRetry = { retryTick++ },
                     label = stringResource(R.string.demo_materials_error),
                     retryLabel = stringResource(R.string.demo_materials_retry),
                 )
-            } else if (!isEmpty) {
+            } else {
+                // Covers both subjects: the bundled GLB decoding on a cold start
+                // and a streamed slug still resolving. `modelInstance` is the
+                // single source of "is there something to show yet", so an empty
+                // registry category can no longer strand the scrim (#2122) —
+                // there is always a bundled subject behind it. The label follows
+                // the subject: the default one is decoded from `assets/`, and
+                // saying "Streaming…" over it would be a lie.
                 LoadingScrim(
                     loading = modelInstance == null,
-                    label = stringResource(R.string.demo_materials_loading),
+                    label = stringResource(
+                        if (selectedSlug == null) {
+                            R.string.demo_materials_loading_bundled
+                        } else {
+                            R.string.demo_materials_loading
+                        }
+                    ),
                 )
             }
         }
@@ -422,16 +469,10 @@ private fun StreamingSection(
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
-    // Studio HDR + skybox — metallic variants read flat without an
-    // environment to reflect. Falls back to the neutral IBL while the HDR
-    // streams in (rememberHDREnvironment returns null until decoded).
-    val hdrEnvironment = rememberHDREnvironment(
-        environmentLoader,
-        "environments/studio_2k.hdr",
-        createSkybox = true,
-    )
-    val fallbackEnvironment = rememberEnvironment(environmentLoader)
-    val activeEnvironment = hdrEnvironment ?: fallbackEnvironment
+    // The same showcase IBL the PBR section uses — metallic variants read flat
+    // without an environment to reflect. One shared constant so the two material
+    // sections cannot drift apart visually (#2874).
+    val activeEnvironment = rememberMaterialsShowcaseEnvironment(environmentLoader)
 
     // One MaterialInstance per variant, allocated up front and owned by the
     // composition. Pre-allocating all of them (instead of one re-keyed
@@ -685,8 +726,10 @@ private sealed interface MaterialResolveState {
     data object Loading : MaterialResolveState
 
     /**
-     * No slug available (empty registry category — the materials category has no entries).
-     * The viewport stays blank; the loading scrim is not shown (#2122).
+     * Nothing to resolve — either the bundled subject is selected (the cold-launch
+     * default, #2874) or the registry's `materials` category is empty (#2122).
+     * Either way the streamed pipeline stays idle; what the viewport shows is
+     * driven by the bundled instance.
      */
     data object Empty : MaterialResolveState
 
@@ -717,15 +760,16 @@ private sealed interface MaterialResolveState {
 private fun rememberFileModelInstance(
     modelLoader: io.github.sceneview.loaders.ModelLoader,
     file: File?,
-): io.github.sceneview.model.ModelInstance? {
-    if (file == null) return null
-    return produceState<io.github.sceneview.model.ModelInstance?>(
-        initialValue = null,
-        key1 = modelLoader,
-        key2 = file.absolutePath,
-    ) {
-        value = runCatching {
-            modelLoader.loadModelInstance("file://${file.absolutePath}")
-        }.getOrNull()
-    }.value
-}
+): io.github.sceneview.model.ModelInstance? = produceState<io.github.sceneview.model.ModelInstance?>(
+    initialValue = null,
+    key1 = modelLoader,
+    key2 = file?.absolutePath,
+) {
+    // The null check lives INSIDE produceState, not as an early `return null`
+    // above it: a null file now means "nothing streamed is selected" on every
+    // bundled-chip selection, and an early return would add / remove the
+    // `produceState` slot on each chip switch (#1464).
+    value = file?.let {
+        runCatching { modelLoader.loadModelInstance("file://${it.absolutePath}") }.getOrNull()
+    }
+}.value

@@ -96,12 +96,21 @@ android_cli_ensure || true
 #                    ship bar) — a weak store frame, not a fog showcase (#2854).
 #   double-pendulum  ignores camera_distance (own auto-fit); its auto-fit frame is
 #                    a tiny linkage in a ~95%-black rectangle — un-reframable (#2854).
-#   materials        picked a different HDRI each launch (not reproducible) and the
-#                    subject stayed small at every distance (#2874).
-#   geometry         the clipping is FIXED as of #2873 (2x2 cluster, an orbit
-#                    distance that means what it says, camera_distance wired in),
-#                    but the id stays out for two capture-side reasons: the
-#                    cluster leaves the frame CENTRE empty, so the centre-patch
+#   materials        was not reproducible: it opened on a STREAMED slug, so the
+#                    subject depended on the API key / network / cache (a streamed
+#                    insect on one device, the bundled helmet on another), and it
+#                    drew the `studio_2k` skybox — a living-room interior, despite
+#                    its "neutral / studio / product" catalog tags — behind an
+#                    orbiting camera, so the backdrop changed with capture timing.
+#                    The subject also stayed small at every distance. The DEMO side
+#                    is fixed (#2874: bundled default subject, one fixed studio
+#                    HDRI, subject-independent framing) and the id is eligible
+#                    again — but do NOT add it back here without capturing it and
+#                    LOOKING at the frame against the other slots first.
+#   geometry         the clipping is FIXED as of #2873 (2x2 cluster, a camera
+#                    distance derived from the frustum relation, camera_distance
+#                    wired in), but the id stays out for two capture-side reasons:
+#                    the cluster leaves the frame CENTRE empty, so the centre-patch
 #                    variance guard below reads it as blank (measured 0.1 against
 #                    the 100 floor), and the free-running Y-spin turns the flat
 #                    plane edge-on at unpredictable instants. Re-add only after
