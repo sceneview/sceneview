@@ -54,6 +54,12 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.demos.internal.PARK_EYE_HEIGHT
+import io.github.sceneview.demo.demos.internal.PARK_FALLBACK_ASPECT
+import io.github.sceneview.demo.demos.internal.PARK_HEIGHT
+import io.github.sceneview.demo.demos.internal.PARK_SLOTS
+import io.github.sceneview.demo.demos.internal.ParkSlot
+import io.github.sceneview.demo.demos.internal.parkCameraDistance
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
@@ -72,7 +78,6 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import java.util.Locale
-import kotlin.math.hypot
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -106,10 +111,21 @@ fun ModelViewerDemo(onBack: () -> Unit) {
     var mode by remember {
         mutableStateOf(initialDemoMode(ModelViewerMode.entries, ModelViewerMode.Single))
     }
+    // Switching section drops any camera-distance override (#2913). The Single-Model slider writes
+    // to the process-global `DemoSettings.cameraDistance` — that is how it drives the live camera,
+    // since `rememberHeroOrbitCameraManipulator` reads the override itself (#1571) — and the
+    // Multi-Model section honours the same override. Without this reset, dragging the slider down
+    // to 0.5 m and then tapping "Multi-Model" put the camera inside the formation, and that section
+    // exposes no slider to undo it. A cold launch never passes through here, so the `--ef
+    // camera_distance` / `?cameraDistance=` deep link keeps working for either section.
+    val onModeChange: (ModelViewerMode) -> Unit = { next ->
+        if (next != mode) DemoSettings.cameraDistance = null
+        mode = next
+    }
     when (mode) {
-        ModelViewerMode.Single -> SingleModelSection(onBack, mode) { mode = it }
-        ModelViewerMode.Multi -> MultiModelSection(onBack, mode) { mode = it }
-        ModelViewerMode.Gallery -> GallerySection(onBack, mode) { mode = it }
+        ModelViewerMode.Single -> SingleModelSection(onBack, mode, onModeChange)
+        ModelViewerMode.Multi -> MultiModelSection(onBack, mode, onModeChange)
+        ModelViewerMode.Gallery -> GallerySection(onBack, mode, onModeChange)
     }
 }
 
@@ -669,10 +685,12 @@ private fun MultiModelSection(
                 // bottom-aligned onto a shared ground plane at y = -PARK_HEIGHT / 2.
                 //
                 // sceneYaw rotates each model AROUND that centre by treating its (x, z) as polar
-                // coords, so the formation turns like a turntable while the hero model stays on
-                // the pivot the camera is aimed at — the shot reads the same at every phase of
-                // the spin instead of swinging the subject out of frame. Per-model rotation
-                // cancels the yaw on its own Y so each piece keeps facing the camera.
+                // coords, so the formation turns like a turntable. The hero sits 0.2 m off the
+                // pivot, so it sweeps a small circle rather than staying put: the framing covers
+                // PARK_SPAN — the width the whole formation sweeps out — so every phase of the spin
+                // keeps models filling the frame, but the exact composition still breathes as it
+                // turns. Per-model rotation cancels the yaw on its own Y so each piece keeps facing
+                // the camera.
                 val displays = listOf(
                     Display(showTree, treeInstance, PARK_SLOTS[0]),
                     Display(showBench, benchInstance, PARK_SLOTS[1]),
@@ -711,85 +729,15 @@ private fun MultiModelSection(
 }
 
 /**
- * One model's fixed place in the Multi-Model "park" formation, in metres.
+ * One model's visibility and loaded instance, bound to its fixed place in the formation.
  *
- * [x] / [z] are offsets from the formation centre — which is the world origin, since the section
- * renders with `autoCenterContent = false` — and [scale] is the `scaleToUnits` cube the model is
- * normalised into. Declared as data so [PARK_SPAN] / [PARK_HEIGHT] are DERIVED from the layout
- * rather than restated next to it: the camera framing cannot silently drift out of sync with the
- * arrangement it is supposed to frame (#2913).
+ * The layout itself ([PARK_SLOTS]) and the framing derived from it live in `internal/ParkFraming.kt`
+ * so a JVM unit test can assert that the derivation follows the layout (#2913).
  */
-private data class ParkSlot(val x: Float, val z: Float, val scale: Float)
-
 private data class Display(
     val show: Boolean,
     val instance: io.github.sceneview.model.ModelInstance?,
     val slot: ParkSlot,
-)
-
-/** The four `park` slots, back row first. Order matches the visibility chips. */
-private val PARK_SLOTS = listOf(
-    ParkSlot(x = 0.0f, z = -0.2f, scale = 1.80f),
-    ParkSlot(x = 0.0f, z = 0.2f, scale = 0.65f),
-    ParkSlot(x = -0.55f, z = 0.2f, scale = 0.40f),
-    ParkSlot(x = 0.55f, z = 0.2f, scale = 0.15f),
-)
-
-/**
- * Height of the formation: every slot is bottom-aligned on a shared ground plane, so the union is
- * exactly as tall as the tallest model.
- */
-private val PARK_HEIGHT: Float = PARK_SLOTS.maxOf { it.scale }
-
-/**
- * Width the formation sweeps out. Each slot orbits the centre at radius `hypot(x, z)` and is
- * normalised into a cube of side `scale`, so the farthest any part of it ever reaches from the
- * centre is `radius + scale / 2` — whatever the spin phase. Twice that is the width the camera
- * has to cover for the frame to stay full of models as the formation turns.
- */
-private val PARK_SPAN: Float = 2f * PARK_SLOTS.maxOf { hypot(it.x, it.z) + it.scale / 2f }
-
-/** SceneView's default lens. `CameraNode._focalLength` = 28 mm ⇒ ≈46.4° vertical FOV. */
-private const val PARK_FOCAL_LENGTH_MM = 28.0
-
-/**
- * Fraction of the frame height the formation spans. `1f` = the hero model runs edge to edge —
- * the subject reads at Play Store thumbnail size instead of sitting on a shelf in the middle.
- */
-private const val PARK_FRAME_FILL = 1.0f
-
-/** Camera height, level with the mid-height of the tallest model (the ground plane is below). */
-private const val PARK_EYE_HEIGHT = 0.0f
-
-/**
- * Aspect used when the viewport has not been measured yet (a zero / infinite constraint on the
- * very first composition). A portrait phone — the most common case, and the shape the demo was
- * originally framed for.
- */
-private const val PARK_FALLBACK_ASPECT = 0.47f
-
-/**
- * Camera distance for the park formation at a given viewport [aspect] (`width / height`).
- *
- * **Cover, not fit.** The formation is much wider than it is tall ([PARK_SPAN] ≈ 2.2 m against
- * [PARK_HEIGHT] = 1.8 m), so fitting all of it inside a portrait frame would park the camera ~5.5 m
- * back and shrink the models to a strip across the middle. [DemoMath.coverDistance] instead fills
- * the frame on both axes and lets the neighbouring models be cropped by the edges.
- *
- * **Why the aspect matters at all (#2913).** Filament derives the vertical FOV from the focal
- * length against a fixed 24 mm sensor height, so the vertical framing is aspect-invariant and a
- * wider viewport simply reveals more world to the left and right at the same distance. On a phone
- * (~0.47 w/h) and a tablet (~0.64) the vertical term wins and this returns the same distance —
- * both frame the formation full height, and the tablet's extra width lands on the neighbouring
- * models. On a landscape / foldable viewport the horizontal term takes over and pulls the camera
- * in so the formation still spans the width rather than trailing off into the backdrop.
- */
-private fun parkCameraDistance(aspect: Float): Float = DemoMath.coverDistance(
-    contentWidth = PARK_SPAN,
-    contentHeight = PARK_HEIGHT,
-    verticalFovDegrees = verticalFovDegreesForFocalLength(PARK_FOCAL_LENGTH_MM),
-    aspect = aspect,
-    fill = PARK_FRAME_FILL,
 )
 
 /**

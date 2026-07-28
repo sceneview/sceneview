@@ -825,6 +825,25 @@ SceneView(viewNodeWindowManager = windowManager) {
 }
 ```
 
+Three gotchas that bite every `ViewNode`:
+
+- **`viewContent` composes in its own off-screen window, so it inherits NONE of
+  your `CompositionLocal`s** — `MaterialTheme`, `LocalContentColor`, your own
+  locals. Without re-applying them inside, a themed card silently falls back to
+  Material 3 defaults and stops matching the rest of your UI. Wrap the content:
+  `ViewNode(windowManager) { MyAppTheme { Card { … } } }`.
+- **The window is `WRAP_CONTENT`**, so the content is measured `AT_MOST(display)`:
+  `fillMaxWidth()` resolves to the whole display width and puts a metres-wide quad
+  in the scene — it does not collapse to zero. Give the content an explicit size
+  (`Modifier.width(320.dp)`).
+- **One `WindowManager` sizes itself to its LARGEST child.** When several
+  `ViewNode`s share one manager, every quad is re-measured to the biggest content,
+  so a node whose content grows silently resizes and shifts all the others (a
+  streaming text panel drags its neighbours around while it types). Give every node
+  sharing a manager the same explicit size — width *and* height — or give each node
+  its own manager, at the cost of one system window per node.
+- **The rendered UI is NOT interactive** — see immediately below.
+
 **The rendered UI is NOT interactive.** A `ViewNode` draws its Compose content into a texture;
 the hosting window is `FLAG_NOT_TOUCHABLE` and touch events are never dispatched into it, so a
 `Button` placed inside **will render but its `onClick` will never fire** (no ripple, no press

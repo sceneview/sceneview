@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **`contact-shadow-preview` peek header no longer contradicts the scene (#2740).** The banner tested the shadow *toggle* alone, so pulling the intensity slider to 0 — which makes the pool fully transparent and leaves both boxes floating identically — still announced "Grounded vs floating" while the overlay legend correctly read "Shadows off". Both labels now read one `shadowVisible` value (toggle ON *and* intensity above zero), so no label can drift from what is actually drawn.

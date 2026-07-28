@@ -1,6 +1,8 @@
 package io.github.sceneview.demo.demos.internal
 
 import kotlin.math.atan
+import kotlin.math.hypot
+import kotlin.math.sqrt
 import kotlin.math.tan
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -146,20 +148,57 @@ class DemoMathTest {
         // Pin the actual demo's 4 slot offsets at yaw=0 (the default) to lock in the
         // visible layout. Since #2913 the formation is centred on the world origin
         // (`autoCenterContent = false`), so the offsets ARE the world coordinates:
-        // back row z=-0.2, front row z=+0.2. See `PARK_SLOTS` in ModelViewerDemo.kt.
-        val slots = listOf(
-            // (label, dx, dz)
-            Triple("hero",   0.0f, -0.2f),
-            Triple("front",  0.0f, 0.2f),
-            Triple("left",  -0.55f, 0.2f),
-            Triple("right",  0.55f, 0.2f),
-        )
-        for ((label, dx, dz) in slots) {
-            val (rx, rz) = DemoMath.rotateAroundCentre(dx, dz, sceneYaw = 0f)
+        // back row z=-0.2, front row z=+0.2. The literals live in `parkSlotLayout` below, which is
+        // the single place the layout is pinned.
+        for ((index, slot) in PARK_SLOTS.withIndex()) {
+            val (rx, rz) = DemoMath.rotateAroundCentre(slot.x, slot.z, sceneYaw = 0f)
             // At yaw=0 the rotation is identity.
-            assertEquals("$label x at yaw=0", dx, rx, eps)
-            assertEquals("$label z at yaw=0", dz, rz, eps)
+            assertEquals("slot $index x at yaw=0", slot.x, rx, eps)
+            assertEquals("slot $index z at yaw=0", slot.z, rz, eps)
         }
+    }
+
+    @Test
+    fun `park formation layout is pinned and the framing bounds are derived from it`() {
+        // One test owns the layout literals, so changing PARK_SLOTS fails HERE — loudly and in one
+        // place — instead of leaving the framing assertions describing a formation that no longer
+        // exists. Before #2913 the bounds were restated next to the layout and could drift.
+        assertEquals(
+            listOf(
+                ParkSlot(x = 0.0f, z = -0.2f, scale = 1.80f),
+                ParkSlot(x = 0.0f, z = 0.2f, scale = 0.65f),
+                ParkSlot(x = -0.55f, z = 0.2f, scale = 0.40f),
+                ParkSlot(x = 0.55f, z = 0.2f, scale = 0.15f),
+            ),
+            PARK_SLOTS,
+        )
+
+        // Every slot is bottom-aligned on a shared ground plane, so the union is as tall as the
+        // tallest model — recomputed here independently of the production expression.
+        assertEquals(PARK_SLOTS.maxOf { it.scale }, PARK_HEIGHT, eps)
+        assertEquals(1.80f, PARK_HEIGHT, eps)
+
+        // Each slot orbits the centre at hypot(x, z) AND spins on its own Y, so a model filling its
+        // `scale` cube reaches scale·√2/2 from its own centre at 45° — not scale/2.
+        val expectedSpan = 2f * PARK_SLOTS.maxOf {
+            hypot(it.x, it.z) + it.scale * sqrt(2f) / 2f
+        }
+        assertEquals(expectedSpan, PARK_SPAN, eps)
+        assertTrue(
+            "the formation must be wider than it is tall, or cover framing has nothing to crop",
+            PARK_SPAN > PARK_HEIGHT,
+        )
+    }
+
+    @Test
+    fun `parkCameraDistance frames the formation full height on both portrait classes`() {
+        // The demo's own entry point, not just the math underneath it: phone and tablet portrait
+        // must resolve to the same distance (Filament fixes the VERTICAL fov), and that distance
+        // must be the one that puts PARK_HEIGHT edge to edge.
+        val expected = (PARK_HEIGHT / 2f) / tan(Math.toRadians(defaultVfovDegrees) / 2.0).toFloat()
+        assertEquals(expected, parkCameraDistance(0.47f), 1e-3f)
+        assertEquals(expected, parkCameraDistance(0.64f), 1e-3f)
+        assertEquals(parkCameraDistance(0.47f), parkCameraDistance(PARK_FALLBACK_ASPECT), eps)
     }
 
     @Test
@@ -176,9 +215,12 @@ class DemoMathTest {
     /** SceneView's default 28 mm lens against Filament's 24 mm sensor height. */
     private val defaultVfovDegrees = Math.toDegrees(2.0 * atan(24.0 / (2.0 * 28.0)))
 
-    /** The Multi-Model park formation — `PARK_SPAN` × `PARK_HEIGHT` in ModelViewerDemo.kt. */
-    private val parkWidth = 2.2f
-    private val parkHeight = 1.8f
+    // The Multi-Model park formation, read from the SAME declarations the demo frames itself with
+    // (`ParkFraming.kt`). Restating them as literals here is exactly what would let the layout and
+    // the framing drift apart in silence: the assertions would stay green while describing a
+    // formation that no longer existed (#2913).
+    private val parkWidth = PARK_SPAN
+    private val parkHeight = PARK_HEIGHT
 
     /** Half-extents of the world visible at [distance], for the cover assertions below. */
     private fun visibleHalfExtents(distance: Float, aspect: Float): Pair<Float, Float> {
@@ -279,6 +321,19 @@ class DemoMathTest {
     }
 
     @Test
+    fun `coverDistance never returns NaN for a non-finite field of view`() {
+        // `Double.coerceIn` returns NaN unchanged, so clamping the FOV is not enough on its own —
+        // a NaN would survive every later guard and reach the camera as a NaN position, which
+        // blacks out the viewport. Non-finite input falls back to the default 28 mm lens.
+        val default = DemoMath.coverDistance(parkWidth, parkHeight, defaultVfovDegrees, 0.47f)
+        for (bad in listOf(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)) {
+            val d = DemoMath.coverDistance(parkWidth, parkHeight, bad, 0.47f)
+            assertTrue("fov=$bad returned $d", d.isFinite())
+            assertEquals("fov=$bad", default, d, 1e-2f)
+        }
+    }
+
+    @Test
     fun `coverDistance stays inside its clamp`() {
         // A fully degenerate box clamps to the far end rather than returning 0 / NaN.
         assertEquals(50f, DemoMath.coverDistance(0f, 0f, defaultVfovDegrees, 1f), eps)
@@ -352,11 +407,19 @@ class DemoMathTest {
 
     @Test
     fun `bounceHeight reduces phase over many periods without drifting`() {
-        // Integer modulo before the float conversion: 1000 periods in, the same phase
-        // must yield the same height — the loop can run for hours without degrading.
+        // Integer modulo before the float conversion: a million periods in, the same
+        // phase must yield the same height — the loop can run for hours without degrading.
+        //
+        // The multiplier has to be this large to make the assertion mean anything.
+        // Measured against a float32 simulation of the rejected implementation
+        // (`elapsedNanos.toFloat() / periodNanos`, no integer modulo): at 1_000 periods
+        // it drifts by 1.1e-5 — a hundredth of `eps`, so the very implementation this
+        // test exists to reject sailed through it. At 1_000_000 periods (~2.6e15 ns,
+        // still far inside `Long`) the same implementation is off by 1.2e-2, ~12x `eps`,
+        // while the real modulo-first implementation stays under `eps` at both scales.
         assertEquals(
             DemoMath.bounceHeight(bouncePeriod / 3),
-            DemoMath.bounceHeight(bouncePeriod * 1000 + bouncePeriod / 3),
+            DemoMath.bounceHeight(bouncePeriod * 1_000_000 + bouncePeriod / 3),
             eps,
         )
     }
