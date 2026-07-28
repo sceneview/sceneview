@@ -68,7 +68,9 @@ SceneView { root in
     warning. Android's equivalent lever is `CameraNode.frameToContent(padding =)`
     with `DEFAULT_FRAMING_PADDING = 0.15f`, a *fraction* where this is a
     *multiplier*: `margin == 1 + padding`, so iOS `1.15` is Android `0.15` and
-    tangent is iOS `1.0` / Android `0.0`. Web has no equivalent yet.
+    tangent is iOS `1.0` / Android `0.0`. Web has no framing-padding lever, but
+    its initial orbit is settable imperatively with
+    `sv.setCameraOrbit(theta, phi, distance)`.
 
     `cameraOrbit` seeds only the starting pose; drag, `autoRotate` and the
     auto-fit take over from there (the fit changes distance, never these

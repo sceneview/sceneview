@@ -31,32 +31,37 @@ class** (identical 1320×2868 screenshot spec); likewise the iPad Pro 13-inch
 M4 and M5. Either generation produces an App Store Connect-compliant image
 for its class.
 
-## Demos captured — pre-v2 set, capture still owed (#2896)
+## Demos captured — the common Android↔iOS showcase set v2 (#2854, #2896)
 
-⚠️ **The committed PNGs are one set behind, and the two stores are not in sync.**
-`capture-appstore-screenshots.sh` already shoots **set v2** — `model-viewer ·
-dynamic-sky · multi-model`, the three frames Android moved to in #2854/#2855 —
-but the iOS images have not been re-captured. Do not describe the listings as
-identical until they have been.
+The **same three demos, in the same order**, as Android's
+`capture-play-store-screenshots.sh`, so both stores show identical screens.
 
-The scene-side RealityKit blockers that deferred the refresh — dim lighting, far
-default framing, and `dynamic-sky` rendering no sky at all — are **fixed** by
-#2896 (the custom IBL and the skybox now load; `framingMargin` and `cameraOrbit`
-give the capture the two levers #2785 said did not exist). What remains is
-running the capture and committing the frames.
+The scene-side RealityKit blockers that had deferred this refresh — dim
+lighting, far default framing, and `dynamic-sky` rendering no sky at all — are
+**fixed** by #2896: the custom IBL and the skybox now load, and `framingMargin`
+and `cameraOrbit` give the capture the two levers #2785 said did not exist. The
+frames below were shot against that fix and are committed here.
 
-What is committed today (the pre-v2 five, in this order):
+⚠️ **The committed PNGs are not the live listing.** Committing them does not
+upload them — the App Store listing keeps showing the old set until someone runs
+`store-sync/asc_listing.py --apply-screenshots` (or uploads through App Store
+Connect). Until that happens, do not describe the two stores as in sync.
+
+What is committed today (set v2, in this order):
 
 1. `01-model-viewer` — bundled hero model (cyberpunk hovercar) on the `.warm`
    photo-studio backdrop, frozen on a three-quarter hero pose
 2. `02-dynamic-sky` — procedural time-of-day skyline under a live HDRI sky
 3. `03-multi-model` — several streamed/bundled models composed into one scene
 
-Three of those ids were retired from the Android set for defects that are
-platform-independent, and worth knowing before re-capturing here: `materials`
-picks a different HDRI *and* model per launch, so the frame is not reproducible
-(#2874); `geometry` clips its primitives in a portrait frame (#2873); and
-`double-pendulum` renders as a tiny linkage in a mostly-black frame.
+Three ids that earlier sets carried were dropped on both platforms, for defects
+that are platform-independent — worth knowing before anyone re-adds them here.
+`materials` opened on a streamed subject and drew an orbiting HDRI skybox, so
+neither the subject nor the backdrop was reproducible; the demo side is fixed
+(#2874) and the id is eligible again, but do not re-add it without capturing it
+and looking at the frame against the other slots first. `geometry` clips its
+primitives in a portrait frame (#2873 — measured on Android; not re-measured on
+iOS). `double-pendulum` renders as a tiny linkage in a mostly-black frame.
 
 Captured in **dark appearance** with a cleaned status bar (fixed 9:41, full
 signal/battery), mirroring the Android capture's dark-mode + status-bar crop

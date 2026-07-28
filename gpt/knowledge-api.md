@@ -4286,8 +4286,9 @@ SceneView { root in root.addChild(hero.entity) }
 > *multiplier*: `margin == 1 + padding`, so iOS `1.15` is Android `0.15`, and
 > tangent is iOS `1.0` / Android `0.0`. Android's demo host additionally accepts a
 > `camera_distance` intent extra, but that is a sample-app knob, not the library
-> API. **Web has neither**: `sceneview-web`'s `SceneView` exposes
-> `autoCenterContent` but no framing-padding or initial-orbit lever. The iOS
+> API. **Web has no framing-padding lever** — `fitToModels()` takes no margin —
+> but the initial orbit *is* settable, imperatively rather than declaratively:
+> `sv.setCameraOrbit(theta, phi, distance)`. The iOS
 > launch-argument counterpart to the intent extra is tracked in #2785; these
 > modifiers are the in-scene lever (#2896).
 
