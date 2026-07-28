@@ -49,11 +49,19 @@ What is committed today (the pre-v2 five, in this order):
 4. `04-geometry` — generated geometry primitives
 5. `05-double-pendulum` — animated physics (motion)
 
-Three of those ids were retired from the Android set for defects that are
-platform-independent, and worth knowing before re-capturing here: `materials`
-picks a different HDRI *and* model per launch, so the frame is not reproducible
-(#2874); `geometry` clips its primitives in a portrait frame (#2873); and
-`double-pendulum` renders as a tiny linkage in a mostly-black frame.
+Three of those ids were retired from the Android set, and are worth knowing
+before re-capturing here: `materials` picks a different HDRI *and* model per
+launch, so the frame is not reproducible (#2874); `geometry` clipped its
+primitives in a portrait frame (#2873); and `double-pendulum` renders as a tiny
+linkage in a mostly-black frame.
+
+`geometry`'s clipping is **fixed on Android** (#2873) — but that fix is a
+layout change in the Android demo, so it does not carry across. The iOS scene
+builds its own primitives, and whether it clips in an iPhone-portrait frame has
+**not** been measured. Judge it on a captured frame before either re-adding or
+retiring the id here; do not inherit the Android verdict in either direction.
+Even on Android the id stays out of the set: the fixed 2 × 2 cluster leaves the
+frame centre empty, which that capture script's variance guard reads as blank.
 
 Captured in **dark appearance** with a cleaned status bar (fixed 9:41, full
 signal/battery), mirroring the Android capture's dark-mode + status-bar crop

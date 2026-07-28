@@ -48,10 +48,11 @@ distribution/play-store/
 moved to **set v2** (`model-viewer · dynamic-sky · multi-model`, three strong
 frames judged on the captured mosaic, #2854/#2855); the tablet classes were not
 re-shot in that pass and still carry the earlier five-demo set. Three of those
-ids are retired for defects that are still open: `materials` picks a different
-HDRI *and* model per launch, so the slot is not reproducible (#2874); `geometry`
-clips its primitives in a portrait frame (#2873); `double-pendulum` renders as a
-tiny linkage in a mostly-black frame. The tablet PNGs also predate the demo
+ids are retired: `materials` picks a different HDRI *and* model per launch, so
+the slot is not reproducible (#2874); `geometry` no longer clips (fixed in
+#2873) but its 2 × 2 cluster leaves the frame centre empty, which the capture
+script's centre-patch variance guard reads as blank; `double-pendulum` renders
+as a tiny linkage in a mostly-black frame. The tablet PNGs also predate the demo
 bottom-overlay fix (#2780). Re-capturing the tablets is tracked in #2907.
 
 Note that a tablet re-capture cannot simply mirror phone: `multi-model`'s fixed
