@@ -337,6 +337,29 @@ final class CameraControlsTests: XCTestCase {
         XCTAssertEqual(padded / tight, 1.3, accuracy: 0.01)
     }
 
+    /// `fitRadius`'s `margin:` default was a bare `1.15` literal until
+    /// `.framingMargin(_:)` needed to name the same value (#2896). The whole
+    /// "existing scenes frame identically" claim rests on the constant being
+    /// EQUAL to the literal it replaced — so pin the number itself, not just
+    /// the wiring.
+    func testDefaultFitMarginIsUnchangedValue() {
+        XCTAssertEqual(CameraControls.defaultFitMargin, 1.15, accuracy: 0.0001)
+    }
+
+    /// Omitting `margin:` must keep computing exactly what an explicit 1.15
+    /// computes. A future edit that redefines `defaultFitMargin` silently
+    /// re-frames every auto-framed scene on Apple platforms; this fails first.
+    func testFitRadiusDefaultMarginMatchesExplicitDefault() {
+        let controls = CameraControls()
+        let implicitMargin = controls.fitRadius(
+            boundsExtents: SIMD3<Float>(0.4, 1.2, 0.7), fovYDegrees: 60,
+            aspect: 0.46)
+        let explicitMargin = controls.fitRadius(
+            boundsExtents: SIMD3<Float>(0.4, 1.2, 0.7), fovYDegrees: 60,
+            aspect: 0.46, margin: 1.15)
+        XCTAssertEqual(implicitMargin, explicitMargin, accuracy: 0.0001)
+    }
+
     // MARK: - Content bounds union (#1391)
 
     func testUnionOfEmptyArrayIsNil() {

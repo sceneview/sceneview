@@ -80,7 +80,8 @@ android_cli_ensure || true
 #   2 dynamic-sky    the strongest frame — a lit drone against a vivid procedural
 #                    sky; a sky/sun/environment theme no other slot carries and
 #                    the shot most likely to sell the SDK. Deterministic noon
-#                    default (no random HDRI, unlike the dropped `materials`).
+#                    default — no HDRI backdrop at all (see the `materials` note
+#                    at the bottom of this list: it never picked one at random).
 #   3 multi-model    the only non-helmet, non-sky frame — a rich photoreal-foliage
 #                    fidelity shot. Since #2913 the scene frames ITSELF from the
 #                    live viewport aspect, so it deliberately takes no

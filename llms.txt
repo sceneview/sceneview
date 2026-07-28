@@ -6419,7 +6419,7 @@ View modifiers (chainable):
 .cameraControls(_ mode: CameraControlMode) -> SceneView     // .orbit (default), .pan, .firstPerson | iOS-only: .none, .tilt, .dolly, .gimbal
 .recentersTargetOnOrbit(_ enabled: Bool) -> SceneView       // v4.4.0+ — re-pivot on content centroid when (re-)entering orbit; default false
 .onEntityTapped(_ handler: @escaping (Entity) -> Void) -> SceneView   // real entity hit-test (v4.2.0+)
-.autoRotate(speed: Float = 0.3) -> SceneView                // radians/s, default 0.3
+.autoRotate(speed: Float = 0.3) -> SceneView                // radians/s, default 0.3; 0 starts no rotation loop at all (freeze on the authored pose)
 .mainLight(_ slot: LightSlot) -> SceneView                  // v4.2.0+ — see LightSlot below
 .fillLight(_ slot: LightSlot) -> SceneView                  // v4.2.0+ — Android-parity 2-light setup
 .renderQuality(_ preset: RenderQuality) -> SceneView        // v4.2.0+ — .cinematic / .default / .performance
