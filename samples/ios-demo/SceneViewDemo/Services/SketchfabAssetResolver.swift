@@ -166,21 +166,21 @@ actor SketchfabAssetResolver {
     // MARK: - Internal helpers (exposed for tests)
 
     /// Stage a copy of the bundled fallback under the same cache root used
-    /// by the streamed path. The copy is performed once per uid; subsequent
-    /// calls touch the modification date to keep the file from being evicted
-    /// as cold.
+    /// by the streamed path. Subsequent calls reuse the staged copy and touch
+    /// its modification date to keep it from being evicted as cold.
+    ///
+    /// The staged copy is re-made whenever it no longer matches the asset
+    /// currently in the bundle. Keying it on `uid` alone made the staging
+    /// permanent: an app update that ships a corrected asset left every
+    /// existing install serving the old bytes forever, because the target
+    /// path is identical and the file already exists. That is not
+    /// hypothetical — it is how the #2928 `tree_scene.usdz` fix silently
+    /// failed to take effect on an already-installed simulator build.
     func fallbackBundle(for slug: SketchfabSlug) throws -> URL {
         let root = try cacheRoot()
         let fallbackDir = root.appendingPathComponent("fallback", isDirectory: true)
         try fileManager.createDirectory(at: fallbackDir, withIntermediateDirectories: true)
         let target = fallbackDir.appendingPathComponent("\(slug.uid).usdz")
-        if fileManager.fileExists(atPath: target.path) {
-            try? fileManager.setAttributes(
-                [.modificationDate: Date()],
-                ofItemAtPath: target.path
-            )
-            return target
-        }
 
         // Bundle paths in our project use the form "Models/<name>.usdz".
         let (name, ext) = splitBundlePath(slug.fallbackBundledPath)
@@ -198,6 +198,15 @@ actor SketchfabAssetResolver {
             )
         }
 
+        if fileManager.fileExists(atPath: target.path),
+           stagedCopy(at: target, matches: source) {
+            try? fileManager.setAttributes(
+                [.modificationDate: Date()],
+                ofItemAtPath: target.path
+            )
+            return target
+        }
+
         do {
             if fileManager.fileExists(atPath: target.path) {
                 try fileManager.removeItem(at: target)
@@ -210,6 +219,25 @@ actor SketchfabAssetResolver {
             )
         }
         return target
+    }
+
+    /// Whether a staged fallback copy still matches the bundled asset.
+    ///
+    /// Byte size is the discriminator: the bundle is immutable for a given
+    /// app version, so any asset change ships a different length (the #2928
+    /// tree went 14 767 148 → 14 146 523 bytes). Hashing 14 MB on every
+    /// resolve to catch a same-length edit would cost far more than it saves,
+    /// and a missed re-stage degrades to the previous behaviour rather than
+    /// to a crash. A copy we cannot stat is treated as stale, so the
+    /// re-staging path runs.
+    func stagedCopy(at target: URL, matches source: URL) -> Bool {
+        func byteSize(_ url: URL) -> Int? {
+            (try? fileManager.attributesOfItem(atPath: url.path)[.size]) as? Int
+        }
+        guard let staged = byteSize(target), let bundled = byteSize(source) else {
+            return false
+        }
+        return staged == bundled
     }
 
     /// Best-effort sanity check. We do not parse the asset — that would
