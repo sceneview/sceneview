@@ -5,8 +5,10 @@
     <string name="contact_shadow_toggle">Contact shadows</string>
     <string name="contact_shadow_motion_toggle">Bounce motion</string>
     <string name="contact_shadow_intensity">Shadow intensity: %1$d%%</string>
-    <string name="contact_shadow_wall_preset">TV wall preset</string>
-    <string name="contact_shadow_wall_preset_hint">Wall is the case a real shadow map cannot serve — ceiling light grazes a wall, so a mounted TV casts nothing onto it. Try Floor here: too dark, too round, a sticker.</string>
+    <string name="contact_shadow_wall_beat_title">Wall TV — the pool no shadow map can draw</string>
+    <string name="contact_shadow_wall_verdict_wall">Wall: ceiling light grazes the wall, so a faint, wide halo below the panel. Correct.</string>
+    <string name="contact_shadow_wall_verdict_floor">Floor on a wall: too dark, too round — reads as a sticker, not a shadow.</string>
+    <string name="contact_shadow_wall_verdict_tabletop">TableTop: tight and close, as if the TV rested on a surface it is not touching.</string>
     <string name="contact_shadow_label_grounded">Contact shadow</string>
     <string name="contact_shadow_label_floating">No shadow</string>
     <string name="contact_shadow_label_off">Shadows off</string>

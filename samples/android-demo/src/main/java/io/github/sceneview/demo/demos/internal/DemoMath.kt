@@ -229,6 +229,9 @@ internal object DemoMath {
      * 0.28 pool at ~0.15 alpha at the peak — near-invisible on the demo's light floor,
      * so the grounded-vs-floating contrast blinked out at the top of every hop. 0.45
      * keeps the pool legible at every phase while preserving a 2.2× contact/peak fade.
+     * That measurement, its method (matched box-height crops under an identical
+     * fixed-range contrast stretch) and the before/after evidence are recorded in the
+     * QA report on PR #2851 — this default is empirical, not a taste call.
      *
      * @param height       Current hover height, metres. Coerced into `[0, maxHeight]`.
      * @param maxHeight    Height at which the factor bottoms out. `<= 0` returns `1`.

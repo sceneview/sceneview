@@ -9,7 +9,7 @@
 # Usage:
 #   bash .claude/scripts/capture-play-store-screenshots.sh \
 #     [--form-factor phone|tablet7|tablet10]   # default phone \
-#     [--demos model-viewer,lighting,materials,geometry,double-pendulum] \
+#     [--demos model-viewer,dynamic-sky,multi-model]   # default = set v2 \
 #     [--out samples/android-demo/distribution/play-store/en-GB/graphics] \
 #     [--status-bar-px N | auto] \
 #     [--variance-threshold N] \
@@ -96,8 +96,14 @@ android_cli_ensure || true
 #                    a tiny linkage in a ~95%-black rectangle — un-reframable (#2854).
 #   materials        picked a different HDRI each launch (not reproducible) and the
 #                    subject stayed small at every distance (#2874).
-#   geometry         primitives are laid out wider than a phone-portrait frame;
-#                    every distance clipped one at an edge (#2873). Demo-side fix.
+#   geometry         the clipping is FIXED as of #2873 (2x2 cluster, an orbit
+#                    distance that means what it says, camera_distance wired in),
+#                    but the id stays out for two capture-side reasons: the
+#                    cluster leaves the frame CENTRE empty, so the centre-patch
+#                    variance guard below reads it as blank (measured 0.1 against
+#                    the 100 floor), and the free-running Y-spin turns the flat
+#                    plane edge-on at unpredictable instants. Re-add only after
+#                    judging a fresh mosaic — a green capture is not the bar.
 #   animation        a static screenshot of a skeletal-animation demo is just a
 #                    posed model — a visual duplicate of slot 1 on both stores.
 #
@@ -105,6 +111,20 @@ android_cli_ensure || true
 # framing below is Android-only (iOS has no equivalent extra, #2785), so on iOS
 # multi-model renders at its scene default.
 DEMOS_DEFAULT="model-viewer,dynamic-sky,multi-model"
+# TABLET RUNS SHOOT TWO, NOT THREE — `multi-model` is phone-only (#2913).
+# Measured on both tablet AVDs against build 4.25.0: a tablet portrait frame is
+# ~0.64 w/h against the phone's ~0.47, and at that aspect the scene's FIXED
+# camera angle lands on a wooden support post against the backdrop wall — no
+# foliage, no diorama. It is NOT a settle/load problem (the frame renders fully
+# at 90 s on a warm cache) and NOT fixable with the framing lever: probed at
+# 2.5 / 3.5 / 4.5 m the frame is essentially identical, because camera_distance
+# moves the camera ALONG an angle it cannot change. Same shape as `geometry`
+# (#2873), whose demo-side fix has since landed.
+# The variance guard PASSES the bad frame (2227 on 10", 2827 on 7"), so only the
+# mosaic eyeball catches it: do not re-add `multi-model` to a tablet run on the
+# strength of a green capture. Re-add here once #2913 lands, then re-judge the
+# mosaic. This guard is forward-looking only — it never rewrites committed PNGs.
+DEMOS_DEFAULT_TABLET="model-viewer,dynamic-sky"
 # Canonical Play Store listing directory — the same `graphics/` subdir the
 # `play-store.yml` listing-sync job uploads to the store (#1710).
 OUT_DIR_DEFAULT="samples/android-demo/distribution/play-store/en-GB/graphics"
@@ -151,7 +171,9 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown arg: $1" >&2; exit 2 ;;
   esac
 done
-DEMOS="${DEMOS:-$DEMOS_DEFAULT}"
+# NB: DEMOS stays unresolved here on purpose — its default is form-factor
+# specific (tablet runs drop `multi-model`, see DEMOS_DEFAULT_TABLET) and
+# FORM_FACTOR is only validated in the case block below. Resolved after `esac`.
 OUT_DIR="${OUT_DIR:-$OUT_DIR_DEFAULT}"
 VARIANCE_THRESHOLD="${VARIANCE_THRESHOLD:-$VARIANCE_THRESHOLD_DEFAULT}"
 FORM_FACTOR="${FORM_FACTOR:-$FORM_FACTOR_DEFAULT}"
@@ -166,6 +188,7 @@ FORM_FACTOR="${FORM_FACTOR:-$FORM_FACTOR_DEFAULT}"
 case "$FORM_FACTOR" in
   phone)
     PREFIX="phone"
+    DEMOS_DEFAULT_FF="$DEMOS_DEFAULT"
     # Pixel_7a AVD natural resolution = 1080×2400. Crop 96 px → 1080×2304 = 9:19.2.
     TARGET_HEIGHT=2304
     STATUS_BAR_PX_DEFAULT=96
@@ -173,6 +196,7 @@ case "$FORM_FACTOR" in
     ;;
   tablet7|tablet10)
     PREFIX="$FORM_FACTOR"
+    DEMOS_DEFAULT_FF="$DEMOS_DEFAULT_TABLET"
     TARGET_HEIGHT=0
     STATUS_BAR_PX_DEFAULT="auto"
     # MUST be numeric and MUST NOT be the "auto" default: when live detection
@@ -192,6 +216,8 @@ case "$FORM_FACTOR" in
 esac
 STATUS_BAR_PX="${STATUS_BAR_PX:-$STATUS_BAR_PX_DEFAULT}"
 SETTLE_SECONDS="${SETTLE_SECONDS:-$SETTLE_SECONDS_DEFAULT}"
+# Form-factor default (see DEMOS_DEFAULT_TABLET); an explicit --demos still wins.
+DEMOS="${DEMOS:-$DEMOS_DEFAULT_FF}"
 
 # ── 1. Recover an offline AVD if needed ──────────────────────────────────────
 if ! adb devices | grep -qE "^emulator-|^[0-9A-F]{8}.*device$"; then
@@ -513,6 +539,21 @@ PY
   INDEX=$((INDEX + 1))
 done
 TOTAL=$((INDEX - 1))
+
+# ── 4b. Prune stale trailing slots ──────────────────────────────────────────
+# $OUT_DIR is a byte-for-byte mirror of the Play listing and `play_listing.py`
+# selects by GLOB, not by count — so a slot this run did not write is still
+# uploaded at the next tag. When the set shrinks (5 → 3 on phone in #2855,
+# 5 → 2 on tablets in #2913) the leftovers are frames from an older app build
+# that nobody looks at again: the mosaic below iterates 1..TOTAL and cannot
+# render them. Drop them here, AFTER the capture loop completed, so an aborted
+# run (set -e, foreground guard, variance guard) can never empty the mirror.
+STALE=$((TOTAL + 1))
+while [[ -f "$OUT_DIR/$PREFIX-screenshot-$STALE.png" ]]; do
+  echo "[capture] pruning stale slot $PREFIX-screenshot-$STALE.png (set is now $TOTAL)" >&2
+  rm -f "$OUT_DIR/$PREFIX-screenshot-$STALE.png"
+  STALE=$((STALE + 1))
+done
 
 # ── 5. Mosaic thumbnail (visual sanity, well under the 1800 px session limit) ─
 # Written OUTSIDE $OUT_DIR on purpose: that directory is a byte-for-byte mirror

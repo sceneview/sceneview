@@ -236,11 +236,19 @@ class DemoMathTest {
 
     @Test
     fun `bounceHeight reduces phase over many periods without drifting`() {
-        // Integer modulo before the float conversion: 1000 periods in, the same phase
-        // must yield the same height — the loop can run for hours without degrading.
+        // Integer modulo before the float conversion: a million periods in, the same
+        // phase must yield the same height — the loop can run for hours without degrading.
+        //
+        // The multiplier has to be this large to make the assertion mean anything.
+        // Measured against a float32 simulation of the rejected implementation
+        // (`elapsedNanos.toFloat() / periodNanos`, no integer modulo): at 1_000 periods
+        // it drifts by 1.1e-5 — a hundredth of `eps`, so the very implementation this
+        // test exists to reject sailed through it. At 1_000_000 periods (~2.6e15 ns,
+        // still far inside `Long`) the same implementation is off by 1.2e-2, ~12x `eps`,
+        // while the real modulo-first implementation stays under `eps` at both scales.
         assertEquals(
             DemoMath.bounceHeight(bouncePeriod / 3),
-            DemoMath.bounceHeight(bouncePeriod * 1000 + bouncePeriod / 3),
+            DemoMath.bounceHeight(bouncePeriod * 1_000_000 + bouncePeriod / 3),
             eps,
         )
     }
