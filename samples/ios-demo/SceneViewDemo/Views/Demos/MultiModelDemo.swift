@@ -14,9 +14,18 @@ import SceneViewSwift
 /// ### Streaming pipeline (Stage 2, issue #1152)
 ///
 /// Every slug resolves through ``SketchfabAssetResolver``. Empty API key
-/// (App Store builds) → the resolver returns the registered bundled USDZ so
-/// the demo always renders four nodes — honouring the hard rule "no network
-/// required to render something useful" from `feedback_demo_quality`.
+/// (App Store builds) → the resolver returns the registered bundled USDZ, so
+/// the demo still renders without a network, honouring the hard rule "no
+/// network required to render something useful" from `feedback_demo_quality`.
+///
+/// ⚠️ Keyless mode does NOT render the documented park diorama, and this is why
+/// the demo is deliberately absent from the App Store screenshot set (#2896).
+/// The bundled stand-ins are intentionally distinct silhouettes rather than
+/// four copies of one tree (#2355), so the composed scene is a retro piano, a
+/// butterfly and a phoenix — and measured on both store simulator classes, the
+/// tree slot renders nothing at all, leaving three nodes rather than four. That
+/// last part is a real defect, tracked separately; the substitution itself is
+/// by design.
 struct MultiModelDemo: View {
     @State private var showTree: Bool = true
     @State private var showBench: Bool = true
