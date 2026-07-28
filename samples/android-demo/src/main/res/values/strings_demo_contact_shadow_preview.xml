@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="demo_contact_shadow_preview_title">Contact Shadow Preview</string>
-    <string name="demo_contact_shadow_preview_subtitle">Grounded vs floating, side by side — two identical bouncing boxes (one with the procedural contact shadow, one without) and a wall-mounted TV no shadow map can serve. Non-AR, runs on any emulator</string>
+    <string name="demo_contact_shadow_preview_subtitle">Grounded vs floating, side by side — one box bounces and lands (anchored by a procedural contact shadow), its twin levitates high with none, plus a wall-mounted TV no shadow map can serve. Non-AR, runs on any emulator</string>
     <string name="contact_shadow_toggle">Contact shadows</string>
     <string name="contact_shadow_motion_toggle">Bounce motion</string>
     <string name="contact_shadow_intensity">Shadow intensity: %1$d%%</string>
@@ -13,5 +13,5 @@
     <string name="contact_shadow_label_floating">No shadow</string>
     <string name="contact_shadow_label_off">Shadows off</string>
     <string name="contact_shadow_peek_on">Grounded vs floating</string>
-    <string name="contact_shadow_peek_off">Shadows off — all floating</string>
+    <string name="contact_shadow_peek_off">Shadows off — grounding cue gone</string>
 </resources>

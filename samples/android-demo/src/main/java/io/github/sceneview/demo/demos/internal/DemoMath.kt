@@ -399,6 +399,60 @@ internal object DemoMath {
     }
 
     /**
+     * Bob period (nanoseconds, 3.4 s) of the contact-shadow preview's FLOATING box.
+     *
+     * Deliberately *longer* and non-harmonic with [CONTACT_BOUNCE_PERIOD_NANOS] (2.6 s): the
+     * two boxes drift out of phase, which reads as "two independent objects doing two different
+     * things" rather than a single synchronised animation.
+     */
+    const val CONTACT_FLOAT_PERIOD_NANOS = 3_400_000_000L
+
+    /**
+     * Rest height (metres, box **centre**) of the floating box. Chosen so the box hovers well
+     * clear of the floor at all times — its lowest point (`centre − bob − half-edge`) never
+     * reaches the grounded box's highest point, and its highest point stays below the wall TV.
+     * See the `floatHoverY … stays clear of the floor and the grounded box` test.
+     */
+    const val CONTACT_FLOAT_CENTER_Y_METERS = 0.62f
+
+    /** Peak bob deviation of the floating box from [CONTACT_FLOAT_CENTER_Y_METERS], metres. */
+    const val CONTACT_FLOAT_BOB_METERS = 0.05f
+
+    /**
+     * Vertical position (box **centre**, metres) of the contact-shadow preview's FLOATING box
+     * at [elapsedNanos]: a slow, smooth sine bob of ±[bobAmplitude] around [centerY].
+     *
+     * This is the *positive* half of the grounded-vs-floating comparison. Its twin
+     * ([bounceHeight]) is a **rectified** sine that STRIKES the floor once per period; this is a
+     * **plain** sine — smooth at every phase, no zero-crossing landing, and centred high above
+     * the floor so the box never touches it. One box hammers the ground (its contact pool snaps
+     * dark at each landing); its twin serenely levitates. The floating box's *motion* — not the
+     * mere absence of a shadow — is what makes it read as airborne (#2740): a shadow that is
+     * simply missing reads as a rendering bug, but a box visibly hovering high and bobbing reads
+     * as floating, so of course it casts no contact shadow.
+     *
+     * `t = 0` returns exactly [centerY] (`sin 0 = 0`), the deterministic pose QA mode freezes at
+     * — the same zeroed clock that lands [bounceHeight]'s box on the floor.
+     *
+     * @param elapsedNanos Accumulated animation time. Values `<= 0` are treated as `0` (rest).
+     * @param periodNanos  Bob period. Values `<= 0` return [centerY] rather than dividing by zero.
+     * @param centerY      Rest height of the box centre, metres.
+     * @param bobAmplitude Peak deviation from [centerY], metres.
+     * @return Box-centre height in `[centerY - bobAmplitude, centerY + bobAmplitude]`.
+     */
+    fun floatHoverY(
+        elapsedNanos: Long,
+        periodNanos: Long = CONTACT_FLOAT_PERIOD_NANOS,
+        centerY: Float = CONTACT_FLOAT_CENTER_Y_METERS,
+        bobAmplitude: Float = CONTACT_FLOAT_BOB_METERS,
+    ): Float {
+        if (periodNanos <= 0L) return centerY
+        val safeElapsed = if (elapsedNanos <= 0L) 0L else elapsedNanos
+        val phase = (safeElapsed % periodNanos).toFloat() / periodNanos.toFloat()
+        return centerY + bobAmplitude * sin(2f * PI.toFloat() * phase)
+    }
+
+    /**
      * The keyframe choreography for one cinematic [shot] of
      * [io.github.sceneview.demo.demos.AnimationPhysicsDemo] (Animation tab).
      *
