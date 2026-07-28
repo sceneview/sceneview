@@ -12,7 +12,7 @@ Source of truth: [`assets/catalog.json`](catalog.json). This file is generated
 by [`.claude/scripts/generate-credits.py`](../.claude/scripts/generate-credits.py).
 Re-run the script after any catalog edit to keep both files in sync.
 
-Total models: **70** (plus 17 pending metadata, 7 pending license review).
+Total models: **75** (plus 16 pending metadata, 7 pending license review).
 
 ---
 
@@ -77,15 +77,20 @@ Total models: **70** (plus 17 pending metadata, 7 pending license review).
 - **[BoomBox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/BoomBox)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cesium Milk Truck](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CesiumMilkTruck)** by Cesium — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Chronograph Watch](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Chronograph Watch (web demo)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Corset](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Corset)** by KhronosGroup (UX3D) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)** by KhronosGroup (theblueturtle_) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Diffuse Transmission Teacup](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DiffuseTransmissionTeacup)** by Wayfair — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Dragon (Attenuation)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DragonAttenuation)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Glam Velvet Sofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa)** by Wayfair — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Iridescence Dish With Olives](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceDishWithOlives)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Materials Variants Shoe](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/MaterialsVariantsShoe)** by Shopify — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Sheen Chair](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Sheen Chair (web demo)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Sunglasses](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SunglassesKhronos)** by Khronos — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Toy Car](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Water Bottle](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/WaterBottle)** by KhronosGroup — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ## Poly Haven
@@ -120,13 +125,12 @@ Replace or remove before the next store publication:
 
 ---
 
-## Missing metadata (17 entries)
+## Missing metadata (16 entries)
 
 These entries in `catalog.json` lack at least one of `author`, `license`,
 `sourceUrl`, or use a license this script does not recognise. Fill in the
 missing fields so they can be credited properly:
 
-- `toy_car` — missing: author, license, sourceUrl
 - `khronos_duck` — missing: license `SCEA Shared Source License` unrecognised
 - `koi_fish` — missing: author
 - `toon_cat` — missing: author
