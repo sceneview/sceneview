@@ -45,7 +45,7 @@ Total models: **75** (plus 16 pending metadata, 7 pending license review).
 - **[FREE 1975 Porsche 911 (930) Turbo](https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e)** by Karol Miklas — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Game Boy Classic](https://sketchfab.com/3d-models/game-boy-classic-0ae80019e6f046168923286d7e628f6f)** by JonhyOliver — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[JBL Tour One M3 Headphones](https://sketchfab.com/3d-models/jbl-tour-one-m3-black-45f0b3ccbee84492a05998d5daecff16)** by cubemodelex — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Low Poly Tree Scene](https://sketchfab.com/3d-models/low-poly-tree-scene-free-89daa5e21f0d4f08a59dba0d566e88bd)** by mateustorresg — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Low Poly Tree Scene](https://sketchfab.com/3d-models/low-poly-tree-scene-free-89daa5e21f0d4f08a59dba0d566e88bd)** by mateustorresg (modified by SceneView — grass-tuft prims removed) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Lowpoly Fruits & Vegetables](https://sketchfab.com/3d-models/lowpoly-fruits-vegetables-d3be8fed96eb48be88b47bbe8d2951e1)** by norgeotloic — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Medieval Fantasy Book](https://sketchfab.com/3d-models/medieval-fantasy-book-06d5a80a04fc4c5ab552759e9a97d91a)** by Pixel — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Monstera Deliciosa Potted Mid-Century Plant](https://sketchfab.com/3d-models/monstera-deliciosa-potted-mid-century-plant-1ab9bf841df04c07b1819be596327629)** by ChubbyPanda — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
