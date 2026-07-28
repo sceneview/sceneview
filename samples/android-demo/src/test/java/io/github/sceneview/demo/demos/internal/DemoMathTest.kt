@@ -167,12 +167,12 @@ class DemoMathTest {
         // exists. Before #2913 the bounds were restated next to the layout and could drift.
         // MultiModelSection unrolls one `rememberSlugFile` / `rememberFileModelInstance` pair
         // per slot (fixed composition slots, #1464) while everything else is sized from
-        // PARK_SLOTS. Growing the layout without adding that pair would compile and then throw
-        // IndexOutOfBounds on the first composition — a runtime crash on screen. Pin the count
-        // so it fails here, at build time, with an instruction instead.
+        // PARK_SLOTS. Resizing the layout without matching that unrolling compiles and then
+        // throws IndexOutOfBounds on the first composition — a crash on screen. Pin the count
+        // so it fails in the unit tests, with an instruction, instead.
         assertEquals(
-            "PARK_SLOTS grew — unroll a matching rememberSlugFile / rememberFileModelInstance " +
-                "pair in MultiModelSection before changing this",
+            "PARK_SLOTS size changed — add or remove a matching rememberSlugFile / " +
+                "rememberFileModelInstance pair in MultiModelSection before changing this",
             4,
             PARK_SLOTS.size,
         )
@@ -205,7 +205,7 @@ class DemoMathTest {
     }
 
     @Test
-    fun `every park slot uid resolves to a registry entry with a chip label`() {
+    fun `every park slot uid resolves to a park registry entry`() {
         // The visibility chips read their label off the resolved slug's `displayName` (#2933). A
         // uid that no longer exists in the registry does not crash — the slot degrades to the
         // positional "Model N" label and, worse, loads whatever sits at the same INDEX in the

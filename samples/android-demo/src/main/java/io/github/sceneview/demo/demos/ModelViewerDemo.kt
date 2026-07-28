@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -587,8 +588,8 @@ private fun MultiModelSection(
     // this caller when the load lands (#1464). An inline `map` over a fixed-size
     // list would give that too — the unrolling is a conservative choice, not a
     // language requirement, and #1464 cost enough to earn the caution. One call per
-    // slot, in slot order; growing PARK_SLOTS without adding a line here is caught
-    // by the size assertion in DemoMathTest, at build time rather than on screen.
+    // slot, in slot order; resizing PARK_SLOTS without matching it here is caught by
+    // the size assertion in DemoMathTest — in the unit tests, not on screen.
     val files = listOf(
         rememberSlugFile(slugs[0]),
         rememberSlugFile(slugs[1]),
@@ -640,7 +641,9 @@ private fun MultiModelSection(
     // It stays a WHOLE-SCENE verdict: one fallen-back slot out of four reads
     // "Offline model" for all of them, and the pill never says which slot swapped.
     // Pessimistic on purpose — of the two imprecise answers, the optimistic one is
-    // the one that misleads.
+    // the one that misleads. It is also a MOVING verdict during load: `allLoaded`
+    // watches the instances while the fallback probe watches the files, so a slot
+    // that falls back last flips the pill Streaming → Offline after the fact.
     val assetSource = when {
         slugs.all { it == null } -> null
         files.any { it != null && SketchfabAssetResolver.isBundledFallback(it) } ->
@@ -679,9 +682,11 @@ private fun MultiModelSection(
                     FilterChip(
                         selected = visible[index],
                         onClick = { visible[index] = !visible[index] },
-                        // Positional fallback only while the registry has no slug for
-                        // this slot — a chip with no model behind it still needs a
-                        // stable, non-lying handle.
+                        // Positional fallback for a slot the registry has no slug for —
+                        // a chip with no model behind it still needs a stable, non-lying
+                        // handle. DemoMathTest asserts every PARK_SLOTS uid resolves, so
+                        // this branch is unreachable from THIS repo's registry; it is
+                        // there for a build that edits SampleAssets without the tests.
                         label = { Text(slug?.displayName ?: "Model ${index + 1}") },
                     )
                 }
@@ -756,30 +761,49 @@ private fun MultiModelSection(
                 val displays = PARK_SLOTS.mapIndexed { index, slot ->
                     Display(visible[index], instances[index], slot)
                 }
-                for (d in displays) {
-                    if (!d.show || d.instance == null) continue
-                    // Rotation math lives in DemoMath.rotateAroundCentre so it can be
-                    // JVM-unit-tested without firing up Filament / Compose.
-                    val (rx, rz) = DemoMath.rotateAroundCentre(d.slot.x, d.slot.z, sceneYaw)
-                    ModelNode(
-                        modelInstance = d.instance,
-                        // Models with a skeletal animation auto-play it for "alive" scene reads;
-                        // in qaMode we need the bind pose to render every frame so golden
-                        // screenshots stay deterministic.
-                        autoAnimate = !DemoSettings.qaMode,
-                        scaleToUnits = d.slot.scale,
-                        // Bottom-aligned (#2913): `Position(0, -1, 0)` puts each model's
-                        // bounding-box FLOOR on its node origin, so `position.y` below stands
-                        // them all on one ground plane. Without it a node keeps the asset's
-                        // authored pivot, which differs per GLB — the formation's vertical
-                        // placement was a property of whichever models the registry happened to
-                        // point at, and the pulled-back framing this fix needs would have shown
-                        // the smaller ones floating. (This parameter used to be a silent no-op;
-                        // it was fixed library-side and is now honoured.)
-                        centerOrigin = Position(0f, -1f, 0f),
-                        position = Position(x = rx, y = -PARK_HEIGHT / 2f, z = rz),
-                        rotation = Rotation(y = -sceneYaw),
-                    )
+                // `key(index)` + `isVisible`, never a skipped call site (#2939). `ModelNode`
+                // holds `remember(engine, modelInstance)`, and its `DisposableEffect(node)`
+                // runs `node.destroy()`, which calls `engine.safeDestroyEntity` on entities
+                // the ModelInstance only BORROWS — the ids survive, the renderable components
+                // do not. Two ways that used to fire here:
+                //   · dropping a hidden slot's call shifted every later ModelNode onto the
+                //     preceding group with a DIFFERENT instance, re-keying the remember and
+                //     destroying all four;
+                //   · unmounting a hidden slot destroyed its own renderables, so toggling the
+                //     chip back on rendered nothing.
+                // The instances come from a `produceState` whose keys never change again, so
+                // they are never reloaded and there is no recovery — a silent black scene with
+                // no scrim, because the instance is still non-null. Same defect the Materials
+                // section shipped until #2939. Keep every slot mounted; hide with `isVisible`.
+                displays.forEachIndexed { index, d ->
+                    key(index) {
+                        if (d.instance != null) {
+                            // Rotation math lives in DemoMath.rotateAroundCentre so it can be
+                            // JVM-unit-tested without firing up Filament / Compose.
+                            val (rx, rz) = DemoMath.rotateAroundCentre(d.slot.x, d.slot.z, sceneYaw)
+                            ModelNode(
+                                modelInstance = d.instance,
+                                isVisible = d.show,
+                                // Models with a skeletal animation auto-play it for "alive"
+                                // scene reads; in qaMode we need the bind pose to render every
+                                // frame so golden screenshots stay deterministic.
+                                autoAnimate = !DemoSettings.qaMode,
+                                scaleToUnits = d.slot.scale,
+                                // Bottom-aligned (#2913): `Position(0, -1, 0)` puts each model's
+                                // bounding-box FLOOR on its node origin, so `position.y` below
+                                // stands them all on one ground plane. Without it a node keeps the
+                                // asset's authored pivot, which differs per GLB — the formation's
+                                // vertical placement was a property of whichever models the
+                                // registry happened to point at, and the pulled-back framing this
+                                // fix needs would have shown the smaller ones floating. (This
+                                // parameter used to be a silent no-op; it was fixed library-side
+                                // and is now honoured.)
+                                centerOrigin = Position(0f, -1f, 0f),
+                                position = Position(x = rx, y = -PARK_HEIGHT / 2f, z = rz),
+                                rotation = Rotation(y = -sceneYaw),
+                            )
+                        }
+                    }
                 }
             }
             LoadingScrim(loading = !allLoaded, label = "Loading ${PARK_SLOTS.size} models…")
