@@ -130,12 +130,16 @@ import io.github.sceneview.node.findActivity
  *                              [RenderQuality.Cinematic], or [RenderQuality.Performance]).
  * @param autoCenterContent     When `true` (default), the library translates all DSL [content]
  *                              nodes once — on the first frame their union bounding box is
- *                              non-empty — so the content centroid lands at the orbit pivot and
- *                              renders centred in the viewport without each node needing
- *                              `ModelNode(centerOrigin = …)`. Lights / camera are passed as
- *                              separate parameters, never DSL children, so they are unaffected.
- *                              Mirrors the iOS `autoCenterContent` feature (#1026). Pass `false`
- *                              for scenes with intentional off-centre placement.
+ *                              non-empty — so the content centroid lands on the **world origin**
+ *                              and renders centred in the viewport without each node needing
+ *                              `ModelNode(centerOrigin = …)`. It lands on the origin, not on the
+ *                              manipulator's `targetPosition`; the two coincide only for the
+ *                              default target, which is why the camera-to-subject distance is
+ *                              `|orbitHomePosition|` — see [rememberCameraManipulator]. Lights /
+ *                              camera are passed as separate parameters, never DSL children, so
+ *                              they are unaffected. Mirrors the iOS `autoCenterContent` feature
+ *                              (#1026). Pass `false` for scenes with intentional off-centre
+ *                              placement — authored world positions then survive.
  * @param autoFitContent        When `true`, the library moves [cameraNode] so the DSL [content]
  *                              fills the viewport — regardless of the model's intrinsic glTF size,
  *                              with no per-model `scaleToUnits` tuning (#1439). The pass re-frames
@@ -213,9 +217,12 @@ fun SceneView(
     /**
      * When `true` (default), all DSL [content] nodes are parented to an intermediate content-root
      * node which is translated once — on the first frame the content's union bounding box is
-     * non-empty — so the content centroid lands at the orbit pivot and renders centred. Mirrors
-     * the iOS library-level `autoCenterContent` feature (#1026 / PR #1038). Pass `false` to keep
-     * strict per-node placement semantics for scenes with intentional off-centre composition.
+     * non-empty — so the content centroid lands on the **world origin** and renders centred. Not
+     * on the manipulator's `targetPosition`: the two coincide only for the default target, which
+     * is why the camera-to-subject distance is `|orbitHomePosition|` (see
+     * [rememberCameraManipulator]). Mirrors the iOS library-level `autoCenterContent` feature
+     * (#1026 / PR #1038). Pass `false` to keep strict per-node placement semantics for scenes with
+     * intentional off-centre composition — authored world positions then survive.
      */
     autoCenterContent: Boolean = true,
     /**
