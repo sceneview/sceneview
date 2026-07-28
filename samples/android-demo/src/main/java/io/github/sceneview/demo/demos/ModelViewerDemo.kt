@@ -607,14 +607,14 @@ private fun MultiModelSection(
     // the geometry under them is the bundled stand-in rather than the oak the label
     // names (#2933).
     //
-    // MEASURED from the resolved files, not inferred from the config: every
-    // failure path in `resolve` — no network, a stale key, a bounds-drifted
-    // asset, exhausted retries — ends at the bundled fallback, so a KEYED build
-    // can render four stand-ins. It does: on the QA emulator (2026-07-28, key
-    // configured) all four slots staged out of `cache/sketchfab/fallback/` while
-    // an inferred pill read "Streamed (cached)". Asking the File instead cannot
-    // be wrong that way. The Gallery section resolves its origin the same way,
-    // off the same `isBundledFallback` signal (#2936).
+    // MEASURED from the resolved files, not inferred from the config. The Gallery
+    // section reads `SketchfabConfig.apiKey == null` for this, and that is only a
+    // guess: every failure path in `resolve` — no network, a stale key, a
+    // bounds-drifted asset, exhausted retries — ends at the bundled fallback, so a
+    // KEYED build can render four stand-ins. It does: on the QA emulator
+    // (2026-07-28, key configured) all four slots staged out of
+    // `cache/sketchfab/fallback/` while an inferred pill read "Streamed (cached)".
+    // Asking the File instead cannot be wrong that way.
     val assetSource = when {
         slugs.all { it == null } -> null
         files.any { it != null && SketchfabAssetResolver.isBundledFallback(it) } ->
