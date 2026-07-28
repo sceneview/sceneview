@@ -231,8 +231,10 @@ passes the variance check and is still unusable.
 - **#2873 — `geometry`'s clipping is fixed; the id still stays out of set v2.**
   The demo laid its four primitives on a row ~1.45 m wide and viewed it from a
   camera that measured **1.22 m** away — not the 2.7 m its own comment claimed,
-  because `orbitHomePosition` resolves as an offset whose *length* is the orbit
-  distance, not as a world position differenced against the target. Both halves
+  because the orbit distance is the *length* of `orbitHomePosition`: Filament
+  takes that value as the eye verbatim, and `autoCenterContent = true` has
+  already moved the content onto the world origin, so `targetPosition` never
+  enters the distance (documented on `main` in #2930). Both halves
   are fixed: the primitives sit in a 2 × 2 cluster, the distance means what it
   says, and `camera_distance` is wired into this demo. Measured on the QA
   emulator at the default framing, the cluster clears the frame with ≥ 184 px of

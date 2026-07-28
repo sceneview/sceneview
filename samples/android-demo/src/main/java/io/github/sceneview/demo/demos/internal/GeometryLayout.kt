@@ -25,20 +25,33 @@ import kotlin.math.sqrt
  *
  * ### Orbit distance is the LENGTH of `orbitHomePosition` (measured, #2873)
  *
- * `rememberCameraManipulator(orbitHomePosition, targetPosition)` documents
- * `orbitHomePosition` as the camera's *world* position, which reads as "the distance is
- * `|orbitHomePosition − targetPosition|`". Measured on-device it is **not**: the resulting
- * orbit distance is `|orbitHomePosition|` — the offset is applied **relative to the
- * target**. Every doc example targets the origin, where the two readings coincide, which is
+ * `rememberCameraManipulator(orbitHomePosition, targetPosition)` used to document
+ * `orbitHomePosition` as "the camera's world position to return to on double-tap", which
+ * reads as "the distance is `|orbitHomePosition − targetPosition|`". Measured on-device it
+ * is **not**: the resulting orbit distance is `|orbitHomePosition|`.
+ *
+ * The cause is *not* that the value is an offset from the target. Filament's
+ * `OrbitManipulator` assigns it verbatim as the eye (`mEye = mProps.orbitHomePosition`) and
+ * never re-bases it on `targetPosition`. What actually happens is that `SceneView`'s default
+ * `autoCenterContent = true` translates this demo's nodes so their bounding-box centre lands
+ * on the **world origin** — the authored `z = -1.5` does not survive, so the eye's distance to
+ * the subject is simply its own length. `targetPosition` sets the orbit pivot and the initial
+ * look-at, nothing more. See `rememberCameraManipulator`'s KDoc (#2930) for the canonical
+ * statement. Every doc example targets the origin, where the two readings coincide, which is
  * why the difference goes unnoticed until a demo targets something else.
+ *
+ * **That precondition is load-bearing here:** with `autoCenterContent = false` the distance
+ * becomes `|orbitHomePosition − contentCentre|` again and every constant below would need
+ * re-deriving. This demo leaves it at the default.
  *
  * The old `orbitHomePosition = (0, 0.2, 1.2)` / `targetPosition = (0, 0, -1.5)` therefore
  * put the camera 1.22 m from the primitives, not the 2.7 m its comment claimed. Verified by
  * projecting known geometry back through the frustum at four distances, and independently on
  * the `shape` demo (whose triangle is clipped by the same misreading).
  *
- * [orbitHomeOffset] encodes the measured semantics: it returns an offset whose **length is
- * the requested distance**, so the number that reaches Filament means what its name says.
+ * [orbitHomeOffset] encodes the measured semantics: it returns a vector whose **length is
+ * the requested distance**, so the number that reaches Filament means what its name says. It
+ * is named for the direction it encodes — Filament does not treat it as an offset.
  *
  * ### Frustum model
  *
@@ -130,8 +143,9 @@ internal object GeometryLayout {
      * cluster: a vector of length exactly [distance], lifted [ELEVATION_RATIO] above the
      * view axis.
      *
-     * Returning an offset — rather than a world position — is what makes the distance
-     * honest, given the measured `|orbitHomePosition|` semantics documented above.
+     * Returning a vector of the requested length is what makes the distance honest, given
+     * the `|orbitHomePosition|` semantics documented above — Filament uses it as the eye
+     * directly, and `autoCenterContent` has already put the cluster on the origin.
      *
      * @param distance Camera-to-cluster distance in metres. Must be `> 0`.
      */
