@@ -82,9 +82,11 @@ android_cli_ensure || true
 #                    the shot most likely to sell the SDK. Deterministic noon
 #                    default (no random HDRI, unlike the dropped `materials`).
 #   3 multi-model    the only non-helmet, non-sky frame — a rich photoreal-foliage
-#                    fidelity shot; pulled BACK to 6.0 m for the fullest scene the
-#                    fixed default camera angle allows (distance can't change the
-#                    angle, so this is as composed as the diorama gets).
+#                    fidelity shot. Since #2913 the scene frames ITSELF from the
+#                    live viewport aspect, so it deliberately takes no
+#                    `camera_distance` entry below: a fixed metre value would
+#                    override the per-viewport framing with a number tuned on one
+#                    screen shape.
 #
 # Three strong frames, deliberately — Fable's verdict was that fewer strong shots
 # beat more mixed ones. Dropped from earlier sets, and why (so nobody re-adds them
@@ -105,20 +107,31 @@ android_cli_ensure || true
 # framing below is Android-only (iOS has no equivalent extra, #2785), so on iOS
 # multi-model renders at its scene default.
 DEMOS_DEFAULT="model-viewer,dynamic-sky,multi-model"
-# TABLET RUNS SHOOT TWO, NOT THREE — `multi-model` is phone-only (#2913).
-# Measured on both tablet AVDs against build 4.25.0: a tablet portrait frame is
-# ~0.64 w/h against the phone's ~0.47, and at that aspect the scene's FIXED
-# camera angle lands on a wooden support post against the backdrop wall — no
-# foliage, no diorama. It is NOT a settle/load problem (the frame renders fully
-# at 90 s on a warm cache) and NOT fixable with the framing lever: probed at
-# 2.5 / 3.5 / 4.5 m the frame is essentially identical, because camera_distance
-# moves the camera ALONG an angle it cannot change. Same shape as the dropped
-# `geometry` (#2873) — the fix is demo-side.
-# The variance guard PASSES the bad frame (2227 on 10", 2827 on 7"), so only the
-# mosaic eyeball catches it: do not re-add `multi-model` to a tablet run on the
-# strength of a green capture. Re-add here once #2913 lands, then re-judge the
-# mosaic. This guard is forward-looking only — it never rewrites committed PNGs.
-DEMOS_DEFAULT_TABLET="model-viewer,dynamic-sky"
+# TABLET RUNS SHOOT ALL THREE AGAIN — `multi-model` came back when #2913 landed,
+# per the instruction this block carried while it was dropped (#2915).
+# What had been measured on both tablet AVDs against build 4.25.0: a tablet
+# portrait frame is ~0.64 w/h against the phone's ~0.47, and at that aspect the
+# capture landed on a wooden post against the backdrop wall — no foliage. That
+# was real, but BOTH stated causes were wrong, and it is worth recording which:
+#   1. The framing was broken at EVERY aspect, not just on tablets. The section
+#      aimed a fixed camera at the formation centre it authored, while the
+#      library's `autoCenterContent` pass had already translated that formation
+#      onto the world origin — so the lens sat ~0.6 m from the centroid, inside
+#      the subject. A narrow phone frame cropped that into something that reads as
+#      texture; a wider tablet frame exposed it. The section now derives its
+#      distance from the live viewport aspect and both classes frame the formation
+#      full height.
+#   2. `camera_distance` was inert here not because it "moves the camera ALONG an
+#      angle it cannot change", but because the section read no `DemoSettings` at
+#      all — the 2.5 / 3.5 / 4.5 m probe compared three frames that each discarded
+#      the extra. It honours the override now.
+# Also worth knowing before reading any capture of this demo as evidence: without
+# a Sketchfab key it renders bundled fallbacks (a lantern, a lantern, a shiba, a
+# soldier) instead of the streamed oaks — a different scene that renders perfectly
+# and passes every guard. The wooden post was that lantern's post.
+# The variance guard PASSES a bad frame here (2227 on 10", 2827 on 7"), so a green
+# capture is never the evidence: judge the mosaic by eye after every run.
+DEMOS_DEFAULT_TABLET="model-viewer,dynamic-sky,multi-model"
 # Canonical Play Store listing directory — the same `graphics/` subdir the
 # `play-store.yml` listing-sync job uploads to the store (#1710).
 OUT_DIR_DEFAULT="samples/android-demo/distribution/play-store/en-GB/graphics"
@@ -166,7 +179,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 # NB: DEMOS stays unresolved here on purpose — its default is form-factor
-# specific (tablet runs drop `multi-model`, see DEMOS_DEFAULT_TABLET) and
+# specific (see DEMOS_DEFAULT_TABLET; the two sets are identical again since
+# #2913, but the split stays so a class can diverge without a code change) and
 # FORM_FACTOR is only validated in the case block below. Resolved after `esac`.
 OUT_DIR="${OUT_DIR:-$OUT_DIR_DEFAULT}"
 VARIANCE_THRESHOLD="${VARIANCE_THRESHOLD:-$VARIANCE_THRESHOLD_DEFAULT}"
@@ -272,6 +286,32 @@ if [[ "$STATUS_BAR_PX" = "auto" ]]; then
   else
     STATUS_BAR_PX="$STATUS_BAR_PX_FALLBACK"
     echo "[capture] --status-bar-px auto: detection failed, using fallback $STATUS_BAR_PX" >&2
+  fi
+fi
+
+# ── 1b. Streamed-asset key guard (#2913) ─────────────────────────────────────
+# `multi-model` renders whatever the Sketchfab resolver hands back. WITH a key it
+# streams the `park` category — the photoreal oaks the slot exists for. WITHOUT
+# one the resolver falls back to per-slug BUNDLED models (a lantern, a lantern, a
+# shiba, a soldier), so the same demo id captures an entirely different scene and
+# nothing downstream can tell: the frame renders fully, the foreground guard
+# passes, and centre-variance is high either way. The "wooden support post" in
+# #2913's tablet frames is the bundled lantern's post, while the committed
+# phone-screenshot-3.png it was compared against is a streamed oak — two different
+# scenes, on top of the (real, separate) framing defect that issue fixed.
+#
+# Same sources gradle reads (samples/android-demo/build.gradle): the
+# SKETCHFAB_API_KEY env var, else `sketchfab.api.key` in local.properties. WARN
+# only — a keyless capture of the other slots is perfectly valid, and this script
+# must stay usable without secrets (#2343).
+if echo ",$DEMOS," | grep -q ",multi-model,"; then
+  if [[ -z "${SKETCHFAB_API_KEY:-}" ]] &&
+     ! grep -qE '^[[:space:]]*sketchfab\.api\.key[[:space:]]*=[[:space:]]*[^[:space:]]' \
+       local.properties 2>/dev/null; then
+    echo "[capture] WARNING: no Sketchfab API key (SKETCHFAB_API_KEY / local.properties)." >&2
+    echo "[capture] 'multi-model' will render its BUNDLED fallbacks, not the streamed park" >&2
+    echo "[capture] scene — a different picture that no guard here can detect. Do not ship" >&2
+    echo "[capture] the result as a store slot without judging the mosaic (#2913)." >&2
   fi
 fi
 
@@ -408,17 +448,25 @@ adb shell am force-stop "$PKG"
 camera_distance_for() {
   case "$1" in
     model-viewer)    echo "4.5" ;;
-    multi-model)     echo "6.0" ;;
     *)               echo "" ;;
   esac
 }
-# Framing notes (#2854) — the `camera_distance` extra is honored ONLY by demos
-# built on `rememberHeroOrbitCameraManipulator` (DemoHelpers.kt); it is a silent
-# no-op on any other demo, so never add one for a non-hero-orbit demo (e.g.
-# double-pendulum computes its own auto-fit and never reads the extra).
-#   model-viewer / multi-model  → framed above (both hero-orbit). multi-model read
-#     as one cropped tree at its default, so it is pulled BACK to 6.0 m for the
-#     fullest scene its fixed camera angle allows (distance cannot change angle).
+# Framing notes (#2854) — the `camera_distance` extra is honored only by demos
+# that actually read `DemoSettings.cameraDistance`: everything built on
+# `rememberHeroOrbitCameraManipulator` (DemoHelpers.kt), plus the Multi-Model
+# section since #2913. It is a silent no-op anywhere else, so never add one for a
+# demo that computes its own framing (e.g. double-pendulum has its own auto-fit
+# and never reads the extra).
+#   model-viewer → framed above (hero-orbit).
+#   multi-model  → deliberately UNFRAMED, and the 6.0 m that used to sit here is
+#     gone (#2913). That value was written when the section built a stock
+#     `rememberCameraManipulator`, which reads no DemoSettings at all — the extra
+#     never reached the scene, which is why probing 2.5 / 3.5 / 4.5 m produced
+#     three identical frames and looked like "distance cannot change the angle".
+#     The section now computes its distance from its own formation size and the
+#     LIVE viewport aspect, so it frames itself correctly on phone and tablet;
+#     passing a fixed metre value here would override that per-viewport framing
+#     with a single number tuned on one screen shape.
 #   dynamic-sky  → hero-orbit and honors the extra, but Fable's verdict was ACCEPT
 #     at its default noon framing, so it is left unframed (echo empty).
 
