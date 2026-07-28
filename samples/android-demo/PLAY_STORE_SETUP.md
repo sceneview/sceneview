@@ -53,8 +53,9 @@ note below. The script shoots all three on every class again, so the next
 tablet capture fills a third slot; until it runs, Play accepts 2–8 per type,
 so two is a valid set, not a gap.
 
-Several ids stay retired from every class: `materials` picks a different HDRI
-*and* model per launch, so the slot is not reproducible (#2874); `geometry` no
+Several ids stay out of every class: `materials` was not reproducible launch to
+launch, and its demo side is fixed as of #2874 — eligible again, but nobody has
+captured it and judged the frame yet; `geometry` no
 longer clips (fixed in #2873) but its 2 × 2 cluster leaves the frame centre
 empty, which the capture script's centre-patch variance guard reads as blank;
 `double-pendulum` renders as a tiny linkage in a mostly-black frame. The

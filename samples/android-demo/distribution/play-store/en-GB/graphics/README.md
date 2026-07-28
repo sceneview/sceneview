@@ -28,8 +28,9 @@ captured mosaic rather than picked a-priori (#2854):
 | 3 | `multi-model`  | The only non-helmet, non-sky frame — photoreal foliage    |
 
 **Retired, do not re-add by guesswork** (the same list sits in the capture
-script next to `DEMOS_DEFAULT`): `materials` picks a different HDRI *and* model
-each launch, so the frame is not reproducible (#2874); `geometry` no longer clips
+script next to `DEMOS_DEFAULT`): `materials` was not reproducible launch to
+launch, and its demo side is fixed as of #2874 — eligible again, but only after
+someone captures it and looks at the frame; `geometry` no longer clips
 (#2873) but its cluster leaves the frame centre empty, which the variance guard
 reads as blank; `double-pendulum` is a tiny linkage in a
 ~95%-black frame and ignores reframing; `fog` stayed a low-contrast grey helmet;
@@ -225,9 +226,12 @@ passes the variance check and is still unusable.
   than on `tablet10-screenshot-1`, while `dynamic-sky` matches across both
   classes. Two runs of the same demo should differ only by aspect, so this is a
   demo-side non-determinism worth pinning before the next re-capture.
-- **#2874** — `materials` picks a different HDRI *and* model each launch, so its
-  frame is not reproducible. Demo-side and still open; that is what keeps the id
-  out of set v2.
+- **#2874** — `materials` was not reproducible: a streamed subject and an
+  orbiting camera against the `studio_2k` skybox meant the frame depended on the
+  API key, the network and capture timing. The demo side is **fixed** (bundled
+  default subject, one fixed studio HDRI, subject-independent framing), so the id
+  is eligible for a slot again — it stays out of the committed set only because
+  nobody has captured it and judged the frame against the other slots yet.
 - **#2873 — `geometry`'s clipping is fixed; the id still stays out of set v2.**
   The demo laid its four primitives on a row ~1.45 m wide and viewed it from a
   camera that measured **1.22 m** away — not the 2.7 m its own comment claimed,
