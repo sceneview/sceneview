@@ -31,17 +31,32 @@ class** (identical 1320×2868 screenshot spec); likewise the iPad Pro 13-inch
 M4 and M5. Either generation produces an App Store Connect-compliant image
 for its class.
 
-## Demos captured — the common Android↔iOS showcase set (#2854)
+## Demos captured (#2854, #2896)
 
-The **same three demos, in the same order**, as Android's
-`capture-play-store-screenshots.sh`, so both stores show identical screens.
-Every id is a standalone (non-consolidated) demo on both platforms and renders
-rich 3D content — deliberately *not* empty or loading AR scenes:
+Android's set v2 order, minus `multi-model` (see below). Both ids are
+standalone demos that render rich 3D content with **no network** — deliberately
+not empty or loading AR scenes:
 
 1. `01-model-viewer` — bundled hero model (cyberpunk hovercar) on the `.warm`
    photo-studio backdrop, frozen on a three-quarter hero pose
 2. `02-dynamic-sky` — procedural time-of-day skyline under a live HDRI sky
-3. `03-multi-model` — several streamed/bundled models composed into one scene
+
+### Why `multi-model` is not here
+
+⛔ **Do not re-add it by symmetry with the Android phone set.** An App Store
+capture build has no Sketchfab key, so `SketchfabAssetResolver` substitutes the
+registered bundled stand-ins (`SampleAssets.swift` — bench → `retro_piano.usdz`,
+dog → `animated_butterfly.usdz`, bird → `phoenix_bird.usdz`). The captured frame
+is therefore *not* the park diorama the demo documents: it is a retro piano with
+a butterfly clipping through it and a phoenix beside it, with the tree slot not
+rendering at all.
+
+That frame passes every mechanical check — right dimensions, settled,
+byte-reproducible — so only looking at the mosaic catches it. It is the same
+defect class that took `multi-model` out of the Android **tablet** set
+(#2913/#2915: "do not re-add on the strength of a green capture"), and shipping
+it would advertise a scene no keyless user can ever see. Re-add once #2913 and
+the tree-render bug land, then re-judge the mosaic.
 
 Captured in **dark appearance** with a cleaned status bar (fixed 9:41, full
 signal/battery), mirroring the Android capture's dark-mode + status-bar crop
@@ -96,16 +111,23 @@ a minute into the session — i.e. *during* a capture, not before the first one 
 which is exactly how that card landed in an iPad frame.
 
 So the script detects it. Because `-qa_mode 1` freezes the scene, the top band
-of a frame is static; the script shoots each demo, waits
-`BANNER_RECHECK_SECONDS` (8 s), shoots again, and compares a hash of that band.
-Equal means nothing transient was drawn over it. Different means a banner was up
-in one of the two — the pair is discarded and retried, up to
-`BANNER_MAX_ATTEMPTS` (4), after which the run **fails** rather than committing
-a contaminated frame.
+of a frame is static; the script shoots each demo, then re-shoots every
+`BANNER_RECHECK_SECONDS` (8 s) until it has `BANNER_SAMPLES` (3) samples, and
+compares a hash of that band across all of them. All equal means nothing
+transient was drawn over it. Any difference means a banner was up in one of them
+— the set is discarded and retried, up to `BANNER_MAX_ATTEMPTS` (4), after which
+the frame is **deleted** and the run **fails** rather than leaving a
+contaminated PNG in the tree.
 
-It is a guard, not a substitute for looking. **Open all six PNGs before
+⚠️ What it proves is that the band did not *change* — not that it is clean. An
+overlay already up at the first shot that outlives the whole ~16 s sampling
+window hashes identically every time and is accepted. Sampling wider shrinks
+that blind spot; it never closes it.
+
+So it is a guard, not a substitute for looking. **Open all four PNGs before
 committing them.** #917 shipped a set that passed every mechanical check and was
-still wrong (Android captures letterboxed onto an iPad canvas, blank AR scenes).
+still wrong (Android captures letterboxed onto an iPad canvas, blank AR scenes),
+and #2896 nearly shipped a "park diorama" that was actually a piano.
 
 ## Publishing these to the App Store
 

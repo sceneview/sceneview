@@ -225,6 +225,11 @@ public struct SceneView: View {
 
     /// Enables automatic camera rotation around the scene.
     ///
+    /// Passing `0` leaves the camera on its authored pose and starts no
+    /// rotation loop at all — the idiom for freezing a scene on a
+    /// deterministic frame (screenshot capture, UI tests). Negative values
+    /// rotate the other way.
+    ///
     /// - Parameter speed: Rotation speed in radians per second. Default 0.3.
     public func autoRotate(speed: Float = 0.3) -> SceneView {
         var copy = self
@@ -745,7 +750,12 @@ private struct SceneViewRepresentation: View {
                 // Auto-rotation loop — custom modes only (#1049).
                 // For native-mode cameras (none/tilt/dolly/gimbal) Apple owns
                 // the camera transform, so our azimuth mutation would fight it.
-                guard enableAutoRotate, cameraControlMode.isCustom else { return }
+                //
+                // A zero speed exits here rather than spinning a 60 Hz timer
+                // that advances the azimuth by 0 rad every frame: callers freeze
+                // a scene by passing `autoRotate(speed: 0)` (the QA-capture
+                // path does exactly that), and that read as "enabled" (#2896).
+                guard enableAutoRotate, autoRotateSpeed != 0, cameraControlMode.isCustom else { return }
                 camera.isAutoRotating = true
                 camera.autoRotateSpeed = autoRotateSpeed
                 var lastTime = CFAbsoluteTimeGetCurrent()

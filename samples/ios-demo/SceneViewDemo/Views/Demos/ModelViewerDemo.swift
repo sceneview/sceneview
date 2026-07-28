@@ -42,6 +42,12 @@ struct ModelViewerDemo: View {
     /// silhouette separating from the background at every orbit angle.
     private static let heroEnvironment: SceneEnvironment = .warm
 
+    /// Framing margin used only under `qa_mode`, where the orbit is frozen on
+    /// the authored three-quarter pose. Measured on both store device classes
+    /// — see the `.framingMargin` call site for why it differs from the
+    /// interactive value.
+    private static let captureFramingMargin: Float = 0.62
+
     @State private var loadedNode: ModelNode?
     @State private var loadError: String?
     @State private var surpriseInFlight: Bool = false
@@ -102,10 +108,17 @@ struct ModelViewerDemo: View {
             .cameraOrbit(azimuth: .pi / 5)
             .environment(Self.heroEnvironment)
             // Fit the hero to the frame instead of leaving 15 % of air around
-            // its bounding sphere. Kept at 0.95 rather than lower because the
-            // scene auto-rotates: the capture lands on an arbitrary azimuth,
-            // and below ~0.95 the model clips at its broadside angle (#2896).
-            .framingMargin(0.95)
+            // its bounding sphere.
+            //
+            // Two values, because the two situations have different risks. For
+            // a normal user the scene auto-rotates through every azimuth, so
+            // the margin has to clear the model's BROADSIDE silhouette — below
+            // ~0.95 it clips there. Under `qa_mode` the pose is frozen at the
+            // three-quarter angle above, that risk is gone, and the looser
+            // value was the reason the store frame read as a small subject
+            // adrift in empty backdrop: the hero's bounding sphere is set by
+            // its display plinth, not by the car (#2896).
+            .framingMargin(qaMode ? Self.captureFramingMargin : 0.95)
             .ignoresSafeArea()
             .id("model-viewer-\(streamedDisplayName ?? "bundled")")
         } else {
