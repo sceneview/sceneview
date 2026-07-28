@@ -314,15 +314,33 @@ private fun PbrSection(
                 environment = activeEnvironment,
                 cameraManipulator = cameraManipulator,
             ) {
-                val instance = modelInstance
-                if (instance != null) {
-                    // Every subject is normalised to the SAME size rather than to
-                    // its own `scaleToUnits` (#2874) — the camera is fixed, so a
-                    // per-model scale is what made one chip fill the viewport and
-                    // the next one read as a speck.
+                // Both subjects stay MOUNTED; the inactive one is hidden. Feeding
+                // one call site an instance that swaps on every chip re-keys
+                // `remember(engine, modelInstance)` in SceneScope.ModelNode, and the
+                // outgoing node's DisposableEffect runs `node.destroy()` — which
+                // walks `childNodes` and calls `engine.safeDestroyEntity` on the
+                // entities the ModelInstance only BORROWS (`ownsEntity` is false, so
+                // the id survives but the renderable component does not, Node.kt:1284).
+                // `bundledInstance` is retained for the whole session and never
+                // reloaded, so one chip round-trip left it with zero renderables:
+                // Toy Car → any streamed chip → Toy Car rendered a silent black
+                // viewport, with no scrim because the instance is still non-null.
+                //
+                // Every subject is normalised to the SAME size rather than to its own
+                // `scaleToUnits` (#2874) — the camera is fixed, so a per-model scale
+                // is what made one chip fill the viewport and the next read as a speck.
+                bundledInstance?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = MaterialsSubjects.FRAMING_UNITS,
+                        isVisible = selectedSlug == null,
+                    )
+                }
+                streamedInstance?.let { instance ->
+                    ModelNode(
+                        modelInstance = instance,
+                        scaleToUnits = MaterialsSubjects.FRAMING_UNITS,
+                        isVisible = selectedSlug != null,
                     )
                 }
             }
