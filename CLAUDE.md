@@ -410,6 +410,25 @@ has RAM to spare. `setup-ar-emulator.sh` (via `lib/emulator-select.sh`):
   clamped to `[EMU_MEMORY_FLOOR_MB, EMU_MEMORY_CEILING_MB]` (2048–4096 MB);
 - **reclaims stale leases** — a lease whose owner pid is dead AND whose serial is
   gone from `adb devices` is reclaimed automatically.
+⚠️ **The lease governs allocation; exclusion is enforced separately.** The lease
+file itself is advisory — the `adb install` / `adb shell input tap` commands this
+very file tells you to use read no lease file. That is not theoretical: on
+2026-07-27 a sibling session's direct `adb install` killed a leased sweep's app
+mid-run, and the discriminating evidence was one logcat line — `Killing
+<pid>:<pkg> (adj 0): stop <pkg> due to installPackageLI` — without which the
+symptom (`app died, no saved state`) reads as a native crash in the demo.
+
+Since #2924 a **blocking `PreToolUse` hook** (`hook-dispatch.sh`, guard 2) closes
+that path for mutating `adb`/`android` commands a session issues: it reads the
+lease and exits 2 when the target carries a live one owned by someone else,
+telling you how to inherit (`EMU_LEASE_SESSION=…`) or take over
+(`EMU_LEASE_TAKEOVER=1`). Two limits are structural, so keep them in mind rather
+than assuming full protection: the hook only sees commands that go through a
+Claude Code session (a plain terminal, a wrapper script, or a shell alias is
+invisible to it), and it matches a fixed list of mutating verbs. Before driving
+an emulator by any other route, check `setup-ar-emulator.sh --check` for an
+active lease that is not yours.
+
 Every threshold is env-overridable. `setup-ar-emulator.sh --check` reports pool
 state (running count, computed cap, free RAM, active leases). The QA scripts
 (`device-qa.sh`, `qa-android-demos.sh`, `ar-replay-qa.sh`) pin `ANDROID_SERIAL`
@@ -556,12 +575,25 @@ stale docs make an AI emit stale code. Keeping them in sync is enforced at
    safe). Draft + human review means a wrong prose patch can never land
    silently — this is where the "auto-fix" power lives, not on every PR.
 
-Alongside the two heuristic tiers, one surface gets a **deterministic,
-blocking gate**: `gpt/knowledge-*.md` is GENERATED from `llms.txt` by
-`tools/generate-gpt-knowledge.js`, and `ci.yml` → `repo-hygiene` fails when
-the committed files drift (`--check`). Generated files can be gated hard
-because there is no false-positive risk — never hand-edit them;
-`sync-versions.sh --fix` regenerates them on every version bump (#2724).
+Alongside the two heuristic tiers, two surfaces get a **deterministic,
+blocking gate**, both in `ci.yml` → `repo-hygiene`. Generated files can be
+gated hard because there is no false-positive risk — never hand-edit them:
+
+- `gpt/knowledge-*.md` is GENERATED from `llms.txt` by
+  `tools/generate-gpt-knowledge.js`; CI fails when the committed files drift
+  (`--check`). `sync-versions.sh --fix` regenerates them on every version
+  bump (#2724).
+- `assets/CREDITS.md` is GENERATED from `assets/catalog.json` by
+  `.claude/scripts/generate-credits.py`; CI fails when it drifts (`--check`).
+  This one is a **licence-compliance** gate, not a docs gate: CREDITS.md is
+  what discharges the attribution clause (CC-BY 4.0 §3a) of every model that
+  ships in the sample apps, so a catalog entry that never reaches CREDITS.md
+  is an uncredited model in a published release. It went stale undetected
+  once — five catalog records (three distinct Khronos works: Toy Car, Sheen
+  Chair, Iridescence Dish With Olives) shipped uncredited before a manual
+  re-run caught it. Scope: the gate covers `assets/CREDITS.md` only.
+  `samples/android-demo/src/main/assets/CREDITS.md` is a separate,
+  hand-maintained file bundled into that APK — not generated, not gated.
 
 Why not block per-PR or auto-fix per-PR? Blocking frustrates internal-only
 refactors that get mis-classified; per-PR auto-fix is costly on every PR and a
@@ -813,7 +845,7 @@ Hooks trigger automatically on specific Claude Code actions:
 | `lib/android-cli.sh` | Shared helpers for Google's `android` CLI (screenshot, layout, install+launch) with `adb` fallback |
 | `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool + snapshot state + camera-id topology, #2754), `--clean` (wipe+recreate), `--seed-snapshot` (seed the golden `qa-clean` boot snapshot), `--no-snapshot` (force cold boot), `--release` (hand this session's pool reservation back, emulator keeps running, #2862), `--rosetta` (provision/boot the separate x86_64-under-Rosetta AR rig on reserved port 5584 — ⛔ **measured NOT to deliver live-camera AR**: no camera HAL id `0`, ARCore install kills `system_server`, nothing renders; kept as a reproducible probe, #2758). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. Boot snapshots (#1672): once seeded, the base-port emulator cold-boots from the immutable `qa-clean` snapshot — faster and deterministic, and fixes the userdata storage-degradation bug. **Use this for routine QA — never QA on a personal device.** |
 | `lib/emulator-select.sh` | Sourced helper for `setup-ar-emulator.sh` / `device-qa.sh` / `qa-android-demos.sh` — RAM monitoring (`vm_stat`/`/proc/meminfo`), RAM-budgeted pool-cap computation, a per-emulator lease registry, RAM-scaled `-memory`, multi-port boot, and stale-lease reclaim. The adaptive pool runs as many emulators as live host RAM safely allows (floor 1, `EMU_POOL_MAX` ceiling), superseding #1647's strict-single design (#1654). Leases are reserved per **session** and survive the provisioning script, and no emulator is leased unless its AVD matches `EMU_REQUIRE_AVD` (#2862) |
-| `test-emulator-lease.sh` | Hermetic self-test for the pool lease contract (#2862) — sticky lease survives its taker, a peer session is refused, an expired reservation is reclaimed, a non-pool AVD is never leased, the handoff token is inherited at most once. Stub `adb` + scratch lease dir, no emulator needed. Runs in `ci.yml` → `repo-hygiene` |
+| `test-emulator-lease.sh` | Hermetic self-test for the pool lease contract (#2862, #2921) — sticky lease survives its taker, a peer session is refused, an expired reservation is reclaimed, a non-pool AVD is never leased, the handoff token is inherited at most once, and `emu_lease_ensure` verifies a pre-set `ANDROID_SERIAL` **without** stealing ownership (a plain `emu_lease_acquire` there makes the child release its parent's lease mid-run — mutation-tested). Stub `adb` + scratch lease dir, no emulator needed. Runs in `ci.yml` → `repo-hygiene` |
 | `qa-android-demos.sh` | QA loop over every demo — uses `android layout`/`screen capture` for the UI dump and screenshots |
 | `capture-play-store-screenshots.sh` | Play Store screenshot capture — `android screen capture` (no LF/CRLF corruption) |
 | `visual-check.sh` | Before/after baseline capture — Android via `android` CLI, iOS via `xcrun simctl` |
@@ -823,6 +855,7 @@ Hooks trigger automatically on specific Claude Code actions:
 | `install-sceneview-web-skill.sh` | Copies `agents/sceneview-web/` (Web skill) to `~/.android/cli/skills/xr/sceneview-web/` |
 | `check-sceneview-skill.sh` | Verifies all three `agents/sceneview*/` skills (API identifiers, demo refs, frontmatter) are in sync with the library source. Runs in `quality-gate.sh`, `pr-check.yml`, and daily via `maintenance.yml` |
 | `check-doc-drift.sh` | Flags when a public-API change is not mirrored in the docs (llms.txt / KDoc / `docs/docs/*` / recipes). **Diff mode** (default) = per-PR ADVISORY WARN, runs in `ci.yml` → `repo-hygiene`; never blocks (heuristic → would false-positive). **`--audit` mode** = repo-wide candidate-drift worklist consumed by the weekly `doc-audit.yml` agent. `--fail` opts into a non-zero exit. Self-tested by `test-check-doc-drift.sh` (also in `repo-hygiene`). |
+| `generate-credits.py` | Regenerates `assets/CREDITS.md` from `assets/catalog.json` — the attribution surface every model's licence requires (CC-BY 4.0 §3a). Re-run after ANY catalog edit. `--check` is the deterministic BLOCKING drift gate in `ci.yml` → `repo-hygiene` (regenerate-and-compare, no write) |
 | `worktree-auto-prune.sh` | Safe GC for `.claude/worktrees/*` — removes worktrees whose branch is merged (`--dry-run`, `--yes`, `--keep <path>`). Never touches dirty or unmerged trees |
 | `cleanup-branches-worktrees.sh` | One-shot GC for stale `claude/*` branches **and** worktrees: deletes merged local + remote branches (single `git push --delete`, no bot-burst) and delegates worktree pruning to `worktree-auto-prune.sh`. Defaults to dry-run; `--yes` to act, `--keep <branch\|path>`, `--no-worktrees`. Current-branch / unmerged / open-PR guarded. Runs daily in `maintenance.yml` |
 

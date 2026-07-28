@@ -800,6 +800,17 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-emulator-lease.sh
 
+      # Sibling of the check above, one layer out: the pool honours leases, but
+      # raw `adb` typed by a session bypassed the pool entirely and wiped another
+      # session's QA run (2026-07-27). hook-dispatch.sh now refuses that command;
+      # this pins the refusal, including the escape hatches and the cases that
+      # must stay frictionless (read-only adb, another serial, expired lease).
+      # A guard that silently stops firing is worse than no guard at all.
+      - name: Self-test hook emulator-lease guard
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-hook-lease-guard.sh
+
       # Doc↔API drift (ADVISORY, #docs). Warns when this PR changed a public
       # API surface without updating llms.txt / KDoc / docs/docs / recipes.
       # AI-first SDK: stale prose makes AI emit stale user code. Non-blocking
@@ -822,6 +833,21 @@ jobs:
         if: always()
         shell: bash
         run: node tools/generate-gpt-knowledge.js --check
+
+      # Asset-credits drift (BLOCKING). `assets/CREDITS.md` is GENERATED from
+      # `assets/catalog.json` by `.claude/scripts/generate-credits.py`, and it
+      # is what discharges the attribution clause of every model's license
+      # (CC-BY 4.0 §3a). A model added to the catalog and shipped in the sample
+      # apps without regenerating CREDITS.md is an uncredited model in a
+      # published release — a licence-compliance gap, not a cosmetic one. Same
+      # deterministic regenerate-and-compare as the GPT gate above (no
+      # false-positive risk), so it blocks. This drift went unnoticed once: five
+      # Khronos models shipped uncredited until a manual re-run caught it.
+      # Fix locally with `python3 .claude/scripts/generate-credits.py`.
+      - name: Asset credits in sync with catalog.json
+        if: always()
+        shell: bash
+        run: python3 .claude/scripts/generate-credits.py --check
 
       # Stale demo-class / demo-id reference guard self-test — pin the guard's
       # contract (catches deletions, ignores live iOS .swift refs + plain-prose

@@ -65,7 +65,8 @@
         },
         "usdz": {
           "file": "models/usdz/tree_scene.usdz",
-          "size": "14MB"
+          "size": "14MB",
+          "note": "Modified from the original (CC-BY-4.0 permits this; change noted here per the licence's indicate-changes clause): the 2665 individual grass-tuft prims were removed, leaving 47 mesh prims. RealityKit's USD import cost scales with prim count, so the original took 91.71 s to parse on an iOS Simulator and the model rendered as absent inside any settle window. Trees, terrain and materials are untouched, and the bounding box is bit-identical; at the demos' scaleToUnits the removed tufts were sub-pixel."
         }
       },
       "tags": [

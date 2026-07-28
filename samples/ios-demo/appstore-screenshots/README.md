@@ -58,6 +58,13 @@ defect class that took `multi-model` out of the Android **tablet** set
 it would advertise a scene no keyless user can ever see. Re-add once #2913 and
 the tree-render bug land, then re-judge the mosaic.
 
+Three further ids that used to be in this set were retired from Android's for
+defects that are platform-independent, so do not reach for them here either:
+`materials` picks a different HDRI *and* model per launch, so the frame is not
+reproducible (#2874); `geometry` clips its primitives in a portrait frame
+(#2873); and `double-pendulum` renders as a tiny linkage in a mostly-black
+frame.
+
 Captured in **dark appearance** with a cleaned status bar (fixed 9:41, full
 signal/battery), mirroring the Android capture's dark-mode + status-bar crop
 so the two stores match visually.
@@ -79,8 +86,12 @@ behind it changed every run.
 >   ImageIO. A `[SceneViewSwift] Failed to load environment '…'` line in the
 >   console means this regressed.
 > - iOS has no `camera_distance` launch argument (Android's framing lever,
->   tracked for iOS in #2785). The three scenes instead carry their own framing
->   via `.framingMargin(_:)` / `.cameraOrbit(azimuth:elevation:)`.
+>   tracked for iOS in #2785). The scenes instead carry their own framing via
+>   `.framingMargin(_:)` / `.cameraOrbit(azimuth:elevation:)`. `model-viewer`
+>   frames tighter under `qa_mode` than it does interactively: its bounding
+>   sphere is set by the hero's display plinth rather than by the car, and the
+>   looser interactive value — needed so an auto-rotating model does not clip at
+>   its broadside — left the subject small in a mostly-empty frame.
 
 ## How to regenerate
 

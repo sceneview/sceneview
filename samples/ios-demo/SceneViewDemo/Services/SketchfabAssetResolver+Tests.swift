@@ -133,6 +133,42 @@ final class SketchfabAssetResolverTests: XCTestCase {
         }
     }
 
+    // ─── Staged fallback freshness (#2928) ─────────────────────────────────
+
+    /// The staged fallback copy is keyed on `uid`, so before #2928 an app
+    /// update that shipped a corrected asset was ignored forever by every
+    /// existing install: the target path already existed and was returned
+    /// as-is. `stagedCopy(at:matches:)` is what makes a changed bundled asset
+    /// re-stage.
+    func testStagedCopyDetectsAChangedBundledAsset() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("staged-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let staged = dir.appendingPathComponent("staged.usdz")
+        let sameSize = dir.appendingPathComponent("same.usdz")
+        let shrunk = dir.appendingPathComponent("shrunk.usdz")
+        let absent = dir.appendingPathComponent("absent.usdz")
+        try Data(repeating: 0xAB, count: 4096).write(to: staged)
+        try Data(repeating: 0xCD, count: 4096).write(to: sameSize)
+        try Data(repeating: 0xEF, count: 2048).write(to: shrunk)
+
+        let resolver = SketchfabAssetResolver()
+
+        // The real #2928 shape: the bundle's asset got smaller -> re-stage.
+        let matchesShrunk = await resolver.stagedCopy(at: staged, matches: shrunk)
+        XCTAssertFalse(matchesShrunk, "a changed bundled asset must re-stage")
+
+        // Unchanged asset -> keep the staged copy (no needless 14 MB re-copy).
+        let matchesSame = await resolver.stagedCopy(at: staged, matches: sameSize)
+        XCTAssertTrue(matchesSame, "an unchanged asset must not re-stage")
+
+        // Unstattable file -> treat as stale so the re-staging path runs.
+        let matchesAbsent = await resolver.stagedCopy(at: absent, matches: sameSize)
+        XCTAssertFalse(matchesAbsent, "a missing staged copy must not count as a match")
+    }
+
     // ─── boundsAreSane heuristic ───────────────────────────────────────────
 
     func testBoundsAreSaneRejectsEmptyFile() async throws {
