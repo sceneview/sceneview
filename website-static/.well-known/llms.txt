@@ -1020,7 +1020,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberEnvironment(environmentLoader) { ... }` | `Environment` | Custom environment from lambda |
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light with apply block |
-| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller |
+| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera" |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberView(engine)` | `View` | Filament view (one per viewport) |
@@ -1052,6 +1052,9 @@ val mat = remember(materialLoader) {
 
 ```kotlin
 // Orbit / pan / zoom (default)
+// `orbitHomePosition` is the camera's ABSOLUTE eye position, not an offset from
+// `targetPosition`. This example targets the origin, where the two readings coincide —
+// which is exactly why the trap below goes unnoticed. Framed from |(0,2,4)| ≈ 4.47 m.
 SceneView(cameraManipulator = rememberCameraManipulator(
     orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
     targetPosition = Position(x = 0f, y = 0f, z = 0f)
@@ -1065,6 +1068,34 @@ SceneView(cameraNode = rememberCameraNode(engine) {
 
 // Main light shortcut (apply block is LightNode.() -> Unit)
 SceneView(mainLightNode = rememberMainLightNode(engine) { intensity = 100_000f })
+```
+
+### How far `orbitHomePosition` actually puts the camera
+
+- `orbitHomePosition` is the eye's **absolute world position**. Filament's `OrbitManipulator`
+  assigns it verbatim (`mEye = mProps.orbitHomePosition`) — it is never re-based on
+  `targetPosition`.
+- `targetPosition` is the orbit pivot and the initial look-at point (default: the origin). It
+  does **not** set the distance.
+- **Omitting `orbitHomePosition` does not give you Filament's `(0, 0, 1)` default.** `SceneView`'s
+  own default manipulator is `rememberCameraManipulator(cameraNode.worldPosition)`, so the
+  effective default is the camera node's position — `(0, 0.4, 2.75)`, i.e. ≈ 2.78 m, for the
+  default `CameraNode`.
+- Under `SceneView`'s default `autoCenterContent = true`, the DSL content is translated so its
+  bounding-box centre lands on the **world origin**, so the subject is framed from
+  **`|orbitHomePosition|`** — the coordinates you gave your nodes do not survive, and
+  `targetPosition` does not enter into it.
+
+```kotlin
+// WRONG reading: "the camera sits 2.7 m from the row at z = -1.5". The nodes are
+// auto-centred onto the origin first, so this frames from |(0, 0.2, 1.2)| ≈ 1.22 m (#2873).
+rememberCameraManipulator(
+    orbitHomePosition = Position(0f, 0.2f, 1.2f),
+    targetPosition = Position(0f, 0f, -1.5f)
+)
+
+// RIGHT: pick the distance you want and give a vector of that LENGTH.
+rememberCameraManipulator(orbitHomePosition = Position(0f, 0.2f, 2.7f))  // ≈ 2.71 m
 ```
 
 ---

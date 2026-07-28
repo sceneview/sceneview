@@ -47,9 +47,11 @@ distribution/play-store/
 **All three classes are on set v2, but not with the same number of slots.**
 Phone ships three (`model-viewer · dynamic-sky · multi-model`, judged on the
 captured mosaic, #2854/#2855); both tablet classes were re-shot onto v2 in
-#2907 and ship two (`model-viewer · dynamic-sky`), because `multi-model`'s
-fixed camera angle does not survive a tablet aspect — see #2913 and the note
-below. Play accepts 2–8 per type, so two is a valid set, not a gap.
+#2907 and ship two (`model-viewer · dynamic-sky`), because `multi-model` was
+dropped from tablet runs at the time — a framing defect since fixed, see the
+note below. The script shoots all three on every class again, so the next
+tablet capture fills a third slot; until it runs, Play accepts 2–8 per type,
+so two is a valid set, not a gap.
 
 Several ids stay retired from every class: `materials` picks a different HDRI
 *and* model per launch, so the slot is not reproducible (#2874); `geometry` no
@@ -60,12 +62,13 @@ canonical list — and the reason behind each id — lives next to `DEMOS_DEFAUL
 in `.claude/scripts/capture-play-store-screenshots.sh` and is mirrored in
 [`distribution/play-store/en-GB/graphics/README.md`](distribution/play-store/en-GB/graphics/README.md).
 
-Note that a tablet re-capture cannot simply mirror phone: `multi-model`'s fixed
-camera angle lands on a support post at a tablet's wider aspect (~0.64 w/h vs
-the phone's ~0.47), and the framing lever cannot correct it — measured at
-2.5/3.5/4.5 m, the frame is unchanged (#2913). The capture script therefore
-drops it from tablet runs automatically. Tablets keep their native post-crop
-height rather than being padded to the phone ratio.
+A tablet re-capture now mirrors phone again: `multi-model` had been dropped from
+tablet runs because at a tablet's wider aspect (~0.64 w/h vs the phone's ~0.47)
+the capture landed on a support post rather than foliage. That was a framing
+defect at every aspect — the tablet frame merely exposed it — and it is fixed:
+the scene derives its camera distance from the live viewport aspect (#2913), so
+the script shoots all three slots on every class. Tablets keep their native
+post-crop height rather than being padded to the phone ratio.
 
 On every `vX.Y.0` tag release, the `sync-listing` job in
 `.github/workflows/play-store.yml` PATCHes the listing text and uploads the
@@ -79,6 +82,15 @@ Tablet screenshots (`tablet7-screenshot-*.png` / `tablet10-screenshot-*.png`)
 **are** in the repo and the listing-sync job uploads them automatically —
 `play_listing.py` maps them onto Play's `sevenInchScreenshots` /
 `tenInchScreenshots` image types.
+
+⚠️ Export a **Sketchfab API key** before capturing a set that contains
+`multi-model` (`SKETCHFAB_API_KEY`, or `sketchfab.api.key` in `local.properties`).
+Without one that demo silently renders bundled fallback models instead of the
+streamed `park` scene — a different picture that every automated guard in the
+capture path accepts. The script warns; it cannot detect the swap in the frame.
+That demo also frames itself from the live viewport aspect, so it needs no
+per-class `camera_distance` value (#2913). See the
+[graphics README](distribution/play-store/en-GB/graphics/README.md) for both.
 
 Optional extras still not in the repo:
 - **Promo video:** YouTube link — set manually in the Play Console.

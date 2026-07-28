@@ -13,8 +13,8 @@ they are **not in sync today**. Read the next section before assuming parity.
 | Class | Files | Set |
 |---|---|---|
 | `phone-screenshot-*` | 3 | **v2** — `model-viewer · dynamic-sky · multi-model` (#2854/#2855) |
-| `tablet7-screenshot-*` | 2 | **v2** — `model-viewer · dynamic-sky` (#2907; `multi-model` deferred on #2913) |
-| `tablet10-screenshot-*` | 2 | **v2** — `model-viewer · dynamic-sky` (#2907; `multi-model` deferred on #2913) |
+| `tablet7-screenshot-*` | 2 | **v2** — `model-viewer · dynamic-sky` (#2907; `multi-model` is back in the script since #2913 but these files predate it) |
+| `tablet10-screenshot-*` | 2 | **v2** — `model-viewer · dynamic-sky` (#2907; `multi-model` is back in the script since #2913 but these files predate it) |
 | iOS (`appstore-screenshots/`) | 5 + 5 | pre-v2 five — refresh deferred on #2896 |
 
 **Set v2** is what the capture script produces today. It is three frames
@@ -36,15 +36,25 @@ reads as blank; `double-pendulum` is a tiny linkage in a
 `animation` duplicates slot 1. The pre-v2 tablet sets above still contain three
 of these — that is the gap #2907 tracks, not an endorsement.
 
-**`multi-model` is phone-only.** At a tablet's wider aspect (~0.64 w/h vs the
-phone's ~0.47) its FIXED camera angle lands on a wooden support post against the
-backdrop wall — no foliage. Not a load/settle defect (the frame renders fully),
-and the framing lever cannot fix it: probed at 2.5 / 3.5 / 4.5 m on both tablet
-AVDs the frame is essentially identical, because `camera_distance` moves the
-camera *along* an angle it cannot change. The variance guard **passes** it (2227
-on 10", 2827 on 7"), so only the mosaic eyeball catches it — the script drops it
-from tablet runs so a green capture cannot silently ship it. Fix is demo-side,
-tracked in #2913.
+**`multi-model` was phone-only for one release, and is back on tablets (#2913).**
+What had been measured was real: at a tablet's wider aspect (~0.64 w/h vs the
+phone's ~0.47) the capture landed on a wooden post against the backdrop wall, no
+foliage, and the variance guard **passed** it (2227 on 10", 2827 on 7"). Both
+stated causes turned out to be wrong, which is worth keeping on the record:
+
+- The framing was broken at **every** aspect, not just on tablets. The section
+  aimed a fixed camera at the formation centre it authored while the library's
+  `autoCenterContent` pass had already translated that formation onto the world
+  origin — the lens sat ~0.6 m from the centroid, *inside* the subject. A narrow
+  phone frame cropped that into something that reads as texture; a wider tablet
+  frame exposed it. The scene now derives its camera distance from the live
+  viewport aspect and frames itself on both classes.
+- `camera_distance` was inert here because the section read no `DemoSettings` at
+  all, not because "distance moves the camera along an angle it cannot change".
+  The 2.5 / 3.5 / 4.5 m probe compared three frames that each discarded the extra.
+
+The guard lesson stands unchanged, and is the reason this paragraph exists: a
+green capture of this demo is never evidence. Judge the mosaic by eye.
 
 On Android the v2 ids resolve through `ALIAS_INITIAL_TAB` to distinct umbrella
 tabs (`dynamic-sky` → Lighting Lab, `multi-model` → the Multi-Model tab), so no
@@ -67,8 +77,9 @@ guessable — an invalid one 400s and, because a Play edit is atomic, voids the
 **whole** listing sync including the text and the icon (#2794).
 
 All three classes are script-reproducible and all three are now on set v2 — phone
-with three slots, the tablets with two (`multi-model` is deferred on #2913; Play
-accepts 2–8 per type). The set is what a run *writes*, and a run also **prunes**
+with three slots, the committed tablet files with two, because they were captured
+while `multi-model` was dropped from tablet runs; a fresh tablet run now writes
+three (Play accepts 2–8 per type). The set is what a run *writes*, and a run also **prunes**
 any higher-numbered slot left over from a larger set, because `play_listing.py`
 selects by glob rather than by count — an unpruned leftover would still be
 uploaded at the next tag, and the mosaic (which iterates 1..N) cannot show it.
@@ -102,6 +113,33 @@ bash .claude/scripts/capture-play-store-screenshots.sh \
   --demos model-viewer,dynamic-sky \
   --status-bar-px auto
 ```
+
+### `multi-model` shoots a different scene without a Sketchfab key (#2913)
+
+That demo renders whatever the Sketchfab resolver hands back. **With** a key
+(`SKETCHFAB_API_KEY`, or `sketchfab.api.key` in `local.properties`) it streams the
+`park` category — the photoreal scanned oaks the slot exists for. **Without** one it
+substitutes each slug's bundled fallback: a lantern, a lantern, a shiba, a soldier.
+Same demo id, same layout, an entirely different picture — and nothing in the
+capture path can tell the two apart, because the frame renders fully, the foreground
+guard passes, and centre-variance is high either way. The script now WARNs when the
+key is missing and `multi-model` is in the set; it does not fail, because a keyless
+capture of the other slots is perfectly valid.
+
+This is worth knowing before reading a capture of that demo as evidence. The
+"wooden support post" in #2913's tablet frames is the bundled lantern's post —
+identical to what a keyless capture produces here — while the committed
+`phone-screenshot-3.png` it was compared against is a streamed oak. Two different
+scenes, on top of the (real, separate) framing defect that fix addresses.
+
+### Per-viewport framing (#2913)
+
+`multi-model` computes its camera distance from its own formation size and the
+**live viewport aspect**, so it frames itself on a phone and on a tablet without a
+per-class value here — the `camera_distance` extra is deliberately not set for it in
+`camera_distance_for()`. Passing one would override the per-viewport framing with a
+single number tuned on one screen shape. Other demos still take the extra; see the
+framing notes next to `camera_distance_for()` for which ones actually read it.
 
 ### Tablet AVDs
 
@@ -177,10 +215,11 @@ passes the variance check and is still unusable.
 
 ## Known follow-ups
 
-- **#2913** — `multi-model` cannot ship on tablets until its scene takes the
-  viewport aspect into account (demo-side). Until then a tablet run yields two
-  slots; Play accepts 2–8 per type. Promoting the tablets back to three is the
-  only thing this blocks — both classes are otherwise on set v2 (#2907).
+- **#2913 (fixed, awaiting a re-capture)** — the scene now takes the viewport
+  aspect into account, and `multi-model` is back in the tablet set. The committed
+  tablet PNGs still hold two slots because they predate the fix; a tablet run
+  writes three. Re-capturing them is the remaining step (Play accepts 2–8 per
+  type, so the two-slot listing is valid meanwhile).
 - **Tablet `model-viewer` framing is not deterministic.** In the committed set
   the helmet sits at a visibly different orientation on `tablet7-screenshot-1`
   than on `tablet10-screenshot-1`, while `dynamic-sky` matches across both

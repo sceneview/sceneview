@@ -4,7 +4,9 @@ import io.github.sceneview.math.Rotation
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.tan
 
 /**
  * Pure-Kotlin math helpers extracted from the Compose demos so they can be exercised
@@ -111,6 +113,92 @@ internal object DemoMath {
         val rz = -dx * sinY + dz * cosY
         return rx to rz
     }
+
+    /**
+     * Camera distance at which a content box of [contentWidth] × [contentHeight] **covers** a
+     * viewport of the given [aspect] — it fills the frame on both axes and the excess is cropped,
+     * as opposed to `fitDistanceForBounds`'s *fit*, which shrinks the content until it sits
+     * entirely inside the frame with empty margins on the wider axis.
+     *
+     * Used by [io.github.sceneview.demo.demos.ModelViewerDemo]'s Multi-Model section, whose
+     * subject is a grove — a display that is much wider than it is tall. *Fitting* a 2.2 m-wide
+     * grove into a portrait phone frame parks the camera ~5.5 m back and reduces the trees to a
+     * strip across the middle; *covering* keeps them full-height and lets the frame crop through
+     * the neighbouring trees, which is what a park scene should look like.
+     *
+     * Filament derives the camera's **vertical** FOV from the focal length against a 24 mm sensor
+     * height, so the vertical framing is aspect-invariant and only the horizontal extent grows
+     * with [aspect] (`io.github.sceneview.verticalFovDegreesForFocalLength`). That is why cover
+     * framing is what makes the shot survive a wider viewport: at a fixed distance, a wider frame
+     * shows *more world* to the left and right, and the fix is to be far enough back that the
+     * extra width lands on more content instead of the backdrop (#2913).
+     *
+     * `d = min(dVertical, dHorizontal)` where
+     * - `dVertical   = (contentHeight / 2) / tan(vfov / 2)`
+     * - `dHorizontal = (contentWidth  / 2) / (tan(vfov / 2) · aspect)`
+     *
+     * Taking the **min** is what makes it *cover* rather than *fit* (which takes the max). On a
+     * portrait viewport the vertical term wins and the distance is the same on a phone (~0.47 w/h)
+     * and a tablet (~0.64) — both frame the grove full-height. On a landscape / foldable viewport
+     * the horizontal term takes over and pulls the camera in so the grove still spans the width.
+     *
+     * @param contentWidth   Width of the content box, in metres. A non-finite / non-positive
+     *                       value means "this axis does not constrain the framing" and lets
+     *                       [contentHeight] decide alone.
+     * @param contentHeight  Height of the content box, in metres. Same degenerate-axis rule as
+     *                       [contentWidth].
+     * @param verticalFovDegrees Camera vertical field-of-view, `(0, 180)`. For SceneView's default
+     *                       28 mm lens this is ≈46.4° — pass
+     *                       `io.github.sceneview.verticalFovDegreesForFocalLength(focalLength)`.
+     *                       Values outside the range clamp into it; a non-finite value falls back
+     *                       to that 28 mm default rather than propagating a `NaN`, since
+     *                       `Double.coerceIn` returns `NaN` unchanged.
+     * @param aspect         Viewport aspect ratio `width / height`. Non-finite / non-positive
+     *                       values fall back to `1`, so a viewport measured before layout can
+     *                       never produce a `NaN` camera position.
+     * @param fill           Fraction of the frame the content should span. `1` = exactly edge to
+     *                       edge; `< 1` leaves breathing room (`0.9` ⇒ the content spans 90% of
+     *                       the frame); `> 1` crops into it. Non-finite / non-positive values fall
+     *                       back to `1`.
+     * @return The camera distance in metres, clamped to `[0.2, 50]`. Every degenerate input is
+     *         sanitised above rather than propagated, so the result is always finite — a fully
+     *         degenerate content box lands on the far bound instead of placing the camera inside
+     *         the subject.
+     */
+    fun coverDistance(
+        contentWidth: Float,
+        contentHeight: Float,
+        verticalFovDegrees: Double,
+        aspect: Float,
+        fill: Float = 1f,
+    ): Float {
+        val safeAspect = if (aspect.isFinite() && aspect > 0f) aspect else 1f
+        val safeFill = if (fill.isFinite() && fill > 0f) fill else 1f
+        // `coerceIn` returns NaN unchanged, so the finite check has to come first — otherwise a NaN
+        // FOV survives every guard below and reaches the camera as a NaN position.
+        val safeFovDegrees = verticalFovDegrees.takeIf { it.isFinite() }?.coerceIn(1.0, 179.0)
+            ?: DEFAULT_VERTICAL_FOV_DEGREES
+        val halfFovTan = tan(Math.toRadians(safeFovDegrees) / 2.0).toFloat()
+        // A degenerate axis does not constrain the framing — treat it as "infinitely far" so the
+        // other axis wins the `min` instead of collapsing the camera onto the subject.
+        val distanceVertical = if (contentHeight.isFinite() && contentHeight > 0f) {
+            (contentHeight / 2f) / (halfFovTan * safeFill)
+        } else {
+            Float.POSITIVE_INFINITY
+        }
+        val distanceHorizontal = if (contentWidth.isFinite() && contentWidth > 0f) {
+            (contentWidth / 2f) / (halfFovTan * safeAspect * safeFill)
+        } else {
+            Float.POSITIVE_INFINITY
+        }
+        return min(distanceVertical, distanceHorizontal).coerceIn(0.2f, 50f)
+    }
+
+    /**
+     * SceneView's default 28 mm lens against a 24 mm sensor height ⇒ ≈46.4° vertical FOV. Used only
+     * as the fallback when [coverDistance] is handed a non-finite FOV.
+     */
+    private const val DEFAULT_VERTICAL_FOV_DEGREES = 46.4
 
     // ── AnimationDemo cinematic-camera choreography ──────────────────────────
 
@@ -308,6 +396,60 @@ internal object DemoMath {
         if (vertical <= 1e-4f) return 0f to 0f
         val k = height / vertical
         return (lightDirX * k) to (lightDirZ * k)
+    }
+
+    /**
+     * Bob period (nanoseconds, 3.4 s) of the contact-shadow preview's FLOATING box.
+     *
+     * Deliberately *longer* and non-harmonic with [CONTACT_BOUNCE_PERIOD_NANOS] (2.6 s): the
+     * two boxes drift out of phase, which reads as "two independent objects doing two different
+     * things" rather than a single synchronised animation.
+     */
+    const val CONTACT_FLOAT_PERIOD_NANOS = 3_400_000_000L
+
+    /**
+     * Rest height (metres, box **centre**) of the floating box. Chosen so the box hovers well
+     * clear of the floor at all times — its lowest point (`centre − bob − half-edge`) never
+     * reaches the grounded box's highest point, and its highest point stays below the wall TV.
+     * See the `floatHoverY … stays clear of the floor and the grounded box` test.
+     */
+    const val CONTACT_FLOAT_CENTER_Y_METERS = 0.62f
+
+    /** Peak bob deviation of the floating box from [CONTACT_FLOAT_CENTER_Y_METERS], metres. */
+    const val CONTACT_FLOAT_BOB_METERS = 0.05f
+
+    /**
+     * Vertical position (box **centre**, metres) of the contact-shadow preview's FLOATING box
+     * at [elapsedNanos]: a slow, smooth sine bob of ±[bobAmplitude] around [centerY].
+     *
+     * This is the *positive* half of the grounded-vs-floating comparison. Its twin
+     * ([bounceHeight]) is a **rectified** sine that STRIKES the floor once per period; this is a
+     * **plain** sine — smooth at every phase, no zero-crossing landing, and centred high above
+     * the floor so the box never touches it. One box hammers the ground (its contact pool snaps
+     * dark at each landing); its twin serenely levitates. The floating box's *motion* — not the
+     * mere absence of a shadow — is what makes it read as airborne (#2740): a shadow that is
+     * simply missing reads as a rendering bug, but a box visibly hovering high and bobbing reads
+     * as floating, so of course it casts no contact shadow.
+     *
+     * `t = 0` returns exactly [centerY] (`sin 0 = 0`), the deterministic pose QA mode freezes at
+     * — the same zeroed clock that lands [bounceHeight]'s box on the floor.
+     *
+     * @param elapsedNanos Accumulated animation time. Values `<= 0` are treated as `0` (rest).
+     * @param periodNanos  Bob period. Values `<= 0` return [centerY] rather than dividing by zero.
+     * @param centerY      Rest height of the box centre, metres.
+     * @param bobAmplitude Peak deviation from [centerY], metres.
+     * @return Box-centre height in `[centerY - bobAmplitude, centerY + bobAmplitude]`.
+     */
+    fun floatHoverY(
+        elapsedNanos: Long,
+        periodNanos: Long = CONTACT_FLOAT_PERIOD_NANOS,
+        centerY: Float = CONTACT_FLOAT_CENTER_Y_METERS,
+        bobAmplitude: Float = CONTACT_FLOAT_BOB_METERS,
+    ): Float {
+        if (periodNanos <= 0L) return centerY
+        val safeElapsed = if (elapsedNanos <= 0L) 0L else elapsedNanos
+        val phase = (safeElapsed % periodNanos).toFloat() / periodNanos.toFloat()
+        return centerY + bobAmplitude * sin(2f * PI.toFloat() * phase)
     }
 
     /**
