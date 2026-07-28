@@ -234,7 +234,7 @@ SceneView { /* ... */ }
 
 iOS v4.3.0 introduces an intermediate `contentRoot` Entity and translates
 it on the first frame the scene's `visualBounds` is non-empty so the
-centroid lands at the orbit pivot. Most demos benefit; scenes that rely
+centroid lands on the world origin. Most demos benefit; scenes that rely
 on intentional off-centre placement (carousels, dioramas, story-mode)
 will see content re-centre.
 
