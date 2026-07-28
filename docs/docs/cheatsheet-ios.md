@@ -63,6 +63,13 @@ SceneView { root in
     `autoRotate` scene, where the visible angle is arbitrary and a long model
     clips at its broadside azimuth.
 
+    `framingMargin` runs *inside* that auto-fit pass, so it has **no effect at
+    all when `autoCenterContent(false)` is set** — it fails silently rather than
+    warning. Android's equivalent lever is `CameraNode.frameToContent(padding =)`
+    with `DEFAULT_FRAMING_PADDING = 0.15f`, a *fraction* where this is a
+    *multiplier*: `margin == 1 + padding`, so iOS `1.15` is Android `0.15` and
+    tangent is iOS `1.0` / Android `0.0`. Web has no equivalent yet.
+
     `cameraOrbit` seeds only the starting pose; drag, `autoRotate` and the
     auto-fit take over from there (the fit changes distance, never these
     angles). Elevation is the one that surprises people: with the 60° vertical

@@ -5617,8 +5617,11 @@ Bundle the HDR as a plain resource file. `SceneEnvironment.load()` tries
 Composer Pro scenes) — and falls back to decoding the file through ImageIO into
 an equirectangular `CGImage` (v4.26.0+). That fallback is what makes a Radiance
 `.hdr` work at all: `named:` cannot load one, and before #2896 the failure was
-silent — no IBL and no skybox, so scenes rendered dim on a black background with
-`showSkybox` having no visible effect. If an environment still looks unlit,
+silent — **no custom IBL** (the `ImageBasedLightComponent` was never set, so the
+scene kept RealityView's own default environment lighting) and **no skybox at
+all**, so scenes rendered dim on a black background with `showSkybox` having no
+visible effect. Note the distinction: the scene was never *unlit*, it was lit by
+RealityKit's default (#2842/#2868). If an environment still looks unlit,
 check the console for `[SceneViewSwift] Failed to load environment '…'`.
 
 **ViewNode** — embed SwiftUI in 3D:
@@ -6421,7 +6424,7 @@ View modifiers (chainable):
 .fillLight(_ slot: LightSlot) -> SceneView                  // v4.2.0+ — Android-parity 2-light setup
 .renderQuality(_ preset: RenderQuality) -> SceneView        // v4.2.0+ — .cinematic / .default / .performance
 .autoCenterContent(_ enabled: Bool) -> SceneView            // v4.3.0+ — default true; translates content so its centroid lands on the world origin
-.framingMargin(_ margin: Float) -> SceneView                // v4.26.0+ — padding on the auto-fit distance; 1.15 default, 1.0 = sphere tangent, < 1 = tighter
+.framingMargin(_ margin: Float) -> SceneView                // v4.26.0+ — padding on the auto-fit distance; 1.15 default, 1.0 = sphere tangent, < 1 = tighter. NO EFFECT when autoCenterContent(false)
 .cameraOrbit(azimuth: Float? = nil, elevation: Float? = nil) -> SceneView  // v4.26.0+ — seeds the INITIAL orbit pose (radians); default elevation 30°
 ```
 
@@ -6448,9 +6451,17 @@ SceneView { root in root.addChild(hero.entity) }
     .cameraOrbit(azimuth: .pi / 5, elevation: .pi / 15)  // 36° around, camera 12° above the target
 ```
 
-> Android has no view-modifier equivalent: it frames per-demo through the demo
-> host's `camera_distance` intent extra. The iOS launch-argument counterpart is
-> tracked in #2785; these modifiers are the in-scene lever (#2896).
+> **Android equivalent — `padding`, and the unit is inverted.** Android's lever is
+> `CameraNode.frameToContent(padding = …)` / `frameToBounds(…)` /
+> `fitDistanceForBounds(…)`, with `DEFAULT_FRAMING_PADDING = 0.15f` (documented
+> above under Camera framing). It is a *fraction* where iOS's `framingMargin` is a
+> *multiplier*: `margin == 1 + padding`, so iOS `1.15` is Android `0.15`, and
+> tangent is iOS `1.0` / Android `0.0`. Android's demo host additionally accepts a
+> `camera_distance` intent extra, but that is a sample-app knob, not the library
+> API. **Web has neither**: `sceneview-web`'s `SceneView` exposes
+> `autoCenterContent` but no framing-padding or initial-orbit lever. The iOS
+> launch-argument counterpart to the intent extra is tracked in #2785; these
+> modifiers are the in-scene lever (#2896).
 
 ### Render defaults (v4.2.0+)
 
