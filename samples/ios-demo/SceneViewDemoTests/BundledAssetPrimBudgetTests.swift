@@ -23,9 +23,13 @@
 // wall-clock assertion it cannot flake on a loaded CI host, and it fails for
 // the actual reason a future asset would regress.
 
-#if DEBUG
 import XCTest
 import RealityKit
+// Deliberately NOT wrapped in `#if DEBUG`, unlike some siblings here.
+// `ENABLE_TESTABILITY` is set only in the two Debug configurations, so under a
+// Release test run this import fails to COMPILE — loudly. Wrapped, the file
+// would instead compile to nothing and the suite would report green with both
+// guards silently gone, which is the failure this file exists to prevent.
 @testable import SceneViewDemo
 
 @MainActor
@@ -127,4 +131,3 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
         }
     }
 }
-#endif
