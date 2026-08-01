@@ -582,10 +582,15 @@ fork-authored code) is deliberately not used. Such a run says so loudly in the
 job summary plus a `::warning::`, and never reports a silent green review. Get
 coverage with `gh workflow run pr-review.yml -f pr=<n>`.
 
-⚠️ **This is the repo's most expensive quota consumer**: every non-draft PR
-push spawns 4 reviewers plus one adversarial verifier per error. `concurrency`
-cancels superseded runs so a push burst costs one review. If quota tightens,
-narrow the trigger to `opened, ready_for_review`.
+⚠️ **This is the repo's most expensive quota consumer**, and the volume is
+measured, not guessed: this repo peaks at **30 PRs in a single day** (21 on
+several others), and each review spawns 4 reviewers plus one adversarial
+verifier per error — 120+ agent runs on an active day if every PR is reviewed.
+Three things bound it: `concurrency` (a push burst on one PR costs one review),
+**bot-authored PRs are excluded** (7 of the last 100 PRs were Dependabot — a
+dependency bump does not need four Opus reviewers arguing about KDoc), and
+`MAX_REVIEWS_PER_DAY` (25). Over budget, the review is skipped **loudly** with
+the dispatch command to force one — an unreviewed PR must never look reviewed.
 
 **`Agent review` is ADVISORY — it does not hold the merge button.** It is
 listed in `ci-gate.yml`'s `ADVISORY_CHECKS`, so its conclusion never decides
