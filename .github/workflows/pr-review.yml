@@ -1,0 +1,426 @@
+name: PR Review (agents)
+
+# Independent multi-agent review of a PR diff, IN CI.
+#
+# WHY
+#   The four reviewer mandates (.claude/agents/sv-*.md) already existed, but they
+#   only ran inside a live Claude Code session via the `review-fanout` saved
+#   workflow. That coupled every merge to a human having a session open: measured
+#   2026-08-01, the five most recently merged PRs (#2947 → #2930) carried ZERO
+#   review recorded on GitHub, because the review happened somewhere GitHub
+#   cannot see. This workflow moves the same fan-out onto the PR itself, so an
+#   agent-authored PR is reviewable — and mergeable — without a session.
+#
+# WHAT IT IS NOT
+#   Not an auto-merger. It reviews and grades; a human or the issue-batch
+#   orchestrator still merges. A confirmed breaking public-API change is the
+#   maintainer gate and is reported as such, never auto-fixed.
+#
+# GENERATOR != EVALUATOR
+#   The agents FIND (write `review-verdict.json`); `grade-pr-review.sh` DECIDES.
+#   The merge verdict is computed by a self-tested bash/python script
+#   (`test-grade-pr-review.sh`, wired into ci.yml → repo-hygiene), not by the
+#   model grading its own output. It fails CLOSED: a crashed fan-out, a missing
+#   file, or a dropped reviewer is REVIEW_INCOMPLETE, never a pass.
+#
+# AUTH / COST
+#   Reuses CLAUDE_CODE_OAUTH_TOKEN (Thomas's Claude Max quota — no per-call API
+#   spend), same secret as claude.yml and doc-audit.yml. ⚠️ This is the most
+#   expensive consumer of that quota in the repo: each run spawns 4 reviewers
+#   plus one adversarial verifier per ERROR finding. Measured 2026-08-01, this
+#   repo peaks at 30 PRs in a day — 120+ agent runs if every one is reviewed.
+#   Three things bound it: `concurrency` (a push burst on one PR costs one
+#   review), the bot-author exclusion, and MAX_REVIEWS_PER_DAY. If quota still
+#   tightens, narrow the trigger to `opened, ready_for_review` and rely on
+#   workflow_dispatch for re-reviews.
+#
+# FORK PRs
+#   A `pull_request` from a fork gets NO secrets and a read-only GITHUB_TOKEN —
+#   structurally, not by choice. Such a run cannot review and does not pretend
+#   to: it emits a loud step-summary + `::warning::` telling the maintainer to
+#   re-run it via workflow_dispatch. It never reports a silent green review.
+#   `pull_request_target` would give secrets to fork-authored code — deliberately
+#   NOT used.
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, synchronize]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'PR number to review'
+        required: true
+        type: string
+
+# One review per PR. A new push supersedes the in-flight review of an older
+# commit — the verdict that matters is the one for the head being merged.
+# NOTE: unlike a paths-filtered workflow, a cancelled run here leaves the PR
+# with the *previous* commit's check, which GitHub shows as stale rather than
+# green — see #2925 for why "green run, skipped job" is the failure mode to
+# avoid. There is deliberately no `paths:` filter on this workflow.
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write     # post/update the single review comment
+  id-token: write          # OIDC for claude-code-action (matches claude.yml)
+
+jobs:
+  review:
+    name: Agent review
+    # Drafts are work-in-progress — reviewing every draft push burns quota for
+    # a diff the author is still writing. `ready_for_review` re-triggers it.
+    #
+    # Bot-authored PRs are excluded. Measured 2026-08-01 over the last 100 PRs:
+    # 7 from Dependabot, 3 from github-actions. A dependency bump does not need
+    # four Opus reviewers arguing about KDoc — `renovate`/`dependabot` diffs are
+    # mechanical and already gated by the compile + test checks. claude.yml
+    # applies the same exclusion for the same reason.
+    if: >-
+      (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false)
+      && github.event.pull_request.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MAX_REVIEWS_PER_DAY: '25'
+    steps:
+      - name: Resolve PR under review
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          INPUT_PR: ${{ inputs.pr }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            NUM="${INPUT_PR//[^0-9]/}"
+            [ -n "$NUM" ] || { echo "::error::inputs.pr is not a number"; exit 1; }
+            IS_FORK=false   # a maintainer dispatch always runs with repo secrets
+          else
+            NUM="$EVENT_PR"
+            if [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ]; then IS_FORK=false; else IS_FORK=true; fi
+          fi
+          echo "number=$NUM"   >> "$GITHUB_OUTPUT"
+          echo "is_fork=$IS_FORK" >> "$GITHUB_OUTPUT"
+          echo "Reviewing PR #$NUM (fork=$IS_FORK)"
+
+      # ⚠️ THE REAL CEILING ON THIS WORKFLOW'S COST.
+      #   Measured 2026-08-01: this repo peaks at 30 PRs in a single day (21 on
+      #   several others). Every non-draft PR *push* spawns 4 reviewers plus one
+      #   adversarial verifier per error finding, so an active day is 120+ agent
+      #   runs on the maintainer's Claude Max quota. `concurrency` collapses a
+      #   push burst on ONE PR into a single review, but does nothing across
+      #   distinct PRs — which is exactly where the volume is.
+      #
+      #   Over budget the review is skipped LOUDLY, never silently: the whole
+      #   point of this workflow is that an unreviewed PR must not look like a
+      #   reviewed one.
+      - name: Check daily review budget
+        id: budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TODAY="$(date -u +%Y-%m-%d)"
+          # `skipped` runs never reached the reviewers, so they cost nothing —
+          # the same correction claude.yml's budget needed (a raw run count
+          # there would have capped the bot on a day with zero real spend).
+          USED="$(gh run list --workflow=pr-review.yml --created ">=$TODAY" \
+                    --limit 100 --json conclusion \
+                    --jq 'map(select(.conclusion != "skipped")) | length' 2>/dev/null || echo 0)"
+          echo "Agent reviews today: $USED / $MAX_REVIEWS_PER_DAY"
+          if [ "$USED" -gt "$MAX_REVIEWS_PER_DAY" ]; then
+            echo "within_budget=false" >> "$GITHUB_OUTPUT"
+            {
+              echo '## ⚠️ NOT REVIEWED — daily review budget reached'
+              echo
+              echo "This repository has already run **$USED** agent reviews today"
+              echo "(cap \`$MAX_REVIEWS_PER_DAY\`). Reviewing this PR too would spend"
+              echo 'Claude Max quota that later PRs today may need more.'
+              echo
+              echo '**No reviewer ran — do not read this check as a clean review.**'
+              echo 'Review by hand, or force one once the day rolls over:'
+              echo
+              echo '```bash'
+              echo "gh workflow run pr-review.yml -f pr=${{ steps.pr.outputs.number }}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning title=Review budget reached::$USED reviews today (cap $MAX_REVIEWS_PER_DAY) — this PR was NOT reviewed."
+          else
+            echo "within_budget=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          # Full history: the reviewers diff against origin/main and read git log
+          # for context. A shallow clone makes `main...HEAD` unresolvable.
+          fetch-depth: 0
+
+      # Secrets are absent on fork PRs. Decide it from a real env read rather
+      # than a `secrets.*` expression in an `if:`, so the outcome is explicit
+      # and visible in the log instead of a silently skipped step.
+      - name: Check reviewer credentials
+        id: creds
+        if: steps.budget.outputs.within_budget == 'true'
+        env:
+          TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${TOKEN:-}" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Positive cue, not an absence: say out loud that no review happened and
+      # exactly how to get one. A quiet pass here would read as "reviewed, clean".
+      # The budget guard is NOT redundant with the credentials check. Over
+      # budget, `Check reviewer credentials` never runs, so `has_token` is the
+      # empty string — which satisfies `!= 'true'` and would make this step
+      # announce "no reviewer credentials" for a PR whose real problem is the
+      # daily cap. Same class of wrong-cause message as the self-modification
+      # case: the run was already correctly blocked, it just named the wrong
+      # reason. The budget step writes its own summary.
+      - name: Report unreviewable run
+        if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token != 'true'
+        env:
+          PR_NUM: ${{ steps.pr.outputs.number }}
+          IS_FORK: ${{ steps.pr.outputs.is_fork }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## ⚠️ NOT REVIEWED — agent review did not run'
+            echo
+            if [ "$IS_FORK" = "true" ]; then
+              echo "This PR comes from a **fork**, so \`CLAUDE_CODE_OAUTH_TOKEN\` is not available"
+              echo "to the run (GitHub withholds secrets from fork \`pull_request\` workflows)."
+            else
+              echo "\`CLAUDE_CODE_OAUTH_TOKEN\` is missing or expired on this repository."
+              echo "Rotate it with \`claude setup-token\` then \`gh secret set CLAUDE_CODE_OAUTH_TOKEN\`."
+            fi
+            echo
+            echo '**This is not a passing review — no reviewer ran.** A maintainer must review it:'
+            echo
+            echo '```bash'
+            echo "gh workflow run pr-review.yml -f pr=$PR_NUM"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning title=PR not reviewed::No reviewer credentials in this run — see the job summary. Do not read this check as a clean review."
+
+      # claude-code-action refuses to run when the workflow file differs from
+      # the copy on the default branch — an anti-exfiltration guard, since a PR
+      # that can edit the workflow could otherwise redirect the token. Measured
+      # on this workflow's own introducing PR (#2952, run 30714065868): the
+      # action logs "Workflow validation failed", then ends the step with
+      # `outcome=success` while having done nothing. A silent success that
+      # produces no verdict is exactly the shape the grader must never read as
+      # a pass — it doesn't, but the resulting REVIEW_INCOMPLETE names the
+      # wrong cause ("the agents produced no verdict file"). Detect the real
+      # cause up front and say it.
+      #
+      # This stays a FAILING check rather than an honest skip: a PR that edits
+      # the review workflow is precisely the PR a human must read, and a green
+      # check here would be the faked-coverage failure mode. It goes green
+      # again on any PR that leaves this file alone.
+      - name: Detect self-modification of this workflow
+        id: selfmod
+        if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true'
+        run: |
+          set -euo pipefail
+          BASE="${GITHUB_BASE_REF:-main}"
+          # actions/checkout only sets up the remote-tracking ref for the branch
+          # it checked out, so `origin/main` is NOT guaranteed to resolve even at
+          # fetch-depth 0. Fetch it explicitly, and treat "cannot resolve" as its
+          # own case — folding it into the diff comparison would make an
+          # unresolvable base look like a modified workflow and turn EVERY PR
+          # red. This detection only improves the error message; the grader's
+          # fail-closed REVIEW_INCOMPLETE remains the actual gate either way, so
+          # degrading to "assume unmodified" here cannot open a green path.
+          git fetch origin "$BASE" --depth=1 --quiet 2>/dev/null || true
+          if ! git rev-parse --verify --quiet "origin/$BASE" >/dev/null 2>&1; then
+            echo "::warning title=Base ref unresolved::Could not resolve origin/$BASE to compare this workflow against; proceeding. If the action self-skips, the grader will still block with REVIEW_INCOMPLETE."
+            echo "self_modified=false" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "origin/$BASE" -- .github/workflows/pr-review.yml; then
+            echo "self_modified=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "self_modified=true" >> "$GITHUB_OUTPUT"
+            # shellcheck disable=SC2016  # the backticks below are Markdown code spans written into the job summary, not command substitution — single quotes are exactly right here.
+            {
+              echo '## ⛔ NOT REVIEWED — this PR modifies the review workflow'
+              echo
+              echo 'This PR changes `.github/workflows/pr-review.yml`, so `claude-code-action`'
+              echo 'refuses to run: it requires the workflow file to be byte-identical to the'
+              echo "copy on the default branch. That is an anti-exfiltration guard — a PR able"
+              echo 'to edit the workflow could otherwise redirect the credential — and it is not'
+              echo 'something this repository can or should switch off.'
+              echo
+              echo '**No reviewer ran. This check is red on purpose.** A change to the review'
+              echo 'gate is exactly the change that needs human eyes. Review the diff by hand;'
+              echo 'automated review resumes on the next PR that leaves this file untouched.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Review workflow self-modified::claude-code-action cannot run on a PR that edits pr-review.yml. Review this diff manually — see the job summary."
+            # Stop here. Continuing would run the action only to have it skip
+            # itself in silence, and the grader would then report the wrong
+            # cause. The remaining steps also carry the `self_modified` guard as
+            # defence in depth, so removing this exit degrades the message
+            # rather than opening a green path.
+            exit 1
+          fi
+
+      - name: Run the four reviewers
+        if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--model claude-opus-4-8'
+          prompt: |
+            You are the SceneView PR review ORCHESTRATOR running in CI.
+
+            Your ONLY deliverable is a file `review-verdict.json` at the repo
+            root. You do NOT decide whether the PR merges — a separate script
+            grades your findings. Do not post comments; do not edit code; do not
+            push. Report, and report honestly.
+
+            ## Scope
+
+            The PR under review is number ${{ steps.pr.outputs.number }}. This
+            value is an integer the workflow already sanitized (digits only) —
+            it is the only interpolated value in this prompt, and no PR title,
+            body, or branch name is ever interpolated here, so a crafted PR
+            cannot inject instructions into these directions. Run `git fetch
+            origin --quiet` first, then determine the diff:
+            `git diff origin/main...HEAD` (also check `git diff` for anything
+            uncommitted). Read the WHOLE diff and the surrounding code.
+
+            ## Step 1 — four independent reviewers, in parallel
+
+            Spawn all four in ONE message so they run concurrently, each with its
+            dedicated subagent type (its mandate is the single source of truth in
+            `.claude/agents/<type>.md`):
+
+            - `sv-code-reviewer`     — correctness, threading (Filament JNI is
+                                       main-thread only), resource hygiene, minimality
+            - `sv-security-reviewer` — secrets, deserialization, permission scope,
+                                       supply chain, shell injection
+            - `sv-impact-reviewer`   — breaking public API, cross-platform divergence
+            - `sv-doc-freshness`     — llms.txt / KDoc / docs / recipes / skills /
+                                       changelog fragment
+
+            If a subagent type is not registered in this environment, fall back
+            to a general agent instructed to READ `.claude/agents/<type>.md` and
+            adopt that role EXACTLY. A reviewer must never be silently dropped —
+            if one genuinely cannot run, OMIT it from `perReviewer` and lower
+            `reviewersRan`. Under-reporting is safe; over-reporting is not.
+
+            Tell every reviewer it is STRICTLY READ-ONLY on this checkout: no
+            `git checkout`/`switch`/`reset`/`stash`, no file edits. They share
+            this working tree and a branch switch corrupts it (#2431).
+
+            ## Step 2 — adversarially verify every ERROR
+
+            For each finding a reviewer marked as an error, spawn a SEPARATE
+            verifier agent whose instruction is to REFUTE it: read the code at
+            that location and reproduce the failure. Default to "not real" if it
+            cannot be independently confirmed. Only errors that survive
+            verification go into `confirmedErrors`. Warnings are not verified.
+
+            ## Step 3 — write review-verdict.json
+
+            Write EXACTLY this shape to `review-verdict.json` at the repo root:
+
+            ```json
+            {
+              "reviewersExpected": 4,
+              "reviewersRan": <how many actually reported>,
+              "perReviewer": [
+                {"reviewer": "code|security|impact|doc",
+                 "verdict": "PASS|PASS_WITH_WARNINGS|FAIL",
+                 "errorCount": <int>}
+              ],
+              "confirmedErrors": [
+                {"reviewer": "code", "file": "path", "line": "42",
+                 "problem": "...", "fix": "..."}
+              ],
+              "warnings": [
+                {"reviewer": "doc", "file": "path", "line": "7", "problem": "...", "fix": "..."}
+              ],
+              "propagation": ["other platforms/docs this change must also reach"]
+            }
+            ```
+
+            `reviewer` MUST be one of `code`, `security`, `impact`, `doc` — the
+            grader keys the maintainer gate off `impact`. A clean PASS is a valid
+            and expected outcome: do NOT invent findings to look thorough. Write
+            the file even if everything passed.
+
+            Your final message: one short paragraph stating what you found. The
+            file is the deliverable.
+
+      - name: Grade the review
+        id: grade
+        if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
+        env:
+          PR_NUM: ${{ steps.pr.outputs.number }}
+        run: |
+          # `set +e` is REQUIRED and not redundant: GitHub invokes run: steps as
+          # `/usr/bin/bash -e {0}`, so errexit is on before the first line and a
+          # `set -uo pipefail` does NOT clear it. Measured on run 30714065868 —
+          # the grader returned 1 on a blocking verdict and the step died right
+          # there, so the outputs were never written, the comment was never
+          # posted, and the PR showed a red check with no explanation on it.
+          # A blocking verdict is an expected non-zero we must capture, render,
+          # and only then fail on (in the `Enforce the verdict` step).
+          set +e
+          set -uo pipefail
+          bash .claude/scripts/grade-pr-review.sh review-verdict.json \
+            --comment-out review-comment.md --pr "$PR_NUM" > grade.out
+          echo "gate_rc=$?" >> "$GITHUB_OUTPUT"
+          cat grade.out >> "$GITHUB_OUTPUT"
+          {
+            echo '## Agent review verdict'
+            echo
+            cat review-comment.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # One comment per PR, updated in place — a marker in the body keys the
+      # lookup, so a 20-commit PR does not accumulate 20 review comments.
+      - name: Post or update the review comment
+        if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUM: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          MARKER='<!-- sceneview-agent-review -->'
+          EXISTING="$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUM/comments" --paginate \
+            --jq "map(select(.body | contains(\"$MARKER\"))) | .[0].id // empty" 2>/dev/null || echo "")"
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING" \
+              -F body=@review-comment.md >/dev/null
+            echo "::notice::Updated agent-review comment $EXISTING on PR #$PR_NUM"
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUM/comments" \
+              -F body=@review-comment.md >/dev/null
+            echo "::notice::Posted agent-review comment on PR #$PR_NUM"
+          fi
+
+      - name: Enforce the verdict
+        if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
+        env:
+          VERDICT: ${{ steps.grade.outputs.verdict }}
+          BLOCKING: ${{ steps.grade.outputs.blocking }}
+          BREAKING: ${{ steps.grade.outputs.breaking_api }}
+        run: |
+          set -euo pipefail
+          echo "Verdict: ${VERDICT:-<none>} (blocking=${BLOCKING:-<none>})"
+          if [ "${BREAKING:-false}" = "true" ]; then
+            echo "::error title=Breaking public-API change::The impact reviewer's finding survived adversarial verification. This is the maintainer gate — convert to draft and stop."
+          fi
+          if [ "${BLOCKING:-true}" != "false" ]; then
+            echo "::error title=Agent review blocked this PR::${VERDICT:-REVIEW_INCOMPLETE} — see the review comment on the PR."
+            exit 1
+          fi

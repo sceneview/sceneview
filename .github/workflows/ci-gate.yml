@@ -51,6 +51,29 @@ name: CI Gate
 # a genuinely light docs-only PR while still catching a core check that is
 # simply slow to register.
 #
+# AGENT REVIEW IS ADVISORY, DELIBERATELY
+# --------------------------------------
+# `Agent review` (pr-review.yml) is listed in `ADVISORY_CHECKS`, so its
+# conclusion never decides this gate. That is a policy choice, not an
+# oversight, and it follows the rule the repo already applies to
+# `check-doc-drift`: an LLM review is a heuristic, and blocking a heuristic
+# guarantees false positives that erode trust in the whole gate. A wrong
+# `DO_NOT_MERGE` must cost a maintainer one read of the review comment, not a
+# frozen repository.
+#
+# What stays honest without being blocking: the check itself still goes RED,
+# the verdict is posted as a comment on the PR, and `grade-pr-review.sh` still
+# fails CLOSED (a crashed fan-out is `REVIEW_INCOMPLETE`, never a pass). The
+# signal is loud; it just does not hold the merge button.
+#
+# It also avoids a structural deadlock: `claude-code-action` refuses to run on
+# any PR that edits `pr-review.yml`, so making the check blocking would make
+# every future change to the review workflow unmergeable by design.
+#
+# Promotion to blocking is a later decision, and it should be made the same way
+# the advisory device-QA legs will be: after enough runs to measure the
+# false-positive rate, not on the assumption that it is low.
+#
 # DEVICE QA EXCLUSION (#1588)
 # ---------------------------
 # `Device QA — *` check runs are deliberately excluded from the aggregation.
@@ -172,6 +195,7 @@ jobs:
           # red-light the gate.
           ADVISORY_CHECKS: |
             Coverage
+            Agent review
         shell: bash
         run: |
           set -euo pipefail
