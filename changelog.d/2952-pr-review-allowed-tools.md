@@ -19,3 +19,18 @@
   fixed path, because the action writes either a list or a single object and a
   wrong path would silently report zero denials — printing the reassuring
   branch is precisely the failure this step exists to prevent.
+- A dispatched review used to review the wrong code. `actions/checkout`
+  defaults to `github.ref`, which on a `workflow_dispatch` is whatever `--ref`
+  said — `main` — and not the PR named in `inputs.pr`. The reviewers would have
+  diffed `main...HEAD`, found nothing, and reported a clean PASS on a PR they
+  never read: a **false green**, landing on the one path that exists to rescue
+  reviews which cannot run automatically (fork PRs). The dispatch path now
+  checks out `refs/pull/N/head`, which resolves on the base repo even for fork
+  PRs. The `pull_request` path is untouched — it already resolved the right
+  ref, and merging the two would have silently switched the review from the
+  merge ref to the head ref.
+- Relatedly, the self-modification guard no longer fires on a dispatch. What
+  `claude-code-action` validates is the workflow file it is *running*, which on
+  a dispatch comes from `--ref`, not from the checkout; comparing the checkout
+  would flag every older PR whose copy of the file has merely been superseded,
+  making the documented rescue path unusable as soon as this workflow changes.
