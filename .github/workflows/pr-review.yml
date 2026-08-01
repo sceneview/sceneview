@@ -145,8 +145,68 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::warning title=PR not reviewed::No reviewer credentials in this run — see the job summary. Do not read this check as a clean review."
 
-      - name: Run the four reviewers
+      # claude-code-action refuses to run when the workflow file differs from
+      # the copy on the default branch — an anti-exfiltration guard, since a PR
+      # that can edit the workflow could otherwise redirect the token. Measured
+      # on this workflow's own introducing PR (#2952, run 30714065868): the
+      # action logs "Workflow validation failed", then ends the step with
+      # `outcome=success` while having done nothing. A silent success that
+      # produces no verdict is exactly the shape the grader must never read as
+      # a pass — it doesn't, but the resulting REVIEW_INCOMPLETE names the
+      # wrong cause ("the agents produced no verdict file"). Detect the real
+      # cause up front and say it.
+      #
+      # This stays a FAILING check rather than an honest skip: a PR that edits
+      # the review workflow is precisely the PR a human must read, and a green
+      # check here would be the faked-coverage failure mode. It goes green
+      # again on any PR that leaves this file alone.
+      - name: Detect self-modification of this workflow
+        id: selfmod
         if: steps.creds.outputs.has_token == 'true'
+        run: |
+          set -euo pipefail
+          BASE="${GITHUB_BASE_REF:-main}"
+          # actions/checkout only sets up the remote-tracking ref for the branch
+          # it checked out, so `origin/main` is NOT guaranteed to resolve even at
+          # fetch-depth 0. Fetch it explicitly, and treat "cannot resolve" as its
+          # own case — folding it into the diff comparison would make an
+          # unresolvable base look like a modified workflow and turn EVERY PR
+          # red. This detection only improves the error message; the grader's
+          # fail-closed REVIEW_INCOMPLETE remains the actual gate either way, so
+          # degrading to "assume unmodified" here cannot open a green path.
+          git fetch origin "$BASE" --depth=1 --quiet 2>/dev/null || true
+          if ! git rev-parse --verify --quiet "origin/$BASE" >/dev/null 2>&1; then
+            echo "::warning title=Base ref unresolved::Could not resolve origin/$BASE to compare this workflow against; proceeding. If the action self-skips, the grader will still block with REVIEW_INCOMPLETE."
+            echo "self_modified=false" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "origin/$BASE" -- .github/workflows/pr-review.yml; then
+            echo "self_modified=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "self_modified=true" >> "$GITHUB_OUTPUT"
+            # shellcheck disable=SC2016  # the backticks below are Markdown code spans written into the job summary, not command substitution — single quotes are exactly right here.
+            {
+              echo '## ⛔ NOT REVIEWED — this PR modifies the review workflow'
+              echo
+              echo 'This PR changes `.github/workflows/pr-review.yml`, so `claude-code-action`'
+              echo 'refuses to run: it requires the workflow file to be byte-identical to the'
+              echo "copy on the default branch. That is an anti-exfiltration guard — a PR able"
+              echo 'to edit the workflow could otherwise redirect the credential — and it is not'
+              echo 'something this repository can or should switch off.'
+              echo
+              echo '**No reviewer ran. This check is red on purpose.** A change to the review'
+              echo 'gate is exactly the change that needs human eyes. Review the diff by hand;'
+              echo 'automated review resumes on the next PR that leaves this file untouched.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Review workflow self-modified::claude-code-action cannot run on a PR that edits pr-review.yml. Review this diff manually — see the job summary."
+            # Stop here. Continuing would run the action only to have it skip
+            # itself in silence, and the grader would then report the wrong
+            # cause. The remaining steps also carry the `self_modified` guard as
+            # defence in depth, so removing this exit degrades the message
+            # rather than opening a green path.
+            exit 1
+          fi
+
+      - name: Run the four reviewers
+        if: steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -236,12 +296,19 @@ jobs:
 
       - name: Grade the review
         id: grade
-        if: steps.creds.outputs.has_token == 'true'
+        if: steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
         env:
           PR_NUM: ${{ steps.pr.outputs.number }}
         run: |
-          # No `set -e`: a blocking verdict is a non-zero exit we must capture
-          # and turn into a comment before failing the job.
+          # `set +e` is REQUIRED and not redundant: GitHub invokes run: steps as
+          # `/usr/bin/bash -e {0}`, so errexit is on before the first line and a
+          # `set -uo pipefail` does NOT clear it. Measured on run 30714065868 —
+          # the grader returned 1 on a blocking verdict and the step died right
+          # there, so the outputs were never written, the comment was never
+          # posted, and the PR showed a red check with no explanation on it.
+          # A blocking verdict is an expected non-zero we must capture, render,
+          # and only then fail on (in the `Enforce the verdict` step).
+          set +e
           set -uo pipefail
           bash .claude/scripts/grade-pr-review.sh review-verdict.json \
             --comment-out review-comment.md --pr "$PR_NUM" > grade.out
@@ -256,7 +323,7 @@ jobs:
       # One comment per PR, updated in place — a marker in the body keys the
       # lookup, so a 20-commit PR does not accumulate 20 review comments.
       - name: Post or update the review comment
-        if: steps.creds.outputs.has_token == 'true'
+        if: steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUM: ${{ steps.pr.outputs.number }}
@@ -276,7 +343,7 @@ jobs:
           fi
 
       - name: Enforce the verdict
-        if: steps.creds.outputs.has_token == 'true'
+        if: steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
         env:
           VERDICT: ${{ steps.grade.outputs.verdict }}
           BLOCKING: ${{ steps.grade.outputs.blocking }}
