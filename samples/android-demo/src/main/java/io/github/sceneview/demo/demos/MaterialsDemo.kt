@@ -17,6 +17,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,6 +46,9 @@ import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
+// `ModelInstance` is a typealias for Filament's `FilamentInstance`; `.model` is an
+// extension property (ModelInstance.kt) and needs its own import to resolve.
+import io.github.sceneview.model.model
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
@@ -778,16 +782,32 @@ private sealed interface MaterialResolveState {
 private fun rememberFileModelInstance(
     modelLoader: io.github.sceneview.loaders.ModelLoader,
     file: File?,
-): io.github.sceneview.model.ModelInstance? = produceState<io.github.sceneview.model.ModelInstance?>(
-    initialValue = null,
-    key1 = modelLoader,
-    key2 = file?.absolutePath,
-) {
-    // The null check lives INSIDE produceState, not as an early `return null`
-    // above it: a null file now means "nothing streamed is selected" on every
-    // bundled-chip selection, and an early return would add / remove the
-    // `produceState` slot on each chip switch (#1464).
-    value = file?.let {
-        runCatching { modelLoader.loadModelInstance("file://${it.absolutePath}") }.getOrNull()
+): io.github.sceneview.model.ModelInstance? {
+    val instance = produceState<io.github.sceneview.model.ModelInstance?>(
+        initialValue = null,
+        key1 = modelLoader,
+        key2 = file?.absolutePath,
+    ) {
+        // The null check lives INSIDE produceState, not as an early `return null`
+        // above it: a null file now means "nothing streamed is selected" on every
+        // bundled-chip selection, and an early return would add / remove the
+        // `produceState` slot on each chip switch (#1464).
+        value = file?.let {
+            runCatching { modelLoader.loadModelInstance("file://${it.absolutePath}") }.getOrNull()
+        }
+    }.value
+    // Same disposal contract as the library's `rememberModelInstance`
+    // (SceneView.kt) — `produceState` cancels its producer on a key change but
+    // never destroys the model it already produced, so without this every chip
+    // switch abandoned the previous streamed `Model` GPU-resident in
+    // `ModelLoader.models` until the section's engine was torn down (#2459).
+    // Keying on the produced value fires `onDispose` for the PREVIOUS instance;
+    // registered here — before the consuming `ModelNode`, which the caller
+    // declares later — so on a swap the node detaches first and the buffers are
+    // freed after, respecting #2424's render-loop ordering. `onDispose` runs on
+    // the composition (main) thread, satisfying the Filament JNI contract.
+    DisposableEffect(instance) {
+        onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
     }
-}.value
+    return instance
+}
