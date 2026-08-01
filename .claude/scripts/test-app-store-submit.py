@@ -40,6 +40,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import sys
 import tempfile
 import types
@@ -134,6 +135,9 @@ class FakeASC(types.ModuleType):
             return s.get("create", lambda: Response(201, {"data": {"id": "RS1"}}))()
         if "/reviewSubmissionItems" in url:
             return s.get("items", lambda: Response(201, {"data": {"id": "IT1"}}))()
+        if "/reviewSubmissions/" in url and method == "GET":
+            return s.get("probe", lambda: Response(200, {"data": {
+                "id": "RS1", "attributes": {"state": "READY_FOR_REVIEW"}}}))()
         if "/reviewSubmissions/" in url and method == "PATCH":
             attrs = (kw.get("json") or {}).get("data", {}).get("attributes", {})
             if attrs.get("canceled"):
@@ -199,6 +203,7 @@ def run_step(scenario, env):
     (root / "gradle.properties").write_text("VERSION_NAME=4.26.0\n")
 
     saved_env, saved_cwd = dict(os.environ), os.getcwd()
+    saved_modules = {m: sys.modules.get(m) for m in ("requests", "jwt", "time")}
     os.environ.update({"ASC_KEY_ID": "KID", "ASC_ISSUER_ID": "ISS",
                        "HOME": str(home), "GITHUB_WORKSPACE": str(root),
                        "ASC_VERSION_STRING": "v4.26.0"})
@@ -220,8 +225,19 @@ def run_step(scenario, env):
         os.chdir(saved_cwd)
         os.environ.clear()
         os.environ.update(saved_env)
-        for mod in ("requests", "jwt", "time"):
-            sys.modules.pop(mod, None)
+        # Restore rather than pop: popping discards the real module instead of
+        # giving the process its state back.
+        for mod, original in saved_modules.items():
+            if original is None:
+                sys.modules.pop(mod, None)
+            else:
+                sys.modules[mod] = original
+        # Remove the sandboxes. One of them holds a file literally named
+        # `.private_keys/AuthKey_KID.p8` (contents: a placeholder), and a
+        # secret scanner or a `find ~ -name 'AuthKey_*.p8'` sweep on a dev Mac
+        # should not trip over 44 stray copies of it per run.
+        for tree in (home, root):
+            shutil.rmtree(tree, ignore_errors=True)
     return out.getvalue(), code, api
 
 
@@ -275,8 +291,16 @@ def main():
 
     out, code, api = run_step({"builds": lambda n: builds_page([" 1300 "])},
                               {"ASC_EXPECTED_BUILD": "1300"})
-    check("build-number comparison tolerates whitespace/zero-padding",
+    check("build-number comparison tolerates surrounding whitespace",
           "Selected iOS build" in out, f"code={code}")
+
+    # Exercises the numeric leg of _same_build specifically — the textual
+    # `.strip()` comparison alone cannot match a zero-padded number, so this is
+    # the only case that would redden if `int(a) == int(b)` were dropped.
+    out, code, api = run_step({"builds": lambda n: builds_page(["01300"])},
+                              {"ASC_EXPECTED_BUILD": "1300"})
+    check("build-number comparison tolerates zero-padding (numeric compare)",
+          "Selected iOS build: 01300" in out, f"code={code} {out[-200:]}")
 
     # ── W2 — auth vs transient on the builds GET ──────────────────────────
     print("\nW2 — auth vs transient classification")
@@ -367,6 +391,57 @@ def main():
           code == 1 and "reviewSubmissionItems CREATE failed" in out
           and "cancel it by hand" in out, out[-400:])
 
+    # The one window where cancelling would be WORSE than the orphan: the
+    # submit PATCH may have reached Apple before the response was lost, so
+    # cleanup must read the state back instead of assuming failure.
+    def lost_response():
+        raise ConnectionError("read timeout after the request was sent")
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]), "submit": lost_response,
+         "probe": lambda: Response(200, {"data": {"id": "RS1", "attributes": {
+             "state": "WAITING_FOR_REVIEW"}}})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("a lost submit response with a LIVE submission is never withdrawn",
+          len(cancellations(api)) == 0 and "NOT cancelling" in out,
+          f"cancellations={len(cancellations(api))} {out[-400:]}")
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]), "submit": lost_response,
+         "probe": lambda: Response(200, {"data": {"id": "RS1", "attributes": {
+             "state": "READY_FOR_REVIEW"}}})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("a lost submit response that provably never landed IS cleaned up",
+          len(cancellations(api)) == 1, f"cancellations={len(cancellations(api))} {out[-300:]}")
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]), "submit": lost_response,
+         "probe": lambda: Response(403, {"errors": []})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("an unreadable state after a lost response leaves the submission alone",
+          len(cancellations(api)) == 0 and "NOT cancelling" in out,
+          f"cancellations={len(cancellations(api))} {out[-400:]}")
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]), "submit": lost_response,
+         "probe": lost_response},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("a raising state probe does not crash the cleanup",
+          len(cancellations(api)) == 0 and code == "EXC ConnectionError: read timeout after the request was sent",
+          f"cancellations={len(cancellations(api))} code={code}")
+
+    # A submit PATCH that was ANSWERED with a rejection is unambiguous — no
+    # probe, cancel straight away (the W5 path proper).
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]), "submit": lambda: Response(409, {}),
+         "probe": lambda: Response(200, {"data": {"id": "RS1", "attributes": {
+             "state": "WAITING_FOR_REVIEW"}}})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("an answered rejection is cancelled without consulting the probe",
+          len(cancellations(api)) == 1
+          and not [c for c in api.calls if c[0] == "GET" and "/reviewSubmissions/" in c[1]],
+          f"cancellations={len(cancellations(api))}")
+
     # ── whatsNew sourcing (#2893 W4, shipped in #2908) ────────────────────
     print("\nwhatsNew sourcing")
     out, code, api = run_step({"builds": lambda n: builds_page([1300])},
@@ -377,9 +452,13 @@ def main():
     out, code, api = run_step(
         {"builds": lambda n: builds_page([1300]), "release_notes": None},
         {"ASC_EXPECTED_BUILD": "1300"})
+    # Assert on the localization PATCH's field summary (`whatsNew=NNNc`), which
+    # is printed ONLY when attrs["whatsNew"] was actually set. Asserting on the
+    # bare word "whatsNew" would be vacuous: it also appears in the warning the
+    # step emits when the field is left EMPTY — i.e. the check would pass on the
+    # exact #2893 W4 defect it is named after (caught in this PR's review).
     check("without the file, the CHANGELOG fallback still fills whatsNew (#2908)",
-          "user-visible change" in out or "whatsNew" in out,
-          out[-300:])
+          "whatsNew=" in out, out[-300:])
 
     # Both sources empty is the only state that leaves the required field
     # blank — and the warning has to name which one is missing, since "No

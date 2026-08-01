@@ -313,13 +313,22 @@ jobs:
           with open(key_path) as f:
               private_key = f.read()
 
-          token = jwt.encode(
-              {"iss": ISSUER_ID, "iat": int(time.time()), "exp": int(time.time()) + 1200, "aud": "appstoreconnect-v1"},
-              private_key,
-              algorithm="ES256",
-              headers={"kid": KEY_ID}
-          )
-          headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+          # Apple caps the ASC token lifetime at 20 minutes. The build poll below
+          # can now legitimately consume most of that window (it waits for OUR
+          # build, #2893 W1), so the token is minted through a helper and
+          # re-minted after the poll — otherwise a long-but-successful wait
+          # would hand an already-expiring token to the submission calls that
+          # matter most.
+          def asc_headers():
+              token = jwt.encode(
+                  {"iss": ISSUER_ID, "iat": int(time.time()), "exp": int(time.time()) + 1200, "aud": "appstoreconnect-v1"},
+                  private_key,
+                  algorithm="ES256",
+                  headers={"kid": KEY_ID}
+              )
+              return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+          headers = asc_headers()
           BASE = "https://api.appstoreconnect.apple.com/v1"
 
           # 1. Find the app
@@ -358,8 +367,11 @@ jobs:
           # CFBundleVersion it built as ASC_EXPECTED_BUILD, and we pin the
           # selection to it: no match yet means our build is still processing,
           # which is a reason to keep polling, not to take the older one.
-          # Without the env var (a re-run of just this step, say) the previous
-          # newest-VALID behaviour stands, loudly flagged.
+          # Without the env var the previous newest-VALID behaviour stands,
+          # loudly flagged. In this workflow the archive step is unconditional,
+          # so that branch should never fire — it exists so a future job that
+          # submits without archiving (or an archive step that stops exporting
+          # the number) degrades to the old behaviour instead of hard-failing.
           expected_build = (os.environ.get("ASC_EXPECTED_BUILD") or "").strip()
           if expected_build:
               print(f"Expecting build number {expected_build} (uploaded by this run)")
@@ -379,9 +391,16 @@ jobs:
               except ValueError:
                   return False
 
+          # 15 attempts, not 10 (#2893 review). Before W1 this loop almost
+          # always exited on attempt 1 — on the PREVIOUS release's build, which
+          # was the bug — so the window was never really exercised. Waiting for
+          # a freshly uploaded build is precisely the slow case, and Apple's
+          # processing routinely runs past 12 minutes. The token is re-minted
+          # after the loop, so a long wait no longer eats the submission's JWT.
+          POLL_ATTEMPTS = 15
           build_id = None
           build_version = None
-          for attempt in range(1, 11):
+          for attempt in range(1, POLL_ATTEMPTS + 1):
               r = requests.get(
                   f"{BASE}/builds?filter[app]={app_id}&filter[processingState]=VALID"
                   f"&sort=-uploadedDate&limit=20&include=preReleaseVersion",
@@ -407,7 +426,7 @@ jobs:
               if r.status_code != 200:
                   if r.status_code == 429 or r.status_code >= 500:
                       print(f"::warning::builds GET transient {r.status_code} "
-                            f"(attempt {attempt}/10) — retrying in 60s: {r.text[:200]}")
+                            f"(attempt {attempt}/{POLL_ATTEMPTS}) — retrying in 60s: {r.text[:200]}")
                       time.sleep(60)
                       continue
                   print(f"::error::builds GET failed with {r.status_code} — request rejected, "
@@ -418,7 +437,7 @@ jobs:
               except ValueError:
                   # A 200 that is not JSON is an edge/proxy hiccup, not a
                   # verdict on the build. Same treatment as a 5xx.
-                  print(f"::warning::builds GET returned a non-JSON 200 (attempt {attempt}/10) — "
+                  print(f"::warning::builds GET returned a non-JSON 200 (attempt {attempt}/{POLL_ATTEMPTS}) — "
                         f"retrying in 60s: {r.text[:200]}")
                   time.sleep(60)
                   continue
@@ -454,11 +473,15 @@ jobs:
               # loudly, so the platform filter never makes things worse.
               if newest_valid is not None and not platform_seen:
                   if expected_build:
-                      # A build-number match is a STRONGER signal than the
-                      # platform filter here — the number is the one we
-                      # uploaded from an iOS archive — so keep the W1 pin even
-                      # though the platform is unresolvable, and keep polling
-                      # until our own build turns VALID.
+                      # Degraded path: no platform is resolvable, so match on
+                      # the build number alone and keep polling until it shows
+                      # up. Be honest about what this does NOT prove —
+                      # `deploy-macos` computes the SAME `run_number + 1000`
+                      # against the SAME app record, so a number match here
+                      # cannot distinguish the two platforms' builds, exactly
+                      # as the pre-#2963 newest-VALID fallback could not. It is
+                      # no worse than what it replaces, and it is still tighter
+                      # than "newest", but it is not a platform guarantee.
                       m = next(
                           (b for b in data
                            if _same_build(b.get("attributes", {}).get("version"), expected_build)),
@@ -466,7 +489,9 @@ jobs:
                       )
                       if m is not None:
                           print("::warning::Could not resolve build platform via include=preReleaseVersion — "
-                                f"selecting build {expected_build} by build-number match instead.")
+                                f"selecting build {expected_build} by build-number match instead. NOTE: the macOS "
+                                "job builds the same number against the same app record, so this match does not "
+                                "prove the platform; a mismatched build 409s on the attach below.")
                           build_id = m["id"]
                           build_version = m["attributes"]["version"]
                           break
@@ -477,18 +502,25 @@ jobs:
                       build_version = newest_valid["attributes"]["version"]
                       break
               waiting_for = f"build {expected_build}" if expected_build else "a VALID iOS build"
-              print(f"No {waiting_for} yet (attempt {attempt}/10) — Apple still processing, retrying in 60s...")
+              print(f"No {waiting_for} yet (attempt {attempt}/{POLL_ATTEMPTS}) — Apple still processing, retrying in 60s...")
               time.sleep(60)
           if not build_id:
               detail = (
                   f"build {expected_build} (uploaded by this run) never turned VALID"
                   if expected_build else "no VALID iOS build appeared"
               )
-              print(f"::error::After ~12 minutes, {detail} — Apple processing overran or the upload failed. "
-                    "The release was NOT submitted for review; re-run this job once the build shows as "
-                    "processed in App Store Connect.")
+              print(f"::error::After ~{2 + POLL_ATTEMPTS} minutes, {detail} — Apple processing overran or the "
+                    "upload failed. The release was NOT submitted for review. RECOVERY: dispatch a FRESH run — "
+                    "re-running this one reuses the same github.run_number, so it re-archives the same "
+                    "CFBundleVersion and Apple rejects the duplicate upload before the submit step is reached.")
               raise SystemExit(1)
           print(f"Selected iOS build: {build_version} (ID: {build_id})")
+
+          # Re-mint the token: the poll above may have burned most of its
+          # 20-minute life, and everything that follows (version record, build
+          # attach, localization, review submission) is the part that must not
+          # fail on an expired JWT.
+          headers = asc_headers()
 
           # Resolve the App Store version string. Tag pushes set
           # ASC_VERSION_STRING via env (e.g. "v4.2.0"). Drop the leading "v"
@@ -878,7 +910,16 @@ jobs:
               if rs.status_code not in (200, 201):
                   print(f"::error::reviewSubmissions CREATE failed: {rs.status_code} {rs.text[:300]}")
                   raise SystemExit(1)
-              rs_id = rs.json()["data"]["id"]
+              try:
+                  rs_id = rs.json()["data"]["id"]
+              except (ValueError, KeyError, TypeError) as ide:
+                  # Apple accepted the CREATE but the body is unreadable, so we
+                  # hold no id to cancel with — the one orphan the cleanup below
+                  # structurally cannot reach. Say so instead of dying silently.
+                  print(f"::error::reviewSubmissions CREATE returned {rs.status_code} with an unreadable body "
+                        f"({ide}): a submission may have been created that this run cannot identify or cancel. "
+                        "Check App Store Connect for an open, itemless submission.")
+                  raise SystemExit(1)
               print(f"Created reviewSubmission {rs_id}")
 
               # W5 (#2893). From this point THIS run owns an OPEN, EMPTY
@@ -904,7 +945,18 @@ jobs:
               # errors: it must never mask the failure that triggered it (a
               # cancel that itself 401s on an expired JWT would otherwise
               # replace the real diagnosis with a cleanup traceback).
+              #
+              # One case is NOT unambiguous, and cancelling there would be
+              # worse than the orphan this cleanup exists to kill: if the
+              # submit PATCH below raises (read timeout, RST, runner network
+              # blip) the request may still have REACHED Apple, who committed
+              # the submission to WAITING_FOR_REVIEW before the response was
+              # lost. Cancelling then WITHDRAWS a live App Review submission.
+              # So the ambiguous window is tracked separately (`submit_answered`)
+              # and resolved by re-reading the submission's state before
+              # touching it — never cancelling on an unread state.
               submitted_ok = False
+              submit_answered = True  # False only while the PATCH is in flight
               try:
                   # Add version to submission
                   item_payload = {
@@ -930,7 +982,9 @@ jobs:
                           "attributes": {"submitted": True}
                       }
                   }
+                  submit_answered = False
                   rp = requests.patch(f"{BASE}/reviewSubmissions/{rs_id}", headers=headers, json=patch_payload)
+                  submit_answered = True
                   if rp.status_code in (200, 201):
                       # Set BEFORE reading the body: the submission is live on
                       # Apple's side at this point, so a parse error on the
@@ -943,7 +997,36 @@ jobs:
                       print(f"::error::Submission PATCH failed: {rp.status_code} - {rp.text[:300]}")
                       raise SystemExit(1)
               finally:
-                  if not submitted_ok:
+                  if not submitted_ok and not submit_answered:
+                      # Ambiguous window: the submit PATCH never came back, so
+                      # Apple may or may not hold a live submission. Read the
+                      # state before deciding; anything other than a confirmed
+                      # not-yet-submitted state means hands off.
+                      try:
+                          probe = requests.get(f"{BASE}/reviewSubmissions/{rs_id}", headers=headers)
+                          probe_state = (probe.json().get("data", {}).get("attributes", {}).get("state")
+                                         if probe.status_code == 200 else None)
+                      except Exception as pe:
+                          probe_state = None
+                          print(f"::warning::Could not read back reviewSubmission {rs_id}: {pe}")
+                      if probe_state in ("READY_FOR_REVIEW", "UNRESOLVED_ISSUES"):
+                          print(f"reviewSubmission {rs_id} is still {probe_state} — the lost PATCH did not "
+                                "reach Apple; cleaning it up")
+                          submit_answered = True  # resolved: safe to cancel below
+                      else:
+                          # Either Apple took it (WAITING_FOR_REVIEW/IN_REVIEW)
+                          # or the state is unreadable for this service-account
+                          # key. Leaving an orphan is recoverable — 5a's stale
+                          # probe cancels it on the next deploy, and
+                          # store-preflight.sh reports it meanwhile. Withdrawing
+                          # a real submission is not.
+                          print(
+                              f"::warning::The submit PATCH for reviewSubmission {rs_id} got no response and its "
+                              f"state reads as {probe_state or 'unknown'} — NOT cancelling, because it may be a "
+                              "live App Review submission. Check it in App Store Connect: if it is still assembled "
+                              "but never submitted, cancel it there (the next deploy's stale probe also clears it)."
+                          )
+                  if not submitted_ok and submit_answered:
                       try:
                           cancel = requests.patch(
                               f"{BASE}/reviewSubmissions/{rs_id}",
