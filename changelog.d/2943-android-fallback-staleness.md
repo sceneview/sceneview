@@ -22,10 +22,18 @@
 - **The prim-count budget covers the class, not one asset.** The iOS guard
   budgeted `tree_scene` alone, leaving the next model added to `Models/`
   unguarded — which is how the 2 712-prim asset shipped in the first place. It
-  now sweeps every bundled USDZ. Both new resolver guards are mutation-tested
-  individually: dropping the length comparison makes the re-stage test return
-  the stale bytes, and dropping the last-resort branch makes the degradation
-  test throw `FallbackUnavailable`.
+  now sweeps all 31 bundled USDZ against a ceiling set from measurement rather
+  than extrapolation: the 34 ms/prim figure taken from `tree_scene` does not
+  transpose (the rest of the bundle runs ~6-9 ms/prim, and the two heaviest
+  assets — 155 and 126 prims — parse in under 1.2 s), so the class ceiling is
+  500 rather than 100. Cost is stated cold, as CI pays it: 47.6 s, taking the
+  suite to 50.4 s.
+- **Both new resolver guards are mutation-tested individually.** Dropping the
+  length comparison makes the re-stage test return the stale bytes; dropping
+  the last-resort branch makes the degradation test throw
+  `FallbackUnavailable`. The sweep is likewise known to bite — at the tighter
+  100-prim ceiling it failed on the two assets above, which is how the
+  non-linear cost was found.
 
 <!-- category: Docs -->
 - **The CC-BY indicate-changes note names the artefact that actually changed.**
