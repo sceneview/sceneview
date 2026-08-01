@@ -3,14 +3,22 @@
 Fresh, correctly-sized App Store Connect screenshots for the SceneView demo
 app — real iOS-simulator captures of rendered 3D content.
 
-> ⛔ **These frames are stale as of #2897 — re-capture before dispatching
+> ⛔ **These frames predate #2897 — re-capture before dispatching
 > `app-store-screenshots.yml`.** They were captured while
-> `SceneEnvironment.intensity` was still fed to RealityKit as a `2^x` exponent,
-> so `.studio` (the default preset, `intensity` 1.0) lit them at ×2.0. #2897
-> converts with `log2`, so the app now renders these scenes about **half as
-> bright** as what is committed here. Uploading them would advertise an exposure
-> the app no longer produces. Nothing enforces this — the dispatch is manual and
-> `asc_listing.py` compares checksums, not pixels — so it is a note, not a gate.
+> `SceneEnvironment.intensity` was still fed to RealityKit as a `2^x` exponent:
+> `01-model-viewer.png` runs on `.warm` (intensity 1.0 → ×2.00, now ×1.00) and
+> `02-dynamic-sky.png` on `.outdoor` (1.2 → ×2.30, now ×1.20).
+>
+> **Measured, not estimated** — `01-model-viewer.png` re-shot from the #2897
+> branch on a 1320×2868 simulator, same `-demo model-viewer -qa_mode 1` launch:
+> viewport mean luma 192.3 → 191.2, vehicle region 151.6 → 147.4. The frames are
+> **not** uniformly halved, because only the IBL contribution changes — the
+> skybox is drawn directly and the direct lights are untouched, and on this scene
+> the bright studio backdrop dominates the histogram. They are still not what the
+> app renders.
+>
+> Nothing enforces this — the dispatch is manual and `asc_listing.py` compares
+> checksums, not pixels — so it is a note, not a gate.
 
 ## Background — issue #917
 

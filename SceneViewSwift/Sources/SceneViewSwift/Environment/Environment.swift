@@ -23,12 +23,18 @@ public struct SceneEnvironment: Sendable {
     public let hdrResource: String?
 
     /// Light intensity, as a **linear multiplier** — `1.0` leaves the HDR's own
-    /// radiance untouched, `0.5` halves it, `2.0` doubles it. Same unit and same
-    /// scale as Android's `Environment` intensity, so identical values give
-    /// identical lighting on both platforms.
+    /// radiance untouched, `0.5` halves it, `2.0` doubles it.
     ///
     /// Converted to RealityKit's `ImageBasedLightComponent.intensityExponent`
     /// (a power of two) at apply time; callers never see the exponent (#2897).
+    ///
+    /// - Note: **This is not interchangeable with an Android value.** Android's
+    ///   `Environment` has no intensity member at all; its IBL level is Filament's
+    ///   `IndirectLight.intensity` in **absolute lux**, defaulting to
+    ///   `DEFAULT_IBL_INTENSITY = 10_000` (`SceneFactories.kt`). `1.0` there is one
+    ///   lux — effectively black — not "the HDR untouched". The two platforms match
+    ///   on the key-to-IBL *ratio*, not on absolute values; see the cross-platform
+    ///   parity note on `DEFAULT_IBL_INTENSITY`.
     public var intensity: Float
 
     /// Whether to render the environment as a skybox background.
@@ -165,7 +171,7 @@ public struct SceneEnvironment: Sendable {
     ///   - name: Display name.
     ///   - hdrFile: HDR file name in the bundle (e.g. "custom_env.hdr").
     ///   - intensity: Light intensity as a linear multiplier (`1.0` = the HDR's own
-    ///     radiance). Same unit as Android's `Environment` intensity (#2897).
+    ///     radiance). Not an Android lux value — see ``intensity`` (#2897).
     ///   - showSkybox: Whether to show as background.
     public static func custom(
         name: String,

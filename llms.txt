@@ -6890,11 +6890,20 @@ public struct SceneEnvironment: Sendable {
 }
 ```
 
-`intensity` is a **linear multiplier**, the same unit and scale as Android's
-`Environment` intensity — `1.0` leaves the HDR's own radiance untouched, `0.5`
-halves it. Identical values give identical lighting on both platforms. RealityKit's
-underlying `ImageBasedLightComponent` takes a power-of-two *exponent*; SceneView
-converts for you, so never pre-apply a `log2` (#2897).
+`SceneEnvironment.intensity` is a **linear multiplier** — `1.0` leaves the HDR's
+own radiance untouched, `0.5` halves it. RealityKit's underlying
+`ImageBasedLightComponent` takes a power-of-two *exponent*; `SceneEnvironment`
+converts for you, so never pre-apply a `log2` to **this** property (#2897).
+
+> ⚠️ **Do not carry an Android IBL value across.** Android's `Environment` has no
+> intensity member; its IBL level is Filament's `IndirectLight.intensity` in
+> **absolute lux**, defaulting to `DEFAULT_IBL_INTENSITY = 10_000`
+> (`SceneFactories.kt`). `1.0` there is one lux — effectively black. The two
+> platforms are tuned to match on the key-light-to-IBL *ratio*, not on absolute
+> values, and iOS's exponent-0 baseline sits around 1000 lux equivalent. Web has
+> no intensity knob at all: `environment(iblUrl, skyboxUrl)` takes none.
+> The sibling `ReflectionProbeNode.intensity` is a **separate** property that
+> still takes a raw exponent — see #2956.
 
 `showSkybox: true` renders the HDR as a background. On iOS / macOS it uses
 `RealityViewContent.environment = .skybox(...)`. On visionOS a windowed /
