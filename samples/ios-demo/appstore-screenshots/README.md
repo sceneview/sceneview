@@ -68,9 +68,17 @@ defects that are platform-independent, so do not reach for them here either.
 `materials` opened on a streamed subject and drew an orbiting HDRI skybox, so
 neither the subject nor the backdrop was reproducible; the demo side is fixed
 (#2874) and the id is eligible again, but do not re-add it without capturing it
-and looking at the frame against the other slots first. `geometry` clips its
-primitives in a portrait frame (#2873 — measured on Android, not re-measured on
-iOS). `double-pendulum` renders as a tiny linkage in a mostly-black frame.
+and looking at the frame against the other slots first. `double-pendulum`
+renders as a tiny linkage in a mostly-black frame.
+
+`geometry` clipped its primitives in a portrait frame (#2873). That is **fixed
+on Android** — but the fix is a layout change in the Android demo, so it does
+not carry across: the iOS scene builds its own primitives, and whether it clips
+in an iPhone-portrait frame has **not** been measured. Judge it on a captured
+frame before either re-adding or retiring the id here; do not inherit the
+Android verdict in either direction. Even on Android the id stays out of the
+set: the fixed 2 × 2 cluster leaves the frame centre empty, which that capture
+script's variance guard reads as blank.
 
 Captured in **dark appearance** with a cleaned status bar (fixed 9:41, full
 signal/battery), mirroring the Android capture's dark-mode + status-bar crop
