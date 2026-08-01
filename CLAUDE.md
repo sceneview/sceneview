@@ -587,6 +587,22 @@ push spawns 4 reviewers plus one adversarial verifier per error. `concurrency`
 cancels superseded runs so a push burst costs one review. If quota tightens,
 narrow the trigger to `opened, ready_for_review`.
 
+**`Agent review` is ADVISORY — it does not hold the merge button.** It is
+listed in `ci-gate.yml`'s `ADVISORY_CHECKS`, so its conclusion never decides
+the `CI Gate` aggregator that branch protection actually requires. That is the
+same rule the repo applies to `check-doc-drift`: an LLM review is a heuristic,
+and blocking a heuristic guarantees false positives that erode trust in the
+whole gate. A wrong `DO_NOT_MERGE` should cost one read of the review comment,
+not a frozen repository.
+
+Nothing about that makes it quiet: the check still goes RED, the verdict is
+still posted on the PR, and the grader still fails CLOSED. It also avoids a
+structural deadlock — `claude-code-action` refuses to run on any PR that edits
+`pr-review.yml`, so a blocking check would make every future change to the
+review workflow unmergeable by design. Promote it to blocking only after
+enough runs to *measure* the false-positive rate, the same bar the advisory
+device-QA legs have to clear.
+
 ## Agent cost instrumentation
 
 Step-3 autonomy's stated bottleneck is *"ensuring tokens are used efficiently
