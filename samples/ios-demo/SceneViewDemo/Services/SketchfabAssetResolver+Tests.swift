@@ -249,6 +249,54 @@ final class SketchfabAssetResolverTests: XCTestCase {
                        + "the old bytes makes an asset fix inert on every existing install")
     }
 
+    /// Degradation shape when the bundled resource has gone (#2943 §4.1).
+    ///
+    /// The freshness check moved the bundle lookup ahead of the staged-copy
+    /// early return, so an install with a valid staged copy whose bundled
+    /// asset was renamed or removed went from *renders the old model* to
+    /// *throws*, across every `fallbackBundle` call site. Serving the staged
+    /// copy as a last resort restores the previous shape.
+    func testFallbackBundleServesTheStagedCopyWhenTheBundledAssetIsGone() async throws {
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vanished-\(UUID().uuidString)", isDirectory: true)
+        let bundleURL = scratch.appendingPathComponent("Fake.bundle", isDirectory: true)
+        let modelsDir = bundleURL.appendingPathComponent("Models", isDirectory: true)
+        try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+
+        let bundled = modelsDir.appendingPathComponent("vanishing_probe.usdz")
+        let shipped = Data(repeating: 0xC3, count: 4096)
+        try shipped.write(to: bundled)
+
+        let resolver = SketchfabAssetResolver(
+            bundle: try XCTUnwrap(Bundle(url: bundleURL), "scratch bundle unreadable"),
+            fileManager: ScratchCachesFileManager(
+                root: scratch.appendingPathComponent("caches", isDirectory: true)
+            )
+        )
+        let slug = SketchfabSlug(
+            uid: "00000000000000000000000000decade",
+            displayName: "Vanishing",
+            author: "test",
+            licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
+            fallbackBundledPath: "Models/vanishing_probe.usdz",
+            scaleToUnits: 1.0,
+            hasBakedAnimation: false,
+            category: "gallery"
+        )
+
+        let staged = try await resolver.fallbackBundle(for: slug)
+        XCTAssertEqual(try Data(contentsOf: staged), shipped)
+
+        // The asset is renamed/removed while SampleAssets still points at it.
+        try FileManager.default.removeItem(at: bundled)
+
+        let served = try await resolver.fallbackBundle(for: slug)
+        XCTAssertEqual(try Data(contentsOf: served), shipped,
+                       "a vanished bundled resource must degrade to the staged copy "
+                       + "rather than throwing at every call site")
+    }
+
     // ─── boundsAreSane heuristic ───────────────────────────────────────────
 
     func testBoundsAreSaneRejectsEmptyFile() async throws {

@@ -71,4 +71,41 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
             "tree_scene.usdz parsed to empty bounds — it would render nothing"
         )
     }
+
+    /// The bug class is "any bundled USDZ with too many prims stalls past the
+    /// settle window", not "tree_scene specifically". Budgeting one asset
+    /// leaves the next one added to `Models/` unguarded — which is how
+    /// `tree_scene` shipped in the first place.
+    ///
+    /// Suite cost is real and paid on every PR run (`ios.yml`): this parses
+    /// every bundled USDZ once. Measured on this host — see the PR body for
+    /// the wall-clock figure — it is the price of covering the class rather
+    /// than one instance. If it ever outgrows the CI budget, narrow it to the
+    /// demo hot-path assets rather than dropping back to a single name.
+    func testEveryBundledModelStaysUnderMeshPrimBudget() async throws {
+        let bundle = Bundle.main
+        let urls = bundle.urls(forResourcesWithExtension: "usdz", subdirectory: "Models")
+            ?? bundle.urls(forResourcesWithExtension: "usdz", subdirectory: nil)
+            ?? []
+        XCTAssertFalse(
+            urls.isEmpty,
+            "no bundled .usdz found — the sweep would pass by covering nothing"
+        )
+
+        var offenders: [String] = []
+        for url in urls.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let entity = try await Entity(contentsOf: url)
+            let count = meshPrimCount(of: entity)
+            if count > Self.meshPrimBudget {
+                offenders.append("\(url.lastPathComponent): \(count) mesh prims")
+            }
+        }
+
+        XCTAssertTrue(
+            offenders.isEmpty,
+            "bundled assets over the \(Self.meshPrimBudget)-prim budget — RealityKit's "
+            + "import cost scales with prim count (~34 ms each), so these render as "
+            + "absent inside any settle window: \(offenders.joined(separator: ", "))"
+        )
+    }
 }
