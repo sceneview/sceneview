@@ -52,23 +52,39 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
         return try XCTUnwrap(url, "\(name).usdz missing from the app bundle")
     }
 
-    /// `tree_scene.usdz` backs the MultiModelDemo Tree slot, the Explore and AR
-    /// tabs' "Tree Scene" entry, and the keyless fallback of three
-    /// `ar_placement` slugs — so a prim-count regression here stalls several
-    /// demos at once.
-    func testTreeSceneStaysUnderMeshPrimBudget() async throws {
-        let entity = try await Entity(contentsOf: try bundledURL("tree_scene"))
+    private func assertUnderMeshPrimBudget(_ name: String) async throws {
+        let entity = try await Entity(contentsOf: try bundledURL(name))
         let count = meshPrimCount(of: entity)
         XCTAssertLessThanOrEqual(
             count, Self.meshPrimBudget,
-            "tree_scene.usdz has \(count) mesh prims. RealityKit's simulator " +
+            "\(name).usdz has \(count) mesh prims. RealityKit's simulator " +
             "import cost scales with prim count (~34 ms each), so this pushes " +
             "the slot past the settle window and it renders as absent."
         )
         // The optimisation must not have emptied the model.
         XCTAssertFalse(
             entity.visualBounds(relativeTo: nil).isEmpty,
-            "tree_scene.usdz parsed to empty bounds — it would render nothing"
+            "\(name).usdz parsed to empty bounds — it would render nothing"
         )
+    }
+
+    /// `tree_scene.usdz` backs the MultiModelDemo Tree slot, the Explore and AR
+    /// tabs' "Tree Scene" entry, and the `park` "Oak Trees" slug's keyless
+    /// fallback — so a prim-count regression here stalls several demos at once.
+    /// It backed three `ar_placement` slugs too until #2940 repointed them; those
+    /// keep their own budget check below.
+    func testTreeSceneStaysUnderMeshPrimBudget() async throws {
+        try await assertUnderMeshPrimBudget("tree_scene")
+    }
+
+    /// The keyless fallbacks #2940 repointed the *Potted Monstera*, *Wooden End
+    /// Table* and *Floor Lamp* `ar_placement` slugs to. They sit on exactly the
+    /// stall-sensitive path the tree did — the AR placement picker in a keyless
+    /// build, which is both the default local build and the App Store build —
+    /// so they carry the same budget.
+    func testARPlacementFallbacksStayUnderMeshPrimBudget() async throws {
+        for name in ["khronos_damaged_helmet", "khronos_toy_car", "khronos_lantern"] {
+            try await assertUnderMeshPrimBudget(name)
+        }
     }
 }

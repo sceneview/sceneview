@@ -252,7 +252,10 @@ enum SampleAssets {
             displayName: "Potted Monstera",
             author: "ChubbyPanda",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/tree_scene.usdz",
+            // Keyless fallback — no plant is bundled, so a decor-scale Khronos
+            // reference object stands in; the previous tree_scene read as the
+            // real thing under this label (#2940).
+            fallbackBundledPath: "Models/khronos_damaged_helmet.usdz",
             scaleToUnits: 0.45,
             hasBakedAnimation: false,
             category: "ar_placement",
@@ -275,7 +278,10 @@ enum SampleAssets {
             displayName: "Wooden End Table",
             author: "mozillareality",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/tree_scene.usdz",
+            // Keyless fallback — no table is bundled; this Khronos reference prop
+            // is plausible at 0.60 m and distinct from the other two AR-placement
+            // fallbacks, which the picker can stack in one scene (#2355).
+            fallbackBundledPath: "Models/khronos_toy_car.usdz",
             scaleToUnits: 0.60,
             hasBakedAnimation: false,
             category: "ar_placement",
@@ -286,7 +292,9 @@ enum SampleAssets {
             displayName: "Floor Lamp",
             author: "Mad_Lobster_Workshop",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/tree_scene.usdz",
+            // Keyless fallback — khronos_lantern is the one semantically exact
+            // match in the bundled set: a lamp still reads as a lamp at 1.55 m.
+            fallbackBundledPath: "Models/khronos_lantern.usdz",
             scaleToUnits: 1.55,
             hasBakedAnimation: false,
             category: "ar_placement",
