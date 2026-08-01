@@ -5,23 +5,62 @@ listing-sync job uploads this directory to the Play Console (#1710).
 
 This is the Android counterpart of
 [`samples/ios-demo/appstore-screenshots/README.md`](../../../../../ios-demo/appstore-screenshots/README.md).
-Both stores are meant to show the **same demos, framed the same way** — see
-#2773.
+Both stores are *meant* to show the same demos framed the same way (#2773) — but
+they are **not in sync today**. Read the next section before assuming parity.
 
-## The unified showcase set (#2773)
+## What each class actually ships right now
 
-Android and iOS capture the identical five demos, in this order:
+| Class | Files | Set |
+|---|---|---|
+| `phone-screenshot-*` | 3 | **v2** — `model-viewer · dynamic-sky · multi-model` (#2854/#2855) |
+| `tablet7-screenshot-*` | 2 | **v2** — `model-viewer · dynamic-sky` (#2907; `multi-model` is back in the script since #2913 but these files predate it) |
+| `tablet10-screenshot-*` | 2 | **v2** — `model-viewer · dynamic-sky` (#2907; `multi-model` is back in the script since #2913 but these files predate it) |
+| iOS (`appstore-screenshots/`) | 5 + 5 | pre-v2 five — refresh deferred on #2896 |
 
-| # | Demo id           | Why it is in the set                      |
-|---|-------------------|-------------------------------------------|
-| 1 | `model-viewer`    | Hero model, orbit camera — the flagship    |
-| 2 | `lighting`        | PBR lighting, visually rich                |
-| 3 | `materials`       | Material showcase                          |
-| 4 | `geometry`        | Procedural primitives                      |
-| 5 | `double-pendulum` | Physics/animation, shows motion            |
+**Set v2** is what the capture script produces today. It is three frames
+deliberately — fewer strong shots beat more mixed ones — each judged on the
+captured mosaic rather than picked a-priori (#2854):
 
-Both scripts force a **dark appearance** and neutralise the status bar so the
-two listings look like one product rather than two unrelated apps.
+| # | Demo id        | Why it is in the set                                     |
+|---|----------------|----------------------------------------------------------|
+| 1 | `model-viewer` | Hero model, orbit camera — the load-any-GLB flagship      |
+| 2 | `dynamic-sky`  | Lit drone against a procedural sky — the strongest frame  |
+| 3 | `multi-model`  | The only non-helmet, non-sky frame — photoreal foliage    |
+
+**Retired, do not re-add by guesswork** (the same list sits in the capture
+script next to `DEMOS_DEFAULT`): `materials` was not reproducible launch to
+launch, and its demo side is fixed as of #2874 — eligible again, but only after
+someone captures it and looks at the frame; `geometry` no longer clips
+(#2873) but its cluster leaves the frame centre empty, which the variance guard
+reads as blank; `double-pendulum` is a tiny linkage in a
+~95%-black frame and ignores reframing; `fog` stayed a low-contrast grey helmet;
+`animation` duplicates slot 1. The pre-v2 tablet sets above still contain three
+of these — that is the gap #2907 tracks, not an endorsement.
+
+**`multi-model` was phone-only for one release, and is back on tablets (#2913).**
+What had been measured was real: at a tablet's wider aspect (~0.64 w/h vs the
+phone's ~0.47) the capture landed on a wooden post against the backdrop wall, no
+foliage, and the variance guard **passed** it (2227 on 10", 2827 on 7"). Both
+stated causes turned out to be wrong, which is worth keeping on the record:
+
+- The framing was broken at **every** aspect, not just on tablets. The section
+  aimed a fixed camera at the formation centre it authored while the library's
+  `autoCenterContent` pass had already translated that formation onto the world
+  origin — the lens sat ~0.6 m from the centroid, *inside* the subject. A narrow
+  phone frame cropped that into something that reads as texture; a wider tablet
+  frame exposed it. The scene now derives its camera distance from the live
+  viewport aspect and frames itself on both classes.
+- `camera_distance` was inert here because the section read no `DemoSettings` at
+  all, not because "distance moves the camera along an angle it cannot change".
+  The 2.5 / 3.5 / 4.5 m probe compared three frames that each discarded the extra.
+
+The guard lesson stands unchanged, and is the reason this paragraph exists: a
+green capture of this demo is never evidence. Judge the mosaic by eye.
+
+On Android the v2 ids resolve through `ALIAS_INITIAL_TAB` to distinct umbrella
+tabs (`dynamic-sky` → Lighting Lab, `multi-model` → the Multi-Model tab), so no
+two slots collapse onto the same screen. The script forces a **dark appearance**
+and neutralises the status bar.
 
 ## Files
 
@@ -38,10 +77,19 @@ The `imageType` column is the Play `AppImageType` enum value that
 guessable — an invalid one 400s and, because a Play edit is atomic, voids the
 **whole** listing sync including the text and the icon (#2794).
 
-All three classes are now script-reproducible and captured from the unified demo
-set. For the record, what the tablet PNGs replaced (#2796): 12 files that were
+All three classes are script-reproducible and all three are now on set v2 — phone
+with three slots, the committed tablet files with two, because they were captured
+while `multi-model` was dropped from tablet runs; a fresh tablet run now writes
+three (Play accepts 2–8 per type). The set is what a run *writes*, and a run also **prunes**
+any higher-numbered slot left over from a larger set, because `play_listing.py`
+selects by glob rather than by count — an unpruned leftover would still be
+uploaded at the next tag, and the mosaic (which iterates 1..N) cannot show it.
+
+For the record, what the tablet PNGs replaced (#2796): 12 files that were
 byte-identical across the 7"/10" slots, light-mode, advertised a stale `v4.14.0`
-in the About screen, and included two screens with no 3D at all.
+in the About screen, and included two screens with no 3D at all. The pre-v2
+tablet PNGs that #2907 has now retired were shot from a **4.23.0** build and
+predate the demo bottom-overlay fix (#2780).
 
 ## Regenerating the screenshots
 
@@ -63,7 +111,7 @@ the set or the output directory when needed:
 
 ```bash
 bash .claude/scripts/capture-play-store-screenshots.sh \
-  --demos model-viewer,lighting \
+  --demos model-viewer,dynamic-sky \
   --status-bar-px auto
 ```
 
@@ -108,6 +156,16 @@ and `hw.gpu.mode = host` (the default is `no`, which renders Filament in softwar
 and yields dark, unusable captures), and give them ≥ 2560 MB of `hw.ramSize` —
 a tablet framebuffer is ~4 Mpx and the demo was observed dying mid-series at
 2048 MB, which is what let an Android launcher screenshot into the set.
+
+Host budget, measured on the `pixel_tablet` profile: the emulator **rewrites
+`config.ini` on every boot**, so a hand-lowered `disk.dataPartition.size` does
+not stick — and `-partition-size` does not override it either. It provisions the
+profile's 6 GiB userdata and refuses to start below **~7.4 GB free disk**
+(`FATAL | Not enough space to create userdata partition`), and forces RAM to
+**4096 MB** regardless of `-memory`. Check free disk *and* RAM before booting;
+on a busy host, wait for another QA run to finish rather than racing it. To
+reclaim the space afterwards, delete the AVD's `userdata-qemu.img*` — it is
+regenerated on the next boot (this frees ~5 GB per tablet AVD).
 
 > **Why two AVDs and not one.** The 12 tablet PNGs this set replaced were
 > byte-identical across the 7"/10" slots — the 10" capture had simply been
@@ -158,14 +216,44 @@ passes the variance check and is still unusable.
 
 ## Known follow-ups
 
-- **#2785** — framing. Two known imperfections remain in the tablet set, both
-  framing rather than capture defects:
-  - `geometry` in portrait crops the **cube** out of frame — the three
-    primitives are laid out horizontally and do not fit a portrait viewport.
-  - `model-viewer` and `double-pendulum` sit noticeably off-centre.
+- **#2913 (fixed, awaiting a re-capture)** — the scene now takes the viewport
+  aspect into account, and `multi-model` is back in the tablet set. The committed
+  tablet PNGs still hold two slots because they predate the fix; a tablet run
+  writes three. Re-capturing them is the remaining step (Play accepts 2–8 per
+  type, so the two-slot listing is valid meanwhile).
+- **Tablet `model-viewer` framing is not deterministic.** In the committed set
+  the helmet sits at a visibly different orientation on `tablet7-screenshot-1`
+  than on `tablet10-screenshot-1`, while `dynamic-sky` matches across both
+  classes. Two runs of the same demo should differ only by aspect, so this is a
+  demo-side non-determinism worth pinning before the next re-capture.
+- **#2874** — `materials` was not reproducible: a streamed subject and an
+  orbiting camera against the `studio_2k` skybox meant the frame depended on the
+  API key, the network and capture timing. The demo side is **fixed** (bundled
+  default subject, one fixed studio HDRI, subject-independent framing), so the id
+  is eligible for a slot again — it stays out of the committed set only because
+  nobody has captured it and judged the frame against the other slots yet.
+- **#2873 — `geometry`'s clipping is fixed; the id still stays out of set v2.**
+  The demo laid its four primitives on a row ~1.45 m wide and viewed it from a
+  camera that measured **1.22 m** away — not the 2.7 m its own comment claimed,
+  because the orbit distance is the *length* of `orbitHomePosition`: Filament
+  takes that value as the eye verbatim, and `autoCenterContent = true` has
+  already moved the content onto the world origin, so `targetPosition` never
+  enters the distance (documented on `main` in #2930). Both halves
+  are fixed: the primitives sit in a 2 × 2 cluster, the distance means what it
+  says, and `camera_distance` is wired into this demo. Measured on the QA
+  emulator at the default framing, the cluster clears the frame with ≥ 184 px of
+  margin per side (predicted left edge 187.2 px, measured 187 px), and
+  `GeometryLayoutTest` pins the fit arithmetic.
 
-  The `camera_distance` lever (#2652, `--ef camera_distance <f>`) does **not**
-  fix this: measured on `geometry`, 6.0 and 9.0 produce an identical frame, so
-  the lever is not wired into every demo. A proper fix is per-demo framing,
-  which is #2785's scope. The set still improves substantially on what it
-  replaced, so it ships rather than blocking on that.
+  Two capture-side reasons still argue against the slot, and neither is fixed by
+  the framing work. The 2 × 2 cluster leaves the frame **centre** empty, so the
+  3 × 3 centre-patch variance guard reads it as blank (measured 0.1, threshold
+  100) — a capture run on this id fails until either the layout or the guard
+  changes. And the shared Y-axis spin is free-running outside `qa_mode`, so the
+  flat plane is edge-on — invisible — at an unpredictable fraction of capture
+  instants. Judge a fresh mosaic before adding the id back.
+- **#2785** — the `camera_distance` lever (#2652, `--ef camera_distance <f>`)
+  is honoured only by demos built on `rememberHeroOrbitCameraManipulator`, and
+  iOS has no equivalent launch argument at all. That gap is part of what blocks
+  the iOS re-capture (#2896). `geometry` is wired in as of #2873; every other
+  non-hero-orbit demo still swallows the extra silently.

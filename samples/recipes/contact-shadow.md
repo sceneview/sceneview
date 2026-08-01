@@ -94,8 +94,9 @@ lighting — **not** this procedural, light-independent, per-context pool. So th
 
 They compose: nothing stops a floor from catching a real shadow while a wall gets a procedural
 one. The non-AR `ContactShadowPreviewDemo` (runs on any emulator, no ARCore) makes the value
-visible: two identical boxes hop side by side — one grounded by a height-responsive contact
-pool, one floating without it — plus a wall-mounted TV with switchable per-surface presets.
+visible: two boxes side by side with deliberately different motion — one bounces and *lands*,
+grounded by a height-responsive contact pool, while its twin hovers high and never touches down,
+shadowless — plus a wall-mounted TV with switchable per-surface presets.
 
 > **Platform status.** Android: available now. iOS: has `GroundingShadowComponent` (a different,
 > projected mechanism); this procedural per-context pool is not mirrored yet. Web: coming soon.

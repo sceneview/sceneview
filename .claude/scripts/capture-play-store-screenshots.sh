@@ -9,7 +9,7 @@
 # Usage:
 #   bash .claude/scripts/capture-play-store-screenshots.sh \
 #     [--form-factor phone|tablet7|tablet10]   # default phone \
-#     [--demos model-viewer,lighting,materials,geometry,double-pendulum] \
+#     [--demos model-viewer,dynamic-sky,multi-model]   # default = set v2 \
 #     [--out samples/android-demo/distribution/play-store/en-GB/graphics] \
 #     [--status-bar-px N | auto] \
 #     [--variance-threshold N] \
@@ -80,11 +80,14 @@ android_cli_ensure || true
 #   2 dynamic-sky    the strongest frame — a lit drone against a vivid procedural
 #                    sky; a sky/sun/environment theme no other slot carries and
 #                    the shot most likely to sell the SDK. Deterministic noon
-#                    default (no random HDRI, unlike the dropped `materials`).
+#                    default — no HDRI backdrop at all (see the `materials` note
+#                    at the bottom of this list: it never picked one at random).
 #   3 multi-model    the only non-helmet, non-sky frame — a rich photoreal-foliage
-#                    fidelity shot; pulled BACK to 6.0 m for the fullest scene the
-#                    fixed default camera angle allows (distance can't change the
-#                    angle, so this is as composed as the diorama gets).
+#                    fidelity shot. Since #2913 the scene frames ITSELF from the
+#                    live viewport aspect, so it deliberately takes no
+#                    `camera_distance` entry below: a fixed metre value would
+#                    override the per-viewport framing with a number tuned on one
+#                    screen shape.
 #
 # Three strong frames, deliberately — Fable's verdict was that fewer strong shots
 # beat more mixed ones. Dropped from earlier sets, and why (so nobody re-adds them
@@ -94,10 +97,25 @@ android_cli_ensure || true
 #                    ship bar) — a weak store frame, not a fog showcase (#2854).
 #   double-pendulum  ignores camera_distance (own auto-fit); its auto-fit frame is
 #                    a tiny linkage in a ~95%-black rectangle — un-reframable (#2854).
-#   materials        picked a different HDRI each launch (not reproducible) and the
-#                    subject stayed small at every distance (#2874).
-#   geometry         primitives are laid out wider than a phone-portrait frame;
-#                    every distance clipped one at an edge (#2873). Demo-side fix.
+#   materials        was not reproducible: it opened on a STREAMED slug, so the
+#                    subject depended on the API key / network / cache (a streamed
+#                    insect on one device, the bundled helmet on another), and it
+#                    drew the `studio_2k` skybox — a living-room interior, despite
+#                    its "neutral / studio / product" catalog tags — behind an
+#                    orbiting camera, so the backdrop changed with capture timing.
+#                    The subject also stayed small at every distance. The DEMO side
+#                    is fixed (#2874: bundled default subject, one fixed studio
+#                    HDRI, subject-independent framing) and the id is eligible
+#                    again — but do NOT add it back here without capturing it and
+#                    LOOKING at the frame against the other slots first.
+#   geometry         the clipping is FIXED as of #2873 (2x2 cluster, a camera
+#                    distance derived from the frustum relation, camera_distance
+#                    wired in), but the id stays out for two capture-side reasons:
+#                    the cluster leaves the frame CENTRE empty, so the centre-patch
+#                    variance guard below reads it as blank (measured 0.1 against
+#                    the 100 floor), and the free-running Y-spin turns the flat
+#                    plane edge-on at unpredictable instants. Re-add only after
+#                    judging a fresh mosaic — a green capture is not the bar.
 #   animation        a static screenshot of a skeletal-animation demo is just a
 #                    posed model — a visual duplicate of slot 1 on both stores.
 #
@@ -105,6 +123,31 @@ android_cli_ensure || true
 # framing below is Android-only (iOS has no equivalent extra, #2785), so on iOS
 # multi-model renders at its scene default.
 DEMOS_DEFAULT="model-viewer,dynamic-sky,multi-model"
+# TABLET RUNS SHOOT ALL THREE AGAIN — `multi-model` came back when #2913 landed,
+# per the instruction this block carried while it was dropped (#2915).
+# What had been measured on both tablet AVDs against build 4.25.0: a tablet
+# portrait frame is ~0.64 w/h against the phone's ~0.47, and at that aspect the
+# capture landed on a wooden post against the backdrop wall — no foliage. That
+# was real, but BOTH stated causes were wrong, and it is worth recording which:
+#   1. The framing was broken at EVERY aspect, not just on tablets. The section
+#      aimed a fixed camera at the formation centre it authored, while the
+#      library's `autoCenterContent` pass had already translated that formation
+#      onto the world origin — so the lens sat ~0.6 m from the centroid, inside
+#      the subject. A narrow phone frame cropped that into something that reads as
+#      texture; a wider tablet frame exposed it. The section now derives its
+#      distance from the live viewport aspect and both classes frame the formation
+#      full height.
+#   2. `camera_distance` was inert here not because it "moves the camera ALONG an
+#      angle it cannot change", but because the section read no `DemoSettings` at
+#      all — the 2.5 / 3.5 / 4.5 m probe compared three frames that each discarded
+#      the extra. It honours the override now.
+# Also worth knowing before reading any capture of this demo as evidence: without
+# a Sketchfab key it renders bundled fallbacks (a lantern, a lantern, a shiba, a
+# soldier) instead of the streamed oaks — a different scene that renders perfectly
+# and passes every guard. The wooden post was that lantern's post.
+# The variance guard PASSES a bad frame here (2227 on 10", 2827 on 7"), so a green
+# capture is never the evidence: judge the mosaic by eye after every run.
+DEMOS_DEFAULT_TABLET="model-viewer,dynamic-sky,multi-model"
 # Canonical Play Store listing directory — the same `graphics/` subdir the
 # `play-store.yml` listing-sync job uploads to the store (#1710).
 OUT_DIR_DEFAULT="samples/android-demo/distribution/play-store/en-GB/graphics"
@@ -151,7 +194,10 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown arg: $1" >&2; exit 2 ;;
   esac
 done
-DEMOS="${DEMOS:-$DEMOS_DEFAULT}"
+# NB: DEMOS stays unresolved here on purpose — its default is form-factor
+# specific (see DEMOS_DEFAULT_TABLET; the two sets are identical again since
+# #2913, but the split stays so a class can diverge without a code change) and
+# FORM_FACTOR is only validated in the case block below. Resolved after `esac`.
 OUT_DIR="${OUT_DIR:-$OUT_DIR_DEFAULT}"
 VARIANCE_THRESHOLD="${VARIANCE_THRESHOLD:-$VARIANCE_THRESHOLD_DEFAULT}"
 FORM_FACTOR="${FORM_FACTOR:-$FORM_FACTOR_DEFAULT}"
@@ -166,6 +212,7 @@ FORM_FACTOR="${FORM_FACTOR:-$FORM_FACTOR_DEFAULT}"
 case "$FORM_FACTOR" in
   phone)
     PREFIX="phone"
+    DEMOS_DEFAULT_FF="$DEMOS_DEFAULT"
     # Pixel_7a AVD natural resolution = 1080×2400. Crop 96 px → 1080×2304 = 9:19.2.
     TARGET_HEIGHT=2304
     STATUS_BAR_PX_DEFAULT=96
@@ -173,6 +220,7 @@ case "$FORM_FACTOR" in
     ;;
   tablet7|tablet10)
     PREFIX="$FORM_FACTOR"
+    DEMOS_DEFAULT_FF="$DEMOS_DEFAULT_TABLET"
     TARGET_HEIGHT=0
     STATUS_BAR_PX_DEFAULT="auto"
     # MUST be numeric and MUST NOT be the "auto" default: when live detection
@@ -192,6 +240,8 @@ case "$FORM_FACTOR" in
 esac
 STATUS_BAR_PX="${STATUS_BAR_PX:-$STATUS_BAR_PX_DEFAULT}"
 SETTLE_SECONDS="${SETTLE_SECONDS:-$SETTLE_SECONDS_DEFAULT}"
+# Form-factor default (see DEMOS_DEFAULT_TABLET); an explicit --demos still wins.
+DEMOS="${DEMOS:-$DEMOS_DEFAULT_FF}"
 
 # ── 1. Recover an offline AVD if needed ──────────────────────────────────────
 if ! adb devices | grep -qE "^emulator-|^[0-9A-F]{8}.*device$"; then
@@ -547,6 +597,21 @@ PY
   INDEX=$((INDEX + 1))
 done
 TOTAL=$((INDEX - 1))
+
+# ── 4b. Prune stale trailing slots ──────────────────────────────────────────
+# $OUT_DIR is a byte-for-byte mirror of the Play listing and `play_listing.py`
+# selects by GLOB, not by count — so a slot this run did not write is still
+# uploaded at the next tag. When the set shrinks (5 → 3 on phone in #2855,
+# 5 → 2 on tablets in #2913) the leftovers are frames from an older app build
+# that nobody looks at again: the mosaic below iterates 1..TOTAL and cannot
+# render them. Drop them here, AFTER the capture loop completed, so an aborted
+# run (set -e, foreground guard, variance guard) can never empty the mirror.
+STALE=$((TOTAL + 1))
+while [[ -f "$OUT_DIR/$PREFIX-screenshot-$STALE.png" ]]; do
+  echo "[capture] pruning stale slot $PREFIX-screenshot-$STALE.png (set is now $TOTAL)" >&2
+  rm -f "$OUT_DIR/$PREFIX-screenshot-$STALE.png"
+  STALE=$((STALE + 1))
+done
 
 # ── 5. Mosaic thumbnail (visual sanity, well under the 1800 px session limit) ─
 # Written OUTSIDE $OUT_DIR on purpose: that directory is a byte-for-byte mirror

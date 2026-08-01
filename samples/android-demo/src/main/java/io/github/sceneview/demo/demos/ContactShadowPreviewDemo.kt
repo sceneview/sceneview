@@ -1,29 +1,27 @@
 package io.github.sceneview.demo.demos
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -80,32 +78,42 @@ import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
  * The redesign makes the contrast **simultaneous and kinetic** instead of sequential and
  * static:
  *
- * - **Two identical boxes, side by side** — same size, same material, same motion. The left
- *   one is grounded by a [ContactShadowContext.Floor] pool; the right one has none. The
- *   comparison is spatial, so it needs no memory and no interaction — one glance settles it.
- * - **Both boxes hop in sync**, and the left pool *responds to height*: it slides out from
- *   under the box along the key light as the box lifts, spreading and fading as it goes (dark,
- *   tight and centred at contact; drifted, wide and faint at the top — see
- *   [DemoMath.groundingShadowOffset] / [DemoMath.groundingSpread] /
- *   [DemoMath.groundingIntensityFactor]). The shadow's **path** is the strongest contact cue
- *   the visual system has (the classic "ball-in-a-box" illusion: the same vertical trajectory
- *   reads as bouncing or floating depending only on where the shadow goes). The grounded box
- *   visibly *lands on* the floor every 2.6 s; its shadowless twin, animated identically,
- *   floats with no depth anchor at all.
+ * - **Two boxes, side by side — same size and material, deliberately DIFFERENT motion.** The
+ *   left one bounces and lands, grounded by a [ContactShadowContext.Floor] pool; the right one
+ *   hovers high and never touches down, with no shadow. The comparison is spatial, so it needs
+ *   no memory and no interaction — one glance settles it.
+ * - **The left box STRIKES the floor** ([DemoMath.bounceHeight], a rectified sine) every 2.6 s,
+ *   and its pool *responds to height*: it slides out from under the box along the key light as
+ *   the box lifts, spreading and fading as it goes, then snaps back dark, tight and centred on
+ *   landing (see [DemoMath.groundingShadowOffset] / [DemoMath.groundingSpread] /
+ *   [DemoMath.groundingIntensityFactor]). The shadow's **path** is the strongest contact cue the
+ *   visual system has — the classic "ball-in-a-box" illusion. **The right box does the opposite:**
+ *   it hovers high and bobs slowly ([DemoMath.floatHoverY], a plain sine well above the floor),
+ *   never landing, with no shadow. The floating is carried by the box's *own motion* — a box that
+ *   visibly stays aloft needs no shadow to read as airborne — so the missing shadow reads as
+ *   "it's in the air", not "the shadow is broken" (#2740). The earlier revision hopped BOTH boxes
+ *   identically, which failed exactly here: a shadowless box doing the same motion as its grounded
+ *   twin conveys "floating" only by the *absence* of a shadow, and an absence does not read.
  * - **Overlay chips name the two states** ("Contact shadow" / "No shadow"), so the one-line
  *   takeaway is on screen without opening anything.
  * - **The camera starts low** (about 22° above the floor, pulled in), so the pool subtends
  *   real screen area instead of degenerating into a sliver — at the original high-and-far
  *   framing the shadow was too small to ever be the subject.
  *
- * ### The wall TV stays — it is the decisive argument
+ * ### The wall TV gets its own beat — it is the decisive argument
  *
  * Behind the comparison, a TV is mounted on the back wall, grounded by a
  * [ContactShadowContext.Wall] pool. This is the case a *real* shadow map cannot serve:
  * indoor light comes from the ceiling, nearly parallel to the wall, so a flat-mounted panel
- * casts essentially nothing onto it. The settings sheet lets you switch that pool's preset —
- * putting `Floor` on the wall makes it too dark and too round (a sticker, not a shadow),
- * which is exactly why the per-surface contexts exist.
+ * casts essentially nothing onto it.
+ *
+ * That argument used to be made in a whisper. The TV was scenery, and its preset picker was a
+ * settings-sheet row — which failed it twice over: the sheet's scrim dims the scene, so you
+ * could never watch the wall pool change *while* changing it, and a control sitting among the
+ * global ones read as global while it only ever drove this one pool. [WallShadowBeat] fixes
+ * both by anchoring the picker on screen, in the TV's half of the frame, with a one-line
+ * verdict per preset — so the A/B is live, and the control's scope is self-evident instead of
+ * being patched over by its label.
  *
  * ### Why this exists as a non-AR preview
  *
@@ -119,8 +127,9 @@ import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
  * sit alongside the procedural pool and muddy the comparison. The only grounding cue on
  * screen is the contact shadow — which is the point.
  *
- * QA mode ([DemoSettings.qaMode]) freezes the hop at ground contact (a zeroed clock), the
- * pose where the pool is at full strength, so screenshot suites get a deterministic frame.
+ * QA mode ([DemoSettings.qaMode]) freezes the clock at t = 0: the grounded box sits at ground
+ * contact (pool at full strength) and the floating box at its hover rest height, so screenshot
+ * suites get a deterministic frame that already shows the full grounded-vs-floating contrast.
  */
 @Composable
 fun ContactShadowPreviewDemo(onBack: () -> Unit) {
@@ -131,6 +140,22 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     // weakened the floor pool (0.38 < 0.55) before the user touched anything.
     var intensityFactor by remember { mutableFloatStateOf(1f) }
     var wallContext by remember { mutableStateOf(ContactShadowContext.Wall) }
+
+    // Whether a shadow is actually DRAWN — the toggle being on is not enough, because the
+    // intensity slider reaches 0 and makes the pool fully transparent. THE single source for
+    // every label that reports the shadow state (peek header + [GroundingLegend]): the first
+    // fix of this contradiction updated the legend alone and left the peek header still
+    // reading the raw toggle, so at intensity 0 the banner announced "Grounded vs floating"
+    // when no shadow was drawn at all. One value means a future label cannot diverge
+    // again (#2740).
+    //
+    // `derivedStateOf`, not a plain expression: reading `intensityFactor` directly in the
+    // demo body would drag the scaffold, top bar and settings sheet into every tick of a
+    // slider drag. The derived boolean only invalidates when it actually flips — same
+    // recomposition-scope discipline as the hop clock read inside the scene lambda below.
+    val shadowVisible by remember {
+        derivedStateOf { shadowsEnabled && intensityFactor > 0f }
+    }
 
     // Accumulated hop-loop time. Written only from the frame loop / reset callbacks —
     // never during composition.
@@ -209,11 +234,23 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         peekHeader = stringResource(
-            if (shadowsEnabled) R.string.contact_shadow_peek_on
+            if (shadowVisible) R.string.contact_shadow_peek_on
             else R.string.contact_shadow_peek_off
         ),
         onReset = resetAll,
         onResetSettings = resetAll,
+        bottomOverlay = {
+            // The scaffold owns the bottom band: it pins the row, applies the system-bar
+            // inset, and resolves the Settings-FAB reserve (#2779/#2780). The row keeps
+            // sitting just ABOVE that band rather than inside it — `settingsFabReservedSpace`
+            // is the band's own height, so this is the former hand-written `128.dp` with
+            // its magic number replaced by the constant it was silently duplicating, and
+            // it collapses to the plain gutter on any demo that ships no controls.
+            GroundingLegend(
+                shadowVisible = shadowVisible,
+                modifier = Modifier.padding(bottom = settingsFabReservedSpace + 24.dp),
+            )
+        },
         controls = {
             ContactShadowControls(
                 shadowsEnabled = shadowsEnabled,
@@ -222,8 +259,6 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 onMotionEnabledChange = { motionEnabled = it },
                 intensityFactor = intensityFactor,
                 onIntensityFactorChange = { intensityFactor = it },
-                wallContext = wallContext,
-                onWallContextChange = { wallContext = it },
             )
         }
     ) {
@@ -278,10 +313,10 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 materialInstance = wallMaterial,
             )
 
-            // ── The hero comparison: two identical hopping boxes ──────────────────────────
-            // LEFT — grounded. The pool tracks the hop: full-strength and tight at contact,
-            // dimmer and wider at the top (ambient-occlusion physics). That coupling is what
-            // makes this box read as LANDING ON the floor.
+            // ── The hero comparison: a grounded bouncer vs a floating twin ────────────────
+            // LEFT — grounded, and it BOUNCES to strike the floor. The pool tracks the hop:
+            // full-strength and tight at contact, dimmer and wider at the top (ambient-occlusion
+            // physics). That coupling is what makes this box read as LANDING ON the floor.
             if (shadowsEnabled) {
                 // The pool follows the light's ground projection as the box lifts (ball-in-a-box):
                 // centred and tight at contact, drifted out from under the box at the top of the
@@ -310,13 +345,16 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 ),
                 materialInstance = boxMaterial,
             )
-            // RIGHT — identical box, identical motion, NO shadow. With no pool to anchor it,
-            // the eye cannot tell where (or whether) it meets the floor: it floats.
+            // RIGHT — the floating twin. It does NOT bounce to the floor: it hovers high and
+            // bobs slowly (DemoMath.floatHoverY), clearly aloft, with no contact shadow. The
+            // floating is carried by the box's own MOTION — hovering high, never landing — so the
+            // absent shadow reads as "it's in the air", not "the shadow is missing" (#2740). This
+            // is the positive, kinetic cue an identically-hopping shadowless box could never give.
             CubeNode(
                 size = Size(BOX_EDGE_METERS, BOX_EDGE_METERS, BOX_EDGE_METERS),
                 position = Position(
                     x = BOX_HALF_SPACING,
-                    y = BOX_EDGE_METERS / 2f + hopHeight,
+                    y = DemoMath.floatHoverY(bounceElapsedNanos),
                     z = BOXES_Z,
                 ),
                 materialInstance = boxMaterial,
@@ -346,12 +384,97 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             }
         }
 
-        // The chip must track what is actually ON SCREEN, not just the toggle: the
-        // intensity slider reaches 0, which makes the pool fully transparent while
-        // `shadowsEnabled` is still true. Both boxes then float identically and a chip
-        // reading "Contact shadow" would be labelling a shadow nobody can see.
-        GroundingLegend(shadowVisible = shadowsEnabled && intensityFactor > 0f)
+        // The wall TV's live A/B, in the TV's half of the frame — see [WallShadowBeat] for why
+        // this is an on-screen control and not a settings-sheet row.
+        //
+        // This one stays in the scene box rather than moving to a scaffold slot like the
+        // legend did (#2779/#2780): those slots own the BOTTOM band, and the whole point of
+        // this overlay is to sit in the TV's half of the frame, at the top. No
+        // `windowInsetsPadding` either — `DemoScaffold`'s Scaffold already offsets this box
+        // below the top bar and past the status bar, so re-applying the inset would push the
+        // beat a bar-height too low, into the TV it annotates.
+        WallShadowBeat(
+            wallContext = wallContext,
+            onWallContextChange = { wallContext = it },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 12.dp),
+        )
     }
+}
+
+/**
+ * The wall TV's own beat: the preset picker for its pool, anchored on screen next to the thing
+ * it controls, with a one-line verdict for the preset in force.
+ *
+ * **Why this is not a settings-sheet row (#2740 follow-up).** The picker used to live in the
+ * sheet, which failed the TV twice. The sheet's scrim dims the scene, so the wall pool could
+ * never be watched *while* being changed — a sequential, half-blind comparison, the very flaw
+ * the box pair was redesigned to escape. And sitting among the global controls it read as
+ * global, while it only ever drove [wallContext] — the TV's pool, never the two boxes a viewer
+ * takes to be the subject. The previous mitigation was to rename it "TV wall preset": a label
+ * patch over a scope mismatch. Anchoring the control in the TV's half of the frame makes the
+ * scope self-evident and the A/B live, and it takes the settings sheet from four controls down
+ * to three.
+ *
+ * **Why every preset gets a verdict, not just the wrong ones.** A caption that appeared only
+ * for a mis-set preset would communicate by *absence* — and an absence reads as nothing at
+ * all. Each preset states what it costs on a wall, so switching to `Floor` teaches ("too dark,
+ * too round — a sticker") rather than merely looking different.
+ *
+ * Like [GroundingLegend], this is anchored to the *frame*, not to the TV's projected position:
+ * the camera is an orbit manipulator, so any drag moves the TV under a fixed overlay. It sits
+ * in the upper half because the home framing puts the TV there.
+ */
+@Composable
+internal fun WallShadowBeat(
+    wallContext: ContactShadowContext,
+    onWallContextChange: (ContactShadowContext) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = stringResource(R.string.contact_shadow_wall_beat_title),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ContactShadowContext.values().forEach { context ->
+                FilterChip(
+                    selected = context == wallContext,
+                    onClick = { onWallContextChange(context) },
+                    label = { Text(context.name) },
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = stringResource(wallContext.wallVerdictRes()),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * The one-line verdict shown under the picker for each preset, phrased as what that preset
+ * costs *on a wall* — see [WallShadowBeat] for why all three are covered.
+ *
+ * Exhaustive `when` on purpose: a new [ContactShadowContext] must fail this compile rather
+ * than ship a chip with no verdict under it.
+ */
+@StringRes
+private fun ContactShadowContext.wallVerdictRes(): Int = when (this) {
+    ContactShadowContext.Floor -> R.string.contact_shadow_wall_verdict_floor
+    ContactShadowContext.Wall -> R.string.contact_shadow_wall_verdict_wall
+    ContactShadowContext.TableTop -> R.string.contact_shadow_wall_verdict_tabletop
 }
 
 /**
@@ -359,7 +482,8 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
  * box, "No shadow" for its floating twin. [shadowVisible] is whether a shadow is actually
  * being drawn (toggle ON *and* intensity above zero), not merely whether the toggle is on:
  * at intensity 0 the pool is fully transparent, so the left chip reports "Shadows off" and
- * the labels never contradict the scene.
+ * the labels never contradict the scene. The caller passes the same value it gives the peek
+ * header, so the two labels cannot disagree with each other either.
  *
  * The chips name the two columns; they are NOT positioned under their respective boxes.
  * The camera is an interactive orbit manipulator, so any drag moves the boxes relative to
@@ -368,16 +492,14 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
  * home framing.
  *
  * Style mirrors the scaffold's `AssetSourceChip` (dot + label on an 85 %-alpha surface) so
- * the demo chrome stays one family. Sits above the settings FAB / peek-chip band at the
- * bottom-end, in the vertical zone of the boxes it annotates.
+ * the demo chrome stays one family. Rendered through `DemoScaffold(bottomOverlay = …)`,
+ * which pins it to the bottom of the scene and applies the system-bar inset; the caller
+ * supplies only the gutter that lifts it clear of the settings FAB / peek-chip band.
  */
 @Composable
-private fun BoxScope.GroundingLegend(shadowVisible: Boolean) {
+private fun GroundingLegend(shadowVisible: Boolean, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .windowInsetsPadding(WindowInsets.systemBars)
-            .padding(bottom = 128.dp),
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -421,10 +543,12 @@ private fun LegendChip(label: String, dotColor: Color) {
 
 /**
  * Settings-sheet controls, extracted (and `internal`, like [GeometryDemoControls]) so the
- * panel layout CAN be snapshot-tested in pure JVM (no Filament, no SceneView) — the #880
- * pattern. Unlike `GeometryDemoControls`, no such test exists for this panel yet: the
- * extraction makes it possible, it does not deliver it. Adding the sibling
- * `ContactShadowControlsSnapshotTest` is a follow-up.
+ * panel layout is snapshot-tested in pure JVM (no Filament, no SceneView) — the #880 pattern.
+ * The sibling `ContactShadowControlsSnapshotTest` covers it.
+ *
+ * Three controls, all genuinely global to the scene. The TV's preset picker used to be a
+ * fourth row here and has moved on screen to [WallShadowBeat]: it drove one pool, not the
+ * scene, so it did not belong among these.
  */
 @Composable
 internal fun ContactShadowControls(
@@ -434,8 +558,6 @@ internal fun ContactShadowControls(
     onMotionEnabledChange: (Boolean) -> Unit,
     intensityFactor: Float,
     onIntensityFactorChange: (Float) -> Unit,
-    wallContext: ContactShadowContext,
-    onWallContextChange: (ContactShadowContext) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -480,26 +602,6 @@ internal fun ContactShadowControls(
         onValueChange = onIntensityFactorChange,
         valueRange = 0f..1.5f
     )
-    Spacer(modifier = Modifier.height(8.dp))
-    Text(
-        stringResource(R.string.contact_shadow_wall_preset),
-        style = MaterialTheme.typography.labelLarge
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ContactShadowContext.values().forEach { context ->
-            if (context == wallContext) {
-                Button(onClick = { onWallContextChange(context) }) { Text(context.name) }
-            } else {
-                OutlinedButton(onClick = { onWallContextChange(context) }) { Text(context.name) }
-            }
-        }
-    }
-    Spacer(modifier = Modifier.height(4.dp))
-    Text(
-        stringResource(R.string.contact_shadow_wall_preset_hint),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 // ── Scene layout constants ────────────────────────────────────────────────────────────────
@@ -523,6 +625,8 @@ private val KEY_LIGHT_DIRECTION = Direction(-0.35f, -1f, -0.4f)
 /**
  * Side of the grounded box's square shadow quad, metres. Generously larger than the box
  * ([BOX_EDGE_METERS]) — the Floor gradient fades out well before the quad edge — while
- * keeping the two quads' footprints clear of each other at [BOX_HALF_SPACING].
+ * keeping the pool clear of the shadowless twin at [BOX_HALF_SPACING], including at the
+ * peak of the hop, where it has slid furthest out from under its own box. Only the
+ * grounded box has a quad; the comparison depends on the twin's floor staying bare.
  */
 private const val SHADOW_QUAD_METERS = 0.8f

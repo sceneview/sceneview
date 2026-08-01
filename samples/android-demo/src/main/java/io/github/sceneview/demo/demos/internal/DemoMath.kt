@@ -150,6 +150,9 @@ internal object DemoMath {
      * @param verticalFovDegrees Camera vertical field-of-view, `(0, 180)`. For SceneView's default
      *                       28 mm lens this is ≈46.4° — pass
      *                       `io.github.sceneview.verticalFovDegreesForFocalLength(focalLength)`.
+     *                       Values outside the range clamp into it; a non-finite value falls back
+     *                       to that 28 mm default rather than propagating a `NaN`, since
+     *                       `Double.coerceIn` returns `NaN` unchanged.
      * @param aspect         Viewport aspect ratio `width / height`. Non-finite / non-positive
      *                       values fall back to `1`, so a viewport measured before layout can
      *                       never produce a `NaN` camera position.
@@ -157,8 +160,10 @@ internal object DemoMath {
      *                       edge; `< 1` leaves breathing room (`0.9` ⇒ the content spans 90% of
      *                       the frame); `> 1` crops into it. Non-finite / non-positive values fall
      *                       back to `1`.
-     * @return The camera distance in metres, clamped to `[0.2, 50]` so a degenerate content box
-     *         can never place the camera inside the subject or at infinity.
+     * @return The camera distance in metres, clamped to `[0.2, 50]`. Every degenerate input is
+     *         sanitised above rather than propagated, so the result is always finite — a fully
+     *         degenerate content box lands on the far bound instead of placing the camera inside
+     *         the subject.
      */
     fun coverDistance(
         contentWidth: Float,
@@ -169,8 +174,11 @@ internal object DemoMath {
     ): Float {
         val safeAspect = if (aspect.isFinite() && aspect > 0f) aspect else 1f
         val safeFill = if (fill.isFinite() && fill > 0f) fill else 1f
-        val halfFovTan = tan(Math.toRadians(verticalFovDegrees.coerceIn(1.0, 179.0)) / 2.0)
-            .toFloat()
+        // `coerceIn` returns NaN unchanged, so the finite check has to come first — otherwise a NaN
+        // FOV survives every guard below and reaches the camera as a NaN position.
+        val safeFovDegrees = verticalFovDegrees.takeIf { it.isFinite() }?.coerceIn(1.0, 179.0)
+            ?: DEFAULT_VERTICAL_FOV_DEGREES
+        val halfFovTan = tan(Math.toRadians(safeFovDegrees) / 2.0).toFloat()
         // A degenerate axis does not constrain the framing — treat it as "infinitely far" so the
         // other axis wins the `min` instead of collapsing the camera onto the subject.
         val distanceVertical = if (contentHeight.isFinite() && contentHeight > 0f) {
@@ -185,6 +193,12 @@ internal object DemoMath {
         }
         return min(distanceVertical, distanceHorizontal).coerceIn(0.2f, 50f)
     }
+
+    /**
+     * SceneView's default 28 mm lens against a 24 mm sensor height ⇒ ≈46.4° vertical FOV. Used only
+     * as the fallback when [coverDistance] is handed a non-finite FOV.
+     */
+    private const val DEFAULT_VERTICAL_FOV_DEGREES = 46.4
 
     // ── AnimationDemo cinematic-camera choreography ──────────────────────────
 
@@ -303,6 +317,9 @@ internal object DemoMath {
      * 0.28 pool at ~0.15 alpha at the peak — near-invisible on the demo's light floor,
      * so the grounded-vs-floating contrast blinked out at the top of every hop. 0.45
      * keeps the pool legible at every phase while preserving a 2.2× contact/peak fade.
+     * That measurement, its method (matched box-height crops under an identical
+     * fixed-range contrast stretch) and the before/after evidence are recorded in the
+     * QA report on PR #2851 — this default is empirical, not a taste call.
      *
      * @param height       Current hover height, metres. Coerced into `[0, maxHeight]`.
      * @param maxHeight    Height at which the factor bottoms out. `<= 0` returns `1`.
@@ -379,6 +396,60 @@ internal object DemoMath {
         if (vertical <= 1e-4f) return 0f to 0f
         val k = height / vertical
         return (lightDirX * k) to (lightDirZ * k)
+    }
+
+    /**
+     * Bob period (nanoseconds, 3.4 s) of the contact-shadow preview's FLOATING box.
+     *
+     * Deliberately *longer* and non-harmonic with [CONTACT_BOUNCE_PERIOD_NANOS] (2.6 s): the
+     * two boxes drift out of phase, which reads as "two independent objects doing two different
+     * things" rather than a single synchronised animation.
+     */
+    const val CONTACT_FLOAT_PERIOD_NANOS = 3_400_000_000L
+
+    /**
+     * Rest height (metres, box **centre**) of the floating box. Chosen so the box hovers well
+     * clear of the floor at all times — its lowest point (`centre − bob − half-edge`) never
+     * reaches the grounded box's highest point, and its highest point stays below the wall TV.
+     * See the `floatHoverY … stays clear of the floor and the grounded box` test.
+     */
+    const val CONTACT_FLOAT_CENTER_Y_METERS = 0.62f
+
+    /** Peak bob deviation of the floating box from [CONTACT_FLOAT_CENTER_Y_METERS], metres. */
+    const val CONTACT_FLOAT_BOB_METERS = 0.05f
+
+    /**
+     * Vertical position (box **centre**, metres) of the contact-shadow preview's FLOATING box
+     * at [elapsedNanos]: a slow, smooth sine bob of ±[bobAmplitude] around [centerY].
+     *
+     * This is the *positive* half of the grounded-vs-floating comparison. Its twin
+     * ([bounceHeight]) is a **rectified** sine that STRIKES the floor once per period; this is a
+     * **plain** sine — smooth at every phase, no zero-crossing landing, and centred high above
+     * the floor so the box never touches it. One box hammers the ground (its contact pool snaps
+     * dark at each landing); its twin serenely levitates. The floating box's *motion* — not the
+     * mere absence of a shadow — is what makes it read as airborne (#2740): a shadow that is
+     * simply missing reads as a rendering bug, but a box visibly hovering high and bobbing reads
+     * as floating, so of course it casts no contact shadow.
+     *
+     * `t = 0` returns exactly [centerY] (`sin 0 = 0`), the deterministic pose QA mode freezes at
+     * — the same zeroed clock that lands [bounceHeight]'s box on the floor.
+     *
+     * @param elapsedNanos Accumulated animation time. Values `<= 0` are treated as `0` (rest).
+     * @param periodNanos  Bob period. Values `<= 0` return [centerY] rather than dividing by zero.
+     * @param centerY      Rest height of the box centre, metres.
+     * @param bobAmplitude Peak deviation from [centerY], metres.
+     * @return Box-centre height in `[centerY - bobAmplitude, centerY + bobAmplitude]`.
+     */
+    fun floatHoverY(
+        elapsedNanos: Long,
+        periodNanos: Long = CONTACT_FLOAT_PERIOD_NANOS,
+        centerY: Float = CONTACT_FLOAT_CENTER_Y_METERS,
+        bobAmplitude: Float = CONTACT_FLOAT_BOB_METERS,
+    ): Float {
+        if (periodNanos <= 0L) return centerY
+        val safeElapsed = if (elapsedNanos <= 0L) 0L else elapsedNanos
+        val phase = (safeElapsed % periodNanos).toFloat() / periodNanos.toFloat()
+        return centerY + bobAmplitude * sin(2f * PI.toFloat() * phase)
     }
 
     /**

@@ -31,18 +31,37 @@ class** (identical 1320×2868 screenshot spec); likewise the iPad Pro 13-inch
 M4 and M5. Either generation produces an App Store Connect-compliant image
 for its class.
 
-## Demos captured — the common Android↔iOS showcase set (#2773)
+## Demos captured — pre-v2 set, refresh deferred (#2896)
 
-The **same five demos, in the same order**, as Android's
-`capture-play-store-screenshots.sh`, so both stores show identical screens.
-Every id is a standalone (non-consolidated) demo on both platforms and renders
-rich 3D content — deliberately *not* empty or loading AR scenes:
+⚠️ **The committed PNGs are one set behind, and the two stores are not in sync.**
+`capture-appstore-screenshots.sh` already shoots **set v2** — `model-viewer ·
+dynamic-sky · multi-model`, the three frames Android moved to in #2854/#2855 —
+but the iOS images have not been re-captured, because that is blocked on
+scene-side RealityKit fixes: dim lighting, far default framing, and
+`dynamic-sky` rendering no sky at all (#2896; no capture-side lever exists,
+see #2785). Do not describe the listings as identical.
+
+What is committed today (the pre-v2 five, in this order):
 
 1. `01-model-viewer` — bundled hero model (cyberpunk hovercar), orbit camera
 2. `02-lighting` — PBR-lit spheres with the light-type switcher
 3. `03-materials` — metallic/roughness material showcase
 4. `04-geometry` — generated geometry primitives
 5. `05-double-pendulum` — animated physics (motion)
+
+Three of those ids were retired from the Android set, and are worth knowing
+before re-capturing here: `materials` picks a different HDRI *and* model per
+launch, so the frame is not reproducible (#2874); `geometry` clipped its
+primitives in a portrait frame (#2873); and `double-pendulum` renders as a tiny
+linkage in a mostly-black frame.
+
+`geometry`'s clipping is **fixed on Android** (#2873) — but that fix is a
+layout change in the Android demo, so it does not carry across. The iOS scene
+builds its own primitives, and whether it clips in an iPhone-portrait frame has
+**not** been measured. Judge it on a captured frame before either re-adding or
+retiring the id here; do not inherit the Android verdict in either direction.
+Even on Android the id stays out of the set: the fixed 2 × 2 cluster leaves the
+frame centre empty, which that capture script's variance guard reads as blank.
 
 Captured in **dark appearance** with a cleaned status bar (fixed 9:41, full
 signal/battery), mirroring the Android capture's dark-mode + status-bar crop

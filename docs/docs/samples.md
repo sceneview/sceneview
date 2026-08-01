@@ -150,7 +150,7 @@ Markdown recipes with side-by-side Kotlin and Swift code:
 | Ground Shadow Catcher | `samples/recipes/ground-shadow-catcher.md` | Invisible contact-shadow floor, FL2+ flat-quad hardening |
 | Contact Shadow | `samples/recipes/contact-shadow.md` | Procedural grounding pool — works on walls (Floor / Wall / TableTop) |
 | AR Tap-to-Place | `samples/recipes/ar-tap-to-place.md` | Plane detection, anchor placement |
-| Point & Ask | `samples/recipes/point-and-ask.md` | AR frame capture, Gemini Nano on-device (ML Kit GenAI Prompt API), availability gating |
+| Point & Ask | `samples/recipes/point-and-ask.md` | AR frame capture, Gemini Nano on-device (ML Kit GenAI Prompt API), availability gating, answers anchored in world space |
 | Physics | `samples/recipes/physics.md` | Rigid body, gravity, collision, bounce |
 | Procedural Geometry | `samples/recipes/procedural-geometry.md` | Cubes, spheres, custom shapes |
 | Text Labels | `samples/recipes/text-labels.md` | 3D text, billboards, tap interaction |

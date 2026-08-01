@@ -9,9 +9,11 @@ ships with the repo and is linked from the website footer + the About
 screen of the demo apps.
 
 Usage:
-    python3 .claude/scripts/generate-credits.py
+    python3 .claude/scripts/generate-credits.py            # regenerate
+    python3 .claude/scripts/generate-credits.py --check    # CI: exit 1 on drift
 
-Writes to assets/CREDITS.md. Run from the repo root.
+Writes to assets/CREDITS.md. Paths resolve from this file, so the working
+directory does not matter.
 
 Rules:
   - Only emit entries with complete metadata (author + license + sourceUrl).
@@ -21,9 +23,17 @@ Rules:
     stderr so they can be removed from the catalog or re-sourced.
   - Flag entries with missing required fields so they get fixed upstream.
 
+`--check` regenerates in memory and compares against the committed file
+without writing. It is a hard CI gate (`ci.yml` → `repo-hygiene`): CREDITS.md
+is what discharges the attribution clause of every model's license, so a model
+added to catalog.json but never credited is a compliance gap, not a cosmetic
+one. Deterministic regenerate-and-compare has no false-positive risk, so it
+blocks — same class as `tools/generate-gpt-knowledge.js --check`.
+
 Exit code:
-  0 — CREDITS.md generated successfully
-  1 — catalog.json not found or unreadable
+  0 — CREDITS.md generated successfully (or, with --check, already in sync)
+  1 — catalog.json not found or unreadable; an unknown argument was passed;
+      or --check found drift
   (never fail on incomplete entries — just report them)
 """
 from __future__ import annotations
@@ -108,6 +118,19 @@ def format_entry(m: dict) -> str:
 
 
 def main() -> int:
+    # Reject unknown arguments instead of falling through to the write path.
+    # `--chekc` must NOT silently regenerate the file and exit 0: that turns
+    # the blocking CI gate into a false green that also mutates the workspace.
+    args = sys.argv[1:]
+    unknown = [a for a in args if a != "--check"]
+    if unknown:
+        print(
+            f"error: unknown argument(s): {' '.join(unknown)}\n"
+            "usage: generate-credits.py [--check]",
+            file=sys.stderr,
+        )
+        return 1
+    check = "--check" in args
     models = load_catalog()
     complete = []
     incomplete = []
@@ -206,7 +229,28 @@ def main() -> int:
             lines.append(f"- `{mid}` — missing: {', '.join(gaps) or 'unknown'}")
         lines.append("")
 
-    CREDITS.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    content = "\n".join(lines) + "\n"
+
+    if check:
+        exists = CREDITS.exists()
+        current = CREDITS.read_text(encoding="utf-8") if exists else ""
+        if current != content:
+            reason = (
+                "is out of date vs assets/catalog.json"
+                if exists
+                else "is MISSING (expected a generated file)"
+            )
+            print(
+                f"DRIFT: assets/CREDITS.md {reason}.\n"
+                "Regenerate and commit:\n"
+                "  python3 .claude/scripts/generate-credits.py",
+                file=sys.stderr,
+            )
+            return 1
+        print("assets/CREDITS.md is in sync with assets/catalog.json.")
+        return 0
+
+    CREDITS.write_text(content, encoding="utf-8")
     print(f"Wrote {CREDITS}")
     print(f"  complete: {len(complete)}")
     print(f"  non-commercial (flagged): {len(unsafe)}")

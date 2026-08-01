@@ -264,8 +264,12 @@ struct MultiModelDemo: View {
         guard let anchor = sceneAnchor else { return }
         for slot in Self.slots {
             guard let slug = slot.slug, let entity = loadedEntities[slug.uid] else { continue }
-            // Defensive index guard: `visible` is sized from `slots` at init, so
-            // this only matters if a future edit desynchronises the two.
+            // `visible` is sized from `slots` at init and never resized, so this guard is
+            // unreachable today. It stays because a Swift out-of-bounds subscript TRAPS:
+            // "fail loudly" here would mean crashing a shipped App Store demo, which is a
+            // worse outcome than a chip that quietly stops toggling. Android's
+            // `instances[index]` does throw instead — the asymmetry is a deliberate call
+            // about who pays for a future desync, not an oversight (#2933).
             let show = visible.indices.contains(slot.index) ? visible[slot.index] : true
             let alreadyAdded = entity.parent === anchor
             if show && !alreadyAdded {

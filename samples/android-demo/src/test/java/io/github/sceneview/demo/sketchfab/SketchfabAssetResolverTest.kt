@@ -87,6 +87,27 @@ class SketchfabAssetResolverTest {
             "fallback file should live under cacheRoot()/fallback/",
             file.absolutePath.contains("${File.separator}fallback${File.separator}"),
         )
+        assertTrue(
+            "isBundledFallback must agree with the path the resolver actually staged",
+            SketchfabAssetResolver.isBundledFallback(file),
+        )
+    }
+
+    @Test
+    fun `isBundledFallback tells a staged fallback from a streamed download`() {
+        // The Multi-Model asset-source pill is derived from this single predicate
+        // (#2933), and the two directories are the only thing separating the cases.
+        // Assert both sides so renaming FALLBACK_DIR_NAME, or flattening the staging
+        // directory, breaks here rather than silently labelling every offline scene
+        // "Streamed (cached)".
+        val uid = "0".repeat(32)
+        val streamed = File(service.cacheRoot(), "$uid.glb")
+        val staged = File(
+            File(service.cacheRoot(), SketchfabAssetResolver.FALLBACK_DIR_NAME),
+            "$uid.glb",
+        )
+        assertTrue("a staged fallback must be reported as bundled", SketchfabAssetResolver.isBundledFallback(staged))
+        assertFalse("a streamed download must not be reported as bundled", SketchfabAssetResolver.isBundledFallback(streamed))
     }
 
     @Test

@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -55,6 +56,12 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.demos.internal.PARK_EYE_HEIGHT
+import io.github.sceneview.demo.demos.internal.PARK_FALLBACK_ASPECT
+import io.github.sceneview.demo.demos.internal.PARK_HEIGHT
+import io.github.sceneview.demo.demos.internal.PARK_SLOTS
+import io.github.sceneview.demo.demos.internal.ParkSlot
+import io.github.sceneview.demo.demos.internal.parkCameraDistance
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
@@ -73,7 +80,6 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import java.util.Locale
-import kotlin.math.hypot
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -107,10 +113,21 @@ fun ModelViewerDemo(onBack: () -> Unit) {
     var mode by remember {
         mutableStateOf(initialDemoMode(ModelViewerMode.entries, ModelViewerMode.Single))
     }
+    // Switching section drops any camera-distance override (#2913). The Single-Model slider writes
+    // to the process-global `DemoSettings.cameraDistance` — that is how it drives the live camera,
+    // since `rememberHeroOrbitCameraManipulator` reads the override itself (#1571) — and the
+    // Multi-Model section honours the same override. Without this reset, dragging the slider down
+    // to 0.5 m and then tapping "Multi-Model" put the camera inside the formation, and that section
+    // exposes no slider to undo it. A cold launch never passes through here, so the `--ef
+    // camera_distance` / `?cameraDistance=` deep link keeps working for either section.
+    val onModeChange: (ModelViewerMode) -> Unit = { next ->
+        if (next != mode) DemoSettings.cameraDistance = null
+        mode = next
+    }
     when (mode) {
-        ModelViewerMode.Single -> SingleModelSection(onBack, mode) { mode = it }
-        ModelViewerMode.Multi -> MultiModelSection(onBack, mode) { mode = it }
-        ModelViewerMode.Gallery -> GallerySection(onBack, mode) { mode = it }
+        ModelViewerMode.Single -> SingleModelSection(onBack, mode, onModeChange)
+        ModelViewerMode.Multi -> MultiModelSection(onBack, mode, onModeChange)
+        ModelViewerMode.Gallery -> GallerySection(onBack, mode, onModeChange)
     }
 }
 
@@ -527,8 +544,10 @@ private fun MultiModelSection(
 ) {
     // One flag per SLOT, not per species — index i pairs with PARK_SLOTS[i] and
     // slugs[i]. A SnapshotStateList keeps the four flags in one stable `remember`
-    // slot while each element stays individually observable, so toggling a chip
-    // recomposes the scene content without re-running the loaders.
+    // slot, so toggling a chip recomposes the scene content without re-running the
+    // loaders. It carries a single state record for the whole list, so a toggle
+    // invalidates every reader of it rather than just the chip that changed — four
+    // booleans in a demo, so the extra recomposition is not worth four `remember`s.
     val visible = remember { List(PARK_SLOTS.size) { true }.toMutableStateList() }
     var spinScene by remember { mutableStateOf(true) }
 
@@ -564,11 +583,13 @@ private fun MultiModelSection(
     // loads the `file://` URI via `ModelLoader.loadModelInstance`, which is
     // async-safe and keeps the Filament JNI work on the Main thread.
     //
-    // Deliberately unrolled rather than looped: each pair of calls has to sit in a
-    // fixed composition slot so the `produceState` inside them keeps invalidating
-    // this caller when the load lands (#1464). One call per slot, in slot order —
-    // growing PARK_SLOTS means adding a line here, and forgetting to fails loudly
-    // (`instances[index]` below throws) rather than silently dropping a model.
+    // Deliberately unrolled rather than looped. What these calls need is a STABLE
+    // composition slot each, so the `produceState` inside them keeps invalidating
+    // this caller when the load lands (#1464). An inline `map` over a fixed-size
+    // list would give that too — the unrolling is a conservative choice, not a
+    // language requirement, and #1464 cost enough to earn the caution. One call per
+    // slot, in slot order; resizing PARK_SLOTS without matching it here is caught by
+    // the size assertion in DemoMathTest — in the unit tests, not on screen.
     val files = listOf(
         rememberSlugFile(slugs[0]),
         rememberSlugFile(slugs[1]),
@@ -613,8 +634,16 @@ private fun MultiModelSection(
     // bounds-drifted asset, exhausted retries — ends at the bundled fallback, so a
     // KEYED build can render four stand-ins. It does: on the QA emulator
     // (2026-07-28, key configured) all four slots staged out of
-    // `cache/sketchfab/fallback/` while an inferred pill read "Streamed (cached)".
-    // Asking the File instead cannot be wrong that way.
+    // `cache/sketchfab/fallback/`, the download endpoint answering 429. This
+    // section's first cut copied Gallery's config-based inference and labelled that
+    // exact scene "Streamed (cached)"; asking the File cannot be wrong that way.
+    //
+    // It stays a WHOLE-SCENE verdict: one fallen-back slot out of four reads
+    // "Offline model" for all of them, and the pill never says which slot swapped.
+    // Pessimistic on purpose — of the two imprecise answers, the optimistic one is
+    // the one that misleads. It is also a MOVING verdict during load: `allLoaded`
+    // watches the instances while the fallback probe watches the files, so a slot
+    // that falls back last flips the pill Streaming → Offline after the fact.
     val assetSource = when {
         slugs.all { it == null } -> null
         files.any { it != null && SketchfabAssetResolver.isBundledFallback(it) } ->
@@ -653,9 +682,11 @@ private fun MultiModelSection(
                     FilterChip(
                         selected = visible[index],
                         onClick = { visible[index] = !visible[index] },
-                        // Positional fallback only while the registry has no slug for
-                        // this slot — a chip with no model behind it still needs a
-                        // stable, non-lying handle.
+                        // Positional fallback for a slot the registry has no slug for —
+                        // a chip with no model behind it still needs a stable, non-lying
+                        // handle. DemoMathTest asserts every PARK_SLOTS uid resolves, so
+                        // this branch is unreachable from THIS repo's registry; it is
+                        // there for a build that edits SampleAssets without the tests.
                         label = { Text(slug?.displayName ?: "Model ${index + 1}") },
                     )
                 }
@@ -718,37 +749,61 @@ private fun MultiModelSection(
                 // bottom-aligned onto a shared ground plane at y = -PARK_HEIGHT / 2.
                 //
                 // sceneYaw rotates each model AROUND that centre by treating its (x, z) as polar
-                // coords, so the formation turns like a turntable while the hero model stays on
-                // the pivot the camera is aimed at — the shot reads the same at every phase of
-                // the spin instead of swinging the subject out of frame. Per-model rotation
-                // cancels the yaw on its own Y so each piece keeps facing the camera.
+                // coords, so the formation turns like a turntable. The hero sits 0.2 m off the
+                // pivot, so it sweeps a small circle rather than staying put: the framing covers
+                // PARK_SPAN — the width the whole formation sweeps out — so every phase of the spin
+                // keeps models filling the frame, but the exact composition still breathes as it
+                // turns. Per-model rotation cancels the yaw on its own Y so each piece keeps facing
+                // the camera.
+                //
+                // Indexed off PARK_SLOTS rather than four named locals, so visibility, loaded
+                // instance and layout can only ever be read for the SAME slot (#2933).
                 val displays = PARK_SLOTS.mapIndexed { index, slot ->
                     Display(visible[index], instances[index], slot)
                 }
-                for (d in displays) {
-                    if (!d.show || d.instance == null) continue
-                    // Rotation math lives in DemoMath.rotateAroundCentre so it can be
-                    // JVM-unit-tested without firing up Filament / Compose.
-                    val (rx, rz) = DemoMath.rotateAroundCentre(d.slot.x, d.slot.z, sceneYaw)
-                    ModelNode(
-                        modelInstance = d.instance,
-                        // Models with a skeletal animation auto-play it for "alive" scene reads;
-                        // in qaMode we need the bind pose to render every frame so golden
-                        // screenshots stay deterministic.
-                        autoAnimate = !DemoSettings.qaMode,
-                        scaleToUnits = d.slot.scale,
-                        // Bottom-aligned (#2913): `Position(0, -1, 0)` puts each model's
-                        // bounding-box FLOOR on its node origin, so `position.y` below stands
-                        // them all on one ground plane. Without it a node keeps the asset's
-                        // authored pivot, which differs per GLB — the formation's vertical
-                        // placement was a property of whichever models the registry happened to
-                        // point at, and the pulled-back framing this fix needs would have shown
-                        // the smaller ones floating. (This parameter used to be a silent no-op;
-                        // it was fixed library-side and is now honoured.)
-                        centerOrigin = Position(0f, -1f, 0f),
-                        position = Position(x = rx, y = -PARK_HEIGHT / 2f, z = rz),
-                        rotation = Rotation(y = -sceneYaw),
-                    )
+                // `key(index)` + `isVisible`, never a skipped call site (#2939). `ModelNode`
+                // holds `remember(engine, modelInstance)`, and its `DisposableEffect(node)`
+                // runs `node.destroy()`, which calls `engine.safeDestroyEntity` on entities
+                // the ModelInstance only BORROWS — the ids survive, the renderable components
+                // do not. Two ways that used to fire here:
+                //   · dropping a hidden slot's call shifted every later ModelNode onto the
+                //     preceding group with a DIFFERENT instance, re-keying the remember and
+                //     destroying all four;
+                //   · unmounting a hidden slot destroyed its own renderables, so toggling the
+                //     chip back on rendered nothing.
+                // The instances come from a `produceState` whose keys never change again, so
+                // they are never reloaded and there is no recovery — a silent black scene with
+                // no scrim, because the instance is still non-null. Same defect the Materials
+                // section shipped until #2939. Keep every slot mounted; hide with `isVisible`.
+                displays.forEachIndexed { index, d ->
+                    key(index) {
+                        if (d.instance != null) {
+                            // Rotation math lives in DemoMath.rotateAroundCentre so it can be
+                            // JVM-unit-tested without firing up Filament / Compose.
+                            val (rx, rz) = DemoMath.rotateAroundCentre(d.slot.x, d.slot.z, sceneYaw)
+                            ModelNode(
+                                modelInstance = d.instance,
+                                isVisible = d.show,
+                                // Models with a skeletal animation auto-play it for "alive"
+                                // scene reads; in qaMode we need the bind pose to render every
+                                // frame so golden screenshots stay deterministic.
+                                autoAnimate = !DemoSettings.qaMode,
+                                scaleToUnits = d.slot.scale,
+                                // Bottom-aligned (#2913): `Position(0, -1, 0)` puts each model's
+                                // bounding-box FLOOR on its node origin, so `position.y` below
+                                // stands them all on one ground plane. Without it a node keeps the
+                                // asset's authored pivot, which differs per GLB — the formation's
+                                // vertical placement was a property of whichever models the
+                                // registry happened to point at, and the pulled-back framing this
+                                // fix needs would have shown the smaller ones floating. (This
+                                // parameter used to be a silent no-op; it was fixed library-side
+                                // and is now honoured.)
+                                centerOrigin = Position(0f, -1f, 0f),
+                                position = Position(x = rx, y = -PARK_HEIGHT / 2f, z = rz),
+                                rotation = Rotation(y = -sceneYaw),
+                            )
+                        }
+                    }
                 }
             }
             LoadingScrim(loading = !allLoaded, label = "Loading ${PARK_SLOTS.size} models…")
@@ -757,96 +812,15 @@ private fun MultiModelSection(
 }
 
 /**
- * One model's fixed place in the Multi-Model "park" formation, in metres.
+ * One model's visibility and loaded instance, bound to its fixed place in the formation.
  *
- * [x] / [z] are offsets from the formation centre — which is the world origin, since the section
- * renders with `autoCenterContent = false` — and [scale] is the `scaleToUnits` cube the model is
- * normalised into. Declared as data so [PARK_SPAN] / [PARK_HEIGHT] are DERIVED from the layout
- * rather than restated next to it: the camera framing cannot silently drift out of sync with the
- * arrangement it is supposed to frame (#2913).
- *
- * [uid] is the [SampleAssets] entry that occupies the slot. It rides on the slot rather than in a
- * parallel list so the layout, the loader and the chip label are all indexed by one thing — the
- * section reads the chip's text off `byUid[uid]`, so a slot can never end up labelled with another
- * slot's model.
+ * The layout itself ([PARK_SLOTS]) and the framing derived from it live in `internal/ParkFraming.kt`
+ * so a JVM unit test can assert that the derivation follows the layout (#2913).
  */
-private data class ParkSlot(val uid: String, val x: Float, val z: Float, val scale: Float)
-
 private data class Display(
     val show: Boolean,
     val instance: io.github.sceneview.model.ModelInstance?,
     val slot: ParkSlot,
-)
-
-/**
- * The four `park` slots, back row first. Order matches the visibility chips.
- *
- * The uids are looked up in [SampleAssets] by identity, so re-ordering the registry moves nothing
- * here. What the registry DOES decide is which model — and therefore which chip label — each slot
- * gets; the slots themselves only describe where a model stands and how big it is drawn.
- */
-private val PARK_SLOTS = listOf(
-    ParkSlot(uid = "d841c3bcc5324daebee50f45619e05fc", x = 0.0f, z = -0.2f, scale = 1.80f),
-    ParkSlot(uid = "6d1aeea748f147789004bc03e1930d32", x = 0.0f, z = 0.2f, scale = 0.65f),
-    ParkSlot(uid = "4f6ab5594a8a415aba3f958682b9ced5", x = -0.55f, z = 0.2f, scale = 0.40f),
-    ParkSlot(uid = "fd582b0d4a8c4af1a1b5c4f21a481c93", x = 0.55f, z = 0.2f, scale = 0.15f),
-)
-
-/**
- * Height of the formation: every slot is bottom-aligned on a shared ground plane, so the union is
- * exactly as tall as the tallest model.
- */
-private val PARK_HEIGHT: Float = PARK_SLOTS.maxOf { it.scale }
-
-/**
- * Width the formation sweeps out. Each slot orbits the centre at radius `hypot(x, z)` and is
- * normalised into a cube of side `scale`, so the farthest any part of it ever reaches from the
- * centre is `radius + scale / 2` — whatever the spin phase. Twice that is the width the camera
- * has to cover for the frame to stay full of models as the formation turns.
- */
-private val PARK_SPAN: Float = 2f * PARK_SLOTS.maxOf { hypot(it.x, it.z) + it.scale / 2f }
-
-/** SceneView's default lens. `CameraNode._focalLength` = 28 mm ⇒ ≈46.4° vertical FOV. */
-private const val PARK_FOCAL_LENGTH_MM = 28.0
-
-/**
- * Fraction of the frame height the formation spans. `1f` = the hero model runs edge to edge —
- * the subject reads at Play Store thumbnail size instead of sitting on a shelf in the middle.
- */
-private const val PARK_FRAME_FILL = 1.0f
-
-/** Camera height, level with the mid-height of the tallest model (the ground plane is below). */
-private const val PARK_EYE_HEIGHT = 0.0f
-
-/**
- * Aspect used when the viewport has not been measured yet (a zero / infinite constraint on the
- * very first composition). A portrait phone — the most common case, and the shape the demo was
- * originally framed for.
- */
-private const val PARK_FALLBACK_ASPECT = 0.47f
-
-/**
- * Camera distance for the park formation at a given viewport [aspect] (`width / height`).
- *
- * **Cover, not fit.** The formation is much wider than it is tall ([PARK_SPAN] ≈ 2.2 m against
- * [PARK_HEIGHT] = 1.8 m), so fitting all of it inside a portrait frame would park the camera ~5.5 m
- * back and shrink the models to a strip across the middle. [DemoMath.coverDistance] instead fills
- * the frame on both axes and lets the neighbouring models be cropped by the edges.
- *
- * **Why the aspect matters at all (#2913).** Filament derives the vertical FOV from the focal
- * length against a fixed 24 mm sensor height, so the vertical framing is aspect-invariant and a
- * wider viewport simply reveals more world to the left and right at the same distance. On a phone
- * (~0.47 w/h) and a tablet (~0.64) the vertical term wins and this returns the same distance —
- * both frame the formation full height, and the tablet's extra width lands on the neighbouring
- * models. On a landscape / foldable viewport the horizontal term takes over and pulls the camera
- * in so the formation still spans the width rather than trailing off into the backdrop.
- */
-private fun parkCameraDistance(aspect: Float): Float = DemoMath.coverDistance(
-    contentWidth = PARK_SPAN,
-    contentHeight = PARK_HEIGHT,
-    verticalFovDegrees = verticalFovDegreesForFocalLength(PARK_FOCAL_LENGTH_MM),
-    aspect = aspect,
-    fill = PARK_FRAME_FILL,
 )
 
 /**
