@@ -23,8 +23,10 @@
 // wall-clock assertion it cannot flake on a loaded CI host, and it fails for
 // the actual reason a future asset would regress.
 
+#if DEBUG
 import XCTest
 import RealityKit
+@testable import SceneViewDemo
 
 @MainActor
 final class BundledAssetPrimBudgetTests: XCTestCase {
@@ -43,6 +45,12 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
             stack.append(contentsOf: e.children)
         }
         return count
+    }
+
+    /// `"Models/foo.usdz"` → `"foo"`, matching how
+    /// `SketchfabAssetResolver.splitBundlePath` reads a declared fallback path.
+    private func bundleName(from declaredPath: String) -> String {
+        URL(fileURLWithPath: declaredPath).deletingPathExtension().lastPathComponent
     }
 
     private func bundledURL(_ name: String) throws -> URL {
@@ -71,20 +79,38 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
     /// `tree_scene.usdz` backs the MultiModelDemo Tree slot, the Explore and AR
     /// tabs' "Tree Scene" entry, and the `park` "Oak Trees" slug's keyless
     /// fallback — so a prim-count regression here stalls several demos at once.
-    /// It backed three `ar_placement` slugs too until #2940 repointed them; those
-    /// keep their own budget check below.
+    /// It backed three `ar_placement` slugs too until #2940 repointed them.
+    ///
+    /// Named explicitly, and kept even though the registry-driven test below
+    /// happens to cover it today: those two Explore/AR entries reach the asset
+    /// by filename, not through a `SketchfabSlug`, so repointing "Oak Trees"
+    /// would silently drop this asset out of the registry-driven sweep while it
+    /// was still shipping in two tabs.
     func testTreeSceneStaysUnderMeshPrimBudget() async throws {
         try await assertUnderMeshPrimBudget("tree_scene")
     }
 
-    /// The keyless fallbacks #2940 repointed the *Potted Monstera*, *Wooden End
-    /// Table* and *Floor Lamp* `ar_placement` slugs to. They sit on exactly the
-    /// stall-sensitive path the tree did — the AR placement picker in a keyless
-    /// build, which is both the default local build and the App Store build —
-    /// so they carry the same budget.
-    func testARPlacementFallbacksStayUnderMeshPrimBudget() async throws {
-        for name in ["khronos_damaged_helmet", "khronos_toy_car", "khronos_lantern"] {
-            try await assertUnderMeshPrimBudget(name)
+    /// Every asset the registry can hand a keyless build, read **from the
+    /// registry** rather than from a literal list: repointing any
+    /// `fallbackBundledPath` re-aims this guard instead of leaving it on the
+    /// assets that used to be declared. That matters because a wrong repoint is
+    /// the #2940 defect itself, and `SampleAssetsTests.testEveryEntryHasFallback`
+    /// only asserts the string is non-empty — nothing else proves a declared
+    /// path resolves to a file that is actually in the app bundle.
+    ///
+    /// So this covers three failure modes at once: a path that resolves to
+    /// nothing (typo, or an asset never added to the Resources build phase), an
+    /// asset heavy enough to blow the settle window, and one that parses to
+    /// empty bounds.
+    func testEveryDeclaredFallbackResolvesAndStaysUnderMeshPrimBudget() async throws {
+        let declared = Set(SampleAssets.all.map(\.fallbackBundledPath))
+        XCTAssertFalse(
+            declared.isEmpty,
+            "SampleAssets declared no fallbacks — this guard would be vacuous"
+        )
+        for path in declared.sorted() {
+            try await assertUnderMeshPrimBudget(bundleName(from: path))
         }
     }
 }
+#endif
