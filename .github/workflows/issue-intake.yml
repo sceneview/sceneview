@@ -108,9 +108,45 @@ jobs:
       contents: read
       issues: write
       id-token: write        # OIDC for claude-code-action (matches claude.yml)
+    env:
+      MAX_TRIAGES_PER_DAY: '10'
     steps:
+      # ⚠️ THIS REPO IS PUBLIC, AND `issues: opened` FIRES IN THE BASE REPO.
+      #   Unlike a fork `pull_request` — where GitHub withholds the secrets and
+      #   pr-review.yml simply cannot spend anything — an issue opened by any
+      #   member of the public runs HERE, with full access to
+      #   CLAUDE_CODE_OAUTH_TOKEN, and therefore spends the maintainer's Claude
+      #   Max quota. Nothing about opening an issue is privileged. Without a
+      #   ceiling, fifty spam issues are fifty agent runs on someone else's
+      #   subscription, and `concurrency` does not help: it is keyed per issue,
+      #   so distinct issues never queue behind each other.
+      #
+      #   The ceiling is a daily count of this workflow's own runs. It is
+      #   deliberately NOT an author-association filter: triage is most valuable
+      #   precisely on issues from first-time reporters, so gating on
+      #   "is this person a collaborator" would disable it exactly where it
+      #   earns its keep. Volume is the thing to bound, not who is asking.
+      - name: Check daily triage budget
+        id: budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TODAY="$(date -u +%Y-%m-%d)"
+          # Counts this run too, so the cap errs on the conservative side.
+          USED="$(gh run list --workflow=issue-intake.yml --created ">=$TODAY" \
+                    --limit 100 --json databaseId --jq 'length' 2>/dev/null || echo 0)"
+          echo "Triage runs today: $USED / $MAX_TRIAGES_PER_DAY"
+          if [ "$USED" -gt "$MAX_TRIAGES_PER_DAY" ]; then
+            echo "within_budget=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Triage budget reached::$USED issue-intake runs today (cap $MAX_TRIAGES_PER_DAY). Deterministic labels still applied; agent triage skipped to protect the Claude Max quota. Triage a backlog by hand, or raise MAX_TRIAGES_PER_DAY."
+          else
+            echo "within_budget=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check triage credentials
         id: creds
+        if: steps.budget.outputs.within_budget == 'true'
         env:
           TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
