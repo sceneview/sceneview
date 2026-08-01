@@ -706,7 +706,14 @@ jobs:
                       )
                       whats_new = re.sub(r"\n{3,}", "\n\n", text).strip() or None
                   if not whats_new:
-                      print(f"::warning::No release_notes.txt and no usable '## v{version_string}' CHANGELOG section — whatsNew left empty; the review submission will 409 (ENTITY_STATE_INVALID) if the field is blank on App Store Connect")
+                      # Name the real state of the file: "No release_notes.txt"
+                      # sent whoever read this log looking for a missing file
+                      # that was actually there but blank (#2908 review nit).
+                      notes_state = (
+                          f"{notes_file} exists but is empty/whitespace-only"
+                          if notes_file.exists() else "No release_notes.txt"
+                      )
+                      print(f"::warning::{notes_state}, and no usable '## v{version_string}' CHANGELOG section — whatsNew left empty; the review submission will 409 (ENTITY_STATE_INVALID) if the field is blank on App Store Connect")
               if whats_new:
                   if len(whats_new) > 4000:
                       whats_new = whats_new[:3997].rstrip() + "…"
