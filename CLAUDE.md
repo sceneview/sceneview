@@ -626,8 +626,32 @@ Two jobs let Claude start work no one asked for by hand:
 
 | Job | Fires on | Guard |
 |---|---|---|
-| `issue-intake.yml` → `triage` | a human opens an issue | runs AFTER the deterministic labeller, never replaces it; bot authors excluded |
+| `issue-intake.yml` → `triage` | an outside reporter opens an issue | runs AFTER the deterministic labeller, never replaces it; bots and write-access authors excluded; 10 runs/day budget |
 | `maintenance.yml` → `digest-to-tasks` | daily cron | hard cap of 3 new issues/run, **measured** after the fact; mandatory dedup; anomaly-only |
+| `claude.yml` → `claude` | `@claude` mention | 20 real runs/day budget (skipped triggers excluded from the count) |
+
+⛔ **A public repo's issues and comments spend the maintainer's quota.** Fork
+`pull_request` runs get no secrets, so `pr-review.yml` structurally cannot
+spend anything on an outside contributor's PR — but `issues: opened` and
+`issue_comment` fire in the BASE repo, where secrets *are* available. Anyone
+can therefore spend Claude Max quota by opening an issue or typing `@claude`,
+and `concurrency` does not help: it is keyed per issue/PR, so distinct threads
+never queue behind each other. Both jobs carry a daily budget.
+
+Two calibration facts, both measured 2026-08-01 — recheck them before changing
+a threshold, because both are counter-intuitive:
+
+- **Most `claude.yml` runs cost nothing.** The workflow is triggered by every
+  issue/comment event and the job's `if:` gate skips the ones without a
+  mention. 15 runs that day, *all* skipped; zero real executions across the
+  last 200 runs. Counting raw runs would have capped the bot on 2026-07-20
+  (46 triggers, 0 real spend). The budget counts `conclusion != "skipped"`.
+- **Most issues don't need triage.** Of the last 200: 186 opened by the
+  maintainer, 8 by `github-actions`, 6 by outside reporters. Triaging an issue
+  its own author wrote seconds ago spends ~93% of the budget on noise, so
+  `OWNER`/`MEMBER`/`COLLABORATOR` are excluded. This is the *opposite* of
+  gating on "is this person a collaborator" — that would kill triage exactly
+  where it earns its keep.
 
 ⛔ **The issue body is untrusted input, in both directions.** `issue-intake.yml`'s
 original header documents why it is never interpolated into a `run:` step

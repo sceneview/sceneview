@@ -47,3 +47,21 @@
   two wrong assumptions: the missing-file branch in the grader is redundant
   with its own `try/except`, and the cost report's dedup comes from the choice
   of key, not from the `continue` that feeds the duplicate counter.
+
+<!-- category: Fixed -->
+- The event-driven agent jobs now carry daily budgets, because a public repo's
+  issues and comments spend the maintainer's quota. Fork `pull_request` runs get
+  no secrets, so `pr-review.yml` structurally cannot spend anything on an outside
+  contributor's PR — but `issues: opened` and `issue_comment` fire in the base
+  repo, where secrets are available, and `concurrency` is keyed per thread so
+  distinct issues never queue behind each other. Both budgets were calibrated
+  against measured traffic rather than a guess, and both measurements were
+  counter-intuitive: most `claude.yml` runs are `skipped` triggers that cost
+  nothing (15 runs on 2026-08-01, all skipped; zero real executions across the
+  last 200), so counting raw runs would have capped the bot on a day with 46
+  triggers and no spend; and of the last 200 issues, 186 were opened by the
+  maintainer against 6 by outside reporters, so triaging every issue would have
+  spent ~93% of the budget explaining an issue back to the person who had just
+  written it. `OWNER`/`MEMBER`/`COLLABORATOR` are now excluded from triage —
+  the opposite of gating on "is this person a collaborator", which would have
+  disabled it exactly where it earns its keep.

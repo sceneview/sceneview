@@ -98,10 +98,23 @@ jobs:
   # with GITHUB_TOKEN, which by GitHub's design does not re-trigger workflows,
   # but the label guard makes that independent of that behaviour rather than
   # reliant on it.
+  # Triage only what actually needs triaging. Measured 2026-08-01 over the last
+  # 200 issues: 186 were opened by the maintainer, 8 by github-actions, and just
+  # 6 by outside reporters. Running an agent on an issue the maintainer wrote
+  # thirty seconds ago tells them nothing they don't know and spends ~93% of the
+  # budget on noise.
+  #
+  # Note this is the OPPOSITE of gating on "is this person a collaborator",
+  # which would have disabled triage exactly where it earns its keep. People
+  # with write access don't need their own issues explained back to them;
+  # everyone else is precisely who this is for.
   triage:
     name: Agent triage
     needs: label
-    if: always() && github.event.issue.user.type != 'Bot'
+    if: >-
+      always()
+      && github.event.issue.user.type != 'Bot'
+      && !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
