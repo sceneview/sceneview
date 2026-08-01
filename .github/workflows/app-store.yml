@@ -204,6 +204,10 @@ jobs:
         run: |
           BUILD_NUMBER=$(( ${{ github.run_number }} + 1000 ))
           echo "Archiving with CFBundleVersion (CURRENT_PROJECT_VERSION) = $BUILD_NUMBER"
+          # Hand the number to the submit step (#2893 W1) so it can attach the
+          # build THIS run uploaded instead of whichever iOS build happens to
+          # be VALID first. Same job → $GITHUB_ENV is the right channel.
+          echo "ASC_EXPECTED_BUILD=$BUILD_NUMBER" >> "$GITHUB_ENV"
           xcodebuild archive \
             -project SceneViewDemo.xcodeproj \
             -scheme SceneViewDemo \
@@ -345,6 +349,36 @@ jobs:
           # not depend on filter[preReleaseVersion.platform] being honoured);
           # if the include is unavailable for this key we fall back to the
           # newest VALID build rather than regress into a 10-minute red poll.
+          #
+          # W1 (#2893): "newest VALID iOS build" is not the same thing as "the
+          # build this run just uploaded". While Apple processes our upload,
+          # the PREVIOUS release's build is already VALID and sorts first — so
+          # the loop could exit on attempt 1 and submit a stale binary under
+          # the new version string, silently. The archive step exports the
+          # CFBundleVersion it built as ASC_EXPECTED_BUILD, and we pin the
+          # selection to it: no match yet means our build is still processing,
+          # which is a reason to keep polling, not to take the older one.
+          # Without the env var (a re-run of just this step, say) the previous
+          # newest-VALID behaviour stands, loudly flagged.
+          expected_build = (os.environ.get("ASC_EXPECTED_BUILD") or "").strip()
+          if expected_build:
+              print(f"Expecting build number {expected_build} (uploaded by this run)")
+          else:
+              print("::warning::ASC_EXPECTED_BUILD is not set — falling back to newest-VALID selection; "
+                    "this run may attach a build it did not upload (#2893 W1).")
+
+          def _same_build(a, b):
+              # Apple returns CFBundleVersion as a string. Compare textually,
+              # then numerically so a "0300"/"300" formatting difference on
+              # either side is not read as a different build.
+              a, b = str(a).strip(), str(b).strip()
+              if a == b:
+                  return True
+              try:
+                  return int(a) == int(b)
+              except ValueError:
+                  return False
+
           build_id = None
           build_version = None
           for attempt in range(1, 11):
@@ -358,6 +392,7 @@ jobs:
               data = payload.get("data", [])
               newest_valid = data[0] if data else None
               platform_seen = False
+              ios_builds = []
               for b in data:
                   prv = b.get("relationships", {}).get("preReleaseVersion", {}).get("data")
                   inc = included.get((prv["type"], prv["id"])) if prv else None
@@ -365,25 +400,59 @@ jobs:
                   if platform is not None:
                       platform_seen = True
                   if platform == "IOS":
-                      build_id = b["id"]
-                      build_version = b["attributes"]["version"]
-                      break
-              if build_id:
+                      ios_builds.append(b)
+              chosen = None
+              if expected_build:
+                  chosen = next(
+                      (b for b in ios_builds
+                       if _same_build(b.get("attributes", {}).get("version"), expected_build)),
+                      None,
+                  )
+              elif ios_builds:
+                  chosen = ios_builds[0]
+              if chosen is not None:
+                  build_id = chosen["id"]
+                  build_version = chosen["attributes"]["version"]
                   break
               # Apple returned VALID builds but NONE exposed a platform (the
               # include failed for this service-account key) — don't spin for
               # 10 min: fall back to the newest VALID build (pre-fix behaviour),
               # loudly, so the platform filter never makes things worse.
               if newest_valid is not None and not platform_seen:
-                  print("::warning::Could not resolve build platform via include=preReleaseVersion — "
-                        "falling back to newest VALID build (iOS platform filter inactive).")
-                  build_id = newest_valid["id"]
-                  build_version = newest_valid["attributes"]["version"]
-                  break
-              print(f"No VALID iOS build yet (attempt {attempt}/10) — Apple still processing, retrying in 60s...")
+                  if expected_build:
+                      # A build-number match is a STRONGER signal than the
+                      # platform filter here — the number is the one we
+                      # uploaded from an iOS archive — so keep the W1 pin even
+                      # though the platform is unresolvable, and keep polling
+                      # until our own build turns VALID.
+                      m = next(
+                          (b for b in data
+                           if _same_build(b.get("attributes", {}).get("version"), expected_build)),
+                          None,
+                      )
+                      if m is not None:
+                          print("::warning::Could not resolve build platform via include=preReleaseVersion — "
+                                f"selecting build {expected_build} by build-number match instead.")
+                          build_id = m["id"]
+                          build_version = m["attributes"]["version"]
+                          break
+                  else:
+                      print("::warning::Could not resolve build platform via include=preReleaseVersion — "
+                            "falling back to newest VALID build (iOS platform filter inactive).")
+                      build_id = newest_valid["id"]
+                      build_version = newest_valid["attributes"]["version"]
+                      break
+              waiting_for = f"build {expected_build}" if expected_build else "a VALID iOS build"
+              print(f"No {waiting_for} yet (attempt {attempt}/10) — Apple still processing, retrying in 60s...")
               time.sleep(60)
           if not build_id:
-              print("::error::No VALID iOS build after ~12 minutes — Apple processing overran or the upload failed. The release was NOT submitted for review; re-run this job once the build shows as processed in App Store Connect.")
+              detail = (
+                  f"build {expected_build} (uploaded by this run) never turned VALID"
+                  if expected_build else "no VALID iOS build appeared"
+              )
+              print(f"::error::After ~12 minutes, {detail} — Apple processing overran or the upload failed. "
+                    "The release was NOT submitted for review; re-run this job once the build shows as "
+                    "processed in App Store Connect.")
               raise SystemExit(1)
           print(f"Selected iOS build: {build_version} (ID: {build_id})")
 
