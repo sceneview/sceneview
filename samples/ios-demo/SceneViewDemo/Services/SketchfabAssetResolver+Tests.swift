@@ -107,6 +107,32 @@ final class SampleAssetsTests: XCTestCase {
     }
 }
 
+/// Redirects only the caches directory into a scratch root, so a resolver
+/// round trip stages into a throwaway location instead of the app's real
+/// cache. Everything else keeps `FileManager`'s stock behaviour.
+private final class ScratchCachesFileManager: FileManager {
+    private let root: URL
+
+    init(root: URL) {
+        self.root = root
+        super.init()
+    }
+
+    override func url(
+        for directory: FileManager.SearchPathDirectory,
+        in domain: FileManager.SearchPathDomainMask,
+        appropriateFor url: URL?,
+        create shouldCreate: Bool
+    ) throws -> URL {
+        guard directory == .cachesDirectory else {
+            return try super.url(for: directory, in: domain,
+                                 appropriateFor: url, create: shouldCreate)
+        }
+        try createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+}
+
 final class SketchfabAssetResolverTests: XCTestCase {
 
     // ─── Unknown uid ───────────────────────────────────────────────────────
@@ -131,6 +157,96 @@ final class SketchfabAssetResolverTests: XCTestCase {
         } catch {
             XCTFail("expected .unknown, got \(error)")
         }
+    }
+
+    // ─── Staged fallback freshness (#2928) ─────────────────────────────────
+
+    /// The staged fallback copy is keyed on `uid`, so before #2928 an app
+    /// update that shipped a corrected asset was ignored forever by every
+    /// existing install: the target path already existed and was returned
+    /// as-is. `stagedCopy(at:matches:)` is what makes a changed bundled asset
+    /// re-stage.
+    func testStagedCopyDetectsAChangedBundledAsset() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("staged-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let staged = dir.appendingPathComponent("staged.usdz")
+        let sameSize = dir.appendingPathComponent("same.usdz")
+        let shrunk = dir.appendingPathComponent("shrunk.usdz")
+        let absent = dir.appendingPathComponent("absent.usdz")
+        try Data(repeating: 0xAB, count: 4096).write(to: staged)
+        try Data(repeating: 0xCD, count: 4096).write(to: sameSize)
+        try Data(repeating: 0xEF, count: 2048).write(to: shrunk)
+
+        let resolver = SketchfabAssetResolver()
+
+        // The real #2928 shape: the bundle's asset got smaller -> re-stage.
+        let matchesShrunk = await resolver.stagedCopy(at: staged, matches: shrunk)
+        XCTAssertFalse(matchesShrunk, "a changed bundled asset must re-stage")
+
+        // Unchanged asset -> keep the staged copy (no needless 14 MB re-copy).
+        let matchesSame = await resolver.stagedCopy(at: staged, matches: sameSize)
+        XCTAssertTrue(matchesSame, "an unchanged asset must not re-stage")
+
+        // Unstattable file -> treat as stale so the re-staging path runs.
+        let matchesAbsent = await resolver.stagedCopy(at: absent, matches: sameSize)
+        XCTAssertFalse(matchesAbsent, "a missing staged copy must not count as a match")
+    }
+
+    /// The comparator test above proves `stagedCopy(at:matches:)` compares
+    /// sizes — it does not prove `fallbackBundle(for:)` *consults* it. Hoisting
+    /// the early return back above the bundle lookup fully reinstates #2928 and
+    /// still leaves that test green, so this one drives the real round trip:
+    /// stage a fallback, ship a different asset in the "next app version", and
+    /// assert the caller receives the NEW bytes. That is the user-visible
+    /// property — an App Store update carrying a corrected asset must actually
+    /// reach an install that already staged the old one.
+    func testFallbackBundleReStagesAfterTheBundledAssetChanges() async throws {
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("roundtrip-\(UUID().uuidString)", isDirectory: true)
+        let bundleURL = scratch.appendingPathComponent("Fake.bundle", isDirectory: true)
+        let modelsDir = bundleURL.appendingPathComponent("Models", isDirectory: true)
+        try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+
+        let bundled = modelsDir.appendingPathComponent("roundtrip_probe.usdz")
+        let shipped = Data(repeating: 0xA1, count: 4096)
+        let corrected = Data(repeating: 0xB2, count: 2048)
+        try shipped.write(to: bundled)
+
+        let resolver = SketchfabAssetResolver(
+            bundle: try XCTUnwrap(Bundle(url: bundleURL), "scratch bundle unreadable"),
+            fileManager: ScratchCachesFileManager(
+                root: scratch.appendingPathComponent("caches", isDirectory: true)
+            )
+        )
+        let slug = SketchfabSlug(
+            uid: "00000000000000000000000000c0ffee",
+            displayName: "Round Trip",
+            author: "test",
+            licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
+            fallbackBundledPath: "Models/roundtrip_probe.usdz",
+            scaleToUnits: 1.0,
+            hasBakedAnimation: false,
+            category: "gallery"
+        )
+
+        let first = try await resolver.fallbackBundle(for: slug)
+        XCTAssertEqual(try Data(contentsOf: first), shipped,
+                       "first resolve must stage the bundled asset verbatim")
+
+        // The next app version ships a corrected asset under the same name.
+        try corrected.write(to: bundled)
+
+        let second = try await resolver.fallbackBundle(for: slug)
+        XCTAssertEqual(second.path, first.path,
+                       "staging path is keyed on uid and must not move")
+        XCTAssertEqual(try Data(contentsOf: second), corrected,
+                       "#2928: the staged copy survives an app update, so a resolve "
+                       + "after the bundled asset changed must re-stage it — returning "
+                       + "the old bytes makes an asset fix inert on every existing install")
     }
 
     // ─── boundsAreSane heuristic ───────────────────────────────────────────

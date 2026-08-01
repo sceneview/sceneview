@@ -12,7 +12,7 @@ Source of truth: [`assets/catalog.json`](catalog.json). This file is generated
 by [`.claude/scripts/generate-credits.py`](../.claude/scripts/generate-credits.py).
 Re-run the script after any catalog edit to keep both files in sync.
 
-Total models: **70** (plus 17 pending metadata, 7 pending license review).
+Total models: **75** (plus 16 pending metadata, 7 pending license review).
 
 ---
 
@@ -45,7 +45,7 @@ Total models: **70** (plus 17 pending metadata, 7 pending license review).
 - **[FREE 1975 Porsche 911 (930) Turbo](https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e)** by Karol Miklas — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Game Boy Classic](https://sketchfab.com/3d-models/game-boy-classic-0ae80019e6f046168923286d7e628f6f)** by JonhyOliver — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[JBL Tour One M3 Headphones](https://sketchfab.com/3d-models/jbl-tour-one-m3-black-45f0b3ccbee84492a05998d5daecff16)** by cubemodelex — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Low Poly Tree Scene](https://sketchfab.com/3d-models/low-poly-tree-scene-free-89daa5e21f0d4f08a59dba0d566e88bd)** by mateustorresg — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Low Poly Tree Scene](https://sketchfab.com/3d-models/low-poly-tree-scene-free-89daa5e21f0d4f08a59dba0d566e88bd)** by mateustorresg (modified by SceneView — grass-tuft prims removed) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Lowpoly Fruits & Vegetables](https://sketchfab.com/3d-models/lowpoly-fruits-vegetables-d3be8fed96eb48be88b47bbe8d2951e1)** by norgeotloic — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Medieval Fantasy Book](https://sketchfab.com/3d-models/medieval-fantasy-book-06d5a80a04fc4c5ab552759e9a97d91a)** by Pixel — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Monstera Deliciosa Potted Mid-Century Plant](https://sketchfab.com/3d-models/monstera-deliciosa-potted-mid-century-plant-1ab9bf841df04c07b1819be596327629)** by ChubbyPanda — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
@@ -77,15 +77,20 @@ Total models: **70** (plus 17 pending metadata, 7 pending license review).
 - **[BoomBox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/BoomBox)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cesium Milk Truck](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CesiumMilkTruck)** by Cesium — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Chronograph Watch](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Chronograph Watch (web demo)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Corset](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Corset)** by KhronosGroup (UX3D) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)** by KhronosGroup (theblueturtle_) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Diffuse Transmission Teacup](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DiffuseTransmissionTeacup)** by Wayfair — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Dragon (Attenuation)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DragonAttenuation)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Glam Velvet Sofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa)** by Wayfair — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Iridescence Dish With Olives](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceDishWithOlives)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Materials Variants Shoe](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/MaterialsVariantsShoe)** by Shopify — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Sheen Chair](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Sheen Chair (web demo)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Sunglasses](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SunglassesKhronos)** by Khronos — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Toy Car](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Water Bottle](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/WaterBottle)** by KhronosGroup — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ## Poly Haven
@@ -120,13 +125,12 @@ Replace or remove before the next store publication:
 
 ---
 
-## Missing metadata (17 entries)
+## Missing metadata (16 entries)
 
 These entries in `catalog.json` lack at least one of `author`, `license`,
 `sourceUrl`, or use a license this script does not recognise. Fill in the
 missing fields so they can be credited properly:
 
-- `toy_car` — missing: author, license, sourceUrl
 - `khronos_duck` — missing: license `SCEA Shared Source License` unrecognised
 - `koi_fish` — missing: author
 - `toon_cat` — missing: author

@@ -575,12 +575,25 @@ stale docs make an AI emit stale code. Keeping them in sync is enforced at
    safe). Draft + human review means a wrong prose patch can never land
    silently — this is where the "auto-fix" power lives, not on every PR.
 
-Alongside the two heuristic tiers, one surface gets a **deterministic,
-blocking gate**: `gpt/knowledge-*.md` is GENERATED from `llms.txt` by
-`tools/generate-gpt-knowledge.js`, and `ci.yml` → `repo-hygiene` fails when
-the committed files drift (`--check`). Generated files can be gated hard
-because there is no false-positive risk — never hand-edit them;
-`sync-versions.sh --fix` regenerates them on every version bump (#2724).
+Alongside the two heuristic tiers, two surfaces get a **deterministic,
+blocking gate**, both in `ci.yml` → `repo-hygiene`. Generated files can be
+gated hard because there is no false-positive risk — never hand-edit them:
+
+- `gpt/knowledge-*.md` is GENERATED from `llms.txt` by
+  `tools/generate-gpt-knowledge.js`; CI fails when the committed files drift
+  (`--check`). `sync-versions.sh --fix` regenerates them on every version
+  bump (#2724).
+- `assets/CREDITS.md` is GENERATED from `assets/catalog.json` by
+  `.claude/scripts/generate-credits.py`; CI fails when it drifts (`--check`).
+  This one is a **licence-compliance** gate, not a docs gate: CREDITS.md is
+  what discharges the attribution clause (CC-BY 4.0 §3a) of every model that
+  ships in the sample apps, so a catalog entry that never reaches CREDITS.md
+  is an uncredited model in a published release. It went stale undetected
+  once — five catalog records (three distinct Khronos works: Toy Car, Sheen
+  Chair, Iridescence Dish With Olives) shipped uncredited before a manual
+  re-run caught it. Scope: the gate covers `assets/CREDITS.md` only.
+  `samples/android-demo/src/main/assets/CREDITS.md` is a separate,
+  hand-maintained file bundled into that APK — not generated, not gated.
 
 Why not block per-PR or auto-fix per-PR? Blocking frustrates internal-only
 refactors that get mis-classified; per-PR auto-fix is costly on every PR and a
@@ -842,6 +855,7 @@ Hooks trigger automatically on specific Claude Code actions:
 | `install-sceneview-web-skill.sh` | Copies `agents/sceneview-web/` (Web skill) to `~/.android/cli/skills/xr/sceneview-web/` |
 | `check-sceneview-skill.sh` | Verifies all three `agents/sceneview*/` skills (API identifiers, demo refs, frontmatter) are in sync with the library source. Runs in `quality-gate.sh`, `pr-check.yml`, and daily via `maintenance.yml` |
 | `check-doc-drift.sh` | Flags when a public-API change is not mirrored in the docs (llms.txt / KDoc / `docs/docs/*` / recipes). **Diff mode** (default) = per-PR ADVISORY WARN, runs in `ci.yml` → `repo-hygiene`; never blocks (heuristic → would false-positive). **`--audit` mode** = repo-wide candidate-drift worklist consumed by the weekly `doc-audit.yml` agent. `--fail` opts into a non-zero exit. Self-tested by `test-check-doc-drift.sh` (also in `repo-hygiene`). |
+| `generate-credits.py` | Regenerates `assets/CREDITS.md` from `assets/catalog.json` — the attribution surface every model's licence requires (CC-BY 4.0 §3a). Re-run after ANY catalog edit. `--check` is the deterministic BLOCKING drift gate in `ci.yml` → `repo-hygiene` (regenerate-and-compare, no write) |
 | `worktree-auto-prune.sh` | Safe GC for `.claude/worktrees/*` — removes worktrees whose branch is merged (`--dry-run`, `--yes`, `--keep <path>`). Never touches dirty or unmerged trees |
 | `cleanup-branches-worktrees.sh` | One-shot GC for stale `claude/*` branches **and** worktrees: deletes merged local + remote branches (single `git push --delete`, no bot-burst) and delegates worktree pruning to `worktree-auto-prune.sh`. Defaults to dry-run; `--yes` to act, `--keep <branch\|path>`, `--no-worktrees`. Current-branch / unmerged / open-PR guarded. Runs daily in `maintenance.yml` |
 

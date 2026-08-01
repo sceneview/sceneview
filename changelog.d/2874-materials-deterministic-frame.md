@@ -1,5 +1,7 @@
 <!-- category: Fixed -->
-- **Demo: the `materials` demo now produces a reproducible frame (#2874).** Two
+- **Demo: the `materials` demo now shows the same subject on the same backdrop
+  on every launch (#2874).** The idle orbit still varies the camera yaw, so a
+  pixel-stable capture needs `--ez qa_mode true`. Two
   things made it non-reproducible, and both are fixed. **(1) The subject was
   streamed.** The **PBR Materials** section opened on a Sketchfab slug, so what
   the first frame showed depended on the API key, the network and the disk cache

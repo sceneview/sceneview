@@ -28,9 +28,11 @@ captured mosaic rather than picked a-priori (#2854):
 | 3 | `multi-model`  | The only non-helmet, non-sky frame — photoreal foliage    |
 
 **Retired, do not re-add by guesswork** (the same list sits in the capture
-script next to `DEMOS_DEFAULT`): `materials` picks a different HDRI *and* model
-each launch, so the frame is not reproducible (#2874); `geometry` clips its
-primitives in a portrait frame (#2873); `double-pendulum` is a tiny linkage in a
+script next to `DEMOS_DEFAULT`): `materials` was not reproducible launch to
+launch, and its demo side is fixed as of #2874 — eligible again, but only after
+someone captures it and looks at the frame; `geometry` no longer clips
+(#2873) but its cluster leaves the frame centre empty, which the variance guard
+reads as blank; `double-pendulum` is a tiny linkage in a
 ~95%-black frame and ignores reframing; `fog` stayed a low-contrast grey helmet;
 `animation` duplicates slot 1. The pre-v2 tablet sets above still contain three
 of these — that is the gap #2907 tracks, not an endorsement.
@@ -224,10 +226,34 @@ passes the variance check and is still unusable.
   than on `tablet10-screenshot-1`, while `dynamic-sky` matches across both
   classes. Two runs of the same demo should differ only by aspect, so this is a
   demo-side non-determinism worth pinning before the next re-capture.
-- **#2874 / #2873** — `materials` (non-deterministic HDRI *and* model per
-  launch) and `geometry` (clipped primitives) are what keep those ids out of
-  set v2. Both are demo-side and still open.
+- **#2874** — `materials` was not reproducible: a streamed subject and an
+  orbiting camera against the `studio_2k` skybox meant the frame depended on the
+  API key, the network and capture timing. The demo side is **fixed** (bundled
+  default subject, one fixed studio HDRI, subject-independent framing), so the id
+  is eligible for a slot again — it stays out of the committed set only because
+  nobody has captured it and judged the frame against the other slots yet.
+- **#2873 — `geometry`'s clipping is fixed; the id still stays out of set v2.**
+  The demo laid its four primitives on a row ~1.45 m wide and viewed it from a
+  camera that measured **1.22 m** away — not the 2.7 m its own comment claimed,
+  because the orbit distance is the *length* of `orbitHomePosition`: Filament
+  takes that value as the eye verbatim, and `autoCenterContent = true` has
+  already moved the content onto the world origin, so `targetPosition` never
+  enters the distance (documented on `main` in #2930). Both halves
+  are fixed: the primitives sit in a 2 × 2 cluster, the distance means what it
+  says, and `camera_distance` is wired into this demo. Measured on the QA
+  emulator at the default framing, the cluster clears the frame with ≥ 184 px of
+  margin per side (predicted left edge 187.2 px, measured 187 px), and
+  `GeometryLayoutTest` pins the fit arithmetic.
+
+  Two capture-side reasons still argue against the slot, and neither is fixed by
+  the framing work. The 2 × 2 cluster leaves the frame **centre** empty, so the
+  3 × 3 centre-patch variance guard reads it as blank (measured 0.1, threshold
+  100) — a capture run on this id fails until either the layout or the guard
+  changes. And the shared Y-axis spin is free-running outside `qa_mode`, so the
+  flat plane is edge-on — invisible — at an unpredictable fraction of capture
+  instants. Judge a fresh mosaic before adding the id back.
 - **#2785** — the `camera_distance` lever (#2652, `--ef camera_distance <f>`)
   is honoured only by demos built on `rememberHeroOrbitCameraManipulator`, and
   iOS has no equivalent launch argument at all. That gap is part of what blocks
-  the iOS re-capture (#2896).
+  the iOS re-capture (#2896). `geometry` is wired in as of #2873; every other
+  non-hero-orbit demo still swallows the extra silently.

@@ -172,6 +172,7 @@
 		F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000060 /* SketchfabService+Tests.swift */; };
 		F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */; };
 		F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000072 /* DemoRegistryGuardTests.swift */; };
+		F00000000000000000000075 /* BundledAssetPrimBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */; };
 		819AD79B996B8EE240D31FF6 /* ArPlaneRendererV2Scene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40DD4C3271CBFADB68D71777 /* ArPlaneRendererV2Scene.swift */; };
 		62EE9526D5ED0D7FE4053FAD /* ContactShadowPreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16294DC5A7D862C38FE2FF4 /* ContactShadowPreviewScene.swift */; };
 		491E5281694990528BA8402A /* PlacementReticlePreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 082ADF6A2C2D1C4D7C316F93 /* PlacementReticlePreviewScene.swift */; };
@@ -233,6 +234,7 @@
 		F00000000000000000000060 /* SketchfabService+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabService+Tests.swift"; path = "SceneViewDemo/Services/SketchfabService+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabAssetResolver+Tests.swift"; path = "SceneViewDemo/Services/SketchfabAssetResolver+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000072 /* DemoRegistryGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoRegistryGuardTests.swift; path = SceneViewDemoTests/DemoRegistryGuardTests.swift; sourceTree = SOURCE_ROOT; };
+		F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BundledAssetPrimBudgetTests.swift; path = SceneViewDemoTests/BundledAssetPrimBudgetTests.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000002 /* DemoItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoItem.swift; sourceTree = "<group>"; };
 		C20000000000000000000003 /* ExploreTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreTab.swift; sourceTree = "<group>"; };
 		C20000000000000000000004 /* ARTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARTab.swift; sourceTree = "<group>"; };
@@ -458,6 +460,7 @@
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
 				F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */,
 				F00000000000000000000072 /* DemoRegistryGuardTests.swift */,
+				F00000000000000000000074 /* BundledAssetPrimBudgetTests.swift */,
 			);
 			path = SceneViewDemoTests;
 			sourceTree = "<group>";
@@ -1029,6 +1032,7 @@
 				F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */,
 				F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */,
 				F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */,
+				F00000000000000000000075 /* BundledAssetPrimBudgetTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

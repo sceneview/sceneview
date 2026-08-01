@@ -80,7 +80,8 @@ android_cli_ensure || true
 #   2 dynamic-sky    the strongest frame — a lit drone against a vivid procedural
 #                    sky; a sky/sun/environment theme no other slot carries and
 #                    the shot most likely to sell the SDK. Deterministic noon
-#                    default (no random HDRI, unlike the dropped `materials`).
+#                    default — no HDRI backdrop at all (see the `materials` note
+#                    at the bottom of this list: it never picked one at random).
 #   3 multi-model    the only non-helmet, non-sky frame — a rich photoreal-foliage
 #                    fidelity shot. Since #2913 the scene frames ITSELF from the
 #                    live viewport aspect, so it deliberately takes no
@@ -107,8 +108,14 @@ android_cli_ensure || true
 #                    HDRI, subject-independent framing) and the id is eligible
 #                    again — but do NOT add it back here without capturing it and
 #                    LOOKING at the frame against the other slots first.
-#   geometry         primitives are laid out wider than a phone-portrait frame;
-#                    every distance clipped one at an edge (#2873). Demo-side fix.
+#   geometry         the clipping is FIXED as of #2873 (2x2 cluster, a camera
+#                    distance derived from the frustum relation, camera_distance
+#                    wired in), but the id stays out for two capture-side reasons:
+#                    the cluster leaves the frame CENTRE empty, so the centre-patch
+#                    variance guard below reads it as blank (measured 0.1 against
+#                    the 100 floor), and the free-running Y-spin turns the flat
+#                    plane edge-on at unpredictable instants. Re-add only after
+#                    judging a fresh mosaic — a green capture is not the bar.
 #   animation        a static screenshot of a skeletal-animation demo is just a
 #                    posed model — a visual duplicate of slot 1 on both stores.
 #

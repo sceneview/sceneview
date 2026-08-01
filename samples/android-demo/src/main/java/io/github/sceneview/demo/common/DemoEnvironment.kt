@@ -116,7 +116,10 @@ const val MATERIALS_SHOWCASE_HDR: String = "environments/studio_warm_2k.hdr"
  * identical at every yaw — while the *materials themselves* still read the
  * environment: clearcoat highlights, sheen falloff and transmission all sample
  * the same studio IBL as before. What is lost is a photo behind the model; what
- * is gained is a frame that two captures agree on.
+ * is gained is a backdrop that two captures agree on. The camera is NOT part of
+ * that guarantee: the section's idle orbit is time-driven and starts when the
+ * model finishes loading, so two captures still differ in yaw unless the app is
+ * launched with `--ez qa_mode true`, which pins it.
  *
  * Falls back to the neutral default while the HDR decodes, so the first frames
  * never flash black.
