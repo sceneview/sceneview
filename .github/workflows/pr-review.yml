@@ -276,7 +276,25 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          claude_args: '--model claude-opus-4-8'
+          # ⛔ `--allowedTools` IS NOT OPTIONAL HERE — without it this step burns
+          #   several minutes of quota and produces nothing.
+          #   The action ships only "the base GitHub tools" by default
+          #   (docs/configuration.md); everything this orchestrator actually
+          #   needs is off. Measured on run 30719225423, the first real dispatch
+          #   after #2952 merged: 56 turns, 7m16s, `is_error: false`, and
+          #   `permission_denials_count: 30` — more than half the actions
+          #   refused. No `review-verdict.json` was ever written, so the grader
+          #   correctly returned REVIEW_INCOMPLETE. The gate worked; the
+          #   reviewers never ran.
+          #   - Bash  → `git fetch` / `git diff` — the diff IS the review input
+          #   - Task  → spawning the four reviewers and the verifiers; without
+          #             it the whole fan-out collapses to one agent
+          #   - Write → `review-verdict.json`, the sole deliverable
+          #   Read/Glob/Grep are listed explicitly rather than assumed: the doc
+          #   promises the GitHub tools, not these.
+          claude_args: >-
+            --model claude-opus-4-8
+            --allowedTools Read,Glob,Grep,Bash,Write,Task
           prompt: |
             You are the SceneView PR review ORCHESTRATOR running in CI.
 
@@ -359,6 +377,39 @@ jobs:
 
             Your final message: one short paragraph stating what you found. The
             file is the deliverable.
+
+      # A blocking verdict must name its own cause. On run 30719225423 the PR
+      # got a red check reading "REVIEW_INCOMPLETE" and nothing else — correct,
+      # and useless: the actual reason (30 refused tool calls) was buried in the
+      # action's JSON log, and the obvious reading, "a reviewer crashed", was
+      # wrong. This step reads the run record the action leaves behind and says
+      # what happened, BEFORE the grader turns it into a one-word verdict.
+      # `if: always()` so it also speaks when the fan-out itself failed.
+      - name: Diagnose a missing verdict file
+        if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
+        run: |
+          set -uo pipefail
+          if [ -f review-verdict.json ]; then
+            echo "review-verdict.json written ($(wc -c < review-verdict.json) bytes)."
+            exit 0
+          fi
+          echo "::warning title=No review-verdict.json::The reviewers produced no verdict file. Diagnosing before the grader reports REVIEW_INCOMPLETE."
+          LOG="${RUNNER_TEMP}/claude-execution-output.json"
+          if [ ! -f "$LOG" ]; then
+            echo "::error title=Fan-out left no run record::${LOG} is absent — the action did not get far enough to write one. Check the step above for a startup failure (bad model id, expired token, action version)."
+            exit 0
+          fi
+          # Recursive scan rather than a fixed path: the action writes either a
+          # list of messages or a single object depending on version, and a
+          # wrong path would silently read 0 denials and print the reassuring
+          # branch — the exact failure this step exists to prevent.
+          DENIALS="$(jq '[.. | objects | .permission_denials_count? // empty] | max // 0' "$LOG" 2>/dev/null || echo unknown)"
+          echo "Permission denials reported by the fan-out: $DENIALS"
+          if [ "$DENIALS" != "unknown" ] && [ "${DENIALS:-0}" -gt 0 ] 2>/dev/null; then
+            echo "::error title=Reviewers were denied their tools::${DENIALS} tool call(s) refused, so the fan-out could not run and no verdict file exists. This is a CONFIGURATION failure, not a finding about the PR — check \`--allowedTools\` in claude_args (Bash/Write/Task are NOT included by default)."
+          else
+            echo "::error title=Reviewers ran but wrote nothing::The fan-out reported no permission denials yet produced no verdict file — read the step log above; the orchestrator likely ended its turn without writing the file."
+          fi
 
       - name: Grade the review
         id: grade
