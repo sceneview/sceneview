@@ -1,0 +1,413 @@
+#!/usr/bin/env python3
+"""Hermetic self-test for app-store.yml's `Submit build for App Store review`
+step (#2893).
+
+That step is ~600 lines of Python living inside a YAML heredoc, and it is the
+single code path between a green tag build and an App Store submission. It has
+no test seam of any kind: the only way to exercise it has been to dispatch
+`app-store.yml`, which archives, signs, and uploads a real build to TestFlight
+— so every fix to it has historically been validated in production, on a real
+release, after it broke one. Four consecutive releases (4.19.0 → 4.22.0)
+"shipped" without ever reaching App Review before #2731 caught it; 4.24.0 and
+4.25.0 then failed on the build-platform 409 (#2885) and the empty required
+`whatsNew` (#2893 W4).
+
+This test extracts the real heredoc from the workflow — never a copy, so it
+cannot drift — and runs it against a stubbed App Store Connect, with `requests`
+and `jwt` replaced in `sys.modules` and `time.sleep` neutered. Stdlib only: no
+network, no secrets, no Apple call, runs in under a second.
+
+It pins the behaviours that silently produced bad releases:
+
+  W1  the build attached is the one THIS run uploaded (matched by
+      CFBundleVersion via ASC_EXPECTED_BUILD), not merely the newest VALID
+      iOS build — which, while Apple processes our upload, is the PREVIOUS
+      release's binary.
+  W2  a 401/403 on the builds GET is reported as auth and fails immediately,
+      instead of reading like "Apple is still processing" and burning the
+      whole poll window; 429/5xx stay retryable.
+  W5  a reviewSubmission this run created is cancelled on every post-CREATE
+      failure path, and never on success.
+
+Run:  python3 .claude/scripts/test-app-store-submit.py [repo-root]
+Wired into ci.yml → repo-hygiene. The optional argument points the extractor
+at another checkout, which is what makes the suite mutation-testable: copy the
+workflow, break one guard, and this must go red.
+"""
+import contextlib
+import io
+import json
+import os
+import pathlib
+import re
+import sys
+import tempfile
+import types
+
+REPO = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else
+                    pathlib.Path(__file__).resolve().parents[2]).resolve()
+WORKFLOW = REPO / ".github/workflows/app-store.yml"
+HEREDOC_START = re.compile(r"^(\s*)\$RUNNER_TEMP/asc-venv/bin/python3 << 'PYEOF'\s*$")
+
+
+def extract_heredoc():
+    """Pull the submit step's Python out of the workflow YAML, de-indented.
+
+    Fails loudly rather than silently testing nothing if the step is renamed or
+    restructured — a self-test that quietly stops covering its target is worse
+    than no self-test (same rationale as the hook-guard test).
+    """
+    lines = WORKFLOW.read_text().splitlines()
+    body = indent = None
+    for line in lines:
+        if body is None:
+            m = HEREDOC_START.match(line)
+            if m:
+                body, indent = [], len(m.group(1))
+        elif line.strip() == "PYEOF":
+            return "\n".join(body)
+        else:
+            body.append(line[indent:] if line.startswith(" " * indent) else line)
+    raise SystemExit(
+        f"::error::Could not find the PYEOF heredoc in {WORKFLOW} — the submit "
+        "step was renamed or restructured and this self-test now covers nothing."
+    )
+
+
+CODE = extract_heredoc()
+
+
+class Response:
+    """Minimal `requests.Response` stand-in."""
+
+    def __init__(self, status, body=None, text=None):
+        self.status_code = status
+        self._body = {} if body is None else body
+        self.text = text if text is not None else json.dumps(
+            self._body if not isinstance(self._body, Exception) else {})
+
+    def json(self):
+        if isinstance(self._body, Exception):
+            raise self._body
+        return self._body
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+
+class FakeASC(types.ModuleType):
+    """Routes the step's App Store Connect calls to a scenario table.
+
+    Every call is recorded so a test can assert on what the step DID, not only
+    on what it printed — the orphan-cleanup assertions rest on that.
+    """
+
+    def __init__(self, scenario):
+        super().__init__("requests")
+        self.scenario = scenario
+        self.calls = []
+        self.build_polls = 0
+
+    def _route(self, method, url, **kw):
+        self.calls.append((method, url, kw.get("json")))
+        s = self.scenario
+        if "/apps?filter[bundleId]" in url:
+            return Response(200, {"data": [{"id": "APP1"}]})
+        if "/builds?" in url:
+            self.build_polls += 1
+            return s["builds"](self.build_polls)
+        if "appStoreVersions?filter" in url:
+            return Response(200, {"data": [{"id": "VER1", "attributes": {
+                "versionString": "4.26.0",
+                "appStoreState": "PREPARE_FOR_SUBMISSION"}}]})
+        if "/relationships/build" in url:
+            return Response(204)
+        if "appStoreVersionLocalizations" in url:
+            if method == "GET":
+                return Response(200, {"data": [
+                    {"id": "LOC1", "attributes": {"locale": "en-US"}}]})
+            return Response(200, {"data": {"id": "LOC1"}})
+        if "/reviewSubmissions" in url and "/reviewSubmissions/" not in url:
+            if method == "GET":
+                return Response(200, {"data": []})
+            return s.get("create", lambda: Response(201, {"data": {"id": "RS1"}}))()
+        if "/reviewSubmissionItems" in url:
+            return s.get("items", lambda: Response(201, {"data": {"id": "IT1"}}))()
+        if "/reviewSubmissions/" in url and method == "PATCH":
+            attrs = (kw.get("json") or {}).get("data", {}).get("attributes", {})
+            if attrs.get("canceled"):
+                return s.get("cancel", lambda: Response(200, {"data": {"id": "RS1"}}))()
+            return s.get("submit", lambda: Response(200, {"data": {
+                "id": "RS1", "attributes": {"state": "WAITING_FOR_REVIEW"}}}))()
+        raise AssertionError(f"unrouted {method} {url}")
+
+    def get(self, url, **kw):
+        return self._route("GET", url, **kw)
+
+    def post(self, url, **kw):
+        return self._route("POST", url, **kw)
+
+    def patch(self, url, **kw):
+        return self._route("PATCH", url, **kw)
+
+
+def builds_page(versions, with_platform=True):
+    """A `GET /builds` page. `with_platform=False` simulates the service-account
+    key for which `include=preReleaseVersion` resolves nothing (#2885)."""
+    data, included = [], []
+    for v in versions:
+        entry = {"id": f"B{str(v).strip()}", "attributes": {"version": str(v)}}
+        if with_platform:
+            entry["relationships"] = {"preReleaseVersion": {
+                "data": {"type": "preReleaseVersions", "id": f"P{v}"}}}
+            included.append({"type": "preReleaseVersions", "id": f"P{v}",
+                             "attributes": {"platform": "IOS"}})
+        data.append(entry)
+    return Response(200, {"data": data, "included": included})
+
+
+def run_step(scenario, env):
+    """Execute the extracted heredoc under stubs. Returns (stdout, exit, api)."""
+    api = FakeASC(scenario)
+    fake_jwt = types.ModuleType("jwt")
+    fake_jwt.encode = lambda *a, **k: "TOKEN"
+
+    # Delegate to the real `time` and override only sleep(): replacing the
+    # module wholesale breaks stdlib importers that pull `time.monotonic`.
+    import time as real_time
+    fake_time = types.ModuleType("time")
+    for attr in dir(real_time):
+        if not attr.startswith("__"):
+            setattr(fake_time, attr, getattr(real_time, attr))
+    fake_time.sleep = lambda _s: None
+
+    home = pathlib.Path(tempfile.mkdtemp())
+    (home / ".private_keys").mkdir()
+    (home / ".private_keys/AuthKey_KID.p8").write_text("-----FAKE KEY-----\n")
+
+    # Mirror the job's layout: working-directory is samples/ios-demo, and the
+    # CHANGELOG fallback reads `../../CHANGELOG.md`.
+    root = pathlib.Path(tempfile.mkdtemp())
+    workdir = root / "samples/ios-demo"
+    (workdir / "distribution/app-store/en-US").mkdir(parents=True)
+    notes = scenario.get("release_notes", "Polished demos and stability fixes.\n")
+    if notes is not None:  # None = the file does not exist at all
+        (workdir / "distribution/app-store/en-US/release_notes.txt").write_text(notes)
+    (root / "CHANGELOG.md").write_text(
+        scenario.get("changelog", "## v4.26.0\n\n- A user-visible change.\n"))
+    (root / "gradle.properties").write_text("VERSION_NAME=4.26.0\n")
+
+    saved_env, saved_cwd = dict(os.environ), os.getcwd()
+    os.environ.update({"ASC_KEY_ID": "KID", "ASC_ISSUER_ID": "ISS",
+                       "HOME": str(home), "GITHUB_WORKSPACE": str(root),
+                       "ASC_VERSION_STRING": "v4.26.0"})
+    os.environ.pop("ASC_EXPECTED_BUILD", None)
+    os.environ.update(env)
+    sys.modules["requests"], sys.modules["jwt"], sys.modules["time"] = api, fake_jwt, fake_time
+    os.chdir(workdir)
+
+    out, code = io.StringIO(), 0
+    try:
+        with contextlib.redirect_stdout(out):
+            exec(compile(CODE, "app-store.yml:submit-step", "exec"),
+                 {"__name__": "__main__"})
+    except SystemExit as e:
+        code = e.code or 0
+    except BaseException as e:  # noqa: BLE001 — a crash is a test result here
+        code = f"EXC {type(e).__name__}: {e}"
+    finally:
+        os.chdir(saved_cwd)
+        os.environ.clear()
+        os.environ.update(saved_env)
+        for mod in ("requests", "jwt", "time"):
+            sys.modules.pop(mod, None)
+    return out.getvalue(), code, api
+
+
+FAILURES = []
+
+
+def check(name, ok, detail=""):
+    print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"\n        {detail}" if not ok and detail else ""))
+    if not ok:
+        FAILURES.append(name)
+
+
+def cancellations(api):
+    return [c for c in api.calls
+            if c[0] == "PATCH" and "/reviewSubmissions/" in c[1]
+            and ((c[2] or {}).get("data", {}).get("attributes", {}).get("canceled"))]
+
+
+def main():
+    print(f"Self-testing the submit step extracted from {WORKFLOW.relative_to(REPO) if WORKFLOW.is_relative_to(REPO) else WORKFLOW}")
+    print(f"({len(CODE.splitlines())} lines of Python)\n")
+
+    # ── W1 — attach the build THIS run uploaded ───────────────────────────
+    print("W1 — build-number match")
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300, 1299] if n >= 3 else [1299])},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("keeps polling for our build instead of attaching the older VALID one",
+          "Selected iOS build: 1300" in out and api.build_polls == 3, out[-400:])
+    check("never selects the stale 1299", "Selected iOS build: 1299" not in out)
+
+    out, code, api = run_step({"builds": lambda n: builds_page([1299])},
+                              {"ASC_EXPECTED_BUILD": "1300"})
+    check("fails loudly when our build never turns VALID",
+          code == 1 and "never turned VALID" in out, f"code={code}")
+
+    out, code, api = run_step({"builds": lambda n: builds_page([1300, 1299])}, {})
+    check("without ASC_EXPECTED_BUILD the newest-VALID behaviour stands, flagged",
+          "Selected iOS build: 1300" in out and "ASC_EXPECTED_BUILD is not set" in out)
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1299, 1300], with_platform=False)},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("unresolvable platform → matches by build number, not by recency",
+          "Selected iOS build: 1300" in out and "by build-number match" in out, out[-400:])
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1299, 1298], with_platform=False)}, {})
+    check("unresolvable platform without the pin → #2885 fallback preserved",
+          "Selected iOS build: 1299" in out and "platform filter inactive" in out)
+
+    out, code, api = run_step({"builds": lambda n: builds_page([" 1300 "])},
+                              {"ASC_EXPECTED_BUILD": "1300"})
+    check("build-number comparison tolerates whitespace/zero-padding",
+          "Selected iOS build" in out, f"code={code}")
+
+    # ── W2 — auth vs transient on the builds GET ──────────────────────────
+    print("\nW2 — auth vs transient classification")
+    out, code, api = run_step(
+        {"builds": lambda n: Response(401, {"errors": [{"title": "expired token"}]})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("401 fails on the first attempt, not after the full poll window",
+          code == 1 and api.build_polls == 1, f"code={code} polls={api.build_polls}")
+    check("401 is diagnosed as auth, not as Apple processing",
+          "authentication/permission" in out and "processing overran" not in out, out[-300:])
+
+    out, code, api = run_step({"builds": lambda n: Response(403, {"errors": []})},
+                              {"ASC_EXPECTED_BUILD": "1300"})
+    check("403 fails on the first attempt",
+          code == 1 and api.build_polls == 1, f"code={code} polls={api.build_polls}")
+
+    out, code, api = run_step(
+        {"builds": lambda n: Response(503) if n < 3 else builds_page([1300])},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("5xx is transient → retried, then succeeds",
+          "Selected iOS build: 1300" in out and api.build_polls == 3, out[-300:])
+
+    out, code, api = run_step(
+        {"builds": lambda n: Response(429) if n < 2 else builds_page([1300])},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("429 is transient → retried", "Selected iOS build: 1300" in out, out[-300:])
+
+    out, code, api = run_step(
+        {"builds": lambda n: Response(400, {"errors": [{"title": "bad filter"}]})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("a non-retryable 4xx fails on the first attempt",
+          code == 1 and api.build_polls == 1, f"code={code} polls={api.build_polls}")
+
+    html = Response(200, ValueError("not json"), text="<html>502</html>")
+    out, code, api = run_step(
+        {"builds": lambda n: html if n < 2 else builds_page([1300])},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("a non-JSON 200 is retried, not raised out of the step",
+          "Selected iOS build: 1300" in out, f"code={code}")
+
+    # ── W5 — orphan reviewSubmission cleanup ──────────────────────────────
+    print("\nW5 — orphan reviewSubmission cleanup")
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]),
+         "items": lambda: Response(409, {"errors": [{"code": "STATE_ERROR"}]})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("reviewSubmissionItems 409 → the submission this run created is cancelled",
+          len(cancellations(api)) == 1, f"cancellations={len(cancellations(api))}")
+    check("reviewSubmissionItems 409 → the step still exits non-zero",
+          code == 1, f"code={code}")
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]), "submit": lambda: Response(409, {})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("submit PATCH failure → the submission is cancelled",
+          len(cancellations(api)) == 1, f"cancellations={len(cancellations(api))}")
+
+    def transport_error():
+        raise ConnectionError("connection reset")
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]), "items": transport_error},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("a transport error after CREATE → the submission is cancelled",
+          len(cancellations(api)) == 1, f"cancellations={len(cancellations(api))}")
+
+    out, code, api = run_step({"builds": lambda n: builds_page([1300])},
+                              {"ASC_EXPECTED_BUILD": "1300"})
+    check("a SUCCESSFUL submission is never cancelled",
+          len(cancellations(api)) == 0 and code == 0,
+          f"cancellations={len(cancellations(api))} code={code}")
+    check("the success path still reports the review state",
+          "Successfully submitted" in out, out[-300:])
+
+    truncated = Response(200, ValueError("truncated body"))
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]), "submit": lambda: truncated},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("a submitted-but-unparseable response is not cancelled",
+          len(cancellations(api)) == 0, f"cancellations={len(cancellations(api))}")
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]),
+         "items": lambda: Response(409, {}),
+         "cancel": lambda: Response(401, {"errors": []})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("a failing cleanup never masks the failure that triggered it",
+          code == 1 and "reviewSubmissionItems CREATE failed" in out
+          and "cancel it by hand" in out, out[-400:])
+
+    # ── whatsNew sourcing (#2893 W4, shipped in #2908) ────────────────────
+    print("\nwhatsNew sourcing")
+    out, code, api = run_step({"builds": lambda n: builds_page([1300])},
+                              {"ASC_EXPECTED_BUILD": "1300"})
+    check("release_notes.txt is the whatsNew source",
+          "whatsNew sourced from release_notes.txt" in out, out[-300:])
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]), "release_notes": None},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("without the file, the CHANGELOG fallback still fills whatsNew (#2908)",
+          "user-visible change" in out or "whatsNew" in out,
+          out[-300:])
+
+    # Both sources empty is the only state that leaves the required field
+    # blank — and the warning has to name which one is missing, since "No
+    # release_notes.txt" sent a reader hunting for an absent file that was
+    # actually present but blank (#2908 review nit).
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]),
+         "release_notes": "   \n\n", "changelog": "## v4.25.0\n\n- Older.\n"},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("a blank release_notes.txt is reported as blank, not as absent",
+          "exists but is empty" in out and "No release_notes.txt" not in out,
+          out[out.find("::warning"):][:300] if "::warning" in out else out[-300:])
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]),
+         "release_notes": None, "changelog": "## v4.25.0\n\n- Older.\n"},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("an absent release_notes.txt is still reported as absent",
+          "No release_notes.txt" in out and "exists but is empty" not in out,
+          out[out.find("::warning"):][:300] if "::warning" in out else out[-300:])
+
+    print()
+    if FAILURES:
+        print(f"::error::{len(FAILURES)} failure(s): " + "; ".join(FAILURES))
+        return 1
+    print("ALL GREEN — app-store.yml submit step behaves as specified (#2893)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

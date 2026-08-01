@@ -780,6 +780,20 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-store-sync.sh
 
+      # app-store.yml submit-step self-test (#2893). That step is ~670 lines of
+      # Python inside a YAML heredoc, sitting between a green tag build and an
+      # App Store submission, and it had NO test seam: the only way to exercise
+      # it was to dispatch the workflow, which archives, signs and uploads a
+      # real TestFlight build — so every fix to it was validated in production,
+      # on a release, after it broke one (#2731, #2885, #2893). This extracts
+      # the real heredoc (never a copy, so it cannot drift) and runs it against
+      # a stubbed App Store Connect. Stdlib only — no network, no secrets, no
+      # Apple call.
+      - name: Self-test app-store.yml submit step
+        if: always()
+        shell: bash
+        run: python3 .claude/scripts/test-app-store-submit.py
+
       # sync-versions.sh Kotlin-toolchain `--fix` rewriter self-test. The
       # rewriter only fires on a Kotlin bump (gradle/libs.versions.toml drifting
       # from the `**Kotlin:** X.Y.Z` prose), which quality-gate's in-tree run
