@@ -245,10 +245,16 @@ capture_class() {
   xcrun simctl erase "$udid"
   xcrun simctl boot "$udid"
   sleep 6
-  # Uniform look with the Android capture (#2773): force DARK appearance so
-  # the 3D content renders on a dark surface both stores, and clean the status
-  # bar (fixed 9:41, full wifi/cellular/battery) so no live clock/signal noise
-  # inflates the diff — the iOS equivalent of Android's status-bar crop.
+  # Uniform look with the Android capture (#2773): dark system appearance, and
+  # a clean status bar (fixed 9:41, full wifi/cellular/battery) so no live
+  # clock/signal noise inflates the diff — the iOS equivalent of Android's
+  # status-bar crop.
+  #
+  # ⚠️ `appearance dark` only styles SYSTEM chrome. It does NOT darken the 3D
+  # content: each scene's look comes from its own `SceneEnvironment` HDRI, so
+  # `model-viewer` still renders on `.warm`'s white studio backdrop and
+  # `dynamic-sky` on a daylit sky, and the status-bar glyphs come out dark on
+  # those light frames. Measured — do not read "dark appearance" as "dark frame".
   xcrun simctl ui "$udid" appearance dark 2>/dev/null || true
   xcrun simctl status_bar "$udid" override \
     --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \

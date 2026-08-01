@@ -52,16 +52,19 @@ Connect). Until that happens, do not describe the two stores as in sync.
 capture build has no Sketchfab key, so `SketchfabAssetResolver` substitutes the
 registered bundled stand-ins (`SampleAssets.swift` — bench → `retro_piano.usdz`,
 dog → `animated_butterfly.usdz`, bird → `phoenix_bird.usdz`). The captured frame
-is therefore *not* the park diorama the demo documents: it is a retro piano with
-a butterfly clipping through it and a phoenix beside it, with the tree slot not
-rendering at all.
+is therefore *not* the park diorama the demo documents: measured on the 6.9"
+simulator (`-demo multi-model -qa_mode 1`), it renders an upright wooden piano
+with a blossoming-tree diorama growing through it and a brightly-coloured bird
+mid-frame — the tree slot's stand-in supplies both the trees and the ground
+they stand on, so it dominates the composition rather than reading as one slot
+of four. The whole formation also sits small in a tall portrait frame.
 
 That frame passes every mechanical check — right dimensions, settled,
 byte-reproducible — so only looking at the mosaic catches it. It is the same
 defect class that took `multi-model` out of the Android **tablet** set
 (#2913/#2915: "do not re-add on the strength of a green capture"), and shipping
-it would advertise a scene no keyless user can ever see. Re-add once #2913 and
-the tree-render bug land, then re-judge the mosaic.
+it would advertise a scene no keyless user can ever see. Re-add once #2913
+lands, and only after looking at a fresh frame against the other slots.
 
 Three further ids that used to be in this set were retired from Android's for
 defects that are platform-independent, so do not reach for them here either.
@@ -80,9 +83,22 @@ Android verdict in either direction. Even on Android the id stays out of the
 set: the fixed 2 × 2 cluster leaves the frame centre empty, which that capture
 script's variance guard reads as blank.
 
-Captured in **dark appearance** with a cleaned status bar (fixed 9:41, full
-signal/battery), mirroring the Android capture's dark-mode + status-bar crop
-so the two stores match visually.
+Captured with the simulator in **dark appearance** and a cleaned status bar
+(fixed 9:41, full signal/battery), mirroring the Android capture's dark-mode +
+status-bar crop.
+
+⚠️ Dark appearance styles the **system chrome only** — it does not darken the
+frames, and these two are light: each scene's look comes from its own HDRI, so
+`model-viewer` renders against `.warm`'s white studio and `dynamic-sky` under a
+daylit sky, with dark status-bar glyphs to match. Measured on both classes; do
+not read "dark appearance" as "dark frame", and do not treat a light frame here
+as a capture bug.
+
+One more thing the mosaic shows: only `dynamic-sky` carries the floating
+**Settings** control (it is the demo that has a settings sheet — `model-viewer`
+has none), so the two frames differ in app chrome. That is the demos' own
+shape, not a capture artefact, but it is visible when the two sit side by side
+on the listing.
 
 The set is captured under `-qa_mode 1`, which freezes each demo's orbit
 auto-rotation on its authored pose. That is what makes a re-capture comparable

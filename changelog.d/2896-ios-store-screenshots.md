@@ -34,16 +34,17 @@
   environment loaded. The scenes were retuned for capture: the model viewer uses
   the `.warm` photo studio as a backdrop instead of `.studio`'s living room and
   frames tighter under `qa_mode`, and the dynamic-sky skyline sits on a
-  footprint-sized ground plane at a 12° camera pitch so the sky fills the frame
-  (#2896, #2854).
+  footprint-sized ground plane at a 12° camera pitch (`.pi / 15`) so its sky is
+  in frame at all — at the previous 30° pitch none of it was (#2896, #2854).
 - **`multi-model` is deliberately NOT in the iOS set**, a documented divergence
   from Android's phone set. An App Store capture build has no Sketchfab key, so
-  the resolver substitutes the registered bundled stand-ins and the frame shows
-  a retro piano with a butterfly clipping through it — not the park diorama the
-  demo documents, and not something a keyless user can ever see. Every
-  mechanical check passes on that frame, so only looking at it catches the
-  problem. Same call, and the same re-add condition, as Android's tablet set:
-  restore it once #2913 and the tree-render bug land (#2896, #2913, #2915).
+  the resolver substitutes the registered bundled stand-ins, and the frame
+  measured on the 6.9" simulator shows an upright wooden piano with a
+  blossoming-tree diorama growing through it and a coloured bird mid-frame —
+  not the park diorama the demo documents, and not something a keyless user can
+  ever see. Every mechanical check passes on that frame, so only looking at it
+  catches the problem. Same call as Android's tablet set: restore it once #2913
+  lands, and only against a fresh frame (#2896, #2913, #2915).
 - **`qa_mode` now actually freezes auto-rotation.** `DeepLinkRouter` has
   advertised `-qa_mode 1` / `?qa_mode=1` as the deterministic-screenshot switch
   since it was added, but no demo read it — so every store capture shot
