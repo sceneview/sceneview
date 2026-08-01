@@ -37,6 +37,9 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
     /// larger ceiling would pass while the demo was already stalling.
     private static let meshPrimBudget = 100
 
+    /// The host app's bundle — where the resolver looks for a fallback.
+    private var bundle: Bundle { .main }
+
     private func meshPrimCount(of entity: Entity) -> Int {
         var count = 0
         var stack = [entity]
@@ -47,32 +50,43 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
         return count
     }
 
-    /// `"Models/foo.usdz"` → `"foo"`, matching how
-    /// `SketchfabAssetResolver.splitBundlePath` reads a declared fallback path.
-    private func bundleName(from declaredPath: String) -> String {
-        URL(fileURLWithPath: declaredPath).deletingPathExtension().lastPathComponent
+    /// Resolve a declared `fallbackBundledPath` the way the resolver itself
+    /// does — subdirectory *derived from the path*, then a flat-bundle retry
+    /// (`SketchfabAssetResolver.splitBundlePath` / `bundleSubdirectory(for:)`).
+    ///
+    /// Today the derived subdirectory never actually matches: `Models` is a
+    /// `PBXGroup`, not a folder reference, so every asset is copied to the
+    /// bundle root and BOTH the resolver and this test resolve on the flat
+    /// retry — measured, by declaring a path under a bogus subdirectory and
+    /// watching it still resolve. Mirroring the resolver is therefore not a
+    /// bug fix; it is what keeps the two from drifting if `Models` is ever
+    /// made a real folder reference, at which point the subdirectory starts
+    /// mattering to both at once.
+    private func bundledURL(declaredPath: String) throws -> URL {
+        let file = (declaredPath as NSString).lastPathComponent
+        let name = (file as NSString).deletingPathExtension
+        let ext = (file as NSString).pathExtension
+        let components = declaredPath.split(separator: "/").dropLast()
+        let subdirectory = components.isEmpty ? nil : components.joined(separator: "/")
+
+        let url = bundle.url(forResource: name, withExtension: ext, subdirectory: subdirectory)
+            ?? bundle.url(forResource: name, withExtension: ext)
+        return try XCTUnwrap(url, "\(declaredPath) missing from the app bundle")
     }
 
-    private func bundledURL(_ name: String) throws -> URL {
-        let bundle = Bundle.main
-        let url = bundle.url(forResource: name, withExtension: "usdz", subdirectory: "Models")
-            ?? bundle.url(forResource: name, withExtension: "usdz")
-        return try XCTUnwrap(url, "\(name).usdz missing from the app bundle")
-    }
-
-    private func assertUnderMeshPrimBudget(_ name: String) async throws {
-        let entity = try await Entity(contentsOf: try bundledURL(name))
+    private func assertUnderMeshPrimBudget(declaredPath: String) async throws {
+        let entity = try await Entity(contentsOf: try bundledURL(declaredPath: declaredPath))
         let count = meshPrimCount(of: entity)
         XCTAssertLessThanOrEqual(
             count, Self.meshPrimBudget,
-            "\(name).usdz has \(count) mesh prims. RealityKit's simulator " +
+            "\(declaredPath) has \(count) mesh prims. RealityKit's simulator " +
             "import cost scales with prim count (~34 ms each), so this pushes " +
             "the slot past the settle window and it renders as absent."
         )
         // The optimisation must not have emptied the model.
         XCTAssertFalse(
             entity.visualBounds(relativeTo: nil).isEmpty,
-            "\(name).usdz parsed to empty bounds — it would render nothing"
+            "\(declaredPath) parsed to empty bounds — it would render nothing"
         )
     }
 
@@ -87,7 +101,7 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
     /// would silently drop this asset out of the registry-driven sweep while it
     /// was still shipping in two tabs.
     func testTreeSceneStaysUnderMeshPrimBudget() async throws {
-        try await assertUnderMeshPrimBudget("tree_scene")
+        try await assertUnderMeshPrimBudget(declaredPath: "Models/tree_scene.usdz")
     }
 
     /// Every asset the registry can hand a keyless build, read **from the
@@ -109,7 +123,7 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
             "SampleAssets declared no fallbacks — this guard would be vacuous"
         )
         for path in declared.sorted() {
-            try await assertUnderMeshPrimBudget(bundleName(from: path))
+            try await assertUnderMeshPrimBudget(declaredPath: path)
         }
     }
 }
