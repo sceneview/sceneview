@@ -551,6 +551,101 @@ Thomas's Max quota; gate every fire with an explicit `@claude` mention so
 Dependabot etc. never trigger it. Concurrency is keyed per issue/PR — a second
 mention cancels a still-running earlier reply.
 
+## Agent review in CI (`pr-review.yml`)
+
+The four reviewer mandates in [`.claude/agents/`](.claude/agents/) used to run
+**only inside a live Claude Code session**, via the `review-fanout` saved
+workflow. That coupled every merge to a human having a session open: measured
+2026-08-01, the five most recently merged PRs (#2947 → #2930) carried **zero
+review recorded on GitHub**, because the review happened where GitHub cannot
+see it. [`pr-review.yml`](.github/workflows/pr-review.yml) moves the same
+fan-out onto the PR, so an agent-authored PR is reviewable — and mergeable —
+without a session.
+
+**Generator ≠ evaluator, enforced structurally.** The agents FIND: they write
+`review-verdict.json` (per-reviewer verdicts, adversarially-verified errors,
+warnings, propagation). `grade-pr-review.sh` DECIDES: it computes the merge
+verdict in bash/python, mirroring the grading block of `review-fanout.js` so
+the in-session and in-CI paths agree. The model never grades its own findings.
+
+**It fails closed.** A missing verdict file, unparsable JSON, or a dropped
+reviewer is `REVIEW_INCOMPLETE` — blocking — because a crashed fan-out produces
+no findings, which is otherwise indistinguishable from a clean review. A
+confirmed error from `sv-impact-reviewer` sets `breaking_api` and is the
+maintainer gate, never an auto-fix. `test-grade-pr-review.sh` pins all of this
+in `repo-hygiene`, **including a mutation test**: strip the reviewer-count
+check and a 3-of-4 review grades `MERGE`, which turns the suite red.
+
+**Fork PRs cannot be reviewed** — GitHub withholds secrets from fork
+`pull_request` runs, and `pull_request_target` (which would hand secrets to
+fork-authored code) is deliberately not used. Such a run says so loudly in the
+job summary plus a `::warning::`, and never reports a silent green review. Get
+coverage with `gh workflow run pr-review.yml -f pr=<n>`.
+
+⚠️ **This is the repo's most expensive quota consumer**: every non-draft PR
+push spawns 4 reviewers plus one adversarial verifier per error. `concurrency`
+cancels superseded runs so a push burst costs one review. If quota tightens,
+narrow the trigger to `opened, ready_for_review`.
+
+## Agent cost instrumentation
+
+Step-3 autonomy's stated bottleneck is *"ensuring tokens are used efficiently
+as usage increases"* — and until 2026-08-01 the repo had **no** measurement:
+no OTel export, no analytics, no counter. Quota was managed by feel.
+
+```bash
+bash .claude/scripts/agent-cost-report.sh --days 7 --by model
+```
+
+reads the ground truth Claude Code already writes to
+`~/.claude/projects/<slug>/*.jsonl` and reports where the tokens went, grouped
+by `day` / `model` / `session` / `branch`. `--json` for machine consumption,
+`--all` for every project, `--days 0` for everything on disk.
+
+**It reports tokens, never dollars.** This account is on a flat Max plan, so a
+dollar figure would be an invented number wearing a measurement's clothes. The
+quantity that binds is quota, and output tokens dominate it. Grouping `--by
+model` is the actionable view, because the quota is **per model**.
+
+⚠️ **Deduplication is the whole correctness story.** A transcript writes
+several records per API call, each carrying the *same* `usage` block: measured
+on one real session, 980 usage records for 658 distinct `requestId`s — summing
+records overstates output by **~95%**. Everything is keyed on `requestId`.
+`test-agent-cost-report.sh` pins it in `repo-hygiene` with a mutation test on
+the dedup key (re-key to `uuid` and the fixture total inflates 350 → 450).
+
+**OTel is the opt-in complement, not a replacement.** If a collector is ever
+available, `CLAUDE_CODE_ENABLE_TELEMETRY=1` plus the standard `OTEL_*` exporter
+variables ship the same data live. It is deliberately NOT configured here:
+without a collector endpoint it would export nowhere and read as instrumented
+when it is not.
+
+## Event-driven agents
+
+Two jobs let Claude start work no one asked for by hand:
+
+| Job | Fires on | Guard |
+|---|---|---|
+| `issue-intake.yml` → `triage` | a human opens an issue | runs AFTER the deterministic labeller, never replaces it; bot authors excluded |
+| `maintenance.yml` → `digest-to-tasks` | daily cron | hard cap of 3 new issues/run, **measured** after the fact; mandatory dedup; anomaly-only |
+
+⛔ **The issue body is untrusted input, in both directions.** `issue-intake.yml`'s
+original header documents why it is never interpolated into a `run:` step
+(shell injection). The triage job extends the same rule to the *prompt*: a
+crafted issue body reaching the prompt is the LLM equivalent of that bug, and
+it would arrive holding `issues: write`. The agent fetches the issue itself
+with `gh` and is told explicitly that what it reads is DATA. The only
+interpolated value is the issue number, which GitHub guarantees is an integer.
+
+⛔ **Anti-spam is `digest-to-tasks`'s design constraint**, not a nicety — an
+agent with `issues: write` on a daily cron is a burst waiting to happen. The
+cap is stated in the prompt *and* verified by a deterministic step that reddens
+the run when exceeded: the prompt asks, the check measures. The job creates the
+`auto-filed` label itself, because the prompt forbids the agent from creating
+labels — without that step the issues would carry no label, the before/after
+count would read 0 → 0 forever, and the cap would be a guard measuring nothing.
+A healthy repo files **zero** issues; an empty run is the expected outcome.
+
 ## Documentation drift (docs ↔ API) — two-tier policy
 
 SceneView is AI-first: the prose docs (`llms.txt`, KDoc, `docs/docs/*`,
@@ -857,6 +952,8 @@ Hooks trigger automatically on specific Claude Code actions:
 | `check-doc-drift.sh` | Flags when a public-API change is not mirrored in the docs (llms.txt / KDoc / `docs/docs/*` / recipes). **Diff mode** (default) = per-PR ADVISORY WARN, runs in `ci.yml` → `repo-hygiene`; never blocks (heuristic → would false-positive). **`--audit` mode** = repo-wide candidate-drift worklist consumed by the weekly `doc-audit.yml` agent. `--fail` opts into a non-zero exit. Self-tested by `test-check-doc-drift.sh` (also in `repo-hygiene`). |
 | `generate-credits.py` | Regenerates `assets/CREDITS.md` from `assets/catalog.json` — the attribution surface every model's licence requires (CC-BY 4.0 §3a). Re-run after ANY catalog edit. `--check` is the deterministic BLOCKING drift gate in `ci.yml` → `repo-hygiene` (regenerate-and-compare, no write) |
 | `worktree-auto-prune.sh` | Safe GC for `.claude/worktrees/*` — removes worktrees whose branch is merged (`--dry-run`, `--yes`, `--keep <path>`). Never touches dirty or unmerged trees |
+| `grade-pr-review.sh` | Grades an agent PR review into a merge verdict — DETERMINISTIC, no LLM. Consumes `review-verdict.json` from `pr-review.yml`'s reviewers and emits `verdict=MERGE\|MERGE_AFTER_WARNINGS\|DO_NOT_MERGE\|REVIEW_INCOMPLETE` + a dedup-marked comment body. Mirrors the grading block of `review-fanout.js` so in-session and in-CI reviews agree. **Fails closed**: missing file / unparsable JSON / dropped reviewer ⇒ `REVIEW_INCOMPLETE`, never a pass. Self-tested with a mutation test by `test-grade-pr-review.sh` (in `repo-hygiene`) |
+| `agent-cost-report.sh` | Measures what the agents actually cost, from the local session transcripts (`~/.claude/projects/*/*.jsonl`). `--days N`, `--by day\|model\|session\|branch`, `--json`, `--all`, `--top N`. Reports **tokens, never dollars** (flat Max plan — a dollar figure would be invented). ⚠️ Everything is keyed on `requestId`: a transcript emits several records per API call with the same `usage`, and summing records overstates output by ~95% (measured: 980 records / 658 requests). Self-tested by `test-agent-cost-report.sh` |
 | `cleanup-branches-worktrees.sh` | One-shot GC for stale `claude/*` branches **and** worktrees: deletes merged local + remote branches (single `git push --delete`, no bot-burst) and delegates worktree pruning to `worktree-auto-prune.sh`. Defaults to dry-run; `--yes` to act, `--keep <branch\|path>`, `--no-worktrees`. Current-branch / unmerged / open-PR guarded. Runs daily in `maintenance.yml` |
 
 ### Version location map

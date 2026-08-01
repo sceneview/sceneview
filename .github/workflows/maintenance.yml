@@ -259,6 +259,164 @@ jobs:
               || echo "::warning::Could not comment on digest issue #$EXISTING"
           fi
 
+  # ── 5b. Digest → actionable tasks ─────────────────────────────────────────
+  # The digest above is a REPORT: it re-writes one issue body every day, which
+  # means a real anomaly (CI red for three days, a dependency four minors
+  # behind, a stale published artifact) has to be noticed by a human reading a
+  # table. This job closes that loop — it turns anomalies into individually
+  # actionable, de-duplicated issues that can be picked up by the issue-batch
+  # pipeline without anyone reading the digest first.
+  #
+  # ⛔ ANTI-SPAM IS THE WHOLE DESIGN CONSTRAINT.
+  #   An agent with `issues: write` on a daily cron is a burst waiting to
+  #   happen, and the repo's rule is explicit that issue/PR bursts are never
+  #   acceptable. Three guards, in order of strength:
+  #     1. A hard cap of MAX_NEW_ISSUES per run, stated in the prompt AND
+  #        verified afterwards by a deterministic step that reddens the run if
+  #        it was exceeded (the prompt is a request; the check is the measure).
+  #     2. Mandatory de-duplication against open issues carrying the same
+  #        `auto-filed` label before anything is created.
+  #     3. "Anomaly only" — a healthy repo produces ZERO issues. An empty run
+  #        is the expected outcome most days, not a failure.
+  #
+  # Issues filed here use GITHUB_TOKEN, whose events do not re-trigger
+  # workflows, so this cannot feed itself through issue-intake.yml's triage.
+  digest-to-tasks:
+    name: File actionable maintenance tasks
+    needs: maintenance-report
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    env:
+      MAX_NEW_ISSUES: '3'
+    steps:
+      - name: Check agent credentials
+        id: creds
+        env:
+          TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${TOKEN:-}" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=No tasks filed::CLAUDE_CODE_OAUTH_TOKEN missing or expired — the digest was still posted, but no actionable issues were filed from it."
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.creds.outputs.has_token == 'true'
+        with:
+          fetch-depth: 0
+
+      # Count before, count after — the cap is measured, not trusted.
+      #
+      # The label is created here, not left to the agent: the prompt forbids
+      # creating labels (so a hallucinated label can never enter the repo), and
+      # `auto-filed` did not exist when this job was written. Without this step
+      # the agent would file issues carrying no `auto-filed` label at all, the
+      # before/after count would read 0 → 0 forever, and the cap enforcement
+      # below would be a guard that measures nothing. `gh label create` is
+      # idempotent enough here — it fails loudly only on a real API problem,
+      # and an already-existing label is a no-op we swallow deliberately.
+      - name: Ensure label and count existing auto-filed issues
+        id: before
+        if: steps.creds.outputs.has_token == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh label create auto-filed \
+            --description "Opened automatically by the daily maintenance agent — verify before acting" \
+            --color BFD4F2 2>/dev/null \
+            || echo "label 'auto-filed' already exists (or could not be created) — continuing"
+          N="$(gh issue list --state open --label auto-filed --limit 200 --json number --jq 'length')"
+          echo "count=$N" >> "$GITHUB_OUTPUT"
+          echo "Open auto-filed issues before this run: $N"
+
+      - name: File actionable tasks
+        if: steps.creds.outputs.has_token == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--model claude-opus-4-8'
+          prompt: |
+            You convert SceneView's daily maintenance signal into actionable
+            work. You do NOT fix anything — you file well-scoped issues, and
+            only for genuine anomalies.
+
+            ## Read the state
+
+            Run `bash .claude/scripts/maintenance-report.sh` and read its
+            output. Cross-check anything it flags against reality before acting
+            on it — `gh run list --limit 20`, `gh issue list --state open`,
+            `git log --oneline --since="7 days ago"`, the relevant file in the
+            tree. A digest line is a lead, not a finding.
+
+            ## Hard limits — these are not suggestions
+
+            - **File AT MOST 3 new issues in this run.** If you find more, file
+              the 3 highest-impact and mention the rest in the body of the most
+              related one. A run that exceeds this reddens the workflow.
+            - **De-duplicate first.** Before filing anything, run
+              `gh issue list --state all --label auto-filed --limit 100` AND a
+              text search for the specific symptom. If an open issue already
+              covers it, add a dated comment with what changed instead of
+              opening a second one. Never re-file something that is merely
+              still unfixed.
+            - **Anomaly only.** If the repo is healthy, file NOTHING and say so
+              in your final message. Zero issues is the normal outcome. Do not
+              manufacture work to look useful — an issue nobody needed costs
+              more attention than it saves.
+            - Do not file for anything already covered by a dedicated daily job
+              (store listing drift, ASC listing drift, MCP npm freshness,
+              Play reviews, doc drift) — those open their own tracked issues.
+
+            ## What qualifies
+
+            A concrete, fixable regression or drift with a clear owner-surface:
+            CI red on `main` for more than one run in a row; a dependency far
+            enough behind to matter (with the specific version gap); a published
+            artifact lagging `VERSION_NAME`; a script or workflow failing
+            repeatedly; a stale generated file. Ambiguity, design questions, and
+            "we should consider…" are NOT issues — leave them out.
+
+            ## Issue shape
+
+            Title: imperative and specific ("Bump Filament 1.62.4 → 1.63.1", not
+            "Dependency update"). Body: what the signal was, the evidence
+            (command output, run URL, file:line), why it matters, and the
+            smallest next step. Apply the labels `auto-filed` and `maintenance`
+            plus any existing `module:*`/`platform:*` label that fits — check
+            `gh label list --limit 200` and never create a label.
+
+            Finish with a one-line summary: how many issues you filed and why.
+
+      # The cap is enforced here, deterministically. The prompt asked; this
+      # measures. A burst reddens the daily run so it cannot pass unnoticed.
+      - name: Enforce the issue cap
+        if: steps.creds.outputs.has_token == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ steps.before.outputs.count }}
+        run: |
+          set -euo pipefail
+          AFTER="$(gh issue list --state open --label auto-filed --limit 200 --json number --jq 'length')"
+          NEW=$(( AFTER - BEFORE ))
+          echo "Open auto-filed issues: $BEFORE -> $AFTER (net +$NEW, cap $MAX_NEW_ISSUES)"
+          {
+            echo "### Maintenance tasks filed"
+            echo
+            echo "Open \`auto-filed\` issues: **$BEFORE → $AFTER** (net +$NEW, cap $MAX_NEW_ISSUES)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$NEW" -gt "$MAX_NEW_ISSUES" ]; then
+            echo "::error title=Issue cap exceeded::The agent filed $NEW issues in one run (cap $MAX_NEW_ISSUES). Review and close the excess, then tighten the prompt."
+            exit 1
+          fi
+
   # ── 6. GitHub Pages freshness check ───────────────────────────────────────
   # The live site at https://sceneview.github.io is published by docs.yml,
   # which pushes to the external `sceneview/sceneview.github.io` repo over an
