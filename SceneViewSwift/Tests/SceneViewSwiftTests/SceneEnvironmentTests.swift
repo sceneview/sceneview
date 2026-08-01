@@ -124,6 +124,74 @@ final class SceneEnvironmentTests: XCTestCase {
         _ = base.immersiveSpace()
         XCTAssertFalse(base.immersiveSpace)
     }
+
+    // MARK: - intensity → intensityExponent (#2897)
+
+    /// The whole point of the fix: `intensity` is authored and documented as a
+    /// LINEAR multiplier, RealityKit's parameter is a power-of-two exponent, and
+    /// the old code fed one straight into the other. Pin the round-trip
+    /// `2^exponent == multiplier` rather than the exponent's literal value, so
+    /// this fails if anyone ever passes the multiplier through again.
+    func testIntensityExponentRoundTripsToTheAuthoredMultiplier() {
+        for multiplier in [Float(0.4), 0.5, 0.8, 0.9, 1.0, 1.2, 2.0] {
+            let exponent = SceneEnvironment.intensityExponent(forMultiplier: multiplier)
+            XCTAssertEqual(
+                pow(Float(2), exponent), multiplier, accuracy: 1e-5,
+                "2^exponent must reproduce the authored multiplier \(multiplier)"
+            )
+        }
+    }
+
+    /// `1.0` — the default, and `.studio`'s value — must be a true no-op. Passing
+    /// the multiplier through gave exponent 1.0 here, i.e. ×2.0 on the DEFAULT
+    /// preset; the fix makes it exponent 0.
+    func testUnitIntensityIsANoOp() {
+        XCTAssertEqual(
+            SceneEnvironment.intensityExponent(forMultiplier: 1.0), 0.0, accuracy: 1e-6
+        )
+    }
+
+    /// `.night` is the case that was not merely wrong but inverted: authored 0.4
+    /// to DIM, it brightened ×1.32 under the old code. The exponent must be
+    /// negative for every sub-1.0 preset.
+    func testSubUnitPresetsProduceNegativeExponents() {
+        for preset in SceneEnvironment.allPresets where preset.intensity < 1.0 {
+            XCTAssertLessThan(
+                SceneEnvironment.intensityExponent(forMultiplier: preset.intensity), 0.0,
+                "\(preset.name) (intensity \(preset.intensity)) must dim, not brighten"
+            )
+        }
+    }
+
+    /// `log2(0)` is `-inf`, which RealityKit rejects. Zero, negatives and `-inf`
+    /// must clamp to something finite and effectively black.
+    func testNonPositiveIntensityStaysFinite() {
+        for multiplier in [Float(0.0), -0.0, -1.0, -Float.leastNormalMagnitude, -Float.infinity] {
+            let exponent = SceneEnvironment.intensityExponent(forMultiplier: multiplier)
+            XCTAssertTrue(exponent.isFinite, "exponent for \(multiplier) must be finite")
+            XCTAssertLessThan(exponent, -100.0, "exponent for \(multiplier) must be ~black")
+        }
+    }
+
+    /// `intensity` is a `public var`, so nothing stops a caller writing `.nan` or
+    /// `.infinity` into it — and RealityKit rejects a non-finite exponent. The
+    /// naive `log2(max(multiplier, .leastNormalMagnitude))` passed both straight
+    /// through: Swift's generic `max` is `y >= x ? y : x` and NaN compares false
+    /// against everything, so `max(.nan, tiny)` is `.nan` (measured). Every input
+    /// must produce a finite exponent.
+    func testNonFiniteIntensityStaysFinite() {
+        XCTAssertLessThan(
+            SceneEnvironment.intensityExponent(forMultiplier: .nan), -100.0,
+            "NaN must map to black, not propagate"
+        )
+        XCTAssertLessThan(
+            SceneEnvironment.intensityExponent(forMultiplier: .signalingNaN), -100.0,
+            "signalling NaN must map to black, not propagate"
+        )
+        let positiveInfinity = SceneEnvironment.intensityExponent(forMultiplier: .infinity)
+        XCTAssertTrue(positiveInfinity.isFinite, "+infinity must clamp to a finite exponent")
+        XCTAssertGreaterThan(positiveInfinity, 0.0, "+infinity must stay on the bright side")
+    }
 }
 
 #if os(visionOS)

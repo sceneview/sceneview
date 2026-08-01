@@ -22,7 +22,19 @@ public struct SceneEnvironment: Sendable {
     /// Bundle resource name for the HDR/EXR file.
     public let hdrResource: String?
 
-    /// Light intensity multiplier.
+    /// Light intensity, as a **linear multiplier** — `1.0` leaves the HDR's own
+    /// radiance untouched, `0.5` halves it, `2.0` doubles it.
+    ///
+    /// Converted to RealityKit's `ImageBasedLightComponent.intensityExponent`
+    /// (a power of two) at apply time; callers never see the exponent (#2897).
+    ///
+    /// - Note: **This is not interchangeable with an Android value.** Android's
+    ///   `Environment` has no intensity member at all; its IBL level is Filament's
+    ///   `IndirectLight.intensity` in **absolute lux**, defaulting to
+    ///   `DEFAULT_IBL_INTENSITY = 10_000` (`SceneFactories.kt`). `1.0` there is one
+    ///   lux — effectively black — not "the HDR untouched". The two platforms match
+    ///   on the key-to-IBL *ratio*, not on absolute values; see the cross-platform
+    ///   parity note on `DEFAULT_IBL_INTENSITY`.
     public var intensity: Float
 
     /// Whether to render the environment as a skybox background.
@@ -38,6 +50,34 @@ public struct SceneEnvironment: Sendable {
         self.hdrResource = hdrResource
         self.intensity = intensity
         self.showSkybox = showSkybox
+    }
+
+    /// Converts an authored linear ``intensity`` multiplier into the power-of-two
+    /// exponent RealityKit's `ImageBasedLightComponent(intensityExponent:)` wants.
+    ///
+    /// Lives here, and is exercised directly by `SceneEnvironmentTests`, because
+    /// the call site it feeds (`SceneView.loadEnvironment`) is `@MainActor` and
+    /// needs a live RealityKit scene — the conversion itself is the part that was
+    /// wrong (#2897) and the part worth pinning.
+    ///
+    /// The result is always finite, because RealityKit rejects an infinite or NaN
+    /// exponent and `intensity` is a `public var` a caller can set to anything:
+    ///
+    /// - `0`, negatives and `-infinity` clamp up to `.leastNormalMagnitude`, giving
+    ///   exponent `-126` — indistinguishable from black, and finite (`log2(0)` is
+    ///   `-inf`).
+    /// - `+infinity` clamps down to `.greatestFiniteMagnitude`, giving `128`.
+    /// - `NaN` falls through both clamps and is mapped to black.
+    ///
+    /// The `min`/`max` pair is doing more than it looks. Swift's generic `max` is
+    /// `y >= x ? y : x` and every comparison against NaN is false, so **operand
+    /// order decides the NaN result**: `max(.nan, tiny)` is `.nan` while
+    /// `max(tiny, .nan)` is `tiny`. Rather than depend on that, the explicit
+    /// `isFinite` guard catches NaN whichever way the clamps fall.
+    static func intensityExponent(forMultiplier multiplier: Float) -> Float {
+        let clamped = min(max(multiplier, .leastNormalMagnitude), .greatestFiniteMagnitude)
+        guard clamped.isFinite else { return log2(Float.leastNormalMagnitude) }
+        return log2(clamped)
     }
 
     /// Loads the IBL environment resource into a RealityKit scene.
@@ -130,7 +170,8 @@ public struct SceneEnvironment: Sendable {
     /// - Parameters:
     ///   - name: Display name.
     ///   - hdrFile: HDR file name in the bundle (e.g. "custom_env.hdr").
-    ///   - intensity: Light intensity multiplier.
+    ///   - intensity: Light intensity as a linear multiplier (`1.0` = the HDR's own
+    ///     radiance). Not an Android lux value — see ``intensity`` (#2897).
     ///   - showSkybox: Whether to show as background.
     public static func custom(
         name: String,

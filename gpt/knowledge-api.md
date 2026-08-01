@@ -4288,9 +4288,13 @@ SceneView { root in root.addChild(hero.entity) }
 > `camera_distance` intent extra, but that is a sample-app knob, not the library
 > API. **Web has no framing-padding lever** — `fitToModels()` takes no margin —
 > but the initial orbit *is* settable, imperatively rather than declaratively:
-> `sv.setCameraOrbit(theta, phi, distance)`. The iOS
-> launch-argument counterpart to the intent extra is tracked in #2785; these
-> modifiers are the in-scene lever (#2896).
+> `sv.setCameraOrbit(theta, phi, distance)`. Android also clamps padding to
+> `max(0, padding)`, so it cannot frame **tighter** than tangent, while iOS
+> `framingMargin` accepts down to `0.2` — the sub-tangent range has no Android
+> equivalent today. The library-side parity gap (a per-scene padding parameter on
+> Android's `Scene { }`, a margin on Web's `fitToModels()`) is tracked in #2946;
+> the iOS launch-argument counterpart to the sample-app intent extra is a separate
+> item, #2785. These modifiers are the in-scene lever (#2896).
 
 ### Render defaults (v4.2.0+)
 
@@ -4713,6 +4717,21 @@ public struct SceneEnvironment: Sendable {
     public static let allPresets: [SceneEnvironment]
 }
 ```
+
+`SceneEnvironment.intensity` is a **linear multiplier** — `1.0` leaves the HDR's
+own radiance untouched, `0.5` halves it. RealityKit's underlying
+`ImageBasedLightComponent` takes a power-of-two *exponent*; `SceneEnvironment`
+converts for you, so never pre-apply a `log2` to **this** property (#2897).
+
+> ⚠️ **Do not carry an Android IBL value across.** Android's `Environment` has no
+> intensity member; its IBL level is Filament's `IndirectLight.intensity` in
+> **absolute lux**, defaulting to `DEFAULT_IBL_INTENSITY = 10_000`
+> (`SceneFactories.kt`). `1.0` there is one lux — effectively black. The two
+> platforms are tuned to match on the key-light-to-IBL *ratio*, not on absolute
+> values, and iOS's exponent-0 baseline sits around 1000 lux equivalent. Web has
+> no intensity knob at all: `environment(iblUrl, skyboxUrl)` takes none.
+> The sibling `ReflectionProbeNode.intensity` is a **separate** property that
+> still takes a raw exponent — see #2956.
 
 `showSkybox: true` renders the HDR as a background. On iOS / macOS it uses
 `RealityViewContent.environment = .skybox(...)`. On visionOS a windowed /

@@ -3,6 +3,23 @@
 Fresh, correctly-sized App Store Connect screenshots for the SceneView demo
 app — real iOS-simulator captures of rendered 3D content.
 
+> ⛔ **These frames predate #2897 — re-capture before dispatching
+> `app-store-screenshots.yml`.** They were captured while
+> `SceneEnvironment.intensity` was still fed to RealityKit as a `2^x` exponent:
+> `01-model-viewer.png` runs on `.warm` (intensity 1.0 → ×2.00, now ×1.00) and
+> `02-dynamic-sky.png` on `.outdoor` (1.2 → ×2.30, now ×1.20).
+>
+> **Measured, not estimated** — `01-model-viewer.png` re-shot from the #2897
+> branch on a 1320×2868 simulator, same `-demo model-viewer -qa_mode 1` launch:
+> viewport mean luma 192.3 → 191.2, vehicle region 151.6 → 147.4. The frames are
+> **not** uniformly halved, because only the IBL contribution changes — the
+> skybox is drawn directly and the direct lights are untouched, and on this scene
+> the bright studio backdrop dominates the histogram. They are still not what the
+> app renders.
+>
+> Nothing enforces this — the dispatch is manual and `asc_listing.py` compares
+> checksums, not pixels — so it is a note, not a gate.
+
 ## Background — issue #917
 
 The App Store Connect listing previously carried stale screenshots:
@@ -63,8 +80,12 @@ That frame passes every mechanical check — right dimensions, settled,
 byte-reproducible — so only looking at the mosaic catches it. It is the same
 defect class that took `multi-model` out of the Android **tablet** set
 (#2913/#2915: "do not re-add on the strength of a green capture"), and shipping
-it would advertise a scene no keyless user can ever see. Re-add once #2913
-lands, and only after looking at a fresh frame against the other slots.
+it would advertise a scene no keyless user can ever see.
+
+The exclusion is **not** gated on an issue. #2913 is closed and the re-add did
+not become due — the reason is structural (keyless resolver substitution), not
+a bug someone was going to fix. Re-add only after looking at a freshly captured
+frame next to the other slots.
 
 Three further ids that used to be in this set were retired from Android's for
 defects that are platform-independent, so do not reach for them here either.

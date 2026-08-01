@@ -105,6 +105,11 @@ ARSceneView(
 `.studio` (default) · `.outdoor` · `.sunset` · `.night` · `.warm` · `.autumn`
 · `.custom(name:hdrFile:intensity:)`
 
+`intensity` is a linear multiplier (`1.0` = the HDR's own radiance); SceneView
+converts it to RealityKit's power-of-two `intensityExponent`, so never pre-apply
+a `log2`. Not interchangeable with Android's IBL intensity, which is Filament
+lux (default `10_000`) — #2897.
+
 ## Transform & animation
 
 ```swift
