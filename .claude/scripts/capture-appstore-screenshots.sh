@@ -32,6 +32,13 @@
 # and so are not a per-release concern.
 set -euo pipefail
 
+# One scratch root for the whole run, reaped on every exit path including the
+# `set -e` aborts. Per-function `trap … RETURN` is NOT usable here: bash keeps a
+# RETURN trap installed past the function that set it, so it fires again later
+# against a local that no longer exists and `set -u` kills the run.
+TMP_ROOT="$(mktemp -d)"
+trap 'rm -rf "$TMP_ROOT"' EXIT
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IOS_DEMO="$REPO_ROOT/samples/ios-demo"
 OUT="$IOS_DEMO/appstore-screenshots"
@@ -44,41 +51,94 @@ BUNDLE_ID="io.github.sceneview.demo"
 IPHONE_NAME="${IPHONE_SIM:-iPhone 16 Pro Max}"
 IPAD_NAME="${IPAD_SIM:-iPad Pro 13-inch (M4)}"
 
-# The COMMON showcase set — the same THREE demos captured on Android's
-# `capture-play-store-screenshots.sh`, in the same order, so the two stores
-# show identical screens. Each id resolves to a DISTINCT on-screen demo on both
-# stores (the #2773 requirement): on iOS every id below is a standalone
-# generated scene (GeneratedScenes.swift — `dynamic-sky` → `DynamicSkyScene`,
-# `multi-model` → `MultiModelScene`); on Android those two resolve through
-# DeepLinkRouter to a distinct umbrella TAB (`multi-model` → the Multi-Model tab
-# via ALIAS_INITIAL_TAB, not the Single Model tab that would duplicate slot 1).
-# Both sides were re-verified in source (#2854). All three render rich 3D
-# content, never an empty AR scene.
+# The iOS showcase set — Android's set v2 MINUS `multi-model`, in the same
+# order. Each id is a standalone generated scene (GeneratedScenes.swift —
+# `dynamic-sky` → `DynamicSkyScene`), renders rich 3D content, and needs no
+# network. Order rationale (the Fable design verdict on the captured mosaic)
+# lives in the Android script's header: model-viewer hero, then the sky shot.
+#
+# ⛔ `multi-model` IS DELIBERATELY ABSENT HERE, AND THIS IS A KNOWN, DOCUMENTED
+# DIVERGENCE FROM ANDROID'S PHONE SET — do not "resync" it back by symmetry.
+# Measured on both simulator classes at 4.25.0: an App Store capture build has
+# no Sketchfab key, so `SketchfabAssetResolver` substitutes the registered
+# bundled stand-ins (SampleAssets.swift — bench→`retro_piano.usdz`,
+# dog→`animated_butterfly.usdz`, bird→`phoenix_bird.usdz`). The captured frame
+# is therefore NOT the documented park diorama: it is a retro piano with a
+# butterfly clipping through it and a phoenix beside it, with the tree slot not
+# rendering at all. Every mechanical check passes on that frame — correct
+# dimensions, settled, byte-reproducible — so only looking at the mosaic catches
+# it. This is the same defect CLASS the Android tablet set hit (#2913/#2915,
+# "do not re-add on the strength of a green capture"), and shipping it would
+# advertise a scene no keyless user can ever see.
+# Re-add here once #2913 and the tree-render bug land, then re-judge the mosaic.
 #
 # ⚠️ This array and `DEMOS_DEFAULT` in the Android script are the SAME decision
 # stored twice — a known drift hazard. Change them in one commit, or the two
-# stores silently diverge again (#2773). Full order rationale (the Fable design
-# verdict on the captured mosaic) lives in the Android script's header; the short
-# version: model-viewer hero, then the sky-drone shot, then the multi-model
-# foliage-fidelity shot. Two demos were dropped: double-pendulum (auto-fit frame
-# is a tiny linkage in a near-black rectangle, un-reframable) and fog (even pulled
-# fully in, the fogged helmet stayed a weak low-contrast subject) (#2854).
+# stores silently diverge again (#2773). Two further demos were dropped from
+# set v2 earlier: double-pendulum (auto-fit frame is a tiny linkage in a
+# near-black rectangle, un-reframable) and fog (even pulled fully in, the fogged
+# helmet stayed a weak low-contrast subject) (#2854).
 #
-# NOTE: the per-slot `camera_distance` framing the Android script applies to
-# model-viewer/multi-model has NO iOS equivalent (#2785) — iOS renders each scene
-# at its default framing. The shared decision is the SET and ORDER only.
-DEMOS=(model-viewer dynamic-sky multi-model)
+# NOTE: the per-slot `camera_distance` framing the Android script applies is
+# still not settable from THIS side on iOS (#2785 — no launch argument). iOS
+# instead carries its framing in the scenes themselves, via
+# `.framingMargin(_:)` / `.cameraOrbit(azimuth:elevation:)` (#2896). The shared
+# cross-store decision remains the SET and ORDER only.
 #
-# ⚠️ DEFERRED (#2896) — the committed screenshots under `appstore-screenshots/`
-# are intentionally NOT regenerated from this set yet; they still show the older
-# set. On iOS (RealityKit) these three scenes render too weak for the App Store —
-# dim lighting, a far default camera, and `dynamic-sky` shows no sky at all — and
-# iOS has no `camera_distance` framing lever to fix it from the capture side
-# (#2785). That needs iOS SCENE-side work (brighter lighting, closer framing, a
-# working procedural sky) tracked in #2896; re-run this script to refresh the App
-# Store set only once those land. The Android half of #2854 shipped without waiting.
+# One more deliberate divergence: iOS `model-viewer` sits on the `.warm` photo
+# studio while Android's stays on `.studio` (a furnished room). Measured — with
+# the skybox now actually loading, `.studio` framed the dark hovercar against a
+# dim interior, which is the "dark car on black" complaint #2896 opened on.
+DEMOS=(model-viewer dynamic-sky)
+#
+# The iOS half of this set was deferred once (#2896) because these three scenes
+# rendered too weak to ship: dim subjects, a far default camera, and no sky at
+# all in `dynamic-sky`. The measured cause was NOT the capture side — every
+# bundled preset is a Radiance `.hdr`, which `EnvironmentResource(named:)`
+# cannot load, so every scene silently ran with no IBL and no skybox
+# (`SceneEnvironment.load()` now decodes those through ImageIO). The framing
+# half was fixed scene-side with `.framingMargin(_:)` / `.cameraOrbit(_:)`.
+# #2785 (a `-camera_distance` launch argument, Android parity) is still open and
+# would let this script frame per slot from the outside; it is not required for
+# this set.
 # Per-demo render settle time (model load + camera orbit), seconds.
-WAIT_SECONDS="${WAIT_SECONDS:-24}"
+WAIT_SECONDS="${WAIT_SECONDS:-28}"
+
+# Quiet window between booting a freshly-erased simulator and the first
+# capture, seconds. Cheap head start, NOT a guarantee — see below.
+BOOT_QUIET_SECONDS="${BOOT_QUIET_SECONDS:-25}"
+
+# System-banner guard (#2896).
+#
+# `simctl` exposes NO notification-suppression API: `simctl ui` covers only
+# appearance / contrast / content size and `simctl privacy` covers per-app TCC
+# services — neither touches banners (checked against Xcode 26.3). And waiting
+# does not fix it either: with BOOT_QUIET_SECONDS=25 the "Ready for Apple
+# Intelligence" card still landed squarely in `iphone-6.9/02-dynamic-sky.png`,
+# because a freshly-erased device posts it roughly a minute into the session —
+# i.e. during a capture, not before the first one. That is the same class of
+# leak that reached the live listing in #917.
+#
+# So detect it instead of hoping. Every demo now runs under `-qa_mode 1`, which
+# freezes the orbit sweep, and a frozen scene is pixel-identical across
+# re-shoots (measured: 0 differing pixels between two independent runs). The
+# top band of the frame therefore only changes if something transient is drawn
+# over it. Shoot, wait, shoot again, and compare a hash of that band: equal
+# means nothing was overlaid, different means a banner was up in one of the two
+# — discard the pair and retry. Exhausting the attempts FAILS the run rather
+# than committing a contaminated frame.
+#
+# The band is the top BANNER_BAND_PCT % of the frame starting BANNER_BAND_TOP_PCT
+# % down, which clears the (overridden, static) status bar and covers where iOS
+# draws a notification card. No demo animates there — the models sit mid-frame.
+BANNER_RECHECK_SECONDS="${BANNER_RECHECK_SECONDS:-8}"
+# Total band samples per attempt (1 kept frame + BANNER_SAMPLES-1 probes). Three
+# samples span ~16 s, so a banner has to outlive the whole window to slip
+# through instead of merely outliving one 8 s gap.
+BANNER_SAMPLES="${BANNER_SAMPLES:-3}"
+BANNER_MAX_ATTEMPTS="${BANNER_MAX_ATTEMPTS:-4}"
+BANNER_BAND_TOP_PCT="${BANNER_BAND_TOP_PCT:-6}"
+BANNER_BAND_PCT="${BANNER_BAND_PCT:-16}"
 
 log() { printf '\033[1;36m[appstore-shots]\033[0m %s\n' "$*"; }
 
@@ -101,6 +161,65 @@ for runtime,devs in data['devices'].items():
             print(d['udid']); sys.exit(0)
 sys.exit(1)
 " "$name"
+}
+
+# Hash of the notification-banner band of a screenshot. `sips` re-encodes the
+# crop deterministically (verified: three crops of one file hash identically),
+# so an unchanged band hashes the same across shots.
+banner_band_hash() {
+  local png="$1" w h y0 bh crop
+  w="$(sips -g pixelWidth "$png" | awk '/pixelWidth/{print $2}')"
+  h="$(sips -g pixelHeight "$png" | awk '/pixelHeight/{print $2}')"
+  y0=$(( h * BANNER_BAND_TOP_PCT / 100 ))
+  bh=$(( h * BANNER_BAND_PCT / 100 ))
+  crop="$(mktemp -d "$TMP_ROOT/band.XXXXXX")"
+  sips -s format png -c "$bh" "$w" --cropOffset "$y0" 0 "$png" --out "$crop/band.png" >/dev/null
+  shasum -a 256 "$crop/band.png" | awk '{print $1}'
+}
+
+# capture_settled <udid> <destination.png>
+# Screenshots into <destination.png>, then proves nothing transient was drawn
+# over the banner band by re-shooting `BANNER_SAMPLES - 1` more times and
+# requiring every band hash to agree. See the BANNER_* block.
+#
+# ⚠️ WHAT THIS CANNOT SEE. The proof is "the band did not CHANGE", which is not
+# the same as "the band is clean": an overlay that is already up at the first
+# shot and outlives the whole sampling window hashes identically every time and
+# is accepted. Sampling more often over a longer window shrinks that blind spot
+# but never closes it. This is exactly why the README tells you to open every
+# PNG before committing — the guard buys reproducibility, not correctness.
+capture_settled() {
+  local udid="$1" dest="$2" attempt=1 probedir probe i ref cur settled
+  probedir="$(mktemp -d "$TMP_ROOT/probe.XXXXXX")"
+  probe="$probedir/probe.png"
+  while [ "$attempt" -le "$BANNER_MAX_ATTEMPTS" ]; do
+    xcrun simctl io "$udid" screenshot "$dest" >/dev/null
+    ref="$(banner_band_hash "$dest")"
+    settled=1
+    i=1
+    while [ "$i" -lt "$BANNER_SAMPLES" ]; do
+      sleep "$BANNER_RECHECK_SECONDS"
+      xcrun simctl io "$udid" screenshot "$probe" >/dev/null
+      cur="$(banner_band_hash "$probe")"
+      if [ "$cur" != "$ref" ]; then
+        settled=0
+        break
+      fi
+      i=$((i + 1))
+    done
+    if [ "$settled" -eq 1 ]; then
+      return 0
+    fi
+    log "    banner band changed between shots — a system banner was up; retrying ($attempt/$BANNER_MAX_ATTEMPTS)"
+    attempt=$((attempt + 1))
+  done
+  # Delete the last frame: leaving it behind would contradict the message
+  # below, and a stale contaminated PNG in the tree is exactly what gets
+  # committed by accident.
+  rm -f "$dest"
+  echo "Banner band never settled for $dest after $BANNER_MAX_ATTEMPTS attempts." >&2
+  echo "Refusing to keep a possibly-contaminated capture — re-run, or raise BANNER_MAX_ATTEMPTS." >&2
+  return 1
 }
 
 build_app() {
@@ -126,16 +245,26 @@ capture_class() {
   xcrun simctl erase "$udid"
   xcrun simctl boot "$udid"
   sleep 6
-  # Uniform look with the Android capture (#2773): force DARK appearance so
-  # the 3D content renders on a dark surface both stores, and clean the status
-  # bar (fixed 9:41, full wifi/cellular/battery) so no live clock/signal noise
-  # inflates the diff — the iOS equivalent of Android's status-bar crop.
+  # Uniform look with the Android capture (#2773): dark system appearance, and
+  # a clean status bar (fixed 9:41, full wifi/cellular/battery) so no live
+  # clock/signal noise inflates the diff — the iOS equivalent of Android's
+  # status-bar crop.
+  #
+  # ⚠️ `appearance dark` only styles SYSTEM chrome. It does NOT darken the 3D
+  # content: each scene's look comes from its own `SceneEnvironment` HDRI, so
+  # `model-viewer` still renders on `.warm`'s white studio backdrop and
+  # `dynamic-sky` on a daylit sky, and the status-bar glyphs come out dark on
+  # those light frames. Measured — do not read "dark appearance" as "dark frame".
   xcrun simctl ui "$udid" appearance dark 2>/dev/null || true
   xcrun simctl status_bar "$udid" override \
     --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
     --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 \
     2>/dev/null || true
   xcrun simctl install "$udid" "$APP_PATH"
+  # Sit out the first-boot system-banner window before the first shot — see
+  # BOOT_QUIET_SECONDS above.
+  log "  quiet window: ${BOOT_QUIET_SECONDS}s (letting first-boot banners fire and expire)…"
+  sleep "$BOOT_QUIET_SECONDS"
   local i=1
   for demo in "${DEMOS[@]}"; do
     local file
@@ -143,9 +272,14 @@ capture_class() {
     xcrun simctl terminate "$udid" "$BUNDLE_ID" 2>/dev/null || true
     sleep 2
     log "  launching -demo $demo (settle ${WAIT_SECONDS}s)…"
-    xcrun simctl launch "$udid" "$BUNDLE_ID" -demo "$demo" >/dev/null
+    # `-qa_mode 1` freezes each demo's orbit auto-rotation on its authored
+    # hero pose. Without it the shot lands on whatever azimuth the sweep had
+    # reached after WAIT_SECONDS — so the same demo produced a different pose
+    # AND a different slice of the HDRI backdrop on every run, which is not a
+    # capture you can review or reproduce (#2896).
+    xcrun simctl launch "$udid" "$BUNDLE_ID" -demo "$demo" -qa_mode 1 >/dev/null
     sleep "$WAIT_SECONDS"
-    xcrun simctl io "$udid" screenshot "$dir/$file" >/dev/null
+    capture_settled "$udid" "$dir/$file"
     log "  wrote $subdir/$file ($(file -b "$dir/$file" | grep -oE '[0-9]+ x [0-9]+'))"
     i=$((i + 1))
   done

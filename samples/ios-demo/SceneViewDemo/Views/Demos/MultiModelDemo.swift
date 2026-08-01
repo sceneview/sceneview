@@ -21,18 +21,32 @@ import SceneViewSwift
 /// ### Streaming pipeline (Stage 2, issue #1152)
 ///
 /// Every slug resolves through ``SketchfabAssetResolver``. Empty API key
-/// (App Store builds) → the resolver returns the registered bundled USDZ so
-/// the demo always renders four nodes — honouring the hard rule "no network
-/// required to render something useful" from `feedback_demo_quality`.
+/// (App Store builds) → the resolver returns the registered bundled USDZ, so
+/// the demo still renders without a network, honouring the hard rule "no
+/// network required to render something useful" from `feedback_demo_quality`.
 ///
 /// > Important: the chip names the CATALOGUE ENTRY, not the geometry. On a
 /// > keyless build a slot still reads "Oak Trees" over its bundled stand-in.
 /// > Android surfaces that with the scaffold's asset-source pill; iOS has no
 /// > equivalent chrome yet, so a keyless build here is silent about the swap.
+///
+/// ⚠️ That swap is also why this demo is deliberately absent from the App Store
+/// screenshot set (#2896). The bundled stand-ins are intentionally distinct
+/// silhouettes rather than four copies of one hero (#2355), so a keyless build
+/// composes a retro piano, a butterfly and a phoenix — a scene no keyless user
+/// sees as the documented park diorama. The substitution itself is by design;
+/// what it is not is a listing screenshot.
 struct MultiModelDemo: View {
     /// One flag per SLOT, not per species — index `i` pairs with `Self.slots[i]`.
     @State private var visible: [Bool] = Array(repeating: true, count: MultiModelDemo.slots.count)
     @State private var spinScene: Bool = true
+
+    /// `-qa_mode 1` / `?qa_mode=1` — freezes the orbit sweep so a capture lands
+    /// on the pose below every time. Without it the store capture shot an
+    /// arbitrary azimuth, which also decided which part of the `.studio` HDRI
+    /// sat behind the models — one run got the plants, the next a blown-out
+    /// softbox filling the top third of the frame (#2896).
+    @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
 
     /// Loaded entities keyed by slug uid. Adding / removing nodes from the
     /// scene happens reactively via the imperative `update` pass below — we
@@ -69,16 +83,24 @@ struct MultiModelDemo: View {
         let park = SampleAssets.byCategory["park"] ?? []
         // Layout only — where a model stands and how big it is drawn. What stands
         // there is whatever `uid` resolves to in the registry.
+        //
+        // The formation is deliberately COMPACT (#2896). Auto-framing fits the
+        // union bounding sphere, so lateral spread is what decides how large
+        // each model renders: the old ±0.55 m spread made the union roughly
+        // twice the largest model, and every slot came out small in a tall
+        // portrait frame with empty ground all around it.
         let layout: [(uid: String, position: SIMD3<Float>, scale: Float)] = [
             // Back-centre, towering. Scale chosen so the hero's silhouette dominates
             // the backdrop without occluding the front row.
-            ("d841c3bcc5324daebee50f45619e05fc", .init(x: 0.0,  y: 0.0, z: -1.7), 1.8),
+            ("d841c3bcc5324daebee50f45619e05fc", .init(x: 0.0,  y: 0.0, z: -1.55), 1.8),
             // Front-centre.
-            ("6d1aeea748f147789004bc03e1930d32", .init(x: 0.0,  y: 0.0, z: -1.3), 0.65),
-            // Front-left.
-            ("4f6ab5594a8a415aba3f958682b9ced5", .init(x: -0.55, y: 0.0, z: -1.3), 0.40),
-            // Front-right.
-            ("fd582b0d4a8c4af1a1b5c4f21a481c93", .init(x: 0.55, y: 0.0, z: -1.3), 0.15),
+            ("6d1aeea748f147789004bc03e1930d32", .init(x: 0.0,  y: 0.0, z: -1.35), 0.65),
+            // Front-left, tucked against the centre slot rather than a third of
+            // a metre away from it.
+            ("4f6ab5594a8a415aba3f958682b9ced5", .init(x: -0.34, y: 0.0, z: -1.35), 0.40),
+            // Front-right and raised, so the smallest slot reads as perched
+            // instead of getting lost against the ground.
+            ("fd582b0d4a8c4af1a1b5c4f21a481c93", .init(x: 0.34, y: 0.22, z: -1.35), 0.15),
         ]
         return layout.enumerated().map { index, entry in
             ParkSlot(
@@ -117,15 +139,27 @@ struct MultiModelDemo: View {
                 }
             }
             .cameraControls(.orbit)
-            .autoRotate(speed: spinScene ? 0.2 : 0.0)
+            .autoRotate(speed: (spinScene && !qaMode) ? 0.2 : 0.0)
             // The formation is built from curated PBR models; without an IBL
             // their metallic/rough response has nothing to reflect and the whole
-            // scene reads as flat silhouettes. Same preset as ModelViewerDemo
-            // (#2114) so a model looks identical whether it is shown alone or
-            // as part of this multi-model scene.
+            // scene reads as flat silhouettes (#2114). `.studio` stays here
+            // rather than following ModelViewerDemo to `.warm`: a composed scene
+            // wants a room around it, and this HDR is a plant-filled interior —
+            // whereas a single hero wants the seamless backdrop of a photo
+            // studio. The two demos deliberately diverge (#2896).
             .environment(.studio)
+            // The park formation spreads across ~1.2 m, so its bounding sphere
+            // is much larger than any single model — the default 15 % of air on
+            // top of that left every model tiny. Tighten to a near-exact sphere
+            // fit; the scene auto-rotates, so going below ~0.95 would clip the
+            // outermost slot at some azimuths (#2896).
+            .framingMargin(0.95)
+            // Shallower than the 30° default so the formation is seen from
+            // near its own eye level — a 30° top-down pitch spent the bottom
+            // half of a portrait frame on empty ground (#2896).
+            .cameraOrbit(azimuth: 0, elevation: .pi / 10)
             .ignoresSafeArea()
-            .id("multi-model-spin-\(spinScene)")
+            .id("multi-model-spin-\(spinScene)-\(qaMode)")
 
             if loadedEntities.isEmpty && loadError == nil {
                 VStack(spacing: 12) {

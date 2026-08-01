@@ -351,6 +351,19 @@ AnchorNode.plane(alignment: .horizontal)
 SceneEnvironment.allPresets  // [SceneEnvironment] (7 presets) for UI pickers
 ```
 
+Bundle the HDR as a plain resource file. `SceneEnvironment.load()` tries
+`EnvironmentResource(named:)` first — which resolves the asset kinds Xcode
+*compiles* into a RealityKit resource (`.exr`, asset-catalog textures, Reality
+Composer Pro scenes) — and falls back to decoding the file through ImageIO into
+an equirectangular `CGImage` (v4.26.0+). That fallback is what makes a Radiance
+`.hdr` work at all: `named:` cannot load one, and before #2896 the failure was
+silent — **no custom IBL** (the `ImageBasedLightComponent` was never set, so the
+scene kept RealityView's own default environment lighting) and **no skybox at
+all**, so scenes rendered dim on a black background with `showSkybox` having no
+visible effect. Note the distinction: the scene was never *unlit*, it was lit by
+RealityKit's default (#2842/#2868). If an environment still looks unlit,
+check the console for `[SceneViewSwift] Failed to load environment '…'`.
+
 **ViewNode** — embed SwiftUI in 3D:
 
 > ⚠️ **Coming soon (deferred).** ViewNode's SwiftUI-in-3D rendering is **not yet
