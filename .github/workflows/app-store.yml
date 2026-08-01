@@ -387,7 +387,41 @@ jobs:
                   f"&sort=-uploadedDate&limit=20&include=preReleaseVersion",
                   headers=headers,
               )
-              payload = r.json()
+              # W2 (#2893): the status code used to be ignored entirely — an
+              # error body has no "data" key, so a 401 read exactly like "Apple
+              # is still processing" and burned the full ~10-minute window
+              # before failing with a message blaming Apple's processing. The
+              # three classes need different answers:
+              #   401/403 — the JWT is bad, expired, or the key lost its role.
+              #             Waiting cannot fix it, and the 20-min token means a
+              #             10-min poll can even expire a token that was fine.
+              #             Fail now, naming auth.
+              #   429/5xx — genuinely transient. Retry within the same window.
+              #   other 4xx — a malformed request (bad filter, dropped API
+              #             version). Retrying is pointless; fail now.
+              if r.status_code in (401, 403):
+                  print(f"::error::builds GET rejected with {r.status_code} — App Store Connect "
+                        f"authentication/permission failure, not a processing delay. Check the "
+                        f"ASC key id/issuer/.p8 secrets and the key's role. {r.text[:300]}")
+                  raise SystemExit(1)
+              if r.status_code != 200:
+                  if r.status_code == 429 or r.status_code >= 500:
+                      print(f"::warning::builds GET transient {r.status_code} "
+                            f"(attempt {attempt}/10) — retrying in 60s: {r.text[:200]}")
+                      time.sleep(60)
+                      continue
+                  print(f"::error::builds GET failed with {r.status_code} — request rejected, "
+                        f"retrying cannot help. {r.text[:300]}")
+                  raise SystemExit(1)
+              try:
+                  payload = r.json()
+              except ValueError:
+                  # A 200 that is not JSON is an edge/proxy hiccup, not a
+                  # verdict on the build. Same treatment as a 5xx.
+                  print(f"::warning::builds GET returned a non-JSON 200 (attempt {attempt}/10) — "
+                        f"retrying in 60s: {r.text[:200]}")
+                  time.sleep(60)
+                  continue
               included = {(i["type"], i["id"]): i for i in payload.get("included", [])}
               data = payload.get("data", [])
               newest_valid = data[0] if data else None
