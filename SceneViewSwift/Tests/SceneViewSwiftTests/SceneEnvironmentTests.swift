@@ -163,14 +163,34 @@ final class SceneEnvironmentTests: XCTestCase {
         }
     }
 
-    /// `log2(0)` is `-inf`, which RealityKit rejects. Zero and negatives must
-    /// clamp to something finite and effectively black.
+    /// `log2(0)` is `-inf`, which RealityKit rejects. Zero, negatives and `-inf`
+    /// must clamp to something finite and effectively black.
     func testNonPositiveIntensityStaysFinite() {
-        for multiplier in [Float(0.0), -1.0, -Float.leastNormalMagnitude] {
+        for multiplier in [Float(0.0), -0.0, -1.0, -Float.leastNormalMagnitude, -Float.infinity] {
             let exponent = SceneEnvironment.intensityExponent(forMultiplier: multiplier)
             XCTAssertTrue(exponent.isFinite, "exponent for \(multiplier) must be finite")
             XCTAssertLessThan(exponent, -100.0, "exponent for \(multiplier) must be ~black")
         }
+    }
+
+    /// `intensity` is a `public var`, so nothing stops a caller writing `.nan` or
+    /// `.infinity` into it — and RealityKit rejects a non-finite exponent. The
+    /// naive `log2(max(multiplier, .leastNormalMagnitude))` passed both straight
+    /// through: Swift's generic `max` is `y >= x ? y : x` and NaN compares false
+    /// against everything, so `max(.nan, tiny)` is `.nan` (measured). Every input
+    /// must produce a finite exponent.
+    func testNonFiniteIntensityStaysFinite() {
+        XCTAssertLessThan(
+            SceneEnvironment.intensityExponent(forMultiplier: .nan), -100.0,
+            "NaN must map to black, not propagate"
+        )
+        XCTAssertLessThan(
+            SceneEnvironment.intensityExponent(forMultiplier: .signalingNaN), -100.0,
+            "signalling NaN must map to black, not propagate"
+        )
+        let positiveInfinity = SceneEnvironment.intensityExponent(forMultiplier: .infinity)
+        XCTAssertTrue(positiveInfinity.isFinite, "+infinity must clamp to a finite exponent")
+        XCTAssertGreaterThan(positiveInfinity, 0.0, "+infinity must stay on the bright side")
     }
 }
 
@@ -217,7 +237,6 @@ final class VisionOSSkyboxTests: XCTestCase {
         ctx.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
         return ctx.makeImage()!
     }
-
 }
 #endif
 #endif

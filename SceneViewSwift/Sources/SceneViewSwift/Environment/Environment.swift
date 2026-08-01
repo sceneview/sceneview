@@ -54,11 +54,24 @@ public struct SceneEnvironment: Sendable {
     /// needs a live RealityKit scene — the conversion itself is the part that was
     /// wrong (#2897) and the part worth pinning.
     ///
-    /// `0` and negatives clamp to `.leastNormalMagnitude` (≈2^-126): `log2(0)` is
-    /// `-inf`, which RealityKit rejects, and 2^-126 is indistinguishable from black
-    /// while staying finite.
+    /// The result is always finite, because RealityKit rejects an infinite or NaN
+    /// exponent and `intensity` is a `public var` a caller can set to anything:
+    ///
+    /// - `0`, negatives and `-infinity` clamp up to `.leastNormalMagnitude`, giving
+    ///   exponent `-126` — indistinguishable from black, and finite (`log2(0)` is
+    ///   `-inf`).
+    /// - `+infinity` clamps down to `.greatestFiniteMagnitude`, giving `128`.
+    /// - `NaN` falls through both clamps and is mapped to black.
+    ///
+    /// The `min`/`max` pair is doing more than it looks. Swift's generic `max` is
+    /// `y >= x ? y : x` and every comparison against NaN is false, so **operand
+    /// order decides the NaN result**: `max(.nan, tiny)` is `.nan` while
+    /// `max(tiny, .nan)` is `tiny`. Rather than depend on that, the explicit
+    /// `isFinite` guard catches NaN whichever way the clamps fall.
     static func intensityExponent(forMultiplier multiplier: Float) -> Float {
-        log2(max(multiplier, .leastNormalMagnitude))
+        let clamped = min(max(multiplier, .leastNormalMagnitude), .greatestFiniteMagnitude)
+        guard clamped.isFinite else { return log2(Float.leastNormalMagnitude) }
+        return log2(clamped)
     }
 
     /// Loads the IBL environment resource into a RealityKit scene.
