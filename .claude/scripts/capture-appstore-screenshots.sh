@@ -63,14 +63,23 @@ IPAD_NAME="${IPAD_SIM:-iPad Pro 13-inch (M4)}"
 # no Sketchfab key, so `SketchfabAssetResolver` substitutes the registered
 # bundled stand-ins (SampleAssets.swift — bench→`retro_piano.usdz`,
 # dog→`animated_butterfly.usdz`, bird→`phoenix_bird.usdz`). The captured frame
-# is therefore NOT the documented park diorama: it is a retro piano with a
-# butterfly clipping through it and a phoenix beside it, with the tree slot not
-# rendering at all. Every mechanical check passes on that frame — correct
-# dimensions, settled, byte-reproducible — so only looking at the mosaic catches
-# it. This is the same defect CLASS the Android tablet set hit (#2913/#2915,
-# "do not re-add on the strength of a green capture"), and shipping it would
-# advertise a scene no keyless user can ever see.
-# Re-add here once #2913 and the tree-render bug land, then re-judge the mosaic.
+# is therefore NOT the documented park diorama: measured on the 6.9" simulator,
+# it renders an upright wooden piano with a blossoming-tree diorama growing
+# through it and a brightly-coloured bird mid-frame — the tree slot's stand-in
+# supplies both the trees AND the ground they stand on, so it dominates the
+# composition instead of reading as one slot of four. Every mechanical check
+# passes on that frame — correct dimensions, settled, byte-reproducible — so
+# only looking at the mosaic catches it. This is the same defect CLASS the
+# Android tablet set hit (#2913/#2915, "do not re-add on the strength of a green
+# capture"), and shipping it would advertise a scene no keyless user can ever see.
+#
+# ⚠️ The exclusion is NOT time-boxed on an issue. An earlier version of this
+# comment said the tree slot rendered "not at all" and gated the re-add on
+# "#2913 and the tree-render bug" — both were refuted by measurement (#2896),
+# and #2913 / #2928 are CLOSED, so that gate read as already satisfied while the
+# real reason still stood. The real reason is structural: keyless resolver
+# substitution. Re-add only against a freshly captured mosaic you have looked
+# at next to the other slots — never on the strength of a closed issue.
 #
 # ⚠️ This array and `DEMOS_DEFAULT` in the Android script are the SAME decision
 # stored twice — a known drift hazard. Change them in one commit, or the two
@@ -139,6 +148,22 @@ BANNER_SAMPLES="${BANNER_SAMPLES:-3}"
 BANNER_MAX_ATTEMPTS="${BANNER_MAX_ATTEMPTS:-4}"
 BANNER_BAND_TOP_PCT="${BANNER_BAND_TOP_PCT:-6}"
 BANNER_BAND_PCT="${BANNER_BAND_PCT:-16}"
+
+# A sample count below 2 makes the guard a silent no-op, not a relaxed one: the
+# `while [ "$i" -lt "$BANNER_SAMPLES" ]` probe loop never executes, `settled`
+# stays 1, and `capture_settled` returns success having compared nothing. That
+# is the worst possible failure mode here — a green run advertising banner
+# protection it did not perform — so refuse it up front rather than honour it.
+case "$BANNER_SAMPLES" in
+    ''|*[!0-9]*)
+        echo "BANNER_SAMPLES must be an integer >= 2 (got '$BANNER_SAMPLES')" >&2
+        exit 1
+        ;;
+esac
+[ "$BANNER_SAMPLES" -ge 2 ] || {
+    echo "BANNER_SAMPLES must be >= 2 (1 kept frame + >=1 probe); got $BANNER_SAMPLES" >&2
+    exit 1
+}
 
 log() { printf '\033[1;36m[appstore-shots]\033[0m %s\n' "$*"; }
 

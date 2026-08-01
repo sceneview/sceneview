@@ -43,8 +43,9 @@
   blossoming-tree diorama growing through it and a coloured bird mid-frame —
   not the park diorama the demo documents, and not something a keyless user can
   ever see. Every mechanical check passes on that frame, so only looking at it
-  catches the problem. Same call as Android's tablet set: restore it once #2913
-  lands, and only against a fresh frame (#2896, #2913, #2915).
+  catches the problem. Same call as Android's tablet set — and, like it, the
+  exclusion is structural rather than gated on an issue: restore it only against
+  a fresh frame you have looked at (#2896, #2913, #2915).
 - **`qa_mode` now actually freezes auto-rotation.** `DeepLinkRouter` has
   advertised `-qa_mode 1` / `?qa_mode=1` as the deterministic-screenshot switch
   since it was added, but no demo read it — so every store capture shot
@@ -73,6 +74,7 @@
   `.outdoor` 1.2) and Android's `Environment` intensity is linear. That defect
   pre-exists this change, but it was latent while the IBL never loaded at all;
   now that it does, `.night` *brightens* ×1.32 instead of dimming ×0.4 — a ~3.3×
-  divergence from Android under the same preset name. Tracked in #2897; land it
-  in the same release, or the two platforms ship different lighting for
-  identical code.
+  divergence from Android under the same preset name. Tracked in #2897 and
+  **fixed in this same release** — see the `2897-` fragment — so the condition
+  this bullet set ("land it in the same release, or the two platforms ship
+  different lighting for identical code") is met.

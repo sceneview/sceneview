@@ -3,6 +3,15 @@
 Fresh, correctly-sized App Store Connect screenshots for the SceneView demo
 app — real iOS-simulator captures of rendered 3D content.
 
+> ⛔ **These frames are stale as of #2897 — re-capture before dispatching
+> `app-store-screenshots.yml`.** They were captured while
+> `SceneEnvironment.intensity` was still fed to RealityKit as a `2^x` exponent,
+> so `.studio` (the default preset, `intensity` 1.0) lit them at ×2.0. #2897
+> converts with `log2`, so the app now renders these scenes about **half as
+> bright** as what is committed here. Uploading them would advertise an exposure
+> the app no longer produces. Nothing enforces this — the dispatch is manual and
+> `asc_listing.py` compares checksums, not pixels — so it is a note, not a gate.
+
 ## Background — issue #917
 
 The App Store Connect listing previously carried stale screenshots:
@@ -63,8 +72,12 @@ That frame passes every mechanical check — right dimensions, settled,
 byte-reproducible — so only looking at the mosaic catches it. It is the same
 defect class that took `multi-model` out of the Android **tablet** set
 (#2913/#2915: "do not re-add on the strength of a green capture"), and shipping
-it would advertise a scene no keyless user can ever see. Re-add once #2913
-lands, and only after looking at a fresh frame against the other slots.
+it would advertise a scene no keyless user can ever see.
+
+The exclusion is **not** gated on an issue. #2913 is closed and the re-add did
+not become due — the reason is structural (keyless resolver substitution), not
+a bug someone was going to fix. Re-add only after looking at a freshly captured
+frame next to the other slots.
 
 Three further ids that used to be in this set were retired from Android's for
 defects that are platform-independent, so do not reach for them here either.

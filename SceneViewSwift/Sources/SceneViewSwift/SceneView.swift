@@ -1425,7 +1425,21 @@ private struct SceneViewRepresentation: View {
             entities.ibl.components.set(
                 ImageBasedLightComponent(
                     source: .single(resource),
-                    intensityExponent: env.intensity
+                    // `intensity` is authored — and documented, and mirrored from
+                    // Android — as a LINEAR multiplier, but RealityKit's parameter
+                    // is an exponent of two: the IBL is scaled by `2^x`. Feeding the
+                    // multiplier straight through made every preset wrong the moment
+                    // #2896 got the IBL to load at all: `.studio` 1.0 → ×2.0, and
+                    // `.night` 0.4 → ×1.32, i.e. BRIGHTENING where it should dim to
+                    // ×0.4 — ~3.3× off Android under the same preset name (#2897).
+                    // `intensityExponent(forMultiplier:)` converts the authored
+                    // multiplier into the exponent the API wants, so `1.0` is now a
+                    // true no-op (2^0) and the presets keep their linear authoring.
+                    // It lives on `SceneEnvironment` so it is unit-testable without
+                    // a live RealityKit scene — see `SceneEnvironmentTests`.
+                    intensityExponent: SceneEnvironment.intensityExponent(
+                        forMultiplier: env.intensity
+                    )
                 )
             )
             // Make root entity receive IBL

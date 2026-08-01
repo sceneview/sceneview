@@ -22,7 +22,13 @@ public struct SceneEnvironment: Sendable {
     /// Bundle resource name for the HDR/EXR file.
     public let hdrResource: String?
 
-    /// Light intensity multiplier.
+    /// Light intensity, as a **linear multiplier** — `1.0` leaves the HDR's own
+    /// radiance untouched, `0.5` halves it, `2.0` doubles it. Same unit and same
+    /// scale as Android's `Environment` intensity, so identical values give
+    /// identical lighting on both platforms.
+    ///
+    /// Converted to RealityKit's `ImageBasedLightComponent.intensityExponent`
+    /// (a power of two) at apply time; callers never see the exponent (#2897).
     public var intensity: Float
 
     /// Whether to render the environment as a skybox background.
@@ -38,6 +44,21 @@ public struct SceneEnvironment: Sendable {
         self.hdrResource = hdrResource
         self.intensity = intensity
         self.showSkybox = showSkybox
+    }
+
+    /// Converts an authored linear ``intensity`` multiplier into the power-of-two
+    /// exponent RealityKit's `ImageBasedLightComponent(intensityExponent:)` wants.
+    ///
+    /// Lives here, and is exercised directly by `SceneEnvironmentTests`, because
+    /// the call site it feeds (`SceneView.loadEnvironment`) is `@MainActor` and
+    /// needs a live RealityKit scene — the conversion itself is the part that was
+    /// wrong (#2897) and the part worth pinning.
+    ///
+    /// `0` and negatives clamp to `.leastNormalMagnitude` (≈2^-126): `log2(0)` is
+    /// `-inf`, which RealityKit rejects, and 2^-126 is indistinguishable from black
+    /// while staying finite.
+    static func intensityExponent(forMultiplier multiplier: Float) -> Float {
+        log2(max(multiplier, .leastNormalMagnitude))
     }
 
     /// Loads the IBL environment resource into a RealityKit scene.
@@ -130,7 +151,8 @@ public struct SceneEnvironment: Sendable {
     /// - Parameters:
     ///   - name: Display name.
     ///   - hdrFile: HDR file name in the bundle (e.g. "custom_env.hdr").
-    ///   - intensity: Light intensity multiplier.
+    ///   - intensity: Light intensity as a linear multiplier (`1.0` = the HDR's own
+    ///     radiance). Same unit as Android's `Environment` intensity (#2897).
     ///   - showSkybox: Whether to show as background.
     public static func custom(
         name: String,
