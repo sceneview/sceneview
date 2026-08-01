@@ -47,7 +47,7 @@ import kotlin.math.pow
  * @see SampleAssets for the curated registry of allowed slugs.
  */
 class SketchfabAssetResolver private constructor(
-    private val context: Context,
+    context: Context,
     private val service: SketchfabService,
     private val bundledAssets: BundledAssets = AssetManagerBundledAssets(context),
 ) {
