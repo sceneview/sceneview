@@ -628,15 +628,16 @@ private fun MultiModelSection(
     // the geometry under them is the bundled stand-in rather than the oak the label
     // names (#2933).
     //
-    // MEASURED from the resolved files, not inferred from the config. The Gallery
-    // section reads `SketchfabConfig.apiKey == null` for this, and that is only a
-    // guess: every failure path in `resolve` — no network, a stale key, a
-    // bounds-drifted asset, exhausted retries — ends at the bundled fallback, so a
-    // KEYED build can render four stand-ins. It does: on the QA emulator
-    // (2026-07-28, key configured) all four slots staged out of
-    // `cache/sketchfab/fallback/`, the download endpoint answering 429. This
-    // section's first cut copied Gallery's config-based inference and labelled that
-    // exact scene "Streamed (cached)"; asking the File cannot be wrong that way.
+    // MEASURED from the resolved files, not inferred from the config: every failure
+    // path in `resolve` — no network, a stale key, a bounds-drifted asset,
+    // exhausted retries — ends at the bundled fallback, so a KEYED build can render
+    // four stand-ins. It does: on the QA emulator (2026-07-28, key configured) all
+    // four slots staged out of `cache/sketchfab/fallback/`, the download endpoint
+    // answering 429. This section's first cut inferred the origin from
+    // `SketchfabConfig.apiKey == null` and labelled that exact scene "Streamed
+    // (cached)"; asking the File cannot be wrong that way. The Gallery section
+    // settles it the same way (#2936): both ask the file first and fall back to the
+    // key only while nothing has resolved yet and there is no file to ask.
     //
     // It stays a WHOLE-SCENE verdict: one fallen-back slot out of four reads
     // "Offline model" for all of them, and the pill never says which slot swapped.
