@@ -131,7 +131,11 @@ class FakeASC(types.ModuleType):
             return Response(200, {"data": {"id": "LOC1"}})
         if "/reviewSubmissions" in url and "/reviewSubmissions/" not in url:
             if method == "GET":
-                return Response(200, {"data": []})
+                # 5a's stale probe carries filter[state]; the cleanup's
+                # fallback read does not. Keep them separately scriptable.
+                if "filter[state]" in url:
+                    return s.get("stale_list", lambda: Response(200, {"data": []}))()
+                return s.get("list_probe", lambda: Response(200, {"data": []}))()
             return s.get("create", lambda: Response(201, {"data": {"id": "RS1"}}))()
         if "/reviewSubmissionItems" in url:
             return s.get("items", lambda: Response(201, {"data": {"id": "IT1"}}))()
@@ -429,6 +433,87 @@ def main():
     check("a raising state probe does not crash the cleanup",
           len(cancellations(api)) == 0 and code == "EXC ConnectionError: read timeout after the request was sent",
           f"cancellations={len(cancellations(api))} code={code}")
+
+    # An ANSWERED 5xx/408 is as ambiguous as no answer at all — a gateway can
+    # lose the response to a write Apple already committed — so it must reach
+    # the probe too. Before this was measured, all four statuses withdrew a
+    # live submission (found in this PR's security review).
+    live = lambda: Response(200, {"data": {"id": "RS1", "attributes": {
+        "state": "WAITING_FOR_REVIEW"}}})
+    for status in (500, 502, 503, 504, 408):
+        out, code, api = run_step(
+            {"builds": lambda n: builds_page([1300]),
+             "submit": (lambda s: (lambda: Response(s, {"errors": []})))(status),
+             "probe": live},
+            {"ASC_EXPECTED_BUILD": "1300"})
+        check(f"an answered {status} consults the probe and spares a live submission",
+              len(cancellations(api)) == 0 and "NOT cancelling" in out,
+              f"cancellations={len(cancellations(api))}")
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]),
+         "submit": lambda: Response(504, {"errors": []}),
+         "probe": lambda: Response(200, {"data": {"id": "RS1", "attributes": {
+             "state": "READY_FOR_REVIEW"}}})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("an answered 504 over a NOT-submitted record still cleans it up",
+          len(cancellations(api)) == 1, f"cancellations={len(cancellations(api))}")
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]),
+         "submit": lambda: Response(429, {"errors": []}), "probe": live},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("a 429 is a real answer (not processed) → cancel without probing",
+          len(cancellations(api)) == 1
+          and not [c for c in api.calls if c[0] == "GET" and "/reviewSubmissions/" in c[1]],
+          f"cancellations={len(cancellations(api))}")
+
+    # The by-id read has never been measured against this service-account key
+    # (#1831 found several ASC reads 403/404 for it), so an unreadable by-id
+    # must fall back to the app→reviewSubmissions list, which 5a and
+    # store-preflight.sh do exercise in production.
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]), "submit": lost_response,
+         "probe": lambda: Response(403, {"errors": []}),
+         "list_probe": lambda: Response(200, {"data": [
+             {"id": "RS1", "attributes": {"state": "WAITING_FOR_REVIEW"}}]})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("by-id read refused → the list fallback still spares a live submission",
+          len(cancellations(api)) == 0 and "falling back" in out,
+          f"cancellations={len(cancellations(api))} {out[-300:]}")
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]), "submit": lost_response,
+         "probe": lambda: Response(403, {"errors": []}),
+         "list_probe": lambda: Response(200, {"data": [
+             {"id": "RS1", "attributes": {"state": "READY_FOR_REVIEW"}}]})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("by-id read refused → the list fallback still cleans a real orphan",
+          len(cancellations(api)) == 1, f"cancellations={len(cancellations(api))}")
+
+    out, code, api = run_step(
+        {"builds": lambda n: builds_page([1300]), "submit": lost_response,
+         "probe": lambda: Response(403, {"errors": []}),
+         "list_probe": lambda: Response(200, {"data": [
+             {"id": "OTHER", "attributes": {"state": "READY_FOR_REVIEW"}}]})},
+        {"ASC_EXPECTED_BUILD": "1300"})
+    check("the list fallback matches on OUR id, never a stranger's submission",
+          len(cancellations(api)) == 0, f"cancellations={len(cancellations(api))}")
+
+    # A 2xx CREATE whose body cannot be read leaves a submission this run can
+    # never identify — the one orphan the cleanup structurally cannot reach.
+    for shape, body in (("non-JSON", ValueError("not json")),
+                        ("no data key", {}),
+                        ("data: null", {"data": None}),
+                        ("data as a list", {"data": []}),
+                        ("no id", {"data": {}})):
+        out, code, api = run_step(
+            {"builds": lambda n: builds_page([1300]),
+             "create": (lambda b: (lambda: Response(201, b)))(body)},
+            {"ASC_EXPECTED_BUILD": "1300"})
+        check(f"an unreadable CREATE body ({shape}) fails loudly, cancels nothing",
+              code == 1 and "unreadable body" in out and len(cancellations(api)) == 0,
+              f"code={code} {out[-200:]}")
 
     # A submit PATCH that was ANSWERED with a rejection is unambiguous — no
     # probe, cancel straight away (the W5 path proper).

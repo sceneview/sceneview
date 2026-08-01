@@ -401,6 +401,11 @@ jobs:
           build_id = None
           build_version = None
           for attempt in range(1, POLL_ATTEMPTS + 1):
+              # Re-mint per iteration: no `requests` call here sets a timeout,
+              # so a cumulative stall could outlive the 20-min token and hand
+              # W2's classifier a 401 to misreport as bad credentials. A local
+              # ES256 sign costs nothing.
+              headers = asc_headers()
               r = requests.get(
                   f"{BASE}/builds?filter[app]={app_id}&filter[processingState]=VALID"
                   f"&sort=-uploadedDate&limit=20&include=preReleaseVersion",
@@ -984,7 +989,13 @@ jobs:
                   }
                   submit_answered = False
                   rp = requests.patch(f"{BASE}/reviewSubmissions/{rs_id}", headers=headers, json=patch_payload)
-                  submit_answered = True
+                  # A 5xx or a 408 is as ambiguous as no answer at all: an edge
+                  # or gateway can lose the RESPONSE to a write the backend
+                  # already committed, so those route to the state probe too.
+                  # 429 (rate-limited → not processed) and 4xx rejections like
+                  # 409/422 are real answers: Apple did not take the submission,
+                  # and cancelling is unambiguously right.
+                  submit_answered = rp.status_code < 500 and rp.status_code != 408
                   if rp.status_code in (200, 201):
                       # Set BEFORE reading the body: the submission is live on
                       # Apple's side at this point, so a parse error on the
@@ -1004,9 +1015,29 @@ jobs:
                       # not-yet-submitted state means hands off.
                       try:
                           probe = requests.get(f"{BASE}/reviewSubmissions/{rs_id}", headers=headers)
-                          probe_state = (probe.json().get("data", {}).get("attributes", {}).get("state")
-                                         if probe.status_code == 200 else None)
-                      except Exception as pe:
+                          if probe.status_code == 200:
+                              probe_state = probe.json().get("data", {}).get("attributes", {}).get("state")
+                          else:
+                              # The by-id read is documented and this key already
+                              # PATCHes that same URL, but it has never been
+                              # MEASURED here, and #1831 found several ASC reads
+                              # 404/403 for this service-account tier. Fall back
+                              # to the app→reviewSubmissions list — the only
+                              # reviewSubmissions read this key is known to
+                              # perform (5a above, and store-preflight.sh daily).
+                              print(f"reviewSubmission {rs_id} by-id read → {probe.status_code}; "
+                                    "falling back to the app→reviewSubmissions list")
+                              listing = requests.get(
+                                  f"{BASE}/apps/{app_id}/reviewSubmissions?filter[platform]=IOS&limit=50",
+                                  headers=headers,
+                              )
+                              probe_state = next(
+                                  (s.get("attributes", {}).get("state")
+                                   for s in (listing.json() or {}).get("data", [])
+                                   if s.get("id") == rs_id),
+                                  None,
+                              ) if listing.status_code == 200 else None
+                      except BaseException as pe:
                           probe_state = None
                           print(f"::warning::Could not read back reviewSubmission {rs_id}: {pe}")
                       if probe_state in ("READY_FOR_REVIEW", "UNRESOLVED_ISSUES"):
@@ -1016,10 +1047,19 @@ jobs:
                       else:
                           # Either Apple took it (WAITING_FOR_REVIEW/IN_REVIEW)
                           # or the state is unreadable for this service-account
-                          # key. Leaving an orphan is recoverable — 5a's stale
+                          # key. Leaving an orphan is recoverable: 5a's stale
                           # probe cancels it on the next deploy, and
-                          # store-preflight.sh reports it meanwhile. Withdrawing
-                          # a real submission is not.
+                          # store-preflight.sh reports it meanwhile.
+                          #
+                          # Be precise about what this protects, because 5a's
+                          # OPEN_STATES above deliberately includes
+                          # WAITING_FOR_REVIEW and IN_REVIEW — the next tag
+                          # cancels a live submission anyway, by design (a new
+                          # release replaces the one in the queue). What is
+                          # bought here is that THIS run does not withdraw a
+                          # submission it cannot prove it failed to make, so the
+                          # release standing in Apple's queue survives until a
+                          # human or a deliberate next release supersedes it.
                           print(
                               f"::warning::The submit PATCH for reviewSubmission {rs_id} got no response and its "
                               f"state reads as {probe_state or 'unknown'} — NOT cancelling, because it may be a "
@@ -1045,7 +1085,7 @@ jobs:
                                   f"{cancel.status_code} {cancel.text[:200]} — cancel it by hand in App Store Connect, "
                                   "or it will block the next deploy until 5a's stale probe clears it"
                               )
-                      except Exception as ce:
+                      except BaseException as ce:
                           print(
                               f"::warning::Could not cancel the orphan reviewSubmission {rs_id} this run created: {ce} "
                               "— cancel it by hand in App Store Connect"

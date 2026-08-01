@@ -19,9 +19,11 @@
   blocker, cleared by hand after run 30269459288. The submission this run
   created is now cancelled on any post-create failure, never on success, and a
   failing cleanup can no longer mask the error that triggered it. The one
-  ambiguous case is handled explicitly: if the submit request gets no response
-  it may still have reached Apple, so the submission's state is read back and
-  a live one is left alone rather than withdrawn.
+  ambiguous case is handled explicitly: a submit request that gets no usable
+  answer — no response at all, or a `5xx`/`408` a gateway can return after the
+  write was already committed — may still have reached Apple, so the
+  submission's state is read back and a live one is left alone rather than
+  withdrawn.
 - **CI: the empty-`whatsNew` warning names the real state of
   `release_notes.txt`** — "No release_notes.txt" sent a reader hunting for a
   missing file that was present but blank (review nit from
