@@ -771,37 +771,92 @@ jobs:
               rs_id = rs.json()["data"]["id"]
               print(f"Created reviewSubmission {rs_id}")
 
-              # Add version to submission
-              item_payload = {
-                  "data": {
-                      "type": "reviewSubmissionItems",
-                      "relationships": {
-                          "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": rs_id}},
-                          "appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}}
+              # W5 (#2893). From this point THIS run owns an OPEN, EMPTY
+              # reviewSubmission. Every remaining failure path below used to
+              # `raise SystemExit(1)` and leave it behind: an orphan
+              # READY_FOR_REVIEW submission with 0 items, created by the CI
+              # service account, that a human then had to clear by hand in App
+              # Store Connect (one was deleted manually after run
+              # 30269459288). The 5a stale-cancel probe above does NOT cover it
+              # — that probe only runs on the NEXT deploy, so the orphan sits
+              # in the account until then, and `store-preflight.sh`'s #2731
+              # detector reports it as a blocker in the meantime.
+              #
+              # So: cancel what this run created, on any post-CREATE failure.
+              # `finally` (not `except`) so a transport error or a KeyError on a
+              # malformed body is covered too, gated on `submitted_ok` so a
+              # SUCCESSFUL submission is never cancelled. Cancellation is
+              # PATCH {canceled: true} — reviewSubmissions has no DELETE (the
+              # issue's "DELETE" wording is wrong; verified against Apple's API
+              # + Fastlane spaceship, same as 5a above).
+              #
+              # The cleanup is strictly best-effort and swallows its own
+              # errors: it must never mask the failure that triggered it (a
+              # cancel that itself 401s on an expired JWT would otherwise
+              # replace the real diagnosis with a cleanup traceback).
+              submitted_ok = False
+              try:
+                  # Add version to submission
+                  item_payload = {
+                      "data": {
+                          "type": "reviewSubmissionItems",
+                          "relationships": {
+                              "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": rs_id}},
+                              "appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}}
+                          }
                       }
                   }
-              }
-              ri = requests.post(f"{BASE}/reviewSubmissionItems", headers=headers, json=item_payload)
-              if ri.status_code not in (200, 201):
-                  print(f"::error::reviewSubmissionItems CREATE failed: {ri.status_code} {ri.text[:300]}")
-                  raise SystemExit(1)
-              print(f"Added version {version_id} to review submission")
+                  ri = requests.post(f"{BASE}/reviewSubmissionItems", headers=headers, json=item_payload)
+                  if ri.status_code not in (200, 201):
+                      print(f"::error::reviewSubmissionItems CREATE failed: {ri.status_code} {ri.text[:300]}")
+                      raise SystemExit(1)
+                  print(f"Added version {version_id} to review submission")
 
-              # Submit for review
-              patch_payload = {
-                  "data": {
-                      "id": rs_id,
-                      "type": "reviewSubmissions",
-                      "attributes": {"submitted": True}
+                  # Submit for review
+                  patch_payload = {
+                      "data": {
+                          "id": rs_id,
+                          "type": "reviewSubmissions",
+                          "attributes": {"submitted": True}
+                      }
                   }
-              }
-              rp = requests.patch(f"{BASE}/reviewSubmissions/{rs_id}", headers=headers, json=patch_payload)
-              if rp.status_code in (200, 201):
-                  state = rp.json()["data"]["attributes"].get("state", "?")
-                  print(f"Successfully submitted for App Store review! State: {state}")
-              else:
-                  print(f"::error::Submission PATCH failed: {rp.status_code} - {rp.text[:300]}")
-                  raise SystemExit(1)
+                  rp = requests.patch(f"{BASE}/reviewSubmissions/{rs_id}", headers=headers, json=patch_payload)
+                  if rp.status_code in (200, 201):
+                      # Set BEFORE reading the body: the submission is live on
+                      # Apple's side at this point, so a parse error on the
+                      # response must not trigger the orphan cleanup and
+                      # cancel a real submission.
+                      submitted_ok = True
+                      state = rp.json()["data"]["attributes"].get("state", "?")
+                      print(f"Successfully submitted for App Store review! State: {state}")
+                  else:
+                      print(f"::error::Submission PATCH failed: {rp.status_code} - {rp.text[:300]}")
+                      raise SystemExit(1)
+              finally:
+                  if not submitted_ok:
+                      try:
+                          cancel = requests.patch(
+                              f"{BASE}/reviewSubmissions/{rs_id}",
+                              headers=headers,
+                              json={"data": {
+                                  "type": "reviewSubmissions",
+                                  "id": rs_id,
+                                  "attributes": {"canceled": True},
+                              }},
+                          )
+                          if cancel.status_code in (200, 201):
+                              print(f"Cleaned up the orphan reviewSubmission {rs_id} created by this run (canceled)")
+                          else:
+                              print(
+                                  f"::warning::Could not cancel the orphan reviewSubmission {rs_id} this run created: "
+                                  f"{cancel.status_code} {cancel.text[:200]} — cancel it by hand in App Store Connect, "
+                                  "or it will block the next deploy until 5a's stale probe clears it"
+                              )
+                      except Exception as ce:
+                          print(
+                              f"::warning::Could not cancel the orphan reviewSubmission {rs_id} this run created: {ce} "
+                              "— cancel it by hand in App Store Connect"
+                          )
           except SystemExit:
               # FATAL (#2731). This used to be a swallowed ::warning and the
               # step stayed green — four consecutive releases (4.19.0→4.22.0)
