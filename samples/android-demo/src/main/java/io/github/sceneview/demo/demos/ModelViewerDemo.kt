@@ -628,15 +628,16 @@ private fun MultiModelSection(
     // the geometry under them is the bundled stand-in rather than the oak the label
     // names (#2933).
     //
-    // MEASURED from the resolved files, not inferred from the config. The Gallery
-    // section reads `SketchfabConfig.apiKey == null` for this, and that is only a
-    // guess: every failure path in `resolve` — no network, a stale key, a
-    // bounds-drifted asset, exhausted retries — ends at the bundled fallback, so a
-    // KEYED build can render four stand-ins. It does: on the QA emulator
-    // (2026-07-28, key configured) all four slots staged out of
-    // `cache/sketchfab/fallback/`, the download endpoint answering 429. This
-    // section's first cut copied Gallery's config-based inference and labelled that
-    // exact scene "Streamed (cached)"; asking the File cannot be wrong that way.
+    // MEASURED from the resolved files, not inferred from the config: every failure
+    // path in `resolve` — no network, a stale key, a bounds-drifted asset,
+    // exhausted retries — ends at the bundled fallback, so a KEYED build can render
+    // four stand-ins. It does: on the QA emulator (2026-07-28, key configured) all
+    // four slots staged out of `cache/sketchfab/fallback/`, the download endpoint
+    // answering 429. This section's first cut inferred the origin from
+    // `SketchfabConfig.apiKey == null` and labelled that exact scene "Streamed
+    // (cached)"; asking the File cannot be wrong that way. The Gallery section
+    // settles it the same way (#2936): both ask the file first and fall back to the
+    // key only while nothing has resolved yet and there is no file to ask.
     //
     // It stays a WHOLE-SCENE verdict: one fallen-back slot out of four reads
     // "Offline model" for all of them, and the pill never says which slot swapped.
@@ -969,16 +970,36 @@ private fun GallerySection(
     // slot stays stable (#1464).
     val modelInstance = rememberFileModelInstance(modelLoader, resolvedFile)
 
-    // Per-demo offline indicator chip (#1152 Stage 3). When no API key is
-    // configured we know up-front the resolver will fall back to bundled
-    // GLBs; otherwise the chip mirrors the centre LoadingScrim exactly so the
-    // two never contradict each other (#1465): it stays "Streaming…" until the
-    // model is fully parsed into a `ModelInstance` — not merely while the file
-    // path resolves — and only then flips to "Streamed (cached)". Gating on
-    // `modelInstance` (the same signal the LoadingScrim uses) keeps the chip
-    // and the spinner in lockstep.
+    // Per-demo offline indicator chip (#1152 Stage 3). Once the file has
+    // resolved the origin is MEASURED from it, never inferred from the config:
+    // "an API key is configured" says nothing about whether the download
+    // succeeded. Every failure path in `resolve` — no network, a stale key, a
+    // bounds-drifted asset, exhausted retries — ends at the bundled fallback,
+    // so a keyed build renders the offline stand-in under whatever the pill
+    // claims. It did: on the QA emulator (2026-07-28, key configured, radio
+    // off) this section staged out of `cache/sketchfab/fallback/` — the only
+    // thing under `cache/sketchfab/` — while the pill read "Streamed (cached)"
+    // over the bundled car (#2936).
+    //
+    // Before anything resolves there is no file to ask, so the key is still the
+    // best available signal: with none we already know where this ends, with one
+    // the download is genuinely in flight. On that streamed path the chip stays
+    // in lockstep with the centre LoadingScrim (#1465) — it reads "Streaming…"
+    // until the model is fully parsed into a `ModelInstance`, not merely until
+    // the file path resolves, and only then flips to "Streamed (cached)", so it
+    // can never claim a finished download over a still-spinning scrim.
+    //
+    // The fallback path deliberately does NOT wait for the parse: once the file
+    // is known to be the bundled stand-in, the origin is settled, so the chip
+    // says so while the scrim is still spinning on the local load. That pairing
+    // is not new — a keyless build has always shown "Offline model" over a
+    // spinning scrim — and it is the honest way round: #1465 is about the chip
+    // never claiming completion early, and "Offline model" claims an origin,
+    // not a finished download.
     val assetSource = when {
         slugs.isEmpty() -> null
+        resolvedFile != null && SketchfabAssetResolver.isBundledFallback(resolvedFile) ->
+            AssetSourceState.Bundled
         SketchfabConfig.apiKey == null -> AssetSourceState.Bundled
         modelInstance == null -> AssetSourceState.Streaming
         else -> AssetSourceState.Streamed
