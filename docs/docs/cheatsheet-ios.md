@@ -335,6 +335,12 @@ Custom environment:
 .environment(.custom(name: "My HDR", hdrFile: "custom.hdr", intensity: 1.5))
 ```
 
+`intensity` is a **linear multiplier** — `1.0` leaves the HDR's own radiance
+untouched, `0.5` halves it. It is converted to RealityKit's power-of-two
+`intensityExponent` internally, so never pre-apply a `log2`. It is **not** an
+Android value: Android's IBL level is Filament's `IndirectLight.intensity` in
+absolute lux (default `10_000`), so the two are not interchangeable (#2897).
+
 visionOS — immersive-space skybox: a windowed / volumetric scene composites
 over passthrough and ignores the HDR skybox. For a fully immersive
 `ImmersiveSpace`, opt in with `.immersiveSpace()` to render the HDR as a
@@ -564,7 +570,7 @@ exposes have no iOS equivalent at all. Ported from the source of truth,
 | MSAA | via `View.multiSampleAntiAliasingOptions` | not user-controllable |
 | HDR color buffer | `QualityLevel.HIGH/MEDIUM/LOW` | not exposed |
 | Dynamic resolution | via `View.dynamicResolutionOptions` | not exposed |
-| Environmental IBL intensity | via `EnvironmentLoader` HDR | via `ImageBasedLightComponent.intensityExponent` |
+| Environmental IBL intensity | `IndirectLight.intensity`, absolute **lux** (`DEFAULT_IBL_INTENSITY` = 10 000) | `SceneEnvironment.intensity`, a linear **multiplier** (`1.0` = HDR untouched), converted to `ImageBasedLightComponent.intensityExponent` internally (#2897) — **not** interchangeable with the Android value |
 | Person occlusion (AR) | (n/a) | via `ARView.renderOptions` (AR only, not on `RealityView`) |
 
 ---
