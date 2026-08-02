@@ -313,25 +313,23 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # ⛔ `--allowedTools` IS NOT OPTIONAL HERE — without it this step burns
-          #   several minutes of quota and produces nothing.
-          #   The action ships only "the base GitHub tools" by default
-          #   (docs/configuration.md); everything this orchestrator actually
-          #   needs is off. Measured on run 30719225423, the first real dispatch
-          #   after #2952 merged: 56 turns, 7m16s, `is_error: false`, and
-          #   `permission_denials_count: 30` — more than half the actions
-          #   refused. No `review-verdict.json` was ever written, so the grader
-          #   correctly returned REVIEW_INCOMPLETE. The gate worked; the
-          #   reviewers never ran.
-          #   - Bash  → `git fetch` / `git diff` — the diff IS the review input
-          #   - Task  → spawning the four reviewers and the verifiers; without
-          #             it the whole fan-out collapses to one agent
-          #   - Write → `review-verdict.json`, the sole deliverable
-          #   Read/Glob/Grep are listed explicitly rather than assumed: the doc
-          #   promises the GitHub tools, not these.
-          claude_args: >-
-            --model claude-opus-4-8
-            --allowedTools Read,Glob,Grep,Bash,Write,Task
+          # `Task` and `Bash` are NOT in the action's default tool set — that set is
+          # file operations plus comment/GitHub operations, and the docs say so
+          # explicitly. This orchestrator is the one caller in the repo that needs
+          # both: `Task` to spawn the four reviewers and every adversarial verifier,
+          # and git to compute the diff its first instruction depends on. Without
+          # them the run burns its turns on permission denials and writes no
+          # `review-verdict.json` — which the grader then reports, correctly, as
+          # REVIEW_INCOMPLETE. Measured on runs 30719330035 (#2962) and 30719442685
+          # (#2963): 26 turns, 7 denials, zero reviewers, no verdict file. That is
+          # why `doc-audit`/`maintenance`/`issue-intake` are fine on the same bare
+          # `--model` arg — they reach GitHub through MCP tools and spawn nobody.
+          #
+          # The git allowlist is deliberately per-subcommand instead of `git:*`:
+          # reviewers share ONE working tree, so a `git checkout`/`switch`/`reset`
+          # would corrupt it under the others (#2431). The prompt already forbids
+          # that; this makes it structural rather than a request.
+          claude_args: '--model claude-opus-4-8 --allowedTools "Task,Read,Glob,Grep,Write,Bash(git fetch:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*)"'
           prompt: |
             You are the SceneView PR review ORCHESTRATOR running in CI.
 
