@@ -131,6 +131,30 @@ else
   fi
 fi
 
+# ── The judge must not come from the code being judged ──────────────────────
+# `pr-review.yml` checks out the PR's tree. If it then ran the grader from that
+# tree, a PR editing grade-pr-review.sh would be graded by its own version of
+# the grader — the generator≠evaluator split is worth nothing if the generator
+# can rewrite the evaluator. It also simply crashes on any PR branched before
+# this script existed (measured: run 30764492028, "No such file or directory").
+# The workflow must read the grader from the default branch instead.
+echo "── grader is pinned to the default branch, not the checkout ──"
+WF="$(dirname "$0")/../../.github/workflows/pr-review.yml"
+if [ ! -f "$WF" ]; then
+  echo "  ✗ cannot find pr-review.yml at $WF"
+  FAIL=$((FAIL + 1))
+elif grep -qE '^[[:space:]]*bash[[:space:]]+\.claude/scripts/grade-pr-review\.sh' "$WF"; then
+  echo "  ✗ pr-review.yml runs the grader straight out of the checkout —"
+  echo "    a PR that edits grade-pr-review.sh would grade itself"
+  FAIL=$((FAIL + 1))
+elif ! grep -q 'git show "origin/\$DEFAULT_BRANCH:.claude/scripts/grade-pr-review.sh"' "$WF"; then
+  echo "  ✗ pr-review.yml no longer reads the grader from origin/\$DEFAULT_BRANCH"
+  FAIL=$((FAIL + 1))
+else
+  echo "  ✓ grader is read from origin/\$DEFAULT_BRANCH"
+  PASS=$((PASS + 1))
+fi
+
 echo
 echo "grade-pr-review: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
