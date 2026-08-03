@@ -1540,6 +1540,7 @@ public class io/github/sceneview/ar/node/ARCameraNode : io/github/sceneview/node
 	public final fun setSession (Lcom/google/ar/core/Session;)V
 	protected fun setTrackingState (Lcom/google/ar/core/TrackingState;)V
 	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+	public fun updateProjection (DFFD)V
 }
 
 public final class io/github/sceneview/ar/node/ARFogConfig {
