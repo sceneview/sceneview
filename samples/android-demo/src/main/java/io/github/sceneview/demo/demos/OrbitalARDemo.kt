@@ -44,6 +44,7 @@ import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.sketchfab.AssetSourceProbe
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
@@ -91,12 +92,14 @@ import kotlinx.coroutines.delay
  * ### Streaming pipeline (Stage 2, issue #1152)
  *
  * Four of the eight planets are now streamed via [SketchfabAssetResolver] from the
- * curated `solar` category in [SampleAssets]. When [SketchfabConfig.apiKey] is
- * missing (App Store / first-launch / no-network) the resolver returns the bundled
- * fallback declared in the registry — so the demo always renders eight planets,
- * just sometimes with duplicate visuals. The four bundled GLBs (helmet, lantern,
- * toy car, soldier) are always read straight from `assets/models/` and have no
- * network dependency.
+ * curated `solar` category in [SampleAssets]. The resolver never fails a slot: a missing
+ * [SketchfabConfig.apiKey] (App Store / first-launch) short-circuits to the bundled
+ * fallback declared in the registry, and so does every *runtime* failure with a key
+ * present — no network, aeroplane mode, a stale key, a 4xx, exhausted retries. So the demo
+ * always renders eight planets, just sometimes with duplicate visuals, and a configured key
+ * is never evidence that any of them streamed (which is why the asset-source pill asks the
+ * resolved files instead — #2953). The four bundled GLBs (helmet, lantern, toy car,
+ * soldier) are always read straight from `assets/models/` and have no network dependency.
  *
  * This replaces the previous "2 duplicate dragons + 2 duplicate soldiers" workaround
  * that the bundle-only design was forced into (the old #978 audit flagged the dups
@@ -401,22 +404,32 @@ fun OrbitalARDemo(onBack: () -> Unit) {
         }
     }
 
-    // Per-demo offline indicator (#1152 Stage 3): if every streamed slot has
-    // resolved to a real `File` (Sketchfab CDN), surface "Streamed". If some
-    // are still null, we're "Streaming…". If `SketchfabConfig.apiKey` is
-    // absent up-front, the resolver short-circuits to the bundled fallback
-    // and every slot resolves quickly to its fallback file — chip says
-    // "Offline model" instead.
-    val streamedSlugs = ORBITAL_PLANETS.mapNotNull { it.streamedSlug }
-    val assetSource: AssetSourceState? = if (streamedSlugs.isEmpty()) {
+    // Per-demo offline indicator (#1152 Stage 3), MEASURED from the resolved files rather
+    // than inferred from `SketchfabConfig.apiKey` (#2953). The old rule read "no key ⇒
+    // Offline, key ⇒ Streamed once every slot holds a File", and the second half of that
+    // is the guess: a key says nothing about whether the download succeeded. Every failure
+    // path in `resolve` — no network, aeroplane mode, a stale key, a 4xx, the WAF, a
+    // bounds-drifted asset, exhausted retries — hands back a *bundled fallback* File, which
+    // is still a non-null File, so a keyed build with four stand-ins in orbit reported
+    // "Streamed (cached)". Asking the file cannot be wrong that way.
+    //
+    // Whole-scene and pessimistic, like Multi-Model: one fallen-back planet reads "Offline
+    // model" for the formation, and the pill never says which one swapped. See
+    // [AssetSourceProbe] for the full rule.
+    //
+    // Only the streamed slots are probed — the four bundled planets (helmet, lantern, toy
+    // car, soldier) read straight from `assets/` and have no origin question to answer.
+    val streamedSlots = streamedFiles.filterIndexed { i, _ ->
+        ORBITAL_PLANETS[i].streamedSlug != null
+    }
+    val assetSource: AssetSourceState? = if (streamedSlots.isEmpty()) {
         null
-    } else if (SketchfabConfig.apiKey == null) {
-        AssetSourceState.Bundled
-    } else if (streamedFiles.filterIndexed { i, _ -> ORBITAL_PLANETS[i].streamedSlug != null }
-            .all { it != null }) {
-        AssetSourceState.Streamed
     } else {
-        AssetSourceState.Streaming
+        AssetSourceProbe.ofAll(
+            resolvedFiles = streamedSlots,
+            hasApiKey = SketchfabConfig.apiKey != null,
+            loaded = streamedSlots.all { it != null },
+        )
     }
 
     // No Settings FAB: this demo has nothing to configure. The orbit runs
