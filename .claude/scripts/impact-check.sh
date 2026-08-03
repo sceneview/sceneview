@@ -152,8 +152,8 @@ else
     # the count drifted silently across them.
     for f in README.md llms.txt website-static/index.html docs/docs/showcase.md mcp/README.md \
              docs/docs/cheatsheet.md docs/docs/manifest.json docs/docs/platforms.md \
-             docs/docs/try.md .cursorrules mcp/src/guides.ts \
-             docs/docs/structured-data.json; do
+             docs/docs/try.md .cursorrules .windsurfrules mcp/src/guides.ts \
+             docs/docs/structured-data.json docs/docs/index.md; do
         trace "node count claim in $f"
         if [[ -f "$f" ]]; then
             # Only check claims with "+" (marketing total), skip platform-specific
@@ -162,7 +162,16 @@ else
             # several places (try.md, index.html) — a partial fix must still FAIL.
             # Case-insensitive (-i) so "42+ Node Types" (structured-data headline,
             # index.html feature card) is caught too, not just lowercase prose.
-            CLAIMS=$(grep -oiE '[0-9]+\+ node type' "$f" 2>/dev/null \
+            # An OPTIONAL generic qualifier between the number and "node" — the
+            # regex used to be a bare `N+ node type`, so "41+ built-in node types"
+            # (structured-data) and "42+ composable node types" (showcase) sailed
+            # past it for two alignments running: the gate reported 0 FAIL while
+            # the repo contradicted itself in five places (#2987). Only GENERIC
+            # qualifiers count. A PLATFORM-qualified claim is a legitimate subset
+            # ("26+ 3D node types", "15+ SceneViewSwift node types") and must not be
+            # compared against the Android total, so it is excluded by listing what
+            # is generic rather than by guessing what is not.
+            CLAIMS=$(grep -oiE '[0-9]+\+ (built-in |composable )?node type' "$f" 2>/dev/null \
                 | grep -oE '[0-9]+' 2>/dev/null | sort -u || true)
             if [[ -n "$CLAIMS" ]]; then
                 BAD=""

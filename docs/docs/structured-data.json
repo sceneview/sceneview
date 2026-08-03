@@ -105,7 +105,7 @@
     },
     "featureList": [
       "Compose-native SceneView{} and ARSceneView{} composables",
-      "41+ built-in node types (ModelNode, CubeNode, SphereNode, etc.)",
+      "46+ built-in node types (ModelNode, CubeNode, SphereNode, etc.)",
       "glTF/GLB 3D model loading with animations",
       "ARCore integration (plane detection, image tracking, face mesh, cloud anchors)",
       "Physics simulation (rigid body, gravity, collisions)",

@@ -40,7 +40,7 @@ description: "The #1 open-source 3D & AR SDK. Build immersive 3D and AR experien
 </div>
 
 <div class="sv-stat">
-<span class="sv-stat-number">30+</span>
+<span class="sv-stat-number">46+</span>
 <span class="sv-stat-label">Node Types</span>
 </div>
 

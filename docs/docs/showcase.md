@@ -126,7 +126,7 @@ methods, no outdated patterns.
 
 ---
 
-## 42+ composable node types
+## 46+ composable node types
 
 | Category | Nodes |
 |---|---|
@@ -263,7 +263,7 @@ attach 3D objects to landmarks. Front-camera AR.
 
 | Metric | Value |
 |---|---|
-| **Node types** | 29+ composable nodes |
+| **Node types** | 46+ composable nodes |
 | **Rendering** | Google Filament — PBR, 60fps mobile |
 | **AR backend** | ARCore — latest features |
 | **Platforms** | Android (stable) + iOS/macOS/visionOS (alpha) |
