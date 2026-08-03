@@ -1,7 +1,7 @@
 {
   "name": "SceneView — 3D & AR SDK for Android and iOS",
   "short_name": "SceneView",
-  "description": "The #1 open-source 3D & AR SDK for Android and iOS. Compose-native on Android, SwiftUI-native on iOS, shared core via Kotlin Multiplatform. 44+ node types, physics, AR, and AI-assisted development.",
+  "description": "The #1 open-source 3D & AR SDK for Android and iOS. Compose-native on Android, SwiftUI-native on iOS, shared core via Kotlin Multiplatform. 46+ node types, physics, AR, and AI-assisted development.",
   "start_url": "/",
   "scope": "/",
   "id": "/",
