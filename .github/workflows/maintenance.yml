@@ -920,10 +920,17 @@ jobs:
         if: steps.check.outputs.resolved == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          # Bound to env first rather than interpolated into the run: body —
+          # same shape as the open step above. These two are semver-constrained
+          # and repo-controlled, so this is style not exposure, but the
+          # `${{ }}`-inside-a-shell-string pattern is the one that becomes an
+          # injection the day a value stops being trusted.
+          NPM_VERSION: ${{ steps.check.outputs.npm }}
+          LOCAL_VERSION: ${{ steps.check.outputs.local }}
         run: |
           bash .claude/scripts/close-maintenance-issue.sh \
             "sceneview-mcp npm is stale" \
-            "npm now serves \`${{ steps.check.outputs.npm }}\` and \`mcp/package.json\` is at \`${{ steps.check.outputs.local }}\` — the lag this issue tracks is gone. Closed automatically by \`maintenance.yml\`; it re-files itself if the versions diverge again."
+            "npm now serves \`$NPM_VERSION\` and \`mcp/package.json\` is at \`$LOCAL_VERSION\` — the lag this issue tracks is gone. Closed automatically by \`maintenance.yml\`; it re-files itself if the versions diverge again."
 
   # ── 12. Play Store listing drift (read-only) ───────────────────────────────
   # Sibling of § 10, on the Play side. play-store.yml only ever runs
