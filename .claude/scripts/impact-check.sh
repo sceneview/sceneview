@@ -187,7 +187,11 @@ else
             # awk keeps the previous line, so the qualifier decides the PAIR.
             SPLIT=$(awk '
                 /[Nn]ode [Tt]ype/ {
-                    if (tolower($0) ~ /(3d|ios|swift|web|ar) node type/) { prev=$0; next }
+                    # Word-ANCHORED. Unanchored, the "ar" alternative matches inside
+                    # an ordinary word ("planar node types"), which would exclude a
+                    # real total claim and downgrade it to a silent PASS — measured:
+                    # a "99+ Planar Node Types" card produced NO check at all.
+                    if (tolower($0) ~ /(^|[^a-z0-9])(3d|ios|swift|web|ar) node type/) { prev=$0; next }
                     if (match(prev, />[0-9]+\+</)) {
                         n = substr(prev, RSTART+1, RLENGTH-3); print n
                     }
