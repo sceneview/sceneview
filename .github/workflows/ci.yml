@@ -834,6 +834,19 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-agent-cost-report.sh
 
+      # Changelog collation (collate-changelog.sh). It runs ONCE per release and
+      # DELETES the fragments it consumed, so a bullet filed under the wrong
+      # heading is found after the release notes are public, with the source
+      # already gone. Measured failure: a fragment carrying two
+      # `<!-- category: -->` tags shipped all of its Fixed bullets under
+      # `### Tests`, because the parser buffered the whole file and wrote it once
+      # under the LAST tag seen. Hermetic (fake repo root), with a mutation test
+      # on the per-tag flush — drop it and the multi-tag assertions must go red.
+      - name: Self-test changelog collator
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-collate-changelog.sh
+
       # Doc↔API drift (ADVISORY, #docs). Warns when this PR changed a public
       # API surface without updating llms.txt / KDoc / docs/docs / recipes.
       # AI-first SDK: stale prose makes AI emit stale user code. Non-blocking

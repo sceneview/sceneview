@@ -46,6 +46,19 @@ change, no bug fix) — that's the distinction between this bucket and `Fixed` o
 You may include more than one bullet in a single fragment if the PR genuinely
 ships several related changes, but keep it to one PR's worth of notes.
 
+A fragment may also carry **more than one category tag**, when a PR ships
+changes that genuinely belong in different buckets. Each tag owns the bullets
+that **follow** it, up to the next tag or the end of the file; bullets written
+before any tag land in `Changed`:
+
+```markdown
+<!-- category: Fixed -->
+- **The bug this PR fixes.** …
+
+<!-- category: Added -->
+- **The API it adds along the way.** …
+```
+
 ## At release time
 
 `.claude/scripts/collate-changelog.sh X.Y.Z` reads every `*.md` fragment here
