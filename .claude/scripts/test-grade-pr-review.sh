@@ -155,6 +155,29 @@ else
   PASS=$((PASS + 1))
 fi
 
+# ── "absent" must never be reported as "zero" ───────────────────────────────
+# The diagnostic step used `| max // 0`, so a scan that found
+# permission_denials_count NOWHERE returned the same 0 as a run with genuinely
+# no denials, and printed the reassuring branch. Measured on run 30800040485:
+# the step announced 0 denials while the action's own summary said 13. The step
+# written to prevent that failure produced it, because it was only ever tested
+# against record shapes invented for the test.
+echo "── the denial count distinguishes absent from zero ──"
+if [ ! -f "$WF" ]; then
+  echo "  ✗ cannot find pr-review.yml at $WF"
+  FAIL=$((FAIL + 1))
+elif grep -q 'permission_denials_count.*max // 0' "$WF"; then
+  echo "  ✗ the denial scan collapses 'field absent' into 0 — that reads as"
+  echo "    'the reviewers were fine' on a run whose record shape changed"
+  FAIL=$((FAIL + 1))
+elif ! grep -q 'DENIALS=unknown' "$WF"; then
+  echo "  ✗ pr-review.yml no longer reports an unreadable denial count as unknown"
+  FAIL=$((FAIL + 1))
+else
+  echo "  ✓ an unreadable denial count reports 'unknown', not 0"
+  PASS=$((PASS + 1))
+fi
+
 echo
 echo "grade-pr-review: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -456,11 +456,21 @@ jobs:
             echo "::error title=Fan-out left no run record::${LOG} is absent — the action did not get far enough to write one. Check the step above for a startup failure (bad model id, expired token, action version)."
             exit 0
           fi
-          # Recursive scan rather than a fixed path: the action writes either a
-          # list of messages or a single object depending on version, and a
-          # wrong path would silently read 0 denials and print the reassuring
-          # branch — the exact failure this step exists to prevent.
-          DENIALS="$(jq '[.. | objects | .permission_denials_count? // empty] | max // 0' "$LOG" 2>/dev/null || echo unknown)"
+          # ⛔ ABSENT IS NOT ZERO. The previous version ended in
+          # `| max // 0`, so a scan that found the field NOWHERE returned the
+          # same `0` as a run with genuinely no denials — and printed the
+          # reassuring branch. Measured on run 30800040485: the step announced
+          # "0 denials" while the action's own summary said 13. This step exists
+          # to prevent exactly that, and it produced it. Absence now reports
+          # `unknown` and says so out loud.
+          #
+          # `grep` rather than a jq path, because the record's shape is not a
+          # promise: it has already been observed as a list of messages and as a
+          # single object, and the jq scan that was supposed to cover both still
+          # missed the field. A regex over the raw bytes does not care.
+          DENIALS="$(grep -o '"permission_denials_count"[[:space:]]*:[[:space:]]*[0-9]\+' "$LOG" 2>/dev/null \
+                      | grep -o '[0-9]\+$' | sort -rn | head -1)"
+          [ -n "$DENIALS" ] || DENIALS=unknown
           echo "Permission denials reported by the fan-out: $DENIALS"
           # The COUNT alone is what made this workflow's first diagnosis wrong:
           # it went 7 → 10 across a "fix" and said nothing about WHICH tool was
@@ -519,10 +529,16 @@ jobs:
           else:
               print("The run record carries no assistant text — the orchestrator never spoke.")
           PY
-          if [ "$DENIALS" != "unknown" ] && [ "${DENIALS:-0}" -gt 0 ] 2>/dev/null; then
-            echo "::error title=Reviewers were denied their tools::${DENIALS} tool call(s) refused, so the fan-out could not run and no verdict file exists. This is a CONFIGURATION failure, not a finding about the PR — check \`--allowedTools\` in claude_args (Bash/Write/Task are NOT included by default)."
+
+          # THREE branches, not two. `unknown` must never fall through to the
+          # "they ran fine" message — that fall-through is what printed
+          # "0 denials" on run 30800040485 while the action reported 13.
+          if [ "$DENIALS" = "unknown" ]; then
+            echo "::error title=Denial count unreadable::No permission_denials_count found in ${LOG}. NOT the same as zero — the run record's shape changed, or the action wrote no summary. Read the denial messages above before concluding anything about the reviewers."
+          elif [ "$DENIALS" -gt 0 ]; then
+            echo "::error title=Reviewers were denied their tools::${DENIALS} tool call(s) refused, so the fan-out could not run and no verdict file exists. This is a CONFIGURATION failure, not a finding about the PR — the denied tools are named above."
           else
-            echo "::error title=Reviewers ran but wrote nothing::The fan-out reported no permission denials yet produced no verdict file — read the step log above; the orchestrator likely ended its turn without writing the file."
+            echo "::error title=Reviewers ran but wrote nothing::Zero denials and still no verdict file — the orchestrator ended its turn without writing it. Read the fan-out step's log; this is not an allowlist problem."
           fi
 
       - name: Grade the review
