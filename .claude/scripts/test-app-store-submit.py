@@ -2,8 +2,10 @@
 """Hermetic self-test for app-store.yml's `Submit build for App Store review`
 step (#2893).
 
-That step is ~600 lines of Python living inside a YAML heredoc, and it is the
-single code path between a green tag build and an App Store submission. It has
+That step is a large Python program living inside a YAML heredoc (this test
+prints its exact size at run time — do not hard-code a line count anywhere, it
+drifts with every edit), and it is the single code path between a green tag
+build and an App Store submission. It has
 no test seam of any kind: the only way to exercise it has been to dispatch
 `app-store.yml`, which archives, signs, and uploads a real build to TestFlight
 — so every fix to it has historically been validated in production, on a real
@@ -379,12 +381,22 @@ def main():
     check("the success path still reports the review state",
           "Successfully submitted" in out, out[-300:])
 
-    truncated = Response(200, ValueError("truncated body"))
-    out, code, api = run_step(
-        {"builds": lambda n: builds_page([1300]), "submit": lambda: truncated},
-        {"ASC_EXPECTED_BUILD": "1300"})
-    check("a submitted-but-unparseable response is not cancelled",
-          len(cancellations(api)) == 0, f"cancellations={len(cancellations(api))}")
+    # A 200 whose body cannot be read is a REPORTING problem, not a release
+    # failure: the submission is live. Asserting only "not cancelled" (as this
+    # check first did) missed that the step still went RED on a successful
+    # submission — and a red submit cannot be re-run, because the same
+    # github.run_number re-archives a duplicate CFBundleVersion (#2963 review).
+    for shape, body in (("non-JSON", ValueError("truncated body")),
+                        ("no data key", {}),
+                        ("data: null", {"data": None}),
+                        ("no attributes", {"data": {"id": "RS1"}})):
+        out, code, api = run_step(
+            {"builds": lambda n: builds_page([1300]),
+             "submit": (lambda b: (lambda: Response(200, b)))(body)},
+            {"ASC_EXPECTED_BUILD": "1300"})
+        check(f"a submitted-but-unreadable response ({shape}) is neither cancelled nor failed",
+              len(cancellations(api)) == 0 and code == 0 and "Successfully submitted" in out,
+              f"cancellations={len(cancellations(api))} code={code}")
 
     out, code, api = run_step(
         {"builds": lambda n: builds_page([1300]),

@@ -1002,7 +1002,18 @@ jobs:
                       # response must not trigger the orphan cleanup and
                       # cancel a real submission.
                       submitted_ok = True
-                      state = rp.json()["data"]["attributes"].get("state", "?")
+                      try:
+                          state = rp.json()["data"]["attributes"].get("state", "?")
+                      except (ValueError, KeyError, TypeError):
+                          # The submission is live on Apple's side; an
+                          # unreadable body is a reporting problem, not a
+                          # release failure. Raising here would turn a
+                          # SUCCESSFUL submission into a red step that cannot
+                          # even be re-run (the same github.run_number
+                          # re-archives a duplicate CFBundleVersion, which
+                          # Apple rejects). Pre-existing on main, kept from
+                          # biting here (#2963 review).
+                          state = "? (response body unreadable)"
                       print(f"Successfully submitted for App Store review! State: {state}")
                   else:
                       print(f"::error::Submission PATCH failed: {rp.status_code} - {rp.text[:300]}")
