@@ -151,9 +151,11 @@ else
     # .cursorrules / mcp guides — those were blind spots, which is exactly why
     # the count drifted silently across them.
     for f in README.md llms.txt website-static/index.html docs/docs/showcase.md mcp/README.md \
+             marketing/articles/article-1-compose-native-3d.md marketing/awesome-lists/submissions.md \
+             marketing/stackoverflow/qa-drafts.md \
              docs/docs/cheatsheet.md docs/docs/manifest.json docs/docs/platforms.md \
-             docs/docs/try.md .cursorrules mcp/src/guides.ts \
-             docs/docs/structured-data.json; do
+             docs/docs/try.md .cursorrules .windsurfrules mcp/src/guides.ts \
+             docs/docs/structured-data.json docs/docs/index.md; do
         trace "node count claim in $f"
         if [[ -f "$f" ]]; then
             # Only check claims with "+" (marketing total), skip platform-specific
@@ -162,8 +164,43 @@ else
             # several places (try.md, index.html) — a partial fix must still FAIL.
             # Case-insensitive (-i) so "42+ Node Types" (structured-data headline,
             # index.html feature card) is caught too, not just lowercase prose.
-            CLAIMS=$(grep -oiE '[0-9]+\+ node type' "$f" 2>/dev/null \
+            # An OPTIONAL generic qualifier between the number and "node" — the
+            # regex used to be a bare `N+ node type`, so "41+ built-in node types"
+            # (structured-data) and "42+ composable node types" (showcase) sailed
+            # past it for two alignments running: the gate reported 0 FAIL while
+            # the repo contradicted itself in five places (#2987). Only GENERIC
+            # qualifiers count. A PLATFORM-qualified claim is a legitimate subset
+            # ("26+ 3D node types", "15+ SceneViewSwift node types") and must not be
+            # compared against the Android total, so it is excluded by listing what
+            # is generic rather than by guessing what is not.
+            CLAIMS=$(grep -oiE '[0-9]+\+ (built-in |composable )?node type' "$f" 2>/dev/null \
                 | grep -oE '[0-9]+' 2>/dev/null | sort -u || true)
+            # SPLIT-MARKUP stat cards: the number and its label live in two
+            # separate elements, so the line regex above is structurally blind to
+            # them — `docs/docs/index.md` sat at "30+ Node Types" and
+            # `website-static/index.html` at "26+" while every line-based check
+            # reported clean (#2987).
+            #
+            # Pair-aware on purpose. A `grep -v` on the LABEL only drops the label
+            # line and leaves the number line orphaned, which reported the
+            # website's legitimate "26+ 3D node types" as "Claims 26, actual 46".
+            # awk keeps the previous line, so the qualifier decides the PAIR.
+            SPLIT=$(awk '
+                /[Nn]ode [Tt]ype/ {
+                    # Word-ANCHORED. Unanchored, the "ar" alternative matches inside
+                    # an ordinary word ("planar node types"), which would exclude a
+                    # real total claim and downgrade it to a silent PASS — measured:
+                    # a "99+ Planar Node Types" card produced NO check at all.
+                    if (tolower($0) ~ /(^|[^a-z0-9])(3d|ios|swift|web|ar) node type/) { prev=$0; next }
+                    if (match(prev, />[0-9]+\+</)) {
+                        n = substr(prev, RSTART+1, RLENGTH-3); print n
+                    }
+                }
+                { prev=$0 }
+            ' "$f" 2>/dev/null | sort -u || true)
+            if [[ -n "$SPLIT" ]]; then
+                CLAIMS=$(printf '%s\n%s\n' "$CLAIMS" "$SPLIT" | grep -oE '[0-9]+' | sort -u)
+            fi
             if [[ -n "$CLAIMS" ]]; then
                 BAD=""
                 for c in $CLAIMS; do

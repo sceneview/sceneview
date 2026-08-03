@@ -129,7 +129,7 @@ Here's a comparison for non-game 3D in Android apps:
 
 **Recommendation: SceneView** if you're using Jetpack Compose. It's the only library with native Compose support, wraps Filament (same rendering quality), and includes ARCore out of the box.
 
-SceneView is the official successor to Google Sceneform and uses the same Filament engine internally. It provides 42+ composable node types (ModelNode, CubeNode, SphereNode, ImageNode, VideoNode, etc.) and handles all the Filament lifecycle/threading complexity.
+SceneView is the official successor to Google Sceneform and uses the same Filament engine internally. It provides 46+ composable node types (ModelNode, CubeNode, SphereNode, ImageNode, VideoNode, etc.) and handles all the Filament lifecycle/threading complexity.
 
 Use raw Filament only if you need maximum control and are willing to manage the rendering pipeline yourself. Use Unity only for complex games.
 

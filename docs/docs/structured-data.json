@@ -105,7 +105,7 @@
     },
     "featureList": [
       "Compose-native SceneView{} and ARSceneView{} composables",
-      "41+ built-in node types (ModelNode, CubeNode, SphereNode, etc.)",
+      "46+ built-in node types (ModelNode, CubeNode, SphereNode, etc.)",
       "glTF/GLB 3D model loading with animations",
       "ARCore integration (plane detection, image tracking, face mesh, cloud anchors)",
       "Physics simulation (rigid body, gravity, collisions)",
@@ -536,7 +536,7 @@
     "@context": "https://schema.org",
     "@type": "TechArticle",
     "@id": "https://sceneview.github.io/cheatsheet/#techarticle",
-    "headline": "SceneView API Cheatsheet — Complete Reference for 44+ Node Types",
+    "headline": "SceneView API Cheatsheet — Complete Reference for 46+ Node Types",
     "description": "Complete API reference for SceneView SDK covering all node types, composables, resource loading, camera controls, gestures, and AR features.",
     "url": "https://sceneview.github.io/cheatsheet/",
     "author": {
