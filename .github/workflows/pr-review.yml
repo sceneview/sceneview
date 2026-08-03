@@ -541,6 +541,26 @@ jobs:
             echo "::error title=Reviewers ran but wrote nothing::Zero denials and still no verdict file — the orchestrator ended its turn without writing it. Read the fan-out step's log; this is not an allowlist problem."
           fi
 
+      # #2971's description promised this upload; its diff did not contain it,
+      # and the claim reached the merge commit. Implementing it is the honest
+      # way to settle that, and the argument it was merged on holds: the run
+      # record is the only place the refused tool NAMES and the full turn
+      # sequence live, the step above can only ever print a bounded excerpt of
+      # it, and the file dies with the runner. Four of this workflow's five
+      # debugging rounds turned on a fact visible only inside it.
+      #
+      # Uploaded ONLY when no verdict file was produced — a healthy review has
+      # nothing to explain, and the record carries the whole reviewer
+      # conversation, so it is not something to publish by default.
+      - name: Upload the run record when the review produced nothing
+        if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false' && hashFiles('review-verdict.json') == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-run-record-pr${{ steps.pr.outputs.number }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/claude-execution-output.json
+          retention-days: 7
+          if-no-files-found: warn
+
       - name: Grade the review
         id: grade
         if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
