@@ -239,16 +239,26 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         ),
         onReset = resetAll,
         onResetSettings = resetAll,
+        // The legend must never be drawn across the grounded box, and no gutter constant
+        // can promise that: where the box lands on screen is a projection, so a lift
+        // tuned on one viewport is wrong on the next. The scaffold insets the viewport by
+        // the legend's measured band instead, which makes the two disjoint by layout
+        // (#2957 — see the `bottomOverlayReservesScene` KDoc).
+        bottomOverlayReservesScene = true,
         bottomOverlay = {
             // The scaffold owns the bottom band: it pins the row, applies the system-bar
-            // inset, and resolves the Settings-FAB reserve (#2779/#2780). The row keeps
-            // sitting just ABOVE that band rather than inside it — `settingsFabReservedSpace`
-            // is the band's own height, so this is the former hand-written `128.dp` with
-            // its magic number replaced by the constant it was silently duplicating, and
-            // it collapses to the plain gutter on any demo that ships no controls.
+            // inset, and resolves the Settings-FAB reserve (#2779/#2780).
+            //
+            // The FAB is cleared SIDEWAYS, not by lifting the row over it — the scaffold's
+            // documented full-width idiom (`padding(end = settingsFabReservedSpace)`). The
+            // former `bottom = settingsFabReservedSpace + 24.dp` lift is what pushed the
+            // legend up into the scene, and now that the band is subtracted from the
+            // viewport, every dp of lift is a dp of 3D viewport spent on empty space.
             GroundingLegend(
                 shadowVisible = shadowVisible,
-                modifier = Modifier.padding(bottom = settingsFabReservedSpace + 24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = settingsFabReservedSpace, bottom = 12.dp),
             )
         },
         controls = {
@@ -469,6 +479,15 @@ internal fun WallShadowBeat(
  *
  * Exhaustive `when` on purpose: a new [ContactShadowContext] must fail this compile rather
  * than ship a chip with no verdict under it.
+ *
+ * **The Wall verdict is worded to the measurement, not to the ambition (#2957).** It used to
+ * promise "a faint, wide halo below the panel". Device QA sampled the wall against the
+ * detected panel bbox and the pool is real but *narrow*: 18.6/255 darker in the first 70 px
+ * under a 314 px-tall panel, 0.4 at 70–130 px, 0.0 beyond — and ~12 levels of the same
+ * darkening sits above the panel too. "Wide" therefore described something a viewer looking
+ * for it cannot find, and a caption whose cue is not on screen teaches nothing (#2740). The
+ * wording now names the cue that *is* visible — the thin band of shade against the panel's
+ * lower edge — and states what it buys: the panel reads as pressed against the wall.
  */
 @StringRes
 private fun ContactShadowContext.wallVerdictRes(): Int = when (this) {
@@ -494,7 +513,19 @@ private fun ContactShadowContext.wallVerdictRes(): Int = when (this) {
  * Style mirrors the scaffold's `AssetSourceChip` (dot + label on an 85 %-alpha surface) so
  * the demo chrome stays one family. Rendered through `DemoScaffold(bottomOverlay = …)`,
  * which pins it to the bottom of the scene and applies the system-bar inset; the caller
- * supplies only the gutter that lifts it clear of the settings FAB / peek-chip band.
+ * supplies only the start gutter and the end inset that clears the settings FAB /
+ * peek-chip band.
+ *
+ * **It is never drawn over the subject (#2957).** Device QA measured the row crossing the
+ * grounded box by 170 × 58 px — 51 % of the box's width — at its landing pose, i.e. exactly
+ * on the contact-shadow moment this screen exists to show. The row used to float over the
+ * viewport, lifted clear of the FAB by a vertical gutter; a bigger gutter only trades one
+ * collision for another, because the box's screen position is a *projection* and every
+ * candidate constant is tuned to one viewport. The demo now opts into
+ * `bottomOverlayReservesScene`, so the scaffold subtracts this row's measured band from the
+ * viewport: the scene simply has no pixels there, at any screen size, density or font scale.
+ * The row stays low and clears the FAB sideways, which keeps the subtracted band to the
+ * chip's own height instead of a chip plus a 128 dp lift.
  */
 @Composable
 private fun GroundingLegend(shadowVisible: Boolean, modifier: Modifier = Modifier) {
