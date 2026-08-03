@@ -307,11 +307,11 @@ class SketchfabAssetResolver private constructor(
         val cacheRoot = service.cacheRoot()
         val fallbackDir = File(cacheRoot, FALLBACK_DIR_NAME).also { it.mkdirs() }
         val target = File(fallbackDir, "${slug.uid}.glb")
-        // Same floor + magic pair [boundsAreSane] applies to a fresh download, and
-        // the same one iOS's `boundsAreSane` applies to this very path — a 4-byte
-        // file whose only content is the `glTF` magic passes a `> 0` test and is
-        // not a GLB. Android served it and iOS refused it while both comments
-        // claimed parity (#2974).
+        // Size floor + magic header, the same pair `boundsAreSane` applies to a
+        // fresh download and iOS applies to this very path. A 4-byte file whose
+        // entire content is the `glTF` magic passes a `> 0` length test and is
+        // not a GLB: Android served it, iOS refused it, and both comments
+        // claimed the two platforms agreed (#2974).
         val stagedLooksComplete =
             target.exists() && target.length() >= MIN_GLB_SIZE_BYTES && hasGlbMagic(target)
         val bundledSize = bundledAssets.sizeOf(slug.fallbackBundledPath)
