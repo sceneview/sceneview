@@ -61,27 +61,25 @@ Browse all APKs
 ### Install from terminal
 
 ```bash
-# Download and install + launch in one line, using Google's android CLI
-# (https://developer.android.com/tools/agents/android-cli)
+# Download, install and launch in one line.
 curl -fSL -o /tmp/sceneview-android-demo.apk \
   https://github.com/sceneview/sceneview/releases/latest/download/sceneview-android-demo.apk \
   && adb install -r /tmp/sceneview-android-demo.apk \
   && adb shell am start -n io.github.sceneview.demo/.MainActivity
 ```
 
-> ⚠️ **Not `android run`.** Google's `android` CLI has a measured install
-> no-op: it prints `App loaded:` / `Debuggable: true`, then rejects an activity
-> the platform resolves fine, **and exits 0 having installed nothing** — leaving
-> the previous build on the device. Seen three times in this repo (#2796, #2854,
-> #2990). Use `adb install -r` and check the install actually landed:
-> `adb shell dumpsys package io.github.sceneview.demo | grep lastUpdateTime`.
+> ⚠️ **Why not Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)?**
+> Its `android run` has a measured install no-op: it prints `App loaded:` /
+> `Debuggable: true`, rejects an activity the platform resolves fine, **and exits
+> 0 having installed nothing** — leaving the previous build on the device. Found
+> three times in this repo (#2796, #2854, #2990). The CLI is still the better
+> tool for screenshots and UI dumps; just not for installing.
 
-…or, with the legacy `adb` toolchain:
+Confirm the install actually landed — an install step that reports success is
+not evidence the binary on the device is yours:
 
 ```bash
-curl -fSL -o /tmp/sceneview-android-demo.apk \
-  https://github.com/sceneview/sceneview/releases/latest/download/sceneview-android-demo.apk \
-  && adb install -r /tmp/sceneview-android-demo.apk
+adb shell dumpsys package io.github.sceneview.demo | grep lastUpdateTime
 ```
 
 Or use the script's download mode (no build required):

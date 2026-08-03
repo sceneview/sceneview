@@ -875,6 +875,16 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-android-cli-install.sh
 
+      # Content gate, deliberately separate from the logic test above. Google's
+      # `android run` has a measured install no-op and has been rediscovered
+      # THREE times (#2796, #2854, #2990) because each fix landed in one call
+      # site while the docs went on recommending it. Documenting the trap is
+      # fine; recommending it is not.
+      - name: No file teaches `android run` for installing
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/check-android-run-not-taught.sh
+
       # Changelog collation (collate-changelog.sh). It runs ONCE per release and
       # DELETES the fragments it consumed, so a bullet filed under the wrong
       # heading is found after the release notes are public, with the source

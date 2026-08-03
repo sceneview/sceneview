@@ -361,6 +361,13 @@ android_cli_describe() {
 # Prints the package's `lastUpdateTime` as recorded by the DEVICE, or nothing
 # when the package is absent. This is the evidence `android_cli_install_and_launch`
 # uses to prove an install actually landed.
+#
+# Known limit, deliberately accepted: this stamp is SECOND-granular, so two
+# installs of the same package completing inside one wall-clock second compare
+# equal. Real install latency is well above a second, so it is practically
+# unreachable — and the failure it would cause is a refusal to launch, never a
+# false success. The asymmetry is the point: this check may cry wolf, it may
+# not stay silent.
 android_cli_install_stamp() {
   local serial="$1" pkg="$2"
   adb -s "$serial" shell dumpsys package "$pkg" 2>/dev/null \

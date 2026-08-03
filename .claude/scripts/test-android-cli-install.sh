@@ -143,33 +143,6 @@ else
   fi
 fi
 
-# 6 ── no file may TEACH `android run` for install without naming the defect.
-#      This is the class guard. The command has now been found and patched three
-#      times (#2796 tablet screenshots, #2854 store screenshots, #2990 the
-#      helper) and each fix landed in ONE call site, so the next reader kept
-#      finding a doc that recommended it. A grep for "android run --apks" missed
-#      five of them because the docs wrote `android run \` with a line
-#      continuation — too NARROW a probe, reported as an all-clear. So this
-#      matches the SUBCOMMAND and lets a file off only when it also names an
-#      issue, i.e. when it is documenting the trap rather than recommending it.
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-offenders=""
-while IFS= read -r f; do
-  case "$f" in *CHANGELOG.md|*/changelog.d/*) continue ;; esac
-  grep -qE '#(2796|2854|2990)' "$f" && continue
-  offenders="$offenders $f"
-done < <(cd "$ROOT_DIR" && grep -rlE '(^|[^-])android run([[:space:]]|\\)' \
-           --include='*.md' --include='*.sh' --include='*.yml' . 2>/dev/null \
-         | grep -v '^\./\.git/' | sed "s|^\.|$ROOT_DIR|")
-
-if [ -z "$offenders" ]; then
-  ok "no file recommends 'android run' without naming the defect it has"
-else
-  bad "these teach 'android run' with no reference to #2796/#2854/#2990:"
-  for f in $offenders; do echo "      ${f#"$ROOT_DIR"/}"; done
-  echo "      Each is a reader steered into an install that can silently no-op."
-fi
-
 echo
 echo "android-cli-install: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

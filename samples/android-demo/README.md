@@ -23,10 +23,9 @@ Install the APK on a connected device:
 adb install -r samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk
 ```
 
-…or, with Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli) (atomic install + launch):
+…and launch it:
 
 ```bash
-adb install -r samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk
 adb shell am start -n io.github.sceneview.demo/.MainActivity
 ```
 
@@ -36,7 +35,6 @@ adb shell am start -n io.github.sceneview.demo/.MainActivity
 > the previous build on the device. Seen three times in this repo (#2796, #2854,
 > #2990). Use `adb install -r` and check the install actually landed:
 > `adb shell dumpsys package io.github.sceneview.demo | grep lastUpdateTime`.
-
 
 ## Requirements
 

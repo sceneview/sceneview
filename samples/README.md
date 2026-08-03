@@ -288,8 +288,7 @@ from the start, so the inconsistency ends with the TV demo.
 adb install samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk
 ```
 
-Alternatively, with Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)
-(combines install + launch in one step, useful for agent-driven workflows):
+Install and launch (useful for agent-driven workflows):
 
 ```bash
 adb install -r samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk

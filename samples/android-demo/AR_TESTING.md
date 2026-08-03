@@ -200,8 +200,9 @@ adb shell am start -n io.github.sceneview.demo/.MainActivity --es demo ar-record
 > device (#2796, #2854, #2990). Stay on `adb` above, and confirm the install
 > landed with `adb shell dumpsys package io.github.sceneview.demo | grep lastUpdateTime`.
 
-Note: `android run` does not yet expose `--es` intent extras, so for the
-deep-link launch above stick with `adb shell am start` until v0.8+.
+(An older note here said `android run` merely lacked `--es` intent extras
+"until v0.8+". That framing is obsolete: the problem is not a missing feature
+that a later version resolves, it is the silent non-install above.)
 
 In the demo:
 

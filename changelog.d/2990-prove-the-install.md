@@ -40,3 +40,13 @@
   reworded; the file now parses clean (2 diagnostics → 0, and the remaining
   body is actually analysed). Pre-existing, unrelated to this fix, taken because
   the message literally reads "Fix to allow more checks".
+- The repo-wide content gate moved out of `test-android-cli-install.sh` into its
+  own `check-android-run-not-taught.sh`. The unit test is hermetic (stub
+  binaries, no repo state); coupling its verdict to unrelated docs meant an
+  unrelated edit could redden it and point at the wrong thing.
+- `docs/docs/try.md`, `samples/README.md`, `samples/android-demo/README.md` and
+  `AR_TESTING.md` had headings promising Google's `android` CLI and an "atomic
+  install + launch" directly above the plain `adb` commands the first pass
+  substituted — the code changed, the prose around it did not. Fixed, along with
+  a leftover `AR_TESTING.md` note framing the command as merely missing `--es`
+  "until v0.8+", which contradicted the warning immediately above it.
