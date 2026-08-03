@@ -451,6 +451,7 @@ jobs:
         if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
         env:
           PR_NUM: ${{ steps.pr.outputs.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           # `set +e` is REQUIRED and not redundant: GitHub invokes run: steps as
           # `/usr/bin/bash -e {0}`, so errexit is on before the first line and a
@@ -462,7 +463,48 @@ jobs:
           # and only then fail on (in the `Enforce the verdict` step).
           set +e
           set -uo pipefail
-          bash .claude/scripts/grade-pr-review.sh review-verdict.json \
+          # ⛔ THE JUDGE MUST NOT COME FROM THE CODE BEING JUDGED.
+          #   `$GRADER` is fetched from the default branch, never read out of the
+          #   checkout. Two distinct reasons, and the second is the serious one:
+          #   1. The checkout is the PR's tree. A PR branched before this script
+          #      existed simply does not contain it — measured on run
+          #      30764492028, a dispatch on #2962: `No such file or directory`,
+          #      and the whole review died at the last step after the reviewers
+          #      had already been paid for.
+          #   2. A PR that EDITS `grade-pr-review.sh` would otherwise have its
+          #      own verdict computed by its own version of the grader. That is
+          #      the `pull_request_target` footgun wearing different clothes:
+          #      the generator≠evaluator split is worth nothing if the generator
+          #      can rewrite the evaluator. Pinning to the default branch means
+          #      a PR improving the grader is graded by the CURRENT grader —
+          #      which is the correct semantics anyway.
+          #   The self-modification guard covers pr-review.yml only, so it does
+          #   NOT cover this file; this pin is what closes that gap.
+          DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
+          GRADER="$RUNNER_TEMP/grade-pr-review.sh"
+          git fetch origin "$DEFAULT_BRANCH" --depth=1 --quiet 2>/dev/null
+          if ! git show "origin/$DEFAULT_BRANCH:.claude/scripts/grade-pr-review.sh" > "$GRADER" 2>/dev/null; then
+            echo "::error title=Grader unavailable::Could not read .claude/scripts/grade-pr-review.sh from origin/$DEFAULT_BRANCH. Refusing to grade with whatever copy the PR happens to carry."
+            echo "gate_rc=1" >> "$GITHUB_OUTPUT"
+            echo "verdict=REVIEW_INCOMPLETE" >> "$GITHUB_OUTPUT"
+            echo "blocking=true" >> "$GITHUB_OUTPUT"
+            # The downstream steps read this file unconditionally; write the
+            # explanation rather than letting them fail on a missing path and
+            # leave the PR with an unexplained red check again.
+            {
+              echo '<!-- sceneview-agent-review -->'
+              echo '## ⛔ Agent review incomplete — the grader could not be loaded'
+              echo
+              echo "The merge verdict is computed by \`.claude/scripts/grade-pr-review.sh\`"
+              echo "read from \`$DEFAULT_BRANCH\`, never from this PR's tree — a PR must not"
+              echo 'be able to supply the script that grades it. That read failed here, so'
+              echo 'no verdict was computed and none is implied.'
+              echo
+              echo '**This is a CI configuration problem, not a finding about this PR.**'
+            } > review-comment.md
+            exit 0
+          fi
+          bash "$GRADER" review-verdict.json \
             --comment-out review-comment.md --pr "$PR_NUM" > grade.out
           echo "gate_rc=$?" >> "$GITHUB_OUTPUT"
           cat grade.out >> "$GITHUB_OUTPUT"
