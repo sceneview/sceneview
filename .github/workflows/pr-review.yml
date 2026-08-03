@@ -461,25 +461,51 @@ jobs:
             printf '%s\n' "$TOOLS"
           fi
 
+          # ⛔ THIS REPOSITORY IS PUBLIC — artifacts on a public repo are
+          #   downloadable by anyone. The run record holds whatever the agents
+          #   read, so it is NOT uploaded. What gets kept is a structural
+          #   summary: JSON key names, tool names, and numeric counters. That is
+          #   enough to name a missing allowlist entry and carries none of the
+          #   content. `show_full_output` is off for the same reason and stays off.
+          SUMMARY="$RUNNER_TEMP/fanout-shape.txt"
+          {
+            echo "# Structural summary of the fan-out run record."
+            echo "# Key names, tool names and counters only — never message content."
+            echo
+            echo "## JSON keys present"
+            grep -oE '"[a-z_][a-z_0-9]*"[[:space:]]*:' "$LOG" 2>/dev/null \
+              | tr -d '":' | tr -d ' ' | sort | uniq -c | sort -rn | head -40
+            echo
+            echo "## Tool names seen"
+            grep -oE '"(tool_name|subtype|type)"[[:space:]]*:[[:space:]]*"[A-Za-z_][A-Za-z_0-9]*"' "$LOG" 2>/dev/null \
+              | sed 's/.*"\([A-Za-z_0-9]*\)"$/\1/' | sort | uniq -c | sort -rn | head -40
+            echo
+            echo "## Numeric counters"
+            grep -oE '"[a-z_]+"[[:space:]]*:[[:space:]]*[0-9.]+' "$LOG" 2>/dev/null \
+              | sort -u | head -40
+          } > "$SUMMARY" 2>/dev/null || true
+          echo "Structural summary written to $SUMMARY"
+
           if [ "$DENIALS" = "unknown" ]; then
-            echo "::error title=Denial count unreadable::No permission_denials_count found in ${LOG}. NOT the same as zero — the run record's shape changed, or the action did not write a summary. Download the run-record artifact attached to this run and re-check before concluding anything about the reviewers."
+            echo "::error title=Denial count unreadable::No permission_denials_count found in ${LOG}. NOT the same as zero — the run record's shape changed, or the action did not write a summary. Download the fanout-shape artifact attached to this run and re-check before concluding anything about the reviewers."
           elif [ "$DENIALS" -gt 0 ]; then
             echo "::error title=Reviewers were denied their tools::${DENIALS} tool call(s) refused, so the fan-out could not complete and no verdict file exists. This is a CONFIGURATION failure, not a finding about the PR — widen \`--allowedTools\` in claude_args to cover the tools listed above."
           else
             echo "::error title=Reviewers ran but wrote nothing::Zero denials and still no verdict file — the orchestrator ended its turn without writing it. Read the fan-out step's log; this is not an allowlist problem."
           fi
 
-      # The run record is the only place the refused tool names live, and it is
-      # deleted with the runner. Keeping it is what turns the next failure into
-      # a measurement instead of another guess — this whole workflow has now
-      # cost five debugging rounds, four of which needed a fact that was only
-      # ever visible inside this file.
-      - name: Keep the fan-out run record for diagnosis
+      # The refused tool names live only in the run record, which dies with the
+      # runner — four of this workflow's five debugging rounds needed a fact
+      # visible only there. What is kept is the STRUCTURAL SUMMARY built above,
+      # never the record itself: this repository is public, artifacts on a
+      # public repo are downloadable by anyone, and the record holds whatever
+      # the agents read.
+      - name: Keep the fan-out shape for diagnosis
         if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false' && hashFiles('review-verdict.json') == ''
         uses: actions/upload-artifact@v4
         with:
-          name: claude-run-record-${{ steps.pr.outputs.number }}-${{ github.run_id }}
-          path: ${{ runner.temp }}/claude-execution-output.json
+          name: fanout-shape-${{ steps.pr.outputs.number }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/fanout-shape.txt
           if-no-files-found: warn
           retention-days: 7
 
