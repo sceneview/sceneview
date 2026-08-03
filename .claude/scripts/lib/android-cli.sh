@@ -442,7 +442,12 @@ android_cli_install_and_launch() {
   # a false cause, which sends the reader after the wrong bug.
   #   1 = the install could not be proven (device may hold the previous build)
   #   2 = the install landed, but the activity did not start
-  adb -s "$serial" shell am force-stop "$pkg"
+  # `|| true`: under a caller's inherited `set -e` this plain statement would
+  # abort the function with force-stop's status, never reaching the launch check
+  # and never returning the documented 1-vs-2 code. force-stop returning
+  # non-zero is not a reason to skip the launch, and its status carries no
+  # information the caller can act on.
+  adb -s "$serial" shell am force-stop "$pkg" || true
   if ! adb -s "$serial" shell am start -n "$activity"; then
     echo "[android-cli] install PROVEN for $pkg, but 'am start -n $activity' failed." >&2
     echo "[android-cli]   The binary on the device IS the one you built; the" >&2

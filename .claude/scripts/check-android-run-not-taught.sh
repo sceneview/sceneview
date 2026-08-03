@@ -39,6 +39,17 @@
 #   invisible to a gate whose own header warns against exactly this. The
 #   trailing context is now "end-of-line, or any character that cannot continue
 #   the word", which is what "the subcommand appears here" actually means.
+#
+# WHY IT ENUMERATES WITH `git ls-files`
+#   The first version used `grep -rlE … .`, which recurses the whole working
+#   tree. `--include` filters NAMES, it does not stop the descent — so a
+#   vendored or generated `*.md` under node_modules/ or build/ containing the
+#   token would false-fail this gate. It looked clean locally for a reason that
+#   is not a reason: the `grep` on the author's host is `ugrep`, which skips
+#   ignored paths, while CI runs GNU grep, which does not. Measured: a probe
+#   file under node_modules/ was seen by /usr/bin/grep and NOT by the local
+#   grep. Enumerating TRACKED files removes the difference — same set on every
+#   host, and it is the set the repo actually ships.
 
 set -uo pipefail
 
@@ -58,8 +69,9 @@ while IFS= read -r f; do
   esac
   grep -qE "$ISSUE_RE" "$f" && continue
   offenders+=("${f#./}")
-done < <(grep -rlE '(^|[^-[:alnum:]_])android run($|[^[:alnum:]_-])' \
-           --include='*.md' --include='*.sh' --include='*.yml' . 2>/dev/null)
+done < <(git ls-files -z -- '*.md' '*.sh' '*.yml' 2>/dev/null \
+         | xargs -0 grep -lE '(^|[^-[:alnum:]_])android run($|[^[:alnum:]_-])' 2>/dev/null \
+         | sed 's|^|./|')
 
 if [ "${#offenders[@]}" -eq 0 ]; then
   echo "check-android-run: OK — no file recommends 'android run' without naming the defect"

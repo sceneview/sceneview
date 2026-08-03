@@ -58,3 +58,10 @@
   proven … the device may not be running" — a true failure described by a false
   cause, which sends the reader after the wrong bug. `qa-android-demos.sh` says
   which half broke.
+- `check-android-run-not-taught.sh` enumerates tracked files with `git ls-files`
+  instead of recursing the working tree. `--include` filters names but does not
+  stop `grep -r` descending into `node_modules/` or `build/`, so a vendored file
+  containing the token would have false-failed the gate in CI. It looked clean
+  locally for a reason that is not one: the author's `grep` is `ugrep`, which
+  skips ignored paths, while CI runs GNU grep, which does not — measured with a
+  probe file seen by one and not the other.
