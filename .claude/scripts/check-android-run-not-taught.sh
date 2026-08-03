@@ -79,7 +79,11 @@ ISSUE_RE='#(2796|2854|2990)'
 # The subcommand, at a word boundary on both sides. NOT anchored on the flags:
 # five docs wrote `android run \` with a line continuation and a flag-anchored
 # probe missed all of them.
-MATCH_RE='(^|[^-[:alnum:]_])android run($|[^[:alnum:]_-])'
+MATCH_RE='(^|[^-[:alnum:]_])android run($|[^[:alnum:]_-])|atomic install'
+# Two patterns, because the drift does not always name the command. The stale
+# framing this gate kept missing was "atomic install + launch" — prose that
+# sells `android run` without ever writing it, so a token-only probe let it
+# through on the very page whose warning callout contradicts it.
 # …but not Firebase Test Lab, which ends in the same two words. Anchored on the
 # ADJACENT phrasing, not on the word `firebase` appearing anywhere on the line:
 # a line that genuinely recommends `android run` AND happens to mention Firebase

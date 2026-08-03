@@ -125,9 +125,15 @@ else
 fi
 
 # 5 ── MUTATION: the old shape (trust the CLI's exit code) must make this RED
+# Target the SHARED check — the one that actually decides. An earlier version
+# mutated the CLI branch's own test; when the function was restructured so that
+# branch merely sets a flag and the shared check still guards, the mutation
+# stopped producing a false green and this test reported "SURVIVED". That was
+# the suite correctly telling me its target had moved, not a weakened guard.
+# Retargeted rather than relaxed.
 mut="$TMP/mutated-lib.sh"
-sed 's/if \[\[ -n "\$after" \&\& "\$after" != "\$before" \]\]; then/if true; then/' "$LIB" > "$mut"
-if ! grep -q "if true; then" "$mut"; then
+sed 's/if \[\[ -z "\$after" || "\$after" == "\$before" \]\]; then/if false; then/' "$LIB" > "$mut"
+if ! grep -q "if false; then" "$mut"; then
   bad "mutation could not be applied — the guard's shape changed, retarget it"
 else
   printf 'seed\n' > "$STUB_STATE"

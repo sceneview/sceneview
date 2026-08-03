@@ -421,19 +421,28 @@ android_cli_install_and_launch() {
   local before after
   before="$(android_cli_install_stamp "$serial" "$pkg")"
 
+  # Try the CLI first, then adb. `proven` records whether EITHER landed, so both
+  # branches converge on the same launch check below. The CLI branch used to
+  # `return 0` here — but `android run` launches silently, so a failed launch on
+  # that path reported full success while the adb path returned 2 for the same
+  # outcome. One contract, whichever branch produced it.
+  local proven=0
   if android_cli_locate; then
     "$ANDROID_CLI_BIN" "${ANDROID_CLI_GLOBAL_FLAGS[@]}" run \
       --apks="$apk" --activity="$activity" --device="$serial" || true
     after="$(android_cli_install_stamp "$serial" "$pkg")"
     if [[ -n "$after" && "$after" != "$before" ]]; then
-      return 0
+      proven=1
+    else
+      echo "[android-cli] 'android run' did not change lastUpdateTime for $pkg" >&2
+      echo "[android-cli]   before='$before' after='$after' — falling back to adb (#2990)" >&2
     fi
-    echo "[android-cli] 'android run' did not change lastUpdateTime for $pkg" >&2
-    echo "[android-cli]   before='$before' after='$after' — falling back to adb (#2990)" >&2
   fi
 
-  adb -s "$serial" install -r "$apk" || return 1
-  after="$(android_cli_install_stamp "$serial" "$pkg")"
+  if [[ "$proven" -ne 1 ]]; then
+    adb -s "$serial" install -r "$apk" || return 1
+    after="$(android_cli_install_stamp "$serial" "$pkg")"
+  fi
   if [[ -z "$after" || "$after" == "$before" ]]; then
     echo "[android-cli] ⛔ INSTALL NOT PROVEN for $pkg on $serial." >&2
     echo "[android-cli]   lastUpdateTime did not move (before='$before' after='$after')." >&2

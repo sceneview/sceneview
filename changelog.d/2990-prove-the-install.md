@@ -19,7 +19,7 @@
   sub-command position — so that flag, which the report flagged as suspicious, is
   **not** the cause. The silent non-install remains unexplained upstream, which is
   exactly why the helper verifies instead of trusting.
-- Every remaining place that taught the disproven command is fixed: the **public**
+- The places that taught the disproven command are fixed — the **public**
   `agents/sceneview/SKILL.md` (installed for any AI agent on the host), the
   flagship `docs/docs/try.md` quickstart, `samples/README.md`,
   `samples/android-demo/README.md`, `samples/android-demo/AR_TESTING.md`, the
@@ -27,7 +27,10 @@
   `try-demo.sh`, `render-tests.yml` and `maintain.md`. A first pass claimed
   completeness after finding three — it had grepped for `android run --apks`, and
   five docs write `android run \` with a line continuation, so the probe was too
-  narrow and reported an all-clear. `check-android-run-not-taught.sh` now matches
+  narrow and reported an all-clear — and a second completeness claim was wrong
+  too, because prose can sell the command without naming it ("atomic install +
+  launch"). No exhaustiveness is claimed here; the gate is what enforces it.
+  `check-android-run-not-taught.sh` now matches
   the **subcommand** — at end-of-line and inside inline code too, after a first
   version missed 15 of the 22 files that mention it — and fails when any file
   teaches the command without naming the defect.
@@ -114,3 +117,12 @@
   could never fire, and the advice it gave (install the CLI) unblocked nobody.
   `adb` is stated as required; the CLI is optional and explicitly not an
   installer.
+- The helper's launch contract is symmetric. The `android run` branch returned 0
+  as soon as the install was proven, but that command launches silently — so a
+  failed launch on the CLI path reported full success while the adb path
+  returned 2 for the identical outcome. Both branches converge on one launch
+  check now; verified with a stub whose `am start` fails on the CLI path (0 → 2).
+- The content gate also matches the phrase "atomic install", because the drift
+  it kept missing never wrote `android run` at all — `docs/docs/try.md`'s
+  Requirements tip sold the command in prose, on the same page as the warning
+  callout contradicting it.
