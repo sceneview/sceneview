@@ -154,10 +154,30 @@ jobs:
             echo "within_budget=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # ⛔ TWO CHECKOUTS, ON PURPOSE — a dispatch must NOT check out `main`.
+      #   `actions/checkout` defaults to `github.ref`, which on a
+      #   `workflow_dispatch` is whatever `--ref` said (i.e. `main`), NOT the PR
+      #   named in `inputs.pr`. The reviewers would then diff `main...HEAD` —
+      #   empty — and report a clean PASS on a PR they never read. That is a
+      #   FALSE GREEN, and it lands on the one path that exists precisely to
+      #   rescue reviews that cannot run automatically (fork PRs, per this
+      #   workflow's own header and CLAUDE.md).
+      #   The `pull_request` path is left exactly as it was: it already resolves
+      #   the right ref, and rewriting a working path to share one step would
+      #   silently switch the review from the merge ref to the head ref.
       - uses: actions/checkout@v7
+        if: github.event_name != 'workflow_dispatch'
         with:
           # Full history: the reviewers diff against origin/main and read git log
           # for context. A shallow clone makes `main...HEAD` unresolvable.
+          fetch-depth: 0
+
+      - uses: actions/checkout@v7
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          # `refs/pull/N/head` exists on the BASE repo even for fork PRs, which
+          # is what makes the manual re-review of a fork PR possible at all.
+          ref: refs/pull/${{ steps.pr.outputs.number }}/head
           fetch-depth: 0
 
       # Secrets are absent on fork PRs. Decide it from a real env read rather
@@ -229,8 +249,25 @@ jobs:
       - name: Detect self-modification of this workflow
         id: selfmod
         if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          # A dispatch is not a self-modification, and treating it as one breaks
+          # the rescue path. What `claude-code-action` validates is the workflow
+          # file it is RUNNING — which on a dispatch comes from `--ref` (normally
+          # the default branch), not from the checkout. Since the dispatch path
+          # now checks out `refs/pull/N/head`, comparing the checkout would flag
+          # every older PR whose copy of this file has simply been superseded,
+          # and would refuse to review it. If a dispatch is ever launched from a
+          # branch that does edit this file, the action self-skips and the
+          # grader still blocks with REVIEW_INCOMPLETE — as everywhere else in
+          # this step, the detection improves the message and is never the gate.
+          if [ "${EVENT_NAME:-}" = "workflow_dispatch" ]; then
+            echo "Dispatch — the running workflow comes from the dispatched ref, not the checkout; skipping the self-modification comparison."
+            echo "self_modified=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           BASE="${GITHUB_BASE_REF:-main}"
           # actions/checkout only sets up the remote-tracking ref for the branch
           # it checked out, so `origin/main` is NOT guaranteed to resolve even at
@@ -376,11 +413,45 @@ jobs:
             Your final message: one short paragraph stating what you found. The
             file is the deliverable.
 
+      # A blocking verdict must name its own cause. On run 30719225423 the PR
+      # got a red check reading "REVIEW_INCOMPLETE" and nothing else — correct,
+      # and useless: the actual reason (30 refused tool calls) was buried in the
+      # action's JSON log, and the obvious reading, "a reviewer crashed", was
+      # wrong. This step reads the run record the action leaves behind and says
+      # what happened, BEFORE the grader turns it into a one-word verdict.
+      # `if: always()` so it also speaks when the fan-out itself failed.
+      - name: Diagnose a missing verdict file
+        if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
+        run: |
+          set -uo pipefail
+          if [ -f review-verdict.json ]; then
+            echo "review-verdict.json written ($(wc -c < review-verdict.json) bytes)."
+            exit 0
+          fi
+          echo "::warning title=No review-verdict.json::The reviewers produced no verdict file. Diagnosing before the grader reports REVIEW_INCOMPLETE."
+          LOG="${RUNNER_TEMP}/claude-execution-output.json"
+          if [ ! -f "$LOG" ]; then
+            echo "::error title=Fan-out left no run record::${LOG} is absent — the action did not get far enough to write one. Check the step above for a startup failure (bad model id, expired token, action version)."
+            exit 0
+          fi
+          # Recursive scan rather than a fixed path: the action writes either a
+          # list of messages or a single object depending on version, and a
+          # wrong path would silently read 0 denials and print the reassuring
+          # branch — the exact failure this step exists to prevent.
+          DENIALS="$(jq '[.. | objects | .permission_denials_count? // empty] | max // 0' "$LOG" 2>/dev/null || echo unknown)"
+          echo "Permission denials reported by the fan-out: $DENIALS"
+          if [ "$DENIALS" != "unknown" ] && [ "${DENIALS:-0}" -gt 0 ] 2>/dev/null; then
+            echo "::error title=Reviewers were denied their tools::${DENIALS} tool call(s) refused, so the fan-out could not run and no verdict file exists. This is a CONFIGURATION failure, not a finding about the PR — check \`--allowedTools\` in claude_args (Bash/Write/Task are NOT included by default)."
+          else
+            echo "::error title=Reviewers ran but wrote nothing::The fan-out reported no permission denials yet produced no verdict file — read the step log above; the orchestrator likely ended its turn without writing the file."
+          fi
+
       - name: Grade the review
         id: grade
         if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
         env:
           PR_NUM: ${{ steps.pr.outputs.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           # `set +e` is REQUIRED and not redundant: GitHub invokes run: steps as
           # `/usr/bin/bash -e {0}`, so errexit is on before the first line and a
@@ -392,7 +463,48 @@ jobs:
           # and only then fail on (in the `Enforce the verdict` step).
           set +e
           set -uo pipefail
-          bash .claude/scripts/grade-pr-review.sh review-verdict.json \
+          # ⛔ THE JUDGE MUST NOT COME FROM THE CODE BEING JUDGED.
+          #   `$GRADER` is fetched from the default branch, never read out of the
+          #   checkout. Two distinct reasons, and the second is the serious one:
+          #   1. The checkout is the PR's tree. A PR branched before this script
+          #      existed simply does not contain it — measured on run
+          #      30764492028, a dispatch on #2962: `No such file or directory`,
+          #      and the whole review died at the last step after the reviewers
+          #      had already been paid for.
+          #   2. A PR that EDITS `grade-pr-review.sh` would otherwise have its
+          #      own verdict computed by its own version of the grader. That is
+          #      the `pull_request_target` footgun wearing different clothes:
+          #      the generator≠evaluator split is worth nothing if the generator
+          #      can rewrite the evaluator. Pinning to the default branch means
+          #      a PR improving the grader is graded by the CURRENT grader —
+          #      which is the correct semantics anyway.
+          #   The self-modification guard covers pr-review.yml only, so it does
+          #   NOT cover this file; this pin is what closes that gap.
+          DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
+          GRADER="$RUNNER_TEMP/grade-pr-review.sh"
+          git fetch origin "$DEFAULT_BRANCH" --depth=1 --quiet 2>/dev/null
+          if ! git show "origin/$DEFAULT_BRANCH:.claude/scripts/grade-pr-review.sh" > "$GRADER" 2>/dev/null; then
+            echo "::error title=Grader unavailable::Could not read .claude/scripts/grade-pr-review.sh from origin/$DEFAULT_BRANCH. Refusing to grade with whatever copy the PR happens to carry."
+            echo "gate_rc=1" >> "$GITHUB_OUTPUT"
+            echo "verdict=REVIEW_INCOMPLETE" >> "$GITHUB_OUTPUT"
+            echo "blocking=true" >> "$GITHUB_OUTPUT"
+            # The downstream steps read this file unconditionally; write the
+            # explanation rather than letting them fail on a missing path and
+            # leave the PR with an unexplained red check again.
+            {
+              echo '<!-- sceneview-agent-review -->'
+              echo '## ⛔ Agent review incomplete — the grader could not be loaded'
+              echo
+              echo "The merge verdict is computed by \`.claude/scripts/grade-pr-review.sh\`"
+              echo "read from \`$DEFAULT_BRANCH\`, never from this PR's tree — a PR must not"
+              echo 'be able to supply the script that grades it. That read failed here, so'
+              echo 'no verdict was computed and none is implied.'
+              echo
+              echo '**This is a CI configuration problem, not a finding about this PR.**'
+            } > review-comment.md
+            exit 0
+          fi
+          bash "$GRADER" review-verdict.json \
             --comment-out review-comment.md --pr "$PR_NUM" > grade.out
           echo "gate_rc=$?" >> "$GITHUB_OUTPUT"
           cat grade.out >> "$GITHUB_OUTPUT"
