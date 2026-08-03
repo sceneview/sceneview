@@ -16,13 +16,11 @@ import java.io.File
  * answering 429 (#2933).
  *
  * The rule lived inline at four call sites, expressed three different ways, and was fixed
- * one site at a time — Multi-Model (#2933/#2934), then Gallery (#2936/#2938), while the two
- * AR demos kept the guess (#2953). Extracting it is what makes it *testable* — the inline
- * copies sat inside `@Composable` bodies where no unit test could reach them, which is why
- * three fixes shipped with no test pinning the rule. The two AR demos call it here;
- * Gallery and Multi-Model still hold their (correct, equivalent) inline copies and are
- * migrated in their own PR rather than inside a bug fix — tracked by **#2989**, which
- * carries the equivalence argument. Do not add a fifth inline copy: call this instead.
+ * one site at a time — Multi-Model (#2933/#2934), then Gallery (#2936/#2938), then the two
+ * AR demos (#2953). Extracting it is what makes it *testable*: the inline copies sat inside
+ * `@Composable` bodies where no unit test could reach them, which is why three consecutive
+ * fixes shipped with nothing pinning the rule. **All four call sites now route through
+ * here** (#2989) — do not add a fifth inline copy, call this instead.
  *
  * ### Why the key survives at all
  *
