@@ -383,6 +383,18 @@ jobs:
             `git checkout`/`switch`/`reset`/`stash`, no file edits. They share
             this working tree and a branch switch corrupts it (#2431).
 
+            ⛔ EVERY `Task` CALL MUST BE SYNCHRONOUS — pass
+            `run_in_background: false` on all four, and on every verifier in
+            step 2. Subagents default to the background, which works in an
+            interactive session because a notification wakes the parent later.
+            THIS RUN HAS NO LATER: it is headless, and the session ends the
+            moment you end your turn. A backgrounded reviewer is simply killed,
+            unread. Do not end your turn while any reviewer is outstanding, and
+            never end it "waiting" for one — measured on run 30801646272, whose
+            closing words were "Now waiting for the four reviewers to report":
+            0 denials, 11 turns, no `review-verdict.json`, REVIEW_INCOMPLETE.
+            Write the file yourself, from the reports, before you stop.
+
             ## Step 2 — adversarially verify every ERROR
 
             For each finding a reviewer marked as an error, spawn a SEPARATE
