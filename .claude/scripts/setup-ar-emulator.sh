@@ -1516,7 +1516,7 @@ else
   log "  export EMU_LEASE_SESSION=${EMU_LEASE_SESSION}"
   log "  export ANDROID_SERIAL=${serial:-emulator-5554}   # pin QA to this emulator"
   log "  source .claude/scripts/lib/android-cli.sh && android_cli_ensure"
-  log "  android run --apks <apk> --activity io.github.sceneview.demo/.MainActivity"
+  log "  android_cli_install_and_launch <apk> io.github.sceneview.demo/.MainActivity   # proves the install (#2990)"
   log "  stop it with: android emulator stop $AVD_NAME"
   log "  give the reservation back (emulator keeps running): --release"
 fi

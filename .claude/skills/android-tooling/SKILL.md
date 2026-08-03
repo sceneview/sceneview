@@ -26,7 +26,12 @@ and CI install it on the fly and use it for:
   bypasses the PTY and is fine).
 - `android screen capture --annotate` + `android screen resolve --screenshot=ui.png
   --string="tap #5"` — visual-label tapping (the AI-first workflow this CLI exists for).
-- `android run --apks=app.apk --activity=pkg/.Main` — install + launch in one call.
+- ⛔ `android run --apks=… --activity=pkg/.Main` — **do not call this directly.** Measured
+  2026-08-03 on CLI 1.0.15498356: it printed `App loaded:` / `Debuggable: true` and then
+  `No matching components found for type ACTIVITY` for an activity the platform resolves
+  fine — and **installed nothing**, leaving an 8-hour-old build on the device while a QA
+  run measured it (#2990). Use `android_cli_install_and_launch`, which now proves the
+  install by checking that the device's `lastUpdateTime` moved and falls back to `adb`.
 
 **When to use what:**
 - Screenshots, UI dumps, install+launch → `android` CLI (via `.claude/scripts/lib/android-cli.sh`)

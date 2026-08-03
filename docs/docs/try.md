@@ -21,8 +21,8 @@ That's it. The script builds the demo app and installs it on your connected Andr
     - **Java 17+** installed
     - **adb** on your PATH (comes with Android Studio)
     - Optional: Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)
-      for atomic install + launch. When detected, the `try-demo.sh` script uses
-      it automatically.
+      for JSON UI dumps and LF/CRLF-safe screenshots. **Not for installing** —
+      see the warning below.
 
 ### Try a specific platform demo
 
@@ -61,21 +61,25 @@ Browse all APKs
 ### Install from terminal
 
 ```bash
-# Download and install + launch in one line, using Google's android CLI
-# (https://developer.android.com/tools/agents/android-cli)
+# Download, install and launch in one line.
 curl -fSL -o /tmp/sceneview-android-demo.apk \
   https://github.com/sceneview/sceneview/releases/latest/download/sceneview-android-demo.apk \
-  && android run \
-    --apks=/tmp/sceneview-android-demo.apk \
-    --activity=io.github.sceneview.demo/.MainActivity
+  && adb install -r /tmp/sceneview-android-demo.apk \
+  && adb shell am start -n io.github.sceneview.demo/.MainActivity
 ```
 
-…or, with the legacy `adb` toolchain:
+> ⚠️ **Why not Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)?**
+> Its `android run` has a measured install no-op: it prints `App loaded:` /
+> `Debuggable: true`, rejects an activity the platform resolves fine, **and exits
+> 0 having installed nothing** — leaving the previous build on the device. Found
+> three times in this repo (#2796, #2854, #2990). The CLI is still the better
+> tool for screenshots and UI dumps; just not for installing.
+
+Confirm the install actually landed — an install step that reports success is
+not evidence the binary on the device is yours:
 
 ```bash
-curl -fSL -o /tmp/sceneview-android-demo.apk \
-  https://github.com/sceneview/sceneview/releases/latest/download/sceneview-android-demo.apk \
-  && adb install -r /tmp/sceneview-android-demo.apk
+adb shell dumpsys package io.github.sceneview.demo | grep lastUpdateTime
 ```
 
 Or use the script's download mode (no build required):

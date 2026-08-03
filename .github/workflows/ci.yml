@@ -862,6 +862,29 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-context-budget.sh
 
+      # android_cli_install_and_launch (#2990). The helper used to `return $?`
+      # from `android run`. On a real emulator that command printed two
+      # success-shaped lines, installed NOTHING, and left a build eight hours
+      # old on the device — so a QA run measured the previous binary and would
+      # have reported a verified fix that never shipped, had the change been
+      # subtler than a visibly-wrong pill. Exit codes are not evidence; the
+      # device's lastUpdateTime is. Stub adb/android, no emulator, no lease —
+      # the failure is logic, and a test needing a device would never run.
+      - name: Self-test android-cli install proof
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-android-cli-install.sh
+
+      # Content gate, deliberately separate from the logic test above. Google's
+      # `android run` has a measured install no-op and has been rediscovered
+      # THREE times (#2796, #2854, #2990) because each fix landed in one call
+      # site while the docs went on recommending it. Documenting the trap is
+      # fine; recommending it is not.
+      - name: No file teaches `android run` for installing
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/check-android-run-not-taught.sh
+
       # Changelog collation (collate-changelog.sh). It runs ONCE per release and
       # DELETES the fragments it consumed, so a bullet filed under the wrong
       # heading is found after the release notes are public, with the source
