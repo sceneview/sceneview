@@ -370,8 +370,14 @@ android_cli_describe() {
 # not stay silent.
 android_cli_install_stamp() {
   local serial="$1" pkg="$2"
+  # ALWAYS succeeds: "no stamp" is a legitimate answer (package absent, device
+  # gone), and callers already treat an empty result as "not proven". Without
+  # the `|| true` this pipeline fails under the lib's own `set -o pipefail`
+  # plus a caller's inherited `set -e`, and the whole helper is aborted with
+  # adb's raw exit code — measured: rc=3 and an EMPTY stderr, so the caller is
+  # told nothing at all. A reader would then debug the wrong layer.
   adb -s "$serial" shell dumpsys package "$pkg" 2>/dev/null \
-    | awk -F'=' '/lastUpdateTime=/{print $2; exit}' | tr -d '\r'
+    | awk -F'=' '/lastUpdateTime=/{print $2; exit}' | tr -d '\r' || true
 }
 
 # android_cli_install_and_launch <apk> <package/activity> [serial]

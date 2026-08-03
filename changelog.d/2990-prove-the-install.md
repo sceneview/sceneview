@@ -65,3 +65,16 @@
   locally for a reason that is not one: the author's `grep` is `ugrep`, which
   skips ignored paths, while CI runs GNU grep, which does not — measured with a
   probe file seen by one and not the other.
+- `android_cli_install_stamp` can no longer abort its caller. Its pipeline ran
+  under the lib's `set -o pipefail` plus a caller's inherited `set -e`, so an
+  `adb` failure while READING the stamp aborted the whole helper with adb's raw
+  exit code and an **empty stderr** — measured `rc=3`, no diagnostic at all, so
+  a reader would debug the wrong layer. "No stamp" is a legitimate answer and is
+  now returned as one; the helper then refuses with its own explanation (`rc=1`,
+  `INSTALL NOT PROVEN`).
+- The content gate no longer matches `gcloud firebase test android run` — an
+  unrelated Firebase Test Lab command ending in the same two words. Harmless
+  today (it appears only in a `.kt` file, outside the gated set), but the day
+  someone documents Test Lab in a `.md` the only escape would have been citing
+  an unrelated issue number, and a gate whose escape hatch is a lie teaches
+  people to lie to it.

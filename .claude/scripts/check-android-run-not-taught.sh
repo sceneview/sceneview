@@ -50,6 +50,15 @@
 #   file under node_modules/ was seen by /usr/bin/grep and NOT by the local
 #   grep. Enumerating TRACKED files removes the difference — same set on every
 #   host, and it is the set the repo actually ships.
+#
+# WHY `gcloud firebase test android run` IS EXCLUDED
+#   That is Firebase Test Lab, an unrelated command that happens to end in the
+#   same two words — and the space after `test` is a valid leading boundary, so
+#   a bare subcommand match hits it. It exists today only in a `.kt` file
+#   (DemoRenderingScreenshotTest.kt), outside the gated set, so nothing is
+#   failing; but the day someone documents Test Lab in a `.md`, the only escape
+#   would be citing an unrelated issue number. A gate whose escape hatch is a
+#   lie teaches people to lie to it.
 
 set -uo pipefail
 
@@ -61,6 +70,13 @@ cd "$ROOT" || exit 1
 # what was fixed, in the words used at the time.
 ISSUE_RE='#(2796|2854|2990)'
 
+# The subcommand, at a word boundary on both sides. NOT anchored on the flags:
+# five docs wrote `android run \` with a line continuation and a flag-anchored
+# probe missed all of them.
+MATCH_RE='(^|[^-[:alnum:]_])android run($|[^[:alnum:]_-])'
+# …but not Firebase Test Lab, which ends in the same two words.
+EXCLUDE_RE='(gcloud|firebase)[[:space:]]'
+
 offenders=()
 while IFS= read -r f; do
   case "$f" in
@@ -68,9 +84,14 @@ while IFS= read -r f; do
     ./.git/*) continue ;;
   esac
   grep -qE "$ISSUE_RE" "$f" && continue
+  # Every hit on this file is Firebase Test Lab? Then it does not teach the
+  # Android CLI's `android run` at all.
+  if [ "$(grep -cE "$MATCH_RE" "$f")" -eq "$(grep -E "$MATCH_RE" "$f" | grep -cE "$EXCLUDE_RE")" ]; then
+    continue
+  fi
   offenders+=("${f#./}")
 done < <(git ls-files -z -- '*.md' '*.sh' '*.yml' 2>/dev/null \
-         | xargs -0 grep -lE '(^|[^-[:alnum:]_])android run($|[^[:alnum:]_-])' 2>/dev/null \
+         | xargs -0 grep -lE "$MATCH_RE" 2>/dev/null \
          | sed 's|^|./|')
 
 if [ "${#offenders[@]}" -eq 0 ]; then
