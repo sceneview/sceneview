@@ -288,6 +288,18 @@ private fun SingleModelSection(
     // streamed roll the chip surfaces "Streaming…" → "Streamed (cached)".
     // When no key is configured, "Surprise me" is disabled in the controls
     // and we never enter the streaming branch — chip stays hidden.
+    //
+    // NOT an [AssetSourceProbe] site, deliberately — do not "finish" #2989 by routing
+    // this one through it too. "Surprise me" is true random content with no registry
+    // entry, so `pickRandomDownloadableModel` bypasses the resolver and calls
+    // `SketchfabService.downloadModel` directly (it takes a `SketchfabAssetResolver`
+    // only to satisfy its signature — the parameter is `@Suppress("UNUSED_PARAMETER")`).
+    // With no registry entry there is no bundled fallback to stage: a failure yields
+    // `null`, `streamedFileUrl` stays null, the chip hides and the bundled hero simply
+    // stays on screen. So this chip can never render a stand-in under a "Streamed"
+    // label — there is no origin to get wrong, which is the probe's entire reason to
+    // exist. The other four sites go through `SketchfabAssetResolver`, whose every
+    // failure path DOES end at a fallback file, and they do share the probe.
     val assetSource = when {
         streamedFileUrl == null -> null
         streamedModelInstance == null -> AssetSourceState.Streaming
