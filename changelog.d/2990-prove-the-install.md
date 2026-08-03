@@ -33,3 +33,10 @@
   refuses. The helper already tries that itself and only fails when it could not
   prove the install landed; retrying it and continuing unverified downgraded the
   guarantee back to the exit code the fix exists to stop trusting. It now aborts.
+- `check-workflow-scripts.sh` was invisible to shellcheck. Two prose comments
+  began with the word `shellcheck`, which the tool parses as a malformed
+  DIRECTIVE (SC1073) and then stops analysing the rest of the file — so the
+  script that lints every workflow `run:` block was itself never linted. Both
+  reworded; the file now parses clean (2 diagnostics → 0, and the remaining
+  body is actually analysed). Pre-existing, unrelated to this fix, taken because
+  the message literally reads "Fix to allow more checks".
