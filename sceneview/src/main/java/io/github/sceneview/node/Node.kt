@@ -747,7 +747,7 @@ open class Node protected constructor(
      * to `0` on every other live [Node] whenever that happens, forcing a fresh, correct
      * lookup on next read.
      */
-    internal var _transformInstance: EntityInstance = 0
+    private var _transformInstance: EntityInstance = 0
     val transformInstance: EntityInstance
         get() {
             if (_transformInstance == 0) {
