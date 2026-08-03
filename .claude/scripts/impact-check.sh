@@ -151,6 +151,8 @@ else
     # .cursorrules / mcp guides — those were blind spots, which is exactly why
     # the count drifted silently across them.
     for f in README.md llms.txt website-static/index.html docs/docs/showcase.md mcp/README.md \
+             marketing/articles/article-1-compose-native-3d.md marketing/awesome-lists/submissions.md \
+             marketing/stackoverflow/qa-drafts.md \
              docs/docs/cheatsheet.md docs/docs/manifest.json docs/docs/platforms.md \
              docs/docs/try.md .cursorrules .windsurfrules mcp/src/guides.ts \
              docs/docs/structured-data.json docs/docs/index.md; do
@@ -173,6 +175,28 @@ else
             # is generic rather than by guessing what is not.
             CLAIMS=$(grep -oiE '[0-9]+\+ (built-in |composable )?node type' "$f" 2>/dev/null \
                 | grep -oE '[0-9]+' 2>/dev/null | sort -u || true)
+            # SPLIT-MARKUP stat cards: the number and its label live in two
+            # separate elements, so the line regex above is structurally blind to
+            # them — `docs/docs/index.md` sat at "30+ Node Types" and
+            # `website-static/index.html` at "26+" while every line-based check
+            # reported clean (#2987).
+            #
+            # Pair-aware on purpose. A `grep -v` on the LABEL only drops the label
+            # line and leaves the number line orphaned, which reported the
+            # website's legitimate "26+ 3D node types" as "Claims 26, actual 46".
+            # awk keeps the previous line, so the qualifier decides the PAIR.
+            SPLIT=$(awk '
+                /[Nn]ode [Tt]ype/ {
+                    if (tolower($0) ~ /(3d|ios|swift|web|ar) node type/) { prev=$0; next }
+                    if (match(prev, />[0-9]+\+</)) {
+                        n = substr(prev, RSTART+1, RLENGTH-3); print n
+                    }
+                }
+                { prev=$0 }
+            ' "$f" 2>/dev/null | sort -u || true)
+            if [[ -n "$SPLIT" ]]; then
+                CLAIMS=$(printf '%s\n%s\n' "$CLAIMS" "$SPLIT" | grep -oE '[0-9]+' | sort -u)
+            fi
             if [[ -n "$CLAIMS" ]]; then
                 BAD=""
                 for c in $CLAIMS; do
