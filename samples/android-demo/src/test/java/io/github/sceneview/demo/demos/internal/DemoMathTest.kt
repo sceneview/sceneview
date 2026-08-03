@@ -592,26 +592,61 @@ class DemoMathTest {
     }
 
     @Test
-    fun `floatHoverY keeps the floating box clear of the floor and the grounded box`() {
-        // The whole redesign rests on the floating box reading as unmistakably ALOFT at every
-        // phase: its lowest point must clear the grounded box's highest point, and its highest
-        // point must stay below the wall TV. Box edge is 0.38 m (BOX_EDGE_METERS in the demo),
-        // so the half-edge is 0.19 m.
+    fun `floatHoverY box faces clear the landed box and stay below the wall TV`() {
+        // Asserts on box FACES, never on centres: a centre comparison is satisfied by two boxes
+        // that visibly interpenetrate, so it cannot testify to any clearance (#2961 — the
+        // predecessor of this test compared centres while its comment claimed a face clearance).
+        // Box edge is 0.38 m (BOX_EDGE_METERS in the demo), so the half-edge is 0.19 m; the demo
+        // seats the grounded box at (half-edge + hop) and the floating box at floatHoverY().
         val boxHalfEdge = 0.38f / 2f
-        // Grounded box centre peaks at (rest half-edge + bounce max); floating centre dips to
-        // (rest centre − bob). The floating box must never come down to the grounded box.
-        val groundedHighestCentre = boxHalfEdge + DemoMath.CONTACT_BOUNCE_MAX_HEIGHT_METERS
-        val floatingLowestCentre = floatCenter - floatBob
-        assertTrue(
-            "floating lowest centre ($floatingLowestCentre) must exceed grounded highest centre ($groundedHighestCentre)",
-            floatingLowestCentre > groundedHighestCentre,
-        )
-        // Floating box top (centre + bob + half-edge) must stay below the wall TV's bottom edge
-        // (TV centre y = 1.3 m, height 0.74 m → bottom 0.93 m) so they never visually overlap.
+        val groundedLandedTop = boxHalfEdge + boxHalfEdge
+        val groundedPeakTop = boxHalfEdge + DemoMath.CONTACT_BOUNCE_MAX_HEIGHT_METERS + boxHalfEdge
+        val floatingLowestBottom = floatCenter - floatBob - boxHalfEdge
+        val floatingLowestTop = floatCenter - floatBob + boxHalfEdge
         val floatingHighestTop = floatCenter + floatBob + boxHalfEdge
+
+        // 1. Floor of the design: the floating box's bottom face never sinks below the grounded
+        // box's top face at its LANDING pose. Measured clearance is 0.000 m — the two faces are
+        // exactly flush (0.38 m), so this bound is knife-edge and any downward drift breaks it.
+        val landedClearance = floatingLowestBottom - groundedLandedTop
         assertTrue(
-            "floating box top ($floatingHighestTop) must stay below the TV bottom (0.93)",
-            floatingHighestTop < 0.93f,
+            "floating bottom ($floatingLowestBottom m) must not sink below the landed box's top " +
+                "($groundedLandedTop m) — clearance ${landedClearance} m, must be >= 0.000 m",
+            landedClearance >= -eps,
         )
+
+        // 2. And the honest converse: over the PEAK of the hop there is NO clearance at all. The
+        // grounded box's top face rises 0.340 m ABOVE the floating box's lowest bottom face; the
+        // silhouettes overlap in screen-Y and are told apart only by their 0.38 m X separation.
+        // Pinned so the KDoc's stated overlap can never quietly stop matching the constants.
+        assertEquals(
+            "grounded peak top ($groundedPeakTop m) vs floating lowest bottom " +
+                "($floatingLowestBottom m): overlap must be 0.340 m, not a clearance",
+            0.340f,
+            groundedPeakTop - floatingLowestBottom,
+            eps,
+        )
+
+        // 3. What actually carries the "aloft" reading at every phase is the TOP-face ordering:
+        // the floating box's top face at its lowest still clears the grounded box's top face at
+        // its highest by 0.040 m, so the hopping twin never overtakes it.
+        val topMargin = floatingLowestTop - groundedPeakTop
+        assertTrue(
+            "floating top at the bottom of the bob ($floatingLowestTop m) must stay above the " +
+                "grounded top at the peak of the hop ($groundedPeakTop m) — margin ${topMargin} m, " +
+                "expected 0.040 m",
+            topMargin > eps,
+        )
+        assertEquals("top-face margin, metres", 0.040f, topMargin, eps)
+
+        // 4. Headroom: the floating box's top face stays 0.070 m below the wall TV's bottom edge
+        // (TV centre y = 1.3 m, height 0.74 m → bottom 0.93 m) so they never visually overlap.
+        val tvMargin = 0.93f - floatingHighestTop
+        assertTrue(
+            "floating box top ($floatingHighestTop m) must stay below the TV bottom (0.93 m) — " +
+                "margin ${tvMargin} m, expected 0.070 m",
+            tvMargin > eps,
+        )
+        assertEquals("wall-TV headroom, metres", 0.070f, tvMargin, eps)
     }
 }

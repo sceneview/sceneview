@@ -408,10 +408,38 @@ internal object DemoMath {
     const val CONTACT_FLOAT_PERIOD_NANOS = 3_400_000_000L
 
     /**
-     * Rest height (metres, box **centre**) of the floating box. Chosen so the box hovers well
-     * clear of the floor at all times — its lowest point (`centre − bob − half-edge`) never
-     * reaches the grounded box's highest point, and its highest point stays below the wall TV.
-     * See the `floatHoverY … stays clear of the floor and the grounded box` test.
+     * Rest height (metres, box **centre**) of the floating box.
+     *
+     * The two boxes are 0.38 m apart along X and never intersect, so what this constant buys is
+     * a **vertical reading order on screen**, not a physical gap. The real geometry, with the
+     * demo's 0.38 m box edge (half-edge 0.19 m) and 0.34 m hop peak:
+     *
+     * | face | metres |
+     * |---|---|
+     * | grounded box top, at its landing pose | 0.38 |
+     * | grounded box top, at the peak of the hop | 0.72 |
+     * | floating box bottom, at the bottom of the bob | 0.38 |
+     * | floating box top, at the bottom of the bob | 0.76 |
+     * | floating box top, at the top of the bob | 0.86 |
+     *
+     * So there is **no face-to-face clearance over the hopping box**: at the peak of the hop the
+     * grounded box's top face is 0.34 m *above* the floating box's lowest bottom face — the two
+     * silhouettes overlap in screen-Y, and they are only told apart by their 0.38 m horizontal
+     * separation. Against the grounded box's *landing* pose the two faces are exactly flush
+     * (0.38 m vs 0.38 m, 0.00 m of clearance), which is the floor this constant may never sink
+     * below.
+     *
+     * A genuine clearance over the *peak* is geometrically impossible in this room and was not
+     * what shipped: it would need a rest centre above `0.72 + bob + half-edge = 0.96 m`, whose
+     * top face at 1.20 m punches through the wall TV's bottom edge (0.93 m). The room affords a
+     * rest centre of at most 0.69 m.
+     *
+     * What the constants *do* guarantee, and what carries the "aloft" reading at every phase, is
+     * a **top-face** ordering: the floating box's top face at its lowest (0.76 m) still sits
+     * 0.04 m above the grounded box's top face at its highest (0.72 m), so the floating box is
+     * never overtaken by its hopping twin. Its own top face stays 0.07 m below the wall TV
+     * (0.86 m vs 0.93 m). All four figures are pinned by the
+     * `floatHoverY box faces clear the landed box and stay below the wall TV` test.
      */
     const val CONTACT_FLOAT_CENTER_Y_METERS = 0.62f
 
