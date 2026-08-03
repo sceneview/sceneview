@@ -87,3 +87,8 @@
   instead of the word `firebase` appearing anywhere on the line. A line that
   genuinely recommended the install *and* happened to mention Firebase would
   otherwise have been excluded — the exclusion would have become the hole.
+- The content gate's enumerator passes `--` before the file list and `-r` to
+  `xargs`. Without `--`, a tracked path starting with `-` is read by `grep` as
+  an option: measured, one such file aborts the whole batch with
+  `unknown --directories option` and silently drops every file in it — a gate
+  that evades itself. Mutation-tested with exactly such a file.

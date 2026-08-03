@@ -99,8 +99,14 @@ while IFS= read -r f; do
     continue
   fi
   offenders+=("${f#./}")
+# `--` before the file list, and `-r` so an empty list never makes grep block on
+# stdin. Without `--`, a tracked path starting with `-` is read by grep as an
+# OPTION: measured, one such file makes grep abort the whole batch with
+# "unknown --directories option", silently dropping every file in it — a gate
+# that evades itself. Both flags verified on this host's BSD xargs and on the
+# GNU xargs CI runs.
 done < <(git ls-files -z 2>/dev/null \
-         | xargs -0 grep -lIE "$MATCH_RE" 2>/dev/null \
+         | xargs -0r grep -lIE "$MATCH_RE" -- 2>/dev/null \
          | sed 's|^|./|')
 
 if [ "${#offenders[@]}" -eq 0 ]; then
