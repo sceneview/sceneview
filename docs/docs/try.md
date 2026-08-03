@@ -65,10 +65,16 @@ Browse all APKs
 # (https://developer.android.com/tools/agents/android-cli)
 curl -fSL -o /tmp/sceneview-android-demo.apk \
   https://github.com/sceneview/sceneview/releases/latest/download/sceneview-android-demo.apk \
-  && android run \
-    --apks=/tmp/sceneview-android-demo.apk \
-    --activity=io.github.sceneview.demo/.MainActivity
+  && adb install -r /tmp/sceneview-android-demo.apk \
+  && adb shell am start -n io.github.sceneview.demo/.MainActivity
 ```
+
+> ⚠️ **Not `android run`.** Google's `android` CLI has a measured install
+> no-op: it prints `App loaded:` / `Debuggable: true`, then rejects an activity
+> the platform resolves fine, **and exits 0 having installed nothing** — leaving
+> the previous build on the device. Seen three times in this repo (#2796, #2854,
+> #2990). Use `adb install -r` and check the install actually landed:
+> `adb shell dumpsys package io.github.sceneview.demo | grep lastUpdateTime`.
 
 …or, with the legacy `adb` toolchain:
 

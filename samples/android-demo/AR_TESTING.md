@@ -194,12 +194,11 @@ fixtures under 50 MB each.
 adb shell am start -n io.github.sceneview.demo/.MainActivity --es demo ar-record-playback
 ```
 
-The same launch with [`android` CLI](https://developer.android.com/tools/agents/android-cli)
-(installs the APK as part of the same call if needed — pass `--apks`):
-
-```
-android run --activity=io.github.sceneview.demo/.MainActivity
-```
+> ⚠️ **Do not use `android run` for this.** It has a measured install no-op —
+> it prints success-shaped output, rejects an activity the platform resolves,
+> and exits 0 having installed nothing, leaving the previous build on the
+> device (#2796, #2854, #2990). Stay on `adb` above, and confirm the install
+> landed with `adb shell dumpsys package io.github.sceneview.demo | grep lastUpdateTime`.
 
 Note: `android run` does not yet expose `--es` intent extras, so for the
 deep-link launch above stick with `adb shell am start` until v0.8+.

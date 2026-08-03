@@ -170,8 +170,10 @@ jobs:
             export PATH="$HOME/.local/bin:$PATH"
 
             # Block until the emulator finishes booting. The action waits for
-            # device-online but not for package-manager readiness — `android run`
-            # would otherwise race the PM during cold boot.
+            # device-online but not for package-manager readiness — the install
+            # below would otherwise race the PM during cold boot. (This workflow
+            # installs with `adb`; it never calls `android run`, which has a
+            # measured install no-op — see #2990.)
             #
             # The `script:` block is executed line-by-line by the action via
             # `sh -c <line>` (not `bash <script>`), so a multi-line `while … done`

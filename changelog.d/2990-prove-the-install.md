@@ -19,11 +19,16 @@
   sub-command position — so that flag, which the report flagged as suspicious, is
   **not** the cause. The silent non-install remains unexplained upstream, which is
   exactly why the helper verifies instead of trusting.
-- Three other places still taught the disproven command, found by grepping for
-  every copy rather than fixing the one the review named: `agents/sceneview/SKILL.md`
-  (the **public** skill installed for any AI agent on the host — the worst of the
-  three), the advice `setup-ar-emulator.sh` prints after provisioning, and a log
-  line in the screenshot capture script.
+- Every remaining place that taught the disproven command is fixed: the **public**
+  `agents/sceneview/SKILL.md` (installed for any AI agent on the host), the
+  flagship `docs/docs/try.md` quickstart, `samples/README.md`,
+  `samples/android-demo/README.md`, `samples/android-demo/AR_TESTING.md`, the
+  advice `setup-ar-emulator.sh` prints after provisioning, and stale comments in
+  `try-demo.sh`, `render-tests.yml` and `maintain.md`. A first pass claimed
+  completeness after finding three — it had grepped for `android run --apks`, and
+  five docs write `android run \` with a line continuation, so the probe was too
+  narrow and reported an all-clear. `test-android-cli-install.sh` now matches the
+  **subcommand** and fails when any file teaches it without naming the defect.
 - `qa-android-demos.sh` no longer retries a bare `adb install -r` when the helper
   refuses. The helper already tries that itself and only fails when it could not
   prove the install landed; retrying it and continuing unverified downgraded the

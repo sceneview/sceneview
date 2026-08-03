@@ -203,7 +203,8 @@ when you already hold the components. Reading `node.worldPosition` /
 This skill is most useful paired with the **`android-cli`** skill:
 
 - ⛔ `android run --apks=APK --activity=PKG/.MainActivity` — **do not use.**
-  Measured 2026-08-03 on CLI 1.0.15498356: it printed `App loaded:` and
+  Measured three times in this repo (#2796, #2854, #2990) — most recently on
+  CLI 1.0.15498356, where it printed `App loaded:` and
   `Debuggable: true`, then rejected an activity the platform resolves fine, and
   **installed nothing** — leaving an older build on the device while a QA run
   measured it. Install with `adb install -r APK` and launch with

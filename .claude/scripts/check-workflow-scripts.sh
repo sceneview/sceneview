@@ -33,6 +33,9 @@
 #   - PR #1068 used a multi-line `while ... done` block — sliced by the
 #     emulator runner's per-line `sh -c`; fixed by PR #1104.
 #   - HOTFIX-V430 (commit efc168bc) used a multi-line `android run \`
+#     (that command is disavowed for installs — see #2990 — but the LINT
+#     rule below is about multi-line commands in workflow YAML, not about
+#     which command it is)
 #     backslash continuation — `dash -n` accepts a `\<EOL>` because the
 #     parser sees the whole file as one script, but the runner ships each
 #     line through `sh -c`, so the trailing `\` becomes a literal argv

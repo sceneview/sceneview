@@ -113,8 +113,12 @@ download_and_install() {
   echo -e "${GREEN}✓${RESET} Downloaded"
 
   echo -e "${CYAN}Installing on device...${RESET}"
-  # `android run` installs AND launches in one call when the CLI is available;
-  # the helper falls back to `adb install` + `am start` otherwise.
+  # The helper installs and launches, and PROVES the install landed rather than
+  # trusting an exit code (#2990 — `android run` printed success and installed
+  # nothing three times in this repo). It returns non-zero when it cannot prove
+  # it; `set -euo pipefail` at the top of this script is what stops the
+  # "✓ Installed" below from printing in that case. Do not remove that, and do
+  # not wrap this call in `|| true`.
   if type android_cli_install_and_launch >/dev/null 2>&1 \
      && { command -v android >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/android" ]]; }; then
     android_cli_install_and_launch "$tmp_apk" "${DEMO_PKG}/.MainActivity"
@@ -155,7 +159,9 @@ build_and_install() {
 
   echo -e "${GREEN}✓${RESET} Built: $(basename "$apk")"
   echo -e "${CYAN}Installing on device...${RESET}"
-  # Atomic install+launch via `android run` when available; adb fallback otherwise.
+  # Same contract as install_prebuilt above: the helper proves the install and
+  # returns non-zero when it cannot. `set -e` turns that into an abort before
+  # the success line (#2990).
   if type android_cli_install_and_launch >/dev/null 2>&1 \
      && { command -v android >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/android" ]]; }; then
     android_cli_install_and_launch "$apk" "${pkg}/.MainActivity"
