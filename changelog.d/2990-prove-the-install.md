@@ -103,3 +103,14 @@
   An earlier pass reported that comment fixed; it had used a conditional
   replacement with no assertion, the pattern did not match, and the edit
   silently did nothing. The header now states what the script actually does.
+- `tools/try-demo.sh` no longer gates the verified helper on the `android` CLI
+  being installed. Both install sites did `if <CLI present> then <helper> else
+  adb install -r`, so a developer with only `adb` took an **unproven** path —
+  the same shape fixed in `qa-android-demos.sh`, in the other caller, and it
+  contradicted the header added one commit earlier. The helper performs that
+  check itself and its adb fallback carries the proof.
+- Its `check_device` claimed "either `android` or `adb` is fine, the CLI being
+  preferred", then required `adb` ten lines below — so the friendly first error
+  could never fire, and the advice it gave (install the CLI) unblocked nobody.
+  `adb` is stated as required; the CLI is optional and explicitly not an
+  installer.
