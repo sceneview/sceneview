@@ -202,8 +202,14 @@ when you already hold the components. Reading `node.worldPosition` /
 
 This skill is most useful paired with the **`android-cli`** skill:
 
-- `android run --apks=APK --activity=PKG/.MainActivity` — install + launch in
-  one call.
+- ⛔ `android run --apks=APK --activity=PKG/.MainActivity` — **do not use.**
+  Measured 2026-08-03 on CLI 1.0.15498356: it printed `App loaded:` and
+  `Debuggable: true`, then rejected an activity the platform resolves fine, and
+  **installed nothing** — leaving an older build on the device while a QA run
+  measured it. Install with `adb install -r APK` and launch with
+  `adb shell am start -n PKG/.MainActivity`, then confirm the device's
+  `lastUpdateTime` actually moved (`adb shell dumpsys package PKG`). An install
+  step that reports success is not evidence the binary on the device is yours.
 - `android screen capture --annotate -o ui.png` + `android screen resolve
   --screenshot=ui.png --string="tap #N"` — visual UI testing of a 3D scene.
 - `android layout --pretty -o ui.json` — Compose UI tree dump (the 3D viewport

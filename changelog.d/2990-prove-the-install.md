@@ -19,3 +19,12 @@
   sub-command position — so that flag, which the report flagged as suspicious, is
   **not** the cause. The silent non-install remains unexplained upstream, which is
   exactly why the helper verifies instead of trusting.
+- Three other places still taught the disproven command, found by grepping for
+  every copy rather than fixing the one the review named: `agents/sceneview/SKILL.md`
+  (the **public** skill installed for any AI agent on the host — the worst of the
+  three), the advice `setup-ar-emulator.sh` prints after provisioning, and a log
+  line in the screenshot capture script.
+- `qa-android-demos.sh` no longer retries a bare `adb install -r` when the helper
+  refuses. The helper already tries that itself and only fails when it could not
+  prove the install landed; retrying it and continuing unverified downgraded the
+  guarantee back to the exit code the fix exists to stop trusting. It now aborts.

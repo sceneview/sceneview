@@ -358,7 +358,7 @@ installed_stamp() {
 STAMP_BEFORE="$(installed_stamp)"
 
 if android_cli_locate && [[ "$DEVICE_LINES" -eq 1 ]]; then
-  echo "[capture] android run --apks=$APK_PATH (install+launch)" >&2
+  echo "[capture] android_cli_install_and_launch $APK_PATH (install+launch, adb fallback)" >&2
   android_cli_install_and_launch "$APK_PATH" "$PKG/.MainActivity" >/dev/null || true
 else
   echo "[capture] adb install -r $APK_PATH" >&2

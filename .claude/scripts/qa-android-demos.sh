@@ -214,9 +214,17 @@ if $INSTALL; then
   echo "[qa] installing $APK"
   android_cli_ensure || true
   if android_cli_locate; then
+    # No local fallback here any more. The helper ALREADY tries `adb install -r`
+    # itself and only returns non-zero when it could not prove the install
+    # landed (#2990). Retrying a bare `adb install` at this level would repeat
+    # the step the helper just proved ineffective, and then continue WITHOUT
+    # verification — downgrading the helper's guarantee to the exit code it was
+    # written to stop trusting. A QA sweep that proceeds here measures a binary
+    # nobody can vouch for, which is worse than not running at all.
     android_cli_install_and_launch "$APK" "${PACKAGE}/${ACTIVITY}" >/dev/null || {
-      echo "[qa] android run failed, falling back to adb install" >&2
-      adb install -r "$APK"
+      echo "[qa] ⛔ install could not be proven for $PACKAGE — refusing to QA a" >&2
+      echo "[qa]   build the device may not be running. See #2990." >&2
+      exit 1
     }
   else
     adb install -r "$APK"
