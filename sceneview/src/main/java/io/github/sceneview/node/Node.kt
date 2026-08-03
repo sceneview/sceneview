@@ -689,8 +689,15 @@ open class Node(
      * entity in the [TransformManager], so we only pay the JNI thunk once instead of
      * on every transform getter/setter — read by every `transform` / `worldTransform`
      * / `worldPosition` / smooth-animation tick at 60–120 Hz (#2269).
+     *
+     * That stability assumption only holds *between* other entities' transform-component
+     * creations/destructions: [TransformManager] is a packed-array store, so creating or
+     * destroying any entity's transform component can silently reindex every other live
+     * entity's handle. [registerLive] + [invalidateSiblingTransformInstances] zero this back
+     * to `0` on every other live [Node] whenever that happens, forcing a fresh, correct
+     * lookup on next read.
      */
-    private var _transformInstance: EntityInstance = 0
+    internal var _transformInstance: EntityInstance = 0
     val transformInstance: EntityInstance
         get() {
             if (_transformInstance == 0) {
@@ -706,6 +713,42 @@ open class Node(
     init {
         if (!transformManager.hasComponent(entity)) {
             transformManager.create(entity)
+        }
+        registerLive(this)
+        // Creating this entity's transform component can itself trigger a capacity-triggered
+        // growth/reallocation of the TransformManager's packed array, reindexing OTHER already-
+        // live entities' handles — not just this one's. Invalidate siblings here too, not only
+        // in destroy(), or those nodes keep reading through a now-stale cached instance.
+        invalidateSiblingTransformInstances(this)
+    }
+
+    companion object {
+        // Weakly-referenced per-Engine registry of live Nodes, so a Node's construction or
+        // destruction can invalidate every OTHER live Node's cached transformInstance without
+        // keeping any Node alive artificially. TransformManager's packed-array reindexing is
+        // engine-wide, not scoped to any particular scene-graph subtree.
+        private val liveNodesByEngine =
+            java.util.WeakHashMap<Engine, MutableSet<java.lang.ref.WeakReference<Node>>>()
+
+        private fun registerLive(node: Node) {
+            val set = liveNodesByEngine.getOrPut(node.engine) {
+                java.util.Collections.newSetFromMap(java.util.WeakHashMap())
+            }
+            set.add(java.lang.ref.WeakReference(node))
+        }
+
+        private fun invalidateSiblingTransformInstances(source: Node) {
+            val set = liveNodesByEngine[source.engine] ?: return
+            val stale = mutableListOf<java.lang.ref.WeakReference<Node>>()
+            for (ref in set) {
+                val node = ref.get()
+                if (node == null) {
+                    stale.add(ref)
+                } else if (node !== source) {
+                    node._transformInstance = 0
+                }
+            }
+            set.removeAll(stale.toSet())
         }
     }
 
@@ -1222,6 +1265,10 @@ open class Node(
         runCatching { parent = null }
         engine.safeDestroyTransformable(entity)
         engine.safeDestroyEntity(entity)
+        // Destroying this entity's transform component can reindex OTHER live entities' handles
+        // in TransformManager's packed array — invalidate every other live Node's cache so the
+        // next read re-resolves instead of silently operating on a stale/reassigned slot.
+        invalidateSiblingTransformInstances(this)
     }
 }
 
