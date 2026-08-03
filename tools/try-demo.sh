@@ -10,21 +10,22 @@
 #  Requirements:
 #    - Android device connected via USB/Wi-Fi with USB debugging ON
 #    - Java 17+ (for local build)
-#    - Google's `android` CLI on PATH (preferred — atomic install+launch,
-#      JSON layouts, LF/CRLF-safe screenshots).
+#    - `adb` on PATH (comes with Android SDK platform-tools) — required.
+#    - Google's `android` CLI is OPTIONAL, and used only for JSON layouts and
+#      LF/CRLF-safe screenshots. NOT for installing: its `android run` has a
+#      measured install no-op — it prints success and leaves the previous build
+#      on the device (#2796, #2854, #2990).
 #      Install: https://developer.android.com/tools/agents/android-cli
-#    - …or `adb` on PATH (legacy fallback, comes with Android SDK platform-tools).
 #
-#  When both are present, this script uses `android run` for atomic install +
-#  launch. Otherwise it falls back to the classic `adb install` + `am start`
-#  flow. The device-count check requires `adb` (the `android` CLI in v0.7 has
-#  no `devices` subcommand).
+#  Installing always goes through `android_cli_install_and_launch`, which proves
+#  the install landed against the device's `lastUpdateTime` and falls back to
+#  `adb install -r` + `am start`. The device-count check requires `adb`.
 # ─────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 # Source the shared helper if available — it provides
-# `android_cli_install_and_launch` which transparently picks `android run` or
-# the adb fallback. We DON'T auto-install the android CLI from this script
+# `android_cli_install_and_launch`, which proves the install landed instead of
+# trusting an exit code (#2990). We DON'T auto-install the android CLI from this script
 # (that would surprise an end-user running `./try-demo` for the first time).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_CLI_LIB="$SCRIPT_DIR/../.claude/scripts/lib/android-cli.sh"

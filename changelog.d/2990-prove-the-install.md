@@ -98,3 +98,8 @@
   unproven-install class, one branch over. The helper does that check itself and
   its fallback carries the proof, so the branch was both unverified and
   redundant.
+- `tools/try-demo.sh`'s file header still marketed the `android` CLI as
+  "preferred — atomic install+launch" and said the script "uses `android run`".
+  An earlier pass reported that comment fixed; it had used a conditional
+  replacement with no assertion, the pattern did not match, and the edit
+  silently did nothing. The header now states what the script actually does.
