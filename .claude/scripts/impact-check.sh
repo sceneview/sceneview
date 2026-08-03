@@ -304,7 +304,15 @@ echo -e "${CYAN}--- Sample app build (fast check) ---${NC}"
 trace "Android sample build dry-run gate"
 
 # Only check if Android SDK source changed.
-if [[ ! -d ".git" ]]; then
+#
+# `.git` is a DIRECTORY only in a primary checkout. In a linked worktree — how
+# `.claude/worktrees/*` and every agent-isolated session runs — it is a regular
+# FILE holding `gitdir: …`, so a `-d` test declared "not a git repository" and
+# skipped this leg exactly where most work now happens (#2988). Worse, it
+# announced itself as an environment limitation, so the skip read as expected
+# and nobody looked. Ask git whether this is a work tree instead of guessing
+# from the shape of `.git`.
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     check "Android demo assembleDebug" "SKIP" "not a git repository"
 elif [[ ! -x "./gradlew" ]]; then
     check "Android demo assembleDebug" "SKIP" "gradlew not present in checkout"
