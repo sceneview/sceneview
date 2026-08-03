@@ -317,19 +317,29 @@ jobs:
           # file operations plus comment/GitHub operations, and the docs say so
           # explicitly. This orchestrator is the one caller in the repo that needs
           # both: `Task` to spawn the four reviewers and every adversarial verifier,
-          # and git to compute the diff its first instruction depends on. Without
-          # them the run burns its turns on permission denials and writes no
-          # `review-verdict.json` — which the grader then reports, correctly, as
-          # REVIEW_INCOMPLETE. Measured on runs 30719330035 (#2962) and 30719442685
-          # (#2963): 26 turns, 7 denials, zero reviewers, no verdict file. That is
-          # why `doc-audit`/`maintenance`/`issue-intake` are fine on the same bare
+          # and a shell to compute the diff its first instruction depends on. That
+          # is why `doc-audit`/`maintenance`/`issue-intake` are fine on a bare
           # `--model` arg — they reach GitHub through MCP tools and spawn nobody.
           #
-          # The git allowlist is deliberately per-subcommand instead of `git:*`:
-          # reviewers share ONE working tree, so a `git checkout`/`switch`/`reset`
-          # would corrupt it under the others (#2431). The prompt already forbids
-          # that; this makes it structural rather than a request.
-          claude_args: '--model claude-opus-4-8 --allowedTools "Task,Read,Glob,Grep,Write,Bash(git fetch:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*)"'
+          # ⚠️ `Bash` IS BARE ON PURPOSE, and the narrower form was measured to
+          # fail. Two fixes for this landed within minutes of each other: #2952
+          # allowlisted five git subcommands, #2964 allowlisted `Bash`. The merge
+          # was textually clean and kept the FIRST — so the broader grant, which
+          # was the one under test, was silently reverted before it ever ran
+          # (#2927's lesson, on this very workflow). What the narrow form actually
+          # produced, on run 30719795972 with the allowlist echoed back resolved in
+          # the SDK options: 26 turns, 10 denials, no `review-verdict.json`. A
+          # reviewer reads a diff with more than five git subcommands — `ls`,
+          # `cat`, `rg`, a build file — and every one of those was a denial.
+          #
+          # #2431 is preserved where it belongs: as a DENY list, not by starving
+          # the shell. Reviewers share ONE working tree, so a `git checkout`,
+          # `switch`, `reset` or `stash` corrupts it under the others. The prompt
+          # already forbids it; these four make it structural.
+          claude_args: >-
+            --model claude-opus-4-8
+            --allowedTools "Task,Read,Glob,Grep,Write,Bash"
+            --disallowedTools "Bash(git checkout:*),Bash(git switch:*),Bash(git reset:*),Bash(git stash:*)"
           prompt: |
             You are the SceneView PR review ORCHESTRATOR running in CI.
 
@@ -450,64 +460,48 @@ jobs:
                       | grep -o '[0-9]\+$' | sort -rn | head -1)"
           [ -n "$DENIALS" ] || DENIALS=unknown
           echo "Permission denials reported by the fan-out: $DENIALS"
+          # The COUNT alone is what made this workflow's first diagnosis wrong:
+          # it went 7 → 10 across a "fix" and said nothing about WHICH tool was
+          # refused, so the next guess was as blind as the last. Name them.
+          # Denial messages only — bounded to 20 × 300 chars, no diff and no
+          # transcript, so a public log never becomes an exfiltration surface.
+          python3 - "$LOG" <<'PY' || true
+          import json, re, sys
+          try:
+              data = json.load(open(sys.argv[1]))
+          except Exception as exc:
+              print(f"(could not parse the run record: {exc})")
+              sys.exit(0)
+          pat = re.compile(r"haven't granted|requested permissions|not allowed|permission denied", re.I)
+          hits, seen = [], set()
+          def walk(node):
+              if isinstance(node, dict):
+                  for v in node.values(): walk(v)
+              elif isinstance(node, list):
+                  for v in node: walk(v)
+              elif isinstance(node, str) and pat.search(node):
+                  s = node.strip()[:300]
+                  if s not in seen:
+                      seen.add(s); hits.append(s)
+          walk(data)
+          if not hits:
+              print("No denial message matched in the run record.")
+          for h in hits[:20]:
+              print(f"  denied: {h}")
+          if len(hits) > 20:
+              print(f"  … +{len(hits) - 20} more (truncated)")
+          PY
 
-          # Name the refused tools when the record carries them — "13 denials"
-          # does not tell you WHICH allowlist entry is missing, which is the
-          # only actionable part.
-          TOOLS="$(grep -oE '"tool_name"[[:space:]]*:[[:space:]]*"[^"]+"' "$LOG" 2>/dev/null \
-                    | sed 's/.*"\([^"]*\)"$/\1/' | sort | uniq -c | sort -rn | head -12)"
-          if [ -n "$TOOLS" ]; then
-            echo "Tools the fan-out invoked (count / name):"
-            printf '%s\n' "$TOOLS"
-          fi
-
-          # ⛔ THIS REPOSITORY IS PUBLIC — artifacts on a public repo are
-          #   downloadable by anyone. The run record holds whatever the agents
-          #   read, so it is NOT uploaded. What gets kept is a structural
-          #   summary: JSON key names, tool names, and numeric counters. That is
-          #   enough to name a missing allowlist entry and carries none of the
-          #   content. `show_full_output` is off for the same reason and stays off.
-          SUMMARY="$RUNNER_TEMP/fanout-shape.txt"
-          {
-            echo "# Structural summary of the fan-out run record."
-            echo "# Key names, tool names and counters only — never message content."
-            echo
-            echo "## JSON keys present"
-            grep -oE '"[a-z_][a-z_0-9]*"[[:space:]]*:' "$LOG" 2>/dev/null \
-              | tr -d '":' | tr -d ' ' | sort | uniq -c | sort -rn | head -40
-            echo
-            echo "## Tool names seen"
-            grep -oE '"(tool_name|subtype|type)"[[:space:]]*:[[:space:]]*"[A-Za-z_][A-Za-z_0-9]*"' "$LOG" 2>/dev/null \
-              | sed 's/.*"\([A-Za-z_0-9]*\)"$/\1/' | sort | uniq -c | sort -rn | head -40
-            echo
-            echo "## Numeric counters"
-            grep -oE '"[a-z_]+"[[:space:]]*:[[:space:]]*[0-9.]+' "$LOG" 2>/dev/null \
-              | sort -u | head -40
-          } > "$SUMMARY" 2>/dev/null || true
-          echo "Structural summary written to $SUMMARY"
-
+          # THREE branches, not two. `unknown` must never fall through to the
+          # "they ran fine" message — that fall-through is what printed
+          # "0 denials" on run 30800040485 while the action reported 13.
           if [ "$DENIALS" = "unknown" ]; then
-            echo "::error title=Denial count unreadable::No permission_denials_count found in ${LOG}. NOT the same as zero — the run record's shape changed, or the action did not write a summary. Download the fanout-shape artifact attached to this run and re-check before concluding anything about the reviewers."
+            echo "::error title=Denial count unreadable::No permission_denials_count found in ${LOG}. NOT the same as zero — the run record's shape changed, or the action wrote no summary. Read the denial messages above before concluding anything about the reviewers."
           elif [ "$DENIALS" -gt 0 ]; then
-            echo "::error title=Reviewers were denied their tools::${DENIALS} tool call(s) refused, so the fan-out could not complete and no verdict file exists. This is a CONFIGURATION failure, not a finding about the PR — widen \`--allowedTools\` in claude_args to cover the tools listed above."
+            echo "::error title=Reviewers were denied their tools::${DENIALS} tool call(s) refused, so the fan-out could not run and no verdict file exists. This is a CONFIGURATION failure, not a finding about the PR — the denied tools are named above."
           else
             echo "::error title=Reviewers ran but wrote nothing::Zero denials and still no verdict file — the orchestrator ended its turn without writing it. Read the fan-out step's log; this is not an allowlist problem."
           fi
-
-      # The refused tool names live only in the run record, which dies with the
-      # runner — four of this workflow's five debugging rounds needed a fact
-      # visible only there. What is kept is the STRUCTURAL SUMMARY built above,
-      # never the record itself: this repository is public, artifacts on a
-      # public repo are downloadable by anyone, and the record holds whatever
-      # the agents read.
-      - name: Keep the fan-out shape for diagnosis
-        if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false' && hashFiles('review-verdict.json') == ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: fanout-shape-${{ steps.pr.outputs.number }}-${{ github.run_id }}
-          path: ${{ runner.temp }}/fanout-shape.txt
-          if-no-files-found: warn
-          retention-days: 7
 
       - name: Grade the review
         id: grade
