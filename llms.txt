@@ -3178,7 +3178,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 
 | Helper | Returns | Purpose |
 |--------|---------|---------|
-| `rememberARCameraNode(engine)` | `ARCameraNode` | AR camera (updated by ARCore each frame) |
+| `rememberARCameraNode(engine)` | `ARCameraNode` | AR camera (pose **and projection** updated by ARCore each frame) |
 | `rememberARCameraStream(materialLoader)` | `ARCameraStream` | Camera feed background texture |
 | `rememberAREnvironment(engine)` | `Environment` | No-skybox environment for AR |
 
