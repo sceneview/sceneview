@@ -92,3 +92,9 @@
   an option: measured, one such file aborts the whole batch with
   `unknown --directories option` and silently drops every file in it — a gate
   that evades itself. Mutation-tested with exactly such a file.
+- `qa-android-demos.sh` always goes through the helper now. Its
+  `if android_cli_locate … else adb install -r` shape meant that on a host
+  without the CLI it installed with **no** verification at all — the same
+  unproven-install class, one branch over. The helper does that check itself and
+  its fallback carries the proof, so the branch was both unverified and
+  redundant.
