@@ -53,21 +53,19 @@ Hooks trigger automatically on specific Claude Code actions:
 
 ### Version location map
 
-Source of truth: `gradle.properties` → `VERSION_NAME=X.Y.Z`
+**Not duplicated here — load the `versioning` skill.** Source of truth is
+`gradle.properties` → `VERSION_NAME=X.Y.Z`, and the map spans 30+ files across
+Android, npm, Flutter, docs, website, samples and Swift, plus the two tracks that
+must never be synced to it (the Flutter/RN *consumed* Maven dependency, and
+`sceneview-mcp`).
 
-| File | Field |
-|---|---|
-| `gradle.properties` (root) | `VERSION_NAME=` |
-| `sceneview/gradle.properties` | `VERSION_NAME=` |
-| `arsceneview/gradle.properties` | `VERSION_NAME=` |
-| `sceneview-core/gradle.properties` | `VERSION_NAME=` |
-| `llms.txt` | Artifact version references |
-| `README.md` | Install snippets |
-| `CLAUDE.md` | "Latest release" in session state |
-
-> ⚠️ `mcp/package.json` / `mcp/src/index.ts` are **not** in this map —
-> `sceneview-mcp` has its own independent npm version track. `sync-versions.sh`
-> excludes it on purpose. See the Version Location Map note above (issue #1705).
+This file used to carry a 7-row subset of that table, inherited from the
+monolithic `CLAUDE.md` where both lived side by side. A partial copy of a
+completeness-critical list is worse than no copy: a reader who found it here had
+no way to know 23 locations were missing, and one of its rows (`CLAUDE.md` →
+"Latest release in session state") had already gone stale — that state moved to
+`STATE.md` long ago. Run `bash .claude/scripts/sync-versions.sh` rather than
+reading any table.
 
 ### Published artifact registry
 

@@ -23,3 +23,7 @@
   the first version of the check: a file-wide `grep` for the skill name still
   passes after its index row is deleted, because the name also appears in the
   hard-rules pointers.
+- The `automation-map` skill no longer carries a 7-row subset of the version
+  location map: a partial copy of a completeness-critical list is worse than no
+  copy, and one of its rows had already gone stale. It points at `versioning`,
+  which holds the canonical 30+ location table.

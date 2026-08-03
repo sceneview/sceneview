@@ -60,8 +60,10 @@ fi
 
 # ------------------------------------------------------------ 2. frontmatter
 missing_fm=0
+seen_skills=0
 for dir in "$SKILLS"/*/; do
   [ -d "$dir" ] || continue
+  seen_skills=$((seen_skills + 1))
   name=$(basename "$dir")
   f="$dir/SKILL.md"
   if [ ! -f "$f" ]; then
@@ -80,13 +82,20 @@ for dir in "$SKILLS"/*/; do
     missing_fm=1
   fi
 done
-[ "$missing_fm" -eq 0 ] && ok "every skill has a directory-matching name and a routable description"
+# An empty .claude/skills/ would skip the loop entirely and let the ok() below
+# fire on zero evidence. A vacuous pass is the failure mode this whole suite is
+# written against, so assert the population is non-empty rather than assuming it.
+if [ "$seen_skills" -eq 0 ]; then
+  bad ".claude/skills/ contains no skill — CLAUDE.md's index cannot be satisfied"
+elif [ "$missing_fm" -eq 0 ]; then
+  ok "all $seen_skills skills have a directory-matching name and a routable description"
+fi
 
 # -------------------------------------------------- 3. index, BOTH directions
 if [ ! -f "$GUIDE" ]; then
   bad "cannot check the skills index without CLAUDE.md"
 else
-  orphans=0 dangling=0
+  orphans=0 dangling=0 rows=0
   # Read the index ONCE, from the table only. Searching the whole file instead
   # is the trap this check exists to avoid: skill names also appear in the
   # hard-rules block as "→ `name`" pointers, so a file-wide grep reports a
@@ -106,12 +115,17 @@ else
   # …and the reverse: an index row pointing at nothing
   while IFS= read -r name; do
     [ -n "$name" ] || continue
+    rows=$((rows + 1))
     [ -d "$SKILLS/$name" ] || {
       bad "CLAUDE.md's index lists '$name', which does not exist in .claude/skills/"
       dangling=$((dangling + 1))
     }
   done <<< "$indexed"
-  [ "$orphans" -eq 0 ] && [ "$dangling" -eq 0 ] && ok "skills index and .claude/skills/ agree in both directions"
+  if [ "$rows" -eq 0 ]; then
+    bad "CLAUDE.md has no skills index table — nothing routes a session to .claude/skills/"
+  elif [ "$orphans" -eq 0 ] && [ "$dangling" -eq 0 ]; then
+    ok "index ($rows rows) and .claude/skills/ agree in both directions"
+  fi
 fi
 
 # ----------------------------------------------- 4. the rules that stayed put

@@ -31,8 +31,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # stale copy of them while the real ones live in the main checkout. Reading the
 # worktree's copy reports a handoff as days old moments after it was written.
 # Resolve them from the main repo, the way the /status skill does.
-MAIN="$(dirname "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")"
-[ -d "$MAIN" ] || MAIN="$ROOT"
+# Test the git output BEFORE dirname: `dirname ""` is `.`, which is a real
+# directory, so the guard would pass and silently resolve against $PWD — the
+# very stale-copy bug this block exists to prevent.
+GIT_COMMON="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+if [ -n "$GIT_COMMON" ] && [ -d "$GIT_COMMON" ]; then
+  MAIN="$(dirname "$GIT_COMMON")"
+else
+  MAIN="$ROOT"
+  echo "  (not a git checkout, or git too old for --path-format — STATE/handoff read from $ROOT)"
+fi
 
 STRICT=0
 [ "${1:-}" = "--strict" ] && STRICT=1
