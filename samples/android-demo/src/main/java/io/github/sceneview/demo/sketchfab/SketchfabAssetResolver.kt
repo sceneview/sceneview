@@ -307,7 +307,13 @@ class SketchfabAssetResolver private constructor(
         val cacheRoot = service.cacheRoot()
         val fallbackDir = File(cacheRoot, FALLBACK_DIR_NAME).also { it.mkdirs() }
         val target = File(fallbackDir, "${slug.uid}.glb")
-        val stagedLooksComplete = target.exists() && target.length() > 0L && hasGlbMagic(target)
+        // Size floor + magic header, the same pair `boundsAreSane` applies to a
+        // fresh download and iOS applies to this very path. A 4-byte file whose
+        // entire content is the `glTF` magic passes a `> 0` length test and is
+        // not a GLB: Android served it, iOS refused it, and both comments
+        // claimed the two platforms agreed (#2974).
+        val stagedLooksComplete =
+            target.exists() && target.length() >= MIN_GLB_SIZE_BYTES && hasGlbMagic(target)
         val bundledSize = bundledAssets.sizeOf(slug.fallbackBundledPath)
         // Trust the cached copy only if it is a *complete* GLB **and** still
         // matches the asset currently in the APK. A truncated file left
