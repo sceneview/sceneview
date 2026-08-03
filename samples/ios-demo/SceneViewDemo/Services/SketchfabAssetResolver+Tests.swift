@@ -265,7 +265,11 @@ final class SketchfabAssetResolverTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: scratch) }
 
         let bundled = modelsDir.appendingPathComponent("vanishing_probe.usdz")
-        let shipped = Data(repeating: 0xC3, count: 4096)
+        // A USDZ is a ZIP archive: the last-resort path runs the staged copy
+        // through `boundsAreSane`, which rejects anything without GLB or ZIP
+        // magic, so a blob of filler bytes would (correctly) not be served.
+        var shipped = Data([0x50, 0x4B, 0x03, 0x04])
+        shipped.append(Data(repeating: 0xC3, count: 4092))
         try shipped.write(to: bundled)
 
         let resolver = SketchfabAssetResolver(
@@ -295,6 +299,18 @@ final class SketchfabAssetResolverTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: served), shipped,
                        "a vanished bundled resource must degrade to the staged copy "
                        + "rather than throwing at every call site")
+
+        // Degrading is not "serve whatever is on disk": a staged copy that is
+        // no longer a valid asset must still throw, matching Android, which
+        // gates the same path on a complete GLB.
+        try Data([0xFF, 0xFF]).write(to: staged)
+        do {
+            _ = try await resolver.fallbackBundle(for: slug)
+            XCTFail("a truncated staged copy must not be served as a fallback")
+        } catch let error as SketchfabAssetResolver.Error {
+            XCTAssertEqual(error, .fallbackUnavailable(uid: slug.uid,
+                                                       bundledPath: slug.fallbackBundledPath))
+        }
     }
 
     // ─── boundsAreSane heuristic ───────────────────────────────────────────

@@ -65,9 +65,14 @@ class SketchfabAssetResolver private constructor(
 
         /**
          * Byte length of [path] once decompressed, or `-1` when it cannot be
-         * determined (missing asset, unreadable stream). An unknown length
-         * counts as *stale*, so the staging path runs and reports the real
-         * error instead of silently serving whatever is on disk.
+         * determined (missing asset, unreadable stream).
+         *
+         * An unknown length never counts as *fresh*: [fallbackBundle] will
+         * not take its fast path on it. What happens next depends on whether
+         * a usable staged copy exists — a complete one is served as a last
+         * resort (rendering the previous model beats throwing at every call
+         * site), and otherwise the staging path runs and surfaces the real
+         * error. See that function for the full ordering.
          */
         fun sizeOf(path: String): Long
     }

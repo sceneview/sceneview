@@ -17,30 +17,3 @@
   previous model" into a throw across all eight `fallbackBundle` call sites;
   `Bundle` caches resource lookups, so the guard stats the file rather than
   trusting the URL it hands back.
-
-<!-- category: Tests -->
-- **The prim-count budget covers the class, not one asset.** The iOS guard
-  budgeted `tree_scene` alone, leaving the next model added to `Models/`
-  unguarded — which is how the 2 712-prim asset shipped in the first place. It
-  now sweeps all 31 bundled USDZ against a ceiling set from measurement rather
-  than extrapolation: the 34 ms/prim figure taken from `tree_scene` does not
-  transpose (the rest of the bundle runs ~6-9 ms/prim, and the two heaviest
-  assets — 155 and 126 prims — parse in under 1.2 s), so the class ceiling is
-  500 rather than 100. Cost is stated cold, as CI pays it: 47.6 s, taking the
-  suite to 50.4 s.
-- **Both new resolver guards are mutation-tested individually.** Dropping the
-  length comparison makes the re-stage test return the stale bytes; dropping
-  the last-resort branch makes the degradation test throw
-  `FallbackUnavailable`. The sweep is likewise known to bite — at the tighter
-  100-prim ceiling it failed on the two assets above, which is how the
-  non-linear cost was found.
-
-<!-- category: Docs -->
-- **The CC-BY indicate-changes note names the artefact that actually changed.**
-  `assets/catalog.json` attached the modification record to
-  `models/usdz/tree_scene.usdz` — the untracked, unmodified original — while the
-  stripped derivative lives in the iOS demo bundle. The note now says which copy
-  is which and points at the checksum pin that protects it, and it drops the
-  "bit-identical bounding box" claim two reviewers could not reproduce, keeping
-  only what is independently checkable (a purely subtractive strip whose 47
-  surviving meshes keep byte-identical `extent` arrays).

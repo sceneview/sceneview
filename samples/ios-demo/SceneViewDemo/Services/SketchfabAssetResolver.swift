@@ -204,7 +204,12 @@ actor SketchfabAssetResolver {
         // still hands back is not proof the file is there — stat it.
         guard let source = bundledURL,
               fileManager.fileExists(atPath: source.path) else {
-            if fileManager.fileExists(atPath: target.path) {
+            // `boundsAreSane` (size + magic bytes) keeps this in step with
+            // Android, which gates the same last-resort path on a complete
+            // GLB: a truncated staged copy must not be served just because
+            // the bundle vanished.
+            if fileManager.fileExists(atPath: target.path),
+               boundsAreSane(at: target, slug: slug) {
                 try? fileManager.setAttributes(
                     [.modificationDate: Date()],
                     ofItemAtPath: target.path
