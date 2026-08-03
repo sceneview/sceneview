@@ -26,11 +26,12 @@ import java.io.File
  *
  * ### Why the key survives at all
  *
- * Before anything resolves there is no file to ask, and the key is then the best available
- * signal: with none we already know where this ends, with one the download is genuinely in
- * flight. It is only ever consulted on that pre-resolve path — [SketchfabAssetResolver.resolve]
- * short-circuits to `fallbackBundle` when the key is null, so any file that exists in a
- * keyless build is a fallback and the measured branch has already claimed it.
+ * While the demo is not yet `loaded` there may be nothing to ask, and the key is then the
+ * best available signal: with none we already know where this ends, with one the download is
+ * genuinely in flight. It is read on that not-yet-loaded path only, and it cannot overrule a
+ * measurement — [SketchfabAssetResolver.resolve] short-circuits to `fallbackBundle` when the
+ * key is null, so any file that exists in a keyless build is a fallback and the measured
+ * branch has already claimed it before the key is reached.
  */
 internal object AssetSourceProbe {
 
@@ -39,8 +40,13 @@ internal object AssetSourceProbe {
      *
      * @param resolvedFile the file the resolver handed back, or `null` while it is still
      *   working — the only thing worth measuring.
-     * @param hasApiKey whether a Sketchfab key is configured. Consulted only while
-     *   [resolvedFile] is `null`; see the class KDoc for why that is not a loophole.
+     * @param hasApiKey whether a Sketchfab key is configured. Read only when [loaded] is
+     *   `false` — NOT when [resolvedFile] is `null`. The two coincide for AR Placement, which
+     *   defines `loaded` as "the file arrived", but not for a caller that defines it as "the
+     *   model parsed": there, a resolved-but-still-parsing streamed file reaches the key
+     *   branch. That is harmless (a resolved *fallback* is claimed by the measured branch
+     *   first, whatever `loaded` says), but do not restate this gate as a test on
+     *   [resolvedFile] — see the class KDoc.
      * @param loaded whether the demo has finished doing what it considers "loaded". Each
      *   caller owns that definition — Gallery waits for the parsed `ModelInstance` so the
      *   chip and the centre `LoadingScrim` stay in lockstep (#1465), AR Placement waits only

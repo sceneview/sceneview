@@ -106,6 +106,24 @@ class AssetSourceProbeTest {
         )
     }
 
+    @Test
+    fun `the key gate is on loaded, not on whether a file resolved`() {
+        // Pins the @param contract. A streamed file HAS resolved, yet `loaded = false` still
+        // routes through the key branch — so with no key this reads Bundled, not Streaming.
+        // AR Placement can't reach this state (its `loaded` IS `file != null`), but Gallery
+        // will once it migrates (#2989), since its `loaded` is a parsed ModelInstance.
+        // Documenting the gate as "consulted only while resolvedFile is null" would be wrong
+        // exactly here, which is why this case is pinned rather than left to the comment.
+        assertEquals(
+            AssetSourceState.Bundled,
+            AssetSourceProbe.of(streamed("car"), hasApiKey = false, loaded = false),
+        )
+        assertEquals(
+            AssetSourceState.Streaming,
+            AssetSourceProbe.of(streamed("car"), hasApiKey = true, loaded = false),
+        )
+    }
+
     // ─── the happy path ────────────────────────────────────────────────────
 
     @Test
