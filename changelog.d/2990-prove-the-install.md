@@ -126,3 +126,9 @@
   it kept missing never wrote `android run` at all — `docs/docs/try.md`'s
   Requirements tip sold the command in prose, on the same page as the warning
   callout contradicting it.
+- The suite pins return-code 2 (install proven, launch failed) on **both**
+  branches. It had been verified by hand three times while building the fix and
+  never committed as a test — the coverage a refactor eats silently, and this
+  function was restructured. Mutation-tested: restore the CLI branch's early
+  `return 0` and the `cli path` case goes red while the `adb path` one stays
+  green, which is precisely the asymmetry that existed before.

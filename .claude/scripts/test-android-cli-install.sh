@@ -48,6 +48,8 @@ case "$all" in
   *" dumpsys "*)
     [ -s "$STUB_STATE" ] && echo "    lastUpdateTime=$(cat "$STUB_STATE")"
     exit 0 ;;
+  *" am start "*)
+    exit "${STUB_START_RC:-0}" ;;
 esac
 exit 0
 STUB
@@ -123,6 +125,26 @@ if [ "$rc" != "0" ] && grep -q "APK not found" "$TMP/err"; then
 else
   bad "missing APK was not refused (rc=$rc)"
 fi
+
+# 4b ── install PROVEN but the launch fails ⇒ 2, NOT 1 and NOT 0.
+#       Verified by hand three times while building this; never pinned. That is
+#       exactly the coverage a refactor eats silently — and this function WAS
+#       restructured, which is when it matters most. One case per branch,
+#       because the two used to disagree: the CLI path returned 0 for the same
+#       outcome the adb path returned 2 for.
+for branch in adb cli; do
+  printf 'seed\n' > "$STUB_STATE"
+  if [ "$branch" = cli ]; then STUB_CLI_INSTALLS=1; else STUB_CLI_INSTALLS=0; fi
+  STUB_ADB_INSTALLS=1 STUB_START_RC=1
+  export STUB_CLI_INSTALLS STUB_ADB_INSTALLS STUB_START_RC
+  rc="$(run_helper)"
+  if [ "$rc" = "2" ] && grep -q "install PROVEN" "$TMP/err"; then
+    ok "$branch path: install proven, launch fails ⇒ 2 (not 'install unproven')"
+  else
+    bad "$branch path: launch failure returned $rc, expected 2"
+  fi
+done
+unset STUB_START_RC
 
 # 5 ── MUTATION: the old shape (trust the CLI's exit code) must make this RED
 # Target the SHARED check — the one that actually decides. An earlier version
