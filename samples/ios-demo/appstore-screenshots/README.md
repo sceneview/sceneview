@@ -3,22 +3,35 @@
 Fresh, correctly-sized App Store Connect screenshots for the SceneView demo
 app — real iOS-simulator captures of rendered 3D content.
 
-> ⛔ **These frames predate #2897 — re-capture before dispatching
-> `app-store-screenshots.yml`.** They were captured while
-> `SceneEnvironment.intensity` was still fed to RealityKit as a `2^x` exponent:
-> `01-model-viewer.png` runs on `.warm` (intensity 1.0 → ×2.00, now ×1.00) and
-> `02-dynamic-sky.png` on `.outdoor` (1.2 → ×2.30, now ×1.20).
+> ✅ **The #2897 caveat is cleared.** These four frames were re-captured on
+> 2026-08-03 from a build that carries the linear-multiplier fix, so they are
+> what the app renders. As predicted by the measurement that caveat carried
+> (viewport mean luma 192.3 → 191.2, vehicle region 151.6 → 147.4), the visible
+> change is nil — the re-shot frames are indistinguishable by eye from the ones
+> they replace. Only the IBL contribution moved; the skybox is drawn directly
+> and the direct lights were untouched.
 >
-> **Measured, not estimated** — `01-model-viewer.png` re-shot from the #2897
-> branch on a 1320×2868 simulator, same `-demo model-viewer -qa_mode 1` launch:
-> viewport mean luma 192.3 → 191.2, vehicle region 151.6 → 147.4. The frames are
-> **not** uniformly halved, because only the IBL contribution changes — the
-> skybox is drawn directly and the direct lights are untouched, and on this scene
-> the bright studio backdrop dominates the histogram. They are still not what the
-> app renders.
+> ⛔ **But do not dispatch `app-store-screenshots.yml` yet — for a different
+> reason, found by looking at the mosaic.** `02-dynamic-sky.png` is a weak store
+> frame on both classes: iOS's `DynamicSkyDemo` builds a stylised skyline out of
+> five `systemGray` cubes (`DynamicSkyDemo.swift`), so the shot is grey blocks on
+> a plinth against a photo HDR. That is the demo working as written — not a
+> keyless substitution, not a load failure — but Android publishes the SAME demo
+> id showing a photoreal lit drone (`phone-screenshot-2.png`, routed through
+> `ALIAS_INITIAL_TAB` to the Lighting Lab tab). Uploading these would put grey
+> cubes on the App Store while Play shows the drone, which is the opposite of the
+> #2773 "same demos, framed the same way" intent this file opens with.
 >
-> Nothing enforces this — the dispatch is manual and `asc_listing.py` compares
-> checksums, not pixels — so it is a note, not a gate.
+> ⚠️ **The iPad frames leak their capture date.** `simctl status_bar override
+> --time "9:41"` pins the clock, but iPadOS renders a date beside it that the
+> override does not cover: the committed frames read `09:41 Tue 28 Jul` and the
+> 2026-08-03 re-capture reads `09:41 Mon 3 Aug`. That both dates a public store
+> listing and defeats the byte-reproducibility this script otherwise has, since
+> two runs on different days can never match.
+>
+> Nothing enforces any of this — the dispatch is manual and `asc_listing.py`
+> compares checksums, not pixels — so it is a note, not a gate. Look at the
+> mosaic before you upload.
 
 ## Background — issue #917
 
