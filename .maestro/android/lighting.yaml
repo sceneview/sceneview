@@ -1,4 +1,4 @@
-# Maestro flow — "Lighting & Environment" demo category (4 demos).
+# Maestro flow — "Lighting & Environment" demo category (5 demos).
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/lighting.yaml
@@ -31,3 +31,12 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: environment
       DEMO_NAME: Environment Gallery
+# Follows the demo's move out of the AR category (#2851): the contact shadow lives in
+# `sceneview`, not `arsceneview`, and the screen is a plain non-AR studio scene. Verified
+# absent from every other flow before adding it here — ar.yaml never carried it (34 header,
+# 34 entries) — so this is the demo's first automated coverage, not a relocation.
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: contact-shadow-preview
+      DEMO_NAME: Contact Shadow Preview

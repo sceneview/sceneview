@@ -522,10 +522,14 @@ class DemoInteractionTest {
         // ── Multi-Model tab — themed "Park" scene + per-model visibility chips ─
         tap("Multi-Model")
         screenshot("28_models_multi_default")
-        tap("Tree")   // toggle a node off / on so the chips are exercised
-        screenshot("28a_models_multi_no_tree")
-        tap("Tree")
-        screenshot("28b_models_multi_tree_back")
+        // The visibility chips are labelled from the resolved `park` slug's
+        // `displayName` (#2933) — "Oak Trees" is slot 1's registry entry, not a
+        // hardcoded noun. If SampleAssets renames or replaces that slug this tap
+        // has to follow it; the label is the catalogue's, not the demo's.
+        tap("Oak Trees")   // toggle a node off / on so the chips are exercised
+        screenshot("28a_models_multi_no_hero")
+        tap("Oak Trees")
+        screenshot("28b_models_multi_hero_back")
 
         // ── Gallery tab — chip-picked themed Sketchfab model ──────────────────
         tap("Gallery")

@@ -101,8 +101,19 @@ jobs:
             bridge-ios-spm-${{ runner.os }}-
 
       # Build SceneViewSwift for the iOS Simulator so the bridge type-check has
-      # a real `.swiftmodule` to import. `pipefail` so a failing build is not
-      # masked by the xcpretty fallback (#1515).
+      # a real `.swiftmodule` to import.
+      #
+      # xcpretty only PRETTY-PRINTS — it is not a build tool, and it is optional.
+      # This job routes to the self-hosted `sceneview-mac` runner, where the
+      # xcpretty gem may be absent; piping xcodebuild into a MISSING command
+      # makes a verbose xcodebuild take SIGPIPE (exit 141) once the pipe buffer
+      # fills, so the old `| xcpretty ... || exit ${PIPESTATUS[0]}` form failed
+      # the step on a perfectly good build (the "missing xcpretty is tolerated"
+      # claim was false). Detect xcpretty first, run xcodebuild RAW when it is
+      # absent, capture the REAL xcodebuild exit code in a variable, and act on
+      # that — never an `exit` inline in the pipe. (#2878/#2865 replaced the
+      # `|| cat` that swallowed failures; this closes the xcpretty-absent hole
+      # an advisory cross-vendor review flagged.)
       - name: Build SceneViewSwift (iOS Simulator)
         working-directory: SceneViewSwift
         run: |
@@ -112,14 +123,30 @@ jobs:
           # runners produce only an x86_64 .swiftmodule and the arm64 type-check step
           # fails with "could not find module 'SceneViewSwift' for target arm64…;
           # found: x86_64-apple-ios-simulator". See #2223.
-          xcodebuild build \
-            -scheme SceneViewSwift \
-            -destination 'generic/platform=iOS Simulator' \
-            -skipMacroValidation \
-            -derivedDataPath "$RUNNER_TEMP/sv-dd" \
-            ONLY_ACTIVE_ARCH=NO \
-            ARCHS="arm64 x86_64" \
-            | xcpretty --color 2>/dev/null || cat
+          run_xcodebuild() {
+            xcodebuild build \
+              -scheme SceneViewSwift \
+              -destination 'generic/platform=iOS Simulator' \
+              -skipMacroValidation \
+              -derivedDataPath "$RUNNER_TEMP/sv-dd" \
+              ONLY_ACTIVE_ARCH=NO \
+              ARCHS="arm64 x86_64"
+          }
+          # The trailing `|| STATUS=...` keeps errexit (GitHub's default
+          # `bash -eo pipefail`) from bailing out of the pipe before we read the
+          # code, and captures xcodebuild's REAL exit (`PIPESTATUS[0]`, not
+          # xcpretty's) so a xcpretty that is absent or merely crashes on a build
+          # that SUCCEEDED never turns the step red.
+          STATUS=0
+          if command -v xcpretty >/dev/null 2>&1; then
+            run_xcodebuild | xcpretty --color 2>/dev/null || STATUS=${PIPESTATUS[0]}
+          else
+            run_xcodebuild || STATUS=$?
+          fi
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::SceneViewSwift build failed (xcodebuild exit $STATUS)."
+            exit "$STATUS"
+          fi
 
       # Type-check the Flutter plugin's iOS Swift against the built
       # SceneViewSwift module + the Flutter.framework that ships with the SDK.

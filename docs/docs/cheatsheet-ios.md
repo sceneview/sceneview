@@ -48,10 +48,36 @@ SceneView { root in
 .onEntityTapped { entity in }      // tap handler
 .autoRotate(speed: 0.3)            // turntable auto-rotation
 .autoCenterContent(true)           // v4.3.0+ — library translates content centroid to orbit pivot (default true; pass false to keep explicit placements)
+.framingMargin(0.95)               // v4.26.0+ — padding on the auto-fit distance (default 1.15; 1.0 = bounding sphere tangent; < 1 fills the frame)
+.cameraOrbit(azimuth: .pi / 5, elevation: .pi / 15)  // v4.26.0+ — seeds the INITIAL orbit pose in radians; elevation is positive ABOVE the target (defaults: 0, 30°)
 .mainLight(.systemDefault)         // v4.2.0+ — see LightSlot
 .fillLight(.systemDefault)         // v4.2.0+
 .renderQuality(.default)           // v4.2.0+ — .cinematic | .default | .performance
 ```
+
+!!! tip "Getting a scene to fill the frame — and to show its sky"
+    The auto-fit pass fits the content's **bounding sphere** to the narrower
+    frustum axis (so it never clips at any orbit angle), then scales that
+    distance by `framingMargin`. Lower it towards `1.0` — or just below — to
+    fill a tall portrait viewport; stay at or above ~`0.95` on an
+    `autoRotate` scene, where the visible angle is arbitrary and a long model
+    clips at its broadside azimuth.
+
+    `framingMargin` runs *inside* that auto-fit pass, so it has **no effect at
+    all when `autoCenterContent(false)` is set** — it fails silently rather than
+    warning. Android's equivalent lever is `CameraNode.frameToContent(padding =)`
+    with `DEFAULT_FRAMING_PADDING = 0.15f`, a *fraction* where this is a
+    *multiplier*: `margin == 1 + padding`, so iOS `1.15` is Android `0.15` and
+    tangent is iOS `1.0` / Android `0.0`. Web has no framing-padding lever, but
+    its initial orbit is settable imperatively with
+    `sv.setCameraOrbit(theta, phi, distance)`.
+
+    `cameraOrbit` seeds only the starting pose; drag, `autoRotate` and the
+    auto-fit take over from there (the fit changes distance, never these
+    angles). Elevation is the one that surprises people: with the 60° vertical
+    FOV, the **30° default pitch puts the horizon exactly on the top edge of
+    the frame**, so a scene with a `showSkybox` environment shows none of its
+    sky no matter how it is framed. Lower the elevation to bring the sky in.
 
 ---
 
@@ -309,6 +335,12 @@ Custom environment:
 .environment(.custom(name: "My HDR", hdrFile: "custom.hdr", intensity: 1.5))
 ```
 
+`intensity` is a **linear multiplier** — `1.0` leaves the HDR's own radiance
+untouched, `0.5` halves it. It is converted to RealityKit's power-of-two
+`intensityExponent` internally, so never pre-apply a `log2`. It is **not** an
+Android value: Android's IBL level is Filament's `IndirectLight.intensity` in
+absolute lux (default `10_000`), so the two are not interchangeable (#2897).
+
 visionOS — immersive-space skybox: a windowed / volumetric scene composites
 over passthrough and ignores the HDR skybox. For a fully immersive
 `ImmersiveSpace`, opt in with `.immersiveSpace()` to render the HDR as a
@@ -497,7 +529,7 @@ Android API name. Implementation issues are tracked under `platform: ios`.
 | `DepthMeshNode` + `rememberDepthMesh` (renderable depth mesh) | **Available** — `SceneReconstructionNode.enableReconstruction(in: arView)` enables ARKit scene reconstruction (LiDAR). Use `SceneReconstructionNode.hideMeshVisualization` / `arView.debugOptions.insert(.showSceneUnderstanding)` to toggle the mesh overlay. LiDAR-only (iPhone 12 Pro+ / iPad Pro). | iOS surfaces the real-world mesh as a stream of `ARMeshAnchor`s with `MTLBuffer`-backed geometry, handled automatically by RealityKit's scene understanding pipeline. Devices without LiDAR have no equivalent — check `SceneReconstructionNode.isSupported` first. |
 | `DepthCollider` + `rememberDepthCollider` (depth → physics collider) | **Available** — `SceneReconstructionNode.enablePhysics(in: arView)` enables real-world mesh collision via `arView.environment.sceneUnderstanding.options.insert(.physics)`. Virtual objects (with `PhysicsBodyComponent.dynamic`) will collide with the LiDAR mesh automatically. | RealityKit manages mesh-anchor collision shapes internally — no per-anchor `CollisionComponent` rebuild needed. Use `SceneReconstructionNode.enableOcclusion(in:)` to also occlude virtual objects behind real surfaces. Same LiDAR-only constraint as the mesh node. |
 | `Frame.hitTestDepth(xPx, yPx)` (single-pixel depth raycast → position + normal) | `ARView.raycast(from:allowing:alignment:)` with `.estimatedPlane` + `.any`, or `ARView.scene.raycast(origin:direction:length:query:mask:)` against `CollisionComponent`s built from `ARMeshAnchor`. Use the returned `ARRaycastResult.worldTransform` for both position and normal. | The iOS API is already documented — use it directly. The pixel-screen → world ray conversion is `view.unprojectPoint` or just feed `CGPoint` from a `UITapGestureRecognizer`. No new library wrapper needed. |
-| `CloudAnchorNode.host` / `.resolve` returning `Future` + cancel-on-dispose (#1768) | **Available** — `CloudAnchorNode.host(ttlDays:completion:operation:)` / `.resolve(cloudAnchorId:completion:operation:)` return a cancellable `CloudAnchorFuture`; call `future.cancel()` from `.onDisappear` (the SwiftUI analogue of Android's `DisposableEffect { onDispose { future.cancel() } }`). To keep the core library dependency-free, the actual `GARSession.hostCloudAnchor` round-trip (Google's `arcore-ios-sdk`) is supplied by the app through the `operation` closure. (#1859) | The Future pattern matters because Cloud Anchor hosting is a billed network round-trip — cancelling on `View` disappearance avoids accruing Google Cloud charges. `CloudAnchorFuture` owns the cancellation lifecycle (single-fire completion, never fires after `cancel()`/dealloc); the app adds `arcore-ios-sdk` and plugs `GARSession` into `operation`. |
+| `CloudAnchorNode.host` / `.resolve` returning `Future` + cancel-on-dispose (#1768) | **Wrapper only** (the app supplies `GARSession`) — `CloudAnchorNode.host(ttlDays:completion:operation:)` / `.resolve(cloudAnchorId:completion:operation:)` return a cancellable `CloudAnchorFuture`; call `future.cancel()` from `.onDisappear` (the SwiftUI analogue of Android's `DisposableEffect { onDispose { future.cancel() } }`). To keep the core library dependency-free, the actual `GARSession.hostCloudAnchor` round-trip (Google's `arcore-ios-sdk`) is supplied by the app through the `operation` closure. (#1859) | The Future pattern matters because Cloud Anchor hosting is a billed network round-trip — cancelling on `View` disappearance avoids accruing Google Cloud charges. `CloudAnchorFuture` owns the cancellation lifecycle (single-fire completion, never fires after `cancel()`/dealloc); the app adds `arcore-ios-sdk` and plugs `GARSession` into `operation`. |
 
 **Why this matters for AI assistants:** when a developer asks for "real-world depth"
 or "cloud anchor" code on iOS, generate the RealityKit / ARKit primitive listed above
@@ -538,7 +570,7 @@ exposes have no iOS equivalent at all. Ported from the source of truth,
 | MSAA | via `View.multiSampleAntiAliasingOptions` | not user-controllable |
 | HDR color buffer | `QualityLevel.HIGH/MEDIUM/LOW` | not exposed |
 | Dynamic resolution | via `View.dynamicResolutionOptions` | not exposed |
-| Environmental IBL intensity | via `EnvironmentLoader` HDR | via `ImageBasedLightComponent.intensityExponent` |
+| Environmental IBL intensity | `IndirectLight.intensity`, absolute **lux** (`DEFAULT_IBL_INTENSITY` = 10 000) | `SceneEnvironment.intensity`, a linear **multiplier** (`1.0` = HDR untouched), converted to `ImageBasedLightComponent.intensityExponent` internally (#2897) — **not** interchangeable with the Android value |
 | Person occlusion (AR) | (n/a) | via `ARView.renderOptions` (AR only, not on `RealityView`) |
 
 ---

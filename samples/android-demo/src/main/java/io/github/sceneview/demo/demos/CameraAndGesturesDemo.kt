@@ -75,6 +75,7 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -205,7 +206,7 @@ private fun CameraModesSection(
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Camera distance: %.1f m".format(cameraDistance),
+                text = "Camera distance: %.1f m".format(Locale.US, cameraDistance),
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(
@@ -671,11 +672,11 @@ private fun LiveTransformOverlay(
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
-                text = "pos  X %+.2f  Y %+.2f  Z %+.2f".format(liveX, liveY, liveZ),
+                text = "pos  X %+.2f  Y %+.2f  Z %+.2f".format(Locale.US, liveX, liveY, liveZ),
                 style = MaterialTheme.typography.labelSmall
             )
             Text(
-                text = "rot  X %+.0f°  Y %+.0f°  Z %+.0f°".format(liveRX, liveRY, liveRZ),
+                text = "rot  X %+.0f°  Y %+.0f°  Z %+.0f°".format(Locale.US, liveRX, liveRY, liveRZ),
                 style = MaterialTheme.typography.labelSmall
             )
         }

@@ -1,8 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="demo_contact_shadow_preview_title">Contact Shadow Preview</string>
-    <string name="demo_contact_shadow_preview_subtitle">Non-AR preview of the procedural contact shadow — a TV grounded on a wall and a box on the floor, with per-surface presets</string>
+    <string name="demo_contact_shadow_preview_subtitle">Grounded vs floating, side by side — one box bounces and lands (anchored by a procedural contact shadow), its twin levitates high with none, plus a wall-mounted TV no shadow map can serve. Non-AR, runs on any emulator</string>
     <string name="contact_shadow_toggle">Contact shadows</string>
-    <string name="contact_shadow_intensity">Intensity: %1$d%%</string>
-    <string name="contact_shadow_wall_preset">Wall shadow preset</string>
+    <string name="contact_shadow_motion_toggle">Bounce motion</string>
+    <string name="contact_shadow_intensity">Shadow intensity: %1$d%%</string>
+    <string name="contact_shadow_wall_beat_title">Wall TV — the pool no shadow map can draw</string>
+    <string name="contact_shadow_wall_verdict_wall">Wall: ceiling light grazes the wall, so a faint, wide halo below the panel. Correct.</string>
+    <string name="contact_shadow_wall_verdict_floor">Floor on a wall: too dark, too round — reads as a sticker, not a shadow.</string>
+    <string name="contact_shadow_wall_verdict_tabletop">TableTop: tight and close, as if the TV rested on a surface it is not touching.</string>
+    <string name="contact_shadow_label_grounded">Contact shadow</string>
+    <string name="contact_shadow_label_floating">No shadow</string>
+    <string name="contact_shadow_label_off">Shadows off</string>
+    <string name="contact_shadow_peek_on">Grounded vs floating</string>
+    <string name="contact_shadow_peek_off">Shadows off — grounding cue gone</string>
 </resources>

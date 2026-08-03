@@ -15,15 +15,16 @@ import io.github.sceneview.safeDestroyGeometry
  * they cast shadows or use vertex skinning. Kotlin usage example:
  *
  * ```
- * val entity = EntityManager.get().create()
- *
- * RenderableManager.Builder(1)
- *         .boundingBox(Box(0.0f, 0.0f, 0.0f, 9000.0f, 9000.0f, 9000.0f))
- *         .geometry(0, RenderableManager.PrimitiveType.TRIANGLES, vb, ib)
- *         .material(0, material)
- *         .build(engine, entity)
- *
- * scene.addEntity(renderable)
+ * // Prefer letting GeometryNode allocate and own its Filament entity — the node then
+ * // manages that entity's full lifecycle (and, once it owns it, frees it on destroy()).
+ * // Passing a manually-created entity makes the node *borrow* it instead.
+ * val node = GeometryNode(
+ *     engine = engine,
+ *     geometry = geometry,
+ *     materialInstance = material,
+ * )
+ * // Add it to the scene declaratively inside a SceneView { } content block, or
+ * // imperatively with parentNode.addChildNode(node).
  * ```
  *
  * To modify the state of an existing renderable, clients should first use RenderableManager to get

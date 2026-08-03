@@ -3,6 +3,23 @@
 Fresh, correctly-sized App Store Connect screenshots for the SceneView demo
 app — real iOS-simulator captures of rendered 3D content.
 
+> ⛔ **These frames predate #2897 — re-capture before dispatching
+> `app-store-screenshots.yml`.** They were captured while
+> `SceneEnvironment.intensity` was still fed to RealityKit as a `2^x` exponent:
+> `01-model-viewer.png` runs on `.warm` (intensity 1.0 → ×2.00, now ×1.00) and
+> `02-dynamic-sky.png` on `.outdoor` (1.2 → ×2.30, now ×1.20).
+>
+> **Measured, not estimated** — `01-model-viewer.png` re-shot from the #2897
+> branch on a 1320×2868 simulator, same `-demo model-viewer -qa_mode 1` launch:
+> viewport mean luma 192.3 → 191.2, vehicle region 151.6 → 147.4. The frames are
+> **not** uniformly halved, because only the IBL contribution changes — the
+> skybox is drawn directly and the direct lights are untouched, and on this scene
+> the bright studio backdrop dominates the histogram. They are still not what the
+> app renders.
+>
+> Nothing enforces this — the dispatch is manual and `asc_listing.py` compares
+> checksums, not pixels — so it is a note, not a gate.
+
 ## Background — issue #917
 
 The App Store Connect listing previously carried stale screenshots:
@@ -31,27 +48,104 @@ class** (identical 1320×2868 screenshot spec); likewise the iPad Pro 13-inch
 M4 and M5. Either generation produces an App Store Connect-compliant image
 for its class.
 
-## Demos captured — the common Android↔iOS showcase set (#2773)
+## Demos captured (#2854, #2896)
 
-The **same five demos, in the same order**, as Android's
-`capture-play-store-screenshots.sh`, so both stores show identical screens.
-Every id is a standalone (non-consolidated) demo on both platforms and renders
-rich 3D content — deliberately *not* empty or loading AR scenes:
+Android's set v2 order, minus `multi-model` (see below). Both ids are
+standalone demos that render rich 3D content with **no network** — deliberately
+not empty or loading AR scenes:
 
-1. `01-model-viewer` — bundled hero model (cyberpunk hovercar), orbit camera
-2. `02-lighting` — PBR-lit spheres with the light-type switcher
-3. `03-materials` — metallic/roughness material showcase
-4. `04-geometry` — generated geometry primitives
-5. `05-double-pendulum` — animated physics (motion)
+1. `01-model-viewer` — bundled hero model (cyberpunk hovercar) on the `.warm`
+   photo-studio backdrop, frozen on a three-quarter hero pose
+2. `02-dynamic-sky` — procedural time-of-day skyline under a live HDRI sky
 
-Captured in **dark appearance** with a cleaned status bar (fixed 9:41, full
-signal/battery), mirroring the Android capture's dark-mode + status-bar crop
-so the two stores match visually.
+⚠️ **Committing these PNGs is not uploading them.** The live App Store listing
+keeps showing the previous set until someone runs
+`store-sync/asc_listing.py --apply-screenshots` (or uploads through App Store
+Connect). Until that happens, do not describe the two stores as in sync.
 
-> **Note:** the previously-committed PNGs in this directory
-> (`reflection-probes / occlusion-material / geometry-primitives /
-> samples-catalog`, plus only 2 iPad shots) predate this set and are stale —
-> regenerate with the command below once an iOS simulator build is feasible.
+### Why `multi-model` is not here
+
+⛔ **Do not re-add it by symmetry with the Android phone set.** An App Store
+capture build has no Sketchfab key, so `SketchfabAssetResolver` substitutes the
+registered bundled stand-ins (`SampleAssets.swift` — bench → `retro_piano.usdz`,
+dog → `animated_butterfly.usdz`, bird → `phoenix_bird.usdz`). The captured frame
+is therefore *not* the park diorama the demo documents: measured on the 6.9"
+simulator (`-demo multi-model -qa_mode 1`), it renders an upright wooden piano
+with a blossoming-tree diorama growing through it and a brightly-coloured bird
+mid-frame — the tree slot's stand-in supplies both the trees and the ground
+they stand on, so it dominates the composition rather than reading as one slot
+of four. The whole formation also sits small in a tall portrait frame.
+
+That frame passes every mechanical check — right dimensions, settled,
+byte-reproducible — so only looking at the mosaic catches it. It is the same
+defect class that took `multi-model` out of the Android **tablet** set
+(#2913/#2915: "do not re-add on the strength of a green capture"), and shipping
+it would advertise a scene no keyless user can ever see.
+
+The exclusion is **not** gated on an issue. #2913 is closed and the re-add did
+not become due — the reason is structural (keyless resolver substitution), not
+a bug someone was going to fix. Re-add only after looking at a freshly captured
+frame next to the other slots.
+
+Three further ids that used to be in this set were retired from Android's for
+defects that are platform-independent, so do not reach for them here either.
+`materials` opened on a streamed subject and drew an orbiting HDRI skybox, so
+neither the subject nor the backdrop was reproducible; the demo side is fixed
+(#2874) and the id is eligible again, but do not re-add it without capturing it
+and looking at the frame against the other slots first. `double-pendulum`
+renders as a tiny linkage in a mostly-black frame.
+
+`geometry` clipped its primitives in a portrait frame (#2873). That is **fixed
+on Android** — but the fix is a layout change in the Android demo, so it does
+not carry across: the iOS scene builds its own primitives, and whether it clips
+in an iPhone-portrait frame has **not** been measured. Judge it on a captured
+frame before either re-adding or retiring the id here; do not inherit the
+Android verdict in either direction. Even on Android the id stays out of the
+set: the fixed 2 × 2 cluster leaves the frame centre empty, which that capture
+script's variance guard reads as blank.
+
+Captured with the simulator in **dark appearance** and a cleaned status bar
+(fixed 9:41, full signal/battery), mirroring the Android capture's dark-mode +
+status-bar crop.
+
+⚠️ Dark appearance styles the **system chrome only** — it does not darken the
+frames, and these two are light: each scene's look comes from its own HDRI, so
+`model-viewer` renders against `.warm`'s white studio and `dynamic-sky` under a
+daylit sky, with dark status-bar glyphs to match. Measured on both classes; do
+not read "dark appearance" as "dark frame", and do not treat a light frame here
+as a capture bug.
+
+One more thing the mosaic shows: only `dynamic-sky` carries the floating
+**Settings** control (it is the demo that has a settings sheet — `model-viewer`
+has none), so the two frames differ in app chrome. That is the demos' own
+shape, not a capture artefact, but it is visible when the two sit side by side
+on the listing.
+
+The set is captured under `-qa_mode 1`, which freezes each demo's orbit
+auto-rotation on its authored pose. That is what makes a re-capture comparable
+to the committed one: two independent runs of this script produce byte-identical
+frames (measured, 0 differing pixels). Without it the shot landed on whatever
+azimuth the sweep had reached, so both the subject's pose and the slice of HDRI
+behind it changed every run.
+
+> **Two things that had to be fixed in the app before this set could ship
+> (#2896)**, worth knowing if a future capture looks wrong again:
+>
+> - Every bundled HDR environment is a Radiance `.hdr`, which
+>   `EnvironmentResource(named:)` cannot load. The failure was swallowed, so
+>   scenes ran with **no custom IBL and no skybox** — the
+>   `ImageBasedLightComponent` was never set, so RealityView's own default
+>   environment lighting remained (dim, not unlit; #2842/#2868) — and
+>   `dynamic-sky` with no sky at all. `SceneEnvironment.load()` now falls back to
+>   ImageIO. A `[SceneViewSwift] Failed to load environment '…'` line in the
+>   console means this regressed.
+> - iOS has no `camera_distance` launch argument (Android's framing lever,
+>   tracked for iOS in #2785). The scenes instead carry their own framing via
+>   `.framingMargin(_:)` / `.cameraOrbit(azimuth:elevation:)`. `model-viewer`
+>   frames tighter under `qa_mode` than it does interactively: its bounding
+>   sphere is set by the hero's display plinth rather than by the car, and the
+>   looser interactive value — needed so an auto-rotating model does not clip at
+>   its broadside — left the subject small in a mostly-empty frame.
 
 ## How to regenerate
 
@@ -73,6 +167,32 @@ Override the simulators or settle time with env vars:
 IPHONE_SIM="iPhone 17 Pro Max" IPAD_SIM="iPad Pro 13-inch (M5)" \
   WAIT_SECONDS=28 bash .claude/scripts/capture-appstore-screenshots.sh
 ```
+
+### The system-banner guard
+
+`simctl` exposes no way to silence notifications, and waiting them out does not
+work either: a freshly-erased device posts "Ready for Apple Intelligence" about
+a minute into the session — i.e. *during* a capture, not before the first one —
+which is exactly how that card landed in an iPad frame.
+
+So the script detects it. Because `-qa_mode 1` freezes the scene, the top band
+of a frame is static; the script shoots each demo, then re-shoots every
+`BANNER_RECHECK_SECONDS` (8 s) until it has `BANNER_SAMPLES` (3) samples, and
+compares a hash of that band across all of them. All equal means nothing
+transient was drawn over it. Any difference means a banner was up in one of them
+— the set is discarded and retried, up to `BANNER_MAX_ATTEMPTS` (4), after which
+the frame is **deleted** and the run **fails** rather than leaving a
+contaminated PNG in the tree.
+
+⚠️ What it proves is that the band did not *change* — not that it is clean. An
+overlay already up at the first shot that outlives the whole ~16 s sampling
+window hashes identically every time and is accepted. Sampling wider shrinks
+that blind spot; it never closes it.
+
+So it is a guard, not a substitute for looking. **Open all four PNGs before
+committing them.** #917 shipped a set that passed every mechanical check and was
+still wrong (Android captures letterboxed onto an iPad canvas, blank AR scenes),
+and #2896 nearly shipped a "park diorama" that was actually a piano.
 
 ## Publishing these to the App Store
 

@@ -297,6 +297,68 @@ unaffected (the GitHub emulator action has its own snapshot caching). See
 [`.maestro/README.md`](.maestro/README.md) for the full rationale and the
 Android Studio Journeys assessment (not adopted — blocked on an AGP 9.0.0 bump).
 
+**Rosetta x86_64 AR rig — a probe that answered NO, kept as evidence (#2758).**
+
+> ⛔ **Do not reach for this expecting live-camera AR QA — it was measured and it
+> does not work.** The rig was built to test whether an x86_64 guest escapes the
+> arm64 AR dead end. On a quiet host it *does* boot (ActivityManager registered at
+> ~42 min), and three independent walls still stop it:
+>
+> 1. **Same camera topology as arm64.** `dumpsys -t 300 media.camera` →
+>    `Device 0 maps to "1"`, `Device 1 maps to "10"` — **no HAL id `0`**. That
+>    numbering comes from the *emulator's camera HAL*, not the guest ABI, so
+>    #2754's stated cause is attributed to the wrong thing and x86_64 changes
+>    nothing.
+> 2. **ARCore cannot be installed.** The 82 MB APK transfers fine (13 MB/s) but the
+>    install kills `system_server` (`Broken pipe`) — reproduced with both streamed
+>    and `--no-streaming` installs. No ARCore, no session, ever.
+> 3. **Nothing renders** under software GL (black framebuffer, no focused window).
+>
+> Real AR tracking QA needs a physical device. Keep the flag for reproducibility if
+> Google ever ships a workable emulator ARCore build — not as a QA path.
+>
+> ⚠️ Two diagnostic traps this cost us, both of which manufactured false verdicts:
+> the harness passed `-no-boot-anim` and then read `init.svc.bootanim` as progress
+> (it can never move), and `dumpsys` has an **internal** 10 s timeout that TCG blows
+> through, so a silent probe looks like a measured absence. Use `dumpsys -t <n>` on a
+> slow guest, and never grade a mute probe as a measurement.
+
+ARCore ships **no arm64 emulator build** (#2754): live-camera AR sessions can
+never start on the default arm64 AVD, so AR demos there run in `qa_mode`
+fallback only. The x86_64-under-Rosetta rig was the candidate escape hatch:
+
+```bash
+bash .claude/scripts/setup-ar-emulator.sh --rosetta            # provision + boot
+bash .claude/scripts/setup-ar-emulator.sh --check --rosetta    # read-only rig report
+```
+
+This installs the Intel (darwin_x64) emulator bundle outside the SDK tree,
+the `android-34;google_apis;x86_64` system image, creates AVD `Pixel_7a_x86`
+(virtualscene back camera), boots it on **reserved port 5584 — outside the QA
+pool's allocation range** (see `EMU_POOL_PORT_EXCLUDE_FROM`; 5584 is the last
+console port inside adb's supported `[5555,5586]` window — higher ports make
+the emulator warn that "ADB may not function properly", and the first rig
+attempts on 5600 did see `adb shell` wedge mid-boot), and side-loads the
+`_x86_for_emulator` ARCore APK — an install that, measured, kills `system_server`
+on this guest. The run ends with the #2755 camera-topology probe, whose measured
+answer here is ids `"1"`/`"10"` and no `0`. ~9 GB one-time payload,
+disk-gated up front. The x86 guest runs under pure-software TCG (Apple
+Silicon cannot hardware-accelerate an x86 guest), so expect a **~45 min
+first boot** (measured) and ~5-10x-slower interaction, and never leased to
+standard QA runs. `--clean
+--rosetta` recreates only the x86 AVD — the arm64 AVD and its `qa-clean`
+snapshot are never touched.
+
+⚠️ **The rig needs the host to itself.** Its 3 GB guest gets no hardware
+acceleration, so once the host starts swapping, the guest's pages go out and
+boot progress collapses — the wait loop keeps reporting `adb: offline` while
+qemu RSS *falls*. Observed on a 16 GB M3: a second, unrelated emulator
+(2 GB, another session) booting five seconds after the rig pushed the host to
+~5 GB of swap and neither guest made progress. The RAM gate cannot prevent
+this on its own — two sessions measuring free RAM at the same instant both
+pass it. Before a rig run: check `adb devices` for other emulators, and treat
+falling qemu RSS as the signal to stop and retry on a quiet host.
+
 **Visible (windowed) emulator — opt-in (#1660).** The emulator boots **headless
 by default** (`-no-window`), which is marginally lighter on the host (skips the
 skin-window draw + window-server compositing). To watch it locally, opt in:
@@ -326,6 +388,20 @@ has RAM to spare. `setup-ar-emulator.sh` (via `lib/emulator-select.sh`):
   caller leases a free running emulator; else, if the running count is below the
   live cap, boots a new one on a distinct `-port` (5554, 5556, …) so emulators
   coexist; else waits (bounded) for a lease to free;
+- **reserves per SESSION, not per pid (#2862)** — `setup-ar-emulator.sh`
+  provisions an emulator and hands it back, so the emulator outlives the script.
+  A pid-scoped lease died with that script and the live emulator looked free to
+  every peer, which is how two sessions ended up driving one AVD. The
+  provisioning run now leaves a **sticky** lease keyed to a session token
+  (printed as `export EMU_LEASE_SESSION=…`, and inherited automatically by the
+  QA script this session starts next). Hand it back with
+  `setup-ar-emulator.sh --release` — the emulator keeps running. A sticky lease
+  expires after `EMU_LEASE_STICKY_TTL` (4 h) so a dead session cannot wedge the
+  pool, and `EMU_LEASE_TAKEOVER=1` forces past a peer's reservation;
+- **refuses a device that is not the pool AVD (#2862)** — the pool filters by
+  console PORT, so a stray emulator on 5554 used to be leased and driven as if
+  it were the ARCore-ready `Pixel_7a`. `EMU_REQUIRE_AVD` (set by every QA
+  script to `EMU_POOL_AVD`) now checks `adb emu avd name` before leasing;
 - **re-gates RAM before every boot** — free RAM is re-read immediately before
   each boot and the boot is refused below `EMU_MIN_FREE_RAM_MB` (default 3072 MB)
   even when the cap said there was room. Memory safety is the hard invariant —
@@ -334,6 +410,25 @@ has RAM to spare. `setup-ar-emulator.sh` (via `lib/emulator-select.sh`):
   clamped to `[EMU_MEMORY_FLOOR_MB, EMU_MEMORY_CEILING_MB]` (2048–4096 MB);
 - **reclaims stale leases** — a lease whose owner pid is dead AND whose serial is
   gone from `adb devices` is reclaimed automatically.
+⚠️ **The lease governs allocation; exclusion is enforced separately.** The lease
+file itself is advisory — the `adb install` / `adb shell input tap` commands this
+very file tells you to use read no lease file. That is not theoretical: on
+2026-07-27 a sibling session's direct `adb install` killed a leased sweep's app
+mid-run, and the discriminating evidence was one logcat line — `Killing
+<pid>:<pkg> (adj 0): stop <pkg> due to installPackageLI` — without which the
+symptom (`app died, no saved state`) reads as a native crash in the demo.
+
+Since #2924 a **blocking `PreToolUse` hook** (`hook-dispatch.sh`, guard 2) closes
+that path for mutating `adb`/`android` commands a session issues: it reads the
+lease and exits 2 when the target carries a live one owned by someone else,
+telling you how to inherit (`EMU_LEASE_SESSION=…`) or take over
+(`EMU_LEASE_TAKEOVER=1`). Two limits are structural, so keep them in mind rather
+than assuming full protection: the hook only sees commands that go through a
+Claude Code session (a plain terminal, a wrapper script, or a shell alias is
+invisible to it), and it matches a fixed list of mutating verbs. Before driving
+an emulator by any other route, check `setup-ar-emulator.sh --check` for an
+active lease that is not yours.
+
 Every threshold is env-overridable. `setup-ar-emulator.sh --check` reports pool
 state (running count, computed cap, free RAM, active leases). The QA scripts
 (`device-qa.sh`, `qa-android-demos.sh`, `ar-replay-qa.sh`) pin `ANDROID_SERIAL`
@@ -456,6 +551,146 @@ Thomas's Max quota; gate every fire with an explicit `@claude` mention so
 Dependabot etc. never trigger it. Concurrency is keyed per issue/PR — a second
 mention cancels a still-running earlier reply.
 
+## Agent review in CI (`pr-review.yml`)
+
+The four reviewer mandates in [`.claude/agents/`](.claude/agents/) used to run
+**only inside a live Claude Code session**, via the `review-fanout` saved
+workflow. That coupled every merge to a human having a session open: measured
+2026-08-01, the five most recently merged PRs (#2947 → #2930) carried **zero
+review recorded on GitHub**, because the review happened where GitHub cannot
+see it. [`pr-review.yml`](.github/workflows/pr-review.yml) moves the same
+fan-out onto the PR, so an agent-authored PR is reviewable — and mergeable —
+without a session.
+
+**Generator ≠ evaluator, enforced structurally.** The agents FIND: they write
+`review-verdict.json` (per-reviewer verdicts, adversarially-verified errors,
+warnings, propagation). `grade-pr-review.sh` DECIDES: it computes the merge
+verdict in bash/python, mirroring the grading block of `review-fanout.js` so
+the in-session and in-CI paths agree. The model never grades its own findings.
+
+**It fails closed.** A missing verdict file, unparsable JSON, or a dropped
+reviewer is `REVIEW_INCOMPLETE` — blocking — because a crashed fan-out produces
+no findings, which is otherwise indistinguishable from a clean review. A
+confirmed error from `sv-impact-reviewer` sets `breaking_api` and is the
+maintainer gate, never an auto-fix. `test-grade-pr-review.sh` pins all of this
+in `repo-hygiene`, **including a mutation test**: strip the reviewer-count
+check and a 3-of-4 review grades `MERGE`, which turns the suite red.
+
+**Fork PRs cannot be reviewed** — GitHub withholds secrets from fork
+`pull_request` runs, and `pull_request_target` (which would hand secrets to
+fork-authored code) is deliberately not used. Such a run says so loudly in the
+job summary plus a `::warning::`, and never reports a silent green review. Get
+coverage with `gh workflow run pr-review.yml -f pr=<n>`.
+
+⚠️ **This is the repo's most expensive quota consumer**, and the volume is
+measured, not guessed: this repo peaks at **30 PRs in a single day** (21 on
+several others), and each review spawns 4 reviewers plus one adversarial
+verifier per error — 120+ agent runs on an active day if every PR is reviewed.
+Three things bound it: `concurrency` (a push burst on one PR costs one review),
+**bot-authored PRs are excluded** (7 of the last 100 PRs were Dependabot — a
+dependency bump does not need four Opus reviewers arguing about KDoc), and
+`MAX_REVIEWS_PER_DAY` (25). Over budget, the review is skipped **loudly** with
+the dispatch command to force one — an unreviewed PR must never look reviewed.
+
+**`Agent review` is ADVISORY — it does not hold the merge button.** It is
+listed in `ci-gate.yml`'s `ADVISORY_CHECKS`, so its conclusion never decides
+the `CI Gate` aggregator that branch protection actually requires. That is the
+same rule the repo applies to `check-doc-drift`: an LLM review is a heuristic,
+and blocking a heuristic guarantees false positives that erode trust in the
+whole gate. A wrong `DO_NOT_MERGE` should cost one read of the review comment,
+not a frozen repository.
+
+Nothing about that makes it quiet: the check still goes RED, the verdict is
+still posted on the PR, and the grader still fails CLOSED. It also avoids a
+structural deadlock — `claude-code-action` refuses to run on any PR that edits
+`pr-review.yml`, so a blocking check would make every future change to the
+review workflow unmergeable by design. Promote it to blocking only after
+enough runs to *measure* the false-positive rate, the same bar the advisory
+device-QA legs have to clear.
+
+## Agent cost instrumentation
+
+Step-3 autonomy's stated bottleneck is *"ensuring tokens are used efficiently
+as usage increases"* — and until 2026-08-01 the repo had **no** measurement:
+no OTel export, no analytics, no counter. Quota was managed by feel.
+
+```bash
+bash .claude/scripts/agent-cost-report.sh --days 7 --by model
+```
+
+reads the ground truth Claude Code already writes to
+`~/.claude/projects/<slug>/*.jsonl` and reports where the tokens went, grouped
+by `day` / `model` / `session` / `branch`. `--json` for machine consumption,
+`--all` for every project, `--days 0` for everything on disk.
+
+**It reports tokens, never dollars.** This account is on a flat Max plan, so a
+dollar figure would be an invented number wearing a measurement's clothes. The
+quantity that binds is quota, and output tokens dominate it. Grouping `--by
+model` is the actionable view, because the quota is **per model**.
+
+⚠️ **Deduplication is the whole correctness story.** A transcript writes
+several records per API call, each carrying the *same* `usage` block: measured
+on one real session, 980 usage records for 658 distinct `requestId`s — summing
+records overstates output by **~95%**. Everything is keyed on `requestId`.
+`test-agent-cost-report.sh` pins it in `repo-hygiene` with a mutation test on
+the dedup key (re-key to `uuid` and the fixture total inflates 350 → 450).
+
+**OTel is the opt-in complement, not a replacement.** If a collector is ever
+available, `CLAUDE_CODE_ENABLE_TELEMETRY=1` plus the standard `OTEL_*` exporter
+variables ship the same data live. It is deliberately NOT configured here:
+without a collector endpoint it would export nowhere and read as instrumented
+when it is not.
+
+## Event-driven agents
+
+Two jobs let Claude start work no one asked for by hand:
+
+| Job | Fires on | Guard |
+|---|---|---|
+| `issue-intake.yml` → `triage` | an outside reporter opens an issue | runs AFTER the deterministic labeller, never replaces it; bots and write-access authors excluded; 10 runs/day budget |
+| `maintenance.yml` → `digest-to-tasks` | daily cron | hard cap of 3 new issues/run, **measured** after the fact; mandatory dedup; anomaly-only |
+| `claude.yml` → `claude` | `@claude` mention | 20 real runs/day budget (skipped triggers excluded from the count) |
+
+⛔ **A public repo's issues and comments spend the maintainer's quota.** Fork
+`pull_request` runs get no secrets, so `pr-review.yml` structurally cannot
+spend anything on an outside contributor's PR — but `issues: opened` and
+`issue_comment` fire in the BASE repo, where secrets *are* available. Anyone
+can therefore spend Claude Max quota by opening an issue or typing `@claude`,
+and `concurrency` does not help: it is keyed per issue/PR, so distinct threads
+never queue behind each other. Both jobs carry a daily budget.
+
+Two calibration facts, both measured 2026-08-01 — recheck them before changing
+a threshold, because both are counter-intuitive:
+
+- **Most `claude.yml` runs cost nothing.** The workflow is triggered by every
+  issue/comment event and the job's `if:` gate skips the ones without a
+  mention. 15 runs that day, *all* skipped; zero real executions across the
+  last 200 runs. Counting raw runs would have capped the bot on 2026-07-20
+  (46 triggers, 0 real spend). The budget counts `conclusion != "skipped"`.
+- **Most issues don't need triage.** Of the last 200: 186 opened by the
+  maintainer, 8 by `github-actions`, 6 by outside reporters. Triaging an issue
+  its own author wrote seconds ago spends ~93% of the budget on noise, so
+  `OWNER`/`MEMBER`/`COLLABORATOR` are excluded. This is the *opposite* of
+  gating on "is this person a collaborator" — that would kill triage exactly
+  where it earns its keep.
+
+⛔ **The issue body is untrusted input, in both directions.** `issue-intake.yml`'s
+original header documents why it is never interpolated into a `run:` step
+(shell injection). The triage job extends the same rule to the *prompt*: a
+crafted issue body reaching the prompt is the LLM equivalent of that bug, and
+it would arrive holding `issues: write`. The agent fetches the issue itself
+with `gh` and is told explicitly that what it reads is DATA. The only
+interpolated value is the issue number, which GitHub guarantees is an integer.
+
+⛔ **Anti-spam is `digest-to-tasks`'s design constraint**, not a nicety — an
+agent with `issues: write` on a daily cron is a burst waiting to happen. The
+cap is stated in the prompt *and* verified by a deterministic step that reddens
+the run when exceeded: the prompt asks, the check measures. The job creates the
+`auto-filed` label itself, because the prompt forbids the agent from creating
+labels — without that step the issues would carry no label, the before/after
+count would read 0 → 0 forever, and the cap would be a guard measuring nothing.
+A healthy repo files **zero** issues; an empty run is the expected outcome.
+
 ## Documentation drift (docs ↔ API) — two-tier policy
 
 SceneView is AI-first: the prose docs (`llms.txt`, KDoc, `docs/docs/*`,
@@ -480,12 +715,25 @@ stale docs make an AI emit stale code. Keeping them in sync is enforced at
    safe). Draft + human review means a wrong prose patch can never land
    silently — this is where the "auto-fix" power lives, not on every PR.
 
-Alongside the two heuristic tiers, one surface gets a **deterministic,
-blocking gate**: `gpt/knowledge-*.md` is GENERATED from `llms.txt` by
-`tools/generate-gpt-knowledge.js`, and `ci.yml` → `repo-hygiene` fails when
-the committed files drift (`--check`). Generated files can be gated hard
-because there is no false-positive risk — never hand-edit them;
-`sync-versions.sh --fix` regenerates them on every version bump (#2724).
+Alongside the two heuristic tiers, two surfaces get a **deterministic,
+blocking gate**, both in `ci.yml` → `repo-hygiene`. Generated files can be
+gated hard because there is no false-positive risk — never hand-edit them:
+
+- `gpt/knowledge-*.md` is GENERATED from `llms.txt` by
+  `tools/generate-gpt-knowledge.js`; CI fails when the committed files drift
+  (`--check`). `sync-versions.sh --fix` regenerates them on every version
+  bump (#2724).
+- `assets/CREDITS.md` is GENERATED from `assets/catalog.json` by
+  `.claude/scripts/generate-credits.py`; CI fails when it drifts (`--check`).
+  This one is a **licence-compliance** gate, not a docs gate: CREDITS.md is
+  what discharges the attribution clause (CC-BY 4.0 §3a) of every model that
+  ships in the sample apps, so a catalog entry that never reaches CREDITS.md
+  is an uncredited model in a published release. It went stale undetected
+  once — five catalog records (three distinct Khronos works: Toy Car, Sheen
+  Chair, Iridescence Dish With Olives) shipped uncredited before a manual
+  re-run caught it. Scope: the gate covers `assets/CREDITS.md` only.
+  `samples/android-demo/src/main/assets/CREDITS.md` is a separate,
+  hand-maintained file bundled into that APK — not generated, not gated.
 
 Why not block per-PR or auto-fix per-PR? Blocking frustrates internal-only
 refactors that get mis-classified; per-PR auto-fix is costly on every PR and a
@@ -600,7 +848,12 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 > tied to a `v*` tag, `mcp/` changes between releases leave npm stale (it once
 > rotted a month behind at 4.0.12). To ship the MCP on demand, bump
 > `mcp/package.json` + `mcp/package-lock.json` by a patch (the generated
-> `mcp/src/generated/version.ts` is refreshed automatically by `npm run prepare`),
+> `mcp/src/generated/version.ts` is refreshed by `npm run prepare` **only when the
+> MCP itself is (re)built** — a plain SDK-only release bumps `gradle.properties`
+> without touching `mcp/`, so it does NOT run that lifecycle and `version.ts` went
+> stale at v4.25.0; `sync-versions.sh` therefore independently checks its
+> `LATEST_SCENEVIEW_RELEASE` against `VERSION_NAME` (CRITICAL) and regenerates it in
+> `--fix` — that is the real backstop on the release path, #2906),
 > land it on `main`, then dispatch the **`mcp-publish.yml`** workflow
 > (`gh workflow run mcp-publish.yml -R sceneview/sceneview --ref main`). It
 > mirrors `release.yml`'s `publish-mcp` job (same `NPM_TOKEN`, build/test/publish)
@@ -725,13 +978,15 @@ Hooks trigger automatically on specific Claude Code actions:
 | `claim.sh` | Atomic issue-claim registry that kills the #2300 dup-implementation race. Primary lock = GitHub `in-progress` label (cross-host); local mirror = the `STATE.md` IN-FLIGHT ledger. `<issue#>` / `--check` / `--release` / `--list` / `--force`. macOS-safe (sleepless `mkdir` lock, no `flock`) |
 | `check-saved-workflows.sh` | Static validator for the `.claude/workflows/*.js` saved workflows (async-wrapped `node --check` + meta block + resume-safety). Distinct from `check-workflow-scripts.sh`, which validates the CI YAML |
 | `cross-platform-check.sh` | Compare Android vs iOS vs Web API surface, report gaps |
-| `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.). Section 16 runs `store-preflight.sh` (advisory) |
+| `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.). Section 16 runs `store-preflight.sh` (advisory); section 17 runs the store-sync listing-drift diff (`play_listing.py` / `asc_listing.py --dry-run --fail-on-drift`, advisory WARN — never a blocker, #2612 Phase C) |
 | `store-preflight.sh` | Read-only App Store Connect preflight (#2612 P1) — detects the human-only store blockers that silently 403 a deploy: an expired Apple agreement (`REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED` canary), an App Review rejection, cert/profile expiry (< `CERT_EXPIRY_WARN_DAYS`, default 30), and (since #2731) an open never-submitted reviewSubmission (`READY_FOR_REVIEW`/`UNRESOLVED_ISSUES`) — the silent-submission signature the IOS-scoped version-state probe alone can't see. Signs the ASC ES256 JWT with openssl only; reuses `app-store.yml`'s ASC secrets (no new scope); SKIPs honestly without creds. Advisory-first — a blocker hard-blocks only under `GATE_HARD=1`. Wired into `release-checklist.sh` §16, the `/store-status` command doc (probe-set wiring is a P1 follow-up), and a daily `maintenance.yml` job. Self-tested by `test-store-preflight.sh` (in `repo-hygiene`) |
+| `test-app-store-submit.py` | Hermetic self-test for `app-store.yml`'s **Submit build for App Store review** step (#2893). That step is a large Python program inside a YAML heredoc, and it had no test seam: exercising it meant dispatching the workflow, which archives, signs and uploads a real TestFlight build — so every fix to it was validated in production, on a release, after it broke one (#2731, #2885, #2893). The test EXTRACTS the real heredoc (never a copy, so it cannot drift; a renamed step fails loudly instead of silently covering nothing) and runs it against a stubbed App Store Connect: build selection pinned to `ASC_EXPECTED_BUILD` (W1), auth-vs-transient classification on the builds GET (W2), orphan-`reviewSubmission` cleanup on any post-create failure (W5), and the `whatsNew` sourcing. Stdlib only — no network, no secrets, no Apple call. Runs in `ci.yml` → `repo-hygiene` |
 | `store-sync/play_listing.py` | Play listing sync/diff as code (#2612 P2) — the single code path for `play-store.yml`'s `sync-listing` job (`--apply`) and local read-only drift diffs (`--dry-run` default: listing text + per-image SHA-256 vs the live store, probe edit abandoned). SKIPs honestly without creds. Self-tested by `test-store-sync.sh` (repo-hygiene) |
-| `store-sync/asc_listing.py` | App Store listing drift diff + screenshot upload (#2612 P2). `--dry-run` (default, read-only) diffs live ASC text fields + screenshot `sourceFileChecksum` against `samples/ios-demo/distribution/app-store/` + `appstore-screenshots/`; `--apply-screenshots` uploads the repo screenshots (reserve → chunked PUT → commit `uploaded:true` + MD5) to the **editable** version, replacing each display-type set (delete-then-upload; a failed delete is fatal *before* any upload, so a half-replaced set can't happen). Live order is *expected* to follow repo filename order — Apple does not promise creation order, so the script PROBES it after upload and warns instead of asserting. Never creates a version — SKIPs honestly when none is editable, so `app-store.yml`'s repaired submit step (#2731) stays untouched. Listing TEXT stays owned by that step. CI caller = its OWN workflow `app-store-screenshots.yml` (ubuntu, dispatch-only, no Xcode) — deliberately NOT a job in `app-store.yml`, whose `deploy-ios`/`deploy-macos` are gated only on `*_ready`, so a screenshot dispatch there would also build and upload a TestFlight build (caught in PR #2781 review). Flag abbreviations are disabled on both store-sync scripts: `--apply` must not resolve into an upload. Same ASC env aliases as `store-preflight.sh`. **`--dry-run` is also the daily read-only `maintenance.yml` `asc-listing-drift` job** (#2612 P2 Phase C step 0, sibling of `store-preflight`) — the first CI caller of the ASC read-only path. It prints a `sourceFileChecksum` **provenance verdict** (`confirmed`/`unattested-match`/`md5-shaped`/`absent`/`other`/…): the MD5 keying the screenshot diff rests on is *measured, not assumed* (true by construction for anything this script uploaded — Apple echoes what we declare — so only console-sourced live sets are an honest sample). A repo-MD5 match therefore reports `unattested-match`, **not** `confirmed`, unless the operator attests provenance with `--screenshots-are-console-sourced` (which covers the draft too, and names its own source in the log so an inherited env var can't attest invisibly); without that gate a single `app-store-screenshots.yml` dispatch would have made the verdict permanently green on a tautology (caught in PR #2811 review). The probe also samples the **editable draft**'s screenshot sets and stamps every set with the version it was read from (`APP_IPHONE_67 @4.23.0`, `… @draft 4.24.0`), because a console upload lands on the draft — and that draft keeps its screenshots when it ships, so a set being live proves nothing about who uploaded it. Phase C's drift gate (release-checklist §17 + drift-dedup issue) stays **unwired** until the verdict reads `confirmed` |
+| `store-sync/asc_listing.py` | App Store listing drift diff + screenshot upload (#2612 P2). `--dry-run` (default, read-only) diffs live ASC text fields + screenshot `sourceFileChecksum` against `samples/ios-demo/distribution/app-store/` + `appstore-screenshots/`; `--apply-screenshots` uploads the repo screenshots (reserve → chunked PUT → commit `uploaded:true` + MD5) to the **editable** version, replacing each display-type set (delete-then-upload; a failed delete is fatal *before* any upload, so a half-replaced set can't happen). Live order is *expected* to follow repo filename order — Apple does not promise creation order, so the script PROBES it after upload and warns instead of asserting. Never creates a version — SKIPs honestly when none is editable, so `app-store.yml`'s repaired submit step (#2731) stays untouched. Listing TEXT stays owned by that step. CI caller = its OWN workflow `app-store-screenshots.yml` (ubuntu, dispatch-only, no Xcode) — deliberately NOT a job in `app-store.yml`, whose `deploy-ios`/`deploy-macos` are gated only on `*_ready`, so a screenshot dispatch there would also build and upload a TestFlight build (caught in PR #2781 review). Flag abbreviations are disabled on both store-sync scripts: `--apply` must not resolve into an upload. Same ASC env aliases as `store-preflight.sh`. **`--dry-run` is also the daily read-only `maintenance.yml` `asc-listing-drift` job** (#2612 P2 Phase C step 0, sibling of `store-preflight`) — the first CI caller of the ASC read-only path. It prints a `sourceFileChecksum` **provenance verdict** (`confirmed`/`unattested-match`/`md5-shaped`/`absent`/`other`/…): the MD5 keying the screenshot diff rests on is *measured, not assumed* (true by construction for anything this script uploaded — Apple echoes what we declare — so only console-sourced live sets are an honest sample). A repo-MD5 match therefore reports `unattested-match`, **not** `confirmed`, unless the operator attests provenance with `--screenshots-are-console-sourced` (which covers the draft too, and names its own source in the log so an inherited env var can't attest invisibly); without that gate a single `app-store-screenshots.yml` dispatch would have made the verdict permanently green on a tautology (caught in PR #2811 review). The probe also samples the **editable draft**'s screenshot sets and stamps every set with the version it was read from (`APP_IPHONE_67 @4.23.0`, `… @draft 4.24.0`), because a console upload lands on the draft — and that draft keeps its screenshots when it ships, so a set being live proves nothing about who uploaded it. Phase C's drift gate is now **wired on both surfaces, advisory**: §17 of `release-checklist.sh` WARNs at release time (NOT gated on a `confirmed` verdict — an advisory WARN is not the blocking bar, PR #2880), and the daily `maintenance.yml` `listing-drift` / `asc-listing-drift` jobs run the diff with `--fail-on-drift` and open a de-duplicated per-store tracking issue **only on a measured drift** (exit 3 — never on a credential-less skip or a mid-read crash), refreshed daily while the drift persists — the issue is **not** auto-closed on reconciliation (closing it is a manual step; auto-close is a documented follow-up), #2612 Phase C. Neither fails CI; promotion to blocking waits on n=5 |
 | `lib/android-cli.sh` | Shared helpers for Google's `android` CLI (screenshot, layout, install+launch) with `adb` fallback |
-| `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool + snapshot state + camera-id topology, #2754), `--clean` (wipe+recreate), `--seed-snapshot` (seed the golden `qa-clean` boot snapshot), `--no-snapshot` (force cold boot). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. Boot snapshots (#1672): once seeded, the base-port emulator cold-boots from the immutable `qa-clean` snapshot — faster and deterministic, and fixes the userdata storage-degradation bug. **Use this for routine QA — never QA on a personal device.** |
-| `lib/emulator-select.sh` | Sourced helper for `setup-ar-emulator.sh` / `device-qa.sh` / `qa-android-demos.sh` — RAM monitoring (`vm_stat`/`/proc/meminfo`), RAM-budgeted pool-cap computation, a per-emulator lease registry, RAM-scaled `-memory`, multi-port boot, and stale-lease reclaim. The adaptive pool runs as many emulators as live host RAM safely allows (floor 1, `EMU_POOL_MAX` ceiling), superseding #1647's strict-single design (#1654). |
+| `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool + snapshot state + camera-id topology, #2754), `--clean` (wipe+recreate), `--seed-snapshot` (seed the golden `qa-clean` boot snapshot), `--no-snapshot` (force cold boot), `--release` (hand this session's pool reservation back, emulator keeps running, #2862), `--rosetta` (provision/boot the separate x86_64-under-Rosetta AR rig on reserved port 5584 — ⛔ **measured NOT to deliver live-camera AR**: no camera HAL id `0`, ARCore install kills `system_server`, nothing renders; kept as a reproducible probe, #2758). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. Boot snapshots (#1672): once seeded, the base-port emulator cold-boots from the immutable `qa-clean` snapshot — faster and deterministic, and fixes the userdata storage-degradation bug. **Use this for routine QA — never QA on a personal device.** |
+| `lib/emulator-select.sh` | Sourced helper for `setup-ar-emulator.sh` / `device-qa.sh` / `qa-android-demos.sh` — RAM monitoring (`vm_stat`/`/proc/meminfo`), RAM-budgeted pool-cap computation, a per-emulator lease registry, RAM-scaled `-memory`, multi-port boot, and stale-lease reclaim. The adaptive pool runs as many emulators as live host RAM safely allows (floor 1, `EMU_POOL_MAX` ceiling), superseding #1647's strict-single design (#1654). Leases are reserved per **session** and survive the provisioning script, and no emulator is leased unless its AVD matches `EMU_REQUIRE_AVD` (#2862) |
+| `test-emulator-lease.sh` | Hermetic self-test for the pool lease contract (#2862, #2921) — sticky lease survives its taker, a peer session is refused, an expired reservation is reclaimed, a non-pool AVD is never leased, the handoff token is inherited at most once, and `emu_lease_ensure` verifies a pre-set `ANDROID_SERIAL` **without** stealing ownership (a plain `emu_lease_acquire` there makes the child release its parent's lease mid-run — mutation-tested). Stub `adb` + scratch lease dir, no emulator needed. Runs in `ci.yml` → `repo-hygiene` |
 | `qa-android-demos.sh` | QA loop over every demo — uses `android layout`/`screen capture` for the UI dump and screenshots |
 | `capture-play-store-screenshots.sh` | Play Store screenshot capture — `android screen capture` (no LF/CRLF corruption) |
 | `visual-check.sh` | Before/after baseline capture — Android via `android` CLI, iOS via `xcrun simctl` |
@@ -741,7 +996,10 @@ Hooks trigger automatically on specific Claude Code actions:
 | `install-sceneview-web-skill.sh` | Copies `agents/sceneview-web/` (Web skill) to `~/.android/cli/skills/xr/sceneview-web/` |
 | `check-sceneview-skill.sh` | Verifies all three `agents/sceneview*/` skills (API identifiers, demo refs, frontmatter) are in sync with the library source. Runs in `quality-gate.sh`, `pr-check.yml`, and daily via `maintenance.yml` |
 | `check-doc-drift.sh` | Flags when a public-API change is not mirrored in the docs (llms.txt / KDoc / `docs/docs/*` / recipes). **Diff mode** (default) = per-PR ADVISORY WARN, runs in `ci.yml` → `repo-hygiene`; never blocks (heuristic → would false-positive). **`--audit` mode** = repo-wide candidate-drift worklist consumed by the weekly `doc-audit.yml` agent. `--fail` opts into a non-zero exit. Self-tested by `test-check-doc-drift.sh` (also in `repo-hygiene`). |
+| `generate-credits.py` | Regenerates `assets/CREDITS.md` from `assets/catalog.json` — the attribution surface every model's licence requires (CC-BY 4.0 §3a). Re-run after ANY catalog edit. `--check` is the deterministic BLOCKING drift gate in `ci.yml` → `repo-hygiene` (regenerate-and-compare, no write) |
 | `worktree-auto-prune.sh` | Safe GC for `.claude/worktrees/*` — removes worktrees whose branch is merged (`--dry-run`, `--yes`, `--keep <path>`). Never touches dirty or unmerged trees |
+| `grade-pr-review.sh` | Grades an agent PR review into a merge verdict — DETERMINISTIC, no LLM. Consumes `review-verdict.json` from `pr-review.yml`'s reviewers and emits `verdict=MERGE\|MERGE_AFTER_WARNINGS\|DO_NOT_MERGE\|REVIEW_INCOMPLETE` + a dedup-marked comment body. Mirrors the grading block of `review-fanout.js` so in-session and in-CI reviews agree. **Fails closed**: missing file / unparsable JSON / dropped reviewer ⇒ `REVIEW_INCOMPLETE`, never a pass. Self-tested with a mutation test by `test-grade-pr-review.sh` (in `repo-hygiene`) |
+| `agent-cost-report.sh` | Measures what the agents actually cost, from the local session transcripts (`~/.claude/projects/*/*.jsonl`). `--days N`, `--by day\|model\|session\|branch`, `--json`, `--all`, `--top N`. Reports **tokens, never dollars** (flat Max plan — a dollar figure would be invented). ⚠️ Everything is keyed on `requestId`: a transcript emits several records per API call with the same `usage`, and summing records overstates output by ~95% (measured: 980 records / 658 requests). Self-tested by `test-agent-cost-report.sh` |
 | `cleanup-branches-worktrees.sh` | One-shot GC for stale `claude/*` branches **and** worktrees: deletes merged local + remote branches (single `git push --delete`, no bot-burst) and delegates worktree pruning to `worktree-auto-prune.sh`. Defaults to dry-run; `--yes` to act, `--keep <branch\|path>`, `--no-worktrees`. Current-branch / unmerged / open-PR guarded. Runs daily in `maintenance.yml` |
 
 ### Version location map

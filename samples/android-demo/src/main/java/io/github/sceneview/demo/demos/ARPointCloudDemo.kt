@@ -28,6 +28,7 @@ import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
+import java.util.Locale
 
 /**
  * AR demo — renders ARCore's live tracking feature points as an in-scene point cloud using
@@ -94,7 +95,7 @@ fun ARPointCloudDemo(onBack: () -> Unit) {
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
-                        text = "%.2f".format(confidenceThreshold),
+                        text = "%.2f".format(Locale.US, confidenceThreshold),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }

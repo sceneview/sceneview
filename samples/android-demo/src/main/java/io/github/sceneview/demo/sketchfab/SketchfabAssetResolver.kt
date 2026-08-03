@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import kotlin.math.min
 import kotlin.math.pow
 
@@ -46,9 +47,54 @@ import kotlin.math.pow
  * @see SampleAssets for the curated registry of allowed slugs.
  */
 class SketchfabAssetResolver private constructor(
-    private val context: Context,
+    context: Context,
     private val service: SketchfabService,
+    private val bundledAssets: BundledAssets = AssetManagerBundledAssets(context),
 ) {
+    /**
+     * The APK's `assets/` tree, behind an interface so tests can ship
+     * different bytes for the same path across two calls — which is what an
+     * app update does, and the only way to exercise the staleness guard in
+     * [fallbackBundle]. Mirrors the `bundle` dependency injected into the
+     * iOS resolver's `init(service:bundle:fileManager:)`.
+     */
+    @VisibleForTesting
+    internal interface BundledAssets {
+        /** Opens [path] for reading, or throws [IOException] when absent. */
+        fun open(path: String): InputStream
+
+        /**
+         * Byte length of [path] once decompressed, or `-1` when it cannot be
+         * determined (missing asset, unreadable stream).
+         *
+         * An unknown length never counts as *fresh*: [fallbackBundle] will
+         * not take its fast path on it. What happens next depends on whether
+         * a usable staged copy exists — a complete one is served as a last
+         * resort (rendering the previous model beats throwing at every call
+         * site), and otherwise the staging path runs and surfaces the real
+         * error. See that function for the full ordering.
+         */
+        fun sizeOf(path: String): Long
+    }
+
+    private class AssetManagerBundledAssets(context: Context) : BundledAssets {
+        private val assets = context.applicationContext.assets
+
+        override fun open(path: String): InputStream = assets.open(path)
+
+        /**
+         * `AssetInputStream.available()` reports the total remaining length,
+         * which for a freshly opened asset is its full decompressed size —
+         * true for both stored and deflated entries, so it does not depend on
+         * `.glb` being listed under `android.androidResources.noCompress`
+         * (it is not). `openFd().length` would be cheaper but throws for a
+         * compressed entry, which is exactly how our GLBs ship.
+         */
+        override fun sizeOf(path: String): Long = runCatching {
+            assets.open(path).use { it.available().toLong() }
+        }.getOrDefault(-1L)
+    }
+
     companion object {
         /**
          * Samples-side cap on the shared on-disk cache, in bytes (250 MB).
@@ -71,6 +117,27 @@ class SketchfabAssetResolver private constructor(
         const val MIN_BOUNDS_RADIUS_M: Float = 0.05f
         const val MAX_BOUNDS_RADIUS_M: Float = 5.0f
 
+        /**
+         * Cache subdirectory the bundled fallbacks are staged into, directly under the
+         * streamed-download root. Both paths hand back a [File], so this directory name is
+         * the only thing that distinguishes them — see [isBundledFallback].
+         */
+        const val FALLBACK_DIR_NAME: String = "fallback"
+
+        /**
+         * True when [file] is a staged bundled fallback rather than a streamed download.
+         *
+         * A demo that wants to tell the user which one it is rendering has to ask the FILE,
+         * not the configuration: "an API key is configured" does not mean the download
+         * succeeded. Every failure mode in [resolve] — no network, 401 on a stale key, a
+         * bounds-drifted asset, exhausted retries — ends at [fallbackBundle], so a keyed
+         * build can quietly render the offline stand-in. That is measured, not theoretical:
+         * on the QA emulator (2026-07-28) a build WITH a key staged all four Multi-Model
+         * slots out of the fallback directory, the download endpoint answering 429 (#2933).
+         * The config-based inference used elsewhere in the demo calls that case "streamed".
+         */
+        fun isBundledFallback(file: File): Boolean = file.parentFile?.name == FALLBACK_DIR_NAME
+
         /** Max retries for a transient network failure (429 / 5xx). */
         const val MAX_RETRIES: Int = 3
 
@@ -88,10 +155,27 @@ class SketchfabAssetResolver private constructor(
                 ).also { INSTANCE = it }
             }
 
+        /**
+         * The production [BundledAssets], so a test can assert that
+         * `available()` really does equal the staged byte count for the real
+         * `AssetManager` — the assumption the freshness fast path rests on.
+         */
+        @VisibleForTesting
+        internal fun assetManagerBundledAssetsForTesting(context: Context): BundledAssets =
+            AssetManagerBundledAssets(context.applicationContext)
+
         /** Test-only factory so unit tests can inject a fake service. */
         @VisibleForTesting
-        internal fun forTesting(context: Context, service: SketchfabService): SketchfabAssetResolver =
-            SketchfabAssetResolver(context.applicationContext, service)
+        internal fun forTesting(
+            context: Context,
+            service: SketchfabService,
+            bundledAssets: BundledAssets? = null,
+        ): SketchfabAssetResolver = SketchfabAssetResolver(
+            context = context.applicationContext,
+            service = service,
+            bundledAssets = bundledAssets
+                ?: AssetManagerBundledAssets(context.applicationContext),
+        )
     }
 
     /**
@@ -193,8 +277,20 @@ class SketchfabAssetResolver private constructor(
      * the streamed path so demos always get a [File] (some Filament loaders
      * choke on AssetManager streams when the binary is large).
      *
-     * The copy is performed once per uid; subsequent calls touch the
-     * `lastModified` timestamp to keep the file from being evicted as cold.
+     * The copy is re-made whenever it no longer matches the asset currently
+     * in the APK; otherwise subsequent calls only touch the `lastModified`
+     * timestamp to keep the file from being evicted as cold. Keying the
+     * staging on `uid` alone made it permanent: the app's data dir survives a
+     * Play Store update, so an APK shipping a corrected bundled GLB stayed
+     * inert on every existing install — the target path was identical and the
+     * file already existed. That is the defect #2929 fixed on iOS; this is
+     * the Android half of it (#2943).
+     *
+     * Byte length is the discriminator, as on iOS: the APK is immutable for a
+     * given app version, so any asset change ships a different length.
+     * Hashing megabytes on every resolve to catch a same-length edit would
+     * cost far more than it saves, and a missed re-stage degrades to the
+     * previous behaviour rather than to a crash.
      *
      * **Concurrency.** Demos call `resolve` from both [prefetchAll] *and* a
      * per-slug `produceState` at the same time, so two coroutines routinely
@@ -209,12 +305,26 @@ class SketchfabAssetResolver private constructor(
     @VisibleForTesting
     internal fun fallbackBundle(slug: SketchfabSlug): File {
         val cacheRoot = service.cacheRoot()
-        val fallbackDir = File(cacheRoot, "fallback").also { it.mkdirs() }
+        val fallbackDir = File(cacheRoot, FALLBACK_DIR_NAME).also { it.mkdirs() }
         val target = File(fallbackDir, "${slug.uid}.glb")
-        // Trust the cached copy only if it is a *complete* GLB. A truncated
-        // file left behind by an older racy write (pre-#1423 fix) would
-        // otherwise be served forever — `hasGlbMagic` re-stages it instead.
-        if (target.exists() && target.length() > 0L && hasGlbMagic(target)) {
+        val stagedLooksComplete = target.exists() && target.length() > 0L && hasGlbMagic(target)
+        val bundledSize = bundledAssets.sizeOf(slug.fallbackBundledPath)
+        // Trust the cached copy only if it is a *complete* GLB **and** still
+        // matches the asset currently in the APK. A truncated file left
+        // behind by an older racy write (pre-#1423 fix) would otherwise be
+        // served forever — `hasGlbMagic` re-stages it instead — and so would
+        // the bytes of a previous app version, because the target path is
+        // keyed on uid alone and the data dir survives a Play Store update.
+        if (stagedLooksComplete && bundledSize >= 0L && target.length() == bundledSize) {
+            target.setLastModified(System.currentTimeMillis())
+            return target
+        }
+        if (bundledSize < 0L && stagedLooksComplete) {
+            // The bundled asset is unreadable (renamed or pruned from the APK
+            // while [SampleAssets] still points at the old path) but a
+            // complete staged copy exists. Serving it degrades to "renders
+            // the previous model" rather than throwing at every call site —
+            // the shape callers had before this freshness check existed.
             target.setLastModified(System.currentTimeMillis())
             return target
         }
@@ -223,16 +333,19 @@ class SketchfabAssetResolver private constructor(
         // file or nothing at all.
         val temp = File.createTempFile("${slug.uid}-", ".glb.tmp", fallbackDir)
         try {
-            context.assets.open(slug.fallbackBundledPath).use { input ->
+            bundledAssets.open(slug.fallbackBundledPath).use { input ->
                 temp.outputStream().use { output ->
                     input.copyTo(output)
                 }
             }
-            // renameTo is atomic within the same filesystem. If a racing
-            // coroutine already installed the target, our equivalent copy is
-            // simply discarded — both produce a byte-identical bundled asset.
+            // renameTo is atomic within the same filesystem and overwrites an
+            // existing destination. On the rare failure path, keep whatever a
+            // racing coroutine installed only when it matches the bytes we
+            // just staged: "target already exists" is no longer proof that it
+            // is equivalent, since the file we are replacing may be a stale
+            // copy from a previous app version.
             if (!temp.renameTo(target)) {
-                if (target.exists() && target.length() > 0L) {
+                if (target.exists() && temp.length() > 0L && target.length() == temp.length()) {
                     temp.delete()
                 } else {
                     temp.copyTo(target, overwrite = true)

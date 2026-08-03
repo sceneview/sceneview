@@ -58,6 +58,7 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.utils.rememberDebugStats
+import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.max
@@ -454,15 +455,15 @@ private fun DebugOverlay(
             else -> Color(0xFFE53935)
         }
         BasicText(
-            text = "FPS: %.1f".format(fps),
+            text = "FPS: %.1f".format(Locale.US, fps),
             style = TextStyle(color = fpsColor, fontSize = 12.sp, fontFamily = mono)
         )
         BasicText(
-            text = "Frame: %.1f ms".format(stats.frameTimeMs),
+            text = "Frame: %.1f ms".format(Locale.US, stats.frameTimeMs),
             style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = mono)
         )
         BasicText(
-            text = "Nodes: %d".format(stats.nodeCount),
+            text = "Nodes: %d".format(Locale.US, stats.nodeCount),
             style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = mono)
         )
         // Estimated tris: SphereNode default tessellation is 24 stacks × 24 slices,

@@ -191,6 +191,12 @@ jobs:
         env:
           # Optional. Unset on forks → demo gracefully disables Geospatial/Streetscape.
           ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
+        # Root `assembleDebug` also compiles :snippets-check (the doc-snippet
+        # guard, settings.gradle:31) — this is the ONLY per-PR compile of the
+        # snippets on a library-API change. The docs-input direction is guarded
+        # separately by snippets-check.yml (llms.txt is `paths-ignore`d here).
+        # If this step is ever narrowed to explicit tasks, add
+        # `:snippets-check:compileDebugKotlin` so that coverage is kept.
         run: |
           ./gradlew \
             assembleDebug \
@@ -774,6 +780,87 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-store-sync.sh
 
+      # app-store.yml submit-step self-test (#2893). That step is a large Python
+      # program inside a YAML heredoc, sitting between a green tag build and an
+      # App Store submission, and it had NO test seam: the only way to exercise
+      # it was to dispatch the workflow, which archives, signs and uploads a
+      # real TestFlight build — so every fix to it was validated in production,
+      # on a release, after it broke one (#2731, #2885, #2893). This extracts
+      # the real heredoc (never a copy, so it cannot drift) and runs it against
+      # a stubbed App Store Connect. Stdlib only — no network, no secrets, no
+      # Apple call.
+      - name: Self-test app-store.yml submit step
+        if: always()
+        shell: bash
+        run: python3 .claude/scripts/test-app-store-submit.py
+
+      # sync-versions.sh Kotlin-toolchain `--fix` rewriter self-test. The
+      # rewriter only fires on a Kotlin bump (gradle/libs.versions.toml drifting
+      # from the `**Kotlin:** X.Y.Z` prose), which quality-gate's in-tree run
+      # almost never hits — #2790 bumped the toml with no handler and reddened
+      # pre-push-check leg 7 (relived #2876). Pins the handler hermetically.
+      - name: Self-test sync-versions.sh Kotlin rewriter
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-sync-versions-kotlin.sh
+
+      # Emulator-pool lease contract self-test (#2862). The pool's mutual
+      # exclusion is what stops two sessions from driving one AVD, and it is
+      # invisible to every other check: no emulator runs in `repo-hygiene`, and
+      # a broken lease still "works" for a single session. Hermetic (stub adb +
+      # scratch lease dir), so it pins the contract anywhere.
+      - name: Self-test emulator pool leases
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-emulator-lease.sh
+
+      # Sibling of the check above, one layer out: the pool honours leases, but
+      # raw `adb` typed by a session bypassed the pool entirely and wiped another
+      # session's QA run (2026-07-27). hook-dispatch.sh now refuses that command;
+      # this pins the refusal, including the escape hatches and the cases that
+      # must stay frictionless (read-only adb, another serial, expired lease).
+      # A guard that silently stops firing is worse than no guard at all.
+      - name: Self-test hook emulator-lease guard
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-hook-lease-guard.sh
+
+      # PR-review merge gate (pr-review.yml). The reviewers FIND, this script
+      # DECIDES — and its whole value is that it fails CLOSED: a crashed fan-out
+      # writes no findings, which is indistinguishable from a clean review
+      # unless something asserts the difference. Includes a mutation test, so a
+      # regression that drops the reviewer-count check turns this step red
+      # instead of quietly greenlighting half-reviewed PRs.
+      - name: Self-test PR-review merge gate
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-grade-pr-review.sh
+
+      # Agent-cost measurement (agent-cost-report.sh). It reads local session
+      # transcripts, so CI can never exercise it on real data — but its one
+      # silent failure mode is arithmetic: a transcript emits several records
+      # per API call with the SAME usage block, and keying on anything but
+      # `requestId` overstates output tokens by ~95%. An inflated number is
+      # worse than none, because it drives throttling decisions. Fixture-based
+      # and hermetic (fake $HOME), with a mutation test on the dedup key.
+      - name: Self-test agent-cost report
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-agent-cost-report.sh
+
+      # Changelog collation (collate-changelog.sh). It runs ONCE per release and
+      # DELETES the fragments it consumed, so a bullet filed under the wrong
+      # heading is found after the release notes are public, with the source
+      # already gone. Measured failure: a fragment carrying two
+      # `<!-- category: -->` tags shipped all of its Fixed bullets under
+      # `### Tests`, because the parser buffered the whole file and wrote it once
+      # under the LAST tag seen. Hermetic (fake repo root), with a mutation test
+      # on the per-tag flush — drop it and the multi-tag assertions must go red.
+      - name: Self-test changelog collator
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-collate-changelog.sh
+
       # Doc↔API drift (ADVISORY, #docs). Warns when this PR changed a public
       # API surface without updating llms.txt / KDoc / docs/docs / recipes.
       # AI-first SDK: stale prose makes AI emit stale user code. Non-blocking
@@ -796,6 +883,21 @@ jobs:
         if: always()
         shell: bash
         run: node tools/generate-gpt-knowledge.js --check
+
+      # Asset-credits drift (BLOCKING). `assets/CREDITS.md` is GENERATED from
+      # `assets/catalog.json` by `.claude/scripts/generate-credits.py`, and it
+      # is what discharges the attribution clause of every model's license
+      # (CC-BY 4.0 §3a). A model added to the catalog and shipped in the sample
+      # apps without regenerating CREDITS.md is an uncredited model in a
+      # published release — a licence-compliance gap, not a cosmetic one. Same
+      # deterministic regenerate-and-compare as the GPT gate above (no
+      # false-positive risk), so it blocks. This drift went unnoticed once: five
+      # Khronos models shipped uncredited until a manual re-run caught it.
+      # Fix locally with `python3 .claude/scripts/generate-credits.py`.
+      - name: Asset credits in sync with catalog.json
+        if: always()
+        shell: bash
+        run: python3 .claude/scripts/generate-credits.py --check
 
       # Stale demo-class / demo-id reference guard self-test — pin the guard's
       # contract (catches deletions, ignores live iOS .swift refs + plain-prose

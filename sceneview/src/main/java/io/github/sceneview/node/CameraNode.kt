@@ -4,11 +4,11 @@ import android.view.MotionEvent
 import com.google.android.filament.Camera
 import com.google.android.filament.Camera.Projection
 import com.google.android.filament.Engine
-import com.google.android.filament.EntityManager
 import com.google.android.filament.View
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Ray as MathRay
 import io.github.sceneview.Entity
+import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.collision.MathHelper
 import io.github.sceneview.collision.Matrix
@@ -66,7 +66,9 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
 
     constructor(engine: Engine, camera: Camera.() -> Unit = {}) : this(
         engine = engine,
-        entity = EntityManager.get().create()
+        // NULL_ENTITY, not EntityManager.create(): letting Node allocate is what marks the
+        // entity as owned, so destroy() recycles its id instead of burning it (#2859).
+        entity = NULL_ENTITY
     ) {
         engine.createCamera(entity).apply(camera)
     }

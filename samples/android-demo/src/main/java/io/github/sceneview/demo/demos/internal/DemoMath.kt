@@ -1,8 +1,12 @@
 package io.github.sceneview.demo.demos.internal
 
 import io.github.sceneview.math.Rotation
+import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.tan
 
 /**
  * Pure-Kotlin math helpers extracted from the Compose demos so they can be exercised
@@ -110,6 +114,92 @@ internal object DemoMath {
         return rx to rz
     }
 
+    /**
+     * Camera distance at which a content box of [contentWidth] × [contentHeight] **covers** a
+     * viewport of the given [aspect] — it fills the frame on both axes and the excess is cropped,
+     * as opposed to `fitDistanceForBounds`'s *fit*, which shrinks the content until it sits
+     * entirely inside the frame with empty margins on the wider axis.
+     *
+     * Used by [io.github.sceneview.demo.demos.ModelViewerDemo]'s Multi-Model section, whose
+     * subject is a grove — a display that is much wider than it is tall. *Fitting* a 2.2 m-wide
+     * grove into a portrait phone frame parks the camera ~5.5 m back and reduces the trees to a
+     * strip across the middle; *covering* keeps them full-height and lets the frame crop through
+     * the neighbouring trees, which is what a park scene should look like.
+     *
+     * Filament derives the camera's **vertical** FOV from the focal length against a 24 mm sensor
+     * height, so the vertical framing is aspect-invariant and only the horizontal extent grows
+     * with [aspect] (`io.github.sceneview.verticalFovDegreesForFocalLength`). That is why cover
+     * framing is what makes the shot survive a wider viewport: at a fixed distance, a wider frame
+     * shows *more world* to the left and right, and the fix is to be far enough back that the
+     * extra width lands on more content instead of the backdrop (#2913).
+     *
+     * `d = min(dVertical, dHorizontal)` where
+     * - `dVertical   = (contentHeight / 2) / tan(vfov / 2)`
+     * - `dHorizontal = (contentWidth  / 2) / (tan(vfov / 2) · aspect)`
+     *
+     * Taking the **min** is what makes it *cover* rather than *fit* (which takes the max). On a
+     * portrait viewport the vertical term wins and the distance is the same on a phone (~0.47 w/h)
+     * and a tablet (~0.64) — both frame the grove full-height. On a landscape / foldable viewport
+     * the horizontal term takes over and pulls the camera in so the grove still spans the width.
+     *
+     * @param contentWidth   Width of the content box, in metres. A non-finite / non-positive
+     *                       value means "this axis does not constrain the framing" and lets
+     *                       [contentHeight] decide alone.
+     * @param contentHeight  Height of the content box, in metres. Same degenerate-axis rule as
+     *                       [contentWidth].
+     * @param verticalFovDegrees Camera vertical field-of-view, `(0, 180)`. For SceneView's default
+     *                       28 mm lens this is ≈46.4° — pass
+     *                       `io.github.sceneview.verticalFovDegreesForFocalLength(focalLength)`.
+     *                       Values outside the range clamp into it; a non-finite value falls back
+     *                       to that 28 mm default rather than propagating a `NaN`, since
+     *                       `Double.coerceIn` returns `NaN` unchanged.
+     * @param aspect         Viewport aspect ratio `width / height`. Non-finite / non-positive
+     *                       values fall back to `1`, so a viewport measured before layout can
+     *                       never produce a `NaN` camera position.
+     * @param fill           Fraction of the frame the content should span. `1` = exactly edge to
+     *                       edge; `< 1` leaves breathing room (`0.9` ⇒ the content spans 90% of
+     *                       the frame); `> 1` crops into it. Non-finite / non-positive values fall
+     *                       back to `1`.
+     * @return The camera distance in metres, clamped to `[0.2, 50]`. Every degenerate input is
+     *         sanitised above rather than propagated, so the result is always finite — a fully
+     *         degenerate content box lands on the far bound instead of placing the camera inside
+     *         the subject.
+     */
+    fun coverDistance(
+        contentWidth: Float,
+        contentHeight: Float,
+        verticalFovDegrees: Double,
+        aspect: Float,
+        fill: Float = 1f,
+    ): Float {
+        val safeAspect = if (aspect.isFinite() && aspect > 0f) aspect else 1f
+        val safeFill = if (fill.isFinite() && fill > 0f) fill else 1f
+        // `coerceIn` returns NaN unchanged, so the finite check has to come first — otherwise a NaN
+        // FOV survives every guard below and reaches the camera as a NaN position.
+        val safeFovDegrees = verticalFovDegrees.takeIf { it.isFinite() }?.coerceIn(1.0, 179.0)
+            ?: DEFAULT_VERTICAL_FOV_DEGREES
+        val halfFovTan = tan(Math.toRadians(safeFovDegrees) / 2.0).toFloat()
+        // A degenerate axis does not constrain the framing — treat it as "infinitely far" so the
+        // other axis wins the `min` instead of collapsing the camera onto the subject.
+        val distanceVertical = if (contentHeight.isFinite() && contentHeight > 0f) {
+            (contentHeight / 2f) / (halfFovTan * safeFill)
+        } else {
+            Float.POSITIVE_INFINITY
+        }
+        val distanceHorizontal = if (contentWidth.isFinite() && contentWidth > 0f) {
+            (contentWidth / 2f) / (halfFovTan * safeAspect * safeFill)
+        } else {
+            Float.POSITIVE_INFINITY
+        }
+        return min(distanceVertical, distanceHorizontal).coerceIn(0.2f, 50f)
+    }
+
+    /**
+     * SceneView's default 28 mm lens against a 24 mm sensor height ⇒ ≈46.4° vertical FOV. Used only
+     * as the fallback when [coverDistance] is handed a non-finite FOV.
+     */
+    private const val DEFAULT_VERTICAL_FOV_DEGREES = 46.4
+
     // ── AnimationDemo cinematic-camera choreography ──────────────────────────
 
     /**
@@ -166,6 +256,229 @@ internal object DemoMath {
 
     /** Inclusive IBL-intensity range (lux) of the AnimationDemo IBL slider. */
     val IBL_INTENSITY_RANGE: ClosedFloatingPointRange<Float> = 0f..10_000f
+
+    // ── ContactShadowPreviewDemo bounce choreography ─────────────────────────
+
+    /**
+     * One full ground-to-ground hop of the contact-shadow preview's comparison boxes,
+     * in nanoseconds (2.6 s). Slow enough to read the shadow's response at the landing,
+     * fast enough that the loop never feels idle.
+     */
+    const val CONTACT_BOUNCE_PERIOD_NANOS = 2_600_000_000L
+
+    /** Peak height (metres) reached at the middle of each hop. */
+    const val CONTACT_BOUNCE_MAX_HEIGHT_METERS = 0.34f
+
+    /**
+     * Height above the floor of the contact-shadow preview's bouncing boxes at
+     * [elapsedNanos] into the loop: `maxHeight * |sin(π · t / period)|`.
+     *
+     * The rectified sine is deliberate — unlike a smooth hover (`(1-cos)/2`), `|sin|`
+     * has a **non-zero slope at the zero crossings**, so the box visibly *strikes* the
+     * floor once per period instead of easing into it. The landing instant is the
+     * event the contact shadow exists to sell (the pool snaps dark and tight exactly
+     * when the box touches), so the motion is shaped to emphasise it.
+     *
+     * The phase is reduced with integer math (`elapsedNanos % periodNanos`) **before**
+     * the float conversion, so precision never degrades no matter how long the demo
+     * runs. `t = 0` starts at ground contact — which is also the deterministic pose QA
+     * mode freezes at (a zeroed clock).
+     *
+     * @param elapsedNanos Accumulated animation time. Values `<= 0` return `0` (contact).
+     * @param periodNanos  Loop period. Values `<= 0` return `0` rather than dividing by zero.
+     * @param maxHeight    Peak hop height in metres.
+     * @return Height in `[0, maxHeight]`.
+     */
+    fun bounceHeight(
+        elapsedNanos: Long,
+        periodNanos: Long = CONTACT_BOUNCE_PERIOD_NANOS,
+        maxHeight: Float = CONTACT_BOUNCE_MAX_HEIGHT_METERS,
+    ): Float {
+        if (elapsedNanos <= 0L || periodNanos <= 0L || maxHeight <= 0f) return 0f
+        val phase = (elapsedNanos % periodNanos).toFloat() / periodNanos.toFloat()
+        return maxHeight * abs(sin(PI.toFloat() * phase))
+    }
+
+    /**
+     * How much of its base opacity a contact shadow keeps when its object hovers
+     * [height] above the surface: `1` at contact, fading linearly to [liftedFactor]
+     * at [maxHeight].
+     *
+     * This is the perceptual core of the preview. A contact shadow is an
+     * ambient-occlusion pool: the closer the object, the more sky it blocks from the
+     * patch beneath it, so the pool is densest at contact and washes out as the object
+     * lifts. Coupling the pool's opacity to the hop height is what makes the grounded
+     * box read as *landing on* the floor while its shadowless twin reads as floating —
+     * the object/shadow motion-coupling cue (the classic "ball-in-a-box" illusion).
+     *
+     * Never returns less than [liftedFactor]: the pool must stay faintly visible at
+     * the top of the hop so the eye keeps attributing it to the box. The default is
+     * 0.45, not the physically purer 0.28 it shipped with: device QA measured the
+     * 0.28 pool at ~0.15 alpha at the peak — near-invisible on the demo's light floor,
+     * so the grounded-vs-floating contrast blinked out at the top of every hop. 0.45
+     * keeps the pool legible at every phase while preserving a 2.2× contact/peak fade.
+     * That measurement, its method (matched box-height crops under an identical
+     * fixed-range contrast stretch) and the before/after evidence are recorded in the
+     * QA report on PR #2851 — this default is empirical, not a taste call.
+     *
+     * @param height       Current hover height, metres. Coerced into `[0, maxHeight]`.
+     * @param maxHeight    Height at which the factor bottoms out. `<= 0` returns `1`.
+     * @param liftedFactor Factor kept at [maxHeight], in `0..1`.
+     * @return Multiplier in `[liftedFactor, 1]`.
+     */
+    fun groundingIntensityFactor(
+        height: Float,
+        maxHeight: Float = CONTACT_BOUNCE_MAX_HEIGHT_METERS,
+        liftedFactor: Float = 0.45f,
+    ): Float {
+        if (maxHeight <= 0f) return 1f
+        val lift = (height / maxHeight).coerceIn(0f, 1f)
+        return 1f - (1f - liftedFactor) * lift
+    }
+
+    /**
+     * Uniform scale of the contact-shadow quad when its object hovers [height] above
+     * the surface: `1` at contact, growing linearly to [liftedSpread] at [maxHeight].
+     *
+     * Physically, lifting an occluder widens its penumbra: the pool spreads and
+     * softens as the object rises, then snaps back tight at the landing. Paired with
+     * [groundingIntensityFactor] (dimming), this scale (spreading) completes the
+     * ambient-occlusion response — dark-and-tight on contact, faint-and-wide in the air.
+     *
+     * @param height       Current hover height, metres. Coerced into `[0, maxHeight]`.
+     * @param maxHeight    Height at which the spread tops out. `<= 0` returns `1`.
+     * @param liftedSpread Scale reached at [maxHeight]. `>= 1`.
+     * @return Scale in `[1, liftedSpread]`.
+     */
+    fun groundingSpread(
+        height: Float,
+        maxHeight: Float = CONTACT_BOUNCE_MAX_HEIGHT_METERS,
+        liftedSpread: Float = 1.5f,
+    ): Float {
+        if (maxHeight <= 0f) return 1f
+        val lift = (height / maxHeight).coerceIn(0f, 1f)
+        return 1f + (liftedSpread - 1f) * lift
+    }
+
+    /**
+     * Horizontal ground offset `(dx, dz)` of a contact shadow when its object hovers [height]
+     * above the floor: the pool *slides out from under* the object as it lifts and slides back
+     * beneath it on the way down.
+     *
+     * This is the perceptual payload the preview was missing. Dimming
+     * ([groundingIntensityFactor]) and spreading ([groundingSpread]) alone leave the pool pinned
+     * under the box — a lifted object still reads as merely "a fainter shadow", not as "higher".
+     * The shadow's **path** is the strongest grounding cue the visual system has (the classic
+     * "ball-in-a-box" illusion: the same vertical trajectory reads as bouncing or floating
+     * depending only on where the shadow goes). Moving the pool is what makes the grounded box
+     * read as *landing on* the floor while its shadowless twin, animated identically, floats.
+     *
+     * The offset is the exact geometric projection of the object's base along the key light: a
+     * directional light travelling `(lightDirX, lightDirY, lightDirZ)` throws a point at height
+     * `h` onto the ground `h / |lightDirY|` along the light's horizontal component. A light with
+     * no vertical component (`|lightDirY| ~ 0`) grazes the floor and would project to infinity,
+     * so it returns no offset rather than a `NaN`/∞ position.
+     *
+     * @param height    Current hover height, metres. Values `<= 0` (contact) return `(0, 0)`.
+     * @param lightDirX Key-light travel direction, X component.
+     * @param lightDirY Key-light travel direction, Y component (negative for a ceiling light).
+     * @param lightDirZ Key-light travel direction, Z component.
+     * @return The `(dx, dz)` in metres to add to the pool's ground position.
+     */
+    fun groundingShadowOffset(
+        height: Float,
+        lightDirX: Float,
+        lightDirY: Float,
+        lightDirZ: Float,
+    ): Pair<Float, Float> {
+        if (height <= 0f) return 0f to 0f
+        val vertical = abs(lightDirY)
+        if (vertical <= 1e-4f) return 0f to 0f
+        val k = height / vertical
+        return (lightDirX * k) to (lightDirZ * k)
+    }
+
+    /**
+     * Bob period (nanoseconds, 3.4 s) of the contact-shadow preview's FLOATING box.
+     *
+     * Deliberately *longer* and non-harmonic with [CONTACT_BOUNCE_PERIOD_NANOS] (2.6 s): the
+     * two boxes drift out of phase, which reads as "two independent objects doing two different
+     * things" rather than a single synchronised animation.
+     */
+    const val CONTACT_FLOAT_PERIOD_NANOS = 3_400_000_000L
+
+    /**
+     * Rest height (metres, box **centre**) of the floating box.
+     *
+     * The two boxes are 0.38 m apart along X and never intersect, so what this constant buys is
+     * a **vertical reading order on screen**, not a physical gap. The real geometry, with the
+     * demo's 0.38 m box edge (half-edge 0.19 m) and 0.34 m hop peak:
+     *
+     * | face | metres |
+     * |---|---|
+     * | grounded box top, at its landing pose | 0.38 |
+     * | grounded box top, at the peak of the hop | 0.72 |
+     * | floating box bottom, at the bottom of the bob | 0.38 |
+     * | floating box top, at the bottom of the bob | 0.76 |
+     * | floating box top, at the top of the bob | 0.86 |
+     *
+     * So there is **no face-to-face clearance over the hopping box**: at the peak of the hop the
+     * grounded box's top face is 0.34 m *above* the floating box's lowest bottom face — the two
+     * silhouettes overlap in screen-Y, and they are only told apart by their 0.38 m horizontal
+     * separation. Against the grounded box's *landing* pose the two faces are exactly flush
+     * (0.38 m vs 0.38 m, 0.00 m of clearance), which is the floor this constant may never sink
+     * below.
+     *
+     * A genuine clearance over the *peak* is geometrically impossible in this room and was not
+     * what shipped: it would need a rest centre above `0.72 + bob + half-edge = 0.96 m`, whose
+     * top face at 1.20 m punches through the wall TV's bottom edge (0.93 m). The room affords a
+     * rest centre of at most 0.69 m.
+     *
+     * What the constants *do* guarantee, and what carries the "aloft" reading at every phase, is
+     * a **top-face** ordering: the floating box's top face at its lowest (0.76 m) still sits
+     * 0.04 m above the grounded box's top face at its highest (0.72 m), so the floating box is
+     * never overtaken by its hopping twin. Its own top face stays 0.07 m below the wall TV
+     * (0.86 m vs 0.93 m). All four figures are pinned by the
+     * `floatHoverY box faces clear the landed box and stay below the wall TV` test.
+     */
+    const val CONTACT_FLOAT_CENTER_Y_METERS = 0.62f
+
+    /** Peak bob deviation of the floating box from [CONTACT_FLOAT_CENTER_Y_METERS], metres. */
+    const val CONTACT_FLOAT_BOB_METERS = 0.05f
+
+    /**
+     * Vertical position (box **centre**, metres) of the contact-shadow preview's FLOATING box
+     * at [elapsedNanos]: a slow, smooth sine bob of ±[bobAmplitude] around [centerY].
+     *
+     * This is the *positive* half of the grounded-vs-floating comparison. Its twin
+     * ([bounceHeight]) is a **rectified** sine that STRIKES the floor once per period; this is a
+     * **plain** sine — smooth at every phase, no zero-crossing landing, and centred high above
+     * the floor so the box never touches it. One box hammers the ground (its contact pool snaps
+     * dark at each landing); its twin serenely levitates. The floating box's *motion* — not the
+     * mere absence of a shadow — is what makes it read as airborne (#2740): a shadow that is
+     * simply missing reads as a rendering bug, but a box visibly hovering high and bobbing reads
+     * as floating, so of course it casts no contact shadow.
+     *
+     * `t = 0` returns exactly [centerY] (`sin 0 = 0`), the deterministic pose QA mode freezes at
+     * — the same zeroed clock that lands [bounceHeight]'s box on the floor.
+     *
+     * @param elapsedNanos Accumulated animation time. Values `<= 0` are treated as `0` (rest).
+     * @param periodNanos  Bob period. Values `<= 0` return [centerY] rather than dividing by zero.
+     * @param centerY      Rest height of the box centre, metres.
+     * @param bobAmplitude Peak deviation from [centerY], metres.
+     * @return Box-centre height in `[centerY - bobAmplitude, centerY + bobAmplitude]`.
+     */
+    fun floatHoverY(
+        elapsedNanos: Long,
+        periodNanos: Long = CONTACT_FLOAT_PERIOD_NANOS,
+        centerY: Float = CONTACT_FLOAT_CENTER_Y_METERS,
+        bobAmplitude: Float = CONTACT_FLOAT_BOB_METERS,
+    ): Float {
+        if (periodNanos <= 0L) return centerY
+        val safeElapsed = if (elapsedNanos <= 0L) 0L else elapsedNanos
+        val phase = (safeElapsed % periodNanos).toFloat() / periodNanos.toFloat()
+        return centerY + bobAmplitude * sin(2f * PI.toFloat() * phase)
+    }
 
     /**
      * The keyframe choreography for one cinematic [shot] of

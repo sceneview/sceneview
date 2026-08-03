@@ -2,27 +2,51 @@ import SwiftUI
 import RealityKit
 import SceneViewSwift
 
-/// Composes a themed "Park" scene from 4 streamed glTF assets — an oak tree
-/// (the backdrop), a park bench (the foreground prop), a sleeping dog (the
-/// animated occupant) and a perched songbird.
+/// Composes a themed "Park" scene from the 4 glTF assets in ``SampleAssets``'
+/// `park` category: one hero at the back of the formation and three smaller
+/// ones in a front row.
 ///
-/// Mirrors the Android `MultiModelDemo` (`samples/android-demo/.../MultiModelDemo.kt`):
-/// same four `park` slugs in ``SampleAssets``, same visibility chips and "Spin
-/// scene" toggle. The arrangement is a quick tabletop diorama centred around
-/// `z = -1.5 m` — tree behind, bench in front, dog and bird flanking the bench.
+/// Mirrors the Android Multi-Model section (`samples/android-demo/.../ModelViewerDemo.kt`):
+/// same four `park` slugs, same visibility chips and "Spin scene" toggle. The
+/// arrangement is a quick tabletop diorama centred around `z = -1.5 m`.
+///
+/// The layout is positional and fixed; WHICH model stands in each slot is the
+/// registry's call. Nothing here names a species: each chip reads its label off
+/// the resolved ``SketchfabSlug/displayName`` — the same curated-English source
+/// the Gallery chips use — falling back to a positional "Model N" only while a
+/// slot has no slug. The labels used to be hardcoded "Tree" / "Bench" / "Dog" /
+/// "Bird" from a composition the registry stopped holding: four oaks named after
+/// a bench and a dog, with no bench and no dog on screen (#2933).
 ///
 /// ### Streaming pipeline (Stage 2, issue #1152)
 ///
 /// Every slug resolves through ``SketchfabAssetResolver``. Empty API key
-/// (App Store builds) → the resolver returns the registered bundled USDZ so
-/// the demo always renders four nodes — honouring the hard rule "no network
-/// required to render something useful" from `feedback_demo_quality`.
+/// (App Store builds) → the resolver returns the registered bundled USDZ, so
+/// the demo still renders without a network, honouring the hard rule "no
+/// network required to render something useful" from `feedback_demo_quality`.
+///
+/// > Important: the chip names the CATALOGUE ENTRY, not the geometry. On a
+/// > keyless build a slot still reads "Oak Trees" over its bundled stand-in.
+/// > Android surfaces that with the scaffold's asset-source pill; iOS has no
+/// > equivalent chrome yet, so a keyless build here is silent about the swap.
+///
+/// ⚠️ That swap is also why this demo is deliberately absent from the App Store
+/// screenshot set (#2896). The bundled stand-ins are intentionally distinct
+/// silhouettes rather than four copies of one hero (#2355), so a keyless build
+/// composes a retro piano, a butterfly and a phoenix — a scene no keyless user
+/// sees as the documented park diorama. The substitution itself is by design;
+/// what it is not is a listing screenshot.
 struct MultiModelDemo: View {
-    @State private var showTree: Bool = true
-    @State private var showBench: Bool = true
-    @State private var showDog: Bool = true
-    @State private var showBird: Bool = true
+    /// One flag per SLOT, not per species — index `i` pairs with `Self.slots[i]`.
+    @State private var visible: [Bool] = Array(repeating: true, count: MultiModelDemo.slots.count)
     @State private var spinScene: Bool = true
+
+    /// `-qa_mode 1` / `?qa_mode=1` — freezes the orbit sweep so a capture lands
+    /// on the pose below every time. Without it the store capture shot an
+    /// arbitrary azimuth, which also decided which part of the `.studio` HDRI
+    /// sat behind the models — one run got the plants, the next a blown-out
+    /// softbox filling the top third of the frame (#2896).
+    @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
 
     /// Loaded entities keyed by slug uid. Adding / removing nodes from the
     /// scene happens reactively via the imperative `update` pass below — we
@@ -37,30 +61,55 @@ struct MultiModelDemo: View {
         let slug: SketchfabSlug?
         let position: SIMD3<Float>
         let scale: Float
-        let displayName: String
+        /// Zero-based place in the formation, used for the positional fallback label.
+        let index: Int
+
+        /// Chip label, and the name used when logging a failed slot.
+        ///
+        /// Read off the resolved slug so it always names the registry entry the
+        /// slot actually loaded. The positional fallback only fires when the
+        /// registry has no slug for this slot — a chip with no model behind it
+        /// still needs a stable, non-lying handle.
+        var displayName: String { slug?.displayName ?? "Model \(index + 1)" }
     }
 
-    /// Resolve the four `park` slugs by uid (stable across registry re-orderings).
-    /// Falls back to category-by-index if a uid is somehow missing.
+    /// The four `park` slots, back row first. Order matches the visibility chips.
+    ///
+    /// Each slot carries the uid it loads, so the layout, the loader and the chip
+    /// label are all indexed by one thing — a slot can never end up labelled with
+    /// another slot's model. Slugs are resolved by uid (stable across registry
+    /// re-orderings), falling back to category-by-index if a uid is somehow missing.
     private static let slots: [ParkSlot] = {
         let park = SampleAssets.byCategory["park"] ?? []
-        // Indices follow the Android order — four `park` oak trees.
-        let tree = SampleAssets.byUID["d841c3bcc5324daebee50f45619e05fc"] ?? (park.indices.contains(0) ? park[0] : nil)
-        let bench = SampleAssets.byUID["6d1aeea748f147789004bc03e1930d32"] ?? (park.indices.contains(1) ? park[1] : nil)
-        let dog = SampleAssets.byUID["4f6ab5594a8a415aba3f958682b9ced5"] ?? (park.indices.contains(2) ? park[2] : nil)
-        let bird = SampleAssets.byUID["fd582b0d4a8c4af1a1b5c4f21a481c93"] ?? (park.indices.contains(3) ? park[3] : nil)
-
-        return [
-            // Tree — back-centre, towering. Scale chosen so silhouette dominates
-            // the backdrop without occluding the bench in front.
-            ParkSlot(slug: tree,  position: .init(x: 0.0,  y: 0.0, z: -1.7), scale: 1.8, displayName: "Tree"),
-            // Bench — front-centre, the foreground prop.
-            ParkSlot(slug: bench, position: .init(x: 0.0,  y: 0.0, z: -1.3), scale: 0.65, displayName: "Bench"),
-            // Dog — front-left next to the bench's leg.
-            ParkSlot(slug: dog,   position: .init(x: -0.55, y: 0.0, z: -1.3), scale: 0.40, displayName: "Dog"),
-            // Bird — front-right perched on the bench.
-            ParkSlot(slug: bird,  position: .init(x: 0.55, y: 0.0, z: -1.3), scale: 0.15, displayName: "Bird"),
+        // Layout only — where a model stands and how big it is drawn. What stands
+        // there is whatever `uid` resolves to in the registry.
+        //
+        // The formation is deliberately COMPACT (#2896). Auto-framing fits the
+        // union bounding sphere, so lateral spread is what decides how large
+        // each model renders: the old ±0.55 m spread made the union roughly
+        // twice the largest model, and every slot came out small in a tall
+        // portrait frame with empty ground all around it.
+        let layout: [(uid: String, position: SIMD3<Float>, scale: Float)] = [
+            // Back-centre, towering. Scale chosen so the hero's silhouette dominates
+            // the backdrop without occluding the front row.
+            ("d841c3bcc5324daebee50f45619e05fc", .init(x: 0.0,  y: 0.0, z: -1.55), 1.8),
+            // Front-centre.
+            ("6d1aeea748f147789004bc03e1930d32", .init(x: 0.0,  y: 0.0, z: -1.35), 0.65),
+            // Front-left, tucked against the centre slot rather than a third of
+            // a metre away from it.
+            ("4f6ab5594a8a415aba3f958682b9ced5", .init(x: -0.34, y: 0.0, z: -1.35), 0.40),
+            // Front-right and raised, so the smallest slot reads as perched
+            // instead of getting lost against the ground.
+            ("fd582b0d4a8c4af1a1b5c4f21a481c93", .init(x: 0.34, y: 0.22, z: -1.35), 0.15),
         ]
+        return layout.enumerated().map { index, entry in
+            ParkSlot(
+                slug: SampleAssets.byUID[entry.uid] ?? (park.indices.contains(index) ? park[index] : nil),
+                position: entry.position,
+                scale: entry.scale,
+                index: index
+            )
+        }
     }()
 
     var body: some View {
@@ -70,10 +119,7 @@ struct MultiModelDemo: View {
                 _ = await SketchfabAssetResolver.shared.prefetchAll(category: "park")
             }
             .task { await loadAllSlots() }
-            .onChange(of: showTree) { _, _ in syncVisibility() }
-            .onChange(of: showBench) { _, _ in syncVisibility() }
-            .onChange(of: showDog) { _, _ in syncVisibility() }
-            .onChange(of: showBird) { _, _ in syncVisibility() }
+            .onChange(of: visible) { _, _ in syncVisibility() }
     }
 
     @ViewBuilder
@@ -93,15 +139,27 @@ struct MultiModelDemo: View {
                 }
             }
             .cameraControls(.orbit)
-            .autoRotate(speed: spinScene ? 0.2 : 0.0)
+            .autoRotate(speed: (spinScene && !qaMode) ? 0.2 : 0.0)
             // The formation is built from curated PBR models; without an IBL
             // their metallic/rough response has nothing to reflect and the whole
-            // scene reads as flat silhouettes. Same preset as ModelViewerDemo
-            // (#2114) so a model looks identical whether it is shown alone or
-            // as part of this multi-model scene.
+            // scene reads as flat silhouettes (#2114). `.studio` stays here
+            // rather than following ModelViewerDemo to `.warm`: a composed scene
+            // wants a room around it, and this HDR is a plant-filled interior —
+            // whereas a single hero wants the seamless backdrop of a photo
+            // studio. The two demos deliberately diverge (#2896).
             .environment(.studio)
+            // The park formation spreads across ~1.2 m, so its bounding sphere
+            // is much larger than any single model — the default 15 % of air on
+            // top of that left every model tiny. Tighten to a near-exact sphere
+            // fit; the scene auto-rotates, so going below ~0.95 would clip the
+            // outermost slot at some azimuths (#2896).
+            .framingMargin(0.95)
+            // Shallower than the 30° default so the formation is seen from
+            // near its own eye level — a 30° top-down pitch spent the bottom
+            // half of a portrait frame on empty ground (#2896).
+            .cameraOrbit(azimuth: 0, elevation: .pi / 10)
             .ignoresSafeArea()
-            .id("multi-model-spin-\(spinScene)")
+            .id("multi-model-spin-\(spinScene)-\(qaMode)")
 
             if loadedEntities.isEmpty && loadError == nil {
                 VStack(spacing: 12) {
@@ -125,11 +183,15 @@ struct MultiModelDemo: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Visibility")
                 .font(.subheadline.weight(.semibold))
-            HStack(spacing: 8) {
-                visibilityChip("Tree", isOn: $showTree)
-                visibilityChip("Bench", isOn: $showBench)
-                visibilityChip("Dog", isOn: $showDog)
-                visibilityChip("Bird", isOn: $showBird)
+            // Horizontally scrolling for the same reason the Gallery chips are:
+            // catalogue names run long ("Skovfogedegen Oak") and four of them do
+            // not fit an iPhone's sheet width without truncating.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(Self.slots.enumerated()), id: \.offset) { index, slot in
+                        visibilityChip(slot.displayName, isOn: $visible[index])
+                    }
+                }
             }
 
             Toggle(isOn: $spinScene) {
@@ -170,11 +232,11 @@ struct MultiModelDemo: View {
     /// entry point (`sceneview://demo/multi-model`) reliable — issue #1056:
     ///
     ///  1. **Concurrent, not sequential** — each slot loads in its own child
-    ///     task. The previous sequential loop loaded the ~15 MB Oak Tree
+    ///     task. The previous sequential loop loaded the ~15 MB hero asset
     ///     first; on the iOS Simulator RealityKit's `Entity(contentsOf:)`
     ///     parse of that heavy, texture-dense USDZ stalls for a very long
-    ///     time, and a sequential loop left the lighter Bench / Dog / Bird
-    ///     blocked behind it — so the demo showed an eternal "Loading park
+    ///     time, and a sequential loop left the three lighter slots blocked
+    ///     behind it — so the demo showed an eternal "Loading park
     ///     scene…" scrim. Loading concurrently means a slow slot only
     ///     delays itself.
     ///  2. **Progressive reveal** — each entity is stored into
@@ -234,14 +296,15 @@ struct MultiModelDemo: View {
     @MainActor
     private func syncVisibility() {
         guard let anchor = sceneAnchor else { return }
-        let visibleFlags: [(SketchfabSlug?, Bool)] = [
-            (Self.slots[0].slug, showTree),
-            (Self.slots[1].slug, showBench),
-            (Self.slots[2].slug, showDog),
-            (Self.slots[3].slug, showBird),
-        ]
-        for (slug, show) in visibleFlags {
-            guard let slug, let entity = loadedEntities[slug.uid] else { continue }
+        for slot in Self.slots {
+            guard let slug = slot.slug, let entity = loadedEntities[slug.uid] else { continue }
+            // `visible` is sized from `slots` at init and never resized, so this guard is
+            // unreachable today. It stays because a Swift out-of-bounds subscript TRAPS:
+            // "fail loudly" here would mean crashing a shipped App Store demo, which is a
+            // worse outcome than a chip that quietly stops toggling. Android's
+            // `instances[index]` does throw instead — the asymmetry is a deliberate call
+            // about who pays for a future desync, not an oversight (#2933).
+            let show = visible.indices.contains(slot.index) ? visible[slot.index] : true
             let alreadyAdded = entity.parent === anchor
             if show && !alreadyAdded {
                 anchor.addChild(entity)

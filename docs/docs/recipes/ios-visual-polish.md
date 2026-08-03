@@ -66,6 +66,24 @@ environment picker and every preset (including future ones) surfaces automatical
   background transparent — the correct choice for AR, where the camera feed is the
   background.
 
+!!! warning "If the scene renders dim, with no background"
+    RealityKit's `EnvironmentResource(named:)` does not accept every file that
+    carries an `.hdr` extension — Radiance RGBE panoramas (what Poly Haven and
+    ambientCG serve) are rejected by it. SceneViewSwift falls back to decoding
+    the file through ImageIO and building the resource from the equirectangular
+    image, so both encodings load ([#2896](https://github.com/sceneview/sceneview/issues/2896)).
+
+    When *both* paths fail — a genuinely missing or unreadable file — the scene
+    keeps rendering with RealityKit's own default lighting and prints:
+
+    ```
+    [SceneViewSwift] Failed to load environment '<name>': <error>
+    ```
+
+    That line is the signal to check the file is actually in the bundle. Without
+    it, a dim subject on a black background is a *framing or intensity* problem,
+    not a loading one.
+
 !!! info "Where to source HDRs"
     [Poly Haven](https://polyhaven.com/hdris) and [ambientCG](https://ambientcg.com/list?type=hdri)
     both publish **CC0** (public-domain) HDRIs in 1K–16K. The bundled `night_sky`

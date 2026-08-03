@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -29,17 +30,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
+import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.fitDistanceForBounds
 import io.github.sceneview.model.model
 import io.github.sceneview.toAabb
@@ -52,6 +56,12 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.demos.internal.PARK_EYE_HEIGHT
+import io.github.sceneview.demo.demos.internal.PARK_FALLBACK_ASPECT
+import io.github.sceneview.demo.demos.internal.PARK_HEIGHT
+import io.github.sceneview.demo.demos.internal.PARK_SLOTS
+import io.github.sceneview.demo.demos.internal.ParkSlot
+import io.github.sceneview.demo.demos.internal.parkCameraDistance
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
@@ -64,12 +74,12 @@ import io.github.sceneview.demo.sketchfab.SketchfabSlug
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
-import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import java.util.Locale
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -103,10 +113,21 @@ fun ModelViewerDemo(onBack: () -> Unit) {
     var mode by remember {
         mutableStateOf(initialDemoMode(ModelViewerMode.entries, ModelViewerMode.Single))
     }
+    // Switching section drops any camera-distance override (#2913). The Single-Model slider writes
+    // to the process-global `DemoSettings.cameraDistance` — that is how it drives the live camera,
+    // since `rememberHeroOrbitCameraManipulator` reads the override itself (#1571) — and the
+    // Multi-Model section honours the same override. Without this reset, dragging the slider down
+    // to 0.5 m and then tapping "Multi-Model" put the camera inside the formation, and that section
+    // exposes no slider to undo it. A cold launch never passes through here, so the `--ef
+    // camera_distance` / `?cameraDistance=` deep link keeps working for either section.
+    val onModeChange: (ModelViewerMode) -> Unit = { next ->
+        if (next != mode) DemoSettings.cameraDistance = null
+        mode = next
+    }
     when (mode) {
-        ModelViewerMode.Single -> SingleModelSection(onBack, mode) { mode = it }
-        ModelViewerMode.Multi -> MultiModelSection(onBack, mode) { mode = it }
-        ModelViewerMode.Gallery -> GallerySection(onBack, mode) { mode = it }
+        ModelViewerMode.Single -> SingleModelSection(onBack, mode, onModeChange)
+        ModelViewerMode.Multi -> MultiModelSection(onBack, mode, onModeChange)
+        ModelViewerMode.Gallery -> GallerySection(onBack, mode, onModeChange)
     }
 }
 
@@ -285,7 +306,7 @@ private fun SingleModelSection(
             // gesture (and Maestro-testable, see #1571). The displayed value is
             // the slider override when set, otherwise the live auto-fit radius.
             Text(
-                "Camera distance: %.1f m".format(sliderDistance ?: autoFitRadius),
+                "Camera distance: %.1f m".format(Locale.US, sliderDistance ?: autoFitRadius),
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(
@@ -463,13 +484,40 @@ private suspend fun pickRandomDownloadableModel(
 // ─── Multi-Model section ──────────────────────────────────────────────────────
 // Formerly MultiModelDemo (id `multi-model`).
 //
-// Composes a themed "Park" scene from 4 streamed glTF assets — an oak tree
-// (the backdrop), a park bench (the foreground prop), a sleeping dog (the
-// animated occupant), and a perched songbird (the second animated occupant).
+// Composes a themed "Park" scene from the 4 glTF assets in [SampleAssets]' `park`
+// category: one hero at the back of the formation and three smaller ones in a
+// front row.
 //
-// Lighting comes from `studio_warm_2k.hdr` — a soft golden-hour wash that
-// unifies the four very different materials (bark, weathered wood, fur,
-// feathers) into one cohesive open-air display.
+// The layout is positional and fixed ([PARK_SLOTS]); WHICH model stands in each slot
+// is the registry's call ([ParkSlot.uid]). Nothing here names a species: the
+// visibility chips read their label off the resolved [SketchfabSlug.displayName], the
+// same curated-English source the Gallery section's chips use, so a registry edit
+// renames the chip with the model. Until a slug resolves the chip falls back to a
+// positional "Model N". They used to be hardcoded "Tree" / "Bench" / "Dog" / "Bird"
+// from a composition the registry stopped holding — four oaks named after a bench and
+// a dog, with no bench and no dog on screen (#2933).
+//
+// ⚠️ WHAT loads depends on the build. With a Sketchfab API key the resolver streams
+// the `park` category — four photoreal scanned oaks. Without one it substitutes each
+// slug's BUNDLED fallback: a lantern, a lantern, a shiba, a soldier. Same demo id,
+// same layout, completely different picture — worth knowing before reading a
+// screenshot of this section as evidence of anything (#2913). The chip label names
+// the CATALOGUE ENTRY, not the geometry, so on a fallback build it still reads
+// "Oak Trees" over a lantern; the scaffold's asset-source pill is what tells the two
+// apart, and it is wired here for exactly that reason — off the RESOLVED FILE, not
+// off whether a key is configured, because a keyed build whose download fails lands
+// on the same stand-ins.
+//
+// Lighting comes from `studio_warm_2k.hdr` — a soft golden-hour wash that unifies
+// the four assets into one cohesive open-air display.
+//
+// Framing is aspect-aware (#2913): the camera distance is computed per viewport
+// from the formation's own dimensions — see [parkCameraDistance]. Before that the
+// section aimed a fixed camera at `(0, 0, -1.5)` while the library's
+// `autoCenterContent` had already moved the models onto the world origin, which
+// left the lens ~0.6 m from the content centroid — inside the subject. Whichever
+// model sat on the pivot filled the frame as one featureless slab of its own
+// material, with the rest of the viewport falling on the HDRI backdrop.
 //
 // Controls:
 // - Visibility chips per model (toggle individual nodes off / on)
@@ -494,10 +542,13 @@ private fun MultiModelSection(
     mode: ModelViewerMode,
     onModeChange: (ModelViewerMode) -> Unit,
 ) {
-    var showTree by remember { mutableStateOf(true) }
-    var showBench by remember { mutableStateOf(true) }
-    var showDog by remember { mutableStateOf(true) }
-    var showBird by remember { mutableStateOf(true) }
+    // One flag per SLOT, not per species — index i pairs with PARK_SLOTS[i] and
+    // slugs[i]. A SnapshotStateList keeps the four flags in one stable `remember`
+    // slot, so toggling a chip recomposes the scene content without re-running the
+    // loaders. It carries a single state record for the whole list, so a toggle
+    // invalidates every reader of it rather than just the chip that changed — four
+    // booleans in a demo, so the extra recomposition is not worth four `remember`s.
+    val visible = remember { List(PARK_SLOTS.size) { true }.toMutableStateList() }
     var spinScene by remember { mutableStateOf(true) }
 
     val engine = rememberEngine()
@@ -505,14 +556,17 @@ private fun MultiModelSection(
     val environmentLoader = rememberEnvironmentLoader(engine)
     val context = LocalContext.current
 
-    // Look up the 4 `park` slugs by uid (stable across registry re-ordering).
-    // Falling back to the first slug-by-category if an explicit uid is somehow
-    // missing keeps the demo running at degraded fidelity rather than crashing.
+    // Resolve each slot's slug by uid (stable across registry re-ordering). Falling
+    // back to the slug at the same index in the category if an explicit uid is
+    // somehow missing keeps the demo running at degraded fidelity rather than
+    // crashing. Always exactly PARK_SLOTS.size entries, so every `slugs[i]` below is
+    // a fixed composition slot even when an entry resolves to null.
     val parkSlugs = SampleAssets.byCategory["park"].orEmpty()
-    val tree = SampleAssets.byUid["d841c3bcc5324daebee50f45619e05fc"] ?: parkSlugs.getOrNull(0)
-    val bench = SampleAssets.byUid["6d1aeea748f147789004bc03e1930d32"] ?: parkSlugs.getOrNull(1)
-    val dog = SampleAssets.byUid["4f6ab5594a8a415aba3f958682b9ced5"] ?: parkSlugs.getOrNull(2)
-    val bird = SampleAssets.byUid["fd582b0d4a8c4af1a1b5c4f21a481c93"] ?: parkSlugs.getOrNull(3)
+    val slugs = remember(parkSlugs) {
+        PARK_SLOTS.mapIndexed { index, slot ->
+            SampleAssets.byUid[slot.uid] ?: parkSlugs.getOrNull(index)
+        }
+    }
 
     // Warm-up the park category in parallel on first composition. The resolver
     // dedupes concurrent calls for the same slug so the per-node `resolve`
@@ -528,15 +582,26 @@ private fun MultiModelSection(
     // creation happens only after the file is on disk — `rememberFileModelInstance`
     // loads the `file://` URI via `ModelLoader.loadModelInstance`, which is
     // async-safe and keeps the Filament JNI work on the Main thread.
-    val treeFile = rememberSlugFile(tree)
-    val benchFile = rememberSlugFile(bench)
-    val dogFile = rememberSlugFile(dog)
-    val birdFile = rememberSlugFile(bird)
-
-    val treeInstance = rememberFileModelInstance(modelLoader, treeFile)
-    val benchInstance = rememberFileModelInstance(modelLoader, benchFile)
-    val dogInstance = rememberFileModelInstance(modelLoader, dogFile)
-    val birdInstance = rememberFileModelInstance(modelLoader, birdFile)
+    //
+    // Deliberately unrolled rather than looped. What these calls need is a STABLE
+    // composition slot each, so the `produceState` inside them keeps invalidating
+    // this caller when the load lands (#1464). An inline `map` over a fixed-size
+    // list would give that too — the unrolling is a conservative choice, not a
+    // language requirement, and #1464 cost enough to earn the caution. One call per
+    // slot, in slot order; resizing PARK_SLOTS without matching it here is caught by
+    // the size assertion in DemoMathTest — in the unit tests, not on screen.
+    val files = listOf(
+        rememberSlugFile(slugs[0]),
+        rememberSlugFile(slugs[1]),
+        rememberSlugFile(slugs[2]),
+        rememberSlugFile(slugs[3]),
+    )
+    val instances = listOf(
+        rememberFileModelInstance(modelLoader, files[0]),
+        rememberFileModelInstance(modelLoader, files[1]),
+        rememberFileModelInstance(modelLoader, files[2]),
+        rememberFileModelInstance(modelLoader, files[3]),
+    )
 
     // Warm dusk HDR — `studio_warm_2k.hdr` gives a golden-hour wash that
     // unifies the four very different materials. Skybox enabled so the warm tint
@@ -551,47 +616,81 @@ private fun MultiModelSection(
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
     val activeEnvironment = hdrEnvironment ?: fallbackEnvironment
 
-    val allLoaded = treeInstance != null && benchInstance != null &&
-        dogInstance != null && birdInstance != null
+    val allLoaded = instances.all { it != null }
     // Yaw drives the parent-scene rotation when "Spin scene" is on. Slow 30 s sweep
     // so the viewer can take in each face of the display before it cycles round.
     val sceneYaw = rememberHeroYaw(
         trigger = allLoaded && spinScene, durationMillis = 30_000, staticYaw = 0f,
     )
 
+    // Same asset-source vocabulary as the Gallery section, and what keeps the chip
+    // labels honest: they name the catalogue entry, and an "Offline model" pill says
+    // the geometry under them is the bundled stand-in rather than the oak the label
+    // names (#2933).
+    //
+    // MEASURED from the resolved files, not inferred from the config: every failure
+    // path in `resolve` — no network, a stale key, a bounds-drifted asset,
+    // exhausted retries — ends at the bundled fallback, so a KEYED build can render
+    // four stand-ins. It does: on the QA emulator (2026-07-28, key configured) all
+    // four slots staged out of `cache/sketchfab/fallback/`, the download endpoint
+    // answering 429. This section's first cut inferred the origin from
+    // `SketchfabConfig.apiKey == null` and labelled that exact scene "Streamed
+    // (cached)"; asking the File cannot be wrong that way. The Gallery section
+    // settles it the same way (#2936): both ask the file first and fall back to the
+    // key only while nothing has resolved yet and there is no file to ask.
+    //
+    // It stays a WHOLE-SCENE verdict: one fallen-back slot out of four reads
+    // "Offline model" for all of them, and the pill never says which slot swapped.
+    // Pessimistic on purpose — of the two imprecise answers, the optimistic one is
+    // the one that misleads. It is also a MOVING verdict during load: `allLoaded`
+    // watches the instances while the fallback probe watches the files, so a slot
+    // that falls back last flips the pill Streaming → Offline after the fact.
+    val assetSource = when {
+        slugs.all { it == null } -> null
+        files.any { it != null && SketchfabAssetResolver.isBundledFallback(it) } ->
+            AssetSourceState.Bundled
+        // Nothing has resolved yet: with no key we already know where this ends;
+        // with one, the download is genuinely still in flight.
+        !allLoaded ->
+            if (SketchfabConfig.apiKey == null) AssetSourceState.Bundled
+            else AssetSourceState.Streaming
+        else -> AssetSourceState.Streamed
+    }
+
     val firstFrame = rememberFirstFrameState()
 
     DemoScaffold(
         title = stringResource(R.string.demo_multi_model_title),
         onBack = onBack,
+        assetSource = assetSource,
         firstFrameRendered = firstFrame.rendered,
         controls = {
             ModeSelector(mode, onModeChange)
             Text("Visibility", style = MaterialTheme.typography.labelLarge)
+            // Labels come from the resolved slug's curated-English `displayName`
+            // (same source as the Gallery chips), never from a hardcoded noun — the
+            // registry decides what stands in each slot, so it decides the label
+            // too. Horizontally scrolling for the same reason Gallery's row is:
+            // catalogue names run long ("Skovfogedegen Oak") and four of them do not
+            // fit a portrait phone width without clipping.
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FilterChip(
-                    selected = showTree,
-                    onClick = { showTree = !showTree },
-                    label = { Text("Tree") },
-                )
-                FilterChip(
-                    selected = showBench,
-                    onClick = { showBench = !showBench },
-                    label = { Text("Bench") },
-                )
-                FilterChip(
-                    selected = showDog,
-                    onClick = { showDog = !showDog },
-                    label = { Text("Dog") },
-                )
-                FilterChip(
-                    selected = showBird,
-                    onClick = { showBird = !showBird },
-                    label = { Text("Bird") },
-                )
+                slugs.forEachIndexed { index, slug ->
+                    FilterChip(
+                        selected = visible[index],
+                        onClick = { visible[index] = !visible[index] },
+                        // Positional fallback for a slot the registry has no slug for —
+                        // a chip with no model behind it still needs a stable, non-lying
+                        // handle. DemoMathTest asserts every PARK_SLOTS uid resolves, so
+                        // this branch is unreachable from THIS repo's registry; it is
+                        // there for a build that edits SampleAssets without the tests.
+                        label = { Text(slug?.displayName ?: "Model ${index + 1}") },
+                    )
+                }
             }
 
             // Spin toggle — wrap the row in toggleable so taps anywhere flip the state
@@ -610,7 +709,26 @@ private fun MultiModelSection(
             }
         },
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        // BoxWithConstraints, not Box: the camera distance below is computed from the LIVE
+        // viewport aspect (#2913). See PARK_SLOTS / [parkCameraDistance] for the framing rules.
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val viewportAspect = (maxWidth / maxHeight)
+                .takeIf { it.isFinite() && it > 0f } ?: PARK_FALLBACK_ASPECT
+            // `camera_distance` / `?cameraDistance=` still wins when a QA flow or a store
+            // capture sets it — the same override every hero-orbit demo honours. Before #2913
+            // this section ignored it entirely (it built a stock `rememberCameraManipulator`,
+            // which knows nothing about DemoSettings), so the store script's `--ef
+            // camera_distance 6.0` was a silent no-op and probing 2.5 / 3.5 / 4.5 m produced
+            // three identical frames. That is why the extra "could not fix the framing".
+            val orbitDistance = DemoSettings.cameraDistance ?: parkCameraDistance(viewportAspect)
+            val cameraManipulator = remember(orbitDistance) {
+                createDefaultCameraManipulator(
+                    // Straight-on, at the mid-height of the tallest model, looking at the
+                    // formation centre — which IS the world origin, see `autoCenterContent`.
+                    orbitHomePosition = Position(0f, PARK_EYE_HEIGHT, orbitDistance),
+                    targetPosition = Position(0f, 0f, 0f),
+                )
+            }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
                 onFrame = firstFrame.onFrame,
@@ -618,65 +736,92 @@ private fun MultiModelSection(
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
                 environment = activeEnvironment,
-                cameraManipulator = rememberCameraManipulator(
-                    orbitHomePosition = Position(0f, 0.4f, 0.5f),
-                    targetPosition = Position(0f, 0f, -1.5f),
-                ),
+                // OFF on purpose (#2913). The library's auto-centre pass translates the content
+                // root so the union centroid lands on the orbit pivot, using whatever bounds have
+                // materialised on the first non-empty frame — with four models streaming in
+                // independently, WHICH bounds those are is a race. This scene places its own
+                // models around the origin below, so the composition no longer depends on that
+                // race, and the camera can be aimed at a centre that is known before load.
+                autoCenterContent = false,
+                cameraManipulator = cameraManipulator,
             ) {
-                // Park scene arrangement: tree as the towering backdrop (back-
-                // centre, scale 1.8 m to read as a real-world tree on the
-                // tabletop), bench in front-centre as the foreground prop, the
-                // sleeping dog at front-left next to the bench's leg, the
-                // songbird perched front-right.
+                // Grove arrangement, centred on the world origin: the hero model at the back of
+                // the formation, the three smaller ones in a front row, every one of them
+                // bottom-aligned onto a shared ground plane at y = -PARK_HEIGHT / 2.
                 //
-                // Front row z=-1.3, back row z=-1.7 so the depth difference reads
-                // even on a portrait phone viewport. sceneYaw rotates each model
-                // AROUND the formation centre by treating its (x, z) as polar
-                // coords offset from (0, -1.5). Per-model rotation cancels the
-                // yaw on its own Y so each piece stays facing the camera as the
-                // formation sweeps — gives a "turntable display" feel.
-                val centerZ = -1.5f
-                val displays = listOf(
-                    Display(showTree, treeInstance, x = 0.0f, z = -1.7f, scale = 1.80f),
-                    Display(showBench, benchInstance, x = 0.0f, z = -1.3f, scale = 0.65f),
-                    Display(showDog, dogInstance, x = -0.55f, z = -1.3f, scale = 0.40f),
-                    Display(showBird, birdInstance, x = 0.55f, z = -1.3f, scale = 0.15f),
-                )
-                for (d in displays) {
-                    if (!d.show || d.instance == null) continue
-                    // Rotation math lives in DemoMath.rotateAroundCentre so it can be
-                    // JVM-unit-tested without firing up Filament / Compose.
-                    val (rx, rz) = DemoMath.rotateAroundCentre(d.x, d.z - centerZ, sceneYaw)
-                    ModelNode(
-                        modelInstance = d.instance,
-                        // The animated dog + bird auto-play their skeletal animation
-                        // for "alive" scene reads; in qaMode we need the bind pose
-                        // to render every frame so golden screenshots stay
-                        // deterministic.
-                        autoAnimate = !DemoSettings.qaMode,
-                        scaleToUnits = d.scale,
-                        // Models are placed by `position`; their formation is centred on the
-                        // bounding box, not ground-anchored. A previous `centerOrigin =
-                        // Position(0, 0.5, 0)` here was a silent no-op (the composable discarded
-                        // it — fixed library-side) and was removed to keep this scene's framing
-                        // byte-for-byte identical. (Adopting the now-working centerOrigin to sit
-                        // each model on a ground plane is a separate, visually-QA'd enhancement.)
-                        position = Position(x = rx, y = 0f, z = rz + centerZ),
-                        rotation = Rotation(y = -sceneYaw),
-                    )
+                // sceneYaw rotates each model AROUND that centre by treating its (x, z) as polar
+                // coords, so the formation turns like a turntable. The hero sits 0.2 m off the
+                // pivot, so it sweeps a small circle rather than staying put: the framing covers
+                // PARK_SPAN — the width the whole formation sweeps out — so every phase of the spin
+                // keeps models filling the frame, but the exact composition still breathes as it
+                // turns. Per-model rotation cancels the yaw on its own Y so each piece keeps facing
+                // the camera.
+                //
+                // Indexed off PARK_SLOTS rather than four named locals, so visibility, loaded
+                // instance and layout can only ever be read for the SAME slot (#2933).
+                val displays = PARK_SLOTS.mapIndexed { index, slot ->
+                    Display(visible[index], instances[index], slot)
+                }
+                // `key(index)` + `isVisible`, never a skipped call site (#2939). `ModelNode`
+                // holds `remember(engine, modelInstance)`, and its `DisposableEffect(node)`
+                // runs `node.destroy()`, which calls `engine.safeDestroyEntity` on entities
+                // the ModelInstance only BORROWS — the ids survive, the renderable components
+                // do not. Two ways that used to fire here:
+                //   · dropping a hidden slot's call shifted every later ModelNode onto the
+                //     preceding group with a DIFFERENT instance, re-keying the remember and
+                //     destroying all four;
+                //   · unmounting a hidden slot destroyed its own renderables, so toggling the
+                //     chip back on rendered nothing.
+                // The instances come from a `produceState` whose keys never change again, so
+                // they are never reloaded and there is no recovery — a silent black scene with
+                // no scrim, because the instance is still non-null. Same defect the Materials
+                // section shipped until #2939. Keep every slot mounted; hide with `isVisible`.
+                displays.forEachIndexed { index, d ->
+                    key(index) {
+                        if (d.instance != null) {
+                            // Rotation math lives in DemoMath.rotateAroundCentre so it can be
+                            // JVM-unit-tested without firing up Filament / Compose.
+                            val (rx, rz) = DemoMath.rotateAroundCentre(d.slot.x, d.slot.z, sceneYaw)
+                            ModelNode(
+                                modelInstance = d.instance,
+                                isVisible = d.show,
+                                // Models with a skeletal animation auto-play it for "alive"
+                                // scene reads; in qaMode we need the bind pose to render every
+                                // frame so golden screenshots stay deterministic.
+                                autoAnimate = !DemoSettings.qaMode,
+                                scaleToUnits = d.slot.scale,
+                                // Bottom-aligned (#2913): `Position(0, -1, 0)` puts each model's
+                                // bounding-box FLOOR on its node origin, so `position.y` below
+                                // stands them all on one ground plane. Without it a node keeps the
+                                // asset's authored pivot, which differs per GLB — the formation's
+                                // vertical placement was a property of whichever models the
+                                // registry happened to point at, and the pulled-back framing this
+                                // fix needs would have shown the smaller ones floating. (This
+                                // parameter used to be a silent no-op; it was fixed library-side
+                                // and is now honoured.)
+                                centerOrigin = Position(0f, -1f, 0f),
+                                position = Position(x = rx, y = -PARK_HEIGHT / 2f, z = rz),
+                                rotation = Rotation(y = -sceneYaw),
+                            )
+                        }
+                    }
                 }
             }
-            LoadingScrim(loading = !allLoaded, label = "Loading 4 models…")
+            LoadingScrim(loading = !allLoaded, label = "Loading ${PARK_SLOTS.size} models…")
         }
     }
 }
 
+/**
+ * One model's visibility and loaded instance, bound to its fixed place in the formation.
+ *
+ * The layout itself ([PARK_SLOTS]) and the framing derived from it live in `internal/ParkFraming.kt`
+ * so a JVM unit test can assert that the derivation follows the layout (#2913).
+ */
 private data class Display(
     val show: Boolean,
     val instance: io.github.sceneview.model.ModelInstance?,
-    val x: Float,
-    val z: Float,
-    val scale: Float,
+    val slot: ParkSlot,
 )
 
 /**
@@ -825,16 +970,36 @@ private fun GallerySection(
     // slot stays stable (#1464).
     val modelInstance = rememberFileModelInstance(modelLoader, resolvedFile)
 
-    // Per-demo offline indicator chip (#1152 Stage 3). When no API key is
-    // configured we know up-front the resolver will fall back to bundled
-    // GLBs; otherwise the chip mirrors the centre LoadingScrim exactly so the
-    // two never contradict each other (#1465): it stays "Streaming…" until the
-    // model is fully parsed into a `ModelInstance` — not merely while the file
-    // path resolves — and only then flips to "Streamed (cached)". Gating on
-    // `modelInstance` (the same signal the LoadingScrim uses) keeps the chip
-    // and the spinner in lockstep.
+    // Per-demo offline indicator chip (#1152 Stage 3). Once the file has
+    // resolved the origin is MEASURED from it, never inferred from the config:
+    // "an API key is configured" says nothing about whether the download
+    // succeeded. Every failure path in `resolve` — no network, a stale key, a
+    // bounds-drifted asset, exhausted retries — ends at the bundled fallback,
+    // so a keyed build renders the offline stand-in under whatever the pill
+    // claims. It did: on the QA emulator (2026-07-28, key configured, radio
+    // off) this section staged out of `cache/sketchfab/fallback/` — the only
+    // thing under `cache/sketchfab/` — while the pill read "Streamed (cached)"
+    // over the bundled car (#2936).
+    //
+    // Before anything resolves there is no file to ask, so the key is still the
+    // best available signal: with none we already know where this ends, with one
+    // the download is genuinely in flight. On that streamed path the chip stays
+    // in lockstep with the centre LoadingScrim (#1465) — it reads "Streaming…"
+    // until the model is fully parsed into a `ModelInstance`, not merely until
+    // the file path resolves, and only then flips to "Streamed (cached)", so it
+    // can never claim a finished download over a still-spinning scrim.
+    //
+    // The fallback path deliberately does NOT wait for the parse: once the file
+    // is known to be the bundled stand-in, the origin is settled, so the chip
+    // says so while the scrim is still spinning on the local load. That pairing
+    // is not new — a keyless build has always shown "Offline model" over a
+    // spinning scrim — and it is the honest way round: #1465 is about the chip
+    // never claiming completion early, and "Offline model" claims an origin,
+    // not a finished download.
     val assetSource = when {
         slugs.isEmpty() -> null
+        resolvedFile != null && SketchfabAssetResolver.isBundledFallback(resolvedFile) ->
+            AssetSourceState.Bundled
         SketchfabConfig.apiKey == null -> AssetSourceState.Bundled
         modelInstance == null -> AssetSourceState.Streaming
         else -> AssetSourceState.Streamed

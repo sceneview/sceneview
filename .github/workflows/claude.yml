@@ -46,13 +46,54 @@ jobs:
       pull-requests: write      # for PR replies + creating PRs
       issues: write             # for issue replies
       id-token: write           # OIDC for the action
+    env:
+      MAX_MENTIONS_PER_DAY: '20'
     steps:
+      # ⚠️ THE @claude GATE BOUNDS *WHO ASKS*, NOT *HOW OFTEN*.
+      #   This repository is public and every trigger here fires in the base
+      #   repo, so secrets are available and any member of the public can spend
+      #   the maintainer's Claude Max quota by typing "@claude" in a comment.
+      #   The mention gate stops Dependabot and incidental chatter; it does not
+      #   stop twenty comments in a row. `concurrency` does not either — it is
+      #   keyed per issue/PR, so distinct threads never queue behind each other.
+      #
+      #   Same ceiling, same reasoning as issue-intake.yml's triage budget:
+      #   bound the volume, not the author. Gating on author association would
+      #   break the stated purpose of this bot ("open-source contributors
+      #   benefit too; they don't need an Anthropic account").
+      - name: Check daily mention budget
+        id: budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TODAY="$(date -u +%Y-%m-%d)"
+          # `skipped` runs MUST be excluded. This workflow is triggered by every
+          # issue/comment event and the job's `if:` gate then skips the ones
+          # without an "@claude" mention — those cost nothing. Measured
+          # 2026-08-01: 15 runs that day, ALL skipped; across the last 200 runs,
+          # zero actually executed. Counting raw runs would have capped the bot
+          # on 2026-07-20 (46 triggers, 0 real) for spend that never happened.
+          # A null conclusion (in progress) is counted — it is real spend.
+          USED="$(gh run list --workflow=claude.yml --created ">=$TODAY" \
+                    --limit 100 --json conclusion \
+                    --jq 'map(select(.conclusion != "skipped")) | length' 2>/dev/null || echo 0)"
+          echo "@claude runs today: $USED / $MAX_MENTIONS_PER_DAY"
+          if [ "$USED" -gt "$MAX_MENTIONS_PER_DAY" ]; then
+            echo "within_budget=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=@claude budget reached::$USED runs today (cap $MAX_MENTIONS_PER_DAY). Skipped to protect the Claude Max quota — raise MAX_MENTIONS_PER_DAY if this was legitimate traffic."
+          else
+            echo "within_budget=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v7
+        if: steps.budget.outputs.within_budget == 'true'
         with:
           # Full history so Claude can read git log / blame when context demands.
           fetch-depth: 0
 
       - name: Run Claude Code
+        if: steps.budget.outputs.within_budget == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

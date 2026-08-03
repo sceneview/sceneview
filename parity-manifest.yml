@@ -29,24 +29,52 @@
 #                    ARKit equivalent, never planned) or a demo iOS simply
 #                    hasn't reserved an id for yet.
 # `reason` is required for every non-`working` row (one line, honest, cites
-# the tracking issue). `androidStatus` mirrors Android's own `DemoStatus`
-# (Working/KnownIssue/ComingSoon/InReview) for context — the #2798 audit
-# found a strict correlation: every Android demo that is not itself `Working`
-# lands in iOS's `stub` or `android-only` bucket, with zero exceptions.
+# the tracking issue). It is ALSO allowed (optional) on a `working` row as a
+# CAPABILITY CAVEAT — the id resolves to a real screen (so it is honestly
+# `working`), yet a runtime capability behind that screen cannot execute in the
+# demo build (e.g. `ar-cloud-anchor` #2864, whose Host / Resolve need an SDK the
+# demo target does not link). Do NOT delete a `reason` from a `working` row
+# assuming it is stale — read the issue it cites first. `androidStatus` mirrors
+# Android's own `DemoStatus`
+# (Working/KnownIssue/ComingSoon/InReview) for CONTEXT ONLY — it does not
+# constrain `iosStatus`, and nothing in the gate relates the two.
 #
-# Verified against source 2026-07-21 (post L0.1 #2799 + L0.2 #2800, and
-# after #2817 added `contact-shadow-preview` — rebased onto that commit
-# during this PR's own preparation, a live demonstration of exactly the
-# drift class this manifest + check-demo-id-parity.sh now catch):
-#   - Android: 53 fragments, 44 Working / 5 KnownIssue / 2 ComingSoon / 2 InReview.
-#   - iOS: `DemoDeepLinkRegistry.allowedIds` = 66 (51 generated ∪ 4 legacy
-#     aliases ∪ 11 residual ids). Of the 53 Android ids: 22 working, 18 stub,
-#     13 android-only.
+# This paragraph used to assert that the #2798 audit had found a strict
+# correlation — every non-`Working` Android demo landing in iOS's
+# `stub`/`android-only` bucket, "with zero exceptions". That was a snapshot of
+# one afternoon, never an invariant, and it is now plainly false: a row earns
+# `iosStatus: working` the moment iOS resolves it to a real destination,
+# whatever Android's own status is. Three ids are live counter-examples
+# (`ar-cloud-anchor` and `ar-depth-collider`, both `KnownIssue`, and
+# `wall-placement`, `InReview`) — each genuinely ported, each carrying the
+# matching iOS `@status` badge, so calling any of them `stub` would be a lie.
+# Do not enforce the correlation, and never "fix" a row to restore it.
 #
-# Updated by L0.6 (#2804, closes #2769) — every Android id now resolves to
-# SOMETHING honest on iOS (a real screen, an alias to an existing equivalent
-# screen, or a clearly-labeled coming-soon/Android-only card), never a
-# silent no-op:
+# ─── CURRENT STATE — measured, not narrated ────────────────────────────────
+# Every tally in this file lives HERE and in the per-section banners below.
+# Do NOT append a new "and now it is X/Y" paragraph when a port lands: that is
+# exactly how this header came to carry four mutually contradictory counts at
+# once (22/18/13, then 28/25, then 29/24, then 30/23) while the real numbers
+# were something else again. Update these two places in the same PR, and let
+# CI check you — `check-demo-id-parity.sh` now recounts the rows itself and
+# FAILS on any banner that disagrees, so a stale tally can no longer pass.
+#
+# Recount, never hand-edit:
+#   python3 -c "import yaml,collections; print(collections.Counter(
+#     r['iosStatus'] for r in yaml.safe_load(open('parity-manifest.yml'))['demos']))"
+#
+# Measured 2026-07-22, after the Wave-A iOS ports (#2836 #2837 #2838 #2839
+# #2840 #2841) all landed:
+#   - Android: 53 fragments — 44 Working / 5 KnownIssue / 2 ComingSoon / 2 InReview.
+#   - iOS: `DemoDeepLinkRegistry.allowedIds` = 79 (69 generated ∪ 10 legacy/
+#     umbrella aliases ∪ 0 residual ids).
+#   - Of the 53 Android ids: 34 working, 19 stub, 0 android-only.
+#
+# How it got here — STRUCTURE, deliberately without counts (the banners below
+# are the live numbers). L0.6 (#2804, closes #2769) made every Android id
+# resolve to SOMETHING honest on iOS (a real screen, an alias to an existing
+# equivalent screen, or a clearly-labeled coming-soon/Android-only card),
+# never a silent no-op:
 #   - Job A: the 6 `#2239`-umbrella ids got a `legacyAliases` entry to their
 #     most-representative pre-regroup granular scene (real content, not a
 #     coming-soon card) → promoted from `android-only` to `working`.
@@ -60,24 +88,48 @@
 #     got `@androidOnlyReason` so their card reads "Android-only: <reason>"
 #     instead of "Coming soon" (their status stays `stub` — they ARE in
 #     `allowedIds` — only the CARD TREATMENT changed).
-#   - Post-L0.6: iOS: `DemoDeepLinkRegistry.allowedIds` = 79 (69 generated ∪
-#     10 legacy/umbrella aliases ∪ 0 residual ids). Of the 53 Android ids:
-#     28 working, 25 stub, 0 android-only.
+#   - Wave A (#2798) then genuinely ported six AR demos to iOS, promoting
+#     their rows from `stub` to `working`. Two of them (`ar-depth-collider`,
+#     `ar-cloud-anchor`) are `KnownIssue` on Android and a third
+#     (`wall-placement`) is `InReview` — which is what broke the "zero
+#     exceptions" correlation described above. Not special cases: any
+#     non-`Working` Android id lands in iOS's `working` bucket once its port
+#     is real, exactly like a `Working` one.
 #
 # Checked by `.claude/scripts/check-demo-id-parity.sh` (`ci.yml` ->
 # `repo-hygiene`, ubuntu, blocking): fails if a Android id has neither an iOS
 # registry entry nor a row here, if a row's `iosStatus` disagrees with the
 # live registry, or if a row here no longer corresponds to a live Android id.
+# It also recounts the section banners below — their tallies are comments,
+# which `yaml.safe_load` never sees, so before that check they drifted freely
+# behind a green CI (four contradictory counts in this very header, and four
+# rows flipped to `working` in place without leaving the `stub` section).
+# A banner whose count disagrees with its bucket, or a row filed under the
+# wrong section, now FAILS.
 # Update this file (status + reason) in the SAME PR that changes either
 # platform's registry — that's what keeps it honest.
 
 demos:
-  # ─── working (28) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (34) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
   - id: ar-body-tracker
     androidStatus: Working
+    iosStatus: working
+  - id: ar-cloud-anchor
+    androidStatus: KnownIssue
+    iosStatus: working
+    reason: >-
+      Capability caveat on a `working` row (#2864): iOS resolves this id to a
+      REAL scene — plane detection, tap-to-place and the anchor lifecycle are
+      live — but the demo target does NOT link Google's `arcore-ios-sdk`, so
+      Host / Resolve stay disabled behind a "Preview" badge and the billed
+      GARSession round-trip cannot run. A missing DEPENDENCY, not a missing key
+      (Android ships it; ARCORE_API_KEY is set). Vendoring arcore-ios-sdk is
+      NOT planned — see #2864 for the reopen conditions.
+  - id: ar-depth-collider
+    androidStatus: KnownIssue
     iosStatus: working
   - id: ar-depth-occlusion
     androidStatus: Working
@@ -104,6 +156,9 @@ demos:
     androidStatus: Working
     iosStatus: working
   - id: ar-point-cloud
+    androidStatus: Working
+    iosStatus: working
+  - id: ar-pose
     androidStatus: Working
     iosStatus: working
   - id: ar-record-playback
@@ -151,33 +206,29 @@ demos:
   - id: picking-collision
     androidStatus: Working
     iosStatus: working
+  - id: placement-reticle-preview
+    androidStatus: Working
+    iosStatus: working
+  - id: placement-scene
+    androidStatus: Working
+    iosStatus: working
   - id: spatial-audio
     androidStatus: Working
     iosStatus: working
   - id: two-d-in-three-d
     androidStatus: Working
     iosStatus: working
+  - id: wall-placement
+    androidStatus: InReview
+    iosStatus: working
 
-  # ─── stub (25) — iOS registry has the id, but it falls to the placeholder ──
-  - id: ar-cloud-anchor
-    androidStatus: KnownIssue
-    iosStatus: stub
-    reason: >-
-      Scene file exists (ArCloudAnchorScene, canonicalized from
-      ArCloudAnchorsScene in #2799) but @available false — Cloud Anchor
-      persistence not yet implemented on iOS. Android itself is KnownIssue too.
+  # ─── stub (19) — iOS registry has the id, but it falls to the placeholder ──
   - id: ar-collaborative
     androidStatus: Working
     iosStatus: stub
     reason: >-
       Scene file exists (L0.6, #2804 Job C) but @available false — a
       CollaborativeSession SDK + demo is not yet ported (Phase 2 Wave B, #2798).
-  - id: ar-depth-collider
-    androidStatus: KnownIssue
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false —
-      depth-based collision not yet ported. Android itself is KnownIssue too.
   - id: ar-depth-of-field
     androidStatus: Working
     iosStatus: stub
@@ -228,9 +279,6 @@ demos:
       Scene file exists (L0.6, #2804 Job B) but @available false — added to
       Android after iOS stopped tracking the catalog; needs LiDAR-backed
       plane rendering.
-  - id: ar-pose
-    androidStatus: Working
-    iosStatus: working
   - id: ar-raw-depth-point-cloud
     androidStatus: Working
     iosStatus: stub
@@ -285,15 +333,6 @@ demos:
       Android after iOS stopped tracking the catalog (#2817, contact-shadow
       sub-task C of #2740; Android itself is InReview); card subtitle notes
       "(Android: in review)".
-  - id: placement-reticle-preview
-    androidStatus: Working
-    iosStatus: working
-  - id: placement-scene
-    androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false — this
-      placement scene is not yet ported (Phase 2 Wave A, #2798).
   - id: point-and-ask
     androidStatus: Working
     iosStatus: stub
@@ -320,13 +359,6 @@ demos:
     reason: >-
       Scene file exists (L0.6, #2804 Job B) but @available false — added to
       Android after iOS stopped tracking the catalog.
-  - id: wall-placement
-    androidStatus: InReview
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job B) but @available false — added to
-      Android after iOS stopped tracking the catalog (Android itself is
-      InReview, #2740); card subtitle notes "(Android: in review)".
 
   # ─── android-only (0) — every id now has at least an honest stub ────────
   # L0.6 (#2804) closed this section: the 6 #2239-umbrella ids became

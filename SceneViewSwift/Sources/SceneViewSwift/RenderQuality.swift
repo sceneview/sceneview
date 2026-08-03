@@ -107,6 +107,15 @@ internal func applyRenderQuality(
     }
 
     // 2. Adjust IBL intensity exponent on the receiver entity (if one exists in this scene).
+    //
+    // ⚠️ The literals below are RAW EXPONENTS, not the linear multipliers
+    // `SceneEnvironment.intensity` speaks since #2897 — `1.0` here means ×2.0 and
+    // `0.5` means ×1.41, which no longer dims anything now that the authored
+    // default maps to exponent 0. That is currently latent, not a bug: this
+    // function's only caller (`SceneView.setupScene`) runs synchronously BEFORE the
+    // async `loadEnvironment` sets the `ImageBasedLightComponent`, so both branches
+    // below find no component and no-op. Fix the units here if that ordering ever
+    // changes, or these values will invert their own documented intent (#2897).
     guard let iblReceiver else { return nil }
     let newExponent: Float?
     switch quality {

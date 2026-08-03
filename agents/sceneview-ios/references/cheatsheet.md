@@ -38,10 +38,23 @@ SceneView { … }
     .onEntityTapped { entity in }
     .autoRotate(speed: 0.3)      // turntable
     .autoCenterContent(true)     // translate content centroid to orbit pivot
+    .framingMargin(0.95)         // auto-fit padding; 1.15 default, 1.0 = bounding sphere tangent, < 1 tighter
+    .cameraOrbit(azimuth: .pi / 5, elevation: .pi / 15)  // INITIAL orbit pose, radians (defaults 0, 30°)
     .mainLight(.systemDefault)   // see LightSlot
     .fillLight(.systemDefault)
     .renderQuality(.default)     // .cinematic | .default | .performance
 ```
+
+The auto-fit fits the content's **bounding sphere** to the narrower frustum
+axis, then scales that distance by `framingMargin` — lower it to fill a tall
+portrait frame, but stay at or above ~`0.95` on an `autoRotate` scene or a long
+model clips at its broadside azimuth. `framingMargin` runs *inside* the auto-fit,
+so it is a **silent no-op under `.autoCenterContent(false)`**. Android's
+equivalent is `frameToContent(padding =)`, a fraction rather than a multiplier:
+`margin == 1 + padding` (iOS `1.15` = Android `0.15`). `cameraOrbit` seeds only the starting
+pose. Watch elevation: at the 60° vertical FOV the **30° default pitch puts the
+horizon on the top edge**, so a `showSkybox` environment shows no sky until you
+lower it.
 
 ## `ARSceneView` (iOS)
 
@@ -91,6 +104,11 @@ ARSceneView(
 
 `.studio` (default) · `.outdoor` · `.sunset` · `.night` · `.warm` · `.autumn`
 · `.custom(name:hdrFile:intensity:)`
+
+`intensity` is a linear multiplier (`1.0` = the HDR's own radiance); SceneView
+converts it to RealityKit's power-of-two `intensityExponent`, so never pre-apply
+a `log2`. Not interchangeable with Android's IBL intensity, which is Filament
+lux (default `10_000`) — #2897.
 
 ## Transform & animation
 

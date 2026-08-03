@@ -37,25 +37,63 @@ distribution/play-store/
     ├── short_description.txt
     ├── full_description.txt
     └── graphics/
-        ├── feature-graphic.png       (1024×500)
-        ├── icon-512.png              (512×512)
-        ├── phone-screenshot-1.png    (1080×2304)
-        ├── phone-screenshot-2.png
-        ├── phone-screenshot-3.png
-        └── phone-screenshot-4.png
+        ├── feature-graphic.png            (1024×500)
+        ├── icon-512.png                   (512×512)
+        ├── phone-screenshot-{1..3}.png    (1080×2304)
+        ├── tablet7-screenshot-{1..2}.png  (1200×N, portrait)
+        └── tablet10-screenshot-{1..2}.png (1600×N, portrait)
 ```
+
+**All three classes are on set v2, but not with the same number of slots.**
+Phone ships three (`model-viewer · dynamic-sky · multi-model`, judged on the
+captured mosaic, #2854/#2855); both tablet classes were re-shot onto v2 in
+#2907 and ship two (`model-viewer · dynamic-sky`), because `multi-model` was
+dropped from tablet runs at the time — a framing defect since fixed, see the
+note below. The script shoots all three on every class again, so the next
+tablet capture fills a third slot; until it runs, Play accepts 2–8 per type,
+so two is a valid set, not a gap.
+
+Several ids stay out of every class: `materials` was not reproducible launch to
+launch, and its demo side is fixed as of #2874 — eligible again, but nobody has
+captured it and judged the frame yet; `geometry` no
+longer clips (fixed in #2873) but its 2 × 2 cluster leaves the frame centre
+empty, which the capture script's centre-patch variance guard reads as blank;
+`double-pendulum` renders as a tiny linkage in a mostly-black frame. The
+canonical list — and the reason behind each id — lives next to `DEMOS_DEFAULT`
+in `.claude/scripts/capture-play-store-screenshots.sh` and is mirrored in
+[`distribution/play-store/en-GB/graphics/README.md`](distribution/play-store/en-GB/graphics/README.md).
+
+A tablet re-capture now mirrors phone again: `multi-model` had been dropped from
+tablet runs because at a tablet's wider aspect (~0.64 w/h vs the phone's ~0.47)
+the capture landed on a support post rather than foliage. That was a framing
+defect at every aspect — the tablet frame merely exposed it — and it is fixed:
+the scene derives its camera distance from the live viewport aspect (#2913), so
+the script shoots all three slots on every class. Tablets keep their native
+post-crop height rather than being padded to the phone ratio.
 
 On every `vX.Y.0` tag release, the `sync-listing` job in
 `.github/workflows/play-store.yml` PATCHes the listing text and uploads the
 graphics above via the Play `edits.images` API — no manual Play Console
-upload is needed. Refresh the phone screenshots with
+upload is needed. Refresh the screenshots with
 `.claude/scripts/capture-play-store-screenshots.sh`, which writes into the
-same `graphics/` directory.
+same `graphics/` directory. Pass `--form-factor tablet7` / `tablet10` for the
+tablet slots (#2796); the default is `phone`.
+
+Tablet screenshots (`tablet7-screenshot-*.png` / `tablet10-screenshot-*.png`)
+**are** in the repo and the listing-sync job uploads them automatically —
+`play_listing.py` maps them onto Play's `sevenInchScreenshots` /
+`tenInchScreenshots` image types.
+
+⚠️ Export a **Sketchfab API key** before capturing a set that contains
+`multi-model` (`SKETCHFAB_API_KEY`, or `sketchfab.api.key` in `local.properties`).
+Without one that demo silently renders bundled fallback models instead of the
+streamed `park` scene — a different picture that every automated guard in the
+capture path accepts. The script warns; it cannot detect the swap in the frame.
+That demo also frames itself from the live viewport aspect, so it needs no
+per-class `camera_distance` value (#2913). See the
+[graphics README](distribution/play-store/en-GB/graphics/README.md) for both.
 
 Optional extras still not in the repo:
-- **Tablet screenshots:** 7" and 10" — add them under `graphics/` as
-  `tablet7-screenshot-*.png` / `tablet10-screenshot-*.png` and the
-  listing-sync job uploads them automatically.
 - **Promo video:** YouTube link — set manually in the Play Console.
 
 ### Content Rating

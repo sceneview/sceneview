@@ -56,13 +56,14 @@ final class CameraControlsTests: XCTestCase {
         let controls = CameraControls()
         let pos = controls.cameraPosition()
 
-        // At azimuth=0, elevation=pi/6, radius=5:
-        // x = 5 * cos(pi/6) * sin(0) = 0
-        // y = 5 * sin(pi/6) = 2.5
-        // z = 5 * cos(pi/6) * cos(0) = 5 * 0.866 = 4.33
+        // At azimuth=0, elevation=pi/6, radius=2 (the v4.4.0 default — see
+        // `testDefaultInit`; the old radius=5 was removed in that breaking change):
+        // x = 2 * cos(pi/6) * sin(0) = 0
+        // y = 2 * sin(pi/6) = 1.0
+        // z = 2 * cos(pi/6) * cos(0) = 2 * 0.866 = 1.732
         XCTAssertEqual(pos.x, 0.0, accuracy: 0.01)
-        XCTAssertEqual(pos.y, 2.5, accuracy: 0.01)
-        XCTAssertEqual(pos.z, 4.33, accuracy: 0.01)
+        XCTAssertEqual(pos.y, 1.0, accuracy: 0.01)
+        XCTAssertEqual(pos.z, 1.732, accuracy: 0.01)
     }
 
     func testCameraPositionAtAzimuth90() {
@@ -71,10 +72,11 @@ final class CameraControlsTests: XCTestCase {
         controls.elevation = 0
 
         let pos = controls.cameraPosition()
-        // x = 5 * cos(0) * sin(pi/2) = 5
+        // radius=2 (v4.4.0 default):
+        // x = 2 * cos(0) * sin(pi/2) = 2
         // y = 0
-        // z = 5 * cos(0) * cos(pi/2) = 0
-        XCTAssertEqual(pos.x, 5.0, accuracy: 0.01)
+        // z = 2 * cos(0) * cos(pi/2) = 0
+        XCTAssertEqual(pos.x, 2.0, accuracy: 0.01)
         XCTAssertEqual(pos.y, 0.0, accuracy: 0.01)
         XCTAssertEqual(pos.z, 0.0, accuracy: 0.01)
     }
@@ -86,12 +88,13 @@ final class CameraControlsTests: XCTestCase {
         controls.elevation = 0
 
         let pos = controls.cameraPosition()
-        // x = 1 + 5 * 1 * 0 = 1
-        // y = 2 + 5 * 0 = 2
-        // z = 3 + 5 * 1 * 1 = 8
+        // radius=2 (v4.4.0 default):
+        // x = 1 + 2 * 1 * 0 = 1
+        // y = 2 + 2 * 0 = 2
+        // z = 3 + 2 * 1 * 1 = 5
         XCTAssertEqual(pos.x, 1.0, accuracy: 0.01)
         XCTAssertEqual(pos.y, 2.0, accuracy: 0.01)
-        XCTAssertEqual(pos.z, 8.0, accuracy: 0.01)
+        XCTAssertEqual(pos.z, 5.0, accuracy: 0.01)
     }
 
     // MARK: - Drag Handling
@@ -332,6 +335,29 @@ final class CameraControlsTests: XCTestCase {
             boundsExtents: SIMD3<Float>(1, 1, 1), fovYDegrees: 60,
             aspect: 1.0, margin: 1.3)
         XCTAssertEqual(padded / tight, 1.3, accuracy: 0.01)
+    }
+
+    /// `fitRadius`'s `margin:` default was a bare `1.15` literal until
+    /// `.framingMargin(_:)` needed to name the same value (#2896). The whole
+    /// "existing scenes frame identically" claim rests on the constant being
+    /// EQUAL to the literal it replaced — so pin the number itself, not just
+    /// the wiring.
+    func testDefaultFitMarginIsUnchangedValue() {
+        XCTAssertEqual(CameraControls.defaultFitMargin, 1.15, accuracy: 0.0001)
+    }
+
+    /// Omitting `margin:` must keep computing exactly what an explicit 1.15
+    /// computes. A future edit that redefines `defaultFitMargin` silently
+    /// re-frames every auto-framed scene on Apple platforms; this fails first.
+    func testFitRadiusDefaultMarginMatchesExplicitDefault() {
+        let controls = CameraControls()
+        let implicitMargin = controls.fitRadius(
+            boundsExtents: SIMD3<Float>(0.4, 1.2, 0.7), fovYDegrees: 60,
+            aspect: 0.46)
+        let explicitMargin = controls.fitRadius(
+            boundsExtents: SIMD3<Float>(0.4, 1.2, 0.7), fovYDegrees: 60,
+            aspect: 0.46, margin: 1.15)
+        XCTAssertEqual(implicitMargin, explicitMargin, accuracy: 0.0001)
     }
 
     // MARK: - Content bounds union (#1391)

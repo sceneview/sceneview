@@ -1,6 +1,8 @@
 #if os(iOS) || os(macOS) || os(visionOS)
 import RealityKit
 import Foundation
+import CoreGraphics
+import ImageIO
 
 /// Image-based lighting and skybox configuration for a 3D scene.
 ///
@@ -20,7 +22,19 @@ public struct SceneEnvironment: Sendable {
     /// Bundle resource name for the HDR/EXR file.
     public let hdrResource: String?
 
-    /// Light intensity multiplier.
+    /// Light intensity, as a **linear multiplier** — `1.0` leaves the HDR's own
+    /// radiance untouched, `0.5` halves it, `2.0` doubles it.
+    ///
+    /// Converted to RealityKit's `ImageBasedLightComponent.intensityExponent`
+    /// (a power of two) at apply time; callers never see the exponent (#2897).
+    ///
+    /// - Note: **This is not interchangeable with an Android value.** Android's
+    ///   `Environment` has no intensity member at all; its IBL level is Filament's
+    ///   `IndirectLight.intensity` in **absolute lux**, defaulting to
+    ///   `DEFAULT_IBL_INTENSITY = 10_000` (`SceneFactories.kt`). `1.0` there is one
+    ///   lux — effectively black — not "the HDR untouched". The two platforms match
+    ///   on the key-to-IBL *ratio*, not on absolute values; see the cross-platform
+    ///   parity note on `DEFAULT_IBL_INTENSITY`.
     public var intensity: Float
 
     /// Whether to render the environment as a skybox background.
@@ -38,6 +52,34 @@ public struct SceneEnvironment: Sendable {
         self.showSkybox = showSkybox
     }
 
+    /// Converts an authored linear ``intensity`` multiplier into the power-of-two
+    /// exponent RealityKit's `ImageBasedLightComponent(intensityExponent:)` wants.
+    ///
+    /// Lives here, and is exercised directly by `SceneEnvironmentTests`, because
+    /// the call site it feeds (`SceneView.loadEnvironment`) is `@MainActor` and
+    /// needs a live RealityKit scene — the conversion itself is the part that was
+    /// wrong (#2897) and the part worth pinning.
+    ///
+    /// The result is always finite, because RealityKit rejects an infinite or NaN
+    /// exponent and `intensity` is a `public var` a caller can set to anything:
+    ///
+    /// - `0`, negatives and `-infinity` clamp up to `.leastNormalMagnitude`, giving
+    ///   exponent `-126` — indistinguishable from black, and finite (`log2(0)` is
+    ///   `-inf`).
+    /// - `+infinity` clamps down to `.greatestFiniteMagnitude`, giving `128`.
+    /// - `NaN` falls through both clamps and is mapped to black.
+    ///
+    /// The `min`/`max` pair is doing more than it looks. Swift's generic `max` is
+    /// `y >= x ? y : x` and every comparison against NaN is false, so **operand
+    /// order decides the NaN result**: `max(.nan, tiny)` is `.nan` while
+    /// `max(tiny, .nan)` is `tiny`. Rather than depend on that, the explicit
+    /// `isFinite` guard catches NaN whichever way the clamps fall.
+    static func intensityExponent(forMultiplier multiplier: Float) -> Float {
+        let clamped = min(max(multiplier, .leastNormalMagnitude), .greatestFiniteMagnitude)
+        guard clamped.isFinite else { return log2(Float.leastNormalMagnitude) }
+        return log2(clamped)
+    }
+
     /// Loads the IBL environment resource into a RealityKit scene.
     ///
     /// Uses a shared cache to avoid redundant I/O for repeated loads.
@@ -46,6 +88,26 @@ public struct SceneEnvironment: Sendable {
     ///   `ImageBasedLightComponent`.
     /// - Throws: `SceneEnvironmentError.noResourceSpecified` if no HDR resource
     ///   name was provided, or a RealityKit error if the file cannot be loaded.
+    ///
+    /// ### Radiance `.hdr` support (#2896)
+    ///
+    /// `EnvironmentResource(named:)` only resolves the asset kinds Xcode
+    /// *compiles* into a RealityKit resource — `.exr`, asset-catalog textures,
+    /// Reality Composer Pro scenes. A plain Radiance `.hdr` copied into the
+    /// bundle as a resource file is **not** one of them: it fails with
+    /// `resourceLoadFailure`, and the caller silently falls back to **no custom
+    /// IBL** — the `ImageBasedLightComponent` is never set, so the scene keeps
+    /// RealityView's own default environment lighting (#2842/#2868); it is not
+    /// unlit — and to **no skybox at all**. That is what left every iOS demo
+    /// dim-on-black and made
+    /// `dynamic-sky` render no sky at all — all seven bundled presets
+    /// (`studio.hdr`, `outdoor_cloudy.hdr`, …) are Radiance files.
+    ///
+    /// ImageIO reads `public.radiance` natively, so a failed `named:` lookup
+    /// falls back to decoding the file into a half-float equirectangular
+    /// `CGImage` and building the resource from that. The `named:` path is
+    /// still tried first so `.exr` / asset-catalog / RCP resources keep
+    /// working unchanged.
     public func load() async throws -> EnvironmentResource {
         guard let hdrResource else {
             throw SceneEnvironmentError.noResourceSpecified
@@ -54,9 +116,53 @@ public struct SceneEnvironment: Sendable {
         if let cached = EnvironmentCache.shared.get(hdrResource) {
             return cached
         }
-        let resource = try await EnvironmentResource(named: hdrResource)
+        let resource: EnvironmentResource
+        do {
+            resource = try await EnvironmentResource(named: hdrResource)
+        } catch {
+            // Re-throw the ORIGINAL RealityKit error when the fallback can't
+            // apply — a genuinely missing resource must not be reported as a
+            // decode problem.
+            guard let image = Self.equirectangularImage(named: hdrResource) else {
+                throw error
+            }
+            resource = try await EnvironmentResource(
+                equirectangular: image,
+                withName: hdrResource
+            )
+        }
         EnvironmentCache.shared.set(hdrResource, resource: resource)
         return resource
+    }
+
+    /// Decodes a bundled equirectangular image (Radiance `.hdr`, and anything
+    /// else ImageIO reads) into a `CGImage` for
+    /// `EnvironmentResource(equirectangular:withName:)`.
+    ///
+    /// Looks the resource up in `Bundle.main` — the same bundle
+    /// `EnvironmentResource(named:)` defaults to — both as a full filename and
+    /// as a name/extension pair, so `"studio.hdr"` and `"studio"` both resolve.
+    ///
+    /// Returns `nil` when the file isn't in the bundle or ImageIO can't decode
+    /// it, which keeps the original load error as the reported failure.
+    private static func equirectangularImage(named resource: String) -> CGImage? {
+        let candidates: [URL?] = [
+            Bundle.main.url(forResource: resource, withExtension: nil),
+            Bundle.main.url(
+                forResource: (resource as NSString).deletingPathExtension,
+                withExtension: (resource as NSString).pathExtension.isEmpty
+                    ? "hdr"
+                    : (resource as NSString).pathExtension
+            )
+        ]
+        for case let url? in candidates {
+            guard
+                let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+            else { continue }
+            return image
+        }
+        return nil
     }
 
     /// Creates a custom environment from an HDR file in the bundle.
@@ -64,7 +170,8 @@ public struct SceneEnvironment: Sendable {
     /// - Parameters:
     ///   - name: Display name.
     ///   - hdrFile: HDR file name in the bundle (e.g. "custom_env.hdr").
-    ///   - intensity: Light intensity multiplier.
+    ///   - intensity: Light intensity as a linear multiplier (`1.0` = the HDR's own
+    ///     radiance). Not an Android lux value — see ``intensity`` (#2897).
     ///   - showSkybox: Whether to show as background.
     public static func custom(
         name: String,

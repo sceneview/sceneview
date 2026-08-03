@@ -204,6 +204,10 @@ jobs:
         run: |
           BUILD_NUMBER=$(( ${{ github.run_number }} + 1000 ))
           echo "Archiving with CFBundleVersion (CURRENT_PROJECT_VERSION) = $BUILD_NUMBER"
+          # Hand the number to the submit step (#2893 W1) so it can attach the
+          # build THIS run uploaded instead of whichever iOS build happens to
+          # be VALID first. Same job → $GITHUB_ENV is the right channel.
+          echo "ASC_EXPECTED_BUILD=$BUILD_NUMBER" >> "$GITHUB_ENV"
           xcodebuild archive \
             -project SceneViewDemo.xcodeproj \
             -scheme SceneViewDemo \
@@ -309,13 +313,22 @@ jobs:
           with open(key_path) as f:
               private_key = f.read()
 
-          token = jwt.encode(
-              {"iss": ISSUER_ID, "iat": int(time.time()), "exp": int(time.time()) + 1200, "aud": "appstoreconnect-v1"},
-              private_key,
-              algorithm="ES256",
-              headers={"kid": KEY_ID}
-          )
-          headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+          # Apple caps the ASC token lifetime at 20 minutes. The build poll below
+          # can now legitimately consume most of that window (it waits for OUR
+          # build, #2893 W1), so the token is minted through a helper and
+          # re-minted after the poll — otherwise a long-but-successful wait
+          # would hand an already-expiring token to the submission calls that
+          # matter most.
+          def asc_headers():
+              token = jwt.encode(
+                  {"iss": ISSUER_ID, "iat": int(time.time()), "exp": int(time.time()) + 1200, "aud": "appstoreconnect-v1"},
+                  private_key,
+                  algorithm="ES256",
+                  headers={"kid": KEY_ID}
+              )
+              return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+          headers = asc_headers()
           BASE = "https://api.appstoreconnect.apple.com/v1"
 
           # 1. Find the app
@@ -331,20 +344,188 @@ jobs:
           # green having skipped submission entirely. Poll up to 10 more
           # minutes (well inside the 20-min JWT), then FAIL loudly — a tag
           # deploy whose build never turns VALID must be red, not green.
-          builds = []
-          for attempt in range(1, 11):
-              r = requests.get(f"{BASE}/builds?filter[app]={app_id}&sort=-uploadedDate&limit=1&filter[processingState]=VALID", headers=headers)
-              builds = r.json().get("data", [])
-              if builds:
+          #
+          # The build MUST be constrained to the iOS platform. The macOS
+          # deploy job runs in PARALLEL against the SAME app record (shared
+          # bundleId → shared app_id), so an unqualified `builds` query can
+          # return the macOS build; attaching it to the iOS version below 409s
+          # with "The specified build has a different platform than the
+          # version". This is the build-side twin of the #2731 version hijack —
+          # #2731 added filter[platform]=IOS to the *version* lookup but left
+          # this *build* lookup unfiltered, so iOS submission kept failing on
+          # 4.24.0 and 4.25.0. We resolve each build's platform via the
+          # included preReleaseVersion and select client-side (so the fix does
+          # not depend on filter[preReleaseVersion.platform] being honoured);
+          # if the include is unavailable for this key we fall back to the
+          # newest VALID build rather than regress into a 10-minute red poll.
+          #
+          # W1 (#2893): "newest VALID iOS build" is not the same thing as "the
+          # build this run just uploaded". While Apple processes our upload,
+          # the PREVIOUS release's build is already VALID and sorts first — so
+          # the loop could exit on attempt 1 and submit a stale binary under
+          # the new version string, silently. The archive step exports the
+          # CFBundleVersion it built as ASC_EXPECTED_BUILD, and we pin the
+          # selection to it: no match yet means our build is still processing,
+          # which is a reason to keep polling, not to take the older one.
+          # Without the env var the previous newest-VALID behaviour stands,
+          # loudly flagged. In this workflow the archive step is unconditional,
+          # so that branch should never fire — it exists so a future job that
+          # submits without archiving (or an archive step that stops exporting
+          # the number) degrades to the old behaviour instead of hard-failing.
+          expected_build = (os.environ.get("ASC_EXPECTED_BUILD") or "").strip()
+          if expected_build:
+              print(f"Expecting build number {expected_build} (uploaded by this run)")
+          else:
+              print("::warning::ASC_EXPECTED_BUILD is not set — falling back to newest-VALID selection; "
+                    "this run may attach a build it did not upload (#2893 W1).")
+
+          def _same_build(a, b):
+              # Apple returns CFBundleVersion as a string. Compare textually,
+              # then numerically so a "0300"/"300" formatting difference on
+              # either side is not read as a different build.
+              a, b = str(a).strip(), str(b).strip()
+              if a == b:
+                  return True
+              try:
+                  return int(a) == int(b)
+              except ValueError:
+                  return False
+
+          # 15 attempts, not 10 (#2893 review). Before W1 this loop almost
+          # always exited on attempt 1 — on the PREVIOUS release's build, which
+          # was the bug — so the window was never really exercised. Waiting for
+          # a freshly uploaded build is precisely the slow case, and Apple's
+          # processing routinely runs past 12 minutes. The token is re-minted
+          # after the loop, so a long wait no longer eats the submission's JWT.
+          POLL_ATTEMPTS = 15
+          build_id = None
+          build_version = None
+          for attempt in range(1, POLL_ATTEMPTS + 1):
+              # Re-mint per iteration: no `requests` call here sets a timeout,
+              # so a cumulative stall could outlive the 20-min token and hand
+              # W2's classifier a 401 to misreport as bad credentials. A local
+              # ES256 sign costs nothing.
+              headers = asc_headers()
+              r = requests.get(
+                  f"{BASE}/builds?filter[app]={app_id}&filter[processingState]=VALID"
+                  f"&sort=-uploadedDate&limit=20&include=preReleaseVersion",
+                  headers=headers,
+              )
+              # W2 (#2893): the status code used to be ignored entirely — an
+              # error body has no "data" key, so a 401 read exactly like "Apple
+              # is still processing" and burned the full ~10-minute window
+              # before failing with a message blaming Apple's processing. The
+              # three classes need different answers:
+              #   401/403 — the JWT is bad, expired, or the key lost its role.
+              #             Waiting cannot fix it, and the 20-min token means a
+              #             10-min poll can even expire a token that was fine.
+              #             Fail now, naming auth.
+              #   429/5xx — genuinely transient. Retry within the same window.
+              #   other 4xx — a malformed request (bad filter, dropped API
+              #             version). Retrying is pointless; fail now.
+              if r.status_code in (401, 403):
+                  print(f"::error::builds GET rejected with {r.status_code} — App Store Connect "
+                        f"authentication/permission failure, not a processing delay. Check the "
+                        f"ASC key id/issuer/.p8 secrets and the key's role. {r.text[:300]}")
+                  raise SystemExit(1)
+              if r.status_code != 200:
+                  if r.status_code == 429 or r.status_code >= 500:
+                      print(f"::warning::builds GET transient {r.status_code} "
+                            f"(attempt {attempt}/{POLL_ATTEMPTS}) — retrying in 60s: {r.text[:200]}")
+                      time.sleep(60)
+                      continue
+                  print(f"::error::builds GET failed with {r.status_code} — request rejected, "
+                        f"retrying cannot help. {r.text[:300]}")
+                  raise SystemExit(1)
+              try:
+                  payload = r.json()
+              except ValueError:
+                  # A 200 that is not JSON is an edge/proxy hiccup, not a
+                  # verdict on the build. Same treatment as a 5xx.
+                  print(f"::warning::builds GET returned a non-JSON 200 (attempt {attempt}/{POLL_ATTEMPTS}) — "
+                        f"retrying in 60s: {r.text[:200]}")
+                  time.sleep(60)
+                  continue
+              included = {(i["type"], i["id"]): i for i in payload.get("included", [])}
+              data = payload.get("data", [])
+              newest_valid = data[0] if data else None
+              platform_seen = False
+              ios_builds = []
+              for b in data:
+                  prv = b.get("relationships", {}).get("preReleaseVersion", {}).get("data")
+                  inc = included.get((prv["type"], prv["id"])) if prv else None
+                  platform = (inc or {}).get("attributes", {}).get("platform")
+                  if platform is not None:
+                      platform_seen = True
+                  if platform == "IOS":
+                      ios_builds.append(b)
+              chosen = None
+              if expected_build:
+                  chosen = next(
+                      (b for b in ios_builds
+                       if _same_build(b.get("attributes", {}).get("version"), expected_build)),
+                      None,
+                  )
+              elif ios_builds:
+                  chosen = ios_builds[0]
+              if chosen is not None:
+                  build_id = chosen["id"]
+                  build_version = chosen["attributes"]["version"]
                   break
-              print(f"No VALID build yet (attempt {attempt}/10) — Apple still processing, retrying in 60s...")
+              # Apple returned VALID builds but NONE exposed a platform (the
+              # include failed for this service-account key) — don't spin for
+              # 10 min: fall back to the newest VALID build (pre-fix behaviour),
+              # loudly, so the platform filter never makes things worse.
+              if newest_valid is not None and not platform_seen:
+                  if expected_build:
+                      # Degraded path: no platform is resolvable, so match on
+                      # the build number alone and keep polling until it shows
+                      # up. Be honest about what this does NOT prove —
+                      # `deploy-macos` computes the SAME `run_number + 1000`
+                      # against the SAME app record, so a number match here
+                      # cannot distinguish the two platforms' builds, exactly
+                      # as the pre-#2963 newest-VALID fallback could not. It is
+                      # no worse than what it replaces, and it is still tighter
+                      # than "newest", but it is not a platform guarantee.
+                      m = next(
+                          (b for b in data
+                           if _same_build(b.get("attributes", {}).get("version"), expected_build)),
+                          None,
+                      )
+                      if m is not None:
+                          print("::warning::Could not resolve build platform via include=preReleaseVersion — "
+                                f"selecting build {expected_build} by build-number match instead. NOTE: the macOS "
+                                "job builds the same number against the same app record, so this match does not "
+                                "prove the platform; a mismatched build 409s on the attach below.")
+                          build_id = m["id"]
+                          build_version = m["attributes"]["version"]
+                          break
+                  else:
+                      print("::warning::Could not resolve build platform via include=preReleaseVersion — "
+                            "falling back to newest VALID build (iOS platform filter inactive).")
+                      build_id = newest_valid["id"]
+                      build_version = newest_valid["attributes"]["version"]
+                      break
+              waiting_for = f"build {expected_build}" if expected_build else "a VALID iOS build"
+              print(f"No {waiting_for} yet (attempt {attempt}/{POLL_ATTEMPTS}) — Apple still processing, retrying in 60s...")
               time.sleep(60)
-          if not builds:
-              print("::error::No VALID build after ~12 minutes — Apple processing overran or the upload failed. The release was NOT submitted for review; re-run this job once the build shows as processed in App Store Connect.")
+          if not build_id:
+              detail = (
+                  f"build {expected_build} (uploaded by this run) never turned VALID"
+                  if expected_build else "no VALID iOS build appeared"
+              )
+              print(f"::error::After ~{2 + POLL_ATTEMPTS} minutes, {detail} — Apple processing overran or the "
+                    "upload failed. The release was NOT submitted for review. RECOVERY: dispatch a FRESH run — "
+                    "re-running this one reuses the same github.run_number, so it re-archives the same "
+                    "CFBundleVersion and Apple rejects the duplicate upload before the submit step is reached.")
               raise SystemExit(1)
-          build_id = builds[0]["id"]
-          build_version = builds[0]["attributes"]["version"]
-          print(f"Latest build: {build_version} (ID: {build_id})")
+          print(f"Selected iOS build: {build_version} (ID: {build_id})")
+
+          # Re-mint the token: the poll above may have burned most of its
+          # 20-minute life, and everything that follows (version record, build
+          # attach, localization, review submission) is the part that must not
+          # fail on an expired JWT.
+          headers = asc_headers()
 
           # Resolve the App Store version string. Tag pushes set
           # ASC_VERSION_STRING via env (e.g. "v4.2.0"). Drop the leading "v"
@@ -508,46 +689,72 @@ jobs:
               attrs = {}
 
               # ── whatsNew (every tag) ──────────────────────────────────
-              # `gsub(/\./, "\\.", ver)` escapes the dots in `4.3.1` so the
-              # regex doesn't also match `4-3-1` etc. Same hygiene as
-              # play-store.yml's awk extractor.
-              awk_out = subprocess.run(
-                  ["awk", "-v", f"ver=## v{version_string}",
-                   r'BEGIN { gsub(/\./, "\\.", ver) } '
-                   r'$0 ~ "^"ver"( |$)" { found=1; next } '
-                   r'found && /^## v[0-9]/ { exit } '
-                   r'found { print }',
-                   "../../CHANGELOG.md"],
-                  capture_output=True, text=True, check=False,
-              )
-              raw = awk_out.stdout
-              if raw.strip():
-                  text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", raw)
-                  text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
-                  text = re.sub(r"`([^`]+)`", r"\1", text)
-                  text = re.sub(r"^#{1,6}\s*", "", text, flags=re.M)
-                  # Apple Guideline 2.3.10 (Accurate Metadata): App Store
-                  # reviewers reject "What's New" notes that reference other
-                  # platforms (Android/Google Play/etc.) — irrelevant to App
-                  # Store users. The CHANGELOG is cross-platform, so drop any
-                  # bullet line that mentions a non-Apple ecosystem before it
-                  # reaches the iOS/macOS whatsNew. #2252 follow-up.
-                  _other_platform = re.compile(
-                      r"\b(android|google play|play store|maven|gradle|"
-                      r"jetpack|kotlin|flutter|react[ -]native|web|webgl|"
-                      r"webxr|wasm|\.aar|desktop)\b",
-                      re.I,
+              # Preferred source: a hand-maintained, user-facing
+              # release_notes.txt. Apple's "What's New" must describe the
+              # DEMO app for its App Store users, NOT the SDK's technical,
+              # cross-platform CHANGELOG (Apple Guideline 2.3.10 rejects
+              # notes referencing other ecosystems). Deriving whatsNew from
+              # the CHANGELOG left the field near-empty for Web/Flutter-heavy
+              # releases (e.g. 4.25.0), and an empty *required* whatsNew makes
+              # the review submission 409 with ENTITY_STATE_INVALID far
+              # downstream (#2893).
+              whats_new = None
+              notes_file = pathlib.Path("distribution/app-store/en-US/release_notes.txt")
+              if notes_file.exists():
+                  whats_new = notes_file.read_text().strip() or None
+                  if whats_new:
+                      print(f"whatsNew sourced from release_notes.txt ({len(whats_new)}c)")
+              if not whats_new:
+                  # Fallback (file absent): extract the `## vX.Y.Z` CHANGELOG
+                  # section as before, so existing tags keep working.
+                  # `gsub(/\./, "\\.", ver)` escapes the dots in `4.3.1` so the
+                  # regex doesn't also match `4-3-1` etc. Same hygiene as
+                  # play-store.yml's awk extractor.
+                  awk_out = subprocess.run(
+                      ["awk", "-v", f"ver=## v{version_string}",
+                       r'BEGIN { gsub(/\./, "\\.", ver) } '
+                       r'$0 ~ "^"ver"( |$)" { found=1; next } '
+                       r'found && /^## v[0-9]/ { exit } '
+                       r'found { print }',
+                       "../../CHANGELOG.md"],
+                      capture_output=True, text=True, check=False,
                   )
-                  text = "\n".join(
-                      ln for ln in text.splitlines()
-                      if not (ln.lstrip()[:1] in "-*•" and _other_platform.search(ln))
-                  )
-                  text = re.sub(r"\n{3,}", "\n\n", text).strip()
-                  if len(text) > 4000:
-                      text = text[:3997].rstrip() + "…"
-                  attrs["whatsNew"] = text
-              else:
-                  print(f"::warning::No '## v{version_string}' section in CHANGELOG.md — whatsNew left untouched")
+                  raw = awk_out.stdout
+                  if raw.strip():
+                      text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", raw)
+                      text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+                      text = re.sub(r"`([^`]+)`", r"\1", text)
+                      text = re.sub(r"^#{1,6}\s*", "", text, flags=re.M)
+                      # Apple Guideline 2.3.10 (Accurate Metadata): App Store
+                      # reviewers reject "What's New" notes that reference other
+                      # platforms (Android/Google Play/etc.) — irrelevant to App
+                      # Store users. The CHANGELOG is cross-platform, so drop any
+                      # bullet line that mentions a non-Apple ecosystem before it
+                      # reaches the iOS/macOS whatsNew. #2252 follow-up.
+                      _other_platform = re.compile(
+                          r"\b(android|google play|play store|maven|gradle|"
+                          r"jetpack|kotlin|flutter|react[ -]native|web|webgl|"
+                          r"webxr|wasm|\.aar|desktop)\b",
+                          re.I,
+                      )
+                      text = "\n".join(
+                          ln for ln in text.splitlines()
+                          if not (ln.lstrip()[:1] in "-*•" and _other_platform.search(ln))
+                      )
+                      whats_new = re.sub(r"\n{3,}", "\n\n", text).strip() or None
+                  if not whats_new:
+                      # Name the real state of the file: "No release_notes.txt"
+                      # sent whoever read this log looking for a missing file
+                      # that was actually there but blank (#2908 review nit).
+                      notes_state = (
+                          f"{notes_file} exists but is empty/whitespace-only"
+                          if notes_file.exists() else "No release_notes.txt"
+                      )
+                      print(f"::warning::{notes_state}, and no usable '## v{version_string}' CHANGELOG section — whatsNew left empty; the review submission will 409 (ENTITY_STATE_INVALID) if the field is blank on App Store Connect")
+              if whats_new:
+                  if len(whats_new) > 4000:
+                      whats_new = whats_new[:3997].rstrip() + "…"
+                  attrs["whatsNew"] = whats_new
 
               # ── Read file-backed metadata ─────────────────────────────
               meta_dir = pathlib.Path("distribution/app-store/en-US")
@@ -708,46 +915,208 @@ jobs:
               if rs.status_code not in (200, 201):
                   print(f"::error::reviewSubmissions CREATE failed: {rs.status_code} {rs.text[:300]}")
                   raise SystemExit(1)
-              rs_id = rs.json()["data"]["id"]
+              try:
+                  rs_id = rs.json()["data"]["id"]
+              except (ValueError, KeyError, TypeError) as ide:
+                  # Apple accepted the CREATE but the body is unreadable, so we
+                  # hold no id to cancel with — the one orphan the cleanup below
+                  # structurally cannot reach. Say so instead of dying silently.
+                  print(f"::error::reviewSubmissions CREATE returned {rs.status_code} with an unreadable body "
+                        f"({ide}): a submission may have been created that this run cannot identify or cancel. "
+                        "Check App Store Connect for an open, itemless submission.")
+                  raise SystemExit(1)
               print(f"Created reviewSubmission {rs_id}")
 
-              # Add version to submission
-              item_payload = {
-                  "data": {
-                      "type": "reviewSubmissionItems",
-                      "relationships": {
-                          "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": rs_id}},
-                          "appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}}
+              # W5 (#2893). From this point THIS run owns an OPEN, EMPTY
+              # reviewSubmission. Every remaining failure path below used to
+              # `raise SystemExit(1)` and leave it behind: an orphan
+              # READY_FOR_REVIEW submission with 0 items, created by the CI
+              # service account, that a human then had to clear by hand in App
+              # Store Connect (one was deleted manually after run
+              # 30269459288). The 5a stale-cancel probe above does NOT cover it
+              # — that probe only runs on the NEXT deploy, so the orphan sits
+              # in the account until then, and `store-preflight.sh`'s #2731
+              # detector reports it as a blocker in the meantime.
+              #
+              # So: cancel what this run created, on any post-CREATE failure.
+              # `finally` (not `except`) so a transport error or a KeyError on a
+              # malformed body is covered too, gated on `submitted_ok` so a
+              # SUCCESSFUL submission is never cancelled. Cancellation is
+              # PATCH {canceled: true} — reviewSubmissions has no DELETE (the
+              # issue's "DELETE" wording is wrong; verified against Apple's API
+              # + Fastlane spaceship, same as 5a above).
+              #
+              # The cleanup is strictly best-effort and swallows its own
+              # errors: it must never mask the failure that triggered it (a
+              # cancel that itself 401s on an expired JWT would otherwise
+              # replace the real diagnosis with a cleanup traceback).
+              #
+              # One case is NOT unambiguous, and cancelling there would be
+              # worse than the orphan this cleanup exists to kill: if the
+              # submit PATCH below raises (read timeout, RST, runner network
+              # blip) the request may still have REACHED Apple, who committed
+              # the submission to WAITING_FOR_REVIEW before the response was
+              # lost. Cancelling then WITHDRAWS a live App Review submission.
+              # So the ambiguous window is tracked separately (`submit_answered`)
+              # and resolved by re-reading the submission's state before
+              # touching it — never cancelling on an unread state.
+              submitted_ok = False
+              submit_answered = True  # False only while the PATCH is in flight
+              try:
+                  # Add version to submission
+                  item_payload = {
+                      "data": {
+                          "type": "reviewSubmissionItems",
+                          "relationships": {
+                              "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": rs_id}},
+                              "appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}}
+                          }
                       }
                   }
-              }
-              ri = requests.post(f"{BASE}/reviewSubmissionItems", headers=headers, json=item_payload)
-              if ri.status_code not in (200, 201):
-                  print(f"::error::reviewSubmissionItems CREATE failed: {ri.status_code} {ri.text[:300]}")
-                  raise SystemExit(1)
-              print(f"Added version {version_id} to review submission")
+                  ri = requests.post(f"{BASE}/reviewSubmissionItems", headers=headers, json=item_payload)
+                  if ri.status_code not in (200, 201):
+                      print(f"::error::reviewSubmissionItems CREATE failed: {ri.status_code} {ri.text[:300]}")
+                      raise SystemExit(1)
+                  print(f"Added version {version_id} to review submission")
 
-              # Submit for review
-              patch_payload = {
-                  "data": {
-                      "id": rs_id,
-                      "type": "reviewSubmissions",
-                      "attributes": {"submitted": True}
+                  # Submit for review
+                  patch_payload = {
+                      "data": {
+                          "id": rs_id,
+                          "type": "reviewSubmissions",
+                          "attributes": {"submitted": True}
+                      }
                   }
-              }
-              rp = requests.patch(f"{BASE}/reviewSubmissions/{rs_id}", headers=headers, json=patch_payload)
-              if rp.status_code in (200, 201):
-                  state = rp.json()["data"]["attributes"].get("state", "?")
-                  print(f"Successfully submitted for App Store review! State: {state}")
-              else:
-                  print(f"::error::Submission PATCH failed: {rp.status_code} - {rp.text[:300]}")
-                  raise SystemExit(1)
-          except SystemExit:
+                  submit_answered = False
+                  rp = requests.patch(f"{BASE}/reviewSubmissions/{rs_id}", headers=headers, json=patch_payload)
+                  # A 5xx or a 408 is as ambiguous as no answer at all: an edge
+                  # or gateway can lose the RESPONSE to a write the backend
+                  # already committed, so those route to the state probe too.
+                  # 429 (rate-limited → not processed) and 4xx rejections like
+                  # 409/422 are real answers: Apple did not take the submission,
+                  # and cancelling is unambiguously right.
+                  submit_answered = rp.status_code < 500 and rp.status_code != 408
+                  if rp.status_code in (200, 201):
+                      # Set BEFORE reading the body: the submission is live on
+                      # Apple's side at this point, so a parse error on the
+                      # response must not trigger the orphan cleanup and
+                      # cancel a real submission.
+                      submitted_ok = True
+                      try:
+                          state = rp.json()["data"]["attributes"].get("state", "?")
+                      except (ValueError, KeyError, TypeError):
+                          # The submission is live on Apple's side; an
+                          # unreadable body is a reporting problem, not a
+                          # release failure. Raising here would turn a
+                          # SUCCESSFUL submission into a red step that cannot
+                          # even be re-run (the same github.run_number
+                          # re-archives a duplicate CFBundleVersion, which
+                          # Apple rejects). Pre-existing on main, kept from
+                          # biting here (#2963 review).
+                          state = "? (response body unreadable)"
+                      print(f"Successfully submitted for App Store review! State: {state}")
+                  else:
+                      print(f"::error::Submission PATCH failed: {rp.status_code} - {rp.text[:300]}")
+                      raise SystemExit(1)
+              finally:
+                  if not submitted_ok and not submit_answered:
+                      # Ambiguous window: the submit PATCH never came back, so
+                      # Apple may or may not hold a live submission. Read the
+                      # state before deciding; anything other than a confirmed
+                      # not-yet-submitted state means hands off.
+                      try:
+                          probe = requests.get(f"{BASE}/reviewSubmissions/{rs_id}", headers=headers)
+                          if probe.status_code == 200:
+                              probe_state = probe.json().get("data", {}).get("attributes", {}).get("state")
+                          else:
+                              # The by-id read is documented and this key already
+                              # PATCHes that same URL, but it has never been
+                              # MEASURED here, and #1831 found several ASC reads
+                              # 404/403 for this service-account tier. Fall back
+                              # to the app→reviewSubmissions list — the only
+                              # reviewSubmissions read this key is known to
+                              # perform (5a above, and store-preflight.sh daily).
+                              print(f"reviewSubmission {rs_id} by-id read → {probe.status_code}; "
+                                    "falling back to the app→reviewSubmissions list")
+                              listing = requests.get(
+                                  f"{BASE}/apps/{app_id}/reviewSubmissions?filter[platform]=IOS&limit=50",
+                                  headers=headers,
+                              )
+                              probe_state = next(
+                                  (s.get("attributes", {}).get("state")
+                                   for s in (listing.json() or {}).get("data", [])
+                                   if s.get("id") == rs_id),
+                                  None,
+                              ) if listing.status_code == 200 else None
+                      except BaseException as pe:
+                          probe_state = None
+                          print(f"::warning::Could not read back reviewSubmission {rs_id}: {pe}")
+                      if probe_state in ("READY_FOR_REVIEW", "UNRESOLVED_ISSUES"):
+                          print(f"reviewSubmission {rs_id} is still {probe_state} — the lost PATCH did not "
+                                "reach Apple; cleaning it up")
+                          submit_answered = True  # resolved: safe to cancel below
+                      else:
+                          # Either Apple took it (WAITING_FOR_REVIEW/IN_REVIEW)
+                          # or the state is unreadable for this service-account
+                          # key. Leaving an orphan is recoverable: 5a's stale
+                          # probe cancels it on the next deploy, and
+                          # store-preflight.sh reports it meanwhile.
+                          #
+                          # Be precise about what this protects, because 5a's
+                          # OPEN_STATES above deliberately includes
+                          # WAITING_FOR_REVIEW and IN_REVIEW — the next tag
+                          # cancels a live submission anyway, by design (a new
+                          # release replaces the one in the queue). What is
+                          # bought here is that THIS run does not withdraw a
+                          # submission it cannot prove it failed to make, so the
+                          # release standing in Apple's queue survives until a
+                          # human or a deliberate next release supersedes it.
+                          print(
+                              f"::warning::The submit PATCH for reviewSubmission {rs_id} got no response and its "
+                              f"state reads as {probe_state or 'unknown'} — NOT cancelling, because it may be a "
+                              "live App Review submission. Check it in App Store Connect: if it is still assembled "
+                              "but never submitted, cancel it there (the next deploy's stale probe also clears it)."
+                          )
+                  if not submitted_ok and submit_answered:
+                      try:
+                          cancel = requests.patch(
+                              f"{BASE}/reviewSubmissions/{rs_id}",
+                              headers=headers,
+                              json={"data": {
+                                  "type": "reviewSubmissions",
+                                  "id": rs_id,
+                                  "attributes": {"canceled": True},
+                              }},
+                          )
+                          if cancel.status_code in (200, 201):
+                              print(f"Cleaned up the orphan reviewSubmission {rs_id} created by this run (canceled)")
+                          else:
+                              print(
+                                  f"::warning::Could not cancel the orphan reviewSubmission {rs_id} this run created: "
+                                  f"{cancel.status_code} {cancel.text[:200]} — cancel it by hand in App Store Connect, "
+                                  "or it will block the next deploy until 5a's stale probe clears it"
+                              )
+                      except BaseException as ce:
+                          print(
+                              f"::warning::Could not cancel the orphan reviewSubmission {rs_id} this run created: {ce} "
+                              "— cancel it by hand in App Store Connect"
+                          )
+          except BaseException:
               # FATAL (#2731). This used to be a swallowed ::warning and the
               # step stayed green — four consecutive releases (4.19.0→4.22.0)
               # "shipped" without ever reaching App Review and nobody saw it.
               # A tag-push deploy that cannot submit for review IS a failed
               # deploy: re-raise so the job goes red and the release flow stops.
+              #
+              # BaseException, not SystemExit (#2963 review): a raw transport
+              # error — a ConnectionError on the reviewSubmissionItems POST or
+              # on the submit PATCH — is exactly as fatal, and catching only
+              # SystemExit skipped this banner for precisely those failures,
+              # leaving a red step whose log never says what went wrong. Every
+              # deliberate exit in this block is `SystemExit(1)`; there is no
+              # success path out of here, so the banner cannot fire on a
+              # successful submission. The `raise` keeps the original
+              # traceback, so widening the catch only ADDS the diagnostic.
               print("::error::App Store review submission FAILED — this release did NOT reach App Review (#2731).")
               raise
           PYEOF

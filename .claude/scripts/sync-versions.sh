@@ -374,10 +374,28 @@ if [ -f "$DEMO_GRADLE" ]; then
 fi
 
 # ─── 7. MCP source/dist version ─────────────────────────────────────────
-# SKIPPED: MCP has its own version track independent of gradle.properties.
-# mcp/src/index.ts PACKAGE_VERSION and mcp/package.json version must match
-# each other, but NOT gradle.properties VERSION_NAME.
-echo -e "${CYAN}--- MCP Source/Dist (independent track, not checked) ---${NC}"
+# The MCP's OWN npm version (PACKAGE_VERSION in mcp/src/generated/version.ts,
+# mirrored from mcp/package.json) is on an INDEPENDENT track and is NOT
+# checked here — forcing it to match VERSION_NAME once regressed it behind
+# the published npm @next tag (issue #1705). Do NOT add PACKAGE_VERSION to
+# add_check.
+#
+# BUT the SAME generated file also carries LATEST_SCENEVIEW_RELEASE — the SDK
+# version the MCP advertises to AI agents in the install snippet it emits.
+# That constant IS derived from gradle.properties:VERSION_NAME by
+# mcp/scripts/generate-version.js and MUST track it. Unlike its gitignored
+# siblings (llms-txt.ts / symbols.ts, regenerated fresh on every build),
+# version.ts is COMMITTED, so nothing regenerated it on an SDK bump and
+# v4.25.0 shipped it stale at 4.24.0 — telling agents to scaffold projects
+# against a one-release-old pin. Check it CRITICAL so a future bump that
+# forgets to regenerate is caught, and regenerate it in the --fix block.
+echo -e "${CYAN}--- MCP (PACKAGE_VERSION independent; LATEST_SCENEVIEW_RELEASE tracks VERSION_NAME) ---${NC}"
+MCP_VERSION_TS="$REPO_ROOT/mcp/src/generated/version.ts"
+if [ -f "$MCP_VERSION_TS" ]; then
+    V=$(grep -oE 'LATEST_SCENEVIEW_RELEASE = "[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?"' "$MCP_VERSION_TS" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    add_check "mcp/src/generated/version.ts (LATEST_SCENEVIEW_RELEASE)" "$V"
+fi
 
 # ─── 7b. Claude Code plugin ─────────────────────────────────────────────
 # Plugins live in github.com/sceneview/claude-marketplace (separate repo).
@@ -705,13 +723,21 @@ if [ -n "$SCENEVIEWJS_VERSION_TEST" ] && [ -f "$SCENEVIEWJS_VERSION_TEST" ]; the
 fi
 
 # Kotlin toolchain version — gradle/libs.versions.toml `kotlin = "X.Y.Z"` is
-# the source of truth; llms.txt + llms-full.txt quote it in prose and drift.
+# the source of truth; llms.txt + llms-full.txt quote it in prose and drift —
+# and so do their two website-static siblings, which sat outside this list and
+# rotted to 2.3.20 while the covered pair was fixed to 2.4.10 (#2886 follow-up).
+# `website-static/llms-full.txt` is a real hand-maintained file with no
+# canonical root counterpart (docs.yml says so explicitly), and
+# `website-static/.well-known/llms.txt` is repo-internal (docs.yml drops it
+# from the deployed site, #1998) but still a versioned surface swept above for
+# its Maven prose — both must track the toml like the first pair.
 # Reported under a separate "Kotlin" banner since it's not VERSION_NAME.
 # `docs/docs/llms.txt` is omitted — it is build-generated from root `llms.txt`
 # (swept here) and `.gitignore`d (issue #899 hardening).
 KOTLIN_TOML=$(grep -m1 '^kotlin = ' "$REPO_ROOT/gradle/libs.versions.toml" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
+KOTLIN_PROSE_FILES="llms.txt docs/docs/llms-full.txt website-static/.well-known/llms.txt website-static/llms-full.txt"
 if [ -n "$KOTLIN_TOML" ]; then
-    for kfile in llms.txt docs/docs/llms-full.txt; do
+    for kfile in $KOTLIN_PROSE_FILES; do
         F="$REPO_ROOT/$kfile"
         [ -f "$F" ] || continue
         V=$(grep -oE 'Kotlin:\*\* [0-9]+\.[0-9]+\.[0-9]+' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
@@ -1571,6 +1597,36 @@ if changed:
         fi
     done
 
+    # Fix Kotlin toolchain version prose — gradle/libs.versions.toml
+    # `kotlin = "X.Y.Z"` is the source of truth (captured as $KOTLIN_TOML in the
+    # check block above, §12); the $KOTLIN_PROSE_FILES surfaces quote it as
+    # `**Kotlin:** X.Y.Z` prose and drift on a toolchain bump. This was
+    # CHECK-ONLY until now — a Kotlin-only bump (#2790: 2.4.0 -> 2.4.10) reddened
+    # pre-push-check leg 7 with no `--fix` handler, forcing a hand-edit of both
+    # files + a manual gpt/ regen (relived on #2876, 2026-07-23). The sed is
+    # anchored on the `Kotlin:** ` prefix and rewrites ONLY the number that
+    # follows, leaving the neighbouring `**Compose BOM compatible**` and
+    # `with Compose X.Y.Z` untouched. Same scoped-prefix style as the
+    # `**SceneView:**` prose fix above; the gpt/ regen below then picks up the
+    # llms.txt edit. The file list is the SAME $KOTLIN_PROSE_FILES variable the
+    # check block iterates — one list, so check and fix can never cover
+    # different surfaces again (the original gap: the two website-static
+    # siblings were in neither, and rotted to 2.3.20). Note the source of truth
+    # here is $KOTLIN_TOML, NOT $SOURCE_VERSION — the Kotlin toolchain has its
+    # own version track.
+    if [ -n "$KOTLIN_TOML" ]; then
+        for kfile in $KOTLIN_PROSE_FILES; do
+            F="$REPO_ROOT/$kfile"
+            [ -f "$F" ] || continue
+            CURRENT=$(grep -oE 'Kotlin:\*\* [0-9]+\.[0-9]+\.[0-9]+' "$F" \
+                | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
+            if [ -n "$CURRENT" ] && [ "$CURRENT" != "$KOTLIN_TOML" ]; then
+                _sed_inplace "s/\(Kotlin:\*\* \)$CURRENT/\1$KOTLIN_TOML/" "$F"
+                echo -e "  Fixed: $kfile (Kotlin toolchain $CURRENT -> $KOTLIN_TOML)"
+            fi
+        done
+    fi
+
     # gpt/knowledge-*.md are GENERATED from llms.txt (tools/generate-gpt-knowledge.js,
     # #2724) and embed VERSION_NAME in their banners — regenerate them after the
     # llms.txt/version fixes above, otherwise a version bump leaves them stale and
@@ -1580,6 +1636,22 @@ if changed:
             echo -e "  Fixed: gpt/knowledge-*.md regenerated from llms.txt"
         else
             echo -e "  ${YELLOW}WARN: gpt/ regeneration failed — run 'node tools/generate-gpt-knowledge.js' manually${NC}"
+        fi
+    fi
+
+    # mcp/src/generated/version.ts embeds LATEST_SCENEVIEW_RELEASE (the SDK
+    # version the MCP advertises to AI agents) and is COMMITTED — unlike its
+    # gitignored llms-txt.ts / symbols.ts siblings, nothing regenerated it on
+    # an SDK bump, so v4.25.0 shipped it stale (checked CRITICAL in section 7).
+    # generate-version.js rewrites BOTH the constant and the android-ok test
+    # fixture's SDK pin from package.json + gradle.properties. It NEVER changes
+    # PACKAGE_VERSION beyond mirroring mcp/package.json, so the independent MCP
+    # npm track (#1705) is preserved.
+    if [ -f "$REPO_ROOT/mcp/scripts/generate-version.js" ] && command -v node >/dev/null 2>&1; then
+        if node "$REPO_ROOT/mcp/scripts/generate-version.js" >/dev/null 2>&1; then
+            echo -e "  Fixed: mcp/src/generated/version.ts + android-ok fixture regenerated (LATEST_SCENEVIEW_RELEASE -> $SOURCE_VERSION)"
+        else
+            echo -e "  ${YELLOW}WARN: mcp version.ts regeneration failed — run 'node mcp/scripts/generate-version.js' manually${NC}"
         fi
     fi
 

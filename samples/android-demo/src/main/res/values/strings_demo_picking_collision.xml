@@ -5,5 +5,5 @@
      through `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
     <string name="demo_picking_collision_title">Picking &amp; Collision</string>
-    <string name="demo_picking_collision_subtitle">Ray hit-test and interactive ViewNode overlays</string>
+    <string name="demo_picking_collision_subtitle">Ray hit-test and ray-picked ViewNode overlays</string>
 </resources>
