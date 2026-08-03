@@ -308,7 +308,14 @@ enum SampleAssets {
             displayName: "Picture Frame",
             author: "jamiemcfarlane",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/game_boy_classic.usdz",
+            // Keyless fallback — was game_boy_classic, which "Crates & Barrels"
+            // above already claims. Both demos in this category accumulate
+            // placed anchors, so the two chips rendered the identical Game Boy
+            // side by side (#2940's defect, missed by #2962 because only three
+            // of this category's six slugs were repointed). No picture frame is
+            // bundled, so the last unclaimed Khronos reference object stands in
+            // rather than a mislabelled real object (#2355).
+            fallbackBundledPath: "Models/khronos_fox.usdz",
             scaleToUnits: 0.40,
             hasBakedAnimation: false,
             category: "ar_placement",

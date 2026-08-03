@@ -130,4 +130,59 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
             try await assertUnderMeshPrimBudget(declaredPath: path)
         }
     }
+
+    /// #2355's distinctness rule, enforced for `ar_placement` — the one
+    /// category whose demos can put several *different* slugs on screen at the
+    /// same time.
+    ///
+    /// `ARPlacementDemo` and `ARInstantPlacementDemo` both accumulate into a
+    /// `placedAnchors` array: every tap adds an anchor and nothing removes the
+    /// earlier ones until "Clear all placed models". So a user can arm one chip,
+    /// tap, arm another, tap — and in keyless mode two differently-labelled
+    /// objects render as the same bundled asset, side by side in one frame.
+    /// That is #2940's defect (a fallback reading as the real asset) with the
+    /// contradiction visible without even leaving the screen.
+    ///
+    /// The prim-budget test above cannot catch this: it de-duplicates paths
+    /// into a `Set` precisely to avoid parsing the same asset twice, so
+    /// collapsing all six slugs onto one fallback would *shrink* its workload
+    /// and still pass green. That is how #2940 shipped.
+    ///
+    /// The slug set is derived from the registry by category rather than from a
+    /// literal list of names, so a seventh `ar_placement` slug is covered the
+    /// day it lands.
+    ///
+    /// **Scope is deliberately `ar_placement` only.** Other categories share
+    /// fallbacks legitimately — all four `solar` butterflies genuinely stand in
+    /// for one another — or carry label mismatches tracked under the #2960
+    /// umbrella. A registry-wide distinctness assertion would be red on arrival
+    /// and would therefore guard nothing.
+    func testARPlacementFallbacksArePairwiseDistinct() throws {
+        let slugs = SampleAssets.byCategory["ar_placement"] ?? []
+        // Distinctness over fewer than two slugs is vacuously true, so a
+        // registry that lost the category would pass silently without this.
+        XCTAssertGreaterThan(
+            slugs.count, 1,
+            "ar_placement has \(slugs.count) slug(s) — pairwise distinctness " +
+            "is vacuous below two, so this guard is no longer guarding anything"
+        )
+
+        /// First slug to claim each fallback path, in registry order.
+        var claimedBy: [String: String] = [:]
+        for slug in slugs {
+            let path = slug.fallbackBundledPath
+            if let owner = claimedBy[path] {
+                XCTFail(
+                    "ar_placement fallback collision: \"\(owner)\" and " +
+                    "\"\(slug.displayName)\" both fall back to \(path). Both " +
+                    "demos in this category place several models in one scene, " +
+                    "so in keyless mode the two labels render the identical " +
+                    "asset — the #2940 defect. Point one of them at a distinct " +
+                    "bundled model (#2355)."
+                )
+            } else {
+                claimedBy[path] = slug.displayName
+            }
+        }
+    }
 }
