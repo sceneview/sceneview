@@ -357,27 +357,78 @@ android_cli_describe() {
   esac
 }
 
+# android_cli_install_stamp <serial> <package>
+# Prints the package's `lastUpdateTime` as recorded by the DEVICE, or nothing
+# when the package is absent. This is the evidence `android_cli_install_and_launch`
+# uses to prove an install actually landed.
+android_cli_install_stamp() {
+  local serial="$1" pkg="$2"
+  adb -s "$serial" shell dumpsys package "$pkg" 2>/dev/null \
+    | awk -F'=' '/lastUpdateTime=/{print $2; exit}' | tr -d '\r'
+}
+
 # android_cli_install_and_launch <apk> <package/activity> [serial]
-# Wraps `android run --apks ... --activity ... [--device ...]` which combines install+start.
-# `activity` should be in `pkg/.Class` form (e.g. `io.github.sceneview.demo/.MainActivity`).
+# Installs the APK and starts the activity, and PROVES the install landed.
+#
+# ⛔ WHY THIS VERIFIES INSTEAD OF TRUSTING AN EXIT CODE (#2990)
+#   `android run` printed two success-shaped lines ("App loaded: …",
+#   "Debuggable: true") and then "No matching components found for type ACTIVITY
+#   with name pkg/.MainActivity" — for an activity the platform resolves fine
+#   (`cmd package resolve-activity --brief` returns exactly that string). The APK
+#   was NOT installed: `lastUpdateTime` still pointed at a build eight hours old.
+#   A QA run then measured the PREVIOUS binary while printing plausible output,
+#   and only a visibly-unchanged pill gave it away. Had the fix been a colour or a
+#   label, the run would have "verified" a fix that never reached the device.
+#
+#   So the contract here is not "the command exited 0" but "the device's
+#   lastUpdateTime moved". If the CLI path leaves it untouched we fall back to
+#   adb — the path the report proved works — and if THAT leaves it untouched we
+#   fail loudly. The helper can no longer report success without evidence.
+#
+#   Measured on `android` CLI 1.0.15498356 while fixing this: `--no-metrics` is
+#   accepted in the GLOBAL position (`android --no-metrics run …`, which is what
+#   this helper uses) and rejected in the sub-command position
+#   (`android run --no-metrics …` ⇒ "Unknown option" + usage dump). The report's
+#   note about that flag is real but does not apply to this call site — it is NOT
+#   the cause of the silent non-install, which remains unexplained upstream.
 android_cli_install_and_launch() {
   local apk="$1"
   local activity="$2"
   local serial="${3:-${ANDROID_SERIAL:-}}"
-  if android_cli_locate; then
-    if [[ -n "$serial" ]]; then
-      "$ANDROID_CLI_BIN" "${ANDROID_CLI_GLOBAL_FLAGS[@]}" run --apks="$apk" --activity="$activity" --device="$serial"
-    else
-      "$ANDROID_CLI_BIN" "${ANDROID_CLI_GLOBAL_FLAGS[@]}" run --apks="$apk" --activity="$activity"
-    fi
-    return $?
+  local pkg="${activity%%/*}"
+
+  if [[ ! -f "$apk" ]]; then
+    echo "[android-cli] APK not found: $apk" >&2
+    return 1
   fi
-  # Fallback: separate adb steps.
   if [[ -z "$serial" ]]; then
     serial="$(android_cli_pick_serial)" || return 1
   fi
-  adb -s "$serial" install -r "$apk"
-  local pkg="${activity%%/*}"
+
+  local before after
+  before="$(android_cli_install_stamp "$serial" "$pkg")"
+
+  if android_cli_locate; then
+    "$ANDROID_CLI_BIN" "${ANDROID_CLI_GLOBAL_FLAGS[@]}" run \
+      --apks="$apk" --activity="$activity" --device="$serial" || true
+    after="$(android_cli_install_stamp "$serial" "$pkg")"
+    if [[ -n "$after" && "$after" != "$before" ]]; then
+      return 0
+    fi
+    echo "[android-cli] 'android run' did not change lastUpdateTime for $pkg" >&2
+    echo "[android-cli]   before='$before' after='$after' — falling back to adb (#2990)" >&2
+  fi
+
+  adb -s "$serial" install -r "$apk" || return 1
+  after="$(android_cli_install_stamp "$serial" "$pkg")"
+  if [[ -z "$after" || "$after" == "$before" ]]; then
+    echo "[android-cli] ⛔ INSTALL NOT PROVEN for $pkg on $serial." >&2
+    echo "[android-cli]   lastUpdateTime did not move (before='$before' after='$after')." >&2
+    echo "[android-cli]   The device still holds the PREVIOUS build — any QA run from" >&2
+    echo "[android-cli]   here measures the wrong binary. Refusing to launch. (#2990)" >&2
+    return 1
+  fi
+
   adb -s "$serial" shell am force-stop "$pkg"
   adb -s "$serial" shell am start -n "$activity"
 }
