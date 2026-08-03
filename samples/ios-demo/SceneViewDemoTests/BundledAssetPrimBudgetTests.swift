@@ -25,6 +25,12 @@
 
 import XCTest
 import RealityKit
+// Deliberately NOT wrapped in `#if DEBUG`, unlike some siblings here.
+// `ENABLE_TESTABILITY` is set only in the two Debug configurations, so under a
+// Release test run this import fails to COMPILE — loudly. Wrapped, the file
+// would instead compile to nothing and the suite would report green with both
+// guards silently gone, which is the failure this file exists to prevent.
+@testable import SceneViewDemo
 
 @MainActor
 final class BundledAssetPrimBudgetTests: XCTestCase {
@@ -34,6 +40,9 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
     /// budget has to stay inside the settle window it exists to protect, so a
     /// larger ceiling would pass while the demo was already stalling.
     private static let meshPrimBudget = 100
+
+    /// The host app's bundle — where the resolver looks for a fallback.
+    private var bundle: Bundle { .main }
 
     private func meshPrimCount(of entity: Entity) -> Int {
         var count = 0
@@ -45,30 +54,80 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
         return count
     }
 
-    private func bundledURL(_ name: String) throws -> URL {
-        let bundle = Bundle.main
-        let url = bundle.url(forResource: name, withExtension: "usdz", subdirectory: "Models")
-            ?? bundle.url(forResource: name, withExtension: "usdz")
-        return try XCTUnwrap(url, "\(name).usdz missing from the app bundle")
+    /// Resolve a declared `fallbackBundledPath` the way the resolver itself
+    /// does — subdirectory *derived from the path*, then a flat-bundle retry
+    /// (`SketchfabAssetResolver.splitBundlePath` / `bundleSubdirectory(for:)`).
+    ///
+    /// Today the derived subdirectory never actually matches: `Models` is a
+    /// `PBXGroup`, not a folder reference, so every asset is copied to the
+    /// bundle root and BOTH the resolver and this test resolve on the flat
+    /// retry — measured, by declaring a path under a bogus subdirectory and
+    /// watching it still resolve. Mirroring the resolver is therefore not a
+    /// bug fix; it is what keeps the two from drifting if `Models` is ever
+    /// made a real folder reference, at which point the subdirectory starts
+    /// mattering to both at once.
+    private func bundledURL(declaredPath: String) throws -> URL {
+        let file = (declaredPath as NSString).lastPathComponent
+        let name = (file as NSString).deletingPathExtension
+        let ext = (file as NSString).pathExtension
+        let components = declaredPath.split(separator: "/").dropLast()
+        let subdirectory = components.isEmpty ? nil : components.joined(separator: "/")
+
+        let url = bundle.url(forResource: name, withExtension: ext, subdirectory: subdirectory)
+            ?? bundle.url(forResource: name, withExtension: ext)
+        return try XCTUnwrap(url, "\(declaredPath) missing from the app bundle")
     }
 
-    /// `tree_scene.usdz` backs the MultiModelDemo Tree slot, the Explore and AR
-    /// tabs' "Tree Scene" entry, and the keyless fallback of three
-    /// `ar_placement` slugs — so a prim-count regression here stalls several
-    /// demos at once.
-    func testTreeSceneStaysUnderMeshPrimBudget() async throws {
-        let entity = try await Entity(contentsOf: try bundledURL("tree_scene"))
+    private func assertUnderMeshPrimBudget(declaredPath: String) async throws {
+        let entity = try await Entity(contentsOf: try bundledURL(declaredPath: declaredPath))
         let count = meshPrimCount(of: entity)
         XCTAssertLessThanOrEqual(
             count, Self.meshPrimBudget,
-            "tree_scene.usdz has \(count) mesh prims. RealityKit's simulator " +
+            "\(declaredPath) has \(count) mesh prims. RealityKit's simulator " +
             "import cost scales with prim count (~34 ms each), so this pushes " +
             "the slot past the settle window and it renders as absent."
         )
         // The optimisation must not have emptied the model.
         XCTAssertFalse(
             entity.visualBounds(relativeTo: nil).isEmpty,
-            "tree_scene.usdz parsed to empty bounds — it would render nothing"
+            "\(declaredPath) parsed to empty bounds — it would render nothing"
         )
+    }
+
+    /// `tree_scene.usdz` backs the MultiModelDemo Tree slot, the Explore and AR
+    /// tabs' "Tree Scene" entry, and the `park` "Oak Trees" slug's keyless
+    /// fallback — so a prim-count regression here stalls several demos at once.
+    /// It backed three `ar_placement` slugs too until #2940 repointed them.
+    ///
+    /// Named explicitly, and kept even though the registry-driven test below
+    /// happens to cover it today: those two Explore/AR entries reach the asset
+    /// by filename, not through a `SketchfabSlug`, so repointing "Oak Trees"
+    /// would silently drop this asset out of the registry-driven sweep while it
+    /// was still shipping in two tabs.
+    func testTreeSceneStaysUnderMeshPrimBudget() async throws {
+        try await assertUnderMeshPrimBudget(declaredPath: "Models/tree_scene.usdz")
+    }
+
+    /// Every asset the registry can hand a keyless build, read **from the
+    /// registry** rather than from a literal list: repointing any
+    /// `fallbackBundledPath` re-aims this guard instead of leaving it on the
+    /// assets that used to be declared. That matters because a wrong repoint is
+    /// the #2940 defect itself, and `SampleAssetsTests.testEveryEntryHasFallback`
+    /// only asserts the string is non-empty — nothing else proves a declared
+    /// path resolves to a file that is actually in the app bundle.
+    ///
+    /// So this covers three failure modes at once: a path that resolves to
+    /// nothing (typo, or an asset never added to the Resources build phase), an
+    /// asset heavy enough to blow the settle window, and one that parses to
+    /// empty bounds.
+    func testEveryDeclaredFallbackResolvesAndStaysUnderMeshPrimBudget() async throws {
+        let declared = Set(SampleAssets.all.map(\.fallbackBundledPath))
+        XCTAssertFalse(
+            declared.isEmpty,
+            "SampleAssets declared no fallbacks — this guard would be vacuous"
+        )
+        for path in declared.sorted() {
+            try await assertUnderMeshPrimBudget(declaredPath: path)
+        }
     }
 }

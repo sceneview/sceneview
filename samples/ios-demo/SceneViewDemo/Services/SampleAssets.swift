@@ -252,7 +252,10 @@ enum SampleAssets {
             displayName: "Potted Monstera",
             author: "ChubbyPanda",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/tree_scene.usdz",
+            // Keyless fallback — no plant is bundled, so a Khronos reference
+            // object stands in rather than a mislabelled real object; the
+            // previous tree_scene read as an actual potted plant (#2940).
+            fallbackBundledPath: "Models/khronos_damaged_helmet.usdz",
             scaleToUnits: 0.45,
             hasBakedAnimation: false,
             category: "ar_placement",
@@ -275,7 +278,12 @@ enum SampleAssets {
             displayName: "Wooden End Table",
             author: "mozillareality",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/tree_scene.usdz",
+            // Keyless fallback — no table is bundled either; an inanimate Khronos
+            // reference prop, distinct from this category's other fallbacks
+            // because the picker can stack several in one scene (#2355).
+            // NB: both placement demos place at a hardcoded `scaleToUnits(0.3)`
+            // and never read the value below, so pick for silhouette, not size.
+            fallbackBundledPath: "Models/khronos_toy_car.usdz",
             scaleToUnits: 0.60,
             hasBakedAnimation: false,
             category: "ar_placement",
@@ -286,7 +294,10 @@ enum SampleAssets {
             displayName: "Floor Lamp",
             author: "Mad_Lobster_Workshop",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/tree_scene.usdz",
+            // Keyless fallback — khronos_lantern is the one bundled asset that
+            // genuinely IS what the label says, so unlike its two siblings here
+            // it is a match rather than a stand-in (#2940).
+            fallbackBundledPath: "Models/khronos_lantern.usdz",
             scaleToUnits: 1.55,
             hasBakedAnimation: false,
             category: "ar_placement",

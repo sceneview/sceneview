@@ -108,6 +108,26 @@ canonical_category() {
     esac
 }
 
+# Flush whatever `body` has accumulated into `$TMP_DIR/$category`, then reset it.
+#
+# This runs at EVERY category-tag transition and once more at EOF, because a
+# fragment may carry SEVERAL tags: `changelog.d/README.md` allows more than one
+# bullet per fragment and never forbids more than one category, so each tag must
+# own the bullets that FOLLOW it. Flushing only at EOF — the original behaviour —
+# filed a whole multi-tag fragment under whichever tag happened to appear LAST
+# (measured: a `Fixed` + `Tests` fragment shipped its Fixed bullets under
+# `### Tests`). Bullets that precede any tag flush under the `Changed` default.
+#
+# Reads `body`/`category`/`f` from the caller's scope and writes back `body`.
+flush_fragment_body() {
+    local trimmed
+    trimmed="$(printf '%s' "$body" | trim_blank_lines)"
+    body=""
+    [ -n "$trimmed" ] || return 0
+    printf '%s\n' "$trimmed" >> "$TMP_DIR/$category"
+    echo -e "  ${GREEN}+${NC} $(basename "$f") → ${CYAN}$category${NC}"
+}
+
 # ─── 1. Parse fragments ──────────────────────────────────────────────────
 for f in "${FRAGMENTS[@]}"; do
     category="Changed"
@@ -115,17 +135,14 @@ for f in "${FRAGMENTS[@]}"; do
     while IFS= read -r line || [ -n "$line" ]; do
         # Category tag line: <!-- category: Fixed -->  (anywhere in the file)
         if [[ "$line" =~ ^[[:space:]]*\<!--[[:space:]]*category:[[:space:]]*([A-Za-z]+)[[:space:]]*--\>[[:space:]]*$ ]]; then
+            # Close the preceding block BEFORE switching bucket.
+            flush_fragment_body
             category="$(canonical_category "${BASH_REMATCH[1]}")"
             continue
         fi
         body+="$line"$'\n'
     done < "$f"
-    # Trim leading/trailing blank lines from the body.
-    body="$(printf '%s' "$body" | trim_blank_lines)"
-    if [ -n "$body" ]; then
-        printf '%s\n' "$body" >> "$TMP_DIR/$category"
-        echo -e "  ${GREEN}+${NC} $(basename "$f") → ${CYAN}$category${NC}"
-    fi
+    flush_fragment_body
 done
 
 # ─── 2. Carry over legacy ## Unreleased entries ──────────────────────────
