@@ -15,7 +15,7 @@ they are **not in sync today**. Read the next section before assuming parity.
 | `phone-screenshot-*` | 3 | **v2** — `model-viewer · dynamic-sky · multi-model` (#2854/#2855) |
 | `tablet7-screenshot-*` | 2 | **v2** — `model-viewer · dynamic-sky` (#2907; `multi-model` is back in the script since #2913 but these files predate it) |
 | `tablet10-screenshot-*` | 2 | **v2** — `model-viewer · dynamic-sky` (#2907; `multi-model` is back in the script since #2913 but these files predate it) |
-| iOS (`appstore-screenshots/`) | 2 + 2 | `model-viewer · dynamic-sky` — #2896 dropped the other four; both remaining frames predate #2897, so **re-capture before dispatching `app-store-screenshots.yml`** (see that directory's README) |
+| iOS (`appstore-screenshots/`) | 2 + 2 | **v2** — `model-viewer · dynamic-sky`, the set #2896 deliberately curated (`multi-model` excluded: a keyless capture build substitutes bundled stand-ins, so the frame is not the scene the demo documents). Both frames predate #2897 — **re-capture before dispatching `app-store-screenshots.yml`**, see that directory's README |
 
 **Set v2** is what the capture script produces today. It is three frames
 deliberately — fewer strong shots beat more mixed ones — each judged on the
