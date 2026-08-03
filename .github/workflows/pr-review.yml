@@ -480,6 +480,32 @@ jobs:
               print(f"  denied: {h}")
           if len(hits) > 20:
               print(f"  … +{len(hits) - 20} more (truncated)")
+
+          # Zero denials and no file is the OTHER failure, and it needs its own
+          # evidence: on run 30800617868 the fan-out reported 0 denials, ran 11
+          # turns in 60s — far too few for four reviewers — and wrote nothing.
+          # The count cannot explain that; the orchestrator's own closing words
+          # can. Print the final assistant text, which the prompt requires to be
+          # one short paragraph about what it found, so a run that gave up says
+          # why instead of leaving the next reader to guess again.
+          finals = []
+          def texts(node):
+              if isinstance(node, dict):
+                  if node.get("type") == "assistant":
+                      for blk in (node.get("message") or {}).get("content") or []:
+                          if isinstance(blk, dict) and blk.get("type") == "text":
+                              finals.append(blk.get("text") or "")
+                  for v in node.values(): texts(v)
+              elif isinstance(node, list):
+                  for v in node: texts(v)
+          texts(data)
+          finals = [t.strip() for t in finals if t.strip()]
+          print()
+          if finals:
+              print("Orchestrator's closing message:")
+              print("  " + finals[-1][:1500].replace("\n", "\n  "))
+          else:
+              print("The run record carries no assistant text — the orchestrator never spoke.")
           PY
           if [ "$DENIALS" != "unknown" ] && [ "${DENIALS:-0}" -gt 0 ] 2>/dev/null; then
             echo "::error title=Reviewers were denied their tools::${DENIALS} tool call(s) refused, so the fan-out could not run and no verdict file exists. This is a CONFIGURATION failure, not a finding about the PR — check \`--allowedTools\` in claude_args (Bash/Write/Task are NOT included by default)."
