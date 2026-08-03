@@ -176,6 +176,9 @@ actor SketchfabAssetResolver {
     /// path is identical and the file already exists. That is not
     /// hypothetical — it is how the #2928 `tree_scene.usdz` fix silently
     /// failed to take effect on an already-installed simulator build.
+    ///
+    /// When the bundled asset itself is unreadable, an existing staged copy
+    /// is served as a last resort rather than throwing — see the guard below.
     func fallbackBundle(for slug: SketchfabSlug) throws -> URL {
         let root = try cacheRoot()
         let fallbackDir = root.appendingPathComponent("fallback", isDirectory: true)
@@ -191,7 +194,28 @@ actor SketchfabAssetResolver {
             subdirectory: bundleSubdir
         ) ?? bundle.url(forResource: name, withExtension: ext)
 
-        guard let source = bundledURL else {
+        // The bundled resource can be gone — the asset was renamed or removed
+        // while `SampleAssets` still points at the old path. A staged copy is
+        // stale by definition then, but serving it degrades to "renders the
+        // previous model" instead of throwing at all eight `fallbackBundle`
+        // call sites, which is the shape callers had before the freshness
+        // check moved the bundle lookup ahead of the staged-copy early
+        // return (#2943). `Bundle` caches its resource lookups, so a URL it
+        // still hands back is not proof the file is there — stat it.
+        guard let source = bundledURL,
+              fileManager.fileExists(atPath: source.path) else {
+            // `boundsAreSane` (size + magic bytes) keeps this in step with
+            // Android, which gates the same last-resort path on a complete
+            // GLB: a truncated staged copy must not be served just because
+            // the bundle vanished.
+            if fileManager.fileExists(atPath: target.path),
+               boundsAreSane(at: target, slug: slug) {
+                try? fileManager.setAttributes(
+                    [.modificationDate: Date()],
+                    ofItemAtPath: target.path
+                )
+                return target
+            }
             throw Error.fallbackUnavailable(
                 uid: slug.uid,
                 bundledPath: slug.fallbackBundledPath

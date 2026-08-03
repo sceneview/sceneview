@@ -249,6 +249,70 @@ final class SketchfabAssetResolverTests: XCTestCase {
                        + "the old bytes makes an asset fix inert on every existing install")
     }
 
+    /// Degradation shape when the bundled resource has gone (#2943 §4.1).
+    ///
+    /// The freshness check moved the bundle lookup ahead of the staged-copy
+    /// early return, so an install with a valid staged copy whose bundled
+    /// asset was renamed or removed went from *renders the old model* to
+    /// *throws*, across every `fallbackBundle` call site. Serving the staged
+    /// copy as a last resort restores the previous shape.
+    func testFallbackBundleServesTheStagedCopyWhenTheBundledAssetIsGone() async throws {
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vanished-\(UUID().uuidString)", isDirectory: true)
+        let bundleURL = scratch.appendingPathComponent("Fake.bundle", isDirectory: true)
+        let modelsDir = bundleURL.appendingPathComponent("Models", isDirectory: true)
+        try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+
+        let bundled = modelsDir.appendingPathComponent("vanishing_probe.usdz")
+        // A USDZ is a ZIP archive: the last-resort path runs the staged copy
+        // through `boundsAreSane`, which rejects anything without GLB or ZIP
+        // magic, so a blob of filler bytes would (correctly) not be served.
+        var shipped = Data([0x50, 0x4B, 0x03, 0x04])
+        shipped.append(Data(repeating: 0xC3, count: 4092))
+        try shipped.write(to: bundled)
+
+        let resolver = SketchfabAssetResolver(
+            bundle: try XCTUnwrap(Bundle(url: bundleURL), "scratch bundle unreadable"),
+            fileManager: ScratchCachesFileManager(
+                root: scratch.appendingPathComponent("caches", isDirectory: true)
+            )
+        )
+        let slug = SketchfabSlug(
+            uid: "00000000000000000000000000decade",
+            displayName: "Vanishing",
+            author: "test",
+            licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
+            fallbackBundledPath: "Models/vanishing_probe.usdz",
+            scaleToUnits: 1.0,
+            hasBakedAnimation: false,
+            category: "gallery"
+        )
+
+        let staged = try await resolver.fallbackBundle(for: slug)
+        XCTAssertEqual(try Data(contentsOf: staged), shipped)
+
+        // The asset is renamed/removed while SampleAssets still points at it.
+        try FileManager.default.removeItem(at: bundled)
+
+        let served = try await resolver.fallbackBundle(for: slug)
+        XCTAssertEqual(try Data(contentsOf: served), shipped,
+                       "a vanished bundled resource must degrade to the staged copy "
+                       + "rather than throwing at every call site")
+
+        // Degrading is not "serve whatever is on disk": a staged copy that is
+        // no longer a valid asset must still throw, matching Android, which
+        // gates the same path on a complete GLB.
+        try Data([0xFF, 0xFF]).write(to: staged)
+        do {
+            _ = try await resolver.fallbackBundle(for: slug)
+            XCTFail("a truncated staged copy must not be served as a fallback")
+        } catch let error as SketchfabAssetResolver.Error {
+            XCTAssertEqual(error, .fallbackUnavailable(uid: slug.uid,
+                                                       bundledPath: slug.fallbackBundledPath))
+        }
+    }
+
     // ─── boundsAreSane heuristic ───────────────────────────────────────────
 
     func testBoundsAreSaneRejectsEmptyFile() async throws {

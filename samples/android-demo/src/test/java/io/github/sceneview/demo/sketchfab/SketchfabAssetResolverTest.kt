@@ -234,6 +234,131 @@ class SketchfabAssetResolverTest {
         }
     }
 
+    /**
+     * The Android half of the #2929 staleness defect (#2943 §3).
+     *
+     * The staged copy is keyed on `uid` alone and the app's data dir survives
+     * a Play Store update, so an APK shipping a corrected bundled GLB used to
+     * stay inert on every existing install: the target path was identical and
+     * the file already existed, so the resolver served the previous version's
+     * bytes forever. This drives the real round trip — stage a fallback, ship
+     * different bytes in the "next app version", assert the caller receives
+     * the new bytes.
+     *
+     * Mutation-tested: dropping `target.length() == bundledSize` from the
+     * early return in `fallbackBundle` makes this fail with the old bytes.
+     */
+    @Test
+    fun `fallbackBundle re-stages after the bundled asset changes`() {
+        val bundle = FakeBundledAssets(glb(size = 2048, filler = 'A'.code.toByte()))
+        val updating = SketchfabAssetResolver.forTesting(context, service, bundle)
+        val slug = SampleAssets.all.first().copy(uid = "2".repeat(32))
+
+        val first = updating.fallbackBundle(slug)
+        assertEquals("staged copy must match the shipped asset", 2048, first.length().toInt())
+
+        // The "next app version" ships a corrected asset at the same path.
+        bundle.bytes = glb(size = 4096, filler = 'B'.code.toByte())
+        val second = updating.fallbackBundle(slug)
+
+        assertEquals(
+            "an app update that ships a corrected asset must reach the caller",
+            4096,
+            second.length().toInt(),
+        )
+        assertEquals(
+            "the re-staged copy must carry the new bytes, not just the new length",
+            'B'.code.toByte(),
+            second.readBytes()[12],
+        )
+    }
+
+    /**
+     * Degradation shape (#2943 §4.1): an install with a valid staged copy
+     * whose bundled resource has gone — asset renamed or pruned from the APK
+     * while [SampleAssets] still points at the old path — must keep rendering
+     * the previous model rather than throwing at every call site.
+     *
+     * Mutation-tested: dropping the `bundledSize < 0L && stagedLooksComplete`
+     * branch makes this fail with FallbackUnavailable.
+     */
+    @Test
+    fun `fallbackBundle serves the staged copy when the bundled asset has gone`() {
+        val bundle = FakeBundledAssets(glb(size = 2048, filler = 'A'.code.toByte()))
+        val vanishing = SketchfabAssetResolver.forTesting(context, service, bundle)
+        val slug = SampleAssets.all.first().copy(uid = "3".repeat(32))
+
+        val staged = vanishing.fallbackBundle(slug)
+        assertEquals(2048, staged.length().toInt())
+
+        bundle.bytes = null // asset pruned from the APK
+        val served = vanishing.fallbackBundle(slug)
+
+        assertEquals(
+            "a vanished bundled asset must degrade to the staged copy, not throw",
+            2048,
+            served.length().toInt(),
+        )
+    }
+
+    /**
+     * The freshness check compares `target.length()` against the *bundled*
+     * length, and everything above proves that with a fake. This proves the
+     * assumption underneath it holds for the REAL `AssetManager`: that
+     * `AssetInputStream.available()` equals the number of bytes a copy of the
+     * same asset writes to disk.
+     *
+     * If those two ever disagree, nothing fails loudly — the fast path simply
+     * never matches and every `resolve` silently re-copies the whole asset
+     * (megabytes, on a hot demo path). A perf regression with no failing test
+     * is exactly the kind this file should refuse to allow.
+     */
+    @Test
+    fun `bundled size matches the staged copy for the real AssetManager`() {
+        val slug = SampleAssets.all.first()
+        val staged = try {
+            resolver.fallbackBundle(slug)
+        } catch (e: SketchfabAssetResolver.FallbackUnavailable) {
+            // Robolectric's asset tree does not ship this asset — the
+            // comparison is meaningless without one, so skip honestly rather
+            // than assert something vacuous.
+            assertEquals(slug.fallbackBundledPath, e.bundledPath)
+            return
+        }
+        val bundledSize = SketchfabAssetResolver
+            .assetManagerBundledAssetsForTesting(context)
+            .sizeOf(slug.fallbackBundledPath)
+
+        assertEquals(
+            "available() must equal the staged byte count, or the freshness " +
+                "fast path never matches and every resolve re-copies the asset",
+            staged.length(),
+            bundledSize,
+        )
+        // Second call must therefore reuse the copy rather than re-stage it.
+        assertEquals(staged.absolutePath, resolver.fallbackBundle(slug).absolutePath)
+    }
+
+    /** A GLB-shaped blob: `glTF` magic + [size] total bytes of [filler]. */
+    private fun glb(size: Int, filler: Byte): ByteArray =
+        ByteArray(size) { filler }.also {
+            it[0] = 'g'.code.toByte()
+            it[1] = 'l'.code.toByte()
+            it[2] = 'T'.code.toByte()
+            it[3] = 'F'.code.toByte()
+        }
+
+    /** Ships different bytes for the same path across calls, like an update. */
+    private class FakeBundledAssets(
+        var bytes: ByteArray?,
+    ) : SketchfabAssetResolver.BundledAssets {
+        override fun open(path: String): java.io.InputStream =
+            bytes?.let { ByteArrayInputStream(it) }
+                ?: throw java.io.IOException("bundled asset absent: $path")
+
+        override fun sizeOf(path: String): Long = bytes?.size?.toLong() ?: -1L
+    }
+
     // ─── prefetchAll() — best-effort warm-up ───────────────────────────────
 
     @Test
