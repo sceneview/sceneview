@@ -539,6 +539,25 @@ def main():
           and not [c for c in api.calls if c[0] == "GET" and "/reviewSubmissions/" in c[1]],
           f"cancellations={len(cancellations(api))}")
 
+    # A transport error is as fatal as a rejection, and the operator reads the
+    # log, not the exit code: the FAILED banner has to fire for a raw exception
+    # too. Catching only SystemExit left exactly these failures undiagnosed
+    # (#2963 review). Asserted on both legs that can still be in flight.
+    class Transport(Exception):
+        pass
+
+    def boom():
+        raise Transport("connection reset by peer")
+
+    for leg, scenario in (("items POST", {"items": boom}),
+                          ("submit PATCH", {"submit": boom})):
+        out, code, api = run_step(
+            {"builds": lambda n: builds_page([1300]), **scenario},
+            {"ASC_EXPECTED_BUILD": "1300"})
+        check(f"a transport error on the {leg} still prints the FAILED banner",
+              "review submission FAILED" in out and str(code).startswith("EXC Transport"),
+              f"code={code} {out[-300:]}")
+
     # ── whatsNew sourcing (#2893 W4, shipped in #2908) ────────────────────
     print("\nwhatsNew sourcing")
     out, code, api = run_step({"builds": lambda n: builds_page([1300])},

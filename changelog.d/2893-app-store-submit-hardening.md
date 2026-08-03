@@ -24,6 +24,11 @@
   write was already committed — may still have reached Apple, so the
   submission's state is read back and a live one is left alone rather than
   withdrawn.
+- **CI: a submission that dies on a transport error now says so in the log.** The
+  step's fatal handler caught only `SystemExit`, so a `ConnectionError` on the
+  submission POST or PATCH went red without ever printing the "did NOT reach App
+  Review" banner — the operator saw a stack trace and no verdict. The orphan
+  cleanup already ran in that case; only the diagnostic was missing.
 - **CI: the empty-`whatsNew` warning names the real state of
   `release_notes.txt`** — "No release_notes.txt" sent a reader hunting for a
   missing file that was present but blank (review nit from

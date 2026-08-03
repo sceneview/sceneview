@@ -1101,12 +1101,22 @@ jobs:
                               f"::warning::Could not cancel the orphan reviewSubmission {rs_id} this run created: {ce} "
                               "— cancel it by hand in App Store Connect"
                           )
-          except SystemExit:
+          except BaseException:
               # FATAL (#2731). This used to be a swallowed ::warning and the
               # step stayed green — four consecutive releases (4.19.0→4.22.0)
               # "shipped" without ever reaching App Review and nobody saw it.
               # A tag-push deploy that cannot submit for review IS a failed
               # deploy: re-raise so the job goes red and the release flow stops.
+              #
+              # BaseException, not SystemExit (#2963 review): a raw transport
+              # error — a ConnectionError on the reviewSubmissionItems POST or
+              # on the submit PATCH — is exactly as fatal, and catching only
+              # SystemExit skipped this banner for precisely those failures,
+              # leaving a red step whose log never says what went wrong. Every
+              # deliberate exit in this block is `SystemExit(1)`; there is no
+              # success path out of here, so the banner cannot fire on a
+              # successful submission. The `raise` keeps the original
+              # traceback, so widening the catch only ADDS the diagnostic.
               print("::error::App Store review submission FAILED — this release did NOT reach App Review (#2731).")
               raise
           PYEOF
