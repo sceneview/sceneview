@@ -50,28 +50,36 @@ TOTAL=0
 
 human() { awk -v b="$1" 'BEGIN{ printf (b<1024) ? "%d B" : "%.1f Ko", (b<1024)?b:b/1024 }'; }
 
+# Rows are COLLECTED, then printed LARGEST FIRST. The first version printed them
+# in the order I happened to write them, so the biggest item sat in the middle
+# behind a one-character `!` — and the reader (me) optimised the file at the top
+# of the list instead of the file at the top of the cost. Sorting is the whole
+# point of a budget report: it must answer "what do I cut next", not "did the
+# thing I already cut get smaller".
+ROWS=""
+
 # row <path> <soft-ceiling-bytes> <why> [base-dir]
 row() {
   local rel="$1" cap="$2" why="$3" f="${4:-$ROOT}/$1"
   if [ ! -f "$f" ]; then
-    printf "  %-34s %10s   %s\n" "$rel" "absent" "$why"
+    ROWS="$ROWS$(printf '%012d\t%s\t%s\t%s\t%s' 0 "$rel" "absent" "-" "$why")
+"
     return
   fi
-  local bytes lines flag
+  local bytes flag
   bytes=$(wc -c < "$f" | tr -d ' ')
-  lines=$(wc -l < "$f" | tr -d ' ')
   TOTAL=$((TOTAL + bytes))
-  flag="   "
+  flag="  "
   if [ "$cap" -gt 0 ] && [ "$bytes" -gt "$cap" ]; then
-    flag=" ! "
+    flag="!!"
     OVER=$((OVER + 1))
+    OVER_NAMES="${OVER_NAMES:+$OVER_NAMES, }$rel"
   fi
-  printf "  %-34s %10s %s ~%5s tok  %4s l  %s\n" \
-    "$rel" "$(human "$bytes")" "$flag" "$((bytes / 4))" "$lines" "$why"
+  ROWS="$ROWS$(printf '%012d\t%s\t%s\t%s\t%s' "$bytes" "$rel" "$(human "$bytes")" "$flag" "$why")
+"
 }
 
-echo "Standing context — re-sent on every turn of every session"
-echo
+OVER_NAMES=""
 row "CLAUDE.md"                  24576 "always loaded; ceiling gated in CI"
 row ".claude/STATE.md"           16384 "session start; spec = NOW + IN-FLIGHT + NEXT(<=6) + BOOTSTRAP" "$MAIN"
 row ".claude/workflows/README.md" 24576 "read when choosing a workflow"
@@ -82,17 +90,32 @@ row ".claude/workflows/README.md" 24576 "read when choosing a workflow"
 MEM="$HOME/.claude/projects/$(printf '%s' "$MAIN" | tr '/.' '--')/memory/MEMORY.md"
 if [ -f "$MEM" ]; then
   b=$(wc -c < "$MEM" | tr -d ' '); TOTAL=$((TOTAL + b))
-  printf "  %-34s %10s     ~%5s tok  %4s l  %s\n" \
-    "MEMORY.md (agent memory index)" "$(human "$b")" "$((b / 4))" "$(wc -l < "$MEM" | tr -d ' ')" \
-    "always loaded; index only, topic files load on demand"
+  ROWS="$ROWS$(printf '%012d\t%s\t%s\t%s\t%s' "$b" "MEMORY.md (agent memory index)" "$(human "$b")" "  " "always loaded; index only, topic files load on demand")
+"
 fi
 
+echo "Standing context — re-sent on every turn of every session (largest first)"
 echo
-printf "  %-34s %10s     ~%5s tok\n" "TOTAL standing context" "$(human "$TOTAL")" "$((TOTAL / 4))"
+printf '%s' "$ROWS" | grep -v '^$' | sort -rn | while IFS="$(printf '\t')" read -r _b rel size flag why; do
+  # 10# forces base-10: the sort key is zero-padded, and a leading zero would
+  # otherwise make bash read it as octal and fail on any digit 8 or 9.
+  printf "  %-34s %10s %s ~%5s tok  %s\n" "$rel" "$size" "$flag" "$(( 10#$_b / 4 ))" "$why"
+done
+echo
+printf "  %-34s %10s    ~%5s tok\n" "TOTAL standing context" "$(human "$TOTAL")" "$((TOTAL / 4))"
 echo
 echo "  (token column is an ESTIMATE at ~4 chars/token — orders of magnitude only)"
+if [ -n "$OVER_NAMES" ]; then
+  echo
+  echo "  !! OVER SPEC: $OVER_NAMES — this is the next thing to cut, not the"
+  echo "     file you cut last time."
+fi
 
-# --- lazy surface, for contrast -------------------------------------------
+# --- deferred is NOT free -------------------------------------------------
+# The first version said the skills held N Ko "that is NOT in the standing cost",
+# which reads as a saving. It is a DEFERRAL: a session pays per skill it opens,
+# and one 15 Ko skill is ~19% of the whole standing budget. Measured on the first
+# real use (#2986): one skill opened, 14.9 Ko paid. Print the price list.
 if [ -d "$ROOT/.claude/skills" ]; then
   sb=0; sn=0
   for f in "$ROOT"/.claude/skills/*/SKILL.md; do
@@ -100,8 +123,16 @@ if [ -d "$ROOT/.claude/skills" ]; then
     sb=$((sb + $(wc -c < "$f" | tr -d ' '))); sn=$((sn + 1))
   done
   echo
-  printf "  %s skills hold %s (~%s tok) that is NOT in the standing cost.\n" \
-    "$sn" "$(human "$sb")" "$((sb / 4))"
+  echo "  Deferred — NOT free. $sn skills, $(human "$sb") total, charged per skill OPENED:"
+  for f in "$ROOT"/.claude/skills/*/SKILL.md; do
+    [ -f "$f" ] || continue
+    b=$(wc -c < "$f" | tr -d ' ')
+    printf '%012d\t%s\t%s\n' "$b" "$(basename "$(dirname "$f")")" "$(human "$b")"
+  done | sort -rn | head -3 | while IFS="$(printf '\t')" read -r b name size; do
+    printf "    %-24s %9s   %s%% of the standing budget if opened\n" \
+      "$name" "$size" "$(( 100 * 10#$b / (TOTAL > 0 ? TOTAL : 1) ))"
+  done
+  echo "    (top 3 shown — open three of these and you are back to pre-split cost)"
 fi
 
 # --- the local half CI can never see --------------------------------------
@@ -140,10 +171,20 @@ fi
 
 if [ "$OVER" -gt 0 ]; then
   echo
-  echo "  ${OVER} item(s) over spec. Remedies, cheapest first:"
-  echo "    - move a CLAUDE.md section into .claude/skills/<name>/SKILL.md + index it"
-  echo "    - move finished STATE.md entries into .claude/handoff.md (its documented home)"
-  echo "    - run /handoff to reconcile STATE.md -> handoff.md"
+  # Ordered by what the report ACTUALLY flagged, not by a fixed list. The first
+  # version led with the CLAUDE.md remedy regardless of which file was over —
+  # which is how the largest item got left alone through three passes.
+  echo "  ${OVER} item(s) over spec — remedies for those items, in order:"
+  case "$OVER_NAMES" in
+    *STATE.md*)
+      echo "    1. move finished NOW bullets into .claude/handoff.md (their documented home);"
+      echo "       the spec is <=8 bullets and 'done' means MOVED, not kept"
+      echo "    2. run /handoff to reconcile the rest" ;;
+  esac
+  case "$OVER_NAMES" in
+    *CLAUDE.md*)
+      echo "    - move a CLAUDE.md section into .claude/skills/<name>/SKILL.md + index it" ;;
+  esac
 fi
 
 [ "$STRICT" -eq 1 ] && [ "$OVER" -gt 0 ] && exit 1
