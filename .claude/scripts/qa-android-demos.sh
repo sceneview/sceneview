@@ -223,13 +223,18 @@ if $INSTALL; then
     # nobody can vouch for, which is worse than not running at all.
     android_cli_install_and_launch "$APK" "${PACKAGE}/${ACTIVITY}" >/dev/null || {
       rc=$?
-      if [ "$rc" -eq 2 ]; then
-        echo "[qa] ⛔ install landed but '${PACKAGE}/${ACTIVITY}' would not start." >&2
-        echo "[qa]   The APK on the device is the right one — check the activity name." >&2
-      else
-        echo "[qa] ⛔ install could not be proven for $PACKAGE — refusing to QA a" >&2
-        echo "[qa]   build the device may not be running. See #2990." >&2
-      fi
+      # Only assert a CAUSE for the codes that carry one. The helper also
+      # returns 1 for "APK not found" and "no serial", and it has already
+      # printed the precise reason — restating it as "the device may hold the
+      # previous build" would be a true failure with a false cause, the thing
+      # the 1-vs-2 split exists to prevent.
+      case "$rc" in
+        2) echo "[qa] ⛔ install landed but '${PACKAGE}/${ACTIVITY}' would not start." >&2
+           echo "[qa]   The APK on the device is the right one — check the activity name." >&2 ;;
+        1) echo "[qa] ⛔ install not proven for $PACKAGE — refusing to QA a build the" >&2
+           echo "[qa]   device may not be running. See the helper's message above, and #2990." >&2 ;;
+        *) echo "[qa] ⛔ install step failed (rc=$rc) — see the helper's message above." >&2 ;;
+      esac
       exit 1
     }
   else
