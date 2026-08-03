@@ -155,6 +155,15 @@ class SketchfabAssetResolver private constructor(
                 ).also { INSTANCE = it }
             }
 
+        /**
+         * The production [BundledAssets], so a test can assert that
+         * `available()` really does equal the staged byte count for the real
+         * `AssetManager` — the assumption the freshness fast path rests on.
+         */
+        @VisibleForTesting
+        internal fun assetManagerBundledAssetsForTesting(context: Context): BundledAssets =
+            AssetManagerBundledAssets(context.applicationContext)
+
         /** Test-only factory so unit tests can inject a fake service. */
         @VisibleForTesting
         internal fun forTesting(

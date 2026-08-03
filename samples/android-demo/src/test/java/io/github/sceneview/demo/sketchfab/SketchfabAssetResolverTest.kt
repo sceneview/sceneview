@@ -301,6 +301,44 @@ class SketchfabAssetResolverTest {
         )
     }
 
+    /**
+     * The freshness check compares `target.length()` against the *bundled*
+     * length, and everything above proves that with a fake. This proves the
+     * assumption underneath it holds for the REAL `AssetManager`: that
+     * `AssetInputStream.available()` equals the number of bytes a copy of the
+     * same asset writes to disk.
+     *
+     * If those two ever disagree, nothing fails loudly — the fast path simply
+     * never matches and every `resolve` silently re-copies the whole asset
+     * (megabytes, on a hot demo path). A perf regression with no failing test
+     * is exactly the kind this file should refuse to allow.
+     */
+    @Test
+    fun `bundled size matches the staged copy for the real AssetManager`() {
+        val slug = SampleAssets.all.first()
+        val staged = try {
+            resolver.fallbackBundle(slug)
+        } catch (e: SketchfabAssetResolver.FallbackUnavailable) {
+            // Robolectric's asset tree does not ship this asset — the
+            // comparison is meaningless without one, so skip honestly rather
+            // than assert something vacuous.
+            assertEquals(slug.fallbackBundledPath, e.bundledPath)
+            return
+        }
+        val bundledSize = SketchfabAssetResolver
+            .assetManagerBundledAssetsForTesting(context)
+            .sizeOf(slug.fallbackBundledPath)
+
+        assertEquals(
+            "available() must equal the staged byte count, or the freshness " +
+                "fast path never matches and every resolve re-copies the asset",
+            staged.length(),
+            bundledSize,
+        )
+        // Second call must therefore reuse the copy rather than re-stage it.
+        assertEquals(staged.absolutePath, resolver.fallbackBundle(slug).absolutePath)
+    }
+
     /** A GLB-shaped blob: `glTF` magic + [size] total bytes of [filler]. */
     private fun glb(size: Int, filler: Byte): ByteArray =
         ByteArray(size) { filler }.also {
