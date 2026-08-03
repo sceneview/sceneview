@@ -131,18 +131,41 @@ fi
 # ----------------------------------------------- 4. the rules that stayed put
 # Each of these has its DETAIL in a skill; the rule itself must remain in the
 # always-loaded file, or a session that never opens the skill never learns it.
+#
+# Every probe must match EXACTLY ONE line, and inside the hard-rules block. A
+# probe that also matches elsewhere is HOLLOW: deleting the rule it guards
+# leaves the check green. That is not hypothetical — the review on this PR
+# caught `VERSION_NAME`, which also appears in the "Latest release" section, so
+# the version-tracks rule could have been deleted silently. Asserting the match
+# COUNT and its LOCATION kills the whole class instead of that one instance.
+rules_block="$(sed -n '/^## Hard rules that must survive a lazy load/,/^## /p' "$GUIDE")"
 missing_rule=0
-while IFS='|' read -r probe label; do
-  grep -qiF -e "$probe" "$GUIDE" || { bad "hard rule dropped from CLAUDE.md: $label"; missing_rule=1; }
-done <<'RULES'
+if [ -z "$rules_block" ]; then
+  bad "CLAUDE.md has no 'Hard rules' block — nothing keeps the moved-out dangers visible"
+  missing_rule=1
+else
+  while IFS='|' read -r probe label; do
+    in_block=$(printf '%s\n' "$rules_block" | grep -cF -e "$probe")
+    in_file=$(grep -cF -e "$probe" "$GUIDE")
+    if [ "$in_block" -eq 0 ]; then
+      bad "hard rule dropped from CLAUDE.md: $label"
+      missing_rule=1
+    elif [ "$in_file" -ne 1 ]; then
+      bad "hollow probe for '$label': '$probe' matches $in_file lines in CLAUDE.md"
+      echo "    A probe that matches more than its own rule stays green when that"
+      echo "    rule is deleted. Narrow it to a string unique to the rule."
+      missing_rule=1
+    fi
+  done <<'RULES'
 Never QA on a personal device|emulator-first QA
 Never call `adb` directly|adb vs the android CLI
 another session's lease|emulator lease exclusion
 Never hand-edit a generated file|generated-file gates
 before tagging|device-QA at the release checkpoint
-VERSION_NAME|the independent version tracks
+Never sync `mcp/`|the independent version tracks
 RULES
-[ "$missing_rule" -eq 0 ] && ok "the hard rules survived the move into skills"
+fi
+[ "$missing_rule" -eq 0 ] && ok "the hard rules survived the move, and every probe is unique to its rule"
 
 # ------------------------------------------------------- 5. mutation on (1)
 # Prove the ceiling check can actually fail. A guard nobody has seen go red is
