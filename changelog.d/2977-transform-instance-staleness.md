@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+
+- **`Node.transformInstance` no longer goes stale after rapid node destroy churn ([#2977](https://github.com/sceneview/sceneview/issues/2977)).** The cached `TransformManager` `EntityInstance` handle assumed it was stable for the node's lifetime, but `TransformManager` compacts on removal by swapping the last live entity into the removed slot — silently reindexing that other entity's handle. Rapid destroy/create churn (e.g. a Compose recomposition swapping a `ModelNode`'s glTF asset) hit this reliably, freezing `worldPosition`/`getWorldTransform` reads on nodes whose cache went stale mid-lifetime. Every other live node's cache is now invalidated when a node is destroyed.

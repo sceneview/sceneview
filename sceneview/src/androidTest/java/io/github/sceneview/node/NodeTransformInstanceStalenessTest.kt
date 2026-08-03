@@ -15,20 +15,19 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Engine-backed regression test for the stale-`transformInstance`-cache bug (see
- * `STALE_TRANSFORM_INSTANCE_ROOT_CAUSE.md` at the repo root).
+ * Engine-backed regression test for the stale-`transformInstance`-cache bug (#2977).
  *
  * [Node.transformInstance] caches a [com.google.android.filament.TransformManager]
- * `EntityInstance` handle for the lifetime of the Kotlin [Node]. That handle is only
- * stable while no OTHER entity's transform component is created or destroyed — Filament's
- * component managers are packed-array stores, so any other entity's transform component
- * being created or destroyed can silently reindex a live entity's handle. Before the fix,
- * a node's cached handle was never revisited after such a reindex, so every subsequent
- * transform read silently operated on whatever entity now occupies that stale slot.
+ * `EntityInstance` handle for the lifetime of the Kotlin [Node]. That handle is only stable
+ * while no OTHER entity's transform component is destroyed — Filament's `TransformManager` is
+ * a packed-array store that compacts on removal by swapping the last live entity into the
+ * removed slot, silently reindexing that one other live entity's handle (creation only
+ * appends/copies in place and never reindexes an existing entity, so it isn't a trigger here).
+ * Before the fix, a node's cached handle was never revisited after such a reindex, so every
+ * subsequent transform read silently operated on whatever entity now occupies that stale slot.
  *
- * These tests assert the cached [Node.transformInstance] always matches a fresh, uncached
- * `transformManager.getInstance(entity)` lookup, across both reindex triggers: an unrelated
- * node's [Node.destroy] and an unrelated node's construction.
+ * This test asserts the cached [Node.transformInstance] always matches a fresh, uncached
+ * `transformManager.getInstance(entity)` lookup after an unrelated node's [Node.destroy].
  */
 @RunWith(AndroidJUnit4::class)
 class NodeTransformInstanceStalenessTest {
@@ -69,30 +68,6 @@ class NodeTransformInstanceStalenessTest {
             assertEquals(
                 "underTest's cached transformInstance must track TransformManager's real " +
                     "index after an unrelated entity's transform component is destroyed",
-                freshAfter, underTest.transformInstance,
-            )
-
-            underTest.destroy()
-            decoys.forEach { it.destroy() }
-        }
-    }
-
-    @Test
-    fun transformInstance_survivesUnrelatedEntityCreation() {
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            val tm = engine.transformManager
-
-            val underTest = Node(engine)
-            underTest.transformInstance // populate the cache
-
-            // Construct a generous number of unrelated decoys to reliably cross whatever
-            // capacity-growth threshold TransformManager's packed array uses internally.
-            val decoys = List(512) { Node(engine) }
-
-            val freshAfter = tm.getInstance(underTest.entity)
-            assertEquals(
-                "underTest's cached transformInstance must track TransformManager's real " +
-                    "index after unrelated entities' transform components are created",
                 freshAfter, underTest.transformInstance,
             )
 
