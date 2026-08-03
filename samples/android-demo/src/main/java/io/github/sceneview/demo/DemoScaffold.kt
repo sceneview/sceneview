@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -572,6 +574,13 @@ class DemoBottomOverlayScope internal constructor(
  * `bottomOverlayReservesScene` insets the viewport by (#2957). `onSizeChanged`
  * sits *before* `windowInsetsPadding` in the chain on purpose: a size read after
  * it would exclude the inset and under-reserve by a navigation bar.
+ *
+ * The inset is restricted to the sides a bottom-anchored band can actually meet
+ * (`Bottom` + `Horizontal`). The **top** side never moved this container's
+ * content — the box wraps its height and is bottom-aligned, so a top inset only
+ * grew it upwards into pixels nobody looked at — but it *does* land in the
+ * measured band height, and on the QA Pixel_7a it inflated the reserved band by
+ * 146 px of status bar no overlay was ever using (#2957).
  */
 @Composable
 private fun BoxScope.DemoBottomOverlay(
@@ -585,7 +594,11 @@ private fun BoxScope.DemoBottomOverlay(
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
             .onSizeChanged { onBandHeightChanged(it.height) }
-            .windowInsetsPadding(WindowInsets.systemBars)
+            .windowInsetsPadding(
+                WindowInsets.systemBars.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                )
+            )
             .testTag(DemoScaffoldTestTags.BOTTOM_OVERLAY),
         contentAlignment = Alignment.BottomCenter,
     ) {
