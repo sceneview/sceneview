@@ -11,16 +11,20 @@ app — real iOS-simulator captures of rendered 3D content.
 > they replace. Only the IBL contribution moved; the skybox is drawn directly
 > and the direct lights were untouched.
 >
-> ⛔ **But do not dispatch `app-store-screenshots.yml` yet — for a different
-> reason, found by looking at the mosaic.** `02-dynamic-sky.png` is a weak store
-> frame on both classes: iOS's `DynamicSkyDemo` builds a stylised skyline out of
-> five `systemGray` cubes (`DynamicSkyDemo.swift`), so the shot is grey blocks on
-> a plinth against a photo HDR. That is the demo working as written — not a
-> keyless substitution, not a load failure — but Android publishes the SAME demo
-> id showing a photoreal lit drone (`phone-screenshot-2.png`, routed through
-> `ALIAS_INITIAL_TAB` to the Lighting Lab tab). Uploading these would put grey
-> cubes on the App Store while Play shows the drone, which is the opposite of the
-> #2773 "same demos, framed the same way" intent this file opens with.
+> ✅ **`dynamic-sky` now shows the same subject Android does (#3003).** It used
+> to build a stylised skyline out of five `systemGray` cubes, so the shot was
+> grey blocks on a plinth against a photo HDR — the demo working as written, but
+> demonstrating a time-of-day sun with an object that has almost nothing to
+> show: a matte grey box reads the same at noon and at dusk apart from its
+> shadow. It now loads `khronos_damaged_helmet`, the subject Android's Lighting
+> Lab puts under this same demo id, whose metal and rough-dielectric regions
+> render the environment change directly in their reflections.
+>
+> The ground plane went with the cubes. It existed so the auto-framing pass —
+> which fits the *union* bounding sphere — would not pull back to contain an
+> oversized slab (#2896); with a single hero subject it earned nothing and cost
+> twice, leaving the helmet at about a sixth of the frame height and visibly
+> intersecting it. Android's shot of this subject has no plane either.
 >
 > ⚠️ **The iPad frames leak their capture date.** `simctl status_bar override
 > --time "9:41"` pins the clock, but iPadOS renders a date beside it that the
@@ -69,7 +73,10 @@ not empty or loading AR scenes:
 
 1. `01-model-viewer` — bundled hero model (cyberpunk hovercar) on the `.warm`
    photo-studio backdrop, frozen on a three-quarter hero pose
-2. `02-dynamic-sky` — procedural time-of-day skyline under a live HDRI sky
+2. `02-dynamic-sky` — the `khronos_damaged_helmet` hero under a live HDRI sky,
+   its metal and rough-dielectric regions carrying the time-of-day light. Same
+   subject Android's Lighting Lab shows for this id (#3003); it was a five-cube
+   skyline until then
 
 ⚠️ **Committing these PNGs is not uploading them.** The live App Store listing
 keeps showing the previous set until someone runs
