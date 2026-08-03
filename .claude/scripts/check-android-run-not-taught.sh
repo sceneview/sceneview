@@ -51,6 +51,12 @@
 #   grep. Enumerating TRACKED files removes the difference — same set on every
 #   host, and it is the set the repo actually ships.
 #
+#   It scans ALL tracked files, with no extension list. An earlier version
+#   listed `*.md *.sh *.yml` and therefore could not see a `*.yaml` — the third
+#   too-narrow probe in a file whose entire subject is too-narrow probes. The
+#   list was never a performance decision: measured, the full sweep of 3122
+#   tracked files takes 0.7 s. `-I` skips binaries.
+#
 # WHY `gcloud firebase test android run` IS EXCLUDED
 #   That is Firebase Test Lab, an unrelated command that happens to end in the
 #   same two words — and the space after `test` is a valid leading boundary, so
@@ -74,8 +80,11 @@ ISSUE_RE='#(2796|2854|2990)'
 # five docs wrote `android run \` with a line continuation and a flag-anchored
 # probe missed all of them.
 MATCH_RE='(^|[^-[:alnum:]_])android run($|[^[:alnum:]_-])'
-# …but not Firebase Test Lab, which ends in the same two words.
-EXCLUDE_RE='(gcloud|firebase)[[:space:]]'
+# …but not Firebase Test Lab, which ends in the same two words. Anchored on the
+# ADJACENT phrasing, not on the word `firebase` appearing anywhere on the line:
+# a line that genuinely recommends `android run` AND happens to mention Firebase
+# would otherwise be excluded — the exclusion would become the hole.
+EXCLUDE_RE='test[[:space:]]+android[[:space:]]+run'
 
 offenders=()
 while IFS= read -r f; do
@@ -90,8 +99,8 @@ while IFS= read -r f; do
     continue
   fi
   offenders+=("${f#./}")
-done < <(git ls-files -z -- '*.md' '*.sh' '*.yml' 2>/dev/null \
-         | xargs -0 grep -lE "$MATCH_RE" 2>/dev/null \
+done < <(git ls-files -z 2>/dev/null \
+         | xargs -0 grep -lIE "$MATCH_RE" 2>/dev/null \
          | sed 's|^|./|')
 
 if [ "${#offenders[@]}" -eq 0 ]; then

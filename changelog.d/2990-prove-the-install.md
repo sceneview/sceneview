@@ -78,3 +78,12 @@
   someone documents Test Lab in a `.md` the only escape would have been citing
   an unrelated issue number, and a gate whose escape hatch is a lie teaches
   people to lie to it.
+- The content gate scans **all** tracked files, with no extension list. An
+  earlier version listed `*.md *.sh *.yml` and so could not see a `*.yaml` — the
+  third too-narrow probe in a script whose entire subject is too-narrow probes.
+  The list was never a performance decision: measured, the full sweep of 3122
+  tracked files takes 0.7 s.
+- Its Firebase exclusion is anchored on the adjacent `test android run` phrasing
+  instead of the word `firebase` appearing anywhere on the line. A line that
+  genuinely recommended the install *and* happened to mention Firebase would
+  otherwise have been excluded — the exclusion would have become the hole.
