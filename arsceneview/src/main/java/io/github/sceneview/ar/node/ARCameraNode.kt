@@ -11,6 +11,7 @@ import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.arcore.quaternion
 import io.github.sceneview.math.Transform
 import io.github.sceneview.node.CameraNode
+import io.github.sceneview.utils.setCustomProjection
 
 /**
  * Represents a virtual camera, which determines the perspective through which the scene is viewed.
@@ -194,9 +195,9 @@ open class ARCameraNode(engine: Engine) : CameraNode(engine) {
         far: Float,
         aspect: Double
     ) {
-        val camera = frame?.camera
-        if (camera != null) {
-            applyARProjection(camera, near, far)
+        val arCamera = frame?.camera
+        if (arCamera != null) {
+            applyARProjection(arCamera, near, far)
         } else {
             super.updateProjection(focalLength, near, far, aspect)
             projectionInvalidated = true
@@ -206,14 +207,24 @@ open class ARCameraNode(engine: Engine) : CameraNode(engine) {
     /**
      * Applies ARCore's projection for `(near, far)` to the Filament camera and records it as the
      * cached one, so [shouldRecomputeProjection] keeps describing what the camera actually holds.
+     *
+     * Writes the clip planes explicitly rather than through `projectionTransform = transform`:
+     * that setter forwards to `Camera.setCustomProjection(value)`, whose `near` / `far` **default
+     * to the values Filament already holds** (`getNear()` / `cullingFar`), so it would apply a
+     * matrix built for one set of clip planes while leaving Filament reporting another. That
+     * matters because [near] / [far] are not backing fields — they read straight back off the
+     * Filament camera, and [onCameraUpdated] feeds those getters into [shouldRecomputeProjection]
+     * against [cachedProjectionNear] / [cachedProjectionFar]. Not persisting them would make a
+     * caller's `near = …` survive exactly one frame before the next tracked frame read the
+     * unchanged getter, disagreed with the cache and recomputed it away.
      */
-    private fun applyARProjection(camera: Camera, near: Float, far: Float) {
-        val transform = camera.getProjectionTransform(near, far)
+    private fun applyARProjection(arCamera: Camera, near: Float, far: Float) {
+        val transform = arCamera.getProjectionTransform(near, far)
         cachedProjectionTransform = transform
         cachedProjectionNear = near
         cachedProjectionFar = far
         projectionInvalidated = false
-        projectionTransform = transform
+        camera.setCustomProjection(transform, near.toDouble(), far.toDouble())
     }
 
     open fun onTrackingStateChanged(trackingState: TrackingState) {

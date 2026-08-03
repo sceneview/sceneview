@@ -314,7 +314,10 @@ Depends on `sceneview/` and adds:
 - **`ARSceneScope`** -- extends `SceneScope` with AR-specific node composables like
   `AnchorNode`, `PoseNode`, `AugmentedImageNode`, `HitResultNode`,
   `AugmentedFaceNode`, `CloudAnchorNode`, and `TrackableNode`.
-- **`ARCameraNode`** -- syncs the Filament camera with the ARCore camera pose each frame.
+- **`ARCameraNode`** -- syncs the Filament camera with the ARCore camera pose **and projection**
+  each frame. Both are owned by ARCore and re-derived from the physical camera's intrinsics, so
+  unlike a plain `CameraNode` its `focalLength` has no effect and `updateProjection()` restores
+  ARCore's matrix rather than building one from a lens. `near` / `far` are honoured.
 - **`ArSession`**, **`ARCameraStream`**, **`LightEstimator`**, **`PlaneRenderer`** --
   ARCore integration utilities.
 

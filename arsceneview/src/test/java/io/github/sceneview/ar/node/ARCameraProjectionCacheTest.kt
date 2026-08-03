@@ -161,4 +161,60 @@ class ARCameraProjectionCacheTest {
             ),
         )
     }
+
+    /**
+     * Pins *why* [ARCameraNode.applyARProjection] must write the clip planes it built the ARCore
+     * matrix with into the Filament camera, instead of letting
+     * `Camera.setCustomProjection(value)` default them to whatever Filament already holds.
+     *
+     * `ARCameraNode.near` / `.far` are not backing fields — they read straight back off the
+     * Filament camera (`CameraComponent.near get() = camera.near`), and `onCameraUpdated` feeds
+     * those getters into [shouldRecomputeProjection] against the cached pair. So the loop only
+     * reaches a fixed point when applying a projection *persists* the clip planes: otherwise
+     * every frame re-reads the unpersisted value, disagrees with the cache, and recomputes — the
+     * caller's `near = …` silently reverting to the construction default one frame later, and the
+     * AR5 (#2329) steady-state allocation win being lost along with it.
+     *
+     * Simulates the frame loop over the real predicate under both write policies. It cannot catch
+     * the write site itself regressing back to `projectionTransform = transform` — that assertion
+     * needs a live Filament camera, which no JVM unit test can reach — so this pins the contract
+     * that makes the write site necessary, not the write site.
+     */
+    private fun settlesAfterClipPlaneChange(persistClipPlanes: Boolean): Boolean {
+        // The camera reports what was last persisted to it; the node caches what it last computed.
+        var reportedNear = near
+        var cachedNear = near
+        val requestedNear = 0.05f
+
+        // Frame 0: the caller sets `near = 0.05f`, which recomputes the projection immediately.
+        cachedNear = requestedNear
+        if (persistClipPlanes) reportedNear = requestedNear
+
+        // Frame 1: the next tracked frame reads the getter and consults the cache.
+        return !shouldRecomputeProjection(
+            cached = true,
+            displayGeometryChanged = false,
+            projectionInvalidated = false,
+            near = reportedNear,
+            far = far,
+            cachedNear = cachedNear,
+            cachedFar = far,
+        )
+    }
+
+    @Test
+    fun `applying a projection must persist its clip planes or the frame loop never settles`() {
+        assertTrue(
+            "Persisting the clip planes alongside the ARCore matrix must reach a fixed point on " +
+                "the very next frame — a caller's near/far survives, and the steady-state frame " +
+                "reuses the cache",
+            settlesAfterClipPlaneChange(persistClipPlanes = true),
+        )
+        assertFalse(
+            "Applying the matrix WITHOUT persisting its clip planes must be visible as a loop " +
+                "that never settles: the getter still reports the old near, so every frame " +
+                "recomputes and reverts the caller's value (#2950 review finding)",
+            settlesAfterClipPlaneChange(persistClipPlanes = false),
+        )
+    }
 }
