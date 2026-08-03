@@ -76,7 +76,10 @@ row "CLAUDE.md"                  24576 "always loaded; ceiling gated in CI"
 row ".claude/STATE.md"           16384 "session start; spec = NOW + IN-FLIGHT + NEXT(<=6) + BOOTSTRAP" "$MAIN"
 row ".claude/workflows/README.md" 24576 "read when choosing a workflow"
 
-MEM="$HOME/.claude/projects/-Users-thomasgorisse-Projects-sceneview/memory/MEMORY.md"
+# Derive the agent-memory slug from the MAIN checkout path — same rule the
+# /status skill uses — rather than hardcoding one workstation's absolute path
+# into a file committed to a public repo.
+MEM="$HOME/.claude/projects/$(printf '%s' "$MAIN" | tr '/.' '--')/memory/MEMORY.md"
 if [ -f "$MEM" ]; then
   b=$(wc -c < "$MEM" | tr -d ' '); TOTAL=$((TOTAL + b))
   printf "  %-34s %10s     ~%5s tok  %4s l  %s\n" \
@@ -104,9 +107,27 @@ fi
 # --- the local half CI can never see --------------------------------------
 HO="$MAIN/.claude/handoff.md"
 if [ -f "$HO" ]; then
-  age_days=$(( ( $(date +%s) - $(stat -f %m "$HO" 2>/dev/null || stat -c %Y "$HO") ) / 86400 ))
+  # `stat -f %m` is BSD/macOS; on GNU coreutils -f means --file-system and %m is
+  # read as a second FILE, so it prints a filesystem block to STDOUT before
+  # failing — a plain `A || B` would concatenate that garbage into the number
+  # and the arithmetic below would die. Validate the result is digits instead of
+  # trusting the exit status.
+  mtime="$(stat -f %m "$HO" 2>/dev/null || true)"
+  case "$mtime" in
+    ''|*[!0-9]*) mtime="$(stat -c %Y "$HO" 2>/dev/null || echo 0)" ;;
+  esac
+  case "$mtime" in ''|*[!0-9]*) mtime=0 ;; esac
+  if [ "$mtime" -eq 0 ]; then
+    age_days=-1
+  else
+    age_days=$(( ( $(date +%s) - mtime ) / 86400 ))
+  fi
   echo
-  if [ "$age_days" -ge 2 ]; then
+  if [ "$age_days" -lt 0 ]; then
+    # Say so rather than printing a confident "0 days" — an unread mtime is not
+    # a fresh handoff.
+    echo "  handoff.md age UNREADABLE (no usable stat) — not graded."
+  elif [ "$age_days" -ge 2 ]; then
     echo "  ! handoff.md last written ${age_days} days ago."
     echo "    It is gitignored, so no CI check has ever looked at it. A session that"
     echo "    ends without reconciling it leaves the next one to rebuild context by"
