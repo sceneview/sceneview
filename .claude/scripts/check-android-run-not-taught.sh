@@ -30,6 +30,15 @@
 #   the probe never saw them — too NARROW, and a false all-clear is the
 #   dangerous direction. Match the subcommand and let files off only when they
 #   also name one of the issues.
+#
+#   ⛔ AND THEN I WROTE A NARROW PROBE ANYWAY. The first version of this file
+#   required the subcommand to be followed by whitespace or a backslash:
+#   `android run([[:space:]]|\\)`. That misses `android run` at end-of-line and
+#   the extremely common inline-code form `` `android run` `` — a backtick is
+#   neither. Measured: 7 files seen vs 22 that actually mention it, so 15 were
+#   invisible to a gate whose own header warns against exactly this. The
+#   trailing context is now "end-of-line, or any character that cannot continue
+#   the word", which is what "the subcommand appears here" actually means.
 
 set -uo pipefail
 
@@ -49,7 +58,7 @@ while IFS= read -r f; do
   esac
   grep -qE "$ISSUE_RE" "$f" && continue
   offenders+=("${f#./}")
-done < <(grep -rlE '(^|[^-])android run([[:space:]]|\\)' \
+done < <(grep -rlE '(^|[^-[:alnum:]_])android run($|[^[:alnum:]_-])' \
            --include='*.md' --include='*.sh' --include='*.yml' . 2>/dev/null)
 
 if [ "${#offenders[@]}" -eq 0 ]; then

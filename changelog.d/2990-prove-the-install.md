@@ -27,8 +27,10 @@
   `try-demo.sh`, `render-tests.yml` and `maintain.md`. A first pass claimed
   completeness after finding three — it had grepped for `android run --apks`, and
   five docs write `android run \` with a line continuation, so the probe was too
-  narrow and reported an all-clear. `test-android-cli-install.sh` now matches the
-  **subcommand** and fails when any file teaches it without naming the defect.
+  narrow and reported an all-clear. `check-android-run-not-taught.sh` now matches
+  the **subcommand** — at end-of-line and inside inline code too, after a first
+  version missed 15 of the 22 files that mention it — and fails when any file
+  teaches the command without naming the defect.
 - `qa-android-demos.sh` no longer retries a bare `adb install -r` when the helper
   refuses. The helper already tries that itself and only fails when it could not
   prove the install landed; retrying it and continuing unverified downgraded the
@@ -50,3 +52,9 @@
   substituted — the code changed, the prose around it did not. Fixed, along with
   a leftover `AR_TESTING.md` note framing the command as merely missing `--es`
   "until v0.8+", which contradicted the warning immediately above it.
+- The helper now returns **2** when the install was proven but the activity would
+  not start, and **1** when the install could not be proven. It used to return
+  `am start`'s status, so a genuine launch failure printed "install could not be
+  proven … the device may not be running" — a true failure described by a false
+  cause, which sends the reader after the wrong bug. `qa-android-demos.sh` says
+  which half broke.

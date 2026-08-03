@@ -222,8 +222,14 @@ if $INSTALL; then
     # written to stop trusting. A QA sweep that proceeds here measures a binary
     # nobody can vouch for, which is worse than not running at all.
     android_cli_install_and_launch "$APK" "${PACKAGE}/${ACTIVITY}" >/dev/null || {
-      echo "[qa] ⛔ install could not be proven for $PACKAGE — refusing to QA a" >&2
-      echo "[qa]   build the device may not be running. See #2990." >&2
+      rc=$?
+      if [ "$rc" -eq 2 ]; then
+        echo "[qa] ⛔ install landed but '${PACKAGE}/${ACTIVITY}' would not start." >&2
+        echo "[qa]   The APK on the device is the right one — check the activity name." >&2
+      else
+        echo "[qa] ⛔ install could not be proven for $PACKAGE — refusing to QA a" >&2
+        echo "[qa]   build the device may not be running. See #2990." >&2
+      fi
       exit 1
     }
   else

@@ -436,6 +436,17 @@ android_cli_install_and_launch() {
     return 1
   fi
 
+  # Distinct exit codes, because the caller's message depends on WHICH half
+  # failed. Returning `am start`'s status made a proven install with a bad
+  # activity report "install could not be proven" — a true failure described by
+  # a false cause, which sends the reader after the wrong bug.
+  #   1 = the install could not be proven (device may hold the previous build)
+  #   2 = the install landed, but the activity did not start
   adb -s "$serial" shell am force-stop "$pkg"
-  adb -s "$serial" shell am start -n "$activity"
+  if ! adb -s "$serial" shell am start -n "$activity"; then
+    echo "[android-cli] install PROVEN for $pkg, but 'am start -n $activity' failed." >&2
+    echo "[android-cli]   The binary on the device IS the one you built; the" >&2
+    echo "[android-cli]   activity name is the suspect. (#2990)" >&2
+    return 2
+  fi
 }
