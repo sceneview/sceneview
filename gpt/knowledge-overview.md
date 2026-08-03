@@ -60,6 +60,7 @@ dependencies {
 
 Architecture: native renderer per platform — Filament on Android, RealityKit on Apple.
 KMP shares logic (math, collision, geometry, animations), not rendering.
+A `commonMain` viewer API exists in `sceneview-compose` — see the section above.
 
 SceneViewSwift is consumable by: Swift native (SPM), Flutter (PlatformView),
 React Native (Turbo Module / Fabric), KMP Compose iOS (UIKitView).
@@ -549,6 +550,11 @@ ferrari_f40.glb
 | Desktop | Software renderer | Compose Desktop | `samples/desktop-demo` | Alpha |
 | Flutter | Filament/RealityKit | PlatformView | `samples/flutter-demo` | Alpha |
 | React Native | Filament/RealityKit | Fabric | `samples/react-native-demo` | Alpha |
+| Compose Multiplatform | per-platform (see below) | `sceneview-compose` | -- | Android implemented; iOS + Desktop placeholder |
+
+`sceneview-compose` is a viewer-subset façade over the renderers above, not a platform of
+its own — no AR, no custom materials. Android delegates to Filament today; the iOS
+(RealityKit) and Desktop actuals draw a "not available yet" notice until wired.
 
 ### Flutter Bridge API
 Package: `flutter_sceneview` (pub.dev) — Alpha, Android + iOS only. Published at

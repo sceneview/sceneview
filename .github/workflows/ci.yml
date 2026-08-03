@@ -232,7 +232,7 @@ jobs:
       # cleanup PR, run `./gradlew :<module>:detektBaseline` locally and commit
       # the regenerated XML.
       - name: Detekt
-        run: ./gradlew :sceneview:detekt :arsceneview:detekt :sceneview-core:detekt --stacktrace
+        run: ./gradlew :sceneview:detekt :arsceneview:detekt :sceneview-core:detekt :sceneview-compose:detekt --stacktrace
 
       - name: Upload detekt reports
         if: always()

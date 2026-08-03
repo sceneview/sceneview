@@ -157,6 +157,7 @@ One unified showcase app per platform — all features integrated into tabs.
 |---|---|
 | `sceneview-core/` | KMP module — portable collision, math, geometry, animation, physics (commonMain/androidMain/iosMain/jsMain) |
 | `sceneview/` | Android 3D library — `Scene`, `SceneScope`, all node types (Filament renderer) |
+| `sceneview-compose/` | Compose Multiplatform façade — one `SceneViewer` composable from `commonMain`, delegating to each platform's own renderer. **Viewer subset only**, no AR (see `docs/docs/compose-multiplatform.md`) |
 | `arsceneview/` | Android AR layer — `ARScene`, `ARSceneScope`, ARCore integration |
 | `sceneview-web/` | Web 3D library — Kotlin/JS + Filament.js (same engine as Android, WebGL2/WASM) |
 | `SceneViewSwift/` | Apple 3D+AR library — `SceneView`, `ARSceneView` (RealityKit renderer, iOS/macOS/visionOS) |
@@ -170,6 +171,7 @@ One unified showcase app per platform — all features integrated into tabs.
 | `docs/` | MkDocs documentation source (built by CI) |
 | `branding/` | Logo SVGs, brand guide, store asset specs |
 | `buildSrc/` | Gradle build logic + detekt config |
+| `third_party/` | Vendored third-party source. `filament-kmp/` is the desktop/JVM Filament binding copied from [Erkko68/filament-kmp](https://github.com/Erkko68/filament-kmp) `0.3.0` under Apache-2.0 — **never hand-edit without adding the §4(b) modification notice**; `third_party/filament-kmp/diff-upstream.sh` enforces it |
 | `.github/` | CI workflows + community docs (CoC, Security, Support, Governance, Sponsors, Privacy) |
 
 ## Changelog entries

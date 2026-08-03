@@ -22,6 +22,15 @@ SceneView uses **native renderers per platform** for the best performance and to
 | **Android TV** | Filament | Compose TV | `sceneview` | Alpha |
 | **Flutter** | Filament / RealityKit | PlatformView | `flutter/sceneview_flutter` | Alpha |
 | **React Native** | Filament / RealityKit | Fabric | `react-native/react-native-sceneview` | Alpha |
+| **Compose Multiplatform** | per-platform | Compose Multiplatform | `sceneview-compose` | Android implemented; iOS + Desktop placeholder |
+
+!!! note "Compose Multiplatform is a façade, not a platform"
+    `sceneview-compose` gives you one `SceneViewer` composable from `commonMain` and
+    delegates to the renderers above. It covers the **viewer subset** only — a model, an
+    orbit camera, a light, an environment, tap hit-testing. **No AR**, no custom
+    materials, no post-processing: those stay platform-native by design. Today Android
+    renders; the iOS and Desktop actuals draw a visible "not available yet" notice.
+    See [Compose Multiplatform](compose-multiplatform.md).
 
 ---
 

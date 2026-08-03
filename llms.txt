@@ -5316,10 +5316,99 @@ val hitNode: Node? = fromTouch.firstOrNull()?.nodeOrNull
 
 ---
 
+## Compose Multiplatform (sceneview-compose)
+
+One composable from `commonMain`, several renderers underneath. Artifact:
+`io.github.sceneview:sceneview-compose:4.25.0`.
+
+**SCOPE — read before using.** This module is the *viewer subset* and will not grow past
+it: load a model, orbit it, light it, tap it. It is NOT a portable version of the full
+SDK. The honest intersection of Filament / RealityKit / Filament.js is 4 node types out
+of Android's 31.
+
+**NOT available here — use the platform-native API instead:**
+
+| Need | Use |
+|---|---|
+| **AR (anything)** | `arsceneview` on Android, `ARSceneView` on Apple. 77 of 178 `arsceneview` files take ARCore types in public signatures; there is no honest common shape |
+| Custom materials, shaders, post-processing | platform-native API |
+| Splat, Video, View, ContactShadow, Physics, Text nodes | platform-native API |
+
+**Renderer + status per platform** (do NOT generate code assuming iOS or Desktop render
+today — they draw a visible "not available yet" notice):
+
+| Platform | Renderer | Status |
+|---|---|---|
+| Android | Filament, delegates to `SceneView { }` | Implemented |
+| iOS | RealityKit via `SceneViewSwift` | Placeholder — needs an `@objc UIView` façade |
+| Desktop (JVM) | Filament via a vendored FFM binding | Placeholder — needs the native build chain |
+
+Targets: `androidTarget`, `jvm("desktop")`, `iosArm64`, `iosSimulatorArm64`. No `iosX64`
+— Compose Multiplatform 1.11.1 publishes no such variant.
+
+### The whole public API
+
+```kotlin
+@Composable
+fun SceneViewer(
+    model: ModelSource,
+    modifier: Modifier = Modifier,
+    camera: CameraState = rememberCameraState(),
+    lighting: Lighting = Lighting(),
+    environment: EnvironmentSource = EnvironmentSource.Default,
+    onTap: ((ModelHit?) -> Unit)? = null,
+    onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+)
+```
+
+| Type | Values |
+|---|---|
+| `ModelSource` | `Asset(path)` · `Bytes(bytes)` · `Url(url)` |
+| `EnvironmentSource` | `Default` · `Color(r, g, b, alpha = 1f)` · `Hdr(path, showSkybox = true)` |
+| `Lighting` | `direction: Float3` · `intensity: Float` (lux) · `ambientIntensity: Float` · `castShadows: Boolean` |
+| `ModelHit` | `position: Float3` · `distance: Float` |
+| `CameraState` | `target` · `distance` · `azimuth` · `elevation` (degrees) · `gesturesEnabled` |
+
+Helpers: `rememberCameraState(target, distance, azimuth, elevation)` (saved across
+config changes) and `rememberUnsavedCameraState(...)`.
+
+```kotlin
+// commonMain — compiles and runs on Android today
+@Composable
+fun ModelScreen() {
+    val camera = rememberCameraState(distance = 4f, elevation = 15f)
+
+    SceneViewer(
+        model = ModelSource.Asset("models/damaged_helmet.glb"),
+        modifier = Modifier.fillMaxSize(),
+        camera = camera,
+        lighting = Lighting(intensity = 80_000f, castShadows = true),
+        environment = EnvironmentSource.Hdr("environments/studio.hdr"),
+        onTap = { hit -> if (hit != null) println("hit at ${hit.position}") },
+    )
+}
+```
+
+Gotchas:
+- `ModelSource.Bytes` must be self-contained (GLB, or glTF with embedded resources) —
+  bytes have no location to resolve an external `.bin` or texture against. `Asset` and
+  `Url` do resolve siblings.
+- `ModelSource.Url` accepts http/https only, with timeouts and a 256 MB cap.
+- Pixel output differs per platform: lighting maps approximately between Filament and
+  RealityKit, and materials do not carry across engines. For a reproducible look, ship an
+  HDR environment and use it everywhere.
+- `EnvironmentSource.Hdr(showSkybox = false)` makes the viewport transparent so Compose
+  content behind it shows through.
+
+Full rationale: `docs/docs/compose-multiplatform.md`.
+
+---
+
 ## Cross-Platform (Kotlin Multiplatform + Apple)
 
 Architecture: native renderer per platform — Filament on Android, RealityKit on Apple.
 KMP shares logic (math, collision, geometry, animations), not rendering.
+A `commonMain` viewer API exists in `sceneview-compose` — see the section above.
 
 SceneViewSwift is consumable by: Swift native (SPM), Flutter (PlatformView),
 React Native (Turbo Module / Fabric), KMP Compose iOS (UIKitView).
@@ -7060,6 +7149,11 @@ Backpressure is absorbed by `rateHz`. Wire format: JSON-lines consumed by
 | Desktop | Software renderer | Compose Desktop | `samples/desktop-demo` | Alpha |
 | Flutter | Filament/RealityKit | PlatformView | `samples/flutter-demo` | Alpha |
 | React Native | Filament/RealityKit | Fabric | `samples/react-native-demo` | Alpha |
+| Compose Multiplatform | per-platform (see below) | `sceneview-compose` | -- | Android implemented; iOS + Desktop placeholder |
+
+`sceneview-compose` is a viewer-subset façade over the renderers above, not a platform of
+its own — no AR, no custom materials. Android delegates to Filament today; the iOS
+(RealityKit) and Desktop actuals draw a "not available yet" notice until wired.
 
 ### Flutter Bridge API
 Package: `flutter_sceneview` (pub.dev) — Alpha, Android + iOS only. Published at
