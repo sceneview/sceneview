@@ -434,17 +434,54 @@ jobs:
             echo "::error title=Fan-out left no run record::${LOG} is absent — the action did not get far enough to write one. Check the step above for a startup failure (bad model id, expired token, action version)."
             exit 0
           fi
-          # Recursive scan rather than a fixed path: the action writes either a
-          # list of messages or a single object depending on version, and a
-          # wrong path would silently read 0 denials and print the reassuring
-          # branch — the exact failure this step exists to prevent.
-          DENIALS="$(jq '[.. | objects | .permission_denials_count? // empty] | max // 0' "$LOG" 2>/dev/null || echo unknown)"
+          # ⛔ ABSENT IS NOT ZERO. The previous version ended in
+          # `| max // 0`, so a scan that found the field NOWHERE returned the
+          # same `0` as a run with genuinely no denials — and printed the
+          # reassuring branch. Measured on run 30800040485: the step announced
+          # "0 denials" while the action's own summary said 13. This step exists
+          # to prevent exactly that, and it produced it. Absence now reports
+          # `unknown` and says so out loud.
+          #
+          # `grep` rather than a jq path, because the record's shape is not a
+          # promise: it has already been observed as a list of messages and as a
+          # single object, and the jq scan that was supposed to cover both still
+          # missed the field. A regex over the raw bytes does not care.
+          DENIALS="$(grep -o '"permission_denials_count"[[:space:]]*:[[:space:]]*[0-9]\+' "$LOG" 2>/dev/null \
+                      | grep -o '[0-9]\+$' | sort -rn | head -1)"
+          [ -n "$DENIALS" ] || DENIALS=unknown
           echo "Permission denials reported by the fan-out: $DENIALS"
-          if [ "$DENIALS" != "unknown" ] && [ "${DENIALS:-0}" -gt 0 ] 2>/dev/null; then
-            echo "::error title=Reviewers were denied their tools::${DENIALS} tool call(s) refused, so the fan-out could not run and no verdict file exists. This is a CONFIGURATION failure, not a finding about the PR — check \`--allowedTools\` in claude_args (Bash/Write/Task are NOT included by default)."
-          else
-            echo "::error title=Reviewers ran but wrote nothing::The fan-out reported no permission denials yet produced no verdict file — read the step log above; the orchestrator likely ended its turn without writing the file."
+
+          # Name the refused tools when the record carries them — "13 denials"
+          # does not tell you WHICH allowlist entry is missing, which is the
+          # only actionable part.
+          TOOLS="$(grep -oE '"tool_name"[[:space:]]*:[[:space:]]*"[^"]+"' "$LOG" 2>/dev/null \
+                    | sed 's/.*"\([^"]*\)"$/\1/' | sort | uniq -c | sort -rn | head -12)"
+          if [ -n "$TOOLS" ]; then
+            echo "Tools the fan-out invoked (count / name):"
+            printf '%s\n' "$TOOLS"
           fi
+
+          if [ "$DENIALS" = "unknown" ]; then
+            echo "::error title=Denial count unreadable::No permission_denials_count found in ${LOG}. NOT the same as zero — the run record's shape changed, or the action did not write a summary. Download the run-record artifact attached to this run and re-check before concluding anything about the reviewers."
+          elif [ "$DENIALS" -gt 0 ]; then
+            echo "::error title=Reviewers were denied their tools::${DENIALS} tool call(s) refused, so the fan-out could not complete and no verdict file exists. This is a CONFIGURATION failure, not a finding about the PR — widen \`--allowedTools\` in claude_args to cover the tools listed above."
+          else
+            echo "::error title=Reviewers ran but wrote nothing::Zero denials and still no verdict file — the orchestrator ended its turn without writing it. Read the fan-out step's log; this is not an allowlist problem."
+          fi
+
+      # The run record is the only place the refused tool names live, and it is
+      # deleted with the runner. Keeping it is what turns the next failure into
+      # a measurement instead of another guess — this whole workflow has now
+      # cost five debugging rounds, four of which needed a fact that was only
+      # ever visible inside this file.
+      - name: Keep the fan-out run record for diagnosis
+        if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false' && hashFiles('review-verdict.json') == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-run-record-${{ steps.pr.outputs.number }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/claude-execution-output.json
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Grade the review
         id: grade
