@@ -302,6 +302,40 @@ class SketchfabAssetResolverTest {
     }
 
     /**
+     * The cross-platform half of that degradation shape (#2974).
+     *
+     * `stagedLooksComplete` used to gate on `length() > 0`, so a staged copy
+     * holding nothing but the 4-byte `glTF` magic counted as complete and was
+     * served once the bundled asset vanished. iOS gates the same last-resort
+     * path on `boundsAreSane`, which carries a 12-byte floor, so the two
+     * platforms disagreed on the same file while both comments claimed parity.
+     *
+     * Mutation-tested: restoring `target.length() > 0L` in `stagedLooksComplete`
+     * makes this fail — the 4-byte file is served instead of throwing.
+     */
+    @Test
+    fun `fallbackBundle refuses a staged copy shorter than a GLB header`() {
+        val bundle = FakeBundledAssets(glb(size = 2048, filler = 'A'.code.toByte()))
+        val truncating = SketchfabAssetResolver.forTesting(context, service, bundle)
+        val slug = SampleAssets.all.first().copy(uid = "4".repeat(32))
+
+        val staged = truncating.fallbackBundle(slug)
+        // A racy write that landed the magic and nothing else — 4 bytes, so it
+        // passes `hasGlbMagic` and every `> 0` length test.
+        staged.writeBytes(byteArrayOf(0x67, 0x6C, 0x54, 0x46))
+        assertEquals(4, staged.length().toInt())
+
+        bundle.bytes = null // asset pruned from the APK, so re-staging cannot rescue it
+
+        try {
+            truncating.fallbackBundle(slug)
+            fail("a 4-byte staged copy is not a GLB — it must not be served as the fallback")
+        } catch (e: SketchfabAssetResolver.FallbackUnavailable) {
+            assertEquals(slug.uid, e.uid)
+        }
+    }
+
+    /**
      * The freshness check compares `target.length()` against the *bundled*
      * length, and everything above proves that with a fake. This proves the
      * assumption underneath it holds for the REAL `AssetManager`: that
