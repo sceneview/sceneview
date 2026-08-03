@@ -132,3 +132,11 @@
   function was restructured. Mutation-tested: restore the CLI branch's early
   `return 0` and the `cli path` case goes red while the `adb path` one stays
   green, which is precisely the asymmetry that existed before.
+- `capture-play-store-screenshots.sh`'s section-3 header still opened with "Use
+  `android run` (atomic install+launch) when available" — the branch mechanics
+  below it were already correct. Third stale line the gate's file-level
+  exemption let through. The alternative (exempt only within ±4 lines of an
+  issue reference) was measured and is worse: 21 files flagged, including the
+  gate itself, its test suite and the changelog, because prose legitimately
+  discusses the command across paragraphs. The measurement is recorded in the
+  gate's header so it is not re-proposed blind.

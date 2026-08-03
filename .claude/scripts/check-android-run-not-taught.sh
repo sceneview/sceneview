@@ -72,7 +72,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT" || exit 1
 
 # A file that cites one of these is documenting the defect, not recommending
-# the command. CHANGELOG.md and changelog.d/ are release history — they describe
+# the command.
+#
+# ⚠️ The exemption is FILE-level on purpose, and that has a measured cost: three
+# stale lines slipped through this PR because their file cited an issue
+# elsewhere. Proximity-based exemption (issue within +/-4 lines of the match)
+# was measured as the alternative and is WORSE — it flags 21 files, including
+# this script, its own test suite and the changelog, because prose legitimately
+# discusses the command across paragraphs. Do not re-propose it without
+# re-measuring; the noise buries the signal it is meant to surface. CHANGELOG.md and changelog.d/ are release history — they describe
 # what was fixed, in the words used at the time.
 ISSUE_RE='#(2796|2854|2990)'
 
