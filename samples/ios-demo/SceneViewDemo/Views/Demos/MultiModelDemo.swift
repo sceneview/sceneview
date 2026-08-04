@@ -27,8 +27,9 @@ import SceneViewSwift
 ///
 /// > Important: the chip names the CATALOGUE ENTRY, not the geometry. On a
 /// > keyless build a slot still reads "Oak Trees" over its bundled stand-in.
-/// > Android surfaces that with the scaffold's asset-source pill; iOS has no
-/// > equivalent chrome yet, so a keyless build here is silent about the swap.
+/// > Both platforms now say so on screen — Android through the scaffold's
+/// > asset-source chip, iOS through ``AssetSourcePill`` (#2960), which reads
+/// > "Offline model" as soon as any one slot resolves out of `fallback/`.
 ///
 /// ⚠️ That swap is also why this demo is deliberately absent from the App Store
 /// screenshot set (#2896). The bundled stand-ins are intentionally distinct
@@ -53,6 +54,9 @@ struct MultiModelDemo: View {
     /// re-evaluate visibility every recomposition.
     @State private var loadedEntities: [String: Entity] = [:]
     @State private var loadError: String?
+    /// What the resolver handed back per slot uid — the pill's only honest
+    /// input (#2960). A slot still resolving simply has no entry yet.
+    @State private var resolvedURLs: [String: URL] = [:]
     /// Anchor under which every model lives. Stored so we can attach / detach
     /// individual entities without rebuilding the entire scene.
     @State private var sceneAnchor: AnchorEntity?
@@ -112,8 +116,24 @@ struct MultiModelDemo: View {
         }
     }()
 
+    private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
+
+    /// A WHOLE-SCENE verdict over the four park slots: one stand-in makes the
+    /// pill read "Offline model" for the scene. This demo's header already
+    /// admits in prose that a keyless slot reads "Oak Trees" over a stand-in
+    /// — the pill is that admission made visible on screen (#2960).
+    private var assetSource: AssetSourceState {
+        let slugs = Self.slots.compactMap(\.slug)
+        return AssetSourceProbe.ofAll(
+            resolvedURLs: slugs.map { resolvedURLs[$0.uid] },
+            hasAPIKey: hasSketchfabKey,
+            loaded: slugs.allSatisfy { loadedEntities[$0.uid] != nil }
+        )
+    }
+
     var body: some View {
         sceneContent
+            .assetSourcePill(assetSource)
             .demoSettingsSheet { controlsSheet }
             .task {
                 _ = await SketchfabAssetResolver.shared.prefetchAll(category: "park")
@@ -275,6 +295,7 @@ struct MultiModelDemo: View {
         guard let slug = slot.slug else { return }
         do {
             let url = try await SketchfabAssetResolver.shared.resolve(slug)
+            resolvedURLs[slug.uid] = url
             let node = try await ModelNode.load(contentsOf: url)
             _ = node.scaleToUnits(slot.scale)
             _ = node.centerOrigin()
