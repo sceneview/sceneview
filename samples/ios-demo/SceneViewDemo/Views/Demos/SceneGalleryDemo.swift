@@ -24,10 +24,25 @@ struct SceneGalleryDemo: View {
     @State private var selectedIndex: Int = 0
     @State private var loadedNode: ModelNode?
     @State private var loadError: String?
+    /// What the resolver actually handed back for the selected slug — the only
+    /// honest input to the asset-source pill (#2960). `nil` while resolving.
+    @State private var resolvedURL: URL?
+
+    private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
 
     private var selectedSlug: SketchfabSlug? {
         guard slugs.indices.contains(selectedIndex) else { return nil }
         return slugs[selectedIndex]
+    }
+
+    /// "Loaded" here means the model *parsed*, not merely that the file
+    /// arrived, so the pill and the centre spinner stay in lockstep.
+    private var assetSource: AssetSourceState {
+        AssetSourceProbe.of(
+            resolvedURL: resolvedURL,
+            hasAPIKey: hasSketchfabKey,
+            loaded: loadedNode != nil
+        )
     }
 
     var body: some View {
@@ -38,6 +53,7 @@ struct SceneGalleryDemo: View {
                 controls
             }
         }
+        .assetSourcePill(assetSource)
         .background(Color.black)
         .task(id: selectedSlug?.uid) {
             await loadSelectedSlug()
@@ -134,8 +150,10 @@ struct SceneGalleryDemo: View {
         guard let slug = selectedSlug else { return }
         loadedNode = nil
         loadError = nil
+        resolvedURL = nil
         do {
             let url = try await SketchfabAssetResolver.shared.resolve(slug)
+            resolvedURL = url
             let node = try await ModelNode.load(contentsOf: url)
             _ = node.scaleToUnits(slug.scaleToUnits)
             _ = node.centerOrigin()

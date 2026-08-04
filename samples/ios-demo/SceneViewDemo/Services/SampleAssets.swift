@@ -99,7 +99,12 @@ enum SampleAssets {
             displayName: "PBR Low-Poly Fox",
             author: "Ida..Faber",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/phoenix_bird.usdz",
+            // Keyless fallback: a fox for a fox (#2960). `khronos_fox` is already
+            // bundled and is what the Android registry maps this slug to
+            // (`SampleAssets.kt` → `models/khronos_fox.glb`), so the two platforms
+            // now show the same subject under the same label. The previous
+            // `phoenix_bird` rendered a mythical bird under "PBR Low-Poly Fox".
+            fallbackBundledPath: "Models/khronos_fox.usdz",
             scaleToUnits: 0.40,
             hasBakedAnimation: false,
             category: "gallery",
@@ -110,7 +115,14 @@ enum SampleAssets {
             displayName: "Desk Lamp",
             author: "BlueHour",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/fantasy_book.usdz",
+            // Keyless fallback: a lantern is a lamp (#2960). Already bundled, and
+            // the Android registry maps this slug the same way
+            // (`models/khronos_lantern.glb`). The previous `fantasy_book` rendered
+            // a book under "Desk Lamp". `khronos_lantern` is also the ar_placement
+            // "Floor Lamp" fallback, which is fine: both consumers are one-model
+            // pickers, so the two are never on screen together (#2355 binds only
+            // where several slots render at once).
+            fallbackBundledPath: "Models/khronos_lantern.usdz",
             scaleToUnits: 0.45,
             hasBakedAnimation: false,
             category: "gallery",
@@ -156,7 +168,13 @@ enum SampleAssets {
             displayName: "Walking Robot",
             author: "ArtsByKev",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/animated_butterfly.usdz",
+            // Keyless fallback: an animated humanoid for a walking robot (#2960).
+            // The previous `animated_butterfly` was picked for its baked clip, not
+            // its subject — `cyberpunk_character` carries one too (verified: its
+            // `scene.usdc` declares a `SkelAnimation`) and is already
+            // `AnimationDemo`'s own bundled hero, so the playback point survives
+            // while the subject stops contradicting the label.
+            fallbackBundledPath: "Models/cyberpunk_character.usdz",
             scaleToUnits: 0.40,
             hasBakedAnimation: true,
             category: "animation",
@@ -167,7 +185,11 @@ enum SampleAssets {
             displayName: "Enforcer Mk1",
             author: "Mr0btainable",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
-            fallbackBundledPath: "Models/animated_butterfly.usdz",
+            // Keyless fallback: same reasoning as "Walking Robot" above — a mech
+            // reads as an animated humanoid, never as a butterfly (#2960). Sharing
+            // `cyberpunk_character` with the other three animation slugs is safe:
+            // `AnimationDemo` is a picker, one model at a time.
+            fallbackBundledPath: "Models/cyberpunk_character.usdz",
             scaleToUnits: 0.55,
             hasBakedAnimation: true,
             category: "animation",

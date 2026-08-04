@@ -89,13 +89,30 @@ struct AnimationDemo: View {
     @State private var speed: Float = 1.0
     @State private var loadedNode: ModelNode?
     @State private var loadError: String?
+    /// What the resolver handed back for a *streamed* subject (#2960).
+    @State private var resolvedURL: URL?
+
+    private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
 
     private var selectedSubject: AnimationSubject {
         Self.subjects[selectedIndex]
     }
 
+    /// `nil` for slot 0: "Soldier" is loaded straight from the app bundle and
+    /// labelled as itself, so it has no origin question to answer — showing a
+    /// pill there would invent a substitution that never happened.
+    private var assetSource: AssetSourceState? {
+        guard selectedSubject.streamedSlug != nil else { return nil }
+        return AssetSourceProbe.of(
+            resolvedURL: resolvedURL,
+            hasAPIKey: hasSketchfabKey,
+            loaded: loadedNode != nil
+        )
+    }
+
     var body: some View {
         sceneContent
+            .assetSourcePill(assetSource)
             .demoSettingsSheet {
                 controlsSheet
             }
@@ -278,10 +295,12 @@ struct AnimationDemo: View {
         let subject = selectedSubject
         loadedNode = nil
         loadError = nil
+        resolvedURL = nil
         do {
             let node: ModelNode
             if let slug = subject.streamedSlug {
                 let url = try await SketchfabAssetResolver.shared.resolve(slug)
+                resolvedURL = url
                 node = try await ModelNode.load(contentsOf: url)
             } else if let bundled = subject.bundledAsset {
                 node = try await ModelNode.load(bundled)

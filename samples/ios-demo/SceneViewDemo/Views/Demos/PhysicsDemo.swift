@@ -34,8 +34,27 @@ struct PhysicsDemo: View {
 
     private let physicsSlugs: [SketchfabSlug] = SampleAssets.byCategory["physics"] ?? []
 
+    private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
+
+    /// `nil` while the demo drops its own generated cubes — they are not a
+    /// substitution for anything, so there is nothing to declare. With a slug
+    /// selected the caption reads "Streamed <name> falling", which is exactly
+    /// the claim the pill has to keep honest on a keyless build (#2960): all
+    /// four physics slugs currently resolve to `fantasy_book.usdz`.
+    private var assetSource: AssetSourceState? {
+        guard selectedSlug != nil else { return nil }
+        return AssetSourceProbe.of(
+            resolvedURL: streamedURL,
+            hasAPIKey: hasSketchfabKey,
+            // "Loaded" here is "the file arrived" — the scene consumes the URL
+            // directly, there is no separate parse step to wait for.
+            loaded: streamedURL != nil
+        )
+    }
+
     var body: some View {
         sceneContent
+            .assetSourcePill(assetSource)
             .demoSettingsSheet { controlsSheet }
             .task {
                 _ = await SketchfabAssetResolver.shared.prefetchAll(category: "physics")
