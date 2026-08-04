@@ -1,0 +1,98 @@
+---
+name: automation-map
+description: The full automation ecosystem — the settings.json hooks, the .claude/scripts/ index with what each script actually guarantees and what it deliberately does NOT, the published-artifact registry, and the nine quality gates that must pass before any push to main. Use when looking for the script that already does X, wiring a hook, or checking what a gate really enforces before trusting it.
+---
+
+## Automation ecosystem
+
+### Hooks (settings.json)
+
+Hooks trigger automatically on specific Claude Code actions:
+
+| Trigger | When | Action |
+|---|---|---|
+| Pre-commit version check | `git commit` | Blocks if VERSION_NAME mismatches across modules |
+| Post-edit gradle.properties | Any gradle.properties edit | Reminds to update ALL version locations |
+| Post-edit Android API | Edit in `sceneview/src/` | Reminds to check SceneViewSwift + llms.txt |
+| Post-edit Swift API | Edit in `SceneViewSwift/Sources/` | Reminds to check Android + llms.txt |
+| Post-push reminder | `git push` | Reminds to update CLAUDE.md and website |
+
+### Scripts (.claude/scripts/)
+
+| Script | Purpose |
+|---|---|
+| `sync-versions.sh` | Scan ALL version declarations, report/fix mismatches (the single source of truth for the version-location list) |
+| `claim.sh` | Atomic issue-claim registry that kills the #2300 dup-implementation race. Primary lock = GitHub `in-progress` label (cross-host); local mirror = the `STATE.md` IN-FLIGHT ledger. `<issue#>` / `--check` / `--release` / `--list` / `--force`. macOS-safe (sleepless `mkdir` lock, no `flock`) |
+| `check-saved-workflows.sh` | Static validator for the `.claude/workflows/*.js` saved workflows (async-wrapped `node --check` + meta block + resume-safety). Distinct from `check-workflow-scripts.sh`, which validates the CI YAML |
+| `cross-platform-check.sh` | Compare Android vs iOS vs Web API surface, report gaps |
+| `release-checklist.sh` | Pre-release validation (versions, changelog, tests, etc.). Section 16 runs `store-preflight.sh` (advisory); section 17 runs the store-sync listing-drift diff (`play_listing.py` / `asc_listing.py --dry-run --fail-on-drift`, advisory WARN — never a blocker, #2612 Phase C) |
+| `store-preflight.sh` | Read-only App Store Connect preflight (#2612 P1) — detects the human-only store blockers that silently 403 a deploy: an expired Apple agreement (`REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED` canary), an App Review rejection, cert/profile expiry (< `CERT_EXPIRY_WARN_DAYS`, default 30), and (since #2731) an open never-submitted reviewSubmission (`READY_FOR_REVIEW`/`UNRESOLVED_ISSUES`) — the silent-submission signature the IOS-scoped version-state probe alone can't see. Signs the ASC ES256 JWT with openssl only; reuses `app-store.yml`'s ASC secrets (no new scope); SKIPs honestly without creds. Advisory-first — a blocker hard-blocks only under `GATE_HARD=1`. Wired into `release-checklist.sh` §16, the `/store-status` command doc (probe-set wiring is a P1 follow-up), and a daily `maintenance.yml` job. Self-tested by `test-store-preflight.sh` (in `repo-hygiene`) |
+| `test-app-store-submit.py` | Hermetic self-test for `app-store.yml`'s **Submit build for App Store review** step (#2893). That step is a large Python program inside a YAML heredoc, and it had no test seam: exercising it meant dispatching the workflow, which archives, signs and uploads a real TestFlight build — so every fix to it was validated in production, on a release, after it broke one (#2731, #2885, #2893). The test EXTRACTS the real heredoc (never a copy, so it cannot drift; a renamed step fails loudly instead of silently covering nothing) and runs it against a stubbed App Store Connect: build selection pinned to `ASC_EXPECTED_BUILD` (W1), auth-vs-transient classification on the builds GET (W2), orphan-`reviewSubmission` cleanup on any post-create failure (W5), and the `whatsNew` sourcing. Stdlib only — no network, no secrets, no Apple call. Runs in `ci.yml` → `repo-hygiene` |
+| `store-sync/play_listing.py` | Play listing sync/diff as code (#2612 P2) — the single code path for `play-store.yml`'s `sync-listing` job (`--apply`) and local read-only drift diffs (`--dry-run` default: listing text + per-image SHA-256 vs the live store, probe edit abandoned). SKIPs honestly without creds. Self-tested by `test-store-sync.sh` (repo-hygiene) |
+| `store-sync/asc_listing.py` | App Store listing drift diff + screenshot upload (#2612 P2). `--dry-run` (default, read-only) diffs live ASC text fields + screenshot `sourceFileChecksum` against `samples/ios-demo/distribution/app-store/` + `appstore-screenshots/`; `--apply-screenshots` uploads the repo screenshots (reserve → chunked PUT → commit `uploaded:true` + MD5) to the **editable** version, replacing each display-type set (delete-then-upload; a failed delete is fatal *before* any upload, so a half-replaced set can't happen). Live order is *expected* to follow repo filename order — Apple does not promise creation order, so the script PROBES it after upload and warns instead of asserting. Never creates a version — SKIPs honestly when none is editable, so `app-store.yml`'s repaired submit step (#2731) stays untouched. Listing TEXT stays owned by that step. CI caller = its OWN workflow `app-store-screenshots.yml` (ubuntu, dispatch-only, no Xcode) — deliberately NOT a job in `app-store.yml`, whose `deploy-ios`/`deploy-macos` are gated only on `*_ready`, so a screenshot dispatch there would also build and upload a TestFlight build (caught in PR #2781 review). Flag abbreviations are disabled on both store-sync scripts: `--apply` must not resolve into an upload. Same ASC env aliases as `store-preflight.sh`. **`--dry-run` is also the daily read-only `maintenance.yml` `asc-listing-drift` job** (#2612 P2 Phase C step 0, sibling of `store-preflight`) — the first CI caller of the ASC read-only path. It prints a `sourceFileChecksum` **provenance verdict** (`confirmed`/`unattested-match`/`md5-shaped`/`absent`/`other`/…): the MD5 keying the screenshot diff rests on is *measured, not assumed* (true by construction for anything this script uploaded — Apple echoes what we declare — so only console-sourced live sets are an honest sample). A repo-MD5 match therefore reports `unattested-match`, **not** `confirmed`, unless the operator attests provenance with `--screenshots-are-console-sourced` (which covers the draft too, and names its own source in the log so an inherited env var can't attest invisibly); without that gate a single `app-store-screenshots.yml` dispatch would have made the verdict permanently green on a tautology (caught in PR #2811 review). The probe also samples the **editable draft**'s screenshot sets and stamps every set with the version it was read from (`APP_IPHONE_67 @4.23.0`, `… @draft 4.24.0`), because a console upload lands on the draft — and that draft keeps its screenshots when it ships, so a set being live proves nothing about who uploaded it. Phase C's drift gate is now **wired on both surfaces, advisory**: §17 of `release-checklist.sh` WARNs at release time (NOT gated on a `confirmed` verdict — an advisory WARN is not the blocking bar, PR #2880), and the daily `maintenance.yml` `listing-drift` / `asc-listing-drift` jobs run the diff with `--fail-on-drift` and open a de-duplicated per-store tracking issue **only on a measured drift** (exit 3 — never on a credential-less skip or a mid-read crash), refreshed daily while the drift persists — and **auto-closed once the diff comes back clean** (#2835), through the shared `close-maintenance-issue.sh`. The close is gated on a *positive* measured-and-clear signal (`clean=1`: exit 0 **and** a non-empty log **and** no `[skip]` line), never on the bare exit 0, because 0 also covers the credential-less skip and a run where the tool never spoke — closing on that would silently retract a live finding the first time a secret expired. #2612 Phase C. Neither fails CI; promotion to blocking waits on n=5 |
+| `close-maintenance-issue.sh` | Closes an auto-filed `maintenance.yml` tracking issue once its condition clears (#2835). Called by all five auto-filers (`skill-drift`, `deeplink-health`, `mcp-npm-freshness`, `listing-drift`, `asc-listing-drift`), which were one-directional before it — they opened and refreshed issues daily and never closed one, so #2835 stayed open 13 days after the npm lag it described was gone. Each caller passes its own **positive** measured-and-clear signal (`clean` / `resolved`), never the inverse of the open signal: for both store jobs exit 0 also means "credentials absent", and a failed `npm view` yields the same "no lag" as a genuine match. The lookup only ever matches an issue that is open, filed by `app/github-actions`, labelled `maintenance`, and title-matched — a human-filed issue can never be closed by it. `--dry-run` reports the target without touching it |
+| `lib/android-cli.sh` | Shared helpers for Google's `android` CLI (screenshot, layout, install+launch) with `adb` fallback |
+| `setup-ar-emulator.sh` | Bootstrap a reusable ARCore-ready `Pixel_7a` emulator (virtualscene camera, 4 GB RAM, host GPU, ARCore APK). Idempotent — `--check` (read-only, reports pool + snapshot state + camera-id topology, #2754), `--clean` (wipe+recreate), `--seed-snapshot` (seed the golden `qa-clean` boot snapshot), `--no-snapshot` (force cold boot), `--release` (hand this session's pool reservation back, emulator keeps running, #2862), `--rosetta` (provision/boot the separate x86_64-under-Rosetta AR rig on reserved port 5584 — ⛔ **measured NOT to deliver live-camera AR**: no camera HAL id `0`, ARCore install kills `system_server`, nothing renders; kept as a reproducible probe, #2758). RAM-budgeted adaptive emulator pool (#1647 → #1654): leases a free running emulator, or boots a new one on a distinct `-port` when the live RAM-budgeted cap has room and free RAM clears the hard safety gate, or waits for a lease to free. Boot snapshots (#1672): once seeded, the base-port emulator cold-boots from the immutable `qa-clean` snapshot — faster and deterministic, and fixes the userdata storage-degradation bug. **Use this for routine QA — never QA on a personal device.** |
+| `lib/emulator-select.sh` | Sourced helper for `setup-ar-emulator.sh` / `device-qa.sh` / `qa-android-demos.sh` — RAM monitoring (`vm_stat`/`/proc/meminfo`), RAM-budgeted pool-cap computation, a per-emulator lease registry, RAM-scaled `-memory`, multi-port boot, and stale-lease reclaim. The adaptive pool runs as many emulators as live host RAM safely allows (floor 1, `EMU_POOL_MAX` ceiling), superseding #1647's strict-single design (#1654). Leases are reserved per **session** and survive the provisioning script, and no emulator is leased unless its AVD matches `EMU_REQUIRE_AVD` (#2862) |
+| `test-emulator-lease.sh` | Hermetic self-test for the pool lease contract (#2862, #2921) — sticky lease survives its taker, a peer session is refused, an expired reservation is reclaimed, a non-pool AVD is never leased, the handoff token is inherited at most once, and `emu_lease_ensure` verifies a pre-set `ANDROID_SERIAL` **without** stealing ownership (a plain `emu_lease_acquire` there makes the child release its parent's lease mid-run — mutation-tested). Stub `adb` + scratch lease dir, no emulator needed. Runs in `ci.yml` → `repo-hygiene` |
+| `qa-android-demos.sh` | QA loop over every demo — uses `android layout`/`screen capture` for the UI dump and screenshots |
+| `capture-play-store-screenshots.sh` | Play Store screenshot capture — `android screen capture` (no LF/CRLF corruption) |
+| `visual-check.sh` | Before/after baseline capture — Android via `android` CLI, iOS via `xcrun simctl` |
+| `android-env-check.sh` | Sanity check for the Android dev env — `--fix` installs the CLI + SceneView skill |
+| `install-sceneview-skill.sh` | Copies `agents/sceneview/` (Android skill) to `~/.android/cli/skills/xr/sceneview/` |
+| `install-sceneview-ios-skill.sh` | Copies `agents/sceneview-ios/` (Apple skill) to `~/.android/cli/skills/xr/sceneview-ios/` |
+| `install-sceneview-web-skill.sh` | Copies `agents/sceneview-web/` (Web skill) to `~/.android/cli/skills/xr/sceneview-web/` |
+| `check-sceneview-skill.sh` | Verifies all three `agents/sceneview*/` skills (API identifiers, demo refs, frontmatter) are in sync with the library source. Runs in `quality-gate.sh`, `pr-check.yml`, and daily via `maintenance.yml` |
+| `check-doc-drift.sh` | Flags when a public-API change is not mirrored in the docs (llms.txt / KDoc / `docs/docs/*` / recipes). **Diff mode** (default) = per-PR ADVISORY WARN, runs in `ci.yml` → `repo-hygiene`; never blocks (heuristic → would false-positive). **`--audit` mode** = repo-wide candidate-drift worklist consumed by the weekly `doc-audit.yml` agent. `--fail` opts into a non-zero exit. Self-tested by `test-check-doc-drift.sh` (also in `repo-hygiene`). |
+| `generate-credits.py` | Regenerates `assets/CREDITS.md` from `assets/catalog.json` — the attribution surface every model's licence requires (CC-BY 4.0 §3a). Re-run after ANY catalog edit. `--check` is the deterministic BLOCKING drift gate in `ci.yml` → `repo-hygiene` (regenerate-and-compare, no write) |
+| `worktree-auto-prune.sh` | Safe GC for `.claude/worktrees/*` — removes worktrees whose branch is merged (`--dry-run`, `--yes`, `--keep <path>`). Never touches dirty or unmerged trees |
+| `grade-pr-review.sh` | Grades an agent PR review into a merge verdict — DETERMINISTIC, no LLM. Consumes `review-verdict.json` from `pr-review.yml`'s reviewers and emits `verdict=MERGE\|MERGE_AFTER_WARNINGS\|DO_NOT_MERGE\|REVIEW_INCOMPLETE` + a dedup-marked comment body. Mirrors the grading block of `review-fanout.js` so in-session and in-CI reviews agree. **Fails closed**: missing file / unparsable JSON / dropped reviewer ⇒ `REVIEW_INCOMPLETE`, never a pass. Self-tested with a mutation test by `test-grade-pr-review.sh` (in `repo-hygiene`) |
+| `agent-cost-report.sh` | Measures what the agents actually cost, from the local session transcripts (`~/.claude/projects/*/*.jsonl`). `--days N`, `--by day\|model\|session\|branch`, `--json`, `--all`, `--top N`. Reports **tokens, never dollars** (flat Max plan — a dollar figure would be invented). ⚠️ Everything is keyed on `requestId`: a transcript emits several records per API call with the same `usage`, and summing records overstates output by ~95% (measured: 980 records / 658 requests). Self-tested by `test-agent-cost-report.sh` |
+| `check-android-run-not-taught.sh` | Content gate in `repo-hygiene`: no file may TEACH Google's `android run` for installing. That command has a measured install no-op (prints success, installs nothing, leaves the previous build on the device) and was rediscovered **three times** — #2796 tablet screenshots, #2854 store screenshots against a build 16 h old *while producing entirely plausible images*, #2990 the shared helper — because each fix landed in ONE call site while the docs went on recommending it. Documenting the trap is allowed (cite one of the issues); recommending it is not. ⚠️ Its first pattern required whitespace or a backslash after the subcommand, so it saw 7 files where 22 mention it — inline code and end-of-line slipped through. Matches on word boundary now |
+| `test-android-cli-install.sh` | Hermetic self-test for `android_cli_install_and_launch` (#2990). The helper used to `return $?` from `android run`; on a real emulator that command printed success-shaped output, installed NOTHING, and left a build 8 hours old on the device — so a QA run measured the previous binary and would have reported a verified fix that never shipped, had the change been subtler than a visibly-wrong pill. The helper now proves the install by checking the device's `lastUpdateTime` moved, falls back to `adb`, and refuses to launch when neither path can be proven. Stub `adb`/`android`, no emulator, no lease. Mutation-tested on the stamp check |
+| `context-budget.sh` | Reports what every session pays BEFORE doing any work — the standing context re-sent on every turn (`CLAUDE.md`, `STATE.md`, `workflows/README.md`, the memory index), against each file's documented spec. Complements `agent-cost-report.sh`: that one measures what was spent, this one measures what will be. Measured 2026-08-03 pre-split: ~174 Ko of preamble, growing monotonically because nothing reported it. ⚠️ Bytes are measured, the token column is an explicit ESTIMATE at ~4 chars/token — use it for deltas, never as truth. Resolves `STATE.md`/`handoff.md` from the MAIN checkout, because both are gitignored and every worktree carries its own stale copy. `--strict` exits non-zero when a file is over spec |
+| `test-context-budget.sh` | Gates the COMMITTED half of the above in `ci.yml` → `repo-hygiene`: a `CLAUDE.md` ceiling (an oversized one breaks no build and fails no test — it just costs more, forever), skill frontmatter, and the index↔disk agreement **in both directions**. That bidirectionality is the point: an unindexed skill is a file no session will think to open, strictly worse than the inline text it replaced. Mutation-tested — including on the trap that a file-wide `grep` for the skill name passes after its index row is deleted, because the name also appears in the hard-rules pointers |
+| `cleanup-branches-worktrees.sh` | One-shot GC for stale `claude/*` branches **and** worktrees: deletes merged local + remote branches (single `git push --delete`, no bot-burst) and delegates worktree pruning to `worktree-auto-prune.sh`. Defaults to dry-run; `--yes` to act, `--keep <branch\|path>`, `--no-worktrees`. Current-branch / unmerged / open-PR guarded. Runs daily in `maintenance.yml` |
+
+### Version location map
+
+**Not duplicated here — load the `versioning` skill.** Source of truth is
+`gradle.properties` → `VERSION_NAME=X.Y.Z`, and the map spans 30+ files across
+Android, npm, Flutter, docs, website, samples and Swift, plus the two tracks that
+must never be synced to it (the Flutter/RN *consumed* Maven dependency, and
+`sceneview-mcp`).
+
+This file used to carry a 7-row subset of that table, inherited from the
+monolithic `CLAUDE.md` where both lived side by side. A partial copy of a
+completeness-critical list is worse than no copy: a reader who found it here had
+no way to know 23 locations were missing, and one of its rows (`CLAUDE.md` →
+"Latest release in session state") had already gone stale — that state moved to
+`STATE.md` long ago. Run `bash .claude/scripts/sync-versions.sh` rather than
+reading any table.
+
+### Published artifact registry
+
+| Artifact | Platform | How to check |
+|---|---|---|
+| sceneview | Maven Central | Maven search API |
+| arsceneview | Maven Central | Maven search API |
+| sceneview-mcp | npm | `npm view sceneview-mcp version` |
+| sceneview-web | npm | `npm view sceneview-web version` |
+| SceneViewSwift | SPM (git tags) | `git tag -l 'v*'` |
+| GitHub Release | GitHub | `gh release list` |
+| Website | GitHub Pages | sceneview.github.io |
+
+### Quality gates (must pass before any push to main)
+
+1. All versions aligned (run `sync-versions.sh`)
+2. No lint errors in library modules
+3. Unit tests pass (`./gradlew :sceneview-core:allTests`)
+4. MCP tests pass (`cd mcp && npm test`)
+5. llms.txt matches current public API
+6. CLAUDE.md session state is current
+7. No model-viewer or Three.js in website code
+8. No external CDN dependencies in website
+9. Public-API ABI matches the committed `.api` dumps (`./gradlew apiCheck` — intentional changes re-run `apiDump` and commit the diff)
+
+---
+

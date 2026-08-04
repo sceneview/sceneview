@@ -339,10 +339,10 @@ fi
 [[ -f "$APK_PATH" ]] || { echo "[capture] APK missing at $APK_PATH" >&2; exit 1; }
 
 # ── 3. Install ───────────────────────────────────────────────────────────────
-# Use `android run` (atomic install+launch) when available; force-stop right
-# after so the `--es demo` deep-link launch on each iteration starts cold.
-# Falls back to `adb install` when the android CLI is missing or on multi-device
-# hosts (the `run` subcommand has no `--device` flag in v0.7).
+# Install through `android_cli_install_and_launch`, which proves the install
+# landed against the device's `lastUpdateTime` instead of trusting an exit code
+# (#2990) and falls back to `adb install -r` itself. Force-stop right after so
+# the `--es demo` deep-link launch on each iteration starts cold.
 # ⚠️ Never trust `android run`'s exit code here. On this host it printed
 # `No matching components found for type ACTIVITY with name …/.MainActivity`
 # and STILL exited 0, so the `||` fallback below never fired and the capture
@@ -358,7 +358,7 @@ installed_stamp() {
 STAMP_BEFORE="$(installed_stamp)"
 
 if android_cli_locate && [[ "$DEVICE_LINES" -eq 1 ]]; then
-  echo "[capture] android run --apks=$APK_PATH (install+launch)" >&2
+  echo "[capture] android_cli_install_and_launch $APK_PATH (install+launch, adb fallback)" >&2
   android_cli_install_and_launch "$APK_PATH" "$PKG/.MainActivity" >/dev/null || true
 else
   echo "[capture] adb install -r $APK_PATH" >&2

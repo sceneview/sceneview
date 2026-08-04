@@ -66,6 +66,7 @@ import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.rememberHeroYaw
+import io.github.sceneview.demo.sketchfab.AssetSourceProbe
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
@@ -287,6 +288,18 @@ private fun SingleModelSection(
     // streamed roll the chip surfaces "Streaming…" → "Streamed (cached)".
     // When no key is configured, "Surprise me" is disabled in the controls
     // and we never enter the streaming branch — chip stays hidden.
+    //
+    // NOT an [AssetSourceProbe] site, deliberately — do not "finish" #2989 by routing
+    // this one through it too. "Surprise me" is true random content with no registry
+    // entry, so `pickRandomDownloadableModel` bypasses the resolver and calls
+    // `SketchfabService.downloadModel` directly (it takes a `SketchfabAssetResolver`
+    // only to satisfy its signature — the parameter is `@Suppress("UNUSED_PARAMETER")`).
+    // With no registry entry there is no bundled fallback to stage: a failure yields
+    // `null`, `streamedFileUrl` stays null, the chip hides and the bundled hero simply
+    // stays on screen. So this chip can never render a stand-in under a "Streamed"
+    // label — there is no origin to get wrong, which is the probe's entire reason to
+    // exist. The other four sites go through `SketchfabAssetResolver`, whose every
+    // failure path DOES end at a fallback file, and they do share the probe.
     val assetSource = when {
         streamedFileUrl == null -> null
         streamedModelInstance == null -> AssetSourceState.Streaming
@@ -628,33 +641,29 @@ private fun MultiModelSection(
     // the geometry under them is the bundled stand-in rather than the oak the label
     // names (#2933).
     //
-    // MEASURED from the resolved files, not inferred from the config: every failure
-    // path in `resolve` — no network, a stale key, a bounds-drifted asset,
-    // exhausted retries — ends at the bundled fallback, so a KEYED build can render
-    // four stand-ins. It does: on the QA emulator (2026-07-28, key configured) all
-    // four slots staged out of `cache/sketchfab/fallback/`, the download endpoint
-    // answering 429. This section's first cut inferred the origin from
-    // `SketchfabConfig.apiKey == null` and labelled that exact scene "Streamed
-    // (cached)"; asking the File cannot be wrong that way. The Gallery section
-    // settles it the same way (#2936): both ask the file first and fall back to the
-    // key only while nothing has resolved yet and there is no file to ask.
+    // The verdict is MEASURED from the resolved files, never inferred from the config
+    // — [AssetSourceProbe] owns that rule and explains why. The evidence that earned it
+    // came from THIS section: on the QA emulator (2026-07-28, key configured) all four
+    // slots staged out of `cache/sketchfab/fallback/`, the download endpoint answering
+    // 429, and this section's first cut read `SketchfabConfig.apiKey == null` and
+    // labelled that exact scene "Streamed (cached)" (#2933).
     //
-    // It stays a WHOLE-SCENE verdict: one fallen-back slot out of four reads
-    // "Offline model" for all of them, and the pill never says which slot swapped.
-    // Pessimistic on purpose — of the two imprecise answers, the optimistic one is
-    // the one that misleads. It is also a MOVING verdict during load: `allLoaded`
-    // watches the instances while the fallback probe watches the files, so a slot
-    // that falls back last flips the pill Streaming → Offline after the fact.
-    val assetSource = when {
-        slugs.all { it == null } -> null
-        files.any { it != null && SketchfabAssetResolver.isBundledFallback(it) } ->
-            AssetSourceState.Bundled
-        // Nothing has resolved yet: with no key we already know where this ends;
-        // with one, the download is genuinely still in flight.
-        !allLoaded ->
-            if (SketchfabConfig.apiKey == null) AssetSourceState.Bundled
-            else AssetSourceState.Streaming
-        else -> AssetSourceState.Streamed
+    // `allLoaded` watches the INSTANCES while the probe's fallback branch watches the
+    // FILES — two different signals on purpose, which is what makes this a MOVING
+    // verdict during load: a slot that falls back last flips the pill Streaming →
+    // Offline after the fact. All four slots are streamed `park` slugs, so the whole
+    // list is passed; none is a bundled-by-design slot.
+    //
+    // Whole-scene and pessimistic (see the probe): one fallen-back slot out of four
+    // reads "Offline model" for all of them, and the pill never says which one swapped.
+    val assetSource = if (slugs.all { it == null }) {
+        null
+    } else {
+        AssetSourceProbe.ofAll(
+            resolvedFiles = files,
+            hasApiKey = SketchfabConfig.apiKey != null,
+            loaded = allLoaded,
+        )
     }
 
     val firstFrame = rememberFirstFrameState()
@@ -970,39 +979,32 @@ private fun GallerySection(
     // slot stays stable (#1464).
     val modelInstance = rememberFileModelInstance(modelLoader, resolvedFile)
 
-    // Per-demo offline indicator chip (#1152 Stage 3). Once the file has
-    // resolved the origin is MEASURED from it, never inferred from the config:
-    // "an API key is configured" says nothing about whether the download
-    // succeeded. Every failure path in `resolve` — no network, a stale key, a
-    // bounds-drifted asset, exhausted retries — ends at the bundled fallback,
-    // so a keyed build renders the offline stand-in under whatever the pill
-    // claims. It did: on the QA emulator (2026-07-28, key configured, radio
-    // off) this section staged out of `cache/sketchfab/fallback/` — the only
-    // thing under `cache/sketchfab/` — while the pill read "Streamed (cached)"
-    // over the bundled car (#2936).
+    // Per-demo offline indicator chip (#1152 Stage 3). The origin is MEASURED from the
+    // resolved file, never inferred from the config — [AssetSourceProbe] owns that rule.
+    // Measured here too: on the QA emulator (2026-07-28, key configured, radio off) this
+    // section staged out of `cache/sketchfab/fallback/` — the only thing under
+    // `cache/sketchfab/` — while the pill read "Streamed (cached)" over the bundled car
+    // (#2936).
     //
-    // Before anything resolves there is no file to ask, so the key is still the
-    // best available signal: with none we already know where this ends, with one
-    // the download is genuinely in flight. On that streamed path the chip stays
-    // in lockstep with the centre LoadingScrim (#1465) — it reads "Streaming…"
-    // until the model is fully parsed into a `ModelInstance`, not merely until
-    // the file path resolves, and only then flips to "Streamed (cached)", so it
-    // can never claim a finished download over a still-spinning scrim.
+    // `loaded` is the parsed `ModelInstance`, NOT the resolved file, and that choice is
+    // load-bearing: it keeps the chip in lockstep with the centre LoadingScrim (#1465),
+    // so the chip reads "Streaming…" until the model is fully parsed and can never claim
+    // a finished download over a still-spinning scrim.
     //
-    // The fallback path deliberately does NOT wait for the parse: once the file
-    // is known to be the bundled stand-in, the origin is settled, so the chip
-    // says so while the scrim is still spinning on the local load. That pairing
-    // is not new — a keyless build has always shown "Offline model" over a
-    // spinning scrim — and it is the honest way round: #1465 is about the chip
-    // never claiming completion early, and "Offline model" claims an origin,
-    // not a finished download.
-    val assetSource = when {
-        slugs.isEmpty() -> null
-        resolvedFile != null && SketchfabAssetResolver.isBundledFallback(resolvedFile) ->
-            AssetSourceState.Bundled
-        SketchfabConfig.apiKey == null -> AssetSourceState.Bundled
-        modelInstance == null -> AssetSourceState.Streaming
-        else -> AssetSourceState.Streamed
+    // The probe's fallback branch deliberately outranks `loaded`, so a file known to be
+    // the bundled stand-in reads "Offline model" while the scrim is still spinning on the
+    // local load. That pairing is not new — a keyless build has always shown "Offline
+    // model" over a spinning scrim — and it is the honest way round: #1465 is about the
+    // chip never claiming COMPLETION early, and "Offline model" claims an ORIGIN, not a
+    // finished download.
+    val assetSource = if (slugs.isEmpty()) {
+        null
+    } else {
+        AssetSourceProbe.of(
+            resolvedFile = resolvedFile,
+            hasApiKey = SketchfabConfig.apiKey != null,
+            loaded = modelInstance != null,
+        )
     }
 
     val firstFrame = rememberFirstFrameState()

@@ -131,6 +131,53 @@ class SampleAssetsTest {
     }
 
     @Test
+    fun `ar_placement fallbacks are pairwise distinct`() {
+        // Mirrors iOS `testARPlacementFallbacksArePairwiseDistinct`
+        // (SceneViewDemoTests/BundledAssetPrimBudgetTests.swift, #2973).
+        //
+        // Scope is `ar_placement` ONLY, and that is deliberate: other categories
+        // share a fallback legitimately (the four `solar` butterflies all fall
+        // back to the same animated character), so a registry-wide version of
+        // this assertion would fail on entries that are not defects. What makes
+        // this category different is that ARPlacementDemo / ARInstantPlacementDemo
+        // ACCUMULATE placed models — two chips sharing a fallback render as the
+        // identical asset, side by side, under two labels (#2940 / #2355).
+        // Distinctness is all this guard asserts — it says nothing about a
+        // fallback RESEMBLING its label; that wider mismatch class is tracked
+        // for the iOS registry under #2960.
+        //
+        // The slug set is derived from the registry BY CATEGORY, never from a
+        // hardcoded list of names: a slug added to `ar_placement` tomorrow is
+        // covered by this guard without anyone remembering to update it.
+        val slugs = SampleAssets.byCategory["ar_placement"].orEmpty()
+
+        // Distinctness over fewer than two slugs is vacuously true, so a
+        // registry that lost the category would pass silently without this.
+        assertTrue(
+            "ar_placement has ${slugs.size} slug(s) — pairwise distinctness is " +
+                "vacuous below two, so this guard is no longer guarding anything",
+            slugs.size > 1,
+        )
+
+        // First slug to claim each fallback path, in registry order.
+        val claimedBy = mutableMapOf<String, String>()
+        slugs.forEach { slug ->
+            val owner = claimedBy[slug.fallbackBundledPath]
+            if (owner != null) {
+                fail(
+                    "ar_placement fallback collision: \"$owner\" and " +
+                        "\"${slug.displayName}\" both fall back to " +
+                        "${slug.fallbackBundledPath}. Both demos in this category " +
+                        "place several models in one scene, so in keyless mode the " +
+                        "two labels render the identical asset — the #2940 defect. " +
+                        "Point one of them at a distinct bundled model (#2355).",
+                )
+            }
+            claimedBy[slug.fallbackBundledPath] = slug.displayName
+        }
+    }
+
+    @Test
     fun `constructor rejects a non-CC-BY license`() {
         try {
             SketchfabSlug(

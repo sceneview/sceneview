@@ -213,14 +213,30 @@ if $INSTALL; then
   fi
   echo "[qa] installing $APK"
   android_cli_ensure || true
-  if android_cli_locate; then
-    android_cli_install_and_launch "$APK" "${PACKAGE}/${ACTIVITY}" >/dev/null || {
-      echo "[qa] android run failed, falling back to adb install" >&2
-      adb install -r "$APK"
-    }
-  else
-    adb install -r "$APK"
-  fi
+  # ALWAYS through the helper — no `if android_cli_locate` branch here. The
+  # helper does that check itself and falls back to `adb install -r` WITH the
+  # lastUpdateTime proof; a local `else adb install -r` branch installed without
+  # any verification, which is the exact unproven-install class this closes
+  # (#2990). Nor is there a local retry on failure: the helper already tried
+  # adb, and repeating a step it just proved ineffective — then continuing —
+  # downgrades its guarantee back to the exit code it was written to distrust.
+  # A QA sweep that proceeds here measures a binary nobody can vouch for.
+  android_cli_install_and_launch "$APK" "${PACKAGE}/${ACTIVITY}" >/dev/null || {
+    rc=$?
+    # Only assert a CAUSE for the codes that carry one. The helper also
+    # returns 1 for "APK not found" and "no serial", and it has already
+    # printed the precise reason — restating it as "the device may hold the
+    # previous build" would be a true failure with a false cause, the thing
+    # the 1-vs-2 split exists to prevent.
+    case "$rc" in
+      2) echo "[qa] ⛔ install landed but '${PACKAGE}/${ACTIVITY}' would not start." >&2
+         echo "[qa]   The APK on the device is the right one — check the activity name." >&2 ;;
+      1) echo "[qa] ⛔ install not proven for $PACKAGE — refusing to QA a build the" >&2
+         echo "[qa]   device may not be running. See the helper's message above, and #2990." >&2 ;;
+      *) echo "[qa] ⛔ install step failed (rc=$rc) — see the helper's message above." >&2 ;;
+    esac
+    exit 1
+  }
 fi
 
 # --- Launchability gate (#2725) ---------------------------------------------

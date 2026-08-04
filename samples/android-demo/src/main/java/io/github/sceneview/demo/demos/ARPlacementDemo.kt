@@ -33,6 +33,7 @@ import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.placement.PlacementSpec
 import io.github.sceneview.demo.common.placement.TapToPlaceArSession
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
+import io.github.sceneview.demo.sketchfab.AssetSourceProbe
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
@@ -154,11 +155,22 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     // Per-demo offline indicator chip (#1152 Stage 3). The chip reflects the
     // selected slug's resolve state — `null` means no slug picked yet (cycle
     // mode), so we surface "Offline model" (the cycle is 100% bundled).
-    val assetSource = when {
-        selectedSlug == null -> AssetSourceState.Bundled
-        SketchfabConfig.apiKey == null -> AssetSourceState.Bundled
-        selectedFile == null -> AssetSourceState.Streaming
-        else -> AssetSourceState.Streamed
+    //
+    // Once a slug IS picked the origin is MEASURED from the file the resolver handed
+    // back, never inferred from `SketchfabConfig.apiKey` (#2953): a key can be present
+    // and the resolve still land on the bundled fallback — no network, aeroplane mode, a
+    // 4xx, the WAF — and this chip then claimed "Streamed (cached)" over the stand-in
+    // the next tap would actually place. `loaded` is the FILE here, not a parsed
+    // `ModelInstance`: a tap places whatever `selectedFile` holds, so that is the moment
+    // the chip has something true to say. See [AssetSourceProbe].
+    val assetSource = if (selectedSlug == null) {
+        AssetSourceState.Bundled
+    } else {
+        AssetSourceProbe.of(
+            resolvedFile = selectedFile,
+            hasApiKey = SketchfabConfig.apiKey != null,
+            loaded = selectedFile != null,
+        )
     }
 
     // What the next tap will spawn — drives the "Next tap places:" preview and the

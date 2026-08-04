@@ -260,6 +260,9 @@ tools/qa-screenshots/*
 !tools/qa-screenshots/android
 tools/qa-screenshots/android/*
 !tools/qa-screenshots/android/v4.3.5-qa
+# keep the before/after overlap evidence for the legend-chip fix (#2957) — a
+# "fixed on the emulator" claim with no frame anyone opened is what #2931 shipped
+!tools/qa-screenshots/2957-legend-overlap
 
 # Google Drive / iCloud Drive sync-conflict duplicates.
 # When the same file is touched concurrently in two checkouts of a synced

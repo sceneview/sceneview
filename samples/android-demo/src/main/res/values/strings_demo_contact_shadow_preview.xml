@@ -6,7 +6,7 @@
     <string name="contact_shadow_motion_toggle">Bounce motion</string>
     <string name="contact_shadow_intensity">Shadow intensity: %1$d%%</string>
     <string name="contact_shadow_wall_beat_title">Wall TV — the pool no shadow map can draw</string>
-    <string name="contact_shadow_wall_verdict_wall">Wall: ceiling light grazes the wall, so a faint, wide halo below the panel. Correct.</string>
+    <string name="contact_shadow_wall_verdict_wall">Wall: ceiling light grazes the wall, so a thin band of shade hugs the panel\'s lower edge — it reads as pressed against the wall. Correct.</string>
     <string name="contact_shadow_wall_verdict_floor">Floor on a wall: too dark, too round — reads as a sticker, not a shadow.</string>
     <string name="contact_shadow_wall_verdict_tabletop">TableTop: tight and close, as if the TV rested on a surface it is not touching.</string>
     <string name="contact_shadow_label_grounded">Contact shadow</string>

@@ -76,7 +76,9 @@ SceneView(environment: .studio) {
 }
 ```
 
-## Node types: ModelNode, CubeNode, SphereNode, CylinderNode, PlaneNode, MeshNode, ImageNode, VideoNode, ViewNode, LightNode, DynamicSkyNode, FogNode, LineNode, PathNode, TextNode, PhysicsNode, AnchorNode, HitResultNode, AugmentedImageNode, AugmentedFaceNode, CloudAnchorNode, GeospatialNode
+## 46+ node types (generated from the node sources — see .cursorrules for the
+## grouped list). 3D (`io.github.sceneview.node`, 26): BillboardNode, CameraNode, CapsuleNode, ConeNode, ContactShadowNode, CubeNode, CylinderNode, DynamicSkyNode, FogNode, ImageNode, LightNode, LineNode, MeshNode, ModelNode, Node, PathNode, PhysicsNode, PlaneNode, ReflectionProbeNode, ShapeNode, SphereNode, SplatNode, TextNode, TorusNode, VideoNode, ViewNode
+## AR (`io.github.sceneview.ar.node`, 20): ARCameraNode, ARFogNode, AnchorNode, AugmentedFaceNode, AugmentedImageNode, CloudAnchorNode, DepthHitResultNode, DepthMeshNode, HitResultNode, PlacementReticleNode, PlaneNode, PointCloudNode, PoseNode, ReticleNode, RooftopAnchorNode, SceneMeshNode, ShadowReceiverPlaneNode, StreetscapeGeometryNode, TerrainAnchorNode, TrackableNode
 
 ## MCP Server
 ```json

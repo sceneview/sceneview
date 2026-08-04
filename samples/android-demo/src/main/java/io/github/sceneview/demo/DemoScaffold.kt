@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -49,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,6 +63,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -181,6 +186,21 @@ enum class AssetSourceState { Streamed, Streaming, Bundled }
  *
  *   The slot is drawn above `scene` and below the FAB, so the overlay floats
  *   over the 3D/AR viewport while the FAB stays on top and tappable.
+ *
+ * Overlay that must never cross the subject (#2957):
+ * - `bottomOverlayReservesScene = true` → `scene` is inset at the bottom by the
+ *   **measured** height of the `bottomOverlay` band, so the viewport and the
+ *   overlay are disjoint rectangles instead of stacked ones. Opt in when the
+ *   demo's hero object can descend into the bottom band — device QA on
+ *   `contact-shadow-preview` measured the legend chip drawn across 51 % of the
+ *   grounded box's width at its landing pose, and no gutter constant can fix
+ *   that: where a 3D object lands on screen depends on the viewport, so a value
+ *   tuned on one device is wrong on the next. Reserving the band is a *layout*
+ *   guarantee — it holds at any screen size, density, font scale and locale.
+ *
+ *   The default (`false`) keeps the historical float-over-the-viewport
+ *   behaviour, which is correct for status pills and answer cards that annotate
+ *   camera pixels rather than a modelled subject.
  */
 @Composable
 fun DemoScaffold(
@@ -193,6 +213,7 @@ fun DemoScaffold(
     onResetSettings: (() -> Unit)? = null,
     onReset: (() -> Unit)? = null,
     bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)? = null,
+    bottomOverlayReservesScene: Boolean = false,
     scene: @Composable BoxScope.() -> Unit
 ) {
     val haptic = rememberHapticFeedback()
@@ -302,13 +323,27 @@ fun DemoScaffold(
             )
         }
     ) { padding ->
+        // Height of the `bottomOverlay` band, measured (never assumed) so
+        // `bottomOverlayReservesScene` can inset the viewport by exactly the room the
+        // overlay takes — including its own gutter, the system-bar inset, and whatever
+        // the current font scale and locale do to the chip text (#2957).
+        var bottomOverlayBandPx by remember { mutableIntStateOf(0) }
+        val bottomOverlayBand = with(LocalDensity.current) { bottomOverlayBandPx.toDp() }
+
         // Scene always full-screen below the top app bar.
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            Box(modifier = Modifier.fillMaxSize(), content = scene)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        bottom = if (bottomOverlayReservesScene) bottomOverlayBand else 0.dp
+                    ),
+                content = scene,
+            )
 
             if (firstFrameRendered != null) {
                 FirstFrameScrim(firstFrameRendered = firstFrameRendered)
@@ -328,6 +363,7 @@ fun DemoScaffold(
                     // `ARStreetscapeDemo` (controls gated on `DemoSettings.qaMode`)
                     // correct without restating the condition in the demo (#2779).
                     reservedSpace = if (controls != null) SETTINGS_FAB_RESERVED_SPACE else 0.dp,
+                    onBandHeightChanged = { bottomOverlayBandPx = it },
                     content = bottomOverlay,
                 )
             }
@@ -532,10 +568,24 @@ class DemoBottomOverlayScope internal constructor(
  * own**, so a demo migrating an existing `Alignment.BottomCenter` overlay keeps
  * its own gutter verbatim and only adds the FAB inset. It does apply the same
  * `systemBars` inset the FAB layer uses, so both sit in one coherent frame.
+ *
+ * [onBandHeightChanged] reports the band's full height — content **plus** the
+ * demo's own gutter **plus** the system-bar inset — which is what
+ * `bottomOverlayReservesScene` insets the viewport by (#2957). `onSizeChanged`
+ * sits *before* `windowInsetsPadding` in the chain on purpose: a size read after
+ * it would exclude the inset and under-reserve by a navigation bar.
+ *
+ * The inset is restricted to the sides a bottom-anchored band can actually meet
+ * (`Bottom` + `Horizontal`). The **top** side never moved this container's
+ * content — the box wraps its height and is bottom-aligned, so a top inset only
+ * grew it upwards into pixels nobody looked at — but it *does* land in the
+ * measured band height, and on the QA Pixel_7a it inflated the reserved band by
+ * 146 px of status bar no overlay was ever using (#2957).
  */
 @Composable
 private fun BoxScope.DemoBottomOverlay(
     reservedSpace: Dp,
+    onBandHeightChanged: (Int) -> Unit,
     content: @Composable DemoBottomOverlayScope.() -> Unit,
 ) {
     val scope = remember(reservedSpace) { DemoBottomOverlayScope(reservedSpace) }
@@ -543,7 +593,12 @@ private fun BoxScope.DemoBottomOverlay(
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.systemBars)
+            .onSizeChanged { onBandHeightChanged(it.height) }
+            .windowInsetsPadding(
+                WindowInsets.systemBars.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                )
+            )
             .testTag(DemoScaffoldTestTags.BOTTOM_OVERLAY),
         contentAlignment = Alignment.BottomCenter,
     ) {

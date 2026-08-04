@@ -270,6 +270,28 @@ object SampleAssets {
         // category as a chip row — 6 entries balances variety against the
         // curation surface (each new entry implies a permanent third-party
         // dependency on a model an author can delete or relicense).
+        //
+        // The six fallbacks below are PAIRWISE DISTINCT (#2355), pinned by
+        // `SampleAssetsTest.ar_placement fallbacks are pairwise distinct`. Both
+        // demos in this category ACCUMULATE placed models — `TapToPlaceState`
+        // owns the list, every tap appends — so on a keyless build two chips
+        // sharing one fallback render as the identical asset side by side in a
+        // single frame, under two different labels. That is the #2940 defect,
+        // fixed on iOS by #2962 and guarded there by #2973; it was still live
+        // here, with `khronos_lantern.glb` claimed by three slugs and
+        // `khronos_damaged_helmet.glb` by two.
+        //
+        // The demo bundles exactly six GLBs, so the mapping is a bijection and
+        // has no slack: repointing one slug now forces a swap, not a free pick.
+        // Distinctness is the guarantee — resemblance is NOT. Three of these
+        // fallbacks (`shiba`, `khronos_fox`, `threejs_soldier`) are animals or
+        // a character standing in for furniture and are chosen on silhouette
+        // class alone (compact ground mass / four-legged horizontal / upright).
+        // A keyless user sees six distinguishable objects, not six plausible
+        // ones. Closing that semantic gap needs assets this APK does not ship,
+        // so it is deliberately out of scope here, where the fix must add no
+        // binary. #2960 tracks that same mismatch class on the iOS registry;
+        // the Android side has no equivalent tracker yet.
         SketchfabSlug(
             uid = "5f5ccee1514c440887c072fae8e0d699",
             displayName = "Coffee Mug",
@@ -289,7 +311,10 @@ object SampleAssets {
             displayName = "Potted Monstera",
             author = "ChubbyPanda",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/khronos_lantern.glb",
+            // Was `khronos_lantern.glb`, which the Floor Lamp entry below has the
+            // stronger claim to (a lantern IS a lamp). Shiba is the compact
+            // ground-level mass left in the bundle — silhouette-class only (#2960).
+            fallbackBundledPath = "models/shiba.glb",
             scaleToUnits = 0.45f,
             hasBakedAnimation = false,
             category = "ar_placement",
@@ -313,7 +338,10 @@ object SampleAssets {
             displayName = "Wooden End Table",
             author = "mozillareality",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/khronos_lantern.glb",
+            // Was `khronos_lantern.glb` (collided with Potted Monstera AND Floor
+            // Lamp). The fox is the four-legged horizontal silhouette in the
+            // bundle — the closest shape class to a low table (#2960).
+            fallbackBundledPath = "models/khronos_fox.glb",
             scaleToUnits = 0.60f,
             hasBakedAnimation = false,
             category = "ar_placement",
@@ -335,7 +363,12 @@ object SampleAssets {
             displayName = "Picture Frame",
             author = "jamiemcfarlane",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/khronos_damaged_helmet.glb",
+            // Was `khronos_damaged_helmet.glb` (collided with Crates & Barrels).
+            // The soldier is the only upright silhouette left — the shape class a
+            // wall-hung frame reads closest to. It ships baked animation clips,
+            // but `hasBakedAnimation = false` describes the STREAMED Sketchfab
+            // model, and no demo asks a fallback to play: it renders at rest.
+            fallbackBundledPath = "models/threejs_soldier.glb",
             scaleToUnits = 0.40f,
             hasBakedAnimation = false,
             category = "ar_placement",
