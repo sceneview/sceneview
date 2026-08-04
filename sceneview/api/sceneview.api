@@ -2434,7 +2434,6 @@ public final class io/github/sceneview/node/ModelNode$RenderableNode : io/github
 
 public class io/github/sceneview/node/Node : android/view/GestureDetector$OnContextClickListener, android/view/GestureDetector$OnDoubleTapListener, android/view/GestureDetector$OnGestureListener, io/github/sceneview/collision/TransformProvider, io/github/sceneview/gesture/MoveGestureDetector$OnMoveListener, io/github/sceneview/gesture/RotateGestureDetector$OnRotateListener, io/github/sceneview/gesture/ScaleGestureDetector$OnScaleListener {
 	public static final field $stable I
-	public static final field Companion Lio/github/sceneview/node/Node$Companion;
 	public fun <init> (Lcom/google/android/filament/Engine;I)V
 	public synthetic fun <init> (Lcom/google/android/filament/Engine;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	protected fun <init> (Lcom/google/android/filament/Engine;IZ)V
@@ -2631,9 +2630,6 @@ public class io/github/sceneview/node/Node : android/view/GestureDetector$OnCont
 	public static synthetic fun worldTransform$default (Lio/github/sceneview/node/Node;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ZFILjava/lang/Object;)Lio/github/sceneview/node/Node;
 	public static synthetic fun worldTransform$default (Lio/github/sceneview/node/Node;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;ZFILjava/lang/Object;)Lio/github/sceneview/node/Node;
 	public static synthetic fun worldTransform$default (Lio/github/sceneview/node/Node;Ldev/romainguy/kotlin/math/Mat4;ZFILjava/lang/Object;)Lio/github/sceneview/node/Node;
-}
-
-public final class io/github/sceneview/node/Node$Companion {
 }
 
 public final class io/github/sceneview/node/NodeAnimationDelegate {

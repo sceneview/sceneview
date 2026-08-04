@@ -9,6 +9,7 @@ import com.google.android.filament.gltfio.AssetLoader
 import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
+import io.github.sceneview.bumpTransformGeneration
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.safeDestroyModel
@@ -416,6 +417,10 @@ class ModelLoader(
 
     fun destroyModel(model: Model) {
         assetLoader.safeDestroyModel(model)
+        // destroyAsset destroys every entity's transform component directly, bypassing
+        // Node.destroy() entirely — the sibling Nodes' cached transformInstance/parentInstance
+        // handles need to know a reindex may have happened here too (#2978 review gap 2).
+        engine.bumpTransformGeneration()
         models -= model
     }
 
