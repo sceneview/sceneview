@@ -5340,8 +5340,22 @@ today — they draw a visible "not available yet" notice):
 | Platform | Renderer | Status |
 |---|---|---|
 | Android | Filament, delegates to `SceneView { }` | Implemented |
-| iOS | RealityKit via `SceneViewSwift` | Placeholder — needs an `@objc UIView` façade |
+| iOS | RealityKit via `SceneViewSwift` | Needs a one-time app registration — see below |
 | Desktop (JVM) | Filament via a vendored FFM binding | Placeholder — needs the native build chain |
+
+**iOS requires one registration call.** A KMP module cannot depend on a Swift Package, so
+the app supplies the renderer:
+
+```kotlin
+// iosMain, before the first SceneViewer composes
+SceneViewerBridge.factory = object : SceneViewerViewFactory {
+    override fun create(spec: SceneViewerSpec): UIView = /* wrap SceneViewSwift.SceneView */
+    override fun update(view: UIView, spec: SceneViewerSpec) { /* mutate, never recreate */ }
+}
+```
+
+Without it, `SceneViewer` draws a visible "no renderer registered" notice. `onFrame` is
+never invoked on iOS — `SceneViewSwift` exposes no per-frame callback.
 
 Targets: `androidTarget`, `jvm("desktop")`, `iosArm64`, `iosSimulatorArm64`. No `iosX64`
 — Compose Multiplatform 1.11.1 publishes no such variant.

@@ -9,3 +9,8 @@
   render an explicit placeholder until their renderers are wired. Purely additive — no
   existing published surface changes. See
   [docs/docs/compose-multiplatform.md](https://github.com/sceneview/sceneview/blob/main/docs/docs/compose-multiplatform.md).
+- **iOS bridge for `sceneview-compose`** — `SceneViewerBridge` lets an iOS app supply the
+  RealityKit renderer, since a KMP module cannot depend on a Swift Package. Gestures are
+  written back into `CameraState`, so reads stay truthful about what the user did. The
+  reusable `@objc UIView` wrapper around `SceneViewSwift` is not written yet; without a
+  registered factory `SceneViewer` draws a visible notice rather than an empty viewport.

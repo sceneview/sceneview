@@ -44,7 +44,7 @@ no honest common shape.
 | Platform | Renderer | Status |
 |---|---|---|
 | Android | Filament, via `io.github.sceneview.SceneView` | ✅ implemented |
-| iOS | RealityKit, via `SceneViewSwift` | ⏳ placeholder — needs an `@objc` `UIView` façade on the Swift side |
+| iOS | RealityKit, via `SceneViewSwift` | ⚙️ Kotlin side done — needs a one-time app registration, below |
 | Desktop (JVM) | Filament, via the binding vendored in `third_party/filament-kmp/` | ⏳ placeholder — needs the native build chain |
 
 Unimplemented platforms render a visible placeholder naming the platform and the reason,
@@ -54,6 +54,47 @@ load.
 **Pixel output differs between platforms.** Lighting values map approximately between
 Filament and RealityKit, not exactly, and materials do not carry across engines. If you
 need reproducible output, ship an HDR environment and use it everywhere.
+
+## iOS integration (one-time, per app)
+
+A Kotlin Multiplatform module cannot depend on a Swift Package, and `SceneViewSwift`'s
+API is pure SwiftUI, which does not cross cinterop. So this module declares *what it
+needs* and your app — where `SceneViewSwift` is already linked — supplies it once:
+
+```kotlin
+// iosMain, before the first SceneViewer composes
+SceneViewerBridge.factory = MyRealityKitFactory()
+```
+
+Your factory implements two methods:
+
+```kotlin
+public interface SceneViewerViewFactory {
+    fun create(spec: SceneViewerSpec): UIView
+    fun update(view: UIView, spec: SceneViewerSpec)   // mutate, never recreate
+}
+```
+
+`SceneViewerSpec` is deliberately flat and primitive so it crosses into Swift cleanly:
+model source (asset path / URL / bytes), camera (target, distance, azimuth, elevation in
+**degrees** — Swift converts to radians), lighting, environment, plus two callbacks:
+
+- `onTap(hit, x, y, z, distance)` — wire to `SceneViewSwift`'s `.onEntityTapped`.
+- `onCameraMoved(distance, azimuth, elevation)` — **call this after every gesture.**
+  It is what keeps `CameraState` truthful; skip it and reads return only what the app
+  last wrote, silently ignoring the user.
+
+Until a factory is registered, `SceneViewer` renders a visible notice saying so.
+
+> **Not yet written:** the reusable `@objc UIView` that wraps `SceneViewSwift.SceneView`
+> in a `UIHostingController`. The pattern it should follow already exists and is
+> production-tested in `flutter/sceneview_flutter/ios/Classes/SceneViewPlugin.swift`
+> (see `SceneViewPlatformView` / `SceneViewSwiftUIWrapper`, including its retain-cycle
+> and Swift-6 actor handling). Two known limits to carry over: `SceneViewSwift` exposes
+> no per-frame callback, so `onFrame` is not invoked on iOS; and its public API seeds the
+> orbit pose via `.cameraOrbit(azimuth:elevation:)` but does not expose continuous camera
+> control, so full `CameraState` write-through needs an additive extension to
+> `SceneViewSwift` first.
 
 ## Targets
 

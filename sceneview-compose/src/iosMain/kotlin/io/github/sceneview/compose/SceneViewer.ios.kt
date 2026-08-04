@@ -1,20 +1,21 @@
 package io.github.sceneview.compose
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.UIKitView
 
 /**
- * iOS implementation — **not wired yet**.
+ * iOS implementation: RealityKit, through `SceneViewSwift`.
  *
- * The renderer is RealityKit through `SceneViewSwift`, which stays the Apple renderer.
- * The missing piece is on the Swift side: `SceneViewSwift` is pure SwiftUI, and SwiftUI
- * types do not cross cinterop, so it first needs an `@objc` `UIView` façade (a
- * `UIHostingController` wrapper) for `UIKitView` to host. That façade also unblocks the
- * Flutter and React Native bridges.
+ * RealityKit stays the Apple renderer — it is what ARKit and visionOS align with, and
+ * what the published App Store app uses. Reaching it requires one integration step from
+ * the host app, because a Kotlin Multiplatform module cannot depend on a Swift Package:
+ * see [SceneViewerBridge].
  *
- * Until then this renders [UnsupportedPlatformPlaceholder] rather than an empty box, so
- * an unimplemented platform is obvious on screen instead of looking like a scene that
- * failed to load.
+ * With no bridge registered this draws a visible notice rather than an empty viewport.
  */
 @Composable
 public actual fun SceneViewer(
@@ -26,9 +27,94 @@ public actual fun SceneViewer(
     onTap: ((ModelHit?) -> Unit)?,
     onFrame: ((frameTimeNanos: Long) -> Unit)?,
 ) {
-    UnsupportedPlatformPlaceholder(
-        platform = "iOS",
-        reason = "the SceneViewSwift @objc UIView façade does not exist yet",
-        modifier = modifier,
+    val factory = SceneViewerBridge.factory
+
+    if (factory == null) {
+        UnsupportedPlatformPlaceholder(
+            platform = "iOS",
+            reason = "no renderer is registered — set SceneViewerBridge.factory " +
+                "from your iOS app, see the module README",
+            modifier = modifier,
+        )
+        return
+    }
+
+    // Kept fresh without rebuilding the spec's identity: the callbacks are handed to the
+    // Swift side once, at view creation, and must keep pointing at the latest lambdas.
+    val currentOnTap by rememberUpdatedState(onTap)
+    val currentCamera by rememberUpdatedState(camera)
+
+    val spec = SceneViewerSpec(
+        modelAssetPath = (model as? ModelSource.Asset)?.path,
+        modelUrl = (model as? ModelSource.Url)?.url,
+        modelBytes = (model as? ModelSource.Bytes)?.bytes,
+
+        cameraTargetX = camera.target.x,
+        cameraTargetY = camera.target.y,
+        cameraTargetZ = camera.target.z,
+        cameraDistance = camera.distance,
+        cameraAzimuthDegrees = camera.azimuth,
+        cameraElevationDegrees = camera.elevation,
+        cameraGesturesEnabled = camera.gesturesEnabled,
+
+        lightDirectionX = lighting.direction.x,
+        lightDirectionY = lighting.direction.y,
+        lightDirectionZ = lighting.direction.z,
+        lightIntensity = lighting.intensity,
+        ambientIntensity = lighting.ambientIntensity,
+        castShadows = lighting.castShadows,
+
+        environmentKind = environment.kind,
+        environmentRed = (environment as? EnvironmentSource.Color)?.red ?: 0f,
+        environmentGreen = (environment as? EnvironmentSource.Color)?.green ?: 0f,
+        environmentBlue = (environment as? EnvironmentSource.Color)?.blue ?: 0f,
+        environmentAlpha = (environment as? EnvironmentSource.Color)?.alpha ?: 1f,
+        environmentHdrPath = (environment as? EnvironmentSource.Hdr)?.path,
+        environmentShowSkybox = (environment as? EnvironmentSource.Hdr)?.showSkybox ?: true,
+
+        onTap = { hit, x, y, z, distance ->
+            currentOnTap?.invoke(
+                if (hit) {
+                    ModelHit(
+                        position = dev.romainguy.kotlin.math.Float3(x, y, z),
+                        distance = distance,
+                    )
+                } else {
+                    null
+                },
+            )
+        },
+
+        // Writes gestures back into CameraState so reads observe what the user did.
+        // Without this the state would only ever report what the app last wrote, and
+        // every drag would be invisible to the caller — the defect this API must avoid.
+        onCameraMoved = { distance, azimuth, elevation ->
+            currentCamera.distance = distance
+            currentCamera.azimuth = azimuth
+            currentCamera.elevation = elevation
+        },
     )
+
+    val currentSpec by rememberUpdatedState(spec)
+
+    UIKitView(
+        factory = { factory.create(currentSpec) },
+        modifier = modifier,
+        update = { view -> factory.update(view, currentSpec) },
+    )
+
+    // `onFrame` is intentionally not wired: SceneViewSwift exposes no per-frame callback
+    // in its public API, and inventing one by polling would report times that are not
+    // the renderer's. Declared unsupported here rather than silently never called —
+    // remember it, so the compiler does not warn about an unused parameter, and so the
+    // omission is visible to anyone reading this actual.
+    remember(onFrame) { onFrame }
 }
+
+/** Stable tag the Swift side switches on. */
+private val EnvironmentSource.kind: String
+    get() = when (this) {
+        is EnvironmentSource.Default -> "default"
+        is EnvironmentSource.Color -> "color"
+        is EnvironmentSource.Hdr -> "hdr"
+    }
