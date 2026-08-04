@@ -1,3 +1,0 @@
-<!-- category: Docs -->
-- `ViewNode`: documented the gotchas its off-screen window creates — the content inherits **no `CompositionLocal`s** (re-apply your theme inside, or Material 3 defaults silently win) and has **no parent to measure against** (give it an explicit size). KDoc + `llms.txt` (#2648)
-- Point & Ask recipe: `llms.txt`, `samples/recipes/point-and-ask.md` and the `sceneview` agent skill gain the world-anchored variant (hit-test → anchor → `ViewNode` card, explicit content width, anchor detach contract), including why the "no facing rotation" rule holds only for horizontal-plane and `Point` hits — on a vertical plane the same code pins the card edge-on (#2648)
