@@ -5410,8 +5410,10 @@ Gotchas:
   embedded resources). Only `Asset` resolves sibling resources; `Url` downloads exactly
   one file, so a `.gltf` referencing an external `.bin` or texture loads incomplete —
   and does so silently, with no error surfaced.
-- `ModelSource.Url` accepts absolute http/https only (checked in `commonMain`, so the
-  rule holds on every platform), with timeouts and a 64 MB cap.
+- `ModelSource.Url` accepts absolute http/https only. That check is in `commonMain`, so
+  it holds on every platform. The connect/read timeouts and the 64 MB cap are **Android
+  only** — they live in the Android downloader; on iOS the URL is handed to the
+  app-supplied bridge, which owns its own fetching policy.
 - Pixel output differs per platform: lighting maps approximately between Filament and
   RealityKit, and materials do not carry across engines. For a reproducible look, ship an
   HDR environment and use it everywhere.
