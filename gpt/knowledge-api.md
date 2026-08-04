@@ -3654,7 +3654,7 @@ today — they draw a visible "not available yet" notice):
 **iOS requires one registration call.** A KMP module cannot depend on a Swift Package, so
 the app supplies the renderer:
 
-```kotlin
+```kotlin notest iosMain-only — platform.UIKit.UIView has no Android counterpart
 // iosMain, before the first SceneViewer composes
 SceneViewerBridge.factory = object : SceneViewerViewFactory {
     override fun create(spec: SceneViewerSpec): UIView = /* wrap SceneViewSwift.SceneView */

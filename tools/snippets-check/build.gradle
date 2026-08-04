@@ -78,6 +78,14 @@ dependencies {
     api project(":arsceneview")
     api libs.filament.android
 
+    // The Compose Multiplatform façade documents `SceneViewer` from commonMain,
+    // and its Android variant is exactly what a documented reader compiles
+    // against. Without it on this classpath the llms.txt CMP snippets would have
+    // to be opted out wholesale — which would stop checking the one surface the
+    // section exists to teach. Only the iOS bridge block stays `notest`: it
+    // names `platform.UIKit.UIView`, which has no Android counterpart at all.
+    api project(":sceneview-compose")
+
     // Mirrors arsceneview's own compileOnly: the Android XR snippets document
     // exactly the "add androidx.xr yourself" integration, so the guard needs
     // the same compile classpath the documented user has.

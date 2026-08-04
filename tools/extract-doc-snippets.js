@@ -174,6 +174,11 @@ const PREAMBLE_IMPORTS = [
   // CollisionSystem itself has a unique simple name — safe to import.
   "io.github.sceneview.collision.CollisionSystem",
   "io.github.sceneview.components.*",
+  // The Compose Multiplatform façade. Safe to wildcard: none of its simple
+  // names (SceneViewer, ModelSource, CameraState, Lighting, EnvironmentSource,
+  // ModelHit) is declared anywhere else in sceneview/ or arsceneview/, so it
+  // cannot make an existing doc snippet ambiguous.
+  "io.github.sceneview.compose.*",
   "io.github.sceneview.environment.*",
   "io.github.sceneview.geometries.*",
   "io.github.sceneview.loaders.*",
