@@ -3627,18 +3627,20 @@ val hitNode: Node? = fromTouch.firstOrNull()?.nodeOrNull
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose:4.25.0`.
+`io.github.sceneview:sceneview-compose:4.26.0` — **first published in 4.26.0**. The
+currently released 4.25.0 does not contain it, so do not emit that coordinate.
 
 **SCOPE — read before using.** This module is the *viewer subset* and will not grow past
 it: load a model, orbit it, light it, tap it. It is NOT a portable version of the full
-SDK. The honest intersection of Filament / RealityKit / Filament.js is 4 node types out
-of Android's 31.
+SDK. The honest intersection of Filament / RealityKit / Filament.js is 5 node types (this
+module covers 4 of them — SpatialAudio is deliberately out of the viewer case) out
+of Android's 27.
 
 **NOT available here — use the platform-native API instead:**
 
 | Need | Use |
 |---|---|
-| **AR (anything)** | `arsceneview` on Android, `ARSceneView` on Apple. 77 of 178 `arsceneview` files take ARCore types in public signatures; there is no honest common shape |
+| **AR (anything)** | `arsceneview` on Android, `ARSceneView` on Apple. 77 of 178 `arsceneview` files import ARCore directly (58 under src/main); there is no honest common shape |
 | Custom materials, shaders, post-processing | platform-native API |
 | Splat, Video, View, ContactShadow, Physics, Text nodes | platform-native API |
 
@@ -3712,10 +3714,12 @@ fun ModelScreen() {
 ```
 
 Gotchas:
-- `ModelSource.Bytes` must be self-contained (GLB, or glTF with embedded resources) —
-  bytes have no location to resolve an external `.bin` or texture against. `Asset` and
-  `Url` do resolve siblings.
-- `ModelSource.Url` accepts http/https only, with timeouts and a 256 MB cap.
+- `ModelSource.Bytes` AND `ModelSource.Url` must be self-contained (GLB, or glTF with
+  embedded resources). Only `Asset` resolves sibling resources; `Url` downloads exactly
+  one file, so a `.gltf` referencing an external `.bin` or texture loads incomplete —
+  and does so silently, with no error surfaced.
+- `ModelSource.Url` accepts absolute http/https only (checked in `commonMain`, so the
+  rule holds on every platform), with timeouts and a 64 MB cap.
 - Pixel output differs per platform: lighting maps approximately between Filament and
   RealityKit, and materials do not carry across engines. For a reproducible look, ship an
   HDR environment and use it everywhere.

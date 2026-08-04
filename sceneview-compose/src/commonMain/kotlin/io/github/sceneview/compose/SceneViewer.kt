@@ -17,12 +17,17 @@ import androidx.compose.ui.Modifier
  * | Platform | Renderer | Status |
  * |---|---|---|
  * | Android | Filament, via the existing `SceneView { }` composable | implemented |
- * | iOS | RealityKit, via `SceneViewSwift` | **placeholder — not wired yet** |
+ * | iOS | RealityKit, via `SceneViewSwift` | implemented — needs a one-time app registration |
  * | Desktop (JVM) | Filament, via the vendored FFM binding | **placeholder — not wired yet** |
  *
  * On a platform still marked *placeholder*, this composable draws a visible notice
  * naming the platform and the reason instead of rendering a scene. It does not throw,
  * and it does not silently show an empty viewport.
+ *
+ * iOS renders for real, but only once the app has supplied the renderer: a Kotlin
+ * Multiplatform module cannot depend on a Swift Package, so the host registers a
+ * factory once at launch (see `SceneViewerBridge` in `iosMain`). Until it does, the
+ * same visible notice is drawn.
  *
  * Because the renderers differ, so does the pixel output. Lighting values map
  * approximately between Filament and RealityKit rather than exactly, and materials

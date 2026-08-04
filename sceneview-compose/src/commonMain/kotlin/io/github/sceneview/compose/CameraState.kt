@@ -11,6 +11,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import dev.romainguy.kotlin.math.Float3
 
+// File-scope and private, NOT an `internal companion object`. A companion `const val`
+// is emitted as a static field on the OUTER class, and the companion's `internal`
+// visibility is invisible from the outer class's metadata — so these three landed in
+// the committed binary-compatibility-validator dump as public static fields. Removing
+// a published field is a binary break, which would have frozen three implementation
+// details into the ABI of a brand-new artifact.
+private const val MIN_DISTANCE = 0.01f
+
+// Stop just short of the poles: at exactly ±90° the up vector and the view direction
+// become colinear and the orbit basis is undefined.
+private const val MIN_ELEVATION = -89.9f
+private const val MAX_ELEVATION = 89.9f
+
 /**
  * Orbit camera state for a [SceneViewer].
  *
@@ -66,13 +79,6 @@ public class CameraState internal constructor(
     public var gesturesEnabled: Boolean by mutableStateOf(true)
 
     internal companion object {
-        const val MIN_DISTANCE = 0.01f
-
-        // Stop just short of the poles: at exactly ±90° the up vector and the view
-        // direction become colinear and the orbit basis is undefined.
-        const val MIN_ELEVATION = -89.9f
-        const val MAX_ELEVATION = 89.9f
-
         // Saves every mutable property, `gesturesEnabled` included — restoring a state
         // that silently re-enabled gestures after a rotation would be worse than not
         // restoring at all.

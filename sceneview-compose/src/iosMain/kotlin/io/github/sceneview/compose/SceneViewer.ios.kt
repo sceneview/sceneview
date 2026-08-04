@@ -105,10 +105,10 @@ public actual fun SceneViewer(
 
     // `onFrame` is intentionally not wired: SceneViewSwift exposes no per-frame callback
     // in its public API, and inventing one by polling would report times that are not
-    // the renderer's. Declared unsupported here rather than silently never called —
-    // remember it, so the compiler does not warn about an unused parameter, and so the
-    // omission is visible to anyone reading this actual.
-    remember(onFrame) { onFrame }
+    // the renderer's. Declared unsupported in the KDoc and the module README rather than
+    // silently never called. (An earlier version kept a `remember(onFrame)` here to
+    // "avoid an unused-parameter warning" — Kotlin does not warn on an unused parameter
+    // of an `actual` function, so it was a no-op justified by a false premise.)
 }
 
 /** Stable tag the Swift side switches on. */

@@ -72,10 +72,27 @@ Consequences, all inherited and none removable by copying the code:
 
 This copy is currently **unmodified** — byte-identical to the upstream commit. Any
 file changed later must carry a notice at the top saying so, as Apache-2.0 §4(b)
-requires. To verify that against a fresh upstream checkout:
+requires.
+
+That is checked, not trusted: `diff-upstream.sh` **runs on every PR** (the `Repo
+hygiene checks` job), and it enumerates in both directions — the tree is pinned by
+`MANIFEST.sha256`, and the manifest is checked against a fresh upstream clone.
 
 ```bash
 bash third_party/filament-kmp/diff-upstream.sh
+```
+
+The two-way walk is the point. A one-way walk of the vendored tree with an extension
+filter — the obvious implementation — cannot see a **deleted** file, an **added** one
+whose extension is not in the filter (a `.sh` that runs at build time, a `.so` blob),
+or a **symlink** (not a regular file, so `find -type f` skips it). Each of those is
+covered by a mutation test; all seven exit 1.
+
+After a deliberate change, re-pin and review the manifest diff — a file appearing or
+vanishing there is exactly what wants reviewing:
+
+```bash
+bash third_party/filament-kmp/diff-upstream.sh --regenerate
 ```
 
 ## Updating to a newer upstream version

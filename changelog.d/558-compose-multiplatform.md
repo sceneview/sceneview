@@ -14,3 +14,10 @@
   written back into `CameraState`, so reads stay truthful about what the user did. The
   reusable `@objc UIView` wrapper around `SceneViewSwift` is not written yet; without a
   registered factory `SceneViewer` draws a visible notice rather than an empty viewport.
+- **`ModelSource.Url` now rejects non-http/https URLs in `commonMain`**, so the documented
+  invariant holds on every platform instead of only inside the Android downloader.
+- **Apache-2.0 §4(b) compliance for `third_party/filament-kmp/` is now enforced in CI.**
+  `diff-upstream.sh` existed but no job ran it. It now runs on every PR and pins the
+  vendored tree with `MANIFEST.sha256` in both directions, so a deleted file, an added
+  build script, an added binary blob or a symlink cannot land unreviewed — none of which
+  the previous extension-filtered, one-way walk could see.

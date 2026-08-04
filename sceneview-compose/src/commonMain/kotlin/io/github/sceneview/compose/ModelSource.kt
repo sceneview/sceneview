@@ -26,8 +26,8 @@ public sealed interface ModelSource {
      *
      * Must be **self-contained**: a GLB, or a glTF with embedded buffers and textures.
      * Bytes carry no location, so a `.gltf` referencing an external `.bin` or texture
-     * has nothing to resolve those against and will load incomplete. Use [Asset] or
-     * [Url] for multi-file models — both resolve sibling resources.
+     * has nothing to resolve those against and will load incomplete. Use [Asset] for
+     * multi-file models — it is the only source that resolves sibling resources.
      */
     public data class Bytes(val bytes: ByteArray) : ModelSource {
 
@@ -42,9 +42,32 @@ public sealed interface ModelSource {
      *
      * The download happens off the main thread; the viewport renders the environment
      * until it completes. No caching is performed — wrap it yourself if you need one.
+     *
+     * Must be **self-contained**, exactly like [Bytes]: this fetches one file and hands
+     * the bytes to the loader, so a `.gltf` referencing an external `.bin` or texture
+     * loads incomplete — and silently, since nothing surfaces the missing resource. Use
+     * a GLB.
+     *
+     * Only `http` and `https` are accepted, and that is checked **here** rather than in
+     * each platform's downloader: this type's contract says http/https, so an app that
+     * forwards a user-supplied string must get the same refusal on every platform. A
+     * `file://` slipped into a deep link would otherwise turn into a local-file read on
+     * whichever platform happened not to re-check.
+     *
+     * @throws IllegalArgumentException if [url] is not an absolute http/https URL.
      */
-    public data class Url(val url: String) : ModelSource
+    public data class Url(val url: String) : ModelSource {
+        init {
+            require(HTTP_URL.matches(url)) {
+                "ModelSource.Url only accepts absolute http/https URLs, got '$url'"
+            }
+        }
+    }
 }
+
+// Scheme + authority only; the rest of the URL is the platform downloader's business.
+// Deliberately anchored, so a string merely *containing* "http://" does not pass.
+private val HTTP_URL = Regex("^https?://[^/?#]+.*$", RegexOption.IGNORE_CASE)
 
 /**
  * A tap that landed on the model.

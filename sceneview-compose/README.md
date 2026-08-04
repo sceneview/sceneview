@@ -16,7 +16,9 @@ model, orbit it, light it, tap it. That is the whole contract, and it is not a p
 the way to something larger.
 
 The reason is measurable. Android exposes 31 node types, the Swift API 20, the web one
-~10; the honest intersection of all three is **four** — Camera, Geometry, Light, Model.
+~10; the honest intersection of all three is **five** — Camera, Geometry, Light, Model,
+SpatialAudio — of which this module covers **four**. SpatialAudio is left out on purpose:
+it is not the viewer case, and each platform's audio session has its own lifecycle.
 An API that promised more would be a lowest-common-denominator that lies about every
 platform it covers.
 
@@ -36,7 +38,7 @@ platform it covers.
 | Splat, Video, View, ContactShadow, Physics, Text nodes | the platform-native API |
 
 AR is the important one: 77 of the 178 Kotlin files in `arsceneview` import ARCore
-directly, with its types in public signatures, and Apple's equivalent is ARKit. There is
+directly (58 under `src/main`, 19 under `src/test`), and Apple's equivalent is ARKit. There is
 no honest common shape.
 
 ## One API, several renderers

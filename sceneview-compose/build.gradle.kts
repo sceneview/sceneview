@@ -52,9 +52,19 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation(compose.runtime)
+            // `api`, because these ARE the public surface: `SceneViewer` takes an
+            // `androidx.compose.ui.Modifier` and, being @Composable, carries an
+            // `androidx.compose.runtime.Composer` in its compiled signature. Declaring
+            // them `implementation` would publish them at `runtime` scope only, so the
+            // POM would understate what a consumer needs to compile against. (This is
+            // the mirror image of the `api` hazard documented for `:sceneview` below —
+            // there the type is an implementation detail, here it is the contract.)
+            api(compose.runtime)
+            api(compose.ui)
+
+            // Stays `implementation`: used only by the internal placeholder composable,
+            // never in a public signature.
             implementation(compose.foundation)
-            implementation(compose.ui)
 
             // Portable math (Position / Rotation / Direction) shared with the
             // Android and Apple APIs, so a value written against one reads the

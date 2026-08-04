@@ -85,6 +85,7 @@ No engine boilerplate. No lifecycle callbacks. The runtime handles everything.
 | **Desktop** | Software renderer | Compose Desktop | Alpha |
 | **Flutter** | Native per platform | PlatformView | Alpha |
 | **React Native** | Native per platform | Fabric | Alpha |
+| **Compose Multiplatform** | Per platform (Filament / RealityKit) | `sceneview-compose` | Alpha — viewer subset, Android + iOS |
 | **Claude / AI** | — | MCP Server | Stable |
 
 ---

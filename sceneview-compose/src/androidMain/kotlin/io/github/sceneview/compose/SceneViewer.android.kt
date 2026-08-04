@@ -64,14 +64,20 @@ public actual fun SceneViewer(
 
     val filamentEnvironment = rememberEnvironment(engine, environmentLoader, environment)
 
-    // The image-based light is shared state owned by the Environment, so scale it in an
-    // effect keyed on both — and restore the authored value on dispose, otherwise a
-    // cached Environment would keep a previous screen's ambient multiplier.
+    // The image-based light is shared state owned by the Environment, and Filament has
+    // no "authored intensity" to read back — `indirectLight.intensity` is simply the
+    // last value written. So the baseline is captured ONCE per Environment and every
+    // later multiplier is applied to that, never to the live value.
+    //
+    // Scaling the live value instead compounds: a slider moved 1.0 -> 0.5 -> 1.0 leaves
+    // the scene at half ambient with the control back at neutral, and a single pass
+    // through 0f latches ambient at zero forever, since 0 * x is 0 for every later x.
+    val authoredAmbient = remember(filamentEnvironment) {
+        filamentEnvironment.indirectLight?.intensity
+    }
     LaunchedEffect(filamentEnvironment, lighting.ambientIntensity) {
-        filamentEnvironment.indirectLight?.let { light ->
-            val authored = light.intensity
-            light.intensity = authored * lighting.ambientIntensity
-        }
+        val baseline = authoredAmbient ?: return@LaunchedEffect
+        filamentEnvironment.indirectLight?.intensity = baseline * lighting.ambientIntensity
     }
 
     SceneView(
@@ -141,8 +147,6 @@ private fun rememberModelInstance(
     modelLoader: ModelLoader,
     model: ModelSource,
 ): ModelInstance? {
-    val context = LocalContext.current
-
     val instance = produceState<ModelInstance?>(
         initialValue = null,
         key1 = modelLoader,
@@ -206,6 +210,15 @@ private fun fetchModelBytes(url: String): ByteArray {
     }
 
     return try {
+        // Refuse an oversized body before reading a single byte, when the server
+        // announces one. The streaming check below is the real guard (Content-Length
+        // is a hint a hostile server can omit or lie about), but honouring it costs
+        // nothing and turns the common case into an instant, allocation-free refusal.
+        val announced = connection.contentLengthLong
+        require(announced <= MAX_MODEL_BYTES) {
+            "Model at $url declares $announced bytes, over the ${MAX_MODEL_BYTES shr 20} MB limit"
+        }
+
         connection.inputStream.use { stream ->
             val buffer = ByteArray(DOWNLOAD_CHUNK_BYTES)
             val out = java.io.ByteArrayOutputStream()
@@ -214,7 +227,7 @@ private fun fetchModelBytes(url: String): ByteArray {
                 if (read < 0) break
                 out.size().let { soFar ->
                     require(soFar + read <= MAX_MODEL_BYTES) {
-                        "Model at $url exceeds the ${MAX_MODEL_BYTES / (1024 * 1024)} MB limit"
+                        "Model at $url exceeds the ${MAX_MODEL_BYTES shr 20} MB limit"
                     }
                 }
                 out.write(buffer, 0, read)
@@ -229,7 +242,17 @@ private fun fetchModelBytes(url: String): ByteArray {
 private const val CONNECT_TIMEOUT_MS = 15_000
 private const val READ_TIMEOUT_MS = 30_000
 private const val DOWNLOAD_CHUNK_BYTES = 64 * 1024
-private const val MAX_MODEL_BYTES = 256L * 1024 * 1024
+
+/**
+ * Ceiling on a downloaded model, in bytes.
+ *
+ * Sized against the heap, not against what a model "could" be. The bytes accumulate in
+ * a `ByteArrayOutputStream`, whose growth-by-doubling plus the final `toByteArray()`
+ * copy peaks near twice this value — so a cap set at a nominally generous 256 MB would
+ * OOM the app long before it ever tripped, protecting nothing. 64 MB peaks around
+ * 128 MB, which a typical Android heap survives, so the limit actually fires.
+ */
+private const val MAX_MODEL_BYTES = 64L * 1024 * 1024
 
 /** Maps the portable [EnvironmentSource] onto a Filament [Environment]. */
 @Composable

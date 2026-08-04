@@ -141,6 +141,11 @@ jobs:
               - 'sceneview/**'
               - 'arsceneview/**'
               - 'sceneview-core/**'
+              # Gates apiCheck + detekt. Omitting it would let a PR that only
+              # touches this module skip both — and the CI Gate aggregator
+              # scores a skipped job as passing, so a renderer type leaking
+              # into the public API would merge green.
+              - 'sceneview-compose/**'
               - 'samples/android-demo/**'
               - 'samples/android-tv-demo/**'
               - 'samples/common/**'
@@ -162,6 +167,7 @@ jobs:
             kmp:
               - *shared
               - 'sceneview-core/**'
+              - 'sceneview-compose/**'
               - 'arsceneview/**'
               - 'sceneview/**'
               - 'sceneview-web/**'
@@ -353,7 +359,8 @@ jobs:
   # ── Public-API surface check (binary-compatibility-validator, #2723) ─────
   # BLOCKING — same tier as `Unit tests`. `apiCheck` compares the compiled
   # public ABI of the published library modules (sceneview, arsceneview,
-  # sceneview-core) against their committed `.api` dumps under `<module>/api/`.
+  # sceneview-core, sceneview-compose) against their committed `.api` dumps
+  # under `<module>/api/`.
   # A public signature added/removed/retyped without re-running `./gradlew
   # apiDump` fails this check → the `CI Gate` aggregator (which polls every
   # non-advisory check for the head SHA) goes red and blocks auto-merge. This
@@ -645,6 +652,8 @@ jobs:
             :sceneview-core:compileKotlinIosArm64 \
             :sceneview-core:compileKotlinIosSimulatorArm64 \
             :sceneview-core:compileKotlinIosX64 \
+            :sceneview-compose:compileKotlinIosArm64 \
+            :sceneview-compose:compileKotlinIosSimulatorArm64 \
             --stacktrace
 
   # ── Repo hygiene checks ─────────────────────────────────────────────────
@@ -684,6 +693,21 @@ jobs:
         if: always()
         shell: bash
         run: bash .claude/scripts/check-sceneview-skill.sh
+
+      # Apache-2.0 §4(b) guard for the vendored filament-kmp copy. This is
+      # licence compliance, not tidiness: `third_party/filament-kmp/NOTICE`
+      # claims the copy is byte-identical to upstream 0.3.0, and an unnoticed
+      # edit turns that claim false. It also pins the tree against
+      # MANIFEST.sha256 in both directions, so a deleted file, an added build
+      # script, an added binary blob or a symlink cannot slip in unreviewed.
+      # Runs unconditionally. Gating it on "did third_party/ change?" would
+      # need history this shallow checkout does not have, and the whole cost is
+      # a 2 s / 32 MB `--depth 1` clone — cheaper than the gate being skipped
+      # on the one PR that mattered.
+      - name: Verify vendored filament-kmp matches upstream
+        if: always()
+        shell: bash
+        run: bash third_party/filament-kmp/diff-upstream.sh
 
       # Archived SPM mirror URL guard — the `sceneview/sceneview-swift` SPM
       # mirror was archived in PR #1215; SceneViewSwift now resolves from the

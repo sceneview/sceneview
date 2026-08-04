@@ -1,8 +1,5 @@
 public final class io/github/sceneview/compose/CameraState {
 	public static final field $stable I
-	public static final field MAX_ELEVATION F
-	public static final field MIN_DISTANCE F
-	public static final field MIN_ELEVATION F
 	public final fun getAzimuth ()F
 	public final fun getDistance ()F
 	public final fun getElevation ()F

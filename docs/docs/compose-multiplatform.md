@@ -27,11 +27,11 @@ developer writing a CMP app today has no way to reach SceneView from `commonMain
 It is a *viewer subset*, published as a **separate, additive artifact**. Nothing in
 `sceneview/`, `arsceneview/`, `SceneViewSwift/` or `sceneview-web/` changes.
 
-| Target | `actual` implementation | Renderer |
-|---|---|---|
-| Android | delegates to the existing `SceneView { }` composable | Filament |
-| iOS | `UIKitView` hosting an `@objc` façade over `SceneViewSwift` | RealityKit |
-| Desktop (JVM) | offscreen render → pipelined `readPixels` → Skia image | Filament, via a vendored FFM binding |
+| Target | `actual` implementation | Renderer | Status |
+|---|---|---|---|
+| Android | delegates to the existing `SceneView { }` composable | Filament | implemented |
+| iOS | `UIKitView` hosting an app-supplied `UIView` (see `SceneViewerBridge`) | RealityKit | implemented — the app registers the factory |
+| Desktop (JVM) | offscreen render → pipelined `readPixels` → Skia image | Filament, via a vendored FFM binding | **planned** — draws a placeholder today |
 
 The point is that **one API does not imply one renderer.** RealityKit stays the Apple
 renderer — it is what ARKit and visionOS align with, and it is what the published App
@@ -42,12 +42,16 @@ Store app uses.
 The honest intersection of Filament, RealityKit and Filament.js is narrow. Measured on
 the current tree:
 
-- Android exposes **31 node types** (`sceneview/src/main/java/io/github/sceneview/node/`),
-  Swift 20, web ~10. The intersection of all three is **4**: Camera, Geometry, Light,
-  Model.
-- **77 of the 178 Kotlin files** in `arsceneview/` import `com.google.ar.core` directly,
-  with ARCore types in public signatures (100 reference the package at all). On Apple the
-  equivalent surface is ARKit/RealityKit.
+- Android exposes **27 node types** (31 files in
+  `sceneview/src/main/java/io/github/sceneview/node/`, four of which are the `Node` base
+  and its delegates/state rather than node types), Swift 20, web ~10. The intersection of
+  all three is **5**: Camera, Geometry, Light, Model, SpatialAudio.
+- **77 of the 178 Kotlin files** in `arsceneview/` import `com.google.ar.core` directly
+  (58 under `src/main`, 19 under `src/test`); 100 reference the package at all. On Apple
+  the equivalent surface is ARKit/RealityKit.
+
+The façade covers **4** of those 5. SpatialAudio is left out deliberately: it is not part
+of the viewer case, and each platform's audio session has its own lifecycle to own.
 
 So the façade covers the *model viewer* case — load a model, orbit it, light it, tap
 it — which is roughly 80% of real usage, and says so plainly.
@@ -150,9 +154,14 @@ Each one is independently shippable. No big bang.
 
 1. `sceneview-compose` module, `commonMain` API, **Android actual** — the delegation is
    near-free (on Android, Compose Multiplatform *is* androidx.compose).
-2. **iOS actual.** Prerequisite: an `@objc` `UIView` façade in `SceneViewSwift`, since
-   pure SwiftUI does not cross cinterop. That façade also serves the Flutter and React
-   Native bridges.
+2. **iOS actual** — shipped, but not the way this section originally planned. The plan
+   was to add an `@objc` façade *inside* `SceneViewSwift` and depend on it. That is not
+   buildable: a KMP module cannot depend on a Swift Package at all, so the dependency
+   direction had to be inverted. `SceneViewer` now declares what it needs — a factory
+   producing a `UIView` (`SceneViewerBridge`) — and the **app** supplies it once at
+   launch, where `SceneViewSwift` is already linked. Still open: the reusable Swift
+   `@objc` `UIView` wrapper itself, which also serves the Flutter and React Native
+   bridges.
 3. **Desktop actual**, on the vendored Filament binding, behind the gates above. This is
    the long pole: ~26 000 lines to vendor plus a three-OS native build chain.
 4. CMP sample, `llms.txt` section, honest platform matrix.

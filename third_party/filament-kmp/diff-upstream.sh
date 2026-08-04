@@ -1,16 +1,51 @@
 #!/usr/bin/env bash
-# Diff the vendored Filament KMP copy against its upstream tag.
+# Verify the vendored Filament KMP copy against its pinned upstream tag.
 #
 # Apache-2.0 §4(b) requires modified files to carry a notice saying they were
-# changed. This script is how that claim gets checked instead of trusted: it
-# fetches the pinned upstream tag into a temp clone and reports every vendored
-# file that differs.
+# changed. This script is how that claim gets CHECKED instead of trusted.
 #
-# Exit codes: 0 = every difference is declared, 1 = an undeclared modification.
+# It enumerates in BOTH directions, because a one-way walk of the vendored tree
+# is blind to whole classes of change:
+#
+#   * a DELETED file is invisible to a walk that only lists what is present;
+#   * an ADDED file escapes any extension filter it does not happen to match —
+#     including a `.so` blob or a `.sh` that runs at build time;
+#   * a SYMLINK is not a regular file, so `find -type f` never sees it.
+#
+# So the vendored tree is pinned by MANIFEST.sha256 (every file, no extension
+# filter at all), and the manifest is in turn checked against upstream. A change
+# has to survive both to go unnoticed.
+#
+# Exit codes: 0 = the copy matches upstream and the manifest, 1 = it does not.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UPSTREAM_URL="https://github.com/Erkko68/filament-kmp.git"
+MANIFEST="$HERE/MANIFEST.sha256"
+
+# Our own files, which have no upstream twin by construction. ANCHORED on
+# purpose: upstream ships its own nested README.md files (java/README.md), and
+# an unanchored name match would silently drop them from the manifest — leaving
+# exactly the blind spot this script exists to close.
+OURS_RE='^(MANIFEST\.sha256|NOTICE|README\.md|LICENSE|diff-upstream\.sh)$'
+
+# `--regenerate` rewrites MANIFEST.sha256 from the tree as it stands. It lives
+# here rather than in a doc comment so the pinning command can never drift from
+# the checking command.
+list_vendored_files() {
+    (cd "$HERE" && find . -type f) | sed 's#^\./##' | grep -Ev "$OURS_RE" | LC_ALL=C sort
+}
+
+if [[ "${1:-}" == "--regenerate" ]]; then
+    # Staged OUTSIDE the vendored tree: a temp file written next to the manifest
+    # exists by the time `find` walks the directory, so it would list itself.
+    staging="$(mktemp)"
+    (cd "$HERE" && list_vendored_files | xargs shasum -a 256) > "$staging"
+    mv "$staging" "$MANIFEST"
+    echo "Wrote $MANIFEST ($(wc -l < "$MANIFEST" | tr -d ' ') files)."
+    echo "Review the diff: a file appearing or vanishing here is the whole point."
+    exit 0
+fi
 
 # Pinned in NOTICE — the single source of truth for what we copied.
 UPSTREAM_TAG="$(sed -n 's/^Copied from upstream tag \(.*\)$/\1/p' "$HERE/NOTICE" | head -1)"
@@ -20,10 +55,52 @@ if [[ -z "$UPSTREAM_TAG" || -z "$UPSTREAM_COMMIT" ]]; then
     echo "FAIL: could not read the pinned tag/commit out of $HERE/NOTICE" >&2
     exit 1
 fi
+if [[ ! -f "$MANIFEST" ]]; then
+    echo "FAIL: $MANIFEST is missing — the vendored tree is unpinned." >&2
+    exit 1
+fi
 
+fail=0
+note() { echo "$1"; fail=1; }
+
+# ─── 1. No symlinks ─────────────────────────────────────────────────────────
+# The vendored copy is plain files. A symlink is never a legitimate part of it,
+# and `find -type f` (which the manifest check below uses) cannot see one — so
+# it is rejected on sight rather than compared.
+while IFS= read -r link; do
+    note "SYMLINK (not allowed)  : ${link#"$HERE"/} -> $(readlink "$link")"
+done < <(find "$HERE" -type l)
+
+# ─── 2. The tree matches the manifest, in both directions ───────────────────
+# No extension filter: every regular file is covered, including binaries.
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+# A newline in a filename would desynchronise every line-based comparison
+# below, so it is refused rather than silently mis-parsed.
+if [[ $(find "$HERE" -type f -print0 | tr -dc '\0' | wc -c) -ne $(find "$HERE" -type f | wc -l) ]]; then
+    echo "FAIL: a vendored filename contains a newline — refusing to compare." >&2
+    exit 1
+fi
+
+list_vendored_files > "$TMP/on-disk"
+sed 's/^[0-9a-f]*  *//' "$MANIFEST" | LC_ALL=C sort > "$TMP/in-manifest"
+
+while IFS= read -r f; do
+    [[ -n "$f" ]] && note "ADDED (not in manifest): $f"
+done < <(comm -23 "$TMP/on-disk" "$TMP/in-manifest")
+
+while IFS= read -r f; do
+    [[ -n "$f" ]] && note "DELETED (in manifest)  : $f"
+done < <(comm -13 "$TMP/on-disk" "$TMP/in-manifest")
+
+# Content, for the files present on both sides.
+(cd "$HERE" && shasum -a 256 -c "$MANIFEST" >"$TMP/sums" 2>/dev/null) || true
+while IFS= read -r line; do
+    [[ -n "$line" ]] && note "CONTENT CHANGED        : ${line%%:*}"
+done < <(grep -E ': *FAILED$' "$TMP/sums" | grep -v 'FAILED open or read' || true)
+
+# ─── 3. The manifest itself matches upstream ────────────────────────────────
 echo "Vendored copy : $HERE"
 echo "Upstream tag  : $UPSTREAM_TAG ($UPSTREAM_COMMIT)"
 echo
@@ -47,64 +124,44 @@ if [[ "$actual_commit" != "$UPSTREAM_COMMIT" ]]; then
     exit 1
 fi
 
+# NOTICE declares the copy verbatim. Until it says otherwise — with a per-file
+# list — ANY difference from upstream is undeclared, and a change notice pasted
+# into a file header is not enough on its own to make it declared.
+declares_verbatim=0
+grep -qi 'no file .* modified\|unmodified as of vendoring' "$HERE/NOTICE" && declares_verbatim=1
+
 modified=0
-undeclared=0
-
-# Walk every vendored source file and compare it with its upstream twin. The
-# vendored layout drops the `src/` prefix for `java/`, so map that one back.
-while IFS= read -r -d '' file; do
-    rel="${file#"$HERE"/}"
-    case "$rel" in
-        NOTICE|README.md|LICENSE|diff-upstream.sh) continue ;;
-        java/*) up="$TMP/upstream/java/${rel#java/}" ;;
-        *)      up="$TMP/upstream/$rel" ;;
-    esac
-
+while IFS= read -r rel; do
+    [[ -z "$rel" ]] && continue
+    up="$TMP/upstream/$rel"
     if [[ ! -f "$up" ]]; then
-        # A file with no upstream twin is either genuinely new or a renamed
-        # upstream file. Both are "modified work" under Apache-2.0 §4(b), and a
-        # rename is the easy way to smuggle an edit past a content diff — so this
-        # counts as undeclared unless the file says what it is.
-        if head -40 "$file" | grep -qi 'modified by the SceneView project\|added by the SceneView project'; then
-            echo "ADDED (declared)     : $rel"
-        else
-            echo "ADDED (UNDECLARED)   : $rel"
-            undeclared=$((undeclared + 1))
-        fi
-        modified=$((modified + 1))
+        note "NO UPSTREAM TWIN       : $rel"
         continue
     fi
-
-    if ! cmp -s "$file" "$up"; then
+    if ! cmp -s "$HERE/$rel" "$up"; then
         modified=$((modified + 1))
-        # A modified file must say so, per Apache-2.0 §4(b). Look for the marker
-        # in the first 40 lines, where a file-top notice belongs.
-        if head -40 "$file" | grep -qi 'modified by the SceneView project'; then
-            echo "MODIFIED (declared)  : $rel"
+        if (( declares_verbatim )); then
+            note "MODIFIED (UNDECLARED)  : $rel"
         else
-            echo "MODIFIED (UNDECLARED): $rel"
-            undeclared=$((undeclared + 1))
+            echo "MODIFIED               : $rel"
         fi
     fi
-done < <(find "$HERE" -type f \
-    \( -name '*.kt' -o -name '*.kts' -o -name '*.java' -o -name '*.c' -o -name '*.cpp' \
-       -o -name '*.h' -o -name '*.hpp' -o -name '*.map' -o -name '*.txt' -o -name '*.md' \
-       -o -name '*.properties' -o -name '*.pro' \) -print0)
-# `.java` covers the two FFM support files and `.map` covers c/filament-c.map, the
-# linker version script that shapes the exported native ABI — both are plausible
-# things to edit, and both were invisible to an earlier version of this filter.
+done < "$TMP/in-manifest"
 
 echo
-echo "Files differing from upstream: $modified"
+echo "Files in manifest: $(wc -l < "$TMP/in-manifest" | tr -d ' ')  |  differing from upstream: $modified"
 
-if (( undeclared > 0 )); then
+if (( fail )); then
     echo
-    echo "FAIL: $undeclared modified file(s) carry no change notice." >&2
-    echo "      Apache-2.0 §4(b) requires modified files to state that they" >&2
-    echo "      were changed. Add a notice at the top of each file reading:" >&2
-    echo >&2
-    echo "        Modified by the SceneView project (<what changed>)." >&2
+    echo "FAIL: the vendored copy no longer matches upstream + MANIFEST.sha256." >&2
+    echo "      Apache-2.0 §4(b) requires modified files to state that they were" >&2
+    echo "      changed. If a change is intentional:" >&2
+    echo "        1. add a notice at the top of each changed file reading" >&2
+    echo "           'Modified by the SceneView project (<what changed>).'" >&2
+    echo "        2. list it in $HERE/NOTICE, replacing the verbatim claim" >&2
+    echo "        3. re-pin the manifest, then review its diff:" >&2
+    echo "           bash $HERE/diff-upstream.sh --regenerate" >&2
     exit 1
 fi
 
-echo "All differences are declared."
+echo "OK: vendored copy is byte-identical to upstream $UPSTREAM_TAG."

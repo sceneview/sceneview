@@ -19,15 +19,27 @@ import platform.UIKit.UIView
  *
  * ### Registering
  *
- * Copy `SceneViewerBridgeView.swift` from the SceneView repository into your iOS app
- * (it wraps `SceneViewSwift.SceneView` in a `UIHostingController`), then register it
+ * Implement [SceneViewerViewFactory] in your own `iosMain` source set and register it
  * before any composable runs — typically in your `MainViewController` factory:
  *
- * ```swift
- * SceneViewerBridge.shared.factory = { spec in
- *     SceneViewerBridgeView(spec: spec)
+ * ```kotlin
+ * SceneViewerBridge.factory = object : SceneViewerViewFactory {
+ *     override fun create(spec: SceneViewerSpec): UIView =
+ *         MyRealityKitView(spec)                       // wraps SceneViewSwift.SceneView
+ *     override fun update(view: UIView, spec: SceneViewerSpec) {
+ *         (view as MyRealityKitView).apply(spec)       // mutate, never recreate
+ *     }
  * }
  * ```
+ *
+ * Note it must be an explicit implementation: [SceneViewerViewFactory] has two members,
+ * so it is not a `fun interface` and a Swift closure literal cannot stand in for it.
+ *
+ * The `UIView` itself is written in Swift, where `SceneViewSwift` is linked — typically
+ * a `UIHostingController` hosting `SceneViewSwift.SceneView`, exposed to Kotlin through
+ * `@objc`. SceneView does not ship that wrapper yet; the pattern it should follow is
+ * specified in this module's README and exists, production-tested, in
+ * `flutter/sceneview_flutter/ios/Classes/SceneViewPlugin.swift`.
  *
  * Until a factory is registered, [SceneViewer] renders a visible notice explaining that
  * the bridge is missing — never a blank viewport, which would be indistinguishable from
@@ -65,8 +77,13 @@ public interface SceneViewerViewFactory {
      * it by mutating the existing view — recreating the scene on every recomposition
      * would reload the model and throw away the user's camera position.
      *
-     * The default does nothing, which makes a `SceneViewer` render its initial state and
-     * silently ignore every later change. Override it in any real implementation.
+     * The Kotlin default does nothing, which makes a `SceneViewer` render its initial
+     * state and silently ignore every later change. Override it in any real
+     * implementation.
+     *
+     * Note the default exists for Kotlin callers only: Kotlin/Native does not bridge
+     * interface default bodies into the generated Objective-C protocol, so a Swift type
+     * conforming to this interface **must** implement it — the compiler will say so.
      */
     public fun update(view: UIView, spec: SceneViewerSpec) {}
 }
