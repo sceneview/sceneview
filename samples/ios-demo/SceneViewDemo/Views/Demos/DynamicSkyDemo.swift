@@ -5,6 +5,31 @@ import SceneViewSwift
 /// Dynamic sky -- slider to control time of day from midnight to midnight.
 struct DynamicSkyDemo: View {
     @State private var timeOfDay: Float = 12
+    @State private var heroNode: ModelNode?
+    @State private var heroLoadFailed = false
+    @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
+
+    /// Framing margin, mirroring `ModelViewerDemo`'s split for the same reason:
+    /// the interactive value has to keep the subject inside the frame while the
+    /// orbit sweeps, and under `qa_mode` the orbit is frozen so the shot can be
+    /// tighter. Without this the auto-framing default left the helmet at about
+    /// a quarter of the frame height on iPhone.
+    ///
+    /// Deliberately looser than `ModelViewerDemo`'s 0.62, and the difference is
+    /// the subject's aspect, not a preference. That demo frames a hovercar,
+    /// which is wide and short; this one frames a helmet, which is nearly as
+    /// tall as it is wide. Measured on both store classes: at 0.62 the iPhone
+    /// shot is right but the 13" iPad — whose frame is far less tall relative
+    /// to its width — clips the helmet's lower housing against the bottom edge.
+    /// One value has to serve both classes, because iOS has no per-device
+    /// framing lever from the capture script (#2785).
+    private static let captureFramingMargin: Float = 0.75
+
+    /// Hero size and placement. With no ground plane the subject IS the union
+    /// bounding sphere, so the auto-framing pass fits the helmet itself and
+    /// `heroUnits` no longer competes with a plane for the frame (#2896).
+    private static let subjectZ: Float = -2
+    private static let heroUnits: Float = 0.62
 
     private var timeLabel: String {
         let hour = Int(timeOfDay) % 24
@@ -47,34 +72,31 @@ struct DynamicSkyDemo: View {
     private var sceneContent: some View {
         ZStack {
             SceneView { root in
-                // Ground plane. Sized to the skyline's own footprint rather
-                // than a 5 m slab: the auto-framing pass fits the *union*
-                // bounding sphere, so an oversized plane pushed the camera far
-                // enough back to shrink every building to a few pixels (#2896).
-                // Base colour barely drives how this plane reads: at roughness
-                // 0.5 its dielectric specular lobe reflects the sky, so it
-                // tracks the time of day (measured: dropping the tint from 0.15
-                // to 0.05 moved the rendered plane only 166 → 152 / 255). That
-                // sky-coupling is the point here — leave the tint alone.
-                let ground = GeometryNode.plane(width: 2.6, depth: 2.6, color: .init(white: 0.15, alpha: 1))
-                ground.entity.position = .init(x: 0, y: -0.3, z: -2)
-                root.addChild(ground.entity)
-
-                // Buildings (cubes of varying heights). Taller than wide so the
-                // silhouette reads as a skyline against the sky instead of a
-                // scatter of blocks on a floor.
-                let buildings: [(Float, Float, Float, UIColor)] = [
-                    (-0.6, 0.65, -2.5, .systemGray),
-                    (-0.2, 0.95, -2.8, .systemGray2),
-                    (0.2, 0.48, -2.3, .systemGray3),
-                    (0.5, 0.80, -2.6, .systemGray),
-                    (0.8, 0.56, -2.4, .systemGray2),
-                ]
-                for (x, h, z, color) in buildings {
-                    let building = GeometryNode.cube(size: 0.2, color: color, cornerRadius: 0.01)
-                    building.entity.scale = .init(x: 1, y: h / 0.2, z: 1)
-                    building.entity.position = .init(x: x, y: h / 2 - 0.3, z: z)
-                    root.addChild(building.entity)
+                // No ground plane. There used to be one, sized to the five-cube
+                // skyline's footprint so the auto-framing pass — which fits the
+                // *union* bounding sphere — would not pull the camera back and
+                // shrink everything (#2896). With a single hero subject it
+                // earns nothing and costs twice: measured on both classes, the
+                // plane still dominated the union sphere and left the helmet at
+                // roughly a sixth of the frame height, and the subject visibly
+                // intersected it. Android's shot of this same subject has no
+                // plane either — it is the helmet against the sky.
+                //
+                // Hero subject — the same `khronos_damaged_helmet` Android's
+                // Lighting Lab puts under this demo id.
+                //
+                // This slot used to be five `systemGray` cubes standing in for a
+                // skyline. That worked as written, but it demonstrated the sun
+                // with an object that has almost nothing to show: a matte grey
+                // box reads the same at noon and at dusk apart from its shadow,
+                // so the one thing this demo exists to show — an environment
+                // driving a surface — was invisible. A PBR subject with metal
+                // and rough dielectric regions renders the time-of-day change
+                // directly in its reflections. It also ends the divergence where
+                // the App Store showed grey cubes for the very demo id whose
+                // Play screenshot is this helmet (#3003 / #2773).
+                if let hero = heroNode {
+                    root.addChild(hero.entity)
                 }
 
                 // Dynamic sky light
@@ -88,10 +110,20 @@ struct DynamicSkyDemo: View {
             // everything *except* its sky. Drop to 12° for a low skyline angle
             // where the sky fills most of the frame (#2896).
             .cameraOrbit(elevation: .pi / 15)
-            .id("sky-\(Int(timeOfDay * 10))-\(skyEnvironment.name)")
+            .framingMargin(qaMode ? Self.captureFramingMargin : 0.95)
+            // `heroNode != nil` is part of the key so a scene built before the
+            // async load lands picks the model up on the next rebuild — same
+            // idiom as `PlacementReticlePreviewScene` / `GestureEditingDemo`.
+            // Without it the first build wins and the helmet never appears.
+            .id("sky-\(Int(timeOfDay * 10))-\(skyEnvironment.name)-\(heroNode != nil)")
             .ignoresSafeArea()
         }
         .background(Color.black)
+        // On the ZStack, not inside the SceneView modifier chain: `.task`
+        // erases to `some View`, and `.environment` / `.cameraControls` /
+        // `.cameraOrbit` are SceneView-specific, so inserting it mid-chain
+        // stops them resolving.
+        .task { await loadHeroIfNeeded() }
     }
 
     @ViewBuilder
@@ -124,6 +156,25 @@ struct DynamicSkyDemo: View {
                 Spacer()
                 Text("24:00").font(.caption2).foregroundStyle(.secondary)
             }
+        }
+    }
+
+    /// Loads the hero model once and caches it. Failure is recorded so the
+    /// scene does not retry on every rebuild — the demo still renders (ground
+    /// plane + dynamic sky), it just has no subject, which is the same
+    /// degradation the other bundled-model demos accept.
+    @MainActor
+    private func loadHeroIfNeeded() async {
+        guard heroNode == nil, !heroLoadFailed else { return }
+        do {
+            let node = try await ModelNode.load("khronos_damaged_helmet")
+            _ = node.scaleToUnits(Self.heroUnits)
+            // Centred on the orbit target. No `withShadow()`: there is no
+            // surface left to receive one, so it would only cost a shadow pass.
+            node.entity.position = .init(x: 0, y: 0, z: Self.subjectZ)
+            heroNode = node
+        } catch {
+            heroLoadFailed = true
         }
     }
 
