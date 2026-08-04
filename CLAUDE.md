@@ -130,8 +130,8 @@ where pixel precision has real ROI — never for the app chrome itself.
 
 ## When writing any SceneView code
 
-- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.25.0`)
-- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.25.0`)
+- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.26.0`)
+- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.26.0`)
 - Declare nodes as composables inside the trailing content block — not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — returns `null`
   while loading, always handle the null case
