@@ -111,4 +111,76 @@ final class SceneViewDemoUITests: XCTestCase {
             app.terminate()
         }
     }
+
+    // MARK: - Black-viewport probe (#3008)
+
+    /// Opt-in probe for the intermittent black viewport of #3008: a `SceneView`
+    /// re-created by `.id()` sometimes renders nothing at all — no model, no
+    /// skybox — permanently.
+    ///
+    /// **Opt-in on purpose.** It takes minutes and it is a measurement rig, not
+    /// a smoke test, so it skips unless `SV_BLACK_PROBE=1` is exported. Run it
+    /// with `-only-testing:` and read the counts off the exported attachments:
+    ///
+    /// ```
+    /// SV_BLACK_PROBE=1 SV_PROBE_SWITCHES=8 xcodebuild test \
+    ///   -only-testing:SceneViewDemoUITests/SceneViewDemoUITests/testBlackViewportProbe …
+    /// ```
+    ///
+    /// Two things here are load-bearing and must not be "tidied up":
+    ///
+    /// - **No `-qa_mode 1`.** Every other capture in this file freezes
+    ///   auto-rotation for determinism, but `qa_mode` passes
+    ///   `autoRotate(speed: 0)`, and a zero speed makes `SceneView`'s
+    ///   auto-rotate task return immediately instead of driving `applyCamera()`
+    ///   at 60 Hz (#2896). That is a different render path from the one the
+    ///   defect was measured on, so the probe runs the shipping path.
+    /// - **Two samples per switch.** A viewport is only counted black when it
+    ///   is still black on the *second* sample — a frame that has not rendered
+    ///   yet is not a black viewport, and conflating the two is how a "black
+    ///   screen" verdict gets manufactured.
+    ///
+    /// The subject row alternates between the two *streamed* chips that stay
+    /// fully on-screen. Slot 0 ("Soldier") is deliberately not in the rotation:
+    /// it is bundled and renders on the process's first `RealityView`, which
+    /// has never been observed to fail, so including it would dilute the rate
+    /// with switches that cannot reproduce.
+    func testBlackViewportProbe() throws {
+        guard ProcessInfo.processInfo.environment["SV_BLACK_PROBE"] == "1" else {
+            throw XCTSkip("Set SV_BLACK_PROBE=1 to run the #3008 measurement rig.")
+        }
+        let switches = Int(
+            ProcessInfo.processInfo.environment["SV_PROBE_SWITCHES"] ?? "8"
+        ) ?? 8
+        let label = ProcessInfo.processInfo.environment["SV_PROBE_LABEL"] ?? "run"
+
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "animation"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
+                      "app never reached the foreground")
+
+        let fab = app.buttons["demo-settings-fab"]
+        XCTAssertTrue(fab.waitForExistence(timeout: 20), "settings FAB never appeared")
+        // Let slot 0 settle first: it is the control that proves the rig is
+        // driving a live scene rather than a stalled app.
+        Thread.sleep(forTimeInterval: 12)
+        snapshot(app, "\(label)-00-control-soldier")
+        fab.tap()
+
+        let chips = ["Retro TV Robot", "Catfish Mech"]
+        for i in 0..<switches {
+            let name = chips[i % chips.count]
+            let chip = app.buttons[name]
+            guard chip.waitForExistence(timeout: 10) else {
+                XCTFail("subject chip '\(name)' never appeared on switch \(i + 1)")
+                return
+            }
+            chip.tap()
+            Thread.sleep(forTimeInterval: 12)
+            snapshot(app, String(format: "%@-%02d-a-%@", label, i + 1, slug(name)))
+            Thread.sleep(forTimeInterval: 8)
+            snapshot(app, String(format: "%@-%02d-b-%@", label, i + 1, slug(name)))
+        }
+    }
 }
