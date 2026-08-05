@@ -1,0 +1,141 @@
+public final class io/github/sceneview/compose/CameraState {
+	public static final field $stable I
+	public final fun getAzimuth ()F
+	public final fun getDistance ()F
+	public final fun getElevation ()F
+	public final fun getGesturesEnabled ()Z
+	public final fun getTarget ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun setAzimuth (F)V
+	public final fun setDistance (F)V
+	public final fun setElevation (F)V
+	public final fun setGesturesEnabled (Z)V
+	public final fun setTarget (Ldev/romainguy/kotlin/math/Float3;)V
+}
+
+public final class io/github/sceneview/compose/CameraStateKt {
+	public static final fun rememberCameraState (Ldev/romainguy/kotlin/math/Float3;FFFLandroidx/compose/runtime/Composer;II)Lio/github/sceneview/compose/CameraState;
+	public static final fun rememberUnsavedCameraState (Ldev/romainguy/kotlin/math/Float3;FFFLandroidx/compose/runtime/Composer;II)Lio/github/sceneview/compose/CameraState;
+}
+
+public abstract interface class io/github/sceneview/compose/EnvironmentSource {
+}
+
+public final class io/github/sceneview/compose/EnvironmentSource$Color : io/github/sceneview/compose/EnvironmentSource {
+	public static final field $stable I
+	public fun <init> (FFFF)V
+	public synthetic fun <init> (FFFFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun copy (FFFF)Lio/github/sceneview/compose/EnvironmentSource$Color;
+	public static synthetic fun copy$default (Lio/github/sceneview/compose/EnvironmentSource$Color;FFFFILjava/lang/Object;)Lio/github/sceneview/compose/EnvironmentSource$Color;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAlpha ()F
+	public final fun getBlue ()F
+	public final fun getGreen ()F
+	public final fun getRed ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/compose/EnvironmentSource$Default : io/github/sceneview/compose/EnvironmentSource {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/compose/EnvironmentSource$Default;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/compose/EnvironmentSource$Hdr : io/github/sceneview/compose/EnvironmentSource {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Z)V
+	public synthetic fun <init> (Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Z
+	public final fun copy (Ljava/lang/String;Z)Lio/github/sceneview/compose/EnvironmentSource$Hdr;
+	public static synthetic fun copy$default (Lio/github/sceneview/compose/EnvironmentSource$Hdr;Ljava/lang/String;ZILjava/lang/Object;)Lio/github/sceneview/compose/EnvironmentSource$Hdr;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getShowSkybox ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/compose/Lighting {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;FFZ)V
+	public synthetic fun <init> (Ldev/romainguy/kotlin/math/Float3;FFZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()Z
+	public final fun copy (Ldev/romainguy/kotlin/math/Float3;FFZ)Lio/github/sceneview/compose/Lighting;
+	public static synthetic fun copy$default (Lio/github/sceneview/compose/Lighting;Ldev/romainguy/kotlin/math/Float3;FFZILjava/lang/Object;)Lio/github/sceneview/compose/Lighting;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAmbientIntensity ()F
+	public final fun getCastShadows ()Z
+	public final fun getDirection ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getIntensity ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/compose/ModelHit {
+	public static final field $stable I
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;F)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component2 ()F
+	public final fun copy (Ldev/romainguy/kotlin/math/Float3;F)Lio/github/sceneview/compose/ModelHit;
+	public static synthetic fun copy$default (Lio/github/sceneview/compose/ModelHit;Ldev/romainguy/kotlin/math/Float3;FILjava/lang/Object;)Lio/github/sceneview/compose/ModelHit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDistance ()F
+	public final fun getPosition ()Ldev/romainguy/kotlin/math/Float3;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class io/github/sceneview/compose/ModelSource {
+}
+
+public final class io/github/sceneview/compose/ModelSource$Asset : io/github/sceneview/compose/ModelSource {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lio/github/sceneview/compose/ModelSource$Asset;
+	public static synthetic fun copy$default (Lio/github/sceneview/compose/ModelSource$Asset;Ljava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/compose/ModelSource$Asset;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/compose/ModelSource$Bytes : io/github/sceneview/compose/ModelSource {
+	public static final field $stable I
+	public fun <init> ([B)V
+	public final fun component1 ()[B
+	public final fun copy ([B)Lio/github/sceneview/compose/ModelSource$Bytes;
+	public static synthetic fun copy$default (Lio/github/sceneview/compose/ModelSource$Bytes;[BILjava/lang/Object;)Lio/github/sceneview/compose/ModelSource$Bytes;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/compose/ModelSource$Url : io/github/sceneview/compose/ModelSource {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lio/github/sceneview/compose/ModelSource$Url;
+	public static synthetic fun copy$default (Lio/github/sceneview/compose/ModelSource$Url;Ljava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/compose/ModelSource$Url;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getUrl ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/compose/SceneViewer_androidKt {
+	public static final fun SceneViewer (Lio/github/sceneview/compose/ModelSource;Landroidx/compose/ui/Modifier;Lio/github/sceneview/compose/CameraState;Lio/github/sceneview/compose/Lighting;Lio/github/sceneview/compose/EnvironmentSource;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+}
+

@@ -41,6 +41,19 @@ cd "$ROOT"
 
 is_whitelisted() {
   case "$1" in
+    # Vendored third-party source. `third_party/filament-kmp/` hits this check on
+    # `Scene {` — but that is Filament's OWN `Scene` class (the native scene graph
+    # object), in package `io.github.erkko68.filament`, not SceneView's deprecated
+    # `Scene { }` composable. The script's own help text already lists "Filament
+    # framework class" as a whitelist reason.
+    #
+    # More to the point, this one CANNOT be fixed: the tree is a verbatim Apache-2.0
+    # copy whose byte-for-byte identity with upstream is itself enforced, on every PR,
+    # by third_party/filament-kmp/diff-upstream.sh. Editing these files to satisfy this
+    # check would turn the NOTICE's "unmodified" claim false and fail that gate — the
+    # two guards would deadlock. Vendored code is not ours to rename.
+    third_party/*) return 0 ;;
+
     # Historical migration / changelog docs
     MIGRATION.md | CHANGELOG.md | ROADMAP.md) return 0 ;;
     docs/docs/migration.md | docs/docs/migration-v4.md) return 0 ;;

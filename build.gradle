@@ -23,9 +23,9 @@ plugins {
 // is an intentional, reviewable diff. For the AI-first SDK this guards the
 // exact signatures that `llms.txt` promises against silent drift.
 apiValidation {
-    // Validate ONLY the three published library modules: sceneview,
-    // arsceneview (Android libraries) and sceneview-core (KMP). Everything
-    // else is ignored by project name:
+    // Validate ONLY the four published library modules: sceneview,
+    // arsceneview (Android libraries), sceneview-core and sceneview-compose
+    // (KMP). Everything else is ignored by project name:
     ignoredProjects += [
         // Samples / demo apps — not published, no API contract.
         "common",

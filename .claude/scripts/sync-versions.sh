@@ -104,7 +104,7 @@ check_plugin_sdk_dep() {
 
 # ─── 1. Gradle properties (Android modules) ──────────────────────────────
 echo -e "${CYAN}--- Gradle Modules ---${NC}"
-for module in sceneview arsceneview sceneview-core; do
+for module in sceneview arsceneview sceneview-core sceneview-compose; do
     PROPS="$REPO_ROOT/$module/gradle.properties"
     if [ -f "$PROPS" ]; then
         V=$(grep '^VERSION_NAME=' "$PROPS" 2>/dev/null | cut -d= -f2 || echo "MISSING")
@@ -979,7 +979,7 @@ if [ "$FIX_MODE" = "--fix" ] && [ "$ERRORS" -gt 0 ]; then
     echo -e "${YELLOW}Applying fixes...${NC}"
 
     # Fix module gradle.properties
-    for module in sceneview arsceneview sceneview-core; do
+    for module in sceneview arsceneview sceneview-core sceneview-compose; do
         PROPS="$REPO_ROOT/$module/gradle.properties"
         if [ -f "$PROPS" ]; then
             CURRENT=$(grep '^VERSION_NAME=' "$PROPS" | cut -d= -f2)

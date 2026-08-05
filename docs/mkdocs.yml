@@ -69,6 +69,7 @@ nav:
   - Platforms: platforms.md
   - Guides:
     - Architecture: architecture.md
+    - Compose Multiplatform: compose-multiplatform.md
     - Android XR: android-xr.md
     - visionOS Spatial Computing: visionos-spatial.md
     - Integrations: integrations.md

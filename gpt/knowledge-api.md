@@ -3624,6 +3624,115 @@ val hitNode: Node? = fromTouch.firstOrNull()?.nodeOrNull
 
 ---
 
+## Compose Multiplatform (sceneview-compose)
+
+One composable from `commonMain`, several renderers underneath. Artifact:
+`io.github.sceneview:sceneview-compose` — **not published yet**. 4.26.0 is the latest
+release on Maven Central and does NOT contain this module; it ships in the next release.
+Do not emit a version coordinate for it — every released version resolves to 404.
+
+**SCOPE — read before using.** This module is the *viewer subset* and will not grow past
+it: load a model, orbit it, light it, tap it. It is NOT a portable version of the full
+SDK. The honest intersection of Filament / RealityKit / Filament.js is 5 node types (this
+module covers 4 of them — SpatialAudio is deliberately out of the viewer case) out
+of Android's 27.
+
+**NOT available here — use the platform-native API instead:**
+
+| Need | Use |
+|---|---|
+| **AR (anything)** | `arsceneview` on Android, `ARSceneView` on Apple. 77 of 178 `arsceneview` files import ARCore directly (58 under src/main); there is no honest common shape |
+| Custom materials, shaders, post-processing | platform-native API |
+| Splat, Video, View, ContactShadow, Physics, Text nodes | platform-native API |
+
+**Renderer + status per platform** (do NOT generate code assuming iOS or Desktop render
+today — they draw a visible "not available yet" notice):
+
+| Platform | Renderer | Status |
+|---|---|---|
+| Android | Filament, delegates to `SceneView { }` | Implemented |
+| iOS | RealityKit via `SceneViewSwift` | Needs a one-time app registration — see below |
+| Desktop (JVM) | Filament via a vendored FFM binding | Placeholder — needs the native build chain |
+
+**iOS requires one registration call.** A KMP module cannot depend on a Swift Package, so
+the app supplies the renderer:
+
+```kotlin notest iosMain-only — platform.UIKit.UIView has no Android counterpart
+// iosMain, before the first SceneViewer composes
+SceneViewerBridge.factory = object : SceneViewerViewFactory {
+    override fun create(spec: SceneViewerSpec): UIView = /* wrap SceneViewSwift.SceneView */
+    override fun update(view: UIView, spec: SceneViewerSpec) { /* mutate, never recreate */ }
+}
+```
+
+Without it, `SceneViewer` draws a visible "no renderer registered" notice. `onFrame` is
+never invoked on iOS — `SceneViewSwift` exposes no per-frame callback.
+
+Targets: `androidTarget`, `jvm("desktop")`, `iosArm64`, `iosSimulatorArm64`. No `iosX64`
+— Compose Multiplatform 1.11.1 publishes no such variant.
+
+### The whole public API
+
+```kotlin
+@Composable
+fun SceneViewer(
+    model: ModelSource,
+    modifier: Modifier = Modifier,
+    camera: CameraState = rememberCameraState(),
+    lighting: Lighting = Lighting(),
+    environment: EnvironmentSource = EnvironmentSource.Default,
+    onTap: ((ModelHit?) -> Unit)? = null,
+    onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+)
+```
+
+| Type | Values |
+|---|---|
+| `ModelSource` | `Asset(path)` · `Bytes(bytes)` · `Url(url)` |
+| `EnvironmentSource` | `Default` · `Color(r, g, b, alpha = 1f)` · `Hdr(path, showSkybox = true)` |
+| `Lighting` | `direction: Float3` · `intensity: Float` (lux) · `ambientIntensity: Float` · `castShadows: Boolean` |
+| `ModelHit` | `position: Float3` · `distance: Float` |
+| `CameraState` | `target` · `distance` · `azimuth` · `elevation` (degrees) · `gesturesEnabled` |
+
+Helpers: `rememberCameraState(target, distance, azimuth, elevation)` (saved across
+config changes) and `rememberUnsavedCameraState(...)`.
+
+```kotlin
+// commonMain — compiles and runs on Android today
+@Composable
+fun ModelScreen() {
+    val camera = rememberCameraState(distance = 4f, elevation = 15f)
+
+    SceneViewer(
+        model = ModelSource.Asset("models/damaged_helmet.glb"),
+        modifier = Modifier.fillMaxSize(),
+        camera = camera,
+        lighting = Lighting(intensity = 80_000f, castShadows = true),
+        environment = EnvironmentSource.Hdr("environments/studio.hdr"),
+        onTap = { hit -> if (hit != null) println("hit at ${hit.position}") },
+    )
+}
+```
+
+Gotchas:
+- `ModelSource.Bytes` AND `ModelSource.Url` must be self-contained (GLB, or glTF with
+  embedded resources). Only `Asset` resolves sibling resources; `Url` downloads exactly
+  one file, so a `.gltf` referencing an external `.bin` or texture loads incomplete —
+  and does so silently, with no error surfaced.
+- `ModelSource.Url` accepts absolute http/https only. That check is in `commonMain`, so
+  it holds on every platform. The connect/read timeouts and the 64 MB cap are **Android
+  only** — they live in the Android downloader; on iOS the URL is handed to the
+  app-supplied bridge, which owns its own fetching policy.
+- Pixel output differs per platform: lighting maps approximately between Filament and
+  RealityKit, and materials do not carry across engines. For a reproducible look, ship an
+  HDR environment and use it everywhere.
+- `EnvironmentSource.Hdr(showSkybox = false)` makes the viewport transparent so Compose
+  content behind it shows through.
+
+Full rationale: `docs/docs/compose-multiplatform.md`.
+
+---
+
 ## SceneView Web (Kotlin/JS + Filament.js)
 
 Package: `sceneview-web` v4.26.0 — npm `sceneview-web`

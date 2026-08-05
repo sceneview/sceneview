@@ -3,8 +3,18 @@
 Decision record for hardware-accelerated 3D rendering on Desktop, replacing the
 wireframe placeholder in `samples/desktop-demo/`.
 
-**Last updated:** 2026-07-17 · **Decision:** [issue #2540](https://github.com/sceneview/sceneview/issues/2540)
-(full design doc lives in that issue; this page is the durable summary).
+**Last updated:** 2026-08-03 · **Decision:** superseded — see
+[compose-multiplatform.md](compose-multiplatform.md). The offscreen architecture below
+still stands; the *binding supply* decision does not.
+
+> **2026-08-03 update.** Desktop rendering is now delivered as the desktop `actual` of
+> the `sceneview-compose` façade. The binding supply changed: instead of *depending on*
+> `io.github.erkko68.filament-ffm`, its desktop path is **vendored** into
+> `third_party/filament-kmp/` under its Apache-2.0 licence, with the attribution that
+> licence requires. The offscreen architecture and the filament-kmp analysis below are
+> unchanged and still the basis for the work. See
+> [compose-multiplatform.md](compose-multiplatform.md). Original decision thread:
+> [issue #2540](https://github.com/sceneview/sceneview/issues/2540).
 
 > Supersedes the 2026-03-25 research version of this page, which incorrectly
 > presented Filament's desktop Java build (`filament-java.jar`, `FilamentCanvas`,
@@ -52,14 +62,19 @@ distribution — so the real supply question is *where the desktop bindings come
 
 [Erkko68/filament-kmp](https://github.com/Erkko68/filament-kmp) — unofficial,
 Apache-2.0, actively maintained KMP wrapper around Filament, published on Maven
-Central (verified against `repo1.maven.org`, latest `0.1.3-beta04`, 2026-07-13):
+Central (re-verified against `repo1.maven.org`, latest `0.3.0`, 2026-08-03):
 
 - **Desktop/JVM via Project Panama (FFM, JDK 22+)** over a single combined C wrapper,
   natives bundled per platform: `io.github.erkko68.filament-ffm:filament-ffm` +
   `filament-ffm-runtime-{macos-arm64, linux-x64, linux-arm64, windows-x64}`.
-  **No macos-x64 (Intel Mac) natives today.**
-- Wraps **Filament 1.72.0**; modules mirror upstream (`filament`, `gltfio`, `filamat`,
-  `filament-utils`). A legacy `filament-jni` group also exists; FFM is the current track.
+  **No macos-x64 (Intel Mac) natives** — re-confirmed 2026-08-03 (404 on Maven Central).
+- Wraps **Filament 1.74.0** (`MATERIAL_VERSION` 74); modules mirror upstream
+  (`filament`, `gltfio`, `filamat`, `filament-utils`). A legacy `filament-jni` group
+  also exists; FFM is the current track.
+- It does **not** build Filament from source: it downloads Google's official C++
+  prebuilts, compiles a shared C wrapper, and generates the FFM bindings with `jextract`
+  at build time. The web runtime is the exception — that one comes from a personal fork
+  of Filament pending an upstream PR.
 - Backends on desktop: Metal on macOS, Vulkan default on Windows/Linux, OpenGL fallback.
 - Its Compose Desktop integration is exactly the offscreen architecture adopted in
   #2540, documented with real numbers in
@@ -82,11 +97,17 @@ pin ahead of SceneView Android's Filament ref (see the `.filamat` note below).
    Compose blending, and the requesting framework doesn't go through AWT); zero-copy
    GPU interop is a later upgrade behind the same API, blocked on
    [compose-multiplatform#3810](https://github.com/JetBrains/compose-multiplatform/issues/3810).
-2. **Binding supply S1 — consume `io.github.erkko68.filament-ffm` as a dependency.**
-   Building our own distribution (S2, the 18–29-day plan from the 2026-03 version of
-   this page) is held in reserve as the documented fallback, not paid up front. If S2
-   ever happens, its sane shape is filament-kmp's (one combined C wrapper + FFM), not
-   resurrecting the 2021 JNI glue.
+2. ~~**Binding supply S1 — consume `io.github.erkko68.filament-ffm` as a dependency.**~~
+   **Amended 2026-08-03: vendor instead of depend.** The shape of the binding is
+   unchanged — filament-kmp's desktop path is still the right one, and S2 "build our
+   own from scratch" is still not worth paying. What changed is that the code is
+   **copied into `third_party/filament-kmp/`** under its Apache-2.0 licence rather than
+   resolved from Maven Central, so the desktop track can pin its own Filament version
+   and is not exposed to upstream's pre-1.0 API churn. The costs that come with owning
+   the copy — JDK 22+, the CMake/`jextract` chain, three-OS CI, recurring upkeep — are
+   listed in [compose-multiplatform.md](compose-multiplatform.md). Attribution is
+   mandatory, not discretionary: upstream `LICENSE` plus a `NOTICE` crediting
+   Èric Bitriá Ribes.
 3. **Phased, with measured gates and abandon criteria** — P1 spike (engine boot +
    offscreen + one GLB in `samples/desktop-demo` behind a flag; FPS/CPU/resize/leak
    gates) → P2 `sceneview-desktop/` module mirroring the Android composable surface

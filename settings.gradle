@@ -26,6 +26,9 @@ include ":sceneview-core"
 include ":sceneview"
 include ":arsceneview"
 include ":sceneview-web"
+// Compose Multiplatform façade over the per-platform renderers (viewer subset).
+// See docs/docs/compose-multiplatform.md.
+include ":sceneview-compose"
 
 // Doc-snippet compile guard (#2759) — generated sources only, never published.
 include ":snippets-check"
