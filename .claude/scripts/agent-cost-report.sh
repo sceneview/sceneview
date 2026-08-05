@@ -12,9 +12,16 @@
 #   Deliberate. This account is on a Claude Max subscription — a flat plan, not
 #   per-token billing — so a dollar figure here would be an invented number
 #   dressed up as a measurement. The quantity that actually binds is the quota,
-#   and OUTPUT tokens dominate it. Cache reads are reported because they are the
-#   bulk of the input volume and the cheapest lever (a session that re-reads a
-#   warm cache costs far less than one that rebuilds it).
+#   and this reports a WEIGHTED cost using the published price ratios (cache
+#   read x0.1, cache write x1.25-2, output x5) rather than raw token counts,
+#   which are not comparable to each other.
+#
+#   ⚠️ THIS FILE USED TO SAY "OUTPUT TOKENS DOMINATE IT". THAT WAS NEVER MEASURED
+#   AND IS FALSE. Measured 2026-08-03 over 7 days, all projects: cache_read was
+#   61.5% of the weighted cost, cache_write 25.9%, output 12.6%. Optimising for
+#   shorter answers targets an eighth of the bill. The real driver is context
+#   size x number of turns: every turn re-reads the entire context, and the
+#   average context measured 209k tokens per request.
 #
 # ⚠️ DEDUPLICATION IS NOT OPTIONAL
 #   A transcript writes several records per API call (streaming + final), each
@@ -91,11 +98,17 @@ group_by = os.environ["GROUP_BY"]
 as_json = os.environ["AS_JSON"] == "true"
 top_n = int(os.environ["TOP"] or 5)
 
+# Subagents do NOT write into <slug>/*.jsonl — they get their own transcript at
+# <slug>/<sessionId>/subagents/agent-*.jsonl. Globbing only the first pattern
+# drops them entirely: measured 2026-08-03, 643 subagent transcripts existed and
+# this report saw none of them, hiding 13.3% of the weighted cost.
 if all_projects or not project:
-    files = sorted(glob.glob(os.path.join(root, "*", "*.jsonl")))
+    files = sorted(glob.glob(os.path.join(root, "*", "*.jsonl"))
+                   + glob.glob(os.path.join(root, "*", "*", "subagents", "*.jsonl")))
     scope = "all projects"
 else:
-    files = sorted(glob.glob(os.path.join(root, project, "*.jsonl")))
+    files = sorted(glob.glob(os.path.join(root, project, "*.jsonl"))
+                   + glob.glob(os.path.join(root, project, "*", "subagents", "*.jsonl")))
     scope = project
 
 cutoff = None
@@ -120,6 +133,13 @@ undated = 0
 
 for path in files:
     session = os.path.splitext(os.path.basename(path))[0]
+    # A subagent transcript lives at <slug>/<sessionId>/subagents/agent-*.jsonl.
+    # Attribute its cost to the OWNING session — an agent-<hash> row on its own
+    # is unattributable, and the point of the report is to name what to change.
+    parent = os.path.dirname(path)
+    is_subagent = os.path.basename(parent) == "subagents"
+    if is_subagent:
+        session = os.path.basename(os.path.dirname(parent))
     try:
         fh = open(path, errors="replace")
     except OSError:
@@ -152,16 +172,34 @@ for path in files:
                 skipped_dupes += 1
                 continue
 
+            # Weighted cost. Raw volumes are not comparable: an output token
+            # costs 50x a cache-read token. Summing them answers no question.
+            # Weights are Anthropic's published price ratios, base = input token.
+            created = usage.get("cache_creation")
+            cw_5m = cw_1h = 0
+            if isinstance(created, dict):
+                cw_5m = created.get("ephemeral_5m_input_tokens") or 0
+                cw_1h = created.get("ephemeral_1h_input_tokens") or 0
+            cache_write = usage.get("cache_creation_input_tokens") or 0
+            if not (cw_5m or cw_1h):
+                cw_5m = cache_write
+            out_t = usage.get("output_tokens") or 0
+            in_t = usage.get("input_tokens") or 0
+            cr_t = usage.get("cache_read_input_tokens") or 0
+            weighted = in_t + cw_5m * 1.25 + cw_1h * 2.0 + cr_t * 0.1 + out_t * 5.0
+
             seen[key] = {
                 "day": ts.strftime("%Y-%m-%d") if ts else "(undated)",
                 "model": msg.get("model") or "(unknown)",
                 "session": session,
                 "branch": rec.get("gitBranch") or "(none)",
-                "sidechain": bool(rec.get("isSidechain")),
-                "output": usage.get("output_tokens") or 0,
-                "input": usage.get("input_tokens") or 0,
-                "cache_write": usage.get("cache_creation_input_tokens") or 0,
-                "cache_read": usage.get("cache_read_input_tokens") or 0,
+                "sidechain": bool(rec.get("isSidechain")) or is_subagent,
+                "output": out_t,
+                "input": in_t,
+                "cache_write": cache_write or (cw_5m + cw_1h),
+                "cache_read": cr_t,
+                "weighted": weighted,
+                "context": in_t + cr_t + (cache_write or (cw_5m + cw_1h)),
             }
 
 rows = list(seen.values())
@@ -179,36 +217,45 @@ if not rows:
 
 def blank():
     return {"requests": 0, "output": 0, "input": 0, "cache_write": 0,
-            "cache_read": 0, "subagent_requests": 0}
+            "cache_read": 0, "subagent_requests": 0, "weighted": 0.0,
+            "context": 0}
+
+
+def accumulate(b, r):
+    b["requests"] += 1
+    for f in ("output", "input", "cache_write", "cache_read", "weighted", "context"):
+        b[f] += r[f]
+    if r["sidechain"]:
+        b["subagent_requests"] += 1
 
 
 def aggregate(key):
     out = {}
     for r in rows:
-        b = out.setdefault(r[key], blank())
-        b["requests"] += 1
-        b["output"] += r["output"]
-        b["input"] += r["input"]
-        b["cache_write"] += r["cache_write"]
-        b["cache_read"] += r["cache_read"]
-        if r["sidechain"]:
-            b["subagent_requests"] += 1
+        accumulate(out.setdefault(r[key], blank()), r)
     return out
 
 
 totals = blank()
 for r in rows:
-    totals["requests"] += 1
-    totals["output"] += r["output"]
-    totals["input"] += r["input"]
-    totals["cache_write"] += r["cache_write"]
-    totals["cache_read"] += r["cache_read"]
-    if r["sidechain"]:
-        totals["subagent_requests"] += 1
+    accumulate(totals, r)
 
 grouped = aggregate(group_by)
 by_session = aggregate("session")
-heaviest = sorted(by_session.items(), key=lambda kv: kv[1]["output"], reverse=True)[:top_n]
+heaviest = sorted(by_session.items(), key=lambda kv: kv[1]["weighted"], reverse=True)[:top_n]
+
+# Where the weighted cost actually sits. Reported as a breakdown rather than a
+# single headline number, because the headline was wrong for months: this script
+# named output "the quota-binding number" while output was 12.6% of the bill.
+w_total = totals["weighted"] or 1.0
+breakdown = [
+    ("cache_read  x0.1", totals["cache_read"], totals["cache_read"] * 0.1),
+    ("cache_write x1.25-2", totals["cache_write"], w_total - (
+        totals["cache_read"] * 0.1 + totals["output"] * 5.0 + totals["input"])),
+    ("output      x5", totals["output"], totals["output"] * 5.0),
+    ("input       x1", totals["input"], float(totals["input"])),
+]
+avg_ctx = totals["context"] / totals["requests"] if totals["requests"] else 0
 
 read_in = totals["cache_read"] + totals["cache_write"] + totals["input"]
 cache_share = (100.0 * totals["cache_read"] / read_in) if read_in else 0.0
@@ -218,6 +265,10 @@ if as_json:
         "scope": scope,
         "days": days,
         "totals": totals,
+        "weightedCostBreakdown": [
+            {"component": c, "raw": raw, "weighted": round(w, 1),
+             "pct": round(100.0 * w / w_total, 1)} for c, raw, w in breakdown],
+        "avgContextPerRequest": round(avg_ctx),
         "cache_read_share_pct": round(cache_share, 1),
         "duplicate_records_skipped": skipped_dupes,
         "undated_records_skipped": undated,
@@ -238,32 +289,46 @@ def n(v):
 
 print("Agent cost — %s, last %s day(s)" % (scope, days if days else "all"))
 print("=" * 72)
-print("%-22s %8s %10s %10s %11s" % (group_by, "requests", "output", "cache-wr", "cache-rd"))
+print("%-22s %8s %9s %9s %10s %10s"
+      % (group_by, "requests", "weighted", "output", "cache-wr", "cache-rd"))
 print("-" * 72)
 for key in sorted(grouped, reverse=(group_by == "day")):
     g = grouped[key]
     label = key if len(key) <= 22 else key[:19] + "..."
-    print("%-22s %8d %10s %10s %11s"
-          % (label, g["requests"], n(g["output"]), n(g["cache_write"]), n(g["cache_read"])))
+    print("%-22s %8d %9s %9s %10s %10s"
+          % (label, g["requests"], n(g["weighted"]), n(g["output"]),
+             n(g["cache_write"]), n(g["cache_read"])))
 print("-" * 72)
-print("%-22s %8d %10s %10s %11s"
-      % ("TOTAL", totals["requests"], n(totals["output"]),
+print("%-22s %8d %9s %9s %10s %10s"
+      % ("TOTAL", totals["requests"], n(totals["weighted"]), n(totals["output"]),
          n(totals["cache_write"]), n(totals["cache_read"])))
 print()
-print("Output tokens (the quota-binding number): %s across %d API requests."
-      % (n(totals["output"]), totals["requests"]))
+print("Weighted cost: %s units across %d API requests." % (n(totals["weighted"]),
+                                                           totals["requests"]))
+print("Where it goes (weights = published price ratios, base = 1 input token):")
+for label, raw, w in sorted(breakdown, key=lambda x: -x[2]):
+    print("  %-20s %8s raw -> %8s weighted  %5.1f%%"
+          % (label, n(raw), n(w), 100.0 * w / w_total))
+print()
+print("Average context re-read per request: %s tokens. THIS is the lever — every"
+      % n(int(avg_ctx)))
+print("turn pays for the whole context again, so cost scales with context size")
+print("times number of turns, not with how much text the agent writes.")
 print("Cache reads are %.1f%% of all input volume — the cheap half; a low share "
       "means sessions are rebuilding context instead of reusing it."
       % cache_share)
 if totals["subagent_requests"]:
-    print("Subagent (sidechain) requests: %d of %d (%.0f%%)."
+    print("Subagent requests: %d of %d (%.0f%%) — includes the "
+          "<session>/subagents/ transcripts."
           % (totals["subagent_requests"], totals["requests"],
              100.0 * totals["subagent_requests"] / totals["requests"]))
 print()
-print("Heaviest sessions by output tokens")
+print("Heaviest sessions by weighted cost")
 print("-" * 72)
 for s, v in heaviest:
-    print("  %s  %8s output  %6d requests" % (s, n(v["output"]), v["requests"]))
+    print("  %s  %8s weighted  %6d requests  ctx avg %s"
+          % (s, n(v["weighted"]), v["requests"],
+             n(int(v["context"] / v["requests"])) if v["requests"] else "-"))
 print()
 # Report what was dropped. A silently-filtered record is how a measurement
 # turns into a comfortable number.

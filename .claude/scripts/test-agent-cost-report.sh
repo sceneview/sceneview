@@ -88,6 +88,63 @@ OUT="$(HOME="$TMP" bash "$REPORT" --project empty-project --json 2>&1)"; RC=$?
 check "empty project exits 0" 0 "$RC"
 check "empty project reports 0 requests" 0 "$(jq_field "d['requests']")"
 
+# ── Subagent transcripts ─────────────────────────────────────────────────────
+# Subagents do not write into <slug>/*.jsonl. They get their own transcript at
+# <slug>/<sessionId>/subagents/agent-*.jsonl, and for months this report globbed
+# only the first pattern and reported "0 subagent requests" on a machine holding
+# 643 subagent transcripts. A zero that means "not looked at" is the single most
+# dangerous output this script can produce, so it is pinned here.
+SUBPROJ="$TMP/.claude/projects/sub-project"
+mkdir -p "$SUBPROJ/session-xyz/subagents"
+rec req_MAIN uuid_m 10 claude-opus-5 main false "$NOW" > "$SUBPROJ/session-xyz.jsonl"
+# isSidechain is deliberately false here: the record itself does not always
+# carry the flag, so attribution must come from the PATH.
+rec req_SUB uuid_s 20 claude-sonnet-5 main false "$NOW" \
+  > "$SUBPROJ/session-xyz/subagents/agent-deadbeef.jsonl"
+
+OUT="$(HOME="$TMP" bash "$REPORT" --project sub-project --days 7 --json 2>&1)"; RC=$?
+check "subagent transcript is discovered" 2 "$(jq_field "d['totals']['requests']")"
+check "subagent output is counted" 30 "$(jq_field "d['totals']['output']")"
+check "subagent attributed by path, not by flag" 1 "$(jq_field "d['totals']['subagent_requests']")"
+check "subagent cost folded into the OWNING session" 1 "$(jq_field "len(d['groups'])")"
+
+# Mutation: drop the subagents glob and the count must fall back to 1.
+MUT2="$TMP/report-noglob.sh"
+python3 - "$REPORT" "$MUT2" <<'PYMUT'
+import sys
+src = open(sys.argv[1]).read()
+needle = '+ glob.glob(os.path.join(root, project, "*", "subagents", "*.jsonl")))'
+assert needle in src, "anchor moved — fix this test"
+open(sys.argv[2], "w").write(src.replace(needle, ")"))
+PYMUT
+if [ $? -ne 0 ]; then
+  echo "  ✗ subagent-glob mutation could not be applied — anchor moved"; FAIL=$((FAIL + 1))
+else
+  mut2="$(HOME="$TMP" bash "$MUT2" --project sub-project --days 7 --json 2>&1)"
+  mut2_req="$(printf '%s' "$mut2" | python3 -c "import json,sys;print(json.load(sys.stdin)['totals']['requests'])" 2>/dev/null || echo ERR)"
+  if [ "$mut2_req" = "2" ]; then
+    echo "  ✗ MUTATION SURVIVED — subagents are found by something other than that glob"
+    FAIL=$((FAIL + 1))
+  else
+    echo "  ✓ mutation killed — without the subagents glob only $mut2_req of 2 requests are seen"
+    PASS=$((PASS + 1))
+  fi
+fi
+
+# ── Weighted cost ────────────────────────────────────────────────────────────
+# Raw token counts are not comparable (an output token costs 50x a cache-read
+# token). The headline used to be raw output, which under-reported the driver by
+# ~8x. The breakdown must exist and must account for the whole weighted total.
+run --days 7
+# req_A+req_B+req_C: input 15, cache_write 300 (x1.25), cache_read 2700 (x0.1),
+# output 350 (x5) = 15 + 375 + 270 + 1750 = 2410.
+check "weighted cost computed from price ratios" 2410 "$(jq_field "int(d['totals']['weighted'])")"
+check "breakdown accounts for 100% of the weighted total" 100.0 \
+  "$(jq_field "round(sum(c['pct'] for c in d['weightedCostBreakdown']),1)")"
+# Per request: input 5 + cache_read 900 + cache_write 100 = 1005. It is an
+# AVERAGE, not a sum — the number that matters is what one turn re-reads.
+check "average context per request reported" 1005 "$(jq_field "d['avgContextPerRequest']")"
+
 # ── Mutation test ────────────────────────────────────────────────────────────
 # The mutation target is the dedup KEY, not the `if key in seen: continue`.
 # Measured while writing this suite: neutering that `continue` does NOT change
