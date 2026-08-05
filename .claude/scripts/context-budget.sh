@@ -42,8 +42,10 @@
 #   workflow (the listing is unconditional even though the bodies are not).
 #   STATE.md and workflows/README.md are NOT in that set — they are read by the
 #   sessions that follow CLAUDE.md's pointers, so they are reported separately.
-#   Measured against a real transcript on 2026-08-05: the unconditional block
-#   below predicts the sceneview-vs-ar-model-viewer preamble gap to within 1%.
+#   Measured against a real transcript on 2026-08-05: the 27,853-byte delta of
+#   the unconditional block below predicts ~10,316 tokens against the 10,879
+#   actually measured for the sceneview-vs-ar-model-viewer preamble gap — 5.2%
+#   under. Close enough to rank cuts, not close enough to quote as a budget.
 #
 # Usage: bash .claude/scripts/context-budget.sh [--strict]
 #   --strict  exit non-zero when a file is over its documented spec
