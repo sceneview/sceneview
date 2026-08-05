@@ -931,7 +931,16 @@ jobs:
               # out was the dangerous direction — announcing a permanent break as
               # transient — which is the mistake this whole PR is about.
               # Both raised in review of PR #3013.
-              transient_json = isinstance(e, requests.exceptions.JSONDecodeError)
+              # getattr, not `requests.exceptions.JSONDecodeError` directly: this
+              # runs INSIDE an exception handler, where an AttributeError would
+              # escape the very try/except meant to keep the release alive and
+              # kill the step before section 5 ever submits. `test-app-store-
+              # submit.py` stubs `requests` with a module that has no
+              # `.exceptions`, and caught exactly that — 32 submission tests died
+              # on a handler that could not run.
+              _json_err = getattr(getattr(requests, "exceptions", None),
+                                  "JSONDecodeError", None)
+              transient_json = _json_err is not None and isinstance(e, _json_err)
               broken_wiring = not transient_json and isinstance(
                   e, (ImportError, SyntaxError, NameError,
                       AttributeError, TypeError, ValueError))
