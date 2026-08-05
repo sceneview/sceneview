@@ -914,10 +914,12 @@ def _await_delivery(requests, headers, shot_id, name, attempts=40, delay=3):
     string comparison. A timeout is therefore reported as INDETERMINATE and
     surfaced again in the summary, not buried in one log line.
 
-    Budget: the JWT minted in main() lasts 1200s, and the workflow allows 15
-    min. 6 committed screenshots × 2 min worst case = 12 min, which fits
-    both. apply_screenshots() re-checks that budget against the actual upload
-    count before deleting anything.
+    Budget: the JWT lasts 1200s and the dispatch workflow allows 15 min. The
+    repo currently ships 4 screenshots (2 iPhone + 2 iPad), so 4 × 2 min worst
+    case = 8 min, which fits both. Do not treat that as headroom to spend:
+    apply_screenshots() re-checks the budget against the ACTUAL upload count
+    before deleting anything, precisely because this comment's arithmetic goes
+    stale every time the set changes — it said 6 until #3013.
     """
     state = "UNKNOWN"
     for _ in range(attempts):

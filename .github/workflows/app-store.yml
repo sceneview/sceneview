@@ -963,6 +963,15 @@ jobs:
           # Flow: POST /v1/reviewSubmissions (IOS) →
           #       POST /v1/reviewSubmissionItems (attach version) →
           #       PATCH /v1/reviewSubmissions/{id} {submitted: true}
+          # Fresh token before the submission, for the same reason 4c mints its
+          # own — and more sharply here. This step's original token lasts 1200s,
+          # section 2's build poll can burn ~900s of it, and section 4c now
+          # spends more on top uploading screenshots. A 401 on the
+          # reviewSubmissions POST raises SystemExit(1) and fails the release,
+          # so the single most important call in this workflow must not be the
+          # one running closest to expiry. Raised in review of PR #3013.
+          headers = asc_headers()
+
           try:
               # 5a. Cancel any STALE open reviewSubmission first (#2301).
               #
