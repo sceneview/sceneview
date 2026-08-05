@@ -5319,8 +5319,9 @@ val hitNode: Node? = fromTouch.firstOrNull()?.nodeOrNull
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose:4.26.0` — **first published in 4.26.0**. The
-currently released 4.25.0 does not contain it, so do not emit that coordinate.
+`io.github.sceneview:sceneview-compose` — **not published yet**. 4.26.0 is the latest
+release on Maven Central and does NOT contain this module; it ships in the next release.
+Do not emit a version coordinate for it — every released version resolves to 404.
 
 **SCOPE — read before using.** This module is the *viewer subset* and will not grow past
 it: load a model, orbit it, light it, tap it. It is NOT a portable version of the full

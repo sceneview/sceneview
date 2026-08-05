@@ -124,12 +124,15 @@ if [[ "$actual_commit" != "$UPSTREAM_COMMIT" ]]; then
     exit 1
 fi
 
-# NOTICE declares the copy verbatim. Until it says otherwise — with a per-file
-# list — ANY difference from upstream is undeclared, and a change notice pasted
-# into a file header is not enough on its own to make it declared.
-declares_verbatim=0
-grep -qi 'no file .* modified\|unmodified as of vendoring' "$HERE/NOTICE" && declares_verbatim=1
-
+# A modification is declared ONLY by naming the file in NOTICE, never by a blanket
+# sentence. An earlier version keyed off a "this copy is unmodified" phrase in NOTICE:
+# deleting that one sentence downgraded every modified file from a failure to an
+# informational line, and the script still exited 0 printing "byte-identical". NOTICE is
+# excluded from MANIFEST.sha256 by construction, so it was simultaneously the evidence
+# and the thing being claimed — editing the evidence disarmed the guard.
+#
+# Now a change must be declared TWICE, in two places that cannot be satisfied by one
+# edit: a §4(b) notice inside the file itself, AND that exact path listed in NOTICE.
 modified=0
 while IFS= read -r rel; do
     [[ -z "$rel" ]] && continue
@@ -140,10 +143,17 @@ while IFS= read -r rel; do
     fi
     if ! cmp -s "$HERE/$rel" "$up"; then
         modified=$((modified + 1))
-        if (( declares_verbatim )); then
-            note "MODIFIED (UNDECLARED)  : $rel"
+        in_notice=0
+        grep -qF -- "$rel" "$HERE/NOTICE" && in_notice=1
+        has_marker=0
+        head -40 "$HERE/$rel" | grep -qi 'modified by the SceneView project' && has_marker=1
+
+        if (( in_notice && has_marker )); then
+            echo "MODIFIED (declared)    : $rel"
+        elif (( in_notice )); then
+            note "MODIFIED (no §4(b) notice in the file) : $rel"
         else
-            echo "MODIFIED               : $rel"
+            note "MODIFIED (UNDECLARED)  : $rel"
         fi
     fi
 done < "$TMP/in-manifest"
@@ -158,10 +168,15 @@ if (( fail )); then
     echo "      changed. If a change is intentional:" >&2
     echo "        1. add a notice at the top of each changed file reading" >&2
     echo "           'Modified by the SceneView project (<what changed>).'" >&2
-    echo "        2. list it in $HERE/NOTICE, replacing the verbatim claim" >&2
+    echo "        2. list that exact path in $HERE/NOTICE (both are required)" >&2
     echo "        3. re-pin the manifest, then review its diff:" >&2
     echo "           bash $HERE/diff-upstream.sh --regenerate" >&2
     exit 1
 fi
 
-echo "OK: vendored copy is byte-identical to upstream $UPSTREAM_TAG."
+if (( modified > 0 )); then
+    echo "OK: $modified file(s) differ from upstream $UPSTREAM_TAG, each declared in"
+    echo "    NOTICE and carrying an Apache-2.0 §4(b) notice."
+else
+    echo "OK: vendored copy is byte-identical to upstream $UPSTREAM_TAG."
+fi

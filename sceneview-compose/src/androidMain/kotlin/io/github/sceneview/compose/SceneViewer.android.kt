@@ -2,6 +2,7 @@ package io.github.sceneview.compose
 
 import android.view.MotionEvent
 import android.view.ViewConfiguration
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -157,23 +158,22 @@ private fun rememberModelInstance(
             // sibling files out of assets — so a .gltf with external .bin/textures works.
             is ModelSource.Asset -> runCatching {
                 modelLoader.createModelInstance(assetFileLocation = model.path)
-            }.getOrNull()
+            }.reportFailure("loading asset '${model.path}'")
 
             is ModelSource.Bytes -> runCatching {
                 modelLoader.createModelInstance(ByteBuffer.wrap(model.bytes))
-            }.getOrNull()
+            }.reportFailure("parsing ${model.bytes.size} in-memory bytes")
 
             is ModelSource.Url -> {
                 val bytes = withContext(Dispatchers.IO) {
                     runCatching { fetchModelBytes(model.url) }
-                        .onFailure { if (it is CancellationException) throw it }
-                        .getOrNull()
+                        .reportFailure("downloading ${model.url}")
                 }
                 bytes?.let {
                     // Back on the composition (main) thread — the Filament JNI contract.
                     runCatching {
                         modelLoader.createModelInstance(ByteBuffer.wrap(it))
-                    }.getOrNull()
+                    }.reportFailure("parsing the model downloaded from ${model.url}")
                 }
             }
         }
@@ -239,6 +239,24 @@ private fun fetchModelBytes(url: String): ByteArray {
     }
 }
 
+/**
+ * Unwraps a [Result], logging any failure instead of discarding it.
+ *
+ * `SceneViewer` has no `onError` and no failed state, so a failed load leaves the
+ * viewport showing the environment — pixel-identical to a load still in progress. That
+ * is a deliberate API decision for the viewer subset, but silently swallowing the cause
+ * as well would leave a developer with nothing at all to go on. This is the one place
+ * that guarantee is kept, and [ModelSource]'s KDoc points here.
+ *
+ * [CancellationException] is rethrown: a cancelled coroutine is not a failure, and
+ * swallowing it would break structured concurrency.
+ */
+private fun <T> Result<T>.reportFailure(what: String): T? = onFailure { cause ->
+    if (cause is CancellationException) throw cause
+    Log.e(TAG, "SceneViewer failed $what", cause)
+}.getOrNull()
+
+private const val TAG = "SceneViewer"
 private const val CONNECT_TIMEOUT_MS = 15_000
 private const val READ_TIMEOUT_MS = 30_000
 private const val DOWNLOAD_CHUNK_BYTES = 64 * 1024
@@ -285,7 +303,7 @@ private fun rememberEnvironment(
                         url = source.path,
                         createSkybox = source.showSkybox,
                     )
-                }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+                }.reportFailure("loading HDR environment '${source.path}'")
             }.value
 
             // Only environments this branch created are ours to free. `fallback` is owned
