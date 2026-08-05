@@ -707,16 +707,29 @@ jobs:
                   kept.append(s)
               else:
                   dropped.append(title.removeprefix("### ").strip())
-          pointer = (
-              "\n### Not shown here\n\n"
-              f"{', '.join(dropped)} — omitted only because a GitHub release body "
-              f"is capped at {CAP:,} characters and this release is larger. Read the "
-              f"complete notes in [CHANGELOG.md]({link}), the single source of truth.\n"
-          )
-          p.write_text(head + "".join(kept) + pointer)
+
+          def pointer(what):
+              return ("\n### Not shown here\n\n"
+                      f"{what} — omitted only because a GitHub release body is capped "
+                      f"at {CAP:,} characters and this release is larger. Read the "
+                      f"complete notes in [CHANGELOG.md]({link}), the single source "
+                      "of truth.\n")
+
+          body = head + "".join(kept) + pointer(", ".join(dropped))
+          # Dropping subsections is the readable path, not a guarantee: a
+          # section with no `### ` subsections at all, or one whose preamble
+          # alone overflows, leaves `body` still over the cap — and shipping it
+          # would silently reintroduce #3012 through the very guard meant to
+          # stop it. Fall back to cutting at a LINE boundary, which is still
+          # valid markdown and still says what happened.
+          if len(body) > CAP:
+              keep = CAP - 600
+              body = text[:keep].rsplit("\n", 1)[0] + pointer("The tail of these notes")
+              dropped = dropped or ["(no ### subsections to drop — cut at a line boundary)"]
+          p.write_text(body)
           print(f"::warning::Release notes exceeded {CAP} characters "
-                f"({len(text)}) — omitted section(s) from the body and linked "
-                f"CHANGELOG.md instead: {', '.join(dropped)}")
+                f"({len(text)}) — trimmed the body and linked CHANGELOG.md "
+                f"instead: {', '.join(dropped)}")
           PY
             echo "extracted=true" >> "$GITHUB_OUTPUT"
             echo "Extracted $(wc -c < release-notes.md) characters for v$VERSION from CHANGELOG.md"

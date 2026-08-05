@@ -842,7 +842,7 @@ jobs:
           except Exception as e:
               print(f"::warning::Failed to update App Store localization: {e}")
 
-          # 4b. Sync the repo's screenshots BEFORE submitting (#2899).
+          # 4c. Sync the repo's screenshots BEFORE submitting (#2899).
           #
           # This is the ONLY moment in a release when an editable version
           # exists: section 3 just created it, and section 5 below submits it,
@@ -885,8 +885,17 @@ jobs:
                   print(f"Screenshots synced for {len(changed)} display type(s): {changed}")
               else:
                   print("Screenshots already match the repo — nothing to upload.")
-          except Exception as e:
-              print(f"::warning::Screenshot sync FAILED, release continues — {e}")
+          # BaseException, not Exception — mirroring section 5 below, and
+          # load-bearing rather than defensive: apply_screenshots() signals its
+          # write-path failures with `raise SystemExit(1)` (a failed set POST, a
+          # failed DELETE, non-delivery after polling), and SystemExit derives
+          # from BaseException, so `except Exception` would NOT catch it. The
+          # release would abort before section 5 ever ran — and the case that
+          # aborts it is the worst one, a partial upload after the live set was
+          # already deleted, which is precisely when reaching App Review still
+          # matters. Caught in review of PR #3013.
+          except BaseException as e:
+              print(f"::warning::Screenshot sync FAILED, release continues — {e!r}")
 
           # 5. Submit for review via reviewSubmissions (v4 — closes #1831).
           #
