@@ -43,7 +43,34 @@ SceneView { … }
     .mainLight(.systemDefault)   // see LightSlot
     .fillLight(.systemDefault)
     .renderQuality(.default)     // .cinematic | .default | .performance
+    .contentID(model?.id)        // re-runs the content closure IN PLACE when the id changes
 ```
+
+**Swapping the model: `.contentID(_:)`, never SwiftUI's `.id(_:)`.** The content
+closure runs once, when the scene is created. Change `.contentID(_:)` to show a
+different model, and do not wrap the `SceneView` in an `if let model` that
+unmounts it while the next one loads — put the spinner in an overlay. Both
+change the view's *identity*, so SwiftUI discards the `RealityView` and builds a
+new one, and a re-created `RealityView` on iOS 26 Simulator intermittently
+renders nothing at all — no model, no skybox — permanently (#3008). The id must
+change every time the closure would build something different, **including
+"loading" → "loaded"**, so make it an `Optional`: keyed on the selection alone
+it already sits at its final value while the model is still being fetched and
+the scene stays empty forever.
+
+```swift
+ZStack {
+    SceneView { root in
+        guard let model else { return }
+        root.addChild(model.entity)
+    }
+    .contentID(model == nil ? nil : selectedID)
+
+    if model == nil { ProgressView() }
+}
+```
+
+Android needs no equivalent — its DSL content is re-read on recomposition.
 
 The auto-fit fits the content's **bounding sphere** to the narrower frustum
 axis, then scales that distance by `framingMargin` — lower it to fill a tall
