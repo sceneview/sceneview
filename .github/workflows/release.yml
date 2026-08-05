@@ -701,12 +701,21 @@ jobs:
                   f"/CHANGELOG.md")
           kept, dropped = [], []
           for s in sections:
-              title = s.splitlines()[0].strip()
+              title = s.splitlines()[0].removeprefix("### ").strip()
+              # `not dropped` makes the loss TRAILING, which is what the comment
+              # above promises. A greedy keep-whatever-fits pass would drop one
+              # large high-value section and keep the small trivia after it —
+              # with v4.26.0's own shape (### Fixed alone was 73,275 characters)
+              # that means losing Fixed and keeping Tests and Docs, inverting the
+              # priority the CHANGELOG's ordering expresses. Trailing loss is
+              # predictable and matches how someone reads the notes; cherry-picked
+              # loss is neither. Raised in review of PR #3013.
+              #
               # +600 leaves room for the pointer this loop has not built yet.
-              if len(head) + len("".join(kept)) + len(s) + 600 <= CAP:
+              if not dropped and len(head) + len("".join(kept)) + len(s) + 600 <= CAP:
                   kept.append(s)
               else:
-                  dropped.append(title.removeprefix("### ").strip())
+                  dropped.append(title)
 
           def pointer(what):
               return ("\n### Not shown here\n\n"

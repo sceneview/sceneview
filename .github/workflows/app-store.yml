@@ -906,13 +906,22 @@ jobs:
               # An ImportError / NameError / AttributeError / TypeError is
               # different in kind — the uploader never ran at all, because this
               # integration broke (a moved script, a renamed symbol, a changed
-              # signature). Left at ::warning:: that would silently stop syncing
+              # signature). ValueError belongs here too: apply_screenshots()
+              # raises it for a DISPLAY_TYPE_MAP Apple would reject, re-asserted
+              # at the write boundary before any network call. That is a config
+              # break which never self-heals, so "release continues, self-heals
+              # next release" would be a lie repeated at every release.
+              #
+              # Left at ::warning:: any of these would silently stop syncing
               # screenshots while every release stayed green, which is the exact
               # silent-drift class #2899 exists to end, reintroduced one level up
               # in the automation. Still not fatal — a broken sync must not block
               # App Review — but loud enough that a release cannot pass it
-              # unnoticed. Raised in review of PR #3013.
-              broken_wiring = isinstance(e, (ImportError, NameError, AttributeError, TypeError))
+              # unnoticed. RuntimeError stays a warning: apply_screenshots()
+              # raises it for genuinely transient upload trouble.
+              # Raised in review of PR #3013.
+              broken_wiring = isinstance(
+                  e, (ImportError, NameError, AttributeError, TypeError, ValueError))
               level = "error" if broken_wiring else "warning"
               detail = ("the screenshot sync integration is BROKEN, not merely failing"
                         if broken_wiring else "release continues")
