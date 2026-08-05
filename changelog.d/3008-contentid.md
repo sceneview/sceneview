@@ -29,3 +29,8 @@
   now applies the overlay unconditionally and drops only the pill. This was
   measured re-creating `AnimationDemo`'s scene on exactly the first subject
   change and no other.
+- **iOS demo: `Model Viewer`'s "Surprise me" no longer skips a model when two
+  rolls share a title.** Its scene key was the model's display name, so two
+  consecutive picks with the same title left the key unchanged and the swap
+  silently did not happen. It is keyed on a monotonic load counter now. The
+  same collision existed with the previous `.id(_:)`.
