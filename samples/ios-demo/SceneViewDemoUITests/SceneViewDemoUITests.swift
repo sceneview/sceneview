@@ -119,13 +119,24 @@ final class SceneViewDemoUITests: XCTestCase {
     /// skybox — permanently.
     ///
     /// **Opt-in on purpose.** It takes minutes and it is a measurement rig, not
-    /// a smoke test, so it skips unless `SV_BLACK_PROBE=1` is exported. Run it
-    /// with `-only-testing:` and read the counts off the exported attachments:
+    /// a smoke test, so it skips unless `SV_BLACK_PROBE=1` reaches the *runner*
+    /// process. Neither exporting it in the shell nor passing
+    /// `TEST_RUNNER_SV_BLACK_PROBE=1` to `xcodebuild test` does that — measured:
+    /// the test then sees no `SV_*` key at all. Put it in the `.xctestrun`
+    /// instead, which also makes repeated passes cheap (no rebuild between
+    /// runs, which is what an interleaved baseline/fixed window needs):
     ///
     /// ```
-    /// SV_BLACK_PROBE=1 SV_PROBE_SWITCHES=8 xcodebuild test \
-    ///   -only-testing:SceneViewDemoUITests/SceneViewDemoUITests/testBlackViewportProbe …
+    /// xcodebuild build-for-testing -scheme SceneViewDemoUITests \
+    ///   -destination '…' -derivedDataPath DD
+    /// # add SV_BLACK_PROBE / SV_PROBE_SWITCHES / SV_PROBE_LABEL to every
+    /// # target's EnvironmentVariables in DD/Build/Products/*.xctestrun, then:
+    /// xcodebuild test-without-building -xctestrun <patched> -destination '…' \
+    ///   -only-testing:SceneViewDemoUITests/SceneViewDemoUITests/testBlackViewportProbe
     /// ```
+    ///
+    /// Read the counts off the exported attachments: a viewport is black when
+    /// the brightest subpixel over the viewport crop is `0`.
     ///
     /// Two things here are load-bearing and must not be "tidied up":
     ///

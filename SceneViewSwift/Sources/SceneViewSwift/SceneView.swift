@@ -129,6 +129,13 @@ public struct SceneView: View {
     // Default `false` — pan-then-orbit keeps the panned pivot. Closes #1236.
     var recentersTargetOnOrbit: Bool = false
 
+    // Identity of the value the `content` closure builds from. `nil` (the
+    // default) means the content is built exactly once, on `RealityView`
+    // `make:` — the behaviour every existing caller gets. Set via
+    // `.contentID(_:)` to re-run the builder in place when the value changes.
+    // Closes #3008.
+    var contentIdentity: AnyHashable?
+
     /// Creates a 3D scene with imperative content setup.
     ///
     /// - Parameter content: A closure that populates the scene. Receives a root
@@ -174,7 +181,8 @@ public struct SceneView: View {
             initialOrbitAzimuth: initialOrbitAzimuth,
             initialOrbitElevation: initialOrbitElevation,
             immersiveSpace: immersiveSpace,
-            recentersTargetOnOrbit: recentersTargetOnOrbit
+            recentersTargetOnOrbit: recentersTargetOnOrbit,
+            contentIdentity: contentIdentity
         )
     }
 
@@ -213,6 +221,49 @@ public struct SceneView: View {
     public func recentersTargetOnOrbit(_ enabled: Bool) -> SceneView {
         var copy = self
         copy.recentersTargetOnOrbit = enabled
+        return copy
+    }
+
+    /// Re-runs the content closure, in place, whenever `id` changes.
+    ///
+    /// Use this — **not** SwiftUI's `.id(_:)` — to swap the model a scene
+    /// displays. `.id(_:)` changes the view's identity, which makes SwiftUI
+    /// discard the whole `RealityView` and build a brand-new one; on iOS 26
+    /// Simulator a re-created `RealityView` intermittently renders nothing at
+    /// all — no model, and no skybox either — and never recovers (#3008).
+    /// `.contentID(_:)` keeps one `RealityView` for the scene's lifetime and
+    /// only rebuilds what is under the content root, so the renderer is never
+    /// torn down.
+    ///
+    /// ```swift
+    /// SceneView { root in
+    ///     if let model { root.addChild(model.entity) }
+    /// }
+    /// .contentID(model?.id)          // ← swaps the model
+    /// .environment(.studio)
+    /// ```
+    ///
+    /// The id must change **every time the closure would build something
+    /// different**, including the transition from "still loading" to "loaded":
+    /// keying on the selected item alone leaves the scene empty forever,
+    /// because the id is already at its final value while the model is still
+    /// being fetched. Passing an `Optional` covers that — it changes from `nil`
+    /// to a value when the load lands.
+    ///
+    /// On each change the previous content is removed from the scene (its
+    /// per-entity gesture handlers are unregistered first, so it deallocates
+    /// rather than leaking — see #2038), the closure repopulates the content
+    /// root, the render-quality preset is re-applied to the new subtree, and
+    /// the auto-framing pass is re-armed so the new content gets fitted to the
+    /// viewport instead of inheriting the previous subject's camera distance.
+    ///
+    /// Without this modifier the closure runs exactly once, when the scene is
+    /// created — the behaviour of every scene written before this API existed.
+    ///
+    /// - Parameter id: A value identifying what the content closure builds.
+    public func contentID(_ id: some Hashable) -> SceneView {
+        var copy = self
+        copy.contentIdentity = AnyHashable(id)
         return copy
     }
 
@@ -548,6 +599,12 @@ private struct SceneViewRepresentation: View {
     /// content centroid so repeated pan→orbit cycles don't drift. Closes #1236.
     let recentersTargetOnOrbit: Bool
 
+    /// Identity of what the `content` closure builds, from
+    /// ``SceneView/contentID(_:)``. `nil` means the closure runs once in
+    /// `setupScene` and never again — the pre-#3008 behaviour. Any other value
+    /// makes a change re-run the closure under the *same* `RealityView`.
+    let contentIdentity: AnyHashable?
+
     /// Mutable camera-orbit state, held in a **reference type** so mutating it
     /// (auto-rotate, drag, pinch) does NOT invalidate the SwiftUI body. The
     /// value default `CameraControls(mode: .orbit)` uses the struct's own
@@ -642,6 +699,14 @@ private struct SceneViewRepresentation: View {
     /// never re-frames. Closes #1026 / #1041.
     @State private var framingTick: Int = 0
 
+    /// Identity of the framing-driver task. Bumped by
+    /// ``rebuildContentIfNeeded()`` so a `.contentID(_:)` swap restarts the
+    /// driver: the driver exits for good once ``didCenterContent`` latches (or
+    /// after its timeout), so merely clearing the latch would leave the new
+    /// content un-framed on any static scene — nothing else pumps `update:`
+    /// once auto-rotate is driving `applyCamera()` directly. Closes #3008.
+    @State private var framingEpoch: Int = 0
+
     /// Live viewport aspect ratio (`width / height`), captured by the
     /// `GeometryReader` wrapping the `RealityView`. Drives the
     /// fit-to-bounds framing (#1041) so the camera distance accounts for
@@ -703,6 +768,15 @@ private struct SceneViewRepresentation: View {
         /// when no skybox host is attached. Closes #2278.
         var immersiveSkyboxHost: Entity? = nil
         #endif
+        /// `true` once `setupScene` has populated the content root at least
+        /// once. Guards the `.contentID(_:)` rebuild against firing before
+        /// the scene exists — SwiftUI gives no ordering guarantee between a
+        /// `.task(id:)` and the `RealityView` `make:` closure. Closes #3008.
+        var didBuildContent = false
+        /// The ``SceneViewRepresentation/contentIdentity`` the currently-built
+        /// content was built from, so an identity that did not actually change
+        /// (a re-run `.task(id:)`) rebuilds nothing. Closes #3008.
+        var contentIdentity: AnyHashable? = nil
     }
     @State private var appliedCache = AppliedCache()
 
@@ -780,7 +854,15 @@ private struct SceneViewRepresentation: View {
                     }
                 }
             }
-            .task {
+            .task(id: contentIdentity) {
+                // Re-run the content closure in place when `.contentID(_:)`
+                // reports the caller would now build something different.
+                // Keyed rather than `onChange`-driven so the closure that runs
+                // is the one from the latest body evaluation — the same
+                // guarantee the environment loader below relies on. Closes #3008.
+                rebuildContentIfNeeded()
+            }
+            .task(id: framingEpoch) {
                 // Content-framing driver (#1026 / #1041). The RealityView
                 // `update:` closure only fires while SwiftUI re-evaluates
                 // the view — for a static (non-auto-rotating) scene that is
@@ -1096,6 +1178,20 @@ private struct SceneViewRepresentation: View {
         // instead of `root` directly so the auto-center translation in
         // `refreshContentCentering()` only affects user content, not the
         // lights provisioned just above.
+        buildContent()
+    }
+
+    // MARK: - Content (re)build (#3008)
+
+    /// Runs the caller's content closure into `entities.contentRoot` and
+    /// applies the render-quality preset to the resulting tree.
+    ///
+    /// Shared by the initial `setupScene` and the ``SceneView/contentID(_:)``
+    /// rebuild so a swapped model goes through exactly the same provisioning
+    /// as the first one — a second code path here is how a rebuilt scene ends
+    /// up with different shadows or IBL from a freshly-created one.
+    @MainActor
+    private func buildContent() {
         content(entities.contentRoot)
 
         // Apply RenderQuality preset to all directional lights + the IBL receiver entity.
@@ -1108,6 +1204,57 @@ private struct SceneViewRepresentation: View {
             to: entities.root,
             iblReceiver: entities.ibl
         )
+
+        appliedCache.didBuildContent = true
+        appliedCache.contentIdentity = contentIdentity
+    }
+
+    /// Swaps the scene's content in place when ``SceneView/contentID(_:)``
+    /// reports a change, without touching the `RealityView` itself.
+    ///
+    /// This is the fix for #3008: the demos used to re-key the whole view with
+    /// SwiftUI's `.id(_:)` to show a different model, which destroys and
+    /// re-creates the `RealityView` — and a re-created `RealityView` on iOS 26
+    /// Simulator intermittently renders nothing at all (no model, no skybox)
+    /// for the rest of its life. Rebuilding under a stable view keeps the
+    /// renderer that is already working.
+    @MainActor
+    private func rebuildContentIfNeeded() {
+        // `.task(id:)` also fires on first appearance, and SwiftUI does not
+        // order it against the `RealityView` `make:` closure. If the scene has
+        // not been set up yet there is nothing to rebuild — `setupScene` will
+        // build the current identity itself.
+        guard appliedCache.didBuildContent else { return }
+        guard appliedCache.contentIdentity != contentIdentity else { return }
+
+        // Detach the previous content. Unregister its gesture handlers first:
+        // a handler closure that captures the node it is registered on forms a
+        // retain cycle (entity → GestureHandlers → closure → node → entity), so
+        // without this the outgoing model stays alive for the process lifetime
+        // and every swap leaks another one — the same cycle `SceneEntities.deinit`
+        // breaks at scene teardown (#2038).
+        for child in Array(entities.contentRoot.children) {
+            NodeGesture.removeAllHandlers(under: child)
+            child.removeFromParent()
+        }
+
+        buildContent()
+
+        // Re-arm the auto-framing pass for the new content. Without this the
+        // new subject inherits the previous one's orbit radius and pivot —
+        // `refreshContentCentering()` latches `didCenterContent` once the first
+        // subject's bounds hold steady and then returns immediately forever.
+        // The stability tracker has to be re-armed too, or the new bounds are
+        // compared against the *old* subject's diagonal and latch on the first
+        // tick, before a streamed model has finished landing (#1391).
+        framingStability = FramingStabilityTracker(
+            epsilon: Self.framingStabilityEpsilon,
+            stableHoldSeconds: Self.framingStableHoldSeconds
+        )
+        didCenterContent = false
+        // Restart the driver task: it exits permanently once the latch is set,
+        // and clearing the latch alone does not bring it back.
+        framingEpoch &+= 1
     }
 
     // MARK: - Light slot reactive plumbing (#1017)

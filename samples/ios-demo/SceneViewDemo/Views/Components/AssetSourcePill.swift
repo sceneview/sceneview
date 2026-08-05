@@ -66,16 +66,22 @@ extension View {
     ///
     /// Pass `nil` for a demo that never touches `SketchfabAssetResolver`: it
     /// has no origin question to answer and must show no pill.
-    @ViewBuilder
+    ///
+    /// The overlay is applied unconditionally and the *pill* is what the `nil`
+    /// case drops. Branching on `if let state { overlay(…) } else { self }`
+    /// instead handed SwiftUI two structurally different views, so the first
+    /// time a demo went from no-pill to pill — `AnimationDemo` moving off its
+    /// bundled slot 0 — the whole modified subtree was discarded and rebuilt,
+    /// taking the scene's `RealityView` with it. That is the same teardown
+    /// `.contentID(_:)` exists to avoid, and it was measured re-creating the
+    /// scene on exactly the first subject change and no other (#3008).
     func assetSourcePill(_ state: AssetSourceState?) -> some View {
-        if let state {
-            overlay(alignment: .topTrailing) {
+        overlay(alignment: .topTrailing) {
+            if let state {
                 AssetSourcePill(state: state)
                     .padding(.top, 12)
                     .padding(.trailing, 16)
             }
-        } else {
-            self
         }
     }
 }

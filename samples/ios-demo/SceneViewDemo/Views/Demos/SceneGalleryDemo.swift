@@ -67,8 +67,19 @@ struct SceneGalleryDemo: View {
 
     @ViewBuilder
     private var sceneView: some View {
-        if let loadedNode {
+        ZStack {
+            // Mounted for the demo's whole lifetime, and never re-keyed with
+            // `.id(_:)`. Both a conditional mount and an `.id(_:)` change throw
+            // the `RealityView` away and build a new one, and a re-created
+            // `RealityView` on iOS 26 Simulator intermittently renders nothing
+            // at all — no model, no skybox — permanently (#3008). This gallery
+            // was measured going black that way on a cold launch.
+            // `.contentID(_:)` swaps the model without touching the renderer;
+            // the previous entity is removed by the library, so nothing is
+            // overlaid. The key is optional so it also changes when the model
+            // lands, not only when the chip changes.
             SceneView { root in
+                guard let loadedNode else { return }
                 loadedNode.entity.position = .init(x: 0, y: 0, z: -2)
                 root.addChild(loadedNode.entity)
             }
@@ -79,24 +90,24 @@ struct SceneGalleryDemo: View {
             // fall back to flat shading and the gallery undersells every model
             // it exists to show off. Same preset as ModelViewerDemo (#2114).
             .environment(.studio)
+            .contentID(loadedNode == nil ? nil : selectedSlug?.uid)
             .ignoresSafeArea()
-            // Re-keys the SceneView when the selected slug changes so the
-            // previous entity is fully torn down rather than overlaid.
-            .id("gallery-\(selectedSlug?.uid ?? "none")")
-        } else {
-            VStack(spacing: 12) {
-                ProgressView()
-                    .tint(.white)
-                if let loadError {
-                    Text(loadError)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                } else {
-                    Text("Streaming model…")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
+
+            if loadedNode == nil {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .tint(.white)
+                    if let loadError {
+                        Text(loadError)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    } else {
+                        Text("Streaming model…")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
                 }
             }
         }

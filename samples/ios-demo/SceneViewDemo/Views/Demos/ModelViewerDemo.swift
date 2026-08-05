@@ -95,8 +95,16 @@ struct ModelViewerDemo: View {
 
     @ViewBuilder
     private var sceneView: some View {
-        if let loadedNode {
+        ZStack {
+            // Mounted for the demo's whole lifetime, and never re-keyed with
+            // `.id(_:)` — both throw the `RealityView` away and build a new one,
+            // which on iOS 26 Simulator intermittently comes back rendering
+            // nothing at all, no model and no skybox, permanently (#3008).
+            // `.contentID(_:)` swaps the model inside the live scene. The key is
+            // optional so it changes when the model lands, not only when
+            // "Surprise me" picks a different one.
             SceneView { root in
+                guard let loadedNode else { return }
                 loadedNode.entity.position = .init(x: 0, y: 0, z: -1.5)
                 root.addChild(loadedNode.entity)
             }
@@ -119,22 +127,24 @@ struct ModelViewerDemo: View {
             // adrift in empty backdrop: the hero's bounding sphere is set by
             // its display plinth, not by the car (#2896).
             .framingMargin(qaMode ? Self.captureFramingMargin : 0.95)
+            .contentID(loadedNode == nil ? nil : streamedDisplayName ?? "bundled")
             .ignoresSafeArea()
-            .id("model-viewer-\(streamedDisplayName ?? "bundled")")
-        } else {
-            VStack(spacing: 12) {
-                ProgressView()
-                    .tint(.white)
-                if let loadError {
-                    Text(loadError)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                } else {
-                    Text("Loading model…")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
+
+            if loadedNode == nil {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .tint(.white)
+                    if let loadError {
+                        Text(loadError)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    } else {
+                        Text("Loading model…")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
                 }
             }
         }

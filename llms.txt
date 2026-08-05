@@ -6426,7 +6426,46 @@ View modifiers (chainable):
 .autoCenterContent(_ enabled: Bool) -> SceneView            // v4.3.0+ — default true; translates content so its centroid lands on the world origin
 .framingMargin(_ margin: Float) -> SceneView                // v4.26.0+ — padding on the auto-fit distance; 1.15 default, 1.0 = sphere tangent, < 1 = tighter. NO EFFECT when autoCenterContent(false)
 .cameraOrbit(azimuth: Float? = nil, elevation: Float? = nil) -> SceneView  // v4.26.0+ — seeds the INITIAL orbit pose (radians); default elevation 30°
+.contentID(_ id: some Hashable) -> SceneView                // v4.26.0+ — re-runs the content closure IN PLACE when id changes. Use this, NEVER SwiftUI .id(), to swap the model
 ```
+
+**Swapping the model in a scene (`contentID`, v4.26.0+).** The content closure
+runs once, when the scene is created. To show a different model, change
+`.contentID(_:)` — **never** SwiftUI's `.id(_:)`, and never wrap the `SceneView`
+in an `if let model` that unmounts it while loading. Both of those change the
+view's *identity*, so SwiftUI throws the `RealityView` away and builds a new
+one, and on iOS 26 Simulator a re-created `RealityView` intermittently renders
+nothing at all — no model and no skybox — permanently (#3008). `.contentID(_:)`
+keeps one renderer for the scene's lifetime: it removes the previous content
+(unregistering its gesture handlers first, so it deallocates), re-runs the
+closure, re-applies the render-quality preset, and re-arms the auto-framing pass
+so the new subject gets fitted instead of inheriting the previous camera
+distance.
+
+The id must change **every time the closure would build something different**,
+including "still loading" → "loaded". An `Optional` covers that; keying on the
+selected item alone leaves the scene empty forever, because the id already sits
+at its final value while the model is still being fetched.
+
+```swift
+@State private var model: ModelNode?
+
+ZStack {
+    SceneView { root in
+        guard let model else { return }        // scene stays mounted while loading
+        root.addChild(model.entity)
+    }
+    .contentID(model == nil ? nil : selectedID) // nil → id when the model lands
+    .environment(.studio)
+
+    if model == nil { ProgressView() }          // spinner as an OVERLAY
+}
+```
+
+> **Android has no equivalent and needs none.** `SceneView { }` there is a
+> Compose composable whose DSL content is already re-read on recomposition, so
+> swapping a model is an ordinary state change. This modifier closes an iOS-only
+> gap; there is nothing to mirror.
 
 **Framing the subject (`framingMargin` / `cameraOrbit`, v4.26.0+).** The auto-fit
 pass dollies the camera until the content's *bounding sphere* fits the narrower
