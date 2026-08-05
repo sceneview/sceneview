@@ -38,11 +38,25 @@ Both filter on `filter[platform]=IOS`: without it a macOS draft can hijack
 the query and every downstream call targets the wrong listing (#2731).
 
 Screenshots persist from one App Store version to the next (a new version
-inherits the previous set), so uploading is listing MAINTENANCE, not a
-per-release step — which is why its CI caller is a dispatch-only workflow of
-its own (`app-store-screenshots.yml`) rather than a job in app-store.yml:
-that workflow's deploy jobs are gated only on `*_ready`, so a screenshot
-dispatch there would also archive and upload a TestFlight build.
+inherits the previous set), so uploading them is listing MAINTENANCE rather
+than a per-release step. That is why `app-store-screenshots.yml` exists as a
+dispatch-only workflow of its own: dispatching `app-store.yml` to refresh
+screenshots would also archive and upload a TestFlight build, since its deploy
+jobs are gated only on `*_ready`.
+
+There are therefore TWO callers of apply_screenshots(), and the distinction
+matters:
+
+  - `app-store.yml`'s submit step calls it inline, between the listing-text
+    sync and the review submission. That is the only moment an editable
+    version exists — the step creates it, and Apple locks the metadata when it
+    submits. Every release goes through this path (#2899).
+  - `app-store-screenshots.yml` remains for out-of-band refreshes. It can only
+    write when a version happens to be open, and SKIPs honestly otherwise.
+
+Do NOT "restore" the separation by removing the inline call: a dispatch-only
+caller alone means the screenshots are only ever written by luck, which is how
+v4.26.0 shipped a set four releases stale.
 
 Credentials — reuses app-store.yml / store-preflight.sh secrets, NO new scope,
 same alias set as store-preflight.sh:
@@ -900,10 +914,12 @@ def _await_delivery(requests, headers, shot_id, name, attempts=40, delay=3):
     string comparison. A timeout is therefore reported as INDETERMINATE and
     surfaced again in the summary, not buried in one log line.
 
-    Budget: the JWT minted in main() lasts 1200s, and the workflow allows 15
-    min. 6 committed screenshots × 2 min worst case = 12 min, which fits
-    both. apply_screenshots() re-checks that budget against the actual upload
-    count before deleting anything.
+    Budget: the JWT lasts 1200s and the dispatch workflow allows 15 min. The
+    repo currently ships 4 screenshots (2 iPhone + 2 iPad), so 4 × 2 min worst
+    case = 8 min, which fits both. Do not treat that as headroom to spend:
+    apply_screenshots() re-checks the budget against the ACTUAL upload count
+    before deleting anything, precisely because this comment's arithmetic goes
+    stale every time the set changes — it said 6 until #3013.
     """
     state = "UNKNOWN"
     for _ in range(attempts):

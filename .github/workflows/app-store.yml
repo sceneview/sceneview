@@ -303,7 +303,7 @@ jobs:
           sleep 120
 
           $RUNNER_TEMP/asc-venv/bin/python3 << 'PYEOF'
-          import os, json, time, jwt, requests
+          import os, sys, json, time, pathlib, jwt, requests
 
           KEY_ID = os.environ["ASC_KEY_ID"]
           ISSUER_ID = os.environ["ASC_ISSUER_ID"]
@@ -842,6 +842,113 @@ jobs:
           except Exception as e:
               print(f"::warning::Failed to update App Store localization: {e}")
 
+          # 4c. Sync the repo's screenshots BEFORE submitting (#2899).
+          #
+          # This is the ONLY moment in a release when an editable version
+          # exists: section 3 just created it, and section 5 below submits it,
+          # after which Apple locks the metadata until the next release.
+          #
+          # `app-store-screenshots.yml` can therefore never reliably do this on
+          # its own. Dispatched after a release it skips honestly ("no editable
+          # iOS version"); dispatched before one there is nothing to write to.
+          # That is exactly how v4.26.0 shipped with a correct promotionalText
+          # and a screenshot set four releases stale — the window was real, and
+          # nothing was writing in it. The manual workflow stays for out-of-band
+          # refreshes when a version happens to be open; this is the path that
+          # runs every time.
+          #
+          # Reuses `asc_listing.apply_screenshots()` instead of reimplementing
+          # the delete-then-upload dance, so the automatic and manual paths
+          # cannot drift apart.
+          #
+          # NEVER fatal, deliberately: a screenshot that fails to upload must
+          # not stop a release from reaching App Review, and the listing
+          # self-heals on the next release. It is loud, though — a quiet skip
+          # here is precisely what let the drift survive four releases.
+          try:
+              sys.path.insert(0, os.path.join(
+                  os.environ["GITHUB_WORKSPACE"], ".claude", "scripts", "store-sync"))
+              from asc_listing import apply_screenshots
+
+              shots_dir = (pathlib.Path(os.environ["GITHUB_WORKSPACE"])
+                           / "samples" / "ios-demo" / "appstore-screenshots")
+              # Fresh token: the one minted at the top of this step is good for
+              # 1200s, and section 2's build poll alone can burn 900s of that
+              # waiting on Apple's processing. Uploading assets against a token
+              # with two minutes left would 401 halfway through a
+              # delete-then-upload, which is the one way this can leave the
+              # listing worse than it found it.
+              changed, skipped = apply_screenshots(asc_headers(), BUNDLE_ID, shots_dir)
+              if skipped:
+                  print(f"::warning::Screenshot sync SKIPPED — {skipped}")
+              elif changed:
+                  print(f"Screenshots synced for {len(changed)} display type(s): {changed}")
+              else:
+                  print("Screenshots already match the repo — nothing to upload.")
+          # BaseException, not Exception — mirroring section 5 below, and
+          # load-bearing rather than defensive: apply_screenshots() signals its
+          # write-path failures with `raise SystemExit(1)` (a failed set POST, a
+          # failed DELETE, non-delivery after polling), and SystemExit derives
+          # from BaseException, so `except Exception` would NOT catch it. The
+          # release would abort before section 5 ever ran — and the case that
+          # aborts it is the worst one, a partial upload after the live set was
+          # already deleted, which is precisely when reaching App Review still
+          # matters. Caught in review of PR #3013.
+          except BaseException as e:
+              # Two failure classes, two volumes — because `except BaseException`
+              # is broad enough to hide the one that matters most.
+              #
+              # apply_screenshots() signals its write-path failures with
+              # SystemExit, and API trouble as requests exceptions. Those are
+              # expected, usually transient, and the listing self-heals on the
+              # next release: a ::warning:: is the honest level.
+              #
+              # An ImportError / NameError / AttributeError / TypeError is
+              # different in kind — the uploader never ran at all, because this
+              # integration broke (a moved script, a renamed symbol, a changed
+              # signature). ValueError belongs here too: apply_screenshots()
+              # raises it for a DISPLAY_TYPE_MAP Apple would reject, re-asserted
+              # at the write boundary before any network call. That is a config
+              # break which never self-heals, so "release continues, self-heals
+              # next release" would be a lie repeated at every release.
+              #
+              # Left at ::warning:: any of these would silently stop syncing
+              # screenshots while every release stayed green, which is the exact
+              # silent-drift class #2899 exists to end, reintroduced one level up
+              # in the automation. Still not fatal — a broken sync must not block
+              # App Review — but loud enough that a release cannot pass it
+              # unnoticed. RuntimeError stays a warning: apply_screenshots()
+              # raises it for genuinely transient upload trouble.
+              # Raised in review of PR #3013.
+              # JSONDecodeError subclasses ValueError, so it has to be excluded
+              # BEFORE the tuple test — a truncated or non-JSON 2xx body is the
+              # textbook transient case, and calling it a permanent break would
+              # cry wolf at every flaky response.
+              #
+              # SyntaxError (and IndentationError, its subclass) has to be IN the
+              # tuple: a broken asc_listing.py makes the import itself raise, the
+              # uploader never runs, and nothing about that self-heals. Leaving it
+              # out was the dangerous direction — announcing a permanent break as
+              # transient — which is the mistake this whole PR is about.
+              # Both raised in review of PR #3013.
+              # getattr, not `requests.exceptions.JSONDecodeError` directly: this
+              # runs INSIDE an exception handler, where an AttributeError would
+              # escape the very try/except meant to keep the release alive and
+              # kill the step before section 5 ever submits. `test-app-store-
+              # submit.py` stubs `requests` with a module that has no
+              # `.exceptions`, and caught exactly that — 32 submission tests died
+              # on a handler that could not run.
+              _json_err = getattr(getattr(requests, "exceptions", None),
+                                  "JSONDecodeError", None)
+              transient_json = _json_err is not None and isinstance(e, _json_err)
+              broken_wiring = not transient_json and isinstance(
+                  e, (ImportError, SyntaxError, NameError,
+                      AttributeError, TypeError, ValueError))
+              level = "error" if broken_wiring else "warning"
+              detail = ("the screenshot sync integration is BROKEN, not merely failing"
+                        if broken_wiring else "release continues")
+              print(f"::{level}::Screenshot sync FAILED, {detail} — {e!r}")
+
           # 5. Submit for review via reviewSubmissions (v4 — closes #1831).
           #
           # The old `POST /v1/appStoreVersionSubmissions` flow was brittle:
@@ -856,6 +963,15 @@ jobs:
           # Flow: POST /v1/reviewSubmissions (IOS) →
           #       POST /v1/reviewSubmissionItems (attach version) →
           #       PATCH /v1/reviewSubmissions/{id} {submitted: true}
+          # Fresh token before the submission, for the same reason 4c mints its
+          # own — and more sharply here. This step's original token lasts 1200s,
+          # section 2's build poll can burn ~900s of it, and section 4c now
+          # spends more on top uploading screenshots. A 401 on the
+          # reviewSubmissions POST raises SystemExit(1) and fails the release,
+          # so the single most important call in this workflow must not be the
+          # one running closest to expiry. Raised in review of PR #3013.
+          headers = asc_headers()
+
           try:
               # 5a. Cancel any STALE open reviewSubmission first (#2301).
               #
