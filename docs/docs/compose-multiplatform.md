@@ -31,7 +31,7 @@ It is a *viewer subset*, published as a **separate, additive artifact**. Nothing
 |---|---|---|---|
 | Android | delegates to the existing `SceneView { }` composable | Filament | implemented |
 | iOS | `UIKitView` hosting an app-supplied `UIView` (see `SceneViewerBridge`) | RealityKit | implemented — the app registers the factory |
-| Desktop (JVM) | offscreen render → pipelined `readPixels` → Skia image | Filament, via a vendored FFM binding | **planned** — draws a placeholder today |
+| Desktop (JVM) | offscreen render → pipelined `readPixels` → Skia image | Filament, via an FFM binding still to be vendored | **planned** — draws a placeholder today |
 
 The point is that **one API does not imply one renderer.** RealityKit stays the Apple
 renderer — it is what ARKit and visionOS align with, and it is what the published App
