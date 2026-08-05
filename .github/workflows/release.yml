@@ -616,8 +616,14 @@ jobs:
               echo "pub.dev serves flutter_sceneview $LATEST"
               exit 0
             fi
-            echo "pub.dev still serves '${LATEST:-unknown}' (attempt $attempt/5) — retrying in 20s"
-            sleep 20
+            # Do not announce — or wait out — a retry that will not happen:
+            # the last pass falls straight through to the error below.
+            if [ "$attempt" -lt 5 ]; then
+              echo "pub.dev still serves '${LATEST:-unknown}' (attempt $attempt/5) — retrying in 20s"
+              sleep 20
+            else
+              echo "pub.dev still serves '${LATEST:-unknown}' (attempt $attempt/5) — no retries left"
+            fi
           done
           echo "::error::pub.dev does not serve $PUB_VERSION after a green publish — the step passed and nothing landed (#3011)."
           exit 1
