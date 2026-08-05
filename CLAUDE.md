@@ -25,7 +25,18 @@ the documentation until it can.
 2. **Unit tests**: `./gradlew :sceneview:testDebugUnitTest :arsceneview:testDebugUnitTest`
 3. **Bundle build** (if store-affecting): `./gradlew :samples:android-demo:bundleRelease`
 4. **Website JS** (if website changed): `node -c website-static/js/sceneview.js`
-5. **Full gate**: `bash .claude/scripts/pre-push-check.sh`
+5. **Impact check** (after ANY code, API or doc change): `bash .claude/scripts/impact-check.sh`
+6. **Full gate**: `bash .claude/scripts/pre-push-check.sh`
+
+> ⚠️ **This list is a floor, not the full set** — `.claude/scripts/` holds ~40 more
+> checks, indexed in the `automation-map` skill. Read it as "never push with less
+> than this", never as "these are all the gates". Item 5 is here because it was
+> not: a session ran it from memory alone and it surfaced 10 pre-existing failures
+> ([#2987](https://github.com/sceneview/sceneview/issues/2987)) plus a gate that
+> silently skipped itself inside every worktree
+> ([#2988](https://github.com/sceneview/sceneview/issues/2988)). A short list reads
+> as complete precisely *because* it is short — when this file was 1126 lines
+> nobody believed they held the whole picture.
 
 ### Rules:
 - NEVER push code that doesn't compile
@@ -46,8 +57,8 @@ one-line description is what a session sees until it actually needs the body.
 
 | Skill | Load it when |
 |---|---|
-| `device-qa` | Running QA on an emulator/simulator, or at a release checkpoint |
-| `android-tooling` | Driving an emulator, screenshots, UI dumps, APK install, lease refusals |
+| `device-qa` | Running the SCRIPTED QA harness (device-qa.sh, Maestro) or the release gate |
+| `android-tooling` | Driving a device BY HAND — screenshots, UI dumps, APK install, lease refusals |
 | `ci-agents` | Touching the review fan-out, the `@claude` bot, event-driven jobs, agent cost |
 | `versioning` | Bumping the version, releasing, republishing the MCP |
 | `doc-drift` | A public API changed, or a drift/CREDITS/knowledge gate failed |
@@ -119,8 +130,8 @@ where pixel precision has real ROI — never for the app chrome itself.
 
 ## When writing any SceneView code
 
-- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.25.0`)
-- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.25.0`)
+- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.26.0`)
+- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.26.0`)
 - Declare nodes as composables inside the trailing content block — not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — returns `null`
   while loading, always handle the null case

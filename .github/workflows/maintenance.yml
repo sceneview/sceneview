@@ -170,6 +170,18 @@ jobs:
               || echo "::warning::Could not comment on existing skill drift issue #$EXISTING"
           fi
 
+      - name: Close the tracking issue once the skill is back in sync
+        if: steps.drift.outputs.drift == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Unambiguous here, unlike the store jobs: check-sceneview-skill.sh
+          # runs with no credentials and no network dependency, so its exit 0
+          # is a real pass — a crash exits non-zero and files an issue instead.
+          bash .claude/scripts/close-maintenance-issue.sh \
+            "Agent skill drift detected" \
+            "\`check-sceneview-skill.sh\` passes again — \`agents/sceneview/\` matches the library source. Closed automatically by \`maintenance.yml\`; it re-files itself if the skill drifts again."
+
   # ── 4. CI health summary ──────────────────────────────────────────────────
   ci-health:
     name: CI health check
@@ -547,6 +559,15 @@ jobs:
             echo "Deep-link health issue #$EXISTING already open — skipping duplicate."
           fi
 
+      - name: Close the health issue once deep links verify again
+        if: steps.deeplink.outputs.broken == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash .claude/scripts/close-maintenance-issue.sh \
+            "Deep-link verification is broken" \
+            "\`check-deeplink-health.sh\` passes again — the QR → demo deep-link flow verifies. Closed automatically by \`maintenance.yml\`; it re-files itself if verification breaks again."
+
   # ── 8. Stale claude/* branch cleanup ──────────────────────────────────────
   # PRIMARY mechanism is the repo's "Automatically delete head branches"
   # setting (deleteBranchOnMerge) — every PR branch is dropped the instant
@@ -851,13 +872,29 @@ jobs:
           echo "npm=$NPM" >> "$GITHUB_OUTPUT"
           # `sort -V` puts the lower semver first. A lag means npm < local, i.e.
           # local is NOT the first line. Equal versions = in sync (no lag).
-          if [ "$NPM" = "unknown" ] || [ "$LOCAL" = "$NPM" ]; then
+          # `lag` opens the issue; `resolved` closes it — and it is deliberately
+          # NOT the inverse. A failed `npm view` yields "unknown", which is no
+          # lag, but it is also no measurement: closing a real stale-npm issue
+          # because the registry was briefly unreachable would retract a finding
+          # that is still true. `resolved` therefore requires a version actually
+          # read back from npm.
+          if [ "$NPM" = "unknown" ]; then
+            echo "::warning::Could not read the published sceneview-mcp version — freshness NOT measured this run."
             echo "lag=false" >> "$GITHUB_OUTPUT"
+            echo "resolved=false" >> "$GITHUB_OUTPUT"
+          elif [ "$LOCAL" = "$NPM" ]; then
+            echo "lag=false" >> "$GITHUB_OUTPUT"
+            echo "resolved=true" >> "$GITHUB_OUTPUT"
           elif [ "$(printf '%s\n%s\n' "$LOCAL" "$NPM" | sort -V | head -1)" = "$NPM" ]; then
             echo "::warning::sceneview-mcp npm ($NPM) lags local mcp/package.json ($LOCAL) — dispatch mcp-publish.yml to republish."
             echo "lag=true" >> "$GITHUB_OUTPUT"
+            echo "resolved=false" >> "$GITHUB_OUTPUT"
           else
+            # npm is AHEAD of mcp/package.json — a publish landed before the bump
+            # merged. Not a lag, and a "npm is stale" issue no longer describes
+            # anything true, so it should close too.
             echo "lag=false" >> "$GITHUB_OUTPUT"
+            echo "resolved=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Open or update tracking issue
@@ -878,6 +915,22 @@ jobs:
             gh issue comment "$EXISTING" --body "$BODY" \
               || echo "::warning::Could not comment on existing MCP npm freshness issue #$EXISTING"
           fi
+
+      - name: Close the tracking issue once npm has caught up
+        if: steps.check.outputs.resolved == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Bound to env first rather than interpolated into the run: body —
+          # same shape as the open step above. These two are semver-constrained
+          # and repo-controlled, so this is style not exposure, but the
+          # `${{ }}`-inside-a-shell-string pattern is the one that becomes an
+          # injection the day a value stops being trusted.
+          NPM_VERSION: ${{ steps.check.outputs.npm }}
+          LOCAL_VERSION: ${{ steps.check.outputs.local }}
+        run: |
+          bash .claude/scripts/close-maintenance-issue.sh \
+            "sceneview-mcp npm is stale" \
+            "npm now serves \`$NPM_VERSION\` and \`mcp/package.json\` is at \`$LOCAL_VERSION\` — the lag this issue tracks is gone. Closed automatically by \`maintenance.yml\`; it re-files itself if the versions diverge again."
 
   # ── 12. Play Store listing drift (read-only) ───────────────────────────────
   # Sibling of § 10, on the Play side. play-store.yml only ever runs
@@ -935,6 +988,16 @@ jobs:
           # the issue step on 3 alone so a skipped or crashed run never files a
           # drift issue it did not actually find.
           if [ "$rc" -eq 3 ]; then echo "drift=1" >> "$GITHUB_OUTPUT"; fi
+          # Mirror signal for the auto-close, and deliberately NOT `rc != 3`:
+          # per the comment above, 0 also covers the credential-less skip, and an
+          # empty log means the tool never ran. Closing a live drift issue on
+          # either would retract a finding nobody re-measured — the #2794
+          # silent-green class, pointed at the backlog instead of the store.
+          # Require the same three facts the summary requires to say "No drift".
+          if [ "$rc" -eq 0 ] && [ -s listing-drift.log ] \
+            && ! grep -q '^\[skip\]' listing-drift.log; then
+            echo "clean=1" >> "$GITHUB_OUTPUT"
+          fi
           # Advisory job: never fail the step on a red check, the summary carries
           # the signal. Exit 0 explicitly rather than relying on continue-on-error.
           exit 0
@@ -996,6 +1059,15 @@ jobs:
             gh issue edit "$EXISTING" --body "$BODY" \
               || echo "::warning::Could not refresh Play listing drift issue #$EXISTING"
           fi
+
+      - name: Close the drift issue once the listing is reconciled
+        if: steps.diff.outputs.clean == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash .claude/scripts/close-maintenance-issue.sh \
+            "Play Store listing drift detected" \
+            "The read-only diff now reports the live Play listing matching \`samples/android-demo/distribution/play-store\` — measured, not inferred from a skipped run. Closed automatically by \`maintenance.yml\`; it re-files itself the next time the listing drifts."
 
   # ── 13. App Store listing drift + checksum-provenance probe (read-only) ─────
   # ASC sibling of § 10 (store-preflight) and § 12 (Play listing-drift). Runs
@@ -1073,6 +1145,16 @@ jobs:
           # credential-less skip; 2/other = crash. Gate the issue on 3 so a skip
           # or crash never files a drift issue it did not find.
           if [ "$rc" -eq 3 ]; then echo "drift=1" >> "$GITHUB_OUTPUT"; fi
+          # Mirror signal for the auto-close. By the same reading, `clean` cannot
+          # be `rc != 3`: 0 covers the credential-less skip too, and an empty log
+          # means the script never spoke. Closing a live drift issue on either
+          # would retract a finding nobody re-measured. `[skip]` is matched
+          # unanchored because asc_listing.py prints it both bare and behind a
+          # `::warning::` prefix.
+          if [ "$rc" -eq 0 ] && [ -s asc-listing-drift.log ] \
+            && ! grep -q '\[skip\]' asc-listing-drift.log; then
+            echo "clean=1" >> "$GITHUB_OUTPUT"
+          fi
           exit 0
 
       - name: Append ASC listing drift to step summary
@@ -1132,7 +1214,7 @@ jobs:
         run: |
           TITLE="App Store listing drift detected"
           DRIFT=$(grep 'DRIFT' asc-listing-drift.log || true)
-          BODY=$'The live App Store listing has drifted from the repo (`samples/ios-demo/distribution/`).\n\n```\n'"$DRIFT"$'\n```\n\nScreenshot-only drift keys on `sourceFileChecksum == MD5`, an `unattested-match` convention (see the `[probe]` verdict in the run summary) — treat it as advisory. Reconcile screenshots via `app-store-screenshots.yml`, and listing text via the listing step of `app-store.yml`. Read-only diff: `.claude/scripts/store-sync/asc_listing.py --dry-run`.\n\n_Auto-filed by maintenance.yml (#2612 Phase C). Refreshed daily while the drift persists; close once reconciled._'
+          BODY=$'The live App Store listing has drifted from the repo (`samples/ios-demo/distribution/`).\n\n```\n'"$DRIFT"$'\n```\n\nScreenshot-only drift keys on `sourceFileChecksum == MD5`, an `unattested-match` convention (see the `[probe]` verdict in the run summary) — treat it as advisory. Reconcile listing text via the listing step of `app-store.yml`. Read-only diff: `.claude/scripts/store-sync/asc_listing.py --dry-run`.\n\n⛔ **Do not reconcile the screenshot half by dispatching `app-store-screenshots.yml` without re-capturing first.** `samples/ios-demo/appstore-screenshots/` still holds frames captured before #2897, when `SceneEnvironment.intensity` was fed to RealityKit as a `2^x` exponent — its README says so in as many words, and nothing enforces it: the dispatch is manual and `asc_listing.py` compares checksums, not pixels. Uploading them would replace the live screenshots with known-wrong lighting.\n\n_Auto-filed by maintenance.yml (#2612 Phase C). Refreshed daily while the drift persists; closes itself once the diff comes back clean._'
           EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [ -z "$EXISTING" ]; then
             gh issue create --title "$TITLE — since $(date -u +%Y-%m-%d)" --body "$BODY" \
@@ -1142,3 +1224,12 @@ jobs:
             gh issue edit "$EXISTING" --body "$BODY" \
               || echo "::warning::Could not refresh App Store listing drift issue #$EXISTING"
           fi
+
+      - name: Close the drift issue once the listing is reconciled
+        if: steps.diff.outputs.clean == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash .claude/scripts/close-maintenance-issue.sh \
+            "App Store listing drift detected" \
+            "The read-only diff now reports the live App Store listing matching the repo — measured with credentials present, not inferred from a skipped run. Closed automatically by \`maintenance.yml\`; it re-files itself the next time the listing drifts."

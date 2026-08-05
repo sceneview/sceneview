@@ -1,6 +1,6 @@
 ---
 name: android-tooling
-description: Google's android CLI (screenshots, UI dumps, install+launch) and when to still use adb; the RAM-budgeted adaptive emulator pool with its per-SESSION lease protocol and the blocking PreToolUse hook that enforces it; the golden qa-clean snapshot; the Rosetta x86_64 AR rig (measured NOT to deliver live-camera AR — kept as evidence); and the three agents/sceneview* skill installers. Use when driving an Android emulator, capturing a screenshot or UI tree, installing a demo APK, or hitting an emulator lease refusal.
+description: Google's android CLI (screenshots, UI dumps, install+launch) and when to still use adb; the RAM-budgeted adaptive emulator pool with its per-SESSION lease protocol and the blocking PreToolUse hook that enforces it; the golden qa-clean snapshot; the Rosetta x86_64 AR rig (measured NOT to deliver live-camera AR — kept as evidence); and the three agents/sceneview* skill installers. USE THIS ONE for driving a device BY HAND. For the scripted QA harness and its release gate, use `device-qa` instead. Use when driving an Android emulator yourself, capturing a screenshot or UI tree, installing a demo APK, or hitting an emulator lease refusal.
 ---
 
 ## Android CLI (preferred for agent-driven QA)
@@ -26,7 +26,12 @@ and CI install it on the fly and use it for:
   bypasses the PTY and is fine).
 - `android screen capture --annotate` + `android screen resolve --screenshot=ui.png
   --string="tap #5"` — visual-label tapping (the AI-first workflow this CLI exists for).
-- `android run --apks=app.apk --activity=pkg/.Main` — install + launch in one call.
+- ⛔ `android run --apks=… --activity=pkg/.Main` — **do not call this directly.** Measured
+  2026-08-03 on CLI 1.0.15498356: it printed `App loaded:` / `Debuggable: true` and then
+  `No matching components found for type ACTIVITY` for an activity the platform resolves
+  fine — and **installed nothing**, leaving an 8-hour-old build on the device while a QA
+  run measured it (#2990). Use `android_cli_install_and_launch`, which now proves the
+  install by checking that the device's `lastUpdateTime` moved and falls back to `adb`.
 
 **When to use what:**
 - Screenshots, UI dumps, install+launch → `android` CLI (via `.claude/scripts/lib/android-cli.sh`)

@@ -38,6 +38,25 @@ actor SketchfabAssetResolver {
     static let minBoundsRadiusMeters: Float = 0.05
     static let maxBoundsRadiusMeters: Float = 5.0
 
+    /// Cache subdirectory the bundled fallbacks are staged into, directly under
+    /// the streamed-download root. Both paths hand back a `URL`, so this
+    /// directory name is the only thing that distinguishes them — see
+    /// ``isBundledFallback(_:)``. Mirrors Android's `FALLBACK_DIR_NAME`.
+    static let fallbackDirName = "fallback"
+
+    /// Whether `url` is a staged bundled fallback rather than a streamed download.
+    ///
+    /// A demo that wants to tell the user which one it is rendering has to ask
+    /// the FILE, not the configuration: "an API key is configured" does not mean
+    /// the download succeeded. Every failure mode in ``resolve(_:)`` — no
+    /// network, 401 on a stale key, a bounds-drifted asset, exhausted retries —
+    /// ends at ``fallbackBundle(for:)``, so a keyed build can quietly render the
+    /// offline stand-in. Mirrors Android's `isBundledFallback` (#2933), and is
+    /// what ``AssetSourceProbe`` measures.
+    nonisolated static func isBundledFallback(_ url: URL) -> Bool {
+        url.deletingLastPathComponent().lastPathComponent == fallbackDirName
+    }
+
     /// Max retries for a transient network failure (429 / 5xx).
     static let maxRetries = 3
 
@@ -181,7 +200,10 @@ actor SketchfabAssetResolver {
     /// is served as a last resort rather than throwing — see the guard below.
     func fallbackBundle(for slug: SketchfabSlug) throws -> URL {
         let root = try cacheRoot()
-        let fallbackDir = root.appendingPathComponent("fallback", isDirectory: true)
+        let fallbackDir = root.appendingPathComponent(
+            Self.fallbackDirName,
+            isDirectory: true
+        )
         try fileManager.createDirectory(at: fallbackDir, withIntermediateDirectories: true)
         let target = fallbackDir.appendingPathComponent("\(slug.uid).usdz")
 

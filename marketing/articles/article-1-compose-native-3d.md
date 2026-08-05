@@ -46,7 +46,7 @@ Place `sneaker.glb` in `src/main/assets/models/`. The model loads asynchronously
 
 ### What you get out of the box
 
-SceneView includes 42+ composable node types:
+SceneView includes 46+ composable node types:
 
 - **ModelNode** — GLB/glTF models with animation
 - **CubeNode, SphereNode, CylinderNode** — primitive geometry
@@ -109,7 +109,7 @@ Supported AR features: plane detection, image tracking, face mesh, cloud anchors
 | AR built-in | Yes (ARCore) | Plugin | No | Yes |
 | Active | v4.0.0 (2026) | Yes | Yes | Deprecated (2021) |
 | Learning curve | Low | High | Very high | Low |
-| Scene graph | 42+ node types | Full engine | None | 5 node types |
+| Scene graph | 46+ node types | Full engine | None | 5 node types |
 | Cross-platform | Android, iOS, Web | All | Android only | Android only |
 
 SceneView wraps Filament internally — same rendering quality, 100x less code.

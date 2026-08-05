@@ -2,6 +2,1138 @@
 
 ## Unreleased
 
+## v4.26.0 — 2026-08-04
+
+### Added
+
+- App Store listing drift is now visible read-only, and the assumption the
+  screenshot diff rests on is measured rather than assumed. A daily
+  `asc-listing-drift` job runs `store-sync/asc_listing.py --dry-run` — the
+  first CI caller of the ASC read-only path — and prints a
+  `sourceFileChecksum` provenance verdict (`confirmed` / `unattested-match` /
+  `md5-shaped` / `absent` / …) before the diff it justifies. It writes nothing
+  to the store, skips honestly with no credential, and is never blocking. This
+  is #2612 Phase C step 0: it turns the "is `sourceFileChecksum` really the
+  source MD5?" question — which the upload path can never answer, since Apple
+  only echoes what we send — into an observable measurement, and blocks the
+  Phase C drift gate from being wired until the verdict is `confirmed`. A
+  repo-MD5 match alone reads `unattested-match`, reported with the display
+  type it was found in; promoting it to `confirmed` requires attesting console
+  provenance (`--screenshots-are-console-sourced`), so uploading our own
+  screenshots can never confirm the assumption by echo (#2612).
+- Point & Ask demo: answers are now **anchored in world space** — a tap that lands on a tracked horizontal surface pins its answer card there (`frame.hitTest` → `createAnchor()` → `AnchorNode` + `ViewNode`), so it stays on the object it describes while the camera moves around it. Up to 8 panels stay pinned (oldest retired past the cap) until Reset; a tap that hits nothing trackable — or that lands on a wall — keeps the screen-space card. Anchored cards are hidden during the composited capture, so the model never re-reads its own earlier answers as part of the next question (#2648 P2)
+- Device-QA: opt-in **Rosetta x86_64 AR rig** — `setup-ar-emulator.sh --rosetta` provisions and boots a separate `Pixel_7a_x86` AVD (Intel emulator bundle + x86_64 system image) on a reserved port outside the QA emulator pool, disk-gated, with every guest probe time-bounded. It was built to test whether an x86_64 guest could host a **live-camera ARCore session** on Apple Silicon, which the arm64 AVD cannot (#2754). **Measured answer: it cannot either.** On a quiet host the guest does boot (ActivityManager registered at ~42 min), but (a) it exposes the *same* camera topology as arm64 — HAL ids `"1"` and `"10"`, **no id `0`** — so that numbering comes from the emulator's camera HAL, not from the guest ABI; (b) installing the 82 MB ARCore APK kills `system_server` (`Broken pipe`), reproduced via both streamed and `--no-streaming` installs, so ARCore cannot be installed at all; and (c) nothing renders under software GL. Real AR tracking QA still requires a physical device. The flag ships as a reproducible probe — and as the evidence that stops this being re-attempted a fourth time (#2758)
+- **iOS port: Cloud Anchors (`ar-cloud-anchor`) ([#2836](https://github.com/sceneview/sceneview/issues/2836)).** The full four-step Cloud Anchor loop from Android's `ARCloudAnchorDemo` now runs on iOS: tap a detected plane to drop a single `ARAnchor` carrying the bundled `khronos_lantern`, Host it through `CloudAnchorNode.host(ttlDays:)`, copy the returned id out of the settings sheet, and Resolve a pasted id back onto the same real-world pose. Both futures are cancelled in `onDisappear`, the direct analogue of Android's `DisposableEffect { onDispose { future.cancel() } }` billing hygiene (#1768). `ArCloudAnchorsScene` flips from stub to `@available true` / `@status knownIssue` — matching Android, which is `KnownIssue` for this id too.
+- **Honest unavailable state, no fake success.** `SceneViewSwift` deliberately does not vendor Google's `arcore-ios-sdk`, and neither does the demo app, so there is no `GARSession` to reach the ARCore Cloud service with. The demo says so in a red on-screen banner and disables Host/Resolve — mirroring Android's missing-`API_KEY` path — instead of inventing a cloud anchor id. Placement, plane detection and the anchor lifecycle underneath are real; the hosted round-trip is documented as unexercised.
+- **iOS port: Pose Placement (`ar-pose`) ([#2837](https://github.com/sceneview/sceneview/issues/2837)).** Free pose placement now works on iOS, matching Android's `ARPoseDemo`: an ARKit world-tracking session captures a base pose 1 m in front of the camera the moment tracking starts, a red/green/blue axes gizmo (`LineNode.axisGizmo`, the RealityKit mirror of Android's `Axes3DNode`) marks it, and three X/Y/Z sliders nudge the bundled `khronos_lantern` model relative to that anchor with a live coordinate readout. `ArPoseScene` flips from stub to `working`.
+- iOS port of the `ar-depth-collider` demo (#2838) — drops small bouncy balls (5 cm
+  spheres, SceneView brand blue) in front of the live camera pose and lets them bounce
+  off the **real** floor / table / wall via `SceneReconstructionNode.enablePhysics`
+  (ARKit scene reconstruction / LiDAR), the RealityKit analogue of Android's
+  `DepthCollider`. Mirrors Android's own fallback behaviour exactly: when the depth
+  subsystem can't run — no LiDAR on the device, or the Simulator, which has no camera
+  at all — the demo does **not** gate itself off. It falls back to a static, collidable
+  floor (`floorY = -1`, matching Android's own fallback value) so a bounce is still
+  visible in every case, on-device or in the Simulator. Lands with `@status knownIssue`,
+  mirroring Android's own `KnownIssue` status for this id — the depth-driven collision
+  path compiles and the static-floor fallback is exercised in CI, but real LiDAR-mesh
+  collision has not yet been verified on physical LiDAR hardware.
+- iOS demo: ported Android's `placement-scene` demo — the "one-line
+  tap-to-place AR" showcase for `PlacementScene`'s batteries-included bundle
+  (coaching overlay, a placement reticle, an instant-placement-style raycast,
+  and a contact shadow under each model). `PlacementSceneScene.swift` wires
+  `ARSceneView`'s equivalent flags (`showCoachingOverlay`,
+  `showPlacementReticle`, `groundingShadows`) and drops a single bundled
+  `khronos_damaged_helmet` model per tap, with a "models placed" counter and
+  a "Clear All" control — distinct from the existing low-level `ar-placement`
+  demo, not an alias of it. Honest gap noted in-app and in code: unlike
+  Android, the plane-detection grid does not fade out after the first
+  placement, since `ARSceneView`'s plane overlay isn't reactive after scene
+  setup (#2839).
+- iOS port of the `wall-placement` demo (#2840) — the iOS demo app now mounts a procedural TV on a real wall instead of showing a coming-soon card. Mirrors Android's four-phase Amazon "AR View" flow: the FINDING_FLOOR → FINDING_WALL → ALIGNING_EDGE → PLACED coaching banner, the fixed orange guide line the user aligns with the floor↔wall seam before tapping, the post-placement D-pad (2 cm nudges along the wall, 2° yaw steps), and the asset-free TV built from two boxes (matte body + glossy screen).
+- The placement math is a direct port of `arsceneview/.../WallPlacement.kt`: orientation is a pure yaw derived from the wall normal (never inheriting the hit pose's pitch/roll noise), and the height is floor-relative (`floorY + mountHeight`), so the panel does not drift while ARKit refines the wall plane. Wall detection uses ARKit's native `ARPlaneAnchor.classification == .wall` — the primitive ARCore lacks — falling back to plane alignment on devices whose classifier never resolves, which is the Android behaviour.
+- Honest gap, stated in the demo's own settings sheet: Android's procedural `ContactShadowContext.Wall` pool is **not** mirrored. RealityKit's `GroundingShadowComponent` only projects downward onto a surface below an entity, and `SceneViewSwift` has no `ContactShadow` equivalent yet, so the iOS panel ships with no shadow behind it rather than a faked one. Lands `inReview`, matching Android's own status for this demo.
+- **iOS port: AR Placement Reticle Preview ([#2841](https://github.com/sceneview/sceneview/issues/2841)).** Ports Android's `placement-reticle-preview` demo to iOS — a *non-AR* `SceneView` (RealityKit, no `ARSession`, no camera permission) that previews the production placement visuals on a static synthetic floor: the searching/ready reticle (ring-with-centre-dot or the legacy disc, both mirroring Android's exact radii, lift, and phase alpha) and, toggled from the settings sheet, a placed `khronos_damaged_helmet` model grounded with a RealityKit `GroundingShadowComponent` contact shadow. Fully verifiable on the simulator. iOS/RealityKit deltas from the Android original (camera framing, contact-shadow technique, studio HDR asset, and a darkened placed-mode floor color to avoid clipping to white under RealityKit's default exposure) are documented in the Scene file and the PR description.
+- **`SceneView.framingMargin(_:)`** (iOS/macOS/visionOS) — scales the distance
+  the auto-fit pass picks. `1.15` (default) keeps existing framing; `1.0` puts
+  the content's bounding sphere exactly tangent to the frustum; below `1.0` the
+  subject fills more of a tall portrait viewport. Stay at or above ~`0.95` on an
+  `autoRotate` scene, where the visible azimuth is arbitrary (#2896).
+- **`SceneView.cameraOrbit(azimuth:elevation:)`** (iOS/macOS/visionOS) — seeds
+  the initial orbit pose. Elevation matters more than it looks: at the 60°
+  vertical FOV, the 30° default pitch puts the horizon exactly on the top edge
+  of the frame, so a scene with a `showSkybox` environment showed none of its
+  sky at any framing (#2896).
+- **Blocking CI gate on `assets/CREDITS.md`.** `.claude/scripts/generate-credits.py --check` regenerates the credits in memory and compares them against the committed file; `ci.yml` → `repo-hygiene` now fails when a `catalog.json` edit lands without regenerating them, so a catalog entry can no longer reach a release uncredited in `assets/CREDITS.md`. Deterministic regenerate-and-compare, same class as the existing `gpt/knowledge-*.md` gate. The APK-bundled `samples/android-demo/src/main/assets/CREDITS.md` stays hand-maintained and outside this gate ([#2941](https://github.com/sceneview/sceneview/issues/2941)).
+- `.claude/scripts/context-budget.sh` reports the standing context a session
+  pays before doing any work, per file, against each file's documented spec.
+  It complements `agent-cost-report.sh` — that one measures what was spent,
+  this one measures what will be. Bytes are measured; the token column is an
+  explicit estimate.
+- `test-context-budget.sh` gates the committed half in `repo-hygiene`: a
+  `CLAUDE.md` ceiling, skill frontmatter, and — in **both** directions — that
+  the skills index and `.claude/skills/` agree. A skill missing from the index
+  is a file no session will think to open, which is strictly worse than the
+  inline text it replaced. Mutation-tested, including on the trap that caught
+  the first version of the check: a file-wide `grep` for the skill name still
+  passes after its index row is deleted, because the name also appears in the
+  hard-rules pointers.
+- The `automation-map` skill no longer carries a 7-row subset of the version
+  location map: a partial copy of a completeness-critical list is worse than no
+  copy, and one of its rows had already gone stale. It points at `versioning`,
+  which holds the canonical 30+ location table.
+- Agent review now runs **in CI**, not only inside a live session. The four
+  reviewer mandates (`sv-code-reviewer`, `sv-security-reviewer`,
+  `sv-impact-reviewer`, `sv-doc-freshness`) fan out on every non-draft PR via
+  `pr-review.yml`, every ERROR is adversarially verified before it counts, and
+  the verdict is posted as one comment updated in place. Until now those
+  reviewers only ran through the `review-fanout` saved workflow, which coupled
+  every merge to someone having a Claude Code session open — measured
+  2026-08-01, the five most recently merged PRs carried zero review recorded on
+  GitHub. The reviewers FIND; `grade-pr-review.sh` DECIDES, deterministically,
+  mirroring `review-fanout.js` so both paths reach the same verdict. It fails
+  closed: a missing verdict file, unparsable JSON, or a dropped reviewer is
+  `REVIEW_INCOMPLETE` (blocking), because a crashed fan-out produces no
+  findings and would otherwise be indistinguishable from a clean review. A
+  confirmed `sv-impact-reviewer` error remains the maintainer gate. Fork PRs
+  cannot be reviewed (GitHub withholds secrets, and `pull_request_target` is
+  deliberately unused) and say so loudly instead of reporting a silent green.
+- Agent token use is now **measured** — `agent-cost-report.sh` aggregates the
+  local session transcripts by day / model / session / branch. The repo had no
+  instrumentation at all (no OTel, no analytics, no counter), so the step-3
+  bottleneck of "are tokens used efficiently" was managed by feel. It reports
+  tokens and never dollars — this is a flat Max plan, so a dollar figure would
+  be an invented number wearing a measurement's clothes — and groups `--by
+  model`, which is the actionable view because the quota is per-model.
+  Everything is keyed on `requestId`: a transcript writes several records per
+  API call carrying the same `usage`, and summing records overstates output
+  tokens by ~95% (measured: 980 usage records for 658 real requests).
+- Claude now starts some work without being asked. `issue-intake.yml` gains a
+  `triage` job that runs *after* the deterministic labeller (never replacing
+  it) and comments duplicate/reproducibility/location/cross-platform findings
+  on newly opened issues; `maintenance.yml` gains `digest-to-tasks`, turning
+  the daily digest from a report into individually actionable, de-duplicated
+  issues. The issue body is treated as untrusted data in both directions — it
+  is never interpolated into a `run:` step *or* into the prompt, the agent
+  fetches it with `gh` and is told explicitly that what it reads is data, not
+  instructions. `digest-to-tasks` is capped at 3 new issues per run, and the
+  cap is verified by a deterministic step that reddens the run when exceeded
+  rather than trusting the prompt; a healthy repo files zero.
+
+### Changed
+
+- Daily maintenance (`maintenance.yml`) now opens and refreshes a **de-duplicated
+  tracking issue** — one per store — when the live Play Store or App Store listing
+  has drifted from the repo. Both read-only drift jobs run their diff with
+  `--fail-on-drift`, and the issue is filed only on a *measured* drift (exit 3),
+  never on a credential-less skip or a mid-read crash. Advisory-only: a drifted
+  listing surfaces as an actionable tracking issue (refreshed daily while the drift
+  persists; closing it once reconciled is a manual step) instead of an unread step
+  summary, and never fails CI (#2612 Phase C).
+- The pre-release checklist (`release-checklist.sh`) now surfaces **Play Store and App Store
+  listing drift** before tagging: section 17 runs the store-as-code read-only diff
+  (`play_listing.py` / `asc_listing.py --dry-run --fail-on-drift`) and WARNs when the live
+  store listing has diverged from the repo, so a silently-drifted listing is caught at
+  release time rather than after the next blind sync overwrites it. Advisory-first — a
+  drifted (or, without credentials, unmeasured) listing is a warning, never a release
+  blocker (#2612 Phase C).
+- **CI:** iOS App Store review submission failed on **4.24.0** and **4.25.0** with HTTP 409
+  `ENTITY_ERROR.RELATIONSHIP.INVALID` ("The specified build has a different platform than the
+  version"). The `deploy-ios` job's submit step selected "the latest VALID build" with no
+  platform filter, so — because the iOS and macOS deploy jobs run in **parallel** against the
+  **same** App Store record (shared bundleId → shared app_id) — it could attach the **macOS**
+  build to the iOS version. The build lookup now resolves each build's platform via the
+  included `preReleaseVersion` and selects the iOS build (the build-side twin of the #2731
+  version-hijack fix, which only filtered the *version* lookup). (#2731)
+- The `contact-shadow-preview` demo (Android) now gives the **wall-mounted TV its own on-screen beat**: the `Floor`/`Wall`/`TableTop` preset picker moved out of the settings sheet and onto the scene, in the TV's half of the frame, with a one-line verdict naming what each preset costs on a wall ("Floor on a wall: too dark, too round — reads as a sticker"). The sheet's scrim used to dim the scene, so the wall pool could never be watched *while* being changed, and a control sitting among the global ones read as global while it only ever drove the TV's pool — a mismatch previously patched over by renaming the label. The A/B is now live, the control's scope is self-evident, and the settings sheet drops from four controls to three (#2740).
+- `ContactShadowControls` and the new `WallShadowBeat` are covered by `ContactShadowControlsSnapshotTest` (Robolectric + Roborazzi, pure JVM, no emulator) — including one golden per wall preset, so a regression collapsing the per-preset verdicts back into a single shared caption cannot merge silently (#880 pattern, #2740).
+- **CI:** unbreak `main`. The `:snippets-check` module added by #2808 compiles every
+  ` ```kotlin ` block in `llms.txt`, but the `DemoScaffold` signature listing added by
+  #2780 references `DemoBottomOverlayScope` — a type that lives in `samples/android-demo`,
+  which is deliberately not on `:snippets-check`'s classpath (the module depends on the
+  libraries, not on the sample app). Every PR opened since has been red on
+  `Build libraries & samples` through no fault of its own. The block is now tagged
+  ` ```kotlin notest <reason> `, the escape hatch the extractor documents for exactly this
+  case. (#2808)
+- **Demo app:** numbers on the English UI no longer render with the device's decimal
+  separator. 61 `String.format` call sites across 21 demo files formatted against the
+  device default locale, so a French phone showed `Camera distance: 1,5 m`,
+  `Density: 0,25` and `Trajectory 1,80 m` on an otherwise English screen. Every format
+  string carrying a locale-sensitive conversion (`%f`, `%e`, `%g`, `%d`) is now pinned to
+  `Locale.US`, matching the locale the app's `SimpleDateFormat` sites already used.
+  Purely textual `%s` formats are left alone — they have no locale sensitivity. (#2819)
+- **Picking & Collision demo:** the "Tapped N times" counter no longer increments on a tap
+  anywhere in the scene. It now counts only taps whose ray-cast actually hits the 3D card —
+  which is what a picking demo is meant to show. A scene-level `onSingleTapUp` was bumping
+  the counter without checking the hit node, so empty-space taps counted too. The embedded
+  Compose button cannot count them itself: a `ViewNode` never receives touch events (#2845).
+  (#2819)
+- **iOS demo: two PBR demos now render through the wrapper's studio IBL for catalog + Android parity ([#2842](https://github.com/sceneview/sceneview/issues/2842)).** `TextureStreamingDemo` and `OcclusionMaterialDemo` built their PBR entities on a raw `RealityView`, outside the `.environment(.studio)` path that `SceneViewSwift.SceneView` installs. They were **not** unlit — a non-AR `RealityView` receives RealityKit's default environment lighting, and both demos rendered lit (verified on the simulator, 2026-07-23). But they were the only PBR views in the iOS catalog outside the wrapper's studio HDRI, and out of step with Android, where these material variants live in `MaterialsDemo` with `studio_2k.hdr` + skybox. Both now build their entities inside the wrapper's content closure and carry `.environment(.studio)` — the same environment as `ModelViewerDemo` / `MaterialsDemo` (#2114) and Android. Because that closure runs once (RealityView's `make:`), the reactive material swaps (the preset picker, the occluder toggle) now mutate a stashed entity reference from `onChange`, the pattern already used by `MultiModelDemo` / `MovableLightDemo`. Also removes a structural oddity in `TextureStreamingDemo` (a `RealityView` overlay stacked on an empty `SceneView`). Follow-up to the L1.1 IBL sweep (#2805). The post-change on-device look is not yet graded — the Simulator under-renders the wrapper skybox — so device before/after stays tracked under the L1.1 device-confirmation follow-up.
+- **Docs:** `ViewNode` now documents that its rendered view is **not interactive** — the hosting
+  window is `FLAG_NOT_TOUCHABLE` and no touch is dispatched into it, so an embedded
+  `Button.onClick` never fires. KDoc and `llms.txt` both show the supported alternative
+  (pick the node from the scene via `onSingleTapUp`), so an AI reading the docs stops
+  generating clickable-button-in-3D samples that silently do nothing. (#2845)
+- **Docs:** removed the three surfaces that asserted the opposite. `README.md` described
+  `ViewNode` as "buttons, lists, animations, all interactive" in two feature tables, and
+  `docs/docs/nodes.md` recommended it for "interactive panels" — all three now state the
+  render-only reality and point at the hit-test alternative. `llms.txt`'s demo index no
+  longer calls the picking sample an "interactive ViewNode overlay". (#2845)
+- The `contact-shadow-preview` demo (Android) is now a **grounded-vs-floating comparison** rather than a single on/off toggle: two boxes side by side with deliberately **different motion** — the left one bounces and STRIKES the floor, anchored by a height-responsive contact pool that **slides out from under the box along the key light as it lifts** (the "ball-in-a-box" depth cue) and snaps back tight and dark on landing; the right one **hovers high and never touches down, shadowless**. The floating box's own motion carries the "airborne" read, so its missing shadow reads as "it's in the air" instead of as a rendering bug — the earlier revision hopped both boxes identically and conveyed floating only by the *absence* of a shadow, which does not read. Plus a wall-mounted TV with switchable per-surface presets and labelled overlay chips. Still non-AR, so the shader stays reviewable on any emulator with no ARCore session and no physical AR device (#2740, #2754).
+- The `contact-shadow-preview` demo moved from the **Augmented Reality** category to **Lighting & Environment**: the feature lives in `sceneview` (not `arsceneview`) and the demo is a non-AR studio scene, so filing it under AR set the wrong expectation (#2851).
+- The comparison's lifted-shadow opacity floor was raised (0.28 → 0.45) after on-device QA measured the pool near-invisible at the top of each hop on the demo's light floor — the grounded-vs-floating contrast now reads at every phase of the motion (#2851).
+- The iOS demo app's `contact-shadow-preview` placeholder moved out of the AR tab too (`@category ar` → `lighting`) and its subtitle now matches Android's: the same "this is not a camera experience" reasoning applies on both platforms, so the two catalogs stay mirrored (#2851).
+- Reworked the common store-screenshot set shared by the Play Store and App Store capture scripts to a tight three — `model-viewer · dynamic-sky · multi-model` — chosen by judging the ACTUAL captured mosaic, not by picking ids a-priori. model-viewer is the load-any-GLB hero; `dynamic-sky` is the strongest frame (a lit drone against a procedural sky, a theme no other slot carries); `multi-model` is the only non-helmet, non-sky frame, a photoreal-foliage fidelity shot. Five candidates were captured then dropped after inspection: `double-pendulum` renders as a tiny linkage in a ~95%-black frame and ignores reframing (its own auto-fit); `fog` stayed a low-contrast grey helmet even pulled fully in to 1.6 m (centre-variance ~3.6k, under the 4k ship bar); plus the earlier `materials` (non-reproducible random HDRI, #2874), `geometry` (its primitives clipped a phone-portrait frame at the time — #2873 has since fixed that, and the id stays out of the set for a different, capture-side reason) and `animation` (a static frame is just a posed model, duplicating slot 1). Fewer strong frames beat more mixed ones. Each surviving id was re-verified in source to resolve to a DISTINCT on-screen demo on both platforms — a standalone iOS generated scene, and on Android a distinct umbrella tab via `ALIAS_INITIAL_TAB` (`multi-model` → the Multi-Model tab, never the Single Model tab that would collapse onto slot 1) — so no two slots duplicate the way they did before #2773 (#2854).
+- `capture-play-store-screenshots.sh` frames its hero-orbit slots through the `camera_distance` extra (#2652) rather than their interactive default: `model-viewer` goes from a helmet occupying ~2% of an otherwise black frame — centre-patch variance 98.3, close enough to the blank-capture guard's threshold of 100 that the run passed or failed on where the auto-orbit happened to be — to a full-frame subject at 4.5 m, and `multi-model` is pulled back to 6.0 m for the fullest scene its fixed camera angle allows. This lever is Android-only (iOS has no equivalent, #2785), so the App Store captures render each scene at its default framing; the decision shared between the two stores is the SET and ORDER, not the per-slot distance (#2854).
+- Only the **Play Store** (Android) screenshots are regenerated in this change; the **App Store** (iOS) screenshots are left untouched and deferred to #2896. Captured with the same three ids, the iOS RealityKit scenes render too weak for the store — dim, far-framed subjects on black, and `dynamic-sky` shows no sky — with no `camera_distance` lever to reframe them (#2785). Both capture scripts now define the same three-id set, so the two stores regain screenshot parity once the iOS scene-side fixes tracked in #2896 land and the App Store set is re-captured (#2854).
+- **CI:** close a latent false-green hole in the doc-snippet guard. `:snippets-check`
+  compiles every ` ```kotlin ` block of `llms.txt`, but it only ran transitively inside
+  ci.yml's `Build libraries & samples` job — which is `paths-ignore`d for `llms*.txt`, so a
+  PR editing only `llms.txt` never compiled its snippets and a broken block could reach
+  `main` (this is how #2871's own fix went un-verified by CI). A standalone
+  `snippets-check.yml` now compiles the snippets whenever their real inputs change
+  (`llms.txt`, `agents/sceneview/references/**`, the extractor, the guard module), and its
+  check run is gated by CI Gate. (#2875)
+- **CI:** the iOS App Store submit step now sources the required "What's New"
+  (`whatsNew`) field from a user-facing
+  `samples/ios-demo/distribution/app-store/en-US/release_notes.txt` instead of
+  deriving it from the technical, cross-platform `CHANGELOG.md` (which left the
+  field near-empty for Web/Flutter-heavy releases). An empty *required*
+  `whatsNew` is rejected by App Store Connect with HTTP 409
+  `ENTITY_STATE_INVALID` ("not in valid state") at review submission — the
+  second blocker that stopped 4.25.0 even after the #2885 build-platform fix.
+  Falls back to the previous `CHANGELOG.md` extraction when the file is absent.
+  (#2893)
+- **The iOS App Store screenshot set is refreshed** to `model-viewer` ·
+  `dynamic-sky`, replacing the five pre-v2 images captured back when no
+  environment loaded. The scenes were retuned for capture: the model viewer uses
+  the `.warm` photo studio as a backdrop instead of `.studio`'s living room and
+  frames tighter under `qa_mode`, and the dynamic-sky skyline sits on a
+  footprint-sized ground plane at a 12° camera pitch (`.pi / 15`) so its sky is
+  in frame at all — at the previous 30° pitch none of it was (#2896, #2854).
+- **`multi-model` is deliberately NOT in the iOS set**, a documented divergence
+  from Android's phone set. An App Store capture build has no Sketchfab key, so
+  the resolver substitutes the registered bundled stand-ins, and the frame
+  measured on the 6.9" simulator shows an upright wooden piano with a
+  blossoming-tree diorama growing through it and a coloured bird mid-frame —
+  not the park diorama the demo documents, and not something a keyless user can
+  ever see. Every mechanical check passes on that frame, so only looking at it
+  catches the problem. Same call as Android's tablet set — and, like it, the
+  exclusion is structural rather than gated on an issue: restore it only against
+  a fresh frame you have looked at (#2896, #2913, #2915).
+- **`qa_mode` now actually freezes auto-rotation.** `DeepLinkRouter` has
+  advertised `-qa_mode 1` / `?qa_mode=1` as the deterministic-screenshot switch
+  since it was added, but no demo read it — so every store capture shot
+  whatever azimuth the sweep had reached, giving a different pose *and* a
+  different slice of the HDRI backdrop each run. `ModelViewerDemo` and
+  `MultiModelDemo` now honour it; two independent capture runs are byte-identical
+  (measured: 0 differing pixels) (#2896).
+- **`autoRotate(speed: 0)` no longer starts a rotation loop.** It set
+  `enableAutoRotate = true` regardless of the speed, so freezing a scene left a
+  60 Hz task waking every 16.7 ms to advance the azimuth by zero and re-apply an
+  unchanged camera transform (#2896).
+- **`capture-appstore-screenshots.sh` refuses to keep a frame with a system
+  banner in it.** `simctl` has no notification-suppression API, and simply
+  waiting does not work — a freshly-erased device posted "Ready for Apple
+  Intelligence" about a minute in, i.e. *during* a capture, which is how it
+  leaked into an iPad frame. The script now re-shoots each demo after a pause
+  and compares a hash of the frame's top band across three samples; a band that
+  changed means something transient was drawn over it, so the set is discarded
+  and retried, and exhausting the retries deletes the frame and fails the run.
+  It proves the band did not *change*, which is not the same as proving it is
+  clean — an overlay that outlives the whole sampling window still passes, so
+  looking at every PNG stays mandatory (#2896, #917).
+- **Known consequence — #2897 becomes live.** `SceneEnvironment.intensity` is
+  applied as a `2^x` exponent (`intensityExponent:`), while the presets are
+  authored as linear multipliers (`.night` 0.4, `.nightSky` 0.5, `.sunset` 0.8,
+  `.outdoor` 1.2) and Android's `Environment` intensity is linear. That defect
+  pre-exists this change, but it was latent while the IBL never loaded at all;
+  now that it does, `.night` *brightens* ×1.32 instead of dimming ×0.4 — a ~3.3×
+  divergence from Android under the same preset name. Tracked in #2897 and
+  **fixed in this same release** — see the `2897-` fragment — so the condition
+  this bullet set ("land it in the same release, or the two platforms ship
+  different lighting for identical code") is met.
+- `CLAUDE.md` is now 217 lines instead of 1126: the nine sections only *some*
+  sessions need moved into lazy `.claude/skills/` entries, which load on demand.
+  The file is re-sent on every turn of every session, so its size was a cost
+  every agent in the repo paid forever — 72.7 Ko of it, growing monotonically
+  because nothing ever reported it. Nothing was rewritten and nothing was lost:
+  the move was mechanical and verified line-by-line. The rules whose *cost of
+  being forgotten* is high (never QA on a personal device, never call `adb`
+  directly, never drive a leased emulator, never hand-edit a generated file)
+  stay in the always-loaded file; only their detail moved.
+- **android-demo** — the Scene Gallery and Multi-Model asset-source pills now route through
+  the same `AssetSourceProbe` the two AR demos use, finishing the de-duplication started in
+  #2953. All four call sites had held their own copy of the rule in three different shapes,
+  and it had been fixed once per site (#2934, #2938, #2953) because each re-derived it. No
+  behaviour change — the two remaining copies were already correct, and both directions were
+  re-verified on the emulator (#2989).
+- `CLAUDE.md`'s "Before EVERY push" list adds `impact-check.sh` and says out loud
+  that it is a floor, not the full set. A session ran impact-check from agent
+  memory alone — it is not in that list — and surfaced 10 pre-existing failures
+  (#2987) plus #2988. Shortening the file to 217 lines made its lists read as
+  authoritative: at 1126 lines nobody believed they held the whole picture.
+- The `device-qa` and `android-tooling` skills both claimed "QA on an emulator" and
+  neither said which was which. `device-qa` is the scripted harness and the release
+  gate; `android-tooling` is driving a device by hand. Both descriptions and both
+  index rows now say so.
+
+### Fixed
+
+- **Demo: the Materials demo no longer leaks a streamed model per chip switch
+  (#2459 class).** The PBR section's `rememberFileModelInstance` produced a
+  `ModelInstance` through `produceState`, which cancels its producer on a key
+  change but never destroys what it already produced — so every chip switch left
+  the previous streamed `Model` GPU-resident in `ModelLoader.models` until the
+  section's engine was torn down. It now mirrors the library's
+  `rememberModelInstance` disposal contract (`DisposableEffect(instance)` →
+  `destroyModel`), registered before the consuming `ModelNode` so the node
+  detaches before the buffers are freed (#2424 ordering). Found by the
+  adversarial review of [#2926](https://github.com/sceneview/sceneview/pull/2926).
+- Docs: the world-anchored **Point & Ask** snippet gated its hit-test on an `isTracking`
+  flag that was never assigned, so every tap silently hit-tested nothing. `llms.txt` and
+  `samples/recipes/point-and-ask.md` now set it from `frame.camera.trackingState` in
+  `onSessionUpdated`; the recipe also declares `latestFrame`, `isTracking` and `nextId`,
+  which it used without ever declaring.
+- **`contact-shadow-preview` peek header no longer contradicts the scene (#2740).** The banner tested the shadow *toggle* alone, so pulling the intensity slider to 0 — which makes the pool fully transparent and leaves both boxes floating identically — still announced "Grounded vs floating" while the overlay legend correctly read "Shadows off". Both labels now read one `shadowVisible` value (toggle ON *and* intensity above zero), so no label can drift from what is actually drawn.
+- Device-QA: the rig's boot-wait loop reported `init.svc.bootanim` as a progress signal while its own boot command passes `-no-boot-anim`, which pins that property to `stopped` for the whole boot — the harness disabled the thing whose absence it then read as evidence, and "boots to ~90% but never finishes" was the false conclusion it produced. Replaced with `pidof system_server` + `service check activity`, and a registered ActivityManager is now accepted as boot success alongside `sys.boot_completed=1` (measured: a usable guest with the property still unset, so waiting on it alone burned the full timeout and failed a healthy boot) (#2758)
+- Nightly CI health (#2775): the two web Playwright legs no longer time out at
+  night — their job budgets were outgrown by the suite itself (measured green
+  wall-clocks 13–17 min vs a 20-min cap in `render-tests.yml`, 18–24 min vs a
+  25-min cap in `device-qa.yml`); both caps raised (+10 min) while Playwright's
+  per-test timeout keeps bounding real hangs.
+- Device-QA ios leg — two macOS bash 3.2 empty-array crashes (`set -u` rejects
+  expanding an empty array before bash 4.4): `device-qa.sh` died with
+  `LEGS[@]: unbound variable` whenever the disk gate skipped every leg
+  (turning the honest advisory skip into a bogus exit 1 on the self-hosted
+  Mac), and `lib/maestro.sh` died on `device_args[@]` on the iOS path — worse,
+  that abort exited 0 (bash 3.2 `||`-guarded abort with an EXIT trap set), so
+  the leg graded **PASSED with zero Maestro steps run**. Both expansions are
+  now guarded, and `run_ios` additionally requires the positive
+  `[ios-qa] PASS` marker — an exit-0 harness abort can never grade green again.
+- **Demo bottom overlays no longer collide with the Settings FAB ([#2779](https://github.com/sceneview/sceneview/issues/2779)).** `DemoScaffold` gains a `bottomOverlay` slot that lays a demo's floating banner / status pill / answer card out against the bottom-end Settings FAB, with the reserved band (`SETTINGS_FAB_RESERVED_SPACE` = 104 dp) resolved scaffold-side from the same `controls != null` condition that composes the FAB — so a demo whose controls are conditional gets the right inset without duplicating the condition. Migrates the three demos Pixel 9 device QA caught masking text: AR Body Tracker, Point & Ask and AR Streetscape. Follow-up device QA measured the band off the wrong element — it was sized from the 56 dp FAB when the widest thing in that corner is the ~79 dp "Settings" peek chip, leaving a 1 px gap on AR Streetscape's four-line status pill — so the reserve is now derived from the chip (79 dp chip + 16 dp gutter + 8 dp breathing room = 104 dp).
+- **Release pipeline — `sceneview-web` npm publish no longer fails on a missing npm auth token.**
+  `actions/setup-node` writes an `.npmrc` containing `_authToken=${NODE_AUTH_TOKEN}`; the
+  Kotlin/JS `:kotlinNpmInstall` task shells out to yarn, which expands that file and aborts
+  with `Failed to replace env in config` when the variable is unset. The `publish-web` job is
+  the only one combining `registry-url` with a Gradle task, so its *build* step now exports
+  `NODE_AUTH_TOKEN` too. Surfaced by the `setup-node` v6 → v7 bump (#2787): it broke the
+  v4.25.0 release after Maven Central had already published, which also skipped the
+  GitHub Release job. Invisible to PR CI, since no pull-request job publishes to npm.
+- `capture-play-store-screenshots.sh` gained a `--form-factor phone|tablet7|tablet10` path, so the Play Store's 7"/10" screenshot slots are reproducible instead of hand-uploaded. The 12 committed tablet PNGs it replaces were **byte-identical across the two slots** — the 10" capture had simply been re-uploaded into the 7" one — light-mode, and two of six showed no 3D at all. Tablets keep their native post-crop height rather than being padded to the phone's 9:19.2 (padding a landscape frame to a portrait ratio is the #917 letterbox defect), and the mosaic preview now preserves each capture's aspect ratio and is written outside the listing directory — that directory mirrors the Play listing byte-for-byte, and `play_listing.py`'s test suite rejects any file there that no `imageType` claims (#2796).
+- Hardened the same script against four failure modes found while capturing, each of which produced a plausible-looking result that was wrong (#2796):
+  - **The `--es demo <id>` deep link is silently ignored once the app has saved state** — it restores the last-viewed demo instead, so `--es demo model-viewer` re-opened *Picking & Collision*. The script now does a one-shot `pm clear` + cache warm-up before the run.
+  - **The variance check only rejects a *uniform* frame**, so it accepted an Android **launcher** screenshot (variance 679, Play Store icons and all) after the demo app died mid-series. Each capture now asserts the demo package actually owns the screen first.
+  - **A stale `wm size` override** (`Override size: 1080x2424` on a 2560x1600 tablet) shrinks every tablet capture to a phone-shaped viewport; the script resets any display override before reading the physical size.
+  - **`android run` can no-op the install and still exit 0**, so the existing `|| adb install` fallback never fired and the run died on the first `am start` with *no output at all* (`set -e`). The script now verifies `pm path <pkg>` actually resolves after installing, retries with `adb install -r`, and fails loudly if the package still is not there.
+- Tablet screenshots are captured in **portrait**: the demos frame their scene for a portrait viewport, and in a tablet's natural landscape orientation the subject collapses to roughly 5% of the frame width — `double-pendulum` came out uniform enough that the variance guard rejected it outright. The rotation is derived from `wm size` rather than hardcoded, because a 10" tablet is landscape-native while a 7" one is portrait-native (#2796).
+- Play Store 10" tablet "Materials" screenshot (slot 3): the run committed by #2858 captured the app bar and IBL skybox before the 3D model finished loading — the "no 3D at all" defect #2796 set out to fix (the 7" counterpart caught the model). Re-captured on a 10" AVD with a longer settle so the PBR model renders, restoring the 10" set to the full five unified-showcase demos (Models, Lighting, Materials, Geometry, Double Pendulum) in canonical order, matching phone/7"/iOS (#2796).
+- `parity-manifest.yml`'s section banners can no longer lie. The ledger's
+  `# ─── working (N) ───` headers and their tallies are COMMENTS, and
+  `check-demo-id-parity.sh` loads the file with `yaml.safe_load` — which drops
+  comments entirely — so every count in the header was unverified prose that
+  drifted freely behind a green CI. It had drifted three times in a single
+  wave of iOS ports: four rows were flipped to `iosStatus: working` in place,
+  without moving them out of the `stub` section or touching a banner, leaving
+  the file advertising 30 working / 23 stub against a real 34 / 19. The gate
+  now recounts the rows itself and fails on any disagreement, in three ways:
+  a banner whose declared tally differs from that bucket's real row count, a
+  row filed under a section that is not its own `iosStatus` (the in-place flip
+  that makes both tallies wrong at once), and the preamble's own
+  `Of the N Android ids: …` summary line. The check is purely textual and
+  deterministic — no heuristic, so unlike the advisory doc-drift checks it is
+  blocking — and a manifest with no section banners at all opts out, keeping
+  it strictly additive. The manifest's own counts were recounted with a parser
+  and reconciled in the same change, and its header no longer claims the
+  #2798 audit found a strict `androidStatus` → `iosStatus` correlation "with
+  zero exceptions": genuine ports have since landed non-`Working` Android
+  demos in iOS's `working` bucket, so that line described a snapshot, never an
+  invariant (#2801, follow-up to #2857).
+- **Auto-filed maintenance issues now close themselves when the condition they describe clears ([#2835](https://github.com/sceneview/sceneview/issues/2835)).** Every auto-filer in `maintenance.yml` was one-directional — five of them open or refresh a tracking issue daily while their condition holds, and `gh issue close` appeared nowhere in the workflow — so an auto-filed issue stayed open forever, including after the problem was fixed. #2835 ("sceneview-mcp npm is stale (4.0.14 < 4.0.15)") sat open for 13 days after 4.0.15 was published. Each of the five now derives a positive *measured-and-clear* signal and closes its issue through a shared `close-maintenance-issue.sh`, which will only ever touch an issue that is open, filed by `app/github-actions`, labelled `maintenance` and title-matched. The clear signal is deliberately not the inverse of the open signal: for the two store-drift jobs a `0` exit also means "credentials absent", and a failed `npm view` yields the same "no lag" as a genuine match, so closing on a bare `0` would silently retract a finding that is still true.
+- **The App Store drift issue no longer tells a maintainer to publish known-wrong screenshots.** Its body recommended reconciling via `app-store-screenshots.yml`, while `samples/ios-demo/appstore-screenshots/README.md` explicitly forbids dispatching it until the frames are re-captured — they predate [#2897](https://github.com/sceneview/sceneview/issues/2897) and were shot while `SceneEnvironment.intensity` was fed to RealityKit as a `2^x` exponent. Nothing enforced that (the dispatch is manual and `asc_listing.py` compares checksums, not pixels), so the warning now travels in the issue body itself.
+- **The Play Store graphics README stated the wrong iOS screenshot count** — it advertised 5 + 5 as a "pre-v2 five" awaiting refresh, when [#2896](https://github.com/sceneview/sceneview/issues/2896) had already curated the set down to the deliberate 2 + 2 (`model-viewer · dynamic-sky`, with `multi-model` excluded because a keyless capture build substitutes bundled stand-ins).
+- `capture-play-store-screenshots.sh` no longer captures a stale build. `android run` was observed printing `No matching components found for type ACTIVITY` and **still exiting 0**, so the script's `adb install -r` fallback never fired and the whole capture ran against a build 16 hours old (device 4.23.0 vs freshly-built 4.24.0) while producing entirely plausible screenshots. The install is now verified against the device's package `lastUpdateTime` rather than trusted from an exit code, falls back when it did not land, and prints the on-device build for every run (#2854).
+- `Node.destroy()` now returns the entity id to Filament's `EntityManager`, instead of only
+  destroying the entity's components. Every node ever created used to burn one id for the
+  lifetime of the process — invisible in single-teardown tests, and measured by the #2762
+  leak-churn harness on its first run (#2859).
+- The release is gated on **ownership**, so a borrowed entity is left to its real owner: a node
+  recycles its id only when it allocated the entity itself (the constructor's `entity` argument
+  omitted). `ModelNode` wraps `modelInstance.root` and its children wrap `gltfio` node entities,
+  all owned by the `AssetLoader` — recycling those would let Filament reissue an id a live asset
+  still uses.
+- `SplatNode` also recycles the per-batch renderable entities it allocates.
+- `Node.destroy()` now removes its entities from the Filament `Scene` it is attached to before
+  recycling the id, so an imperative caller that destroys a node without detaching it first
+  cannot leave a reissued id behind in the scene.
+- New: `NULL_ENTITY` (the "no entity" sentinel, and the new default of every optional `entity`
+  constructor parameter) and `Engine.safeRecycleEntity(entity)`. Both are additive — no existing
+  signature changed, and `Node(engine)` / `Node(engine, entity)` still compile as before.
+- Device-QA emulator pool: a provisioned emulator no longer looks free to every
+  other session. `setup-ar-emulator.sh` leased by pid and dropped the lease in
+  its EXIT trap, but the emulator it provisions deliberately outlives the
+  script — so the next `device-qa.sh` / `qa-android-demos.sh` run was handed an
+  AVD another session was actively driving. Leases are now reserved per
+  **session** and survive the provisioning script (`--release` hands one back,
+  with a bounded TTL so a dead session can never wedge the pool). ([#2862](https://github.com/sceneview/sceneview/issues/2862))
+- The pool also refuses to lease an emulator that is not the pool AVD: a stray
+  device sitting on a pool port used to be leased and driven as if it were the
+  ARCore-ready `Pixel_7a`, producing a QA verdict about a device nobody meant
+  to test. ([#2862](https://github.com/sceneview/sceneview/issues/2862))
+- Device-QA emulator pool (follow-up to #2862): the scripts that actually DRIVE
+  a pool emulator now HOLD a lease for their whole run, closing the two-sessions
+  -on-one-AVD gap **for the harness's own scripts**. `qa-android-demos.sh` and
+  `ar-replay-qa.sh` used to pick a running emulator without acquiring it, so a
+  second standalone run drove the same one; they now `emu_lease_acquire` it (or
+  adopt this session's sticky reservation), refuse one a peer reserved, and
+  release it on exit. `ar-replay-qa.sh` also refuses a pool-port emulator it
+  cannot identify (wrong AVD, or a console that does not answer — most likely
+  precisely when a peer is driving it) instead of falling through and driving it
+  unleased. **The lease file governs allocation, not exclusion**: `CLAUDE.md`
+  tells agents to drive the emulator with `adb install` / `input tap` directly,
+  and no amount of leasing inside the scripts stops that — measured during this
+  work, a sibling session's `adb install` killed a leased run's app mid-sweep
+  (`Killing <pid>:<pkg> (adj 0): stop <pkg> due to installPackageLI`, which
+  without that logcat line reads as a native crash). Raw `adb` is now blocked by
+  a separate mechanism, the #2924 `PreToolUse` hook, for commands a session
+  issues — not by this change. ([#2862](https://github.com/sceneview/sceneview/issues/2862))
+- `device-qa.sh` now grades its **android** leg on the positive `[qa] PASS`
+  marker in addition to the exit code, as the iOS leg already did. Holding the
+  pool lease means `qa-android-demos.sh` installs an EXIT trap, and on macOS
+  bash 3.2 (measured: 3.2.57) a script that aborts inside a `||`-guarded list
+  with a trap installed exits **0** — which would have graded a crashed sweep
+  as `passed`. Preserving `$?` inside the trap does not help: the `||` has
+  already reset it. ([#2862](https://github.com/sceneview/sceneview/issues/2862))
+- `setup-ar-emulator.sh` now publishes its session token to the handoff file
+  only when it minted the token itself. A caller that already exported one
+  (`device-qa.sh`) no longer has its reservation inherited — and the emulator
+  stolen — by a concurrent session inside the handoff window, and the ad-hoc
+  "next steps" hint leads with the token export that makes the reservation
+  exclusive. ([#2862](https://github.com/sceneview/sceneview/issues/2862))
+- **`samples/android-demo`: the `geometry` demo no longer clips its primitives in a phone-portrait viewport ([#2873](https://github.com/sceneview/sceneview/issues/2873)).** Two independent faults stacked. The four primitives were laid out on a **row ~1.45 m wide** — wider than a portrait frame at any sane distance — and the camera was **~2× closer than the code believed**: `rememberCameraManipulator`'s `orbitHomePosition` was documented as the camera's world position "to return to on double-tap", which reads as "distance = `|orbitHomePosition − targetPosition|`", but the resulting orbit distance measures as `|orbitHomePosition|` — because Filament takes the value as the eye verbatim while `autoCenterContent = true` has already translated the content onto the world origin, so `targetPosition` never enters the distance (documented on `main` in [#2930](https://github.com/sceneview/sceneview/pull/2930)). `(0, 0.2, 1.2)` against a target at `z = -1.5` therefore framed the row from **1.22 m**, not the "comfortable 2.7 m" its comment claimed, so the group was ~2.7× wider than the frame and a primitive was cut off at an edge no matter what. The primitives now sit in a **2 × 2 cluster** and the distance is passed as a vector whose length *is* the distance. Measured on the QA emulator at the default framing: the cluster clears the frame with ≥ 184 px of margin per side on a 1080-wide viewport (model predicted the cube's left edge at 187.2 px, pixels measured 187).
+- **`samples/android-demo`: the `geometry` demo now honours the `camera_distance` launch lever ([#2652](https://github.com/sceneview/sceneview/issues/2652)).** The extra is read by `rememberHeroOrbitCameraManipulator`, which this demo does not use, so `--ef camera_distance <f>` was a silent no-op on it — the reason #2873 reports the clipping as reproducing "at every camera distance": the distances tried never reached the camera. Verified on-device at 4 / 6 / 10 m, each producing a distinctly reframed scene. The same silent no-op on every other non-hero-orbit demo remains [#2785](https://github.com/sceneview/sceneview/issues/2785)'s scope.
+- **`samples/android-demo`: new `GeometryLayout` + `GeometryLayoutTest` pin the framing as arithmetic instead of eyeballed constants.** Positions, sizes, the default distance and the frustum relation (`halfHeight = distance · 12 / focalLength`, Filament's 24 mm full-frame sensor model) live in one internal object, and the JVM test asserts the cluster clears both a real phone-portrait viewport and the narrowest frame it could meet — including a regression case proving the old row measures as clipped. This defect was invisible to every existing gate: the demo compiled, rendered correctly, and passed the store-capture blank-frame guard while a primitive hung off the edge.
+- **Demo: the `materials` demo now shows the same subject on the same backdrop
+  on every launch (#2874).** The idle orbit still varies the camera yaw, so a
+  pixel-stable capture needs `--ez qa_mode true`. Two
+  things made it non-reproducible, and both are fixed. **(1) The subject was
+  streamed.** The **PBR Materials** section opened on a Sketchfab slug, so what
+  the first frame showed depended on the API key, the network and the disk cache
+  — two captures of the same demo id from the same build showed a different
+  model. It now opens on a **bundled** subject: Khronos' `ToyCar`, already in the
+  APK, whose GLB declares `KHR_materials_clearcoat`, `KHR_materials_sheen` and
+  `KHR_materials_transmission` — the three extension families the section is
+  about, on the car body, the seat fabric and the windows. That is strictly more
+  than the old offline path showed, since every slug fell back to
+  `khronos_damaged_helmet.glb`, which declares no `KHR_materials_*` extension at
+  all. The streamed catalogue is unchanged and stays one chip tap away, so
+  variety survives as an explicit user action. **(2) The backdrop was a
+  photograph swept by the camera.** The sections drew the `studio_2k` skybox,
+  which — despite its `neutral / studio / product` tags in `assets/catalog.json`
+  — decodes to a domestic living-room interior; drawn behind a camera that
+  orbits 360° every 18 s, one environment shows a different room feature in
+  every capture, which is what #2874 saw as "a different HDRI each launch".
+  Measured: swapping to a genuine photo-studio HDRI did **not** fix it (two
+  cold launches came back with the same subject against the studio's dark side
+  and its bright sweep), so the material sections now share one constant,
+  `MATERIALS_SHOWCASE_HDR = environments/studio_warm_2k.hdr`, used as **IBL
+  only** — the materials still read the environment through their reflections,
+  the backdrop is the demo's own surface at every orbit angle. Framing is
+  subject-independent too: every chip is normalised to the same size and viewed
+  from the same orbit radius instead of each model's own `scaleToUnits`
+  (0.15 m for the beetle, 0.90 m for the sofa), so the subject no longer reads
+  as a speck — measured on the phone capture, its base now spans 98–100% of the
+  frame width. The cold-launch contract (default subject is bundled, never
+  streamed) is asserted by `MaterialsSubjectsTest` on the JVM, because this
+  defect is invisible to a per-frame check: every capture looked fine, they just
+  differed from each other.
+- **iOS CI no longer swallows build/test failures ([#2878](https://github.com/sceneview/sceneview/issues/2878)).** Three Swift build/test steps in `ios.yml`, plus the `SceneViewSwift` build in `rn-ios-compile.yml` and `bridge-ios-compile.yml`, ended in `| xcpretty … || cat`, which defeated `set -o pipefail`: `cat` reads CI's empty stdin and exits 0, so the steps stayed green through real failures. They now end in `|| exit ${PIPESTATUS[0]}`, propagating xcodebuild's exit code while still tolerating a missing xcpretty. Extends #2865, which fixed the same idiom in the one new step it added.
+- **`AnchorNode.removeAll()` / `AugmentedImageNode.removeAll()` now remove every child ([#2878](https://github.com/sceneview/sceneview/issues/2878)).** Both iterated a live RealityKit children view while removing from it, which re-indexed the collection mid-loop and left every other child attached (2 children → 1 stranded). They now snapshot into an `Array` first. Surfaced once iOS CI stopped masking the failing tests.
+- **`CameraNode` far clip plane now defaults to a deterministic 1000 m ([#2878](https://github.com/sceneview/sceneview/issues/2878)).** `PerspectiveCameraComponent()` ships with `far = .infinity`, so the `farClip` getter's `?? 1000` fallback was unreachable and the documented 1000 m default was silently infinite — this now matches Android (`CameraNode.far = 1000.0f`) and the web viewer. `CameraNode.init()` sets `near`/`far` explicitly. Note: geometry beyond 1000 m is now clipped by default on `CameraNode`; call `.clipPlanes(far:)` for larger scenes.
+- **CI: the iOS App Store submit step no longer attaches the previous release's
+  binary (#2893 W1).** It selected the newest VALID iOS build, which — while
+  Apple was still processing the upload from the running job — is the PREVIOUS
+  release's build. The archive step now exports its `CFBundleVersion` and the
+  submit step pins the selection to it: no match yet means our build is still
+  processing (keep polling), and exhausting the window is a loud red naming the
+  build it waited for. The `#2885` platform-resolution fallback is preserved.
+- **CI: an authentication failure on the App Store Connect builds query is no
+  longer misreported as an Apple processing delay (#2893 W2).** The status code
+  was ignored, so a 401 read exactly like "still processing" and burned the full
+  ~10-minute poll before failing with a message blaming Apple. 401/403 now fail
+  immediately naming auth, 429/5xx stay retryable, other 4xx fail fast, and a
+  non-JSON 200 is retried instead of raising out of the step.
+- **CI: a failed submission no longer leaves an orphan `reviewSubmission` in App
+  Store Connect (#2893 W5).** Every failure path after the submission was
+  created exited without deleting it, accruing an empty, open, never-submitted
+  record per run — the exact signature `store-preflight.sh` reports as a release
+  blocker, cleared by hand after run 30269459288. The submission this run
+  created is now cancelled on any post-create failure, never on success, and a
+  failing cleanup can no longer mask the error that triggered it. The one
+  ambiguous case is handled explicitly: a submit request that gets no usable
+  answer — no response at all, or a `5xx`/`408` a gateway can return after the
+  write was already committed — may still have reached Apple, so the
+  submission's state is read back and a live one is left alone rather than
+  withdrawn.
+- **CI: a submission that dies on a transport error now says so in the log.** The
+  step's fatal handler caught only `SystemExit`, so a `ConnectionError` on the
+  submission POST or PATCH went red without ever printing the "did NOT reach App
+  Review" banner — the operator saw a stack trace and no verdict. The orphan
+  cleanup already ran in that case; only the diagnostic was missing.
+- **CI: the empty-`whatsNew` warning names the real state of
+  `release_notes.txt`** — "No release_notes.txt" sent a reader hunting for a
+  missing file that was present but blank (review nit from
+  [#2908](https://github.com/sceneview/sceneview/pull/2908)).
+- **iOS environments never lit anything.** Every bundled `SceneEnvironment`
+  preset is a Radiance `.hdr`, and `EnvironmentResource(named:)` cannot load
+  one — it threw `resourceLoadFailure` on `studio.hdr` / `outdoor_cloudy.hdr` /
+  every other preset, and `SceneEnvironment.load()` swallowed that into "scene
+  continues with default lighting". So every iOS scene carrying
+  `.environment(…)` ran with **no custom IBL and no skybox**: the
+  `ImageBasedLightComponent` was never set, so the scene fell back to
+  RealityView's own default environment lighting (dim, not unlit — see
+  #2842/#2868), and `showSkybox` had no visible effect at all. **Visual change
+  on upgrade:** an app already on 4.25.0 that tuned its look around the broken
+  state will render differently once the IBL and the skybox appear. `load()` now
+  falls back to
+  decoding the file through ImageIO (which reads `public.radiance` natively)
+  and building the resource from the equirectangular `CGImage`. The
+  `named:` path is still tried first, so `.exr`, asset-catalog and Reality
+  Composer Pro resources are unaffected (#2896).
+- **iOS/macOS/visionOS: `SceneEnvironment.intensity` is applied as the linear
+  multiplier it is documented to be.** It was passed straight to RealityKit's
+  `ImageBasedLightComponent(intensityExponent:)`, which scales the IBL by `2^x`,
+  so every bundled preset rendered at the wrong exposure: `.studio` 1.0 at ×2.0,
+  and `.night` 0.4 at ×1.32 — *brightening* where its authored value asks it to
+  dim to ×0.4. The defect pre-dated #2896 but was latent, because
+  `EnvironmentResource(named:)` could not load the Radiance `.hdr` presets and no
+  `ImageBasedLightComponent` was ever set; #2896 made the IBL load, and with it
+  the wrong unit. The value is now converted with `log2` at apply time, so `1.0`
+  is a true no-op and the presets keep their linear authoring. The result is
+  clamped finite for every `Float`, including `NaN` and `±infinity`, which
+  RealityKit rejects. The KDoc and `llms.txt` state the unit explicitly (#2897).
+- **Note for anyone reading this as a parity fix — it is not one.** Android's
+  `Environment` has no intensity member; its IBL level is Filament's
+  `IndirectLight.intensity` in **absolute lux** (`DEFAULT_IBL_INTENSITY = 10_000`),
+  so the two knobs are not interchangeable and never were. This change moves iOS
+  onto the exponent-0 baseline that `SceneFactories.kt`'s cross-platform note
+  already assumes it uses (≈1000 lux equivalent); the platforms stay matched on
+  the key-to-IBL ratio, not on absolute values (#2897).
+- **The committed App Store screenshots predate this fix.** `appstore-screenshots/`
+  was captured while the exponent was live: `01-model-viewer.png` on `.warm`
+  (intensity 1.0 → ×2.00, now ×1.00) and `02-dynamic-sky.png` on `.outdoor`
+  (1.2 → ×2.30, now ×1.20). Only the IBL contribution changes — the direct lights
+  and the skybox are untouched — so the frames are not uniformly twice as bright,
+  but they no longer match what the app renders. Re-capture and re-judge the
+  mosaic before dispatching `app-store-screenshots.yml` (#2897).
+- **`dynamic-sky` on iOS now demonstrates the sun with a subject that can show it ([#3003](https://github.com/sceneview/sceneview/issues/3003)).** The demo built a stylised skyline from five `systemGray` cubes — working exactly as written, but a matte grey box reads the same at noon and at dusk apart from its shadow, so the one thing a time-of-day demo exists to show was invisible. It now loads `khronos_damaged_helmet`, the subject Android's Lighting Lab puts under this same demo id, whose metal and rough-dielectric regions render the environment change directly in their reflections. The ground plane went with the cubes: it existed so the auto-framing pass (which fits the *union* bounding sphere) would not pull back to contain an oversized slab, and with a single hero subject it earned nothing while leaving the helmet at a sixth of the frame height and visibly intersecting it. The demo also gained the `framingMargin` split `model-viewer` already had — looser at 0.75, because a helmet is nearly as tall as it is wide and the 13" iPad frame clips it at `model-viewer`'s 0.62.
+- **The iOS App Store screenshots are re-captured from a post-#2897 build**, clearing the ⛔ caveat that blocked reconciling the App Store listing drift ([#2899](https://github.com/sceneview/sceneview/issues/2899)). The previous frames were shot while `SceneEnvironment.intensity` was still applied as a `2^x` exponent. The visible change from that fix alone is nil, exactly as the caveat's own measurement predicted — which is the point: the frames are now provably what the app renders instead of probably close enough.
+- **Recorded a capture defect the mosaic surfaced:** the iPad frames leak their capture date (`09:41 Tue 28 Jul` vs `09:41 Mon 3 Aug`), because `simctl status_bar override --time` does not cover the date iPadOS draws beside the clock — which both dates a public listing and defeats the script's byte-reproducibility ([#3004](https://github.com/sceneview/sceneview/issues/3004)).
+- **MCP:** `sceneview-mcp` no longer advertises a one-release-old SDK pin to AI agents.
+  `mcp/src/generated/version.ts` is auto-generated but, unlike its gitignored `llms-txt.ts` /
+  `symbols.ts` siblings, **committed** — and the v4.25.0 release bumped `gradle.properties`
+  without regenerating it, so `LATEST_SCENEVIEW_RELEASE` (and the `analyze-project`
+  `android-ok` test fixture's SDK pin) stayed at `4.24.0`, the version the MCP hands out in
+  its install snippets. Both are regenerated to `4.25.0`. The MCP's own npm version
+  (`PACKAGE_VERSION`) is on an independent track and is left untouched (#1705, #2906).
+- **Tooling:** `sync-versions.sh` now verifies `LATEST_SCENEVIEW_RELEASE` against
+  `VERSION_NAME` (CRITICAL) and regenerates `version.ts` + the fixture in `--fix`. A future SDK
+  bump that forgets the MCP regeneration is now caught by the release pipeline
+  (`release-fast.yml` re-runs the check for zero residuals) instead of silently shipping a
+  stale pin. `PACKAGE_VERSION` stays deliberately out of the check (#1705, #2906).
+- Store-screenshot docs now describe what the repo actually ships instead of a parity that no longer holds. #2855 moved the **phone** class to set v2 (`model-viewer · dynamic-sky · multi-model`) without re-shooting the tablets, so four surfaces had drifted: `PLAY_STORE_SETUP.md` still advertised five phone screenshots and "the same five demos" across all classes; the Play graphics README still presented the retired pre-v2 five as the shipped set; the capture script's own usage example still offered the retired ids as its `--demos` sample, next to the banner warning against re-adding them; and the App Store README claimed parity with Android while its images are the pre-v2 five. Each class is now documented with the set it really carries, and the tablet gap is tracked in #2907 (#2907).
+- `capture-play-store-screenshots.sh` resolves its demo set per form factor and drops `multi-model` from tablet runs. Measured on both tablet AVDs against a 4.25.0 build: at a tablet's wider aspect (~0.64 w/h vs the phone's ~0.47) that demo's fixed camera angle frames a wooden support post against the backdrop wall, with none of the foliage the slot exists for. It is not a settle defect — the frame renders fully — and the framing lever cannot correct it (probed at 2.5 / 3.5 / 4.5 m: essentially the same frame, because `camera_distance` moves the camera along an angle it cannot change). The variance guard passes the bad frame (2227 on 10", 2827 on 7"), so only a mosaic eyeball catches it; the guard is forward-looking and rewrites no committed screenshot. Demo-side fix tracked in #2913 (#2907).
+- Play Store: both tablet classes are now on screenshot **set v2**
+  (`model-viewer · dynamic-sky`). The three retired slots per class — `materials`
+  (#2874), `geometry` (#2873) and `double-pendulum`, all shot from a 4.23.0 build —
+  are removed, so the next listing sync stops uploading them: `play_listing.py`
+  selects screenshots by glob, not by count.
+- `capture-play-store-screenshots.sh` now prunes higher-numbered leftover slots
+  after a completed run, so a shrinking set can no longer leave stale frames in
+  the Play mirror where neither the mosaic nor the run summary can show them.
+- The demo app's Multi-Model ("park") scene now frames itself from the **live viewport aspect** instead of a hardcoded camera pose, so it composes correctly on a tablet instead of filling the frame with one model's bare flank against the backdrop wall. The scene aimed a fixed camera at `(0, 0, -1.5)` — the formation centre it authored — while the library's `autoCenterContent` pass had already translated that formation onto the world origin, leaving the lens ~0.6 m from the content centroid, effectively inside the subject. The section now places its own models around the origin (`autoCenterContent = false`), bottom-aligns every one of them onto a shared ground plane (`centerOrigin`) instead of inheriting each GLB's authored pivot, and derives the camera distance from the formation's own size and the measured viewport aspect via `DemoMath.coverDistance` — *cover* framing, not *fit*: the models fill the frame on both axes and the excess is cropped, so a wider viewport lands on more models rather than on the backdrop. Filament fixes the vertical FOV, so a phone (~0.47 w/h) and a tablet (~0.64) resolve to the same distance and a landscape / foldable viewport pulls the camera in. Covered by 11 new pure-JVM `DemoMathTest` cases, including one that pins the formation layout so the derived framing bounds cannot drift away from it (#2913).
+- The Multi-Model section honours the `camera_distance` / `?cameraDistance=` framing override, which it previously ignored: it built a stock `rememberCameraManipulator`, which reads no `DemoSettings`, so the store script's `--ef camera_distance 6.0` never reached the scene. That is why probing 2.5 / 3.5 / 4.5 m produced three identical frames and looked like a camera angle that distance could not change. The store capture script drops that no-op 6.0 m value and lets the scene's own per-viewport framing stand (#2913).
+- Switching between the Model Viewer's sections no longer carries the camera-distance override across. The Single-Model slider writes to the process-global `DemoSettings.cameraDistance` — that is how it drives the live camera — and now that the Multi-Model section honours the same override, dragging the slider down and then switching put the camera inside the formation with no control in that section to undo it. Changing section clears the override; a cold launch never passes through that path, so the `--ef camera_distance` / `?cameraDistance=` deep link is unaffected (#2913).
+- `multi-model` is captured on tablets again — `capture-play-store-screenshots.sh` had dropped it from tablet runs while the framing was broken (#2915). The committed tablet PNGs still hold two slots until they are re-captured; Play accepts 2–8 per type (#2913).
+- `capture-play-store-screenshots.sh` warns when `multi-model` is captured without a Sketchfab API key. With a key the demo streams the photoreal `park` oaks; without one the resolver substitutes per-slug bundled models (lantern / lantern / shiba / soldier), so the same demo id captures a completely different scene — and the frame still renders fully, still passes the foreground guard, and still clears centre-variance, so nothing downstream can tell. #2913 was diagnosed against a keyless tablet capture next to a committed phone screenshot shot with a key, and the asset swap read as a framing defect (#2913).
+- **Point & Ask**: anchored answer cards no longer drift and jump. All panels share one
+  `ViewNode` `WindowManager`, whose single wrap-content host sizes itself to its *largest*
+  child and re-measures every sibling to that size — so a long streaming answer silently
+  resized and shifted every other pinned card, continuously, while it typed. Each card now
+  has a fixed width **and** height, with the answer scrolling inside it.
+- Docs: the `ViewNode` KDoc (mirrored in `llms.txt`) claimed there is "no parent to measure
+  against", so `fillMaxWidth()` has "nothing to fill". The window is `WRAP_CONTENT`, so the
+  content is measured `AT_MOST(display)` — `fillMaxWidth()` resolves to the full display
+  width and puts a metres-wide quad in the scene. The advice (give an explicit size) was
+  right; the stated reason and failure mode were not. The shared-`WindowManager` sizing rule
+  is now documented alongside it.
+- Device-QA emulator pool: the hold-the-lease guard now also runs on the path
+  `setup-ar-emulator.sh` itself documents. Both drivers treated a pre-set
+  `ANDROID_SERIAL` as proof that the caller held the lease, and the script's own
+  printed next-steps tell you to `export ANDROID_SERIAL=…` — so in the exact
+  workflow it advertises, the guard never ran. `qa-android-demos.sh` and
+  `ar-replay-qa.sh` now verify it instead, via a new `emu_lease_ensure`.
+  ([#2921](https://github.com/sceneview/sceneview/issues/2921))
+- The obvious fix here — "just call `emu_lease_acquire`" — is a regression, and
+  the hermetic self-test now pins that. Measured with `device-qa.sh` as parent:
+  when both share a session token, an acquire in the child **adopts** the
+  parent's lease and rewrites the owner to the child's pid, so the child's EXIT
+  trap deletes a lease the parent is still relying on and the emulator goes back
+  to looking free to every peer — the collision the lease exists to prevent,
+  reintroduced on the nominal path. Without a shared token it is worse: the
+  child refuses to run at all. `emu_lease_ensure` therefore verifies *without*
+  taking ownership — a strict no-op when the lease is already ours, a real
+  acquire when the emulator is unleased, and a refusal when a live peer holds
+  it. ([#2921](https://github.com/sceneview/sceneview/issues/2921))
+- The **ar** leg is no longer graded on its exit code alone. It shared the
+  bash 3.2 false-green the android and iOS legs already defend against (an abort
+  inside a `||`-guarded list under an EXIT trap exits 0), but unlike them it had
+  no positive marker to require — it graded an *absence*. `device-qa.sh` now
+  requires one, and keeps the two green paths distinguishable: a real
+  `[ar-replay-qa] PASS` versus the new `GREEN-NO-OP` a sparse checkout emits when
+  there was nothing to replay, which is reported as such instead of implying
+  demos ran. An exit 0 with neither marker is now a failure, not a pass.
+  ([#2921](https://github.com/sceneview/sceneview/issues/2921))
+- `qa-android-demos.sh` / `ar-replay-qa.sh` stop sending `emu_lease_release_all`
+  to `/dev/null` — that discarded the only evidence a release did the right
+  thing, and `|| true` alone already makes the trap safe. A mis-release is now
+  diagnosable from the artifact bundle.
+  ([#2921](https://github.com/sceneview/sceneview/issues/2921))
+- Still open, stated plainly: `device-qa.sh` acquires its own emulator on a
+  best-effort basis (`emu_lease_acquire … || true`), so the orchestrator itself
+  can still proceed unleased. Raw `adb` typed by a session is blocked separately
+  by the #2924 `PreToolUse` hook, which sees only commands that pass through a
+  Claude Code session — a plain terminal or a wrapper script is invisible to it.
+- Known, unchanged: the handoff token is inheritable at most once, so a chain of
+  `setup-ar-emulator.sh` → `qa-android-demos.sh` → `ar-replay-qa.sh` in a shell
+  that never exported `EMU_LEASE_SESSION` ends at the third step. Export the
+  token the provisioning script prints — the scripts say so on the refusal path.
+  ([#2862](https://github.com/sceneview/sceneview/issues/2862))
+- **Demo: the `materials` demo no longer goes black after a chip round-trip
+  (follow-up to #2874 / #2926).** Tapping **Toy Car** → any streamed chip →
+  **Toy Car** rendered an empty viewport with no loading scrim and no way back
+  short of leaving the demo. The section feeds one `ModelNode` call site an
+  instance that swaps when the chip changes; that re-keys
+  `remember(engine, modelInstance)` in `SceneScope.ModelNode`, and the outgoing
+  node's `DisposableEffect` runs `node.destroy()`, which walks `childNodes` and
+  calls `engine.safeDestroyEntity` on the entities the `ModelInstance` only
+  *borrows*. `ownsEntity` is `false`, so the entity ids survive but their
+  renderable components do not — and the bundled instance is retained for the
+  whole session and never reloaded, so it came back renderable-less. Both
+  subjects now stay mounted and the inactive one is hidden with `isVisible`.
+- **Docs: the demo's reproducibility claim now matches what is coded.** The
+  changelog fragment and `DemoEnvironment`'s KDoc said the demo "produces a
+  reproducible frame"; the subject and the backdrop are indeed identical on
+  every launch, but the section's idle orbit is time-driven and starts when the
+  model finishes loading, so two captures still differ in camera yaw unless the
+  app is launched with `--ez qa_mode true`. Both surfaces now say so.
+- **iOS demo: the Multi-Model "Park" Tree slot renders again, and five other demos stop stalling ([#2928](https://github.com/sceneview/sceneview/issues/2928)).** `Models/tree_scene.usdz` contained 2 712 mesh prims — 2 665 of them individual grass tufts — and RealityKit's USD import cost scales with **prim count**, not file size or triangle count. Measured on an iPhone 17 Pro Max simulator (iOS 26.3): the asset took **91.71 s** in `Entity(contentsOf:)`, while a 25.3 MB / 1.3 M-triangle bundled model parses in 0.85 s. The slot was therefore still awaiting its parse long past any settle window, and because `loadSlot` never threw, nothing was logged and the model simply read as absent. The grass prims are stripped (47 mesh prims remain), taking the parse to **2.58 s**. The strip is purely subtractive — no mesh was re-authored, and all 47 survivors keep byte-identical `extent` arrays — so framing and composition are unchanged. Because `assets/` is the source of truth that platform copies are derived from, and the shared original still carries the 2 712 prims, `sync-assets.sh` would have copied it straight back over the fix; the optimised copy is now a checksum-pinned divergence there, so it is skipped by the sync and still verified on every run. The same file backs the "Tree Scene" entry in the Explore and AR tabs, and was also the keyless fallback of the *Potted Monstera*, *Wooden End Table* and *Floor Lamp* `ar_placement` slugs — all of which stalled the same way in a keyless build, which is both the default local build and the App Store build. Those three slugs have since been repointed at distinct bundled stand-ins ([#2940](https://github.com/sceneview/sceneview/issues/2940)): un-stalling them would otherwise have rendered a tree scene under a plant/table/lamp label. A deterministic prim-count budget test guards the regression (a wall-clock assertion would flake on a loaded CI host).
+- **iOS demo: a corrected bundled asset now actually reaches an already-installed app ([#2928](https://github.com/sceneview/sceneview/issues/2928)).** `SketchfabAssetResolver.fallbackBundle(for:)` staged each keyless fallback into the cache root under a path keyed only on the slug uid and returned any file already there without comparing it to the bundle. That staged copy lives in the app's data container, which survives an App Store update — so for every existing install, an update shipping a fixed asset was inert and the old bytes were served forever. It is how the `tree_scene.usdz` fix above silently failed to take effect on an already-installed build. The staged copy is now re-made whenever its byte size no longer matches the bundled asset.
+- The Multi-Model demo's per-model visibility chips are labelled from the resolved Sketchfab slug's `displayName` instead of four hardcoded nouns, on Android and iOS. They read "Tree" / "Bench" / "Dog" / "Bird" while the `park` registry has held four oak trees since the streamed-asset migration — nothing named a bench, a dog or a bird has been in that scene for releases, so the toggles were effectively unlabelled. They now read "Oak Trees" / "Stylized Tree" / "Mighty Oak Trees" / "Skovfogedegen Oak" and follow any registry edit, falling back to a positional "Model N" only while a slot has no slug. The chip row scrolls horizontally, as the Gallery row already does, because catalogue names do not fit four-across on a phone (verified on a Pixel 7a AVD) (#2933).
+- The Multi-Model section now shows the scaffold's asset-source pill, and it is **measured from the resolved file** rather than inferred from `SketchfabConfig.apiKey`. Every failure path in `SketchfabAssetResolver.resolve` — no network, a stale key, a bounds-drifted asset, exhausted retries — ends at the bundled fallback, so a build *with* a key can render four offline stand-ins; the config-based inference used elsewhere labels that "Streamed (cached)". Reproduced on the QA emulator with a valid key while the Sketchfab download endpoint returned HTTP 429: all four slots staged out of `cache/sketchfab/fallback/` while the config-based inference labelled that scene "Streamed (cached)". The file-based pill was captured reading "Offline model" on the keyless leg; the keyed-with-429 case follows the same code path but was not re-captured. New `SketchfabAssetResolver.isBundledFallback(file)` is the shared signal (#2933).
+- Toggling a Multi-Model visibility chip no longer blanks the models that were meant to stay on screen. The scene skipped a hidden slot's `ModelNode` call site entirely, which shifted every later node onto the preceding composition group with a different `ModelInstance`, re-keyed `remember(engine, modelInstance)` and ran `node.destroy()` — destroying the Filament renderable components that the instances only borrow, with no reload possible because they come from a `produceState` whose keys never change again. Every slot now stays mounted and is hidden with `isVisible`, keyed by slot index. Same defect, same remedy as the Materials section in #2939 (#2933).
+- **android-demo** — the Scene Gallery asset-source pill now reports the origin it
+  actually rendered. It was inferred from `SketchfabConfig.apiKey`, so a build with a
+  key configured but a failed download — no network, a stale key, a bounds-drifted
+  asset, exhausted retries, all of which end at the bundled fallback — showed
+  "Streamed (cached)" over the offline stand-in. The pill now asks the resolved file
+  via `SketchfabAssetResolver.isBundledFallback`, and only falls back to the
+  key-based guess while nothing has resolved yet (#2936).
+- **iOS demo: the AR placement picker no longer renders a tree scene labelled "Potted Monstera" ([#2940](https://github.com/sceneview/sceneview/issues/2940)).** The *Potted Monstera*, *Wooden End Table* and *Floor Lamp* `ar_placement` slugs in `SampleAssets.swift` all declared `fallbackBundledPath: "Models/tree_scene.usdz"`, so a keyless build — the default local build and the App Store build — dropped the same tree-and-terrain island under each of those three labels. Before [#2928](https://github.com/sceneview/sceneview/issues/2928) that asset never finished parsing and the slot merely looked broken; un-stalling it turned the same mapping into a confident, wrong scene, which is the failure shape [#2913](https://github.com/sceneview/sceneview/issues/2913) named. It also violated the rule documented in place a little above those entries: when several slugs share a fallback the fallbacks must stay **distinct**, precisely so a fallback can never be mistaken for the real asset ([#2355](https://github.com/sceneview/sceneview/issues/2355)) — and the AR placement demo accumulates taps, so three identical islands could stack in one scene. The three now fall back to three distinct bundled Khronos reference models: `khronos_lantern.usdz` for *Floor Lamp*, which is the one bundled asset that genuinely is what its label says; and, because no plant and no table exist in the bundled set, `khronos_toy_car.usdz` for *Wooden End Table* and `khronos_damaged_helmet.usdz` for *Potted Monstera* — reference objects that read as stand-ins rather than as mislabelled real furniture. All three are already shipped in the IPA, so nothing is added to the bundle, and all three carry 1–3 mesh prims against the 100-prim budget #2928 introduced. The keyed path is untouched — it still streams the real Sketchfab models. The `park` "Oak Trees" slug, whose `tree_scene.usdz` fallback is correct, is unchanged.
+- **iOS demo: a mistyped or repointed keyless fallback is now caught by a test instead of at runtime ([#2940](https://github.com/sceneview/sceneview/issues/2940)).** The registry's only fallback invariant was that `fallbackBundledPath` is non-empty; nothing verified that a declared path resolves to an asset actually present in the app bundle, so a typo — or an asset added to the repo but never to the Resources build phase — surfaced only as a failed resolve on a keyless device. `BundledAssetPrimBudgetTests` now walks every distinct `fallbackBundledPath` **read from the registry itself**, asserting each one resolves, parses to non-empty bounds, and stays inside the #2928 prim budget. Reading the paths from the registry rather than from a literal list means repointing a fallback re-aims the guard, instead of leaving it watching the assets that used to be declared.
+- **Credit three Khronos models that shipped uncredited.** `assets/CREDITS.md` had drifted from its source of truth `assets/catalog.json`: Toy Car (`android-demo`, `ios-demo`), and Sheen Chair + Iridescence Dish With Olives (`android-tv-demo`) were in the catalog and shipping in a sample app, but absent from the attribution list each model's licence (CC-BY 4.0 §3a) requires. Regenerated with `.claude/scripts/generate-credits.py`; the header tally goes 70 → 75 catalog records — five, because Sheen Chair and Chronograph Watch each have a second `web-demo` record in the catalog (Chronograph Watch itself was already credited under its twin). `toy_car` also leaves the "Missing metadata" section now that its metadata is filled in.
+- **Demo (Android): a corrected bundled model now reaches installs that already
+  ran the app.** `SketchfabAssetResolver` staged the offline fallback under a
+  path keyed on `uid` alone and trusted any complete GLB found there, so the
+  app's data dir — which survives a Play Store update — kept serving the
+  previous version's bytes forever. An APK shipping a fixed asset stayed inert
+  on every existing install. The staged copy is now compared against the byte
+  length of the asset currently in the APK and re-staged when they diverge,
+  mirroring the iOS fix from #2929. This closes the parity half of #2943 that
+  #2947 left open; the KDoc contract "keep both in sync when adding behaviour"
+  was pointing at exactly this gap.
+- **Demo: a bundled asset that has gone missing degrades instead of throwing.**
+  When the bundled resource is unreadable — renamed or pruned from the app
+  while the registry still points at the old path — both resolvers now serve an
+  existing staged copy as a last resort. On iOS the freshness check had moved
+  the bundle lookup ahead of the staged-copy early return, turning "renders the
+  previous model" into a throw across all eight `fallbackBundle` call sites;
+  `Bundle` caches resource lookups, so the guard stats the file rather than
+  trusting the URL it hands back.
+- **The AR camera no longer loses ARCore's projection to Filament's generic 28 mm lens default ([#2950](https://github.com/sceneview/sceneview/issues/2950)).** `ARSceneView`'s surface-resize callback rebuilt the camera projection from `CameraNode.focalLength`, discarding the projection ARCore derives from the physical camera's intrinsics — a 46.4° vertical field of view where the device has 73.7°, so virtual content was drawn ≈1.75× too large and, worse, stopped being registered to the real world, sliding across the room as the phone rotated. `ARCameraNode` now re-derives the projection from ARCore instead of from a lens (which also reproduces ARCore's off-centre principal point, something a focal length structurally cannot express), and its projection cache gained a third dirty signal so a rebuild from outside the ARCore path can no longer be frozen in place for the life of the session. The AR5 ([#2329](https://github.com/sceneview/sceneview/issues/2329)) per-frame allocation win is preserved. Reported with a full measured diagnosis by [@xmhorsehead](https://github.com/xmhorsehead).
+- `pr-review.yml` now grants the orchestrator the `Task` and git tools it needs. They
+  are not in `claude-code-action`'s default set, so the four reviewers could never be
+  spawned and the diff could never be computed: every review since the workflow landed
+  ended as `REVIEW_INCOMPLETE` with no `review-verdict.json`. The git allowlist is
+  per-subcommand — reviewers share one working tree, and a branch switch corrupts it
+  for the others (#2431).
+- A **dispatched** review used to review the wrong code entirely.
+  `actions/checkout` defaults to `github.ref`, which on a `workflow_dispatch` is
+  whatever `--ref` said — `main` — and not the PR named in `inputs.pr`. The
+  reviewers would have diffed `main...HEAD`, found nothing, and reported a clean
+  PASS on a PR they never read. Unlike the missing-tools failure above, which the
+  grader caught and blocked, this one is a **false green**, and it lands on the one
+  path that exists to rescue reviews which cannot run automatically (fork PRs). The
+  dispatch path now checks out `refs/pull/N/head`, which resolves on the base repo
+  even for fork PRs. The `pull_request` path is untouched — it already resolved the
+  right ref, and merging the two would have silently switched the review from the
+  merge ref to the head ref.
+- Relatedly, the self-modification guard no longer fires on a dispatch. What
+  `claude-code-action` validates is the workflow file it is *running*, which on a
+  dispatch comes from `--ref`, not from the checkout; comparing the checkout would
+  flag every older PR whose copy of the file has merely been superseded, making the
+  documented rescue path unusable as soon as this workflow changes.
+- A blocking verdict now names its own cause. The failing runs put a red check on
+  the PR reading `REVIEW_INCOMPLETE` and nothing else — correct, and useless: the
+  real reason sat in the action's JSON log, and the natural reading ("a reviewer
+  crashed") was wrong. A new `Diagnose a missing verdict file` step reads the run
+  record and distinguishes *denied tools* — a configuration failure, not a finding
+  about the PR — from *ran but wrote nothing*, before the grader compresses it to
+  one word. It scans the record recursively rather than at a fixed path, because
+  the action writes either a list or a single object and a wrong path would
+  silently report zero denials, printing the reassuring branch this step exists to
+  prevent.
+- **android-demo** — the AR Placement and Orbital AR asset-source pills now report the
+  origin they actually rendered. Both inferred it from `SketchfabConfig.apiKey`, so a
+  build with a key configured but a failed resolve — no network, aeroplane mode, a stale
+  key, a 4xx, the WAF, a bounds-drifted asset, exhausted retries, all of which end at the
+  bundled fallback — showed "Streamed (cached)" over the offline stand-in. Both now ask
+  the resolved file via `SketchfabAssetResolver.isBundledFallback`, and consult the key
+  only while nothing has resolved yet and there is no file to ask. Orbital AR takes the
+  whole-scene pessimistic verdict Multi-Model uses: one fallen-back planet reads "Offline
+  model" for the formation. The rule now lives in one testable place
+  (`AssetSourceProbe`) instead of being re-derived per demo (#2953, follows #2936).
+- **`contact-shadow-preview`: the legend chip is no longer drawn across the grounded box at
+  its landing pose** (#2957). Device QA measured the chip row crossing the hero box by
+  170 × 58 px — 51 % of the box's width — in 3 of 6 sampled frames, precisely on the
+  contact-shadow moment the screen exists to demonstrate. The row used to float over the
+  viewport, lifted clear of the Settings FAB by a vertical gutter; no gutter constant can fix
+  this, because where a 3D object lands on screen is a projection and any value is tuned to
+  one viewport. `DemoScaffold` gains an opt-in `bottomOverlayReservesScene` that insets the
+  scene by the **measured** height of the `bottomOverlay` band, so the viewport and the
+  overlay are disjoint by layout at any screen size, density, font scale or locale. The
+  legend now clears the FAB sideways instead of being lifted over it, keeping the reserved
+  band to the chip's own height.
+- **`contact-shadow-preview`: the Wall preset's verdict line now describes what actually
+  renders** (#2957). It promised "a faint, wide halo below the panel"; the measured pool is
+  18.6/255 darker in the first 70 px under a 314 px-tall panel and has fully decayed by
+  70 px. The caption names the visible cue instead — a thin band of shade against the
+  panel's lower edge — and states what it buys.
+- **iOS demo: a keyless build now says which model it is actually showing, and
+  four stand-ins stopped contradicting their own label (#2960).** App Store
+  builds ship no Sketchfab key, so `SketchfabAssetResolver` silently substitutes
+  each slug's bundled USDZ — and iOS had no cue at all that a substitution had
+  happened, so "Cushioned Sofa" over a mosquito in amber read as the real model
+  (the #2913 failure mode: a confident wrong scene beats a visible stall). Every
+  demo that streams (Scene Gallery, Materials, Physics, Animation, Multi-Model,
+  Orbital AR, both AR placement demos) now shows an `AssetSourcePill` —
+  "Streamed (cached)" / "Streaming…" / "Offline model" — driven by
+  `AssetSourceProbe`, a port of Android's probe (#2989) that measures the file
+  the resolver returned rather than trusting that a configured API key means the
+  download succeeded. Four fallbacks were also re-pointed at bundled assets that
+  match their label, with no new binary: *PBR Low-Poly Fox* → `khronos_fox`,
+  *Desk Lamp* → `khronos_lantern` (both matching what Android already maps),
+  *Walking Robot* and *Enforcer Mk1* → `cyberpunk_character` (verified to carry
+  a baked `SkelAnimation`, so the playback demo still animates). The remaining
+  mismatches in #2960 need a new bundled asset and stay open — the pill is what
+  makes them honest in the meantime.
+- Contact-shadow preview (android-demo): `DemoMath.CONTACT_FLOAT_CENTER_Y_METERS` no longer
+  documents a face-to-face clearance the constants do not provide. The floating box's lowest
+  bottom face sits at 0.38 m — exactly flush with the grounded box's top face at its landing
+  pose (0.00 m of clearance), and 0.34 m *below* that box's top face at the peak of the hop.
+  The KDoc now states the measured geometry, the 0.040 m top-face margin that actually carries
+  the "aloft" reading, and why a clearance over the hop peak is impossible in this room (it
+  would need a rest centre above 0.96 m, whose top face punches through the wall TV at 0.93 m).
+  The accompanying test now asserts on box **faces** with the margins in metres, instead of
+  comparing box centres — a comparison two interpenetrating boxes also satisfy (#2961, #2931).
+- **A changelog fragment carrying several `<!-- category: -->` tags no longer
+  files every bullet under the last one.** `collate-changelog.sh` reassigned the
+  category on each tag line but accumulated the whole fragment into a single
+  buffer, written once at EOF — so a `Fixed` + `Tests` fragment shipped its
+  Fixed bullets under `### Tests`. The parser now flushes at every tag
+  transition, so each tag owns the bullets that follow it (bullets before any
+  tag still default to `Changed`). Two uncollated fragments already carried the
+  pattern and would have misfiled at the next release. Multi-tag fragments are
+  now documented in `changelog.d/README.md`.
+- **The merge grader was being loaded from the code it was grading.**
+  `pr-review.yml` checks out the PR's tree and then ran
+  `.claude/scripts/grade-pr-review.sh` from it, so a PR that edited the grader
+  would have had its own verdict computed by its own version of the grader. The
+  generator≠evaluator split this workflow is built on is worth nothing if the
+  generator can rewrite the evaluator — this is the `pull_request_target`
+  footgun in different clothes, and the self-modification guard did not cover
+  it (it watches `pr-review.yml` only). The grader is now read from the default
+  branch with `git show`, so a PR improving the grader is graded by the current
+  one, which is the correct semantics regardless of trust.
+  The same bug had a second, louder symptom that is how it was found: a
+  dispatch on a PR branched before the script existed died with `No such file
+  or directory` at the very last step, after the four reviewers had already
+  been paid for (measured, run 30764492028 on #2962). A failure to read the
+  grader now posts an explicit comment saying it is a CI configuration problem
+  and not a finding about the PR, instead of leaving another unexplained red
+  check.
+- `pr-review.yml`'s reviewers get a real shell again. Two fixes for the same denied-tools
+  bug landed minutes apart — one allowlisting five git subcommands, one allowlisting `Bash`
+  — and the merge between them was textually clean, so it kept the narrow form and silently
+  reverted the broad one before it ever ran. Measured on the narrow form (run 30719795972,
+  allowlist echoed back resolved in the SDK options): 26 turns, 10 permission denials, no
+  `review-verdict.json`. A reviewer reads a diff with more than five git subcommands, and
+  every other command was refused.
+- `Bash` is now bare, and the `#2431` constraint it used to encode moved to where it
+  belongs: `--disallowedTools` denies `git checkout`/`switch`/`reset`/`stash`, so the shared
+  working tree is protected by the permission layer instead of by starving the shell.
+- The missing-verdict diagnostic now prints the denial **messages**, not just the count.
+  The count was what made the first diagnosis wrong: it went 7 → 10 across a "fix" while
+  naming no tool, so the next guess was as blind as the last. Bounded to 20 × 300 chars,
+  denial messages only — no diff, no transcript.
+- `pr-review.yml`'s missing-verdict diagnostic now also prints the orchestrator's closing
+  message. Zero denials and no verdict file is a *different* failure from refused tools, and
+  the denial count cannot explain it: measured on run 30800617868, the fan-out reported 0
+  denials, ran 11 turns in 60s — far too few for four reviewers — and wrote nothing. Bounded
+  to 1500 chars of the agent's own one-paragraph summary, which the prompt already requires.
+- `pr-review.yml`'s orchestrator no longer backgrounds its reviewers. Subagents default to
+  running in the background, which is fine interactively — a notification wakes the parent
+  later — but a CI review is headless and the session ends with the turn. The orchestrator
+  spawned all four, ended its turn, and the run died with them unread. Its own closing words
+  on run 30801646272, now printed by the diagnostic: *"Now waiting for the four reviewers to
+  report."* 0 denials, 11 turns, no `review-verdict.json`. The prompt now requires
+  `run_in_background: false` on every reviewer and every adversarial verifier.
+- **The step written to prevent a false reassurance produced one.**
+  `pr-review.yml`'s diagnostic ended its denial scan with `| max // 0`. jq's
+  `max` over an *empty* array is `null`, and `// 0` turns that into `0` — so a
+  scan that found `permission_denials_count` nowhere returned the same value as
+  a run with genuinely no denials, and took the reassuring branch. Measured on
+  run 30800040485: the step printed "0 denials" while the action's own summary
+  in the same log said **13**. Its own comment had stated that a wrong path
+  "would silently read 0 denials and print the reassuring branch" — it was only
+  ever tested against record shapes invented for the test, never a real one.
+  Absence now reports `unknown`, the count is extracted by regex over the raw
+  bytes (the record's shape is not a promise — already seen both as a list and
+  as a single object), and the branch structure is three-way so `unknown` can
+  no longer fall through to "the reviewers ran fine".
+- `pr-review.yml` now uploads the fan-out's run record as an artifact (7 days) when a review
+  produced no `review-verdict.json`. #2971's description announced this upload; its diff did
+  not contain it, and the claim reached the merge commit — implementing it is the honest way
+  to settle that. The argument it was merged on holds: the record is the only place the
+  refused tool names and the full turn sequence live, the diagnostic step can print only a
+  bounded excerpt, and the file dies with the runner. It is uploaded *only* on a failed
+  review — a healthy one has nothing to explain, and the record carries the whole reviewer
+  conversation.
+- The Android demo's staged-fallback guard now enforces the same 12-byte floor iOS does.
+  `stagedLooksComplete` gated on `length() > 0` plus the `glTF` magic, so a 4-byte file whose
+  entire content *is* that magic counted as a complete GLB and was served once the bundled
+  asset vanished from the APK. iOS gates the same last-resort path on `boundsAreSane`, which
+  carries the floor — the two platforms disagreed about the same file while both comments
+  claimed parity. Reaching it needs a racy truncated write, and it degrades to the wrong model
+  rather than crashing; the reason to fix it is the false parity claim, which is the shape this
+  repo keeps paying for (#2961, #2943).
+- The new test is mutation-tested: restoring `length() > 0L` makes it fail with the 4-byte file
+  served instead of refused.
+- **android-demo:** the six `ar_placement` slugs no longer share bundled fallbacks
+  — `khronos_lantern.glb` was claimed by three of them and
+  `khronos_damaged_helmet.glb` by two, so on a keyless build `ARPlacementDemo` /
+  `ARInstantPlacementDemo` (which accumulate placed models) rendered several
+  differently-labelled chips as the identical asset in one frame. Potted Monstera,
+  Wooden End Table and Picture Frame now point at distinct already-bundled GLBs,
+  making the six-slug → six-GLB mapping a bijection with no new binary. Guarded by
+  a new `SampleAssetsTest` case that derives the slug set from the registry by
+  category, mirroring the iOS guard (#2940, #2355, #2973).
+- `android_cli_install_and_launch` can no longer report success without
+  installing anything. It used to `return $?` from `android run`; measured on a
+  real emulator, that command printed `App loaded:` and `Debuggable: true`, then
+  rejected an activity the platform resolves fine — and installed **nothing**,
+  leaving a build eight hours old on the device while a QA run measured it. The
+  helper now proves the install by checking that the device's `lastUpdateTime`
+  moved, falls back to `adb install -r` when the CLI path leaves it untouched,
+  and **refuses to launch** when neither path can be proven, naming the danger
+  (the device still holds the previous build). Covered by
+  `test-android-cli-install.sh` against stub binaries — no emulator, no lease —
+  with a mutation test on the stamp check (#2990).
+- `impact-check.sh` no longer skips its Android build leg inside a git worktree.
+  It tested `[[ -d .git ]]`, but in a linked worktree — how `.claude/worktrees/*`
+  and every agent-isolated session runs — `.git` is a regular file, so the leg
+  that catches a sample app which no longer configures was skipped exactly where
+  most work happens, and announced itself as "not a git repository" so the skip
+  read as an environment limitation rather than a bug (#2988).
+- `context-budget.sh` now sorts by size and names the over-spec file. It
+  previously printed rows in authoring order with a one-character flag, which is
+  how the largest item in the budget sat unnoticed through three passes while the
+  smaller one got optimised.
+- `context-budget.sh` stops describing the skills as bytes "NOT in the standing
+  cost". They are deferred, not free: opening one 15 Ko skill is ~19% of the whole
+  standing budget, measured on the first real use (#2986). It now prints the three
+  most expensive skills with their price if opened.
+- The event-driven agent jobs now carry daily budgets, because a public repo's
+  issues and comments spend the maintainer's quota. Fork `pull_request` runs get
+  no secrets, so `pr-review.yml` structurally cannot spend anything on an outside
+  contributor's PR — but `issues: opened` and `issue_comment` fire in the base
+  repo, where secrets are available, and `concurrency` is keyed per thread so
+  distinct issues never queue behind each other. Both budgets were calibrated
+  against measured traffic rather than a guess, and both measurements were
+  counter-intuitive: most `claude.yml` runs are `skipped` triggers that cost
+  nothing (15 runs on 2026-08-01, all skipped; zero real executions across the
+  last 200), so counting raw runs would have capped the bot on a day with 46
+  triggers and no spend; and of the last 200 issues, 186 were opened by the
+  maintainer against 6 by outside reporters, so triaging every issue would have
+  spent ~93% of the budget explaining an issue back to the person who had just
+  written it. `OWNER`/`MEMBER`/`COLLABORATOR` are now excluded from triage —
+  the opposite of gating on "is this person a collaborator", which would have
+  disabled it exactly where it earns its keep.
+- The iOS bridge compile-check workflows (`bridge-ios-compile.yml`,
+  `rn-ios-compile.yml`) no longer fail — or, worse, pass while skipping their
+  `.swiftmodule` guard — when `xcpretty` is absent or crashes. Piping xcodebuild
+  into a missing `xcpretty` gave the producer a SIGPIPE (exit 141), and the
+  inline `|| exit ${PIPESTATUS[0]}` ran *inside* the pipe, short-circuiting the
+  post-build module check. Both workflows now detect `xcpretty` first, run
+  xcodebuild raw when it is missing, capture xcodebuild's real exit code in a
+  variable, and test it — never `exit` inline — so a good build stays green
+  (even on the self-hosted `sceneview-mac` runner without the gem) and a broken
+  one fails loudly. Same hardening #2878/#2865 gave `ios.yml`, extended to the
+  two bridge workflows an advisory cross-vendor review flagged.
+
+### Tests
+
+- CI now compiles every Kotlin snippet embedded in `llms.txt` and the agent-skill references (`tools/extract-doc-snippets.js` + the new `:snippets-check` module): an API change that breaks documented code is a deterministic CI red instead of a silently stale doc (#2759)
+- Compiling the docs immediately caught and fixed 9 real drifts in `llms.txt`: gesture move/rotate/scale callbacks documented with 2 params instead of 3, `PlacementScene`/`WallPlacementScene` usage examples passing the placement lambda in the `content` slot, a nullable `rememberModelInstance` passed straight to `ModelNode`, non-generic `TrackableNode`, v3 `arSceneView.frame` phrasing, and more (#2759)
+- Resurrect the #2317 allocation-counting harness as a committed instrumented suite
+  (`AllocationBudgetTest`): hard allocs/call ceilings on the #2263 hot-path wins —
+  `slerp` pre-decomposed TRS ≤ 7, `Mat4.copyColumnsInto` = 0, Ray↔mesh ≤ 3 per
+  triangle — with a permanent +1-alloc sensitivity canary so the budgets can never
+  pass on a dead instrument (#2761)
+- Leak-churn guard (#2762) — a committed instrumented suite that builds and tears down node trees **40 times per test** and asserts engine state returns to baseline, so the repo's most recurrent bug class (leaks) is measured on every run instead of only after a user reports it. Probes, each actually exercised: `LightManager` component count back to baseline (light churn), no surviving `Transform` component (node-tree + reparenting churn) or `Renderable` component (geometry churn via `CubeNode`), correct hold-then-release behaviour of the deferred-destroy queue across its grace period, and eviction from the previous parent on re-parenting (the #2458/#2459 stale-reference shape). Runs headless (no SwapChain, no `readPixels`), so unlike the `render` package it genuinely executes on the SwiftShader CI emulator instead of skipping. **Advisory, not a hard gate:** it lands in `render-tests.yml`'s existing `continue-on-error` job, which is not a required status check — a red run is a signal to a human, not a merge block, matching how the repo grades its other emulator legs.
+- A permanent, *differential* mutation test (leaked vs properly-destroyed control, for both the `LightManager` and `TransformManager` probes) fails loudly if a Filament upgrade ever turns the probes into no-ops — so the suite cannot pass vacuously on a dead instrument. `CONTRIBUTING.md` gains a per-probe guide to reading a red run.
+- The harness found a real pre-existing leak on its first run: `Node.destroy()` frees an entity's components but never returns the id to `EntityManager`, so every node burns a Filament entity id for the process lifetime — filed as #2859 and *pinned* (not asserted) by the suite, so a fix there turns the pin red on purpose.
+- **CI now compiles the iOS device code path on every PR.** Every AR demo wraps its
+  real ARKit/RealityKit logic in `#if !targetEnvironment(simulator)`, so the existing
+  Simulator-destination build stripped that code before the compiler saw it — a type
+  error inside an AR demo could pass CI green and land on `main`, with the first real
+  compile happening only during an App Store archive. `ios.yml` now adds a build-only
+  `generic/platform=iOS` step with `CODE_SIGNING_ALLOWED=NO`, which needs no
+  certificates and so runs on forks too ([#2852](https://github.com/sceneview/sceneview/issues/2852)).
+- **Realigned stale `SceneViewSwift` tests exposed by the iOS CI fix ([#2878](https://github.com/sceneview/sceneview/issues/2878)).** With failures no longer swallowed, `CameraControls` position tests were updated to the v4.4.0 `orbitRadius = 2.0` default (they still asserted the old radius-5 values), and the `SceneEnvironment` preset tests to the current 7-preset set including "Night Sky".
+- **The App Store submit step now has a hermetic self-test
+  (`.claude/scripts/test-app-store-submit.py`, in `repo-hygiene`).** A large
+  Python program inside a YAML heredoc stands between a green tag build and an
+  App Store submission, and it had no test seam: exercising it meant dispatching
+  `app-store.yml`, which archives, signs and uploads a real TestFlight build —
+  so every fix landed in production, on a release, after it broke one (#2731,
+  #2885, #2893). The test extracts the real heredoc (never a copy, so it cannot
+  drift) and runs it against a stubbed App Store Connect. Stdlib only: no
+  network, no secrets, no Apple call.
+- **Every guard added here is mutation-tested individually.** Dropping the
+  byte-length comparison makes the re-stage test return the stale bytes;
+  dropping the last-resort branch makes the degradation test throw
+  `FallbackUnavailable`; and a staged copy corrupted after the bundled asset
+  vanishes must still throw rather than be served. Each mutation was run on its
+  own, after a first attempt that mutated two guards at once turned only one
+  test red — the first mutation masked the second.
+- **The assumption under the freshness check is tested against the real
+  `AssetManager`, not a fake.** Everything else here injects bytes, which
+  cannot prove that `AssetInputStream.available()` equals what a copy of the
+  same asset writes to disk. If those disagree nothing fails — the fast path
+  simply never matches and every `resolve` re-copies megabytes on a hot demo
+  path. Mutation-tested too: `+1` on the expected length turns it red, which is
+  what proves it measured rather than skipped.
+- `test-collate-changelog.sh` pins the fragment→category contract in
+  `repo-hygiene`: single-tag, multi-tag, untagged, unknown category name, and a
+  tag with odd spacing/casing, plus `--dry-run` immutability. The collator runs
+  once per release and **deletes** the fragments it consumed, so a misfiled
+  bullet is otherwise found only after the notes are public, with the source
+  already gone. Mutation-tested on the per-tag flush.
+- `test-grade-pr-review.sh` pins the above: it fails if `pr-review.yml` ever
+  runs the grader straight out of the checkout again, or stops reading it from
+  `origin/$DEFAULT_BRANCH`. Mutation-tested — restoring the checkout-relative
+  invocation takes the suite from 14 passed to 13 passed / 1 failed.
+- `test-grade-pr-review.sh` fails if the denial scan ever collapses "field
+  absent" into `0` again, or stops reporting an unreadable count as `unknown`.
+  Mutation-tested: restoring `max // 0` takes the suite from 15 passed to
+  14 passed / 1 failed.
+- **iOS demo: repointing an `ar_placement` fallback back onto a shared asset is now caught by a test ([#2940](https://github.com/sceneview/sceneview/issues/2940)).** [#2962](https://github.com/sceneview/sceneview/pull/2962) split three `ar_placement` slugs off the shared `tree_scene.usdz`, but nothing held that fix in place: the registry-driven guard in `BundledAssetPrimBudgetTests` de-duplicates `fallbackBundledPath` into a `Set` — deliberately, so it never parses the same asset twice — which means collapsing every slug in the category back onto one fallback *shrinks* its workload and still passes green. That is how #2940 shipped. `testARPlacementFallbacksArePairwiseDistinct` now asserts the category's fallbacks are pairwise distinct, reading the slug set from `SampleAssets.byCategory["ar_placement"]` rather than from a literal list of names, so a seventh slug is covered the day it lands; the failure message names both colliding slugs and the shared path. Scope is deliberately `ar_placement` only — the one category whose demos put several *different* slugs on screen at once — because other categories share fallbacks legitimately (the four `solar` butterflies genuinely stand in for one another) or carry label mismatches tracked under [#2960](https://github.com/sceneview/sceneview/issues/2960), so a registry-wide assertion would be red on arrival and would guard nothing.
+- **iOS demo: the AR placement picker no longer renders one Game Boy under two different labels ([#2940](https://github.com/sceneview/sceneview/issues/2940)).** Writing the guard above surfaced a live instance of the defect #2962 had missed, because the category holds **six** slugs rather than the three that were repointed: *Crates & Barrels* and *Picture Frame* both declared `Models/game_boy_classic.usdz`. Both demos in this category accumulate placed anchors — `placedAnchors` is cleared only by "Clear all placed models" — so on a keyless build a user could arm one chip, tap, arm the other, tap, and watch two differently-labelled objects render the identical Game Boy side by side in a single frame, which is the [#2355](https://github.com/sceneview/sceneview/issues/2355) rule documented in place directly above those entries. *Picture Frame* now falls back to `Models/khronos_fox.usdz`, the last unclaimed Khronos reference object, following the stand-in convention #2962 established for labels with no matching bundled asset. It already ships in the IPA and is already in the Resources build phase, so nothing is added to the bundle and it carries a single mesh against the 100-prim budget. The keyed path is untouched — it still streams the real Sketchfab model.
+- `test-grade-pr-review.sh` and `test-agent-cost-report.sh` pin the two new
+  guards in `ci.yml` → `repo-hygiene`, both with a **mutation test**. Removing
+  the reviewer-count check makes a 3-of-4 review grade `MERGE`; re-keying the
+  cost dedup from `requestId` to `uuid` inflates the fixture total from 350 to
+  450. Both mutations turn the suite red, so neither guard can regress into a
+  silently-green no-op (the #2947 failure mode). Writing them also corrected
+  two wrong assumptions: the missing-file branch in the grader is redundant
+  with its own `try/except`, and the cost report's dedup comes from the choice
+  of key, not from the `continue` that feeds the duplicate counter.
+
+### Docs
+
+- `ViewNode`: documented the gotchas its off-screen window creates — the content inherits **no `CompositionLocal`s** (re-apply your theme inside, or Material 3 defaults silently win) and has **no parent to measure against** (give it an explicit size). KDoc + `llms.txt` (#2648)
+- Point & Ask recipe: `llms.txt`, `samples/recipes/point-and-ask.md` and the `sceneview` agent skill gain the world-anchored variant (hit-test → anchor → `ViewNode` card, explicit content width, anchor detach contract), including why the "no facing rotation" rule holds only for horizontal-plane and `Point` hits — on a vertical plane the same code pins the card edge-on (#2648)
+- Documented honestly that the **Web** renderer cannot recycle Filament entity ids: the pinned
+  `filament.js` 1.52.3 usably binds only `EntityManager.get()`/`create()` — its runtime `destroy()`
+  is a no-op on the id pool (verified by an in-browser probe: 2000 create/destroy/create yields zero
+  id reuse) and `isAlive()` is unbound. So the id-recycling that `Node.destroy()` gains on Android
+  (#2859) has no working Web equivalent until the `filament.js` pin is bumped. Corrected a comment in
+  the Web `SceneView.destroy()` that wrongly claimed the camera entity's id was reclaimed, and added a
+  guard note on the `EntityManager` binding so no future change naively calls the no-op `destroy()`.
+- Fixed the `MeshNode` / `GeometryNode` KDoc example, which referenced an undefined `renderable`
+  variable and showed low-level manual entity creation; it now shows real node usage and notes that
+  letting the node own its entity is preferred (#2859).
+- **iOS Cloud Anchor docs made skim-safe so AI-generated code stays correct ([#2864](https://github.com/sceneview/sceneview/issues/2864)).** The SceneViewSwift `CloudAnchorNode` / `CloudAnchorFuture` wrapper is real, but Host/Resolve require the app to add Google's `arcore-ios-sdk` and supply `GARSession` through the `operation:` closure — the `ios-demo` app deliberately does not link it, so its `ar-cloud-anchor` screen shows a "Preview" badge with Host/Resolve disabled (plane detection + tap-to-place stay live). Replaced a misleading bold **"Available"** label in `cheatsheet-ios.md` with **"Wrapper only (app supplies `GARSession`)"**, added a Cloud Anchor rule to the iOS agent skill, and recorded a capability-caveat `reason:` on the `ar-cloud-anchor` `parity-manifest.yml` row — the first row where "an iOS screen exists" and "the capability can run" diverge. No code change; vendoring arcore-ios-sdk into the demo is not planned, and the manifest row documents the reopen conditions.
+- **`rememberCameraManipulator`: `orbitHomePosition` is now documented truthfully — the old KDoc made an AI generate a camera framing that is ~2× wrong whenever the target is not the origin ([#2873](https://github.com/sceneview/sceneview/issues/2873)).** It described the parameter as *"Camera's world position to return to on double-tap"*, which reads as "distance = `|orbitHomePosition − targetPosition|`". Two things are wrong with that. Filament's `OrbitManipulator` assigns the value verbatim as the eye (`mEye = mProps.orbitHomePosition`, default `(0, 0, 1)`) and never re-bases it on `targetPosition`; and `SceneView`'s default `autoCenterContent = true` translates the DSL content so its bounding-box centre lands on the **world origin**, so the distance the subject is framed from is `|orbitHomePosition|` — the coordinates you gave your nodes do not survive, and `targetPosition` (the orbit pivot / initial look-at point) does not enter into it. `(0, 0.2, 1.2)` against a target at `z = -1.5` frames from **1.22 m**, not 2.7 m — measured on the QA emulator on two demos at four camera distances in [#2923](https://github.com/sceneview/sceneview/pull/2923). Every example in the reference docs targets the origin, where both readings coincide, which is why the discrepancy stayed invisible. The docs also no longer imply that omitting the parameter yields Filament's `(0, 0, 1)`: `SceneView`'s own default manipulator passes `cameraNode.worldPosition`, so the effective default is `(0, 0.4, 2.75)` ≈ 2.78 m.
+- **`rememberCameraManipulator`: the "returns on double-tap" claim is removed — no such gesture exists.** `SceneView` never calls Filament's home/bookmark API, and `onDoubleTap` is a plain callback forwarded to user code. `orbitHomePosition` is the *initial* eye position only.
+- **`autoCenterContent`: the docs said the content centroid "lands at the orbit pivot" — it lands on the *world origin*.** `contentRoot.position = -bounds.center`, and `contentRoot`'s parent is the scene root. The two coincide only when `targetPosition` is the default origin, and that coincidence is precisely what hid the bug above: it is *because* the centroid goes to the origin rather than to the pivot that the framing distance is `|orbitHomePosition|`. iOS already worded this correctly, so the Swift line in `llms.txt` was wrong about its own platform too. Corrected in both `SceneView.kt` KDoc blocks, `llms.txt`, `docs/docs/migration.md` and the generated `gpt/knowledge-*.md`.
+- Fixed on every surface an AI reads: the KDoc in `SceneView.kt`, `llms.txt` (helper table + a new "How far `orbitHomePosition` actually puts the camera" section), the generated `gpt/knowledge-*.md`, `website-static/.well-known/llms.txt`, and the camera recipe in `docs/docs/recipes.md`.
+- **The CC-BY indicate-changes note names the artefact that actually changed.**
+  `assets/catalog.json` attached the modification record to
+  `models/usdz/tree_scene.usdz` — the untracked, unmodified original — while the
+  stripped derivative lives in the iOS demo bundle. The note now says which copy
+  is which and points at the checksum pin that protects it, and it drops the
+  "bit-identical bounding box" claim two reviewers could not reproduce, keeping
+  only what is independently checkable (a purely subtractive strip whose 47
+  surviving meshes keep byte-identical `extent` arrays).
+- **docs** — node-count claims aligned to reality across every checked-in surface (16 now
+  verified by the gate): `44+`/`42+`/`41+`/`30+`/`29+` node types → `46+` (`ContactShadowNode`
+  from #2817 and `SplatNode` joined the inventory after the last alignment in #2594), the doc
+  site, the website, the MCP docs and the checked-in `marketing/` copy included.
+  `.cursorrules` **and `.windsurfrules`** also named node types that **do not exist** —
+  `GeospatialNode`, `DepthNode`, `InstantPlacementNode`, absent from the sources and from both
+  public `.api` dumps — while omitting the real additions; both lists are now generated from
+  the node sources and are exhaustive (26 3D + 20 AR). The website's unqualified
+  `26+ Node types` stat is relabelled `3D node types`: 26 is the genuine 3D-only subset, and
+  it sat on the same page as the 46+ card (#2987).
+- **build** — `impact-check.sh`'s node-count gate no longer passes by being blind. Its regex
+  matched only a bare `N+ node type`, so `41+ built-in node types` and `42+ composable node
+  types` evaded it for two alignments running, and split-markup stat cards (number and label
+  in separate elements) were structurally invisible — the gate reported clean while the repo
+  contradicted itself in seven places. It now accepts a generic qualifier, reads split stat
+  cards pair-aware, still ignores platform-qualified subsets (`26+ 3D`, `15+ SceneViewSwift`),
+  and watches `.windsurfrules`, `docs/docs/index.md` and the three `marketing/` files, none of
+  which were in its list. Every branch mutation-tested against the files' real content (#2987).
+- The `android-tooling` skill no longer recommends calling `android run` directly;
+  it documents the measured misbehaviour and points at the helper. Measured on
+  CLI `1.0.15498356`: `--no-metrics` is accepted in the **global** position
+  (`android --no-metrics run …`, what the helper uses) and rejected in the
+  sub-command position — so that flag, which the report flagged as suspicious, is
+  **not** the cause. The silent non-install remains unexplained upstream, which is
+  exactly why the helper verifies instead of trusting.
+- The places that taught the disproven command are fixed — the **public**
+  `agents/sceneview/SKILL.md` (installed for any AI agent on the host), the
+  flagship `docs/docs/try.md` quickstart, `samples/README.md`,
+  `samples/android-demo/README.md`, `samples/android-demo/AR_TESTING.md`, the
+  advice `setup-ar-emulator.sh` prints after provisioning, and stale comments in
+  `try-demo.sh`, `render-tests.yml` and `maintain.md`. A first pass claimed
+  completeness after finding three — it had grepped for `android run --apks`, and
+  five docs write `android run \` with a line continuation, so the probe was too
+  narrow and reported an all-clear — and a second completeness claim was wrong
+  too, because prose can sell the command without naming it ("atomic install +
+  launch"). No exhaustiveness is claimed here; the gate is what enforces it.
+  `check-android-run-not-taught.sh` now matches
+  the **subcommand** — at end-of-line and inside inline code too, after a first
+  version missed 15 of the 22 files that mention it — and fails when any file
+  teaches the command without naming the defect.
+- `qa-android-demos.sh` no longer retries a bare `adb install -r` when the helper
+  refuses. The helper already tries that itself and only fails when it could not
+  prove the install landed; retrying it and continuing unverified downgraded the
+  guarantee back to the exit code the fix exists to stop trusting. It now aborts.
+- `check-workflow-scripts.sh` was invisible to shellcheck. Two prose comments
+  began with the word `shellcheck`, which the tool parses as a malformed
+  DIRECTIVE (SC1073) and then stops analysing the rest of the file — so the
+  script that lints every workflow `run:` block was itself never linted. Both
+  reworded; the file now parses clean (2 diagnostics → 0, and the remaining
+  body is actually analysed). Pre-existing, unrelated to this fix, taken because
+  the message literally reads "Fix to allow more checks".
+- The repo-wide content gate moved out of `test-android-cli-install.sh` into its
+  own `check-android-run-not-taught.sh`. The unit test is hermetic (stub
+  binaries, no repo state); coupling its verdict to unrelated docs meant an
+  unrelated edit could redden it and point at the wrong thing.
+- `docs/docs/try.md`, `samples/README.md`, `samples/android-demo/README.md` and
+  `AR_TESTING.md` had headings promising Google's `android` CLI and an "atomic
+  install + launch" directly above the plain `adb` commands the first pass
+  substituted — the code changed, the prose around it did not. Fixed, along with
+  a leftover `AR_TESTING.md` note framing the command as merely missing `--es`
+  "until v0.8+", which contradicted the warning immediately above it.
+- The helper now returns **2** when the install was proven but the activity would
+  not start, and **1** when the install could not be proven. It used to return
+  `am start`'s status, so a genuine launch failure printed "install could not be
+  proven … the device may not be running" — a true failure described by a false
+  cause, which sends the reader after the wrong bug. `qa-android-demos.sh` says
+  which half broke.
+- `check-android-run-not-taught.sh` enumerates tracked files with `git ls-files`
+  instead of recursing the working tree. `--include` filters names but does not
+  stop `grep -r` descending into `node_modules/` or `build/`, so a vendored file
+  containing the token would have false-failed the gate in CI. It looked clean
+  locally for a reason that is not one: the author's `grep` is `ugrep`, which
+  skips ignored paths, while CI runs GNU grep, which does not — measured with a
+  probe file seen by one and not the other.
+- `android_cli_install_stamp` can no longer abort its caller. Its pipeline ran
+  under the lib's `set -o pipefail` plus a caller's inherited `set -e`, so an
+  `adb` failure while READING the stamp aborted the whole helper with adb's raw
+  exit code and an **empty stderr** — measured `rc=3`, no diagnostic at all, so
+  a reader would debug the wrong layer. "No stamp" is a legitimate answer and is
+  now returned as one; the helper then refuses with its own explanation (`rc=1`,
+  `INSTALL NOT PROVEN`).
+- The content gate no longer matches `gcloud firebase test android run` — an
+  unrelated Firebase Test Lab command ending in the same two words. Harmless
+  today (it appears only in a `.kt` file, outside the gated set), but the day
+  someone documents Test Lab in a `.md` the only escape would have been citing
+  an unrelated issue number, and a gate whose escape hatch is a lie teaches
+  people to lie to it.
+- The content gate scans **all** tracked files, with no extension list. An
+  earlier version listed `*.md *.sh *.yml` and so could not see a `*.yaml` — the
+  third too-narrow probe in a script whose entire subject is too-narrow probes.
+  The list was never a performance decision: measured, the full sweep of 3122
+  tracked files takes 0.7 s.
+- Its Firebase exclusion is anchored on the adjacent `test android run` phrasing
+  instead of the word `firebase` appearing anywhere on the line. A line that
+  genuinely recommended the install *and* happened to mention Firebase would
+  otherwise have been excluded — the exclusion would have become the hole.
+- The content gate's enumerator passes `--` before the file list and `-r` to
+  `xargs`. Without `--`, a tracked path starting with `-` is read by `grep` as
+  an option: measured, one such file aborts the whole batch with
+  `unknown --directories option` and silently drops every file in it — a gate
+  that evades itself. Mutation-tested with exactly such a file.
+- `qa-android-demos.sh` always goes through the helper now. Its
+  `if android_cli_locate … else adb install -r` shape meant that on a host
+  without the CLI it installed with **no** verification at all — the same
+  unproven-install class, one branch over. The helper does that check itself and
+  its fallback carries the proof, so the branch was both unverified and
+  redundant.
+- `tools/try-demo.sh`'s file header still marketed the `android` CLI as
+  "preferred — atomic install+launch" and said the script "uses `android run`".
+  An earlier pass reported that comment fixed; it had used a conditional
+  replacement with no assertion, the pattern did not match, and the edit
+  silently did nothing. The header now states what the script actually does.
+- `tools/try-demo.sh` no longer gates the verified helper on the `android` CLI
+  being installed. Both install sites did `if <CLI present> then <helper> else
+  adb install -r`, so a developer with only `adb` took an **unproven** path —
+  the same shape fixed in `qa-android-demos.sh`, in the other caller, and it
+  contradicted the header added one commit earlier. The helper performs that
+  check itself and its adb fallback carries the proof.
+- Its `check_device` claimed "either `android` or `adb` is fine, the CLI being
+  preferred", then required `adb` ten lines below — so the friendly first error
+  could never fire, and the advice it gave (install the CLI) unblocked nobody.
+  `adb` is stated as required; the CLI is optional and explicitly not an
+  installer.
+- The helper's launch contract is symmetric. The `android run` branch returned 0
+  as soon as the install was proven, but that command launches silently — so a
+  failed launch on the CLI path reported full success while the adb path
+  returned 2 for the identical outcome. Both branches converge on one launch
+  check now; verified with a stub whose `am start` fails on the CLI path (0 → 2).
+- The content gate also matches the phrase "atomic install", because the drift
+  it kept missing never wrote `android run` at all — `docs/docs/try.md`'s
+  Requirements tip sold the command in prose, on the same page as the warning
+  callout contradicting it.
+- The suite pins return-code 2 (install proven, launch failed) on **both**
+  branches. It had been verified by hand three times while building the fix and
+  never committed as a test — the coverage a refactor eats silently, and this
+  function was restructured. Mutation-tested: restore the CLI branch's early
+  `return 0` and the `cli path` case goes red while the `adb path` one stays
+  green, which is precisely the asymmetry that existed before.
+- `capture-play-store-screenshots.sh`'s section-3 header still opened with "Use
+  `android run` (atomic install+launch) when available" — the branch mechanics
+  below it were already correct. Third stale line the gate's file-level
+  exemption let through. The alternative (exempt only within ±4 lines of an
+  issue reference) was measured and is worse: 21 files flagged, including the
+  gate itself, its test suite and the changelog, because prose legitimately
+  discusses the command across paragraphs. The measurement is recorded in the
+  gate's header so it is not re-proposed blind.
+
 ## v4.25.0 — 2026-07-21
 
 ### Added

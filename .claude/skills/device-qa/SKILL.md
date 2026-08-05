@@ -1,6 +1,6 @@
 ---
 name: device-qa
-description: The autonomous device-QA harness for the SceneView demo apps — device-qa.sh and its four legs (Maestro Android/iOS, Playwright web, AR replay), the GRADED release gate (blocking web leg vs advisory android/ar/ios legs), the ARCore-ready emulator pool, the golden boot snapshot, Android Vitals and Play-review triage. Use when running or debugging QA on an emulator or simulator, when a demo must be proven not to crash on a real screen, or at any release checkpoint before tagging.
+description: The autonomous device-QA harness for the SceneView demo apps — device-qa.sh and its four legs (Maestro Android/iOS, Playwright web, AR replay), the GRADED release gate (blocking web leg vs advisory android/ar/ios legs), the ARCore-ready emulator pool, the golden boot snapshot, Android Vitals and Play-review triage. USE THIS ONE for the SCRIPTED harness — you are running device-qa.sh / the Maestro flows / the release gate and reading their verdicts. For driving a device BY HAND (screenshots, taps, ad-hoc install, lease refusals), use `android-tooling` instead. Use when running or debugging a QA harness run, when a demo must be proven not to crash on a real screen, or at any release checkpoint before tagging.
 ---
 
 ## Device QA

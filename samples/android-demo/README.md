@@ -23,13 +23,18 @@ Install the APK on a connected device:
 adb install -r samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk
 ```
 
-…or, with Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli) (atomic install + launch):
+…and launch it:
 
 ```bash
-android run \
-  --apks=samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk \
-  --activity=io.github.sceneview.demo/.MainActivity
+adb shell am start -n io.github.sceneview.demo/.MainActivity
 ```
+
+> ⚠️ **Not `android run`.** Google's `android` CLI has a measured install
+> no-op: it prints `App loaded:` / `Debuggable: true`, then rejects an activity
+> the platform resolves fine, **and exits 0 having installed nothing** — leaving
+> the previous build on the device. Seen three times in this repo (#2796, #2854,
+> #2990). Use `adb install -r` and check the install actually landed:
+> `adb shell dumpsys package io.github.sceneview.demo | grep lastUpdateTime`.
 
 ## Requirements
 

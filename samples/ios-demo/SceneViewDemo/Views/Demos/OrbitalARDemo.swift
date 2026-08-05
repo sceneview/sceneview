@@ -119,6 +119,30 @@ struct OrbitalARDemo: View {
     @State private var loadedNodes: [Int: ModelNode] = [:]
     @State private var anchorAdded = false
     @State private var orbitTimer: Timer?
+    /// What the resolver handed back per planet index, for the streamed slots
+    /// only — the pill's only honest input (#2960).
+    @State private var resolvedURLs: [Int: URL] = [:]
+
+    private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
+
+    /// Indices of the planets that go through the resolver. The bundled-only
+    /// planets load by name and are labelled as themselves, so they have no
+    /// origin question to answer and must stay out of the verdict.
+    private static let streamedPlanetIndices: [Int] = planets.enumerated()
+        .filter { $0.element.streamedSlug != nil }
+        .map(\.offset)
+
+    /// A WHOLE-SCENE verdict over the streamed planets: this demo renders all
+    /// eight at once, so one stand-in is enough to make the ring dishonest —
+    /// all four `solar` slugs currently resolve to the same
+    /// `animated_butterfly.usdz` on a keyless build.
+    private var assetSource: AssetSourceState {
+        AssetSourceProbe.ofAll(
+            resolvedURLs: Self.streamedPlanetIndices.map { resolvedURLs[$0] },
+            hasAPIKey: hasSketchfabKey,
+            loaded: Self.streamedPlanetIndices.allSatisfy { loadedNodes[$0] != nil }
+        )
+    }
 
     var body: some View {
         ZStack {
@@ -129,8 +153,17 @@ struct OrbitalARDemo: View {
             simulatorPlaceholder
             #endif
 
-            VStack {
+            VStack(spacing: 8) {
                 statusPill
+                // Deliberately stacked UNDER the status pill rather than pinned
+                // top-trailing like every other demo: the status text is wide
+                // ("Turn around — 8 of 8 models orbiting") and a corner overlay
+                // collides with it on a narrow device.
+                HStack {
+                    Spacer()
+                    AssetSourcePill(state: assetSource)
+                }
+                .padding(.horizontal, 16)
                 Spacer()
             }
         }
@@ -176,6 +209,7 @@ struct OrbitalARDemo: View {
                         let node: ModelNode
                         if let slug = planet.streamedSlug {
                             let url = try await SketchfabAssetResolver.shared.resolve(slug)
+                            resolvedURLs[index] = url
                             node = try await ModelNode.load(contentsOf: url)
                         } else if let bundled = planet.bundledAsset {
                             node = try await ModelNode.load(bundled)

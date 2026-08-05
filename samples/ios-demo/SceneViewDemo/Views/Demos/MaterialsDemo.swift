@@ -24,10 +24,23 @@ struct MaterialsDemo: View {
     @State private var selectedIndex: Int = 0
     @State private var loadedNode: ModelNode?
     @State private var loadError: String?
+    /// What the resolver actually handed back — the pill measures this, never
+    /// the API-key configuration (#2960).
+    @State private var resolvedURL: URL?
+
+    private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
 
     private var selectedSlug: SketchfabSlug? {
         guard slugs.indices.contains(selectedIndex) else { return nil }
         return slugs[selectedIndex]
+    }
+
+    private var assetSource: AssetSourceState {
+        AssetSourceProbe.of(
+            resolvedURL: resolvedURL,
+            hasAPIKey: hasSketchfabKey,
+            loaded: loadedNode != nil
+        )
     }
 
     var body: some View {
@@ -38,6 +51,7 @@ struct MaterialsDemo: View {
                 controls
             }
         }
+        .assetSourcePill(assetSource)
         .background(Color.black)
         .task(id: selectedSlug?.uid) {
             await loadSelectedSlug()
@@ -138,8 +152,10 @@ struct MaterialsDemo: View {
         guard let slug = selectedSlug else { return }
         loadedNode = nil
         loadError = nil
+        resolvedURL = nil
         do {
             let url = try await SketchfabAssetResolver.shared.resolve(slug)
+            resolvedURL = url
             let node = try await ModelNode.load(contentsOf: url)
             _ = node.scaleToUnits(slug.scaleToUnits)
             _ = node.centerOrigin()

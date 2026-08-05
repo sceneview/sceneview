@@ -105,6 +105,11 @@ case "$ROUTE" in
         [ -n "$ROOT" ] && git -C "$ROOT" worktree list 2>/dev/null | sed 's/^/  /' >&2
         ;;
       *adb*|*"android run"*)
+        # `android run` is DISAVOWED for installing (#2796, #2854, #2990 — it can
+        # print success and install nothing), but this pattern must keep matching
+        # it: the guard's job is to intercept whatever a session actually types,
+        # and a session may still type a disavowed command. Removing it here
+        # would let exactly that call reach a foreign-leased emulator unguarded.
         # --- Guard 2 (BLOCKING): mutating adb/android vs a foreign-leased emulator.
         # Lease format is owned by lib/emulator-select.sh (#2862): line 1 = owner pid,
         # then key=value lines (mode, session, avd, since, label).

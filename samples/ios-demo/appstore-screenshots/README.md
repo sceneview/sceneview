@@ -3,22 +3,39 @@
 Fresh, correctly-sized App Store Connect screenshots for the SceneView demo
 app — real iOS-simulator captures of rendered 3D content.
 
-> ⛔ **These frames predate #2897 — re-capture before dispatching
-> `app-store-screenshots.yml`.** They were captured while
-> `SceneEnvironment.intensity` was still fed to RealityKit as a `2^x` exponent:
-> `01-model-viewer.png` runs on `.warm` (intensity 1.0 → ×2.00, now ×1.00) and
-> `02-dynamic-sky.png` on `.outdoor` (1.2 → ×2.30, now ×1.20).
+> ✅ **The #2897 caveat is cleared.** These four frames were re-captured on
+> 2026-08-03 from a build that carries the linear-multiplier fix, so they are
+> what the app renders. As predicted by the measurement that caveat carried
+> (viewport mean luma 192.3 → 191.2, vehicle region 151.6 → 147.4), the visible
+> change is nil — the re-shot frames are indistinguishable by eye from the ones
+> they replace. Only the IBL contribution moved; the skybox is drawn directly
+> and the direct lights were untouched.
 >
-> **Measured, not estimated** — `01-model-viewer.png` re-shot from the #2897
-> branch on a 1320×2868 simulator, same `-demo model-viewer -qa_mode 1` launch:
-> viewport mean luma 192.3 → 191.2, vehicle region 151.6 → 147.4. The frames are
-> **not** uniformly halved, because only the IBL contribution changes — the
-> skybox is drawn directly and the direct lights are untouched, and on this scene
-> the bright studio backdrop dominates the histogram. They are still not what the
-> app renders.
+> ✅ **`dynamic-sky` now shows the same subject Android does (#3003).** It used
+> to build a stylised skyline out of five `systemGray` cubes, so the shot was
+> grey blocks on a plinth against a photo HDR — the demo working as written, but
+> demonstrating a time-of-day sun with an object that has almost nothing to
+> show: a matte grey box reads the same at noon and at dusk apart from its
+> shadow. It now loads `khronos_damaged_helmet`, the subject Android's Lighting
+> Lab puts under this same demo id, whose metal and rough-dielectric regions
+> render the environment change directly in their reflections.
 >
-> Nothing enforces this — the dispatch is manual and `asc_listing.py` compares
-> checksums, not pixels — so it is a note, not a gate.
+> The ground plane went with the cubes. It existed so the auto-framing pass —
+> which fits the *union* bounding sphere — would not pull back to contain an
+> oversized slab (#2896); with a single hero subject it earned nothing and cost
+> twice, leaving the helmet at about a sixth of the frame height and visibly
+> intersecting it. Android's shot of this subject has no plane either.
+>
+> ⚠️ **The iPad frames leak their capture date.** `simctl status_bar override
+> --time "9:41"` pins the clock, but iPadOS renders a date beside it that the
+> override does not cover: the committed frames read `09:41 Tue 28 Jul` and the
+> 2026-08-03 re-capture reads `09:41 Mon 3 Aug`. That both dates a public store
+> listing and defeats the byte-reproducibility this script otherwise has, since
+> two runs on different days can never match.
+>
+> Nothing enforces any of this — the dispatch is manual and `asc_listing.py`
+> compares checksums, not pixels — so it is a note, not a gate. Look at the
+> mosaic before you upload.
 
 ## Background — issue #917
 
@@ -56,7 +73,10 @@ not empty or loading AR scenes:
 
 1. `01-model-viewer` — bundled hero model (cyberpunk hovercar) on the `.warm`
    photo-studio backdrop, frozen on a three-quarter hero pose
-2. `02-dynamic-sky` — procedural time-of-day skyline under a live HDRI sky
+2. `02-dynamic-sky` — the `khronos_damaged_helmet` hero under a live HDRI sky,
+   its metal and rough-dielectric regions carrying the time-of-day light. Same
+   subject Android's Lighting Lab shows for this id (#3003); it was a five-cube
+   skyline until then
 
 ⚠️ **Committing these PNGs is not uploading them.** The live App Store listing
 keeps showing the previous set until someone runs

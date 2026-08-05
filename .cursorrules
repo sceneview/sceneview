@@ -74,7 +74,7 @@ fun MyARScreen() {
 
 ## iOS (SceneViewSwift)
 ```swift
-// SPM: https://github.com/sceneview/sceneview-swift.git from: "4.25.0"
+// SPM: https://github.com/sceneview/sceneview-swift.git from: "4.26.0"
 import SceneViewSwift
 
 struct ContentView: View {
@@ -87,12 +87,20 @@ struct ContentView: View {
 }
 ```
 
-## 44+ node types
-ModelNode, CubeNode, SphereNode, CylinderNode, PlaneNode, MeshNode,
-ImageNode, VideoNode, ViewNode, LightNode, DynamicSkyNode, FogNode,
-ReflectionProbeNode, LineNode, PathNode, BillboardNode, TextNode,
-PhysicsNode, AnchorNode, HitResultNode, AugmentedImageNode,
-AugmentedFaceNode, CloudAnchorNode, GeospatialNode, DepthNode, InstantPlacementNode
+## 46+ node types
+3D (`io.github.sceneview.node`, 26):
+BillboardNode, CameraNode, CapsuleNode, ConeNode, ContactShadowNode,
+CubeNode, CylinderNode, DynamicSkyNode, FogNode, ImageNode, LightNode,
+LineNode, MeshNode, ModelNode, Node, PathNode, PhysicsNode, PlaneNode,
+ReflectionProbeNode, ShapeNode, SphereNode, SplatNode, TextNode, TorusNode,
+VideoNode, ViewNode
+
+AR (`io.github.sceneview.ar.node`, 20):
+ARCameraNode, ARFogNode, AnchorNode, AugmentedFaceNode, AugmentedImageNode,
+CloudAnchorNode, DepthHitResultNode, DepthMeshNode, HitResultNode,
+PlacementReticleNode, PlaneNode, PointCloudNode, PoseNode, ReticleNode,
+RooftopAnchorNode, SceneMeshNode, ShadowReceiverPlaneNode,
+StreetscapeGeometryNode, TerrainAnchorNode, TrackableNode
 
 ## MCP Server for AI-assisted development
 ```json

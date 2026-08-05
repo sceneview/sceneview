@@ -1,3 +1,0 @@
-<!-- category: Tests -->
-- CI now compiles every Kotlin snippet embedded in `llms.txt` and the agent-skill references (`tools/extract-doc-snippets.js` + the new `:snippets-check` module): an API change that breaks documented code is a deterministic CI red instead of a silently stale doc (#2759)
-- Compiling the docs immediately caught and fixed 9 real drifts in `llms.txt`: gesture move/rotate/scale callbacks documented with 2 params instead of 3, `PlacementScene`/`WallPlacementScene` usage examples passing the placement lambda in the `content` slot, a nullable `rememberModelInstance` passed straight to `ModelNode`, non-generic `TrackableNode`, v3 `arSceneView.frame` phrasing, and more (#2759)

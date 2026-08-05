@@ -69,6 +69,19 @@ struct ARInstantPlacementDemo: View {
 
     private let placementSlugs: [SketchfabSlug] = SampleAssets.byCategory["ar_placement"] ?? []
 
+    private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
+
+    /// Same rule as `ARPlacementDemo`: `nil` in bundled-cycle mode (nothing was
+    /// substituted), measured from the resolved file otherwise (#2960).
+    private var assetSource: AssetSourceState? {
+        guard selectedSlug != nil else { return nil }
+        return AssetSourceProbe.of(
+            resolvedURL: armedURL,
+            hasAPIKey: hasSketchfabKey,
+            loaded: armedURL != nil
+        )
+    }
+
     var body: some View {
         ZStack {
             #if !targetEnvironment(simulator)
@@ -91,8 +104,16 @@ struct ARInstantPlacementDemo: View {
             simulatorPlaceholder
             #endif
 
-            VStack {
+            VStack(spacing: 8) {
                 statusPill
+                // Under the status pill, not in the corner — see ARPlacementDemo.
+                if let assetSource {
+                    HStack {
+                        Spacer()
+                        AssetSourcePill(state: assetSource)
+                    }
+                    .padding(.horizontal, 16)
+                }
                 Spacer()
             }
         }

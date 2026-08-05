@@ -28,14 +28,14 @@ metadata:
 SceneView is a declarative 3D and AR SDK. One mental model across every platform:
 
 - **Android** — `SceneView { … }` (3D) and `ARSceneView { … }` (AR) composables.
-  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.25.0` and
-  `io.github.sceneview:arsceneview:4.25.0`.
+  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.26.0` and
+  `io.github.sceneview:arsceneview:4.26.0`.
 - **Apple (iOS / macOS / visionOS)** — `SceneView { }` and `ARSceneView { }` SwiftUI
   views from the [`sceneview`](https://github.com/sceneview/sceneview) monorepo
-  via Swift Package Manager (tag `4.25.0`). RealityKit renderer.
-- **Web** — `sceneview-web@4.25.0` on npm (Filament.js + WebXR).
+  via Swift Package Manager (tag `4.26.0`). RealityKit renderer.
+- **Web** — `sceneview-web@4.26.0` on npm (Filament.js + WebXR).
 - **Flutter** — `flutter_sceneview` plugin (PlatformView bridge; pub.dev name since #2735, directory `flutter/sceneview_flutter/`).
-- **React Native** — `@sceneview-sdk/react-native@4.25.0` (Fabric bridge).
+- **React Native** — `@sceneview-sdk/react-native@4.26.0` (Fabric bridge).
 - **MCP** — `sceneview-mcp` on npm — gives AI agents direct API access from chat.
 
 Nodes are declared as composables / SwiftUI views inside the parent SceneView's
@@ -202,8 +202,15 @@ when you already hold the components. Reading `node.worldPosition` /
 
 This skill is most useful paired with the **`android-cli`** skill:
 
-- `android run --apks=APK --activity=PKG/.MainActivity` — install + launch in
-  one call.
+- ⛔ `android run --apks=APK --activity=PKG/.MainActivity` — **do not use.**
+  Measured three times in this repo (#2796, #2854, #2990) — most recently on
+  CLI 1.0.15498356, where it printed `App loaded:` and
+  `Debuggable: true`, then rejected an activity the platform resolves fine, and
+  **installed nothing** — leaving an older build on the device while a QA run
+  measured it. Install with `adb install -r APK` and launch with
+  `adb shell am start -n PKG/.MainActivity`, then confirm the device's
+  `lastUpdateTime` actually moved (`adb shell dumpsys package PKG`). An install
+  step that reports success is not evidence the binary on the device is yours.
 - `android screen capture --annotate -o ui.png` + `android screen resolve
   --screenshot=ui.png --string="tap #N"` — visual UI testing of a 3D scene.
 - `android layout --pretty -o ui.json` — Compose UI tree dump (the 3D viewport

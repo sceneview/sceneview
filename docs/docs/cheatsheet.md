@@ -1,6 +1,6 @@
 ---
 title: API Cheatsheet — SceneView Android
-description: "Complete API reference for SceneView's 44+ node types, composables, resource loading, camera controls, gestures, and AR features on Android."
+description: "Complete API reference for SceneView's 46+ node types, composables, resource loading, camera controls, gestures, and AR features on Android."
 ---
 
 # API Cheatsheet
@@ -16,8 +16,8 @@ A quick reference for SceneView's most-used APIs. Print it, pin it, keep it next
 
 ```kotlin
 // build.gradle
-implementation("io.github.sceneview:sceneview:4.25.0")     // 3D
-implementation("io.github.sceneview:arsceneview:4.25.0")    // AR + 3D
+implementation("io.github.sceneview:sceneview:4.26.0")     // 3D
+implementation("io.github.sceneview:arsceneview:4.26.0")    // AR + 3D
 ```
 
 ---

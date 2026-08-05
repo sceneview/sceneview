@@ -12,9 +12,12 @@
 #    through `dash -n` and fail the gate on any error.
 #
 # 2. Direct `run:` blocks. GitHub Actions defaults `run:` to `bash -e {0}` on
-#    Linux + macOS runners, so bashisms are not a *failure* here — but
-#    shellcheck warnings still surface portability concerns. We treat these
-#    as informational only (warnings, not gate failures), so the existing
+#    Linux + macOS runners, so bashisms are not a *failure* here — but the
+#    warnings shellcheck emits still surface portability concerns. We treat
+#    these as informational only (warnings, not gate failures), so the existing
+#    (NB: that line must not START with the word shellcheck — a comment whose
+#    first word is that name is parsed as a malformed DIRECTIVE, SC1073, and
+#    the tool then stops analysing the rest of this file entirely.)
 #    `run:` corpus stays green.
 #
 # 3. `with.script:` blocks for `actions/github-script` specifically (e.g.
@@ -33,6 +36,9 @@
 #   - PR #1068 used a multi-line `while ... done` block — sliced by the
 #     emulator runner's per-line `sh -c`; fixed by PR #1104.
 #   - HOTFIX-V430 (commit efc168bc) used a multi-line `android run \`
+#     (that command is disavowed for installs — see #2990 — but the LINT
+#     rule below is about multi-line commands in workflow YAML, not about
+#     which command it is)
 #     backslash continuation — `dash -n` accepts a `\<EOL>` because the
 #     parser sees the whole file as one script, but the runner ships each
 #     line through `sh -c`, so the trailing `\` becomes a literal argv
@@ -251,7 +257,7 @@ else
 fi
 
 # ── Pass 2: `run:` blocks — bash on Linux/macOS runners, so we only surface
-# shellcheck warnings (informational, never fails the gate). The existing
+# the warnings shellcheck emits (informational, never fails the gate). The existing
 # corpus has legitimate `array=()` and `${var//foo/bar}` patterns that work
 # fine under bash. ───────────────────────────────────────────────────────────
 if [ "$HAVE_SHELLCHECK" -eq 1 ]; then

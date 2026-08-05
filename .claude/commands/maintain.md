@@ -114,7 +114,8 @@ android --version 2>/dev/null || echo "android CLI not installed"
 ```
 CLAUDE.md pins the tested baseline (currently **v0.7.15411012**). If the
 installed CLI is materially newer, sanity-check that `android layout`,
-`android screen capture`, and `android run` still behave as the helper
+`android screen capture` still behave as the helper (do NOT spot-check
+`android run` as "expected" — the helper deliberately distrusts it, #2990)
 (`.claude/scripts/lib/android-cli.sh`) expects, and bump the documented
 baseline if the new version is adopted.
 

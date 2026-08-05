@@ -10,21 +10,22 @@
 #  Requirements:
 #    - Android device connected via USB/Wi-Fi with USB debugging ON
 #    - Java 17+ (for local build)
-#    - Google's `android` CLI on PATH (preferred — atomic install+launch,
-#      JSON layouts, LF/CRLF-safe screenshots).
+#    - `adb` on PATH (comes with Android SDK platform-tools) — required.
+#    - Google's `android` CLI is OPTIONAL, and used only for JSON layouts and
+#      LF/CRLF-safe screenshots. NOT for installing: its `android run` has a
+#      measured install no-op — it prints success and leaves the previous build
+#      on the device (#2796, #2854, #2990).
 #      Install: https://developer.android.com/tools/agents/android-cli
-#    - …or `adb` on PATH (legacy fallback, comes with Android SDK platform-tools).
 #
-#  When both are present, this script uses `android run` for atomic install +
-#  launch. Otherwise it falls back to the classic `adb install` + `am start`
-#  flow. The device-count check requires `adb` (the `android` CLI in v0.7 has
-#  no `devices` subcommand).
+#  Installing always goes through `android_cli_install_and_launch`, which proves
+#  the install landed against the device's `lastUpdateTime` and falls back to
+#  `adb install -r` + `am start`. The device-count check requires `adb`.
 # ─────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 # Source the shared helper if available — it provides
-# `android_cli_install_and_launch` which transparently picks `android run` or
-# the adb fallback. We DON'T auto-install the android CLI from this script
+# `android_cli_install_and_launch`, which proves the install landed instead of
+# trusting an exit code (#2990). We DON'T auto-install the android CLI from this script
 # (that would surprise an end-user running `./try-demo` for the first time).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_CLI_LIB="$SCRIPT_DIR/../.claude/scripts/lib/android-cli.sh"
@@ -54,30 +55,18 @@ banner() {
 }
 
 check_device() {
-  # We need at least one of `android` or `adb` on PATH. The `android` CLI ships
-  # its own bundled adb and is the preferred entry point for agent workflows;
-  # `adb` standalone is the legacy fallback. Either is fine for this script.
-  local has_android has_adb
-  command -v android &>/dev/null && has_android=1 || has_android=0
-  [[ "$has_android" -eq 0 ]] && [[ -x "$HOME/.local/bin/android" ]] && has_android=1
-  command -v adb &>/dev/null && has_adb=1 || has_adb=0
-
-  if [[ "$has_android" -eq 0 ]] && [[ "$has_adb" -eq 0 ]]; then
-    echo -e "${RED}Error: neither \`android\` CLI nor \`adb\` found.${RESET}"
-    echo "  Install Google's android CLI (preferred):"
-    echo "    https://developer.android.com/tools/agents/android-cli"
-    echo "  Or install Android SDK platform-tools (provides adb):"
+  # `adb` is REQUIRED. This used to claim "either `android` or `adb` is fine,
+  # the CLI being preferred", then demand adb ten lines below — so the friendly
+  # first error could never fire and the advice it gave (install the CLI) did
+  # not unblock anyone. The CLI is optional here and is not used for installing
+  # at all (#2990); the device count needs adb regardless.
+  if ! command -v adb &>/dev/null; then
+    echo -e "${RED}Error: adb not found — it is required.${RESET}"
+    echo "  Install Android SDK platform-tools:"
     echo "    brew install android-platform-tools   # macOS"
     echo "    sudo apt install adb                  # Linux"
-    exit 1
-  fi
-
-  # Device count — uses adb because `android` v0.7 has no `devices` subcommand.
-  # If `adb` is not present but `android` is, the bundled adb is still callable
-  # via the android CLI's own helpers, but the bare `adb` shim suffices here.
-  if [[ "$has_adb" -eq 0 ]]; then
-    echo -e "${RED}Error: adb not on PATH (required to count connected devices).${RESET}"
-    echo "  The android CLI bundles adb but does not expose a top-level devices subcommand in v0.7."
+    echo ""
+    echo "  Google's \`android\` CLI is optional and does not replace adb here."
     exit 1
   fi
   local devices
@@ -113,10 +102,18 @@ download_and_install() {
   echo -e "${GREEN}✓${RESET} Downloaded"
 
   echo -e "${CYAN}Installing on device...${RESET}"
-  # `android run` installs AND launches in one call when the CLI is available;
-  # the helper falls back to `adb install` + `am start` otherwise.
-  if type android_cli_install_and_launch >/dev/null 2>&1 \
-     && { command -v android >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/android" ]]; }; then
+  # The helper installs and launches, and PROVES the install landed rather than
+  # trusting an exit code (#2990 — `android run` printed success and installed
+  # nothing three times in this repo). It returns non-zero when it cannot prove
+  # it; `set -euo pipefail` at the top of this script is what stops the
+  # "✓ Installed" below from printing in that case. Do not remove that, and do
+  # not wrap this call in `|| true`.
+  # NOT gated on the android CLI being present: the helper checks that itself
+  # and its adb fallback carries the lastUpdateTime proof. Gating here sent a
+  # developer with only `adb` down an UNPROVEN install path, contradicting this
+  # file's own header. Only the lib's availability is checked — try-demo.sh can
+  # be copied out of the repo, and then there is no helper to call.
+  if type android_cli_install_and_launch >/dev/null 2>&1; then
     android_cli_install_and_launch "$tmp_apk" "${DEMO_PKG}/.MainActivity"
   else
     adb install -r "$tmp_apk"
@@ -155,9 +152,12 @@ build_and_install() {
 
   echo -e "${GREEN}✓${RESET} Built: $(basename "$apk")"
   echo -e "${CYAN}Installing on device...${RESET}"
-  # Atomic install+launch via `android run` when available; adb fallback otherwise.
-  if type android_cli_install_and_launch >/dev/null 2>&1 \
-     && { command -v android >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/android" ]]; }; then
+  # Same contract as install_prebuilt above: the helper proves the install and
+  # returns non-zero when it cannot. `set -e` turns that into an abort before
+  # the success line (#2990).
+  # Same as install_prebuilt: the helper's own adb fallback is the proven path,
+  # so gating on the CLI's presence would skip the proof (#2990).
+  if type android_cli_install_and_launch >/dev/null 2>&1; then
     android_cli_install_and_launch "$apk" "${pkg}/.MainActivity"
   else
     adb install -r "$apk"

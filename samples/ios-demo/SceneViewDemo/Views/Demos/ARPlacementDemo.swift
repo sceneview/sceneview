@@ -72,6 +72,23 @@ struct ARPlacementDemo: View {
 
     private let placementSlugs: [SketchfabSlug] = SampleAssets.byCategory["ar_placement"] ?? []
 
+    private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
+
+    /// `nil` in bundled-cycle mode: those five models load by name and the
+    /// caption names each one for what it is, so nothing was substituted.
+    /// With a slug armed, the caption claims "Next tap places: <slug>" — the
+    /// pill is what keeps that claim honest when the resolver quietly handed
+    /// back the offline stand-in (#2960).
+    private var assetSource: AssetSourceState? {
+        guard selectedSlug != nil else { return nil }
+        return AssetSourceProbe.of(
+            resolvedURL: armedURL,
+            hasAPIKey: hasSketchfabKey,
+            // "Loaded" is "the file arrived": a tap places whatever has resolved.
+            loaded: armedURL != nil
+        )
+    }
+
     var body: some View {
         ZStack {
             #if !targetEnvironment(simulator)
@@ -81,8 +98,18 @@ struct ARPlacementDemo: View {
             simulatorPlaceholder
             #endif
 
-            VStack {
+            VStack(spacing: 8) {
                 statusPill
+                // Stacked under the status pill rather than pinned to the
+                // corner: both sit at the top and a trailing overlay collides
+                // with the centred "N models placed" text on a narrow device.
+                if let assetSource {
+                    HStack {
+                        Spacer()
+                        AssetSourcePill(state: assetSource)
+                    }
+                    .padding(.horizontal, 16)
+                }
                 Spacer()
                 if let lastError {
                     errorBanner(lastError)
