@@ -15,10 +15,37 @@
 #   be — both are gitignored, so CI has never seen them and never will.
 #
 # HONESTY ABOUT THE NUMBERS
-#   Bytes are measured. The token column is an ESTIMATE at ~4 chars/token and
-#   is labelled as such: the real tokeniser is not available here, and a
-#   precise-looking token count that nothing produced would be a fabrication.
+#   Bytes are measured. The token column is an ESTIMATE: the real tokeniser is
+#   not available here, and a precise-looking token count that nothing produced
+#   would be a fabrication.
+#
+#   The ratio used to be 4 chars/token — a plain-English default that is wrong
+#   for THIS content, and wrong in the direction that hides cost. Two natural
+#   experiments in the local transcripts (#3001) put it near 2.7:
+#     - #2985 removed 61,703 bytes from CLAUDE.md on 2026-08-03. Subagent
+#       preambles in this repo fell 68,817 -> 49,138 (median, same harness
+#       version 2.1.219, 2026-08-01 vs 2026-08-04), against +6,753 bytes of
+#       listing growth over the same window: 54,950 bytes -> 19,679 tokens,
+#       i.e. 2.79 chars/token.
+#     - Same-day, same-version cross-repo delta (sceneview 65,571 vs
+#       ar-model-viewer 54,692 on 2026-08-04) against the 27,853-byte delta of
+#       everything the two repos load differently: 2.56 chars/token.
+#   Markdown with tables, paths, code fences, French and emoji tokenises far
+#   worse than prose. At 4 chars/token this report understated the standing
+#   context by ~35%, which is why three passes kept cutting the same file.
+#
 #   Use it for orders of magnitude and for before/after deltas, never as truth.
+#
+# WHAT COUNTS AS STANDING CONTEXT
+#   Only what a session pays BEFORE its first word: the CLAUDE.md chain, the
+#   agent-memory index, and the one-line description of every skill / command /
+#   workflow (the listing is unconditional even though the bodies are not).
+#   STATE.md and workflows/README.md are NOT in that set — they are read by the
+#   sessions that follow CLAUDE.md's pointers, so they are reported separately.
+#   Measured against a real transcript on 2026-08-05: the 27,853-byte delta of
+#   the unconditional block below predicts ~10,316 tokens against the 10,879
+#   actually measured for the sceneview-vs-ar-model-viewer preamble gap — 5.2%
+#   under. Close enough to rank cuts, not close enough to quote as a budget.
 #
 # Usage: bash .claude/scripts/context-budget.sh [--strict]
 #   --strict  exit non-zero when a file is over its documented spec
@@ -47,8 +74,14 @@ STRICT=0
 
 OVER=0
 TOTAL=0
+BOOT_TOTAL=0
+
+# Tenths of a char per token — see HONESTY ABOUT THE NUMBERS. Integer maths so
+# this stays portable across bash/sh without bc.
+CPT10=27
 
 human() { awk -v b="$1" 'BEGIN{ printf (b<1024) ? "%d B" : "%.1f Ko", (b<1024)?b:b/1024 }'; }
+tok() { echo $(( $1 * 10 / CPT10 )); }
 
 # Rows are COLLECTED, then printed LARGEST FIRST. The first version printed them
 # in the order I happened to write them, so the biggest item sat in the middle
@@ -79,10 +112,63 @@ row() {
 "
 }
 
+# Same shape, but for what a session reads AFTER the preamble. Kept out of the
+# standing total so the two questions stay separable: "what does every session
+# pay" vs "what does a session that bootstraps pay on top".
+boot_row() {
+  local rel="$1" cap="$2" why="$3" f="${4:-$ROOT}/$1"
+  [ -f "$f" ] || return 0
+  local bytes flag; bytes=$(wc -c < "$f" | tr -d ' ')
+  BOOT_TOTAL=$((BOOT_TOTAL + bytes))
+  flag="  "
+  if [ "$cap" -gt 0 ] && [ "$bytes" -gt "$cap" ]; then
+    flag="!!"; OVER=$((OVER + 1)); OVER_NAMES="${OVER_NAMES:+$OVER_NAMES, }$rel"
+  fi
+  BOOT_ROWS="$BOOT_ROWS$(printf '%012d\t%s\t%s\t%s\t%s' "$bytes" "$rel" "$(human "$bytes")" "$flag" "$why")
+"
+}
+
 OVER_NAMES=""
+BOOT_ROWS=""
 row "CLAUDE.md"                  24576 "always loaded; ceiling gated in CI"
-row ".claude/STATE.md"           16384 "session start; spec = NOW + IN-FLIGHT + NEXT(<=6) + BOOTSTRAP" "$MAIN"
-row ".claude/workflows/README.md" 24576 "read when choosing a workflow"
+
+# The user-level CLAUDE.md is prepended to the project one in every session on
+# this machine. It was missing from this report entirely, so the "standing"
+# total was short by its whole size — and being outside the repo is exactly why
+# nobody would have noticed.
+if [ -f "$HOME/.claude/CLAUDE.md" ]; then
+  b=$(wc -c < "$HOME/.claude/CLAUDE.md" | tr -d ' '); TOTAL=$((TOTAL + b))
+  ROWS="$ROWS$(printf '%012d\t%s\t%s\t%s\t%s' "$b" "~/.claude/CLAUDE.md (user-level)" "$(human "$b")" "  " "always loaded, prepended to the project one; not in this repo")
+"
+fi
+
+# The one-line description of every skill / command / workflow ships in the
+# preamble of EVERY session, whether or not the body is ever opened. The report
+# used to file all of this under "deferred — charged per skill OPENED", which is
+# true of the bodies and false of the descriptions. Measured on a real subagent
+# transcript (2026-08-05): the listing was 23,175 chars, of which 9,272 came
+# from this repo's 30 entries.
+LISTING=0; LISTING_N=0
+for f in "$ROOT"/.claude/skills/*/SKILL.md "$ROOT"/.claude/commands/*.md; do
+  [ -f "$f" ] || continue
+  d=$(awk '/^description:/{sub(/^description: */,""); print; exit}' "$f")
+  [ -n "$d" ] || continue
+  LISTING=$((LISTING + ${#d} + 16)); LISTING_N=$((LISTING_N + 1))
+done
+for f in "$ROOT"/.claude/workflows/*.js; do
+  [ -f "$f" ] || continue
+  d=$(awk "/^  description:/{sub(/^  description: *'?/,\"\"); sub(/',?\$/,\"\"); print; exit}" "$f")
+  [ -n "$d" ] || continue
+  LISTING=$((LISTING + ${#d} + 16)); LISTING_N=$((LISTING_N + 1))
+done
+if [ "$LISTING" -gt 0 ]; then
+  TOTAL=$((TOTAL + LISTING))
+  ROWS="$ROWS$(printf '%012d\t%s\t%s\t%s\t%s' "$LISTING" "skill/command/workflow listing" "$(human "$LISTING")" "  " "$LISTING_N one-line descriptions, in EVERY preamble; bodies are deferred, these are not")
+"
+fi
+
+boot_row ".claude/STATE.md"           16384 "session start; spec = NOW + IN-FLIGHT + NEXT(<=6) + BOOTSTRAP" "$MAIN"
+boot_row ".claude/workflows/README.md" 24576 "read when choosing a workflow"
 
 # Derive the agent-memory slug from the MAIN checkout path — same rule the
 # /status skill uses — rather than hardcoding one workstation's absolute path
@@ -94,17 +180,29 @@ if [ -f "$MEM" ]; then
 "
 fi
 
-echo "Standing context — re-sent on every turn of every session (largest first)"
+echo "Standing context — in the preamble of EVERY session, before a word is"
+echo "exchanged, and re-sent on every turn after that (largest first)"
 echo
 printf '%s' "$ROWS" | grep -v '^$' | sort -rn | while IFS="$(printf '\t')" read -r _b rel size flag why; do
   # 10# forces base-10: the sort key is zero-padded, and a leading zero would
   # otherwise make bash read it as octal and fail on any digit 8 or 9.
-  printf "  %-34s %10s %s ~%5s tok  %s\n" "$rel" "$size" "$flag" "$(( 10#$_b / 4 ))" "$why"
+  printf "  %-34s %10s %s ~%5s tok  %s\n" "$rel" "$size" "$flag" "$(tok "$((10#$_b))")" "$why"
 done
 echo
-printf "  %-34s %10s    ~%5s tok\n" "TOTAL standing context" "$(human "$TOTAL")" "$((TOTAL / 4))"
+printf "  %-34s %10s    ~%5s tok\n" "TOTAL standing context" "$(human "$TOTAL")" "$(tok "$TOTAL")"
+
+if [ -n "$BOOT_ROWS" ]; then
+  echo
+  echo "  Read at bootstrap — NOT in the preamble, paid once by the sessions that"
+  echo "  follow CLAUDE.md's pointers, then re-sent every turn of those sessions:"
+  printf '%s' "$BOOT_ROWS" | grep -v '^$' | sort -rn | while IFS="$(printf '\t')" read -r _b rel size flag why; do
+    printf "    %-32s %10s %s ~%5s tok  %s\n" "$rel" "$size" "$flag" "$(tok "$((10#$_b))")" "$why"
+  done
+  printf "    %-32s %10s    ~%5s tok\n" "subtotal" "$(human "$BOOT_TOTAL")" "$(tok "$BOOT_TOTAL")"
+fi
 echo
-echo "  (token column is an ESTIMATE at ~4 chars/token — orders of magnitude only)"
+echo "  (token column is an ESTIMATE at ~2.7 chars/token, measured on this"
+echo "   machine's transcripts — see the header. Deltas are sound; absolutes ±10%)"
 if [ -n "$OVER_NAMES" ]; then
   echo
   echo "  !! OVER SPEC: $OVER_NAMES — this is the next thing to cut, not the"
