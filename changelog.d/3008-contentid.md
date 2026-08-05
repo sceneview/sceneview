@@ -34,3 +34,8 @@
   consecutive picks with the same title left the key unchanged and the swap
   silently did not happen. It is keyed on a monotonic load counter now. The
   same collision existed with the previous `.id(_:)`.
+- **Docs: the iOS model-viewer recipe now renders its model.** `samples/recipes/model-viewer.md`
+  loaded a model asynchronously into a scene with no `.contentID(_:)`, so the
+  content closure — which runs once, at scene creation, while the model is still
+  `nil` — never ran again and the viewer stayed empty. It now carries the key
+  plus a model-swap section.

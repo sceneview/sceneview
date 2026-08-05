@@ -43,7 +43,7 @@ SceneView { … }
     .mainLight(.systemDefault)   // see LightSlot
     .fillLight(.systemDefault)
     .renderQuality(.default)     // .cinematic | .default | .performance
-    .contentID(model?.id)        // re-runs the content closure IN PLACE when the id changes
+    .contentID(model == nil ? nil : selectedID)  // re-runs the content closure IN PLACE when the id changes
 ```
 
 **Swapping the model: `.contentID(_:)`, never SwiftUI's `.id(_:)`.** The content

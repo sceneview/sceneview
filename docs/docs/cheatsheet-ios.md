@@ -53,7 +53,7 @@ SceneView { root in
 .mainLight(.systemDefault)         // v4.2.0+ — see LightSlot
 .fillLight(.systemDefault)         // v4.2.0+
 .renderQuality(.default)           // v4.2.0+ — .cinematic | .default | .performance
-.contentID(model?.id)              // v4.26.0+ — re-runs the content closure IN PLACE when the id changes. Use this to swap the model, NEVER SwiftUI's .id()
+.contentID(model == nil ? nil : selectedID)  // v4.26.0+ — re-runs the content closure IN PLACE when the id changes. Use this to swap the model, NEVER SwiftUI's .id()
 ```
 
 !!! danger "Swapping the model: `contentID`, never `.id()`"

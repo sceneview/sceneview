@@ -239,7 +239,7 @@ public struct SceneView: View {
     /// SceneView { root in
     ///     if let model { root.addChild(model.entity) }
     /// }
-    /// .contentID(model?.id)          // ← swaps the model
+    /// .contentID(model == nil ? nil : selectedID)   // ← swaps the model
     /// .environment(.studio)
     /// ```
     ///
@@ -1195,7 +1195,7 @@ private struct SceneViewRepresentation: View {
         // instead of `root` directly so the auto-center translation in
         // `refreshContentCentering()` only affects user content, not the
         // lights provisioned just above.
-        buildContent()
+        buildContent(isInitialBuild: true)
     }
 
     // MARK: - Content (re)build (#3008)
@@ -1207,8 +1207,20 @@ private struct SceneViewRepresentation: View {
     /// rebuild so a swapped model goes through exactly the same provisioning
     /// as the first one — a second code path here is how a rebuilt scene ends
     /// up with different shadows or IBL from a freshly-created one.
+    ///
+    /// - Parameter isInitialBuild: `true` from `setupScene`, `false` from a
+    ///   `.contentID(_:)` swap. It gates the IBL half of the render-quality
+    ///   preset, and it has to: `applyRenderQuality`'s IBL branch is written in
+    ///   RAW EXPONENTS, not the linear multipliers `SceneEnvironment.intensity`
+    ///   speaks since #2897, and it says in as many words that this is latent
+    ///   only because its sole caller runs *before* the async `loadEnvironment`
+    ///   installs the `ImageBasedLightComponent`, so it always finds no
+    ///   component and no-ops. A swap runs long after that load, so passing the
+    ///   receiver here would wake those inverted units up and pop the scene's
+    ///   brightness on the first swap under `.cinematic` / `.performance`.
+    ///   The shadow / light half still applies to the new subtree either way.
     @MainActor
-    private func buildContent() {
+    private func buildContent(isInitialBuild: Bool) {
         content(entities.contentRoot)
 
         // Apply RenderQuality preset to all directional lights + the IBL receiver entity.
@@ -1219,7 +1231,7 @@ private struct SceneViewRepresentation: View {
         _ = applyRenderQuality(
             renderQualityPreset,
             to: entities.root,
-            iblReceiver: entities.ibl
+            iblReceiver: isInitialBuild ? entities.ibl : nil
         )
 
         appliedCache.didBuildContent = true
@@ -1257,12 +1269,18 @@ private struct SceneViewRepresentation: View {
         // without this the outgoing model stays alive for the process lifetime
         // and every swap leaks another one — the same cycle `SceneEntities.deinit`
         // breaks at scene teardown (#2038).
+        // `under: contentRoot`, not per-child: a handler registered on the root
+        // the closure is handed (`root.onTap { … }` capturing the outgoing
+        // node) is not under any child, so a per-child sweep would leave that
+        // cycle intact and retain the previous model until scene teardown.
+        // The closure re-registers whatever it wants on the root when it runs
+        // again, just below.
+        NodeGesture.removeAllHandlers(under: entities.contentRoot)
         for child in Array(entities.contentRoot.children) {
-            NodeGesture.removeAllHandlers(under: child)
             child.removeFromParent()
         }
 
-        buildContent()
+        buildContent(isInitialBuild: false)
 
         // Re-arm the auto-framing pass for the new content. Without this the
         // new subject inherits the previous one's orbit radius and pivot —
