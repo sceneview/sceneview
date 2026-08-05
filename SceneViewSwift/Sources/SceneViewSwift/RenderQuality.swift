@@ -111,11 +111,20 @@ internal func applyRenderQuality(
     // ⚠️ The literals below are RAW EXPONENTS, not the linear multipliers
     // `SceneEnvironment.intensity` speaks since #2897 — `1.0` here means ×2.0 and
     // `0.5` means ×1.41, which no longer dims anything now that the authored
-    // default maps to exponent 0. That is currently latent, not a bug: this
-    // function's only caller (`SceneView.setupScene`) runs synchronously BEFORE the
-    // async `loadEnvironment` sets the `ImageBasedLightComponent`, so both branches
-    // below find no component and no-op. Fix the units here if that ordering ever
-    // changes, or these values will invert their own documented intent (#2897).
+    // default maps to exponent 0. That is currently latent, not a bug — but it
+    // is kept latent DELIBERATELY, by every caller, not by luck:
+    //
+    //   * `SceneView.buildContent(isInitialBuild: true)` (from `setupScene`)
+    //     runs synchronously BEFORE the async `loadEnvironment` installs the
+    //     `ImageBasedLightComponent`, so both branches below find no component
+    //     and no-op.
+    //   * `buildContent(isInitialBuild: false)` — the `.contentID(_:)` swap
+    //     path (#3008) — runs long AFTER that load, so it passes
+    //     `iblReceiver: nil` on purpose and never reaches this half at all.
+    //
+    // Fix the units here before letting any caller pass a live receiver
+    // post-load, or these values will invert their own documented intent
+    // (#2897) and pop the scene's brightness.
     guard let iblReceiver else { return nil }
     let newExponent: Float?
     switch quality {

@@ -130,23 +130,36 @@ struct AnimationDemo: View {
     @ViewBuilder
     private var sceneContent: some View {
         ZStack {
-            if let loadedNode {
-                SceneView { root in
-                    loadedNode.entity.position = .init(x: 0, y: 0, z: -2)
-                    root.addChild(loadedNode.entity)
-                }
-                .cameraControls(.orbit)
-                .autoRotate(speed: 0.3)
-                // Every subject here is a curated PBR model — the bundled
-                // cyberpunk_character.usdz or a streamed Sketchfab character —
-                // and a PBR surface is defined by what it reflects. With no
-                // IBL there is nothing to reflect and the carousel undersells
-                // its own subjects. Same `.studio` preset as ModelViewerDemo
-                // (#2114).
-                .environment(.studio)
-                .ignoresSafeArea()
-                .id("animation-\(selectedSubject.streamedSlug?.uid ?? selectedSubject.bundledAsset ?? "none")")
-            } else {
+            // The scene stays mounted for the whole demo — it is never wrapped
+            // in `if let loadedNode` and never re-keyed with SwiftUI's `.id(_:)`.
+            // Both of those discard the `RealityView` and build a new one, and a
+            // re-created `RealityView` on iOS 26 Simulator intermittently comes
+            // back rendering nothing at all — no model, and no skybox either —
+            // permanently (#3008). `.contentID(_:)` swaps the model inside the
+            // scene that is already rendering instead.
+            //
+            // The key is an `Optional` on purpose: it must also change when the
+            // model finishes loading, not only when the subject chip changes.
+            // Keyed on the subject alone it would already sit at its final value
+            // while `loadedNode` is still `nil`, and the scene would stay empty.
+            SceneView { root in
+                guard let loadedNode else { return }
+                loadedNode.entity.position = .init(x: 0, y: 0, z: -2)
+                root.addChild(loadedNode.entity)
+            }
+            .cameraControls(.orbit)
+            .autoRotate(speed: 0.3)
+            // Every subject here is a curated PBR model — the bundled
+            // cyberpunk_character.usdz or a streamed Sketchfab character —
+            // and a PBR surface is defined by what it reflects. With no
+            // IBL there is nothing to reflect and the carousel undersells
+            // its own subjects. Same `.studio` preset as ModelViewerDemo
+            // (#2114).
+            .environment(.studio)
+            .contentID(loadedContentKey)
+            .ignoresSafeArea()
+
+            if loadedNode == nil {
                 VStack(spacing: 12) {
                     ProgressView()
                         .tint(.white)
@@ -165,6 +178,14 @@ struct AnimationDemo: View {
             }
         }
         .background(Color.black)
+    }
+
+    /// What the scene's content closure currently builds: `nil` while the
+    /// subject is loading, the subject's identifier once its model is in hand.
+    /// Feeds ``SceneView/contentID(_:)`` — see the comment in `sceneContent`.
+    private var loadedContentKey: String? {
+        guard loadedNode != nil else { return nil }
+        return selectedSubject.streamedSlug?.uid ?? selectedSubject.bundledAsset ?? "none"
     }
 
     @ViewBuilder
