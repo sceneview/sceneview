@@ -1045,6 +1045,14 @@ private struct SceneViewRepresentation: View {
             setupScene(&content)
         } update: { content in
             applyCamera()
+            // Also here, not only in the `.task(id:)`: `update:` always runs on
+            // the CURRENT view, so this closes the one ordering hole the task
+            // cannot — a `make:` that ran from a stale view value would record
+            // an identity the task has already moved past, and nothing else
+            // would ever re-fire. Costs one `AnyHashable?` compare per tick,
+            // and short-circuits on `nil != nil` for every scene that does not
+            // use `.contentID(_:)`. Closes #3008.
+            rebuildContentIfNeeded()
             refreshLightSlot(.main, slot: mainLightSlot)
             refreshLightSlot(.fill, slot: fillLightSlot)
             if autoCenterContentEnabled {
@@ -1062,6 +1070,15 @@ private struct SceneViewRepresentation: View {
             setupScene(&realityContent)
         } update: { content in
             applyCamera()
+            // Re-run the content closure if `.contentID(_:)` moved. Duplicated
+            // from the `.task(id:)` on purpose: `update:` always runs on the
+            // CURRENT view, so it closes the one ordering hole the task cannot
+            // — a `make:` that ran from a stale view value would record an
+            // identity the task has already moved past, and nothing else would
+            // ever re-fire, leaving the previous model on screen for good.
+            // Costs one `AnyHashable?` compare per tick, and short-circuits on
+            // `nil != nil` for every scene that does not use the modifier.
+            rebuildContentIfNeeded()
             // Diff light slots and swap entities when the caller's modifier value
             // changed since last frame. Closes #1017 (Android `prevFillLightRef`
             // pattern in `SceneView.kt:287-305` ported to iOS).
@@ -1224,6 +1241,13 @@ private struct SceneViewRepresentation: View {
         // order it against the `RealityView` `make:` closure. If the scene has
         // not been set up yet there is nothing to rebuild — `setupScene` will
         // build the current identity itself.
+        //
+        // This early return is why `update:` calls this method too: it means a
+        // pre-`make:` invocation is a no-op, so if `make:` then ran from a
+        // stale view value the task would never fire again (its id has already
+        // settled) and the scene would keep the wrong content forever. The
+        // `update:` call is on the current view by construction and corrects
+        // that on the very next tick.
         guard appliedCache.didBuildContent else { return }
         guard appliedCache.contentIdentity != contentIdentity else { return }
 
