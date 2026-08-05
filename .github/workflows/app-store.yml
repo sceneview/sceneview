@@ -920,8 +920,21 @@ jobs:
               # unnoticed. RuntimeError stays a warning: apply_screenshots()
               # raises it for genuinely transient upload trouble.
               # Raised in review of PR #3013.
-              broken_wiring = isinstance(
-                  e, (ImportError, NameError, AttributeError, TypeError, ValueError))
+              # JSONDecodeError subclasses ValueError, so it has to be excluded
+              # BEFORE the tuple test — a truncated or non-JSON 2xx body is the
+              # textbook transient case, and calling it a permanent break would
+              # cry wolf at every flaky response.
+              #
+              # SyntaxError (and IndentationError, its subclass) has to be IN the
+              # tuple: a broken asc_listing.py makes the import itself raise, the
+              # uploader never runs, and nothing about that self-heals. Leaving it
+              # out was the dangerous direction — announcing a permanent break as
+              # transient — which is the mistake this whole PR is about.
+              # Both raised in review of PR #3013.
+              transient_json = isinstance(e, requests.exceptions.JSONDecodeError)
+              broken_wiring = not transient_json and isinstance(
+                  e, (ImportError, SyntaxError, NameError,
+                      AttributeError, TypeError, ValueError))
               level = "error" if broken_wiring else "warning"
               detail = ("the screenshot sync integration is BROKEN, not merely failing"
                         if broken_wiring else "release continues")
