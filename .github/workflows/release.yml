@@ -609,20 +609,27 @@ jobs:
           # Without this, #3011 stays possible in a new disguise: any future
           # failure mode that ends 0 without uploading is invisible again.
           for attempt in 1 2 3 4 5; do
-            LATEST=$(curl -sf "https://pub.dev/api/packages/flutter_sceneview" \
-              | python3 -c "import json,sys; print(json.load(sys.stdin)['latest']['version'])" \
-              2>/dev/null || echo "")
-            if [ "$LATEST" = "$PUB_VERSION" ]; then
-              echo "pub.dev serves flutter_sceneview $LATEST"
+            # Set membership in ['versions'], NOT equality against
+            # ['latest']['version'] — mirroring the check-pub step above. They
+            # agree for forward-only releases, but a backport would leave
+            # `latest` pointing at a higher version, so an equality test would
+            # exhaust its retries and ::error:: a release whose publish actually
+            # succeeded. That is this PR's own false-red, in mirror image.
+            # Raised in review of PR #3013.
+            FOUND=$(curl -sf "https://pub.dev/api/packages/flutter_sceneview" \
+              | python3 -c "import json,os,sys; print(any(v['version'] == os.environ['PUB_VERSION'] for v in json.load(sys.stdin)['versions']))" \
+              2>/dev/null || echo "False")
+            if [ "$FOUND" = "True" ]; then
+              echo "pub.dev serves flutter_sceneview $PUB_VERSION"
               exit 0
             fi
             # Do not announce — or wait out — a retry that will not happen:
             # the last pass falls straight through to the error below.
             if [ "$attempt" -lt 5 ]; then
-              echo "pub.dev still serves '${LATEST:-unknown}' (attempt $attempt/5) — retrying in 20s"
+              echo "pub.dev does not list $PUB_VERSION yet (attempt $attempt/5) — retrying in 20s"
               sleep 20
             else
-              echo "pub.dev still serves '${LATEST:-unknown}' (attempt $attempt/5) — no retries left"
+              echo "pub.dev does not list $PUB_VERSION (attempt $attempt/5) — no retries left"
             fi
           done
           echo "::error::pub.dev does not serve $PUB_VERSION after a green publish — the step passed and nothing landed (#3011)."
