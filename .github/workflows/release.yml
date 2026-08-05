@@ -605,9 +605,16 @@ jobs:
           PUB_VERSION: ${{ steps.check-pub.outputs.version }}
         run: |
           # The registry is the ground truth, never the publish step's exit
-          # code — the same rule the npm and Maven publishers already follow.
-          # Without this, #3011 stays possible in a new disguise: any future
-          # failure mode that ends 0 without uploading is invisible again.
+          # code. Without this, #3011 stays possible in a new disguise: any
+          # future failure mode that ends 0 without uploading is invisible.
+          #
+          # This is currently the ONLY post-publish re-verify in the workflow —
+          # the npm and Maven jobs query their registries as a PRE-publish skip
+          # guard and then trust a non-zero exit, which holds for them because
+          # their CLIs fail loudly on an auth error rather than dropping to an
+          # interactive prompt the way `flutter pub publish --force` does. That
+          # is an asymmetry, not a rule everyone else already follows; extending
+          # it is tracked separately.
           for attempt in 1 2 3 4 5; do
             # Set membership in ['versions'], NOT equality against
             # ['latest']['version'] — mirroring the check-pub step above. They
