@@ -113,6 +113,27 @@ public struct SceneView: View {
     var initialOrbitAzimuth: Float?
     var initialOrbitElevation: Float?
 
+    // Host-driven camera pose, re-applied whenever the *value* changes. `nil`
+    // (the default) leaves the camera entirely to the gestures, auto-rotate and
+    // the framing pass — the behaviour of every scene written before this
+    // existed. Set via `.cameraPose(_:)`.
+    var requestedCameraPose: SceneCameraPose?
+
+    // Read-back for the pose above: invoked whenever the applied camera state
+    // actually changes (drag, pinch, auto-rotate step, framing re-fit, or a
+    // `.cameraPose(_:)` write landing clamped). `nil` by default — a scene that
+    // does not ask for the read-back pays nothing. Set via `.onCameraChanged(_:)`.
+    var onCameraChanged: ((SceneCameraPose) -> Void)?
+
+    // Whether the built-in orbit / pinch gestures respond at all. Set via
+    // `.cameraGesturesEnabled(_:)`; default `true`, so no existing scene changes.
+    var cameraGesturesEnabled: Bool = true
+
+    // Tap handler that also reports the world-space hit point. Kept separate
+    // from `onEntityTapped` (rather than an arity overload) so no existing
+    // `.onEntityTapped { … }` call site can become ambiguous.
+    var onEntityTappedHit: ((SceneTapHit) -> Void)?
+
     // visionOS only: set by `.immersiveSpace(true)` when the caller embeds
     // this `SceneView` inside an `ImmersiveSpace` with the `.full` style. In
     // that surface the HDR `showSkybox` environment is rendered via an
@@ -182,7 +203,11 @@ public struct SceneView: View {
             initialOrbitElevation: initialOrbitElevation,
             immersiveSpace: immersiveSpace,
             recentersTargetOnOrbit: recentersTargetOnOrbit,
-            contentIdentity: contentIdentity
+            contentIdentity: contentIdentity,
+            requestedCameraPose: requestedCameraPose,
+            onCameraChanged: onCameraChanged,
+            cameraGesturesEnabled: cameraGesturesEnabled,
+            onEntityTappedHit: onEntityTappedHit
         )
     }
 
@@ -470,6 +495,104 @@ public struct SceneView: View {
         return copy
     }
 
+    /// Drives the orbit camera from a pose you own, for as long as you keep
+    /// changing it.
+    ///
+    /// ``cameraOrbit(azimuth:elevation:)`` seeds the pose *once*, during scene setup,
+    /// and covers neither distance nor target. This is the continuous form: pass a new
+    /// ``SceneCameraPose`` and the camera moves to it on the next frame.
+    ///
+    /// **A pose is applied only when the value changes.** Handing back the same pose
+    /// every frame is a no-op, which is what lets this coexist with the gestures rather
+    /// than fight them: the user drags, the camera moves, and the unchanged pose you are
+    /// still passing does not yank it back. Pair it with ``onCameraChanged(_:)`` to keep
+    /// your own copy current, and write a new pose only when *you* mean to move the
+    /// camera.
+    ///
+    /// ```swift
+    /// SceneView { root in /* ... */ }
+    ///     .cameraPose(pose)                       // your state drives the camera
+    ///     .onCameraChanged { pose = $0 }          // gestures drive your state
+    /// ```
+    ///
+    /// A written pose goes through the same clamps a dragged one does — elevation into
+    /// ``CameraControls/minElevation``…``CameraControls/maxElevation``, distance into
+    /// ``CameraControls/minRadius``…``CameraControls/maxRadius``. ``onCameraChanged(_:)``
+    /// reports the clamped result, so a pose that could not be honoured verbatim says so
+    /// instead of leaving your state and the screen disagreeing.
+    ///
+    /// Has no effect in the native camera modes (``CameraControlMode/none``, `.tilt`,
+    /// `.dolly`, `.gimbal`), where Apple's `realityViewCameraControls(_:)` owns the
+    /// camera transform outright.
+    ///
+    /// - Parameter pose: The pose to apply, angles in radians. `nil` (the default)
+    ///   leaves the camera to gestures, auto-rotate and the framing pass.
+    public func cameraPose(_ pose: SceneCameraPose?) -> SceneView {
+        var copy = self
+        copy.requestedCameraPose = pose
+        return copy
+    }
+
+    /// Reports the orbit pose after **every** change to it — each drag tick, each pinch
+    /// tick, each auto-rotate step, each fit-to-bounds re-frame.
+    ///
+    /// This is the half that makes a hoisted camera state honest. Without it a host can
+    /// only echo what it last wrote: the user orbits the model, the screen moves, and
+    /// every read still returns the initial pose, with nothing anywhere to indicate that
+    /// the two have diverged.
+    ///
+    /// Called on the main actor, from inside RealityKit's update pass. Do not
+    /// synchronously mutate SwiftUI state that this same `SceneView` depends on — hop
+    /// through a `Task { @MainActor in … }` if you must, or you will re-enter the view
+    /// update you are being called from. Storing the value in a plain reference type, or
+    /// forwarding it across a bridge, is safe.
+    ///
+    /// - Parameter handler: Receives the new pose, angles in radians.
+    public func onCameraChanged(_ handler: @escaping (SceneCameraPose) -> Void) -> SceneView {
+        var copy = self
+        copy.onCameraChanged = handler
+        return copy
+    }
+
+    /// Enables or disables the built-in camera drag / pinch gestures.
+    ///
+    /// `false` freezes the camera under the user's finger while leaving everything else
+    /// working — ``cameraPose(_:)`` still drives it, auto-rotate still runs, per-entity
+    /// ``NodeGesture`` handlers still fire, and taps are still delivered.
+    ///
+    /// This is deliberately *not* ``CameraControlMode/none``. That mode hands the camera
+    /// to Apple's `realityViewCameraControls(_:)`, which also switches off SceneView's
+    /// own camera math — a scene that merely wanted to lock the viewpoint would find
+    /// ``cameraPose(_:)`` silently stop working too.
+    ///
+    /// - Parameter enabled: Default `true`.
+    public func cameraGesturesEnabled(_ enabled: Bool) -> SceneView {
+        var copy = self
+        copy.cameraGesturesEnabled = enabled
+        return copy
+    }
+
+    /// Called when an entity is tapped, with a world-space position for it.
+    ///
+    /// ``onEntityTapped(_:)`` reports *which* entity was tapped; this adds *where it
+    /// is*, which is what a host mirroring a hit-test result — a position and a
+    /// distance-from-camera — actually needs.
+    ///
+    /// The position is the tapped entity's bounds centre, not the exact surface point:
+    /// RealityKit does not expose one for a SwiftUI `RealityView` outside visionOS.
+    /// ``SceneTapHit`` spells out what that does and does not give you, including the
+    /// divergence from SceneView Android's true ray-surface `HitResult`. Read it before
+    /// building on the value.
+    ///
+    /// Both handlers can be installed at once and both fire.
+    ///
+    /// - Parameter handler: Receives the tapped entity and its world-space position.
+    public func onEntityTapped(hit handler: @escaping (SceneTapHit) -> Void) -> SceneView {
+        var copy = self
+        copy.onEntityTappedHit = handler
+        return copy
+    }
+
     /// Declares that this `SceneView` is hosted inside a fully immersive
     /// visionOS `ImmersiveSpace` (the `.full` style).
     ///
@@ -604,6 +727,24 @@ private struct SceneViewRepresentation: View {
     /// `setupScene` and never again — the pre-#3008 behaviour. Any other value
     /// makes a change re-run the closure under the *same* `RealityView`.
     let contentIdentity: AnyHashable?
+
+    /// Host-written camera pose from ``SceneView/cameraPose(_:)``. Applied in
+    /// `applyCamera()` only when the *value* changed since the last application,
+    /// so re-passing the same pose every frame never fights a live drag.
+    let requestedCameraPose: SceneCameraPose?
+
+    /// Camera read-back from ``SceneView/onCameraChanged(_:)``. Fired from
+    /// `applyCamera()` at the single point that already knows the camera really
+    /// moved — the far side of the #2331 diff-guard.
+    let onCameraChanged: ((SceneCameraPose) -> Void)?
+
+    /// Gate for the built-in drag / pinch camera gestures, from
+    /// ``SceneView/cameraGesturesEnabled(_:)``.
+    let cameraGesturesEnabled: Bool
+
+    /// Tap handler that also wants the world-space hit point, from
+    /// ``SceneView/onEntityTapped(hit:)``.
+    let onEntityTappedHit: ((SceneTapHit) -> Void)?
 
     /// Mutable camera-orbit state, held in a **reference type** so mutating it
     /// (auto-rotate, drag, pinch) does NOT invalidate the SwiftUI body. The
@@ -754,6 +895,13 @@ private struct SceneViewRepresentation: View {
         /// actually move — skips the redundant entity-transform writes. `nil`
         /// until the first apply. Closes #2331.
         var camera: AppliedCameraState? = nil
+        /// Last ``SceneView/cameraPose(_:)`` value written onto `camera`. The
+        /// application is gated on this changing, not on the pose differing from
+        /// the live camera: a host that keeps passing the pose it was last told
+        /// about must not thereby pin the camera and cancel the drag in progress.
+        /// `nil` until the first host-written pose. Distinguished from "no pose
+        /// requested" by `requestedCameraPose` itself being `nil`.
+        var requestedPose: SceneCameraPose? = nil
         /// The currently-attached main-slot light entity, cached by reference
         /// for direct removal in `refreshLightSlot`. `nil` when the main slot
         /// is `.disabled`. Closes #2278.
@@ -1719,6 +1867,20 @@ private struct SceneViewRepresentation: View {
             }
         }
 
+        // Host-written pose (`.cameraPose(_:)`). Gated on the REQUEST changing,
+        // never on the request differing from the live camera: the host is
+        // expected to mirror `onCameraChanged` into its own state and hand that
+        // value straight back, so "differs from live" is false exactly once per
+        // drag tick and true for the rest — which would re-pin the camera to a
+        // stale pose one frame after every gesture and read as violent jitter.
+        // Sits after the mode-sync so a pose written on the same frame as a mode
+        // change survives `enterFirstPerson()` / `recenterTarget()`, and before
+        // the diff-guard so the write it performs is what the guard compares.
+        if let requested = requestedCameraPose, requested != appliedCache.requestedPose {
+            appliedCache.requestedPose = requested
+            camera.apply(pose: requested)
+        }
+
         // Diff-guard (#2331): every per-mode branch below is a pure function of
         // the orbit state captured here, so when nothing that drives the write
         // changed since the last apply the RealityKit transforms would just be
@@ -1743,6 +1905,16 @@ private struct SceneViewRepresentation: View {
             return
         }
         appliedCache.camera = desired
+
+        // Read-back (`.onCameraChanged(_:)`). Deliberately here rather than in the
+        // gesture handlers: this is the one point that fires for *every* real
+        // camera move — drag, pinch, auto-rotate step, fit-to-bounds re-frame, and
+        // a `.cameraPose(_:)` write landing clamped — and, thanks to the guard
+        // just above, for nothing else. Wiring it per-gesture instead would report
+        // orbit but stay silent through a pinch or a re-frame, and the host's
+        // camera state would drift from the screen with no symptom until someone
+        // read a distance that had been wrong for a minute.
+        onCameraChanged?(camera.pose)
 
         // Per-mode application of orientation, zoom, and translation.
         // Mirrors Android's `CameraGestureDetector` modes
@@ -1850,6 +2022,14 @@ private struct SceneViewRepresentation: View {
     private var dragGesture: some Gesture {
         DragGesture()
             .onChanged { value in
+                // `.cameraGesturesEnabled(false)` freezes the camera under the
+                // finger. Gating here rather than only through
+                // `CameraControls.isEnabled` because `lastDragTranslation` and
+                // `isDragging` are bookkeeping this view owns: leaving them to
+                // accumulate while the camera ignores them would make the first
+                // tick after re-enabling jump by the whole suppressed distance,
+                // and would pause auto-rotate for a drag that moves nothing.
+                guard cameraGesturesEnabled else { return }
                 let delta = CGSize(
                     width: value.translation.width - lastDragTranslation.width,
                     height: value.translation.height - lastDragTranslation.height
@@ -1876,6 +2056,11 @@ private struct SceneViewRepresentation: View {
         // pattern as Android's `Manipulator.scrollBegin / scrollUpdate`.
         MagnifyGesture()
             .onChanged { value in
+                // Same gate as the drag. Note this pinch path does NOT go through
+                // `CameraControls.handlePinch` (it snapshots a baseline radius and
+                // scales that instead), so `CameraControls.isEnabled` alone would
+                // silently disable orbit while leaving zoom live.
+                guard cameraGesturesEnabled else { return }
                 switch camera.mode {
                 case .orbit, .pan:
                     if initialPinchRadius == nil {
@@ -1929,6 +2114,13 @@ private struct SceneViewRepresentation: View {
             .targetedToAnyEntity()
             .onEnded { value in
                 onEntityTapped?(value.entity)
+                // Resolves the position from the entity's visual bounds. The exact
+                // surface point is not reachable here: `location3D` on
+                // `SpatialTapGesture.Value` and `EntityTargetValue.convert(_:from:to:)`
+                // are visionOS-only, and a SwiftUI `RealityView` exposes no scene
+                // raycast on iOS / macOS. `SceneTapHit` documents the consequence
+                // rather than papering over it.
+                onEntityTappedHit?(SceneTapHit(entity: value.entity))
             }
     }
 

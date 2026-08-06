@@ -52,9 +52,15 @@ import androidx.compose.ui.Modifier
  * @param lighting the scene's key light and ambient level.
  * @param environment the background and image-based lighting source.
  * @param onTap invoked when the user taps the viewport, with the model hit under the
- *   touch point, or `null` when the tap missed the model.
+ *   touch point, or `null` when the tap missed the model. **On iOS a miss produces no
+ *   call at all** rather than a call with `null`, and [ModelHit.position] is the tapped
+ *   entity's bounds centre rather than the exact surface point — RealityKit's hit-test
+ *   gesture only fires on a hit and reports no surface coordinate. See the module README.
  * @param onFrame invoked once per rendered frame with the frame time in nanoseconds.
  *   Called on the platform's render-driving thread — keep it allocation-free.
+ *   **Not invoked on iOS**: `SceneViewSwift` publishes no per-frame callback, and a
+ *   polled timer would report times that are not the renderer's. Nothing is simulated in
+ *   its place, so a frame counter simply never advances there.
  */
 @Composable
 public expect fun SceneViewer(

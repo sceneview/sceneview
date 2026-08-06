@@ -151,4 +151,35 @@ extension ModelEntity {
     }
 }
 
+// MARK: - SwiftUI gesture targeting
+
+extension Entity {
+
+    /// Makes this entity and its whole subtree eligible for SwiftUI's
+    /// `targetedToAnyEntity()` gestures.
+    ///
+    /// A `CollisionComponent` alone is **not** enough. SwiftUI's entity-targeted gestures
+    /// — which is how ``SceneView/onEntityTapped(_:)``, ``SceneView/onEntityTapped(hit:)``
+    /// and the whole `NodeGesture` dispatch reach an entity — additionally require an
+    /// `InputTargetComponent`. Without one the gesture simply never fires: no error, no
+    /// warning, and a scene that looks completely correct until someone taps it.
+    ///
+    /// Measured on the iOS 26.3 simulator against a `.usdz` loaded through
+    /// ``ModelNode/load(_:enableCollision:)`` with `enableCollision: true`: taps on the
+    /// model produced no callback at all until this component was set, and fired on the
+    /// first try afterwards.
+    ///
+    /// Applied recursively because `generateCollisionShapes(recursive:)` puts the
+    /// collision shapes on the mesh descendants, and it is those descendants the hit-test
+    /// resolves to.
+    @discardableResult
+    func makeInputTargetable() -> Self {
+        components.set(InputTargetComponent())
+        for child in children {
+            child.makeInputTargetable()
+        }
+        return self
+    }
+}
+
 #endif // os(iOS) || os(macOS) || os(visionOS)

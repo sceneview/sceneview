@@ -102,6 +102,7 @@ public struct ModelNode: @unchecked Sendable {
         // Generate collision shapes for tap interaction
         if enableCollision {
             modelEntity.generateCollisionShapes(recursive: true)
+            modelEntity.makeInputTargetable()
         }
 
         return ModelNode(modelEntity)
@@ -128,6 +129,7 @@ public struct ModelNode: @unchecked Sendable {
 
         if enableCollision {
             modelEntity.generateCollisionShapes(recursive: true)
+            modelEntity.makeInputTargetable()
         }
 
         return ModelNode(modelEntity)
