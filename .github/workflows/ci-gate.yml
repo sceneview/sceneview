@@ -442,11 +442,25 @@ jobs:
               break
             fi
 
+            # DISPLAY ONLY — `pending` itself is never modified here.
+            # A vanished name belongs in `pending` (that is the whole #3018
+            # fix) but it is NOT "running": the API has stopped reporting it.
+            # Printing it under the "still running" header would assert the
+            # opposite of what was measured, and print every such name twice.
+            # So split the two sets for the log; the wait/timeout blocks below
+            # print `running` under "running" and `vanished` under its own
+            # header.
+            if [ -n "$pending" ] && [ -n "$vanished" ]; then
+              running=$(printf '%s\n' "$pending" | grep -vxF "$vanished" || true)
+            else
+              running="$pending"
+            fi
+
             if [ "$(date +%s)" -ge "$deadline" ]; then
               echo "::error::Timed out waiting for CI checks to complete."
-              if [ -n "$pending" ]; then
+              if [ -n "$running" ]; then
                 echo "  Still running / awaiting approval:"
-                echo "$pending" | sort -u | while IFS= read -r n; do echo "    - $n"; done
+                echo "$running" | sort -u | while IFS= read -r n; do echo "    - $n"; done
               fi
               if [ -n "$missing_core" ]; then
                 echo "  Expected core checks that never registered:"
@@ -460,9 +474,9 @@ jobs:
               exit 1
             fi
 
-            if [ -n "$pending" ]; then
+            if [ -n "$running" ]; then
               echo "Waiting for checks to finish (running, or fork PR awaiting approval):"
-              echo "$pending" | sort -u | while IFS= read -r n; do echo "  - $n"; done
+              echo "$running" | sort -u | while IFS= read -r n; do echo "  - $n"; done
             fi
             # A vanished check is almost always a run attempt being rebuilt
             # (`gh run rerun`). Say so loudly rather than silently dropping it

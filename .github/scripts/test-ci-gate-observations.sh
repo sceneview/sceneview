@@ -58,7 +58,7 @@ PENDING_JQ=$(awk '
   /pending=\$\(echo "\$others" \| jq -r/ { getline; sub(/^[[:space:]]*/, ""); sub(/\)$/, ""); print; exit }
 ' "$GATE_YML" | sed "s/^'//; s/'$//")
 if [ -z "$PENDING_JQ" ]; then
-  echo "  ${RED}FAIL${NC}  could not extract the pending selector from $GATE_YML"
+  echo -e "  ${RED}FAIL${NC}  could not extract the pending selector from $GATE_YML"
   exit 1
 fi
 echo "  using pending selector from ci-gate.yml: $PENDING_JQ"
