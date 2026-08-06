@@ -3683,6 +3683,7 @@ fun SceneViewer(
     environment: EnvironmentSource = EnvironmentSource.Default,
     onTap: ((ModelHit?) -> Unit)? = null,
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    onError: ((SceneViewerError) -> Unit)? = null,
 )
 ```
 
@@ -3692,6 +3693,7 @@ fun SceneViewer(
 | `EnvironmentSource` | `Default` · `Color(r, g, b, alpha = 1f)` · `Hdr(path, showSkybox = true)` |
 | `Lighting` | `direction: Float3` · `intensity: Float` (lux) · `ambientIntensity: Float` · `castShadows: Boolean` |
 | `ModelHit` | `position: Float3` · `distance: Float` |
+| `SceneViewerError` | `message: String` · `cause: Throwable?` |
 | `CameraState` | `target` · `distance` · `azimuth` · `elevation` (degrees) · `gesturesEnabled` |
 
 Helpers: `rememberCameraState(target, distance, azimuth, elevation)` (saved across
@@ -3710,15 +3712,22 @@ fun ModelScreen() {
         lighting = Lighting(intensity = 80_000f, castShadows = true),
         environment = EnvironmentSource.Hdr("environments/studio.hdr"),
         onTap = { hit -> if (hit != null) println("hit at ${hit.position}") },
+        onError = { error -> println("load failed: ${error.message}") },
     )
 }
 ```
 
 Gotchas:
+- **A failed load is invisible without `onError`.** The viewport keeps showing the
+  environment, which is pixel-identical to a load still in progress. `onError` is opt-in;
+  without it the only trace is the platform log under the `SceneViewer` tag. It fires for
+  an exception (missing asset, HTTP error, size cap) *and* for a loader answering "no
+  model" without throwing (a malformed glTF/GLB that Filament refuses to parse), so
+  `SceneViewerError.cause` is `null` in the second case.
 - `ModelSource.Bytes` AND `ModelSource.Url` must be self-contained (GLB, or glTF with
   embedded resources). Only `Asset` resolves sibling resources; `Url` downloads exactly
-  one file, so a `.gltf` referencing an external `.bin` or texture loads incomplete —
-  and does so silently, with no error surfaced.
+  one file, so a `.gltf` referencing an external `.bin` or texture loads incomplete — and
+  does so with no error raised at all, since an incomplete parse is not a failed one.
 - `ModelSource.Url` accepts absolute http/https only. That check is in `commonMain`, so
   it holds on every platform. The connect/read timeouts and the 64 MB cap are **Android
   only** — they live in the Android downloader; on iOS the URL is handed to the

@@ -23,6 +23,14 @@
   can never reach — a colour background has no image-based light. It is now built inside
   the two branches that use it.
 
+- **`pre-push-check.sh` now checks the generated GPT knowledge base.**
+  `gpt/knowledge-*.md` is generated from `llms.txt` and gated in `ci.yml` →
+  `repo-hygiene`, but **no local gate ran it** — not `pre-push-check.sh`, not
+  `quality-gate.sh`, not `impact-check.sh`. Editing `llms.txt` therefore passed every
+  local check and only turned red on CI, which is exactly what happened to this PR. Added
+  as a twelfth leg (a sub-second regenerate-and-compare), and mutation-tested: appending a
+  line to `llms.txt` turns it red, restoring it turns it green.
+
 <!-- category: Added -->
 - **`SceneViewer` gains an `onError` callback**, plus the `SceneViewerError` type it
   reports. A failed load has no pixels of its own — the viewport keeps showing the
