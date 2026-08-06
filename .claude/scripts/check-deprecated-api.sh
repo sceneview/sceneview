@@ -41,17 +41,22 @@ cd "$ROOT"
 
 is_whitelisted() {
   case "$1" in
-    # Vendored third-party source. `third_party/filament-kmp/` hits this check on
+    # Vendored third-party source. `third_party/` is EMPTY today — the filament-kmp
+    # copy that forced this whitelist was removed again before it ever compiled (see
+    # docs/docs/desktop-filament.md). The rule stays because it is the standing policy
+    # for any vendored tree, and re-vendoring is one command away.
+    #
+    # Why a vendored tree gets whitelisted rather than fixed: it trips this check on
     # `Scene {` — but that is Filament's OWN `Scene` class (the native scene graph
     # object), in package `io.github.erkko68.filament`, not SceneView's deprecated
     # `Scene { }` composable. The script's own help text already lists "Filament
     # framework class" as a whitelist reason.
     #
-    # More to the point, this one CANNOT be fixed: the tree is a verbatim Apache-2.0
-    # copy whose byte-for-byte identity with upstream is itself enforced, on every PR,
-    # by third_party/filament-kmp/diff-upstream.sh. Editing these files to satisfy this
-    # check would turn the NOTICE's "unmodified" claim false and fail that gate — the
-    # two guards would deadlock. Vendored code is not ours to rename.
+    # More to the point, it CANNOT be fixed by editing: a vendored tree's byte-for-byte
+    # identity with upstream is itself enforced by its own diff-upstream.sh guard, so
+    # editing those files to satisfy this check would turn the NOTICE's "unmodified"
+    # claim false and fail that gate — the two guards would deadlock. Vendored code is
+    # not ours to rename.
     third_party/*) return 0 ;;
 
     # Historical migration / changelog docs
