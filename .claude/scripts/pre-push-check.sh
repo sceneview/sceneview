@@ -23,9 +23,15 @@ INCOMPLETE=0
 # exactly what would have shown that a "screenshot regression" was really a
 # dead build daemon (measured 2026-08-06 — see step 5). Logs survive the run so
 # they can be read afterwards.
+# 0700, not the ambient umask: Gradle's own error output quotes the offending
+# value, and the demo build injects ARCORE_API_KEY / SKETCHFAB_API_KEY into the
+# manifest and BuildConfig — so a manifest-merger or javac failure can write a
+# live key into one of these logs. With TMPDIR unset the fallback is a shared
+# world-readable /tmp.
 LOG_DIR="${TMPDIR:-/tmp}"
 LOG_DIR="${LOG_DIR%/}/sceneview-pre-push"
 mkdir -p "$LOG_DIR"
+chmod 700 "$LOG_DIR" 2>/dev/null || true
 
 # Report a failed Gradle step, distinguishing an ENVIRONMENT failure from a
 # real one. The specific diagnosis ($4) is only pronounced when the log does
@@ -112,7 +118,10 @@ fi
 # Both are fixed by the same rule: the verdict comes from the COMPARISON
 # REPORT, never from the exit code alone.
 #   - `:samples:android-demo:testDebugUnitTest --rerun` forces the comparison
-#     to happen, so (b) cannot recur;
+#     to happen, so (b) cannot recur. COST: `--rerun` binds to the task it
+#     follows, so this re-executes that module's entire unit-test suite (349
+#     tests) on every pre-push instead of the ~1 s UP-TO-DATE path — roughly a
+#     minute more per run. That is the price of the check meaning anything;
 #   - `results-summary.json` must be NEWER than a marker taken just before the
 #     run, otherwise nothing was compared and neither ✓ nor "regression" may be
 #     printed. Measured: the report is rewritten by `finalizeTestRoborazziDebug`
@@ -163,6 +172,10 @@ if [ -d "$SNAPSHOTS_DIR" ] && [ "$(ls -A $SNAPSHOTS_DIR 2>/dev/null)" ]; then
             echo -e "${RED}  ✗ Android screenshot regression — $RR_DIFFS golden(s) differ${NC}"
             echo -e "      Diff images: samples/android-demo/build/outputs/roborazzi/*_compare.png"
             echo -e "      Intentional change? ./gradlew :samples:android-demo:recordRoborazziDebug"
+            # The forced rerun executes the module's WHOLE unit-test suite, not
+            # just the screenshot comparisons — so a run can carry both a golden
+            # diff and an unrelated test failure. Point at the log either way.
+            echo -e "      Full log (may also hold unrelated test failures): $RR_LOG"
             ERRORS=$((ERRORS + 1))
             ;;
     esac

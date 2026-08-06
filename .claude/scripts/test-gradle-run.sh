@@ -83,6 +83,23 @@ Could not resolve all files for configuration ':sceneview:releaseCompileClasspat
 BUILD FAILED in 9s
 LOG
 
+# A coordinate that does not exist — a COMMITTED-CODE defect (typo, unpublished
+# version, yanked artifact) that Gradle announces with the SAME opening line as
+# the network failure above. Only the absence of a transport error separates
+# them. This fixture exists because a `Could not resolve all …` row in the
+# pattern table classified it as infrastructure, which on the release path
+# turned a blocker into a pass (found in review of PR #3030).
+cat > "$TMP/missing-coord.log" <<'LOG'
+* What went wrong:
+Could not resolve all files for configuration ':sceneview:releaseCompileClasspath'.
+> Could not find com.google.ar:core:9.99.0.
+  Searched in the following locations:
+    - https://repo.maven.apache.org/maven2/com/google/ar/core/9.99.0/core-9.99.0.pom
+  Required by:
+      project :sceneview
+BUILD FAILED in 6s
+LOG
+
 cat > "$TMP/disk.log" <<'LOG'
 * What went wrong:
 Execution failed for task ':samples:android-demo:mergeDebugAssets'.
@@ -124,33 +141,14 @@ assert_infra "$TMP/disk.log"    "disk full"
 assert_infra "$TMP/nope.log"    "log file was never written"
 
 echo "── gradle_infra_reason: REAL failures must stay real ──"
-assert_real "$TMP/compile.log"  "unresolved reference (compile break)"
-assert_real "$TMP/testfail.log" "unit test assertion failure"
+assert_real "$TMP/compile.log"       "unresolved reference (compile break)"
+assert_real "$TMP/testfail.log"      "unit test assertion failure"
+assert_real "$TMP/missing-coord.log" "nonexistent dependency coordinate"
 
 echo "── gradle_infra_reason: signal-terminated builds ──"
 for sig in 130 137 143; do
     assert_infra "$TMP/compile.log" "exit $sig overrides the log content" "$sig"
 done
-
-echo "── gradle_task_executed ──"
-cat > "$TMP/uptodate.log" <<'LOG'
-> Task :samples:android-demo:testDebugUnitTest UP-TO-DATE
-> Task :samples:android-demo:verifyRoborazziDebug UP-TO-DATE
-LOG
-cat > "$TMP/executed.log" <<'LOG'
-> Task :samples:android-demo:testDebugUnitTest
-> Task :samples:android-demo:verifyRoborazziDebug
-LOG
-if gradle_task_executed "$TMP/executed.log" ":samples:android-demo:verifyRoborazziDebug"; then
-    ok "an executed task is reported as executed"
-else
-    bad "an executed task was not detected"
-fi
-if gradle_task_executed "$TMP/uptodate.log" ":samples:android-demo:verifyRoborazziDebug"; then
-    bad "an UP-TO-DATE task was wrongly reported as executed"
-else
-    ok "an UP-TO-DATE task is NOT reported as executed"
-fi
 
 echo "── roborazzi_fresh_diff_count ──"
 SUMMARY="$TMP/results-summary.json"
@@ -187,6 +185,21 @@ echo 'not json at all' > "$SUMMARY"
 [ "$(roborazzi_fresh_diff_count "$SUMMARY" "$MARKER")" = "unknown" ] \
     && ok "a CORRUPT report yields 'unknown'" \
     || bad "a corrupt report did not yield 'unknown'"
+
+echo "── gradle_log_tail must never abort its caller ──"
+# release-checklist.sh runs `set -euo pipefail`. `grep -v` exits 1 when nothing
+# survives the boilerplate filter, and pipefail + errexit then killed the caller
+# mid-run — right after a genuine build failure, swallowing every remaining
+# section and the summary. Reproduced in review of PR #3030; pinned here.
+: > "$TMP/empty.log"
+printf '\n* Try:\n> Run with --stacktrace option to get the stack trace.\nBUILD FAILED in 3s\n' > "$TMP/allboiler.log"
+for fixture in empty allboiler; do
+    if bash -c "set -euo pipefail; source '$LIB'; gradle_log_tail '$TMP/$fixture.log' 10 >/dev/null; echo REACHED" 2>/dev/null | grep -q REACHED; then
+        ok "a $fixture log does not abort a 'set -euo pipefail' caller"
+    else
+        bad "gradle_log_tail killed its caller on a $fixture log"
+    fi
+done
 
 echo "── gradle_log_tail ──"
 TAIL_OUT="$(gradle_log_tail "$TMP/compile.log" 20)"

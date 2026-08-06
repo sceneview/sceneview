@@ -162,16 +162,26 @@ echo -e "${CYAN}--- Build Check ---${NC}"
 
 if [ -f "gradlew" ]; then
     echo -e "  Running: ./gradlew assembleDebug (this may take a few minutes)..."
-    # Same rule as pre-push-check.sh: keep Gradle's output, and do not call an
-    # environment failure a build failure. Blocking a release on a dead daemon
-    # (or, worse, "fixing" code that was never broken) costs a whole cycle.
-    ASSEMBLE_LOG="${TMPDIR:-/tmp}/sceneview-release-assembleDebug.log"
+    # Same rule as pre-push-check.sh: keep Gradle's output, and name an
+    # environment failure for what it is instead of calling it a build failure —
+    # "fixing" code that was never broken costs a whole cycle.
+    #
+    # But it stays a BLOCKER. `check … WARN` only increments WARNINGS, and this
+    # script exits 0 whenever BLOCKERS is 0 ("RELEASE POSSIBLE with N
+    # warning(s)"), so a WARN here would let a release be tagged with
+    # `assembleDebug` never having run. That is the rule pre-push-check.sh
+    # states, and it must not be inverted on the higher-stakes surface: a gate
+    # that did not run is not a gate that passed. Classification buys an honest
+    # message, never a pass.
+    ASSEMBLE_TMP="${TMPDIR:-/tmp}"
+    ASSEMBLE_LOG="${ASSEMBLE_TMP%/}/sceneview-release-assembleDebug.log"
+    ( umask 077 && : > "$ASSEMBLE_LOG" )   # 0600 — Gradle output can quote injected key values
     if gradle_run "$ASSEMBLE_LOG" assembleDebug; then
         check "Android assembleDebug" "PASS" ""
     else
         ASSEMBLE_REASON="$(gradle_infra_reason "$ASSEMBLE_LOG" $?)"
         if [ -n "$ASSEMBLE_REASON" ]; then
-            check "Android assembleDebug" "WARN" "did not run — Gradle infrastructure failure: $ASSEMBLE_REASON (re-run; log: $ASSEMBLE_LOG)"
+            check "Android assembleDebug" "FAIL" "did not run to a verdict — Gradle infrastructure failure: $ASSEMBLE_REASON (re-run; log: $ASSEMBLE_LOG)"
         else
             check "Android assembleDebug" "FAIL" "Build failed (log: $ASSEMBLE_LOG)"
             gradle_log_tail "$ASSEMBLE_LOG" 15

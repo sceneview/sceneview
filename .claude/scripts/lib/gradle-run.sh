@@ -59,6 +59,14 @@ gradle_run() {
 # Patterns are deliberately narrow and quoted from real Gradle/JVM output. A
 # pattern that is too broad would relabel genuine build failures as "infra",
 # which is the same class of lie in the other direction.
+#
+# ⚠️ Do NOT add a bare `Could not resolve all (files|dependencies|artifacts) for
+# configuration` row, however tempting. Gradle prints that same first line both
+# when the repository is unreachable AND when a committed coordinate simply does
+# not exist (a typo, an unpublished version, a yanked artifact) — a code defect.
+# Only the transport rows below discriminate: a nonexistent coordinate produces
+# `Could not find <coord>` with no transport error, so it correctly falls
+# through to "real failure". That row was here and was removed in review.
 gradle_infra_reason() {
     local log="$1"
     local code="${2:-1}"
@@ -95,7 +103,6 @@ java\.lang\.OutOfMemoryError => the build ran out of JVM memory
 There is insufficient memory for the Java Runtime => the host ran out of memory for the JVM
 No space left on device => the disk is full
 error=24, Too many open files => the host hit its open-file limit
-Could not resolve all (files|dependencies|artifacts) for configuration => dependency resolution failed (network or repository problem)
 (UnknownHostException|Connection refused|Connection reset|Read timed out|Network is unreachable) => the network was unreachable during the build
 Could not (GET|HEAD) ' => a dependency repository could not be reached
 Received fatal alert: => a TLS error while contacting a repository
@@ -114,27 +121,18 @@ gradle_log_tail() {
     local log="$1"
     local lines="${2:-20}"
     [ -f "$log" ] || { echo "      (no log file at $log)"; return 0; }
+    # The trailing `|| true` is load-bearing, and a `return 0` on the next line
+    # is NOT a substitute for it. `grep -v` exits 1 when NOTHING survives the
+    # filter (an empty log, or one that is all boilerplate). Under
+    # `set -euo pipefail` — which release-checklist.sh uses — pipefail promotes
+    # that to the pipeline's status and errexit kills the caller AT THE
+    # PIPELINE, before any later statement in this function can run: mid-report,
+    # right after a genuine build failure, swallowing every remaining section
+    # and the summary. Putting the pipeline in a `||` list exempts it from
+    # errexit. A helper that only prints must never be able to end its caller.
     grep -vE "^(\* )?(Try:|> Run with|Get more help at|Deprecated Gradle features|You can use|See https://docs\.gradle\.org|BUILD FAILED in|[[:space:]]*$)" "$log" \
-        | tail -n "$lines" | sed 's/^/      /'
-}
-
-# Did Gradle actually EXECUTE the given task, as opposed to skipping it as
-# UP-TO-DATE / FROM-CACHE / NO-SOURCE? Requires `--console=plain` output (which
-# gradle_run always uses). Returns 0 when the task ran.
-#
-#   gradle_task_executed <logfile> <task-path>
-#
-# `verifyRoborazziDebug` reports UP-TO-DATE whenever nothing it declares as an
-# input changed — and the golden PNGs under src/test/snapshots/ are NOT declared
-# inputs (measured 2026-08-06: a golden mutated by 8000 red pixels still gave
-# `> Task :samples:android-demo:verifyRoborazziDebug UP-TO-DATE` and
-# `BUILD SUCCESSFUL in 1s`). So "exit 0" alone does not mean "screenshots were
-# compared".
-gradle_task_executed() {
-    local log="$1"
-    local task="$2"
-    [ -f "$log" ] || return 1
-    grep -qE "^> Task ${task}\$" "$log"
+        | tail -n "$lines" | sed 's/^/      /' || true
+    return 0
 }
 
 # ── Roborazzi ───────────────────────────────────────────────────────────────

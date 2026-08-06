@@ -324,12 +324,23 @@ jobs:
         # plain sub-minute JVM tests, no emulator. Before #2733 this suite
         # gated nothing — only `jsTest` ran it, marked informational.
         run: |
+          # `:samples:android-demo:testDebugUnitTest --rerun` is NOT redundant
+          # with verifyRoborazziDebug above it. The goldens under
+          # samples/android-demo/src/test/snapshots/ are not declared inputs of
+          # any task, so with a restored Gradle cache the comparison comes back
+          # UP-TO-DATE having read no golden — measured locally 2026-08-06 on a
+          # golden mutated by 8000 red pixels: `verifyRoborazziDebug UP-TO-DATE`
+          # / `BUILD SUCCESSFUL in 1s`. A PR whose only change IS a golden PNG
+          # would go green on this, the leg that actually gates merge. `--rerun`
+          # binds to the task it follows, so it forces only the demo module's
+          # test task. See #3029 and .claude/scripts/lib/gradle-run.sh.
           ./gradlew \
             :sceneview:testDebugUnitTest \
             :arsceneview:testDebugUnitTest \
             :sceneview-core:androidTest \
             :samples:common:testDebugUnitTest \
             :samples:android-demo:verifyRoborazziDebug \
+            :samples:android-demo:testDebugUnitTest --rerun \
             --stacktrace
 
       - name: Upload unit test reports
