@@ -47,7 +47,10 @@ npm install github:sceneview/sceneview#v4.0.9 --save  # path includes react-nati
 cd ios && pod install
 ```
 
-Requires iOS 17+ and Xcode 15+.
+Requires iOS 18+ and Xcode 15+ — `SceneViewSwift`'s own floor is iOS 18.0
+(`SceneViewSwift/Package.swift`), so the host app's `Podfile` must declare
+`platform :ios, '18.0'` rather than React Native's `min_ios_version_supported`
+(13.4), or `pod install` fails to resolve this module.
 
 **The host app must add `SceneViewSwift` via Swift Package Manager.**
 `SceneViewSwift` ships as a SwiftPM package only (no CocoaPods spec), so this
