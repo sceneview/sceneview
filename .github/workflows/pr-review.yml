@@ -351,7 +351,26 @@ jobs:
             fi
             # Frontmatter only: stop at the closing `---`, so a `tools:` line in
             # the prose below cannot satisfy the check.
-            FOUND="$(awk 'NR==1 && $0!="---" {exit} NR>1 && /^---[[:space:]]*$/ {exit} /^tools:/ {print; exit}' "$FILE")"
+            #
+            # ⛔ COUNT the key, never take the FIRST one. The original version
+            # ended in `{print; exit}`, which stopped at the first `tools:` line
+            # and was exact-matched — so a file carrying the key TWICE
+            #     tools: Read, Glob, Grep
+            #     tools: Read, Glob, Grep, Bash
+            # passed this gate on the benign line while a YAML loader resolving
+            # duplicate keys last-wins would hand the reviewer a shell. Caught by
+            # the agent review on #3025; the six mutants that step shipped with
+            # did not include a duplicate key, which is exactly the shape a
+            # hostile edit takes. Duplicates now fail rather than resolve: this
+            # gate does not get to guess which line the loader honours.
+            FOUND="$(awk '
+              NR==1 && $0!="---" { exit }
+              NR>1 && /^---[[:space:]]*$/ { exit }
+              /^tools:/ { n++; last=$0 }
+              END {
+                if (n == 1) print last
+                else if (n > 1) printf "<%d duplicate tools: keys>", n
+              }' "$FILE")"
             if [ "$FOUND" != "$EXPECTED" ]; then
               echo "::error title=CI reviewer is not read-only::${FILE} declares '${FOUND:-<no tools: line>}' — expected '${EXPECTED}'. A reviewer with any other toolset can modify the checkout it is judging (#3016). Refusing to review."
               RC=1
