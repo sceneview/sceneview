@@ -79,13 +79,36 @@ fi
 } | jq -s -c '
     group_by(.name)
     | map(
-        map(select(.__src == "now")) as $now
-        | (if ($now | length) > 0 then
-             ($now | max_by(.id))
+        # MONOTONE IN `id`, not "live always wins".
+        #
+        # "The live read is authoritative for a name it still reports" is
+        # false when a response drops the FRESH run while still listing the
+        # SUPERSEDED one — the same instability #3018 is built on, and #2492
+        # documents that both runs coexist at one head SHA in this repo.
+        # Measured on the naive rule: a read carrying only the old
+        # `completed/skipped` run overwrote a remembered `in_progress` fresh
+        # run, `pending` emptied, and the gate passed green while the fresh
+        # check had never concluded. The mirror case reddened a PR whose
+        # checks had already been observed `success`.
+        #
+        # Check-run ids increase monotonically with creation — the caller
+        # already relies on that for the #2492 collapse — so take the highest
+        # id seen for this name from EITHER side. If it came from the live
+        # read, use it; if the live read no longer carries it, it is vanished.
+        #
+        # The `.__src == "now"` sort key is the explicit tie-break: a re-run
+        # REUSES its check-run id rather than creating a new one (measured on
+        # #3015, id 92399415842 across both attempts), so `mem` and `now` can
+        # hold the same id for the same name. On that tie the live record must
+        # win, otherwise a check that came back would be reported vanished
+        # forever. Written out rather than left to jq max_by/group_by ordering,
+        # which happens to give the same answer but is not a documented
+        # guarantee.
+        (sort_by(.id, (if .__src == "now" then 1 else 0 end)) | last) as $win
+        | (if $win.__src == "now" then
+             $win
            else
-             (map(select(.__src == "mem")) | max_by(.id)
-              | .status = "vanished"
-              | .conclusion = null)
+             ($win | .status = "vanished" | .conclusion = null)
            end)
         | del(.__src)
       )

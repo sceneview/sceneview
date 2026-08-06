@@ -69,6 +69,22 @@ pending_of() { jq -r "$PENDING_JQ"; }
 # order and to where a renamed check happens to sort.
 summarise() { jq -r '"\(.name)=\(.status)/\(.conclusion // "null")"' | sort; }
 
+# `ADVISORY_CHECKS` is extracted too, for the same reason as the selector and
+# `REQUIRED_CHECKS`: a hardcoded copy keeps passing after the workflow's list
+# changes, which is the drift this suite exists to prevent.
+ADVISORY_FROM_YML=$(awk '
+  /^ *ADVISORY_CHECKS: \|/ { grab = 1; next }
+  grab {
+    if ($0 !~ /^[[:space:]]{10,}[^[:space:]#]/) exit
+    sub(/^[[:space:]]*/, "")
+    print
+  }
+' "$GATE_YML")
+if [ -z "$ADVISORY_FROM_YML" ]; then
+  echo -e "  ${RED}FAIL${NC}  could not extract ADVISORY_CHECKS from $GATE_YML"
+  exit 1
+fi
+
 echo "== CI Gate observation ledger (#3018) =="
 
 # ---------------------------------------------------------------------------
@@ -122,14 +138,17 @@ assert_eq "a vanished check is PENDING, so the wait loop cannot break" \
 "$(printf '%s\n' 'Compile KMP core' "$CORE_CHECK" | sort)" \
 "$(printf '%s\n' "$merged" | pending_of | sort)"
 
-# The CORE-CHECK GUARD reads `observed_names` off this same merged view and
+# The CORE-CHECK GUARD builds `observed_names` off this same merged view and
 # disarms itself when it sees ZERO core checks (`any_core_seen != true` →
-# `missing_core=""` in ci-gate.yml) — the docs-only signature, and one of
-# the three things that let #3015 through. A vanished core check must stay
-# visible so the guard stays armed.
-assert_eq "a vanished CORE check stays in observed_names (guard stays armed)" \
+# `missing_core=""` in ci-gate.yml) — the docs-only signature, and one of the
+# three things that let #3015 through. This asserts only the ONE link this
+# script controls: the name survives into `observed_names`. It does NOT drive
+# the guard, the advisory filter or the break condition — those live in
+# ci-gate.yml's poll loop and are not exercised by any test in this repo. See
+# #3024; do not read a pass here as "the guard is proven armed".
+assert_eq "a vanished CORE check survives into observed_names" \
 "$CORE_CHECK" \
-"$(printf '%s\n' "$merged" | jq -r '.name' | grep -xF "$CORE_CHECK" || true)"
+"$(printf '%s\n' "$merged" | jq -r '.name' | grep -xF -- "$CORE_CHECK" || true)"
 
 # ---------------------------------------------------------------------------
 # 3. The check comes back from the re-run: its FRESH record wins. This is what
@@ -160,7 +179,7 @@ assert_eq "an unsuperseded cancelled passes through as cancelled" \
 '{"name":"Timeout probe","status":"completed","conclusion":"cancelled","id":7}' "$out"
 set +e
 printf '%s\n' "$out" | jq -r '[.conclusion // "", .name] | @tsv' \
-  | ADVISORY_CHECKS="Coverage"$'\n'"Agent review" bash "$SCRIPT_DIR/ci-gate-aggregate.sh" >/dev/null 2>&1
+  | ADVISORY_CHECKS="$ADVISORY_FROM_YML" bash "$SCRIPT_DIR/ci-gate-aggregate.sh" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "…and still fails the gate end-to-end (merge → aggregate)" "1" "$rc"
@@ -203,6 +222,46 @@ out=$(printf '%s\n' '{"name":"Lint","status":"completed","conclusion":"success",
   | bash "$MERGE" "/nonexistent/ci-gate-ledger-$$")
 assert_eq "a missing ledger file is treated as empty" \
 '{"name":"Lint","status":"completed","conclusion":"success","id":1}' "$out"
+
+# ---------------------------------------------------------------------------
+# 8b. A READ THAT REGRESSED TO AN OLDER RUN. "The live read is authoritative
+#     for a name it still reports" is false when a response drops the FRESH
+#     run while still listing the SUPERSEDED one — the same instability #3018
+#     is built on, and #2492 documents that both coexist at one head SHA here.
+#     Both directions were measured GREEN/RED-wrong before the merge was made
+#     monotone in `id`.
+# ---------------------------------------------------------------------------
+: > "$LEDGER"
+# Poll 1: old run (id 4, completed) and fresh run (id 24, in progress); the
+# caller's collapse keeps id 24.
+run "$LEDGER" '{"name":"Unit tests","status":"in_progress","conclusion":null,"id":24}' > "$LEDGER".n
+mv "$LEDGER".n "$LEDGER"
+# Poll 2: only the OLD run comes back.
+regressed=$(run "$LEDGER" '{"name":"Unit tests","status":"completed","conclusion":"skipped","id":4}')
+assert_eq "a read that regressed to an older run does not retire the fresh one" \
+"Unit tests=vanished/null" "$(printf '%s\n' "$regressed" | summarise)"
+assert_eq "…so it stays PENDING instead of concluding with no verdict" \
+"Unit tests" "$(printf '%s\n' "$regressed" | pending_of)"
+
+# Mirror case: the fresh run had already been observed SUCCESS. Regressing to
+# the superseded `cancelled` must not redden a PR that was seen green.
+: > "$LEDGER"
+run "$LEDGER" '{"name":"Unit tests","status":"completed","conclusion":"success","id":21}' > "$LEDGER".n
+mv "$LEDGER".n "$LEDGER"
+regressed=$(run "$LEDGER" '{"name":"Unit tests","status":"completed","conclusion":"cancelled","id":1}')
+assert_eq "regressing to a superseded cancelled does not redden an observed success" \
+"Unit tests=vanished/null" "$(printf '%s\n' "$regressed" | summarise)"
+
+# And the tie that keeps the real #3015 recovery green: a re-run REUSES its
+# check-run id (measured, id 92399415842 across both attempts of #3015), so
+# `mem` and `now` hold the same id. The live record must win that tie.
+: > "$LEDGER"
+run "$LEDGER" '{"name":"Compile KMP core","status":"completed","conclusion":"cancelled","id":92399415842}' > "$LEDGER".n
+mv "$LEDGER".n "$LEDGER"
+retried=$(run "$LEDGER" '{"name":"Compile KMP core","status":"completed","conclusion":"success","id":92399415842}')
+assert_eq "a re-run reusing its check-run id still wins the tie (stays green)" \
+"Compile KMP core=completed/success" "$(printf '%s\n' "$retried" | summarise)"
+assert_eq "…and nothing is left pending" "" "$(printf '%s\n' "$retried" | pending_of)"
 
 # ---------------------------------------------------------------------------
 # 9. HOSTILE CHECK-RUN NAMES. A check-run name is fork-controlled: a fork PR
@@ -272,7 +331,9 @@ if [ -z "$RUNNING_LINE" ]; then
   echo -e "  ${RED}FAIL${NC}  could not extract the running= line from $GATE_YML"
   exit 1
 fi
+# shellcheck disable=SC2034  # both are read by the eval'd line below
 pending=$(printf '%s\n' '-v' 'Unit tests' 'Lint')
+# shellcheck disable=SC2034  # both are read by the eval'd line below
 vanished=$(printf '%s\n' '-v')
 running=""
 eval "$RUNNING_LINE"

@@ -167,12 +167,22 @@ name: CI Gate
 # which is the #2117 trade and needs its own measurement. Tracked in #3024;
 # do not read the section above as "the class is closed".
 #
-# RECOVERY FROM A PERMANENT VANISH
-# --------------------------------
+# RECOVERY FROM A PERMANENT VANISH — AND WHY IT IS NOT A ONE-CLICK FIX
+# --------------------------------------------------------------------
 # If a check never comes back (a deleted workflow run, a removed check suite),
-# this gate burns its remaining deadline and exits red. The escape hatch is to
-# re-run THIS check: a new gate run gets a fresh ledger and a stable read, so
-# recovery is about a minute — not a 50-minute wait, and not a forced push.
+# this gate burns its remaining deadline and exits red, naming what is missing.
+#
+# ⛔ Re-running THIS check is the obvious response and it is NOT safe on its
+# own. A new gate run starts with an EMPTY ledger, so if the Checks API is
+# still returning a partial view, the restarted gate has nothing remembered,
+# the CORE-CHECK GUARD reads the docs-only signature, and it passes GREEN —
+# converting this workflow's correct red into exactly the #3015 failure it
+# exists to prevent. Measured, not hypothesised (#3024).
+#
+# The safe order is: first make the missing checks real again — re-run the
+# WORKFLOW that owns them, or push a commit — and only then re-run this gate,
+# after confirming the checks are visible on the PR. Never re-run this gate as
+# a way of getting past its own red.
 #
 # Branch protection on `main` requires ONLY this `CI Gate` check.
 
