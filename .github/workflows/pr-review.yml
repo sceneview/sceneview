@@ -634,7 +634,17 @@ jobs:
         if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
         run: |
           set -uo pipefail
-          DIRT="$(git status --porcelain)"
+          # A FAILED `git status` is not a clean tree. Assigning it straight into
+          # DIRT made this step fail-OPEN: a non-zero exit leaves the variable
+          # empty and the assertion then announces a pristine checkout it never
+          # managed to look at. Reproduced outside a repository: git printed
+          # "fatal: not a git repository" and the step still said "Working tree
+          # clean". Same class as "absent is not zero", which this workflow
+          # already learned the hard way for `permission_denials_count` below.
+          if ! DIRT="$(git status --porcelain)"; then
+            echo "::error title=Clean-tree assertion could not run::git status failed in ${PWD}, so this run proves nothing about the checkout. Absent is not clean — treating it as contaminated."
+            exit 1
+          fi
           if [ -z "$DIRT" ]; then
             echo "Working tree clean — the review did not mutate the checkout."
             exit 0
