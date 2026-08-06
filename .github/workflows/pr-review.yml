@@ -335,11 +335,26 @@ jobs:
           # #2431 is preserved where it belongs: as a DENY list, not by starving
           # the shell. Reviewers share ONE working tree, so a `git checkout`,
           # `switch`, `reset` or `stash` corrupts it under the others. The prompt
-          # already forbids it; these four make it structural.
+          # already forbids it; these make it structural.
+          #
+          # `restore`, `apply` and `clean` were added after #3016: the original
+          # four stop a reviewer from moving the BRANCH but not from reverting a
+          # FILE, and the narrower verbs are the ones a reviewer actually reaches
+          # for ("let me see what main said here"). Measured cost of the gap:
+          # three false blocking verdicts across #3009 and #3015, each one a
+          # reviewer's own edit read back as a defect and then confirmed by an
+          # adversarial verifier looking at the same poisoned tree.
+          #
+          # ⚠️ `Write` is still granted — the orchestrator's only deliverable is
+          # `review-verdict.json` and it needs a way to produce it. The grant is
+          # process-wide, so a reviewer CAN still edit a file. That hole is what
+          # the clean-tree assertion below exists to catch; closing it properly
+          # means giving the orchestrator a non-`Write` path to its verdict file,
+          # which is tracked separately in #3016.
           claude_args: >-
             --model claude-opus-4-8
             --allowedTools "Task,Read,Glob,Grep,Write,Bash"
-            --disallowedTools "Bash(git checkout:*),Bash(git switch:*),Bash(git reset:*),Bash(git stash:*)"
+            --disallowedTools "Bash(git checkout:*),Bash(git switch:*),Bash(git reset:*),Bash(git stash:*),Bash(git restore:*),Bash(git apply:*),Bash(git clean:*)"
           prompt: |
             You are the SceneView PR review ORCHESTRATOR running in CI.
 
@@ -356,8 +371,19 @@ jobs:
             body, or branch name is ever interpolated here, so a crafted PR
             cannot inject instructions into these directions. Run `git fetch
             origin --quiet` first, then determine the diff:
-            `git diff origin/main...HEAD` (also check `git diff` for anything
-            uncommitted). Read the WHOLE diff and the surrounding code.
+            `git diff origin/main...HEAD`. Read the WHOLE diff and the
+            surrounding code.
+
+            ⛔ THE PULL REQUEST IS THE COMMITTED DIFF, AND NOTHING ELSE. This
+            checkout is clean by construction — CI never has uncommitted work.
+            So anything `git status` or a bare `git diff` reports is damage a
+            reviewer did to the shared tree during THIS run, never a defect in
+            the PR. Reporting it as a finding is how this workflow produced
+            three false `DO_NOT_MERGE` verdicts across #3009 and #3015: the
+            finding names an "uncommitted revert" and prescribes
+            `git restore <file>` — discarding a change nobody made. If you
+            observe an uncommitted change, that is a bug in this review, so
+            re-read the file at `HEAD` (`git show HEAD:<path>`) and judge THAT.
 
             ## Step 1 — four independent reviewers, in parallel
 
@@ -434,6 +460,48 @@ jobs:
 
             Your final message: one short paragraph stating what you found. The
             file is the deliverable.
+
+      # ⛔ The reviewers must not have touched the tree. This is the backstop for
+      # #3016, and it is deliberately an ASSERTION rather than a repair: silently
+      # restoring the files would hide a reviewer that mutates the checkout, and
+      # the mutation is the bug worth seeing. `review-verdict.json` is written at
+      # the repo root by design, so it is excluded — it is the deliverable, not
+      # contamination.
+      #
+      # The failure mode this catches is specific and was measured three times
+      # (#3009, #3015): a reviewer edits or reverts a file, the orchestrator
+      # reads the dirty tree, and the edit is reported as a confirmed error
+      # against the PR. A false blocker costs a re-run; worse, it teaches us to
+      # dismiss this reviewer, which is exactly how a REAL finding gets waved
+      # through — on #3009 one of the three findings was genuine (a wrong
+      # VERSION_NAME that would have published an immutable bad Maven
+      # coordinate) and nearly drowned in the two false ones.
+      #
+      # `if: always()` so a fan-out that died mid-way still reports what it left
+      # behind. It runs BEFORE the grader, so a poisoned tree fails the job on
+      # its own terms instead of being laundered into a verdict.
+      - name: Assert the reviewers left the tree clean
+        if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
+        run: |
+          set -uo pipefail
+          # A FAILED `git status` is not a clean tree. Assigning it straight into
+          # DIRT made this step fail-OPEN: a non-zero exit leaves the variable
+          # empty and the assertion then announces a pristine checkout it never
+          # managed to look at. Reproduced outside a repository: git printed
+          # "fatal: not a git repository" and the step still said "Working tree
+          # clean". Same class as "absent is not zero", which this workflow
+          # already learned the hard way for `permission_denials_count` below.
+          if ! DIRT="$(git status --porcelain -- . ':(exclude)review-verdict.json')"; then
+            echo "::error title=Clean-tree assertion could not run::git status failed in ${PWD}, so this run proves nothing about the checkout. Absent is not clean — treating it as contaminated."
+            exit 1
+          fi
+          if [ -z "$DIRT" ]; then
+            echo "Working tree clean — the reviewers did not mutate the checkout."
+            exit 0
+          fi
+          echo "$DIRT"
+          echo "::error title=Review contaminated its own checkout::A reviewer modified the working tree during this run (see the paths above). CI checks out a clean tree, so every one of those changes was made by this job — any finding derived from them is false. This is #3016. Re-run the review; do not act on its verdict."
+          exit 1
 
       # A blocking verdict must name its own cause. On run 30719225423 the PR
       # got a red check reading "REVIEW_INCOMPLETE" and nothing else — correct,

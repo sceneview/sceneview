@@ -31,7 +31,7 @@ It is a *viewer subset*, published as a **separate, additive artifact**. Nothing
 |---|---|---|---|
 | Android | delegates to the existing `SceneView { }` composable | Filament | implemented |
 | iOS | `UIKitView` hosting an app-supplied `UIView` (see `SceneViewerBridge`) | RealityKit | implemented — the app registers the factory |
-| Desktop (JVM) | offscreen render → pipelined `readPixels` → Skia image | Filament, via a vendored FFM binding | **planned** — draws a placeholder today |
+| Desktop (JVM) | offscreen render → pipelined `readPixels` → Skia image | Filament, via an FFM binding still to be vendored | **planned** — draws a placeholder today |
 
 The point is that **one API does not imply one renderer.** RealityKit stays the Apple
 renderer — it is what ARKit and visionOS align with, and it is what the published App
@@ -111,17 +111,35 @@ Why vendor rather than depend:
   (`git ls-files '*.filamat'`), and v4.1.0 already crashed 10 demos over exactly one such
   mismatch.
 
+### The copy is taken when the spike starts, not before
+
+The tree was vendored, landed on `main` in `c01ae5d87`, and was removed again days later
+without ever being built. No `settings.gradle` referenced it, so 31 700 lines sat in
+every checkout compiling nothing — while its own §4(b) guard `git clone`d a
+single-maintainer GitHub repository on every CI run and failed the job if that clone
+failed, putting every pull request in the monorepo behind one individual's repo staying
+reachable.
+
+The decision above is unchanged; only its timing moved. Restoring the copy is one
+command and the full procedure — including the attribution and CI obligations that must
+land in the same PR — is in
+[desktop-filament.md § Re-vendoring the binding](desktop-filament.md#re-vendoring-the-binding).
+
 ### Attribution is mandatory, not optional
 
 Apache-2.0 permits this copy and sets the conditions for it. All of the following are
-required, and a missing one makes the copy a licence violation:
+required whenever the tree is present, and a missing one makes the copy a licence
+violation:
 
 - The upstream `LICENSE` ships inside `third_party/filament-kmp/`.
 - A `NOTICE` names **Èric Bitriá Ribes** as the original author, links
-  <https://github.com/Erkko68/filament-kmp>, and records the copied version (`0.3.0`).
+  <https://github.com/Erkko68/filament-kmp>, and records the copied version, both in
+  that directory and in the repository's root `NOTICE`.
 - Files we change carry a prominent notice that they were modified.
 - Upstream sources carry no per-file copyright headers, so attribution lives at
   directory level — that is the correct form here, not an omission.
+- A CI job actually runs `diff-upstream.sh`. Attribution that nothing verifies is a
+  claim, not a compliance position.
 
 `assets/CREDITS.md` is generated; the third-party entry must flow through its generator
 rather than being hand-edited.

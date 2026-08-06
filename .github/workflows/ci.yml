@@ -324,12 +324,23 @@ jobs:
         # plain sub-minute JVM tests, no emulator. Before #2733 this suite
         # gated nothing — only `jsTest` ran it, marked informational.
         run: |
+          # `:samples:android-demo:testDebugUnitTest --rerun` is NOT redundant
+          # with verifyRoborazziDebug above it. The goldens under
+          # samples/android-demo/src/test/snapshots/ are not declared inputs of
+          # any task, so with a restored Gradle cache the comparison comes back
+          # UP-TO-DATE having read no golden — measured locally 2026-08-06 on a
+          # golden mutated by 8000 red pixels: `verifyRoborazziDebug UP-TO-DATE`
+          # / `BUILD SUCCESSFUL in 1s`. A PR whose only change IS a golden PNG
+          # would go green on this, the leg that actually gates merge. `--rerun`
+          # binds to the task it follows, so it forces only the demo module's
+          # test task. See #3029 and .claude/scripts/lib/gradle-run.sh.
           ./gradlew \
             :sceneview:testDebugUnitTest \
             :arsceneview:testDebugUnitTest \
             :sceneview-core:androidTest \
             :samples:common:testDebugUnitTest \
             :samples:android-demo:verifyRoborazziDebug \
+            :samples:android-demo:testDebugUnitTest --rerun \
             --stacktrace
 
       - name: Upload unit test reports
@@ -694,21 +705,6 @@ jobs:
         shell: bash
         run: bash .claude/scripts/check-sceneview-skill.sh
 
-      # Apache-2.0 §4(b) guard for the vendored filament-kmp copy. This is
-      # licence compliance, not tidiness: `third_party/filament-kmp/NOTICE`
-      # claims the copy is byte-identical to upstream 0.3.0, and an unnoticed
-      # edit turns that claim false. It also pins the tree against
-      # MANIFEST.sha256 in both directions, so a deleted file, an added build
-      # script, an added binary blob or a symlink cannot slip in unreviewed.
-      # Runs unconditionally. Gating it on "did third_party/ change?" would
-      # need history this shallow checkout does not have, and the whole cost is
-      # a 2 s / 32 MB `--depth 1` clone — cheaper than the gate being skipped
-      # on the one PR that mattered.
-      - name: Verify vendored filament-kmp matches upstream
-        if: always()
-        shell: bash
-        run: bash third_party/filament-kmp/diff-upstream.sh
-
       # Archived SPM mirror URL guard — the `sceneview/sceneview-swift` SPM
       # mirror was archived in PR #1215; SceneViewSwift now resolves from the
       # monorepo root Package.swift. Any NEW reference to the dead mirror URL
@@ -895,6 +891,21 @@ jobs:
         if: always()
         shell: bash
         run: bash .claude/scripts/test-context-budget.sh
+
+      # Gradle failure classification (lib/gradle-run.sh). The gate scripts used
+      # to run `./gradlew <task> --quiet 2>/dev/null` and translate ANY non-zero
+      # exit into one hard-coded diagnosis, with the stderr that would have
+      # contradicted it thrown away. Measured 2026-08-06: "Android screenshot
+      # regression detected" when Gradle had actually died of daemon contention,
+      # reproduced identically on a pristine clone of main. The classifier now
+      # decides, and it can fail in BOTH directions — too narrow and the
+      # false-red comes back, too broad and a genuine compile break is waved
+      # through as "infrastructure". Fixture-based (synthetic Gradle logs, no
+      # Gradle), with a mutation test on the pattern table.
+      - name: Self-test Gradle failure classification
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-gradle-run.sh
 
       # android_cli_install_and_launch (#2990). The helper used to `return $?`
       # from `android run`. On a real emulator that command printed two

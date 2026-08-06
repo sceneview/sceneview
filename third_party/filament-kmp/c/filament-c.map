@@ -1,9 +1,0 @@
-/* Seal the combined JVM shared lib: export only the Fila* C API (FFM loaderLookup
-   needs nothing else); filament::/utils:: C++ internals stay local to avoid symbol
-   clashes with other libs in the host process. macOS twin: -exported_symbol _Fila*. */
-{
-    global:
-        Fila*;
-    local:
-        *;
-};
