@@ -4,7 +4,7 @@ import simd
 
 /// What a tap landed on, and where that thing is.
 ///
-/// Produced by ``SceneView/onEntityTapped(hit:)``. The distinction from the entity-only
+/// Produced by ``SceneView/onEntityTapHit(_:)``. The distinction from the entity-only
 /// ``SceneView/onEntityTapped(_:)`` is the whole point of it: the entity tells you
 /// *what* was hit, this adds *where it is*, which is what a host needs to report a
 /// position and a distance-from-camera.

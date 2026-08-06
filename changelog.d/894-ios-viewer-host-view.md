@@ -12,8 +12,11 @@
   the value changes so it does not fight a live drag), `onCameraChanged(_:)` (the camera
   read-back — fired for drag, pinch, auto-rotate and re-framing alike), `cameraGesturesEnabled(_:)`
   (freeze the gestures without handing the camera to Apple's `realityViewCameraControls`,
-  which `CameraControlMode.none` does), and `onEntityTapped(hit:)` (tap plus a world-space
-  position, a distinct argument label so no existing call site becomes ambiguous).
+  which `CameraControlMode.none` does), and `onEntityTapHit(_:)` (tap plus a world-space
+  position). The distinct *base* name is deliberate and was arrived at the hard way: an
+  overload distinguished only by a `hit:` label does not protect existing call sites,
+  because an unlabelled trailing closure ignores the label — measured, every published
+  `.onEntityTapped { entity in }` snippet stopped compiling.
 - **`CameraState` is now genuinely two-way on iOS.** Gestures write into it and writes
   drive the camera, verified on the iOS 26.3 simulator: a 180-point drag moved the camera
   to the arithmetically expected −51.6° and reported exactly that back. A pose the renderer

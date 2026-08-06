@@ -147,24 +147,51 @@ public struct ModelNode: @unchecked Sendable {
     /// ```
     ///
     /// - Parameters:
-    ///   - remoteURL: An HTTP or HTTPS URL pointing to a USDZ or Reality file.
+    ///   - remoteURL: An HTTP or HTTPS URL pointing to a USDZ or Reality file. Any other
+    ///     scheme throws `URLError(.unsupportedURL)` — this is now enforced, not merely
+    ///     documented. `URLSession` will happily fetch a `file://` URL, so a caller
+    ///     forwarding a user- or network-supplied string could otherwise turn this into
+    ///     a local-file read. Load a local file with ``load(contentsOf:enableCollision:)``.
     ///   - enableCollision: Whether to generate collision shapes for hit testing.
-    ///   - timeout: Download timeout in seconds (default: 60).
+    ///   - timeout: Download timeout in seconds (default: 60). An inactivity timeout,
+    ///     **not** a size or wall-clock cap: this method does not limit how many bytes it
+    ///     will write to the temporary directory, so a hostile host trickling a huge body
+    ///     can fill the device's storage. The Android downloader caps at 64 MB; matching
+    ///     it here needs a delegate-based byte counter and is not done yet.
     @MainActor
     public static func load(
         from remoteURL: URL,
         enableCollision: Bool = true,
         timeout: TimeInterval = 60.0
     ) async throws -> ModelNode {
+        // Enforce the scheme this method's own documentation promises. `URL` accepts any
+        // scheme and `URLSession.download` honours `file://` — measured, not assumed: it
+        // returns the bytes of a local path, with a response that is not an
+        // `HTTPURLResponse` and therefore skipped the status check below entirely. So a
+        // caller forwarding an attacker-influenced string (a deep link, a remote-config
+        // value, a bridge argument) turned this into an in-sandbox file read handed to
+        // RealityKit's USD parser. Use `load(contentsOf:)` for a local file — that is
+        // what it is for.
+        guard let scheme = remoteURL.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            throw URLError(.unsupportedURL)
+        }
+
         // Download to temporary file
         var request = URLRequest(url: remoteURL)
         request.timeoutInterval = timeout
 
         let (tempURL, response) = try await URLSession.shared.download(for: request)
+        // Registered immediately: every path below can throw, and `URLSession`'s
+        // downloaded file is the caller's to clean up once the call returns.
+        defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        // Validate HTTP response
-        if let httpResponse = response as? HTTPURLResponse,
-           !(200..<300).contains(httpResponse.statusCode) {
+        // Validate the HTTP response. `guard let`, not `if let` — a conditional cast
+        // silently *skipped* validation for any non-HTTP response rather than rejecting
+        // it, which is precisely the hole the scheme guard above closes from the other
+        // side. Belt and braces: this method only ever speaks http/https now.
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode) else {
             throw URLError(.badServerResponse)
         }
 
@@ -173,11 +200,12 @@ public struct ModelNode: @unchecked Sendable {
         let namedTempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension(ext)
-        try FileManager.default.moveItem(at: tempURL, to: namedTempURL)
-
+        // Also registered before the operation that creates the file, so a `moveItem`
+        // that fails part-way does not leave one behind.
         defer {
             try? FileManager.default.removeItem(at: namedTempURL)
         }
+        try FileManager.default.moveItem(at: tempURL, to: namedTempURL)
 
         return try await load(contentsOf: namedTempURL, enableCollision: enableCollision)
     }

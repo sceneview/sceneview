@@ -11,8 +11,11 @@ import SceneViewSwift
 /// The demo uses `SceneView.onEntityTapped` which resolves to
 /// `SpatialTapGesture().targetedToAnyEntity()` under the hood (see
 /// `SceneView.swift`, `tapGesture`). Each `GeometryNode` calls
-/// `generateCollisionShapes(recursive: false)` at construction time, so
-/// RealityKit can fire the hit-test without extra setup.
+/// `generateCollisionShapes(recursive: false)` at construction time — but a
+/// collision shape alone is NOT enough, which is why this demo's taps did
+/// nothing at all until v4.27.0. `targetedToAnyEntity()` also requires an
+/// `InputTargetComponent`, and nothing in the package set one; `SceneView`
+/// now applies it to the whole content subtree during `buildContent`.
 struct CollisionHitTestDemo: View {
     @State private var highlightedIndices: Set<Int> = []
     @State private var sceneKey = UUID()

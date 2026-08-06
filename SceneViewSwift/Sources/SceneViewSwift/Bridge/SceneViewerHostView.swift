@@ -147,6 +147,17 @@ public final class SceneViewerConfiguration: NSObject {
 ///
 /// And one more worth knowing before you debug a wrong-looking number: the tap position
 /// is the tapped entity's bounds centre, not the exact surface point. See ``SceneTapHit``.
+///
+/// ### Two contracts the compiler will not enforce for you
+///
+/// - **Main thread.** Every member is main-actor isolated, but the `@objc` entry points
+///   are reachable from Objective-C and Kotlin/Native without an actor check. Call
+///   ``applyConfiguration(_:)`` and set the callbacks on the main thread.
+/// - **Do not capture this view, or its owner, strongly in ``onTap`` / ``onCameraMoved``.**
+///   The view holds the callbacks, so `host → state → closure → owner → host` is a cycle
+///   this type cannot break for you. Capture `[weak self]`, or route through a value that
+///   does not own the view — which is what the Compose bridge does, since its closures
+///   capture Compose state rather than any UIKit object.
 @objc(SVSceneViewerHostView)
 @MainActor
 public final class SceneViewerHostView: UIView {
@@ -156,6 +167,10 @@ public final class SceneViewerHostView: UIView {
     private let state = SceneViewerState()
 
     private let hostingController: UIHostingController<SceneViewerRootView>
+
+    /// Identity of the last applied background colour, so the per-frame assignment is
+    /// gated the same way the `@Published` ones are.
+    private var appliedBackgroundKey: String?
 
     /// Called after a tap lands on the model, with `(hit, x, y, z, distanceFromCamera)`.
     ///
@@ -181,6 +196,17 @@ public final class SceneViewerHostView: UIView {
         set { state.onCameraMoved = newValue }
     }
 
+    /// Creates a host with a zero frame, to be sized by its superview.
+    ///
+    /// Declared explicitly rather than left to Swift's automatic initialiser
+    /// inheritance. Whether an *inherited* `init()` survives into the generated
+    /// Objective-C header — which is what Kotlin/Native cinterop reads, and therefore
+    /// what decides whether `SVSceneViewerHostView()` compiles from Kotlin — is not
+    /// something the source makes obvious to a reader. Four lines remove the question.
+    @objc public convenience init() {
+        self.init(frame: .zero)
+    }
+
     @objc public override init(frame: CGRect) {
         let state = self.state
         self.hostingController = UIHostingController(
@@ -203,6 +229,33 @@ public final class SceneViewerHostView: UIView {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("SceneViewerHostView is created in code, not from a nib")
+    }
+
+    /// Attaches the hosting controller to the nearest parent view controller.
+    ///
+    /// Without this the controller's view renders, but the controller sits outside the
+    /// responder and appearance chains: no `viewWillAppear` / `viewDidDisappear`, no
+    /// trait-collection or safe-area inheritance. Tolerable in one bespoke bridge;
+    /// not in the wrapper three of them are meant to share.
+    public override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard let parent = nearestViewController else {
+            hostingController.willMove(toParent: nil)
+            hostingController.removeFromParent()
+            return
+        }
+        guard hostingController.parent !== parent else { return }
+        parent.addChild(hostingController)
+        hostingController.didMove(toParent: parent)
+    }
+
+    private var nearestViewController: UIViewController? {
+        var responder: UIResponder? = next
+        while let current = responder {
+            if let controller = current as? UIViewController { return controller }
+            responder = current.next
+        }
+        return nil
     }
 
     private func installHostedView() {
@@ -273,7 +326,22 @@ public final class SceneViewerHostView: UIView {
         if let reported = state.lastReportedPose, incoming.approximatelyMatches(reported) {
             return
         }
-        guard !incoming.approximatelyMatches(state.cameraPose) else { return }
+        // Everything past the echo check is a genuine write from the app, and it is
+        // stamped with a generation rather than compared by value.
+        //
+        // Comparing by value here is what broke the canonical case: `state.cameraPose`
+        // does not advance during a gesture (every echo returns above), so it stays
+        // frozen at the app's last genuine write. A "reset view" button re-writing that
+        // exact pose after the user has dragged away therefore matched the frozen value
+        // and was dropped — the camera stayed where the finger left it while the app's
+        // state read the reset pose, with nothing to reconcile them. The earlier
+        // verification missed it by only ever writing a pose that had never been
+        // requested before.
+        //
+        // The generation cannot be replaced by simply letting `cameraPose` track the
+        // reported pose either: `SceneView` would then re-apply a one-frame-stale pose on
+        // every echo and yank the camera backwards mid-drag.
+        state.cameraPoseGeneration &+= 1
         state.cameraPose = incoming
     }
 
@@ -308,14 +376,24 @@ public final class SceneViewerHostView: UIView {
         // stays lit by RealityKit's default IBL, where Android's flat-colour environment
         // means "key light only" — a divergence the module README states rather than one
         // this code pretends away.
-        backgroundColor = kind == "color"
-            ? UIColor(
-                red: CGFloat(configuration.environmentRed),
-                green: CGFloat(configuration.environmentGreen),
-                blue: CGFloat(configuration.environmentBlue),
-                alpha: CGFloat(configuration.environmentAlpha)
-            )
-            : .clear
+        // Gated like every `@Published` assignment, and for the same reason: this runs on
+        // every frame of a drag, and an unconditional assignment allocates a fresh
+        // `UIColor` and dirties the layer each time.
+        let backgroundKey = kind == "color"
+            ? "\(configuration.environmentRed),\(configuration.environmentGreen),"
+                + "\(configuration.environmentBlue),\(configuration.environmentAlpha)"
+            : "clear"
+        if backgroundKey != appliedBackgroundKey {
+            appliedBackgroundKey = backgroundKey
+            backgroundColor = kind == "color"
+                ? UIColor(
+                    red: CGFloat(configuration.environmentRed),
+                    green: CGFloat(configuration.environmentGreen),
+                    blue: CGFloat(configuration.environmentBlue),
+                    alpha: CGFloat(configuration.environmentAlpha)
+                )
+                : .clear
+        }
 
         let environment: SceneEnvironment?
         if kind == "hdr", let path = configuration.environmentHdrPath, !path.isEmpty {
@@ -341,18 +419,23 @@ public final class SceneViewerHostView: UIView {
     private static func modelRequest(
         from configuration: SceneViewerConfiguration
     ) -> SceneViewerModelRequest {
-        if let path = configuration.modelAssetPath, !path.isEmpty {
-            return .asset(path)
+        let request = SceneViewerModelRequest.make(
+            assetPath: configuration.modelAssetPath,
+            urlString: configuration.modelURLString,
+            bytes: configuration.modelBytes,
+            bytesFileExtension: configuration.modelBytesFileExtension
+        )
+        guard let request else {
+            // A URL was supplied and refused by the scheme allowlist. Logged rather than
+            // silently degraded: a refused scheme and "no model set" render identically.
+            NSLog(
+                "[SceneViewSwift] SceneViewerHostView rejected modelURLString '%@': "
+                    + "only http and https are accepted",
+                configuration.modelURLString ?? ""
+            )
+            return .none
         }
-        if let string = configuration.modelURLString,
-           !string.isEmpty,
-           let url = URL(string: string) {
-            return .url(url)
-        }
-        if let bytes = configuration.modelBytes, !bytes.isEmpty {
-            return .bytes(bytes, fileExtension: configuration.modelBytesFileExtension)
-        }
-        return .none
+        return request
     }
 }
 
@@ -374,6 +457,11 @@ final class SceneViewerState: ObservableObject {
     /// The payload behind ``modelKey``. Not `@Published` — nothing renders from it
     /// directly, and republishing megabytes of `Data` would invalidate the SwiftUI body.
     var modelRequest: SceneViewerModelRequest = .none
+
+    /// Bumped on every genuine app write to ``cameraPose``. `SceneView` applies on a
+    /// generation change, not on a value change, so re-writing a pose the camera has
+    /// since been dragged away from is honoured instead of dropped as a no-op.
+    @Published var cameraPoseGeneration: Int = 0
 
     @Published var cameraPose = SceneCameraPose(
         azimuth: 0,
@@ -467,6 +555,17 @@ final class SceneViewerContentRoot {
     private var loadedKey: String?
     private var loaded: Entity?
 
+    /// Monotonic token identifying the in-flight load.
+    ///
+    /// The supersession check cannot compare the *key*, because a key is not unique over
+    /// time. An A → B → A swap inside one load window (a model picker; simulator loads
+    /// run for hundreds of milliseconds) gives two live tasks that both observe
+    /// `loadedKey == "asset:A"` on resume — `Entity(named:)` is not cancellation-aware,
+    /// so the first task's continuation still runs — and both attach. The first model
+    /// becomes a child with no reference in `loaded`, so nothing can ever detach it: two
+    /// coincident copies render, and one leaks for the life of the view.
+    private var loadGeneration: Int = 0
+
     /// Loads `request`'s model and swaps it in, replacing whatever was there.
     func sync(to request: SceneViewerModelRequest) async {
         let key = request.key
@@ -475,14 +574,14 @@ final class SceneViewerContentRoot {
         loaded?.removeFromParent()
         loaded = nil
         loadedKey = key
+        loadGeneration &+= 1
+        let generation = loadGeneration
         guard key != nil else { return }
 
         do {
             let node = try await Self.load(request)
-            // The request may have moved on across the `await` — a fast model swap, or
-            // the scene being torn down. Attaching now would put the superseded model on
-            // screen, permanently, since nothing else re-runs this.
-            guard loadedKey == key else { return }
+            // Compare the token captured before the `await`, not the key.
+            guard loadGeneration == generation else { return }
             loaded = node.entity
             entity.addChild(node.entity)
         } catch {
@@ -495,6 +594,14 @@ final class SceneViewerContentRoot {
                 key ?? "(none)",
                 error.localizedDescription
             )
+            // Clear the key so the same model can be requested again. Left set, a
+            // transient failure — a network blip on a `.url`, a resource missing from a
+            // freshly-installed bundle — would be permanent for that model: the caller's
+            // "same key, no reload" guard would refuse every retry, and the user would
+            // have to switch to a different model and back.
+            if loadGeneration == generation {
+                loadedKey = nil
+            }
         }
     }
 
@@ -513,8 +620,13 @@ final class SceneViewerContentRoot {
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension(fileExtension)
-            try data.write(to: url)
+            // `defer` registered BEFORE the write, not after: `Data.write(to:)` is
+            // non-atomic by default, so a throw mid-write (disk full) leaves a partial
+            // file behind — and a cleanup registered on the next line never runs for the
+            // one case that creates the garbage. Removing a file that was never created
+            // is a no-op, so the early registration costs nothing.
             defer { try? FileManager.default.removeItem(at: url) }
+            try data.write(to: url)
             return try await ModelNode.load(contentsOf: url)
         }
     }
@@ -550,12 +662,13 @@ struct SceneViewerRootView: View {
         .autoCenterContent(false)
         .cameraGesturesEnabled(state.cameraGesturesEnabled)
         .cameraPose(state.cameraPose)
+        .cameraPoseGeneration(state.cameraPoseGeneration)
         .onCameraChanged { pose in
             state.reportCameraMoved(pose)
         }
-        .onEntityTapped(hit: { hit in
+        .onEntityTapHit { hit in
             state.reportTap(hit)
-        })
+        }
         .mainLight(.custom(scene.light(for: state.lighting)))
         // The façade exposes one key light. A second, unexposed light would keep lighting
         // the scene with an intensity the caller can neither see nor turn off — the same

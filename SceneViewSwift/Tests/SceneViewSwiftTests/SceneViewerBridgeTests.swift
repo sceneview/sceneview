@@ -195,6 +195,93 @@ final class SceneViewerBridgeTests: XCTestCase {
         )
     }
 
+    // MARK: - URL scheme allowlist
+
+    /// `URLSession.download` honours `file://`. Without this allowlist, a host that
+    /// forwards an attacker-influenced string — a bridge argument, a deep link, a
+    /// remote-config value — turns it into an in-sandbox file read handed to
+    /// RealityKit's USD parser. `ModelSource`'s KDoc promises callers on every platform
+    /// that it cannot; this is the entry point that has to keep the promise.
+    func testModelRequest_refusesEveryNonHttpScheme() {
+        let refused = [
+            "file:///etc/hosts",
+            "FILE:///etc/passwd",
+            "file:///var/mobile/Containers/Data/Application/x/Library/Preferences/a.plist",
+            "ftp://example.com/model.usdz",
+            "data:application/octet-stream;base64,AAAA",
+            "javascript:alert(1)",
+            "/etc/hosts",
+            "models/local.usdz",
+        ]
+        for urlString in refused {
+            XCTAssertNil(
+                SceneViewerModelRequest.make(
+                    assetPath: nil,
+                    urlString: urlString,
+                    bytes: nil,
+                    bytesFileExtension: "usdz"
+                ),
+                "accepted '\(urlString)'"
+            )
+        }
+    }
+
+    func testModelRequest_acceptsHttpAndHttps_whateverTheCase() {
+        for urlString in [
+            "https://example.com/model.usdz",
+            "http://example.com/model.usdz",
+            "HTTPS://example.com/model.usdz",
+        ] {
+            guard case .url(let url)? = SceneViewerModelRequest.make(
+                assetPath: nil,
+                urlString: urlString,
+                bytes: nil,
+                bytesFileExtension: "usdz"
+            ) else {
+                XCTFail("refused '\(urlString)'")
+                continue
+            }
+            XCTAssertEqual(url.absoluteString, urlString)
+        }
+    }
+
+    /// A refusal must be distinguishable from "no model was set". Both end up rendering
+    /// an empty viewport, so if they collapsed to the same value the host could not log
+    /// the difference and a developer would have nothing to go on.
+    func testModelRequest_refusalIsNotTheSameAsNoModel() {
+        let noModel = SceneViewerModelRequest.make(
+            assetPath: nil, urlString: nil, bytes: nil, bytesFileExtension: "usdz"
+        )
+        guard case .none? = noModel else {
+            return XCTFail("an empty configuration should be .none, not nil")
+        }
+        XCTAssertNil(
+            SceneViewerModelRequest.make(
+                assetPath: nil, urlString: "file:///etc/hosts", bytes: nil,
+                bytesFileExtension: "usdz"
+            )
+        )
+    }
+
+    /// The allowlist must not become a way to lose a legitimate asset or byte payload.
+    func testModelRequest_stillResolvesAssetsAndBytes() {
+        guard case .asset(let path)? = SceneViewerModelRequest.make(
+            assetPath: "helmet", urlString: nil, bytes: nil, bytesFileExtension: "usdz"
+        ) else {
+            return XCTFail("asset path was dropped")
+        }
+        XCTAssertEqual(path, "helmet")
+
+        guard case .bytes(let data, let ext)? = SceneViewerModelRequest.make(
+            assetPath: nil, urlString: nil, bytes: Data([1, 2, 3]),
+            bytesFileExtension: "reality"
+        ) else {
+            return XCTFail("bytes were dropped")
+        }
+        XCTAssertEqual(data.count, 3)
+        XCTAssertEqual(ext, "reality")
+    }
+
     // MARK: - Gesture targeting
 
     /// Pins the component that makes entity-targeted SwiftUI gestures fire at all.

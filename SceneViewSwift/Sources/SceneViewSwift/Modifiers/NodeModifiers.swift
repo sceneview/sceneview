@@ -159,7 +159,7 @@ extension Entity {
     /// `targetedToAnyEntity()` gestures.
     ///
     /// A `CollisionComponent` alone is **not** enough. SwiftUI's entity-targeted gestures
-    /// — which is how ``SceneView/onEntityTapped(_:)``, ``SceneView/onEntityTapped(hit:)``
+    /// — which is how ``SceneView/onEntityTapped(_:)``, ``SceneView/onEntityTapHit(_:)``
     /// and the whole `NodeGesture` dispatch reach an entity — additionally require an
     /// `InputTargetComponent`. Without one the gesture simply never fires: no error, no
     /// warning, and a scene that looks completely correct until someone taps it.

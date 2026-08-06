@@ -196,6 +196,12 @@ public enum NodeGesture {
                 modelEntity.generateCollisionShapes(recursive: true)
             }
         }
+        // A collision shape alone never made the entity reachable: SwiftUI's
+        // `targetedToAnyEntity()` gestures — which is how every `NodeGesture` handler is
+        // dispatched — also require an `InputTargetComponent`. Without it, registering a
+        // handler here succeeded and the handler simply never fired, with no error and no
+        // warning. See ``Entity/makeInputTargetable()``.
+        entity.makeInputTargetable()
     }
 
     /// Reads, mutates, and writes back the entity's `GestureHandlers`

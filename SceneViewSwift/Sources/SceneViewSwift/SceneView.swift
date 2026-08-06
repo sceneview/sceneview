@@ -119,6 +119,14 @@ public struct SceneView: View {
     // existed. Set via `.cameraPose(_:)`.
     var requestedCameraPose: SceneCameraPose?
 
+    // Monotonic stamp on `requestedCameraPose`. `0` (the default) means "compare by
+    // value", which is right for a SwiftUI caller following the documented
+    // `.onCameraChanged { pose = $0 }` pattern: their pose tracks the camera, so a
+    // re-write always differs from the live value. A bridge that suppresses its own
+    // read-back echoes has no such tracking, and needs to say "this is a new request"
+    // out of band — see `SceneViewerHostView`.
+    var requestedCameraPoseGeneration: Int = 0
+
     // Read-back for the pose above: invoked whenever the applied camera state
     // actually changes (drag, pinch, auto-rotate step, framing re-fit, or a
     // `.cameraPose(_:)` write landing clamped). `nil` by default — a scene that
@@ -205,6 +213,7 @@ public struct SceneView: View {
             recentersTargetOnOrbit: recentersTargetOnOrbit,
             contentIdentity: contentIdentity,
             requestedCameraPose: requestedCameraPose,
+            requestedCameraPoseGeneration: requestedCameraPoseGeneration,
             onCameraChanged: onCameraChanged,
             cameraGesturesEnabled: cameraGesturesEnabled,
             onEntityTappedHit: onEntityTappedHit
@@ -512,8 +521,14 @@ public struct SceneView: View {
     /// ```swift
     /// SceneView { root in /* ... */ }
     ///     .cameraPose(pose)                       // your state drives the camera
-    ///     .onCameraChanged { pose = $0 }          // gestures drive your state
+    ///     .onCameraChanged { new in               // gestures drive your state
+    ///         Task { @MainActor in pose = new }   // hop: see onCameraChanged(_:)
+    ///     }
     /// ```
+    ///
+    /// The hop is not decoration. ``onCameraChanged(_:)`` fires from inside RealityKit's
+    /// update pass, so assigning a `@State` directly — including from the fit-to-bounds
+    /// re-frame, which also runs there — mutates state during view evaluation.
     ///
     /// A written pose goes through the same clamps a dragged one does — elevation into
     /// ``CameraControls/minElevation``…``CameraControls/maxElevation``, distance into
@@ -530,6 +545,28 @@ public struct SceneView: View {
     public func cameraPose(_ pose: SceneCameraPose?) -> SceneView {
         var copy = self
         copy.requestedCameraPose = pose
+        return copy
+    }
+
+    /// Marks the ``cameraPose(_:)`` value as a *new request* even when it is unchanged.
+    ///
+    /// Only needed by a host that filters its own read-back — a cross-language bridge
+    /// mirroring the camera into another runtime's state, where the pose handed back
+    /// during a drag must not be mistaken for the app driving the camera. Such a host's
+    /// requested pose stays frozen at the app's last write for the whole gesture, so a
+    /// re-write of that same pose ("reset view", or re-selecting the current preset)
+    /// would compare equal and be dropped, leaving the camera where the finger left it
+    /// while the app's own state says otherwise.
+    ///
+    /// A plain SwiftUI caller never needs this: the documented
+    /// `.onCameraChanged { pose = $0 }` pattern keeps their pose tracking the camera, so
+    /// a re-write always differs from the live value and lands on its own.
+    ///
+    /// - Parameter generation: Any value that changes per request. Monotonic is the
+    ///   obvious choice.
+    func cameraPoseGeneration(_ generation: Int) -> SceneView {
+        var copy = self
+        copy.requestedCameraPoseGeneration = generation
         return copy
     }
 
@@ -586,8 +623,20 @@ public struct SceneView: View {
     ///
     /// Both handlers can be installed at once and both fire.
     ///
+    /// ### Why a different base name rather than `onEntityTapped(hit:)`
+    ///
+    /// An overload distinguished only by its argument label does **not** keep existing
+    /// call sites unambiguous, which is what the obvious naming would have assumed. Under
+    /// SE-0286 forward-scan matching an *unlabelled trailing closure* ignores the
+    /// parameter's label, so both overloads stay candidates for `.onEntityTapped { … }`
+    /// and every closure body that type-checks against both `Entity` and ``SceneTapHit``
+    /// becomes ambiguous. Measured: `.onEntityTapped { entity in }` compiles before the
+    /// overload exists and fails to compile after it — and that exact line is published
+    /// in `llms.txt`, the iOS cheatsheets and the SwiftUI codelab, so the break would
+    /// have reached users through the documentation the project tells assistants to read.
+    ///
     /// - Parameter handler: Receives the tapped entity and its world-space position.
-    public func onEntityTapped(hit handler: @escaping (SceneTapHit) -> Void) -> SceneView {
+    public func onEntityTapHit(_ handler: @escaping (SceneTapHit) -> Void) -> SceneView {
         var copy = self
         copy.onEntityTappedHit = handler
         return copy
@@ -733,6 +782,9 @@ private struct SceneViewRepresentation: View {
     /// so re-passing the same pose every frame never fights a live drag.
     let requestedCameraPose: SceneCameraPose?
 
+    /// Stamp making an unchanged `requestedCameraPose` count as a fresh request.
+    let requestedCameraPoseGeneration: Int
+
     /// Camera read-back from ``SceneView/onCameraChanged(_:)``. Fired from
     /// `applyCamera()` at the single point that already knows the camera really
     /// moved — the far side of the #2331 diff-guard.
@@ -743,7 +795,7 @@ private struct SceneViewRepresentation: View {
     let cameraGesturesEnabled: Bool
 
     /// Tap handler that also wants the world-space hit point, from
-    /// ``SceneView/onEntityTapped(hit:)``.
+    /// ``SceneView/onEntityTapHit(_:)``.
     let onEntityTappedHit: ((SceneTapHit) -> Void)?
 
     /// Mutable camera-orbit state, held in a **reference type** so mutating it
@@ -902,6 +954,9 @@ private struct SceneViewRepresentation: View {
         /// `nil` until the first host-written pose. Distinguished from "no pose
         /// requested" by `requestedCameraPose` itself being `nil`.
         var requestedPose: SceneCameraPose? = nil
+        /// Generation of the last applied request. Compared alongside the pose so a
+        /// re-request of an identical value is honoured when the caller says it is new.
+        var requestedPoseGeneration: Int = 0
         /// The currently-attached main-slot light entity, cached by reference
         /// for direct removal in `refreshLightSlot`. `nil` when the main slot
         /// is `.disabled`. Closes #2278.
@@ -1370,6 +1425,20 @@ private struct SceneViewRepresentation: View {
     @MainActor
     private func buildContent(isInitialBuild: Bool) {
         content(entities.contentRoot)
+
+        // Make the whole content subtree eligible for entity-targeted SwiftUI gestures.
+        //
+        // Done here, on the root, rather than in each node factory: `GeometryNode`,
+        // `MeshNode`, `TextNode`, `ImageNode`, `ShapeNode`, `ViewNode` and `PhysicsNode`
+        // all call `generateCollisionShapes` for hit testing, and a collision shape alone
+        // is not enough — see ``Entity/makeInputTargetable()``. Fixing only the loader
+        // would leave the repo's own `CollisionHitTestDemo`, which builds
+        // `GeometryNode.cube`, still unable to receive the tap it exists to demonstrate.
+        // One call on the root covers every node type, including any added later.
+        //
+        // Harmless on entities with no collision shape: `InputTargetComponent` makes an
+        // entity *eligible* for hit-testing, it does not create a hit target.
+        entities.contentRoot.makeInputTargetable()
 
         // Apply RenderQuality preset to all directional lights + the IBL receiver entity.
         // Runs AFTER lights + content are added so the preset walks the full scene tree.
@@ -1876,8 +1945,11 @@ private struct SceneViewRepresentation: View {
         // Sits after the mode-sync so a pose written on the same frame as a mode
         // change survives `enterFirstPerson()` / `recenterTarget()`, and before
         // the diff-guard so the write it performs is what the guard compares.
-        if let requested = requestedCameraPose, requested != appliedCache.requestedPose {
+        if let requested = requestedCameraPose,
+           requested != appliedCache.requestedPose
+            || requestedCameraPoseGeneration != appliedCache.requestedPoseGeneration {
             appliedCache.requestedPose = requested
+            appliedCache.requestedPoseGeneration = requestedCameraPoseGeneration
             camera.apply(pose: requested)
         }
 
@@ -2022,20 +2094,22 @@ private struct SceneViewRepresentation: View {
     private var dragGesture: some Gesture {
         DragGesture()
             .onChanged { value in
-                // `.cameraGesturesEnabled(false)` freezes the camera under the
-                // finger. Gating here rather than only through
-                // `CameraControls.isEnabled` because `lastDragTranslation` and
-                // `isDragging` are bookkeeping this view owns: leaving them to
-                // accumulate while the camera ignores them would make the first
-                // tick after re-enabling jump by the whole suppressed distance,
-                // and would pause auto-rotate for a drag that moves nothing.
-                guard cameraGesturesEnabled else { return }
+                // `.cameraGesturesEnabled(false)` freezes the camera under the finger.
+                //
+                // The baseline is updated FIRST, and unconditionally. Returning early
+                // instead — which is what an earlier version did, with a comment
+                // asserting the opposite — freezes `lastDragTranslation` while the finger
+                // keeps travelling, so re-enabling mid-drag computes a delta spanning the
+                // whole suppressed distance and the camera snaps across it in one frame.
+                // Keeping the baseline current means a re-enabled drag resumes from where
+                // the finger actually is.
                 let delta = CGSize(
                     width: value.translation.width - lastDragTranslation.width,
                     height: value.translation.height - lastDragTranslation.height
                 )
-                camera.handleDrag(delta)
                 lastDragTranslation = value.translation
+                guard cameraGesturesEnabled else { return }
+                camera.handleDrag(delta)
                 isDragging = true
                 // Push the dragged orbit straight onto the camera entity.
                 // Now that `camera` lives in a reference box (#2277), mutating
@@ -2056,10 +2130,21 @@ private struct SceneViewRepresentation: View {
         // pattern as Android's `Manipulator.scrollBegin / scrollUpdate`.
         MagnifyGesture()
             .onChanged { value in
-                // Same gate as the drag. Note this pinch path does NOT go through
-                // `CameraControls.handlePinch` (it snapshots a baseline radius and
-                // scales that instead), so `CameraControls.isEnabled` alone would
-                // silently disable orbit while leaving zoom live.
+                // Same shape as the drag: snapshot the baseline first, gate second.
+                // `initialPinchRadius` is the pinch's equivalent of
+                // `lastDragTranslation` — left unsnapshotted while disabled, re-enabling
+                // at magnification 2.0 would take it as the first tick and dolly to half
+                // the radius instantly.
+                //
+                // Note this path does NOT go through `CameraControls.handlePinch` (it
+                // scales a snapshotted baseline instead), so `CameraControls.isEnabled`
+                // alone would silently disable orbit while leaving zoom live.
+                if initialPinchRadius == nil, camera.mode == .orbit || camera.mode == .pan {
+                    initialPinchRadius = camera.orbitRadius
+                }
+                if initialPinchFov == nil, camera.mode == .firstPerson {
+                    initialPinchFov = camera.fov
+                }
                 guard cameraGesturesEnabled else { return }
                 switch camera.mode {
                 case .orbit, .pan:

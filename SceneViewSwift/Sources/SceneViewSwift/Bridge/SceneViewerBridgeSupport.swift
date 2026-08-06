@@ -70,15 +70,65 @@ enum SceneViewerModelRequest {
         }
     }
 
-    /// Hex of the first and last 16 bytes — the O(1) half of the `.bytes` identity.
-    private static func edgeSignature(of data: Data) -> String {
-        let edge = 16
-        guard data.count > edge * 2 else {
-            return data.map { String(format: "%02x", $0) }.joined()
+    /// Builds the request a configuration describes, applying the URL scheme allowlist.
+    ///
+    /// Lives here rather than inside the UIKit-only host so it can be tested: the scheme
+    /// check is a security invariant, and an invariant nothing exercises is a comment.
+    ///
+    /// Only `http` and `https` are accepted. `URL(string:)` takes any scheme and
+    /// `URLSession.download` honours `file://` — measured, not assumed — so a host
+    /// forwarding an attacker-influenced string (a Flutter channel argument, a React
+    /// Native prop, a deep link, a remote-config value) would otherwise turn a `file://`
+    /// into an in-sandbox file read handed to RealityKit's USD parser. `ModelSource`'s
+    /// KDoc already promises callers on every platform that this cannot happen, and the
+    /// Android downloader re-checks for the same reason; this is the second public entry
+    /// point onto the same loader, and the Kotlin guard does not cover it.
+    ///
+    /// - Returns: the request, or `nil` when a URL was supplied and refused. `nil` is
+    ///   distinct from `.none` (no model set) so the caller can say which happened —
+    ///   both render as an empty viewport, and a developer who cannot tell them apart
+    ///   will look for the bug anywhere but here.
+    static func make(
+        assetPath: String?,
+        urlString: String?,
+        bytes: Data?,
+        bytesFileExtension: String
+    ) -> SceneViewerModelRequest? {
+        if let assetPath, !assetPath.isEmpty {
+            return .asset(assetPath)
         }
-        let head = data.prefix(edge)
-        let tail = data.suffix(edge)
-        return (head + tail).map { String(format: "%02x", $0) }.joined()
+        if let urlString, !urlString.isEmpty {
+            guard let url = URL(string: urlString),
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https" else {
+                return nil
+            }
+            return .url(url)
+        }
+        if let bytes, !bytes.isEmpty {
+            return .bytes(bytes, fileExtension: bytesFileExtension)
+        }
+        return SceneViewerModelRequest.none
+    }
+
+    /// Fold of the first and last 16 bytes — the O(1) half of the `.bytes` identity.
+    ///
+    /// A numeric fold rather than a hex string: this runs on every configuration update,
+    /// which during a drag means every frame, and 32 `String(format:)` calls plus the
+    /// joins were pure per-frame garbage for a value that only ever gets compared.
+    private static func edgeSignature(of data: Data) -> UInt64 {
+        let edge = 16
+        var hash: UInt64 = 0xcbf29ce484222325
+        func fold(_ byte: UInt8) {
+            hash = (hash ^ UInt64(byte)) &* 0x100000001b3
+        }
+        if data.count > edge * 2 {
+            for byte in data.prefix(edge) { fold(byte) }
+            for byte in data.suffix(edge) { fold(byte) }
+        } else {
+            for byte in data { fold(byte) }
+        }
+        return hash
     }
 }
 
